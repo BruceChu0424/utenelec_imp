@@ -1,6 +1,8 @@
 import '../../core/network/api_client.dart';
 import '../models/procurement_commercial_terms.dart';
 
+/// 批量取货品的主档默认采购/委外条款 (/last-terms, 语义见 ProcurementLastTerms)。
+///
 /// Keeps large order defaults within URL limits and bounds concurrent reads.
 Future<Map<String, ProcurementLastTerms>> loadProcurementTerms(
   ApiClient api,

@@ -48,11 +48,12 @@ public class SalesOrderController {
             @RequestParam(required = false) java.util.List<Short> chain,
             @RequestParam(required = false) UUID sellerId,
             @RequestParam(required = false) String chainGroup,
+            @RequestParam(required = false) UUID currencyId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup), page, size, sort, order);
+        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId), page, size, sort, order);
     }
 
     /** 工作台统计卡：待生产 / 生产中 / 待发货 / 本月完成（同列表数据范围）。 */
@@ -90,14 +91,15 @@ public class SalesOrderController {
     }
 
     /**
-     * 客户 → 最近一次销售订货条款（新建单「学习预填」：选客户后自动带出上次的
-     * 结账方式/发运策略/币种，与采购/委外 /last-terms 同一学习模式、按客户维度）。
-     * 无历史订单返回空 body。
+     * 客户 → 主档默认销售条款 (新建单预填: 选客户后带出 clients 主档的结账方式/发运策略/
+     * 币种)。路径沿用 /last-terms (前端在用), 语义自 V592 起已是主档默认值, 不再按最近
+     * 一张订单推导; 与采购/委外 /last-terms 同一模式、按客户维度。主档三项全空返回空 body。
      */
     @GetMapping("/last-terms")
     @PreAuthorize("hasAuthority('sales_order:view')")
-    public SalesOrderService.LastTermsForClient lastTerms(@RequestParam UUID clientId) {
-        return service.lastTermsForClient(clientId);
+    public SalesOrderService.MasterDefaultTermsForClient masterDefaultTerms(
+            @RequestParam UUID clientId) {
+        return service.masterDefaultTermsForClient(clientId);
     }
 
     @GetMapping("/{id}")

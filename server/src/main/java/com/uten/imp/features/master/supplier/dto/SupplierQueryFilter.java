@@ -23,6 +23,7 @@ public record SupplierQueryFilter(
         Integer tday,
         String place,
         String empId,
+        UUID ownerEmployeeId,
         String legalPerson,
         String linkman,
         String mobile,
@@ -49,6 +50,7 @@ public record SupplierQueryFilter(
             Integer tday,
             String place,
             String empId,
+            UUID ownerEmployeeId,
             String legalPerson,
             String linkman,
             String mobile,
@@ -63,7 +65,7 @@ public record SupplierQueryFilter(
             String website,
             String shipVia,
             String shipAddress) {
-        this(categoryId, keyword, nullFields, name, description, tday, place, empId,
+        this(categoryId, keyword, nullFields, name, description, tday, place, empId, ownerEmployeeId,
                 legalPerson, linkman, mobile, phone, phone2, fax, postcode, address,
                 bank, bankAccount, taxId, website, shipVia, shipAddress, false);
     }

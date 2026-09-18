@@ -79,6 +79,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   String? _error;
   final _loadRequests = LatestRequestGuard();
   String? _warehouseId; // null = 全部（参与核算仓库聚合）；父仓 = 子树聚合（V476）
+
+  /// 「含线边仓」(V595)：线边仓是车间直送料架，默认不计入即时库存；仅本页会话内生效。
+  bool _includeLineSide = false;
   // 列排序态：null=后端默认（库存数量 DESC）。
   String? _sortKey;
   bool _sortAsc = false;
@@ -131,9 +134,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             categoryId: _categoryId,
             warehouseId: _warehouseId,
             includeDefective: ref.read(instantInventoryPrefsProvider),
+            includeLineSide: _includeLineSide,
             keyword: _keyword.isEmpty ? null : _keyword,
             owningWarehouse: _owningFilterUuid,
             owningWarehouseNull: _owningFilterIsNull,
+            colorId: _columnFilter('color'),
+            series: _columnFilter('series'),
+            unitId: _columnFilter('unit'),
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
@@ -172,6 +179,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   bool get _owningFilterIsNull =>
       _filters['owningWarehouse'] == kMasterFilterNullValue;
 
+  /// 颜色/系列/单位列筛选值（服务端 facet 桶值：颜色 UUID / 系列文本 / 单位 UUID）。
+  /// 这三列不下发空值桶，哨兵值按无过滤处理。
+  String? _columnFilter(String key) {
+    final v = _filters[key];
+    return (v == null || v == kMasterFilterNullValue) ? null : v;
+  }
+
   void _onFilterChanged(String key, String? value) {
     setState(() {
       final next = Map<String, String?>.from(_filters);
@@ -190,6 +204,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     if (_categoryId != null) 'categoryId': _categoryId,
     if (_warehouseId != null) 'warehouseId': _warehouseId,
     'includeDefective': ref.read(instantInventoryPrefsProvider),
+    if (_includeLineSide) 'includeLineSide': true,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     if (_sortKey != null) 'sort': _sortKey,
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
@@ -213,6 +228,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           categoryId: _categoryId,
           warehouseId: _warehouseId,
           includeDefective: ref.read(instantInventoryPrefsProvider),
+          includeLineSide: _includeLineSide,
           keyword: _keyword.isEmpty ? null : _keyword,
           sort: _sortKey,
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
@@ -471,6 +487,22 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                       : (v) => ref
                             .read(instantInventoryPrefsProvider.notifier)
                             .setIncludeDefective(v),
+                ),
+                // V595：线边仓是车间内部直送的料架，不是现实里的仓库——默认不算进即时库存，
+                // 要看车间料架上还有多少直送料时再打开。选定叶子仓时同样置灰。
+                Tooltip(
+                  message: '线边仓是车间内部直送的料架，默认不计入即时库存',
+                  child: FilterChip(
+                    key: const Key('instant-inventory-line-side'),
+                    label: const Text('含线边仓'), // TODO(l10n): 补 arb
+                    selected: _includeLineSide,
+                    onSelected: !aggregateWarehouse
+                        ? null
+                        : (v) {
+                            setState(() => _includeLineSide = v);
+                            _load(1);
+                          },
+                  ),
                 ),
                 Text(
                   '共 $total 项', // TODO(l10n): 补 arb

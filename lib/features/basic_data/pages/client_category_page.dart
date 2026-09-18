@@ -374,17 +374,43 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   void _onFilterChanged(String key, String? value) {
+    // 负责人列（ownerEmployeeName）在服务端的筛选参数是 ownerEmployeeId（桶值=员工 UUID）。
+    final paramKey = key == 'ownerEmployeeName' ? 'ownerEmployeeId' : key;
     setState(() {
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
-        next.remove(key); // 选"所有"= 不筛
+        next.remove(paramKey); // 选"所有"= 不筛
       } else {
-        next[key] = value; // 具体值 或 kMasterFilterNullValue（空值）
+        next[paramKey] = value; // 具体值 或 kMasterFilterNullValue（空值）
       }
       _filters = next;
     });
     _loadClients(1); // 任一筛选变化回到第 1 页
   }
+
+  /// 表头筛选桶/空值计数：服务端 empId 桶（值=负责人 UUID、label=人名）remap 到
+  /// 负责人列 key ownerEmployeeName（表格按列 key 索引 facets）。
+  Map<String, List<MasterFacetBucket>> get _columnFacets {
+    final fields = Map<String, List<MasterFacetBucket>>.from(
+      _facets?.fields ?? const {},
+    );
+    final owner = fields.remove('empId');
+    if (owner != null) fields['ownerEmployeeName'] = owner;
+    return fields;
+  }
+
+  Map<String, int> get _columnNullCounts {
+    final counts = Map<String, int>.from(_facets?.nullCounts ?? const {});
+    final ownerNull = counts.remove('empId');
+    if (ownerNull != null) counts['ownerEmployeeName'] = ownerNull;
+    return counts;
+  }
+
+  /// 表头筛选回显：把 _filters（服务端参数名）映射回列 key 供表格选中态索引。
+  Map<String, String?> get _columnFilters => {
+    for (final e in _filters.entries)
+      (e.key == 'ownerEmployeeId' ? 'ownerEmployeeName' : e.key): e.value,
+  };
 
   void _onKeywordChanged(String kw) {
     setState(() => _keyword = kw);
@@ -747,9 +773,9 @@ class _DetailPaneState extends State<_DetailPane> {
                     size: UtenButtonSize.large,
                   ),
                 ],
-                facets: _facets?.fields ?? const {},
-                nullCounts: _facets?.nullCounts ?? const {},
-                filters: _filters,
+                facets: _columnFacets,
+                nullCounts: _columnNullCounts,
+                filters: _columnFilters,
                 onFilterChanged: _onFilterChanged,
                 // 行底色按状态：使用=浅蓝、禁用=浅红；单击选中自动加深加亮。
                 rowColor: (c) => switch (c.status) {

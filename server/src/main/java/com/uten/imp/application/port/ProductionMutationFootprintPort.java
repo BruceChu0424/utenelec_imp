@@ -35,4 +35,13 @@ public interface ProductionMutationFootprintPort {
      */
     FulfillmentMutationLockPlan forInventoryChange(
             Collection<WarehouseDimension> changedDimensions, Collection<UUID> exactAnalysisIds);
+
+    /**
+     * 先入库后质检(V597)：品质合格时同事务自动点收会新建一张 FINISHED_IN 并立刻走
+     * {@link #forStockDocuments}，但那张单在预锁时还不存在。这里给出它的等价前像——
+     * 落仓维度的唤醒目标 + 该计划行父工序需求 + 销售归属——让品质判定一次把锁拿全，
+     * 回调时 requireCovered 才不会撞「禁止持锁补拿上游目标」。
+     */
+    FulfillmentMutationLockPlan forFutureFinishedInbound(
+            Collection<WarehouseDimension> shelvedDimensions, Collection<UUID> planItemIds);
 }

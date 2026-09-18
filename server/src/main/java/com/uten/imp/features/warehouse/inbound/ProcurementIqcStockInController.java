@@ -5,6 +5,8 @@ import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.Ba
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskDetail;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +31,7 @@ import java.util.UUID;
 public class ProcurementIqcStockInController {
 
     private final ProcurementIqcStockInService service;
+    private final ProcurementIqcPreStockInService preStockIn;
 
     @GetMapping("/{receiptType}/{receiptId}")
     @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
@@ -46,6 +49,21 @@ public class ProcurementIqcStockInController {
             @PathVariable UUID receiptId,
             @Valid @RequestBody ConfirmRequest request) {
         return service.confirm(receiptType, receiptId, request);
+    }
+
+    /**
+     * 先入库后检(V596)：对仍在「等待检查结果」的收货单，把待检明细逐行上架到实际叶仓与库位；
+     * 只写位置事实、不写库存。品质合格时按该位置自动转正入库，不合格从库位取出退回。
+     * 需要 IQC 待入库查看 + 先入库后检两个权限，与确认入库权限相互独立。
+     */
+    @PostMapping("/{receiptType}/{receiptId}/pre-stock-in")
+    @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')"
+            + " and hasAuthority('" + ProcurementIqcStockInPermissions.BEFORE_INSPECTION + "')")
+    public PreStockInResult preStockIn(
+            @PathVariable String receiptType,
+            @PathVariable UUID receiptId,
+            @Valid @RequestBody PreStockInRequest request) {
+        return preStockIn.preStockIn(receiptType, receiptId, request);
     }
 
     /** 跨收货单批量入库（品质部检查结果页多选办理）：整批同事务，任一冲突整批回滚。 */

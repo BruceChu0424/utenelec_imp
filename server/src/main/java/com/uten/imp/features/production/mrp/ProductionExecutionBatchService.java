@@ -78,6 +78,17 @@ public class ProductionExecutionBatchService {
                 quantity.toPlainString(),request.previewFingerprint()));
         Source initial = source(request.segmentId());
         requireAccess(initial);
+        // 开工路线门控(V599)：分批领料只属于「分批生产」路线；未确认路线的工单先去确认。
+        String route = routeOf(initial.id());
+        if (route == null) {
+            throw conflict("请先确认生产路线——「分批领料」需要工单先选定齐套/分批/持续生产之一");
+        }
+        if (!"BATCH".equals(route)) {
+            throw conflict("本工单已确认为「"
+                    + com.uten.imp.features.production.execution
+                            .ProductionExecutionSegmentService.routeWord(route)
+                    + "」路线，「分批领料」不可用；如需更改，请在等待物料且未领料时重新确认生产路线");
+        }
         List<Object[]> prior = rows("""
                 SELECT source_segment_id,batch_segment_id,remaining_segment_id,request_hash
                 FROM production_execution_segment_splits WHERE created_by=:actor AND idempotency_key=:key
@@ -115,9 +126,9 @@ public class ProductionExecutionBatchService {
                 WHERE execution_segment_id=:id AND NOT is_deleted
                 """).setParameter("actor",actor).setParameter("id",source.id()).executeUpdate();
         List<MaterialSlice> batchMaterials=slices(context,source.offset(),quantity);
-        createChild(context,batch,quantity,source.offset(),batchMaterials,actor);
+        createChild(context,batch,quantity,source.offset(),batchMaterials,actor,"FULL_KIT");
         if (remaining!=null) createChild(context,remaining,preview.remainingQty(),source.offset().add(quantity),
-                slices(context,source.offset().add(quantity),preview.remainingQty()),actor);
+                slices(context,source.offset().add(quantity),preview.remainingQty()),actor,"BATCH");
         splitSalesAllocations(source.id(),batch,remaining,quantity,actor);
         if (batchMaterials.stream().allMatch(material->material.requiredQty().signum()==0)) {
             em.createNativeQuery("UPDATE production_execution_segments SET status='READY',updated_by=:actor WHERE id=:id")
@@ -126,13 +137,20 @@ public class ProductionExecutionBatchService {
             readiness.promoteAfterMaterialRecheck(batch,source.warehouseId());
             long version=((Number)em.createNativeQuery("SELECT lock_version FROM production_execution_segments WHERE id=:id")
                     .setParameter("id",batch).getSingleResult()).longValue();
-            var drawPreview=drawRequests.preview(new ProductionDrawRequest.PreviewRequest(
-                    List.of(new ProductionDrawRequest.Item(batch,version))));
-            if (!distribution(preview.summaries()).equals(distribution(drawPreview.summaries())))
-                throw conflict("实际领料分仓或数量与刚才核对的汇总不同，本次未提交；请刷新后重新确认");
-            drawRequests.submit(new ProductionDrawRequest.SubmitRequest(
-                    List.of(new ProductionDrawRequest.Item(batch,version)),
-                    "batch-draw-"+batch,drawPreview.fingerprint()));
+            // 本车间线边仓(直送)的领料单已在提升事务内自动审核出库——料是车间自产自检
+            // 直送来的，不提交领料申请、不等仓库；只有真正落在仓库的剩余领料单才申请。
+            List<UUID> lineSideWarehouses=preview.lineSideWarehouseIds();
+            List<ProductionDrawRequest.Summary> warehouseLines=preview.summaries().stream()
+                    .filter(summary->!lineSideWarehouses.contains(summary.warehouseId())).toList();
+            if(!warehouseLines.isEmpty()) {
+                var drawPreview=drawRequests.preview(new ProductionDrawRequest.PreviewRequest(
+                        List.of(new ProductionDrawRequest.Item(batch,version))));
+                if (!distribution(warehouseLines).equals(distribution(drawPreview.summaries())))
+                    throw conflict("实际领料分仓或数量与刚才核对的汇总不同(线边仓直送料已自动投入，无需领料)，本次未提交；请刷新后重新确认");
+                drawRequests.submit(new ProductionDrawRequest.SubmitRequest(
+                        List.of(new ProductionDrawRequest.Item(batch,version)),
+                        "batch-draw-"+batch,drawPreview.fingerprint()));
+            }
         }
         notices.resolveProductionWorkshopTasks(List.of(source.id()),"SPLIT");
         if (remaining!=null) notices.notifyExecutionSegmentWorkshopAssigned(remaining);
@@ -228,9 +246,12 @@ public class ProductionExecutionBatchService {
         List<String> parts=new ArrayList<>(List.of(source.id().toString(),Long.toString(source.version()),source.bomFingerprint(),quantity.toPlainString()));
         context.availability().forEach(value->parts.add(value.toString()));
         lines.forEach(value->parts.add(value.toString()));
+        List<UUID> lineSideWarehouses=context.availability().stream()
+                .filter(ProductionExecutionReadinessService.BatchAvailability::lineSide)
+                .map(ProductionExecutionReadinessService.BatchAvailability::warehouseId).distinct().toList();
         return new Preview(source.id(),source.version(),source.planId(),source.planNo(),source.code(),source.productCode(),
                 source.productName(),source.unitName(),source.qty(),maximum,quantity,source.qty().subtract(quantity),
-                fingerprint(parts),lines,summaries);
+                fingerprint(parts),lines,summaries,lineSideWarehouses);
     }
 
     private List<Line> previewLines(Context context,BigDecimal quantity) {
@@ -289,7 +310,8 @@ public class ProductionExecutionBatchService {
             for(var allocated:allocation.entrySet())if(allocated.getValue().signum()>0) {
                 var warehouse=supply.stream().filter(value->value.warehouseId().equals(allocated.getKey())).findFirst().orElseThrow();
                 result.add(new Line(material.rootDemandId(),warehouse.warehouseId(),warehouse.warehouseName(),material.goodsId(),
-                        material.goodsCode(),material.goodsName(),material.colorId(),material.colorName(),material.unitId(),material.unitName(),allocated.getValue()));
+                        material.goodsCode(),material.goodsName(),material.colorId(),material.colorName(),material.unitId(),material.unitName(),
+                        allocated.getValue(),warehouse.lineSide()));
             }
         }
         return List.copyOf(result);
@@ -310,23 +332,26 @@ public class ProductionExecutionBatchService {
         }).toList();
     }
 
-    private void createChild(Context context,UUID id,BigDecimal quantity,BigDecimal offset,List<MaterialSlice> slices,UUID actor) {
+    private void createChild(Context context,UUID id,BigDecimal quantity,BigDecimal offset,List<MaterialSlice> slices,UUID actor,String startRoute) {
         String snapshot;try{snapshot=json.writeValueAsString(slices);}catch(Exception failure){throw new IllegalStateException(failure);}
+        // 路线落生即定(V599)：批次段=FULL_KIT(每一批就是一次小齐套，开工/领料不受新门影响)；
+        // 剩余段=BATCH(继承分批谱系，下一批继续从「分批领料」走)。确认时间=拆批时刻，操作人=拆批事件账。
         em.createNativeQuery("""
                 INSERT INTO production_execution_segments(id,package_id,plan_id,source_plan_item_id,segment_no,segment_code,
                     client_segment_key,product_goods_id,product_color_id,product_unit_id,product_unit_rate,planned_qty,status,
                     workshop_department_id,team_department_id,responsible_employee_id,plan_begin_date,plan_end_date,bom_fingerprint,
                     idempotency_key,auto_promote_when_ready,material_requirement_mode,source_segment_id,split_root_segment_id,
-                    split_start_qty,split_material_snapshot,created_by,updated_by)
+                    split_start_qty,split_material_snapshot,created_by,updated_by,start_route,route_confirmed_at)
                 SELECT :id,package_id,plan_id,source_plan_item_id,
                     (SELECT COALESCE(max(segment_no),0)+1 FROM production_execution_segments WHERE package_id=source.package_id),:code,
                     :key,product_goods_id,product_color_id,product_unit_id,product_unit_rate,:quantity,'WAITING',
                     workshop_department_id,team_department_id,responsible_employee_id,plan_begin_date,plan_end_date,bom_fingerprint,
-                    :key,:promote,'DEMANDED',id,:root,:offset,CAST(:snapshot AS jsonb),:actor,:actor
+                    :key,:promote,'DEMANDED',id,:root,:offset,CAST(:snapshot AS jsonb),:actor,:actor,:startRoute,now()
                 FROM production_execution_segments source WHERE id=:source
                 """).setParameter("id",id).setParameter("code",codes.nextCode(MasterCodePrefix.PRODUCTION_EXECUTION_SEGMENT))
                 .setParameter("key","SPLIT:"+id).setParameter("quantity",quantity).setParameter("root",context.source().rootId())
                 .setParameter("offset",offset).setParameter("snapshot",snapshot).setParameter("actor",actor)
+                .setParameter("startRoute",startRoute)
                 .setParameter("source",context.source().id()).setParameter("promote",true).executeUpdate();
         for(MaterialSlice slice:slices) {
             if(slice.requiredQty().signum()==0)continue;
@@ -388,6 +413,7 @@ public class ProductionExecutionBatchService {
     }
     private List<UUID> documents(UUID segment){return NativeQueryResults.typedRows(em.createNativeQuery("SELECT document_id FROM production_planning_package_documents WHERE execution_segment_id=:id AND document_type='DRAW' ORDER BY document_id").setParameter("id",segment),UUID.class);}
     private List<Object[]> rows(String sql,Map<String,?> parameters){var query=em.createNativeQuery(sql);parameters.forEach(query::setParameter);return NativeQueryResults.objectArrayRows(query);}
+    private String routeOf(UUID segmentId){List<?> routes=em.createNativeQuery("SELECT start_route FROM production_execution_segments WHERE id=:id AND NOT is_deleted").setParameter("id",segmentId).getResultList();return routes.isEmpty()||routes.getFirst()==null?null:routes.getFirst().toString();}
     private void lock(String table,UUID id){em.createNativeQuery("SELECT id FROM "+table+" WHERE id=:id FOR UPDATE").setParameter("id",id).getSingleResult();}
     private static BigDecimal positive(BigDecimal qty){if(qty==null||qty.signum()<=0)throw invalid("本次生产数量必须大于零");try{return qty.setScale(4,RoundingMode.UNNECESSARY);}catch(ArithmeticException failure){throw invalid("本次数量最多保留四位小数");}}
     private static String fingerprint(List<String> values){return PlanningPackageFingerprint.sha256(values);}

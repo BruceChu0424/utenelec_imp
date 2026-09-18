@@ -47,6 +47,7 @@ public class ProcurementPayablesService {
             UUID supplierId,
             String status,
             UUID settlementMethodId,
+            UUID currencyId,
             LocalDate dateFrom,
             LocalDate dateTo,
             LocalDate dueFrom,
@@ -59,7 +60,7 @@ public class ProcurementPayablesService {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), MAX_PAGE_SIZE);
         Filter filter = filter(businessType, supplierId, status, settlementMethodId,
-                dateFrom, dateTo, dueFrom, dueTo, keyword);
+                currencyId, dateFrom, dateTo, dueFrom, dueTo, keyword);
         String orderBy = orderBy(sort, order);
 
         Query data = em.createNativeQuery(itemSelect() + filter.sql()
@@ -239,6 +240,7 @@ public class ProcurementPayablesService {
 
     private Filter filter(
             String businessType, UUID supplierId, String status, UUID settlementMethodId,
+            UUID currencyId,
             LocalDate dateFrom, LocalDate dateTo, LocalDate dueFrom, LocalDate dueTo,
             String keyword) {
         String normalizedBusiness = upper(businessType);
@@ -262,6 +264,7 @@ public class ProcurementPayablesService {
         if (normalizedBusiness != null) add(sql, params, "ledger.business_type = :businessType",
                 "businessType", normalizedBusiness);
         if (supplierId != null) add(sql, params, "ledger.supplier_id = :supplierId", "supplierId", supplierId);
+        if (currencyId != null) add(sql, params, "ledger.currency_id = :currencyId", "currencyId", currencyId);
         if (settlementMethodId != null) add(sql, params,
                 "ledger.settlement_type_id = :settlementMethodId", "settlementMethodId", settlementMethodId);
         if (dateFrom != null) add(sql, params, "ledger.bill_date >= :dateFrom", "dateFrom", dateFrom);

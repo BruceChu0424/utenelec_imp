@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_h_scroll_area.dart';
@@ -591,7 +592,7 @@ class _FinanceAssetPostingPanelState
   }
 
   Widget _previewLines(List<AssetPostingLine> lines) {
-    if (lines.isEmpty) return const Text('暂无可计提项目');
+    if (lines.isEmpty) return const UtenEmpty(message: '暂无可计提项目');
     if (context.breakpoint.isCompact) {
       return Column(
         children: [
@@ -647,7 +648,7 @@ class _FinanceAssetPostingPanelState
           : _periodsError != null
           ? _retry(_periodsError!, _loadPeriods)
           : _periods.isEmpty
-          ? const Text('暂无资产期间')
+          ? const UtenEmpty(message: '暂无资产期间')
           : Column(
               children: [
                 for (final period in _periods)
@@ -708,7 +709,7 @@ class _FinanceAssetPostingPanelState
           : _runsError != null
           ? _retry(_runsError!, _loadRuns)
           : _runs.isEmpty
-          ? const Text('暂无过账批次')
+          ? const UtenEmpty(message: '暂无过账批次')
           : Column(
               children: [
                 for (final run in _runs)

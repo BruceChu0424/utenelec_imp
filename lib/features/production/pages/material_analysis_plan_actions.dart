@@ -350,7 +350,7 @@ abstract class _MaterialAnalysisPlanActionsState
         type: UtenButtonType.danger,
         icon: Icons.alt_route_rounded,
         isLoading: _savingRoutes,
-        onPressed: _busy || _loadingRouteMemory || _selectedRouteCount == 0
+        onPressed: _busy || _selectedRouteCount == 0
             ? null
             : _createSelectedRoutes,
         child: Text(_l10n.materialCreateRoutes(_selectedRouteCount)),

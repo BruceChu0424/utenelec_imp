@@ -1,19 +1,23 @@
-/// 报工页「转下一道工序」的候选工单(V584/V585)。
+/// 报工页「转下一道工序」的候选工单(V584/V585/V595)。
 ///
 /// 服务端只列**同车间**、同货品同颜色、还缺料的上层工单：跨车间必须走仓库，
-/// 数据库守卫也会拒。已开工且需求已领齐的段不列——料投过去挂不上，只会变成呆料。
+/// 数据库守卫也会拒。等待/齐套/已派工的上层工单，以及**持续生产中**的上层工单
+/// 都可以收；普通已开工的段不列——料投过去挂不上，只会变成呆料。
 class ProductionDirectTransferCandidate {
   const ProductionDirectTransferCandidate({
     required this.demandId,
     required this.executionSegmentId,
     required this.remainingQty,
     this.executionSegmentCode,
+    this.executionSegmentStatus,
+    this.continuousSupply = false,
     this.planId,
     this.planNo,
     this.goodsCode,
     this.goodsName,
     this.colorName,
     this.unitName,
+    this.receivingGoodsId,
     this.receivingGoodsCode,
     this.receivingGoodsName,
     this.requiredQty = 0,
@@ -23,6 +27,10 @@ class ProductionDirectTransferCandidate {
   final String demandId;
   final String executionSegmentId;
   final String? executionSegmentCode;
+  final String? executionSegmentStatus;
+
+  /// 接收方是「持续生产」工单(V595)：这批料审核后立刻补投给它，不看齐套。
+  final bool continuousSupply;
   final String? planId;
   final String? planNo;
 
@@ -33,6 +41,7 @@ class ProductionDirectTransferCandidate {
   final String? unitName;
 
   /// 接收方(父件工单)正在生产的产品——车间认「投给谁」认的是这个。
+  final String? receivingGoodsId;
   final String? receivingGoodsCode;
   final String? receivingGoodsName;
 
@@ -63,13 +72,15 @@ class ProductionDirectTransferCandidate {
     return '$head · 还差 ${_number(remainingQty)} ${unitName ?? ''}'.trim();
   }
 
-  /// 下拉第二行：工单号 · 还差多少。
+  /// 下拉第二行：工单号 · 还差多少(持续生产中的工单另加标注)。
   String get secondaryLabel {
     final segment = executionSegmentCode?.trim();
     final head = segment == null || segment.isEmpty
         ? (planNo ?? '上层工单')
         : segment;
-    return '$head · 还差 ${_number(remainingQty)} ${unitName ?? ''}'.trim();
+    final tail = continuousSupply ? ' · 持续生产中' : '';
+    return '$head · 还差 ${_number(remainingQty)} ${unitName ?? ''}'.trim() +
+        tail;
   }
 
   factory ProductionDirectTransferCandidate.fromJson(
@@ -80,12 +91,15 @@ class ProductionDirectTransferCandidate {
       demandId: json['demandId'] as String,
       executionSegmentId: json['executionSegmentId'] as String,
       executionSegmentCode: json['executionSegmentCode'] as String?,
+      executionSegmentStatus: json['executionSegmentStatus'] as String?,
+      continuousSupply: json['continuousSupply'] == true,
       planId: json['planId'] as String?,
       planNo: json['planNo'] as String?,
       goodsCode: json['goodsCode'] as String?,
       goodsName: json['goodsName'] as String?,
       colorName: json['colorName'] as String?,
       unitName: json['unitName'] as String?,
+      receivingGoodsId: json['receivingGoodsId'] as String?,
       receivingGoodsCode: json['receivingGoodsCode'] as String?,
       receivingGoodsName: json['receivingGoodsName'] as String?,
       requiredQty: number('requiredQty'),
@@ -102,19 +116,41 @@ String _number(double value) => value == value.roundToDouble()
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
 
-/// 候选接口的完整返回：候选列表 + 空候选的原因标记。
+/// 候选接口的完整返回：候选列表 + 上次报工的记忆(V595)。
 ///
-/// [lineSideWarehouseMissing]=true 表示同车间明明有还缺料的上层工单，
-/// 只是本车间没有与收料需求同主仓的线边仓——界面应提示先建线边仓，
-/// 而不是让车间以为「没有可投的上层工单」。
+/// [lastDestination]/[lastReceivingGoodsId]：本车间上一次报这个货品时选的去向与
+/// 投给的父件产品。报工页据此预填并标黄提醒核对——去向大多数时候不变，
+/// 但以前每次都要人重新选一遍。线边仓缺失(V584 的 lineSideWarehouseMissing)
+/// 不再是空候选的原因：V595 起线边仓由服务端自动配置。
 class DirectTransferCandidatesResult {
   const DirectTransferCandidatesResult({
     required this.candidates,
-    this.lineSideWarehouseMissing = false,
+    this.lastDestination,
+    this.lastReceivingGoodsId,
+    this.lastReceivingGoodsCode,
+    this.lastReceivingGoodsName,
   });
 
   final List<ProductionDirectTransferCandidate> candidates;
-  final bool lineSideWarehouseMissing;
+
+  /// 'WAREHOUSE' / 'WORKSHOP'；没报过为 null。
+  final String? lastDestination;
+  final String? lastReceivingGoodsId;
+  final String? lastReceivingGoodsCode;
+  final String? lastReceivingGoodsName;
+
+  bool get hasMemory => lastDestination != null;
+
+  /// 记忆指向的候选：只有恰好一个候选的父件产品与上次相同才算命中，
+  /// 两个同产品工单并存时不替人猜。
+  ProductionDirectTransferCandidate? get rememberedCandidate {
+    final goodsId = lastReceivingGoodsId;
+    if (goodsId == null || goodsId.isEmpty) return null;
+    final matches = candidates
+        .where((candidate) => candidate.receivingGoodsId == goodsId)
+        .toList(growable: false);
+    return matches.length == 1 ? matches.single : null;
+  }
 
   factory DirectTransferCandidatesResult.fromJson(Map<String, dynamic> json) {
     final rows = json['candidates'];
@@ -128,8 +164,10 @@ class DirectTransferCandidatesResult {
                 )
                 .toList(growable: false)
           : const [],
-      lineSideWarehouseMissing:
-          (json['lineSideWarehouseMissing'] as bool?) ?? false,
+      lastDestination: json['lastDestination'] as String?,
+      lastReceivingGoodsId: json['lastReceivingGoodsId'] as String?,
+      lastReceivingGoodsCode: json['lastReceivingGoodsCode'] as String?,
+      lastReceivingGoodsName: json['lastReceivingGoodsName'] as String?,
     );
   }
 }

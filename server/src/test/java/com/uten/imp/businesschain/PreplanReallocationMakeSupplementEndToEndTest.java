@@ -227,6 +227,8 @@ class PreplanReallocationMakeSupplementEndToEndTest {
     private void finish(Scenario c,GeneratedPlan plan,String quantity) {
         fixture.loginAs(c.world().superAdminUserId());
         UUID segment=plan.segmentIds().getFirst();
+        // V599：开工前先确认齐套生产路线。
+        segments.confirmRoute(plan.planId(),segment,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(version(segment),"yield-route-"+segment,"FULL_KIT"));
         List<UUID> documentIds=db.queryForList("SELECT document_id FROM production_planning_package_documents WHERE execution_segment_id=? AND document_type='DRAW' ORDER BY document_id",UUID.class,segment);
         if(!documentIds.isEmpty()) {
             var items=List.of(new ProductionDrawRequest.Item(segment,version(segment)));var preview=draws.preview(new ProductionDrawRequest.PreviewRequest(items));

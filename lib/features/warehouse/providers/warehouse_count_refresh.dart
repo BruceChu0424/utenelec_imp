@@ -9,8 +9,6 @@
 // 未被监听的 autoDispose 计数失效即销毁，重新可见时自然取新值。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../shared/providers/production_fqc_pending_count_provider.dart'
-    show productionFqcPendingCountProvider;
 import 'procurement_inbound_count_providers.dart';
 import 'production_draw_count_provider.dart';
 import 'production_return_count_provider.dart';
@@ -37,11 +35,4 @@ void invalidateWarehouseTaskCounts(WidgetRef ref) {
   // 品质部检查结果（仓库 hub 第四张任务卡）：未完结总数 + 父分类（来源）分段。
   ref.invalidate(warehouseQualityResultPendingCountProvider);
   ref.invalidate(warehouseQualityResultTypeCountsProvider);
-}
-
-/// 品质域联动失效：IQC 放行/退回与 FQC 决定会改变仓库侧待入库/待点收计数。
-/// 供品质处置页在决定成功后与品质自身计数一并失效。
-void invalidateQualityLinkedWarehouseCounts(WidgetRef ref) {
-  ref.invalidate(productionFqcPendingCountProvider);
-  invalidateWarehouseTaskCounts(ref);
 }

@@ -49,9 +49,14 @@ class WarehouseQualityMergedRow extends EditableGridRow {
       draft?.slice.passEventId ?? 'line-${line.inspectionItemId}';
 
   String? get unitName => draft?.slice.unitName ?? line.unitName;
+
+  /// 无切片行：先入库后检(V596)已上架的行显示实际上架仓，否则显示收货参考仓。
   String? get warehouseName => draft != null
       ? draft!.warehouseName ?? draft!.warehouseId
-      : line.warehouseName ?? line.warehouseId;
+      : line.preStocked?.warehouseName ??
+            line.preStocked?.warehouseId ??
+            line.warehouseName ??
+            line.warehouseId;
 }
 
 /// 两种办理入口共用同一个按检查行和放行 UUID 关联的行集。
@@ -157,10 +162,18 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           label: '来源收货单',
           width: 150,
           filterValueOf: (row) => row.receiptNo,
-          textOf: (row) => row.receiptNo ?? '—',
+          // 单行「单号 · 类型」（2026-09-16 全站口径）：不再两行拼格，textOf
+          // 与格内同源，列宽随整段文本自动加宽。
+          textOf: (row) => [
+            row.receiptNo ?? '—',
+            row.receiptTypeLabel ?? '',
+          ].where((s) => s.isNotEmpty).join(' · '),
           cellBuilder: (context, row) => Text(
-            '${row.receiptNo ?? '—'}\n${row.receiptTypeLabel ?? ''}',
-            maxLines: 2,
+            [
+              row.receiptNo ?? '—',
+              row.receiptTypeLabel ?? '',
+            ].where((s) => s.isNotEmpty).join(' · '),
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -323,9 +336,20 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         key: 'release',
         label: '放行信息',
         width: 250,
+        // 单行省略号（2026-09-16 全站口径）+ 随文本自动加宽。
+        textOf: (row) {
+          final slice = row.draft?.slice;
+          if (slice == null) return '—';
+          final text = [
+            if (slice.releasedBy?.isNotEmpty == true) '放行人 ${slice.releasedBy}',
+            if (slice.releasedAt?.isNotEmpty == true)
+              warehouseQualityDateTime(slice.releasedAt),
+            if (slice.releaseNote?.isNotEmpty == true) slice.releaseNote!,
+          ].join(' · ');
+          return text.isEmpty ? '—' : text;
+        },
         cellBuilder: (context, row) {
-          final draft = row.draft;
-          final slice = draft?.slice;
+          final slice = row.draft?.slice;
           if (slice == null) return const Text('—');
           final text = [
             if (slice.releasedBy?.isNotEmpty == true) '放行人 ${slice.releasedBy}',
@@ -336,7 +360,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           return Text(
             text.isEmpty ? '—' : text,
             style: Theme.of(context).textTheme.bodySmall,
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           );
         },
@@ -457,6 +481,22 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    // 先入库后检(V596)：等结论的行实物已经在库位上，合格时按此位置自动转正。
+    final preStocked = row.draft == null ? row.line.preStocked : null;
+    if (preStocked?.place?.isNotEmpty == true) {
+      return Tooltip(
+        message: '已先入库上架：${preStocked!.label}，合格后自动转正入库',
+        child: Text(
+          '已上架 · ${preStocked.place}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: UtenColors.info,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       );
     }

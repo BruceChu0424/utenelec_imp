@@ -603,8 +603,45 @@ public class ProductionExecutionWorkbenchService {
                        (SELECT source_segment_id FROM production_execution_segments WHERE id=task.segment_id),
                        EXISTS(SELECT 1 FROM production_execution_segment_splits WHERE source_segment_id=task.segment_id),
                        EXISTS(SELECT 1 FROM fn_production_material_usage_source_segments(task.segment_id) source
-                              WHERE source.segment_id<>task.segment_id)
-                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), effectiveIssuedPredicate(), drawRequestedPredicate());
+                              WHERE source.segment_id<>task.segment_id),
+                       COALESCE((SELECT continuous_supply FROM production_execution_segments WHERE id=task.segment_id), FALSE),
+                       (:allowRequestDraw AND fn_can_start_continuous_supply(task.segment_id)),
+                       (task.segment_status IN ('READY','DISPATCHED') AND NOT task.zero_material
+                        AND NOT %s
+                        AND EXISTS (%s AND pending_warehouse.is_line_side)
+                        AND NOT EXISTS (%s AND NOT pending_warehouse.is_line_side)),
+                       (SELECT route_segment.start_route FROM production_execution_segments route_segment
+                           WHERE route_segment.id = task.segment_id),
+                       (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
+                         AND NOT EXISTS (SELECT 1 FROM production_execution_segments route_segment
+                              WHERE route_segment.id = task.segment_id
+                                AND route_segment.start_route IS NOT NULL)),
+                       (:allowRequestDraw AND task.segment_status = 'WAITING'
+                         AND fn_can_change_execution_route(task.segment_id)),
+                       EXISTS (SELECT 1 FROM production_material_demands route_demand
+                           WHERE route_demand.execution_segment_id = task.segment_id
+                             AND route_demand.is_deleted = FALSE
+                             AND route_demand.status NOT IN ('RELEASED', 'REVERSED')
+                             AND fn_demand_direct_supply_eligible(route_demand.id))
+                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), effectiveIssuedPredicate(), drawRequestedPredicate(),
+                        effectiveIssuedPredicate(), pendingDrawItemSql(), pendingDrawItemSql());
+    }
+
+    /**
+     * 本段尚未发完的领料行(V595)：与 `pending_warehouse.is_line_side` 组合判定「只剩线边仓直送料
+     * 没出库」——这种段不用去领料，开工时就地自动出库，车间任务页按「可开工」呈现。
+     */
+    private static String pendingDrawItemSql() {
+        return """
+                SELECT 1 FROM production_planning_package_documents pending_mapping
+                    JOIN stock_documents pending_document ON pending_document.id=pending_mapping.document_id
+                    JOIN stock_document_items pending_item ON pending_item.doc_id=pending_document.id
+                      AND NOT pending_item.is_deleted
+                    JOIN warehouses pending_warehouse ON pending_warehouse.id=pending_document.warehouse_id
+                    WHERE pending_mapping.execution_segment_id=task.segment_id
+                      AND pending_mapping.document_type='DRAW'
+                      AND NOT pending_document.is_deleted AND pending_document.status IN (0,1)
+                      AND COALESCE(pending_item.issued_qty,0) < pending_item.qty""";
     }
 
     static String drawRequestedPredicate() {
@@ -785,7 +822,9 @@ public class ProductionExecutionWorkbenchService {
                 ((Number) row[33]).longValue(), bool(row[34]), bool(row[35]),
                 usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), bool(row[37]),
                 bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
-                usage.hasPendingReturn(), usage.hasAvailableMaterial());
+                usage.hasPendingReturn(), usage.hasAvailableMaterial(),
+                bool(row[42]), bool(row[43]), bool(row[44]),
+                text(row[45]), bool(row[46]), bool(row[47]), bool(row[48]));
     }
 
     private static int boundedSize(int requested) {

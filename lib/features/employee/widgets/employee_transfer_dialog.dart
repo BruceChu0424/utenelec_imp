@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -112,6 +113,12 @@ class _EmployeeTransferDialogState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 提交调动网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+            if (_submitting)
+              UtenBusyOverlay(
+                title: l10n.employeeTransferTitle,
+                description: '正在写入调动事实，请勿重复提交或关闭弹窗。',
+              ),
             UtenDepartmentPicker(
               mode: UtenDepartmentPickerMode.single,
               label: l10n.employeeFieldDepartment,

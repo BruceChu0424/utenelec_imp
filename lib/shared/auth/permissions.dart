@@ -218,6 +218,10 @@ abstract final class Perm {
   static const warehouseIqcStockInView = 'warehouse_iqc_stock_in:view';
   static const warehouseIqcStockInConfirm = 'warehouse_iqc_stock_in:confirm';
 
+  /// 先入库后质检(V596)：品质结论前把到货上架到实际叶仓与库位；独立于确认入库。
+  static const warehouseIqcStockInBeforeInspection =
+      'warehouse_iqc_stock_in:before_inspection';
+
   /// 采购/委外收货 IQC 待检查看与处置（处置还需 :handle）。
   static const procurementInspectionView = 'procurement_inspection:view';
   static const procurementInspectionHandle = 'procurement_inspection:handle';
@@ -513,6 +517,11 @@ abstract final class Perm {
   static const stockDocCreate = 'stock_doc:create';
   static const stockDocDelete = 'stock_doc:delete';
   static const stockDocApprove = 'stock_doc:approve';
+
+  /// 产成品先入库后质检(V597)：送检登记时承诺「合格按登记的成品仓与库位自动点收」，
+  /// 仓库不再点第二次；独立于 stock_doc:approve(它同时是登记与点收的按钮码)。
+  static const productionFinishedInBeforeInspection =
+      'production_finished_in:before_inspection';
   static const stockDocReverse = 'stock_doc:reverse';
   static const stockDocIssue = 'stock_doc:issue';
   static const stockDocReverseIssue = 'stock_doc:reverse_issue';

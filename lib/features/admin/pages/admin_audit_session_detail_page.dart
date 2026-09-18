@@ -167,7 +167,7 @@ class _AdminAuditSessionDetailPageState
         showPagePermissionAction: false,
       ),
       body: SafeArea(
-        child: UtenContentContainer.narrow(
+        child: UtenContentContainer(
           padding: const EdgeInsets.only(
             top: UtenSpacing.s16,
             bottom: UtenSpacing.s24,

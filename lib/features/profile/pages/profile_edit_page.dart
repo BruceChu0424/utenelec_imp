@@ -27,6 +27,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/buttons/uten_edit_floating_actions.dart';
@@ -83,6 +84,9 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
 
   bool _loading = true;
   bool _saving = false;
+
+  /// 提交的纯网络段（密码确认弹窗之后）：全屏加载遮罩只挂这一段。
+  bool _applying = false;
   bool _unbound = false;
   bool _hasEmergencyContact = false;
   bool _locatedInitialField = false;
@@ -247,6 +251,8 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       if (hasReview) {
         final pwd = await _askPassword();
         if (pwd == null || pwd.isEmpty) return;
+        // 加载遮罩只挂纯网络段：密码确认弹窗展示期间不能盖住弹窗。
+        setState(() => _applying = true);
         try {
           await ref.read(profileChangeRepositoryProvider).verifyPassword(pwd);
         } on ApiException catch (e) {
@@ -259,6 +265,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
           return;
         }
       }
+      setState(() => _applying = true);
 
       final idem = DateTime.now().microsecondsSinceEpoch.toString();
       await ref
@@ -286,7 +293,12 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       if (!mounted) return;
       context.appError(l10n.profileChangeSubmitFailed);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _applying = false;
+        });
+      }
     }
   }
 
@@ -325,24 +337,34 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.profile),
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? UtenEmpty.error(
-              message: _error,
-              actionLabel: l10n.commonRetry,
-              onAction: () {
-                ref.invalidate(myEmployeeProfileProvider);
-                _load();
-              },
-            )
-          : _unbound
-          ? UtenEmpty(
-              icon: Icons.person_off_outlined,
-              message: l10n.profileUnboundTitle,
-              description: l10n.profileUnboundDescription,
-            )
-          : _buildForm(context, l10n, theme),
+      body: Stack(
+        children: [
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+              ? UtenEmpty.error(
+                  message: _error,
+                  actionLabel: l10n.commonRetry,
+                  onAction: () {
+                    ref.invalidate(myEmployeeProfileProvider);
+                    _load();
+                  },
+                )
+              : _unbound
+              ? UtenEmpty(
+                  icon: Icons.person_off_outlined,
+                  message: l10n.profileUnboundTitle,
+                  description: l10n.profileUnboundDescription,
+                )
+              : _buildForm(context, l10n, theme),
+          // 提交资料修改申请网络段的全屏加载遮罩（密码确认弹窗期间不遮）。
+          if (_applying)
+            UtenBusyOverlay(
+              title: l10n.profileChangeEditTitle,
+              description: '正在提交资料修改申请，请勿重复提交或离开本页。',
+            ),
+        ],
+      ),
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（全站编辑页统一形态：
       // 取消 secondary + 保存 danger，large 尺寸）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

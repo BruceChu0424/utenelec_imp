@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -130,6 +131,13 @@ class _SelectedEmployeeProvisionDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 开户网络段的全屏加载遮罩（root Overlay 传送门，不占布局；
+              // 一次性凭据弹窗展示前已撤下）。
+              if (_submitting)
+                UtenBusyOverlay(
+                  title: l10n.accountProvisionConfirmTitle,
+                  description: '正在创建登录账号，请勿重复提交或关闭弹窗。',
+                ),
               Text('$identity\n${l10n.employeeProvisionConfirm}'),
               if (_error != null) ...[
                 const SizedBox(height: UtenSpacing.s12),

@@ -20,6 +20,8 @@ import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.Ba
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest;
+import static com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ORIGIN_PRE_STOCKED_AUTO;
+import static com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ORIGIN_WAREHOUSE_CONFIRM;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
@@ -34,6 +36,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -230,7 +233,7 @@ public class ProcurementIqcStockInService {
                 continue;
             }
             ConfirmResult result = confirmOne(
-                    batch.type(), batch.receiptId(), batch.command(), item.locked());
+                    batch.type(), batch.receiptId(), batch.command(), item.locked(), ORIGIN_WAREHOUSE_CONFIRM);
             results.add(result);
             newStockIns.add(new ReceiptStockIn(batch.type(), batch.receiptId(), result.batchId(),
                     batch.command().items().stream()
@@ -272,6 +275,56 @@ public class ProcurementIqcStockInService {
             result.computeIfAbsent(batchId, ignored -> new ArrayList<>()).add(allocation);
         }
         return result;
+    }
+
+    /**
+     * 先入库后检(V596)：品质 PASS 事件刚落账、实物早已在上架仓/库位，按记录的位置在同一事务
+     * 完成正式入库——与仓库手工确认走同一条 {@link #confirmOne} 路径(批次/流水/价值守卫、
+     * 库位学习、待办撤回全部一致)，只是批次 origin=PRE_STOCKED_AUTO、幂等键由 PASS 事件派生、
+     * 操作人为出结论的品质账号。调用方(ProcurementInspectionService)已持有本收货单的待检行锁
+     * 与来源预锁(上架仓在首次预锁时即已纳入)；这里只做覆盖校验，不补拿新锁。
+     * 生产联动由调用方在整批结论后统一推进，本方法返回本批用于该联动。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    ReceiptStockIn confirmPreStockedRelease(
+            String receiptType, UUID receiptId, UUID passEventId, UUID inspectionItemId,
+            UUID preStockedWarehouseId, String preStockedPlace) {
+        String type = normalizeReceiptType(receiptType);
+        if (passEventId == null || inspectionItemId == null || preStockedWarehouseId == null
+                || preStockedPlace == null || preStockedPlace.isBlank()) {
+            throw conflict("先入库后检的自动转正缺少上架位置或放行事件，请刷新后重试");
+        }
+        // 上架后仓库被停用/改成非叶仓是极少数运维动作：不能因此挡住品质结论，退回原流程
+        // (放行进仓库待确认队列，由仓库另选实际仓)；调用方据 null 改投「待仓库入库」事件。
+        try {
+            warehouseScopes.requireActiveLeafWarehouse(preStockedWarehouseId, "上架仓库");
+        } catch (ApiException shelfUnavailable) {
+            return null;
+        }
+        List<?> released = em.createNativeQuery("""
+                        SELECT base_qty FROM procurement_inspection_events
+                        WHERE id = :id AND inspection_item_id = :item AND action = 'PASS'
+                          AND requires_warehouse_stock_in = TRUE
+                        """)
+                .setParameter("id", passEventId)
+                .setParameter("item", inspectionItemId)
+                .getResultList();
+        if (released.size() != 1) throw conflict("品质放行事件不存在，不能自动转正入库");
+        BigDecimal quantity = decimal(released.getFirst());
+        NormalizedCommand command = normalize(type, receiptId, new ConfirmRequest(
+                "prestock:" + passEventId,
+                List.of(new ConfirmItem(passEventId, quantity, quantity, preStockedPlace, preStockedWarehouseId))));
+        UUID actorUserId = currentUser.requireId();
+        var mutationGuard = mutationLocks.stockIn(List.of(lockRef(type, receiptId, command)));
+        lockCommand(actorUserId, command.idempotencyKey());
+        PreparedConfirmation prepared = prepareConfirmation(new NormalizedBatch(type, receiptId, command), actorUserId);
+        if (prepared.existing() != null) {
+            throw conflict("该品质放行已自动转正入库过，请刷新后重试");
+        }
+        mutationGuard.verifyUnchanged();
+        ConfirmResult result = confirmOne(
+                type, receiptId, prepared.batch().command(), prepared.locked(), ORIGIN_PRE_STOCKED_AUTO);
+        return new ReceiptStockIn(type, receiptId, result.batchId(), List.of(inspectionItemId));
     }
 
     private PreparedConfirmation prepareConfirmation(NormalizedBatch batch, UUID actorUserId) {
@@ -317,7 +370,8 @@ public class ProcurementIqcStockInService {
     }
 
     private ConfirmResult confirmOne(
-            String type, UUID receiptId, NormalizedCommand command, Map<UUID, PassSlice> locked) {
+            String type, UUID receiptId, NormalizedCommand command, Map<UUID, PassSlice> locked,
+            String origin) {
         UUID actorUserId = currentUser.requireId();
         UUID actorEmployeeId = currentUser.requireEmployeeId();
         stockService.lockInventory(command.items().stream()
@@ -331,12 +385,13 @@ public class ProcurementIqcStockInService {
                         INSERT INTO procurement_iqc_stock_in_batches(
                             id, actor_user_id, actor_employee_id,
                             receipt_type, receipt_id, idempotency_key,
-                            request_hash, confirmed_count, confirmed_at)
+                            request_hash, confirmed_count, confirmed_at, origin)
                         VALUES (
                             :id, :userId, :employeeId,
                             :receiptType, :receiptId, :key,
-                            :hash, :count, :at)
+                            :hash, :count, :at, :origin)
                         """)
+                .setParameter("origin", origin)
                 .setParameter("id", batchId)
                 .setParameter("userId", actorUserId)
                 .setParameter("employeeId", actorEmployeeId)
@@ -375,7 +430,9 @@ public class ProcurementIqcStockInService {
                     slice.goodsId(), slice.colorId(), item.warehouseId(),
                     StockService.DIR_IN, item.baseQty(),
                     slice.unitId(), slice.unitRate(), amount,
-                    "仓库确认 IQC 合格品入库；库位：" + item.place(),
+                    (ORIGIN_PRE_STOCKED_AUTO.equals(origin)
+                            ? "先入库后检：品质合格按上架位置自动转正入库；库位："
+                            : "仓库确认 IQC 合格品入库；库位：") + item.place(),
                     weight, slice.weightUnitId(),
                     new com.uten.imp.application.port.InventoryMovementCostReference.ProcurementStockIn(stockInItemId)));
             incrementStockedProjection(slice, item.baseQty(), amount, weight, now);
@@ -750,7 +807,8 @@ public class ProcurementIqcStockInService {
                                color.name, COALESCE(base_unit.name, source_unit.name),
                                item.base_qty, item.weight, weight_unit.name,
                                item.place_snapshot, employee.full_name,
-                               batch.confirmed_at,item.warehouse_id,actual_warehouse.name
+                               batch.confirmed_at,item.warehouse_id,actual_warehouse.name,
+                               batch.origin
                         FROM procurement_iqc_stock_in_batch_items item
                         JOIN procurement_iqc_stock_in_batches batch
                           ON batch.id = item.batch_id
@@ -792,7 +850,8 @@ public class ProcurementIqcStockInService {
                     str(row[4]), str(row[5]), str(row[6]), str(row[7]),
                     decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
                     str(row[11]), str(row[12]), offsetDateTime(row[13]),
-                    actualByItem.getOrDefault(stockInItemId, List.of()),uuid(row[14]),str(row[15]));
+                    actualByItem.getOrDefault(stockInItemId, List.of()),uuid(row[14]),str(row[15]),
+                    str(row[16]));
         }).toList();
     }
 

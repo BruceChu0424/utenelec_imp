@@ -156,6 +156,7 @@ public class NoticeService {
     private final NoticeAudienceService audienceService;
     private final TxSessionVars tx;
     private final SystemSettingsService systemSettings;
+    private final com.uten.imp.features.admin.systemsetting.SystemSettingRepository settingRepo;
     private final com.uten.imp.audit.AuditService audit;
     private final com.uten.imp.features.common.taskclaim.TaskClaimRepository taskClaimRepo;
     private final com.uten.imp.application.port.EmployeeNameLookupPort employeeNameLookup;
@@ -739,10 +740,10 @@ public class NoticeService {
         return ids.isEmpty() ? null : ids.get(0);
     }
 
-    /** 读庆典自动发布设置（notice:read 即可读）。 */
+    /** 读庆典自动发布设置（notice:read 即可读）。默认关（V600）：祝福由人事手动发布。 */
     @Transactional(readOnly = true)
     public NoticeCelebrationSettingsDto getCelebrationSettings() {
-        boolean autoEnabled = systemSettings.readBool("celebration.auto_enabled", true);
+        boolean autoEnabled = systemSettings.readBool("celebration.auto_enabled", false);
         List<String> autoTypes = parseAutoTypes(
                 systemSettings.readString("celebration.auto_types", "birthday,anniversary"));
         String publisherName = systemSettings.readString("celebration.publisher_name", "公司");
@@ -782,6 +783,40 @@ public class NoticeService {
             }
             systemSettings.write("celebration.publisher_name",
                     safe, password, actorId, actorAccount);
+        }
+        return getCelebrationSettings();
+    }
+
+    /**
+     * 翻转「庆典自动发送」开关（HR 任务中心页面开关，notice:publish）。
+     *
+     * <p>2026-09-17（V600）口径：庆典祝福默认由人事手动批量发布；拥有
+     * {@code notice:publish} 的人事可在生日关怀/入职周年页打开「自动发送」，
+     * 委托 {@link CelebrationScheduler} 每日代发。与
+     * {@link #updateCelebrationSettings}（authorization:manage + 二次密码，
+     * 面向系统设置管理页）不同，本方法只翻 {@code celebration.auto_enabled}
+     * 一个 bool——能手动发祝福的人即可委托系统代发同等内容，不构成提权，
+     * 故权限对齐手动批量祝福。写入走行锁 + 独立审计事件，便于回溯谁开的自动发送。
+     */
+    @Transactional
+    public NoticeCelebrationSettingsDto setCelebrationAutoEnabled(
+            boolean enabled, UUID actorId, String actorAccount) {
+        tx.bindActor(actorId, actorAccount);
+        com.uten.imp.features.admin.systemsetting.SystemSetting s = settingRepo
+                .findAllForUpdate(List.of("celebration.auto_enabled")).stream()
+                .findFirst()
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND, "设置项不存在: celebration.auto_enabled"));
+        String normalized = String.valueOf(enabled);
+        if (!normalized.equalsIgnoreCase(s.getValue())) {
+            String old = s.getValue();
+            s.setValue(normalized);
+            s.setUpdatedBy(actorId);
+            settingRepo.save(s);
+            settingRepo.flush();
+            audit.logCommitted(actorId, actorAccount,
+                    "notice_celebration_auto_toggle", "system_settings",
+                    "celebration.auto_enabled: " + old + " → " + normalized, "success");
         }
         return getCelebrationSettings();
     }

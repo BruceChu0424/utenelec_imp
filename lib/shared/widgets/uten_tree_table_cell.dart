@@ -267,7 +267,9 @@ class UtenTreeTableCell extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   title,
-                                  maxLines: 2,
+                                  // 单行省略号（2026-09-16 全站口径）：树格名称
+                                  // 不再折两行撑高整行，列宽由宿主列 textOf 量宽。
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: textColor,
@@ -296,7 +298,8 @@ class UtenTreeTableCell extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             title,
-                            maxLines: 2,
+                            // 同上：单行省略号，不折两行撑高整行。
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: textColor,

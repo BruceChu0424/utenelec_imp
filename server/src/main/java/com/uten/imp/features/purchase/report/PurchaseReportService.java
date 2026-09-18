@@ -3,6 +3,9 @@ import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
+import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -237,46 +240,8 @@ public class PurchaseReportService {
     }
 
     // ======================== 主过滤构造（公共） ========================
-
-    /**
-     * 默认口径：草稿（status=0）不进报表。
-     *
-     * <p>未审核单据不是经营事实。调用方显式传 status（含 status=0 查草稿、或「未审」facet）
-     * 时按其口径走，不叠加本默认值。与 SalesReportService 同款。
-     */
-    private static void addApprovedByDefault(WhereBuilder w, Short status) {
-        if (status != null) {
-            w.add("o.status = :status", "status", status);
-        } else {
-            // 无具名参数的常量片段：WhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
-            w.add("o.status <> 0", null, null);
-        }
-    }
-
-    private static void addCommonDocFilters(WhereBuilder w, String billNo, UUID supplierId, UUID warehouseId,
-                                            Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
-                                            String billNoCol, String dateCol) {
-        if (billNo != null && !billNo.isBlank()) {
-            w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
-        }
-        if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
-        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        addApprovedByDefault(w, status);
-        if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
-        if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
-        if (kw != null && !kw.isBlank()) {
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw)"
-                            + " OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw)"
-                            + " OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw)"
-                            + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id"
-                            + " AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))",
-                    "kw", "%" + kw.toLowerCase() + "%");
-        }
-    }
-
-    private static void addSummaryKw(WhereBuilder w, String kw, String billNoCol) {
-        if (kw != null && !kw.isBlank()) w.add("LOWER(" + billNoCol + ") LIKE LOWER(:kw)", "kw", "%" + kw.toLowerCase() + "%");
-    }
+    // addApprovedByDefault / addCommonDocFilters / addSummaryKw 2026-09-16 收敛到
+    // com.uten.imp.common.report.ReportQueryKit（与 subcontract 两份逐字一致），调用点见各报表方法。
 
     // ======================== ① 采购催料单 ========================
 
@@ -320,7 +285,7 @@ public class PurchaseReportService {
                 """;
         // 未交口径与服务端权威一致：qty − received + returned（退货回补后供应商仍欠交；已退完的行不再催交）。
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) > 0");
-        addCommonDocFilters(w, billNo, supplierId, null, null, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, null, null, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetSupplier(),
                 // 开单日期表头 autofilter：按日期降序（近期在上，与表格默认排序一致），空值排末尾。
@@ -386,7 +351,7 @@ public class PurchaseReportService {
                           AND gsup.legacy_id = NULLIF(g.vend_legacy_id, 0)))
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
-        addCommonDocFilters(w, billNo, null, null, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        ReportQueryKit.addCommonDocFilters(w, billNo, null, null, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"),
@@ -424,10 +389,10 @@ public class PurchaseReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
-        addApprovedByDefault(w, status);
+        ReportQueryKit.addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
-        addSummaryKw(w, kw, "o.bill_no");
+        ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
         return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", List.of(), facets, page, size, sort, order);
     }
 
@@ -476,7 +441,7 @@ public class PurchaseReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
-        addCommonDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetSupplier(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
@@ -516,10 +481,10 @@ public class PurchaseReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
-        addApprovedByDefault(w, status);
+        ReportQueryKit.addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
-        addSummaryKw(w, kw, "o.bill_no");
+        ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
         List<FacetSpec> specs = List.of(
                 facetSupplier(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
@@ -579,7 +544,7 @@ public class PurchaseReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
-        addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetSupplier(),
                 facetWarehouse(),
@@ -620,10 +585,10 @@ public class PurchaseReportService {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        addApprovedByDefault(w, status);
+        ReportQueryKit.addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
-        addSummaryKw(w, kw, "o.bill_no");
+        ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
@@ -671,7 +636,7 @@ public class PurchaseReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
-        addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
@@ -711,10 +676,10 @@ public class PurchaseReportService {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
-        addApprovedByDefault(w, status);
+        ReportQueryKit.addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
-        addSummaryKw(w, kw, "o.bill_no");
+        ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
@@ -741,13 +706,13 @@ public class PurchaseReportService {
     @Transactional(readOnly = true)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         String billNo = p == null ? null : p.get("billNo");
-        UUID supplierId = parseUuid(p == null ? null : p.get("supplierId"));
-        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
-        Short status = parseShort(p == null ? null : p.get("status"));
-        LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
-        LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
+        UUID supplierId = ReportQueryKit.parseUuid(p == null ? null : p.get("supplierId"));
+        UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
+        Short status = ReportQueryKit.parseShort(p == null ? null : p.get("status"));
+        LocalDate dateFrom = ReportQueryKit.parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = ReportQueryKit.parseDate(p == null ? null : p.get("dateTo"));
         String kw = p == null ? null : p.get("keyword");
-        Map<String, String> facets = facetsOfMap(p);
+        Map<String, String> facets = ReportQueryKit.facetsOf(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
             case "expediting"      -> (pg, sz) -> expediting(billNo, supplierId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "request/detail"  -> (pg, sz) -> requestDetail(billNo, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
@@ -760,48 +725,12 @@ public class PurchaseReportService {
             case "return/summary"  -> (pg, sz) -> returnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
-        return paginateAll(loader);
+        return ReportQueryKit.paginateAll(settings.readInt("export_max_rows", 100000), loader,
+                ReportTableResponse::total,
+                r -> r.columns() == null ? null : r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                ReportTableResponse::rows);
     }
-
-    /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
-    private ExportPayload paginateAll(BiFunction<Integer, Integer, ReportTableResponse> loader) {
-        final int size = 500;
-        List<Map<String, Object>> all = new ArrayList<>();
-        List<ExportColumn> cols = null;
-        int page = 1;
-        while (page <= 2000) {
-            ReportTableResponse r = loader.apply(page, size);
-            if (page == 1 && r.total() > settings.readInt("export_max_rows", 100000)) {
-                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
-            }
-            if (cols == null && r.columns() != null) {
-                cols = r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type()))
-                        .toList();
-            }
-            all.addAll(r.rows());
-            if (r.rows().size() < size) break;
-            if ((long) all.size() >= r.total()) break;
-            page++;
-        }
-        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
-    }
-
-    private static Map<String, String> facetsOfMap(Map<String, String> p) {
-        Map<String, String> facets = new LinkedHashMap<>();
-        if (p == null) return facets;
-        for (Map.Entry<String, String> e : p.entrySet()) {
-            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
-                facets.put(e.getKey().substring(2), e.getValue());
-            }
-        }
-        return facets;
-    }
-
-    private static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
-    private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
-    private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
 
     // ======================== 保留：月度汇总（MV）+ 待交货（视图） ========================
 
@@ -860,40 +789,5 @@ public class PurchaseReportService {
                 priceMasked ? null : (BigDecimal) r[3],
                 priceMasked
         )).toList();
-    }
-
-    // ======================== 内部结构 ========================
-
-    /** 列 facet 规格。selectExpr 投影 v+lbl；groupExpr 分组；filterExpr 过滤表达式；filterType 值类型。 */
-    record FacetSpec(String key, String selectExpr, String groupExpr, String filterExpr, String filterType, String orderExpr) {
-        /** 兼容旧调用：默认按命中数倒序（旧行为）。日期等列可显式传 orderExpr 按值排序。 */
-        FacetSpec(String key, String selectExpr, String groupExpr, String filterExpr, String filterType) {
-            this(key, selectExpr, groupExpr, filterExpr, filterType, "cnt DESC");
-        }
-    }
-
-    /** WHERE 构造器：base + 若干 AND 子句（带参数）。 */
-    static final class WhereBuilder {
-        private final String base;
-        private final List<Clause> clauses = new ArrayList<>();
-
-        WhereBuilder(String base) { this.base = base; }
-
-        void add(String fragment, String param, Object val) { clauses.add(new Clause(fragment, param, val)); }
-
-        Built build(List<Clause> extra) {
-            StringBuilder sb = new StringBuilder(base);
-            Map<String, Object> params = new LinkedHashMap<>();
-            List<Clause> all = new ArrayList<>(clauses);
-            if (extra != null) all.addAll(extra);
-            for (Clause c : all) {
-                sb.append(" AND ").append(c.fragment);
-                if (c.param != null) params.put(c.param, c.val);
-            }
-            return new Built(sb.toString(), params);
-        }
-
-        record Clause(String fragment, String param, Object val) {}
-        record Built(String sql, Map<String, Object> params) {}
     }
 }

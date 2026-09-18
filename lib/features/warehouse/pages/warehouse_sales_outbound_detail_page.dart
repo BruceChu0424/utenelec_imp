@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -277,111 +278,127 @@ class _WarehouseSalesOutboundDetailPageState
             ),
           ],
         ),
-        body: SafeArea(
-          child: _loading && detail == null
-              ? const UtenSkeletonList(itemCount: 6)
-              : _error != null && detail == null
-              ? UtenEmpty.error(
-                  message: _error,
-                  actionLabel: '重新加载',
-                  onAction: _load,
-                )
-              : detail == null
-              ? UtenEmpty.error(message: '任务不存在或已不在仓库作业范围')
-              // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
-              // （作业状态横幅/错误提示/事实卡），明细标题吸顶后表格内部继续滚。
-              : UtenContentContainer.wide(
-                  child: UtenCollapsingHeaderScrollView(
-                    collapsingHeader: Padding(
-                      padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _OutboundStatusBanner(detail: detail),
-                          if (_error != null) ...[
-                            const SizedBox(height: UtenSpacing.s8),
-                            Semantics(
-                              liveRegion: true,
-                              child: Text(
-                                _error!,
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: _loading && detail == null
+                  ? const UtenSkeletonList(itemCount: 6)
+                  : _error != null && detail == null
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: '重新加载',
+                      onAction: _load,
+                    )
+                  : detail == null
+                  ? UtenEmpty.error(message: '任务不存在或已不在仓库作业范围')
+                  // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
+                  // （作业状态横幅/错误提示/事实卡），明细标题吸顶后表格内部继续滚。
+                  : UtenContentContainer.wide(
+                      child: UtenCollapsingHeaderScrollView(
+                        collapsingHeader: Padding(
+                          padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _OutboundStatusBanner(detail: detail),
+                              if (_error != null) ...[
+                                const SizedBox(height: UtenSpacing.s8),
+                                Semantics(
+                                  liveRegion: true,
+                                  child: Text(
+                                    _error!,
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
+                              const SizedBox(height: UtenSpacing.s12),
+                              _factsCard(detail),
+                              if (detail.header.allows(
+                                    WarehouseSalesOutboundAction
+                                        .confirmShipment,
+                                  ) &&
+                                  _picking != null) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                WarehouseSalesPickingFields(
+                                  draft: _picking!,
+                                  enabled:
+                                      !_acting && !_confirming && !_needsReview,
+                                  onChanged: () => setState(() {}),
+                                ),
+                              ],
+                              const SizedBox(height: UtenSpacing.s16),
+                            ],
+                          ),
+                        ),
+                        // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                        body: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '出库明细 (${detail.lines.length})',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: UtenSpacing.s8),
+                            Expanded(
+                              child:
+                                  MasterDataTableView<
+                                    WarehouseSalesOutboundTableRow
+                                  >(
+                                    key: const Key(
+                                      'warehouse-sales-outbound-detail-table',
+                                    ),
+                                    primary: true,
+                                    bottomContentPadding:
+                                        UtenFloatingActionGroup.scrollClearance,
+                                    columns: warehouseSalesOutboundTableColumns(
+                                      l10n:
+                                          Localizations.of<AppLocalizations>(
+                                            context,
+                                            AppLocalizations,
+                                          ) ??
+                                          AppLocalizationsZh(),
+                                      rows: rows,
+                                      warehouseNameOf: (_) =>
+                                          _picking?.warehouseName,
+                                      stockPlaceControllerOf:
+                                          detail.header.allows(
+                                            WarehouseSalesOutboundAction
+                                                .confirmShipment,
+                                          )
+                                          ? (row) =>
+                                                _picking?.places[row.line.id]
+                                          : null,
+                                      editingEnabled:
+                                          !_acting &&
+                                          !_confirming &&
+                                          !_needsReview,
+                                    ),
+                                    items: rows,
+                                    rowKeyOf: (row) => row.key,
+                                    facets: const {},
+                                    nullCounts: const {},
+                                    filters: const {},
+                                    onFilterChanged: (_, _) {},
+                                    emptyMessage: '该任务暂无出库明细',
+                                  ),
                             ),
                           ],
-                          const SizedBox(height: UtenSpacing.s12),
-                          _factsCard(detail),
-                          if (detail.header.allows(
-                                WarehouseSalesOutboundAction.confirmShipment,
-                              ) &&
-                              _picking != null) ...[
-                            const SizedBox(height: UtenSpacing.s12),
-                            WarehouseSalesPickingFields(
-                              draft: _picking!,
-                              enabled:
-                                  !_acting && !_confirming && !_needsReview,
-                              onChanged: () => setState(() {}),
-                            ),
-                          ],
-                          const SizedBox(height: UtenSpacing.s16),
-                        ],
+                        ),
                       ),
                     ),
-                    // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                    body: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '出库明细 (${detail.lines.length})',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                        Expanded(
-                          child:
-                              MasterDataTableView<
-                                WarehouseSalesOutboundTableRow
-                              >(
-                                key: const Key(
-                                  'warehouse-sales-outbound-detail-table',
-                                ),
-                                primary: true,
-                                bottomContentPadding:
-                                    UtenFloatingActionGroup.scrollClearance,
-                                columns: warehouseSalesOutboundTableColumns(
-                                  l10n:
-                                      Localizations.of<AppLocalizations>(
-                                        context,
-                                        AppLocalizations,
-                                      ) ??
-                                      AppLocalizationsZh(),
-                                  rows: rows,
-                                  warehouseNameOf: (_) =>
-                                      _picking?.warehouseName,
-                                  stockPlaceControllerOf:
-                                      detail.header.allows(
-                                        WarehouseSalesOutboundAction
-                                            .confirmShipment,
-                                      )
-                                      ? (row) => _picking?.places[row.line.id]
-                                      : null,
-                                  editingEnabled:
-                                      !_acting && !_confirming && !_needsReview,
-                                ),
-                                items: rows,
-                                rowKeyOf: (row) => row.key,
-                                facets: const {},
-                                nullCounts: const {},
-                                filters: const {},
-                                onFilterChanged: (_, _) {},
-                                emptyMessage: '该任务暂无出库明细',
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            ),
+            // 状态流转网络段的全屏加载遮罩（复核→出库等，含转前一致性检查）。
+            if (_acting)
+              const UtenBusyOverlay(
+                title: '正在提交出库流转',
+                description: '正在复核最新状态并写入出库事实，请勿重复提交或离开本页。',
+              ),
+          ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,

@@ -448,7 +448,8 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                c.legal_wip_qty,
                                GREATEST(c.uncleared_qty - COALESCE(pending.qty,0), 0),
                                c.uncleared_qty, c.can_close, demand_unit.name,
-                               COALESCE(pending.qty,0), GREATEST(c.uncleared_qty - COALESCE(pending.qty,0),0)
+                               COALESCE(pending.qty,0), GREATEST(c.uncleared_qty - COALESCE(pending.qty,0),0),
+                               demand.per_product_qty, demand.required_for_product_qty, demand.direct_supply
                         FROM v_production_material_clearance c
                         JOIN production_material_demands demand
                           ON demand.id = c.demand_id
@@ -475,7 +476,10 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         decimal(row[9]), decimal(row[10]), decimal(row[11]),
                         decimal(row[12]), decimal(row[13]), decimal(row[14]),
                         decimal(row[15]), decimal(row[16]),
-                        Boolean.TRUE.equals(row[17]), (String) row[18], decimal(row[19]), decimal(row[20])))
+                        Boolean.TRUE.equals(row[17]), (String) row[18], decimal(row[19]), decimal(row[20]),
+                        row[21] == null ? null : decimal(row[21]),
+                        row[22] == null ? null : decimal(row[22]),
+                        Boolean.TRUE.equals(row[23])))
                 .toList();
     }
 

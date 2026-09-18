@@ -36,13 +36,15 @@ public class WarehouseSubcontractOutboundController {
 
     private final SubcontractMaterialPlanService planService;
 
-    /** 待出仓任务分页（订货单号/委外商关键字）。 */
+    /** 待出仓任务分页（订货单号/委外商关键字；supplierId/status 为表头筛选，2026-09-16）。 */
     @GetMapping("/tasks")
     public PageResponse<OutboundTaskListItem> tasks(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "") String keyword) {
-        return planService.tasks(page, size, keyword);
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) String status) {
+        return planService.tasks(page, size, keyword, supplierId, status);
     }
 
     /** 待出仓任务计数（hub 角标）。 */

@@ -20,6 +20,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../pages/warehouse_sales_outbound_batch_page.dart';
@@ -43,6 +44,25 @@ class _SalesOutboundSeg {
   @override
   int get hashCode => Object.hash(status, history);
 }
+
+/// 「仓库作业」表头筛选桶：固定枚举（服务端 warehouseWorkStatus 参数已在，
+/// 与销售出货同五个状态）；count=0 表示不强调计数。分段条之外的三个状态
+///（取消/红冲/迁移异常）只能从表头进入。
+const List<MasterFacetBucket> _workStatusFacets = [
+  MasterFacetBucket(
+    value: WarehouseSalesOutboundStatus.pendingPick,
+    count: 0,
+    label: '待出库',
+  ),
+  MasterFacetBucket(
+    value: WarehouseSalesOutboundStatus.shipped,
+    count: 0,
+    label: '已出库',
+  ),
+  MasterFacetBucket(value: 'CANCELLED', count: 0, label: '已取消'),
+  MasterFacetBucket(value: 'REVERSED', count: 0, label: '已红冲'),
+  MasterFacetBucket(value: 'LEGACY_PENDING', count: 0, label: '历史迁移异常'),
+];
 
 class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
   const WarehouseSalesOutboundWorkbench({
@@ -81,6 +101,9 @@ class _WarehouseSalesOutboundWorkbenchState
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _SalesOutboundSeg? _seg;
+
+  /// 表头「仓库作业」列筛选（固定枚举桶）；非空时优先于分段的状态口径。
+  String? _workStatusColumnFilter;
 
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
@@ -129,7 +152,8 @@ class _WarehouseSalesOutboundWorkbenchState
           .list(
             page: page,
             keyword: _keyword,
-            warehouseWorkStatus: seg.history ? null : seg.status,
+            warehouseWorkStatus:
+                _workStatusColumnFilter ?? (seg.history ? null : seg.status),
             dateFrom: range == null
                 ? null
                 : ChinaDateTime.formatDate(range.start),
@@ -186,8 +210,17 @@ class _WarehouseSalesOutboundWorkbenchState
       _error = null;
       ++_requestVersion;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      // 分段与表头筛选用同一服务端参数：切段时清表头状态桶。
+      _workStatusColumnFilter = null;
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
+  }
+
+  /// 表头筛选回调：仓库作业固定枚举桶；值优先于分段状态回传，重拉回第 1 页。
+  void _onColumnFilterChanged(String key, String? value) {
+    if (key != 'warehouseWorkStatus') return;
+    setState(() => _workStatusColumnFilter = value);
+    _load(1);
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
@@ -315,10 +348,10 @@ class _WarehouseSalesOutboundWorkbenchState
                   key: const Key('warehouse-sales-outbound-table'),
                   columns: _columns,
                   items: result.items,
-                  facets: const {},
+                  facets: const {'warehouseWorkStatus': _workStatusFacets},
                   nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
+                  filters: {'warehouseWorkStatus': _workStatusColumnFilter},
+                  onFilterChanged: _onColumnFilterChanged,
                   onRowTap: _openDetail,
                   selectable: _batchAction != null,
                   idOf: (item) => _canSelect(item) ? item.id : null,

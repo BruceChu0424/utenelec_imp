@@ -260,6 +260,7 @@ public class ProductionFulfillmentLedgerService {
                             SELECT d.id,
                                    d.required_qty,
                                    d.released_qty,
+                                   d.direct_supply,
                                    COALESCE((
                                        SELECT SUM(r.qty - r.released_qty)
                                        FROM stock_reservations r
@@ -287,6 +288,10 @@ public class ProductionFulfillmentLedgerService {
                         SET status = CASE
                                 WHEN c.released_qty >= c.required_qty THEN 'RELEASED'
                                 WHEN c.fulfilled >= c.required_qty THEN 'FULFILLED'
+                                -- 持续生产的直送需求(V595)：完结时把没送到的余量释放后，
+                                -- 「已投入 + 已释放」覆盖需求量即视为履约完成。
+                                WHEN c.direct_supply
+                                     AND c.fulfilled + c.released_qty >= c.required_qty THEN 'FULFILLED'
                                 WHEN c.stock_committed + c.supply_committed >= c.required_qty
                                      AND c.supply_committed > 0 THEN 'WAITING_SUPPLY'
                                 WHEN c.stock_committed >= c.required_qty THEN 'ALLOCATED'

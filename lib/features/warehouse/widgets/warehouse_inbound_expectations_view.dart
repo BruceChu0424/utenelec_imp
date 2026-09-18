@@ -31,6 +31,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../basic_data/models/master_facet.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../providers/warehouse_count_refresh.dart';
@@ -83,6 +84,9 @@ class _WarehouseInboundExpectationsViewState
   /// 搜索关键字（订货单号/供应商/货品编码或名称），UtenSearchBar 300ms 防抖后回写。
   String _keyword = '';
 
+  /// 表头「供应商 / 委外商」列筛选（2026-09-16）：dict 桶，value=UUID 回传 supplierId。
+  String? _supplierIdFilter;
+
   /// 已送检待品质放行的收货单张数（口径提示用；null = 尚未返回或无查看权限）。
   int? _inspectionPendingCount;
 
@@ -108,6 +112,11 @@ class _WarehouseInboundExpectationsViewState
     _typeSelected = widget.fixedOrderType != null;
     _keyword = widget.keyword;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // dict 装载完成后补一次 setState：内部缓存变化不触发 provider 通知。
+      ref
+          .read(masterNameServiceProvider)
+          .ensureLoaded()
+          .then((_) => mounted ? setState(() {}) : null);
       if (mounted) _load(1);
     });
   }
@@ -140,7 +149,8 @@ class _WarehouseInboundExpectationsViewState
     const selection =
         '双击行直达下一步（待登记→登记实际到货）；'
         '多选「批量登记送检」：待登记行进批量登记页（实收+行级入库仓库），'
-        '已登记 · 待送检行直接送检。';
+        '已登记 · 待送检行直接送检；'
+        '多选「先入库后质检」：登记的同时逐行选库位上架，品质部到库位检验。';
     if (_orderType != null) return '$base$selection';
     final pending = _inspectionPendingCount;
     if (pending == null) {
@@ -193,6 +203,14 @@ class _WarehouseInboundExpectationsViewState
     return ref
         .read(currentPermissionsProvider)
         .contains(Perm.warehouseInboundStockIn);
+  }
+
+  /// 「先入库后质检」批量入口（与批量登记页同款独立权限点，服务端兜底）。
+  bool get _canPreStockIn {
+    if (ref.read(isSuperAdminProvider)) return true;
+    return ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.warehouseIqcStockInBeforeInspection);
   }
 
   String _batchKey(Set<String> ids) {
@@ -327,9 +345,79 @@ class _WarehouseInboundExpectationsViewState
     await _load(_result?.page ?? 1);
   }
 
+  /// 多选「先入库后质检」（2026-09-17 用户口径：不必双击进单张登记页才能选
+  /// 这条路线）：待登记行进批量登记页并预置先入库后质检模式（库位逐行必填）；
+  /// 断点「已登记 · 待送检」草稿单登记时没带库位，不能补走这条通道——跳过
+  /// 并提示走「批量登记送检」。
+  Future<void> _batchPreStockIn(Set<String> selectedIds) async {
+    if (_batchSending || selectedIds.isEmpty) {
+      if (selectedIds.isEmpty) {
+        context.appWarning('请先选择预计到货任务');
+      }
+      return;
+    }
+    final currentItems = _result?.items ?? const <InboundExpectation>[];
+    final selected = currentItems
+        .where((task) => selectedIds.contains(task.id))
+        .toList(growable: false);
+    if (selected.length != selectedIds.length ||
+        selected.any((task) => !_canBatchOperate(task))) {
+      context.appWarning('所选任务状态已变化，请刷新后重新选择');
+      return;
+    }
+    final ready = selected
+        .where((task) => task.canCreateReceipt)
+        .toList(growable: false);
+    final drafts = selected.where(_canBatchSend).toList(growable: false);
+    if (drafts.isNotEmpty) {
+      context.appInfo(
+        '${drafts.length} 张已登记待送检的单登记时未选库位，不能改为先入库后质检；'
+        '请用「批量登记送检」处理',
+      );
+    }
+    if (ready.isEmpty) return;
+    final prefills = <ProcurementReceiptPrefill>[];
+    for (final task in ready) {
+      final prefill = task.toReceiptPrefill();
+      if (prefill == null) {
+        context.appWarning('部分所选任务已不可登记，请刷新后重新选择');
+        return;
+      }
+      prefills.add(prefill);
+    }
+    final batch = await context.push<WarehouseArrivalRegistrationBatch>(
+      '${RouteName.warehouseArrivalReceiptBatch}?preStock=1',
+      extra: prefills,
+    );
+    if (!mounted) return;
+    if (batch != null) _announceRegistration(batch);
+    setState(() => _selectedIds = <String>{});
+    await _load(_result?.page ?? 1);
+  }
+
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
     final count = selectedIds.length;
     return [
+      if (_canPreStockIn)
+        Tooltip(
+          message: count == 0
+              ? '多选预计到货任务：登记的同时把每行实物按库位上架，品质部到库位检验'
+              : '待登记行进批量登记页并预置先入库后质检（库位逐行必填）；'
+                    '品质部到库位检验，合格自动按上架位置转正入库',
+          child: UtenButton(
+            key: const Key('inbound-expectation-batch-pre-stock-in'),
+            size: UtenButtonSize.large,
+            icon: Icons.shelves,
+            isLoading: _batchSending,
+            onPressed: _batchSending || count == 0
+                ? null
+                : () => _batchPreStockIn(selectedIds),
+            onDisabledTap: count == 0
+                ? () => context.appWarning('请先选择预计到货任务')
+                : null,
+            child: Text(count == 0 ? '先入库后质检' : '先入库后质检($count)'),
+          ),
+        ),
       Tooltip(
         message: count == 0
             ? '多选预计到货任务：待登记行进批量登记页，已登记行直接送检'
@@ -379,6 +467,7 @@ class _WarehouseInboundExpectationsViewState
         page: page,
         orderType: _orderType,
         keyword: _keyword.isEmpty ? null : _keyword,
+        supplierId: _supplierIdFilter,
       );
       if (!current()) return;
       // 类型计数失败不阻断列表（分段按钮降级为 '—'）。
@@ -524,6 +613,16 @@ class _WarehouseInboundExpectationsViewState
       for (final item in batch.registrations)
         if (item.receiptBillNo != null) item.receiptBillNo!,
     ];
+    // 先入库后检(V596)：登记同事务已按库位上架，合格自动转正，仓库不用再点确认入库。
+    final preStocked = batch.preStockedCount;
+    if (preStocked > 0) {
+      context.appSuccess(
+        '到货已送检并先入库上架${billNos.isEmpty ? '' : '(${billNos.join('、')})'}：'
+        '品质部会到库位检验；合格后系统自动转正入库，不合格再从库位取出登记退回'
+        '${preStocked < total ? '；另 ${total - preStocked} 张按原流程等品质放行后确认入库' : ''}',
+      );
+      return;
+    }
     context.appSuccess(
       '到货已送检${billNos.isEmpty ? '' : '(${billNos.join('、')})'}：'
       '检查进度与结果请在「品质部检查结果」页查看；'
@@ -584,15 +683,27 @@ class _WarehouseInboundExpectationsViewState
                   label: '委外订货',
                 ),
               ],
+              // 供应商表头筛选（2026-09-16）：主档 dict 桶（不强调计数）。
+              'supplierName': masterDictionaryFacets(
+                ref.watch(masterNameServiceProvider).supplierEntries,
+              ),
             },
             nullCounts: const {},
-            filters: {'orderType': _orderType?.name.toUpperCase()},
+            filters: {
+              'orderType': _orderType?.name.toUpperCase(),
+              'supplierName': _supplierIdFilter,
+            },
             // 分段子页把类型钉死时，下面的 onFilterChanged 会直接 return——
             // 空态再给「清除筛选」就是个点了没反应的死按钮。
             externalFilterKeys: widget.fixedOrderType != null
                 ? const {'orderType'}
                 : const {},
             onFilterChanged: (key, value) {
+              if (key == 'supplierName') {
+                setState(() => _supplierIdFilter = value);
+                _load(1);
+                return;
+              }
               if (key != 'orderType' || widget.fixedOrderType != null) return;
               _selectType(switch (value) {
                 'PURCHASE' => ProcurementInboundOrderType.purchase,

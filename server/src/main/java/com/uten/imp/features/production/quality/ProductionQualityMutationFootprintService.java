@@ -80,14 +80,29 @@ public class ProductionQualityMutationFootprintService {
                     ORDER BY inspection.id
                     """,ids)) result.row("report-inspection",row);
         } else if(kind==Kind.INSPECTION) {
+            // V597 先入库后质检：登记时已承诺「合格自动点收」的行，本次判定会在同事务里
+            // 新建并确认一张 FINISHED_IN，落仓唤醒与父需求必须现在就进预锁集合。
             for(var row:rows("""
                     SELECT inspection.id,COALESCE(item.plan_id,segment.plan_id),inspection.goods_id,inspection.color_id,
-                           md5(to_jsonb(inspection)::text)
+                           md5(to_jsonb(inspection)::text),inspection.source_plan_item_id,
+                           CASE WHEN registration.stock_in_before_inspection
+                                THEN inspection.warehouse_id END
                     FROM production_fqc_inspections inspection
                     LEFT JOIN production_plan_items item ON item.id=inspection.source_plan_item_id
                     LEFT JOIN production_execution_segments segment ON segment.id=inspection.execution_segment_id
+                    LEFT JOIN production_finished_arrival_registration_items registration_item
+                      ON registration_item.source_report_item_id=inspection.source_report_item_id
+                     AND registration_item.reversal_id IS NULL
+                    LEFT JOIN production_finished_arrival_registrations registration
+                      ON registration.id=registration_item.registration_id
                     WHERE inspection.id IN (:ids) ORDER BY inspection.id
-                    """,ids)) {result.row("inspection",row);result.plan((UUID)row[1]);result.inventory((UUID)row[2],(UUID)row[3]);}
+                    """,ids)) {
+                result.row("inspection",row);result.plan((UUID)row[1]);result.inventory((UUID)row[2],(UUID)row[3]);
+                if(row[6]!=null&&row[2]!=null) {
+                    result.preStocked.add(new WarehouseDimension((UUID)row[6],(UUID)row[2],(UUID)row[3]));
+                    if(row[5]!=null) result.preStockedPlanItems.add((UUID)row[5]);
+                }
+            }
         } else result.authorizations.addAll(ids);
 
         if(!result.authorizations.isEmpty()) {
@@ -116,6 +131,8 @@ public class ProductionQualityMutationFootprintService {
         if(!result.analyses.isEmpty()) parts.add(production.forAnalyses(result.analyses));
         if(!result.manualRoots.isEmpty()) parts.add(production.forPreview(List.of(),List.of(),result.manualRoots,
                 result.manualRoots.stream().map(WarehouseDimension::warehouseId).distinct().toList(),List.of()));
+        if(!result.preStocked.isEmpty()) parts.add(
+                production.forFutureFinishedInbound(result.preStocked,result.preStockedPlanItems));
         return FulfillmentMutationLockPlan.merge(CanonicalFingerprint.sha256(parts.stream()
                 .map(FulfillmentMutationLockPlan::fingerprint).toList()),parts);
     }
@@ -132,6 +149,9 @@ public class ProductionQualityMutationFootprintService {
         final Set<UUID> plans=new LinkedHashSet<>(),authorizations=new LinkedHashSet<>(),analyses=new LinkedHashSet<>();
         final Set<InventoryDimension> inventory=new LinkedHashSet<>();
         final Set<WarehouseDimension> manualRoots=new LinkedHashSet<>();
+        /** V597 先入库后质检行的落仓维度与计划行：合格自动点收的等价预锁前像。 */
+        final Set<WarehouseDimension> preStocked=new LinkedHashSet<>();
+        final Set<UUID> preStockedPlanItems=new LinkedHashSet<>();
         final List<String> parts=new ArrayList<>();
         void plan(UUID id){if(id!=null)plans.add(id);}
         void authorization(UUID id){if(id!=null)authorizations.add(id);}

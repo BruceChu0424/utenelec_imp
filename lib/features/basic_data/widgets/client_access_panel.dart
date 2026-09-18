@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
@@ -284,6 +285,12 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
       child: Column(
         key: const ValueKey('client-access-panel'),
         children: [
+          // 保存可见人设置网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+          if (_saving)
+            const UtenBusyOverlay(
+              title: '正在保存负责人和可见人',
+              description: '正在写入客户访问设置，请勿重复提交或关闭面板。',
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               UtenSpacing.s16,

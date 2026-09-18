@@ -74,6 +74,7 @@ public class ClientController {
             @RequestParam(required = false) String region,
             @RequestParam(name = "placeId", required = false) String placeId,
             @RequestParam(name = "empId", required = false) String empId,
+            @RequestParam(name = "ownerEmployeeId", required = false) UUID ownerEmployeeId,
             @RequestParam(name = "legalPerson", required = false) String legalPerson,
             @RequestParam(required = false) String linkman,
             @RequestParam(required = false) String mobile,
@@ -96,7 +97,7 @@ public class ClientController {
             @RequestParam(required = false) String order) {
         return service.list(new ClientQueryFilter(categoryId, keyword, nullFields,
                 code, name, fullName, salesPaymentType, clientXz, tday, region, placeId, empId,
-                legalPerson, linkman, mobile, phone, phone2, fax, postcode,
+                ownerEmployeeId, legalPerson, linkman, mobile, phone, phone2, fax, postcode,
                 address, bank, bankAccount, taxId, credit, creditFloor, website,
                 excludeLegacyFinanceStub, selectableOnly), page, size, sort, order);
     }
@@ -144,6 +145,7 @@ public class ClientController {
             @RequestParam(required = false) String region,
             @RequestParam(name = "placeId", required = false) String placeId,
             @RequestParam(name = "empId", required = false) String empId,
+            @RequestParam(name = "ownerEmployeeId", required = false) UUID ownerEmployeeId,
             @RequestParam(name = "legalPerson", required = false) String legalPerson,
             @RequestParam(required = false) String linkman,
             @RequestParam(required = false) String mobile,
@@ -164,7 +166,7 @@ public class ClientController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new ClientQueryFilter(categoryId, keyword, nullFields,
                 code, name, fullName, salesPaymentType, clientXz, tday, region, placeId, empId,
-                legalPerson, linkman, mobile, phone, phone2, fax, postcode,
+                ownerEmployeeId, legalPerson, linkman, mobile, phone, phone2, fax, postcode,
                 address, bank, bankAccount, taxId, credit, creditFloor, website,
                 excludeLegacyFinanceStub, false), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());

@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -1077,55 +1078,72 @@ class _ProductionPlanDetailPageState
       ),
       body: SafeArea(
         child: UtenContentContainer(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : _error != null
-              ? Center(child: Text(_error!))
-              : _detail == null
-              ? const SizedBox.shrink()
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s12,
-                    UtenSpacing.s12,
-                    UtenSpacing.s12,
-                    UtenFloatingActionGroup.scrollClearance,
-                  ),
-                  children: [
-                    // 越权/只读提示永远压在最顶：它决定了下面所有按钮点不点得动。
-                    DocumentScopeWriteNotice(
-                      capability: scopeCapability,
-                      ownerEmployeeId: _detail!.makerId,
-                      onRetry: () => ref.invalidate(
-                        documentScopeCapabilityProvider(
-                          DocumentDataScope.productionPlan,
-                        ),
+          child: Stack(
+            children: [
+              _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : _error != null
+                  ? Center(child: Text(_error!))
+                  : _detail == null
+                  ? const SizedBox.shrink()
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                        UtenSpacing.s12,
+                        UtenSpacing.s12,
+                        UtenSpacing.s12,
+                        UtenFloatingActionGroup.scrollClearance,
                       ),
+                      children: [
+                        // 越权/只读提示永远压在最顶：它决定了下面所有按钮点不点得动。
+                        DocumentScopeWriteNotice(
+                          capability: scopeCapability,
+                          ownerEmployeeId: _detail!.makerId,
+                          onRetry: () => ref.invalidate(
+                            documentScopeCapabilityProvider(
+                              DocumentDataScope.productionPlan,
+                            ),
+                          ),
+                        ),
+                        // ① 摘要区。
+                        _summaryHeroCard(theme, names),
+                        // 草稿态额外保留产品明细摘要（含编号/颜色/来源销售订单这些
+                        // 主卡放不下的核对信息）；已审计划的权威口径在执行子计划里，
+                        // 因此仍只对草稿展示，沿用原有可见性。
+                        if (_detail!.status == kProductionStatusDraft) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          _planProductSummary(theme, names),
+                        ],
+                        // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
+                        const SizedBox(height: UtenSpacing.s16),
+                        ProductionExecutionSegmentsCard(
+                          key: ValueKey(
+                            '${widget.id}|$_executionSegmentsRevision',
+                          ),
+                          planId: widget.id,
+                          canAssign: _canAssignExecution,
+                          canReleaseDefer: _canReleaseExecutionDefer,
+                          canReport: _canReport,
+                          canStart: _canStartExecution,
+                          initialSegmentId: _focusedExecutionSegmentId,
+                          onChanged: _loadSubplans,
+                        ),
+                        // ③ 参考区（默认折叠）。
+                        ..._referenceSections(theme),
+                      ],
                     ),
-                    // ① 摘要区。
-                    _summaryHeroCard(theme, names),
-                    // 草稿态额外保留产品明细摘要（含编号/颜色/来源销售订单这些
-                    // 主卡放不下的核对信息）；已审计划的权威口径在执行子计划里，
-                    // 因此仍只对草稿展示，沿用原有可见性。
-                    if (_detail!.status == kProductionStatusDraft) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _planProductSummary(theme, names),
-                    ],
-                    // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
-                    const SizedBox(height: UtenSpacing.s16),
-                    ProductionExecutionSegmentsCard(
-                      key: ValueKey('${widget.id}|$_executionSegmentsRevision'),
-                      planId: widget.id,
-                      canAssign: _canAssignExecution,
-                      canReleaseDefer: _canReleaseExecutionDefer,
-                      canReport: _canReport,
-                      canStart: _canStartExecution,
-                      initialSegmentId: _focusedExecutionSegmentId,
-                      onChanged: _loadSubplans,
-                    ),
-                    // ③ 参考区（默认折叠）。
-                    ..._referenceSections(theme),
-                  ],
+              // 审核/下达/红冲等计划操作网络段的全屏加载遮罩；回查执行单据
+              //（_executionBusy）同样只有纯网络段，结果弹层前已清位。
+              if (_busy || _executionBusy)
+                UtenBusyOverlay(
+                  title: _busy ? '正在执行计划操作' : '正在加载已生成单据',
+                  description: _busy
+                      ? '正在写入计划状态与派生单据，请勿重复提交或离开本页。'
+                      : '请稍候，完成后自动打开。',
                 ),
+            ],
+          ),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

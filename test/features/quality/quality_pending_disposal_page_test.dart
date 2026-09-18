@@ -263,6 +263,31 @@ void main() {
     expect(find.text('CJ20260822000001'), findsOneWidget);
   });
 
+  testWidgets('V597 先入库后检的检查单：队列储放位置标红，办理页顶部标红并逐行给出库位', (
+    tester,
+  ) async {
+    final api = _FqcApi(withSheet: true, preStocked: true);
+    await _pumpPage(
+      tester,
+      api: api,
+      iqc: _FakeIqcRepository(),
+      permissions: _bothViewPerms,
+    );
+
+    // 队列「储放位置」列：检查单按已上架行数标红；IQC 单未上架仍是「待检区」。
+    expect(find.text('已入库待检(1 行)'), findsOneWidget);
+    expect(find.text('待检区'), findsWidgets);
+
+    await _doubleTapRow(tester, _sheetNo);
+    expect(find.byKey(const Key('fqc-sheet-pre-stocked-notice')), findsOneWidget);
+    expect(find.text('货品已入库，需到对应储放区域检查'), findsOneWidget);
+    expect(
+      find.textContaining('V5多功能三极插座E极插套(酸洗) → 成品仓 / CP-A-01'),
+      findsOneWidget,
+    );
+    expect(find.text('已入库 · 成品仓 / CP-A-01'), findsOneWidget);
+  });
+
   testWidgets('FQC-only account skips IQC fetch and segments', (tester) async {
     final api = _FqcApi();
     final iqc = _FakeIqcRepository();
@@ -397,10 +422,13 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
 }
 
 class _FqcApi extends ApiClient {
-  _FqcApi({this.withSheet = false}) : super(Dio());
+  _FqcApi({this.withSheet = false, this.preStocked = false}) : super(Dio());
 
   /// true = 待检任务归属一张品质检查单（V547），队列显示检查单行而非任务行。
   final bool withSheet;
+
+  /// true = 仓库登记时已先入库上架(V597)，检查单与行都带储放位置。
+  final bool preStocked;
   int sheetDetailCalls = 0;
 
   Map<String, dynamic>? decisionBody;
@@ -445,6 +473,13 @@ class _FqcApi extends ApiClient {
     'place': 'CP-A-01',
     'registrationRemark': '整托入库',
     'receiverName': '仓库管理员',
+    if (preStocked)
+      'preStocked': {
+        'warehouseId': 'warehouse-1',
+        'warehouseName': '成品仓',
+        'place': 'CP-A-01',
+        'stockedByName': '仓库管理员',
+      },
   };
 
   Map<String, dynamic> get _sheet => {
@@ -462,6 +497,7 @@ class _FqcApi extends ApiClient {
     'goodsSummary': 'V5多功能三极插座E极插套(酸洗)',
     'status': decided ? 'CLOSED' : 'ACTIVE',
     'createdAt': '2026-08-28T05:00:00Z',
+    if (preStocked) 'preStockedItemCount': decided ? 0 : 1,
   };
 
   @override

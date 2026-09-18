@@ -349,6 +349,7 @@ public class AuditEventInterpreter {
         if ("notice_read_all".equals(action)) return "将全部通知标为已读";
         if ("notice_popup_ack".equals(action)) return "确认关闭通知提醒";
         if ("notice_celebration_batch_publish".equals(action)) return "批量发布庆典祝福";
+        if ("notice_celebration_auto_toggle".equals(action)) return "切换庆典自动发送";
         if ("notice_delete".equals(action)) return "移除通知";
         // 任务认领（HR 任务中心 + 通用软认领）
         if ("hr_task_claim".equals(action)) return "认领HR任务";

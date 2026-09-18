@@ -49,10 +49,8 @@ void main() {
         findsOneWidget,
       );
       expect(harness.writes, isEmpty);
-      var dropdown = tester.widget<DropdownButton<MaterialSupplyRoute>>(
-        _route('m-1'),
-      );
-      expect(dropdown.value, MaterialSupplyRoute.subcontract);
+      var dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
+      expect(dropdown.value, 'subcontract');
       final tree = tester.widget<UtenTreeTableCell>(
         find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
       );
@@ -62,10 +60,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('采购').last);
       await tester.pumpAndSettle();
-      dropdown = tester.widget<DropdownButton<MaterialSupplyRoute>>(
-        _route('m-1'),
-      );
-      expect(dropdown.value, MaterialSupplyRoute.buy);
+      dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
+      expect(dropdown.value, 'buy');
       expect(
         harness.writes,
         isEmpty,
@@ -91,9 +87,11 @@ void main() {
       expect(body['decisions'], [
         {'actionGroupKey': 'a-1', 'route': 'BUY'},
       ]);
+      // 2026-09-16：供应方式的单一事实源改成货品主档，建议路线随分析快照下发，
+      // 按历史分析推导的 /last-routes 预填请求整套退役——端点已删，发了就是 404。
       expect(
         harness.requests.any((r) => r.path.endsWith('/last-routes')),
-        isTrue,
+        isFalse,
       );
     },
   );
@@ -241,7 +239,7 @@ void main() {
       );
       expect(selector.items.map((item) => item.value), ['main', 'other-main']);
       expect(harness.writes, isEmpty);
-      expect(find.byType(DropdownButton<MaterialSupplyRoute>), findsNothing);
+      expect(_route('m-1'), findsNothing);
     },
   );
 

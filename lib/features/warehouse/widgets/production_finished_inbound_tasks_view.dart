@@ -19,6 +19,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../models/stock_doc.dart';
@@ -57,6 +59,10 @@ class _ProductionFinishedInboundTasksViewState
   bool _loading = false;
   String? _error;
   String _keyword = '';
+
+  /// 表头列筛选（2026-09-16）：任务步骤（固定枚举）+ 仓库（dict 桶，仅待点收单有仓）。
+  String? _taskStageFilter;
+  String? _warehouseIdFilter;
   int _requestVersion = 0;
   final Set<String> _selectedIds = <String>{};
 
@@ -64,7 +70,14 @@ class _ProductionFinishedInboundTasksViewState
   void initState() {
     super.initState();
     _keyword = widget.keyword;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // dict 装载完成后补一次 setState：内部缓存变化不触发 provider 通知。
+      ref
+          .read(masterNameServiceProvider)
+          .ensureLoaded()
+          .then((_) => mounted ? setState(() {}) : null);
+      _load(1);
+    });
   }
 
   @override
@@ -103,7 +116,12 @@ class _ProductionFinishedInboundTasksViewState
     try {
       final result = await ref
           .read(productionFinishedInboundTaskRepositoryProvider)
-          .tasks(page: page, keyword: keyword);
+          .tasks(
+            page: page,
+            keyword: keyword,
+            taskStage: _taskStageFilter,
+            warehouseId: _warehouseIdFilter,
+          );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
@@ -348,10 +366,40 @@ class _ProductionFinishedInboundTasksViewState
             key: const Key('production-finished-inbound-task-table'),
             columns: _columns,
             items: result.items,
-            facets: const {},
+            // 表头筛选桶（2026-09-16）：任务步骤固定枚举两档（服务端 task_stage）；
+            // 仓库走主档 dict（待登记任务尚无仓库，会被该筛选取自然排除）。
+            facets: {
+              'taskStage': const [
+                MasterFacetBucket(
+                  value: 'ARRIVAL_REGISTRATION',
+                  count: 0,
+                  label: '待登记成品仓与库位',
+                ),
+                MasterFacetBucket(
+                  value: 'FINAL_COUNT',
+                  count: 0,
+                  label: '待最终点收（含短收余量）',
+                ),
+              ],
+              'warehouseName': masterDictionaryFacets(
+                ref.watch(masterNameServiceProvider).warehouseEntries,
+              ),
+            },
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: {
+              'taskStage': _taskStageFilter,
+              'warehouseName': _warehouseIdFilter,
+            },
+            onFilterChanged: (key, value) {
+              setState(() {
+                if (key == 'taskStage') {
+                  _taskStageFilter = value;
+                } else if (key == 'warehouseName') {
+                  _warehouseIdFilter = value;
+                }
+              });
+              _load(1, replaceActive: true);
+            },
             selectable: canCount,
             // 两类任务分别可选：待登记任务键 reg:<reportId>（批量登记送检），
             // 待点收任务键 doc:<documentId>(批量全量点收)；只展示所选阶段的动作。

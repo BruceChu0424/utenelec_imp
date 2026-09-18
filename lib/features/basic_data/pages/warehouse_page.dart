@@ -113,18 +113,28 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     }
   }
 
+  // 表头筛选：列 key → 服务端 query 参数名（上级仓库列在服务端是 parentId；核算列同名）。
+  static const _columnToParam = {'parent': 'parentId'};
+
   void _onFilterChanged(String key, String? value) {
+    final paramKey = _columnToParam[key] ?? key;
     setState(() {
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
-        next.remove(key);
+        next.remove(paramKey); // 选"所有"= 不筛
       } else {
-        next[key] = value;
+        next[paramKey] = value; // 具体值 或 kMasterFilterNullValue（空值）
       }
       _filters = next;
     });
     _loadWarehouses(1);
   }
+
+  /// 表头筛选回显：把 _filters（服务端参数名）映射回列 key 供表格选中态索引。
+  Map<String, String?> get _columnFilters => {
+    for (final e in _filters.entries)
+      (e.key == 'parentId' ? 'parent' : e.key): e.value,
+  };
 
   void _onKeywordChanged(String kw) {
     setState(() => _keyword = kw);
@@ -483,7 +493,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                     items: _page?.items ?? const [],
                     facets: _facets?.fields ?? const {},
                     nullCounts: _facets?.nullCounts ?? const {},
-                    filters: _filters,
+                    filters: _columnFilters,
                     onFilterChanged: _onFilterChanged,
                     onRowTap: (w) => _showDetail(w.id),
                     isLoading: _loading && _page == null,

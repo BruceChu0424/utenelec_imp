@@ -178,6 +178,7 @@ class _ExpenseRepo implements ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   }) {
     pages.add(page);
     final pending = Completer<PagedResult<ExpenseClaim>>();

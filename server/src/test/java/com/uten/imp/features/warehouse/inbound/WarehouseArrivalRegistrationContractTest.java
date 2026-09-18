@@ -99,17 +99,19 @@ class WarehouseArrivalRegistrationContractTest {
                         WarehouseArrivalRegisterRequest.class.getRecordComponents())
                 .map(RecordComponent::getName)
                 .toList();
+        // V596 先入库后质检：只多一个布尔开关，仍然没有价格/币族字段。
         assertThat(components).containsExactlyInAnyOrder(
                 "idempotencyKey", "orderType", "billDate", "supplierId", "warehouseId",
-                "purchaserId", "receiverEmployeeId", "remark", "items");
+                "purchaserId", "receiverEmployeeId", "remark", "items", "stockInBeforeInspection");
         var lineComponents = Arrays.stream(
                         WarehouseArrivalRegisterRequest.ArrivalLine.class
                                 .getRecordComponents())
                 .map(RecordComponent::getName)
                 .toList();
+        // V596：行级只多一个上架库位(库位语义字段，非金额)。
         assertThat(lineComponents).containsExactlyInAnyOrder(
                 "goodsId", "qty", "orderItemId", "colorId", "unitId",
-                        "unitRate", "weight", "sourceDocNo", "replacementIntent");
+                        "unitRate", "weight", "sourceDocNo", "replacementIntent", "preStockPlace");
     }
 
     @Test

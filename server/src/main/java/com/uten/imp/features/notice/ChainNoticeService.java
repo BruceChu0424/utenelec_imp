@@ -85,6 +85,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             "PRODUCTION_SEGMENT_WORKSHOP_ASSIGNED";
     static final String EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED =
             "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED";
+    static final String EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL =
+            "PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL";
     static final String EVENT_SHIPMENT_APPROVED = "SALES_SHIPMENT_APPROVED";
     static final String EVENT_SHIPMENT_PENDING_FINANCE =
             "SALES_SHIPMENT_PENDING_FINANCE_AUDIT";
@@ -155,6 +157,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     static final String EVENT_ORDER_FULLY_PRODUCED_READY_TO_SHIP =
             "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP";
     static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
+    /** 先入库后检(V596)：仓库把待检品上架到实际仓/库位后，提醒品质部到库位检验。 */
+    static final String EVENT_IQC_PRE_STOCKED = "PROCUREMENT_IQC_PRE_STOCKED";
     static final String EVENT_IQC_STOCK_IN_PENDING =
             "PROCUREMENT_IQC_STOCK_IN_PENDING";
     static final String EVENT_SUBCONTRACT_LOSS_OPENED =
@@ -296,6 +300,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                                 aggregateId,
                                 null,
                                 payload.path("sourceType").asText(""));
+                case EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL ->
+                        publishWorkshopMaterialArrival(
+                                aggregateId,
+                                payload.path("arrival").asText(""));
                 case EVENT_SEGMENT_DISPATCHED ->
                         notifyExecutionSegmentTransition(aggregateId, false);
                 case EVENT_SEGMENT_STARTED ->
@@ -399,6 +407,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                                 uuidOrNull(payload.path("receiptId").asText(null)));
                 case EVENT_IQC_RESOLVED ->
                         notifyIqcResolvedForPutaway(
+                                aggregateId, payload.path("receiptType").asText(""));
+                case EVENT_IQC_PRE_STOCKED ->
+                        notifyIqcPreStockedForQuality(
                                 aggregateId, payload.path("receiptType").asText(""));
                 case EVENT_SUBCONTRACT_LOSS_OPENED,
                      EVENT_SUBCONTRACT_LOSS_DECIDED,
@@ -1261,6 +1272,69 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     }
 
     /**
+     * 先入库后检(V596)：仓库把仍在等结论的待检品上架到实际仓/库位后，用醒目通知提醒品质部
+     * 到储放区域检验(合格由系统按上架位置自动转正入库，不合格由仓库从库位取出退回)。
+     * 通知不是角标真相；位置以待检明细页实时数据为准。
+     */
+    public void notifyIqcPreStockedForQuality(UUID receiptId, String receiptType) {
+        deliverAtomically(() -> {
+            boolean purchase = "PURCHASE".equals(receiptType);
+            if (!purchase && !"SUBCONTRACT".equals(receiptType)) return;
+            Map<String, Object> receipt = one("""
+                    SELECT receipt.bill_no, supplier.name AS supplier_name
+                    FROM %s receipt
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """.formatted(purchase ? "purchase_receipts" : "subcontract_receipts"), receiptId);
+            if (receipt == null) return;
+            List<Map<String, Object>> lines = jdbc.queryForList("""
+                    SELECT goods.code AS goods_code, goods.name AS goods_name,
+                           warehouse.name AS warehouse_name, inspection.pre_stocked_place,
+                           inspection.received_base_qty - inspection.passed_base_qty
+                               - inspection.failed_base_qty AS pending_qty
+                    FROM procurement_inspection_items inspection
+                    LEFT JOIN goods ON goods.id = inspection.goods_id
+                    LEFT JOIN warehouses warehouse ON warehouse.id = inspection.pre_stocked_warehouse_id
+                    WHERE inspection.receipt_type = ? AND inspection.receipt_id = ?
+                      AND inspection.status IN ('PENDING', 'PARTIAL')
+                      AND inspection.pre_stocked_at IS NOT NULL
+                    ORDER BY inspection.received_at, inspection.id
+                    """, receiptType, receiptId);
+            if (lines.isEmpty()) return;
+            String billNo = str(receipt.get("bill_no"));
+            String supplier = str(receipt.get("supplier_name"));
+            StringBuilder where = new StringBuilder();
+            int shown = 0;
+            for (Map<String, Object> line : lines) {
+                if (shown == 3) {
+                    where.append("；另 ").append(lines.size() - shown).append(" 行见明细");
+                    break;
+                }
+                if (shown > 0) where.append('；');
+                where.append((str(line.get("goods_code")) + " " + str(line.get("goods_name"))).strip())
+                        .append(" → ").append(str(line.get("warehouse_name")))
+                        .append(" / ").append(str(line.get("pre_stocked_place")))
+                        .append('(').append(qty(bd(line.get("pending_qty")))).append(')');
+                shown++;
+            }
+            String content = (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
+                    + (supplier.isBlank() ? "" : "(" + supplier + ")")
+                    + " 的货品已先入库上架，需到对应储放区域检查：" + where
+                    + "。合格后系统自动按上架位置转正入库；不合格由仓库从库位取出登记退回。";
+            String route = "/warehouse/inspections/" + receiptType + '/' + receiptId;
+            for (UUID qualityUser : qualityInspectionViewerUserIds()) {
+                sendToUser(
+                        qualityUser,
+                        TYPE_TASK,
+                        "货品已入库待检，请到库位检验：" + billNo,
+                        content,
+                        route,
+                        EVENT_IQC_PRE_STOCKED);
+            }
+        });
+    }
+
+    /**
      * Every quality PASS slice immediately becomes a durable warehouse task.
      * The notification is only a permission-filtered reminder; remaining
      * quantity and action authority are always re-read from the task API.
@@ -1436,17 +1510,39 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             String billNo = str(receipt.get("bill_no"));
             String supplier = str(receipt.get("supplier_name"));
             String warehouse = str(receipt.get("warehouse_name"));
-            String content = (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
-                    + (supplier.isBlank() ? "" : "(" + supplier + ")")
-                    + " 品质部检验已结案。合格量是否已经进入可用库存，"
-                    + "必须以仓库确认入库任务为准"
-                    + (warehouse.isBlank() ? "" : " 至「" + warehouse + "」")
-                    + (failed.signum() > 0
-                            ? "；本单含不合格实物，请同时跟进退回处置。"
-                            : "。请在仓库专属页面核对剩余待入库切片。");
-            if (hasWarehouseIqcStockInTask(passed)) {
-                String route = "/warehouse/iqc-stock-ins/"
-                        + receiptType + '/' + receiptId;
+            // 先入库后检(V596)：合格已按上架位置自动转正，仓库只剩不合格取货退回这一件事。
+            Map<String, Object> preStocked = one("""
+                    SELECT COUNT(*) FILTER (WHERE pre_stocked_at IS NOT NULL) AS pre_stocked_lines,
+                           COUNT(*) FILTER (WHERE pre_stocked_at IS NOT NULL AND failed_base_qty > 0)
+                               AS failed_pre_stocked_lines
+                    FROM procurement_inspection_items
+                    WHERE receipt_type = ? AND receipt_id = ? AND status <> 'REVERSED'
+                    """, receiptType, receiptId);
+            long preStockedLines = preStocked == null
+                    ? 0L : ((Number) preStocked.get("pre_stocked_lines")).longValue();
+            long failedPreStockedLines = preStocked == null
+                    ? 0L : ((Number) preStocked.get("failed_pre_stocked_lines")).longValue();
+            String content = preStockedLines > 0
+                    ? (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
+                            + (supplier.isBlank() ? "" : "(" + supplier + ")")
+                            + " 品质部检验已结案(先入库后检)。合格部分已按上架位置自动转正入库，无需再确认；"
+                            + (failed.signum() > 0
+                                    ? (failedPreStockedLines > 0
+                                            ? "不合格实物仍在上架库位，请到库位取出并登记退回。"
+                                            : "本单含不合格实物，请跟进退回处置。")
+                                    : "本单没有不合格实物。")
+                    : (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
+                            + (supplier.isBlank() ? "" : "(" + supplier + ")")
+                            + " 品质部检验已结案。合格量是否已经进入可用库存，"
+                            + "必须以仓库确认入库任务为准"
+                            + (warehouse.isBlank() ? "" : " 至「" + warehouse + "」")
+                            + (failed.signum() > 0
+                                    ? "；本单含不合格实物，请同时跟进退回处置。"
+                                    : "。请在仓库专属页面核对剩余待入库切片。");
+            if (hasWarehouseIqcStockInTask(passed) || preStockedLines > 0) {
+                String route = preStockedLines > 0
+                        ? "/warehouse/quality-results/" + receiptType + '/' + receiptId
+                        : "/warehouse/iqc-stock-ins/" + receiptType + '/' + receiptId;
                 for (UUID warehouseUser : departmentUserIdsWithAuthorities(
                         "SUB_WH", NOTICE_READ_AUTHORITY,
                         WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY)) {
@@ -2915,6 +3011,122 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     }
 
     /**
+     * 到货进展通知(V599 / ADR-091)：分批到货的物料按「仓×货品×颜色」命中仍在等待的车间工单，
+     * 给车间发「本次到了多少 + 还缺什么 + 按路线的下一步」的聚合卡。业务事务只投递事件与到货
+     * 摘要；重组卡片时按当时事实，段已不在等待(齐套/开工/取消)则不重复发，交给状态卡。
+     * 与既有车间行动卡同聚合、同 sourceEvent：一张工单同时最多一张活跃卡，开工/领料/分批/
+     * 确认路线即办结。
+     */
+    public void notifyWorkshopMaterialArrival(
+            UUID segmentId, String triggerKey, String arrivalSummary) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,
+                    "PRODUCTION_EXECUTION_SEGMENT",
+                    segmentId,
+                    Map.of("arrival", arrivalSummary == null ? "" : arrivalSummary),
+                    EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL + ':' + segmentId + ':'
+                            + (triggerKey == null ? "" : triggerKey));
+            return;
+        }
+        publishWorkshopMaterialArrival(segmentId, arrivalSummary);
+    }
+
+    private void publishWorkshopMaterialArrival(UUID segmentId, String arrivalSummary) {
+        List<UUID> lockedSegmentIds = jdbc.queryForList("""
+                SELECT id
+                FROM production_execution_segments
+                WHERE id = ? AND is_deleted = FALSE
+                FOR UPDATE
+                """, UUID.class, segmentId);
+        if (lockedSegmentIds.isEmpty()) return;
+        Map<String, Object> task = one("""
+                SELECT task.segment_id, task.segment_code, task.plan_no,
+                       task.segment_status,
+                       task.product_code, task.product_name,
+                       task.product_color_name, task.product_unit_name,
+                       task.planned_qty, task.workshop_department_id, task.workshop_name,
+                       task.responsible_employee_id,
+                       route.start_route, route.continuous_supply,
+                       fn_can_start_continuous_supply(task.segment_id) AS can_start_continuous
+                FROM v_production_execution_workbench_segments task
+                JOIN production_execution_segments route ON route.id = task.segment_id
+                WHERE task.segment_id = ?
+                """, segmentId);
+        if (task == null) return;
+        if (!"WAITING".equals(str(task.get("segment_status")))) return;
+        UUID workshopId = (UUID) task.get("workshop_department_id");
+        if (workshopId == null) return;
+        List<Map<String, Object>> missingRows = jdbc.queryForList("""
+                SELECT goods.code AS goods_code, goods.name AS goods_name,
+                       COALESCE(color.name, '') AS color_name,
+                       material.stock_shortage_qty, units.name AS unit_name
+                FROM v_production_execution_segment_materials material
+                JOIN goods ON goods.id = material.goods_id
+                LEFT JOIN colors color ON color.id = material.color_id
+                LEFT JOIN units ON units.id = material.unit_id
+                WHERE material.execution_segment_id = ?
+                  AND material.demand_status NOT IN ('RELEASED', 'REVERSED')
+                  AND NOT material.ready
+                ORDER BY goods.name, goods.code
+                """, segmentId);
+        String route = str(task.get("start_route"));
+        String nextStep;
+        if (route.isBlank()) {
+            nextStep = "请先在「我的车间任务」确认生产路线（齐套 / 分批 / 持续生产）";
+        } else if ("BATCH".equals(route)) {
+            nextStep = "本单为分批生产路线：部分物料已到，可按「分批领料」核对当前可生产量";
+        } else if ("CONTINUOUS".equals(route)) {
+            nextStep = Boolean.TRUE.equals(task.get("can_start_continuous"))
+                    ? "直送料已到一部分，可按「部分开工 · 持续生产」开工"
+                    : "持续生产路线：等待同车间直送子件到料，到料后自动投入";
+        } else if (missingRows.isEmpty()) {
+            nextStep = "物料已齐套，可提交领料，领齐后开工";
+        } else {
+            nextStep = "齐套生产路线：等待剩余物料到货，到齐后提交领料";
+        }
+        StringBuilder shortages = new StringBuilder();
+        int shown = 0;
+        for (Map<String, Object> missing : missingRows) {
+            if (shown == 6) {
+                shortages.append("；等 ").append(missingRows.size()).append(" 种");
+                break;
+            }
+            if (shown > 0) shortages.append("；");
+            shortages.append(str(missing.get("goods_name"))).append(' ')
+                    .append(str(missing.get("goods_code")))
+                    .append(str(missing.get("color_name")).isBlank()
+                            ? "" : "(" + str(missing.get("color_name")) + ")")
+                    .append(" 还缺 ").append(qty(bd(missing.get("stock_shortage_qty"))))
+                    .append(str(missing.get("unit_name")).isBlank()
+                            ? "" : " " + str(missing.get("unit_name")));
+            shown++;
+        }
+        String segmentCode = str(task.get("segment_code"));
+        String product = (str(task.get("product_code")) + " "
+                + str(task.get("product_name"))).strip();
+        String workshop = str(task.get("workshop_name"));
+        String content = (arrivalSummary == null || arrivalSummary.isBlank()
+                ? "生产物料已到货" : arrivalSummary.strip())
+                + "。生产计划 " + str(task.get("plan_no"))
+                + "，工单 " + segmentCode
+                + "，产品 " + (product.isBlank() ? "未命名产品" : product)
+                + (workshop.isBlank() ? "" : "，车间 " + workshop)
+                + (missingRows.isEmpty() ? "；当前物料没有缺口" : "；仍缺：" + shortages)
+                + "；" + nextStep + "。请到「我的车间任务」办理。";
+        noticeService.resolveReviewNotices(
+                "PRODUCTION_EXECUTION_SEGMENT", segmentId, "ARRIVAL_PROGRESS");
+        for (UUID recipient : workshopRecipientUserIds(
+                workshopId, (UUID) task.get("responsible_employee_id"))) {
+            sendToUser(
+                    recipient, TYPE_TASK, "物料到货进展：" + segmentCode, content,
+                    "/production/workshop-tasks",
+                    EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
+                    "normal", segmentId);
+        }
+    }
+
+    /**
      * Rebuilds one actionable workshop notice from current database facts.
      * Every state transition resolves the previous card first, so out-of-order
      * outbox delivery cannot leave a stale “ready” or “preparing” popup.
@@ -3992,14 +4204,28 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                            rejection.failed_qty,
                            goods.code AS goods_code,
                            goods.name AS goods_name,
-                           unit.name AS unit_name
+                           unit.name AS unit_name,
+                           pre_stocked_warehouse.name AS pre_stocked_warehouse_name,
+                           inspection.pre_stocked_place
                     FROM procurement_iqc_rejection_cases rejection
                     JOIN goods ON goods.id = rejection.goods_id
                     LEFT JOIN units unit ON unit.id = rejection.unit_id
+                    LEFT JOIN procurement_inspection_items inspection
+                      ON inspection.id = rejection.inspection_item_id
+                    LEFT JOIN warehouses pre_stocked_warehouse
+                      ON pre_stocked_warehouse.id = inspection.pre_stocked_warehouse_id
                     WHERE rejection.id = ?
                       AND COALESCE(rejection.is_deleted, FALSE) = FALSE
                     """, caseId);
             if (rejection == null) return;
+            // 先入库后检(V596)：不合格实物已经在真实库位上，退回前必须先取出。
+            String preStockedWarehouse = str(rejection.get("pre_stocked_warehouse_name"));
+            String preStockedPlace = str(rejection.get("pre_stocked_place"));
+            String preStockedHint = preStockedWarehouse.isBlank() && preStockedPlace.isBlank()
+                    ? ""
+                    : " 该批实物已先入库上架在「" + preStockedWarehouse
+                            + (preStockedPlace.isBlank() ? "" : " / " + preStockedPlace)
+                            + "」，请到库位取出后登记退回，不得当作可用库存使用。";
 
             String orderNo = str(rejection.get("order_bill_no"));
             String receiptNo = str(rejection.get("receipt_bill_no"));
@@ -4027,7 +4253,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 title = "IQC不合格待处置：" + displayNo(orderNo, receiptNo);
                 content = sourceLabel + goodsLabel
                         + " 已形成独立退回/贷项任务。IQC不合格不会进入可用库存，"
-                        + "实物退回与供应商贷项必须分别留痕；请在任务详情跟进。";
+                        + "实物退回与供应商贷项必须分别留痕；请在任务详情跟进。" + preStockedHint;
                 type = TYPE_TASK;
                 recipients = userIdsWithIqcViewAndAnyPermission(
                         IQC_REJECTION_VIEW_ALL_AUTHORITY,

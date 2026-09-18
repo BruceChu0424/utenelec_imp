@@ -15,6 +15,9 @@ class QualityInspectionRecordRepository {
     String? decision,
     String keyword = '',
     QualityInspectionDateRange? dateRange,
+    String? sourceType,
+    String? effective,
+    String? disposition,
     int page = 1,
     int size = 40,
   }) async {
@@ -26,6 +29,12 @@ class QualityInspectionRecordRepository {
         if (dateRange != null)
           'from': _fromInstant(dateRange).toIso8601String(),
         if (dateRange != null) 'to': _toInstant(dateRange).toIso8601String(),
+        if (sourceType?.trim().isNotEmpty == true)
+          'sourceType': sourceType!.trim(),
+        if (effective?.trim().isNotEmpty == true)
+          'effective': effective!.trim(),
+        if (disposition?.trim().isNotEmpty == true)
+          'disposition': disposition!.trim(),
         'page': page,
         'size': size,
       },

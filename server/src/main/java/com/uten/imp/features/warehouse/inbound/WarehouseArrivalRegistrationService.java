@@ -53,6 +53,8 @@ import java.util.UUID;
 public class WarehouseArrivalRegistrationService {
 
     static final String OUTCOME_INSPECTED = "SUBMITTED_FOR_INSPECTION";
+    /** 先入库后质检(V596)：已送检且实物已按库位上架，品质合格自动转正入库。 */
+    static final String OUTCOME_PRE_STOCKED = "STOCKED_PENDING_INSPECTION";
     static final String OUTCOME_QUARANTINED = "EXCESS_QUARANTINED";
 
     private static final String PURCHASE = "PURCHASE";
@@ -64,6 +66,7 @@ public class WarehouseArrivalRegistrationService {
     private final PurchaseReceiptService purchaseReceiptService;
     private final SubcontractReceiptService subcontractReceiptService;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final ProcurementIqcPreStockInService preStockIn;
 
     public WarehouseArrivalRegistrationService(
             JdbcTemplate jdbc,
@@ -71,13 +74,15 @@ public class WarehouseArrivalRegistrationService {
             SecurityContextCurrentUser currentUser,
             PurchaseReceiptService purchaseReceiptService,
             SubcontractReceiptService subcontractReceiptService,
-            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks) {
+            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks,
+            ProcurementIqcPreStockInService preStockIn) {
         this.jdbc = jdbc;
         this.tx = tx;
         this.currentUser = currentUser;
         this.purchaseReceiptService = purchaseReceiptService;
         this.subcontractReceiptService = subcontractReceiptService;
         this.mutationLocks = mutationLocks;
+        this.preStockIn = preStockIn;
     }
 
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
@@ -87,6 +92,11 @@ public class WarehouseArrivalRegistrationService {
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
         String orderType = normalizeOrderType(request.orderType());
         validateActualWeights(request.items());
+        boolean stockInFirst = request.stockInBeforeInspectionRequested();
+        if (stockInFirst) {
+            requireStockInBeforeInspectionAuthority();
+            validatePreStockPlaces(request.items());
+        }
         String requestHash = requestHash(request);
         lockRegistrationCommand(makerId, idempotencyKey);
         ArrivalCommand replay = findRegistrationCommand(makerId, idempotencyKey);
@@ -129,7 +139,73 @@ public class WarehouseArrivalRegistrationService {
         }
         WarehouseArrivalRegisterResult result =
                 approveAsArrival(orderType, receiptId, billNo);
+        if (stockInFirst && OUTCOME_INSPECTED.equals(result.outcome())) {
+            // 先入库后质检(V596)：送检成功后同事务把每行按库位上架到本单入库仓；
+            // 超量隔离(EXCESS_QUARANTINED)时收货单未审核、没有待检行，不上架。
+            preStockIn.applyForReceipt(orderType, receiptId,
+                    preStockLines(orderType, receiptId, request.warehouseId(), request), makerId);
+            result = new WarehouseArrivalRegisterResult(
+                    OUTCOME_PRE_STOCKED, result.receiptId(), result.receiptBillNo(), null);
+        }
         finalizeCommand(commandId, makerId, orderType, result);
+        return result;
+    }
+
+    /** 先入库后质检必须持有独立权限；服务端兜底，不信任前端显隐。 */
+    private void requireStockInBeforeInspectionAuthority() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        boolean granted = authentication != null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream().anyMatch(authority ->
+                        ProcurementIqcStockInPermissions.BEFORE_INSPECTION.equals(authority.getAuthority()));
+        if (!granted) {
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "先入库后质检需要「到货先入库后质检」权限(warehouse_iqc_stock_in:before_inspection)");
+        }
+    }
+
+    private static void validatePreStockPlaces(List<WarehouseArrivalRegisterRequest.ArrivalLine> items) {
+        for (int index = 0; index < items.size(); index++) {
+            String place = items.get(index) == null ? null : items.get(index).preStockPlace();
+            if (place == null || place.isBlank() || place.strip().length() > 100) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "先入库后质检：第 " + (index + 1) + " 行必须填写上架库位(1 至 100 个字符)");
+            }
+        }
+    }
+
+    /**
+     * 登记行 → 待检明细行的库位映射：按来源订货明细对齐(同一订货明细多行时按登记顺序依次分配)。
+     * 待检行由收货审核刚创建，与本次登记行一一对应；对不上即视为并发变化，整次登记回滚。
+     */
+    private List<ProcurementIqcPreStockInService.PreStockLine> preStockLines(
+            String orderType, UUID receiptId, UUID warehouseId, WarehouseArrivalRegisterRequest request) {
+        String receiptItemTable = PURCHASE.equals(orderType)
+                ? "purchase_receipt_items" : "subcontract_receipt_items";
+        java.util.Map<UUID, java.util.ArrayDeque<String>> places = new java.util.HashMap<>();
+        for (var line : request.items()) {
+            places.computeIfAbsent(line.orderItemId(), ignored -> new java.util.ArrayDeque<>())
+                    .add(line.preStockPlace().strip());
+        }
+        List<ProcurementIqcPreStockInService.PreStockLine> result = new ArrayList<>();
+        jdbc.query("""
+                SELECT inspection.id, item.order_item_id
+                FROM procurement_inspection_items inspection
+                JOIN %s item ON item.id = inspection.receipt_item_id
+                WHERE inspection.receipt_type = ? AND inspection.receipt_id = ?
+                ORDER BY item.line_no, inspection.id
+                """.formatted(receiptItemTable), rs -> {
+            java.util.ArrayDeque<String> queue = places.get(rs.getObject("order_item_id", UUID.class));
+            String place = queue == null ? null : queue.poll();
+            if (place == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "待检明细与本次登记明细对不上，本次登记已回滚");
+            }
+            result.add(new ProcurementIqcPreStockInService.PreStockLine(
+                    rs.getObject("id", UUID.class), warehouseId, place));
+        }, orderType, receiptId);
+        if (result.size() != request.items().size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "待检明细数量与本次登记明细不一致，本次登记已回滚");
+        }
         return result;
     }
 
@@ -644,6 +720,14 @@ public class WarehouseArrivalRegistrationService {
             if(item!=null&&item.replacementIntent()!=null){
                 appendHash(canonical,"replacementIntent");
                 appendHash(canonical,item.replacementIntent());
+            }
+        }
+        // 先入库后质检(V596)：只在勾选时进入指纹，老客户端/老请求的哈希逐字不变。
+        if (request.stockInBeforeInspectionRequested()) {
+            appendHash(canonical, "stockInBeforeInspection");
+            for (var item : items) {
+                appendHash(canonical, item == null || item.preStockPlace() == null
+                        ? null : item.preStockPlace().strip());
             }
         }
         try {

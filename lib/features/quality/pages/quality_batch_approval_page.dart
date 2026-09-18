@@ -19,6 +19,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -645,7 +646,12 @@ class _QualityBatchApprovalPageState
         : selected == ids.length
         ? true
         : null;
-    return Container(
+    // 先入库后检(V597)：已上架的成品检查单在单头下同样标红。
+    final preStocked = [
+      for (final item in group.inspections)
+        if (item.preStocked != null) item,
+    ];
+    final header = Container(
       key: ValueKey('batch-approval-sheet-${group.sheet.id}'),
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
@@ -682,6 +688,33 @@ class _QualityBatchApprovalPageState
         ],
       ),
     );
+    if (preStocked.isEmpty) return header;
+    final shown = preStocked.take(3).toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            UtenSpacing.s8,
+            UtenSpacing.s4,
+            UtenSpacing.s8,
+            UtenSpacing.s4,
+          ),
+          child: UtenInlineNotice(
+            key: ValueKey('batch-approval-sheet-pre-stocked-${group.sheet.id}'),
+            level: UtenInlineNoticeLevel.error,
+            title: '货品已入库，需到对应储放区域检查',
+            message: [
+              for (final item in shown)
+                '${item.goodsName ?? item.goodsCode ?? '货品'} → ${item.preStocked!.label}',
+              if (preStocked.length > shown.length)
+                '另 ${preStocked.length - shown.length} 行见明细',
+            ].join('；'),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _receiptHeader(ThemeData theme, _IqcReceiptGroup group) {
@@ -692,7 +725,12 @@ class _QualityBatchApprovalPageState
         : selected == pending.length
         ? true
         : null;
-    return Container(
+    // 先入库后检(V596)：本单实物已在库位上，批量审批页同样顶部标红。
+    final preStocked = [
+      for (final row in group.rows)
+        if (row.item.preStocked != null) row.item,
+    ];
+    final header = Container(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
         vertical: UtenSpacing.s4,
@@ -727,6 +765,35 @@ class _QualityBatchApprovalPageState
           ),
         ],
       ),
+    );
+    if (preStocked.isEmpty) return header;
+    final shown = preStocked.take(3).toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            UtenSpacing.s8,
+            UtenSpacing.s4,
+            UtenSpacing.s8,
+            UtenSpacing.s4,
+          ),
+          child: UtenInlineNotice(
+            key: ValueKey(
+              'batch-approval-pre-stocked-${group.receipt.receiptId}',
+            ),
+            level: UtenInlineNoticeLevel.error,
+            title: '货品已入库，需到对应储放区域检查',
+            message: [
+              for (final item in shown)
+                '${item.goodsName ?? item.goodsCode ?? '货品'} → ${item.preStocked!.label}',
+              if (preStocked.length > shown.length)
+                '另 ${preStocked.length - shown.length} 行见明细',
+            ].join('；'),
+          ),
+        ),
+      ],
     );
   }
 

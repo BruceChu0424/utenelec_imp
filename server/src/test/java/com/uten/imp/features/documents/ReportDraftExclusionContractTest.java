@@ -15,6 +15,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 默认排除草稿（{@code status <> 0}），显式传 status（含查草稿）时仍按调用方口径走。
  *
  * <p>不再允许各报表把「审核状态」当纯可选筛选——那会让未审核单据默认进明细/汇总。
+ *
+ * <p>2026-09-16 收敛：sales/purchase/subcontract/stock（单头别名 {@code o}）的
+ * {@code addApprovedByDefault} 收敛到 {@code common/report/ReportQueryKit}，四服务调用共享入口；
+ * finance（钱流单头别名 {@code t}）逻辑相同但别名不同，保留本地实现，本测试分别断言。
  */
 class ReportDraftExclusionContractTest {
 
@@ -26,20 +30,41 @@ class ReportDraftExclusionContractTest {
             "stock/report/StockReportService.java", "o",
             "finance/report/FinanceReportService.java", "t");
 
+    private static final String KIT = "common/report/ReportQueryKit.java";
+
     @Test
     void everyReportServiceDefaultsToExcludingDraftsAndKeepsExplicitStatusQueryable() throws Exception {
+        // 收敛后的统一入口：o 别名四服务共用 ReportQueryKit.addApprovedByDefault。
+        String kit = Files.readString(
+                Path.of("src/main/java/com/uten/imp/" + KIT), StandardCharsets.UTF_8);
+        assertThat(kit)
+                .as("%s 必须有默认排除草稿的统一入口", KIT)
+                .contains("public static void addApprovedByDefault(WhereBuilder w, Short status)")
+                .contains("w.add(\"o.status <> 0\", null, null)");
+        // 显式 status 仍然生效（可查草稿）；空格差异归一后比较。
+        assertThat(kit.replace(" ", ""))
+                .as("%s 显式 status 仍要能查（含 status=0 查草稿）", KIT)
+                .contains("w.add(\"o.status=:status\",\"status\",status);");
+
         for (Map.Entry<String, String> entry : SERVICES.entrySet()) {
             String source = read(entry.getKey());
             String alias = entry.getValue();
 
-            assertThat(source)
-                    .as("%s 必须有默认排除草稿的统一入口", entry.getKey())
-                    .contains("private static void addApprovedByDefault(WhereBuilder w, Short status)")
-                    .contains("w.add(\"" + alias + ".status <> 0\", null, null)");
-            // 显式 status 仍然生效（可查草稿）；空格差异归一后比较。
-            assertThat(source.replace(" ", ""))
-                    .as("%s 显式 status 仍要能查（含 status=0 查草稿）", entry.getKey())
-                    .contains("w.add(\"" + alias + ".status=:status\",\"status\",status);");
+            if ("t".equals(alias)) {
+                // finance 单头别名是 t：保留本地实现，原断言口径不变。
+                assertThat(source)
+                        .as("%s 必须有默认排除草稿的统一入口", entry.getKey())
+                        .contains("private static void addApprovedByDefault(WhereBuilder w, Short status)")
+                        .contains("w.add(\"" + alias + ".status <> 0\", null, null)");
+                assertThat(source.replace(" ", ""))
+                        .as("%s 显式 status 仍要能查（含 status=0 查草稿）", entry.getKey())
+                        .contains("w.add(\"" + alias + ".status=:status\",\"status\",status);");
+            } else {
+                // o 别名四服务：必须经由共享入口，不得自带分叉实现。
+                assertThat(source)
+                        .as("%s 必须走 ReportQueryKit 的默认排除草稿入口", entry.getKey())
+                        .contains("ReportQueryKit.addApprovedByDefault(w, status)");
+            }
         }
     }
 

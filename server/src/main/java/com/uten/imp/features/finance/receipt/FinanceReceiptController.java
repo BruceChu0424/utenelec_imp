@@ -55,13 +55,15 @@ public class FinanceReceiptController {
             @RequestParam(required = false) UUID clientId,
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) String receiptKind,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new FinanceReceiptQueryFilter(keyword, clientId, accountId, status, dateFrom, dateTo), page, size, sort, order);
+        return service.list(new FinanceReceiptQueryFilter(keyword, clientId, accountId, status,
+                receiptKind, dateFrom, dateTo), page, size, sort, order);
     }
 
     @GetMapping("/{id}")

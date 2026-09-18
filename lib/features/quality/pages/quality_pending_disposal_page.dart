@@ -25,6 +25,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -38,6 +39,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
@@ -759,6 +761,22 @@ class _QualityPendingDisposalPageState
         '逐行填合格/不合格数量，一次「提交报告」办结。';
   }
 
+  /// 已上架待检的行数：IQC 按收货单、检查单按单、无检查单的历史 FQC 任务按行。
+  int _preStockedLineCount(_DisposalRow row) {
+    if (row.isSheet) return row.sheet!.preStockedItemCount;
+    if (row.isFqc) return row.inspection!.preStocked == null ? 0 : 1;
+    return row.receipt!.preStockedItemCount;
+  }
+
+  String _storageText(_DisposalRow row) {
+    final count = _preStockedLineCount(row);
+    if (count == 0) return '待检区';
+    // 检查单行带上登记库位去重清单(place_summary)：品质部按「库行-层-位」到储放区域找货。
+    final places = row.isSheet ? row.sheet!.placeSummary : null;
+    final suffix = (places == null || places.isEmpty) ? '' : ' · $places';
+    return '已入库待检($count 行)$suffix';
+  }
+
   List<MasterColumnDef<_DisposalRow>> get _columns => [
     MasterColumnDef(
       key: 'docType',
@@ -845,6 +863,24 @@ class _QualityPendingDisposalPageState
       label: '状态',
       width: 100,
       value: _statusLabel,
+    ),
+    // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的单，品质部要到储放区域检验。
+    MasterColumnDef(
+      key: 'storage',
+      label: '储放位置',
+      width: 130,
+      value: _storageText,
+      cellBuilder: (context, row) {
+        final text = _storageText(row);
+        if (_preStockedLineCount(row) == 0) return Text(text);
+        return Text(
+          text,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: UtenColors.error,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      },
     ),
     MasterColumnDef(
       key: 'itemCount',
@@ -1252,10 +1288,25 @@ class _ProcurementInspectionDetailPageState
       );
     }
     final theme = Theme.of(context);
+    final preStockedItems = [
+      for (final item in _items)
+        if (item.preStocked != null) item,
+    ];
     return UtenContentContainer.wide(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 先入库后检(V596)：顶部标红——货品已在库位上，不在待检区。
+          if (preStockedItems.isNotEmpty ||
+              (_receipt?.hasPreStockedItems == true && _items.isEmpty)) ...[
+            UtenInlineNotice(
+              key: const Key('iqc-pre-stocked-notice'),
+              level: UtenInlineNoticeLevel.error,
+              title: '货品已入库，需到对应储放区域检查',
+              message: _preStockedNoticeMessage(preStockedItems),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
           _buildSummaryCard(theme),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s8),
@@ -1270,6 +1321,22 @@ class _ProcurementInspectionDetailPageState
         ],
       ),
     );
+  }
+
+  /// 顶部标红正文：逐行列出「货品 → 仓库 / 库位」（最多 3 行，其余看表格）。
+  String _preStockedNoticeMessage(List<ProcurementInspectionItem> items) {
+    if (items.isEmpty) {
+      return '仓库已把本单货品先入库上架，储放位置见下方明细的「储放位置」列。'
+          '合格后系统自动按上架位置转正入库；不合格由仓库从库位取出登记退回。';
+    }
+    final shown = items.take(3).toList(growable: false);
+    final lines = [
+      for (final item in shown)
+        '${item.goodsName ?? item.goodsCode ?? '货品'} → ${item.preStocked!.label}',
+      if (items.length > shown.length) '另 ${items.length - shown.length} 行见明细表',
+    ].join('；');
+    return '本单 ${items.length} 行已先入库上架：$lines。'
+        '请到对应储放区域检验；合格后系统自动按上架位置转正入库，不合格由仓库从库位取出登记退回。';
   }
 
   Widget _buildSummaryCard(ThemeData theme) {
@@ -1454,6 +1521,26 @@ class _ProcurementInspectionDetailPageState
       label: '来源订货单',
       width: 160,
       value: (item) => item.sourceOrderNo ?? '—',
+    ),
+    // 先入库后检(V596)：已上架的行标红给出「仓库 / 库位」，去库位找货检验。
+    MasterColumnDef(
+      key: 'preStocked',
+      label: '储放位置',
+      width: 200,
+      value: (item) => item.preStocked?.label ?? '待检区',
+      cellBuilder: (context, item) {
+        final location = item.preStocked;
+        if (location == null) return const Text('待检区');
+        return Text(
+          '已入库 · ${location.label}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: UtenColors.error,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      },
     ),
     MasterColumnDef(
       key: 'receivedBaseQty',

@@ -1,3 +1,5 @@
+import '../../warehouse/models/warehouse_pre_stocked_location.dart';
+
 class ProductionFqcInspection {
   const ProductionFqcInspection({
     required this.id,
@@ -33,6 +35,7 @@ class ProductionFqcInspection {
     this.place,
     this.registrationRemark,
     this.receiverName,
+    this.preStocked,
   });
 
   final String id;
@@ -72,6 +75,10 @@ class ProductionFqcInspection {
   final String? place;
   final String? registrationRemark;
   final String? receiverName;
+
+  /// 先入库后检(V597)：仓库登记时已把实物上架到成品仓库位，品质部到储放区域检验；
+  /// 合格由系统按此位置自动点收入库。null = 原流程(合格后仓库再点收)。
+  final WarehousePreStockedLocation? preStocked;
 
   bool get active => status == 'PENDING' || status == 'PARTIAL';
 
@@ -115,6 +122,7 @@ class ProductionFqcInspection {
       place: json['place'] as String?,
       registrationRemark: json['registrationRemark'] as String?,
       receiverName: json['receiverName'] as String?,
+      preStocked: WarehousePreStockedLocation.tryParse(json['preStocked']),
     );
   }
 }
@@ -137,6 +145,8 @@ class ProductionFqcInspectionSheet {
     this.goodsSummary,
     required this.status,
     required this.createdAt,
+    this.preStockedItemCount = 0,
+    this.placeSummary,
   });
 
   final String id;
@@ -156,6 +166,14 @@ class ProductionFqcInspectionSheet {
   final String? goodsSummary;
   final String status;
   final DateTime createdAt;
+
+  /// 先入库后检(V597)：仍在等结论且已上架到库位的行数(0 = 原流程)。
+  final int preStockedItemCount;
+
+  /// 登记库位去重清单（2026-09-17）：待检队列「库位号」列，品质部按此到储放区域检验。
+  final String? placeSummary;
+
+  bool get hasPreStockedItems => preStockedItemCount > 0;
 
   bool get active => status == 'ACTIVE';
 
@@ -178,6 +196,8 @@ class ProductionFqcInspectionSheet {
         createdAt:
             DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
+        preStockedItemCount: (json['preStockedItemCount'] as num?)?.toInt() ?? 0,
+        placeSummary: json['placeSummary'] as String?,
       );
 }
 

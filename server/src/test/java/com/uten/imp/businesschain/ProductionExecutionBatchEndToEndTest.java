@@ -58,6 +58,7 @@ class ProductionExecutionBatchEndToEndTest {
 
     @Test void workshopWorkerCanRecheckOwnMaterialsAndReceiveDrawCapabilitiesWithoutPlannerReadScope() {
         Case c=create("split-recheck-scope",false);
+        confirmRoute(c.plan(),c.segment(),"FULL_KIT","route-split-recheck-scope-"+c.segment());
         var waiting=segments.list(c.plan()).getFirst();
         assertTrue(waiting.canSplitBatch());assertFalse(waiting.canRequestDraw());
         receive(c,"200");fixture.loginAs(c.workerUser());
@@ -73,6 +74,7 @@ class ProductionExecutionBatchEndToEndTest {
 
     @Test void requestedPartialMaterialIsTheWarehouseLimitUntilTheWorkshopRequestsTheRemainder() {
         Case c=create("draw-request-partial",false,"100",true);
+        confirmRoute(c.plan(),c.segment(),"FULL_KIT","route-draw-request-partial-"+c.segment());
         receive(c,"200");receive(c,c.secondMaterial(),"300");fixture.loginAs(c.workerUser());
         var ready=segments.recheckMaterial(c.plan(),c.segment(),new SegmentTransitionRequest(version(c.segment()),"partial-ready-"+c.segment()));
         var items=List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(c.segment(),ready.lockVersion()));
@@ -112,6 +114,7 @@ class ProductionExecutionBatchEndToEndTest {
 
     @Test void thousandOrderedProductsCanFinishTenCompleteKitsThenTheRemainingNineHundredAndNinety() {
         Case c=create("split-thousand",false,"1000",true);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-thousand-"+c.segment());
         receive(c,"20");fixture.loginAs(c.workerUser());
         var missing=batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),null));
         qty("0",missing.maxReadyQty());
@@ -157,6 +160,7 @@ class ProductionExecutionBatchEndToEndTest {
 
     @Test void twoPartialReceiptsCreateRequestedCompleteBatchesAndPreserveRemainingDemand() {
         Case c=create("split-linear",false);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-linear-"+c.segment());
         receive(c,"40");fixture.loginAs(c.workerUser());
         var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),null));
         qty("20",preview.maxReadyQty());qty("80",preview.remainingQty());
@@ -182,6 +186,7 @@ class ProductionExecutionBatchEndToEndTest {
 
     @Test void fixedBatchMaterialIsChargedOnceAndZeroIncrementContinuationNeedsActualPriorIssue() {
         Case c=create("split-fixed",true);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-fixed-"+c.segment());
         receive(c,"1");fixture.loginAs(c.workerUser());
         var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),new BigDecimal("20")));
         var first=batches.submit(new ProductionExecutionBatch.SubmitRequest(c.segment(),preview.expectedVersion(),preview.quantity(),preview.fingerprint(),"fixed-first-"+c.segment()));
@@ -209,6 +214,7 @@ class ProductionExecutionBatchEndToEndTest {
 
     @Test void fixedPackageBoundaryUsesCumulativeDemandAcrossThreeBatchesInsteadOfAverageConsumption() {
         Case c=create("split-package-boundary",true,"1000",false);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-package-boundary-"+c.segment());
         receive(c,"2");fixture.loginAs(c.workerUser());
         var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),new BigDecimal("150")));
         qty("200",preview.maxReadyQty());qty("2",preview.summaries().getFirst().qty());
@@ -228,7 +234,8 @@ class ProductionExecutionBatchEndToEndTest {
     }
 
     @Test void manualDeferralAndStaleVersionCannotBeBypassedByBatchSubmission() {
-        Case c=create("split-negative",false);fixture.loginAs(c.workerUser());
+        Case c=create("split-negative",false);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-negative-"+c.segment());fixture.loginAs(c.workerUser());
         long version=version(c.segment());
         assertThrows(ApiException.class,()->batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version+1,null)));
         fixture.loginAs(c.world().superAdminUserId());
@@ -251,7 +258,8 @@ class ProductionExecutionBatchEndToEndTest {
     }
 
     @Test void qualifiedLotsUseArrivalOrderAcrossActualWarehousesAndPreviewDoesNotChangeBusinessFacts() {
-        Case c=create("split-fifo",false);fixture.loginAs(c.world().superAdminUserId());
+        Case c=create("split-fifo",false);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-fifo-"+c.segment());fixture.loginAs(c.world().superAdminUserId());
         UUID analysis=db.queryForObject("SELECT material_analysis_id FROM production_plans WHERE id=?",UUID.class,c.plan());
         var view=analyses.detail(analysis);
         UUID materialLine=view.flatMaterials().stream().filter(material->material.goodsId().equals(c.material()))
@@ -292,7 +300,8 @@ class ProductionExecutionBatchEndToEndTest {
     }
 
     @Test void concurrentDifferentRequestsCanOnlySplitTheSameWaitingSourceOnce() throws Exception {
-        Case c=create("split-concurrent",false);receive(c,"40");fixture.loginAs(c.workerUser());
+        Case c=create("split-concurrent",false);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-concurrent-"+c.segment());receive(c,"40");fixture.loginAs(c.workerUser());
         var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),new BigDecimal("20")));
         var start=new java.util.concurrent.CountDownLatch(1);
         var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
@@ -399,6 +408,11 @@ class ProductionExecutionBatchEndToEndTest {
         assertTrue(earlyFinal.getMessage().contains("分批报工不调整原批准总量"));
         item.setIsFinal(false);item.setQty(new BigDecimal(quantity));
         assertNotNull(reports.create(report).getId());
+    }
+
+    /** V599 / ADR-091：开工前先确认生产路线——recheck/开工/领料=FULL_KIT，分批提交=BATCH。 */
+    private void confirmRoute(UUID planId,UUID segmentId,String route,String key){
+        segments.confirmRoute(planId,segmentId,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(version(segmentId),key,route));
     }
     private long version(UUID id){return db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,id);}
     private String status(UUID id){return db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,id);}

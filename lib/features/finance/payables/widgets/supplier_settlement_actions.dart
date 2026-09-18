@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -233,37 +234,38 @@ class _SupplierSettlementCreatePanelState
             UtenFloatingActionGroup.scrollClearance,
           ),
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: _supplierId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: '供应商(必选)'),
+            UtenDropdownField(
+              label: '供应商(必选)',
+              value: _supplierId,
+              allowClear: false,
               items: [
                 for (final entry in names.supplierEntries.entries)
-                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                  UtenDropdownItem(value: entry.key, label: entry.value),
               ],
               onChanged: (value) => setState(() => _supplierId = value),
             ),
             const SizedBox(height: UtenSpacing.s8),
-            DropdownButtonFormField<String>(
-              initialValue: _currencyId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: '币种(必选)'),
+            UtenDropdownField(
+              label: '币种(必选)',
+              value: _currencyId,
+              allowClear: false,
+              searchable: false,
               items: [
                 for (final entry in names.currencyEntries.entries)
-                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                  UtenDropdownItem(value: entry.key, label: entry.value),
               ],
               onChanged: (value) => setState(() => _currencyId = value),
             ),
             const SizedBox(height: UtenSpacing.s8),
-            DropdownButtonFormField<String>(
-              initialValue: _settlementMethodId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: '结算方式(必选)'),
+            UtenDropdownField(
+              label: '结算方式(必选)',
+              value: _settlementMethodId,
+              allowClear: false,
               items: [
                 for (final method in methods)
-                  DropdownMenuItem(
+                  UtenDropdownItem(
                     value: method.id,
-                    child: Text('${method.code} · ${method.name}'),
+                    label: '${method.code} · ${method.name}',
                   ),
               ],
               onChanged: (value) => setState(() => _settlementMethodId = value),

@@ -3,6 +3,9 @@ import 'warehouse_iqc_stock_in.dart'
         WarehouseInboundAllocation,
         WarehouseIqcStockInConfirmItem,
         WarehouseIqcStockInReceiptType;
+import 'warehouse_pre_stocked_location.dart';
+
+export 'warehouse_pre_stocked_location.dart';
 
 /// 检查明细行的逐行判定（详情页表格前导图标口径）。
 enum WarehouseQualityLineVerdict {
@@ -76,6 +79,7 @@ class WarehouseQualityResultTask {
     this.warehouseId,
     this.warehouseName,
     this.lastActivityAt,
+    this.preStockedLineCount = 0,
   });
 
   final WarehouseIqcStockInReceiptType receiptType;
@@ -97,7 +101,19 @@ class WarehouseQualityResultTask {
   final int pendingReturnCount;
   final String? lastActivityAt;
 
+  /// 先入库后质检(V596)：仍在等结论且已上架的明细行数(>0 = 实物已在库位、合格自动转正)。
+  final int preStockedLineCount;
+
   String get receiptTypeValue => receiptType.apiValue;
+
+  /// 等结论的行里还有未上架的：可以补做「先入库上架」。
+  bool get hasPreStockableLines =>
+      !workStatus.isCompleted && openItemCount > preStockedLineCount;
+
+  /// 列表「作业状态」列：等待检查结果时补一句上架进度，仓库一眼看出实物在哪。
+  String get workStatusLabel => preStockedLineCount > 0
+      ? '${workStatus.label} · 已上架 $preStockedLineCount 行'
+      : workStatus.label;
 
   /// 列表「品质结论」列：合格 / 不合格 / 待检 行数一眼可比。
   String get verdictLabel {
@@ -127,6 +143,7 @@ class WarehouseQualityResultTask {
         pendingSliceCount: _integer(json['pendingSliceCount']),
         pendingReturnCount: _integer(json['pendingReturnCount']),
         lastActivityAt: _text(json['lastActivityAt']),
+        preStockedLineCount: _integer(json['preStockedLineCount']),
       );
 }
 
@@ -156,7 +173,11 @@ class WarehouseQualityResultDetail {
     this.supplierName,
     this.warehouseId,
     this.warehouseName,
+    this.preStockedLineCount = 0,
   });
+
+  /// 服务端动作码：先入库上架(需 warehouse_iqc_stock_in:before_inspection)。
+  static const actionPreStockIn = 'PRE_STOCK_IN';
 
   final WarehouseIqcStockInReceiptType receiptType;
   final String receiptId;
@@ -182,8 +203,21 @@ class WarehouseQualityResultDetail {
   final List<WarehouseQualityStockInHistoryItem> history;
   final List<WarehouseQualityRejectionCase> rejections;
 
+  /// 先入库后质检(V596)：仍在等结论且已上架的明细行数。
+  final int preStockedLineCount;
+
   bool get canConfirm =>
       !completed && items.isNotEmpty && allowedActions.contains('CONFIRM');
+
+  /// 仍有等结论且未上架的行，且服务端授予了先入库动作。
+  bool get canPreStockIn =>
+      !completed &&
+      allowedActions.contains(actionPreStockIn) &&
+      lines.any((line) => line.preStockable);
+
+  /// 等结论且未上架、可被先入库上架的行。
+  List<WarehouseQualityInspectionLine> get preStockableLines =>
+      [for (final line in lines) if (line.preStockable) line];
 
   String get qualityStatusLabel => switch (qualityStatus.trim().toUpperCase()) {
     'IN_PROGRESS' => '品质检验进行中',
@@ -219,6 +253,7 @@ class WarehouseQualityResultDetail {
       completed: json['completed'] == true,
       containsOwnRelease: json['containsOwnRelease'] == true,
       allowedActions: _stringSet(json['allowedActions']),
+      preStockedLineCount: _integer(json['preStockedLineCount']),
       lines: [
         for (final row in lineRows.whereType<Map<Object?, Object?>>())
           WarehouseQualityInspectionLine.fromJson(
@@ -266,6 +301,8 @@ class WarehouseQualityInspectionLine {
     this.unitName,
     this.warehouseId,
     this.warehouseName,
+    this.preStocked,
+    this.placeHint,
   });
 
   final String inspectionItemId;
@@ -283,6 +320,19 @@ class WarehouseQualityInspectionLine {
   final double warehouseStockedBaseQty;
   final double pendingStockBaseQty;
   final String lineStatus;
+
+  /// 先入库后质检(V596)：该行实物已上架的仓/库位；null = 走原流程。
+  final WarehousePreStockedLocation? preStocked;
+
+  /// 建议库位(仓库×货品×颜色学习偏好，回落货品主档)；先入库上架页预填。
+  final String? placeHint;
+
+  /// 等结论、尚无任何结论且未上架的行可以先入库上架(服务端同口径)。
+  bool get preStockable =>
+      preStocked == null &&
+      lineStatus.trim().toUpperCase() == 'PENDING' &&
+      passedBaseQty <= 0 &&
+      failedBaseQty <= 0;
 
   String get goodsLabel => [
     goodsCode,
@@ -331,6 +381,8 @@ class WarehouseQualityInspectionLine {
         warehouseStockedBaseQty: _decimal(json['warehouseStockedBaseQty']),
         pendingStockBaseQty: _decimal(json['pendingStockBaseQty']),
         lineStatus: _text(json['lineStatus']) ?? 'PENDING',
+        preStocked: WarehousePreStockedLocation.tryParse(json['preStocked']),
+        placeHint: _text(json['placeHint']),
       );
 }
 
@@ -449,6 +501,7 @@ class WarehouseQualityStockInHistoryItem {
     this.warehouseId,
     this.warehouseName,
     this.actualAllocations = const [],
+    this.origin = 'WAREHOUSE_CONFIRM',
   });
 
   final String stockInItemId;
@@ -468,6 +521,13 @@ class WarehouseQualityStockInHistoryItem {
   final String? warehouseId;
   final String? warehouseName;
   final List<WarehouseInboundAllocation> actualAllocations;
+
+  /// 入库批次来源：WAREHOUSE_CONFIRM(仓库确认) / PRE_STOCKED_AUTO(先入库后检合格自动转正)。
+  final String origin;
+
+  bool get isAutoFromPreStock => origin.trim().toUpperCase() == 'PRE_STOCKED_AUTO';
+
+  String get originLabel => isAutoFromPreStock ? '先入库后检 · 合格自动转正' : '仓库确认入库';
 
   String get goodsLabel => [
     goodsCode,
@@ -495,6 +555,7 @@ class WarehouseQualityStockInHistoryItem {
     warehouseId: _text(json['warehouseId']),
     warehouseName: _text(json['warehouseName']),
     actualAllocations: _allocationList(json['actualAllocations']),
+    origin: _text(json['origin']) ?? 'WAREHOUSE_CONFIRM',
   );
 }
 
@@ -517,6 +578,7 @@ class WarehouseQualityRejectionCase {
     this.returnNote,
     this.returnRecordedByName,
     this.returnRecordedAt,
+    this.preStocked,
   });
 
   final String id;
@@ -535,6 +597,9 @@ class WarehouseQualityRejectionCase {
   final String? returnRecordedAt;
   final int rowVersion;
   final bool canRecordReturn;
+
+  /// 先入库后质检(V596)：不合格实物当前所在的上架仓/库位，仓库据此取货退回。
+  final WarehousePreStockedLocation? preStocked;
 
   String get goodsLabel => [
     goodsCode,
@@ -568,6 +633,7 @@ class WarehouseQualityRejectionCase {
         returnNote: _text(json['returnNote']),
         returnRecordedByName: _text(json['returnRecordedByName']),
         returnRecordedAt: _text(json['returnRecordedAt']),
+        preStocked: WarehousePreStockedLocation.tryParse(json['preStocked']),
         rowVersion: _integer(json['rowVersion']),
         canRecordReturn: json['canRecordReturn'] == true,
       );

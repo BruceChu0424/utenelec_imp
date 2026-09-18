@@ -7,6 +7,7 @@
 // 行双击进详情；原卡片点赞能力移入行右键/长按菜单（点赞/取消点赞）。
 // 2026-09-10 表头筛选：「状态」列筛选桶 = 四态（已提交/处理中/已采纳/未采纳），
 // 选中后下推后端 status 参数并回第 1 页（非页内裁剪，与分段正交）。
+// 2026-09-16 增「类别」列筛选桶（固定六类，下推后端 category 参数）。
 // 分页走表格内置翻页条（provider 补 goToPage——同批次一工资条先例）。
 // 空态/FAB 提交入口不变。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
@@ -41,6 +42,7 @@ class SuggestionListPage extends ConsumerWidget {
     final list = ref.watch(suggestionListProvider);
     final scope = ref.watch(suggestionScopeProvider);
     final statusFilter = ref.watch(suggestionStatusFilterProvider);
+    final categoryFilter = ref.watch(suggestionCategoryFilterProvider);
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.lightbulb_outline_rounded,
       emptyMessage: scope == SuggestionScope.mine ? '您还没有提交过建议' : '暂无建议',
@@ -70,9 +72,16 @@ class SuggestionListPage extends ConsumerWidget {
             key: const Key('suggestion-list-table'),
             columns: _columns,
             items: suggestions,
-            facets: {'status': _statusFacets()},
+            facets: {
+              'status': _statusFacets(),
+              // 类别是固定枚举（六类），前端硬编码桶；value=枚举名（后端 category 码）。
+              'category': _categoryFacets(),
+            },
             nullCounts: const {},
-            filters: {'status': statusFilter?.name},
+            filters: {
+              'status': statusFilter?.name,
+              'category': categoryFilter?.name,
+            },
             onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
             // 双击行进入建议详情（保留现有路由与 push 语义）。
             onRowTap: (s) => context.push(RoutePath.suggestionDetail(s.id)),
@@ -131,12 +140,25 @@ List<MasterFacetBucket> _statusFacets() => [
     MasterFacetBucket(value: status.name, count: 0, label: status.label),
 ];
 
-/// 表头状态筛选 → 下推后端 status（provider 重建即回第 1 页）。
+/// 「类别」列筛选桶（2026-09-16）：固定六类，value = 枚举名（与后端 category 码一致）。
+List<MasterFacetBucket> _categoryFacets() => [
+  for (final category in SuggestionCategory.values)
+    MasterFacetBucket(value: category.name, count: 0, label: category.label),
+];
+
+/// 表头筛选 → 下推后端（provider 重建即回第 1 页）：status / category。
 void _onFilterChanged(WidgetRef ref, String key, String? value) {
-  if (key != 'status') return;
-  ref.read(suggestionStatusFilterProvider.notifier).state = value == null
-      ? null
-      : SuggestionStatus.values.where((s) => s.name == value).firstOrNull;
+  if (key == 'status') {
+    ref.read(suggestionStatusFilterProvider.notifier).state = value == null
+        ? null
+        : SuggestionStatus.values.where((s) => s.name == value).firstOrNull;
+    return;
+  }
+  if (key == 'category') {
+    ref.read(suggestionCategoryFilterProvider.notifier).state = value == null
+        ? null
+        : SuggestionCategory.values.where((c) => c.name == value).firstOrNull;
+  }
 }
 
 Future<void> _toggleLike(BuildContext context, WidgetRef ref, String id) async {

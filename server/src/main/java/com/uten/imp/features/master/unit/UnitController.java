@@ -53,9 +53,10 @@ public class UnitController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String dimension,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(new UnitQueryFilter(keyword, nullFields, code, name, status), page, size);
+        return service.list(new UnitQueryFilter(keyword, nullFields, code, name, status, dimension), page, size);
     }
 
     @GetMapping("/facets")

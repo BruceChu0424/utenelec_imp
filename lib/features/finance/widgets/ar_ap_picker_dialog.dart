@@ -704,6 +704,10 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       key: 'salesOrders',
       label: _isAr ? '销售订单号' : '关联单号',
       width: 230,
+      // 单行省略号（2026-09-16 全站口径）+ 随文本自动加宽，不再折两行撑高整行。
+      textOf: (row) => row.item.salesOrderNos.isEmpty
+          ? '—'
+          : row.item.salesOrderNos.join('、'),
       cellBuilder: (context, row) => Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -712,12 +716,14 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
             row.item.salesOrderNos.isEmpty
                 ? '—'
                 : row.item.salesOrderNos.join('、'),
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           if (_isAr && row.item.salesOrderIds.length > 1)
             Text(
               '多订单应收：审核后按不可变来源顺序分配并留痕',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -732,10 +738,13 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       // 桶按「来源类型」聚合（单号逐行唯一，带上就没有收敛意义）。
       filterValueOf: (row) =>
           _bucketOrNull(financeArApSourceTypeLabel(row.item.sourceDocType)),
+      textOf: (row) =>
+          '${financeArApSourceTypeLabel(row.item.sourceDocType)}'
+          '${row.item.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.item.sourceDocNo}' : ''}',
       cellBuilder: (context, row) => Text(
         '${financeArApSourceTypeLabel(row.item.sourceDocType)}'
         '${row.item.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.item.sourceDocNo}' : ''}',
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
     ),

@@ -1,25 +1,34 @@
-// 客户/供应商详情整页（V579，2026-09-14）。
+// 客户/供应商详情整页（V579，2026-09-14；2026-09-17 布局改版）。
 //
-// 双击列表行进入（替代原 560 宽弹窗——用户反馈弹窗太小、一行固定两列不够看）：
-//  - 页宽即内容宽，基本信息用 UtenFormGrid 按容器宽自适应列数（屏幕越大一行越多）；
-//  - 联系方式/地址为多值子表（party_contact_methods / party_addresses），
-//    支持添加多条「手机/电话/传真/邮箱/网址」与「收货/开票/其它」地址；
-//  - 跟进记录（party_activity_records）：客户行为/投诉/违约扣信誉分等；
-//    客户信誉分 credit_score 首条评分按 100±delta 初始化；
-//  - 操作（右下悬浮组）：编辑（公共 showClientMasterEdit/showSupplierMasterEdit）、
-//    负责人和可见人（客户）、启停、删除。
+// 改版对齐员工详情/我的页的家族范式（用户 2026-09-17 口径：原五张全宽大卡片
+// 字小且乱 → 全部重新布局）：
+//  - Hero 身份卡：圆形首字标识 + 大号名称 + 状态/等级徽章 + 编号/分类/负责人元信息；
+//    客户附「信誉分/信用额度/期初应收/铺底额」统计行（大号数字）。
+//  - Tab 分区（UtenCollapsingHeaderScrollView：头部随滚动收起、Tab 栏吸顶）：
+//    客户＝概览/销售条款与财务/联系方式/地址/跟进与行为记录；供应商＝概览/联系方式/
+//    地址/跟进记录。正文键值一律「14 号灰标签 + 16 号加重值」，长文本（地址/备注）整行铺开。
+//  - 就地编辑（2026-09-15 退役弹窗的延续）：客户点「编辑」后**各分区原地变输入**——
+//    概览 Tab 渲染 基础/联系/地址/资质/其他 分组表单，销售条款与财务 Tab 渲染 财务
+//    分组表单；右下悬浮组换「取消/保存」，保存时合并两张表单一次提交，校验失败自动
+//    跳回出错的那张表单所在 Tab。供应商沿用 showSupplierMasterEdit 弹窗。
+//  - 联系方式/地址为多值子表（party_contact_methods / party_addresses），跟进记录
+//    （party_activity_records）客户行为/投诉/违约扣信誉分等；信誉分首条按 100±delta 起算。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -33,7 +42,6 @@ import '../repositories/party_directory_repository.dart';
 import '../models/supplier_node.dart';
 import '../repositories/supplier_repository.dart';
 import '../widgets/client_access_panel.dart';
-import '../../../components/buttons/click_guard.dart';
 import '../widgets/client_master_edit.dart';
 import '../models/currency_node.dart';
 import '../models/reference_method_option.dart';
@@ -51,7 +59,8 @@ class PartyDetailPage extends ConsumerStatefulWidget {
   ConsumerState<PartyDetailPage> createState() => _PartyDetailPageState();
 }
 
-class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
+class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
+    with SingleTickerProviderStateMixin {
   bool get _isClient => widget.partyType == 'client';
 
   ClientDetail? _client;
@@ -61,13 +70,20 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
   List<PartyActivityRecord> _activities = const [];
   int? _creditScore;
 
-  // ===== 就地编辑（2026-09-15 用户口径：详情页直接编辑，不再弹窗） =====
+  // ===== 就地编辑（2026-09-15 起：详情页原地变输入；2026-09-17 按分区拆两张表单） =====
   bool _editing = false;
-  final GlobalKey<MasterEditFormState> _editFormKey =
+  final GlobalKey<MasterEditFormState> _overviewFormKey =
+      GlobalKey<MasterEditFormState>();
+  final GlobalKey<MasterEditFormState> _financeFormKey =
       GlobalKey<MasterEditFormState>();
   List<ReferenceMethodOption> _editSettlements = const [];
   List<CurrencyListItem> _editCurrencies = const [];
   bool _scoreLoaded = false;
+
+  late final TabController _tab = TabController(
+    length: _isClient ? 5 : 4,
+    vsync: this,
+  );
 
   bool _loading = true;
   bool _busy = false;
@@ -98,6 +114,12 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -184,6 +206,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
     return _supplier?.name ?? _supplier?.code ?? '供应商详情';
   }
 
+  List<String> get _tabLabels => _isClient
+      ? const ['概览', '销售条款与财务', '联系方式', '地址', '跟进与行为记录']
+      : const ['概览', '联系方式', '地址', '跟进记录'];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -229,33 +255,35 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
                   AbsorbPointer(
                     absorbing: _busy,
                     child: UtenContentContainer(
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenFloatingActionGroup.scrollClearance,
-                        ),
-                        children: [
-                          _headerCard(theme),
-                          const SizedBox(height: UtenSpacing.s12),
-                          // 编辑态整页换成表单（2026-09-15：不再弹窗，详情页就地编辑）。
-                          if (_editing)
-                            _inlineEditCard(theme)
-                          else ...[
-                            _basicInfoCard(theme),
-                            const SizedBox(height: UtenSpacing.s12),
-                            if (_isClient) ...[
-                              _termsCard(theme),
-                              const SizedBox(height: UtenSpacing.s12),
-                            ],
-                            _contactsCard(theme),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _addressesCard(theme),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _activitiesCard(theme),
-                          ],
-                        ],
+                      // Builder 推迟 tabBar：preferredSize 要在数据加载后取。
+                      child: Builder(
+                        builder: (context) {
+                          final tabBar = _tabBar(theme);
+                          return UtenCollapsingHeaderScrollView(
+                            // 头部身份卡随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
+                            // 各 Tab 正文内滚（ListView 无显式 controller，
+                            // 自动拾取注入的 PrimaryScrollController 参与联动）。
+                            collapsingHeader: Column(
+                              children: [
+                                const SizedBox(height: UtenSpacing.s16),
+                                _heroCard(theme),
+                                const SizedBox(height: UtenSpacing.s12),
+                              ],
+                            ),
+                            pinnedHeader: Container(
+                              color: theme.scaffoldBackgroundColor,
+                              child: tabBar,
+                            ),
+                            pinnedHeaderExtent: tabBar.preferredSize.height,
+                            body: TabBarView(
+                              controller: _tab,
+                              children: [
+                                for (var i = 0; i < _tab.length; i++)
+                                  _tabView(theme, i),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -274,12 +302,60 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
     );
   }
 
-  // ======================= 头部卡：名称 + 状态 + 信誉分 =======================
+  TabBar _tabBar(ThemeData theme) => TabBar(
+    controller: _tab,
+    isScrollable: true,
+    tabAlignment: TabAlignment.start,
+    labelStyle: theme.textTheme.titleSmall?.copyWith(
+      fontWeight: FontWeight.w600,
+    ),
+    tabs: [for (final label in _tabLabels) Tab(text: label)],
+  );
 
-  Widget _headerCard(ThemeData theme) {
+  /// Tab → 内容：客户 0 概览/1 条款财务/2 联系/3 地址/4 跟进；
+  /// 供应商 0 概览/1 联系/2 地址/3 跟进（无条款 Tab）。
+  Widget _tabView(ThemeData theme, int index) {
+    if (index == 0) return _overviewTab(theme);
+    if (_isClient) {
+      if (index == 1) return _termsTab(theme);
+      index -= 2;
+    } else {
+      index -= 1;
+    }
+    return switch (index) {
+      0 => _contactsTab(theme),
+      1 => _addressesTab(theme),
+      _ => _activitiesTab(theme),
+    };
+  }
+
+  /// Tab 正文：竖向 ListView；编辑态禁用下拉刷新（刷新会重建表单丢未保存修改）。
+  Widget _tabBody(List<Widget> sections) {
+    final list = ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s16,
+        UtenSpacing.s16,
+        UtenSpacing.s16,
+        UtenFloatingActionGroup.scrollClearance,
+      ),
+      children: sections,
+    );
+    return _editing ? list : RefreshIndicator(onRefresh: _load, child: list);
+  }
+
+  // ======================= Hero 身份卡 =======================
+
+  Widget _heroCard(ThemeData theme) {
     final status = _isClient ? _client?.status : _supplier?.status;
     final active = status == null || status == '使用';
     final code = _isClient ? _client?.code : _supplier?.code;
+    final fullName = _isClient ? _client?.fullName : _supplier?.description;
+    final category = _isClient
+        ? _client?.categoryName
+        : _supplier?.categoryName;
+    final rank = _isClient ? _client?.clientRank?.trim() : null;
+    final linkman = _isClient ? _client?.linkman : _supplier?.linkman;
     final owner = _isClient
         ? (_client?.ownerEmployeeName?.trim().isNotEmpty == true
               ? _client!.ownerEmployeeName
@@ -287,265 +363,478 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
         : (_supplier?.ownerEmployeeName?.trim().isNotEmpty == true
               ? _supplier!.ownerEmployeeName
               : '未分配');
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _title ?? '',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+    final meta1 = [
+      if (code?.isNotEmpty == true) '编号 $code',
+      if (category?.isNotEmpty == true) '分类 $category',
+      if (fullName?.isNotEmpty == true)
+        _isClient ? '全称 $fullName' : '描述 $fullName',
+    ].join(' · ');
+    final meta2 = [
+      _isClient ? '负责人 $owner' : '业务员 $owner',
+      if (linkman?.isNotEmpty == true) '联系人 $linkman',
+    ].join(' · ');
+    final name = (_title?.trim().isNotEmpty == true)
+        ? _title!.trim()
+        : (_isClient ? '客户' : '供应商');
+    return UtenCard(
+      padding: const EdgeInsets.all(UtenSpacing.s20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _heroAvatar(theme, name),
+              const SizedBox(width: UtenSpacing.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: UtenSpacing.s8,
+                      runSpacing: UtenSpacing.s4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          name,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        UtenStatusBadge(
+                          label: status ?? '—',
+                          type: active
+                              ? UtenStatusBadgeType.success
+                              : UtenStatusBadgeType.danger,
+                        ),
+                        if (rank?.isNotEmpty == true)
+                          UtenStatusBadge(
+                            label: rank!,
+                            type: UtenStatusBadgeType.info,
+                          ),
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                    if (meta1.isNotEmpty) ...[
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        meta1,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    if (meta2.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        meta2,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        (active
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.error)
-                            .withValues(alpha: 0.12),
-                    borderRadius: UtenRadius.smAll,
-                  ),
-                  child: Text(
-                    status ?? '—',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: active
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.error,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s16,
-              runSpacing: UtenSpacing.s4,
-              children: [
-                Text(
-                  '编号：${code?.isNotEmpty == true ? code : '—'}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  _isClient ? '负责人：$owner' : '业务员：$owner',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                if (_isClient && _scoreLoaded)
-                  Text(
-                    _creditScore == null
-                        ? '信誉分：未评估（首条扣分/加分记录按 100 起算）'
-                        : '信誉分：$_creditScore',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: (_creditScore ?? 100) < 60
-                          ? theme.colorScheme.error
-                          : theme.colorScheme.onSurfaceVariant,
-                      fontWeight: _creditScore == null ? null : FontWeight.w700,
-                    ),
-                  ),
-              ],
-            ),
+              ),
+            ],
+          ),
+          if (_isClient) ...[
+            const SizedBox(height: UtenSpacing.s16),
+            const Divider(height: 1),
+            const SizedBox(height: UtenSpacing.s12),
+            _statsRow(theme),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  // ======================= 基本信息卡（响应式网格） =======================
+  /// 圆形首字标识（无名称回退业务图标）。
+  Widget _heroAvatar(ThemeData theme, String name) {
+    final initial = name.isNotEmpty ? name.characters.first : null;
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.colorScheme.primary.withValues(alpha: 0.10),
+      ),
+      alignment: Alignment.center,
+      child: initial != null
+          ? Text(
+              initial,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
+              ),
+            )
+          : Icon(
+              _isClient ? Icons.business_rounded : Icons.factory_rounded,
+              size: 26,
+              color: theme.colorScheme.primary,
+            ),
+    );
+  }
 
+  /// 客户关键指标行：信誉分 / 信用额度 / 期初应收 / 铺底额（大号数字）。
+  Widget _statsRow(ThemeData theme) {
+    final d = _client!;
+    final scoreColor = (_creditScore ?? 100) < 60
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
+    final stats = <({String label, String value, Color? color, String? tip})>[
+      (
+        label: '信誉分',
+        value: !_scoreLoaded ? '—' : (_creditScore?.toString() ?? '未评估'),
+        color: scoreColor,
+        tip: '首条扣分/加分记录按 100 分起算，累计夹在 0-200',
+      ),
+      (label: '信用额度', value: _fmtMoney(d.credit), color: null, tip: null),
+      (label: '期初应收', value: _fmtMoney(d.initTotal), color: null, tip: null),
+      (label: '铺底额', value: _fmtMoney(d.creditFloor), color: null, tip: null),
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < stats.length; i++) ...[
+          if (i > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
+              child: Container(
+                width: 1,
+                height: 44,
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+          Expanded(child: _statBlock(theme, stats[i])),
+        ],
+      ],
+    );
+  }
+
+  Widget _statBlock(
+    ThemeData theme,
+    ({String label, String value, Color? color, String? tip}) stat,
+  ) {
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          stat.label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          stat.value,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: stat.color,
+          ),
+        ),
+      ],
+    );
+    return stat.tip == null
+        ? column
+        : Tooltip(message: stat.tip!, child: column);
+  }
+
+  // ======================= 分区与键值排版 =======================
+
+  /// 键值瓦片：14 号灰标签上、16 号加重值下（改版前 12/14 号，用户嫌小）。
   Widget _kv(ThemeData theme, String label, String? value) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
     children: [
       Text(
         label,
-        style: theme.textTheme.labelMedium?.copyWith(
+        style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
       const SizedBox(height: 2),
       Text(
-        value == null || value.trim().isEmpty ? '—' : value,
-        style: theme.textTheme.bodyMedium,
+        value == null || value.trim().isEmpty ? '—' : value.trim(),
+        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
       ),
     ],
   );
 
-  Widget _basicInfoCard(ThemeData theme) {
-    final rows = <Widget>[];
+  Widget _section(
+    ThemeData theme, {
+    required String title,
+    required IconData icon,
+    String? description,
+    Widget? trailing,
+    EdgeInsetsGeometry cardPadding = const EdgeInsets.all(UtenSpacing.s16),
+    required Widget child,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      UtenSectionHeader(title: title, icon: icon, trailing: trailing),
+      if (description != null) ...[
+        const SizedBox(height: UtenSpacing.s4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+          child: Text(
+            description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+      const SizedBox(height: UtenSpacing.s8),
+      UtenCard(padding: cardPadding, child: child),
+    ],
+  );
+
+  /// 长文本整行铺开（地址/收货地址/备注）。
+  Widget _fullKv(ThemeData theme, String label, String? value) => Padding(
+    padding: const EdgeInsets.only(top: UtenSpacing.s12),
+    child: _kv(theme, label, value),
+  );
+
+  Widget _remarkBody(ThemeData theme, String? remark) {
+    final has = remark?.trim().isNotEmpty == true;
+    return Text(
+      has ? remark!.trim() : '—',
+      style: theme.textTheme.bodyLarge?.copyWith(
+        height: 1.6,
+        color: has ? null : theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  // ======================= Tab 1：概览 =======================
+
+  Widget _overviewTab(ThemeData theme) {
     if (_isClient) {
       final d = _client!;
-      // 2026-09-15 去重口径：手机/电话/电话2/传真/邮箱/网址已在下方「联系方式」
-      // 卡按多条记录展示（主选那条同步回单据列），这里不再平铺重复；财务与
-      // 默认销售条款拆到独立的「销售条款与财务」卡。
-      rows.addAll([
-        _kv(theme, '全称', d.fullName),
-        _kv(theme, '等级', d.clientRank),
-        _kv(theme, '分类', d.categoryName),
-        _kv(theme, '当前访问', d.accessReasonLabel),
-        _kv(theme, '联系人', d.linkman),
-        _kv(theme, '区域', d.region),
-        _kv(theme, '地区', d.placeId),
-        _kv(theme, '地址', d.address),
-        _kv(theme, '收货地址', d.shipAddress),
-        _kv(theme, '运输方式', d.shipVia),
-        _kv(theme, '邮编', d.postcode),
-        _kv(theme, '法人', d.legalPerson),
-        _kv(theme, '备注', d.remark),
-      ]);
-    } else {
-      final d = _supplier!;
-      rows.addAll([
-        _kv(theme, '描述/全称', d.description),
-        _kv(theme, '分类', d.categoryName),
-        _kv(theme, '联系人', d.linkman),
-        _kv(theme, '手机', d.mobile),
-        _kv(theme, '电话', d.phone),
-        _kv(theme, '电话2', d.phone2),
-        _kv(theme, '传真', d.fax),
-        _kv(theme, '邮箱', d.email),
-        _kv(theme, '网址', d.website),
-        _kv(theme, '邮编', d.postcode),
-        _kv(theme, '地区', d.place),
-        _kv(theme, '地址', d.address),
-        _kv(theme, '收货地址', d.shipAddress),
-        _kv(theme, '运输方式', d.shipVia),
-        _kv(theme, '法人', d.legalPerson),
-        _kv(theme, '默认结算方式', d.defaultSettlementMethodName),
-        _kv(theme, '默认币种', d.defaultCurrencyName),
-        _kv(theme, '默认税率', d.defaultTaxRate?.toString()),
-        _kv(theme, '期初应付', d.initTotal?.toString()),
-        _kv(theme, '结算天数', d.tday?.toString()),
-        _kv(theme, '开户行', d.bank),
-        _kv(theme, '银行账号', d.bankAccount),
-        _kv(theme, '税号', d.taxId),
-        _kv(theme, '备注', d.remark),
+      // 编辑态：概览分区原地变输入（基础/联系/地址/资质/其他 分组表单）。
+      if (_editing) {
+        return _tabBody([_editFormCard(theme, finance: false)]);
+      }
+      // 2026-09-15 去重口径：手机/电话等已在「联系方式」Tab 按多条记录展示，
+      // 概览不再平铺重复；财务在「销售条款与财务」Tab。
+      return _tabBody([
+        _section(
+          theme,
+          title: '基本信息',
+          icon: Icons.badge_outlined,
+          child: UtenFormGrid(
+            children: [
+              _kv(theme, '全称', d.fullName),
+              _kv(theme, '等级', d.clientRank),
+              _kv(theme, '分类', d.categoryName),
+              _kv(theme, '当前访问', d.accessReasonLabel),
+              _kv(theme, '法人', d.legalPerson),
+            ],
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+        _section(
+          theme,
+          title: '地址与物流',
+          icon: Icons.local_shipping_outlined,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              UtenFormGrid(
+                children: [
+                  _kv(theme, '区域', d.region),
+                  _kv(theme, '地区', d.placeId),
+                  _kv(theme, '邮编', d.postcode),
+                  _kv(theme, '运输方式', d.shipVia),
+                ],
+              ),
+              _fullKv(theme, '地址', d.address),
+              _fullKv(theme, '收货地址', d.shipAddress),
+            ],
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+        _section(
+          theme,
+          title: '备注',
+          icon: Icons.notes_outlined,
+          child: _remarkBody(theme, d.remark),
+        ),
       ]);
     }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final d = _supplier!;
+    return _tabBody([
+      _section(
+        theme,
+        title: '基本信息',
+        icon: Icons.badge_outlined,
+        child: UtenFormGrid(
           children: [
-            Text(
-              '基本信息',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            // 容器宽自适应列数：大屏一行 4-5 列，窄屏自动回退（UtenFormGrid 断点）。
-            UtenFormGrid(children: rows),
+            _kv(theme, '描述/全称', d.description),
+            _kv(theme, '分类', d.categoryName),
+            _kv(theme, '法人', d.legalPerson),
           ],
         ),
       ),
-    );
-  }
-
-  // ======================= 销售条款与财务（客户） =======================
-
-  /// V592 默认销售条款单一事实源：三项默认（结账方式/货运策略/币种）+ 财务字段。
-  Widget _termsCard(ThemeData theme) {
-    final d = _client!;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
+      const SizedBox(height: UtenSpacing.s16),
+      _section(
+        theme,
+        title: '联系方式',
+        icon: Icons.contact_phone_outlined,
+        description: '快捷字段；多条明细在「联系方式」Tab 按类型逐条登记。',
+        child: UtenFormGrid(
+          children: [
+            _kv(theme, '手机', d.mobile),
+            _kv(theme, '电话', d.phone),
+            _kv(theme, '电话2', d.phone2),
+            _kv(theme, '传真', d.fax),
+            _kv(theme, '邮箱', d.email),
+            _kv(theme, '网址', d.website),
+            _kv(theme, '邮编', d.postcode),
+          ],
+        ),
+      ),
+      const SizedBox(height: UtenSpacing.s16),
+      _section(
+        theme,
+        title: '地址与物流',
+        icon: Icons.local_shipping_outlined,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '销售条款与财务',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '新建销售订货单选客户后按默认结账方式/货运策略/币种预填；每次下单自动记住最新选择，点「编辑」也可直接改。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
             UtenFormGrid(
               children: [
-                _kv(
-                  theme,
-                  '销售货款类型',
-                  salesPaymentTypeLabelOf(d.salesPaymentType),
-                ),
-                _kv(theme, '默认结账方式', d.defaultSettlementMethodName),
-                _kv(theme, '默认货运策略', d.defaultShipmentPolicy),
-                _kv(theme, '默认币种', d.defaultCurrencyName),
-                _kv(theme, '信用额度', d.credit?.toString()),
-                _kv(theme, '期初应收', d.initTotal?.toString()),
-                _kv(theme, '铺底额', d.creditFloor?.toString()),
-                _kv(theme, '结算天数', d.tday?.toString()),
-                _kv(theme, '开户行', d.bank),
-                _kv(theme, '银行账号', d.bankAccount),
-                _kv(theme, '税号', d.taxId),
+                _kv(theme, '地区', d.place),
+                _kv(theme, '运输方式', d.shipVia),
               ],
             ),
+            _fullKv(theme, '地址', d.address),
+            _fullKv(theme, '收货地址', d.shipAddress),
           ],
         ),
       ),
-    );
+      const SizedBox(height: UtenSpacing.s16),
+      _section(
+        theme,
+        title: '财务与税务',
+        icon: Icons.account_balance_outlined,
+        child: UtenFormGrid(
+          children: [
+            _kv(theme, '默认结算方式', d.defaultSettlementMethodName),
+            _kv(theme, '默认币种', d.defaultCurrencyName),
+            _kv(theme, '默认税率', _fmtMoney(d.defaultTaxRate)),
+            _kv(theme, '期初应付', _fmtMoney(d.initTotal)),
+            _kv(theme, '结算天数', d.tday?.toString()),
+            _kv(theme, '开户行', d.bank),
+            _kv(theme, '银行账号', d.bankAccount),
+            _kv(theme, '税号', d.taxId),
+          ],
+        ),
+      ),
+      const SizedBox(height: UtenSpacing.s16),
+      _section(
+        theme,
+        title: '备注',
+        icon: Icons.notes_outlined,
+        child: _remarkBody(theme, d.remark),
+      ),
+    ]);
   }
 
-  // ======================= 就地编辑卡（客户，2026-09-15 退役弹窗） =======================
+  // ======================= Tab 2（客户）：销售条款与财务 =======================
 
-  Widget _inlineEditCard(ThemeData theme) {
+  /// V592 默认销售条款单一事实源：三项默认（结账方式/货运策略/币种）+ 财务字段。
+  Widget _termsTab(ThemeData theme) {
     final d = _client!;
-    final permissions = ref.read(currentPermissionsProvider);
-    final iv = <String, String>{
-      'name': d.name ?? '',
-      'code': d.code ?? '',
-      'fullName': d.fullName ?? '',
-      'clientRank': d.clientRank ?? '',
-      'region': d.region ?? '',
-      'placeId': d.placeId ?? '',
-      'legalPerson': d.legalPerson ?? '',
-      'linkman': d.linkman ?? '',
-      'mobile': d.mobile ?? '',
-      'phone': d.phone ?? '',
-      'phone2': d.phone2 ?? '',
-      'fax': d.fax ?? '',
-      'postcode': d.postcode ?? '',
-      'address': d.address ?? '',
-      'email': d.email ?? '',
-      'website': d.website ?? '',
-      'shipVia': d.shipVia ?? '',
-      'shipAddress': d.shipAddress ?? '',
-      'bank': d.bank ?? '',
-      'bankAccount': d.bankAccount ?? '',
-      'taxId': d.taxId ?? '',
-      'credit': d.credit?.toString() ?? '',
-      'initTotal': d.initTotal?.toString() ?? '',
-      'creditFloor': d.creditFloor?.toString() ?? '',
-      'tday': d.tday?.toString() ?? '',
-      'salesPaymentType': d.salesPaymentType ?? '',
-      'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
-      'defaultShipmentPolicy': d.defaultShipmentPolicy ?? '',
-      'defaultCurrencyId': d.defaultCurrencyId ?? '',
-      'status': d.status ?? '',
-      'remark': d.remark ?? '',
-    };
+    if (_editing) {
+      return _tabBody([_editFormCard(theme, finance: true)]);
+    }
+    return _tabBody([
+      _section(
+        theme,
+        title: '默认销售条款',
+        icon: Icons.receipt_long_outlined,
+        description: '新建销售订货单选客户后按默认结账方式/货运策略/币种预填；每次下单自动记住最新选择，点「编辑」也可直接改。',
+        child: UtenFormGrid(
+          children: [
+            _kv(theme, '销售货款类型', salesPaymentTypeLabelOf(d.salesPaymentType)),
+            _kv(theme, '默认结账方式', d.defaultSettlementMethodName),
+            _kv(theme, '默认货运策略', d.defaultShipmentPolicy),
+            _kv(theme, '默认币种', d.defaultCurrencyName),
+          ],
+        ),
+      ),
+      const SizedBox(height: UtenSpacing.s16),
+      _section(
+        theme,
+        title: '信用与应收',
+        icon: Icons.account_balance_wallet_outlined,
+        child: UtenFormGrid(
+          children: [
+            _kv(theme, '信用额度', _fmtMoney(d.credit)),
+            _kv(theme, '期初应收', _fmtMoney(d.initTotal)),
+            _kv(theme, '铺底额', _fmtMoney(d.creditFloor)),
+            _kv(theme, '结算天数', d.tday?.toString()),
+          ],
+        ),
+      ),
+      const SizedBox(height: UtenSpacing.s16),
+      _section(
+        theme,
+        title: '银行与税务',
+        icon: Icons.account_balance_outlined,
+        child: UtenFormGrid(
+          children: [
+            _kv(theme, '开户行', d.bank),
+            _kv(theme, '银行账号', d.bankAccount),
+            _kv(theme, '税号', d.taxId),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  // ======================= 就地编辑（客户） =======================
+
+  Map<String, String> _clientInitialValues(ClientDetail d) => {
+    'name': d.name ?? '',
+    'code': d.code ?? '',
+    'fullName': d.fullName ?? '',
+    'clientRank': d.clientRank ?? '',
+    'region': d.region ?? '',
+    'placeId': d.placeId ?? '',
+    'legalPerson': d.legalPerson ?? '',
+    'linkman': d.linkman ?? '',
+    'mobile': d.mobile ?? '',
+    'phone': d.phone ?? '',
+    'phone2': d.phone2 ?? '',
+    'fax': d.fax ?? '',
+    'postcode': d.postcode ?? '',
+    'address': d.address ?? '',
+    'email': d.email ?? '',
+    'website': d.website ?? '',
+    'shipVia': d.shipVia ?? '',
+    'shipAddress': d.shipAddress ?? '',
+    'bank': d.bank ?? '',
+    'bankAccount': d.bankAccount ?? '',
+    'taxId': d.taxId ?? '',
+    'credit': d.credit?.toString() ?? '',
+    'initTotal': d.initTotal?.toString() ?? '',
+    'creditFloor': d.creditFloor?.toString() ?? '',
+    'tday': d.tday?.toString() ?? '',
+    'salesPaymentType': d.salesPaymentType ?? '',
+    'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
+    'defaultShipmentPolicy': d.defaultShipmentPolicy ?? '',
+    'defaultCurrencyId': d.defaultCurrencyId ?? '',
+    'status': d.status ?? '',
+    'remark': d.remark ?? '',
+  };
+
+  /// 就地编辑的分组表单：finance=false 取概览分组（基础/联系/地址/资质/其他），
+  /// finance=true 取财务分组——各 Tab 原地渲染，保存时合并。
+  List<MasterFieldDef> _clientEditFields(
+    ClientDetail d, {
+    required bool finance,
+  }) {
     // 当前默认结账方式/币种已停用：追加带「已停用」标注的选项保住原值，
     // 用户可顺手改掉（2026-09-15 之前这里直接报错拦死编辑）。
     final settlementOptions = [..._editSettlements];
@@ -570,74 +859,36 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
         ),
       ];
     }
+    final all = buildClientFields(
+      _clientInitialValues(d),
+      settlementOptions,
+      currencies: currencyOptions,
+      legacyCreditSnapshot: d.legacyId != null,
+    );
+    return finance
+        ? all.where((f) => f.group == '财务').toList()
+        : all.where((f) => f.group != '财务').toList();
+  }
+
+  Widget _editFormCard(ThemeData theme, {required bool finance}) {
+    final d = _client!;
+    final permissions = ref.read(currentPermissionsProvider);
     final readOnlyKeys = <String>{
       if (!permissions.contains(Perm.clientStatus)) 'status',
       if (d.legacyId != null) 'credit',
     };
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '编辑客户',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: '取消编辑',
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() => _editing = false),
-                ),
-              ],
-            ),
-            const Divider(height: 1),
-            MasterEditForm(
-              key: _editFormKey,
-              fields: buildClientFields(
-                iv,
-                settlementOptions,
-                currencies: currencyOptions,
-                legacyCreditSnapshot: d.legacyId != null,
-              ),
-              initialValues: iv,
-              fixedValues: {
+    return UtenCard(
+      child: MasterEditForm(
+        key: finance ? _financeFormKey : _overviewFormKey,
+        fields: _clientEditFields(d, finance: finance),
+        initialValues: _clientInitialValues(d),
+        fixedValues: finance
+            ? const {}
+            : {
                 'categoryId': d.categoryId,
                 if (d.version != null) 'version': d.version,
               },
-              readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _editing = false),
-                    child: const Text('取消'),
-                  ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  UtenActionButton(
-                    label: const Text('保存'),
-                    onAction: _saveInlineEdit,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
       ),
     );
   }
@@ -645,8 +896,18 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
   Future<void> _saveInlineEdit() async {
     final d = _client;
     if (d == null) return;
-    final body = _editFormKey.currentState?.buildBody();
-    if (body == null) return; // 校验失败，错文案已在表单内
+    // 两张分区表单分别校验，合并成一次提交；哪张失败就跳回哪张所在 Tab。
+    final overview = _overviewFormKey.currentState?.buildBody();
+    if (overview == null) {
+      _tab.animateTo(0);
+      return;
+    }
+    final finance = _financeFormKey.currentState?.buildBody();
+    if (finance == null) {
+      _tab.animateTo(1);
+      return;
+    }
+    final body = {...overview, ...finance};
     late final bool ok;
     try {
       ok = await context.guardRun(
@@ -657,9 +918,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
         errorFallback: '更新失败，请稍后重试',
       );
     } on ApiException catch (e) {
-      // 编号查重 409：编号字段描红 + 显文案，保持编辑态让用户改。
+      // 编号查重 409：编号字段描红 + 显文案，保持编辑态让用户改（编号在概览表单）。
       if (e.message.contains('编号已存在')) {
-        _editFormKey.currentState?.setFieldError('code', e.message);
+        _tab.animateTo(0);
+        _overviewFormKey.currentState?.setFieldError('code', e.message);
         return;
       }
       if (mounted) context.appApiError(e);
@@ -673,59 +935,72 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
     await _load();
   }
 
-  // ======================= 联系方式 =======================
+  // ======================= 联系方式 Tab =======================
 
-  Widget _contactsCard(ThemeData theme) => _sectionCard(
-    theme,
-    title: '联系方式(${_contacts.length})',
-    icon: Icons.contact_phone_outlined,
-    description: '可登记多条手机/电话/传真/邮箱；主选那条同步回列表与单据展示列。',
-    onAdd: _canEdit ? _addContact : null,
-    addLabel: '添加联系方式',
-    child: _contacts.isEmpty
-        ? _emptyHint(theme, '暂无联系方式，点击「添加联系方式」登记')
-        : Column(
-            children: [
-              for (final contact in _contacts)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    contact.kind == 'EMAIL'
-                        ? Icons.mail_outline
-                        : contact.kind == 'WEBSITE'
-                        ? Icons.language_rounded
-                        : contact.kind == 'FAX'
-                        ? Icons.print_outlined
-                        : contact.kind == 'MOBILE'
-                        ? Icons.smartphone_rounded
-                        : Icons.call_outlined,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  ),
-                  title: Text(contact.value, style: theme.textTheme.bodyMedium),
-                  subtitle: Text(
-                    '${contact.kindLabel}${contact.primary ? ' · 主选' : ''}'
-                    '${(contact.remark?.isNotEmpty ?? false) ? ' · ${contact.remark}' : ''}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  trailing: _canEdit
-                      ? IconButton(
-                          tooltip: '删除',
-                          icon: Icon(
-                            Icons.delete_outline,
-                            size: 18,
-                            color: theme.colorScheme.error,
-                          ),
-                          onPressed: () => _deleteContact(contact),
-                        )
-                      : null,
-                ),
-            ],
-          ),
-  );
+  Widget _contactsTab(ThemeData theme) => _tabBody([
+    _section(
+      theme,
+      title: '联系方式 (${_contacts.length})',
+      icon: Icons.contact_phone_outlined,
+      description: '可登记多条手机/电话/传真/邮箱；主选那条同步回列表与单据展示列。',
+      trailing: _canEdit ? _addButton('添加联系方式', _addContact) : null,
+      cardPadding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s16,
+        vertical: UtenSpacing.s4,
+      ),
+      child: _contacts.isEmpty
+          ? _emptyHint(
+              theme,
+              Icons.contact_phone_outlined,
+              '暂无联系方式，点击「添加联系方式」登记',
+            )
+          : Column(
+              children: [
+                for (var i = 0; i < _contacts.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, indent: 54),
+                  _contactRow(theme, _contacts[i]),
+                ],
+              ],
+            ),
+    ),
+  ]);
+
+  Widget _contactRow(ThemeData theme, PartyContactMethod contact) {
+    final (icon, color) = switch (contact.kind) {
+      'EMAIL' => (Icons.mail_outline, Colors.blue.shade700),
+      'WEBSITE' => (Icons.language_rounded, Colors.blue.shade700),
+      'FAX' => (Icons.print_outlined, theme.colorScheme.onSurfaceVariant),
+      'MOBILE' => (Icons.smartphone_rounded, theme.colorScheme.primary),
+      _ => (Icons.call_outlined, theme.colorScheme.primary),
+    };
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      minLeadingWidth: 0,
+      leading: _rowIcon(icon, color),
+      title: Text(
+        contact.value,
+        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        '${contact.kindLabel}${contact.primary ? ' · 主选' : ''}'
+        '${(contact.remark?.isNotEmpty ?? false) ? ' · ${contact.remark}' : ''}',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: _canEdit
+          ? IconButton(
+              tooltip: '删除',
+              icon: Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: theme.colorScheme.error,
+              ),
+              onPressed: () => _deleteContact(contact),
+            )
+          : null,
+    );
+  }
 
   Future<void> _addContact() async {
     String kind = 'MOBILE';
@@ -861,54 +1136,65 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
     }
   }
 
-  // ======================= 地址 =======================
+  // ======================= 地址 Tab =======================
 
-  Widget _addressesCard(ThemeData theme) => _sectionCard(
-    theme,
-    title: '地址(${_addresses.length})',
-    icon: Icons.location_on_outlined,
-    description: '收货/开票/其它地址可登记多条；默认地址用于开单预填。',
-    onAdd: _canEdit ? _addAddress : null,
-    addLabel: '添加地址',
-    child: _addresses.isEmpty
-        ? _emptyHint(theme, '暂无地址，点击「添加地址」登记')
-        : Column(
-            children: [
-              for (final address in _addresses)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    address.kind == 'SHIPPING'
-                        ? Icons.local_shipping_outlined
-                        : address.kind == 'BILLING'
-                        ? Icons.receipt_long_outlined
-                        : Icons.place_outlined,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  ),
-                  title: Text(address.address),
-                  subtitle: Text(
-                    '${address.kindLabel}${address.defaultAddress ? ' · 默认' : ''}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  trailing: _canEdit
-                      ? IconButton(
-                          tooltip: '删除',
-                          icon: Icon(
-                            Icons.delete_outline,
-                            size: 18,
-                            color: theme.colorScheme.error,
-                          ),
-                          onPressed: () => _deleteAddress(address),
-                        )
-                      : null,
-                ),
-            ],
-          ),
-  );
+  Widget _addressesTab(ThemeData theme) => _tabBody([
+    _section(
+      theme,
+      title: '地址 (${_addresses.length})',
+      icon: Icons.location_on_outlined,
+      description: '收货/开票/其它地址可登记多条；默认地址用于开单预填。',
+      trailing: _canEdit ? _addButton('添加地址', _addAddress) : null,
+      cardPadding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s16,
+        vertical: UtenSpacing.s4,
+      ),
+      child: _addresses.isEmpty
+          ? _emptyHint(theme, Icons.location_on_outlined, '暂无地址，点击「添加地址」登记')
+          : Column(
+              children: [
+                for (var i = 0; i < _addresses.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, indent: 54),
+                  _addressRow(theme, _addresses[i]),
+                ],
+              ],
+            ),
+    ),
+  ]);
+
+  Widget _addressRow(ThemeData theme, PartyAddress address) {
+    final (icon, color) = switch (address.kind) {
+      'SHIPPING' => (Icons.local_shipping_outlined, theme.colorScheme.primary),
+      'BILLING' => (Icons.receipt_long_outlined, Colors.blue.shade700),
+      _ => (Icons.place_outlined, theme.colorScheme.onSurfaceVariant),
+    };
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      minLeadingWidth: 0,
+      leading: _rowIcon(icon, color),
+      title: Text(
+        address.address,
+        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        '${address.kindLabel}${address.defaultAddress ? ' · 默认' : ''}',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: _canEdit
+          ? IconButton(
+              tooltip: '删除',
+              icon: Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: theme.colorScheme.error,
+              ),
+              onPressed: () => _deleteAddress(address),
+            )
+          : null,
+    );
+  }
 
   Future<void> _addAddress() async {
     String kind = 'SHIPPING';
@@ -1035,56 +1321,84 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
     }
   }
 
-  // ======================= 跟进记录 =======================
+  // ======================= 跟进记录 Tab =======================
 
-  Widget _activitiesCard(ThemeData theme) => _sectionCard(
-    theme,
-    title: _isClient
-        ? '跟进与行为记录(${_activities.length})'
-        : '跟进记录(${_activities.length})',
-    icon: Icons.history_edu_outlined,
-    description: _isClient ? '跟进/投诉/违约等记录；违约可扣信誉分，奖励加分。' : '供应商跟进/合作问题记录。',
-    onAdd: _canEdit ? _addActivity : null,
-    addLabel: '添加记录',
-    child: _activities.isEmpty
-        ? _emptyHint(theme, '暂无记录')
-        : Column(
-            children: [
-              for (final record in _activities)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: _activityIcon(theme, record.kind),
-                  title: Text(record.content),
-                  subtitle: Text(
-                    '${record.kindLabel} · ${_shortDateTime(record.createdAt)}'
-                    '${record.scoreDelta != 0 ? ' · 信誉分${record.scoreDelta > 0 ? '+' : ''}${record.scoreDelta}' : ''}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: record.scoreDelta < 0
-                          ? theme.colorScheme.error
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-            ],
+  Widget _activitiesTab(ThemeData theme) => _tabBody([
+    _section(
+      theme,
+      title: _isClient
+          ? '跟进与行为记录 (${_activities.length})'
+          : '跟进记录 (${_activities.length})',
+      icon: Icons.history_edu_outlined,
+      description: _isClient ? '跟进/投诉/违约等记录；违约可扣信誉分，奖励加分。' : '供应商跟进/合作问题记录。',
+      trailing: _canEdit ? _addButton('添加记录', _addActivity) : null,
+      cardPadding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s16,
+        vertical: UtenSpacing.s4,
+      ),
+      child: _activities.isEmpty
+          ? _emptyHint(theme, Icons.history_edu_outlined, '暂无记录')
+          : Column(
+              children: [
+                for (var i = 0; i < _activities.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, indent: 54),
+                  _activityRow(theme, _activities[i]),
+                ],
+              ],
+            ),
+    ),
+  ]);
+
+  Widget _activityRow(ThemeData theme, PartyActivityRecord record) {
+    final (icon, color) = switch (record.kind) {
+      'FOLLOW_UP' => (Icons.phone_in_talk_rounded, theme.colorScheme.primary),
+      'COMPLAINT' => (
+        Icons.sentiment_dissatisfied_rounded,
+        Colors.deepOrange.shade700,
+      ),
+      'PENALTY' => (Icons.gavel_rounded, theme.colorScheme.error),
+      'REWARD' => (Icons.emoji_events_rounded, Colors.amber.shade800),
+      _ => (Icons.notes_rounded, theme.colorScheme.onSurfaceVariant),
+    };
+    Widget? deltaChip;
+    if (_isClient && record.scoreDelta != 0) {
+      final up = record.scoreDelta > 0;
+      final color = up ? theme.colorScheme.primary : theme.colorScheme.error;
+      deltaChip = Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s8,
+          vertical: 3,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(UtenRadius.pill),
+        ),
+        child: Text(
+          '信誉分 ${up ? '+' : ''}${record.scoreDelta}',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
           ),
-  );
-
-  Widget _activityIcon(ThemeData theme, String kind) => Icon(
-    switch (kind) {
-      'FOLLOW_UP' => Icons.phone_in_talk_rounded,
-      'COMPLAINT' => Icons.sentiment_dissatisfied_rounded,
-      'PENALTY' => Icons.gavel_rounded,
-      'REWARD' => Icons.emoji_events_rounded,
-      _ => Icons.notes_rounded,
-    },
-    size: 20,
-    color: kind == 'PENALTY'
-        ? theme.colorScheme.error
-        : kind == 'REWARD'
-        ? Colors.amber.shade700
-        : theme.colorScheme.primary,
-  );
+        ),
+      );
+    }
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      minLeadingWidth: 0,
+      leading: _rowIcon(icon, color),
+      title: Text(
+        record.content,
+        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        '${record.kindLabel} · ${_shortDateTime(record.createdAt)}',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: deltaChip,
+    );
+  }
 
   Future<void> _addActivity() async {
     String kind = 'FOLLOW_UP';
@@ -1195,7 +1509,27 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
         child: const Text('返回'),
       ),
     ];
-    if (_editing) return children;
+    // 编辑态：右下只留 取消/保存（保存合并两张分区表单一次提交）。
+    if (_editing) {
+      children.addAll([
+        UtenButton(
+          key: const Key('party-detail-cancel'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.close_rounded,
+          onPressed: _busy ? null : () => setState(() => _editing = false),
+          child: const Text('取消'),
+        ),
+        UtenButton(
+          key: const Key('party-detail-save'),
+          size: UtenButtonSize.large,
+          icon: Icons.save_outlined,
+          onPressed: _busy ? null : _saveInlineEdit,
+          child: const Text('保存'),
+        ),
+      ]);
+      return children;
+    }
     if (_canEdit && _writable) {
       children.add(
         UtenButton(
@@ -1248,7 +1582,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
   }
 
   Future<void> _edit() async {
-    // 2026-09-15 用户口径：客户在详情页**就地编辑**（不再弹窗）；供应商沿用弹窗。
+    // 客户：详情页**就地编辑**（分区变输入，不再弹窗）；供应商沿用弹窗。
     if (_isClient && _client != null) {
       final settlements =
           await loadClientSettlementMethods(context, ref) ??
@@ -1263,6 +1597,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
         _editCurrencies = currencies;
         _editing = true;
       });
+      _tab.animateTo(0);
       return;
     }
     if (!_isClient && _supplier != null) {
@@ -1341,65 +1676,39 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
 
   // ======================= 通用小件 =======================
 
-  Widget _sectionCard(
-    ThemeData theme, {
-    required String title,
-    required IconData icon,
-    String? description,
-    required Widget child,
-    VoidCallback? onAdd,
-    String? addLabel,
-  }) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: theme.colorScheme.primary),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (onAdd != null)
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  size: UtenButtonSize.small,
-                  icon: Icons.add_rounded,
-                  onPressed: onAdd,
-                  child: Text(addLabel ?? '添加'),
-                ),
-            ],
-          ),
-          if (description != null) ...[
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              description,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-          const SizedBox(height: UtenSpacing.s8),
-          child,
-        ],
-      ),
-    ),
+  Widget _addButton(String label, VoidCallback onPressed) => UtenButton(
+    type: UtenButtonType.tonal,
+    size: UtenButtonSize.small,
+    icon: Icons.add_rounded,
+    onPressed: onPressed,
+    child: Text(label),
   );
 
-  Widget _emptyHint(ThemeData theme, String message) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-    child: Text(
-      message,
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
+  /// 行首图标瓦片：38×38 圆角底 + 20 号图标，比裸图标更有层次。
+  Widget _rowIcon(IconData icon, Color color) => Container(
+    width: 38,
+    height: 38,
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Icon(icon, size: 20, color: color),
+  );
+
+  Widget _emptyHint(ThemeData theme, IconData icon, String message) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: UtenSpacing.s8),
+        Text(
+          message,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -1407,6 +1716,13 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage> {
 String _shortDateTime(String? iso) {
   if (iso == null || iso.length < 16) return iso ?? '—';
   return '${iso.substring(0, 10)} ${iso.substring(11, 16)}';
+}
+
+/// 金额/税率显示：整数不带 .0，小数保留两位。
+String _fmtMoney(double? v) {
+  if (v == null) return '—';
+  if (v == v.truncateToDouble()) return v.truncate().toString();
+  return v.toStringAsFixed(2);
 }
 
 /// 销售货款类型显示标签（月结/现金/定金/待分类）。

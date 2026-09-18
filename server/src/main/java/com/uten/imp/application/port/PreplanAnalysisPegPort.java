@@ -130,6 +130,17 @@ public interface PreplanAnalysisPegPort {
             UUID analysisId, UUID planId, UUID warehouseId,
             List<DemandSlice> demands, UUID actorId);
 
+    /**
+     * 只在一个叶仓里释放本计划的分析备料权益(V595 持续生产 / 同车间直送补投)。
+     *
+     * <p>直送产出一入线边仓就被收料计划的分析权益预留(ORIGIN_MAKE)，不先转正式预留它就永远
+     * 「没有可用量」。补投只认 {@code leafWarehouseId} 这一个叶仓里的权益批次：不看同主仓其它
+     * 叶仓、不按合格来源跨仓——外溢到仓库叶仓会造出一张要仓库发料的领料单，正是持续生产要砍掉
+     * 的那一步。返回片段同样必须在本事务里用 {@link #formalizePlanDemandTransfers} 绑定到正式预留。
+     */
+    List<PreparedPlanTransfer> transferToPlanDemandsWithinWarehouse(
+            UUID analysisId, UUID planId, UUID leafWarehouseId, List<DemandSlice> demands);
+
     /** Persist FORMALIZE events after the formal demand reservations exist. */
     void formalizePlanDemandTransfers(
             UUID packageId,
@@ -140,6 +151,15 @@ public interface PreplanAnalysisPegPort {
     void formalizePlanDemandTransfers(
             UUID packageId, List<PreparedPlanTransfer> prepared,
             List<FormalReservationSlice> formalReservations, UUID actorId);
+
+    /**
+     * 可重复执行的转正(V595 线边仓补投)：同一条需求会被多笔直送逐次补投到**同一张**正式预留上，
+     * 同一权益批次也可能分两次转正；FORMALIZE 事件的幂等键因此要带上本次命令键
+     * ({@code commandKey})，否则第二次会被当成第一次的重放而丢掉谱系。
+     */
+    void formalizePlanDemandTransfersForCommand(
+            UUID packageId, List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations, String commandKey);
 
     /**
      * Restore unissued formalized lots after their formal reservations have

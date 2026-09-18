@@ -14,6 +14,9 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_inbound_expectations_view.dart';
@@ -152,8 +155,9 @@ void main() {
     expect(find.text('必选 · 点击选择'), findsNWidgets(2));
     expect(find.text('入库仓库（默认）'), findsNothing);
 
-    // 2026-09-11 新交互：表头全选勾上 3 行后，点**其中任意一行**的仓库格选
-    // 「原料仓」，三行一起落仓（覆盖建议仓预填）。表头上方不再有批量按钮。
+    // 2026-09-11 新交互：点**其中任意一行**的仓库格选「原料仓」，全部勾选行
+    // 一起落仓（覆盖建议仓预填）。表头上方不再有批量按钮。
+    // 2026-09-17 起明细进页默认全选，不再需要先点表头全选框。
     expect(
       find.byKey(const Key('warehouse-arrival-batch-apply-warehouse-all')),
       findsNothing,
@@ -164,8 +168,12 @@ void main() {
       (widget) => widget is Checkbox && widget.tristate,
     );
     expect(headerSelectAll, findsWidgets);
-    await tester.tap(headerSelectAll.first);
-    await tester.pumpAndSettle();
+    // 行框树序在表头框之前（3 行 + 表头 = 4 框），默认全选。
+    expect(
+      tester.widget<Checkbox>(find.byType(Checkbox).at(0)).value,
+      isTrue,
+      reason: '明细行进页默认全选',
+    );
 
     // 2026-09-14「编号」列上移到名称后面（全站列序统一），仓库格右移出视口：
     // 与本文件其它格子一样先 ensureVisible 再点。
@@ -264,6 +272,230 @@ void main() {
     });
     // 登记完成回任务中心。
     expect(find.text('预计到货任务中心'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('批量登记页：明细默认全选，没勾行时提交置灰，只提交勾选行', (tester) async {
+    tester.view.physicalSize = const Size(1400, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _BatchApi();
+    final router = GoRouter(
+      initialLocation: RouteName.warehouseArrivalReceiptBatch,
+      routes: [
+        GoRoute(
+          path: RouteName.warehouseArrivalReceiptBatch,
+          builder: (_, _) => WarehouseArrivalBatchReceiptPage(
+            prefills: _prefills(),
+            canRegister: true,
+          ),
+        ),
+        GoRoute(
+          path: RouteName.warehouseInboundExpectations,
+          builder: (_, _) => const Scaffold(body: Text('预计到货任务中心')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sessionProvider.overrideWith(_TestSessionNotifier.new),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          // 「先入库后质检」按钮需要独立权限点（与「登记并送检」并排验证置灰）。
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseIqcStockInBeforeInspection,
+          }),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          builder: (context, child) => Column(
+            children: [
+              const AppNotificationHost(),
+              Expanded(child: child ?? const SizedBox()),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final submit = find.byKey(const Key('warehouse-arrival-batch-submit'));
+    UtenButton submitButton() => tester.widget<UtenButton>(submit);
+    // 进页默认全选 → 提交可点。
+    expect(submitButton().onPressed, isNotNull);
+
+    // 表头全选框再点一次 = 清空全部勾选 → 两个提交按钮置灰，灰态点击说明原因。
+    final headerSelectAll = find.byWidgetPredicate(
+      (widget) => widget is Checkbox && widget.tristate,
+    );
+    await tester.tap(headerSelectAll.first);
+    await tester.pumpAndSettle();
+    expect(submitButton().onPressed, isNull);
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const Key('warehouse-arrival-stock-in-first')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pump();
+    expect(find.textContaining('请先勾选要登记送检的明细行'), findsOneWidget);
+
+    // 只勾第一行（订货单 A，建议仓已预填）→ 可提交；确认弹窗写明未勾选行去向。
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pump();
+    expect(submitButton().onPressed, isNotNull);
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('有 2 行未勾选'), findsOneWidget);
+    expect(find.text('确认登记送检'), findsOneWidget);
+    await tester.tap(find.text('确认登记送检'));
+    await tester.pump();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    // 只提交勾选的那一行（订货单 A × 成品仓 = 1 张收货单）。
+    expect(api.arrivalPostBodies, hasLength(1));
+    final items = (api.arrivalPostBodies.single['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items.map((item) => item['orderItemId']), ['batch-item-1']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预计到货：多选「先入库后质检」直达批量登记页并带 preStock=1', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    String? batchLocation;
+    Object? batchExtra;
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) =>
+              const Scaffold(body: WarehouseInboundExpectationsView()),
+        ),
+        GoRoute(
+          path: RouteName.warehouseArrivalReceiptBatch,
+          builder: (_, state) {
+            batchLocation = state.uri.toString();
+            batchExtra = state.extra;
+            return const Scaffold(body: Text('批量登记页落点'));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(_ExpectationsApi()),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+            Perm.warehouseInboundStockIn,
+            Perm.warehouseIqcStockInBeforeInspection,
+          }),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 列表级批量按钮与「批量登记送检」并排（有独立权限才显示）。
+    expect(find.text('先入库后质检'), findsOneWidget);
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pump();
+    expect(find.text('先入库后质检(1)'), findsOneWidget);
+    await tester.tap(find.text('先入库后质检(1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('批量登记页落点'), findsOneWidget);
+    expect(
+      batchLocation,
+      '${RouteName.warehouseArrivalReceiptBatch}?preStock=1',
+    );
+    final prefillList = batchExtra;
+    expect(prefillList, isA<List<ProcurementReceiptPrefill>>());
+    expect(
+      (prefillList! as List<ProcurementReceiptPrefill>).single.orderBillNo,
+      'PO-001',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预计到货：无先入库后质检权限时不显示批量按钮', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(_ExpectationsApi()),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+            Perm.warehouseInboundStockIn,
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: WarehouseInboundExpectationsView()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('批量登记送检'), findsOneWidget);
+    expect(find.text('先入库后质检'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('批量登记页：preStock 直达进页即「上架库位(必填)」', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _BatchApi();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sessionProvider.overrideWith(_TestSessionNotifier.new),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseIqcStockInBeforeInspection,
+          }),
+        ],
+        child: MaterialApp(
+          home: WarehouseArrivalBatchReceiptPage(
+            prefills: _prefills(),
+            canRegister: true,
+            initialStockInBeforeInspection: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // 进页即先入库后质检模式：库位列必填红框口径（不再是普通「库位号」）。
+    // 列头在横向滚动视口外未必构建，直接断言列定义。
+    final grid = tester.widget<UtenEditableGrid<dynamic>>(
+      find.byWidgetPredicate((widget) => widget is UtenEditableGrid),
+    );
+    final stockPlaceColumn = grid.columns
+        .where((column) => column.key == 'stockPlace')
+        .single;
+    expect(stockPlaceColumn.label, '上架库位(必填)');
+    expect(stockPlaceColumn.required, isTrue);
+    expect(find.text('先入库后质检'), findsOneWidget);
+    expect(find.text('登记并送检'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

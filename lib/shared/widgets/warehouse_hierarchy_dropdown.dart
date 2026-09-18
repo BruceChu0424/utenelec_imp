@@ -7,7 +7,8 @@
 // 一律改用 showUtenWarehousePickerPanel 侧滑面板 + UtenFilterPickerField 字段，
 // 表单内保留下拉是因为它在 UtenFormGrid 里与日期/文本各格同节奏，录单时就地
 // 点选比拉面板少一步）：
-// - [WarehouseHierarchyDropdown]：Material DropdownButtonFormField 形态；
+// - [WarehouseHierarchyDropdown]：UtenDropdownField 形态（2026-09-16 全站下拉统一，
+//   原 Material DropdownButtonFormField 裸实现已下线）；
 // - [warehouseHierarchyItems]：UtenDropdownField 选项列表（编辑页/登记页用），
 //   父仓在运营口径（allowParent=false）下渲染为置灰分组标题。
 //
@@ -45,66 +46,29 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
   final bool allowParent;
   final bool enabled;
 
-  /// 覆盖主题 contentPadding（默认 12 → 48 高）；与 `UtenSearchBar`（内容驱动 ≈44）
-  /// 同排时传纵向 10 严格等高（2026-09-10 即时库存页）。
+  /// 历史参数（Material 形态时用于与 UtenSearchBar 等高）：UtenDropdownField
+  /// 统一形态下不再生效，仅为 API 兼容保留，调用方已不再传。
   final EdgeInsetsGeometry? contentPadding;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final selection = WarehouseSelection(entries);
-    final historical = !allowParent && !selection.visibleIds.contains(value)
-        ? entries.where((entry) => entry.id == value).firstOrNull
-        : null;
-    final ids = entries.map((e) => e.id).toSet();
-    // 被引用为上级的仓 = 分组父仓；其子仓缩进展示。
-    final parentIds = entries
-        .map((e) => e.parentId)
-        .whereType<String>()
-        .where(ids.contains)
-        .toSet();
-    return DropdownButtonFormField<String?>(
-      initialValue: historical == null ? value : null,
-      hint: historical == null ? null : Text(historical.name),
-      isExpanded: true,
-      // 本 Flutter 版本 DropdownButtonFormField 无 enabled 参数：禁用=onChanged 置空。
-      decoration: InputDecoration(
-        isDense: true,
-        labelText: labelText,
-        contentPadding: contentPadding,
-      ),
+    // includeAll 口径：null = 全部。UtenDropdownField 的 null=清空不能当选项值，
+    // 在包装层用空串哨兵互转，对外 API 语义不变。
+    final items = warehouseHierarchyItems(
+      entries,
+      allowParent: allowParent,
+      currentValue: value,
+    );
+    return UtenDropdownField(
+      label: labelText,
+      value: includeAll && value == null ? '' : value,
+      allowClear: false,
+      enabled: enabled,
       items: [
-        if (includeAll) const DropdownMenuItem<String?>(child: Text('全部')),
-        for (final e in entries)
-          if (allowParent || selection.visibleIds.contains(e.id))
-            () {
-              final hasChildren = entries.any((o) => o.parentId == e.id);
-              final selectable =
-                  allowParent || selection.selectableIds.contains(e.id);
-              final isChild =
-                  e.parentId != null && parentIds.contains(e.parentId);
-              return DropdownMenuItem<String?>(
-                // 禁选标题用哨兵值保 value 唯一；已保存的父仓值仍按真实 id 匹配回显。
-                value: selectable || value == e.id ? e.id : 'group:${e.id}',
-                enabled: selectable,
-                child: Padding(
-                  padding: EdgeInsets.only(left: isChild ? 16 : 0),
-                  child: Text(
-                    e.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: hasChildren && !allowParent
-                        ? TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          )
-                        : null,
-                  ),
-                ),
-              );
-            }(),
+        if (includeAll) const UtenDropdownItem(value: '', label: '全部'),
+        ...items,
       ],
-      onChanged: enabled ? onChanged : null,
+      onChanged: (v) => onChanged(includeAll && v == '' ? null : v),
     );
   }
 }

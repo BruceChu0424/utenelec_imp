@@ -71,6 +71,7 @@ class AuditNoisePolicyTest {
                 "/api/master/colors/facets",
                 "/api/master/colors/dict",
                 "/api/master/moulds/facets",
+                "/api/master/reference-methods/settlement-admin/facets",
                 "/api/master/client-categories/tree",
                 "/api/master/supplier-categories/tree",
                 "/api/master/material-categories/tree",
@@ -86,9 +87,7 @@ class AuditNoisePolicyTest {
                 "/api/production/plans/progress/summary",
                 "/api/production/plans/progress/workshops",
                 "/api/production/quality-inspections/count",
-                "/api/production/quality-inspections/capability",
-                "/api/purchase/orders/last-suppliers",
-                "/api/subcontract/orders/last-suppliers");
+                "/api/production/quality-inspections/capability");
 
         automaticPaths.forEach(path -> {
             assertTrue(AuditNoisePolicy.isAutomaticOperation("GET", path), path);

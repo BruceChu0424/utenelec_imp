@@ -71,6 +71,7 @@ import java.util.UUID;
  *   GET  /api/notices/celebration/preview?employeeId=&type=  发布预览（notice:publish）
  *   GET  /api/notices/celebration/settings                   庆典自动发布设置
  *   PUT  /api/notices/celebration/settings                   更新设置（authorization:manage）
+ *   PUT  /api/notices/celebration/auto                       翻转自动发送开关（notice:publish）
  *   -- 庆典体验（登录弹窗 / 今日卡片 / 一键批量祝福）--
  *   GET  /api/notices/celebration/my-today                   当前用户今日庆典（notice:read，PII 安全）
  *   POST /api/notices/celebration/batch                      一键批量发布庆典祝福（notice:publish）
@@ -321,10 +322,25 @@ public class NoticeController {
                 body.password(), u.getId(), u.getLoginAccount());
     }
 
+    /**
+     * 翻转「庆典自动发送」开关（HR 任务中心页面开关；notice:publish——与手动
+     * 批量祝福同级，详见 {@link NoticeService#setCelebrationAutoEnabled}）。
+     */
+    @PutMapping("/celebration/auto")
+    @PreAuthorize("hasAuthority('notice:publish')")
+    public NoticeCelebrationSettingsDto setCelebrationAutoEnabled(
+            @RequestBody SetCelebrationAutoRequest body) {
+        AuthUser u = currentUser.get().orElseThrow(() -> new IllegalStateException("未登录"));
+        return service.setCelebrationAutoEnabled(body.enabled(), u.getId(), u.getLoginAccount());
+    }
+
     /** 庆典设置写入请求体（password 必填：复用 SystemSettingsService 二次密码确认）。 */
     public record UpdateCelebrationSettingsRequest(
             Boolean autoEnabled,
             List<String> autoTypes,
             String publisherName,
             String password) {}
+
+    /** 庆典自动发送开关请求体（无密码：notice:publish 即可，与手动送祝福同级）。 */
+    public record SetCelebrationAutoRequest(boolean enabled) {}
 }

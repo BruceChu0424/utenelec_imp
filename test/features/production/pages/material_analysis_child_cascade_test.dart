@@ -695,6 +695,188 @@ void main() {
       reason: '前置自制排产必须排在父件 notify 之后',
     );
   });
+
+  // 2026-09-16 用户反馈：「委外，子层有很多物料的时候，下单数量不可以修改」。
+  // 根因是那条行走 notify，服务端 `createsChildOwnership` 强制整量接管；有生成
+  // 生产计划权限时改走 issue-plans 的 ARRANGE 段（V589 让委外台账跟量），数量
+  // 就可以改，且台账 + 锚点 + 计划一步建好——不再需要第二段「前置自制下达车间」。
+  testWidgets('非顶层的有子层委外件：数量可改，一步走 issue-plans 并带动下层重算', (tester) async {
+    final harness = await _pump(tester, nestedMakeFirstSubcontract: true);
+    final entry = find.byKey(const Key('material-analysis-entry-subcontract'));
+    await tester.ensureVisible(entry);
+    await tester.pumpAndSettle();
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '委外件S');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-subcontract')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsOneWidget,
+    );
+    expect(harness.writes, isEmpty, reason: '进页之前零网络写');
+
+    // 树顶数量**可改**（不再是只读的锁定格），改了下层跟着重算：B = 30 × 2。
+    final seedQty = find.byKey(
+      const Key('material-analysis-child-cascade-qty-m-s'),
+    );
+    expect(seedQty, findsOneWidget);
+    expect(_qtyOf(tester, 'm-b'), '20');
+    await tester.enterText(seedQty, '30');
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '60');
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    // 本页改大了数量：超量二次确认必须补问一次（分桶页那一下没问过）。
+    await tester.tap(find.text('确认超量下达').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+
+    // 父件段是 issue-plans（候选行 m-s），不是 notify SUBCONTRACT。
+    final issue = harness.writes
+        .where((write) => write.path.endsWith('/issue-plans'))
+        .toList();
+    expect(issue, hasLength(1), reason: '一步建好台账+锚点+计划，不再有第二段排产');
+    final line =
+        ((issue.single.data as Map<String, dynamic>)['lines'] as List).single
+            as Map<String, dynamic>;
+    expect(line['materialLineId'], 'm-s');
+    expect(line['qty'], 30.0);
+    expect(line['departmentId'], 'dept-1');
+    // 下层采购按放大后的量下达。
+    final notify = harness.writes
+        .where((write) => write.path.endsWith('/notify'))
+        .toList();
+    expect(notify, hasLength(1));
+    final notifyBody = notify.single.data as Map<String, dynamic>;
+    expect(notifyBody['target'], 'BUY');
+    expect(
+      (notifyBody['quantities'] as List)
+          .cast<Map<String, dynamic>>()
+          .map((row) => '${row['actionGroupKey']}=${row['qty']}')
+          .single,
+      startsWith('ag-b=20.0'),
+      reason: '归需求 20，多出来的 40 走公共备货片',
+    );
+  });
+
+  // 2026-09-16 用户反馈：「我下达车间选择很多，包括顶层的，它们都是顶层的子层级；
+  // 我多选后改顶层的数量，其他的就不会变」。根因是每个勾选行各成一棵树、互不驱动。
+  testWidgets('多选父件与它的下层：合并成一棵树，改父件数量下层一起变', (tester) async {
+    final harness = await _pump(tester);
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '10');
+    await tester.pumpAndSettle();
+    await tester.enterText(_bucketQty('m-c'), '10');
+    await tester.pumpAndSettle();
+    // 同时勾选顶层产品与它的自制子件（半成品C 是成品A 的 BOM 后代）。
+    await _tapRowCheckbox(tester, '成品A');
+    await _tapRowCheckbox(tester, '半成品C');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsOneWidget,
+    );
+
+    // 只有一个树顶：半成品C 并进了成品A 那棵树，顶部提示点名说清去向。
+    expect(find.textContaining('本次将下达：成品A'), findsOneWidget);
+    expect(find.textContaining('半成品C'), findsWidgets);
+    // 半成品C 现在是一行普通下层行，有自己的数量框（树顶行没有 m-c 的框）。
+    expect(_qtyOf(tester, 'm-c'), '10');
+    expect(_qtyOf(tester, 'm-d'), '30');
+
+    // 改顶层数量 → 半成品C 与它下面的外购件D 一起跟着变（正是用户说的「不会变」）。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '30',
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-c'), '30');
+    expect(_qtyOf(tester, 'm-d'), '90');
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认超量下达').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+
+    // 父件段只提交顶层那一行：被吸收的半成品C 从父件请求里剔除，
+    // 由级联页的车间段按算好的 30 提交，不会按分桶页那个旧的 10 下两次。
+    final issue = harness.writes
+        .where((write) => write.path.endsWith('/issue-plans'))
+        .toList();
+    expect(issue, hasLength(2));
+    final parentLines =
+        (issue.first.data as Map<String, dynamic>)['lines'] as List;
+    expect(parentLines, hasLength(1));
+    expect(
+      (parentLines.single as Map<String, dynamic>)['analysisLineId'],
+      'p1',
+    );
+    final cascadeLines =
+        (issue.last.data as Map<String, dynamic>)['lines'] as List;
+    expect(cascadeLines, hasLength(1));
+    final cascaded = cascadeLines.single as Map<String, dynamic>;
+    expect(cascaded['materialLineId'], 'm-c');
+    expect(cascaded['qty'], 30.0);
+  });
+
+  // 2026-09-16 用户口径：「已经下达了的(委外/其他自制件/采购)，再次点最顶层
+  // 下达车间时里面的数值计算对不对、是不是减去可用、顶层数值再增加怎么处理」。
+  // 已建过自制子件任务的行原来一律「本页不下达」，现在按锚点产品行追加。
+  testWidgets('已建自制任务的下层：按锚点追加下达，数量不被重复计算', (tester) async {
+    final harness = await _pump(tester, anchoredMakeChild: true);
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '30');
+    await tester.pumpAndSettle();
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认超量下达').last);
+    await tester.pumpAndSettle();
+
+    // 半成品C 的需求账已搬到锚点上(物料行 requiredQty=0)。下单数量必须正好是
+    // 父件这一批要用的 30——不能因为「快照需求 0」把超产量算成整个毛需求再叠
+    // 一次(那样会变成 60)。孙层外购件D 照旧按 30 × 3 = 90。
+    expect(_qtyOf(tester, 'm-c'), '30');
+    expect(_qtyOf(tester, 'm-d'), '90');
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+
+    final issue = harness.writes
+        .where((write) => write.path.endsWith('/issue-plans'))
+        .toList();
+    expect(issue, hasLength(2));
+    // 关键：锚点接管过的行按**产品行 id** 追加(analysisLineId=锚点)，
+    // 不是按物料行 id 再建一个新任务。
+    final cascadeLines =
+        (issue.last.data as Map<String, dynamic>)['lines'] as List;
+    final anchored = cascadeLines
+        .cast<Map<String, dynamic>>()
+        .where((line) => line['analysisLineId'] == 'make-c-1')
+        .single;
+    expect(anchored['qty'], 30.0);
+    expect(anchored['materialLineId'], isNull);
+  });
 }
 
 Finder _inDialog(String text) => find.descendant(
@@ -779,6 +961,8 @@ Future<_Harness> _pump(
   bool withPurchaseAdjustPermission = true,
   bool soleComponentSubcontract = false,
   bool makeFirstSubcontract = false,
+  bool nestedMakeFirstSubcontract = false,
+  bool anchoredMakeChild = false,
   Future<void> Function(RequestOptions request)? writeGate,
 }) async {
   tester.view.physicalSize = const Size(1800, 1400);
@@ -804,7 +988,11 @@ Future<_Harness> _pump(
             request.path.endsWith('/notify')) {
           harness.subcontractNotified = true;
         }
-        final analysis = makeFirstSubcontract
+        final analysis = anchoredMakeChild
+            ? _anchoredMakeChildAnalysis()
+            : nestedMakeFirstSubcontract
+            ? _nestedMakeFirstSubcontractAnalysis()
+            : makeFirstSubcontract
             ? _makeFirstSubcontractAnalysis(
                 afterNotify: harness.subcontractNotified,
               )
@@ -816,7 +1004,7 @@ Future<_Harness> _pump(
             {'id': 'warehouse-1', 'name': '主仓'},
           ],
           '/production/material-analyses/default-workshops' => [
-            for (final goods in ['g-a', 'g-c'])
+            for (final goods in ['g-a', 'g-c', 'g-s'])
               {
                 'goodsId': goods,
                 'departmentId': 'dept-1',
@@ -1064,6 +1252,100 @@ Map<String, dynamic> _makeFirstSubcontractAnalysis({
       goodsId: 'g-b',
       level: 1,
       nodeKey: 'nb',
+      perProductQty: 2,
+      requiredQty: 20,
+      route: 'BUY',
+      actionGroupKey: 'ag-b',
+    ),
+  ];
+  return analysis;
+}
+
+/// 2026-09-16 变体：半成品C 已经建过自制子件任务(锚点 make-c-1)。
+///
+/// 需求账整块搬到了锚点产品行上，所以物料行 m-c 的 requiredQty 归零
+/// (DELEGATED_TO_MAKE_CHILD)。这类行以前一律「本页不下达」，现在按锚点追加。
+Map<String, dynamic> _anchoredMakeChildAnalysis() {
+  final analysis = Map<String, dynamic>.from(
+    _analysis(childrenAlreadyOrdered: false),
+  );
+  analysis['products'] = [
+    ...(analysis['products'] as List),
+    {
+      'analysisLineId': 'make-c-1',
+      'sourceType': 'MAKE_COMPONENT',
+      'goodsId': 'g-c',
+      'goodsCode': 'C-001',
+      'goodsName': '半成品C',
+      'unitName': '件',
+      'requestedQty': 10,
+      'remainingQty': 10,
+      'readyNowQty': 0,
+      'canSchedule': true,
+      'maxSchedulableQty': 10,
+      'sourceRef': '自制备料 2026-09-16 abcd',
+    },
+  ];
+  analysis['flatMaterials'] = [
+    for (final raw in (analysis['flatMaterials'] as List))
+      if ((raw as Map<String, dynamic>)['materialLineId'] == 'm-c')
+        Map<String, dynamic>.from(raw)..addAll({
+          'planAnchorAnalysisLineId': 'make-c-1',
+          // 需求已转交锚点：物料行本身归零。
+          'requiredQty': 0,
+          'additionalSupplyRecommendedQty': 0,
+          'requirementState': 'DELEGATED_TO_MAKE_CHILD',
+        })
+      else
+        raw,
+  ];
+  return analysis;
+}
+
+/// 2026-09-16 变体：**非顶层**的有自制子层委外件。
+///
+///   成品A (顶层, 自制)
+///     └─ 委外件S (depth 1, 委外, 有自制子层)
+///          └─ 外购件B (depth 2, 采购, 单件用 2)
+///
+/// 这类行有生成生产计划权限时改走 issue-plans 的 ARRANGE 段：数量可改、超量
+/// 按 V589 跟到委外台账，台账 + 锚点 + 计划同一事务建好，不再需要第二段
+/// 「前置自制任务下达车间」。
+Map<String, dynamic> _nestedMakeFirstSubcontractAnalysis() {
+  final analysis = Map<String, dynamic>.from(
+    _analysis(childrenAlreadyOrdered: false),
+  );
+  analysis['flatMaterials'] = [
+    _material(
+      id: 'root-1',
+      name: '成品A',
+      goodsId: 'g-a',
+      level: 0,
+      nodeKey: 'root',
+      perProductQty: 1,
+      requiredQty: 10,
+      route: 'MAKE',
+      nodeRole: 'ROOT_SUPPLY',
+      actionGroupKey: 'ag-root',
+    ),
+    _material(
+      id: 'm-s',
+      name: '委外件S',
+      goodsId: 'g-s',
+      level: 1,
+      nodeKey: 'ns',
+      perProductQty: 1,
+      requiredQty: 10,
+      route: 'SUBCONTRACT',
+      actionGroupKey: 'ag-s',
+    ),
+    _material(
+      id: 'm-b',
+      name: '外购件B',
+      goodsId: 'g-b',
+      level: 2,
+      nodeKey: 'ns/nb',
+      parentNodeKey: 'ns',
       perProductQty: 2,
       requiredQty: 20,
       route: 'BUY',

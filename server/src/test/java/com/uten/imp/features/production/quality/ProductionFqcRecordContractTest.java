@@ -32,6 +32,7 @@ class ProductionFqcRecordContractTest {
         var list = ProductionFqcRecordController.class.getMethod(
                 "list", String.class, String.class,
                 OffsetDateTime.class, OffsetDateTime.class,
+                String.class, String.class, String.class,
                 int.class, int.class);
         var detail = ProductionFqcRecordController.class.getMethod(
                 "detail", UUID.class);
@@ -68,7 +69,7 @@ class ProductionFqcRecordContractTest {
     @Test
     void filtersFailClosedAndKeepCanonicalPaging() {
         var filter = ProductionFqcRecordQueryService.normalizeFilter(
-                " cancelled ", "  SCRB  ", null, null, 0, 500);
+                " cancelled ", "  SCRB  ", null, null, null, null, null, 0, 500);
         assertThat(filter.decision()).isEqualTo("CANCELLED");
         assertThat(filter.keyword()).isEqualTo("scrb");
         assertThat(filter.page()).isEqualTo(1);
@@ -76,14 +77,32 @@ class ProductionFqcRecordContractTest {
 
         assertThatThrownBy(() ->
                 ProductionFqcRecordQueryService.normalizeFilter(
-                        "UNKNOWN", "", null, null, 1, 40))
+                        "UNKNOWN", "", null, null, null, null, null, 1, 40))
                 .isInstanceOf(ApiException.class);
         assertThatThrownBy(() ->
                 ProductionFqcRecordQueryService.normalizeFilter(
                         "ALL", "",
                         OffsetDateTime.parse("2026-08-31T12:00:00Z"),
                         OffsetDateTime.parse("2026-08-30T12:00:00Z"),
-                        1, 40))
+                        null, null, null, 1, 40))
+                .isInstanceOf(ApiException.class);
+        // 表头筛选三列（2026-09-16）：合法值归一、空白不过滤、非法值 fail-closed。
+        var columnFilter = ProductionFqcRecordQueryService.normalizeFilter(
+                "ALL", "", null, null, " production ", " active ", " scrap ", 1, 40);
+        assertThat(columnFilter.sourceType()).isEqualTo("PRODUCTION");
+        assertThat(columnFilter.effective()).isEqualTo("ACTIVE");
+        assertThat(columnFilter.disposition()).isEqualTo("SCRAP");
+        assertThatThrownBy(() ->
+                ProductionFqcRecordQueryService.normalizeFilter(
+                        "ALL", "", null, null, "PURCHASE", null, null, 1, 40))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(() ->
+                ProductionFqcRecordQueryService.normalizeFilter(
+                        "ALL", "", null, null, null, "MAYBE", null, 1, 40))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(() ->
+                ProductionFqcRecordQueryService.normalizeFilter(
+                        "ALL", "", null, null, null, null, "DONATE", 1, 40))
                 .isInstanceOf(ApiException.class);
     }
 
@@ -105,6 +124,21 @@ class ProductionFqcRecordContractTest {
                 .doesNotContain("report.maker_id AS owner_id")
                 .contains("GROUP BY record.decision")
                 .contains("ORDER BY record.decided_at DESC, record.record_id DESC");
+    }
+
+    @Test
+    void columnFiltersAreParameterizedPredicatesSharedByListAndMetrics()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/production/quality/"
+                        + "ProductionFqcRecordQueryService.java"));
+        // 表头三列（2026-09-16）全部走绑定参数等值；效力三档与列展示口径一致。
+        assertThat(source)
+                .contains("record.source_type = :sourceType")
+                .contains("record.disposition_code = :disposition")
+                .contains("\" AND record.effective AND record.decision <> 'CANCELLED'\"")
+                .contains("\" AND NOT record.effective\"")
+                .contains("\" AND record.decision = 'CANCELLED'\"");
     }
 
     private static List<String> componentNames(Class<?> recordType) {

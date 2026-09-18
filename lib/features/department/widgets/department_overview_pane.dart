@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/cards/uten_person_card.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -15,7 +15,10 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/master_detail_card.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../employee/models/employee_api_models.dart';
+import '../../employee/models/work_years.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
 import '../../employee/widgets/employee_status_badge.dart';
@@ -90,6 +93,14 @@ class _DepartmentOverviewPaneState
   String? _employeesError;
   String _keyword = '';
 
+  /// 表头筛选（部门/岗位/状态）：桶从已加载 items 前端聚合、前端裁剪显示行
+  ///（与员工档案列表页同款；搜索与排序仍走服务端）。
+  Map<String, String?> _filters = {};
+
+  /// 服务端排序（工号/入职日期/工龄，白名单同员工档案页）；null = 服务端默认。
+  String? _sortColumn;
+  bool _sortAsc = true;
+
   // 搜索框重建种子：外部过滤词（树搜索）变化时自增，驱动 UtenSearchBar 用新 initialValue 重建。
   int _kwSeed = 0;
 
@@ -154,6 +165,8 @@ class _DepartmentOverviewPaneState
       _employees = const [];
       _employeeTotal = 0;
       _employeesError = null;
+      // 换部门后表头筛选口径随之变化，一并复位（搜索/排序口径保留由各自交互管理）。
+      _filters = {};
     });
     try {
       final info = await ref
@@ -235,6 +248,8 @@ class _DepartmentOverviewPaneState
             includeSubtree: true,
             statuses: currentDepartmentEmployeeStatuses,
             search: _keyword.trim().isEmpty ? null : _keyword.trim(),
+            sort: _sortColumn,
+            order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted ||
           targetScope != _scopeVersion ||
@@ -286,6 +301,8 @@ class _DepartmentOverviewPaneState
             includeSubtree: true,
             statuses: currentDepartmentEmployeeStatuses,
             search: _keyword.trim().isEmpty ? null : _keyword.trim(),
+            sort: _sortColumn,
+            order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted || scope != _scopeVersion || request != _employeeRequest) {
         return;
@@ -346,13 +363,16 @@ class _DepartmentOverviewPaneState
     final selectable = kOperationalDepartmentLevels.contains(info.level);
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
 
-    return CustomScrollView(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      slivers: [
-        SliverPadding(
+    // 2026-09-17：在册员工由 UtenPersonCard 卡片列表改为员工档案同款
+    // MasterDataTableView 表格（列/表头筛选/排序/滚动自动翻页全对齐），
+    // 上方详情卡+人员总览保持固定，表格独立滚动。
+    return Column(
+      children: [
+        Padding(
           padding: EdgeInsets.fromLTRB(hPad, UtenSpacing.s16, hPad, 0),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate([
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Padding(
                 padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
                 child: MasterDetailCard(
@@ -425,24 +445,22 @@ class _DepartmentOverviewPaneState
                 _employeeToolbar(info, selectable),
                 const SizedBox(height: UtenSpacing.s8),
               ],
-            ]),
+            ],
           ),
         ),
-        if (widget.canViewEmployees)
-          ..._employeeSlivers(l10n, hPad)
-        else
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(hPad, 0, hPad, UtenSpacing.s16),
-            sliver: const SliverToBoxAdapter(
-              child: SizedBox(
-                height: 220,
-                child: UtenEmpty(
-                  icon: Icons.lock_outline_rounded,
-                  message: '无员工档案查看权限',
+        Expanded(
+          child: widget.canViewEmployees
+              ? Padding(
+                  padding: EdgeInsets.fromLTRB(hPad, 0, hPad, UtenSpacing.s12),
+                  child: _employeeTable(l10n),
+                )
+              : const Center(
+                  child: UtenEmpty(
+                    icon: Icons.lock_outline_rounded,
+                    message: '无员工档案查看权限',
+                  ),
                 ),
-              ),
-            ),
-          ),
+        ),
       ],
     );
   }
@@ -522,109 +540,201 @@ class _DepartmentOverviewPaneState
     );
   }
 
-  List<Widget> _employeeSlivers(AppLocalizations l10n, double hPad) {
-    EdgeInsets sectionPadding({double bottom = UtenSpacing.s16}) =>
-        EdgeInsets.fromLTRB(hPad, 0, hPad, bottom);
+  // ---- 在册员工表格（员工档案同款 MasterDataTableView） -----------------------
 
-    if (_employeesLoading && _employees.isEmpty) {
-      return [
-        SliverPadding(
-          padding: sectionPadding(),
-          sliver: const SliverToBoxAdapter(
-            child: SizedBox(
-              height: 220,
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          ),
+  /// 双击行 / 右键「查看员工档案」：进详情，返回后刷新人员数据。
+  Future<void> _openEmployeeDetail(EmployeeSummary e) async {
+    await _openEmployeeFlow('/employee/${e.id}');
+  }
+
+  Widget _employeeTable(AppLocalizations l10n) {
+    return MasterDataTableView<EmployeeSummary>(
+      key: const Key('department-employee-table'),
+      columns: _employeeColumns(l10n),
+      items: _visibleEmployees(l10n),
+      facets: _employeeFacets(l10n),
+      nullCounts: const {},
+      filters: _filters,
+      onFilterChanged: _onFilterChanged,
+      onRowTap: _openEmployeeDetail,
+      rowMenuBuilder: (e) => [
+        UtenMenuItem(
+          label: '查看员工档案',
+          icon: Icons.open_in_new_rounded,
+          onTap: () => _openEmployeeDetail(e),
         ),
-      ];
-    }
-    if (_employeesError != null) {
-      return [
-        SliverPadding(
-          padding: sectionPadding(),
-          sliver: SliverToBoxAdapter(
-            child: SizedBox(
-              height: 220,
-              child: UtenEmpty.error(
-                message: _employeesError,
-                actionLabel: l10n.commonRetry,
-                onAction: _reloadEmployees,
+      ],
+      sortColumn: _sortColumn,
+      sortAscending: _sortAsc,
+      onSortChange: _onSortChange,
+      // 加载/错误/空态交给表格自身占位。
+      isLoading: _employeesLoading,
+      error: _employeesError,
+      onRetry: _reloadEmployees,
+      emptyMessage: _keyword.isEmpty
+          ? l10n.departmentEmployeesEmpty
+          : '没有找到匹配的在册员工',
+      // 滚动临近底部自动追加下一页（替代原「加载更多」按钮）；还有没有更多
+      // 由 _loadMoreEmployees 按 _employeePage/_employeeTotalPages 守卫。
+      loadingMore: _employeesLoadingMore,
+      onLoadMore: _loadMoreEmployees,
+    );
+  }
+
+  List<MasterColumnDef<EmployeeSummary>> _employeeColumns(
+    AppLocalizations l10n,
+  ) => [
+        MasterColumnDef(
+          key: 'code',
+          label: '工号',
+          width: 90,
+          sortable: true,
+          value: (e) => e.code,
+        ),
+        MasterColumnDef(
+          key: 'fullName',
+          label: '姓名',
+          width: 150,
+          value: (e) => e.fullName,
+          cellBuilder: (context, e) => Row(
+            children: [
+              EmployeeLeadershipBadge(
+                departmentManager: e.departmentManager,
+                positionLevel: e.positionLevel,
+                leaderRank: e.leaderRank,
               ),
-            ),
+              const SizedBox(width: UtenSpacing.s4),
+              Flexible(child: Text(e.fullName)),
+            ],
           ),
         ),
+        MasterColumnDef(
+          key: 'departmentName',
+          label: '部门',
+          width: 150,
+          value: (e) => e.departmentName,
+        ),
+        MasterColumnDef(
+          key: 'positionName',
+          label: '岗位',
+          width: 140,
+          value: (e) => e.positionName,
+        ),
+        MasterColumnDef(
+          key: 'status',
+          label: '状态',
+          width: 100,
+          value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
+          cellBuilder: (context, e) => EmployeeStatusBadge(status: e.status),
+        ),
+        MasterColumnDef(
+          key: 'hireDate',
+          label: '入职日期',
+          width: 110,
+          type: 'date',
+          sortable: true,
+          value: (e) => e.hireDate,
+        ),
+        MasterColumnDef(
+          key: 'workYears',
+          label: '工龄',
+          width: 110,
+          sortable: true,
+          info: '按入职日期 + 当前日期动态计算（整年 + 整月），不落库。',
+          value: (e) => workYearsText(l10n, e.hireDate),
+        ),
+        // ADR-021：搜索命中车牌时显示（谁的车有问题 → 按车牌秒查人）。
+        MasterColumnDef(
+          key: 'matchedPlates',
+          label: '车牌命中',
+          width: 130,
+          info: '仅搜索词命中车牌时显示对应车牌；平时为空。',
+          value: (e) => e.matchedPlates,
+        ),
       ];
+
+  String _statusLabel(AppLocalizations l10n, String key) => switch (key) {
+        'active' => l10n.employeeStatusActive,
+        'probation' => l10n.employeeStatusProbation,
+        'onLeave' => l10n.employeeStatusOnLeave,
+        'resigned' => l10n.employeeStatusResigned,
+        _ => key,
+      };
+
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      final next = Map<String, String?>.from(_filters);
+      if (value == null) {
+        next.remove(key); // 选「所有」= 不筛
+      } else {
+        next[key] = value;
+      }
+      _filters = next;
+    });
+  }
+
+  /// 表头排序菜单：(null, _) 取消排序回到服务端默认顺序（白名单同员工档案页）。
+  void _onSortChange(String? column, bool ascending) {
+    if (column == null) {
+      if (_sortColumn == null) return;
+      setState(() => _sortColumn = null);
+      _reloadEmployees();
+      return;
     }
-    if (_employees.isEmpty) {
+    if (column == _sortColumn && ascending == _sortAsc) return;
+    setState(() {
+      _sortColumn = column;
+      _sortAsc = ascending;
+    });
+    _reloadEmployees();
+  }
+
+  /// 表头筛选裁剪已加载行（空值行在选了任何值时被滤掉）。
+  List<EmployeeSummary> _visibleEmployees(AppLocalizations l10n) {
+    if (_filters.values.every((v) => v == null || v.isEmpty)) return _employees;
+    final dept = _filters['departmentName'];
+    final status = _filters['status'];
+    final position = _filters['positionName'];
+    return _employees.where((e) {
+      final deptOk =
+          dept == null || dept.isEmpty || (e.departmentName ?? '') == dept;
+      final statusOk =
+          status == null ||
+          status.isEmpty ||
+          (e.status != null && _statusLabel(l10n, e.status!) == status);
+      final positionOk =
+          position == null ||
+          position.isEmpty ||
+          (e.positionName ?? '') == position;
+      return deptOk && statusOk && positionOk;
+    }).toList();
+  }
+
+  /// 部门/状态/岗位三列的筛选桶：已加载 items 聚合（空值不进桶）。
+  Map<String, List<MasterFacetBucket>> _employeeFacets(AppLocalizations l10n) {
+    List<MasterFacetBucket> bucketsOf(Iterable<String> texts) {
+      final counts = <String, int>{};
+      for (final text in texts) {
+        if (text.isEmpty) continue;
+        counts[text] = (counts[text] ?? 0) + 1;
+      }
+      final entries = counts.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
       return [
-        SliverPadding(
-          padding: sectionPadding(),
-          sliver: SliverToBoxAdapter(
-            child: SizedBox(
-              height: 220,
-              child: UtenEmpty(
-                icon: Icons.people_outline_rounded,
-                message: _keyword.isEmpty
-                    ? l10n.departmentEmployeesEmpty
-                    : '没有找到匹配的在册员工',
-              ),
-            ),
-          ),
-        ),
+        for (final entry in entries)
+          MasterFacetBucket(value: entry.key, count: entry.value),
       ];
     }
-    final hasMore = _employeePage < _employeeTotalPages;
-    return [
-      SliverPadding(
-        padding: sectionPadding(bottom: hasMore ? 0 : UtenSpacing.s16),
-        sliver: SliverList(
-          delegate: SliverChildBuilderDelegate((context, index) {
-            final employee = _employees[index];
-            final leadershipLabel = employeeLeadershipLabel(
-              departmentManager: employee.departmentManager,
-              positionLevel: employee.positionLevel,
-              leaderRank: employee.leaderRank,
-            );
-            return UtenPersonCard(
-              margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
-              title: employee.fullName,
-              titleLeading: leadershipLabel == null
-                  ? null
-                  : EmployeeLeadershipBadge(
-                      departmentManager: employee.departmentManager,
-                      positionLevel: employee.positionLevel,
-                      leaderRank: employee.leaderRank,
-                    ),
-              subtitle:
-                  '${employee.code} · ${employee.departmentName ?? ''} · '
-                  '${employee.positionName ?? ''}',
-              avatarText: employee.fullName,
-              trailing: EmployeeStatusBadge(status: employee.status),
-              onTap: () => _openEmployeeFlow('/employee/${employee.id}'),
-            );
-          }, childCount: _employees.length),
-        ),
+
+    return {
+      'departmentName': bucketsOf(
+        _employees.map((e) => e.departmentName ?? ''),
       ),
-      if (hasMore)
-        SliverPadding(
-          padding: sectionPadding(),
-          sliver: SliverToBoxAdapter(
-            child: Center(
-              child: _employeesLoadingMore
-                  ? const Padding(
-                      padding: EdgeInsets.all(UtenSpacing.s12),
-                      child: CircularProgressIndicator(),
-                    )
-                  : FilledButton.tonal(
-                      onPressed: _loadMoreEmployees,
-                      child: Text(
-                        '加载更多(已显示 ${_employees.length}/$_employeeTotal)',
-                      ),
-                    ),
-            ),
-          ),
-        ),
-    ];
+      'status': bucketsOf([
+        for (final e in _employees)
+          if (e.status != null) _statusLabel(l10n, e.status!),
+      ]),
+      'positionName': bucketsOf(_employees.map((e) => e.positionName ?? '')),
+    };
   }
 }

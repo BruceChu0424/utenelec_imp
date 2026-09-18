@@ -8,8 +8,10 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -354,6 +356,12 @@ class _EmployeeOffboardingWorkflowPageState
         body: UtenContentContainer.narrow(
           child: Column(
             children: [
+              // 完成离职办理网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+              if (_submitting)
+                const UtenBusyOverlay(
+                  title: '正在完成离职办理',
+                  description: '正在写入离职事实与账号停用，请勿重复提交或离开本页。',
+                ),
               _identityCard(),
               Expanded(
                 // 底部让位右下悬浮操作组：Stepper 内滚的末尾内容可完整滚到按钮上方。
@@ -467,18 +475,20 @@ class _EmployeeOffboardingWorkflowPageState
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DropdownButtonFormField<StableResignType>(
-          initialValue: _resignType,
-          decoration: const InputDecoration(
-            labelText: '离职类型',
-            border: OutlineInputBorder(),
-          ),
+        UtenDropdownField(
+          label: '离职类型',
+          value: _resignType.code,
+          allowClear: false,
+          searchable: false,
           items: [
             for (final type in StableResignType.values)
-              DropdownMenuItem(value: type, child: Text(type.label)),
+              UtenDropdownItem(value: type.code, label: type.label),
           ],
-          onChanged: (value) {
-            if (value != null) setState(() => _resignType = value);
+          onChanged: (code) {
+            final type = StableResignType.values
+                .where((t) => t.code == code)
+                .firstOrNull;
+            if (type != null) setState(() => _resignType = type);
           },
         ),
         const SizedBox(height: UtenSpacing.s12),

@@ -16,6 +16,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -74,6 +75,8 @@ class _SubcontractDocDetailPageState
   SubcontractDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
+  // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
+  String _busyTitle = '正在处理，请稍候';
 
   bool get _canViewCommercialAmounts {
     return _cfg.canViewCommercial(ref.read(currentPermissionsProvider)) &&
@@ -191,6 +194,7 @@ class _SubcontractDocDetailPageState
       _cfg.approveEffect,
       (repo) => repo.approve(widget.id),
       '已审核',
+      busyTitle: '正在审核，请稍候',
       reviewerConfirmation: true,
       reviewerActionLabel: '${_cfg.shortLabel}审核',
       onApiError: (error) {
@@ -213,10 +217,15 @@ class _SubcontractDocDetailPageState
         '「订货审批任务中心」审核。确认提交？',
     (repo) => repo.submitFinance(widget.id),
     '已提交财务审核组，等待财务审核',
+    busyTitle: '正在提交财务审核，请稍候',
   );
 
-  Future<void> _reverse() async =>
-      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _reverse() async => _doAction(
+    '红冲将反向冲销，确认？',
+    (repo) => repo.reverse(widget.id),
+    '已红冲',
+    busyTitle: '正在红冲，请稍候',
+  );
 
   /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
   /// 重回财务复核；驳回不会自动还原数量。
@@ -327,7 +336,10 @@ class _SubcontractDocDetailPageState
     }
     _disposeChangeQtyControllers(ctrls.values);
     if (changes.isEmpty) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在提交数量修改，请稍候';
+    });
     try {
       await ref
           .read(subcontractRepositoryProvider(widget.docType))
@@ -364,6 +376,7 @@ class _SubcontractDocDetailPageState
     void Function(ApiException error)? onApiError,
     bool reviewerConfirmation = false,
     String reviewerActionLabel = '审核',
+    String? busyTitle,
   }) async {
     if (_busy) return;
     final c = reviewerConfirmation
@@ -391,7 +404,10 @@ class _SubcontractDocDetailPageState
             ),
           );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = busyTitle ?? '正在处理，请稍候';
+    });
     try {
       await fn(ref.read(subcontractRepositoryProvider(widget.docType)));
       if (!mounted) return;
@@ -436,7 +452,10 @@ class _SubcontractDocDetailPageState
       ),
     );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在删除，请稍候';
+    });
     try {
       await ref
           .read(subcontractRepositoryProvider(widget.docType))
@@ -475,106 +494,119 @@ class _SubcontractDocDetailPageState
       body: SafeArea(
         // 2026-09-15 宽度口径（用户反馈）：详情页弃 narrow（1120 两侧大留白），
         // 改默认容器对齐新建销售订货单页。
-        child: UtenContentContainer(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : _error != null
-              ? Center(child: Text(_error!))
-              : _detail == null
-              ? const SizedBox.shrink()
-              // 2026-09-11 折叠头+表内滚：头部（只读提示/表头卡/横幅/进度/附件）
-              // 随上滚收起，明细标题吸顶后表格内部继续滚。
-              : UtenCollapsingHeaderScrollView(
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      0,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (widget.forceReadOnly) ...[
-                          _readOnlyBusinessNotice(theme),
-                          const SizedBox(height: UtenSpacing.s12),
-                        ],
-                        if (scopeCapability != null)
-                          DocumentScopeWriteNotice(
-                            capability: scopeCapability,
-                            ownerEmployeeId: _detail!.makerId,
-                            onRetry: () => ref.invalidate(
-                              documentScopeCapabilityProvider(
-                                DocumentDataScope.subcontract,
+        child: Stack(
+          children: [
+            UtenContentContainer(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : _error != null
+                  ? Center(child: Text(_error!))
+                  : _detail == null
+                  ? const SizedBox.shrink()
+                  // 2026-09-11 折叠头+表内滚：头部（只读提示/表头卡/横幅/进度/附件）
+                  // 随上滚收起，明细标题吸顶后表格内部继续滚。
+                  : UtenCollapsingHeaderScrollView(
+                      collapsingHeader: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          0,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (widget.forceReadOnly) ...[
+                              _readOnlyBusinessNotice(theme),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
+                            if (scopeCapability != null)
+                              DocumentScopeWriteNotice(
+                                capability: scopeCapability,
+                                ownerEmployeeId: _detail!.makerId,
+                                onRetry: () => ref.invalidate(
+                                  documentScopeCapabilityProvider(
+                                    DocumentDataScope.subcontract,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
-                        // SelectionArea（准则 §3.4），无需再单独包。
-                        _headerCard(theme),
-                        if (_cfg.approvalBlockedReason != null) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          _materialIssueSafetyBanner(theme),
-                        ],
-                        if (_detail!.productionLinked ||
-                            widget.docType ==
-                                SubcontractDocType.application) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          _productionSourceBanner(theme),
-                        ],
-                        if (widget.docType == SubcontractDocType.order) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          _financeApprovalBanner(theme),
-                          const SizedBox(height: UtenSpacing.s12),
-                          // V304 全链路进度包含商业/履约扩展端点；仅持财务审批任务 view
-                          // 的点名审核员可看主订货详情，但不额外放宽完整委外进度权限。
-                          if (canViewOrderProgress)
-                            SubcontractOrderProgressSection(
-                              orderId: _detail!.id,
-                            )
-                          else
-                            Text(
-                              '当前为财务审批任务视角；完整委外履约进度需委外订货查看权限。',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
+                            // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                            // SelectionArea（准则 §3.4），无需再单独包。
+                            _headerCard(theme),
+                            if (_cfg.approvalBlockedReason != null) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _materialIssueSafetyBanner(theme),
+                            ],
+                            if (_detail!.productionLinked ||
+                                widget.docType ==
+                                    SubcontractDocType.application) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _productionSourceBanner(theme),
+                            ],
+                            if (widget.docType == SubcontractDocType.order) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _financeApprovalBanner(theme),
+                              const SizedBox(height: UtenSpacing.s12),
+                              // V304 全链路进度包含商业/履约扩展端点；仅持财务审批任务 view
+                              // 的点名审核员可看主订货详情，但不额外放宽完整委外进度权限。
+                              if (canViewOrderProgress)
+                                SubcontractOrderProgressSection(
+                                  orderId: _detail!.id,
+                                )
+                              else
+                                Text(
+                                  '当前为财务审批任务视角；完整委外履约进度需委外订货查看权限。',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
+                            if (widget.docType == SubcontractDocType.order) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              BusinessAttachmentSection(
+                                ownerType: 'SUBCONTRACT_ORDER',
+                                ownerId: _detail!.id,
+                                canView:
+                                    _canViewCommercialAmounts &&
+                                    (canViewOrderProgress ||
+                                        (_hasPermission(
+                                              Perm.financeOrderApprovalView,
+                                            ) &&
+                                            _detail!
+                                                    .financeApproval
+                                                    ?.isPending ==
+                                                true)),
+                                // 详情=审核页：文件只读（增删回编辑页）。
+                                canManage: false,
+                                readOnlyNote: BusinessAttachmentSection
+                                    .kReviewReadOnlyAttachmentNote,
+                                categories: const ['合同', '加工要求', '图片', '其他'],
                               ),
-                            ),
-                        ],
-                        if (widget.docType == SubcontractDocType.order) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          BusinessAttachmentSection(
-                            ownerType: 'SUBCONTRACT_ORDER',
-                            ownerId: _detail!.id,
-                            canView:
-                                _canViewCommercialAmounts &&
-                                (canViewOrderProgress ||
-                                    (_hasPermission(
-                                          Perm.financeOrderApprovalView,
-                                        ) &&
-                                        _detail!.financeApproval?.isPending ==
-                                            true)),
-                            // 详情=审核页：文件只读（增删回编辑页）。
-                            canManage: false,
-                            readOnlyNote: BusinessAttachmentSection
-                                .kReviewReadOnlyAttachmentNote,
-                            categories: const ['合同', '加工要求', '图片', '其他'],
-                          ),
-                        ],
-                      ],
+                            ],
+                          ],
+                        ),
+                      ),
+                      // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                      body: Padding(
+                        // 底部让位右下悬浮操作组：末行可滚出按钮区。
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.controlHeight +
+                              UtenSpacing.s32,
+                        ),
+                        child: _itemsCard(theme),
+                      ),
                     ),
-                  ),
-                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                  body: Padding(
-                    // 底部让位右下悬浮操作组：末行可滚出按钮区。
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
-                    ),
-                    child: _itemsCard(theme),
-                  ),
-                ),
+            ),
+            // 处理中屏幕中央加载遮罩（对齐销售单据详情 UtenBusyOverlay 口径）：
+            // 只跟随网络等待段，结果提示展示期间已撤下；按钮禁用逻辑不变。
+            if (_busy)
+              Positioned.fill(child: UtenBusyOverlay(title: _busyTitle)),
+          ],
         ),
       ),
       // 2026-09-14 UI 统一口径：底部吸底操作条改右下悬浮组，大小/高度/禁用态

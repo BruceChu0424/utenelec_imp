@@ -20,6 +20,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_outbound.dart';
 import '../pages/warehouse_subcontract_outbound_batch_page.dart';
@@ -59,6 +61,10 @@ class _WarehouseSubcontractOutboundWorkbenchState
   String? _error;
   int _requestVersion = 0;
   String _keyword = '';
+
+  /// 表头列筛选（2026-09-16）：委外商（dict 桶，value=UUID）+ 任务状态（派生固定枚举）。
+  String? _supplierIdFilter;
+  String? _statusFilter;
   Set<String> _selectedIds = {};
   bool _openingBatch = false;
 
@@ -82,7 +88,14 @@ class _WarehouseSubcontractOutboundWorkbenchState
   void initState() {
     super.initState();
     _keyword = widget.keyword;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // dict 装载完成后补一次 setState：内部缓存变化不触发 provider 通知。
+      ref
+          .read(masterNameServiceProvider)
+          .ensureLoaded()
+          .then((_) => mounted ? setState(() {}) : null);
+      _load(1);
+    });
   }
 
   @override
@@ -109,7 +122,12 @@ class _WarehouseSubcontractOutboundWorkbenchState
     });
     try {
       final repo = ref.read(warehouseSubcontractOutboundRepositoryProvider);
-      final result = await repo.tasks(page: page, keyword: _keyword);
+      final result = await repo.tasks(
+        page: page,
+        keyword: _keyword,
+        supplierId: _supplierIdFilter,
+        status: _statusFilter,
+      );
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
@@ -223,10 +241,40 @@ class _WarehouseSubcontractOutboundWorkbenchState
             key: const Key('subcontract-outbound-task-table'),
             columns: _columns,
             items: result.items,
-            facets: const {},
+            // 表头筛选桶（2026-09-16）：委外商走主档 dict；任务状态为派生两档
+            // （有草稿=待拣货 / 无草稿=已备齐待出仓），与 statusLabel 同口径。
+            facets: {
+              'supplierName': masterDictionaryFacets(
+                ref.watch(masterNameServiceProvider).supplierEntries,
+              ),
+              'status': const [
+                MasterFacetBucket(
+                  value: 'DRAFT_PICKING',
+                  count: 0,
+                  label: '目标件出仓草稿待拣货',
+                ),
+                MasterFacetBucket(
+                  value: 'READY_OUTBOUND',
+                  count: 0,
+                  label: '目标件已备齐，待出仓',
+                ),
+              ],
+            },
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: {
+              'supplierName': _supplierIdFilter,
+              'status': _statusFilter,
+            },
+            onFilterChanged: (key, value) {
+              setState(() {
+                if (key == 'supplierName') {
+                  _supplierIdFilter = value;
+                } else if (key == 'status') {
+                  _statusFilter = value;
+                }
+              });
+              _load(1);
+            },
             onRowTap: _openTask,
             selectable: _canExecute,
             idOf: (task) => _selectable(task) ? task.planId : null,

@@ -65,6 +65,32 @@ final noticeDetailProvider = FutureProvider.autoDispose.family<Notice?, String>(
   },
 );
 
+/// 庆典「自动发送」设置（HR 任务中心 生日关怀/入职周年 页的开关）。
+///
+/// 默认关（V600）：祝福由人事手动批量发布；打开后每日 08:00（北京时间）
+/// 服务端调度器自动代发生日/入职周年祝福卡。仅 notice:publish 者可切换。
+final celebrationSettingsProvider = AsyncNotifierProvider.autoDispose<
+    CelebrationSettingsNotifier, NoticeCelebrationSettings>(
+  CelebrationSettingsNotifier.new,
+);
+
+class CelebrationSettingsNotifier
+    extends AutoDisposeAsyncNotifier<NoticeCelebrationSettings> {
+  @override
+  Future<NoticeCelebrationSettings> build() {
+    return ref.watch(noticeRepositoryProvider).getCelebrationSettings();
+  }
+
+  /// 翻转「自动发送」开关；成功后以服务端返回值更新本地状态（失败抛给调用方）。
+  Future<void> setAutoEnabled(bool enabled) async {
+    final latest = await ref
+        .read(noticeRepositoryProvider)
+        .setCelebrationAutoEnabled(enabled);
+    state = AsyncData(latest);
+  }
+}
+
+
 const Duration _kUnreadPollInterval = Duration(seconds: 60);
 
 /// 通知未读数（Dashboard / 徽章用）：默认 60s 轮询一次；网络/服务异常时保留旧值，

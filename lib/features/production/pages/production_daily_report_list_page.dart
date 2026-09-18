@@ -23,6 +23,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_daily_report.dart';
@@ -44,6 +45,9 @@ class _ProductionDailyReportListPageState
   final _list = PagedListController<ProductionDailyReportListItem>();
   int? _statusFilter;
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
+
+  /// 表头列筛选：车间（departments/tree 展平桶，value=UUID 回传 departmentId）。
+  String? _workshopIdFilter;
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -81,6 +85,7 @@ class _ProductionDailyReportListPageState
         page: _list.pageNum,
         filter: ProductionDailyReportFilter(
           keyword: _list.normalizedKeyword,
+          departmentId: _workshopIdFilter,
           status: _statusFilter,
         ),
         sort: _list.sortKey,
@@ -95,6 +100,13 @@ class _ProductionDailyReportListPageState
       _statusFilter = s;
       _statusFilterSelected = true;
     });
+    _reload(1);
+  }
+
+  /// 表头筛选回调：车间值并进 repository.list 的 departmentId，重拉回第 1 页。
+  void _onColumnFilterChanged(String key, String? value) {
+    if (key != 'workshop') return;
+    setState(() => _workshopIdFilter = value);
     _reload(1);
   }
 
@@ -249,10 +261,14 @@ class _ProductionDailyReportListPageState
                       child: MasterDataTableView<ProductionDailyReportListItem>(
                         columns: _columns(names),
                         items: _list.page?.items ?? const [],
-                        facets: const {},
+                        facets: {
+                          'workshop': masterDictionaryFacets(
+                            names.departmentEntries,
+                          ),
+                        },
                         nullCounts: const {},
-                        filters: const {},
-                        onFilterChanged: (_, _) {},
+                        filters: {'workshop': _workshopIdFilter},
+                        onFilterChanged: _onColumnFilterChanged,
                         sortColumn: _list.sortKey,
                         sortAscending: _list.sortAsc,
                         onSortChange: _onSortChange,

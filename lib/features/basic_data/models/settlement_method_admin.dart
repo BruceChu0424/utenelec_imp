@@ -5,6 +5,8 @@
 //   FIXED_DAY_OF_MONTH) 推导；QC/发票/对账确认基准等待专用事件，到期日保持未定。
 //   供应商正数 tday 覆盖方式默认天数；CASH 系统角色固定收货日到期。
 
+import 'master_facet.dart';
+
 /// 结算方式管理行（含禁用行与账期策略）。
 class SettlementMethodAdminItem {
   const SettlementMethodAdminItem({
@@ -107,3 +109,39 @@ String settlementSystemRoleLabel(String? role) => switch (role) {
   'MONTHLY' => '月结 · 系统锁定',
   _ => '—',
 };
+
+/// 字段 facet 结果：各筛选字段（状态/系统角色/到期基准/到期规则）的可选值桶
+/// + 各字段空值计数（照 ColorFacets；编号/名称自由文本列不进 facet）。
+class SettlementMethodFacets {
+  const SettlementMethodFacets({
+    required this.fields,
+    required this.nullCounts,
+  });
+
+  final Map<String, List<MasterFacetBucket>> fields;
+  final Map<String, int> nullCounts;
+
+  static const _keys = ['status', 'systemRole', 'termsBase', 'dueRule'];
+
+  factory SettlementMethodFacets.fromJson(Map<String, dynamic> json) {
+    final fields = <String, List<MasterFacetBucket>>{};
+    for (final k in _keys) {
+      final list = json[k];
+      fields[k] = list is List
+          ? list
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
+          : const [];
+    }
+    final ncRaw = json['nullCounts'];
+    final nullCounts = <String, int>{};
+    if (ncRaw is Map) {
+      ncRaw.forEach((k, v) {
+        nullCounts[k.toString()] = (v is num ? v.toInt() : 0);
+      });
+    }
+    return SettlementMethodFacets(fields: fields, nullCounts: nullCounts);
+  }
+}

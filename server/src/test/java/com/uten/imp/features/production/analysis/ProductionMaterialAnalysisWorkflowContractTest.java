@@ -454,28 +454,43 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void routeLearningPrefetchReadsLatestConfirmedRoutePerGoodsDimension() throws Exception {
-        // 2026-09-04 路线学习预填：按货品+颜色+单位维度取最近一张未删分析里
-        // confirmed_route 的记忆；只读、跨分析共享。
+    void confirmRoutesWritesGoodsSourceTypeAndRouteMemoryEndpointIsRetired() throws Exception {
+        // 2026-09-16 供应方式单一事实源 = 货品主档：确认路线同事务回写 goods.source_type
+        // (人工决定，抬 version；值没变不落盘)，同一条 UPDATE 把本行 source_suggestion
+        // 对齐成确认值(否则回写后下一次刷新算出的建议 = 刚确认的值，会被当成主档事实
+        // 变更把确认清掉)；按历史分析推导的 /last-routes 记忆整套退役(存量由 V598 回填)。
         String service = source("features/production/analysis/MaterialAnalysisService.java");
-        assertThat(service).contains("lastRoutesPerGoods");
-        int queryStart=service.indexOf("WITH history AS (",service.indexOf("lastRoutesPerGoods("));
-        int queryEnd=service.indexOf("\"\"\""+");",queryStart);
-        assertThat(queryStart).isGreaterThanOrEqualTo(0);
-        assertThat(queryEnd).isGreaterThan(queryStart);
-        String memoryQuery=service.substring(queryStart,queryEnd);
-        assertThat(memoryQuery)
-                .contains("DENSE_RANK() OVER")
-                .contains("PARTITION BY m.goods_id,m.color_id,m.unit_id")
-                .contains("COALESCE(m.route_confirmed_at,m.created_at) DESC")
-                .contains("m.confirmed_route IS NOT NULL")
-                .contains("a.is_deleted=FALSE")
-                .contains("a.status<>'CANCELLED'")
-                .contains("WHERE recency=1")
-                .contains("HAVING COUNT(DISTINCT confirmed_route)=1")
-                .doesNotContain("m.active");
+        assertThat(service)
+                .doesNotContain("lastRoutesPerGoods")
+                .doesNotContain("LastRoutePerGoods");
+        int saveRoutes = service.indexOf("public AnalysisView saveRoutes(");
+        assertThat(saveRoutes).isGreaterThanOrEqualTo(0);
+        int updateStart = service.indexOf(
+                "UPDATE production_material_analysis_materials", saveRoutes);
+        int updateEnd = service.indexOf("\"\"\"", updateStart);
+        assertThat(updateStart).isGreaterThan(saveRoutes);
+        assertThat(updateEnd).isGreaterThan(updateStart);
+        assertThat(service.substring(updateStart, updateEnd))
+                .contains("SET confirmed_route = :route,")
+                .contains("source_suggestion = :route,");
+        // 主档回写必须先于 refreshLocked：刷新按新主档算建议才与本行的 source_suggestion 对齐。
+        int writeBack = service.indexOf("writeBackGoodsSourceType(goodsRoutes);", updateEnd);
+        int refresh = service.indexOf("refreshLocked(analysisId);", writeBack);
+        assertThat(writeBack).isGreaterThan(updateEnd);
+        assertThat(refresh).isGreaterThan(writeBack);
+        int goodsUpdate = service.indexOf("UPDATE goods", writeBack);
+        assertThat(goodsUpdate).isGreaterThan(writeBack);
+        assertThat(service.substring(goodsUpdate, service.indexOf("\"\"\"", goodsUpdate)))
+                .contains("SET source_type = :sourceType,")
+                .contains("version = version + 1,")
+                .contains("updated_by = :actorId")
+                .contains("WHERE id = :goodsId AND is_deleted = FALSE")
+                .contains("AND source_type IS DISTINCT FROM :sourceType");
+        assertThat(service).contains("static String sourceTypeForRoute(String route)");
         String controller = source("features/production/analysis/MaterialAnalysisController.java");
-        assertThat(controller).contains("\"/last-routes\"");
+        assertThat(controller)
+                .doesNotContain("\"/last-routes\"")
+                .doesNotContain("lastRoutesPerGoods");
     }
 
     private static String source(String relative) throws Exception {

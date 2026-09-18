@@ -23,7 +23,12 @@ class _FakeSuggestionRepository extends Fake implements SuggestionRepository {
     int page = 1,
     int size = 20,
   }) async {
-    listCalls.add({'mine': mine, 'status': status?.name, 'page': page});
+    listCalls.add({
+      'mine': mine,
+      'category': category?.name,
+      'status': status?.name,
+      'page': page,
+    });
     return PagedResult(
       items: [
         Suggestion(
@@ -83,6 +88,56 @@ void main() {
 
     expect(repo.listCalls.last['status'], 'resolved');
     expect(repo.listCalls.last['page'], 1, reason: '换筛选回第 1 页');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('category header facet is pushed to the backend query', (
+    tester,
+  ) async {
+    // 类别列固定枚举桶（六类，2026-09-16）：value=枚举名（后端 category 码），
+    // 选桶 → repository.list 收到 category 并回第 1 页；与状态筛选正交叠加。
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeSuggestionRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          suggestionRepositoryProvider.overrideWithValue(repo),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: SuggestionListPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<Suggestion>>(
+      find.byKey(const Key('suggestion-list-table')),
+    );
+    expect(table.facets.keys, containsAll(<String>['status', 'category']));
+    expect(
+      table.facets['category']?.map((bucket) => bucket.value),
+      containsAll(<String>['product', 'process', 'welfare', 'other']),
+    );
+
+    table.onFilterChanged('category', 'process');
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['category'], 'process');
+    expect(repo.listCalls.last['page'], 1, reason: '换筛选回第 1 页');
+
+    final refreshed = tester.widget<MasterDataTableView<Suggestion>>(
+      find.byKey(const Key('suggestion-list-table')),
+    );
+    expect(refreshed.filters['category'], 'process');
+    refreshed.onFilterChanged('status', 'reviewing');
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['status'], 'reviewing');
+    expect(repo.listCalls.last['category'], 'process');
+    expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox());
   });

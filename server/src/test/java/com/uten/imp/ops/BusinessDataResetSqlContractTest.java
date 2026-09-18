@@ -359,7 +359,17 @@ class BusinessDataResetSqlContractTest {
                 .contains("(593, 550)")
                 // V594 日报审核补链放行：只替换只增不改守卫函数体，不加表（550→551）。
                 .contains("(594, 551)")
-                .contains("V507/469、V508/470及V511至V594完整目录");
+                // V595 车间直送 v2：只加列/改函数/改视图列/加索引，不加表（551→552）。
+                .contains("(595, 552)")
+                // V598 货品来源按路线确认历史回填：只 UPDATE 一列不加表 (552->553)。
+                // V596 到货先入库后质检：只加列/事件动作/批次来源/权限码，不加表(552→553)。
+                .contains("(596, 553)")
+                // V597 产成品先入库后质检：只加列/守卫/权限码，不加表(553→554)。
+                .contains("(597, 554)")
+                .contains("(598, 555)")
+                .contains("(599, 556)")
+                .contains("(600, 557)")
+                .contains("V507/469、V508/470及V511至V600完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
@@ -495,12 +505,20 @@ class BusinessDataResetSqlContractTest {
                         "MigrationRehearsalSupport.java"),
                 Path.of("server", "src", "test", "java", "com", "uten", "imp", "migration",
                         "MigrationRehearsalSupport.java"));
-        assertThat(rehearsal)
-                .as("MigrationRehearsalSupport 的迁移头常量没跟上："
-                        + "请改成 CURRENT_HEAD_VERSION = \"%d\"; CURRENT_MIGRATION_COUNT = %d;"
-                                .formatted(head, count))
-                .contains("CURRENT_HEAD_VERSION = \"" + head + "\"")
-                .contains("CURRENT_MIGRATION_COUNT = " + count);
+        // 2026-09-16 起 MigrationRehearsalSupport 从 classpath db/migration 目录自动推导这两个常量
+        //（目录是唯一事实源）；旧式手写常量仍被接受，但必须与目录头一致。
+        if (rehearsal.contains("CURRENT_HEAD_VERSION = Integer.toString(head)")) {
+            assertThat(rehearsal)
+                    .as("MigrationRehearsalSupport 自动推导迁移头时条数也必须来自目录")
+                    .contains("CURRENT_MIGRATION_COUNT = count");
+        } else {
+            assertThat(rehearsal)
+                    .as("MigrationRehearsalSupport 的迁移头常量没跟上："
+                            + "请改成 CURRENT_HEAD_VERSION = \"%d\"; CURRENT_MIGRATION_COUNT = %d;"
+                                    .formatted(head, count))
+                    .contains("CURRENT_HEAD_VERSION = \"" + head + "\"")
+                    .contains("CURRENT_MIGRATION_COUNT = " + count);
+        }
 
         // 连带项：PreplanFutureTransferForwardMigrationPostgresTest 断言「从 V569
         // 升到目录头只跑 V569 之后的迁移」，它的条数常量同样要随新迁移 +1。

@@ -89,7 +89,7 @@ public class ProductionMaterialAllocationFacade {
         List<AllocationResult> results = new ArrayList<>(ordered.size());
         for (AllocationRequest request : ordered) {
             BigDecimal remaining = request.requiredQty();
-            List<UUID> warehouses = new ArrayList<>(batch.normalFor(request.warehouseId()));
+            List<UUID> warehouses = new ArrayList<>(batch.normalFor(request.warehouseId(), request.demandId()));
             if (warehouses.remove(request.warehouseId()) || batch.replays.containsKey(request.idempotencyKey()))
                 warehouses.addFirst(request.warehouseId());
             for (UUID warehouse : warehouses) {
@@ -129,7 +129,7 @@ public class ProductionMaterialAllocationFacade {
         List<AllocationResult> results = new ArrayList<>();
         for (AllocationRequest request : requests.stream()
                 .sorted(Comparator.comparing(AllocationRequest::demandId)).toList()) {
-            List<UUID> warehouses = batch.normalFor(request.warehouseId());
+            List<UUID> warehouses = batch.normalFor(request.warehouseId(), request.demandId());
             BigDecimal remaining = request.requiredQty();
             Map<UUID, BigDecimal> owned = new LinkedHashMap<>();
             if (preferences != null) {
@@ -206,7 +206,7 @@ public class ProductionMaterialAllocationFacade {
         List<AllocationResult> results = new ArrayList<>();
         for (AllocationRequest request : requests.stream()
                 .sorted(Comparator.comparing(value -> value.demandId().toString())).toList()) {
-            List<UUID> normal = batch.normalFor(request.warehouseId());
+            List<UUID> normal = batch.normalFor(request.warehouseId(), request.demandId());
             Map<UUID, OwnedSlice> owned = new LinkedHashMap<>();
             for (QualifiedSourcePreference source : sources.stream()
                     .filter(value -> request.demandId().equals(value.demandId()))
@@ -351,9 +351,30 @@ public class ProductionMaterialAllocationFacade {
         final Map<LeafKey, BigDecimal> pendingOwned = new LinkedHashMap<>();
         final Map<GroupKey, BigDecimal> pendingUnqualified = new LinkedHashMap<>();
         final Map<GroupKey, BigDecimal> publicRemaining = new LinkedHashMap<>();
+        /** 线边仓叶仓(V595)：只对直送指名的需求可见，其库存不进主仓公共预算。 */
+        final java.util.Set<UUID> lineSideWarehouses = new java.util.HashSet<>();
+        /** 需求 → 该需求可动用的线边仓(fn_line_side_stock_targets_demand 为真)。 */
+        final Map<UUID, java.util.Set<UUID>> lineSideTargets = new LinkedHashMap<>();
 
         List<UUID> normalFor(UUID warehouse) {
             return normalByMain.getOrDefault(mainByWarehouse.get(warehouse), List.of());
+        }
+
+        /**
+         * 某条需求在该主仓下可动用的叶仓：线边仓只在「直送指名给这条需求」时出现(V595)，
+         * 其余任务连看都看不到线边仓里的料——它是车间料架，不是公共库存。
+         */
+        List<UUID> normalFor(UUID warehouse, UUID demandId) {
+            if (lineSideWarehouses.isEmpty()) return normalFor(warehouse);
+            java.util.Set<UUID> allowed = lineSideTargets.getOrDefault(demandId, java.util.Set.of());
+            return normalFor(warehouse).stream()
+                    .filter(leaf -> !lineSideWarehouses.contains(leaf) || allowed.contains(leaf))
+                    .toList();
+        }
+
+        boolean lineSideAllowed(UUID warehouse, UUID demandId) {
+            return !lineSideWarehouses.contains(warehouse)
+                    || lineSideTargets.getOrDefault(demandId, java.util.Set.of()).contains(warehouse);
         }
 
         void releaseOwned(AllocationRequest request, UUID warehouse) {
@@ -388,7 +409,7 @@ public class ProductionMaterialAllocationFacade {
             mains.add(main);
         });
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT warehouse.id,fn_warehouse_main_id(warehouse.id)
+                SELECT warehouse.id,fn_warehouse_main_id(warehouse.id),warehouse.is_line_side
                 FROM warehouses warehouse
                 WHERE fn_warehouse_main_id(warehouse.id) IN (:mains)
                   AND NOT warehouse.is_deleted AND warehouse.is_accountable AND NOT warehouse.is_defective
@@ -400,9 +421,27 @@ public class ProductionMaterialAllocationFacade {
             batch.mainByWarehouse.put(warehouse, main);
             batch.normalWarehouses.add(warehouse);
             batch.normalByMain.computeIfAbsent(main, ignored -> new ArrayList<>()).add(warehouse);
+            if (Boolean.TRUE.equals(row[2])) batch.lineSideWarehouses.add(warehouse);
+        }
+        if (!batch.lineSideWarehouses.isEmpty()) {
+            // 线边仓里的料只属于直送指名的需求(含 V561 分批谱系与原段级匹配，V595)。
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT demand.id, line_side.id
+                    FROM production_material_demands demand
+                    CROSS JOIN warehouses line_side
+                    WHERE demand.id IN (:demands)
+                      AND line_side.id IN (:lineSides)
+                      AND fn_line_side_stock_targets_demand(line_side.id, demand.id)
+                    ORDER BY demand.id, line_side.id
+                    """).setParameter("demands", byDemand.keySet())
+                    .setParameter("lineSides", batch.lineSideWarehouses))) {
+                batch.lineSideTargets.computeIfAbsent((UUID) row[0], ignored -> new java.util.HashSet<>())
+                        .add((UUID) row[1]);
+            }
         }
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id,demand_id,supply_id,qty,goods_id,color_id,warehouse_id,idempotency_key,requires_qualified_origin
+                SELECT id,demand_id,supply_id,qty,goods_id,color_id,warehouse_id,idempotency_key,requires_qualified_origin,
+                       status,consumed_qty,released_qty
                 FROM stock_reservations WHERE demand_id IN (:demands) AND NOT is_deleted
                 ORDER BY goods_id,color_id NULLS FIRST,warehouse_id,id FOR UPDATE
                 """).setParameter("demands", byDemand.keySet()))) batch.replays.put((String) row[7], row);
@@ -438,7 +477,8 @@ public class ProductionMaterialAllocationFacade {
             MaterialDimension dimension = new MaterialDimension((UUID) row[2], (UUID) row[3]);
             BigDecimal free = decimal(row[4]).subtract(decimal(row[5])).max(BigDecimal.ZERO);
             batch.positions.put(new LeafKey(warehouse, dimension), new StockPosition((UUID) row[0], main, free));
-            if (batch.normalWarehouses.contains(warehouse)) {
+            // 线边仓库存不进主仓公共预算：它既不给别的任务用，也不受安全库存扣留(V595)。
+            if (batch.normalWarehouses.contains(warehouse) && !batch.lineSideWarehouses.contains(warehouse)) {
                 GroupKey group = new GroupKey(main, dimension);
                 freeByMain.merge(group, free, BigDecimal::add);
                 safetyByMain.merge(group, decimal(row[6]), BigDecimal::max);
@@ -574,6 +614,17 @@ public class ProductionMaterialAllocationFacade {
 
     private AllocationResult allocateOne(AllocationRequest request, BigDecimal qualifiedQty,
                                          boolean requiresQualifiedOrigin, AllocationBatch batch) {
+        return allocateOne(request, qualifiedQty, requiresQualifiedOrigin, batch, false);
+    }
+
+    /**
+     * @param extendExisting 同一需求在同一库存余额上已有正式预留时追加数量而不是新建一行
+     *                       (V595 线边仓分次补投；`uq_stock_reservation_demand_supply` 规定
+     *                       一条需求对一份供给只有一行)。下达路径一次整批预留，保持新建。
+     */
+    private AllocationResult allocateOne(AllocationRequest request, BigDecimal qualifiedQty,
+                                         boolean requiresQualifiedOrigin, AllocationBatch batch,
+                                         boolean extendExisting) {
         Object[] replay = batch.replays.get(request.idempotencyKey());
         if (replay != null) {
             requireReplayMatch(request, replay);
@@ -590,12 +641,53 @@ public class ProductionMaterialAllocationFacade {
         BigDecimal physical = position.free.subtract(batch.pendingOwned.getOrDefault(leaf, BigDecimal.ZERO)).max(BigDecimal.ZERO);
         BigDecimal qualified = qualifiedQty.min(physical);
         GroupKey group = new GroupKey(position.mainWarehouse, leaf.material());
-        BigDecimal publicLimit = requiresQualifiedOrigin || !batch.normalWarehouses.contains(request.warehouseId())
+        boolean lineSide = batch.lineSideWarehouses.contains(request.warehouseId());
+        if (lineSide && !batch.lineSideAllowed(request.warehouseId(), request.demandId())) {
+            return new AllocationResult(request.demandId(), null, supplyId,
+                    BigDecimal.ZERO, false, request.warehouseId());
+        }
+        // 线边仓是直送指名给这条需求的专属料架：整批可动用，不套主仓公共预算与安全库存(V595)。
+        BigDecimal publicLimit = lineSide
+                ? physical
+                : requiresQualifiedOrigin || !batch.normalWarehouses.contains(request.warehouseId())
                 ? BigDecimal.ZERO : batch.publicRemaining.getOrDefault(group, BigDecimal.ZERO)
                     .subtract(batch.pendingUnqualified.getOrDefault(group, BigDecimal.ZERO)).max(BigDecimal.ZERO);
         BigDecimal take = allocationTake(request.requiredQty(),physical,qualified,publicLimit);
         if (take.signum() <= 0) return new AllocationResult(request.demandId(), null, supplyId,
                 BigDecimal.ZERO, false, request.warehouseId());
+        // 同一需求在同一余额上尚有一行「未动过」的有效预留时追加到它(uq_stock_reservation_demand_supply
+        // 只约束这种行，V595)；已出库消耗或已释放的行不能再挂分析权益的 FORMALIZE 桥接，另起新行。
+        Object[] existing = !extendExisting ? null : batch.replays.values().stream()
+                .filter(row -> request.demandId().equals(row[1]) && supplyId.equals(row[2])
+                        && ((Number) row[9]).shortValue() == STATUS_EFFECTIVE
+                        && decimal(row[10]).signum() == 0 && decimal(row[11]).signum() == 0)
+                .findFirst().orElse(null);
+        if (existing != null) {
+            int extended = em.createNativeQuery("""
+                            UPDATE stock_reservations
+                            SET qty = qty + :take,
+                                lock_version = lock_version + 1,
+                                updated_at = now(),
+                                updated_by = :actorId
+                            WHERE id = :id
+                              AND is_deleted = FALSE
+                              AND owner_type = 'PRODUCTION_MATERIAL_DEMAND'
+                              AND status = :status
+                              AND consumed_qty = 0
+                              AND released_qty = 0
+                            """)
+                    .setParameter("take", take)
+                    .setParameter("status", STATUS_EFFECTIVE)
+                    .setParameter("actorId", request.actorId())
+                    .setParameter("id", existing[0])
+                    .executeUpdate();
+            if (extended != 1) {
+                throw new ApiException(ErrorCode.CONFLICT, "物料分配追加写入失败");
+            }
+            position.free = position.free.subtract(take);
+            return new AllocationResult(
+                    request.demandId(), (UUID) existing[0], supplyId, take, false, request.warehouseId());
+        }
         UUID allocationId = UUID.randomUUID();
         int inserted = em.createNativeQuery("""
                         INSERT INTO stock_reservations (
@@ -635,10 +727,67 @@ public class ProductionMaterialAllocationFacade {
             throw new ApiException(ErrorCode.CONFLICT, "物料分配写入失败");
         }
         position.free = position.free.subtract(take);
-        if (!requiresQualifiedOrigin) batch.publicRemaining.compute(group, (ignored, budget) ->
+        if (!requiresQualifiedOrigin && !lineSide) batch.publicRemaining.compute(group, (ignored, budget) ->
                 (budget == null ? BigDecimal.ZERO : budget).subtract(take.subtract(qualified)));
         return new AllocationResult(
                 request.demandId(), allocationId, supplyId, take, false, request.warehouseId());
+    }
+
+    /**
+     * 只在指定叶仓内分配(V595 持续生产 / 同车间直送补投)：直送料刚落进线边仓，按这条需求的
+     * 剩余量就地预留，绝不外溢到同主仓其它叶仓——外溢会造出一张要仓库发料的领料单，正是持续
+     * 生产要砍掉的一步。
+     *
+     * <p>直送产出一入线边仓就被收料计划的分析备料权益预留；调用方已把该叶仓里的权益批次转成
+     * {@code preferences}(可空)，这里先按权益片段取(OWN)，再取该叶仓里剩余的无主料(STOCK)，
+     * 与 {@link #allocateWithQualifiedSources} 同一套核对与幂等规则。{@code request.warehouseId()}
+     * 仍是需求所属的计划包仓(权益核对按它比对)，叶仓单独给。线边仓未指名给该需求时返回空
+     * (调用方按「料留在线边仓等下一批需求」处理)；带权益却分不出来则抛冲突，让整笔事务回滚。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AllocationResult> allocateWithinLeaf(
+            AllocationRequest request, UUID leafWarehouseId, List<QualifiedSourcePreference> preferences) {
+        tx.bind();
+        validateRequests(List.of(request));
+        if (leafWarehouseId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "叶仓内分配缺少目标叶仓");
+        }
+        lockDimensions(List.of(request));
+        lockDemandRows(List.of(request));
+        List<QualifiedSourcePreference> sources = preferences == null ? List.of() : List.copyOf(preferences);
+        if (sources.stream().anyMatch(source -> source == null || !leafWarehouseId.equals(source.warehouseId()))) {
+            throw allocationConflict("本批来源不在指定叶仓，不能就地分配");
+        }
+        Map<SourceDemandKey, SourceProof> proofs = verifyPreparedSources(List.of(request), sources);
+        Map<DemandWarehouse, OwnedSlice> prepared = new LinkedHashMap<>();
+        Map<UUID, OwnedSlice> owned = new LinkedHashMap<>();
+        for (QualifiedSourcePreference source : sources) {
+            SourceProof proof = proofs.get(new SourceDemandKey(source.sourceEntitlementEventId(), source.demandId()));
+            OwnedSlice slice = new OwnedSlice(source.qty(), proof.qualified() ? source.qty() : BigDecimal.ZERO);
+            prepared.merge(new DemandWarehouse(source.demandId(), source.warehouseId()), slice,
+                    (left, right) -> new OwnedSlice(left.qty().add(right.qty()), left.qualifiedQty().add(right.qualifiedQty())));
+            owned.merge(source.warehouseId(), slice,
+                    (left, right) -> new OwnedSlice(left.qty().add(right.qty()), left.qualifiedQty().add(right.qualifiedQty())));
+        }
+        AllocationBatch batch = allocationBatch(List.of(request), prepared);
+        if (!batch.normalWarehouses.contains(leafWarehouseId)
+                || !batch.lineSideAllowed(leafWarehouseId, request.demandId())) {
+            if (!sources.isEmpty()) {
+                throw allocationConflict("本批来源所在线边仓未指名给这条需求，不能就地分配");
+            }
+            return List.of();
+        }
+        List<AllocationResult> results = new ArrayList<>();
+        allocateByQualifiedSourceOrder(request.requiredQty(), List.of(leafWarehouseId), owned,
+                (warehouse, limit, qualified, requiresProof, isOwned) -> {
+                    if (isOwned) batch.releaseOwned(request, warehouse);
+                    AllocationResult result = allocateOne(
+                            withWarehouse(request, warehouse, limit, isOwned ? "OWN" : "STOCK"),
+                            qualified, requiresProof, batch, true);
+                    if (isOwned || result.allocatedQty().signum() > 0) results.add(withWarehouse(result, warehouse));
+                    return result.allocatedQty();
+                });
+        return List.copyOf(results);
     }
 
     private void lockDemandRows(List<AllocationRequest> requests) {

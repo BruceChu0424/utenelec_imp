@@ -200,6 +200,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       // 被省略号吃掉。这里只放名称，编号与颜色见紧随其后的两列。
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
+      // 格尾搜索/锁图标(16)计入自动加宽量宽（2026-09-16）。
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,

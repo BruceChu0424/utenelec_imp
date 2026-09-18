@@ -44,4 +44,6 @@ public class DailyReportItemDto {
     private String destination;
     /** 直送的接收需求(V585)；WAREHOUSE 行为空。 */
     private UUID directTransferDemandId;
+    /** 直送接收方的可读标识(V595)：父件产品名 编号 · 工单号；详情页「转给工单」列用，非直送行为空。 */
+    private String directTransferTargetLabel;
 }

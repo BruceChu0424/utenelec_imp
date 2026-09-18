@@ -32,6 +32,7 @@ class ProcurementInspectionRecordContractTest {
         var list = ProcurementInspectionRecordController.class.getMethod(
                 "list", String.class, String.class,
                 OffsetDateTime.class, OffsetDateTime.class,
+                String.class, String.class, String.class,
                 int.class, int.class);
         var detail = ProcurementInspectionRecordController.class.getMethod(
                 "detail", UUID.class);
@@ -65,7 +66,7 @@ class ProcurementInspectionRecordContractTest {
     @Test
     void filtersFailClosedAndKeepCanonicalPaging() {
         var filter = ProcurementInspectionRecordQueryService.normalizeFilter(
-                " pass ", "  ABC  ", null, null, 0, 500);
+                " pass ", "  ABC  ", null, null, null, null, null, 0, 500);
         assertThat(filter.decision()).isEqualTo("PASS");
         assertThat(filter.keyword()).isEqualTo("abc");
         assertThat(filter.page()).isEqualTo(1);
@@ -73,14 +74,32 @@ class ProcurementInspectionRecordContractTest {
 
         assertThatThrownBy(() ->
                 ProcurementInspectionRecordQueryService.normalizeFilter(
-                        "UNKNOWN", "", null, null, 1, 40))
+                        "UNKNOWN", "", null, null, null, null, null, 1, 40))
                 .isInstanceOf(ApiException.class);
         assertThatThrownBy(() ->
                 ProcurementInspectionRecordQueryService.normalizeFilter(
                         "ALL", "",
                         OffsetDateTime.parse("2026-08-31T12:00:00Z"),
                         OffsetDateTime.parse("2026-08-30T12:00:00Z"),
-                        1, 40))
+                        null, null, null, 1, 40))
+                .isInstanceOf(ApiException.class);
+        // 表头筛选三列（2026-09-16）：合法值归一大写、空白不过滤、非法值 fail-closed。
+        var columnFilter = ProcurementInspectionRecordQueryService.normalizeFilter(
+                "ALL", "", null, null, " purchase ", " expired ", " rework ", 1, 40);
+        assertThat(columnFilter.sourceType()).isEqualTo("PURCHASE");
+        assertThat(columnFilter.effective()).isEqualTo("EXPIRED");
+        assertThat(columnFilter.disposition()).isEqualTo("REWORK");
+        assertThatThrownBy(() ->
+                ProcurementInspectionRecordQueryService.normalizeFilter(
+                        "ALL", "", null, null, "PRODUCTION", null, null, 1, 40))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(() ->
+                ProcurementInspectionRecordQueryService.normalizeFilter(
+                        "ALL", "", null, null, null, "MAYBE", null, 1, 40))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(() ->
+                ProcurementInspectionRecordQueryService.normalizeFilter(
+                        "ALL", "", null, null, null, null, "DONATE", 1, 40))
                 .isInstanceOf(ApiException.class);
     }
 
@@ -97,6 +116,21 @@ class ProcurementInspectionRecordContractTest {
                 .contains("GROUP BY record.decision")
                 .contains("ORDER BY record.decided_at DESC, record.record_id DESC")
                 .doesNotContain("received_amount_local");
+    }
+
+    @Test
+    void columnFiltersAreParameterizedPredicatesSharedByListAndMetrics()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/inbound/"
+                        + "ProcurementInspectionRecordQueryService.java"));
+        // 表头三列（2026-09-16）全部走绑定参数等值；效力三档与列展示口径一致。
+        assertThat(source)
+                .contains("record.source_type = :sourceType")
+                .contains("record.disposition_code = :disposition")
+                .contains("\" AND record.effective AND record.decision <> 'CANCELLED'\"")
+                .contains("\" AND NOT record.effective\"")
+                .contains("\" AND record.decision = 'CANCELLED'\"");
     }
 
     private static List<String> componentNames(Class<?> recordType) {

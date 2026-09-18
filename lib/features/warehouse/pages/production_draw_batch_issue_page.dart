@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -203,50 +204,62 @@ class _ProductionDrawBatchIssuePageState
                     actionLabel: '重新加载',
                     onAction: _load,
                   )
-                : AbsorbPointer(
-                    absorbing: _saving,
-                    child: UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              '共 ${documents.length} 张领料单 · ${documents.fold<int>(0, (sum, document) => sum + document.items.length)} 行明细',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: UtenSpacing.s8),
-                            Text(
-                              '请核对每行仓库、车间和待出库数量。确认后按各单当前剩余量全部出库；需要部分出库时，请返回逐单办理。',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: UtenSpacing.s12),
-                            TextField(
-                              key: const Key('warehouse-draw-batch-remark'),
-                              controller: _remark,
-                              maxLength: 200,
-                              decoration: const UtenInputDecoration(
-                                InputDecoration(
-                                  labelText: '统一备注(选填)',
-                                  counterText: '',
+                : Stack(
+                    children: [
+                      AbsorbPointer(
+                        absorbing: _saving,
+                        child: UtenCollapsingHeaderScrollView(
+                          collapsingHeader: Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  '共 ${documents.length} 张领料单 · ${documents.fold<int>(0, (sum, document) => sum + document.items.length)} 行明细',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
                                 ),
-                                info: '备注会追加到本批每张领料单，可填写交接情况，最多 200 字。',
-                              ),
+                                const SizedBox(height: UtenSpacing.s8),
+                                Text(
+                                  '请核对每行仓库、车间和待出库数量。确认后按各单当前剩余量全部出库；需要部分出库时，请返回逐单办理。',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: UtenSpacing.s12),
+                                TextField(
+                                  key: const Key('warehouse-draw-batch-remark'),
+                                  controller: _remark,
+                                  maxLength: 200,
+                                  decoration: const UtenInputDecoration(
+                                    InputDecoration(
+                                      labelText: '统一备注(选填)',
+                                      counterText: '',
+                                    ),
+                                    info: '备注会追加到本批每张领料单，可填写交接情况，最多 200 字。',
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
+                          body: Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s12),
+                            child: ProductionDrawDetailTable(
+                              documents: documents,
+                              names: ref.watch(masterNameServiceProvider),
+                              permissions: permissions,
+                              superAdmin: superAdmin,
+                              primary: true,
+                            ),
+                          ),
                         ),
                       ),
-                      body: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: ProductionDrawDetailTable(
-                          documents: documents,
-                          names: ref.watch(masterNameServiceProvider),
-                          permissions: permissions,
-                          superAdmin: superAdmin,
-                          primary: true,
+                      // 批量出库事务期间的全屏加载遮罩。
+                      if (_saving)
+                        const UtenBusyOverlay(
+                          title: '正在批量出库',
+                          description: '正在按剩余量逐张出库并扣减库存，请勿重复提交或离开本页。',
                         ),
-                      ),
-                    ),
+                    ],
                   ),
           ),
         ),

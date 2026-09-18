@@ -15,12 +15,14 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/models/party_directory_models.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/client_category_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_category_repository.dart';
 import 'package:uten_imp/features/basic_data/pages/party_detail_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/repositories/party_directory_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -61,6 +63,45 @@ void main() {
     expect(clients.listCallsAfterSave, isTrue);
   });
 
+  // 2026-09-16 负责人表头筛选：服务端 empId 桶（值=员工 UUID、label=人名）remap 到
+  // ownerEmployeeName 列；选桶回传服务端参数名 ownerEmployeeId。
+  testWidgets('负责人表头筛选 empId 桶 remap 到列 key 并回传 ownerEmployeeId', (
+    tester,
+  ) async {
+    final categories = _FakeClientCategoryRepository();
+    final clients = _FakeClientRepository(
+      facetPayload: const ClientFacets(
+        fields: {
+          'empId': [MasterFacetBucket(value: 'emp-1', count: 2, label: '张三')],
+        },
+        nullCounts: {'empId': 1},
+      ),
+    );
+    await _pumpPage(tester, categories, clients);
+
+    await tester.tap(find.text('成品类(C-FIN)'));
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<ClientListItem>>(
+      find.byType(MasterDataTableView<ClientListItem>),
+    );
+    expect(table.facets.keys, contains('ownerEmployeeName'));
+    expect(table.facets['ownerEmployeeName']?.single.label, '张三');
+    expect(table.nullCounts['ownerEmployeeName'], 1);
+
+    table.onFilterChanged('ownerEmployeeName', 'emp-1');
+    await tester.pumpAndSettle();
+    expect(clients.lastFilters?['ownerEmployeeId'], 'emp-1');
+
+    // 取消筛选（选「所有」）→ 参数移除。
+    final cleared = tester.widget<MasterDataTableView<ClientListItem>>(
+      find.byType(MasterDataTableView<ClientListItem>),
+    );
+    cleared.onFilterChanged('ownerEmployeeName', null);
+    await tester.pumpAndSettle();
+    expect(clients.lastFilters?.containsKey('ownerEmployeeId'), isFalse);
+  });
+
   testWidgets(
     'legacy client Credit is labeled and disabled while floor stays separate',
     (tester) async {
@@ -84,8 +125,13 @@ void main() {
       expect(edit, findsOneWidget);
       await tester.tap(edit);
       await tester.pumpAndSettle();
-      expect(find.text('编辑客户'), findsOneWidget);
+      // 2026-09-17 详情页改版：编辑态不再有「编辑客户」标题卡——各 Tab 原地变
+      // 输入表单，右下悬浮组换「保存/取消」。
+      expect(find.byKey(const Key('party-detail-save')), findsOneWidget);
 
+      // 信用额度/铺底额属「财务」分组 → 在「销售条款与财务」Tab 的就地编辑表单。
+      await tester.tap(find.text('销售条款与财务'));
+      await tester.pumpAndSettle();
       final credit = find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
@@ -241,10 +287,16 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
 
 /// 假客户仓储：记录 list 调用；保存后若列表重拉，调用次数会增加。
 class _FakeClientRepository implements ClientRepository {
-  _FakeClientRepository({this.includeLegacy = false});
+  _FakeClientRepository({this.includeLegacy = false, this.facetPayload});
 
   final bool includeLegacy;
+
+  /// 表头 facet 下发内容（默认空 = 下拉无可选项）。
+  final ClientFacets? facetPayload;
   var listCalls = 0;
+
+  /// 最近一次 list 收到的表头筛选（服务端参数名口径）。
+  Map<String, String?>? lastFilters;
 
   /// 初始选中加载过一次后，是否又因分类保存重拉过列表。
   bool get listCallsAfterSave => listCalls > 1;
@@ -262,6 +314,7 @@ class _FakeClientRepository implements ClientRepository {
     bool selectableOnly = false,
   }) async {
     listCalls++;
+    lastFilters = Map<String, String?>.of(filters);
     return PagedResult(
       items: includeLegacy
           ? const [
@@ -303,7 +356,7 @@ class _FakeClientRepository implements ClientRepository {
 
   @override
   Future<ClientFacets> facets(String categoryId) async =>
-      const ClientFacets(fields: {}, nullCounts: {});
+      facetPayload ?? const ClientFacets(fields: {}, nullCounts: {});
 
   @override
   Future<ClientDetail> detail(String id) async => const ClientDetail(

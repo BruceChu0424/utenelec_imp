@@ -12,7 +12,21 @@ Future<WarehousePickerResult?> pickWarehouseQualityStockInWarehouse(
   BuildContext context,
   WidgetRef ref,
   WarehouseQualitySliceDraft draft,
-) async {
+) => pickWarehouseLeafForStockIn(
+  context,
+  ref,
+  initialWarehouseId: draft.warehouseId,
+  title: '选择目标叶仓 · ${draft.goodsLabel}',
+);
+
+/// 通用「选一个记账叶仓」入口(确认入库 / 先入库上架共用)：按需加载仓库字典，
+/// 没有可用叶仓时就地提示而不是弹空面板。
+Future<WarehousePickerResult?> pickWarehouseLeafForStockIn(
+  BuildContext context,
+  WidgetRef ref, {
+  String? initialWarehouseId,
+  String title = '选择入库仓库',
+}) async {
   final dictionary = ref.read(masterNameServiceProvider);
   await dictionary.ensureWarehousesLoaded();
   if (!context.mounted) return null;
@@ -24,7 +38,7 @@ Future<WarehousePickerResult?> pickWarehouseQualityStockInWarehouse(
   return showUtenWarehousePickerPanel(
     context,
     hierarchy: hierarchy,
-    initialWarehouseId: draft.warehouseId,
-    title: '选择目标叶仓 · ${draft.goodsLabel}',
+    initialWarehouseId: initialWarehouseId,
+    title: title,
   );
 }

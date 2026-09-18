@@ -577,15 +577,19 @@ class _MaterialAnalysisBucketPageState
   Future<void> _run(_BucketActionRequest request) async {
     if (_running) return;
     final issued = await _executeAndRefresh(request);
-    // Only a successful workshop submission may return after its result
-    // dialog closes. A conflict/error stays on the page for inspection.
-    //
-    // 「关不关本页」不能再借 issued 表达（2026-09-14 ADR-081 起 issued 是
-    // 「命令成功没有」的真值，采购/委外也会返回 true）：采购/委外按既定契约
-    // 永远留在本页，只有下达车间成功才退出。
+    _popIfWorkshopIssued(issued);
+  }
+
+  /// Only a successful workshop-bucket submission may return after its result
+  /// dialog closes. A conflict/error stays on the page for inspection.
+  ///
+  /// 「关不关本页」看的是**本页是哪个桶**，不是请求类型（2026-09-16）：委外桶
+  /// 里有子层的委外件如今也走 issue-plans 请求，但委外桶按既定契约永远留在
+  /// 本页供计划员接着办下一批；只有下达车间桶成功才退出。
+  void _popIfWorkshopIssued(bool issued) {
     if (!mounted ||
         !issued ||
-        request.type != _BucketActionType.createProductionPlans ||
+        _bucket != _AnalysisBucket.workshop ||
         ModalRoute.of(context)?.isCurrent != true) {
       return;
     }
@@ -655,12 +659,28 @@ class _MaterialAnalysisBucketPageState
   /// 数量按本批数量算好可改，点「一键下单」才按序提交父件与下层（此前是父件
   /// 先落库、成功后才补弹下层，用户看到的是「还没确认就把父件下了」）。
   /// 没有待办下层时保持原路直接提交（不打扰）。
+  ///
+  /// [requests] 是父件段要依次提交的请求：车间桶一条 issue-plans；委外桶最多
+  /// 两条——直接外发行的 notify + 需先自制行的 issue-plans (2026-09-16)。
   Future<void> _submitWithCascade(
-    _BucketActionRequest request,
+    List<_BucketActionRequest> requests,
     List<_ChildCascadeSeed> seeds,
   ) async {
-    if (_running) return;
-    final pending = _host._pendingChildCascadeRows(seeds);
+    if (_running || requests.isEmpty) return;
+    // 树顶种子要在级联页里填车间/负责人 (委外桶进来的行，分桶页没有这两列)
+    // 时，即便下层一行都不能勾也必须进页，否则父件段/前置自制段提交不了。
+    //
+    // 没有生成生产计划权限时不进页：那种账号既排不了产、也建不了前置自制锚点，
+    // 车间/负责人填了也用不上，白挡一道 (2026-09-16)。
+    final keepUnselectable =
+        _host._canGenerate &&
+        seeds.any(
+          (seed) => seed.needsWorkshop && (seed.departmentId?.isEmpty ?? true),
+        );
+    final pending = _host._pendingChildCascadeRows(
+      seeds,
+      keepUnselectable: keepUnselectable,
+    );
     if (pending.rows.isEmpty) {
       // 不进级联页也要把「为什么不进」说清：下层都下过单 / 下层被挡住 /
       // 结构过大都不是「没有下层」，静默跳过会让人以为系统没检查。
@@ -669,36 +689,46 @@ class _MaterialAnalysisBucketPageState
       // 文案却用「父件按原样下达」的已然口吻——数量确认弹窗被取消、或服务端
       // 拒绝时，用户刚读到的那句话就是假的。
       final note = pending.note;
-      final issued = await _executeAndRefresh(request);
-      if (!mounted) return;
-      if (issued && note != null) context.appInfo(note);
-      if (issued &&
-          request.type == _BucketActionType.createProductionPlans &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        Navigator.of(context).pop();
+      var issued = true;
+      for (final request in requests) {
+        issued = await _executeAndRefresh(request);
+        if (!mounted) return;
+        if (!issued) break;
       }
+      if (issued && note != null) context.appInfo(note);
+      _popIfWorkshopIssued(issued);
       return;
     }
-    final done = await _host._showChildCascadeDialog(
+    // 父件段逐条提交、逐条记住成功，重试只补没成功的那条：重发已成功的那条
+    // 会因为快照换版拿到新幂等键，等于真实重复下单。
+    final done = List<bool>.filled(requests.length, false);
+    final finished = await _host._showChildCascadeDialog(
       seeds: seeds,
       initialRows: pending.rows,
-      // 父件段提交时按种子**当前**数量重打请求——用户可能在「跟父件一起办」
-      // 页面里改过树顶的本批数量（改完既驱动下层重算，也改这里提交的量）。
-      // 车间与委外两条入口都要打补丁：委外 notify 同样支持按 actionGroupKey
-      // 传数量（超量另需 over_supply 权限，由服务端自裁）。
-      parentAction: () => _executeAndRefresh(
-        _patchRequestWithSeedInputs(request, seeds),
-        silent: true,
-      ),
+      // 父件段提交时按种子**当前**内容重打请求——用户可能在「跟父件一起办」
+      // 页面里改过树顶的本批数量 / 车间 / 负责人（改完既驱动下层重算，也改
+      // 这里提交的量）；被祖先吸收的勾选行从父件请求里剔除，由级联页的车间段
+      // 按算好的数量提交。委外 notify 同样支持按 actionGroupKey 传数量
+      // （超量另需 over_supply 权限，由服务端自裁）。
+      parentAction: () async {
+        for (var index = 0; index < requests.length; index++) {
+          if (done[index]) continue;
+          final patched = _patchRequestWithSeedInputs(requests[index], seeds);
+          // 这条请求的行全被祖先吸收：没有要单独提交的父件，视同已办。
+          if (patched == null) {
+            done[index] = true;
+            continue;
+          }
+          final ok = await _executeAndRefresh(patched, silent: true);
+          if (!mounted || !ok) return false;
+          done[index] = true;
+        }
+        return true;
+      },
     );
-    // 与 [_run] 同一条口径：只有下达车间成功才退出分桶页；采购/委外留在本页
-    // 供计划员接着办下一批（2026-09-14：原来级联成功一律 pop，把委外桶也关了）。
-    if (done &&
-        mounted &&
-        request.type == _BucketActionType.createProductionPlans &&
-        ModalRoute.of(context)?.isCurrent == true) {
-      Navigator.of(context).pop();
-    }
+    // 与 [_run] 同一条口径：只有下达车间桶成功才退出分桶页；采购/委外留在
+    // 本页供计划员接着办下一批（2026-09-14：原来级联成功一律 pop，把委外桶也关了）。
+    _popIfWorkshopIssued(finished);
   }
 
   /// 委外桶的一颗种子：通道、上限与驱动量三者必须与**服务端实际会收到的那
@@ -710,28 +740,26 @@ class _MaterialAnalysisBucketPageState
   /// 数量框对这类行本来就是假的（`_resolveSubcontractQuantities` 提交时会用
   /// `entry.maxQty` 覆盖掉），2026-09-15 起界面上也据此置灰并写明原因，
   /// 不再让用户填一个注定被丢弃的数字，也不再让下层按那个数字备料。
+  ///
+  /// 2026-09-16：有生成生产计划权限时，这类行改走 issue-plans 的 ARRANGE 段
+  /// (`_CascadeParentChannel.workshop`)——数量可改、超量按 V589 跟到台账与行动、
+  /// 台账 + 锚点 + 计划同一事务建好；没有该权限才退回 notify 整量接管。
   _ChildCascadeSeed _subcontractSeed(
     _MaterialGroup group,
     Map<String, String> qtyByActionGroupKey,
   ) {
     final material = group.representative;
-    final analysis = _host._analysis;
-    // 拿不到快照时保守按「要先自制」处理：数量置灰、要车间——宁可多问一步，
-    // 也不要放开一个服务端会 422 的可编辑数量框。
-    final needsPreparation =
-        analysis == null ||
-        _host._subcontractNeedsPreparation(material, analysis);
+    final channel = _subcontractChannelOf(group);
     final residual = _host._residualSubmitQty(
       group,
       MaterialSupplyRoute.subcontract,
     );
+    final locked = channel == _CascadeParentChannel.subcontractMakeFirst;
     return _ChildCascadeSeed(
       label: material.goodsName ?? material.goodsCode ?? group.key,
-      channel: needsPreparation
-          ? _CascadeParentChannel.subcontractMakeFirst
-          : _CascadeParentChannel.subcontractDirect,
+      channel: channel,
       maxQty: residual,
-      batchQty: needsPreparation
+      batchQty: locked
           ? residual
           : _seedQtyOf(
               group,
@@ -740,8 +768,30 @@ class _MaterialAnalysisBucketPageState
             ),
       materialLineId: material.materialLineId,
       actionGroupKey: material.actionGroupKey,
+      groupKey: group.key,
       unitName: material.unitName,
+      // 直接外发的 notify 通道自己会问超量 (allowOverDemand)；改走 issue-plans
+      // 的行分桶页没问过，交给级联页提交前补问。
+      overQtyConfirmed: channel != _CascadeParentChannel.workshop,
     );
+  }
+
+  /// 委外桶一行的父件段通道。拿不到快照时保守按「要先自制」处理——宁可多问
+  /// 一步，也不要放开一个服务端会 422 的可编辑数量框。
+  ///
+  /// **顶层供给行只能 notify**：服务端 `candidateRoutesByMaterialLine` 明确排除
+  /// `ROOT_SUPPLY`，根件当 issue-plans 候选会被「候选物料节点不存在或路线未确认」
+  /// 拒掉；它走 notify 建台账，随后由级联页的「前置自制任务下达车间」段按锚点
+  /// 产品行排产（数量在那一步才可超量）。
+  _CascadeParentChannel _subcontractChannelOf(_MaterialGroup group) {
+    final analysis = _host._analysis;
+    final material = group.representative;
+    final needsPreparation =
+        analysis == null || _host._subcontractNeedsPreparation(material, analysis);
+    if (!needsPreparation) return _CascadeParentChannel.subcontractDirect;
+    return _host._canGenerate && !material.isRootSupply
+        ? _CascadeParentChannel.workshop
+        : _CascadeParentChannel.subcontractMakeFirst;
   }
 
   /// 本次真正会提交给服务端的数量：表格里填了就用填的，没填/填不出数才回落
@@ -765,17 +815,30 @@ class _MaterialAnalysisBucketPageState
   /// 回写，否则界面显示 A 车间、提交的还是上一页那个 B 车间。
   /// 委外入口只回写数量（`NotifyRequest` 没有车间字段，委外件本身也不需要
   /// 车间——需要车间的是它随后建出来的前置自制任务，由编排单独下达）。
-  _BucketActionRequest _patchRequestWithSeedInputs(
+  ///
+  /// 被祖先吸收的勾选行 (`seed.isTop == false`) 从请求里剔除：它们在级联页
+  /// 里就是祖先树的普通下层行，由车间段按算好的数量提交。剔完一行不剩时
+  /// 返回 null（这条请求没有父件要单独提交）。
+  _BucketActionRequest? _patchRequestWithSeedInputs(
     _BucketActionRequest request,
     List<_ChildCascadeSeed> seeds,
   ) {
     if (request.type == _BucketActionType.subcontractOnly) {
+      final absorbedKeys = {
+        for (final seed in seeds)
+          if (!seed.isTop && seed.groupKey != null) seed.groupKey!,
+      };
+      final keys = request.groupKeys == null
+          ? null
+          : ({...request.groupKeys!}..removeAll(absorbedKeys));
+      if (keys != null && keys.isEmpty) return null;
       final patched = <String, String>{...?request.qtyByActionGroupKey};
       for (final seed in seeds) {
         final key = seed.actionGroupKey;
-        // 要先自制的委外行不写数量：服务端强制整量接管，写进去只会与它算出
-        // 来的 delta 不等而 422 整批回滚。
-        if (key == null ||
+        // 无权限整量接管的委外行不写数量：服务端强制整量接管，写进去只会与
+        // 它算出来的 delta 不等而 422 整批回滚。
+        if (!seed.isTop ||
+            key == null ||
             key.isEmpty ||
             seed.batchQty <= 0 ||
             !seed.quantityEditable) {
@@ -784,7 +847,7 @@ class _MaterialAnalysisBucketPageState
         patched[key] = _bucketQtyText(seed.batchQty);
       }
       return _BucketActionRequest.subcontract(
-        request.groupKeys,
+        keys,
         qtyByActionGroupKey: patched,
       );
     }
@@ -796,10 +859,10 @@ class _MaterialAnalysisBucketPageState
       for (final seed in seeds)
         if (seed.materialLineId != null) seed.materialLineId!: seed,
     };
-    return _BucketActionRequest.createProductionPlans(
-      candidateInputs: [
-        for (final input
-            in request.candidateInputs ?? const <_BucketCandidatePlanInput>[])
+    final candidateInputs = <_BucketCandidatePlanInput>[
+      for (final input
+          in request.candidateInputs ?? const <_BucketCandidatePlanInput>[])
+        if (byMaterialLine[input.materialLineId]?.isTop != false)
           () {
             final seed = byMaterialLine[input.materialLineId];
             return _BucketCandidatePlanInput(
@@ -810,9 +873,10 @@ class _MaterialAnalysisBucketPageState
               workerId: seed?.workerId ?? input.workerId,
             );
           }(),
-      ],
-      planDrafts: [
-        for (final draft in request.planDrafts ?? const <_BucketPlanDraft>[])
+    ];
+    final planDrafts = <_BucketPlanDraft>[
+      for (final draft in request.planDrafts ?? const <_BucketPlanDraft>[])
+        if (byAnalysisLine[draft.analysisLineId]?.isTop != false)
           () {
             final seed = byAnalysisLine[draft.analysisLineId];
             return _BucketPlanDraft(
@@ -823,7 +887,11 @@ class _MaterialAnalysisBucketPageState
               workerId: seed?.workerId ?? draft.workerId,
             );
           }(),
-      ],
+    ];
+    if (candidateInputs.isEmpty && planDrafts.isEmpty) return null;
+    return _BucketActionRequest.createProductionPlans(
+      candidateInputs: candidateInputs,
+      planDrafts: planDrafts,
     );
   }
 
@@ -1159,27 +1227,20 @@ class _MaterialAnalysisBucketPageState
         ),
       );
     }
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<MaterialSupplyRoute>(
-        key: ValueKey('material-bucket-route-${row.id}'),
-        value: current,
-        isExpanded: true,
-        isDense: true,
-        dropdownColor: theme.colorScheme.surface,
-        items: [
-          for (final option in MaterialSupplyRoute.values)
-            DropdownMenuItem(
-              value: option,
-              child: Text(
-                option.label,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ),
-        ],
-        onChanged: (next) => _changeRoute(row, group, next),
-      ),
+    // 2026-09-16 用户口径：表格内下拉统一用自家 UtenDropdownField（统一弹层/
+    // 单行省略号/描边与同行格一致），不再用原生 DropdownButton。
+    return UtenDropdownField(
+      key: ValueKey('material-bucket-route-${row.id}'),
+      dense: true,
+      value: current.name,
+      items: [
+        for (final option in MaterialSupplyRoute.values)
+          UtenDropdownItem(value: option.name, label: option.label),
+      ],
+      onChanged: (next) {
+        if (next == null) return;
+        _changeRoute(row, group, MaterialSupplyRoute.values.byName(next));
+      },
     );
   }
 
@@ -1337,20 +1398,55 @@ class _MaterialAnalysisBucketPageState
         // `_residualSubmitQty`，用户在委外桶把数量改大（超量下达，
         // `_notifyRoute` 的 allowOverDemand 是支持的）或改小分批时，
         // 下层需求仍按剩余需求算，父件下达 200 而下层只备到 100 的料。
+        //
+        // 2026-09-16：要先自制目标件的委外行（有生产性子层）在有生成生产计划
+        // 权限时改走 issue-plans——它们的数量可改、超量按 V589 跟到台账，且
+        // 台账 + 锚点 + 计划同一事务建好；其余行照旧 notify。两类同时勾选时
+        // 父件段按顺序提交两条请求（notify 在前）。
         final seeds = <_ChildCascadeSeed>[
           for (final row in allowedRows)
             if (row.group != null &&
                 _host._analysisMaterialHasChildren(row.group!.representative))
               _subcontractSeed(row.group!, qtyByActionGroupKey),
         ];
+        final makeFirstRows = <_BucketRow>[];
+        final notifyIds = <String>{};
+        for (final row in allowedRows) {
+          final group = row.group;
+          if (group != null &&
+              _subcontractChannelOf(group) == _CascadeParentChannel.workshop) {
+            makeFirstRows.add(row);
+          } else {
+            notifyIds.add(row.id);
+          }
+        }
         unawaited(
-          _submitWithCascade(
-            _BucketActionRequest.subcontract(
-              allowedIds,
-              qtyByActionGroupKey: qtyByActionGroupKey,
-            ),
-            seeds,
-          ),
+          _submitWithCascade([
+            if (notifyIds.isNotEmpty)
+              _BucketActionRequest.subcontract(
+                notifyIds,
+                qtyByActionGroupKey: qtyByActionGroupKey,
+              ),
+            if (makeFirstRows.isNotEmpty)
+              _BucketActionRequest.createProductionPlans(
+                candidateInputs: [
+                  for (final row in makeFirstRows)
+                    _BucketCandidatePlanInput(
+                      materialLineId: row.group!.representative.materialLineId,
+                      qty: _seedQtyOf(
+                        row.group!,
+                        MaterialSupplyRoute.subcontract,
+                        qtyByActionGroupKey,
+                      ),
+                      // 委外桶没有车间/负责人两列：在级联页树顶填，提交时由
+                      // `_patchRequestWithSeedInputs` 按种子回写。
+                      departmentId: null,
+                      workshopName: null,
+                      workerId: null,
+                    ),
+                ],
+              ),
+          ], seeds),
         );
       case _AnalysisBucket.workshop:
         return;
@@ -1540,15 +1636,17 @@ class _MaterialAnalysisBucketPageState
           // 和下层一样标黄 + 挂提示 icon(2026-09-15 用户口径)。
           workshopAutofilled: row.workshopAutofilled,
           workerAutofilled: row.workerAutofilled,
+          groupKey: row.origin.candidate?.group?.key,
+          // 超量已在上面 `_overQtyRows` 那道确认里问过，级联页不再重复问。
+          overQtyConfirmed: true,
         ),
     ];
-    await _submitWithCascade(
+    await _submitWithCascade([
       _BucketActionRequest.createProductionPlans(
         candidateInputs: candidateInputs,
         planDrafts: productDrafts,
       ),
-      seeds,
-    );
+    ], seeds);
   }
 
   List<Widget> _planBatchActions(BuildContext context) {

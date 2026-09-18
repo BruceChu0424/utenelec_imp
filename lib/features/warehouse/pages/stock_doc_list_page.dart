@@ -30,6 +30,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
@@ -88,6 +89,13 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   /// 「草稿」段计数（中性括号 `(N)`，草稿不是待办）；null = 加载中（不渲染）。
   int? _draftCount;
 
+  /// 表头列筛选：仓库（warehouses/dict 桶）+ 领料车间（departments/tree 展平桶，
+  /// 仅 DRAW 有该列）+ 调入仓（warehouses/dict 桶，仅 TRANSFER 有该列）；
+  /// value=UUID，回传 warehouseId/departmentId/toWarehouseId。
+  String? _warehouseIdFilter;
+  String? _departmentIdFilter;
+  String? _toWarehouseIdFilter;
+
   bool get _isDraw => widget.docType == StockDocType.draw;
 
   /// DRAW 选中「已审」后才出现出库进度小类行（草稿/红冲/历史无出库进度语义）。
@@ -137,6 +145,11 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
           page: _list.pageNum,
           filter: StockDocFilter(
             keyword: _list.normalizedKeyword,
+            warehouseId: _warehouseIdFilter,
+            departmentId: _isDraw ? _departmentIdFilter : null,
+            toWarehouseId: widget.docType == StockDocType.transfer
+                ? _toWarehouseIdFilter
+                : null,
             status: seg.history ? null : seg.status,
             issueStatus: _showIssueRow ? _issueStatus : null,
             dateFrom: range == null
@@ -167,6 +180,20 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   void _onHistoryTime(UtenHistoryTimeValue value) {
     if (value == _historyTime) return;
     setState(() => _historyTime = value);
+    _reload(1);
+  }
+
+  /// 表头筛选回调：值并进既有 repository.list 参数，重拉回第 1 页。
+  void _onColumnFilterChanged(String key, String? value) {
+    setState(() {
+      if (key == 'warehouse') {
+        _warehouseIdFilter = value;
+      } else if (key == 'department') {
+        _departmentIdFilter = value;
+      } else if (key == 'toWarehouse') {
+        _toWarehouseIdFilter = value;
+      }
+    });
     _reload(1);
   }
 
@@ -256,7 +283,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
-    ref.watch(masterNameServiceProvider);
+    final names = ref.watch(masterNameServiceProvider);
     // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(widget.docType.refreshKey), (_, _) {
@@ -420,10 +447,28 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                                 primary: true,
                                 columns: _columns(),
                                 items: _list.page?.items ?? const [],
-                                facets: const {},
+                                facets: {
+                                  'warehouse': masterDictionaryFacets(
+                                    names.warehouseEntries,
+                                  ),
+                                  if (_isDraw)
+                                    'department': masterDictionaryFacets(
+                                      names.departmentEntries,
+                                    ),
+                                  if (widget.docType == StockDocType.transfer)
+                                    'toWarehouse': masterDictionaryFacets(
+                                      names.warehouseEntries,
+                                    ),
+                                },
                                 nullCounts: const {},
-                                filters: const {},
-                                onFilterChanged: (_, _) {},
+                                filters: {
+                                  'warehouse': _warehouseIdFilter,
+                                  if (_isDraw)
+                                    'department': _departmentIdFilter,
+                                  if (widget.docType == StockDocType.transfer)
+                                    'toWarehouse': _toWarehouseIdFilter,
+                                },
+                                onFilterChanged: _onColumnFilterChanged,
                                 sortColumn: _list.sortKey == 'total'
                                     ? null
                                     : _list.sortKey,

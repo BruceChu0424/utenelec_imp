@@ -5,12 +5,16 @@
 // 可选改名（settlement_method:edit）；系统角色（CASH/MONTHLY）口径由迁移锁定，
 // 页面置灰并提示。新增仍走 settlement_method:create（可随带账期）。
 // 停用/删除不在此页开放：活动客户/供应商默认与单据引用受 DB 守卫保护。
+//
+// 2026-09-16 列表表格化：卡片列表改为 MasterDataTableView（横排 autofilter 列头），
+// 状态/系统角色/到期基准/到期规则四列接后端 facets（settlement-admin/facets），
+// 表头筛选落到服务端查询；编号/名称等自由文本列不筛选；全量小字典仍不分页，
+// 关键词保持本地过滤。范式同 color_page（V4xx 批次）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -20,8 +24,10 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../models/master_facet.dart';
 import '../models/settlement_method_admin.dart';
 import '../repositories/reference_method_repository.dart';
+import '../widgets/master_data_table_view.dart';
 import '../widgets/master_edit_dialog.dart';
 
 class SettlementMethodPage extends ConsumerStatefulWidget {
@@ -38,6 +44,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   String? _error;
   String _keyword = '';
 
+  /// 表头筛选（字段→原始值；空值哨兵见 master_facet.dart）。落到服务端查询。
+  Map<String, String?> _filters = {};
+  SettlementMethodFacets? _facets;
+
   bool get _canCreate => ref
       .read(currentPermissionsProvider)
       .contains(Perm.settlementMethodCreate);
@@ -48,7 +58,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      _loadFacets();
+    });
   }
 
   Future<void> _load() async {
@@ -59,7 +72,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
     try {
       final items = await ref
           .read(referenceMethodRepositoryProvider)
-          .settlementAdminList();
+          .settlementAdminList(filters: _filters);
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -78,6 +91,36 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
         _loading = false;
       });
     }
+  }
+
+  /// 拉字段 facet（表头筛选下拉选项）。失败静默降级为空下拉，不阻塞列表。
+  Future<void> _loadFacets() async {
+    try {
+      final f = await ref
+          .read(referenceMethodRepositoryProvider)
+          .settlementAdminFacets();
+      if (!mounted) return;
+      setState(() => _facets = f);
+    } catch (_) {
+      // Facets are optional; the primary list remains usable.
+    }
+  }
+
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      final next = Map<String, String?>.from(_filters);
+      if (value == null) {
+        next.remove(key);
+      } else {
+        next[key] = value;
+      }
+      _filters = next;
+    });
+    _load();
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([_load(), _loadFacets()]);
   }
 
   List<SettlementMethodAdminItem> get _filtered {
@@ -126,7 +169,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
       errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
     );
     if (!ok) return false;
-    await _load();
+    await _refresh();
     return true;
   }
 
@@ -171,7 +214,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
       errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
     );
     if (!ok) return false;
-    await _load();
+    await _refresh();
     return true;
   }
 
@@ -248,6 +291,65 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
     ),
   ];
 
+  // ---- 列定义 -----------------------------------------------------------
+
+  static final _columns = <MasterColumnDef<SettlementMethodAdminItem>>[
+    MasterColumnDef(key: 'code', label: '编号', width: 110, value: (m) => m.code),
+    MasterColumnDef(key: 'name', label: '名称', width: 170, value: (m) => m.name),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 90,
+      value: (m) => m.status,
+    ),
+    MasterColumnDef(
+      key: 'systemRole',
+      label: '系统角色',
+      width: 130,
+      value: (m) =>
+          m.lockedBySystemRole ? settlementSystemRoleLabel(m.systemRole) : null,
+    ),
+    MasterColumnDef(
+      key: 'termsBase',
+      label: '到期基准',
+      width: 150,
+      value: (m) => settlementTermsBaseLabel(m.termsBase),
+    ),
+    MasterColumnDef(
+      key: 'dueRule',
+      label: '到期规则',
+      width: 140,
+      value: (m) => settlementDueRuleLabel(m.dueRule),
+    ),
+    const MasterColumnDef(
+      key: 'terms',
+      label: '账期口径',
+      width: 320,
+      value: settlementTermsSummary,
+    ),
+  ];
+
+  /// facet 桶加展示标签（下拉显示中文口径，筛选仍回传原始值）。
+  Map<String, List<MasterFacetBucket>> get _labeledFacets {
+    final source = _facets?.fields ?? const {};
+    return {
+      for (final entry in source.entries)
+        entry.key: [
+          for (final bucket in entry.value)
+            MasterFacetBucket(
+              value: bucket.value,
+              count: bucket.count,
+              label: switch (entry.key) {
+                'systemRole' => settlementSystemRoleLabel(bucket.value),
+                'termsBase' => settlementTermsBaseLabel(bucket.value),
+                'dueRule' => settlementDueRuleLabel(bucket.value),
+                _ => bucket.display,
+              },
+            ),
+        ],
+    };
+  }
+
   // ---- 展示 --------------------------------------------------------------
 
   @override
@@ -265,7 +367,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: _load,
+            onPressed: _refresh,
           ),
         ],
       ),
@@ -317,163 +419,34 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                   ),
                 ),
                 Expanded(
-                  child: _loading && _items == null
-                      ? const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2.5),
-                        )
-                      : _error != null
-                      ? _ErrorRetry(message: _error!, onRetry: _load)
-                      : items.isEmpty
-                      ? Center(
-                          child: Text(
-                            _keyword.trim().isEmpty ? '暂无结算方式' : '没有匹配的结算方式',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.outline,
-                            ),
-                          ),
-                        )
-                      : Scrollbar(
-                          child: ListView.separated(
-                            padding: const EdgeInsets.only(
-                              bottom: UtenSpacing.s16,
-                              left: UtenSpacing.s4,
-                              right: UtenSpacing.s4,
-                            ),
-                            itemCount: items.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: UtenSpacing.s8),
-                            itemBuilder: (context, i) => _MethodCard(
-                              item: items[i],
-                              onTap: _showEditTerms,
-                            ),
-                          ),
-                        ),
+                  child: MasterDataTableView<SettlementMethodAdminItem>(
+                    columns: _columns,
+                    items: items,
+                    facets: _labeledFacets,
+                    nullCounts: _facets?.nullCounts ?? const {},
+                    filters: _filters,
+                    onFilterChanged: _onFilterChanged,
+                    // 行底色按状态：使用=浅蓝、禁用=浅红（同 color_page）。
+                    rowColor: (m) => switch (m.status) {
+                      '使用' => Colors.lightBlue.withValues(alpha: 0.13),
+                      '禁用' => Colors.red.withValues(alpha: 0.10),
+                      _ => null,
+                    },
+                    // 点行 = 维护账期/查看口径（系统角色锁定时仅提示）。
+                    onRowTap: _showEditTerms,
+                    isLoading: _loading && _items == null,
+                    loadingMore: _loading && _items != null,
+                    error: _error,
+                    onRetry: _load,
+                    emptyMessage: _keyword.trim().isEmpty
+                        ? '暂无结算方式'
+                        : '没有匹配的结算方式', // TODO(l10n): 补 arb
+                  ),
                 ),
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _MethodCard extends StatelessWidget {
-  const _MethodCard({required this.item, required this.onTap});
-
-  final SettlementMethodAdminItem item;
-  final void Function(SettlementMethodAdminItem item) onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final disabled = item.status != '使用';
-    final locked = item.lockedBySystemRole;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(UtenRadius.lg),
-        onTap: () => onTap(item),
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                locked ? Icons.lock_outline_rounded : Icons.event_note_rounded,
-                size: 20,
-                color: locked
-                    ? theme.colorScheme.tertiary
-                    : theme.colorScheme.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            item.code?.isNotEmpty == true
-                                ? '${item.name}(${item.code})'
-                                : item.name,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: disabled
-                                  ? theme.colorScheme.outline
-                                  : null,
-                              decoration: disabled
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (locked) ...[
-                          const SizedBox(width: UtenSpacing.s8),
-                          UtenStatusBadge(
-                            label: settlementSystemRoleLabel(item.systemRole),
-                            type: UtenStatusBadgeType.info,
-                            size: UtenStatusBadgeSize.small,
-                          ),
-                        ],
-                        if (disabled) ...[
-                          const SizedBox(width: UtenSpacing.s8),
-                          const UtenStatusBadge(
-                            label: '已停用',
-                            type: UtenStatusBadgeType.neutral,
-                            size: UtenStatusBadgeSize.small,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      settlementTermsSummary(item),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: theme.colorScheme.outline,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorRetry extends StatelessWidget {
-  const _ErrorRetry({required this.message, required this.onRetry});
-
-  final String message;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(message, style: theme.textTheme.bodyMedium),
-          const SizedBox(height: UtenSpacing.s12),
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.refresh_rounded,
-            onPressed: () => onRetry(),
-            child: const Text('重试'), // TODO(l10n): 补 arb
-          ),
-        ],
       ),
     );
   }

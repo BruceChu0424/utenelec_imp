@@ -162,6 +162,8 @@ class ProductionFlowStage {
     bool materialIssued = true,
     bool drawRequested = false,
     bool splitReplaced = false,
+    bool continuousSupply = false,
+    bool pendingLineSideOnly = false,
     double? reportedQty,
     double? plannedQty,
     double? remainingReportQty,
@@ -176,6 +178,8 @@ class ProductionFlowStage {
     if (splitReplaced) {
       return _make(2, '已拆分为生产批次', ProductionFlowTone.pending);
     }
+    // V595：只剩线边仓直送料没出库的段不用去领料，开工时就地自动出库——按「可开工」呈现。
+    materialIssued = materialIssued || pendingLineSideOnly;
     final status = segmentStatus.trim().toUpperCase();
     if (status == 'IN_PROGRESS' &&
         remainingReportQty != null &&
@@ -231,7 +235,8 @@ class ProductionFlowStage {
               ),
       'IN_PROGRESS' => _make(
         4,
-        '生产中 · 可报工',
+        // V595 持续生产：同车间直送子件到一批投一批，工单一直开着直到最后一次报工。
+        continuousSupply ? '持续生产中 · 可报工' : '生产中 · 可报工',
         ProductionFlowTone.active,
         progress: _ratio(reportedQty, plannedQty),
       ),

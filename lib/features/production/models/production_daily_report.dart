@@ -132,6 +132,9 @@ class ProductionDailyReportItem {
     this.sourceDocNo,
     this.remark,
     this.isFinal = false,
+    this.destination,
+    this.directTransferDemandId,
+    this.directTransferTargetLabel,
   });
 
   final String id;
@@ -166,8 +169,22 @@ class ProductionDailyReportItem {
   /// 本批普通完工申报终结；不代表品质合格，后续按 FQC 结果封顶、恢复或补产。
   final bool isFinal;
 
+  /// 产出去向(V584)：'WAREHOUSE' 送入仓库 / 'WORKSHOP' 转下一道工序；老单为空按送仓库。
+  final String? destination;
+
+  /// 直送的接收需求(V585)；送仓库行为空。
+  final String? directTransferDemandId;
+
+  /// 直送接收方的可读标识(V595)：父件产品名 编号 · 工单号。
+  final String? directTransferTargetLabel;
+
+  bool get isDirectTransfer => destination == 'WORKSHOP';
+
   factory ProductionDailyReportItem.fromJson(Map<String, dynamic> json) =>
       ProductionDailyReportItem(
+        destination: json['destination'] as String?,
+        directTransferDemandId: json['directTransferDemandId'] as String?,
+        directTransferTargetLabel: json['directTransferTargetLabel'] as String?,
         id: json['id'] as String,
         lineNo: _asInt(json['lineNo']),
         goodsId: json['goodsId'] as String?,

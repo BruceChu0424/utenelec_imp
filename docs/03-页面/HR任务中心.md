@@ -62,6 +62,15 @@ v2 解决 v1「四块平铺一页、内容太多、没有快捷操作、多人�
   前端自动改为 `PUT /{id}` 补登 `confirmedAt`。
 - 窄屏「一键全部送祝福」条保留（今日未祝福全量）；宽屏由表格多选 +「批量送祝福」承担，
   不重复出条。
+- **「自动发送祝福」开关（2026-09-17，V600）**：生日关怀/入职周年两子页顶部（宽屏表格上方
+  /窄屏列表顶部）常驻一张开关卡，两页共用同一个全局开关（系统设置
+  `celebration.auto_enabled`）。**默认关**——祝福由人事在本页手动批量发布；打开后每天
+  08:00（北京时间）服务端 `CelebrationScheduler` 自动为当天生日/入职周年的同事发布聚合
+  祝福卡（口径/幂等与手动批量完全一致）。读写接口：`GET /notices/celebration/settings`
+  （notice:read）+ `PUT /notices/celebration/auto`（**notice:publish**——与手动送祝福同级：
+  能手动发的人即可委托系统代发，不构成提权；系统设置管理页原
+  `PUT /notices/celebration/settings` 仍为超管 + 二次密码）。开关切换留独立审计事件
+  `notice_celebration_auto_toggle`；仅 `notice:publish`（或超管）可见该开关。
 
 ## 三、提醒区块与口径（沿用 v1）
 

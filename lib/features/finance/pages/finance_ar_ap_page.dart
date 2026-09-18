@@ -20,6 +20,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -60,6 +61,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   bool _directionSelected = false;
   String? _sourceDocType;
   String? _partyId;
+  String? _currencyId; // 币别表头筛选（currencies/dict 桶 value=字典 id）
   bool? _settled; // null=全部 / false=未清 / true=已清
   bool _settledSelected = false;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -92,6 +94,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
               direction: _direction,
               sourceDocType: _sourceDocType,
               partyId: _partyId,
+              currencyId: _currencyId,
               settled: _settled,
             ),
             sort: _sortKey,
@@ -310,6 +313,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         case 'party':
           _partyId = value;
           break;
+        case 'currency':
+          _currencyId = value;
+          break;
         case 'settled':
           _settled = value == null ? null : value == 'true';
           break;
@@ -451,12 +457,14 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                           : {...names.clientEntries, ...names.supplierEntries},
                     ),
                     'settled': financeArApSettledFacets,
+                    'currency': masterDictionaryFacets(names.currencyEntries),
                   },
                   nullCounts: const {},
                   filters: {
                     'direction': _direction,
                     'sourceDocType': _sourceDocType,
                     'party': _partyId,
+                    'currency': _currencyId,
                     'settled': _settled?.toString(),
                   },
                   onFilterChanged: _onColumnFilterChanged,

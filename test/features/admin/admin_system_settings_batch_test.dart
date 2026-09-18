@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/system_setting_entry.dart';
 import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
@@ -25,7 +26,9 @@ void main() {
         find.byKey(const ValueKey('system-setting-celebration.publisher_name')),
       );
       expect(publisher.initialValue, '公司');
-      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+      // 2026-09-16 下拉统一：布尔设置项改用 UtenDropdownField。
+      expect(find.byType(UtenDropdownField), findsOneWidget);
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
       expect(repo.batchCalls, 0);
     },
   );

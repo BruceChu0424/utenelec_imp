@@ -127,6 +127,11 @@ public class UnitService {
 
     @Transactional(readOnly = true)
     public PageResponse<UnitListItem> list(UnitQueryFilter f, int page, int size) {
+        // 计量维度存于 unit_measurement_profiles（非实体列）：先取命中单位 id 集合再 IN。
+        List<UUID> dimensionIds = dimensionUnitIds(f.dimension());
+        List<UUID> allProfileIds = f.nullFields() != null && f.nullFields().contains("dimension")
+                ? profileUnitIds()
+                : List.of();
         Specification<Unit> spec = (Root<Unit> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                     CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -140,9 +145,21 @@ public class UnitService {
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "status", f.status());
+            if (f.dimension() != null && !f.dimension().isBlank()) {
+                // 空集 = 该维度无任何单位，恒 false（而非不过滤）。
+                ps.add(dimensionIds.isEmpty()
+                        ? cb.disjunction()
+                        : root.get("id").in(dimensionIds));
+            }
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
+                }
+                // "筛未设置维度"：不在 unit_measurement_profiles 的单位（非实体列，单独口径）。
+                if (f.nullFields().contains("dimension")) {
+                    ps.add(allProfileIds.isEmpty()
+                            ? cb.conjunction()
+                            : cb.not(root.get("id").in(allProfileIds)));
                 }
             }
             return cb.and(ps.toArray(new Predicate[0]));
@@ -157,6 +174,35 @@ public class UnitService {
                         .map(u -> toList(u, dimensions.get(u.getId())))
                         .toList(),
                 p);
+    }
+
+    /** 计量维度→单位 id 集合；dimension 空/非法返回 null（不筛）。 */
+    private List<UUID> dimensionUnitIds(String dimension) {
+        if (dimension == null || dimension.isBlank()) return List.of();
+        String dim = dimension.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!MEASUREMENT_DIMENSIONS.contains(dim)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "计量维度必须是 COUNT/MASS/LENGTH/AREA/VOLUME/OTHER：" + dimension);
+        }
+        List<?> rows = em.createNativeQuery("""
+                        select unit_id from unit_measurement_profiles
+                        where measurement_dimension = :dimension
+                        """)
+                .setParameter("dimension", dim)
+                .getResultList();
+        return rows.stream()
+                .map(value -> (UUID) value)
+                .toList();
+    }
+
+    /** 已设置计量维度的全部单位 id（"筛未设置维度"的反集）。 */
+    private List<UUID> profileUnitIds() {
+        List<?> rows = em.createNativeQuery(
+                        "select unit_id from unit_measurement_profiles")
+                .getResultList();
+        return rows.stream()
+                .map(value -> (UUID) value)
+                .toList();
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Unit> root,
@@ -188,7 +234,30 @@ public class UnitService {
                     .getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
-        return new UnitFacets(buckets.get("code"), buckets.get("name"), buckets.get("status"), nullCounts);
+        // 计量维度（unit_measurement_profiles 关联表）：GROUP BY 维度值 + 未设置计数。
+        buckets.put("dimension", dimensionFacet());
+        nullCounts.put("dimension", ((Number) em.createNativeQuery(
+                "select count(*) from units u "
+                        + "where u.is_deleted = false and not exists "
+                        + "(select 1 from unit_measurement_profiles p where p.unit_id = u.id)")
+                .getSingleResult()).longValue());
+        return new UnitFacets(buckets.get("code"), buckets.get("name"), buckets.get("status"),
+                buckets.get("dimension"), nullCounts);
+    }
+
+    /** 计量维度 facet 桶：按 unit_measurement_profiles.measurement_dimension 分组。 */
+    private List<FacetBucket> dimensionFacet() {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                "select p.measurement_dimension as v, count(*) as c "
+                        + "from units u join unit_measurement_profiles p on p.unit_id = u.id "
+                        + "where u.is_deleted = false "
+                        + "group by p.measurement_dimension "
+                        + "order by c desc, v asc limit " + FACET_LIMIT));
+        List<FacetBucket> list = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            list.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
+        }
+        return list;
     }
 
     // ===== 详情 / CRUD =====

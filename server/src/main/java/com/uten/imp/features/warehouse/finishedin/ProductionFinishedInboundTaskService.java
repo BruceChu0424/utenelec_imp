@@ -18,11 +18,16 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 
 /** Authoritative two-stage warehouse queue: pre-FQC registration and final count. */
 @Service
 @RequiredArgsConstructor
 public class ProductionFinishedInboundTaskService {
+
+    /** 表头筛选白名单（2026-09-16）：任务步骤与 task_documents.task_stage 同源。 */
+    private static final java.util.Set<String> TASK_STAGES = java.util.Set.of(
+            "ARRIVAL_REGISTRATION", "FINAL_COUNT");
 
     private static final String BASE_SQL = """
             WITH arrival_tasks AS (
@@ -180,6 +185,18 @@ public class ProductionFinishedInboundTaskService {
     @Transactional(readOnly = true)
     public PageResponse<ProductionFinishedInboundTask> list(
             String keyword, int requestedPage, int requestedSize) {
+        return list(keyword, null, null, requestedPage, requestedSize);
+    }
+
+    /**
+     * 表头筛选版列表（2026-09-16）：taskStage=任务步骤（ARRIVAL_REGISTRATION 待登记 /
+     * FINAL_COUNT 待最终点收，白名单 fail-closed）；warehouseId=最终点收入库单的成品仓
+     * （待登记任务尚无仓库，会被该筛选取自然排除）。全参数绑定。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionFinishedInboundTask> list(
+            String keyword, String taskStage, UUID warehouseId,
+            int requestedPage, int requestedSize) {
         PageRequest pageable = Pageables.of(
                 requestedPage, requestedSize);
         int page = pageable.getPageNumber() + 1;
@@ -191,6 +208,14 @@ public class ProductionFinishedInboundTaskService {
         String normalized = keyword == null
                 ? ""
                 : keyword.strip().toLowerCase();
+        String normalizedStage = taskStage == null
+                ? ""
+                : taskStage.strip().toUpperCase();
+        if (!normalizedStage.isEmpty() && !TASK_STAGES.contains(normalizedStage)) {
+            throw new com.uten.imp.common.web.ApiException(
+                    com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                    "任务步骤仅支持 ARRIVAL_REGISTRATION 或 FINAL_COUNT");
+        }
         String filter = """
                  WHERE (
                      :keyword = ''
@@ -201,11 +226,18 @@ public class ProductionFinishedInboundTaskService {
                          COALESCE(goods_summary, '')
                      ) LIKE :keyword_like
                  )
-                """;
+                """ + (normalizedStage.isEmpty()
+                        ? ""
+                        : " AND task_stage = :task_stage\n")
+                + (warehouseId == null
+                        ? ""
+                        : " AND warehouse_id = :warehouse_id\n");
 
         Query countQuery = em.createNativeQuery(
                 BASE_SQL + " SELECT COUNT(*) FROM task_documents " + filter);
         bindKeyword(countQuery, normalized);
+        if (!normalizedStage.isEmpty()) countQuery.setParameter("task_stage", normalizedStage);
+        if (warehouseId != null) countQuery.setParameter("warehouse_id", warehouseId);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query rowsQuery = em.createNativeQuery(BASE_SQL + """
@@ -220,6 +252,8 @@ public class ProductionFinishedInboundTaskService {
                 OFFSET :offset LIMIT :limit
                 """);
         bindKeyword(rowsQuery, normalized);
+        if (!normalizedStage.isEmpty()) rowsQuery.setParameter("task_stage", normalizedStage);
+        if (warehouseId != null) rowsQuery.setParameter("warehouse_id", warehouseId);
         rowsQuery.setParameter("offset", pageable.getOffset());
         rowsQuery.setParameter("limit", size);
         List<ProductionFinishedInboundTask> items =

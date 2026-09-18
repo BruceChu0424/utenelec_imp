@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -389,19 +390,18 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           ],
           const SizedBox(height: UtenSpacing.s16),
           _filterLabel('关系来源'),
-          DropdownButtonFormField<_WhereUsedSource>(
+          UtenDropdownField(
             key: const Key('where-used-source-filter'),
-            initialValue: _source,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
+            value: _source.apiValue,
+            allowClear: false,
+            enabled: !_loading,
             items: [
               for (final source in _WhereUsedSource.values)
-                DropdownMenuItem(value: source, child: Text(source.label)),
+                UtenDropdownItem(value: source.apiValue, label: source.label),
             ],
-            onChanged: _loading ? null : _changeSource,
+            onChanged: (v) => _changeSource(
+              _WhereUsedSource.values.where((s) => s.apiValue == v).firstOrNull,
+            ),
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(

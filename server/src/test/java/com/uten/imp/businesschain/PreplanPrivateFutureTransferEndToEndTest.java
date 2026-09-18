@@ -126,6 +126,8 @@ class PreplanPrivateFutureTransferEndToEndTest {
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,bm.analysisLineId(),new BigDecimal("100"),BusinessTime.today(),null,workshop,null,worker,null,null)))).plans().getFirst();
         UUID segment=plan.segmentIds().getFirst();assertEquals("WAITING",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,segment));
         long version=db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);
+        // V599：先确认齐套路线，让「在途未到货不能开工」的真实原因不被路线门挡在前面。
+        segments.confirmRoute(plan.planId(),segment,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(version,"future-route-"+segment,"FULL_KIT"));
         assertThrows(ApiException.class,()->segments.start(plan.planId(),segment,new com.uten.imp.features.production.execution.SegmentTransitionRequest(version,"future-cannot-start-"+segment)));
     }
 

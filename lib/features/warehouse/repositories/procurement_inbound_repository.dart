@@ -11,6 +11,7 @@ abstract interface class ProcurementInboundRepository {
     int size = 20,
     ProcurementInboundOrderType? orderType,
     String? keyword,
+    String? supplierId,
   });
 
   Future<int> expectationCount();
@@ -23,6 +24,9 @@ abstract interface class ProcurementInboundRepository {
     int size = 20,
     String? keyword,
     bool history = false,
+    String? supplierId,
+    String? warehouseId,
+    String? status,
   });
 
   Future<int> warehouseExceptionCount();
@@ -104,6 +108,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     int size = 20,
     ProcurementInboundOrderType? orderType,
     String? keyword,
+    String? supplierId,
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -113,6 +118,8 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
         'size': size,
         if (orderType != null) 'orderType': orderType.name.toUpperCase(),
         if (kw != null && kw.isNotEmpty) 'keyword': kw,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplierId': supplierId,
       },
     );
     return PagedResult.fromJson(json, InboundExpectation.fromJson);
@@ -139,6 +146,9 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     int size = 20,
     String? keyword,
     bool history = false,
+    String? supplierId,
+    String? warehouseId,
+    String? status,
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -148,6 +158,11 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
         'size': size,
         if (history) 'history': true,
         if (kw != null && kw.isNotEmpty) 'keyword': kw,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplierId': supplierId,
+        if (warehouseId != null && warehouseId.isNotEmpty)
+          'warehouseId': warehouseId,
+        if (status != null && status.isNotEmpty) 'status': status,
       },
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);

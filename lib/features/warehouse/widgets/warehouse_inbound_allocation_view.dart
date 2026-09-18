@@ -173,20 +173,9 @@ Future<bool> showWarehouseInboundAllocationConfirmDialog(
     ) ??
     false;
 
-Future<void> showWarehouseInboundAllocationResultDialog(
-  BuildContext context, {
-  required String title,
-  required String description,
-  required List<WarehouseInboundAllocationSection> sections,
-}) => showDialog<void>(
-  context: context,
-  builder: (_) => _WarehouseInboundAllocationDialog(
-    title: title,
-    description: description,
-    sections: sections,
-    actual: true,
-  ),
-);
+// 2026-09-16：showWarehouseInboundAllocationResultDialog（提交成功后弹
+// 「入库完成 · 实际去向」中间结果框）已退役——全站口径改为「提交期间全屏加载
+// 遮罩 + 成功后顶部通知条」，实际去向明细统一落页内入库历史/详情查看。
 
 class _WarehouseInboundAllocationDialog extends StatelessWidget {
   const _WarehouseInboundAllocationDialog({

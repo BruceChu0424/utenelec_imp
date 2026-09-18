@@ -32,6 +32,7 @@ public class ProcurementPayablesController {
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID settlementMethodId,
+            @RequestParam(required = false) UUID currencyId,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false)
@@ -45,7 +46,7 @@ public class ProcurementPayablesController {
             @RequestParam(defaultValue = "30") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(businessType, supplierId, status, settlementMethodId,
+        return service.list(businessType, supplierId, status, settlementMethodId, currencyId,
                 dateFrom, dateTo, dueFrom, dueTo, keyword, page, size, sort, order);
     }
 

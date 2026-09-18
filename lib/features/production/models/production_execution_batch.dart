@@ -10,6 +10,7 @@ class ProductionExecutionBatchPreview {
     required this.remainingQty,
     required this.fingerprint,
     required this.summaries,
+    this.lineSideWarehouseIds = const [],
     this.planId,
     this.planNo,
     this.segmentCode,
@@ -33,6 +34,10 @@ class ProductionExecutionBatchPreview {
   final String fingerprint;
   final List<ProductionDrawRequestSummary> summaries;
 
+  /// 线边仓（车间直送）的仓库 id：这些行的料在提交事务内自动审核出库，
+  /// 不走领料申请、不等仓库发料（ADR-087 车间直送）。
+  final List<String> lineSideWarehouseIds;
+
   factory ProductionExecutionBatchPreview.fromJson(Map<String, dynamic> json) =>
       ProductionExecutionBatchPreview(
         segmentId: json['segmentId'] as String,
@@ -47,6 +52,10 @@ class ProductionExecutionBatchPreview {
             ProductionDrawRequestSummary.fromJson(
               Map<String, dynamic>.from(row as Map),
             ),
+        ],
+        lineSideWarehouseIds: [
+          for (final row in json['lineSideWarehouseIds'] as List? ?? const [])
+            row as String,
         ],
         planId: json['planId'] as String?,
         planNo: json['planNo'] as String?,

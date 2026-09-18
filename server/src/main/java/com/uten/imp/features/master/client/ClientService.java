@@ -66,7 +66,7 @@ public class ClientService {
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径；UUID 关联名称不走旧字段 facet。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "code", "name", "fullName", "salesPaymentType", "clientXz", "tday", "region", "placeId",
-            "empId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
+            "empId", "ownerEmployeeId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
             "postcode", "address", "bank", "bankAccount", "taxId", "credit", "creditFloor", "website");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量列；命中才排序，否则默认 code ASC）。 */
@@ -78,7 +78,8 @@ public class ClientService {
 
     /**
      * facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
-     * 与 {@link #ALLOWED_NULL_FIELDS} 同步：21 个有 DB 列的字段。
+     * 与 {@link #ALLOWED_NULL_FIELDS} 同步。empId 不在此列：桶值是负责人 UUID、
+     * label 需 JOIN employees 出人名，走 {@link #ownerFacet} 专用聚合。
      */
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
@@ -90,7 +91,6 @@ public class ClientService {
         FACET_COLUMNS.put("tday", "tday");
         FACET_COLUMNS.put("region", "region");
         FACET_COLUMNS.put("placeId", "place_id");
-        FACET_COLUMNS.put("empId", "emp_id");
         FACET_COLUMNS.put("legalPerson", "legal_person");
         FACET_COLUMNS.put("linkman", "linkman");
         FACET_COLUMNS.put("mobile", "mobile");
@@ -157,6 +157,9 @@ public class ClientService {
             addEq(ps, cb, root, "region", f.region());
             addEq(ps, cb, root, "placeId", f.placeId());
             addEq(ps, cb, root, "empId", f.empId());
+            if (f.ownerEmployeeId() != null) {
+                ps.add(cb.equal(root.get("ownerEmployeeId"), f.ownerEmployeeId()));
+            }
             addEq(ps, cb, root, "legalPerson", f.legalPerson());
             addEq(ps, cb, root, "linkman", f.linkman());
             addEq(ps, cb, root, "mobile", f.mobile());
@@ -334,6 +337,10 @@ public class ClientService {
         String legacyStubClause = excludeLegacyFinanceStub
                 ? " and (code is null or lower(code) not like 'legacy-fin-cl-%')"
                 : "";
+        // JOIN employees 的负责人聚合用全限定版（两表都有 code/is_deleted，裸列名会歧义）。
+        String legacyStubClauseQualified = excludeLegacyFinanceStub
+                ? " and (clients.code is null or lower(clients.code) not like 'legacy-fin-cl-%')"
+                : "";
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
@@ -362,6 +369,9 @@ public class ClientService {
             Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
+        // 负责人（empId）桶：值=owner_employee_id（employees.id）、label=人名；空值=未分配负责人。
+        buckets.put("empId", ownerFacet(ids, legacyStubClauseQualified, accessSql));
+        nullCounts.put("empId", ownerNullCount(ids, legacyStubClause, accessSql));
         return new ClientFacets(
                 buckets.get("code"), buckets.get("name"), buckets.get("fullName"),
                 buckets.get("clientXz"), buckets.get("tday"), buckets.get("region"),
@@ -371,6 +381,44 @@ public class ClientService {
                 buckets.get("address"), buckets.get("bank"), buckets.get("bankAccount"),
                 buckets.get("taxId"), buckets.get("credit"), buckets.get("website"),
                 nullCounts);
+    }
+
+    /**
+     * 负责人 facet 桶：JOIN employees 按 employees.id 分组、label 出人名（范式同
+     * {@code GoodsService#refFacet}）。不使用别名（clients/employees 全名引用），
+     * 使 {@code accessSql.predicate()} 里的 {@code clients.xxx} 引用继续成立。
+     */
+    private List<FacetBucket> ownerFacet(
+            List<UUID> ids, String legacyStubClause, ClientAccessPolicy.NativeReadScope accessSql) {
+        var fq = em.createNativeQuery(
+                "select employees.id as v, employees.full_name as label, count(*) as c "
+                        + "from clients join employees on employees.id = clients.owner_employee_id "
+                        + "where clients.is_deleted = false and clients.category_id in (:ids) "
+                        + "and clients.owner_employee_id is not null "
+                        + legacyStubClause + " and " + accessSql.predicate()
+                        + " group by employees.id, employees.full_name "
+                        + "order by c desc, label asc limit " + FACET_LIMIT)
+                .setParameter("ids", ids);
+        accessSql.bind(fq);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
+        List<FacetBucket> list = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            list.add(new FacetBucket(String.valueOf(row[0]),
+                    ((Number) row[2]).longValue(), String.valueOf(row[1])));
+        }
+        return list;
+    }
+
+    /** 负责人空值计数：owner_employee_id 为 null（前端列显「未分配」）的行数。 */
+    private Long ownerNullCount(
+            List<UUID> ids, String legacyStubClause, ClientAccessPolicy.NativeReadScope accessSql) {
+        var nq = em.createNativeQuery(
+                "select count(*) from clients "
+                        + "where is_deleted = false and category_id in (:ids) and owner_employee_id is null"
+                        + legacyStubClause + " and " + accessSql.predicate())
+                .setParameter("ids", ids);
+        accessSql.bind(nq);
+        return ((Number) nq.getSingleResult()).longValue();
     }
 
     // ===== 详情 / CRUD（不变） =====
@@ -488,9 +536,7 @@ public class ClientService {
         m.setInitTotal(req.getInitTotal());
         m.setTday(req.getTday());
         applyDefaultSettlementMethod(req, m);
-        m.setDefaultShipmentPolicy(req.getDefaultShipmentPolicy() == null
-                ? null : req.getDefaultShipmentPolicy().trim().isEmpty()
-                ? null : req.getDefaultShipmentPolicy().trim());
+        applyDefaultShipmentPolicy(req, m);
         applyDefaultCurrency(req, m);
         if (req.getSalesPaymentType() != null) {
             m.setSalesPaymentType(req.getSalesPaymentType());
@@ -663,6 +709,21 @@ public class ClientService {
                 em, id, null, "客户默认结账方式");
         client.setDefaultSettlementMethodId(method.id());
         client.setPriceStyle(method.legacyId());
+    }
+
+    /**
+     * 默认货运策略 (V592)：presence 语义同结账方式/币种——请求没带这个键=不动。
+     *
+     * <p>这一列由保存销售订货单自动写回 (ClientDefaultTermsSyncService)。按老的
+     * 「字符串字段整体覆盖」写法, 任何只提交部分字段的客户端保存一次客户就会把
+     * 自动学到的值抹成 null。带了空串/空白=用户显式清空。
+     */
+    private void applyDefaultShipmentPolicy(ClientSaveRequest req, Client client) {
+        if (!req.hasDefaultShipmentPolicy()) return;
+        String raw = req.getDefaultShipmentPolicy();
+        String trimmed = raw == null ? null : raw.trim();
+        client.setDefaultShipmentPolicy(
+                trimmed == null || trimmed.isEmpty() ? null : trimmed);
     }
 
     /** 默认币种（V592）：presence 语义同结账方式；必须存在且未软删。 */

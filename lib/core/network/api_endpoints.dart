@@ -83,6 +83,12 @@ abstract final class ApiEndpoints {
     String receiptId,
   ) => '${warehouseIqcStockInDetail(receiptType, receiptId)}/confirm';
 
+  /// 先入库后质检(V596)：把等待检查结果的待检明细逐行上架到实际叶仓与库位。
+  static String warehouseIqcStockInPreStockIn(
+    String receiptType,
+    String receiptId,
+  ) => '${warehouseIqcStockInDetail(receiptType, receiptId)}/pre-stock-in';
+
   // 品质部检查结果合并页（原 IQC 合格待入库 + IQC 不合格实物退回）：
   // 按收货单聚合 等待检查结果/全部合格待入库/部分合格/全部不合格需退回/已完结。
   static const warehouseQualityResults = '/warehouse/quality-results';
@@ -368,9 +374,10 @@ abstract final class ApiEndpoints {
   static const settlementMethods = '/master/reference-methods/settlement';
   static const financePaymentMethods = '/master/reference-methods/finance';
 
-  // 结算方式管理页（V453）：全量含禁用行与账期策略；账期维护。
+  // 结算方式管理页（V453）：全量含禁用行与账期策略；表头筛选 facets；账期维护。
   static const settlementMethodsAdmin =
       '/master/reference-methods/settlement-admin';
+  static const settlementMethodsAdminFacets = '$settlementMethodsAdmin/facets';
   static String settlementMethodTerms(String id) =>
       '/master/reference-methods/settlement/$id/terms';
 
@@ -626,6 +633,9 @@ abstract final class ApiEndpoints {
 
   /// 一键批量发布庆典祝福（notice:publish）。
   static const noticeCelebrationBatch = '/notices/celebration/batch';
+
+  /// 翻转「庆典自动发送」开关（notice:publish，HR 任务中心页面开关；V600）。
+  static const noticeCelebrationAuto = '/notices/celebration/auto';
 
   // 建议箱（广场/我的/提交/点赞/官方回复；后端 features/suggestion/SuggestionController）
   static const suggestions = '/suggestions';

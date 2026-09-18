@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
@@ -615,6 +616,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 创建/保存货品主档网络段的全屏加载遮罩（root Overlay 传送门）。
+            if (_savingBasic)
+              const UtenBusyOverlay(
+                title: '正在保存货品资料',
+                description: '正在写入货品主档，请勿重复提交或离开本页。',
+              ),
             _header(theme, title),
             const Divider(height: 1),
             TabBar(

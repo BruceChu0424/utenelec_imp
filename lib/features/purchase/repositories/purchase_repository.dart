@@ -105,9 +105,9 @@ class PurchaseRepository {
     ];
   }
 
-  /// 货品 → 最近一次订货商业条款（行级条款「学习预填」：供应商/结账方式/币种/
-  /// 汇率/税率一次带回；2026-09 行级条款改造起的预填契约）。无历史货品不在返回 Map 中。
-  /// （旧 /last-suppliers 仅回供应商的端点保留一个发布周期兼容旧客户端，前端已不再使用。）
+  /// 货品 → 主档默认采购条款(行级预填：默认供应商/结账方式/币种/汇率/税率/采购单价
+  /// 一次带回)。读的是货品与供应商主档的默认值，每次保存订单由服务端写回主档；
+  /// 主档没有默认值的货品不在返回 Map 中。端点路径 /last-terms 是历史遗留。
   Future<Map<String, ProcurementLastTerms>> lastTermsByGoods(
     Set<String> goodsIds,
   ) => loadProcurementTerms(api, '$_base/last-terms', goodsIds);

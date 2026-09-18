@@ -30,19 +30,11 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
-
-/// 保留模块别名以兼容既有调用，实际值统一来自全局 [Perm]。
-class ProductionPerm {
-  const ProductionPerm._();
-  static const planView = Perm.productionPlanView;
-  static const dailyReportView = Perm.productionDailyReportView;
-  static const dailyReportEdit = Perm.productionDailyReportEdit;
-  static const reportView = Perm.productionReportView;
-}
 
 class ProductionPlanListPage extends ConsumerStatefulWidget {
   const ProductionPlanListPage({super.key, this.initialStatus});
@@ -60,6 +52,9 @@ class _ProductionPlanListPageState
   final _list = PagedListController<ProductionPlanListItem>();
   int? _statusFilter; // null=全部
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
+
+  /// 表头列筛选：车间（departments/tree 展平桶，value=UUID 回传 departmentId）。
+  String? _workshopIdFilter;
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -111,6 +106,7 @@ class _ProductionPlanListPageState
           page: _list.pageNum,
           filter: ProductionPlanFilter(
             keyword: _list.normalizedKeyword,
+            departmentId: _workshopIdFilter,
             status: _statusFilter,
           ),
           sort: _list.sortKey,
@@ -132,6 +128,17 @@ class _ProductionPlanListPageState
       _statusFilterSelected = true;
     });
     _reload(1);
+  }
+
+  /// 表头筛选回调：车间值并进 repository.list 的 departmentId；状态列与
+  /// 分段条联动（复用 [_onStatus]），重拉回第 1 页。
+  void _onColumnFilterChanged(String key, String? value) {
+    if (key == 'workshop') {
+      setState(() => _workshopIdFilter = value);
+      _reload(1);
+    } else if (key == 'status') {
+      _onStatus(value == null ? null : int.tryParse(value));
+    }
   }
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
@@ -389,10 +396,36 @@ class _ProductionPlanListPageState
                       primary: true,
                       columns: _columns(names),
                       items: _list.page?.items ?? const [],
-                      facets: const {},
+                      facets: {
+                        'workshop': masterDictionaryFacets(
+                          names.departmentEntries,
+                        ),
+                        'status': const [
+                          MasterFacetBucket(
+                            value: '$kProductionStatusDraft',
+                            count: 0,
+                            label: '草稿',
+                          ),
+                          MasterFacetBucket(
+                            value: '$kProductionStatusApproved',
+                            count: 0,
+                            label: '已审',
+                          ),
+                          MasterFacetBucket(
+                            value: '$kProductionStatusReversed',
+                            count: 0,
+                            label: '红冲',
+                          ),
+                        ],
+                      },
                       nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
+                      filters: {
+                        'workshop': _workshopIdFilter,
+                        'status': _statusFilterSelected
+                            ? _statusFilter?.toString()
+                            : null,
+                      },
+                      onFilterChanged: _onColumnFilterChanged,
                       sortColumn: _list.sortKey,
                       sortAscending: _list.sortAsc,
                       onSortChange: _onSortChange,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -489,6 +490,14 @@ class _DispositionDialogState extends State<_DispositionDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+                  if (_submitting)
+                    UtenBusyOverlay(
+                      title: widget.correction
+                          ? '正在撤回${widget.action.label}'
+                          : '正在提交${widget.action.label}',
+                      description: '正在写入处置台账与库存事实，请勿重复提交或关闭弹窗。',
+                    ),
                   Text(_actionHint(widget.action)),
                   const SizedBox(height: UtenSpacing.s12),
                   TextFormField(

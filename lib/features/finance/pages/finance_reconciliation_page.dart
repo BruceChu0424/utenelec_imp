@@ -17,6 +17,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -29,6 +30,13 @@ String _entryKindLabel(String? value) => switch (value) {
   'ADJUSTMENT' => '余额调整',
   _ => value ?? '—',
 };
+
+/// 「流水类型」列筛选桶（固定枚举，前端硬编码；count=0 表示不强调计数）。
+const _entryKindFacets = [
+  MasterFacetBucket(value: 'POSTING', count: 0, label: '入账'),
+  MasterFacetBucket(value: 'REVERSAL', count: 0, label: '反向冲销'),
+  MasterFacetBucket(value: 'ADJUSTMENT', count: 0, label: '余额调整'),
+];
 
 String _sourceDocTypeLabel(String? value) => switch (value) {
   'RECEIPT' => '销售收款',
@@ -58,6 +66,7 @@ class _FinanceReconciliationPageState
   String _keyword = '';
   String? _accountId;
   String? _sourceDocType;
+  String? _entryKind;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
   String? _sortKey;
   bool _sortAsc = true;
@@ -87,6 +96,7 @@ class _FinanceReconciliationPageState
               keyword: _keyword.trim().isEmpty ? null : _keyword,
               accountId: _accountId,
               sourceDocType: _sourceDocType,
+              entryKind: _entryKind,
             ),
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
@@ -193,6 +203,8 @@ class _FinanceReconciliationPageState
         _accountId = value;
       } else if (key == 'sourceDocType') {
         _sourceDocType = value;
+      } else if (key == 'entryKind') {
+        _entryKind = value;
       }
     });
     _load(1);
@@ -312,11 +324,13 @@ class _FinanceReconciliationPageState
                   facets: {
                     'accountId': financeDictionaryFacets(names.accountEntries),
                     'sourceDocType': financeReconciliationSourceFacets,
+                    'entryKind': _entryKindFacets,
                   },
                   nullCounts: const {},
                   filters: {
                     'accountId': _accountId,
                     'sourceDocType': _sourceDocType,
+                    'entryKind': _entryKind,
                   },
                   onFilterChanged: _onColumnFilterChanged,
                   sortColumn: _sortKey,

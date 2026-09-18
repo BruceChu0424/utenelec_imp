@@ -47,7 +47,8 @@ public class ProcurementMutationFootprint {
             }
             for(Object[] row:rows("""
                     SELECT h.id,h.warehouse_id,i.id,i.goods_id,i.color_id,oi.order_id,
-                           md5(to_jsonb(h)::text),md5(to_jsonb(i)::text),inspection.id,md5(to_jsonb(inspection)::text),inspection.status
+                           md5(to_jsonb(h)::text),md5(to_jsonb(i)::text),inspection.id,md5(to_jsonb(inspection)::text),inspection.status,
+                           inspection.pre_stocked_warehouse_id
                     FROM %1$s_receipts h LEFT JOIN %1$s_receipt_items i ON i.receipt_id=h.id AND i.is_deleted=FALSE
                     LEFT JOIN %1$s_order_items oi ON oi.id=i.order_item_id
                     LEFT JOIN procurement_inspection_items inspection ON inspection.receipt_type=:type AND inspection.receipt_item_id=i.id
@@ -55,9 +56,14 @@ public class ProcurementMutationFootprint {
                     """.formatted(prefix),Map.of("id",ref.id(),"type",ref.type()))) {
                 own.row("receipt-source",row); own.inventory((UUID)row[3],(UUID)row[4]);
                 if(row[5]!=null)orders.add(new OrderRef(ref.type(),(UUID)row[5]));
-                if(row[1]!=null && row[3]!=null && (ref.changedInspectionIds().isEmpty()
-                        || ref.changedInspectionIds().contains(row[8]) || "RESOLVED".equals(row[10])))
+                boolean affected=ref.changedInspectionIds().isEmpty()
+                        || ref.changedInspectionIds().contains(row[8]) || "RESOLVED".equals(row[10]);
+                if(row[1]!=null && row[3]!=null && affected)
                     changed.add(new ProductionMutationFootprintPort.WarehouseDimension((UUID)row[1],(UUID)row[3],(UUID)row[4]));
+                // 先入库后检(V596)：品质 PASS 会在同一事务把该行按上架仓自动转正入库，
+                // 上架仓与收货参考仓可能不同，必须在首次预锁时就纳入可用量/主仓维度。
+                if(row[11]!=null && row[3]!=null && affected)
+                    changed.add(new ProductionMutationFootprintPort.WarehouseDimension((UUID)row[11],(UUID)row[3],(UUID)row[4]));
             }
             for(Object[] row:rows("""
                     SELECT id,owner_id,goods_id,color_id,md5(to_jsonb(reservation)::text)

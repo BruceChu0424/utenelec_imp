@@ -4,42 +4,26 @@
   "@appTitle": {
     "description": "应用标题"
   },
-  "appName": "UTEN IMP",
-  "@appName": {
-    "description": "应用代号"
-  },
   "commonConfirm": "确认",
   "commonCancel": "取消",
   "commonSave": "保存",
-  "commonDelete": "删除",
-  "commonEdit": "编辑",
-  "commonAdd": "新增",
-  "commonSearch": "搜索",
   "commonRefresh": "刷新",
   "commonRetry": "重试",
   "connectionReconnecting": "网络暂时不稳定，正在自动连接…",
   "connectionDisconnected": "暂时连不上服务器，系统会继续自动连接",
   "connectionRestored": "网络已恢复，可以继续使用",
   "connectionRetryNow": "立即重试",
-  "commonClose": "关闭",
   "commonBack": "返回",
   "commonLoading": "加载中…",
   "commonNoData": "暂无数据",
   "commonError": "出错了，请稍后重试",
   "commonSuccess": "操作成功",
-  "commonFailed": "操作失败",
-  "commonMore": "更多",
-  "commonViewAll": "查看全部",
-  "commonAction": "操作",
   "loginAccountHint": "请输入员工工号或手机号",
   "loginAccountRequired": "请输入账号",
   "loginPasswordHint": "请输入密码",
   "loginPasswordRequired": "请输入密码",
-  "loginForgotPassword": "忘记密码？",
   "loginButton": "登 录",
   "loginLoggingIn": "登录中…",
-  "loginSuccess": "登录成功",
-  "loginFailed": "账号或密码错误",
   "loginServerRecoveryAction": "恢复自动选择服务器",
   "loginServerRecoveryHint": "登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。",
   "loginServerRecoverySuccess": "已恢复自动选择，请重新登录",
@@ -56,67 +40,19 @@
   "navNotice": "通知",
   "navProfile": "我的",
   "navSettings": "设置",
-  "dashboardWelcome": "欢迎，{name}",
-  "@dashboardWelcome": {
-    "placeholders": {
-      "name": {}
-    }
-  },
-  "dashboardWelcomeSubtitle": "今天也要加油哦",
-  "dashboardTodayStats": "今日概览",
-  "dashboardQuickActions": "快捷操作",
-  "statTodayOutput": "今日产量",
-  "statOutputUnit": "件",
-  "statInventory": "当前库存",
-  "statOnlineEmployees": "在线员工",
-  "statPendingTodos": "待办事项",
-  "statTrendUp": "较昨日 +{percent}%",
-  "@statTrendUp": {
-    "placeholders": {
-      "percent": {}
-    }
-  },
-  "statTrendDown": "较昨日 {percent}%",
-  "@statTrendDown": {
-    "placeholders": {
-      "percent": {}
-    }
-  },
   "settingsTitle": "设置",
   "settingsSectionAppearance": "外观",
   "settingsThemeMode": "主题模式",
-  "settingsThemeLight": "浅色",
-  "settingsThemeDark": "深色",
-  "settingsThemeSystem": "跟随系统",
   "settingsLanguage": "语言",
-  "settingsLanguageZh": "简体中文",
-  "settingsLanguageEn": "English",
   "settingsFontSize": "字号",
-  "settingsFontSmall": "小",
-  "settingsFontMedium": "标准",
-  "settingsFontLarge": "大",
-  "settingsFontXLarge": "超大",
-  "settingsFontXXLarge": "超超大",
-  "@settingsFontXXLarge": {
-    "description": "字号第 5 档：超超大"
-  },
   "settingsSectionPerformance": "性能",
   "settingsPerformanceTier": "性能模式",
-  "settingsPerformanceAuto": "自动",
-  "settingsPerformanceLite": "省电",
-  "settingsPerformanceStandard": "标准",
-  "settingsPerformanceRich": "极致",
   "settingsPerformanceHint": "性能差的设备建议选省电模式",
   "settingsSectionAbout": "关于",
   "settingsVersion": "版本",
   "settingsLogout": "退出登录",
   "settingsLogoutConfirm": "确定要退出登录吗？",
-  "profileTitle": "我的",
-  "profileEditProfile": "编辑资料",
   "profileChangePassword": "修改密码",
-  "profileEmployeeCode": "工号",
-  "profileDepartment": "部门",
-  "profilePosition": "岗位",
   "entryStaff": "内部人员登录",
   "entryVisitor": "访客登录",
   "visitorLoginTitle": "访客登录",
@@ -135,7 +71,6 @@
   },
   "visitorLoginButton": "登 录",
   "visitorLoggingIn": "登录中…",
-  "visitorCodeSent": "验证码已发送",
   "visitorCodeSentDev": "验证码：{code}(开发期)",
   "@visitorCodeSentDev": {
     "placeholders": {
@@ -165,7 +100,6 @@
   "visitorApplyPlate": "车牌号",
   "visitorApplyPlateHint": "请输入车牌号",
   "visitorApplyHost": "接待人",
-  "visitorApplyHostHint": "选择要拜访的同事",
   "visitorApplyDept": "接待部门",
   "visitorApplyVisitTime": "计划到访时间",
   "visitorApplySubmit": "提交预约",
@@ -188,7 +122,6 @@
   "visitorDetailHost": "接待人",
   "visitorDetailPurpose": "来访事由",
   "visitorDetailVisitTime": "到访时间",
-  "visitorDetailVehicle": "车辆",
   "visitorDetailAppliedAt": "提交时间",
   "visitorDetailApprovedAt": "批准时间",
   "visitorDetailRejectReason": "拒绝原因",
@@ -198,28 +131,21 @@
   "visitorLogout": "退出访客",
   "visitorApprovalTitle": "访客审批",
   "visitorApprovalPending": "待审批",
-  "visitorApprovalProcessed": "已处理",
   "visitorApprovalApprove": "批准",
   "visitorApprovalReject": "拒绝",
   "visitorApprovalForward": "转接待人确认",
-  "visitorApprovalRejectReason": "拒绝原因",
   "visitorApprovalRejectReasonHint": "请填写拒绝原因(选填)",
   "visitorApprovalConfirmApprove": "确认批准该访客来访？",
-  "visitorApprovalConfirmReject": "确认拒绝该访客来访？",
-  "visitorApprovalHostConfirmed": "接待人已确认",
   "visitorApprovalEmpty": "暂无待审批的访客",
   "myVisitorsTitle": "我的访客",
   "myVisitorsEmpty": "暂无需要您确认的访客",
   "myVisitorsConfirm": "同意接待",
   "myVisitorsReject": "拒绝接待",
-  "myVisitorsConfirmHint": "确认接待该访客？",
   "securityTitle": "访客核验",
   "securityScanHint": "将访客二维码对准扫码框",
   "securityScanManual": "手动输入凭证",
-  "securityManualInputHint": "粘贴或输入二维码内容",
   "securityPasscodeHint": "输入6位通行码",
   "visitorPasscodeLabel": "通行码",
-  "securityVerifying": "核验中…",
   "securityPass": "允许通行",
   "securityReject": "禁止通行",
   "securityReasonOk": "凭证有效",
@@ -234,21 +160,12 @@
   "securityHost": "接待人",
   "securityPlate": "车牌",
   "securityVisitTime": "到访时间",
-  "navHrGroup": "人事管理",
-  "navHrEmployees": "员工档案",
-  "navHrDepartments": "部门管理",
-  "navHrOnboarding": "入职办理",
-  "navHrPayrollGenerate": "工资条生成",
-  "navHrNoticePublish": "通知发布",
   "employeeTitle": "员工档案",
   "employeeFabOnboard": "入职",
   "employeeSearchHint": "搜索工号 / 姓名 / 车牌",
   "employeeEmpty": "暂无员工",
-  "employeeEmptyHint": "点右下角「入职」添加新员工",
-  "employeeLoadMore": "加载更多",
   "employeeDetailTitle": "员工详情",
   "employeeDetailBasic": "基本信息",
-  "employeeDetailContact": "联系与地址",
   "employeeDetailOrg": "组织与用工",
   "employeeDetailContract": "合同 / 薪资(按权限可见)",
   "employeeDetailEmergency": "紧急联系人",
@@ -324,15 +241,9 @@
   "employeeEditOrg": "组织信息",
   "employeeEditContact": "联系方式",
   "employeeEditSalary": "薪资与银行",
-  "employeeEditFieldPhone": "手机",
-  "employeeEditFieldDepartment": "部门",
-  "employeeEditFieldPosition": "岗位",
-  "employeeEditFieldEmploymentType": "用工性质",
-  "employeeEditFieldStatus": "员工状态",
   "employeeEditSaved": "已保存",
   "employeeEditSaveFailed": "保存失败，请重试",
   "employeeEditLoadFailed": "加载失败：{error}",
-  "employeeEditNotFound": "员工不存在",
   "employeeEditRequired": "必填",
   "employeeOnboardTitle": "新员工入职",
   "employeeOnboardGroupProfile": "档案",
@@ -385,26 +296,11 @@
   "idTypePassport": "护照",
   "idTypeHmtPermit": "港澳台通行证",
   "idTypeOther": "其他",
-  "employeeOffboardTitle": "离职办理",
-  "employeeOffboardFieldType": "离职类型",
-  "employeeOffboardFieldDate": "离职日期",
-  "employeeOffboardPickDate": "选择日期",
-  "employeeOffboardFieldReason": "离职原因",
-  "employeeOffboardPickDateRequired": "请选择离职日期",
-  "employeeOffboardChecksRequired": "请确认所有回收项",
-  "employeeOffboardConfirmTitle": "确认办理离职？",
-  "employeeOffboardConfirmBody": "该员工账号将被停用。",
-  "employeeOffboardConfirmAction": "确认办理离职",
-  "employeeOffboardNext": "下一步",
-  "employeeOffboardBack": "上一步",
-  "employeeOffboardCompleted": "离职办理完成",
   "employeeOffboardLoadFailed": "加载失败",
-  "employeeActions": "更多操作",
   "employeeActionTransfer": "调岗",
   "employeeActionConfirm": "转正",
   "employeeActionOffboard": "办理离职",
   "employeeActionRehire": "复职",
-  "employeeActionDelete": "删除档案",
   "employeeActionProvision": "开通登录账号",
   "employeeActionLockAccount": "锁定账号",
   "employeeActionUnlockAccount": "解锁账号",
@@ -413,9 +309,7 @@
   "employeeProvisionConfirm": "将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？",
   "employeeTransferTitle": "员工调岗",
   "employeeTransferFieldDate": "生效日期",
-  "employeeTransferPickDate": "选择日期",
   "employeeTransferFieldRemark": "备注",
-  "employeeTransferDateRequired": "请选择生效日期",
   "employeeTransferSuccess": "调岗完成",
   "employeeConfirmTitle": "确认转正？",
   "employeeConfirmBody": "转正后员工状态将变为「在职」。",
@@ -423,17 +317,6 @@
   "employeeRehireTitle": "确认复职？",
   "employeeRehireBody": "复职后员工状态将恢复为「在职」，其登录账号将重新启用(需重新登录)。",
   "employeeRehireSuccess": "复职完成",
-  "employeeDeleteTitle": "确认删除该员工档案？",
-  "employeeDeleteBody": "删除后其登录账号将被停用，此操作不可恢复。",
-  "employeeDeleteSuccess": "员工档案已删除",
-  "resignTypeVoluntary": "主动辞职",
-  "resignTypeDismissed": "公司辞退",
-  "resignTypeContractEnd": "合同到期",
-  "resignTypeRetire": "退休",
-  "resignCheckAccess": "收回门禁卡",
-  "resignCheckAssets": "回收公司资产",
-  "resignCheckAccount": "停用系统账号",
-  "resignCheckSocial": "停缴社保公积金",
   "employeeStatusActive": "在职",
   "employeeStatusProbation": "试用",
   "employeeStatusOnLeave": "休假",
@@ -454,22 +337,14 @@
   "historyEventResign": "离职",
   "historyEventRehire": "复职",
   "departmentTitle": "部门管理",
-  "departmentTreeTitle": "组织架构",
   "departmentEmpty": "选择部门",
   "departmentEmptyHint": "点右上角图标打开部门树",
   "departmentEmptySelect": "请选择左侧部门",
-  "departmentTooltipAdd": "新增部门",
   "departmentTooltipRefresh": "刷新",
   "departmentTooltipTree": "部门树",
-  "departmentDialogAddTitle": "新增部门",
   "departmentDialogDeleteTitle": "删除部门",
-  "departmentFieldCode": "部门编码",
-  "departmentFieldCodeHint": "如 DEPT-XX",
-  "departmentFieldName": "部门名称",
-  "departmentFieldLevel": "层级",
   "departmentCreate": "创建",
   "departmentDelete": "删除",
-  "departmentRequireCodeAndName": "编码与名称必填",
   "departmentCreated": "已创建",
   "departmentDeleted": "已删除",
   "departmentDeleteConfirm": "确认删除「{name}」？仅无子部门且无员工的叶子部门可删。",
@@ -485,31 +360,8 @@
       "code": {}
     }
   },
-  "departmentStatEmployees": "员工",
-  "departmentStatChildren": "子部门",
-  "departmentStatManager": "负责人",
-  "departmentStatParent": "上级",
-  "departmentEmployeesHeader": "员工({count})",
-  "@departmentEmployeesHeader": {
-    "placeholders": {
-      "count": {}
-    }
-  },
   "departmentEmployeesEmpty": "该部门(含子部门)暂无员工",
-  "departmentStatValue": "{label}：{value}",
-  "@departmentStatValue": {
-    "placeholders": {
-      "label": {},
-      "value": {}
-    }
-  },
   "departmentLoadFailed": "加载失败",
-  "departmentLevelCompany": "公司",
-  "departmentLevelDecision": "决策层",
-  "departmentLevelManagement": "管理中心",
-  "departmentLevelPrimary": "一级部门",
-  "departmentLevelSecondary": "二级班组",
-  "departmentLevelTertiary": "三级科室",
   "payrollGenerateTitle": "工资条生成",
   "payrollStepScope": "选择范围",
   "payrollStepItems": "配置薪酬项",
@@ -523,72 +375,21 @@
   "payrollItemTax": "个人所得税 (-5%)",
   "payrollSubmitNote": "提交后将进入财务审核流程，审核通过后由人事发布给员工。",
   "payrollSubmitButton": "提交审核",
-  "payrollSubmitted": "已提交审核，等待财务审核",
-  "payrollLoadFailed": "加载失败：{error}",
-  "@payrollLoadFailed": {
-    "placeholders": {
-      "error": {}
-    }
-  },
-  "payrollEmptyPreview": "该范围无可计算员工",
-  "payrollTableTotalLabel": "合计",
-  "payrollTableTotalValue": "¥ {total} · {count} 人",
-  "@payrollTableTotalValue": {
-    "placeholders": {
-      "total": {},
-      "count": {}
-    }
-  },
-  "payrollTableHeaderName": "工号/姓名",
-  "payrollTableHeaderNet": "实发",
-  "payrollTableRowName": "{name}({code})",
-  "@payrollTableRowName": {
-    "placeholders": {
-      "name": {},
-      "code": {}
-    }
-  },
-  "payrollTableRowNet": "¥ {net}",
-  "@payrollTableRowNet": {
-    "placeholders": {
-      "net": {}
-    }
-  },
   "payrollNext": "下一步",
   "payrollBack": "上一步",
   "payrollDeptAll": "全员",
-  "payrollDeptProduction": "生产部",
-  "payrollDeptQuality": "质量部",
-  "payrollDeptHr": "人事部",
-  "payrollDeptFinance": "财务部",
   "noticePublishTitle": "发布通知",
-  "noticePublishSaveDraft": "存草稿",
-  "noticePublishDraftSaved": "已保存草稿",
   "noticePublishPublishButton": "发布",
   "noticePublishTopPriority": "置顶",
   "noticePublishTitleHint": "通知标题(必填)",
   "noticePublishContentHint": "通知正文……",
   "noticePublishScopeTitle": "可见范围",
   "noticePublishScopeAll": "全员",
-  "noticePublishScopeDept": "按部门",
-  "noticePublishFieldDept": "部门",
   "noticePublishScopeAllHint": "将通知到全公司所有员工",
-  "noticePublishScopeDeptHint": "将通知到「{dept}」全体员工",
-  "@noticePublishScopeDeptHint": {
-    "placeholders": {
-      "dept": {}
-    }
-  },
   "noticePublishValidateTitle": "请填写标题",
   "noticePublishValidateContent": "请填写正文",
   "noticePublishConfirmTitle": "确认发布？",
   "noticePublishConfirmBodyAll": "将通知到全员",
-  "noticePublishConfirmBodyDept": "将通知到「{dept}」",
-  "@noticePublishConfirmBodyDept": {
-    "placeholders": {
-      "dept": {}
-    }
-  },
   "noticePublishPublished": "通知已发布",
   "noticePublishPublishing": "发布中…",
   "noticePublishContentSection": "通知内容",
@@ -677,7 +478,6 @@
       }
     }
   },
-  "noticeAckRecent": "近期已收到",
   "noticeSendBlessing": "送上祝福",
   "noticeBlessingSent": "已送祝福",
   "noticeBlessingCount": "{count} 条祝福",
@@ -701,7 +501,6 @@
   "noticeBlessingPlaceholder": "写下你的祝福…",
   "noticeBlessingSendButton": "发送祝福",
   "noticeBlessingSending": "发送中…",
-  "noticeBlessingWithdraw": "撤回",
   "noticeBlessingViewAll": "查看全部 {count} 条",
   "@noticeBlessingViewAll": {
     "placeholders": {
@@ -715,19 +514,9 @@
   "noticeCelebrationSubjectLabel": "祝福对象",
   "noticeCelebrationSubjectHint": "选择要祝福的同事",
   "noticeCelebrationSubjectRequired": "请选择祝福对象",
-  "noticeCelebrationSubjectIsYou": "你",
-  "noticeCelebrationFor": "祝 {name} {event}",
-  "@noticeCelebrationFor": {
-    "placeholders": {
-      "name": {},
-      "event": {}
-    }
-  },
   "noticeQuickCelebrationTitle": "快捷发布祝福",
   "noticeQuickCelebrationSubtitle": "选择类型，系统自动套用模板",
   "noticeQuickPublish": "发通知",
-  "noticeQuickBirthday": "生日",
-  "noticeQuickAnniversary": "入职周年",
   "noticeQuickWedding": "新婚",
   "noticeQuickNewborn": "新生儿",
   "celebrationPopupBirthday": "{name}，今天是你的生日！\n小优祝你生日快乐！",
@@ -781,18 +570,9 @@
       "name": {}
     }
   },
-  "celebrationCardCta": "送上祝福",
   "celebrationCardWall": "查看祝福墙",
-  "noticeAutoCelebrationTitle": "自动祝福通知",
-  "noticeAutoCelebrationEnabled": "每日自动为当天生日 / 入职周年的员工发布全员祝福",
-  "noticeAutoCelebrationTypes": "自动类型",
-  "noticeAutoCelebrationPublisher": "发布人名称",
   "profileChangeEditTitle": "修改个人信息",
   "profileChangeEditCta": "修改我的信息",
-  "profileChangeEditHrOnlyHint": "以下字段请联系人事修改",
-  "profileChangeSectionBasic": "基本信息(直改生效)",
-  "profileChangeSectionReview": "联系方式与重要字段(需 HR 审核)",
-  "profileChangeSectionIdentity": "姓名与紧急联系人(需 HR 审核)",
   "profileChangeFieldDirect": "可直接修改",
   "profileChangeFieldReview": "需 HR 审核后生效",
   "profileChangeFieldHrOnly": "请联系人事修改",
@@ -805,14 +585,11 @@
   "profileChangeConflict": "档案已被他人更新，请刷新后再试",
   "profileChangeRateLimited": "24h 内已提交过该字段的修改，请等待处理",
   "profileChangeListTitle": "我的修改申请",
-  "profileChangeListCta": "查看申请记录",
   "profileChangeListEmpty": "暂无修改申请",
   "profileChangeFilterAll": "全部",
   "profileChangeFilterPending": "待审核",
   "profileChangeFilterApplied": "已生效",
-  "profileChangeFilterApproved": "已通过",
   "profileChangeFilterRejected": "已驳回",
-  "profileChangeFilterCancelled": "已撤销",
   "profileChangeStatusPending": "待 HR 审核",
   "profileChangeStatusApplied": "已生效",
   "profileChangeStatusApproved": "已通过",
@@ -820,7 +597,6 @@
   "profileChangeStatusCancelled": "已撤销",
   "profileChangeCancel": "撤销",
   "profileChangeCancelledByMe": "已由我撤销",
-  "profileChangeFieldLabel": "字段",
   "profileChangeBefore": "修改前",
   "profileChangeAfter": "修改后",
   "profileChangeSubmittedAt": "提交时间",
@@ -848,7 +624,6 @@
   "profileChangeApproveSuccess": "已批准",
   "profileChangeFieldPhone": "手机",
   "profileChangeFieldFullName": "姓名",
-  "profileChangeFieldHujiAddress": "户籍地址",
   "profileChangeFieldEmergencyName": "紧急联系人姓名",
   "profileChangeFieldEmergencyPhone": "紧急联系人电话",
   "profileChangeFieldEmergencyRelationship": "与本人关系",
@@ -859,12 +634,7 @@
     }
   },
   "profilePendingSectionTitle": "待我审核的修改申请",
-  "profilePendingSectionEmpty": "该员工暂无待审申请",
   "profilePendingSectionViewAll": "全部 →",
-  "profileFieldPhoneMask": "138****1234",
-  "profileFieldIdCardMask": "****",
-  "profileFieldBankAccountMask": "****1234",
-  "profileFieldGroupIdentity": "身份信息",
   "profileFieldGroupContact": "联系方式",
   "profileFieldGroupAddress": "地址",
   "profileFieldGroupEmergency": "紧急联系人",
@@ -879,12 +649,9 @@
     }
   },
   "profileEditFieldAction": "修改",
-  "profileFieldGroupOrg": "组织与入职",
-  "profileFieldGroupCompensation": "薪资与银行",
   "profileFieldWorkLocation": "工作地",
   "profileFieldSeatNo": "工位",
   "profileFieldOfficePhone": "办公电话",
-  "profileFieldMobile": "手机号",
   "profileFieldEmail": "邮箱",
   "profileFieldResidenceAddress": "现住址",
   "profileFieldHujiAddress": "户籍地址",
@@ -893,33 +660,11 @@
   "profileFieldMaritalStatus": "婚姻状况",
   "profileFieldBirthDate": "出生日期",
   "profileFieldGender": "性别",
-  "profileFieldIdType": "证件类型",
-  "profileFieldIdNumber": "身份证号",
-  "profileFieldSupervisor": "直属主管",
-  "profileFieldHireDate": "入职日期",
-  "profileFieldConfirmedAt": "转正日期",
-  "profileFieldEmploymentType": "用工性质",
-  "profileFieldAttendanceGroup": "考勤组",
-  "profileFieldPaperArchiveNo": "纸质档案号",
-  "profileFieldBaseSalary": "基本工资",
-  "profileFieldPerfSalary": "绩效工资",
-  "profileFieldSocialInsuranceBase": "社保基数",
-  "profileFieldSocialInsuranceLocation": "社保缴纳地",
-  "profileFieldHousingFundBase": "公积金基数",
-  "profileFieldAllowanceStandard": "补贴标准",
-  "profileFieldBankBranch": "开户行",
-  "profileFieldBankAccount": "银行账号",
-  "profileFieldContractType": "合同类型",
-  "profileFieldContractStart": "合同起始",
-  "profileFieldContractEnd": "合同截止",
-  "profileFieldProbationMonths": "试用期(月)",
-  "profileFieldRenewCount": "续签次数",
   "hubDisabledChip": "未启用",
   "@hubDisabledChip": {
     "description": "未启用单据卡片上的角标"
   },
   "hubSectionTaskCenter": "任务中心",
-  "hubDisabledDocNotice": "该单据类型暂未启用(老库无数据)",
   "hubSubDetailPerItem": "一行一货品",
   "@hubSubDetailPerItem": {
     "description": "明细报表共享副标题：一行一货品"
@@ -983,7 +728,6 @@
   "productionHubPlanHistory": "生产计划历史",
   "productionHubPlanHistorySub": "查看计划、审批与分批记录",
   "productionHubMaterialAnalysis": "物料分析准备",
-  "productionHubMaterialAnalysisSub": "齐套分析·路线确认·分批生成",
   "productionHubDaily": "生产日报表",
   "productionHubDailySub": "完工日报·红冲",
   "productionHubReportPlanDetail": "计划明细",
@@ -994,7 +738,6 @@
   "productionHubWhereUsedSub": "材料用在哪些产品",
   "financeHubTitle": "钱流管理",
   "financeHubSectionReports": "钱流报表",
-  "financeHubApprovalOwners": "审批负责人设置",
   "financeHubTaskApproval": "订货审批任务中心",
   "financeSalesAllQueueLabel": "销售订单财务确认",
   "financeSalesInitialQueueLabel": "销售订单首次财务确认",
@@ -1068,39 +811,15 @@
   "financeHubReportGlSub": "科目·资产·利润",
   "warehouseHubTitle": "仓库管理",
   "warehouseHubSectionDocs": "出入库单据",
-  "warehouseHubSectionDocsDesc": "调拨·其它出入库·领退料·产成品进出仓·盘点",
   "warehouseHubSectionInventory": "库存查询",
   "warehouseHubSectionInventoryDesc": "即时库存·库存查询·出入库流水",
   "warehouseHubSectionReports": "仓库报表",
   "warehouseHubSectionReportsDesc": "明细(一行一货品)·汇总(一行一单)",
-  "warehouseHubTaskExpected": "预计到货任务中心",
-  "warehouseHubTaskExpectedSub": "登记实际到货",
-  "warehouseHubTaskException": "到货异常任务中心",
-  "warehouseHubTaskExceptionSub": "超量先隔离",
-  "warehouseHubTaskPicking": "生产领料任务中心",
-  "warehouseHubTaskPickingSub": "备料·跟踪领取",
   "warehouseHubDocTransfer": "仓库调拨",
   "warehouseHubDocTransferSub": "仓库间调拨",
-  "warehouseHubDocOtherIn": "其它入库",
-  "warehouseHubDocOtherInSub": "无单据入库",
-  "warehouseHubDocOtherOut": "其它出库",
-  "warehouseHubDocOtherOutSub": "无单据出库",
-  "warehouseHubDocDraw": "生产领料",
-  "warehouseHubDocDrawSub": "车间领料",
-  "warehouseHubDocWdraw": "生产退料",
-  "warehouseHubDocWdrawSub": "退回车间料",
-  "warehouseHubDocFinishedIn": "产成品进仓",
-  "warehouseHubDocFinishedInSub": "成品入库",
-  "warehouseHubDocFinishedOut": "产成品出仓",
-  "warehouseHubDocFinishedOutSub": "成品出库",
   "warehouseHubDocCheck": "盘点",
   "warehouseHubDocCheckSub": "盘点盈亏",
   "warehouseHubInventoryLive": "即时库存",
-  "warehouseHubInventoryLiveSub": "实时可用库存",
-  "warehouseHubInventoryBalance": "库存查询",
-  "warehouseHubInventoryBalanceSub": "按货品查余额",
-  "warehouseHubInventoryMovement": "出入库流水",
-  "warehouseHubInventoryMovementSub": "进出流水明细",
   "warehouseHubReportDetail": "仓库明细报表",
   "warehouseHubReportSummary": "仓库汇总报表",
   "basicDataHubTitle": "基础资料",
@@ -1130,7 +849,6 @@
   "impersonationEnterPasswordTitle": "确认切换人",
   "impersonationEnterPasswordHint": "为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。",
   "impersonationPasswordLabel": "登录密码",
-  "impersonationConfirm": "确认",
   "impersonationTargetPickerTitle": "选择要查看的员工",
   "impersonationSearchHint": "搜索姓名 / 工号",
   "impersonationBannerTitle": "正在以 {name} 身份查看(只读)",
@@ -1153,7 +871,6 @@
   },
   "impersonationWrongPassword": "密码错误",
   "impersonationExited": "已退出模拟身份",
-  "impersonationWindowExpired": "模拟窗口已到期，已退出",
   "impersonationRecent": "最近",
   "impersonationNoTargets": "暂无可切换的员工",
   "impersonationStartFailed": "切换失败",
@@ -1195,18 +912,8 @@
   "profileTabContactVehicle": "联系与车辆",
   "profileTabMyDocuments": "我的文件",
   "profileEmploymentHistoryTitle": "任职记录",
-  "profileScopeNoticeTitle": "信息范围说明",
   "profileCompensationBoundaryDescription": "薪酬与银行信息不会在“我的”页展示；这是有意设置的隐私边界。本人月度收入请从工资条核对，其他问题请联系授权人事。",
   "profileMissingEmergencyContact": "尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。",
-  "profileAlternatePhoneCount": "已登记 {count} 个备用号码",
-  "@profileAlternatePhoneCount": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "profileVehiclesPhonesEmptyHint": "登记车辆与备用手机号，按车牌快速找到你",
   "historyEventConfirm": "转正",
   "accountProvisionPermissionDenied": "你没有开通账号权限，请联系账号支持人员处理",
   "accountProvisionAlreadyExists": "该员工已有账号或账号未启用，不能重复开通",
@@ -1231,8 +938,6 @@
   "materialIdentityByProduct": "物料名称",
   "materialRoute": "供应方式",
   "materialRequired": "需要数量",
-  "materialAllocated": "已备数量",
-  "materialPreparedQuantityHint": "已分配给本批的合格物料，含本批正式预留和已领用量。合格到货已包含在分配中，不重复相加；待检与在途不计入。本批已备数量不等于仓库即时余额。",
   "materialShortage": "还缺数量",
   "materialPhysicalShortageHint": "本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。",
   "materialSupplyProgressHint": "跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。",
@@ -1259,7 +964,6 @@
       }
     }
   },
-  "materialRouteReasonTitle": "路线原因(选填)",
   "materialRouteChangedRetry": "分析已更新，请核对当前所选路线后重试",
   "materialWarehouseFacts": "仓库与供给明细",
   "materialExactStock": "本节点合格绑定",
@@ -1303,20 +1007,9 @@
       }
     }
   },
-  "materialRouteMemoryLoading": "正在读取上次路线，请稍后确认",
-  "materialRouteMemoryUnavailable": "上次路线读取失败，请核对当前路线后确认",
-  "materialRootSupply": "顶层供料任务",
   "materialRootRoutePending": "路线待确认",
   "materialRootExternalRoute": "顶层已选择采购或委外，请到对应入口下达",
-  "materialRootExistingStock": "将优先交接已分配现货 {quantity}，下方只填写剩余的追加供料数量。",
   "materialRootSupplyCompleted": "供料需求已完成",
-  "@materialRootExistingStock": {
-    "placeholders": {
-      "quantity": {
-        "type": "String"
-      }
-    }
-  },
   "materialRootOutputHistory": "顶层供料交接记录",
   "materialRootStockAllocation": "现货交接",
   "materialRootReceivedSupply": "合格到货交接",
@@ -1425,7 +1118,6 @@
   "workflowTaxRateHint": "填百分数，例如13表示13%；不要填0.13。",
   "workflowCurrencyHint": "币种决定本行单价和金额的含义；更换前请核对来源单据，不能只改显示名称。",
   "workflowSettlementHint": "按与供应商约定的结算方式选择。不同供应商、币种或结算条款可能拆成不同订货单。",
-  "workflowPlanningQuantityHint": "这是本次要安排的数量，不是实收数量。已安排的在途货还未成为库存，下达任务也不代表车间已经可以开工。",
   "workflowWorkshopQuantityHint": "填写本次交给车间的数量。任务可先下达，但开工和领料仍须满足物料及状态条件。",
   "workflowReportQuantityHint": "按计划行单位填写本次实际完成量，不填累计产量。审核报工后还要经仓库登记、品质检查和入库。",
   "workflowArrivalQuantityHint": "按本行单位填写本次实到数量。少到、多到都按实物登记；超出批准量的部分进入异常处理，不直接计入可用库存。",
@@ -1441,23 +1133,7 @@
   "workflowFinanceReviewHint": "写下核对结果；订单有修改时先对照修改前后内容。财务确认不等于已经收款、出货或开工。",
   "workflowFinanceRejectHint": "写明哪里不对、需要怎样修改。原因会通知销售，修改后再送财务审核。",
   "workflowOptionalDetails": "补充信息(选填)",
-  "workflowReceiptEvidence": "汇率与到账凭证",
-  "workflowReceiptNoFees": "没有手续费，无需再填费用明细",
   "workflowUnitUnknown": "验收单位待核对",
-  "workflowIqcUnitHint": "原单1{sourceUnit} = {rate}{baseUnit}；这里按{baseUnit}验收，不要把原单包装数直接填进来。",
-  "@workflowIqcUnitHint": {
-    "placeholders": {
-      "sourceUnit": {
-        "type": "String"
-      },
-      "rate": {
-        "type": "String"
-      },
-      "baseUnit": {
-        "type": "String"
-      }
-    }
-  },
   "moneySummaryCustomerPaid": "客户已付",
   "moneySummaryGrossShipped": "已发货金额",
   "moneySummaryReturned": "退货金额",
@@ -1580,7 +1256,6 @@
     }
   },
   "productionMaterialRecheckHelp": "重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。",
-  "productionMaterialRegisterUsage": "登记实际用料",
   "productionMaterialViewUsage": "查看用料记录",
   "systemSettingInvalidInteger": "请输入有效的非负整数",
   "systemSettingInvalidValue": "设置值超出允许范围",
@@ -1648,12 +1323,10 @@
       }
     }
   },
-  "warehouseOutboundBatchSelect": "请先选择可办理任务",
   "warehouseOutboundBatchReason": "处理说明",
   "warehouseOutboundConfirmShipment": "确认出库",
   "warehouseOutboundBillNo": "出货单号",
   "warehouseOutboundClient": "客户",
-  "warehouseOutboundWarehouse": "仓库",
   "warehouseOutboundStatus": "仓库作业",
   "warehouseOutboundLineNo": "行号",
   "warehouseOutboundGoodsCode": "货品编码",
@@ -1696,7 +1369,6 @@
   "warehouseStockOutboundPlace": "实际库位",
   "warehouseStockOutboundQuantity": "出库数量",
   "warehouseStockOutboundSource": "来源单据",
-  "warehouseStockOutboundRemark": "备注",
   "warehouseSubcontractOutboundBatchTitle": "批量出库详情",
   "warehouseSubcontractOutboundBatchAction": "批量出库",
   "warehouseSubcontractOutboundBatchConfirm": "确认批量出库",
@@ -1714,7 +1386,6 @@
   "warehouseSubcontractOutboundGoodsCode": "编号",
   "warehouseSubcontractOutboundLegacyParentName": "历史父件名称",
   "warehouseSubcontractOutboundLegacyParentCode": "父件编号",
-  "warehouseSubcontractOutboundGoods": "货品",
   "warehouseSubcontractOutboundColor": "颜色",
   "warehouseSubcontractOutboundUnit": "单位",
   "warehouseSubcontractOutboundPlanned": "计划数量",
@@ -1751,11 +1422,8 @@
   },
   "warehouseSubcontractOutboundContinue": "继续未执行项",
   "warehouseSubcontractOutboundVerify": "核实处理结果",
-  "warehouseSubcontractOutboundSelectAll": "全选出库明细",
   "warehouseSubcontractOutboundDraft": "出库草稿",
-  "warehouseSubcontractOutboundRemark": "备注",
   "warehouseSubcontractOutboundNoLines": "当前没有可出库明细",
-  "warehouseSubcontractOutboundLegacyParent": "历史父件",
   "warehouseStockOutboundConfirmSingle": "确认出库",
   "warehouseStockOutboundSeries": "系列",
   "warehouseSubcontractOutboundDraftsGenerated": "出库草稿已生成，请重新核对各张单据的实际仓库和数量，再确认出库。",
@@ -1855,8 +1523,20 @@
   "productionBatchNeedsReviewHint": "下方为上次核对的明细，重新核对后才能确认本批。",
   "productionBatchNoKit": "暂不能安排本批",
   "productionBatchNoKitHint": "现有物料尚不能配齐一个生产批次，请等待实际入库后重新核对",
-  "productionBatchReuse": "本批无需新增领料",
   "productionBatchReuseHint": "本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。",
+  "productionBatchDirectTransferBadge": "车间直送 · 自动投入",
+  "productionBatchDirectTransferHint": "本批物料全部来自本车间直送（线边仓）：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。",
+  "productionBatchSubmittedDirectTransfer": "已安排本批 {quantity} {unit}，直送物料已自动投入，无需领料，可直接开工",
+  "@productionBatchSubmittedDirectTransfer": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
   "productionBatchFlow": "确认本批领料 → 仓库发齐 → 车间开工",
   "productionBatchRemainingText": "本批安排后，剩余 {quantity} {unit} 留待后续安排。",
   "@productionBatchRemainingText": {
@@ -1889,16 +1569,5 @@
   "productionBatchUnit": "领料单位",
   "productionBatchMaterialQuantity": "本批领料数量",
   "productionBatchMaterialQuantityHint": "仅为本批需要新增领取的数量，按本行单位和实际仓库办理。",
-  "productionBatchNoAdditionalMaterials": "本批无需新增领料，沿已有物料来源安排生产",
-  "productionBatchConfirmedSummary": "本批 {quantity} {unit}",
-  "@productionBatchConfirmedSummary": {
-    "placeholders": {
-      "quantity": {
-        "type": "String"
-      },
-      "unit": {
-        "type": "String"
-      }
-    }
-  }
+  "productionBatchNoAdditionalMaterials": "本批无需新增领料，沿已有物料来源安排生产"
 }

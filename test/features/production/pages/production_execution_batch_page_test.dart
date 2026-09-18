@@ -69,9 +69,20 @@ class _Repository extends ProductionExecutionBatchRepository {
   final previews = <({String id, int? version, double? quantity})>[];
   final submissions =
       <({ProductionExecutionBatchPreview preview, String key})>[];
+
+  Map<String, dynamic> _lineSideOverride() => lineSideWarehouses.isEmpty
+      ? const {}
+      : {'lineSideWarehouseIds': lineSideWarehouses};
+
   double maximum = 300;
   bool reuseMaterial = false;
   bool showIllustrativeMaterials = false;
+
+  /// 全部物料来自线边仓（车间直送）——提交后自动投入，不发领料申请。
+  bool directTransferOnly = false;
+
+  /// 仅标记这些仓库为线边仓（混合场景：徽标只落直送行）。
+  List<String> lineSideWarehouses = const [];
   Object? submitError;
 
   @override
@@ -83,6 +94,8 @@ class _Repository extends ProductionExecutionBatchRepository {
     previews.add((id: segmentId, version: expectedVersion, quantity: quantity));
     return ProductionExecutionBatchPreview.fromJson({
       ..._snapshot(quantity: quantity ?? maximum, max: maximum),
+      if (directTransferOnly) 'lineSideWarehouseIds': ['warehouse-a'],
+      ..._lineSideOverride(),
       if (showIllustrativeMaterials) ...{
         'planNo': 'SC202609120018',
         'segmentCode': 'GD202609120032',
@@ -302,6 +315,38 @@ void main() {
       expect(find.text('返回车间任务'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'an all direct-transfer batch skips the draw request and can start right away',
+    (tester) async {
+      final repository = _Repository()..directTransferOnly = true;
+      await _pump(tester, repository);
+      // 全部物料来自本车间线边仓：按钮走「安排」语义，不出现领料申请文案。
+      expect(find.text('确认本批生产'), findsOneWidget);
+      expect(find.text('确认本批领料'), findsNothing);
+      expect(find.textContaining('车间直送 · 自动投入'), findsWidgets);
+      expect(find.textContaining('无需提交领料申请'), findsWidgets);
+      expect(find.textContaining('确认本批领料 → 仓库发齐'), findsNothing);
+      await tester.tap(find.byKey(_submitKey));
+      await tester.pumpAndSettle();
+      expect(repository.submissions, hasLength(1));
+      expect(find.text('返回车间任务'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a mixed batch marks only line-side rows as direct transfer', (
+    tester,
+  ) async {
+    final repository = _Repository()
+      ..showIllustrativeMaterials = true
+      ..lineSideWarehouses = const ['plastic'];
+    await _pump(tester, repository);
+    // 仍有仓库料要走领料申请，按钮保持「领料」语义。
+    expect(find.text('确认本批领料'), findsOneWidget);
+    expect(find.textContaining('车间直送 · 自动投入'), findsOneWidget);
+    expect(find.textContaining('塑料原料仓'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'changed batch quantity must be reviewed again before submission',

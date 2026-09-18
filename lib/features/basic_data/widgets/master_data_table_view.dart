@@ -2744,17 +2744,6 @@ class _FilterCellState extends State<_FilterCell> {
                                   onTap: () => _select(null),
                                   theme: theme,
                                 ),
-                                if (widget.nullCount > 0)
-                                  _menuItem(
-                                    ctx,
-                                    label:
-                                        '空值 (${widget.nullCount})', // TODO(l10n): 补 arb
-                                    isSelected:
-                                        sanitized == kMasterFilterNullValue,
-                                    onTap: () =>
-                                        _select(kMasterFilterNullValue),
-                                    theme: theme,
-                                  ),
                                 const Divider(height: 1, thickness: 1),
                                 for (final b in buckets)
                                   _menuItem(
@@ -2764,6 +2753,21 @@ class _FilterCellState extends State<_FilterCell> {
                                         : b.display,
                                     isSelected: sanitized == b.value,
                                     onTap: () => _select(b.value),
+                                    theme: theme,
+                                  ),
+                                // 「其他」兜底桶固定放最后（2026-09-16 用户口径）：
+                                // 该列为空/未归类的行都落这里（如货品未分类、
+                                // 单据未指定仓库）；选它即只看这些"匹配不到
+                                // 任何已列出选项"的行。
+                                if (widget.nullCount > 0)
+                                  _menuItem(
+                                    ctx,
+                                    label:
+                                        '其他 (${widget.nullCount})', // TODO(l10n): 补 arb
+                                    isSelected:
+                                        sanitized == kMasterFilterNullValue,
+                                    onTap: () =>
+                                        _select(kMasterFilterNullValue),
                                     theme: theme,
                                   ),
                                 if (buckets.isEmpty)

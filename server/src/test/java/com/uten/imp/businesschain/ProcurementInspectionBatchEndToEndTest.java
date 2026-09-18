@@ -224,7 +224,8 @@ class ProcurementInspectionBatchEndToEndTest {
                 SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
                        received_base_qty, received_amount_local,
                        passed_base_qty, failed_base_qty, status, receipt_type,
-                       received_weight, received_weight_unit_id
+                       received_weight, received_weight_unit_id,
+                       pre_stocked_warehouse_id, pre_stocked_place
                 FROM procurement_inspection_items
                 WHERE receipt_type = ? AND receipt_id = ?
                 ORDER BY id FOR UPDATE

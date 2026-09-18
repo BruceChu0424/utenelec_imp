@@ -65,6 +65,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private static final String RECEIPT_POSTED = "RECEIPT_POSTED";
     private static final String CLOSED = "CLOSED";
 
+    /** 到货异常状态全集（表头筛选白名单，2026-09-16）：与状态机常量同源。 */
+    private static final java.util.Set<String> EXCEPTION_STATUSES = java.util.Set.of(
+            PENDING_FINANCE, RECEIPT_ADJUSTED, RETURN_REQUIRED,
+            RECEIPT_POSTED, CLOSED, "CANCELED");
+
     /** 预计到货搜索关键字参数个数：单号 / 供应商 / 货品编码 / 货品名称。 */
     private static final int EXPECTATION_KEYWORD_PARAMS = 4;
 
@@ -858,7 +863,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public PageResponse<ArrivalExceptionTask> warehouseExceptions(
-            int page, int size, String keyword, boolean includeHistory) {
+            int page, int size, String keyword, boolean includeHistory,
+            UUID supplierId, UUID warehouseId, String status) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
         List<String> clauses = new ArrayList<>();
@@ -879,6 +885,24 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             for (int i = 0; i < 5; i++) {
                 args.add(like);
             }
+        }
+        // 表头筛选三列（2026-09-16）：供应商/仓库按外键等值、状态白名单 fail-closed。
+        // 全部参数绑定，不拼接任何用户输入进 SQL 文本。
+        if (supplierId != null) {
+            clauses.add("exception.supplier_id = ?");
+            args.add(supplierId);
+        }
+        if (warehouseId != null) {
+            clauses.add("exception.warehouse_id = ?");
+            args.add(warehouseId);
+        }
+        String normalizedStatus = status == null ? "" : status.strip().toUpperCase();
+        if (!normalizedStatus.isEmpty()) {
+            if (!EXCEPTION_STATUSES.contains(normalizedStatus)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货异常状态无效");
+            }
+            clauses.add("exception.status = ?");
+            args.add(normalizedStatus);
         }
         String where = String.join(" AND ", clauses);
         Long total = jdbc.queryForObject("""
@@ -1013,17 +1037,28 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     @Transactional(readOnly = true)
     public PageResponse<InboundExpectationTask> expectations(
             int page, int size, String orderType, String keyword) {
+        return expectations(page, size, orderType, keyword, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<InboundExpectationTask> expectations(
+            int page, int size, String orderType, String keyword, UUID supplierId) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
         // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
         String trimmedKeyword = normalizeKeyword(keyword);
-        long total = countExpectations(normalizedType, trimmedKeyword);
+        long total = countExpectations(normalizedType, trimmedKeyword, supplierId);
         String typeFilter =
                 normalizedType.isEmpty() ? "" : " AND expectation.order_type = ?\n";
         List<Object> params = new ArrayList<>();
         if (!normalizedType.isEmpty()) {
             params.add(normalizedType);
+        }
+        // 供应商表头筛选（2026-09-16）：expectation.supplier_id 外键等值，参数绑定。
+        String supplierFilter = supplierId == null ? "" : " AND expectation.supplier_id = ?\n";
+        if (supplierId != null) {
+            params.add(supplierId);
         }
         String keywordFilter = "";
         if (!trimmedKeyword.isEmpty()) {
@@ -1063,7 +1098,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   AND (
                 """ + expectationVisible() + """
                   )
-                """ + typeFilter + keywordFilter + """
+                """ + typeFilter + supplierFilter + keywordFilter + """
                 GROUP BY expectation.id, supplier.name, warehouse.name, owner.full_name
                 ORDER BY expectation.expected_date NULLS LAST, expectation.created_at, expectation.id
                 LIMIT ? OFFSET ?
@@ -1175,7 +1210,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public long countExpectations() {
-        return countExpectations("", "");
+        return countExpectations("", "", null);
     }
 
     /**
@@ -1279,9 +1314,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return result;
     }
 
-    /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）双条件；口径与列表一致
-     * （仅保留仓库仍有活干的 OPEN 任务——见 warehouseWorkRemaining）。 */
-    private long countExpectations(String orderType, String keyword) {
+    /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）+ 供应商（表头筛选）
+     * 多条件；口径与列表一致（仅保留仓库仍有活干的 OPEN 任务——见 warehouseWorkRemaining）。 */
+    private long countExpectations(String orderType, String keyword, UUID supplierId) {
         String normalizedType = normalizeOrderType(orderType);
         StringBuilder sql = new StringBuilder("""
                 SELECT COUNT(*) FROM inbound_expectations expectation
@@ -1292,6 +1327,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         if (!normalizedType.isEmpty()) {
             sql.append(" AND expectation.order_type = ?");
             args.add(normalizedType);
+        }
+        if (supplierId != null) {
+            sql.append(" AND expectation.supplier_id = ?");
+            args.add(supplierId);
         }
         if (!keyword.isEmpty()) {
             sql.append(" AND ").append(expectationKeywordClause());

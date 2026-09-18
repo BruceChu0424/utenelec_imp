@@ -83,15 +83,21 @@ class StockQueryRepository {
 
   /// 即时库存分页（货品+颜色聚合余额；categoryId=分类含子树 / warehouseId=仓库 / keyword 模糊）。
   /// includeDefective=「含不良品仓」开关（仅仓库=全部时生效，默认 true=老系统口径）。
+  /// 2026-09-16 起表头筛选：owningWarehouse=归属仓库 UUID；colorId/series/unitId=颜色/
+  /// 物料系列/单位列筛选（值为颜色 UUID / 系列文本 / 单位 UUID，桶由列表响应 facets 下发）。
   Future<PagedResult<InstantInventoryRow>> instantInventory({
     int page = 1,
     int size = 20,
     String? categoryId,
     String? warehouseId,
     bool includeDefective = true,
+    bool includeLineSide = false,
     String? keyword,
     String? owningWarehouse,
     bool owningWarehouseNull = false,
+    String? colorId,
+    String? series,
+    String? unitId,
     String? sort,
     String? order,
   }) async {
@@ -103,10 +109,16 @@ class StockQueryRepository {
         'categoryId': ?categoryId,
         'warehouseId': ?warehouseId,
         'includeDefective': includeDefective,
+        // V595：线边仓(车间直送料架)默认不算进现实库存，显式打开才计入。
+        if (includeLineSide) 'includeLineSide': true,
         if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
         // V587/V590 归属表头筛选：UUID 等值 / 未登记。
         'owningWarehouse': ?owningWarehouse,
         if (owningWarehouseNull) 'owningWarehouseNull': true,
+        // 2026-09-16 颜色/物料系列/单位表头筛选。
+        'colorId': ?colorId,
+        'series': ?series,
+        'unitId': ?unitId,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },

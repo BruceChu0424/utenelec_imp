@@ -6,6 +6,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -77,241 +79,247 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
       ),
       body: UtenContentContainer.narrow(
         // 底部让位右下悬浮操作组：Stepper 内滚的末尾内容可完整滚到按钮上方。
-        child: Padding(
-          padding: const EdgeInsets.only(
-            bottom: UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
-          ),
-          child: Stepper(
-            currentStep: _step,
-            onStepContinue: _submitting ? null : _next,
-            onStepCancel: _step > 0 && _draftBatch == null && !_submitting
-                ? () => setState(() => _step--)
-                : null,
-            controlsBuilder: (context, details) => const SizedBox.shrink(),
-            steps: [
-              Step(
-                title: Text(l10n.payrollStepScope),
-                isActive: _step >= 0,
-                state: _step > 0 ? StepState.complete : StepState.indexed,
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(
+                bottom: UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
+              ),
+              child: Stepper(
+                currentStep: _step,
+                onStepContinue: _submitting ? null : _next,
+                onStepCancel: _step > 0 && _draftBatch == null && !_submitting
+                    ? () => setState(() => _step--)
+                    : null,
+                controlsBuilder: (context, details) => const SizedBox.shrink(),
+                steps: [
+                  Step(
+                    title: Text(l10n.payrollStepScope),
+                    isActive: _step >= 0,
+                    state: _step > 0 ? StepState.complete : StepState.indexed,
+                    content: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
-                          child: DropdownButtonFormField<int>(
-                            initialValue: _year,
-                            decoration: const InputDecoration(
-                              labelText: '工资年份',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            items: [
-                              for (
-                                var year = ChinaDateTime.today().year + 1;
-                                year >= ChinaDateTime.today().year - 20;
-                                year--
-                              )
-                                DropdownMenuItem(
-                                  value: year,
-                                  child: Text('$year 年'),
-                                ),
-                            ],
-                            onChanged: _draftBatch == null
-                                ? (value) {
-                                    if (value != null) {
-                                      setState(() => _year = value);
-                                    }
-                                  }
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s12),
-                        Expanded(
-                          child: DropdownButtonFormField<int>(
-                            initialValue: _month,
-                            decoration: InputDecoration(
-                              labelText: l10n.payrollFieldMonth,
-                              border: const OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            items: [
-                              for (var month = 1; month <= 12; month++)
-                                DropdownMenuItem(
-                                  value: month,
-                                  child: Text('$month 月'),
-                                ),
-                            ],
-                            onChanged: _draftBatch == null
-                                ? (value) {
-                                    if (value != null) {
-                                      setState(() => _month = value);
-                                    }
-                                  }
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _departmentId,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: l10n.payrollFieldScope,
-                        border: const OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: '',
-                          child: Text(l10n.payrollDeptAll),
-                        ),
-                        for (final department
-                            in departments.valueOrNull ??
-                                const <PayrollDepartmentOption>[])
-                          DropdownMenuItem(
-                            value: department.id,
-                            child: Text(department.path),
-                          ),
-                      ],
-                      onChanged: _draftBatch == null
-                          ? (value) =>
-                                setState(() => _departmentId = value ?? '')
-                          : null,
-                    ),
-                    if (departments.isLoading)
-                      const Padding(
-                        padding: EdgeInsets.only(top: UtenSpacing.s8),
-                        child: LinearProgressIndicator(),
-                      ),
-                    if (departments.hasError)
-                      Padding(
-                        padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                        child: Row(
+                        Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                '部门加载失败，仍可选择全员范围。',
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
+                              child: UtenDropdownField(
+                                label: '工资年份',
+                                value: '$_year',
+                                allowClear: false,
+                                searchable: false,
+                                enabled: _draftBatch == null,
+                                items: [
+                                  for (
+                                    var year = ChinaDateTime.today().year + 1;
+                                    year >= ChinaDateTime.today().year - 20;
+                                    year--
+                                  )
+                                    UtenDropdownItem(
+                                      value: '$year',
+                                      label: '$year 年',
+                                    ),
+                                ],
+                                onChanged: (value) {
+                                  final year = int.tryParse(value ?? '');
+                                  if (year != null) {
+                                    setState(() => _year = year);
+                                  }
+                                },
                               ),
                             ),
-                            TextButton(
-                              onPressed: () => ref.invalidate(
-                                payrollDepartmentOptionsProvider,
+                            const SizedBox(width: UtenSpacing.s12),
+                            Expanded(
+                              child: UtenDropdownField(
+                                label: l10n.payrollFieldMonth,
+                                value: '$_month',
+                                allowClear: false,
+                                searchable: false,
+                                enabled: _draftBatch == null,
+                                items: [
+                                  for (var month = 1; month <= 12; month++)
+                                    UtenDropdownItem(
+                                      value: '$month',
+                                      label: '$month 月',
+                                    ),
+                                ],
+                                onChanged: (value) {
+                                  final month = int.tryParse(value ?? '');
+                                  if (month != null) {
+                                    setState(() => _month = month);
+                                  }
+                                },
                               ),
-                              child: const Text('重试'),
                             ),
                           ],
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              Step(
-                title: Text(l10n.payrollStepItems),
-                isActive: _step >= 1,
-                state: _step > 1
-                    ? StepState.complete
-                    : (_step == 1 ? StepState.indexed : StepState.disabled),
-                content: Column(
-                  children: [
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l10n.payrollItemOvertime),
-                      value: _overtime,
-                      onChanged: _draftBatch == null
-                          ? (value) => setState(() => _overtime = value)
-                          : null,
-                    ),
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l10n.payrollItemBonus),
-                      value: _bonus,
-                      onChanged: _draftBatch == null
-                          ? (value) => setState(() => _bonus = value)
-                          : null,
-                    ),
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l10n.payrollItemSocial),
-                      value: _social,
-                      onChanged: _draftBatch == null
-                          ? (value) => setState(() => _social = value)
-                          : null,
-                    ),
-                    SwitchListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l10n.payrollItemTax),
-                      value: _tax,
-                      onChanged: _draftBatch == null
-                          ? (value) => setState(() => _tax = value)
-                          : null,
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      '工资、社保与个税全部由服务器规则计算，前端不会预估或修正金额。',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (_operationError != null) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      Text(
-                        _operationError!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
+                        const SizedBox(height: UtenSpacing.s12),
+                        UtenDropdownField(
+                          label: l10n.payrollFieldScope,
+                          value: _departmentId,
+                          allowClear: false,
+                          enabled: _draftBatch == null,
+                          items: [
+                            UtenDropdownItem(
+                              value: '',
+                              label: l10n.payrollDeptAll,
+                            ),
+                            for (final department
+                                in departments.valueOrNull ??
+                                    const <PayrollDepartmentOption>[])
+                              UtenDropdownItem(
+                                value: department.id,
+                                label: department.path,
+                              ),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _departmentId = value ?? ''),
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Step(
-                title: Text(l10n.payrollStepPreview),
-                isActive: _step >= 2,
-                state: _step > 2
-                    ? StepState.complete
-                    : (_step == 2 ? StepState.indexed : StepState.disabled),
-                content: _draftBatch == null
-                    ? const Text('点击下一步后，由服务器生成工资批次。')
-                    : _ServerBatchPreview(batch: _draftBatch!),
-              ),
-              Step(
-                title: Text(l10n.payrollStepSubmit),
-                isActive: _step >= 3,
-                state: _step == 3 ? StepState.indexed : StepState.disabled,
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(l10n.payrollSubmitNote),
-                    if (_draftBatch != null) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      Text(
-                        '服务器草稿批次：${_draftBatch!.id}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                    if (_operationError != null) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      Text(
-                        _operationError!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
+                        if (departments.isLoading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: UtenSpacing.s8),
+                            child: LinearProgressIndicator(),
+                          ),
+                        if (departments.hasError)
+                          Padding(
+                            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '部门加载失败，仍可选择全员范围。',
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => ref.invalidate(
+                                    payrollDepartmentOptionsProvider,
+                                  ),
+                                  child: const Text('重试'),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Step(
+                    title: Text(l10n.payrollStepItems),
+                    isActive: _step >= 1,
+                    state: _step > 1
+                        ? StepState.complete
+                        : (_step == 1 ? StepState.indexed : StepState.disabled),
+                    content: Column(
+                      children: [
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(l10n.payrollItemOvertime),
+                          value: _overtime,
+                          onChanged: _draftBatch == null
+                              ? (value) => setState(() => _overtime = value)
+                              : null,
                         ),
-                      ),
-                    ],
-                  ],
-                ),
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(l10n.payrollItemBonus),
+                          value: _bonus,
+                          onChanged: _draftBatch == null
+                              ? (value) => setState(() => _bonus = value)
+                              : null,
+                        ),
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(l10n.payrollItemSocial),
+                          value: _social,
+                          onChanged: _draftBatch == null
+                              ? (value) => setState(() => _social = value)
+                              : null,
+                        ),
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(l10n.payrollItemTax),
+                          value: _tax,
+                          onChanged: _draftBatch == null
+                              ? (value) => setState(() => _tax = value)
+                              : null,
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
+                        Text(
+                          '工资、社保与个税全部由服务器规则计算，前端不会预估或修正金额。',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                        if (_operationError != null) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          Text(
+                            _operationError!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Step(
+                    title: Text(l10n.payrollStepPreview),
+                    isActive: _step >= 2,
+                    state: _step > 2
+                        ? StepState.complete
+                        : (_step == 2 ? StepState.indexed : StepState.disabled),
+                    content: _draftBatch == null
+                        ? const Text('点击下一步后，由服务器生成工资批次。')
+                        : _ServerBatchPreview(batch: _draftBatch!),
+                  ),
+                  Step(
+                    title: Text(l10n.payrollStepSubmit),
+                    isActive: _step >= 3,
+                    state: _step == 3 ? StepState.indexed : StepState.disabled,
+                    content: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(l10n.payrollSubmitNote),
+                        if (_draftBatch != null) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          Text(
+                            '服务器草稿批次：${_draftBatch!.id}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                        if (_operationError != null) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          Text(
+                            _operationError!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            // 生成草稿/提交审核网络段的全屏加载遮罩。
+            if (_submitting)
+              UtenBusyOverlay(
+                title: _draftBatch == null ? '正在生成工资草稿' : '正在提交工资批次',
+                description: '正在计算并写入工资批次，请勿重复提交或离开本页。',
+              ),
+          ],
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -19,6 +20,9 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
   final _confirm = TextEditingController();
   BusinessAttachmentResetPreview? _preview;
   bool _busy = false;
+
+  /// 提交清理任务的网络段（加载遮罩只挂这段，初次预览加载不遮）。
+  bool _applying = false;
   String? _error;
   @override
   void initState() {
@@ -61,6 +65,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
     if (preview == null || _busy || _confirm.text != '清理测试业务附件') return;
     setState(() {
       _busy = true;
+      _applying = true;
       _error = null;
     });
     try {
@@ -89,7 +94,12 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
         });
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _applying = false;
+        });
+      }
     }
   }
 
@@ -108,6 +118,12 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // 提交清理任务网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+                if (_applying)
+                  const UtenBusyOverlay(
+                    title: '正在提交清理任务',
+                    description: '正在登记待删除文件清单，请勿重复提交或关闭弹窗。',
+                  ),
                 const Text(
                   '仅用于重置测试数据。可选：提前分批清理；未清理的文件将在清空时自动删除。'
                   '以下业务文件将提交删除任务；员工档案、劳动合同和货品图片/图纸保留。请先确认备份。',

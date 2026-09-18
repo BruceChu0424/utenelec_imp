@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -196,6 +198,12 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
       canPop: !_busy && _retainedLines == null,
       child: Column(
         children: [
+          // 批量开单网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+          if (_busy)
+            const UtenBusyOverlay(
+              title: '正在批量开出货单',
+              description: '正在按订单逐张生成出货单，请勿重复提交或关闭面板。',
+            ),
           // 头部
           Padding(
             padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -239,7 +247,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                 : lines == null
                 ? const Center(child: CircularProgressIndicator())
                 : lines.isEmpty
-                ? const Center(child: Text('暂无可发货的订单行(reserved > 0)'))
+                ? const UtenEmpty(message: '暂无可发货的订单行(reserved > 0)')
                 : ListView.separated(
                     padding: const EdgeInsets.all(UtenSpacing.s8),
                     itemCount: lines.length,

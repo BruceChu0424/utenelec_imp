@@ -1,5 +1,10 @@
 // HR 工作台子页面：按类型展示任务列表（转正办理/生日关怀/入职周年/新近入职）。
 //
+// 2026-09-17 庆典类页面新增「自动发送祝福」开关（V600 口径）：默认关——祝福由
+// 人事在本页手动批量发布；开关打开后每天 08:00（北京时间）服务端自动代发。
+// 开关读写走 celebrationSettingsProvider（GET/PUT /notices/celebration/auto，
+// notice:publish 门控），生日关怀/入职周年两页共用同一个全局开关。
+//
 // 2026-09-10 表格化 + 多选批量（审计 A2-hr-task-center）：宽屏主体由 ListView+Card
 // 改为 MasterDataTableView<HrTaskItem>（key 'hr-task-table'）——列 工号/姓名/部门/
 // 岗位/日期/天数/认领/已祝福（已祝福仅庆典类）；表头筛选桶客户端聚合（部门/区间/
@@ -111,6 +116,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   /// 批量动作进行中（防并发 + 按钮加载态）。
   bool _batchBusy = false;
 
+  /// 「自动发送祝福」开关切换进行中（防并发 + Switch 置灰）。
+  bool _autoToggling = false;
+
   HrTaskType get _type => widget.type;
 
   bool get _isCelebration =>
@@ -214,6 +222,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             '另有 ${s.unconfirmedLegacyCount} 名入职满一年的员工未登记转正日期，'
             '请在员工档案中补录。',
           ),
+        if (_isCelebration && canPublish)
+          _celebrationAutoToggle(horizontalPadding: UtenSpacing.s16),
         Expanded(
           child: MasterDataTableView<HrTaskItem>(
             key: const Key('hr-task-table'),
@@ -766,6 +776,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             '试用期 ${s.probationMonths} 个月口径；'
             '被认领的事项显示「处理中」，他人不可重复操作。',
           ),
+        if (_isCelebration && canPublish)
+          _celebrationAutoToggle(horizontalPadding: UtenSpacing.s12),
         if (_isCelebration && canPublish && toBless.isNotEmpty)
           _celebrationBatchBar(context, toBless),
         if (items.isEmpty)
@@ -858,6 +870,101 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         ),
       ),
     );
+  }
+
+  /// 「自动发送祝福」开关（生日关怀/入职周年页共用，两端点同键
+  /// celebration.auto_enabled）。默认关：祝福由人事在本页手动批量发布；
+  /// 打开后每日 08:00（北京时间）服务端自动代发（V600 口径）。
+  Widget _celebrationAutoToggle({required double horizontalPadding}) {
+    final theme = Theme.of(context);
+    final async = ref.watch(celebrationSettingsProvider);
+    return Card(
+      margin: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        UtenSpacing.s8,
+        horizontalPadding,
+        UtenSpacing.s4,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s8,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.auto_awesome_outlined,
+              size: 20,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: UtenSpacing.s12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '自动发送祝福',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '开：每天 08:00（北京时间）自动为当天生日/入职周年的同事发布祝福卡；'
+                    '关：由人事在本页手动送祝福',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: UtenSpacing.s12),
+            async.when(
+              loading: () => const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              error: (_, _) => IconButton(
+                tooltip: '重试',
+                icon: const Icon(Icons.refresh_rounded),
+                onPressed: () =>
+                    ref.invalidate(celebrationSettingsProvider),
+              ),
+              data: (settings) => Switch(
+                key: const Key('hr-task-celebration-auto-switch'),
+                value: settings.autoEnabled,
+                onChanged:
+                    _autoToggling ? null : _onToggleCelebrationAuto,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onToggleCelebrationAuto(bool enabled) async {
+    if (_autoToggling) return;
+    setState(() => _autoToggling = true);
+    try {
+      await ref
+          .read(celebrationSettingsProvider.notifier)
+          .setAutoEnabled(enabled);
+      if (!mounted) return;
+      context.appSuccess(
+        enabled
+            ? '已开启自动发送：每天 08:00（北京时间）自动送祝福'
+            : '已关闭自动发送：祝福改由人事手动发布',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    } finally {
+      if (mounted) setState(() => _autoToggling = false);
+    }
   }
 
   Widget _hint(BuildContext context, String text) {

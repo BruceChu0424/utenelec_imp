@@ -14,11 +14,12 @@ public final class ProductionExecutionBatch {
                           String segmentCode, String productCode, String productName,
                           String productUnitName, BigDecimal originalQty, BigDecimal maxReadyQty,
                           BigDecimal quantity, BigDecimal remainingQty, String fingerprint,
-                          List<Line> lines, List<ProductionDrawRequest.Summary> summaries) {}
+                          List<Line> lines, List<ProductionDrawRequest.Summary> summaries,
+                          List<UUID> lineSideWarehouseIds) {}
     public record Line(UUID sourceDemandId, UUID warehouseId, String warehouseName,
                        UUID goodsId, String goodsCode, String goodsName,
                        UUID colorId, String colorName, UUID unitId, String unitName,
-                       BigDecimal quantity) {}
+                       BigDecimal quantity, boolean lineSide) {}
     public record Result(UUID batchSegmentId, UUID remainingSegmentId,
                          List<UUID> documentIds, boolean replayed) {}
 }

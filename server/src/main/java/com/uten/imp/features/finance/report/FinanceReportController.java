@@ -5,6 +5,7 @@ import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -23,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -105,7 +105,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.arApDetail(direction, billNo, partyId, settled, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** 已审核销售订单待收计划（经营视图，不形成会计应收）。 */
@@ -138,7 +138,7 @@ public class FinanceReportController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.arApSummary(direction, dateFrom, dateTo, keyword, facetsOf(allParams), page, size, sort, order);
+        return service.arApSummary(direction, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** Customer advance arrival/application/reversal dated subledger; also the statement alias. */
@@ -173,7 +173,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.receiptDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** F 销售收款汇总。 */
@@ -192,7 +192,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.receiptSummary(billNo, clientId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** G 采购付款明细。 */
@@ -212,7 +212,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.paymentDetail(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** H 采购付款汇总。 */
@@ -231,7 +231,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.paymentSummary(billNo, supplierId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     // ======================== ③ 费用/收入 M·N / O·P + V ========================
@@ -253,7 +253,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.expenseDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** N 一般费用汇总。 */
@@ -272,7 +272,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.expenseSummary(billNo, departmentId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** O 其它收入明细。 */
@@ -292,7 +292,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.incomeDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** P 其它收入汇总。 */
@@ -311,7 +311,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.incomeSummary(billNo, departmentId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** V 费用冲销明细（收款侧 + AR 核销 + 其它费用）。 */
@@ -331,7 +331,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.feeOffsetDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     // ======================== ④ 往来对帐 I·J·K·L / X ========================
@@ -420,19 +420,5 @@ public class FinanceReportController {
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(downloadBytes);
-    }
-
-    // ======================== 辅助 ========================
-
-    /** 从全部查询参数里抽出列筛选（键以 "f." 前缀）。 */
-    private static Map<String, String> facetsOf(Map<String, String> allParams) {
-        Map<String, String> facets = new HashMap<>();
-        if (allParams == null) return facets;
-        for (Map.Entry<String, String> e : allParams.entrySet()) {
-            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
-                facets.put(e.getKey().substring(2), e.getValue());
-            }
-        }
-        return facets;
     }
 }

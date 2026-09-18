@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -241,36 +242,31 @@ class _MaterialSharedFutureClaimDialogState
                         (source) => source.sourceActionId != null,
                       )) ...[
                         const SizedBox(height: UtenSpacing.s8),
-                        DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          initialValue: _sources[row.actionGroupKey] ?? '',
-                          decoration: const UtenInputDecoration(
-                            InputDecoration(labelText: '指定来源（可选）'),
-                          ),
+                        UtenDropdownField(
+                          label: '指定来源（可选）',
+                          value: _sources[row.actionGroupKey] ?? '',
+                          allowClear: false,
+                          enabled: _selected.contains(row.actionGroupKey),
                           items: [
-                            const DropdownMenuItem<String>(
+                            const UtenDropdownItem(
                               value: '',
-                              child: Text('按供给到期顺序采用'),
+                              label: '按供给到期顺序采用',
                             ),
                             for (final source in {
                               for (final source in row.sources)
                                 if (source.sourceActionId != null)
                                   source.sourceActionId!: source,
                             }.values)
-                              DropdownMenuItem(
+                              UtenDropdownItem(
                                 value: source.sourceActionId,
-                                child: Text(
-                                  '${source.documentNo ?? '来源单号受权限保护'} · ${source.expectedDate ?? '交期待确认'}',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                label:
+                                    '${source.documentNo ?? '来源单号受权限保护'} · ${source.expectedDate ?? '交期待确认'}',
                               ),
                           ],
-                          onChanged: !_selected.contains(row.actionGroupKey)
-                              ? null
-                              : (value) => setState(
-                                  () => _sources[row.actionGroupKey] =
-                                      value?.isEmpty == true ? null : value,
-                                ),
+                          onChanged: (value) => setState(
+                            () => _sources[row.actionGroupKey] =
+                                value?.isEmpty == true ? null : value,
+                          ),
                         ),
                       ],
                     ],

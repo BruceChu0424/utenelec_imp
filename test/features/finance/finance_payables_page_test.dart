@@ -112,6 +112,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['businessType'], 'PURCHASE');
 
+    // 2026-09-16 币种表头筛选：currencies/dict 桶回传 currencyId。
+    expect(table.facets.keys, contains('currencyCode'));
+    expect(table.facets['currencyCode']?.single.value, 'currency-1');
+    table.onFilterChanged('currencyCode', 'currency-1');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['currencyId'], 'currency-1');
+    expect(api.lastQuery?['businessType'], 'PURCHASE');
+
     final refreshedTable = tester
         .widget<MasterDataTableView<FinancePayableItem>>(
           find.byWidgetPredicate(
@@ -348,5 +356,18 @@ class _PageApi extends ApiClient {
       'total': itemCount,
       'totalPages': 1,
     };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path.contains('currencies')) {
+      return const [
+        {'id': 'currency-1', 'name': '美元'},
+      ];
+    }
+    return const [];
   }
 }

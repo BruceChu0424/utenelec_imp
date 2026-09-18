@@ -21,6 +21,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/quality_inspection_record.dart';
 import '../repositories/quality_inspection_record_repository.dart';
@@ -35,11 +36,44 @@ class QualityInspectionRecordsPage extends ConsumerStatefulWidget {
       _QualityInspectionRecordsPageState();
 }
 
+/// 检验结果四态桶（服务端 decision 参数）。
+const _decisionFacets = [
+  MasterFacetBucket(value: 'PASS', count: 0, label: '合格'),
+  MasterFacetBucket(value: 'PARTIAL', count: 0, label: '部分合格'),
+  MasterFacetBucket(value: 'FAIL', count: 0, label: '不合格'),
+  MasterFacetBucket(value: 'CANCELLED', count: 0, label: '已撤销'),
+];
+
+/// 检验类型桶（仅 IQC：PURCHASE 采购来料 / SUBCONTRACT 委外回厂；FQC 恒为生产成品，不出桶）。
+const _sourceTypeFacets = [
+  MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购来料'),
+  MasterFacetBucket(value: 'SUBCONTRACT', count: 0, label: '委外回厂'),
+];
+
+/// 当前效力三档桶：与 effectLabel 展示口径一一对应（当前有效/历史失效/撤销有效）。
+const _effectiveFacets = [
+  MasterFacetBucket(value: 'ACTIVE', count: 0, label: '当前有效'),
+  MasterFacetBucket(value: 'EXPIRED', count: 0, label: '历史失效'),
+  MasterFacetBucket(value: 'CANCELLED', count: 0, label: '撤销有效'),
+];
+
+/// 不良处置桶（仅 FQC：决定事件三码 + 撤销事件两码；IQC 恒无处置码，不出桶）。
+const _dispositionFacets = [
+  MasterFacetBucket(value: 'REWORK', count: 0, label: '返工'),
+  MasterFacetBucket(value: 'SCRAP', count: 0, label: '报废'),
+  MasterFacetBucket(value: 'REJECT', count: 0, label: '拒收/退回'),
+  MasterFacetBucket(value: 'SOURCE_REPORT_REVERSED', count: 0, label: '来源报工红冲'),
+  MasterFacetBucket(value: 'REGISTRATION_REVERSED', count: 0, label: '送检登记撤回'),
+];
+
 class _QualityInspectionRecordsPageState
     extends ConsumerState<QualityInspectionRecordsPage> {
   QualityInspectionRecordPage? _data;
   QualityInspectionRecordDomain? _domain;
   String? _decision;
+  String? _sourceType;
+  String? _effective;
+  String? _disposition;
   String _keyword = '';
   QualityInspectionDateRange? _dateRange;
   bool _loading = true;
@@ -80,6 +114,9 @@ class _QualityInspectionRecordsPageState
     final requestVersion = ++_requestVersion;
     final requestedPage = page ?? _data?.page ?? 1;
     final requestedDecision = _decision;
+    final requestedSourceType = _sourceType;
+    final requestedEffective = _effective;
+    final requestedDisposition = _disposition;
     final requestedKeyword = _keyword;
     final requestedRange = _dateRange;
     setState(() {
@@ -94,6 +131,9 @@ class _QualityInspectionRecordsPageState
             decision: requestedDecision,
             keyword: requestedKeyword,
             dateRange: requestedRange,
+            sourceType: requestedSourceType,
+            effective: requestedEffective,
+            disposition: requestedDisposition,
             page: requestedPage,
           );
       if (!mounted || requestVersion != _requestVersion) return;
@@ -121,6 +161,10 @@ class _QualityInspectionRecordsPageState
     setState(() {
       _domain = domain;
       _decision = null;
+      // 表头筛选与域强相关（IQC 无不良处置、FQC 来源恒为生产），换域一并清空。
+      _sourceType = null;
+      _effective = null;
+      _disposition = null;
       _data = null;
       _error = null;
     });
@@ -133,6 +177,28 @@ class _QualityInspectionRecordsPageState
     if (_decision == next) return;
     setState(() => _decision = next);
     await _load(page: 1);
+  }
+
+  /// 表头三列筛选（sourceType/effective/disposition，2026-09-16）：值统一大写，
+  /// 空 = 清除；下推后端同名参数并回第 1 页。
+  Future<void> _selectColumnFilter(String key, String? value) async {
+    final normalized = value?.trim().toUpperCase();
+    final next = normalized == null || normalized.isEmpty ? null : normalized;
+    var changed = false;
+    setState(() {
+      switch (key) {
+        case 'sourceType':
+          changed = _sourceType != next;
+          _sourceType = next;
+        case 'effective':
+          changed = _effective != next;
+          _effective = next;
+        case 'disposition':
+          changed = _disposition != next;
+          _disposition = next;
+      }
+    });
+    if (changed) await _load(page: 1);
   }
 
   Future<void> _applyKeyword(String value) async {
@@ -312,7 +378,12 @@ class _QualityInspectionRecordsPageState
   }
 
   bool get _hasActiveFilter =>
-      _decision != null || _keyword.isNotEmpty || _dateRange != null;
+      _decision != null ||
+      _sourceType != null ||
+      _effective != null ||
+      _disposition != null ||
+      _keyword.isNotEmpty ||
+      _dateRange != null;
 
   Widget _buildOverview(QualityInspectionRecordPage data, double width) {
     final metrics = data.metrics;
@@ -416,10 +487,31 @@ class _QualityInspectionRecordsPageState
         key: const Key('quality-inspection-record-table'),
         columns: _columns,
         items: data.items,
-        facets: const {},
+        // 表头筛选固定枚举桶（2026-09-16，count=0 表示不强调计数）：
+        // 检验结果四态；检验类型仅 IQC（PURCHASE/SUBCONTRACT，FQC 恒为生产成品）；
+        // 当前效力三档（与 effectLabel 展示口径一致）；不良处置仅 FQC（IQC 恒无处置码）。
+        facets: {
+          'decision': _decisionFacets,
+          if (_domain == QualityInspectionRecordDomain.iqc)
+            'sourceType': _sourceTypeFacets,
+          'effective': _effectiveFacets,
+          if (_domain == QualityInspectionRecordDomain.fqc)
+            'disposition': _dispositionFacets,
+        },
         nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        filters: {
+          'decision': _decision,
+          'sourceType': _sourceType,
+          'effective': _effective,
+          'disposition': _disposition,
+        },
+        onFilterChanged: (key, value) async {
+          if (key == 'decision') {
+            await _selectDecision(value);
+          } else {
+            await _selectColumnFilter(key, value);
+          }
+        },
         idOf: (record) => record.recordId,
         onRowTap: _openDetail,
         rowMenuBuilder: (record) => [

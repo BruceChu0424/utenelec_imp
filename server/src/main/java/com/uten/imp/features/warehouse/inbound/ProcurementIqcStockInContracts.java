@@ -95,6 +95,10 @@ public final class ProcurementIqcStockInContracts {
         }
     }
 
+    /** 入库批次来源：仓库手工确认 / 先入库后检的合格自动转正(V596)。 */
+    public static final String ORIGIN_WAREHOUSE_CONFIRM = "WAREHOUSE_CONFIRM";
+    public static final String ORIGIN_PRE_STOCKED_AUTO = "PRE_STOCKED_AUTO";
+
     public record StockInHistoryItem(
             @JsonSerialize(using = ToStringSerializer.class) UUID stockInItemId,
             @JsonSerialize(using = ToStringSerializer.class) UUID batchId,
@@ -112,11 +116,25 @@ public final class ProcurementIqcStockInContracts {
             OffsetDateTime confirmedAt,
             List<InboundAllocation> actualAllocations,
             @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
-            String warehouseName) {
+            String warehouseName,
+            String origin) {
 
         public StockInHistoryItem {
             actualAllocations = actualAllocations == null
                     ? List.of() : List.copyOf(actualAllocations);
+            origin = origin == null || origin.isBlank() ? ORIGIN_WAREHOUSE_CONFIRM : origin;
+        }
+
+        public StockInHistoryItem(
+                UUID stockInItemId, UUID batchId, UUID passEventId, UUID goodsId,
+                String goodsCode, String goodsName, String colorName, String unitName,
+                BigDecimal baseQty, BigDecimal weight, String weightUnitName,
+                String place, String confirmedBy, OffsetDateTime confirmedAt,
+                List<InboundAllocation> actualAllocations, UUID warehouseId, String warehouseName) {
+            this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName,
+                    colorName, unitName, baseQty, weight, weightUnitName, place,
+                    confirmedBy, confirmedAt, actualAllocations, warehouseId, warehouseName,
+                    ORIGIN_WAREHOUSE_CONFIRM);
         }
 
         public StockInHistoryItem(
@@ -126,7 +144,7 @@ public final class ProcurementIqcStockInContracts {
                 String place, String confirmedBy, OffsetDateTime confirmedAt) {
             this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName,
                     colorName, unitName, baseQty, weight, weightUnitName, place,
-                    confirmedBy, confirmedAt, List.of(), null, null);
+                    confirmedBy, confirmedAt, List.of(), null, null, ORIGIN_WAREHOUSE_CONFIRM);
         }
     }
 

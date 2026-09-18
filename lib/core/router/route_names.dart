@@ -238,6 +238,18 @@ abstract final class RouteName {
   static const String warehouseQualityBatchStockIn =
       '$warehouseQualityResults/batch-stock-in';
 
+  /// 先入库后质检(V596)：把等待检查结果的收货单逐行上架(实际叶仓 + 库位)。
+  /// 静态前缀段，须先于 :receiptType/:receiptId 声明。
+  static const String warehouseQualityPreStockInBase =
+      '$warehouseQualityResults/pre-stock-in';
+
+  static String warehouseQualityPreStockIn(
+    String receiptType,
+    String receiptId,
+  ) =>
+      '$warehouseQualityPreStockInBase/${Uri.encodeComponent(receiptType.trim().toUpperCase())}/'
+      '${Uri.encodeComponent(receiptId.trim())}';
+
   /// 品质检查结果详情完整页（列表双击进入；旧 IQC 待入库详情深链重定向至此）。
   static String warehouseQualityResultDetail(
     String receiptType,

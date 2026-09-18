@@ -1786,14 +1786,35 @@ public class SubcontractMaterialPlanService
                 """).setParameter("document",documentId).setParameter("actor",currentUser.requireId()).executeUpdate();
     }
 
-    /** 待出仓任务：OPEN 计划且有待仓库执行的出仓量（计划 − 已出仓 > 0；草稿占用不影响任务可见性）。 */
+    /** 待出仓任务：OPEN 计划且有待仓库执行的出仓量（计划 − 已出仓 > 0；草稿占用不影响任务可见性）。
+     * 表头筛选（2026-09-16）：supplierId=委外商等值；status=派生任务状态
+     * DRAFT_PICKING（已有出仓草稿待拣货）/ READY_OUTBOUND（已备齐待出仓），白名单 fail-closed。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public PageResponse<OutboundTaskListItem> tasks(int page, int size, String keyword) {
+        return tasks(page, size, keyword, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_outbound:view')")
+    public PageResponse<OutboundTaskListItem> tasks(
+            int page, int size, String keyword, UUID supplierId, String status) {
         String kw = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim() + "%";
         String kwClause = kw == null ? "" : """
                 AND (p.order_bill_no ILIKE ? OR s.name ILIKE ?)
                 """;
+        String supplierClause = supplierId == null ? "" : "AND p.supplier_id = ?\n";
+        // 派生任务状态与前端 statusLabel 同口径：列表 WHERE 已保证 ready_line_count > 0，
+        // 故任务只有「草稿待拣货」（挂有草稿出仓单）与「已备齐待出仓」（无草稿）两档。
+        String normalizedStatus = status == null ? "" : status.strip().toUpperCase();
+        String statusClause = switch (normalizedStatus) {
+            case "" -> "";
+            case "DRAFT_PICKING" -> "AND draft.issue_id IS NOT NULL\n";
+            case "READY_OUTBOUND" -> "AND draft.issue_id IS NULL\n";
+            default -> throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "出仓任务状态仅支持 DRAFT_PICKING 或 READY_OUTBOUND");
+        };
         String base = """
                 FROM subcontract_material_plans p
                 JOIN subcontract_orders o ON o.id = p.order_id
@@ -1863,9 +1884,11 @@ public class SubcontractMaterialPlanService
                 WHERE p.is_deleted = FALSE AND p.status = 'OPEN'
                   AND agg.ready_line_count > 0
                   AND (agg.ready_outbound_total > 0 OR draft.issue_id IS NOT NULL)
-                """ + kwClause;
-        Object[] params = kw == null ? new Object[0] : new Object[]{kw, kw};
-        Long total = jdbc.queryForObject("SELECT COUNT(*) " + base, Long.class, params);
+                """ + supplierClause + statusClause + kwClause;
+        List<Object> params = new java.util.ArrayList<>();
+        if (supplierId != null) params.add(supplierId);
+        if (kw != null) params.addAll(java.util.List.of(kw, kw));
+        Long total = jdbc.queryForObject("SELECT COUNT(*) " + base, Long.class, params.toArray());
         List<OutboundTaskListItem> content = jdbc.query("""
                 SELECT p.id, p.order_id, p.order_bill_no, s.name, o.deliver_date,
                        agg.line_count, agg.planned_total, agg.issued_total,
@@ -1892,7 +1915,7 @@ public class SubcontractMaterialPlanService
                         rs.getInt(13),
                         rs.getInt(14),
                         rs.getInt(15)),
-                append(params, size, (long) (Math.max(page, 1) - 1) * size));
+                append(params.toArray(), size, (long) (Math.max(page, 1) - 1) * size));
         long totalElements = total == null ? 0 : total;
         int totalPages = size <= 0 ? 0 : (int) Math.ceil((double) totalElements / size);
         return new PageResponse<>(content, page, size, totalElements, totalPages);

@@ -209,26 +209,20 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byType(WarehouseHierarchyDropdown));
-    await tester.pumpAndSettle();
-
-    // 父仓条目存在但禁用；子仓条目可选。
-    final mainItem = tester.widget<DropdownMenuItem<String?>>(
-      find.widgetWithText(DropdownMenuItem<String?>, '仓库（14年版）'),
-    );
-    expect(mainItem.enabled, isFalse);
-    final finishedItem = tester.widget<DropdownMenuItem<String?>>(
-      find.widgetWithText(DropdownMenuItem<String?>, '成品仓库'),
-    );
-    expect(finishedItem.enabled, isTrue);
-    // 子仓带缩进（视觉分组）。
-    expect(
+    // 2026-09-16 下拉统一：内部改 UtenDropdownField，断言转到其 items 契约。
+    final field = tester.widget<UtenDropdownField>(
       find.descendant(
-        of: find.widgetWithText(DropdownMenuItem<String?>, '成品仓库'),
-        matching: find.byType(Padding),
+        of: find.byType(WarehouseHierarchyDropdown),
+        matching: find.byType(UtenDropdownField),
       ),
-      findsOneWidget,
     );
+    // 父仓条目存在但禁用；子仓条目可选且带缩进（视觉分组）。
+    final mainItem = field.items.singleWhere((i) => i.value == 'main');
+    expect(mainItem.enabled, isFalse);
+    expect(mainItem.visible, isTrue);
+    final finishedItem = field.items.singleWhere((i) => i.value == 'finished');
+    expect(finishedItem.enabled, isTrue);
+    expect(finishedItem.indent, 16);
   });
 
   testWidgets('allowParent makes the parent selectable (aggregate scope)', (
@@ -248,14 +242,16 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byType(WarehouseHierarchyDropdown));
-    await tester.pumpAndSettle();
-
-    final mainItem = tester.widget<DropdownMenuItem<String?>>(
-      find.widgetWithText(DropdownMenuItem<String?>, '仓库（14年版）'),
+    final fieldFinder = find.descendant(
+      of: find.byType(WarehouseHierarchyDropdown),
+      matching: find.byType(UtenDropdownField),
     );
+    final field = tester.widget<UtenDropdownField>(fieldFinder);
+    final mainItem = field.items.singleWhere((i) => i.value == 'main');
     expect(mainItem.enabled, isTrue);
 
+    await tester.tap(fieldFinder);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('仓库（14年版）').last);
     await tester.pumpAndSettle();
     expect(selected, 'main');
@@ -273,7 +269,7 @@ void main() {
         ),
       ),
     );
-    // 闭态按钮显示父仓名（历史单据回显），不显示空值占位。
+    // 闭态字段显示父仓名（历史单据回显），不显示空值占位。
     expect(find.text('仓库（14年版）'), findsOneWidget);
   });
 
@@ -290,16 +286,17 @@ void main() {
         ),
       );
       expect(find.text('五金仓库'), findsOneWidget);
-      await tester.tap(find.byType(WarehouseHierarchyDropdown));
+      final fieldFinder = find.descendant(
+        of: find.byType(WarehouseHierarchyDropdown),
+        matching: find.byType(UtenDropdownField),
+      );
+      await tester.tap(fieldFinder);
       await tester.pumpAndSettle();
-      expect(
-        find.widgetWithText(DropdownMenuItem<String?>, '五金仓库'),
-        findsNothing,
-      );
-      expect(
-        find.widgetWithText(DropdownMenuItem<String?>, '成品仓库'),
-        findsOneWidget,
-      );
+      // 历史值条目不再作为新选项出现（visible=false 由弹层过滤），
+      // 可选条目照常渲染。
+      final field = tester.widget<UtenDropdownField>(fieldFinder);
+      expect(field.items.any((i) => i.label == '五金仓库' && i.visible), isFalse);
+      expect(find.text('成品仓库'), findsWidgets);
     },
   );
 

@@ -4,6 +4,7 @@ import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,13 +34,14 @@ class ReferenceMethodServiceTermsTest {
     @Mock private FinancePaymentMethodRepository financeMethods;
     @Mock private MasterCodeService masterCodeService;
     @Mock private TxSessionVars tx;
+    @Mock private EntityManager em;
 
     private ReferenceMethodService service;
 
     @BeforeEach
     void setUp() {
         service = new ReferenceMethodService(
-                settlementMethods, financeMethods, masterCodeService, tx);
+                settlementMethods, financeMethods, masterCodeService, tx, em);
     }
 
     private SettlementMethod method(String systemRole, UUID id) {

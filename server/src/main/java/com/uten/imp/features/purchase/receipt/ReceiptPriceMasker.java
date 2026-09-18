@@ -28,20 +28,8 @@ public class ReceiptPriceMasker {
         return visibility.canViewPurchaseReceipt();
     }
 
-    /** Receipt-only compatibility alias; other purchase pages must not use it. */
-    @Deprecated(forRemoval = false)
-    public boolean canViewPurchase() {
-        return canViewPurchaseReceipt();
-    }
-
     /** 当前用户是否可看委外进仓单价格。 */
     public boolean canViewSubcontractReceipt() {
         return visibility.canViewSubcontractReceipt();
-    }
-
-    /** Receipt-only compatibility alias; other subcontract pages must not use it. */
-    @Deprecated(forRemoval = false)
-    public boolean canViewSubcontract() {
-        return canViewSubcontractReceipt();
     }
 }

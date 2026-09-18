@@ -558,7 +558,8 @@ class AuditEventInterpreterTest {
                 "view_notice", "查看通知",
                 "notice_read_all", "将全部通知标为已读",
                 "notice_popup_ack", "确认关闭通知提醒",
-                "notice_celebration_batch_publish", "批量发布庆典祝福");
+                "notice_celebration_batch_publish", "批量发布庆典祝福",
+                "notice_celebration_auto_toggle", "切换庆典自动发送");
         noticeActions.forEach((action, label) -> {
             AuditLog value = new AuditLog();
             value.setAction(action);

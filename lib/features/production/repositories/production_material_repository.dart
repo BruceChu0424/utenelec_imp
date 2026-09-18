@@ -48,6 +48,9 @@ class ProductionMaterialClearanceRow {
     this.executionSegmentCode,
     this.unitName,
     this.pendingReturnQty = 0,
+    this.perProductQty,
+    this.requiredForProductQty,
+    this.directSupply = false,
     double? availableToSettleQty,
   }) : availableToSettleQty =
            availableToSettleQty ??
@@ -79,9 +82,22 @@ class ProductionMaterialClearanceRow {
   final double availableToSettleQty;
   final bool canClose;
 
+  /// 单耗(每 1 个成品用多少，需求单位口径)；报工页按完工申报量自动折算本次实际用料(V595)。
+  final double? perProductQty;
+
+  /// 本条需求对应的产品数量；requiredQty / requiredForProductQty 是本批平均单耗。
+  final double? requiredForProductQty;
+
+  /// 同车间直送供给(V595)：持续生产工单上允许分次到料的需求。
+  final bool directSupply;
+
   factory ProductionMaterialClearanceRow.fromJson(Map<String, dynamic> json) {
     double number(String key) => (json[key] as num?)?.toDouble() ?? 0;
     return ProductionMaterialClearanceRow(
+      perProductQty: (json['perProductQty'] as num?)?.toDouble(),
+      requiredForProductQty: (json['requiredForProductQty'] as num?)
+          ?.toDouble(),
+      directSupply: json['directSupply'] == true,
       planId: json['planId'] as String,
       demandId: json['demandId'] as String,
       goodsId: json['goodsId'] as String,

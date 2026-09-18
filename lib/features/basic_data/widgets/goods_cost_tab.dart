@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -312,6 +313,12 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     final twoColumn = !context.breakpoint.isCompact;
     return Column(
       children: [
+        // 保存成本预算网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+        if (_saving)
+          const UtenBusyOverlay(
+            title: '正在保存成本预算',
+            description: '正在写入成本构成与价格，请勿重复提交或离开本页。',
+          ),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(UtenSpacing.s16),

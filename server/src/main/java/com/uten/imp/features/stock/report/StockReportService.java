@@ -2,6 +2,9 @@ package com.uten.imp.features.stock.report;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
+import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -324,28 +327,14 @@ public class StockReportService {
 
     // ======================== 主过滤（公共） ========================
 
-    /**
-     * 默认口径：草稿（status=0）不进报表。
-     *
-     * <p>未审核的库存单据没有过账，不构成库存事实。调用方显式传 status（含 status=0 查草稿、
-     * 或「是否审核」facet）时按其口径走，不叠加本默认值。与 SalesReportService 同款。
-     */
-    private static void addApprovedByDefault(WhereBuilder w, Short status) {
-        if (status != null) {
-            w.add("o.status = :status", "status", status);
-        } else {
-            // 无具名参数的常量片段：WhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
-            w.add("o.status <> 0", null, null);
-        }
-    }
-
     private static void addCommonFilters(WhereBuilder w, String billNo, UUID warehouseId, UUID clientId, Short status,
                                          UUID departmentId,
                                          LocalDate dateFrom, LocalDate dateTo, String kw, boolean hasItems) {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
-        addApprovedByDefault(w, status);
+        // 默认口径（草稿不进报表）见 ReportQueryKit.addApprovedByDefault（2026-09-16 收敛）。
+        ReportQueryKit.addApprovedByDefault(w, status);
         if (departmentId != null) w.add("o.department_id = :departmentId", "departmentId", departmentId);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
@@ -400,14 +389,14 @@ public class StockReportService {
         String docType = parts[0].trim();
         String kind = parts[1].trim().toLowerCase();
         String billNo = p == null ? null : p.get("billNo");
-        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
-        UUID clientId = parseUuid(p == null ? null : p.get("clientId"));
-        Short status = parseShort(p == null ? null : p.get("status"));
-        UUID departmentId = parseUuid(p == null ? null : p.get("departmentId"));
-        LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
-        LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
+        UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
+        UUID clientId = ReportQueryKit.parseUuid(p == null ? null : p.get("clientId"));
+        Short status = ReportQueryKit.parseShort(p == null ? null : p.get("status"));
+        UUID departmentId = ReportQueryKit.parseUuid(p == null ? null : p.get("departmentId"));
+        LocalDate dateFrom = ReportQueryKit.parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = ReportQueryKit.parseDate(p == null ? null : p.get("dateTo"));
         String kw = p == null ? null : p.get("keyword");
-        Map<String, String> facets = facetsOfMap(p);
+        Map<String, String> facets = ReportQueryKit.facetsOf(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (kind) {
             case "detail"  -> (pg, sz) -> detail(docType, billNo, warehouseId, clientId, status,
                     departmentId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
@@ -415,7 +404,11 @@ public class StockReportService {
                     departmentId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表 kind: " + kind);
         };
-        return paginateAll(loader);
+        return ReportQueryKit.paginateAll(settings.readInt("export_max_rows", 100000), loader,
+                ReportTableResponse::total,
+                r -> r.columns() == null ? null : r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                ReportTableResponse::rows);
     }
 
     /** 即时库存导出列（与页面完整业务列一致；成本列按 goods:cost:view 动态裁剪）。 */
@@ -444,8 +437,8 @@ public class StockReportService {
      * 参数：categoryId/warehouseId/includeDefective(默认 true)/keyword + sort/order。
      */
     private ExportPayload exportInstantInventory(Map<String, String> p, String sort, String order) {
-        UUID categoryId = parseUuid(p == null ? null : p.get("categoryId"));
-        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
+        UUID categoryId = ReportQueryKit.parseUuid(p == null ? null : p.get("categoryId"));
+        UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
         boolean includeDefective = !"false".equalsIgnoreCase(p == null ? null : p.get("includeDefective"));
         String kw = p == null ? null : p.get("keyword");
         boolean canViewCost = costMasker.canView();
@@ -483,7 +476,11 @@ public class StockReportService {
             return new ReportTableResponse(columns, rows, Map.of(),
                     r.getPage(), r.getSize(), r.getTotal(), r.getTotalPages());
         };
-        return paginateAll(loader);
+        return ReportQueryKit.paginateAll(settings.readInt("export_max_rows", 100000), loader,
+                ReportTableResponse::total,
+                r -> r.columns() == null ? null : r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                ReportTableResponse::rows);
     }
 
     /**
@@ -495,7 +492,7 @@ public class StockReportService {
     private ExportPayload exportShelfLabels(Map<String, String> p) {
         String rack = p == null ? null : p.get("rack");
         String kw = p == null ? null : p.get("keyword");
-        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
+        UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
         boolean includeDisabled = p != null && "true".equalsIgnoreCase(p.get("includeDisabled"));
         var items = stockQueryService.shelfLabelRows(rack, kw, warehouseId, includeDisabled);
         List<ExportColumn> cols = new ArrayList<>(List.of(
@@ -534,46 +531,6 @@ public class StockReportService {
         }
         return new ExportPayload(cols, rows, rows.size());
     }
-
-    /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
-    private ExportPayload paginateAll(BiFunction<Integer, Integer, ReportTableResponse> loader) {
-        final int size = 500;
-        List<Map<String, Object>> all = new ArrayList<>();
-        List<ExportColumn> cols = null;
-        int page = 1;
-        while (page <= 2000) {
-            ReportTableResponse r = loader.apply(page, size);
-            if (page == 1 && r.total() > settings.readInt("export_max_rows", 100000)) {
-                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
-            }
-            if (cols == null && r.columns() != null) {
-                cols = r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type()))
-                        .toList();
-            }
-            all.addAll(r.rows());
-            if (r.rows().size() < size) break;
-            if ((long) all.size() >= r.total()) break;
-            page++;
-        }
-        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
-    }
-
-    private static Map<String, String> facetsOfMap(Map<String, String> p) {
-        Map<String, String> facets = new LinkedHashMap<>();
-        if (p == null) return facets;
-        for (Map.Entry<String, String> e : p.entrySet()) {
-            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
-                facets.put(e.getKey().substring(2), e.getValue());
-            }
-        }
-        return facets;
-    }
-
-    private static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
-    private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
-    private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
 
     // ======================== 通用执行器（与 purchase/sales 同型） ========================
 
@@ -726,33 +683,5 @@ public class StockReportService {
     private static Col ct(String key, String label, String type, Integer width, String expr,
                           String totalLabel, String totalGroupKey) {
         return new Col(new ReportColumn(key, label, type, width).totaled(totalLabel, totalGroupKey), expr);
-    }
-
-    /** 列 facet 规格。selectExpr 投影 v+lbl；groupExpr 分组；filterExpr 过滤表达式；filterType 值类型。 */
-    record FacetSpec(String key, String selectExpr, String groupExpr, String filterExpr, String filterType) {}
-
-    /** WHERE 构造器：base + 若干 AND 子句（带参数）。与 purchase/sales 同型。 */
-    static final class WhereBuilder {
-        private final String base;
-        private final List<Clause> clauses = new ArrayList<>();
-
-        WhereBuilder(String base) { this.base = base; }
-
-        void add(String fragment, String param, Object val) { clauses.add(new Clause(fragment, param, val)); }
-
-        Built build(List<Clause> extra) {
-            StringBuilder sb = new StringBuilder(base);
-            Map<String, Object> params = new LinkedHashMap<>();
-            List<Clause> all = new ArrayList<>(clauses);
-            if (extra != null) all.addAll(extra);
-            for (Clause c : all) {
-                sb.append(" AND ").append(c.fragment);
-                if (c.param != null) params.put(c.param, c.val);
-            }
-            return new Built(sb.toString(), params);
-        }
-
-        record Clause(String fragment, String param, Object val) {}
-        record Built(String sql, Map<String, Object> params) {}
     }
 }

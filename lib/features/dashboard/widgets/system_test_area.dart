@@ -20,6 +20,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -423,6 +424,12 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 清空执行期间的全屏加载遮罩（root Overlay 传送门，不占布局）。
+              if (_running)
+                const UtenBusyOverlay(
+                  title: '正在清空业务数据',
+                  description: '正在删除业务数据与附件，耗时较长，请勿关闭弹窗或离开页面。',
+                ),
               Text(
                 '即将在本环境执行不可恢复的清空（不创建备份）：',
                 style: theme.textTheme.bodyMedium,

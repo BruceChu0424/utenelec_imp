@@ -205,6 +205,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                           base: theme.inputDecorationTheme.labelStyle,
                         ),
                   hintText: widget.hintText,
+                  // 同格内值单行口径：内部 hint 超宽折行同样会撑高字段。
+                  hintMaxLines: 1,
                   helper: autofillHint
                       ? UtenFieldMessage.autofill(
                           widget.warningMessage ?? '已按上次记录预填，请核对',
@@ -228,6 +230,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
           ),
           child: Text(
             hasValue ? _display : (widget.hintText ?? '请选择'),
+            // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
+            // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
+            // 由网格列 textOf 自动加宽兜底，表单里就省略号。
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: hasValue
                   ? theme.colorScheme.onSurface

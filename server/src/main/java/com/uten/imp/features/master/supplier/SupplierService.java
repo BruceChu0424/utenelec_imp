@@ -58,8 +58,8 @@ public class SupplierService {
 
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
-            "name", "description", "tday", "place", "empId", "legalPerson", "linkman",
-            "mobile", "phone", "phone2", "fax", "postcode", "address", "bank",
+            "name", "description", "tday", "place", "empId", "ownerEmployeeId", "legalPerson",
+            "linkman", "mobile", "phone", "phone2", "fax", "postcode", "address", "bank",
             "bankAccount", "taxId", "website", "shipVia", "shipAddress");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（数量列；命中才排序，否则默认 code ASC）。 */
@@ -68,14 +68,17 @@ public class SupplierService {
     /** facet 截断阈值（高基数列如 name/address 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
-    /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。 */
+    /**
+     * facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
+     * empId 不在此列：桶值是业务员 UUID（owner_employee_id）、label 需 JOIN employees
+     * 出人名，走 {@link #ownerFacet} 专用聚合。
+     */
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
         FACET_COLUMNS.put("name", "name");
         FACET_COLUMNS.put("description", "description");
         FACET_COLUMNS.put("tday", "tday");
         FACET_COLUMNS.put("place", "place");
-        FACET_COLUMNS.put("empId", "emp_id");
         FACET_COLUMNS.put("legalPerson", "legal_person");
         FACET_COLUMNS.put("linkman", "linkman");
         FACET_COLUMNS.put("mobile", "mobile");
@@ -134,6 +137,9 @@ public class SupplierService {
             addEq(ps, cb, root, "description", f.description());
             addEq(ps, cb, root, "place", f.place());
             addEq(ps, cb, root, "empId", f.empId());
+            if (f.ownerEmployeeId() != null) {
+                ps.add(cb.equal(root.get("ownerEmployeeId"), f.ownerEmployeeId()));
+            }
             addEq(ps, cb, root, "legalPerson", f.legalPerson());
             addEq(ps, cb, root, "linkman", f.linkman());
             addEq(ps, cb, root, "mobile", f.mobile());
@@ -273,6 +279,9 @@ public class SupplierService {
                     .getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
+        // 业务员（empId）桶：值=owner_employee_id（employees.id）、label=人名；空值=未设置业务员。
+        buckets.put("empId", ownerFacet(ids));
+        nullCounts.put("empId", ownerNullCount(ids));
         return new SupplierFacets(
                 buckets.get("name"), buckets.get("description"), buckets.get("tday"),
                 buckets.get("place"), buckets.get("empId"), buckets.get("legalPerson"),
@@ -282,6 +291,37 @@ public class SupplierService {
                 buckets.get("taxId"), buckets.get("website"), buckets.get("shipVia"),
                 buckets.get("shipAddress"),
                 nullCounts);
+    }
+
+    /**
+     * 业务员 facet 桶：JOIN employees 按 employees.id 分组、label 出人名（范式同
+     * {@code GoodsService#refFacet}）。不使用别名（suppliers/employees 全名引用），
+     * 避免两表同名列（is_deleted 等）歧义。
+     */
+    private List<FacetBucket> ownerFacet(List<UUID> ids) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                "select employees.id as v, employees.full_name as label, count(*) as c "
+                        + "from suppliers join employees on employees.id = suppliers.owner_employee_id "
+                        + "where suppliers.is_deleted = false and suppliers.category_id in (:ids) "
+                        + "and suppliers.owner_employee_id is not null "
+                        + "group by employees.id, employees.full_name "
+                        + "order by c desc, label asc limit " + FACET_LIMIT)
+                .setParameter("ids", ids));
+        List<FacetBucket> list = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            list.add(new FacetBucket(String.valueOf(row[0]),
+                    ((Number) row[2]).longValue(), String.valueOf(row[1])));
+        }
+        return list;
+    }
+
+    /** 业务员空值计数：owner_employee_id 为 null（前端列显「未分配」）的行数。 */
+    private Long ownerNullCount(List<UUID> ids) {
+        return ((Number) em.createNativeQuery(
+                "select count(*) from suppliers "
+                        + "where is_deleted = false and category_id in (:ids) and owner_employee_id is null")
+                .setParameter("ids", ids)
+                .getSingleResult()).longValue();
     }
 
     // ===== 详情 / CRUD（不变） =====

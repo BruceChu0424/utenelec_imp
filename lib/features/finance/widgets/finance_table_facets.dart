@@ -15,6 +15,13 @@ const financeDocumentStatusFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: '2', label: '红冲', count: 0),
 ];
 
+/// 收款类型固定枚举桶（financeReceiptKindLabel 同口径；计数由列表页动态数据体现，
+/// 与其它固定枚举桶一致不下发命中数）。
+const financeReceiptKindFacets = <MasterFacetBucket>[
+  MasterFacetBucket(value: 'AR_SETTLEMENT', label: '货款收款(核销应收)', count: 0),
+  MasterFacetBucket(value: 'CUSTOMER_PREPAYMENT', label: '客户订单预收', count: 0),
+];
+
 const financeArApDirectionFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: 'AR', label: '应收', count: 0),
   MasterFacetBucket(value: 'AP', label: '应付', count: 0),

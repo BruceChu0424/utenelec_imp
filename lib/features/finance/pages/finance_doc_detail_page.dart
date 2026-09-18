@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -61,6 +62,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   FinanceDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
+  // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
+  String _busyTitle = '正在处理，请稍候';
   String? _error;
 
   @override
@@ -137,6 +140,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     _approvalMessage,
     (repo) => repo.approve(widget.id),
     '已审核',
+    busyTitle: '正在审核，请稍候',
     reviewerResponsibility: true,
   );
 
@@ -162,14 +166,19 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         '审核将核销应付、登记实际账户流水并生成付款凭证，确认审核？';
   }
 
-  Future<void> _reverse() async =>
-      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _reverse() async => _doAction(
+    '红冲将反向冲销，确认？',
+    (repo) => repo.reverse(widget.id),
+    '已红冲',
+    busyTitle: '正在红冲，请稍候',
+  );
 
   /// C6 财务确认（仅费用单）：已过账 → 财务确认入账。
   Future<void> _glConfirm() async => _doAction(
     '确认该费用单的总账分录入账？',
     (repo) => repo.glConfirm(widget.id),
     '已财务确认',
+    busyTitle: '正在确认入账，请稍候',
     reviewerResponsibility: true,
     reviewerActionLabel: '费用单总账确认',
   );
@@ -180,6 +189,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     String ok, {
     bool reviewerResponsibility = false,
     String reviewerActionLabel = '审核',
+    String? busyTitle,
   }) async {
     if (_busy) return;
     final c = reviewerResponsibility
@@ -207,7 +217,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
             ),
           );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = busyTitle ?? '正在处理，请稍候';
+    });
     try {
       await fn(ref.read(financeRepositoryProvider(widget.docType)));
       if (!mounted) return;
@@ -245,7 +258,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       ),
     );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在删除，请稍候';
+    });
     try {
       await ref
           .read(financeRepositoryProvider(widget.docType))
@@ -288,14 +304,24 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       body: SafeArea(
         // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
         // 改默认容器对齐新建销售订货单页。
-        child: UtenContentContainer(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : _error != null
-              ? Center(child: Text(_error!))
-              : _detail == null
-              ? const SizedBox.shrink()
-              : _body(theme, names, scopeCapability, canViewFiles),
+        child: Stack(
+          children: [
+            UtenContentContainer(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : _error != null
+                  ? Center(child: Text(_error!))
+                  : _detail == null
+                  ? const SizedBox.shrink()
+                  : _body(theme, names, scopeCapability, canViewFiles),
+            ),
+            // 处理中屏幕中央加载遮罩（对齐销售单据详情 UtenBusyOverlay 口径）：
+            // 只跟随网络等待段，结果提示展示期间已撤下；按钮禁用逻辑不变。
+            if (_busy)
+              Positioned.fill(child: UtenBusyOverlay(title: _busyTitle)),
+          ],
         ),
       ),
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，大小/高度/禁用态全站统一。

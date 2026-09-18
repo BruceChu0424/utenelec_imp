@@ -37,9 +37,10 @@ public class ExpenseClaimController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
             @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.listMine(status, year, month, departmentId, page, size);
+        return service.listMine(status, year, month, departmentId, category, page, size);
     }
 
     @GetMapping("/pending")
@@ -48,9 +49,10 @@ public class ExpenseClaimController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
             @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.listPending(year, month, departmentId, page, size);
+        return service.listPending(year, month, departmentId, category, page, size);
     }
 
     @GetMapping("/payable")
@@ -59,9 +61,10 @@ public class ExpenseClaimController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
             @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.listPayable(year, month, departmentId, page, size);
+        return service.listPayable(year, month, departmentId, category, page, size);
     }
 
     /**

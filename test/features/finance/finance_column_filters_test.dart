@@ -78,6 +78,21 @@ void main() {
     statusTable.onFilterChanged('status', '1');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['status'], 1);
+
+    // 2026-09-16 收款类型表头筛选：固定枚举桶 + 回传 receiptKind 参数。
+    final kindTable = tester.widget<MasterDataTableView<FinanceDocListItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<FinanceDocListItem>,
+      ),
+    );
+    expect(kindTable.facets.keys, contains('receiptKind'));
+    expect(
+      kindTable.facets['receiptKind']?.map((bucket) => bucket.value),
+      containsAll(<String>['AR_SETTLEMENT', 'CUSTOMER_PREPAYMENT']),
+    );
+    kindTable.onFilterChanged('receiptKind', 'AR_SETTLEMENT');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['receiptKind'], 'AR_SETTLEMENT');
   });
 
   testWidgets('account flow headers send account and source filters to API', (
@@ -123,6 +138,22 @@ void main() {
     );
     refreshed.onFilterChanged('sourceDocType', 'RECEIPT');
     await tester.pumpAndSettle();
+    expect(api.lastQuery?['sourceDocType'], 'RECEIPT');
+
+    // 2026-09-16 流水类型表头筛选：固定枚举桶 + 回传 entryKind 参数。
+    final kindTable = tester.widget<MasterDataTableView<ReconciliationItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<ReconciliationItem>,
+      ),
+    );
+    expect(kindTable.facets.keys, contains('entryKind'));
+    expect(
+      kindTable.facets['entryKind']?.map((bucket) => bucket.value),
+      containsAll(<String>['POSTING', 'REVERSAL', 'ADJUSTMENT']),
+    );
+    kindTable.onFilterChanged('entryKind', 'REVERSAL');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['entryKind'], 'REVERSAL');
     expect(api.lastQuery?['sourceDocType'], 'RECEIPT');
   });
 }

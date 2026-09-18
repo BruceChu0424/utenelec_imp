@@ -9,6 +9,7 @@
 // salesGridColumns：货品/颜色/数量/单位/单价/金额 + 补列（条件）。
 import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -252,6 +253,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       required: true,
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
+      // 格尾搜索图标(16)计入自动加宽量宽，不再吃文本宽。
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
@@ -461,6 +464,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         key: 'solution',
         label: '处理方案',
         width: 124,
+        textOf: (r) => r.solutionNotifier.value ?? '',
+        listenableOf: (r) => r.solutionNotifier,
+        chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
         cellBuilder: (context, row) => _returnDropdown(
           row.solutionNotifier,
           const ['退款', '换货', '补发', '维修后返还', '其他'],
@@ -471,6 +477,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         key: 'responsible',
         label: '责任单位',
         width: 110,
+        textOf: (r) => r.responsibleNotifier.value ?? '',
+        listenableOf: (r) => r.responsibleNotifier,
+        chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
         cellBuilder: (context, row) => _returnDropdown(
           row.responsibleNotifier,
           const ['本公司', '客户', '物流', '供应商', '其他'],
@@ -562,6 +571,9 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
 }
 
 /// 退货「处理方案 / 责任单位」下拉单元格：订阅 [notifier]，预置业务选项。
+/// 2026-09-16 起本文件内统一用自家 UtenDropdownField（单行省略号 + 列宽自适应 +
+/// 统一弹层），不再出现原生 DropdownButtonFormField（全站其余处的替换由下拉
+/// 组件批次负责）。
 Widget _returnDropdown(
   ValueNotifier<String?> notifier,
   List<String> options, {
@@ -569,17 +581,11 @@ Widget _returnDropdown(
 }) {
   return ValueListenableBuilder<String?>(
     valueListenable: notifier,
-    builder: (context, value, _) => DropdownButtonFormField<String>(
-      initialValue: options.contains(value) ? value : null,
-      isExpanded: true,
-      decoration: InputDecoration(isDense: true, hintText: hint),
-      items: [
-        for (final o in options)
-          DropdownMenuItem(
-            value: o,
-            child: Text(o, overflow: TextOverflow.ellipsis),
-          ),
-      ],
+    builder: (context, value, _) => UtenDropdownField(
+      dense: true,
+      value: value,
+      hintText: hint,
+      items: [for (final o in options) UtenDropdownItem(value: o, label: o)],
       onChanged: (v) => notifier.value = v,
     ),
   );

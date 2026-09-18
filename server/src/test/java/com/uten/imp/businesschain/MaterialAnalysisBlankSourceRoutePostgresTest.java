@@ -68,15 +68,18 @@ class MaterialAnalysisBlankSourceRoutePostgresTest {
         analyses.saveRoutes(analysis,new RouteRequest(view.version(),view.fingerprint(),"routes-"+tag,List.of(
                 new RouteDecision(parentRow.materialLineId(),parentRow.actionGroupKey(),"SUBCONTRACT","来源为空，计划部按委外处理"))));
         assertEquals("SUBCONTRACT",byGoods(analyses.detail(analysis),parent).sourceConfirmed());
+        // V598(2026-09-16)：确认即回写主档——委外确认后 goods.source_type 变「委外」，
+        // 主档从此是建议路线的单一事实源（last-routes 记忆已退役）。
+        assertEquals("委外",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,parent));
 
-        // 旧快照的 REVIEW 建议（部署前生成）升级为 MAKE 不算事实变更：人工确认保留，重置数为 0。
+        // 旧快照的 REVIEW 建议（部署前生成）按主档重算=委外，不算事实变更：人工确认保留，重置数为 0。
         db.update("UPDATE production_material_analysis_materials SET source_suggestion='REVIEW' WHERE analysis_id=? AND goods_id=?",analysis,parent);
         AnalysisView upgraded=refresh(analysis,w.warehouseId(),source,"refresh-legacy-review");
-        assertEquals("MAKE",byGoods(upgraded,parent).sourceSuggestion());
+        assertEquals("SUBCONTRACT",byGoods(upgraded,parent).sourceSuggestion());
         assertEquals("SUBCONTRACT",byGoods(upgraded,parent).sourceConfirmed());
         assertEquals(0,upgraded.routeResetCount());
 
-        // 主档从空补齐为「自制」：建议值仍是 MAKE，不清人工确认。
+        // 主档从空补齐为「自制」：建议值随主档变 MAKE，不清人工确认。
         db.update("UPDATE goods SET source_type='自制' WHERE id=?",parent);
         AnalysisView filled=refresh(analysis,w.warehouseId(),source,"refresh-fill");
         assertEquals("MAKE",byGoods(filled,parent).sourceSuggestion());
@@ -84,14 +87,16 @@ class MaterialAnalysisBlankSourceRoutePostgresTest {
         assertEquals(0,filled.routeResetCount());
         qty("200",byGoods(filled,w.goodsC()).requiredQty());
 
-        // 主档真的改了来源（自制→采购）：清人工确认、刷新响应回传 1；子层按 BUY 父路线不展开。
+        // 2026-09-16 起主档来源变化整项移出「BOM 事实变更」条件：确认会回写主档，两者是
+        // 同一件事，系统不替人作废——主档再改成采购也只换建议值(BUY)，人工确认保留、
+        // 重置数为 0，子层仍按已确认的委外路线展开。要改路线就在分析里重新确认。
         db.update("UPDATE goods SET source_type='采购' WHERE id=?",parent);
         AnalysisView changed=refresh(analysis,w.warehouseId(),source,"refresh-buy");
         assertEquals("BUY",byGoods(changed,parent).sourceSuggestion());
-        assertNull(byGoods(changed,parent).sourceConfirmed());
-        assertEquals(1,changed.routeResetCount());
+        assertEquals("SUBCONTRACT",byGoods(changed,parent).sourceConfirmed());
+        assertEquals(0,changed.routeResetCount());
         MaterialView childAfter=byGoods(changed,w.goodsC());
-        qty("0",childAfter.requiredQty());assertEquals("INACTIVE_PARENT_ROUTE",childAfter.requirementState());assertFalse(childAfter.actionable());
+        qty("200",childAfter.requiredQty());assertEquals("ACTIVE",childAfter.requirementState());assertTrue(childAfter.actionable());
         assertEquals(0,analyses.detail(analysis).routeResetCount(),"详情响应恒为 0，只有刷新响应带重置数");
     }
 

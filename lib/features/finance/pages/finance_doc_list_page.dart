@@ -59,6 +59,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
   String? _partyIdFilter;
   String? _accountIdFilter;
+  String? _receiptKindFilter; // 收款类型（仅收款单；null=不过滤）
 
   @override
   void initState() {
@@ -101,6 +102,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
               ? _accountIdFilter
               : null,
           status: _statusFilter,
+          receiptKind: _cfg.type == FinanceDocType.receipt
+              ? _receiptKindFilter
+              : null,
         ),
         sort: _list.sortKey,
         order: _list.sortOrder,
@@ -123,6 +127,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
         _statusFilter = value == null ? null : int.tryParse(value);
       } else if (key == 'accountId') {
         _accountIdFilter = value;
+      } else if (key == 'receiptKind') {
+        _receiptKindFilter = value;
       } else if (key == 'clientId' || key == 'supplierId') {
         _partyIdFilter = value;
       }
@@ -321,6 +327,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                       columns: _columns(names),
                       items: _list.page?.items ?? const [],
                       facets: {
+                        if (_cfg.type == FinanceDocType.receipt)
+                          'receiptKind': financeReceiptKindFacets,
                         if (_cfg.hasParty)
                           _cfg.isClient
                               ? 'clientId'
@@ -336,6 +344,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                       },
                       nullCounts: const {},
                       filters: {
+                        if (_cfg.type == FinanceDocType.receipt)
+                          'receiptKind': _receiptKindFilter,
                         if (_cfg.hasParty)
                           _cfg.isClient ? 'clientId' : 'supplierId':
                               _partyIdFilter,

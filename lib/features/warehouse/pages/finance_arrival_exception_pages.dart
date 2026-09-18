@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -536,51 +537,62 @@ class _FinanceArrivalExceptionDetailPageState
                 ),
               ],
       ),
-      body: SafeArea(
-        child: _loading && task == null
-            ? const UtenSkeletonList()
-            : _error != null && task == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : task == null
-            ? UtenEmpty.error(message: '任务不存在或并非分配给您')
-            // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
-            // 改默认容器对齐新建销售订货单页。
-            : UtenContentContainer(
-                child: ListView(
-                  // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
-                  padding: const EdgeInsets.fromLTRB(
-                    0,
-                    UtenSpacing.s16,
-                    0,
-                    UtenFloatingActionGroup.scrollClearance,
-                  ),
-                  children: [
-                    _FinanceStatusBanner(task: task),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _ArrivalFactsCard(task: task),
-                    if (task.canFinanceDecide) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      _FinanceDecisionPanel(
-                        task: task,
-                        value: _decision,
-                        customController: _customQty,
-                        reasonController: _reason,
-                        onChanged: (value) => setState(() {
-                          _decision = value;
-                          if (value != FinanceArrivalDecision.approveCustom) {
-                            _customQty.clear();
-                          }
-                        }),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: _loading && task == null
+                ? const UtenSkeletonList()
+                : _error != null && task == null
+                ? UtenEmpty.error(
+                    message: _error,
+                    actionLabel: '重新加载',
+                    onAction: _load,
+                  )
+                : task == null
+                ? UtenEmpty.error(message: '任务不存在或并非分配给您')
+                // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
+                // 改默认容器对齐新建销售订货单页。
+                : UtenContentContainer(
+                    child: ListView(
+                      // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        UtenSpacing.s16,
+                        0,
+                        UtenFloatingActionGroup.scrollClearance,
                       ),
-                    ],
-                    const SizedBox(height: UtenSpacing.s24),
-                  ],
-                ),
-              ),
+                      children: [
+                        _FinanceStatusBanner(task: task),
+                        const SizedBox(height: UtenSpacing.s12),
+                        _ArrivalFactsCard(task: task),
+                        if (task.canFinanceDecide) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          _FinanceDecisionPanel(
+                            task: task,
+                            value: _decision,
+                            customController: _customQty,
+                            reasonController: _reason,
+                            onChanged: (value) => setState(() {
+                              _decision = value;
+                              if (value !=
+                                  FinanceArrivalDecision.approveCustom) {
+                                _customQty.clear();
+                              }
+                            }),
+                          ),
+                        ],
+                        const SizedBox(height: UtenSpacing.s24),
+                      ],
+                    ),
+                  ),
+          ),
+          // 提交财务决定期间的全屏加载遮罩。
+          if (_saving)
+            const UtenBusyOverlay(
+              title: '正在提交财务决定',
+              description: '正在写入超量到货审批结论，请勿重复提交或离开本页。',
+            ),
+        ],
       ),
       // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组（按钮已是 large）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

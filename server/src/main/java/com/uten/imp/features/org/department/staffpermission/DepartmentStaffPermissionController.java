@@ -45,16 +45,6 @@ public class DepartmentStaffPermissionController {
         return workspace.managedDepartments(surfaceKey);
     }
 
-    @GetMapping("/managed")
-    @Deprecated(forRemoval = true)
-    public void managed(
-            @RequestParam String surfaceKey,
-            @RequestParam(required = false) UUID departmentId) {
-        throw new ApiException(
-                ErrorCode.CONFLICT,
-                "旧版整部门权限矩阵接口已停用，请升级客户端使用分页人员和单人权限接口");
-    }
-
     @PutMapping("/employees/{employeeId}/delegations/{code}")
     public StaffDelegationResultDto setDelegation(
             @PathVariable UUID employeeId,

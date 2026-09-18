@@ -70,6 +70,7 @@ class ClientLegacyFinanceStubFilterTest {
                 null, // region
                 null, // placeId
                 null, // empId
+                null, // ownerEmployeeId
                 null, // legalPerson
                 null, // linkman
                 null, // mobile

@@ -5,6 +5,7 @@ import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
@@ -22,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -70,7 +70,7 @@ public class StockReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.detail(docType, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     /** 汇总报表（7 单据类型参数化；一行一单号）。 */
@@ -92,19 +92,7 @@ public class StockReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.summary(docType, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, keyword,
-                facetsOf(allParams), page, size, sort, order);
-    }
-
-    /** 从全部查询参数里抽出列筛选（键以 "f." 前缀）。 */
-    private static Map<String, String> facetsOf(Map<String, String> allParams) {
-        Map<String, String> facets = new HashMap<>();
-        if (allParams == null) return facets;
-        for (Map.Entry<String, String> e : allParams.entrySet()) {
-            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
-                facets.put(e.getKey().substring(2), e.getValue());
-            }
-        }
-        return facets;
+                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------

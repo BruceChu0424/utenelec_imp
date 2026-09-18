@@ -130,6 +130,12 @@ public class FinanceReceiptService {
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            // 收款类型：存储值已归一大写；入参大小写不敏感（与 applyHeader 同口径）。
+            // CUSTOMER_PREPAYMENT 无查看权限时上方 notEqual 已兜底（这里只会筛出空集）。
+            if (f.receiptKind() != null && !f.receiptKind().isBlank()) {
+                ps.add(cb.equal(root.get("receiptKind"),
+                        f.receiptKind().trim().toUpperCase(java.util.Locale.ROOT)));
+            }
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));

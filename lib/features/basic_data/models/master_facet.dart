@@ -29,6 +29,19 @@ class MasterFacetBucket {
 /// repository 据此把字段名收集进 nullFields 请求参数。
 const String kMasterFilterNullValue = '__null__';
 
+/// 把主档 dict 端点的映射（id → 名称，如供应商/仓库/客户/币种/展平后的部门树）
+/// 转成表头筛选桶：按名称排序、count=0（不强调计数）。
+/// [MasterFacetBucket.value] 为字典项 id（UUID），与各列表 repository 的
+/// 筛选参数（supplierId/warehouseId/...）类型一致。
+List<MasterFacetBucket> masterDictionaryFacets(Map<String, String> entries) {
+  final sorted = entries.entries.toList(growable: false)
+    ..sort((a, b) => a.value.compareTo(b.value));
+  return [
+    for (final entry in sorted)
+      MasterFacetBucket(value: entry.key, label: entry.value, count: 0),
+  ];
+}
+
 /// 把主档页的 [filters]（key→value，value 可能为 [kMasterFilterNullValue]）
 /// 拆成导出/列表用的 query 参数：常规值 → 字段=值；哨兵值 → 收集进 nullFields。
 ///

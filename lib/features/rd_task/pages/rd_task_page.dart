@@ -26,6 +26,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -558,20 +559,19 @@ class _Filters extends StatelessWidget {
             ),
             SizedBox(
               width: compact ? constraints.maxWidth : 200,
-              // 固定枚举选项，无孤儿 id 风险，可直接用 DropdownButtonFormField。
-              child: DropdownButtonFormField<String>(
+              child: UtenDropdownField(
                 key: const Key('rd-task-category-filter'),
-                initialValue: category,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: '类别'),
+                label: '类别',
+                value: category,
+                allowClear: false,
                 items: const [
-                  DropdownMenuItem(value: '', child: Text('全部类别')),
-                  DropdownMenuItem(value: 'BOM', child: Text('BOM维护')),
-                  DropdownMenuItem(value: 'DESIGN', child: Text('设计')),
-                  DropdownMenuItem(value: 'SAMPLE', child: Text('打样')),
-                  DropdownMenuItem(value: 'TRIAL', child: Text('试产')),
-                  DropdownMenuItem(value: 'ECN', child: Text('ECN')),
-                  DropdownMenuItem(value: 'OTHER', child: Text('其他')),
+                  UtenDropdownItem(value: '', label: '全部类别'),
+                  UtenDropdownItem(value: 'BOM', label: 'BOM维护'),
+                  UtenDropdownItem(value: 'DESIGN', label: '设计'),
+                  UtenDropdownItem(value: 'SAMPLE', label: '打样'),
+                  UtenDropdownItem(value: 'TRIAL', label: '试产'),
+                  UtenDropdownItem(value: 'ECN', label: 'ECN'),
+                  UtenDropdownItem(value: 'OTHER', label: '其他'),
                 ],
                 onChanged: (v) => onCategoryChanged(v ?? ''),
               ),

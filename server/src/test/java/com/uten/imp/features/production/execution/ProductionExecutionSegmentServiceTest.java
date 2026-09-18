@@ -76,7 +76,8 @@ class ProductionExecutionSegmentServiceTest {
                 mock(TxSessionVars.class),
                 chainNotice,
                 access,
-                workshopMembership);
+                workshopMembership,
+                mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class));
     }
 
     @Test
@@ -715,7 +716,11 @@ class ProductionExecutionSegmentServiceTest {
                         null,
                         autoPromoteWhenReady,
                         materialRequirementMode,
-                        planMakerId, null
+                        planMakerId, null,
+                        // s.continuous_supply(V595 起进入 lock 投影)
+                        false,
+                        // s.start_route(V599 起进入 lock 投影)：单测默认已确认齐套路线。
+                        "FULL_KIT"
                 }));
         return lock;
     }
@@ -761,7 +766,11 @@ class ProductionExecutionSegmentServiceTest {
                 version,
                 // V487：zero_material（零料直制段展示「无需领料 · 可开工」）。
                 false,
-                false, false, false, null, false, null
+                false, false, false, null, false, null,
+                // V595：continuous_supply / fn_can_start_continuous_supply。
+                false, false,
+                // V599：start_route（rows 投影末列）。
+                null
         };
     }
     private void stubLockAndReplay(
@@ -784,7 +793,11 @@ class ProductionExecutionSegmentServiceTest {
                 null,
                 true,
                 "DEMANDED",
-                planMakerId, null
+                planMakerId, null,
+                // s.continuous_supply(V595 起进入 lock 投影)
+                false,
+                // s.start_route(V599)：单测默认已确认齐套路线。
+                "FULL_KIT"
         }));
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());

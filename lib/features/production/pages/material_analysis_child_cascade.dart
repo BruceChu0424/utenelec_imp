@@ -25,10 +25,15 @@ enum _CascadeParentChannel {
   /// 数量可超量（V577，超出部分记公共备货产出），必须有车间 + 负责人。
   workshop,
 
-  /// 下达委外，且要我方先自制目标件再发外（有生产性自制子层）。
-  /// 服务端 notify 对这类组**强制整量接管**（`requested` 必须逐字等于
-  /// 服务端剩余需求，且不接受公共超量），所以委外那一步的量不可改；
-  /// 紧接着建出来的「前置自制任务」要下达车间，因此本行仍需车间 + 负责人。
+  /// 下达委外，且要我方先自制目标件再发外（有生产性自制子层），但当前账号
+  /// **没有生成生产计划权限**，只能走 notify 整量接管：服务端要求 `requested`
+  /// 逐字等于剩余需求、不接受公共超量，所以数量不可改；前置自制任务建好后
+  /// 留在「下达车间 / 未下达」等有权限的人排产。
+  ///
+  /// 有生成生产计划权限时这类行改走 [workshop] 通道 (issue-plans 的 ARRANGE
+  /// 段，2026-09-16)：数量可改、超量按 V589 跟到台账与行动、同事务建台账 +
+  /// 锚点 + 计划——正是用户要的「有子层级的委外自动添加到下达车间然后自动
+  /// 下达车间」，也不再需要单独一段「前置自制任务下达车间」。
   subcontractMakeFirst,
 
   /// 下达委外，直接外发（无子层，或 V581「只有一个叶子子件」的我方供料件）。
@@ -58,10 +63,32 @@ class _ChildCascadeSeed {
     this.workerName,
     this.workshopAutofilled = false,
     this.workerAutofilled = false,
+    this.groupKey,
+    this.overQtyConfirmed = false,
   });
 
   /// 本行走哪条通道（决定数量约束与要不要车间/负责人）。
   final _CascadeParentChannel channel;
+
+  /// 本行在分桶页对应的操作组键 (`_MaterialGroup.key`)。委外 notify 请求按它
+  /// 定位行；被祖先吸收的种子要从父件请求里剔除时也按它找。
+  final String? groupKey;
+
+  /// 分桶页已经对「本批数量超出需求」问过一次确认 (车间桶在 `_validatePlanRows`
+  /// 里问)。委外桶改走 issue-plans 的行没问过，级联页提交前要补问。
+  final bool overQtyConfirmed;
+
+  /// 被另一颗种子 (它在 BOM 上的祖先) 的展开吸收 (2026-09-16)。
+  ///
+  /// 用户口径「我选择很多，包括顶层的，它们都是顶层的子层级；我改顶层数量，
+  /// 其他的就不会跟着变」——原来每个勾选行各成一棵树、互不驱动。现在：勾选行
+  /// 若是另一勾选行的 BOM 后代，就并进祖先那棵树当普通下层行 (数量按祖先本批
+  /// 数量驱动、车间/负责人沿用分桶页填的)，不再单独成树，也不进父件段；它由
+  /// 级联页的车间段按算好的数量提交。null = 本种子是树顶。
+  _ChildCascadeSeed? absorbedBy;
+
+  /// 树顶 (未被吸收) 才进父件段、才算「本次将下达」。
+  bool get isTop => absorbedBy == null;
 
   /// 本次可下达上限（车间入口 = 产品剩余需求 / 候选剩余量；委外入口 =
   /// 服务端剩余需求）。null = 拿不到上限（旧载荷），此时只校验「> 0」。
@@ -91,7 +118,9 @@ class _ChildCascadeSeed {
   bool get quantityEditable =>
       channel != _CascadeParentChannel.subcontractMakeFirst;
 
-  /// 本通道要不要填车间 / 负责人。
+  /// 本通道要不要填车间 / 负责人：走 issue-plans 的行要 (父件段直接建计划)；
+  /// notify 整量接管的行也要 (随后那一段要拿它去排前置自制锚点)；只有直接
+  /// 外发的委外件不需要——它整件发给委外商，我方不排产。
   bool get needsWorkshop => channel != _CascadeParentChannel.subcontractDirect;
 
   /// 委外种子的提交单元键：父件段走 notify（按 actionGroupKey 传数量），
@@ -114,12 +143,6 @@ class _ChildCascadeSeed {
   final String? materialLineId;
 
   final String? unitName;
-
-  /// 父件段（委外 notify）成功后，服务端在同一事务里建出来的「前置自制任务」
-  /// 产品行。编排在父件段之后按最新快照解析并填在这里，紧接着用它 + 本行的
-  /// 车间 / 负责人调一次 issue-plans——这一步就是用户说的「下达委外之后，
-  /// 对应的件应该自动出现在下达车间的已下达里」。
-  String? premakeAnalysisLineId;
 }
 
 /// 下层行按有效路线分流到的下达通道。
@@ -184,6 +207,11 @@ typedef _CascadeNode = ({
 
   /// 树顶行挂回它的种子（改父件数量 → 回写 batchQty + 驱动下层重算）。
   _ChildCascadeSeed? seed,
+
+  /// 本节点吸收了哪颗勾选行的种子 (2026-09-16)：该行在分桶页也被勾选了，但它
+  /// 是本树祖先的 BOM 后代，所以作为普通下层行留在这里 (数量随祖先重算)，
+  /// 分桶页填的车间/负责人经它带进来。null = 普通节点。
+  _ChildCascadeSeed? absorbedSeed,
 });
 
 /// 下层办齐弹窗里的一行（与下达车间桶同一张 UtenEditableGrid）。
@@ -214,6 +242,7 @@ class _ChildCascadeRow extends EditableGridRow {
     required this.overCapped,
     this.isSeed = false,
     this.seed,
+    this.anchorAnalysisLineId,
   }) {
     if (ownsInput && suggested > 0) qty.text = _bucketQtyText(suggested);
   }
@@ -224,6 +253,17 @@ class _ChildCascadeRow extends EditableGridRow {
 
   /// 树顶行挂回它的种子；非树顶行为 null。
   final _ChildCascadeSeed? seed;
+
+  /// 本行物料已经建过自制子件任务 / 委外前置自制任务时，那条锚点产品行
+  /// (MAKE_COMPONENT / SUBCONTRACT_MAKE) 的 id (2026-09-16)。
+  ///
+  /// 原来这类行一律「本页不重复下达，请到下达车间对那个任务排产」——可用户
+  /// 多选时恰恰会把父件和这些已建任务的子件一起勾上，改父件数量却没人跟着变。
+  /// 现在：锚点还有剩余可排量 (`canSchedule` 且 remainingQty > 0) 就直接按
+  /// 锚点产品行 (`analysisLineId`) 下达车间，追加到同一个任务上；剩余为 0 的
+  /// 才阻断 (canSchedule 资格闸早于数量校验，V577 没有也不该放开它)。
+  /// 车间段据此分流：有锚点走 planDrafts，没锚点走 candidateInputs。
+  final String? anchorAnalysisLineId;
 
   /// 快照里的物料行；「顶层产品且无 ROOT_SUPPLY 行」的树顶行为 null。
   final ProductionMaterialAnalysisMaterial? material;
@@ -554,22 +594,43 @@ abstract class _MaterialAnalysisChildCascadeState
     for (final children in childrenByParent.values) {
       children.sort(_compareBomSiblings);
     }
-    // 本批一起下达的行互为「已安排」：下达 P 又下达它的自制子件 C 时，C 以下
-    // 的料由 C 自己的数量驱动，不能再被 P 的数量重复展开一遍。
-    final anchors = <String, ({String? parentId, double divisor})>{};
+    // 2026-09-16 起勾选行之间按 BOM 祖先关系合并成树：先解析每颗种子的展开
+    // 起点，按层级从浅到深处理；祖先展开时撞上「也被勾选」的后代，不再跳过，
+    // 而是把它当普通下层行留在祖先树里并标记 absorbedBy，轮到它自己时不再
+    // 单独成树。原来这里是「本批一起下达的行互为已安排：撞上就 continue」，
+    // 每个勾选行各成一棵树、互不驱动——用户改顶层数量，其它勾选行纹丝不动。
+    // 只有真被祖先展开到的才会被吸收：中间隔着采购件 (采购不下钻)、或展开
+    // 被行数/层数上限截断时，后代仍各自成树，与原行为一致。
+    for (final seed in seeds) {
+      seed.absorbedBy = null;
+    }
+    final byLine = {
+      for (final material in analysis.materials)
+        material.materialLineId: material,
+    };
+    final anchors =
+        <String, ({String? parentId, double divisor, int depth, int order})>{};
     final seedByAnchor = <String, _ChildCascadeSeed>{};
     for (final seed in seeds) {
       final resolved = _resolveCascadeAnchor(seed, analysis, indexes);
       if (resolved == null) continue;
+      final anchorMaterial = byLine[resolved.parentId];
       anchors[resolved.key] = (
         parentId: resolved.parentId,
         divisor: resolved.divisor,
+        // 层级用来决定处理顺序：祖先一定先于后代展开，后代才有机会被吸收。
+        depth: anchorMaterial == null
+            ? 0
+            : (anchorMaterial.isRootSupply ? 0 : anchorMaterial.level),
+        order: anchors.length,
       );
       seedByAnchor[resolved.key] = seed;
     }
-    final seedAnchorMaterialIds = {
+    // 后代种子的展开起点 (物料行 id) → 种子；祖先展开撞上时据此吸收。
+    final seedByAnchorMaterialId = <String, _ChildCascadeSeed>{
       for (final entry in anchors.entries)
-        if (entry.value.parentId != null) entry.value.parentId!,
+        if (entry.value.parentId != null)
+          entry.value.parentId!: seedByAnchor[entry.key]!,
     };
     final nodes = <_CascadeNode>[];
     var rowLimitHit = false;
@@ -577,6 +638,7 @@ abstract class _MaterialAnalysisChildCascadeState
     var treeIndex = -1;
 
     void walk({
+      required _ChildCascadeSeed seed,
       required String? parentId,
       required String? parentMaterialLineId,
       required double parentPerProduct,
@@ -609,10 +671,16 @@ abstract class _MaterialAnalysisChildCascadeState
         }
         // SHIP / REFERENCE 不写正式生产需求（ADR-029 §4.1），不在办齐范围。
         if (_isNonProductionStage(child.controlStage)) continue;
-        // 本批已经单独下达的行：它的子树由它自己那条种子驱动。
-        if (seedAnchorMaterialIds.contains(child.materialLineId)) continue;
         // 环保护：只拦「自己是自己的祖先」，不拦兄弟分支重复用同一个物料。
         if (ancestors.contains(child.materialLineId)) continue;
+        // 撞上也被勾选的后代：吸收进本树 (第一次撞上的那棵树成为它的归属，
+        // 同一物料再从别的路径撞上只是多一条合并路径，与普通节点同款)。
+        final absorbedSeed = seedByAnchorMaterialId[child.materialLineId];
+        if (absorbedSeed != null &&
+            !identical(absorbedSeed, seed) &&
+            absorbedSeed.absorbedBy == null) {
+          absorbedSeed.absorbedBy = seed;
+        }
         final rate = parentPerProduct <= 0 || child.perProductQty <= 0
             ? null
             : child.perProductQty / parentPerProduct;
@@ -631,6 +699,9 @@ abstract class _MaterialAnalysisChildCascadeState
           scaled: rate != null,
           isSeed: false,
           seed: null,
+          absorbedSeed: absorbedSeed != null && !identical(absorbedSeed, seed)
+              ? absorbedSeed
+              : null,
         ));
         final group = indexes.groupsByLine[child.materialLineId];
         final route = group == null ? null : _draftRoute(group);
@@ -643,6 +714,7 @@ abstract class _MaterialAnalysisChildCascadeState
                 _hasProductionBomChildren(child, analysis));
         if (!descend) continue;
         walk(
+          seed: seed,
           parentId: child.materialLineId,
           parentMaterialLineId: child.materialLineId,
           parentPerProduct: child.perProductQty,
@@ -655,12 +727,18 @@ abstract class _MaterialAnalysisChildCascadeState
       }
     }
 
-    final byLine = {
-      for (final material in analysis.materials)
-        material.materialLineId: material,
-    };
-    for (final entry in anchors.entries) {
+    // 祖先先展开、后代后展开 (同层按勾选顺序)，后代才有机会被祖先吸收。
+    final ordered = anchors.entries.toList(growable: false)
+      ..sort((left, right) {
+        final byDepth = left.value.depth.compareTo(right.value.depth);
+        return byDepth != 0
+            ? byDepth
+            : left.value.order.compareTo(right.value.order);
+      });
+    for (final entry in ordered) {
       final seed = seedByAnchor[entry.key]!;
+      // 已被祖先那棵树吸收：它在祖先树里就是一行普通下层行，不再单独成树。
+      if (!seed.isTop) continue;
       final before = nodes.length;
       treeIndex++;
       // 树顶先占一行：本次要下达的那个件本身（用户口径「最上面就是点击下达
@@ -686,8 +764,10 @@ abstract class _MaterialAnalysisChildCascadeState
         scaled: true,
         isSeed: true,
         seed: seed,
+        absorbedSeed: null,
       ));
       walk(
+        seed: seed,
         parentId: entry.value.parentId,
         // 子行要挂到**树顶行的 row.id** 上，不是可能为 null 的 materialLineId：
         // 没有 ROOT_SUPPLY 行的顶层产品（子件任务、旧载荷）树顶 id 是
@@ -823,11 +903,28 @@ abstract class _MaterialAnalysisChildCascadeState
               key: group.key,
               paths: pathsBySubmitKey[submitKey] ?? group.paths,
             );
-      final residual = submitGroup == null
+      // 已建自制子件任务 / 委外前置自制任务的行 (2026-09-16)：可下达余量改按
+      // 那条锚点产品行的剩余可排量算，本页按锚点追加下达 (planDrafts)，不再
+      // 一律「本页不重复下达」。优先补自制的行仍按服务端补量口径走候选通道。
+      final anchor =
+          kind == _CascadeKind.workshop && !material.hasPriorityMakeSupplement
+          ? _taskChildProductOf(material)
+          : null;
+      final residual = anchor != null
+          ? (anchor.canSchedule ? anchor.remainingQty : 0.0)
+          : submitGroup == null
           ? 0.0
           : _residualSubmitQty(submitGroup, route);
       final grossNeed = ownsInput ? (gross[submitKey] ?? 0) : node.grossNeed;
-      final snapshotNeed = ownsInput
+      // 锚点接管过的行（2026-09-16）：需求账已经整块搬到锚点产品行上，物料行的
+      // requiredQty 归零（DELEGATED_TO_MAKE_CHILD）。若还拿 0 当「快照需求」，
+      // 超产量会等于整个毛需求，再叠上 batchNeed 就把下限算成毛需求的两倍。
+      // 这类行的快照口径改取锚点还能归需求的量，于是
+      // minQty = min(毛需求, 还可下达) + max(0, 毛需求 − 还可下达) = 毛需求，
+      // 正好是父件这一批真正要用的数，超出锚点剩余的部分按 V577 记公共备货。
+      final snapshotNeed = anchor != null
+          ? residual
+          : ownsInput
           ? (snapshot[submitKey] ?? 0)
           : material.requiredQty;
       final overspill = grossNeed - snapshotNeed > 0.0001
@@ -854,41 +951,78 @@ abstract class _MaterialAnalysisChildCascadeState
         final byPolicy = _defaultSubmitQty(submitGroup, route);
         if (byPolicy > suggested) suggested = byPolicy;
       }
-      rows.add(
-        _ChildCascadeRow(
-            material: material,
-            product: null,
-            groupKey: group?.key ?? 'NONE|${material.materialLineId}',
-            submitKey: submitKey,
-            depth: node.depth,
-            treeIndex: node.treeIndex,
-            seedLabel: node.seedLabel,
-            route: route,
-            kind: kind,
-            parentMaterialLineId: node.parentMaterialLineId,
-            parentPerProduct: node.parentPerProduct,
-            grossNeed: grossNeed,
-            pathGrossNeed: node.grossNeed,
-            snapshotNeed: snapshotNeed,
-            residual: residual,
-            overspill: overspill,
-            minQty: minQty,
-            suggested: suggested,
-            scaled: node.scaled,
-            ownsInput: ownsInput,
-            mergedPathCount: ownsInput ? (mergedCount[submitKey] ?? 1) : 1,
-            overCapped: overCapped,
-            isSeed: node.isSeed,
-            seed: node.seed,
-            blockedReason: ownsInput && !node.isSeed
-                ? _cascadeBlockedReason(material, group, route, kind)
-                : null,
-          )
-          ..seedUnitName = node.seed?.unitName
-          ..stats = _cascadeStats(material, ownsInput ? submitGroup : null),
-      );
+      final row =
+          _ChildCascadeRow(
+              material: material,
+              product: null,
+              groupKey: group?.key ?? 'NONE|${material.materialLineId}',
+              submitKey: submitKey,
+              depth: node.depth,
+              treeIndex: node.treeIndex,
+              seedLabel: node.seedLabel,
+              route: route,
+              kind: kind,
+              parentMaterialLineId: node.parentMaterialLineId,
+              parentPerProduct: node.parentPerProduct,
+              grossNeed: grossNeed,
+              pathGrossNeed: node.grossNeed,
+              snapshotNeed: snapshotNeed,
+              residual: residual,
+              overspill: overspill,
+              minQty: minQty,
+              suggested: suggested,
+              scaled: node.scaled,
+              ownsInput: ownsInput,
+              mergedPathCount: ownsInput ? (mergedCount[submitKey] ?? 1) : 1,
+              overCapped: overCapped,
+              isSeed: node.isSeed,
+              seed: node.seed,
+              anchorAnalysisLineId: anchor?.analysisLineId,
+              blockedReason: ownsInput && !node.isSeed
+                  ? _cascadeBlockedReason(material, group, route, kind, anchor)
+                  : null,
+            )
+            ..seedUnitName = node.seed?.unitName
+            ..stats = _cascadeStats(material, ownsInput ? submitGroup : null);
+      // 被祖先吸收的勾选行：分桶页填的车间/负责人带过来；数量默认跟祖先算
+      // (这正是用户要的「改顶层、其它一起变」)，只有分桶页填得比算出来的还多
+      // (明确想多做) 才当手工值保留——可以多不能少，且手工值不被祖先重算覆盖。
+      final absorbed = node.absorbedSeed;
+      if (absorbed != null && ownsInput) {
+        if (absorbed.departmentId?.isNotEmpty == true) {
+          row.departmentId.value = absorbed.departmentId;
+          row.departmentName = absorbed.departmentName;
+          row.workshopAutofilled = absorbed.workshopAutofilled;
+        }
+        if (absorbed.workerId?.isNotEmpty == true) {
+          row.workerId.value = absorbed.workerId;
+          row.workerName = absorbed.workerName;
+          row.workerAutofilled = absorbed.workerAutofilled;
+        }
+        if (row.blockedReason == null &&
+            absorbed.batchQty > row.suggested + 0.0001) {
+          row.qty.text = _bucketQtyText(absorbed.batchQty);
+          row.qtyTouched = true;
+          row.manualDriverQty = absorbed.batchQty;
+        }
+      }
+      rows.add(row);
     }
     return rows;
+  }
+
+  /// 本行物料在**最新快照**里的锚点产品行 (自制子件任务 / 委外前置自制任务)。
+  /// 车间段提交前按它复核「还能不能追加」；行对象上的 [anchorAnalysisLineId]
+  /// 只是建行时的快照。
+  ProductionMaterialAnalysisProduct? _cascadeAnchorProductOf(
+    _ChildCascadeRow row,
+  ) {
+    final analysis = _analysis;
+    if (analysis == null || row.anchorAnalysisLineId == null) return null;
+    final material = analysis.materials
+        .where((candidate) => candidate.materialLineId == row.id)
+        .firstOrNull;
+    return material == null ? null : _taskChildProductOf(material);
   }
 
   /// 库存/供给口径（与准备页主表逐列同义，见 _ChildCascadeRow.stats）。
@@ -975,6 +1109,7 @@ abstract class _MaterialAnalysisChildCascadeState
     _MaterialGroup? group,
     MaterialSupplyRoute route,
     _CascadeKind kind,
+    ProductionMaterialAnalysisProduct? anchor,
   ) {
     if (group == null) return '本行来源无法解析，请回主表核对';
     final planningBlock = _planningBlockForGroup(group);
@@ -985,27 +1120,30 @@ abstract class _MaterialAnalysisChildCascadeState
       if (!_canEditMaterialRoute(group)) return '本行已有下游行动，路线不可改，请回主表核对';
       // 主档来源为空时 _draftRoute 只能兜底委外——那是缺省值不是决定
       // （生产物料分析页 §3.4），不允许在这里替人确认。
-      if (material.sourceSuggestion == null &&
-          _rememberedRouteForGoods(
-                material.goodsId,
-                material.colorId,
-                material.unitId,
-              ) ==
-              null) {
+      if (material.sourceSuggestion == null) {
         return '主档来源为空，请先在主表确认路线';
       }
     }
     if (kind == _CascadeKind.workshop && !_canGenerate) {
       return '没有生成生产计划权限';
     }
-    // 已经建过自制子件任务 / 前置自制任务的行不能在本页再下一次：分析侧的
-    // 提交单元早已不可执行（主表与分桶页用 `_isExecutableSupplyGroup` 的
-    // MAKE 分支把它挡在外面），服务端的排产资格闸也在数量校验之前就 409，
-    // 一拒就把整条一键下单卡在车间段——而那时父件已经落库（2026-09-15）。
-    if (kind == _CascadeKind.workshop &&
-        _hasIssuedMakeOwnership(material) &&
-        !material.hasPriorityMakeSupplement) {
-      return '本行已建自制子件任务，请到「下达车间」对那个任务排产，本页不重复下达';
+    // 已经建过自制子件任务 / 前置自制任务的行 (2026-09-16 改口径)：不再一律
+    // 「本页不重复下达」，而是按那条锚点产品行追加下达——锚点还有剩余可排量
+    // 就能下 (超出部分按 V577 记公共备货)；剩余为 0 才阻断，因为服务端的
+    // 排产资格闸 (canSchedule) 早于数量校验，硬提交只会 409 把整条编排卡在
+    // 车间段。锚点解析不到但快照说已有生产计划的，按刷新处理。
+    if (kind == _CascadeKind.workshop && !material.hasPriorityMakeSupplement) {
+      if (anchor != null) {
+        if (!anchor.canSchedule) {
+          return anchor.scheduleBlockedReason ??
+              '本行的自制任务当前不可排产，请到「下达车间」核对';
+        }
+        if (anchor.remainingQty <= 0.0001) {
+          return '本行的自制任务需求已全部下达 (剩余 0)，多做的量无法在本页追加，请另立需求';
+        }
+      } else if (_hasIssuedMakeOwnership(material)) {
+        return '本行已有下达记录但解析不到对应的子件任务，请刷新物料分析后到「下达车间」核对';
+      }
     }
     if (kind != _CascadeKind.workshop && !_canNotify) {
       return '没有下达采购/委外权限';
@@ -1029,8 +1167,9 @@ abstract class _MaterialAnalysisChildCascadeState
   /// 「有没有被下单」由服务端口径的可下达余量决定，不靠界面猜。
   @override
   ({List<_ChildCascadeRow> rows, String? note}) _pendingChildCascadeRows(
-    List<_ChildCascadeSeed> seeds,
-  ) {
+    List<_ChildCascadeSeed> seeds, {
+    bool keepUnselectable = false,
+  }) {
     const none = (rows: <_ChildCascadeRow>[], note: null);
     if (!mounted || seeds.isEmpty) return none;
     final analysis = _analysis;
@@ -1066,6 +1205,16 @@ abstract class _MaterialAnalysisChildCascadeState
     final blocked = children
         .where((row) => row.blockedReason != null)
         .toList(growable: false);
+    // 树顶种子本身要在页面里填车间/负责人 (委外桶进来的 issue-plans 行) 时，
+    // 即便下层一行都不能勾也要进页——父件段没有车间就提交不了。
+    if (keepUnselectable) {
+      return (
+        rows: rows,
+        note: children.isEmpty
+            ? '下层都已由本批其它行接管或已下过单，本次只需为父件填车间/负责人'
+            : '下层 ${children.length} 行当前无需/不能在本页下单，本次只需为父件填车间/负责人',
+      );
+    }
     for (final row in rows) {
       row.dispose();
     }
@@ -1147,18 +1296,10 @@ abstract class _MaterialAnalysisChildCascadeState
         note: ok ? null : '父件未提交成功，下层未动，可直接重试',
       ));
       if (!ok) return results;
-      // 0.5) 委外前置自制任务下达车间。
-      //
-      // 有自制子层的委外件 notify 之后，服务端在同一事务里建的是一条
-      // `source_type='SUBCONTRACT_MAKE'` 的**分析产品行 + 台账**，既不出
-      // 生产计划、也不写路线。它随后只会静静躺在「下达车间 / 未下达」里，
-      // 而 ADR-081 §一 承诺的是「有子层级的委外自动添加到下达车间然后自动
-      // 下达车间」——缺的就是这一步（用户口径「下达了，委外那边没动静，
-      // 下达车间里也没有对应的已下达」）。
-      //
-      // 这里把它补上：按最新快照解析出刚建的前置自制产品行，用树顶那一行
-      // 填好的车间 / 负责人走一次 issue-plans。没有生成生产计划权限时不硬闯，
-      // 如实说明该找谁办（服务端 issue-plans 要 generate 权限）。
+      // 0.5) 走 notify 整量接管的委外种子：服务端在同一事务里建了「前置自制
+      // 任务」产品行，但不出计划、不写路线，需要再排一次产。2026-09-16 起这
+      // 只剩顶层供给行与无生成计划权限两种；非根的有子层委外件已在父件段用
+      // issue-plans 一步建好台账 + 锚点 + 计划，不进这一段。
       final premakeResult = await _issuePremakeAnchors(seeds);
       if (!mounted) return results;
       if (premakeResult != null) {
@@ -1394,6 +1535,19 @@ abstract class _MaterialAnalysisChildCascadeState
       final submittable = <_ChildCascadeRow>[];
       final dropped = <_ChildCascadeRow>[];
       for (final row in workshop) {
+        // 已有锚点任务的行按锚点产品行追加：资格看锚点 (canSchedule + 剩余)，
+        // 不看分析侧提交单元——后者对已建任务的 MAKE 组恒为不可执行。
+        if (row.anchorAnalysisLineId != null) {
+          final anchor = _cascadeAnchorProductOf(row);
+          if (anchor != null &&
+              anchor.canSchedule &&
+              anchor.remainingQty > 0.0001) {
+            submittable.add(row);
+          } else {
+            dropped.add(row);
+          }
+          continue;
+        }
         final group = _analysisGroupOf(row.groupKey);
         if (group != null && _isExecutableSupplyGroup(group, row.route)) {
           submittable.add(row);
@@ -1415,13 +1569,25 @@ abstract class _MaterialAnalysisChildCascadeState
       final ok = await _issueWorkshopPlans(
         candidateInputs: [
           for (final row in submittable)
-            _BucketCandidatePlanInput(
-              materialLineId: row.id,
-              qty: row.enteredQty,
-              departmentId: row.departmentId.value,
-              workshopName: row.departmentName,
-              workerId: row.workerId.value,
-            ),
+            if (row.anchorAnalysisLineId == null)
+              _BucketCandidatePlanInput(
+                materialLineId: row.id,
+                qty: row.enteredQty,
+                departmentId: row.departmentId.value,
+                workshopName: row.departmentName,
+                workerId: row.workerId.value,
+              ),
+        ],
+        planDrafts: [
+          for (final row in submittable)
+            if (row.anchorAnalysisLineId != null)
+              _BucketPlanDraft(
+                analysisLineId: row.anchorAnalysisLineId!,
+                qty: row.enteredQty,
+                departmentId: row.departmentId.value,
+                workshopName: row.departmentName,
+                workerId: row.workerId.value,
+              ),
         ],
         silent: true,
       );
@@ -1463,13 +1629,21 @@ abstract class _MaterialAnalysisChildCascadeState
 
   /// 把父件段刚建出来的「委外前置自制任务」一并下达车间。
   ///
-  /// 返回 null = 本批没有这类种子（纯车间入口 / 直接外发委外），不占一段。
+  /// 只有走 notify 整量接管的委外种子 (`subcontractMakeFirst`) 需要这一段——
+  /// 2026-09-16 起那只剩两种：**顶层供给行** (服务端 `candidateRoutesByMaterialLine`
+  /// 明确排除 ROOT_SUPPLY，根件不能当 issue-plans 候选，只能 notify 建台账再按
+  /// 锚点排产)，以及**没有生成生产计划权限**的账号。非根的有子层委外件已改走
+  /// issue-plans 的 ARRANGE 段，台账 + 锚点 + 计划同一事务建好，不进这里。
+  ///
+  /// 返回 null = 本批没有这类种子。
   Future<_CascadeStepResult?> _issuePremakeAnchors(
     List<_ChildCascadeSeed> seeds,
   ) async {
     final pending = seeds
         .where(
-          (seed) => seed.channel == _CascadeParentChannel.subcontractMakeFirst,
+          (seed) =>
+              seed.isTop &&
+              seed.channel == _CascadeParentChannel.subcontractMakeFirst,
         )
         .toList(growable: false);
     if (pending.isEmpty) return null;
@@ -1492,7 +1666,6 @@ abstract class _MaterialAnalysisChildCascadeState
         unresolved.add(seed.label);
         continue;
       }
-      seed.premakeAnalysisLineId = child.analysisLineId;
       // 已经排过产的锚点不再重复下达（重试 / 幂等回放时会走到这里）。
       if (_productExecutionStage(child) != null) continue;
       final remaining = child.remainingQty;
@@ -1799,6 +1972,22 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   }
 
   Map<_ChildCascadeSeed, double> _initialSeedQty = const {};
+
+  /// 树顶种子：没被祖先吸收的那些才进父件段、才算「本次将下达」。
+  List<_ChildCascadeSeed> get _topSeeds => [
+    for (final seed in widget.seeds)
+      if (seed.isTop) seed,
+  ];
+
+  /// 被祖先吸收的勾选行名单 (2026-09-16)：顶部提示要点名说清「这几行已并进
+  /// 上层树，数量随上层一起变」，否则用户会以为勾了的行被弄丢了。
+  ///
+  /// 每次读都按种子当前状态算：`absorbedBy` 在每次重建行集 (含父件提交后的
+  /// `_rebuildAfterParent`) 时会重新判定，缓存成字段会说出过期的话。
+  List<String> get _absorbedSeedNames => [
+    for (final seed in widget.seeds)
+      if (!seed.isTop) seed.label,
+  ];
 
   /// 记住用户**手工**取消过勾选的提交单元：重算、重试、折叠展开都不得替他
   /// 重新勾上（否则重试会下掉他明确排除的单）。程序性改动不计入。
@@ -2532,7 +2721,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     final noWorkshop = <String>[];
     final noWorker = <String>[];
     final over = <String>[];
-    for (final seed in widget.seeds) {
+    for (final seed in _topSeeds) {
       if (seed.batchQty <= 0 || !seed.batchQty.isFinite) {
         badQty.add('「${seed.label}」');
         continue;
@@ -2544,7 +2733,9 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       final raisedHere =
           (seed.batchQty - (_initialSeedQty[seed] ?? seed.batchQty)).abs() >
           0.0001;
-      if (raisedHere &&
+      // 委外桶改走 issue-plans 的行上一页没问过超量 (overQtyConfirmed=false)，
+      // 这里必须补问一次，不能静默放行。
+      if ((raisedHere || !seed.overQtyConfirmed) &&
           cap != null &&
           cap > 0 &&
           seed.batchQty > cap + 0.0001) {
@@ -2680,7 +2871,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           child: Text(
             [
               if (widget.parentAction != null && !_parentSubmitted)
-                '第一步先提交本次下达的父件（${widget.seeds.length} 行），成功后自动接着办下层。',
+                '第一步先提交本次下达的父件（${_topSeeds.length} 行），成功后自动接着办下层。',
               if (_parentSubmitted) '父件已在上一次执行中提交成功，本次只办下层。',
               '将按各自路线依次下达 ${selected.length} 行：',
               for (final entry in byKind.entries)
@@ -2735,7 +2926,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         results = [
           (
             label: '父件下达',
-            count: ok ? widget.seeds.length : 0,
+            count: ok ? _topSeeds.length : 0,
             ok: ok,
             note: ok
                 ? '下层未办理：本次一行都没有勾选，多做部分的料请回物料分析主表安排'
@@ -2750,7 +2941,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           rebuildAfterParent: parentPending
               ? () => _rebuildAfterParent(selectedKeys)
               : null,
-          parentCount: widget.seeds.length,
+          parentCount: _topSeeds.length,
         );
       }
     } finally {
@@ -2793,7 +2984,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   }
 
   Future<void> _confirmDiscard() async {
-    final seedNames = widget.seeds.map((seed) => seed.label).toList();
+    final seedNames = _topSeeds.map((seed) => seed.label).toList();
     final ok = await UtenDialog.show(
       context,
       title: '放弃本次下达？',
@@ -2989,7 +3180,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   /// 顶部提示：一句结论常驻，细则折叠。原来 8-10 行大段文字常驻顶部、
   /// 又在不可滚动的 Column 里，窄高窗口会把表格挤没甚至溢出。
   Widget _hintCard(ThemeData theme) {
-    final seedText = widget.seeds
+    final seedText = _topSeeds
         .map(
           (seed) =>
               '${seed.label} ${_host._qty(seed.batchQty)}'
@@ -2997,9 +3188,16 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         )
         .join('、');
     final submitted = widget.parentAction == null || _parentSubmitted;
+    // 被祖先吸收的勾选行要点名：用户勾了它，却在树顶名单里看不到，必须说清
+    // 它去了哪里、数量为什么会跟着上层变 (2026-09-16)。
+    final absorbedText = _absorbedSeedNames.isEmpty
+        ? ''
+        : '你同时勾选的 ${_absorbedSeedNames.length} 行'
+              '（${_names(_absorbedSeedNames)}）是上面这些件的下层，已并进对应的树里：'
+              '数量随上层本批数量一起算，车间/负责人沿用你在上一页填的。';
     final headline = submitted
-        ? '已下达：$seedText。下面是它按 BOM 展开的下层，数量已按本批数量算好，可以改。'
-        : '本次将下达：$seedText，以及下面按 BOM 展开的下层。点「一键下单」才会真正提交。';
+        ? '已下达：$seedText。下面是它按 BOM 展开的下层，数量已按本批数量算好，可以改。$absorbedText'
+        : '本次将下达：$seedText，以及下面按 BOM 展开的下层。点「一键下单」才会真正提交。$absorbedText';
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s8),
       decoration: BoxDecoration(
@@ -3401,6 +3599,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
             '采购 / 无子层委外超出部分需要超量下达权限。',
         textOf: (row) => row.qty.text,
         listenableOf: (row) => row.qty,
+        // 数量格下限监控的格内 ⓘ(44)计入量宽（2026-09-16）。
+        chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
         cellBuilder: (context, row) {
           // 树顶 = 父件本身：可改（改完驱动全部下层重算 + 作为父件段提交量）。
           if (row.isSeed) {
@@ -3431,13 +3631,20 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                       key: ValueKey(
                         'material-analysis-child-cascade-locked-qty-${row.id}',
                       ),
-                      message:
-                          '这一步是「把目标件整件接管过来自己先做」，服务端要求'
-                          '按剩余需求一次接满 ${_host._qty(seed.batchQty)}，所以数量不可改'
-                          '(改了整批会被退回)。\n'
-                          '想多做 / 想分批，请在下面的「前置自制任务」下达车间那一步填数量'
-                          '——那一步才是真正安排生产的地方，也可以超量。\n'
-                          '下层物料按这里的 ${_host._qty(seed.batchQty)} 配套算量。',
+                      message: _host._canGenerate
+                          ? '这是**顶层**委外件：服务端不接受顶层行直接排产，只能先'
+                                '「把它整件接管过来自己先做」，要求按剩余需求一次接满 '
+                                '${_host._qty(seed.batchQty)}，所以这里数量不可改。\n'
+                                '想多做 / 想分批，请在下面「前置自制任务下达车间」那一步填'
+                                '——那一步才是真正安排生产的地方，也可以超量。\n'
+                                '下层物料按这里的 ${_host._qty(seed.batchQty)} 配套算量。'
+                          : '当前账号没有生成生产计划权限，这一步只能走「把目标件整件'
+                                '接管过来自己先做」的通知通道：服务端要求按剩余需求一次'
+                                '接满 ${_host._qty(seed.batchQty)}，所以数量不可改。\n'
+                                '想多做 / 想分批，请让有生成生产计划权限的人从「下达委外」'
+                                '进来：非顶层的委外件那时数量可改、超量会跟到委外台账，'
+                                '前置自制任务也会同一步下达车间。\n'
+                                '下层物料按这里的 ${_host._qty(seed.batchQty)} 配套算量。',
                       triggerMode: TooltipTriggerMode.tap,
                       child: Icon(
                         Icons.help_outline_rounded,
@@ -3481,7 +3688,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
               alignment: Alignment.centerRight,
               child: Text(
                 '并入上方 ${_host._qty(row.pathGrossNeed)}',
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -3590,13 +3797,15 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         // 筛选值只给「阶段」这一段，不带数量：原来整句长文案当筛选值，
         // 每行自成一桶，表头筛选等于不可用。
         filterValueOf: _statusBucket,
+        // 单行省略号（2026-09-16 全站口径）+ 随整段文案自动加宽（封顶后
+        // 悬停 Tooltip 看全文——状态列是本页最关键的解释位，为什么被砍量、
+        // 并入哪张申请、为什么下不了）。
+        textOf: _statusLabel,
         cellBuilder: (context, row) => Tooltip(
-          // 状态列是本页最关键的解释位（为什么被砍量、并入哪张申请、
-          // 为什么下不了），两行省略号看不全就必须能悬停看全文。
           message: _statusLabel(row),
           child: Text(
             _statusLabel(row),
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
               color: row.blockedReason != null

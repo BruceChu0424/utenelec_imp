@@ -99,8 +99,28 @@ public class ClientSaveRequest {
     /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;
 
-    /** 默认货运策略（V592）；与其它字符串字段同口径整体覆盖。 */
+    /**
+     * 默认货运策略 (V592)；presence 语义同结账方式/币种：请求没带这个键=不动,
+     * 带了空串或 null=清空。
+     *
+     * <p>这一列会被保存销售订货单自动写回 (ClientDefaultTermsSyncService)。
+     * 若按「字符串字段整体覆盖」处理, 任何只提交部分字段的客户端都会把自动学到的
+     * 值抹成 null, 故与 defaultSettlementMethodId / defaultCurrencyId 一致走 presence。
+     */
     private String defaultShipmentPolicy;
+
+    @JsonIgnore
+    private boolean defaultShipmentPolicyPresent;
+
+    @JsonSetter("defaultShipmentPolicy")
+    public void setDefaultShipmentPolicy(String value) {
+        defaultShipmentPolicy = value;
+        defaultShipmentPolicyPresent = true;
+    }
+
+    public boolean hasDefaultShipmentPolicy() {
+        return defaultShipmentPolicyPresent;
+    }
 
     /** 默认币种（V592）；同结账方式 presence 语义：不带键=不动。 */
     private UUID defaultCurrencyId;

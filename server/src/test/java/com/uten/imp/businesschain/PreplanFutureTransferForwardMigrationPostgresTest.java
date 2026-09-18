@@ -62,8 +62,20 @@ class PreplanFutureTransferForwardMigrationPostgresTest {
             // V589 委外前置自制跟量(放宽公共备货形态守卫与批次 allocation 锚)。
             // V590 货品归属单一事实源(偏好表废弃删除)、V591 存量归属回填、
             // V592 客户默认销售条款、V593 采购/委外主档默认值。
-            // V594 日报审核补链放行(只 CREATE OR REPLACE 只增不改守卫函数)。
-            assertEquals(24,upgrade.migrationsExecuted);
+            // V594 日报审核补链放行(只 CREATE OR REPLACE 只增不改守卫函数)、
+            // V595 车间直送 v2(持续生产/直送供给两列 + 四函数 + 两索引)、
+            // V598 货品来源按路线确认历史回填(只 UPDATE goods.source_type 一列)。
+            // (V596 / V597 由并行分支 feat/iqc-stock-in-before-inspection 占号，
+            //  不在本树目录里；合并后此处每多一个迁移 +1。)
+            //
+            // 改这个数之前先确认 target/classes/db/migration 里没有改名前的残留
+            // 文件：Flyway 读的是 classpath 而不是 src，`mvn compile` 不会删掉已
+            // 被重命名/删除的旧资源，残留一个就凭空多算一条(本轮踩过一次)。
+            // V596 到货先入库后质检、V597 产成品先入库后质检(都只加列/守卫/权限码，不加表)、
+            // V599 开工路线确认与到货进展通知(段两列+三函数+事件白名单，不加表)、
+            // V600 庆典自动发送默认关(只 UPDATE system_settings 一行)。
+            // 改这个数之前先确认 server/target/classes/db/migration 没有改名残留的孤儿文件。
+            assertEquals(30,upgrade.migrationsExecuted);
             assertEquals(1405930679,db.queryForObject("SELECT checksum FROM flyway_schema_history WHERE version='569'",Integer.class));
             assertEquals(originalCancel,db.queryForObject("SELECT (to_jsonb(c)-'restore_to_source_qty'-'public_release_qty')::text FROM preplan_future_supply_transfer_cancellations c WHERE id=?",String.class,state.cancel()));
             assertEquals(originalTransfer,db.queryForObject("SELECT to_jsonb(t)::text FROM preplan_future_supply_transfers t WHERE id=?",String.class,state.transfer()));

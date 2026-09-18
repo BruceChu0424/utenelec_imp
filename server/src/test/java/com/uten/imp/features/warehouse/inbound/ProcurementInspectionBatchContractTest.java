@@ -46,7 +46,9 @@ class ProcurementInspectionBatchContractTest {
                 mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                 mock(com.uten.imp.common.finance.ProcurementReceiptConsiderationService.class),
-                mock(com.uten.imp.application.port.ProcurementInventoryValuePort.class));
+                mock(com.uten.imp.application.port.ProcurementInventoryValuePort.class),
+                mock(ProcurementIqcStockInService.class),
+                mock(com.uten.imp.application.port.ProductionInspectionStockInPort.class));
         UUID receiptId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 

@@ -51,11 +51,24 @@ class ClientFacetVisibilityConsistencyTest {
         service.facets(categoryId, true);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        // 23 visible facet fields, each issuing one bucket and one null-count query.
+        // 22 个白名单 facet 字段（empId 走专用 JOIN 聚合）各发一条桶查询 + 一条空值计数，
+        // 加上负责人（empId）的 JOIN 桶查询与空值计数，共 46 条。
         org.mockito.Mockito.verify(em, org.mockito.Mockito.times(46))
                 .createNativeQuery(sql.capture());
         assertThat(sql.getAllValues()).allSatisfy(statement -> assertThat(statement)
-                .contains("lower(code) not like 'legacy-fin-cl-%'")
+                .contains("legacy-fin-cl-%")
                 .contains("clients.owner_employee_id = :owners"));
+        // 负责人（empId）桶：JOIN employees 按 owner_employee_id 分组、label 出人名；
+        // 空值计数按 owner_employee_id is null（= 前端列「未分配」）。
+        assertThat(sql.getAllValues()).anySatisfy(statement -> {
+            assertThat(statement)
+                    .contains("join employees on employees.id = clients.owner_employee_id")
+                    .contains("group by employees.id, employees.full_name");
+        });
+        assertThat(sql.getAllValues()).anySatisfy(statement -> {
+            assertThat(statement)
+                    .contains("owner_employee_id is null")
+                    .doesNotContain("join employees");
+        });
     }
 }

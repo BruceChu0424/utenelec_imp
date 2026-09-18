@@ -5,8 +5,8 @@
 // 行级录入，支持跨币种委外）：
 //  - 多选行「统一设置条款」一次写全套（委外商+结算方式+币种+汇率+税率，留空保持原值）；
 //  - 行内点选结算方式/币种时，行处于多选选中态则联动填到所有选中行；
-//  - 「学习模式」：按货品记住上次委外订货的整套条款（/last-terms），下次自动带出
-//    （无记忆时回落默认：币种人民币、汇率 1、税率 0）；
+//  - 主档默认值预填：选货品后读货品与供应商主档的默认条款 (/last-terms) 自动带出，
+//    每次保存订单由服务端写回主档 (主档没有默认值时回落：币种人民币、汇率 1、税率 0)；
 //  - 保存走 createBatch 按「委外商+商业条款」组合自动拆单，每组条款归集到单头；
 //  - 数量允许超过申请剩余量（超委外备货，2026-09 放开上限）；重量无上限；
 //  - 每行末尾「备注」列，随行提交 remark；
@@ -25,7 +25,9 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_drafts_button.dart';
 import '../../../components/buttons/uten_edit_floating_actions.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -138,7 +140,7 @@ class _SubcontractOrderEditPageState
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
-  // 币种默认（人民币 id）：新建行无记忆时的回落默认。
+  // 币种默认 (人民币 id)：主档没有默认币种时的回落默认。
   String? _defaultCurrencyId;
   int _termsLoadGeneration = 0;
 
@@ -184,8 +186,8 @@ class _SubcontractOrderEditPageState
     if (mounted) setState(() => _loading = false);
   }
 
-  /// 空白行带条款默认（币种人民币/汇率 1/税率 0）：学习记忆只在字段为空时回填，
-  /// 先给默认会被记忆覆盖——顺序是「学习预填 → 默认兜底」，空白行直接给默认。
+  /// 空白行带条款默认 (币种人民币/汇率 1/税率 0)：主档默认值只在字段为空时回填，
+  /// 先给默认会挡住主档值——顺序是「主档预填 → 默认兜底」，空白行直接给默认。
   SubcontractGridRow _blankRow() => SubcontractGridRow()
     ..currencyId = _defaultCurrencyId
     ..exchangeRate.text = '1'
@@ -291,6 +293,9 @@ class _SubcontractOrderEditPageState
       }
       if (rows.isEmpty) throw StateError('所选委外申请明细缺少有效货品');
       _grid.replaceAll(rows);
+      // 进页默认全选（2026-09-17 用户口径，与采购订货单同款）：勾选=本次要
+      // 生成订货的行，保存只认勾选行；默认全选让「带单进来直接保存」行为不变。
+      _grid.setSelected(rows, true);
       await _prefillRememberedTerms();
       final dates =
           open
@@ -413,13 +418,16 @@ class _SubcontractOrderEditPageState
       ..colorId = g.colorId
       ..unitId = g.unitId
       ..stockPlaceNotifier.value = g.stockPlace;
-    // 换货品后按「学习记忆」预填该货品上次委外订货的整套条款（不覆盖已选值）。
+    // 新建态手工选了货品 = 这行要进本次订货：自动勾上（保存按钮只认勾选行）。
+    if (_isCreate) _grid.setSelected([row], true);
+    // 换货品后按主档默认值预填该货品的整套条款 (不覆盖已选值)。
     await _prefillRememberedTerms();
   }
 
-  /// 行级条款「学习预填」（/last-terms）：按货品查最近一次委外订货的整套条款，
-  /// 回填各行尚未填的字段（委外商只回填启用中的；条款字典外的死值跳过）。
-  /// 记忆未覆盖的字段回落默认（币种人民币/汇率 1/税率 0）。失败静默（提效加分项）。
+  /// 行级条款主档默认值预填 (/last-terms)：读货品与供应商主档的默认条款，
+  /// 回填各行尚未填的字段 (委外商只回填启用中的；条款字典外的死值跳过)。
+  /// 主档没给的字段回落默认 (币种人民币/汇率 1/税率 0)。失败静默 (提效加分项)。
+  /// 方法名 _prefillRememberedTerms 是历史遗留，语义自 V593 起是主档默认值。
   Future<void> _prefillRememberedTerms() async {
     final generation = ++_termsLoadGeneration;
     final session = ref.read(sessionProvider);
@@ -513,7 +521,7 @@ class _SubcontractOrderEditPageState
     if (changed && mounted) setState(() {});
   }
 
-  /// 记忆未覆盖时回落默认：币种人民币、汇率 1、税率 0（结算方式无全局默认，
+  /// 主档没给时回落默认：币种人民币、汇率 1、税率 0 (结算方式无全局默认，
   /// 由供应商主档默认 V452 在选商后预填）。
   bool _applyTermDefaults(SubcontractGridRow r) {
     var changed = false;
@@ -694,6 +702,8 @@ class _SubcontractOrderEditPageState
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
     }
     if (!mounted) return;
+    // 本次引入触达的行（新加行 + 被并入的既有行）：新建态自动勾上。
+    final touched = <SubcontractGridRow>[];
     // V463：同「货品+颜色+单位」的引入项并入既有行（数量加总、来源聚合）。
     for (final li in result.items) {
       if (li.goodsId.isEmpty) continue;
@@ -727,10 +737,14 @@ class _SubcontractOrderEditPageState
           ...row.upstreamItemIds,
         ];
         existing.sourceDocs = [...existing.sourceDocs, ...row.sourceDocs];
+        touched.add(existing);
         hit = true;
         break;
       }
-      if (!hit) _grid.addRow(row);
+      if (!hit) {
+        _grid.addRow(row);
+        touched.add(row);
+      }
     }
     _grid.removeWhere(
       (r) =>
@@ -738,6 +752,7 @@ class _SubcontractOrderEditPageState
           r.qty.text.trim().isEmpty &&
           r.price.text.trim().isEmpty,
     );
+    if (_isCreate) _grid.setSelected(touched, true);
     await _prefillRememberedTerms();
   }
 
@@ -773,13 +788,35 @@ class _SubcontractOrderEditPageState
       }
       return;
     }
-    final rows = _grid.rows.where((r) => r.goods != null).toList();
+    // 新建态只提交勾选行（2026-09-17 用户口径，与采购订货单同款）；
+    // 编辑既有单保持整单保存（行选择只是批量条款的助手，不能悄悄丢行）。
+    final candidate = _isCreate ? _grid.selectedRows : _grid.rows;
+    final rows = candidate.where((r) => r.goods != null).toList();
     if (rows.isEmpty) {
-      context.appError('请至少添加一条明细');
+      context.appError(_isCreate ? '请先勾选要生成订货的明细行' : '请至少添加一条明细');
       return;
     }
+    // 有货品却未勾选的行：提交前明确告知去向，防「取消勾选=静默丢数据」。
+    if (_isCreate) {
+      final excluded = _grid.rows
+          .where((r) => r.goods != null && !_grid.isSelected(r))
+          .length;
+      if (excluded > 0) {
+        final confirmed = await UtenDialog.show(
+          context,
+          title: '有 $excluded 行明细未勾选',
+          confirmLabel: '只提交勾选行',
+          content: Text(
+            '本次只提交勾选的 ${rows.length} 行；未勾选的 $excluded 行不会生成订货：'
+            '来源申请行仍保留待分解（可稍后再下单），手工添加的行不会被保存。',
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+      }
+    }
     // 行级条款完整性：委外商/结算方式/币种必填，汇率>0，税率 0-100；
-    // 数量>0、单价合法、填了实际重量则>0。
+    // 数量>0、单价合法、填了实际重量则>0。未勾选行不进本次提交，也不参与校验。
+    final submitted = rows.toSet();
     // 判定条件不变，只改暴露方式：一批几十行时逐行 return 只说第一处，用户改一行
     // 提交一次、被同一批问题反复拦下；这里按问题类别把**全部**违规行收齐后一次说完。
     final missingSupplier = <String>[];
@@ -797,7 +834,7 @@ class _SubcontractOrderEditPageState
         '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}）';
     for (var i = 0; i < gridRows.length; i++) {
       final r = gridRows[i];
-      if (r.goods == null) continue;
+      if (r.goods == null || !submitted.contains(r)) continue;
       final label = labelOf(i, r);
       if (r.supplierId == null) missingSupplier.add(label);
       if (r.settlementMethodId == null) missingSettlement.add(label);
@@ -861,7 +898,7 @@ class _SubcontractOrderEditPageState
     final stoppedSettlement = <String>[];
     for (var i = 0; i < gridRows.length; i++) {
       final r = gridRows[i];
-      if (r.goods == null) continue;
+      if (r.goods == null || !submitted.contains(r)) continue;
       if (!settlementEntries.containsKey(r.settlementMethodId)) {
         stoppedSettlement.add(labelOf(i, r));
       }
@@ -1058,312 +1095,347 @@ class _SubcontractOrderEditPageState
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _loading
           ? null
-          : UtenEditFloatingActions(
-              onCancel: () => popOrBackTo(context, defaultPath: '/subcontract'),
-              onSave: _save,
-              saving: _saving,
-              saveLabel: _canSubmitFinance ? '保存并提交财务审核' : '保存订货单草稿',
-              saveIcon: _canSubmitFinance
-                  ? Icons.send_outlined
-                  : Icons.save_outlined,
+          // 新建态保存只认勾选行：监听表格选择集，一条有货品的行都没勾时
+          // 保存置灰（2026-09-17 用户口径：没选不给点），灰态点击说明原因。
+          : ListenableBuilder(
+              listenable: _grid,
+              builder: (context, _) {
+                final hasCheckedLine =
+                    !_isCreate ||
+                    _grid.selectedRows.any((r) => r.goods != null);
+                return UtenEditFloatingActions(
+                  onCancel: () =>
+                      popOrBackTo(context, defaultPath: '/subcontract'),
+                  onSave: !hasCheckedLine ? null : _save,
+                  saving: _saving,
+                  saveLabel: _canSubmitFinance ? '保存并提交财务审核' : '保存订货单草稿',
+                  saveIcon: _canSubmitFinance
+                      ? Icons.send_outlined
+                      : Icons.save_outlined,
+                  saveDisabledHint: hasCheckedLine
+                      ? null
+                      : '请先在明细表勾选要生成订货的行（未勾选的行不会生成订货）',
+                );
+              },
             ),
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenGridPageScrollbar(
-                pinned: _gridPinned,
-                controller: _scrollCtl,
-                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
-                // 恒在屏幕最右，不随限宽容器/列宽漂移。
-                child: UtenContentContainer(
-                  child: ListView(
+        child: Stack(
+          children: [
+            _loading
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : UtenGridPageScrollbar(
+                    pinned: _gridPinned,
                     controller: _scrollCtl,
-                    // 底部多留一个悬浮组的高度，最后一行明细不被「取消/保存」压住。
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenFloatingActionGroup.scrollClearance,
-                    ),
-                    children: [
-                      if (_isCreate) ...[
-                        _orderSourceBanner(theme),
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              UtenFormGrid(
-                                children: [
-                                  TextFormField(
-                                    errorBuilder: utenTextFieldErrorBuilder,
-                                    readOnly: true,
-                                    controller: _billNo,
-                                    decoration: UtenInputDecoration(
-                                      InputDecoration(
-                                        labelText: '单据号',
-                                        hintText: _billNo.text.isEmpty
-                                            ? '保存后自动生成'
-                                            : null,
-                                        filled: _billNo.text.isEmpty,
-                                        suffixIcon: _billNo.text.isEmpty
-                                            ? const Icon(
-                                                Icons.autorenew_outlined,
-                                                size: 18,
-                                              )
-                                            : const Icon(
-                                                Icons.lock_outline,
-                                                size: 16,
-                                              ),
-                                      ),
-                                    ),
-                                  ),
-                                  ...utenMakerAuditCells(
-                                    ref,
-                                    makerName: _makerName,
-                                    createdAt: _createdAt,
-                                  ),
-                                  UtenDateField(
-                                    label: '单据日期',
-                                    required: true,
-                                    value: _billDate,
-                                    onChanged: (d) =>
-                                        setState(() => _billDate = d),
-                                  ),
-                                  _employeePicker(
-                                    label: '采购员',
-                                    currentId: _purchaserId,
-                                    onChanged: (id) =>
-                                        setState(() => _purchaserId = id),
-                                  ),
-                                  UtenDateField(
-                                    label: '交货日期',
-                                    value: _deliverDate,
-                                    onChanged: (d) =>
-                                        setState(() => _deliverDate = d),
-                                  ),
-                                  if (_grid.rows.any(
-                                    (row) => !row.sourceLocked,
-                                  ))
-                                    UtenDropdownField(
-                                      key: const Key(
-                                        'subcontract-preparation-warehouse',
-                                      ),
-                                      label: workflowFieldText(
-                                        context,
-                                      ).subcontractPreparationWarehouse,
-                                      info: workflowFieldText(
-                                        context,
-                                      ).subcontractPreparationWarehouseHint,
-                                      value: _warehouseId,
-                                      enabled: !_saving,
-                                      items: warehouseHierarchyItems(
-                                        names.warehouseHierarchy,
-                                        currentValue: _warehouseId,
-                                      ),
-                                      onChanged: (id) =>
-                                          setState(() => _warehouseId = id),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              TextField(
-                                controller: _remark,
-                                decoration: const InputDecoration(
-                                  labelText: '单据备注',
-                                ),
-                                maxLines: 2,
-                              ),
-                            ],
-                          ),
+                    // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                    // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                    child: UtenContentContainer(
+                      child: ListView(
+                        controller: _scrollCtl,
+                        // 底部多留一个悬浮组的高度，最后一行明细不被「取消/保存」压住。
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.scrollClearance,
                         ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      // 委外订货单附件：已有单直接挂 SUBCONTRACT_ORDER；新建单先本地暂存，
-                      // 拆单生成后逐张确认上传，再提交财务（ADR-074）。
-                      if (!_isCreate)
-                        BusinessAttachmentSection(
-                          ownerType: 'SUBCONTRACT_ORDER',
-                          ownerId: widget.id!,
-                          canView: ref
-                              .watch(currentPermissionsProvider)
-                              .contains(Perm.attachmentView),
-                          // 进入编辑页即已确认可写；对象范围与状态由服务端附件策略再校验。
-                          canManage: true,
-                          title: '附件（合同/加工要求/图片）',
-                          categories: const ['合同', '加工要求', '图片', '其他'],
-                        )
-                      else ...[
-                        if (_createdOrders != null)
-                          const PendingAttachmentRetryNotice(
-                            documentLabel: '委外订货单',
-                          ),
-                        BusinessAttachmentSection.draft(
-                          key: const ValueKey(
-                            'subcontract-order-draft-attachments',
-                          ),
-                          controller: _pendingFiles,
-                          canManage: ref
-                              .watch(currentPermissionsProvider)
-                              .contains(Perm.subcontractOrderCreate),
-                          title: '附件（合同/加工要求/图片）',
-                          categories: const ['合同', '加工要求', '图片', '其他'],
-                        ),
-                      ],
-                      const SizedBox(height: UtenSpacing.s12),
-                      // 「明细 (N)」标题行 2026-09-11 撤除；同日「从上游引入」也并入
-                      // 明细表工具条，与「表头设置」同排同高（不再单独占一行）。
-                      // 2026-09-14：与采购订货单同改——「统一设置条款」只挂行右键菜单，
-                      // 而条款格是输入框/下拉，右键会被输入框自带菜单吃掉，等于零可见
-                      // 入口。补这行常驻提示指明入口；不加窄屏门控（宽屏桌面同样看不见）。
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline_rounded,
-                              size: 18,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: UtenSpacing.s8),
-                            Expanded(
-                              child: Text(
-                                '勾选多行后在选中行上右键（触屏长按）可「统一设置条款」，'
-                                '一次写全套委外商、结算方式、币种、汇率、税率（留空的保持原值）；'
-                                '右键请点在非输入框的位置，例如行首复选框或货品名称一列。',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
+                        children: [
+                          if (_isCreate) ...[
+                            _orderSourceBanner(theme),
+                            const SizedBox(height: UtenSpacing.s12),
                           ],
-                        ),
-                      ),
-                      // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
-                      Builder(
-                        builder: (_) {
-                          final columnPrefs = ref.watch(
-                            subcontractOrderGridColumnPrefsProvider,
-                          )['order'];
-                          return UtenEditableGrid<SubcontractGridRow>(
-                            controller: _grid,
-                            stickyHeaderPinned: _gridPinned,
-                            showColumnSettings: true,
-                            initialColumnOrder: columnPrefs?.order,
-                            initialHiddenColumnKeys: columnPrefs?.hidden,
-                            onColumnSettingsChanged: (order, hidden) => ref
-                                .read(
-                                  subcontractOrderGridColumnPrefsProvider
-                                      .notifier,
-                                )
-                                .updateFor('order', order, hidden),
-                            toolbarActions: [
-                              UtenImportButton(
-                                label: '从上游引入',
-                                onPressed: _importFromUpstream,
-                              ),
-                            ],
-                            // 「统一设置条款」2026-09-11 从工具条撤到行右键菜单
-                            // （与采购订货单同改：多选右键已有入口，工具条上重复）。
-                            rowMenuExtraBuilder: (ctx, selected) => [
-                              UtenMenuItem(
-                                label: '统一设置条款 (${selected.length})',
-                                icon: Icons.tune_rounded,
-                                enabled: selected.isNotEmpty,
-                                onTap: _batchSetTerms,
-                              ),
-                            ],
-                            columns: subcontractGridColumns(
-                              _pickGoods,
-                              _cfg,
-                              context: context,
-                              unitEntries: names.unitEntries,
-                              supplierEntries: _supplierDropdownEntries(),
-                              supplierRequired: true,
-                              onPickSupplier: _pickRowSupplier,
-                              // 行级商业条款（2026-09）：单头不再录，逐行选择/填写。
-                              showCommercial: true,
-                              currencyEntries: names.currencyEntries,
-                              settlementEntries:
-                                  ref
-                                      .watch(settlementMethodOptionsProvider)
-                                      .valueOrNull
-                                      ?.asEntries() ??
-                                  const {},
-                              onPickCurrency: (row) =>
-                                  (value) => _applyRowTerm(
-                                    row,
-                                    (r) => r.currencyId = value,
-                                    clearKey: 'currency',
-                                  ),
-                              onPickSettlement: (row) =>
-                                  (value) => _applyRowTerm(row, (r) {
-                                    r.settlementMethodId = value;
-                                  }, clearKey: 'settlement'),
-                              // 每行末尾备注列。
-                              showRemark: true,
-                            ),
-                            // 合计条（全站统一口径）：底部固定操作条 2026-09-11 改
-                            // 右下角悬浮后合计回到表尾。数量按单位分组绝不相加；
-                            // 订货条款行级，只有全单币种唯一时才标注币种。
-                            footer: EditableGridTotalsBar<SubcontractGridRow>(
-                              key: const Key('subcontract-order-edit-totals'),
-                              controller: _grid,
-                              watchOf: (row) => [row.qty],
-                              entriesBuilder: (rows) {
-                                final currencyIds = rows
-                                    .map((row) => row.currencyId)
-                                    .whereType<String>()
-                                    .where((id) => id.isNotEmpty)
-                                    .toSet();
-                                return [
-                                  utenQuantityTotalEntry(
-                                    rows
-                                        .where((row) => row.goods != null)
-                                        .map(
-                                          (row) => MeasuredAmount(
-                                            value:
-                                                double.tryParse(
-                                                  row.qty.text.trim(),
-                                                ) ??
-                                                0,
-                                            unitId: row.unitId,
-                                            unitName:
-                                                names.unitEntries[row.unitId],
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(UtenSpacing.s12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  UtenFormGrid(
+                                    children: [
+                                      TextFormField(
+                                        errorBuilder: utenTextFieldErrorBuilder,
+                                        readOnly: true,
+                                        controller: _billNo,
+                                        decoration: UtenInputDecoration(
+                                          InputDecoration(
+                                            labelText: '单据号',
+                                            hintText: _billNo.text.isEmpty
+                                                ? '保存后自动生成'
+                                                : null,
+                                            filled: _billNo.text.isEmpty,
+                                            suffixIcon: _billNo.text.isEmpty
+                                                ? const Icon(
+                                                    Icons.autorenew_outlined,
+                                                    size: 18,
+                                                  )
+                                                : const Icon(
+                                                    Icons.lock_outline,
+                                                    size: 16,
+                                                  ),
                                           ),
                                         ),
+                                      ),
+                                      ...utenMakerAuditCells(
+                                        ref,
+                                        makerName: _makerName,
+                                        createdAt: _createdAt,
+                                      ),
+                                      UtenDateField(
+                                        label: '单据日期',
+                                        required: true,
+                                        value: _billDate,
+                                        onChanged: (d) =>
+                                            setState(() => _billDate = d),
+                                      ),
+                                      _employeePicker(
+                                        label: '采购员',
+                                        currentId: _purchaserId,
+                                        onChanged: (id) =>
+                                            setState(() => _purchaserId = id),
+                                      ),
+                                      UtenDateField(
+                                        label: '交货日期',
+                                        value: _deliverDate,
+                                        onChanged: (d) =>
+                                            setState(() => _deliverDate = d),
+                                      ),
+                                      if (_grid.rows.any(
+                                        (row) => !row.sourceLocked,
+                                      ))
+                                        UtenDropdownField(
+                                          key: const Key(
+                                            'subcontract-preparation-warehouse',
+                                          ),
+                                          label: workflowFieldText(
+                                            context,
+                                          ).subcontractPreparationWarehouse,
+                                          info: workflowFieldText(
+                                            context,
+                                          ).subcontractPreparationWarehouseHint,
+                                          value: _warehouseId,
+                                          enabled: !_saving,
+                                          items: warehouseHierarchyItems(
+                                            names.warehouseHierarchy,
+                                            currentValue: _warehouseId,
+                                          ),
+                                          onChanged: (id) =>
+                                              setState(() => _warehouseId = id),
+                                        ),
+                                    ],
                                   ),
-                                  UtenTotalEntry(
-                                    utenAmountTotalLabel(
-                                      currencyIds.length == 1
-                                          ? financeCurrencyDisplayLabel(
-                                              name: names.currency(
-                                                currencyIds.first,
-                                              ),
-                                            )
-                                          : null,
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  TextField(
+                                    controller: _remark,
+                                    decoration: const InputDecoration(
+                                      labelText: '单据备注',
                                     ),
-                                    _grid.totalListenable.value.toStringAsFixed(
-                                      2,
-                                    ),
-                                    danger: true,
+                                    maxLines: 2,
                                   ),
-                                ];
-                              },
+                                ],
+                              ),
                             ),
-                            createBlankRow: _blankRow,
-                            cloneRow: (r) => r.clone(),
-                            // V304：订货单放开手工行（委外自建订货单，无申请来源）。
-                          );
-                        },
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          // 委外订货单附件：已有单直接挂 SUBCONTRACT_ORDER；新建单先本地暂存，
+                          // 拆单生成后逐张确认上传，再提交财务（ADR-074）。
+                          if (!_isCreate)
+                            BusinessAttachmentSection(
+                              ownerType: 'SUBCONTRACT_ORDER',
+                              ownerId: widget.id!,
+                              canView: ref
+                                  .watch(currentPermissionsProvider)
+                                  .contains(Perm.attachmentView),
+                              // 进入编辑页即已确认可写；对象范围与状态由服务端附件策略再校验。
+                              canManage: true,
+                              title: '附件（合同/加工要求/图片）',
+                              categories: const ['合同', '加工要求', '图片', '其他'],
+                            )
+                          else ...[
+                            if (_createdOrders != null)
+                              const PendingAttachmentRetryNotice(
+                                documentLabel: '委外订货单',
+                              ),
+                            BusinessAttachmentSection.draft(
+                              key: const ValueKey(
+                                'subcontract-order-draft-attachments',
+                              ),
+                              controller: _pendingFiles,
+                              canManage: ref
+                                  .watch(currentPermissionsProvider)
+                                  .contains(Perm.subcontractOrderCreate),
+                              title: '附件（合同/加工要求/图片）',
+                              categories: const ['合同', '加工要求', '图片', '其他'],
+                            ),
+                          ],
+                          const SizedBox(height: UtenSpacing.s12),
+                          // 「明细 (N)」标题行 2026-09-11 撤除；同日「从上游引入」也并入
+                          // 明细表工具条，与「表头设置」同排同高（不再单独占一行）。
+                          // 2026-09-14：与采购订货单同改——「统一设置条款」只挂行右键菜单，
+                          // 而条款格是输入框/下拉，右键会被输入框自带菜单吃掉，等于零可见
+                          // 入口。补这行常驻提示指明入口；不加窄屏门控（宽屏桌面同样看不见）。
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s8,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 18,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    '勾选多行后在选中行上右键（触屏长按）可「统一设置条款」，'
+                                    '一次写全套委外商、结算方式、币种、汇率、税率（留空的保持原值）；'
+                                    '右键请点在非输入框的位置，例如行首复选框或货品名称一列。',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
+                          Builder(
+                            builder: (_) {
+                              final columnPrefs = ref.watch(
+                                subcontractOrderGridColumnPrefsProvider,
+                              )['order'];
+                              return UtenEditableGrid<SubcontractGridRow>(
+                                controller: _grid,
+                                stickyHeaderPinned: _gridPinned,
+                                showColumnSettings: true,
+                                initialColumnOrder: columnPrefs?.order,
+                                initialHiddenColumnKeys: columnPrefs?.hidden,
+                                onColumnSettingsChanged: (order, hidden) => ref
+                                    .read(
+                                      subcontractOrderGridColumnPrefsProvider
+                                          .notifier,
+                                    )
+                                    .updateFor('order', order, hidden),
+                                toolbarActions: [
+                                  UtenImportButton(
+                                    label: '从上游引入',
+                                    onPressed: _importFromUpstream,
+                                  ),
+                                ],
+                                // 「统一设置条款」2026-09-11 从工具条撤到行右键菜单
+                                // （与采购订货单同改：多选右键已有入口，工具条上重复）。
+                                rowMenuExtraBuilder: (ctx, selected) => [
+                                  UtenMenuItem(
+                                    label: '统一设置条款 (${selected.length})',
+                                    icon: Icons.tune_rounded,
+                                    enabled: selected.isNotEmpty,
+                                    onTap: _batchSetTerms,
+                                  ),
+                                ],
+                                columns: subcontractGridColumns(
+                                  _pickGoods,
+                                  _cfg,
+                                  context: context,
+                                  unitEntries: names.unitEntries,
+                                  supplierEntries: _supplierDropdownEntries(),
+                                  supplierRequired: true,
+                                  onPickSupplier: _pickRowSupplier,
+                                  // 行级商业条款（2026-09）：单头不再录，逐行选择/填写。
+                                  showCommercial: true,
+                                  currencyEntries: names.currencyEntries,
+                                  settlementEntries:
+                                      ref
+                                          .watch(
+                                            settlementMethodOptionsProvider,
+                                          )
+                                          .valueOrNull
+                                          ?.asEntries() ??
+                                      const {},
+                                  onPickCurrency: (row) =>
+                                      (value) => _applyRowTerm(
+                                        row,
+                                        (r) => r.currencyId = value,
+                                        clearKey: 'currency',
+                                      ),
+                                  onPickSettlement: (row) =>
+                                      (value) => _applyRowTerm(row, (r) {
+                                        r.settlementMethodId = value;
+                                      }, clearKey: 'settlement'),
+                                  // 每行末尾备注列。
+                                  showRemark: true,
+                                ),
+                                // 合计条（全站统一口径）：底部固定操作条 2026-09-11 改
+                                // 右下角悬浮后合计回到表尾。数量按单位分组绝不相加；
+                                // 订货条款行级，只有全单币种唯一时才标注币种。
+                                footer:
+                                    EditableGridTotalsBar<SubcontractGridRow>(
+                                      key: const Key(
+                                        'subcontract-order-edit-totals',
+                                      ),
+                                      controller: _grid,
+                                      watchOf: (row) => [row.qty],
+                                      entriesBuilder: (rows) {
+                                        final currencyIds = rows
+                                            .map((row) => row.currencyId)
+                                            .whereType<String>()
+                                            .where((id) => id.isNotEmpty)
+                                            .toSet();
+                                        return [
+                                          utenQuantityTotalEntry(
+                                            rows
+                                                .where(
+                                                  (row) => row.goods != null,
+                                                )
+                                                .map(
+                                                  (row) => MeasuredAmount(
+                                                    value:
+                                                        double.tryParse(
+                                                          row.qty.text.trim(),
+                                                        ) ??
+                                                        0,
+                                                    unitId: row.unitId,
+                                                    unitName:
+                                                        names.unitEntries[row
+                                                            .unitId],
+                                                  ),
+                                                ),
+                                          ),
+                                          UtenTotalEntry(
+                                            utenAmountTotalLabel(
+                                              currencyIds.length == 1
+                                                  ? financeCurrencyDisplayLabel(
+                                                      name: names.currency(
+                                                        currencyIds.first,
+                                                      ),
+                                                    )
+                                                  : null,
+                                            ),
+                                            _grid.totalListenable.value
+                                                .toStringAsFixed(2),
+                                            danger: true,
+                                          ),
+                                        ];
+                                      },
+                                    ),
+                                createBlankRow: _blankRow,
+                                cloneRow: (r) => r.clone(),
+                                // V304：订货单放开手工行（委外自建订货单，无申请来源）。
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+            // 保存/提交财务审核网络段的全屏加载遮罩。
+            if (_saving)
+              UtenBusyOverlay(
+                title: _isCreate ? '正在创建${_cfg.label}' : '正在保存${_cfg.label}',
+                description: '正在写入单据内容，请勿重复提交或离开本页。',
               ),
+          ],
+        ),
       ),
     );
   }
@@ -1385,7 +1457,8 @@ class _SubcontractOrderEditPageState
       label: !ready
           ? '必须先从委外任务中心选择计划下达申请'
           : '委外商与结算方式、币种、汇率、税率都在明细行填写；勾选多行可统一设置；'
-                '系统会记住每个货品上次的条款并在下次自动带出；数量允许超过申请剩余量。',
+                '条款来自货品与供应商资料里的默认值，保存订单会更新这些资料；'
+                '数量允许超过申请剩余量。',
       child: Card(
         color: background,
         child: Padding(
@@ -1418,8 +1491,9 @@ class _SubcontractOrderEditPageState
                       !ready
                           ? '来源申请未加载完整。请回到委外任务中心重新选择需要分解的申请明细。'
                           : '委外商与结算方式、币种、汇率、税率逐行选择；勾选多行后可'
-                                '「统一设置条款」一次写全套。同一货品会记住上次委外的条款，'
-                                '下次自动带出。保存时按「委外商+条款组合」自动拆单。'
+                                '「统一设置条款」一次写全套。条款来自货品资料与供应商资料里的'
+                                '默认值，保存订单会把本次选择更新回资料。'
+                                '保存时按「委外商+条款组合」自动拆单。'
                                 '数量允许超过申请剩余量（超委外备货）。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: foreground,

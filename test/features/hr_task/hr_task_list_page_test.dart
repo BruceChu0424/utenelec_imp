@@ -48,6 +48,21 @@ class _FakeEmployeeRepository extends Fake implements EmployeeRepository {
 class _FakeNoticeRepository extends Fake implements NoticeRepository {
   final List<List<String>> blessed = [];
 
+  /// 「自动发送祝福」开关状态（V600：默认关，页面开关翻转）。
+  bool autoEnabled = false;
+
+  @override
+  Future<NoticeCelebrationSettings> getCelebrationSettings() async =>
+      NoticeCelebrationSettings(autoEnabled: autoEnabled);
+
+  @override
+  Future<NoticeCelebrationSettings> setCelebrationAutoEnabled(
+    bool enabled,
+  ) async {
+    autoEnabled = enabled;
+    return NoticeCelebrationSettings(autoEnabled: enabled);
+  }
+
   @override
   Future<CelebrationBatchResult> publishCelebrationBatch({
     required NoticeType type,
@@ -267,6 +282,44 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(notices.blessed.single, ['a'], reason: '已祝福的 b 与未到日的 c 都不发');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('celebration auto-send toggle defaults off and flips via api', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(birthdayToday: [_item('a', days: 30)]),
+    );
+    final notices = _FakeNoticeRepository();
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.birthday,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        notices: notices,
+        permissions: {Perm.employeeView, Perm.noticePublish},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // V600：默认关；开关存在于页面并显示当前值。
+    final toggle = tester.widget<Switch>(
+      find.byKey(const Key('hr-task-celebration-auto-switch')),
+    );
+    expect(toggle.value, isFalse);
+
+    await tester.tap(find.byKey(const Key('hr-task-celebration-auto-switch')));
+    await tester.pumpAndSettle();
+
+    expect(notices.autoEnabled, isTrue, reason: '点击开关应调用翻转端点');
+    final updated = tester.widget<Switch>(
+      find.byKey(const Key('hr-task-celebration-auto-switch')),
+    );
+    expect(updated.value, isTrue, reason: '翻转成功后开关回显新状态');
 
     await tester.pumpWidget(const SizedBox());
   });

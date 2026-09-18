@@ -6,6 +6,23 @@
 > 权限、并发余量、实际量和实际库位，再同事务写 `DIR_IN`、归属和生产供给。
 > 详见[采购 / 委外 IQC 合格待入库任务页](../03-页面/采购委外IQC合格待入库任务页.md)。
 
+## 2026-09-17 V599 开工路线确认契约
+
+- 新端点 `POST /api/production/plans/{planId}/execution-segments/{segmentId}/confirm-route`：
+  请求 `{expectedVersion, idempotencyKey(8-128), route}`，`route ∈ FULL_KIT|BATCH|CONTINUOUS`；
+  权限 `production_execution:view + production_execution:start`（与开工/领料申请同门槛）。
+  语义与守卫详见 [ADR-091](../99-决策记录-ADR/ADR-091-开工路线确认与到货进展通知.md)。
+- 未确认路线（`start_route IS NULL`）时既有端点全部以 409 拒绝并提示「请先确认生产路线」：
+  `POST .../start`、`POST .../batch-start`、`POST .../start-continuous`、
+  `POST /api/production/workshop-tasks/draw-request/submit`、
+  `POST /api/production/execution-batches/submit`、`POST .../recheck-material`。
+- 车间任务列表/计数 DTO（`ProductionExecutionWorkbenchSegment`）追加四个字段：
+  `startRoute`(可空)、`canConfirmRoute`、`routeChangeable`、`routeContinuousEligible`；
+  计划内执行段视图（`ExecutionSegmentView`）追加 `startRoute`。
+- 通知：新业务事件 `PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL`（business_outbox，
+  聚合 `PRODUCTION_EXECUTION_SEGMENT`），notice 仍复用既有车间行动卡 sourceEvent
+  `PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED`，聚合与办结点不变。
+
 ## 2026-08-28 后置覆盖：V407–V417 收款、账户流水与付款命令契约
 
 - 新 `FinanceReceiptSaveRequest` 必须传制单人范围内稳定的 8–128 位 `createIdempotencyKey`；更新必须传详情返回的 `expectedVersion`。金额和汇率在 JSON 中以十进制字符串提交，服务端使用 `BigDecimal` 重算；二进制浮点不是入账权威。
@@ -343,8 +360,6 @@ common/docnumber/
 | 财务任务 | `GET /api/finance/procurement-approvals/tasks`、`GET /api/finance/procurement-approvals/count`、`GET /api/finance/procurement-approvals/type-counts` | `finance_order_approval:view`；支持 `orderType + keyword(单号/供应商/提交人)` 服务端分页，列出全部 `PENDING` 待审（V229 起不再按 assignee 过滤），`APPROVE/REJECT` 由合格审核人资格实时判定 |
 | 原子批量通过 | `POST /api/finance/procurement-approvals/tasks/batch-approve` | `view + finance_order_approval:approve` + 实时审核人资格；1–100 项，每项 `{caseId,expectedVersion}`，任一失败整批回滚 |
 | 原子批量驳回 | `POST /api/finance/procurement-approvals/tasks/batch-reject` | `view + finance_order_approval:reject` + 实时审核人资格；1–100 项，共用必填 `reason`，任一失败整批回滚 |
-| ~~旧单笔通过~~ | `POST /api/purchase/orders/{id}/approve`、`POST /api/subcontract/orders/{id}/approve` | **2026-08-30 已停用且 fail-closed**：过渡映射仅返回 `CONFLICT` 并指向财务任务中心，不再接受 `orderId+version` 决定 |
-| ~~旧单笔驳回~~ | `POST /api/purchase/orders/{id}/reject`、`POST /api/subcontract/orders/{id}/reject` | **2026-08-30 已停用且 fail-closed**：过渡映射不写业务；单笔也必须改用上方携带 `{caseId,expectedVersion}` 的 batch 协议 |
 | ~~负责人列表/保存~~ | `GET/PUT /api/admin/workflow-responsibilities*` | **V229 已删除**；V328 后批准/驳回按 `:approve` / `:reject` 分权并叠加财务部门资格 |
 | 仓库预计到货 | `GET /api/warehouse/inbound/expectations`、`GET /api/warehouse/inbound/expectations/count` | `warehouse_inbound:view`；只返回财务已批订单投影 |
 | 仓库到货异常 | `GET /api/warehouse/inbound/arrival-exceptions`、`GET /api/warehouse/inbound/arrival-exceptions/count` | `warehouse_inbound:view`；只读，不能决定入库量 |

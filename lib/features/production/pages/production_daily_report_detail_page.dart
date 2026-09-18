@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -50,6 +51,9 @@ class _ProductionDailyReportDetailPageState
   ProductionDailyReportDetail? _detail;
   bool _loading = false;
   bool _busy = false;
+
+  /// 审核/红冲/删除网络段的加载遮罩标题（null=无遮罩）。
+  String? _busyTitle;
   String? _error;
 
   @override
@@ -155,7 +159,10 @@ class _ProductionDailyReportDetailPageState
             ),
           );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在${reviewerResponsibility ? '审核' : '红冲'}生产日报';
+    });
     try {
       await fn(ref.read(productionDailyReportRepositoryProvider));
       if (!mounted) return;
@@ -166,7 +173,12 @@ class _ProductionDailyReportDetailPageState
     } catch (_) {
       if (mounted) context.appError('操作失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _busyTitle = null;
+        });
+      }
     }
   }
 
@@ -192,7 +204,10 @@ class _ProductionDailyReportDetailPageState
       ),
     );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在删除日报';
+    });
     try {
       await ref.read(productionDailyReportRepositoryProvider).delete(widget.id);
       if (!mounted) return;
@@ -204,7 +219,12 @@ class _ProductionDailyReportDetailPageState
     } catch (_) {
       if (mounted) context.appError('删除失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _busyTitle = null;
+        });
+      }
     }
   }
 
@@ -217,69 +237,82 @@ class _ProductionDailyReportDetailPageState
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
       appBar: const UtenAppBar(title: '生产日报详情', showBackButton: true),
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : _error != null
-              ? Center(child: Text(_error!))
-              : _detail == null
-              ? const SizedBox.shrink()
-              // 2026-09-11 折叠头+表内滚：头部（提示条/表头卡/附件）随上滚收起，
-              // 明细标题吸顶后表格内部继续滚。
-              : UtenCollapsingHeaderScrollView(
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      0,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        DocumentScopeWriteNotice(
-                          capability: scopeCapability,
-                          ownerEmployeeId: _detail!.makerId,
-                          onRetry: () => ref.invalidate(
-                            documentScopeCapabilityProvider(
-                              DocumentDataScope.productionPlan,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: UtenContentContainer(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : _error != null
+                  ? Center(child: Text(_error!))
+                  : _detail == null
+                  ? const SizedBox.shrink()
+                  // 2026-09-11 折叠头+表内滚：头部（提示条/表头卡/附件）随上滚收起，
+                  // 明细标题吸顶后表格内部继续滚。
+                  : UtenCollapsingHeaderScrollView(
+                      collapsingHeader: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          0,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            DocumentScopeWriteNotice(
+                              capability: scopeCapability,
+                              ownerEmployeeId: _detail!.makerId,
+                              onRetry: () => ref.invalidate(
+                                documentScopeCapabilityProvider(
+                                  DocumentDataScope.productionPlan,
+                                ),
+                              ),
                             ),
-                          ),
+                            _headerCard(theme, names),
+                            // 日报附件（报工照片/检验记录）：草稿可管理，审核后只读。
+                            // 属「备注类小卡」，并入折叠头尾部随头部一起收起。
+                            const SizedBox(height: UtenSpacing.s12),
+                            BusinessAttachmentSection(
+                              ownerType: 'PRODUCTION_DAILY_REPORT',
+                              ownerId: _detail!.id,
+                              canView: ref
+                                  .watch(currentPermissionsProvider)
+                                  .contains(Perm.productionDailyReportView),
+                              // 详情=审核页：文件只读（增删回编辑页）。
+                              canManage: false,
+                              readOnlyNote: BusinessAttachmentSection
+                                  .kReviewReadOnlyAttachmentNote,
+                              title: '附件（报工照片/检验记录）',
+                              categories: const ['报工照片', '检验记录', '签认单', '其他'],
+                            ),
+                          ],
                         ),
-                        _headerCard(theme, names),
-                        // 日报附件（报工照片/检验记录）：草稿可管理，审核后只读。
-                        // 属「备注类小卡」，并入折叠头尾部随头部一起收起。
-                        const SizedBox(height: UtenSpacing.s12),
-                        BusinessAttachmentSection(
-                          ownerType: 'PRODUCTION_DAILY_REPORT',
-                          ownerId: _detail!.id,
-                          canView: ref
-                              .watch(currentPermissionsProvider)
-                              .contains(Perm.productionDailyReportView),
-                          // 详情=审核页：文件只读（增删回编辑页）。
-                          canManage: false,
-                          readOnlyNote: BusinessAttachmentSection
-                              .kReviewReadOnlyAttachmentNote,
-                          title: '附件（报工照片/检验记录）',
-                          categories: const ['报工照片', '检验记录', '签认单', '其他'],
+                      ),
+                      // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                      body: Padding(
+                        // 底部让位右下悬浮操作组：末行可滚出按钮区。
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.controlHeight +
+                              UtenSpacing.s32,
                         ),
-                      ],
+                        child: _itemsCard(theme, names),
+                      ),
                     ),
-                  ),
-                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                  body: Padding(
-                    // 底部让位右下悬浮操作组：末行可滚出按钮区。
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
-                    ),
-                    child: _itemsCard(theme, names),
-                  ),
-                ),
-        ),
+            ),
+          ),
+          // 审核/红冲/删除网络段的全屏加载遮罩；确认弹窗期间不挂（_busy 在弹窗后才置位）。
+          if (_busy)
+            UtenBusyOverlay(
+              title: _busyTitle ?? '正在处理',
+              description: '正在写入日报状态与派生任务，请勿重复提交或离开本页。',
+            ),
+        ],
       ),
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，大小/高度/禁用态全站统一。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -426,6 +459,21 @@ class _ProductionDailyReportDetailPageState
                 label: '计划号',
                 width: 140,
                 value: (it) => it.planNo,
+              ),
+              // V584/V595：产出去向与直送接收方——同车间直送的行在这里看得到投给了谁。
+              MasterColumnDef(
+                key: 'destination',
+                label: '产出去向',
+                width: 120,
+                value: (it) => it.isDirectTransfer ? '转下一道工序' : '送入仓库',
+              ),
+              MasterColumnDef(
+                key: 'directTransfer',
+                label: '转给工单',
+                width: 240,
+                value: (it) => it.isDirectTransfer
+                    ? (it.directTransferTargetLabel ?? '—')
+                    : '—',
               ),
             ],
             items: items,

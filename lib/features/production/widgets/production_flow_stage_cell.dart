@@ -4,45 +4,6 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../models/production_flow_stage.dart';
 
-/// 流程阶段徽章：图标 + 词表标签，表格单元格通用。
-///
-/// 词表与阶段推导见 [ProductionFlowStage]；本组件只负责展示，
-/// 不承载任何状态判定逻辑。
-class ProductionFlowStageBadge extends StatelessWidget {
-  const ProductionFlowStageBadge({super.key, required this.stage});
-
-  final ProductionFlowStage stage;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = productionFlowToneColor(theme, stage.tone);
-    return Semantics(
-      container: true,
-      label: stage.displayLabel,
-      child: ExcludeSemantics(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(stage.icon, size: 16, color: color),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                stage.displayLabel,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// 流程进度条：线性进度 + 百分比文字（顶层产品完工进度 / 车间报工进度）。
 class ProductionFlowProgress extends StatelessWidget {
   const ProductionFlowProgress({

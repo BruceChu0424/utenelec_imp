@@ -31,6 +31,11 @@ final suggestionStatusFilterProvider = StateProvider<SuggestionStatus?>(
   (ref) => null,
 );
 
+/// 列表「类别」表头筛选（2026-09-16）：下推后端 category 参数（固定枚举六类）。
+final suggestionCategoryFilterProvider = StateProvider<SuggestionCategory?>(
+  (ref) => null,
+);
+
 final suggestionListProvider =
     AsyncNotifierProvider.autoDispose<
       SuggestionListNotifier,
@@ -43,9 +48,10 @@ class SuggestionListNotifier
 
   @override
   Future<PagedResult<Suggestion>> build() {
-    // 换分段 / 换表头状态筛选 → 重建即回第 1 页。
+    // 换分段 / 换表头状态或类别筛选 → 重建即回第 1 页。
     ref.watch(suggestionScopeProvider);
     ref.watch(suggestionStatusFilterProvider);
+    ref.watch(suggestionCategoryFilterProvider);
     return _fetch(1);
   }
 
@@ -123,6 +129,7 @@ class SuggestionListNotifier
         .read(suggestionRepositoryProvider)
         .list(
           mine: scope == SuggestionScope.mine,
+          category: ref.read(suggestionCategoryFilterProvider),
           status: ref.read(suggestionStatusFilterProvider),
           page: page,
         );

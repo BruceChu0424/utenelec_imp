@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -15,6 +16,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
@@ -118,6 +120,18 @@ class _ProcurementIqcRejectionListPageState
       _statusSelected = true;
     });
     _load(1);
+  }
+
+  /// 表头筛选回调：与工具条下拉同源（receiptType 枚举/status 参数均已在），
+  /// 复用既有 [_changeReceiptType]/[_changeStatus]，重拉回第 1 页。
+  void _onColumnFilterChanged(String key, String? value) {
+    if (key == 'receiptType') {
+      _changeReceiptType(
+        value == null ? null : ProcurementIqcReceiptType.tryParse(value),
+      );
+    } else if (key == 'status') {
+      _changeStatus(value);
+    }
   }
 
   void _search(String value) {
@@ -320,35 +334,40 @@ class _ProcurementIqcRejectionListPageState
   }
 
   Widget _buildFilters({required bool expanded}) {
-    final type = DropdownButtonFormField<ProcurementIqcReceiptType?>(
+    // 「全部」口径：null 值用空串哨兵承接，回调里互转回 null。
+    final type = UtenDropdownField(
       key: const Key('iqc-rejection-type-filter'),
-      initialValue: _receiptType,
-      decoration: const InputDecoration(labelText: '来源类型'),
-      items: const [
-        DropdownMenuItem(child: Text('采购 + 委外')),
-        DropdownMenuItem(
-          value: ProcurementIqcReceiptType.purchase,
-          child: Text('采购'),
-        ),
-        DropdownMenuItem(
-          value: ProcurementIqcReceiptType.subcontract,
-          child: Text('委外'),
-        ),
+      label: '来源类型',
+      value: _receiptType?.name ?? '',
+      allowClear: false,
+      enabled: !_loading,
+      items: [
+        const UtenDropdownItem(value: '', label: '采购 + 委外'),
+        for (final t in ProcurementIqcReceiptType.values)
+          UtenDropdownItem(value: t.name, label: t.label),
       ],
-      onChanged: _loading ? null : _changeReceiptType,
+      onChanged: (v) => _changeReceiptType(
+        v == null || v.isEmpty
+            ? null
+            : ProcurementIqcReceiptType.values
+                  .where((t) => t.name == v)
+                  .firstOrNull,
+      ),
     );
-    final status = DropdownButtonFormField<String?>(
+    final status = UtenDropdownField(
       key: const Key('iqc-rejection-status-filter'),
-      initialValue: _status,
-      decoration: const InputDecoration(labelText: '任务状态'),
+      label: '任务状态',
+      value: _statusSelected ? (_status ?? '') : '',
+      allowClear: false,
+      enabled: !_loading,
       items: const [
-        DropdownMenuItem(child: Text('全部状态')),
-        DropdownMenuItem(value: 'PENDING_RETURN', child: Text('待登记实物退回')),
-        DropdownMenuItem(value: 'RETURN_RECORDED', child: Text('已退回 / 待财务')),
-        DropdownMenuItem(value: 'FINANCE_EXCEPTION', child: Text('财务投影异常')),
-        DropdownMenuItem(value: 'TERMINAL', child: Text('终态')),
+        UtenDropdownItem(value: '', label: '全部状态'),
+        UtenDropdownItem(value: 'PENDING_RETURN', label: '待登记实物退回'),
+        UtenDropdownItem(value: 'RETURN_RECORDED', label: '已退回 / 待财务'),
+        UtenDropdownItem(value: 'FINANCE_EXCEPTION', label: '财务投影异常'),
+        UtenDropdownItem(value: 'TERMINAL', label: '终态'),
       ],
-      onChanged: _loading ? null : _changeStatus,
+      onChanged: (v) => _changeStatus(v == null || v.isEmpty ? null : v),
     );
     final search = UtenSearchBar(
       key: const Key('iqc-rejection-search'),
@@ -389,10 +408,38 @@ class _ProcurementIqcRejectionListPageState
       key: const Key('iqc-rejection-task-table'),
       columns: _columns,
       items: result.items,
-      facets: const {},
+      // 来源/状态是固定枚举（服务端 receiptType/status 参数均已在），前端
+      // 硬编码桶；count=0 表示不强调计数。桶值与工具条下拉/分段同源。
+      facets: const {
+        'receiptType': [
+          MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购'),
+          MasterFacetBucket(value: 'SUBCONTRACT', count: 0, label: '委外'),
+        ],
+        'status': [
+          MasterFacetBucket(
+            value: 'PENDING_RETURN',
+            count: 0,
+            label: '待登记实物退回',
+          ),
+          MasterFacetBucket(
+            value: 'RETURN_RECORDED',
+            count: 0,
+            label: '已退回 / 待财务',
+          ),
+          MasterFacetBucket(
+            value: 'FINANCE_EXCEPTION',
+            count: 0,
+            label: '财务投影异常',
+          ),
+          MasterFacetBucket(value: 'TERMINAL', count: 0, label: '终态'),
+        ],
+      },
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: {
+        'receiptType': _receiptType?.apiValue,
+        'status': _statusSelected ? _status : null,
+      },
+      onFilterChanged: _onColumnFilterChanged,
       onRowTap: _open,
       rowColor: (item) =>
           item.status == ProcurementIqcRejectionStatus.financeException

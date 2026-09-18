@@ -338,6 +338,8 @@ class PermissionSurfaceCatalogPostgresTest {
         assertEquals(Set.of(
                         "warehouse_iqc_stock_in:view",
                         "warehouse_iqc_stock_in:confirm",
+                        // V596 先入库后质检：独立动作码，登记到品质部检查结果面。
+                        "warehouse_iqc_stock_in:before_inspection",
                         "warehouse_iqc_return:view"),
                 registry.permissionsFor("warehouse.quality-results"));
         assertEquals(Set.of("production_plan:view"),

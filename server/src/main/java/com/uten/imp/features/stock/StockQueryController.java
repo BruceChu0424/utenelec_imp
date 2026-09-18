@@ -70,16 +70,22 @@ public class StockQueryController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(defaultValue = "true") boolean includeDefective,
+            // V595：线边仓(车间直送料架)默认不算进现实库存，显式打开才计入。
+            @RequestParam(defaultValue = "false") boolean includeLineSide,
             @RequestParam(required = false) String keyword,
             // V587/V590 归属表头筛选（值为仓库 UUID；owningWarehouseNull=筛未登记）。
             @RequestParam(required = false) UUID owningWarehouse,
             @RequestParam(required = false) Boolean owningWarehouseNull,
+            // 2026-09-16 颜色/物料系列/单位表头筛选（值为颜色 UUID / 系列文本 / 单位 UUID）。
+            @RequestParam(required = false) UUID colorId,
+            @RequestParam(required = false) String series,
+            @RequestParam(required = false) UUID unitId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.instantInventory(categoryId, warehouseId, includeDefective, keyword,
-                owningWarehouse, owningWarehouseNull, page, size, sort, order);
+        return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, page, size, sort, order);
     }
 
     /**

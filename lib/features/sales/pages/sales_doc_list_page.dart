@@ -19,6 +19,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -100,11 +101,30 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   /// 订货工作台统计卡口径计数（大类段徽章）；null = 尚未返回。
   SalesOrderStats? _stats;
 
+  /// 表头列筛选（出货段）：客户/财务审核/仓库作业 + 币种（出货/客户零星发货共用
+  /// shipments 端点）；订货段：币种（orders 端点）；历史其它出货/退货段：仓库
+  /// （other-shipments/returns 端点既有参数）。订单表无仓库列，订货段无仓库筛选。
+  String? _clientIdFilter;
+  int? _financeAuditFilter;
+  String? _warehouseWorkStatusFilter;
+  String? _currencyIdFilter;
+  String? _warehouseIdFilter;
+
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
 
   bool get _isOrder => widget.docType == SalesDocType.order;
+
+  /// 出货单（表头 dict/枚举桶只在出货段开放，与后端参数对齐）。
+  bool get _isShipment => widget.docType == SalesDocType.shipment;
+
+  /// 币种筛选走 orders / shipments 端点的 currencyId 参数（客户零星发货共用
+  /// shipments 端点）；其它单据端点（报价/其它出货/退货）暂无该参数。
+  bool get _currencyFilterable =>
+      widget.docType == SalesDocType.order ||
+      widget.docType == SalesDocType.shipment ||
+      widget.docType == SalesDocType.customerShipment;
 
   bool get _isHistory => _statusSeg?.history == true;
 
@@ -213,7 +233,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
               }
               final quotes = snap.data!.items;
               if (quotes.isEmpty) {
-                return const Center(child: Text('暂无已审核报价单'));
+                return const UtenEmpty(message: '暂无已审核报价单');
               }
               return ListView.separated(
                 itemCount: quotes.length,
@@ -271,6 +291,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           page: _list.pageNum,
           filter: SalesDocFilter(
             keyword: _list.normalizedKeyword,
+            clientId: _isShipment ? _clientIdFilter : null,
+            financeAudit: _isShipment ? _financeAuditFilter : null,
+            warehouseWorkStatus: _isShipment
+                ? _warehouseWorkStatusFilter
+                : null,
+            currencyId: _currencyFilterable ? _currencyIdFilter : null,
+            warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
             // 草稿段强制 status=0：草稿的 chain_status 恒为 0，落不进任何链路大类，
             // 只能按单据状态直查（closed 也一并不带，草稿不可能结案）。
             status: _isDraftStage
@@ -752,22 +779,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                 primary: true,
                                 columns: _columns(names),
                                 items: _list.page?.items ?? const [],
-                                facets: _statusFacets(),
+                                facets: _statusFacets(names),
                                 nullCounts: const {},
                                 filters: _statusFilterMap,
-                                onFilterChanged: (key, value) {
-                                  // 表头筛选桶与分类行联动：清桶（null）不改分段
-                                  //（分段单选无法回退，清桶视为保持当前选择）。
-                                  // 草稿段的状态口径由分段固定，表头改状态不生效。
-                                  if (_isDraftStage) return;
-                                  if (key != 'status' || value == null) return;
-                                  final status = int.tryParse(value);
-                                  if (status != null) {
-                                    _selectStatusSeg(
-                                      _SalesDocSeg.stage(status),
-                                    );
-                                  }
-                                },
+                                onFilterChanged: _onColumnFilterChanged,
                                 sortColumn: _list.sortKey,
                                 sortAscending: _list.sortAsc,
                                 onSortChange: _onSortChange,
@@ -800,23 +815,94 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     );
   }
 
+  /// 表头筛选回调：状态桶与分类行联动（清桶 null 不改分段——分段单选无法回退，
+  /// 清桶视为保持当前选择；草稿段的状态口径由分段固定，表头改状态不生效，
+  /// 但币种/仓库等列筛选在草稿段照常生效）。
+  /// 另有 币种/仓库/出货段客户/财务审核/仓库作业 列，值并进 repository.list 参数。
+  void _onColumnFilterChanged(String key, String? value) {
+    if (key == 'status') {
+      if (_isDraftStage) return;
+      if (value == null) return;
+      final status = int.tryParse(value);
+      if (status != null) {
+        _selectStatusSeg(_SalesDocSeg.stage(status));
+      }
+      return;
+    }
+    setState(() {
+      switch (key) {
+        case 'client':
+          _clientIdFilter = value;
+        case 'financeAudit':
+          _financeAuditFilter = value == null ? null : int.tryParse(value);
+        case 'warehouseWorkStatus':
+          _warehouseWorkStatusFilter = value;
+        case 'currency':
+          _currencyIdFilter = value;
+        case 'warehouse':
+          _warehouseIdFilter = value;
+      }
+    });
+    _reload(1);
+  }
+
   /// 当前表头「状态」列筛选值（历史段/未选时不过滤）。
   /// 草稿段固定回显「草稿」，与该段强制的 status=0 口径一致。
   Map<String, String?> get _statusFilterMap {
+    final extra = <String, String?>{
+      if (_isShipment) ...{
+        'client': _clientIdFilter,
+        'financeAudit': _financeAuditFilter?.toString(),
+        'warehouseWorkStatus': _warehouseWorkStatusFilter,
+      },
+      if (_currencyFilterable && _cfg.hasCurrency)
+        'currency': _currencyIdFilter,
+      if (_cfg.hasWarehouse) 'warehouse': _warehouseIdFilter,
+    };
     if (_isDraftStage) {
-      return const <String, String?>{'status': '$kSalesStatusDraft'};
+      return <String, String?>{'status': '$kSalesStatusDraft', ...extra};
     }
     final seg = _statusSeg;
-    if (seg == null || seg.history) return const <String, String?>{};
-    return <String, String?>{'status': '${seg.status}'};
+    if (seg == null || seg.history) return extra;
+    return <String, String?>{'status': '${seg.status}', ...extra};
   }
 
-  /// 表头「状态」列筛选桶（状态是固定枚举，前端硬编码；count=0 表示不强调计数）。
-  Map<String, List<MasterFacetBucket>> _statusFacets() => const {
-    'status': [
+  /// 表头筛选桶（状态是固定枚举，前端硬编码；count=0 表示不强调计数）。
+  /// 出货段另有：客户（clients/dict）+ 财务审核/仓库作业（固定枚举）。
+  /// 币种（currencies/dict，订货/出货/客户零星发货）与仓库（warehouses/dict，
+  /// 历史其它出货/退货）按各段列与后端参数开放。
+  Map<String, List<MasterFacetBucket>> _statusFacets(
+    SalesMasterNameService names,
+  ) => {
+    'status': const [
       MasterFacetBucket(value: '0', count: 0, label: '草稿'),
       MasterFacetBucket(value: '1', count: 0, label: '已审'),
       MasterFacetBucket(value: '-1', count: 0, label: '红冲'),
     ],
+    if (_isShipment) ...{
+      'client': masterDictionaryFacets(names.clientEntries),
+      'financeAudit': const [
+        MasterFacetBucket(value: '0', count: 0, label: '待财务审核'),
+        MasterFacetBucket(value: '1', count: 0, label: '已财务审核'),
+      ],
+      'warehouseWorkStatus': [
+        for (final code in const [
+          SalesWarehouseWorkStatus.legacyPending,
+          SalesWarehouseWorkStatus.pendingPick,
+          SalesWarehouseWorkStatus.shipped,
+          SalesWarehouseWorkStatus.cancelled,
+          SalesWarehouseWorkStatus.reversed,
+        ])
+          MasterFacetBucket(
+            value: code,
+            count: 0,
+            label: salesWarehouseWorkStatusLabel(code),
+          ),
+      ],
+    },
+    if (_currencyFilterable && _cfg.hasCurrency)
+      'currency': masterDictionaryFacets(names.currencyEntries),
+    if (_cfg.hasWarehouse)
+      'warehouse': masterDictionaryFacets(names.warehouseEntries),
   };
 }

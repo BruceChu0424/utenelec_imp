@@ -42,6 +42,7 @@ public class FinanceReconciliationController {
             @RequestParam(required = false) String sourceDocType,
             @RequestParam(required = false) UUID sourceDocId,
             @RequestParam(required = false) String checkNo,
+            @RequestParam(required = false) String entryKind,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateTo,
             @RequestParam(defaultValue = "1") int page,
@@ -49,6 +50,6 @@ public class FinanceReconciliationController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(new FinanceReconciliationQueryFilter(
-                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo), page, size, sort, order);
+                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind), page, size, sort, order);
     }
 }

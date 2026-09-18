@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
@@ -378,6 +379,14 @@ class _CancelFutureTransferDialogState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // 提交/刷新网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+                if (_saving)
+                  UtenBusyOverlay(
+                    title: _needsReview ? '正在核对双方最新状态' : '正在撤销未实收份额',
+                    description: _needsReview
+                        ? '正在重新加载双方供给归属，请稍候。'
+                        : '正在写入调拨撤销事实，请勿重复提交或关闭弹窗。',
+                  ),
                 Text(
                   '${_record.sourceLabel ?? '原供料计划'} ← ${_record.targetLabel ?? '接受计划'}',
                 ),

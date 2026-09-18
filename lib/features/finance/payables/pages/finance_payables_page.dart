@@ -65,6 +65,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   String? _supplierId;
   String? _status;
   String? _settlementMethodId;
+  String? _currencyId;
   DateTime? _dateFrom;
   DateTime? _dateTo;
   DateTime? _dueFrom;
@@ -156,6 +157,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
               supplierId: _supplierId,
               status: _status,
               settlementMethodId: _settlementMethodId,
+              currencyId: _currencyId,
               keyword: _keyword,
               dateFrom: _fmt(_dateFrom),
               dateTo: _fmt(_dateTo),
@@ -207,6 +209,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       _supplierId != null,
       _status != null,
       _settlementMethodId != null,
+      _currencyId != null,
       _dateFrom != null || _dateTo != null,
       _dueFrom != null || _dueTo != null,
     ].where((active) => active).length;
@@ -220,6 +223,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       _supplierId = null;
       _status = null;
       _settlementMethodId = null;
+      _currencyId = null;
       _dateFrom = null;
       _dateTo = null;
       _dueFrom = null;
@@ -252,7 +256,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
           break;
         case 'status':
           _status = value;
-          break;
+        case 'currencyCode':
+          _currencyId = value;
       }
     });
   }
@@ -791,6 +796,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                               tablePane: _buildPayablesTablePane(
                                 theme: theme,
                                 names: names.supplierEntries,
+                                currencyNames: names.currencyEntries,
                                 settlementMethods: settlementMethods,
                                 total: total,
                                 canCreatePayment: canCreatePayment,
@@ -800,6 +806,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                           : _buildPayablesTablePane(
                               theme: theme,
                               names: names.supplierEntries,
+                              currencyNames: names.currencyEntries,
                               settlementMethods: settlementMethods,
                               total: total,
                               canCreatePayment: canCreatePayment,
@@ -829,6 +836,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   Widget _buildPayablesTablePane({
     required ThemeData theme,
     required Map<String, String> names,
+    required Map<String, String> currencyNames,
     required List<ReferenceMethodOption> settlementMethods,
     required int total,
     required bool canCreatePayment,
@@ -857,6 +865,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                 for (final method in settlementMethods)
                   method.id: '${method.name}(${method.code})',
               }),
+              // 币种表头筛选（2026-09-16）：currencies/dict 桶，回传 currencyId。
+              'currencyCode': financeDictionaryFacets(currencyNames),
               'status': financePayablesStatusFacets,
             },
             nullCounts: const {},
@@ -864,6 +874,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
               'businessType': _businessType,
               'supplierName': _supplierId,
               'settlementMethod': _settlementMethodId,
+              'currencyCode': _currencyId,
               'status': _status,
             },
             onFilterChanged: _onColumnFilterChanged,

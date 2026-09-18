@@ -2,7 +2,7 @@
 // 头部身份卡 + 常用操作外显（编辑/调岗/登记转正/办理离职，次要在 ⋯），
 // 内容 Tab 分组（概览 / 组织与合同 / 联系与车辆 / 薪酬 / 任职记录），
 // 联系与车辆 Tab 内置：更换手机号（同步登录账号）、备用手机号与车辆管理。
-// 敏感字段由后端按权限点脱敏后返回；全断点 UtenContentContainer.narrow。
+// 敏感字段由后端按权限点脱敏后返回；全断点默认 UtenContentContainer（1600 钳制）。
 // 文档：docs/03-页面/员工详情页.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +12,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -142,7 +143,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           : Builder(
               builder: (context) {
                 final tabBar = _tabBar(theme, l10n);
-                return UtenContentContainer.narrow(
+                return UtenContentContainer(
                   // 「顶部折叠 + Tab 吸顶 + 内容内滚」：身份卡、变更审批、
                   // 到期横幅随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
                   // 各 Tab 正文内滚（_scrollTab 的竖向 ListView 无显式
@@ -270,7 +271,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   Widget _scrollTab(List<Widget> children) {
     return RefreshIndicator(
       onRefresh: _load,
-      // 正文可框选复制：外层 UtenContentContainer.narrow 已默认包局部 SelectionArea
+      // 正文可框选复制：外层 UtenContentContainer 已默认包局部 SelectionArea
       // （准则 §3.4），此处无需再包。
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -739,14 +740,15 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<String>(
-                  initialValue: contractType,
-                  decoration: const InputDecoration(labelText: '合同类型'),
+                UtenDropdownField(
+                  label: '合同类型',
+                  value: contractType,
+                  allowClear: false,
                   items: const [
-                    DropdownMenuItem(value: 'fixed', child: Text('固定期限')),
-                    DropdownMenuItem(value: 'open', child: Text('无固定期限')),
-                    DropdownMenuItem(value: 'task', child: Text('任务期限')),
-                    DropdownMenuItem(value: 'intern', child: Text('实习')),
+                    UtenDropdownItem(value: 'fixed', label: '固定期限'),
+                    UtenDropdownItem(value: 'open', label: '无固定期限'),
+                    UtenDropdownItem(value: 'task', label: '任务期限'),
+                    UtenDropdownItem(value: 'intern', label: '实习'),
                   ],
                   onChanged: (v) => setState(() => contractType = v ?? 'fixed'),
                 ),

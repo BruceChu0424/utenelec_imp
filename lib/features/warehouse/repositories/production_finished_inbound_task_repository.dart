@@ -14,6 +14,8 @@ class ProductionFinishedInboundTaskRepository {
     int page = 1,
     int size = 40,
     String? keyword,
+    String? taskStage,
+    String? warehouseId,
   }) async {
     final normalized = keyword?.trim();
     final json = await api.get(
@@ -22,6 +24,9 @@ class ProductionFinishedInboundTaskRepository {
         'page': page,
         'size': size,
         if (normalized != null && normalized.isNotEmpty) 'keyword': normalized,
+        if (taskStage != null && taskStage.isNotEmpty) 'taskStage': taskStage,
+        if (warehouseId != null && warehouseId.isNotEmpty)
+          'warehouseId': warehouseId,
       },
     );
     return PagedResult.fromJson(json, ProductionFinishedInboundTask.fromJson);

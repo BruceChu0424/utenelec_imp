@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/network/api_exception.dart';
@@ -448,19 +449,19 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
             children: [
               Expanded(
                 flex: 2,
-                child: DropdownButtonFormField<String>(
-                  initialValue: draft.type,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '处理方案'),
+                child: UtenDropdownField(
+                  label: '处理方案',
+                  value: draft.type,
+                  allowClear: false,
                   items: [
                     for (final type in SubcontractLossResolutionType.values)
-                      DropdownMenuItem(
+                      UtenDropdownItem(
                         value: type,
-                        child: Text(subcontractLossResolutionTypeLabel(type)),
+                        label: subcontractLossResolutionTypeLabel(type),
                       ),
                   ],
                   onChanged: (value) => setState(() {
-                    draft.type = value;
+                    draft.type = value ?? draft.type;
                     draft.offsetTargets = const [];
                   }),
                 ),
@@ -926,18 +927,15 @@ class _LossFulfillmentEditorState
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 )
               else
-                DropdownButtonFormField<String>(
-                  initialValue: _accountId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '启用资金账户(必选)'),
+                UtenDropdownField(
+                  label: '启用资金账户(必选)',
+                  value: _accountId,
+                  allowClear: false,
                   items: [
                     for (final account in _cashAccounts)
-                      DropdownMenuItem(
+                      UtenDropdownItem(
                         value: account.id,
-                        child: Text(
-                          '${account.code ?? ''} · ${account.name ?? ''}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        label: '${account.code ?? ''} · ${account.name ?? ''}',
                       ),
                   ],
                   onChanged: (value) => setState(() => _accountId = value),

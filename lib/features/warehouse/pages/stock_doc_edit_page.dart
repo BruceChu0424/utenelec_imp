@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_edit_floating_actions.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -563,187 +564,205 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         actions: _draftsAction,
       ),
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenGridPageScrollbar(
-                pinned: _gridPinned,
-                controller: _scrollCtl,
-                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
-                // 恒在屏幕最右，不随限宽容器/列宽漂移。
-                child: UtenContentContainer(
-                  child: ListView(
+        child: Stack(
+          children: [
+            _loading
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : UtenGridPageScrollbar(
+                    pinned: _gridPinned,
                     controller: _scrollCtl,
-                    // 底部多留一屏悬浮按钮的高度，最后一行明细不被「取消/保存」压住。
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenFloatingActionGroup.scrollClearance,
-                    ),
-                    children: [
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              UtenFormGrid(
+                    // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                    // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                    child: UtenContentContainer(
+                      child: ListView(
+                        controller: _scrollCtl,
+                        // 底部多留一屏悬浮按钮的高度，最后一行明细不被「取消/保存」压住。
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.scrollClearance,
+                        ),
+                        children: [
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(UtenSpacing.s12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // 单据号：系统自动生成，只读显示。
-                                  TextFormField(
-                                    errorBuilder: utenTextFieldErrorBuilder,
-                                    readOnly: true,
-                                    controller: _billNo,
-                                    decoration: UtenInputDecoration(
-                                      InputDecoration(
-                                        labelText: '单据号',
-                                        hintText: _billNo.text.isEmpty
-                                            ? '保存后自动生成'
-                                            : null,
-                                        filled: _billNo.text.isEmpty,
-                                        suffixIcon: _billNo.text.isEmpty
-                                            ? const Icon(
-                                                Icons.autorenew_outlined,
-                                                size: 18,
-                                              )
-                                            : const Icon(
-                                                Icons.lock_outline,
-                                                size: 16,
-                                              ),
+                                  UtenFormGrid(
+                                    children: [
+                                      // 单据号：系统自动生成，只读显示。
+                                      TextFormField(
+                                        errorBuilder: utenTextFieldErrorBuilder,
+                                        readOnly: true,
+                                        controller: _billNo,
+                                        decoration: UtenInputDecoration(
+                                          InputDecoration(
+                                            labelText: '单据号',
+                                            hintText: _billNo.text.isEmpty
+                                                ? '保存后自动生成'
+                                                : null,
+                                            filled: _billNo.text.isEmpty,
+                                            suffixIcon: _billNo.text.isEmpty
+                                                ? const Icon(
+                                                    Icons.autorenew_outlined,
+                                                    size: 18,
+                                                  )
+                                                : const Icon(
+                                                    Icons.lock_outline,
+                                                    size: 16,
+                                                  ),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                  // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                  ...utenMakerAuditCells(
-                                    ref,
-                                    makerName: _makerName,
-                                    createdAt: _createdAt,
-                                  ),
-                                  UtenDateField(
-                                    label: '单据日期',
-                                    required: true,
-                                    value: _billDate,
-                                    onChanged: (d) =>
-                                        setState(() => _billDate = d),
-                                  ),
-                                  // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
-                                  UtenDropdownField(
-                                    label: '仓库',
-                                    value: _warehouseId,
-                                    required: true,
-                                    items: warehouseHierarchyItems(
-                                      names.warehouseHierarchy,
-                                      currentValue: _warehouseId,
-                                    ),
-                                    onChanged: (v) {
-                                      setState(() => _warehouseId = v);
-                                      if (_isCheck) {
-                                        unawaited(_refreshCheckBooks());
-                                      }
-                                    },
-                                  ),
-                                  if (widget.docType == StockDocType.transfer)
-                                    UtenDropdownField(
-                                      label: '调入仓',
-                                      value: _toWarehouseId,
-                                      required: true,
-                                      items: warehouseHierarchyItems(
-                                        names.warehouseHierarchy,
-                                        currentValue: _toWarehouseId,
+                                      // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                      ...utenMakerAuditCells(
+                                        ref,
+                                        makerName: _makerName,
+                                        createdAt: _createdAt,
                                       ),
-                                      onChanged: (v) =>
-                                          setState(() => _toWarehouseId = v),
-                                    ),
-                                  if (widget.docType == StockDocType.draw) ...[
-                                    _dd(
-                                      '领料车间',
-                                      _departmentId,
-                                      names.departmentEntries,
-                                      (v) => setState(() => _departmentId = v),
-                                    ),
-                                    TextField(
-                                      controller: _assTeam,
-                                      decoration: const InputDecoration(
-                                        labelText: '装配班组',
+                                      UtenDateField(
+                                        label: '单据日期',
+                                        required: true,
+                                        value: _billDate,
+                                        onChanged: (d) =>
+                                            setState(() => _billDate = d),
                                       ),
+                                      // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
+                                      UtenDropdownField(
+                                        label: '仓库',
+                                        value: _warehouseId,
+                                        required: true,
+                                        items: warehouseHierarchyItems(
+                                          names.warehouseHierarchy,
+                                          currentValue: _warehouseId,
+                                        ),
+                                        onChanged: (v) {
+                                          setState(() => _warehouseId = v);
+                                          if (_isCheck) {
+                                            unawaited(_refreshCheckBooks());
+                                          }
+                                        },
+                                      ),
+                                      if (widget.docType ==
+                                          StockDocType.transfer)
+                                        UtenDropdownField(
+                                          label: '调入仓',
+                                          value: _toWarehouseId,
+                                          required: true,
+                                          items: warehouseHierarchyItems(
+                                            names.warehouseHierarchy,
+                                            currentValue: _toWarehouseId,
+                                          ),
+                                          onChanged: (v) => setState(
+                                            () => _toWarehouseId = v,
+                                          ),
+                                        ),
+                                      if (widget.docType ==
+                                          StockDocType.draw) ...[
+                                        _dd(
+                                          '领料车间',
+                                          _departmentId,
+                                          names.departmentEntries,
+                                          (v) =>
+                                              setState(() => _departmentId = v),
+                                        ),
+                                        TextField(
+                                          controller: _assTeam,
+                                          decoration: const InputDecoration(
+                                            labelText: '装配班组',
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  TextField(
+                                    controller: _remark,
+                                    decoration: const InputDecoration(
+                                      labelText: '备注',
                                     ),
-                                  ],
+                                    maxLines: 2,
+                                  ),
                                 ],
                               ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              TextField(
-                                controller: _remark,
-                                decoration: const InputDecoration(
-                                  labelText: '备注',
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          // 出库凭证/照片（2026-09-10 G4「其他有上传处同样」）：编辑态直接挂
+                          // 已保存 UUID；新建态先暂存，保存成功后逐个确认上传。
+                          if (_hasAttachmentArea) ...[
+                            if (widget.id != null)
+                              BusinessAttachmentSection(
+                                key: const Key('stock-doc-edit-attachments'),
+                                ownerType: 'STOCK_DOCUMENT',
+                                ownerId: widget.id!,
+                                canView: ref
+                                    .watch(currentPermissionsProvider)
+                                    .contains(Perm.stockDocView),
+                                canManage: _canManageAttachments,
+                                title: '出库凭证/照片',
+                                categories: const ['出库凭证', '照片', '其他'],
+                              )
+                            else ...[
+                              if (_createdDocId != null)
+                                const PendingAttachmentRetryNotice(
+                                  documentLabel: '领料单',
                                 ),
-                                maxLines: 2,
+                              BusinessAttachmentSection.draft(
+                                key: const ValueKey(
+                                  'stock-doc-draft-attachments',
+                                ),
+                                controller: _pendingFiles,
+                                canManage: _canManageAttachments,
+                                title: '出库凭证/照片',
+                                categories: const ['出库凭证', '照片', '其他'],
                               ),
                             ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      // 出库凭证/照片（2026-09-10 G4「其他有上传处同样」）：编辑态直接挂
-                      // 已保存 UUID；新建态先暂存，保存成功后逐个确认上传。
-                      if (_hasAttachmentArea) ...[
-                        if (widget.id != null)
-                          BusinessAttachmentSection(
-                            key: const Key('stock-doc-edit-attachments'),
-                            ownerType: 'STOCK_DOCUMENT',
-                            ownerId: widget.id!,
-                            canView: ref
-                                .watch(currentPermissionsProvider)
-                                .contains(Perm.stockDocView),
-                            canManage: _canManageAttachments,
-                            title: '出库凭证/照片',
-                            categories: const ['出库凭证', '照片', '其他'],
-                          )
-                        else ...[
-                          if (_createdDocId != null)
-                            const PendingAttachmentRetryNotice(
-                              documentLabel: '领料单',
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (_isCheck) ...[
+                            Text(
+                              '账面数量由系统按所选仓库读取，保存后形成盘点快照。'
+                              '审核前如发生其它出入库，系统会拒绝用旧快照修正库存，'
+                              '请刷新账面并重新核对实盘数。',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
-                          BusinessAttachmentSection.draft(
-                            key: const ValueKey('stock-doc-draft-attachments'),
-                            controller: _pendingFiles,
-                            canManage: _canManageAttachments,
-                            title: '出库凭证/照片',
-                            categories: const ['出库凭证', '照片', '其他'],
+                            const SizedBox(height: UtenSpacing.s8),
+                          ],
+                          // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：本页无右侧入口，整行删除。
+                          UtenEditableGrid<StockGridRow>(
+                            controller: _grid,
+                            stickyHeaderPinned: _gridPinned,
+                            columns: stockGridColumns(
+                              _pickGoods,
+                              isCheck: _isCheck,
+                              isWdraw: _isWdraw,
+                            ),
+                            createBlankRow: () => StockGridRow(
+                              isCheck: _isCheck,
+                              sourceLocked: _isWdraw,
+                            ),
+                            cloneRow: (r) => r.clone(),
+                            showAddRow: !_isWdraw,
                           ),
                         ],
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                      if (_isCheck) ...[
-                        Text(
-                          '账面数量由系统按所选仓库读取，保存后形成盘点快照。'
-                          '审核前如发生其它出入库，系统会拒绝用旧快照修正库存，'
-                          '请刷新账面并重新核对实盘数。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                      ],
-                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：本页无右侧入口，整行删除。
-                      UtenEditableGrid<StockGridRow>(
-                        controller: _grid,
-                        stickyHeaderPinned: _gridPinned,
-                        columns: stockGridColumns(
-                          _pickGoods,
-                          isCheck: _isCheck,
-                          isWdraw: _isWdraw,
-                        ),
-                        createBlankRow: () => StockGridRow(
-                          isCheck: _isCheck,
-                          sourceLocked: _isWdraw,
-                        ),
-                        cloneRow: (r) => r.clone(),
-                        showAddRow: !_isWdraw,
                       ),
-                    ],
+                    ),
                   ),
-                ),
+            // 保存/上传凭证网络段的全屏加载遮罩。
+            if (_saving)
+              UtenBusyOverlay(
+                title: widget.id == null ? '正在创建单据' : '正在保存单据',
+                description: '正在写入${widget.docType.label}，请勿重复提交或离开本页。',
               ),
+          ],
+        ),
       ),
       // 底部固定操作条 2026-09-11 收口为右下角悬浮；合计不再重复（明细表下方已有）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -435,7 +436,19 @@ class _PagePermissionSettingsPageState
           showPagePermissionAction: false,
         ),
         // 局部 SelectionArea：页面权限设置文字可框选复制（准则 §3.4）。
-        body: SelectionArea(child: _body(wide)),
+        body: SelectionArea(
+          child: Stack(
+            children: [
+              _body(wide),
+              // 保存权限网络段的全屏加载遮罩（root Overlay 传送门）。
+              if (_saving)
+                const UtenBusyOverlay(
+                  title: '正在保存页面权限',
+                  description: '正在写入本页权限变更，请勿重复提交或离开本页。',
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -12,9 +12,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'Uten Integrated Management Platform';
 
   @override
-  String get appName => 'UTEN IMP';
-
-  @override
   String get commonConfirm => 'Confirm';
 
   @override
@@ -22,18 +19,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commonSave => 'Save';
-
-  @override
-  String get commonDelete => 'Delete';
-
-  @override
-  String get commonEdit => 'Edit';
-
-  @override
-  String get commonAdd => 'Add';
-
-  @override
-  String get commonSearch => 'Search';
 
   @override
   String get commonRefresh => 'Refresh';
@@ -55,9 +40,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionRetryNow => 'Retry now';
 
   @override
-  String get commonClose => 'Close';
-
-  @override
   String get commonBack => 'Back';
 
   @override
@@ -73,18 +55,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonSuccess => 'Success';
 
   @override
-  String get commonFailed => 'Failed';
-
-  @override
-  String get commonMore => 'More';
-
-  @override
-  String get commonViewAll => 'View all';
-
-  @override
-  String get commonAction => 'Action';
-
-  @override
   String get loginAccountHint => 'Employee code or phone number';
 
   @override
@@ -97,19 +67,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginPasswordRequired => 'Please enter your password';
 
   @override
-  String get loginForgotPassword => 'Forgot password?';
-
-  @override
   String get loginButton => 'Sign In';
 
   @override
   String get loginLoggingIn => 'Signing in…';
-
-  @override
-  String get loginSuccess => 'Signed in';
-
-  @override
-  String get loginFailed => 'Invalid account or password';
 
   @override
   String get loginServerRecoveryAction => 'Restore automatic server selection';
@@ -144,45 +105,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navSettings => 'Settings';
 
   @override
-  String dashboardWelcome(Object name) {
-    return 'Welcome, $name';
-  }
-
-  @override
-  String get dashboardWelcomeSubtitle => 'Let\'s make today productive';
-
-  @override
-  String get dashboardTodayStats => 'Today\'s overview';
-
-  @override
-  String get dashboardQuickActions => 'Quick actions';
-
-  @override
-  String get statTodayOutput => 'Today\'s output';
-
-  @override
-  String get statOutputUnit => 'units';
-
-  @override
-  String get statInventory => 'Inventory';
-
-  @override
-  String get statOnlineEmployees => 'Online employees';
-
-  @override
-  String get statPendingTodos => 'Pending todos';
-
-  @override
-  String statTrendUp(Object percent) {
-    return '+$percent% vs yesterday';
-  }
-
-  @override
-  String statTrendDown(Object percent) {
-    return '$percent% vs yesterday';
-  }
-
-  @override
   String get settingsTitle => 'Settings';
 
   @override
@@ -192,58 +114,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsThemeMode => 'Theme mode';
 
   @override
-  String get settingsThemeLight => 'Light';
-
-  @override
-  String get settingsThemeDark => 'Dark';
-
-  @override
-  String get settingsThemeSystem => 'System';
-
-  @override
   String get settingsLanguage => 'Language';
 
   @override
-  String get settingsLanguageZh => '简体中文';
-
-  @override
-  String get settingsLanguageEn => 'English';
-
-  @override
   String get settingsFontSize => 'Font size';
-
-  @override
-  String get settingsFontSmall => 'Small';
-
-  @override
-  String get settingsFontMedium => 'Standard';
-
-  @override
-  String get settingsFontLarge => 'Large';
-
-  @override
-  String get settingsFontXLarge => 'Extra large';
-
-  @override
-  String get settingsFontXXLarge => 'Extra extra large';
 
   @override
   String get settingsSectionPerformance => 'Performance';
 
   @override
   String get settingsPerformanceTier => 'Performance mode';
-
-  @override
-  String get settingsPerformanceAuto => 'Auto';
-
-  @override
-  String get settingsPerformanceLite => 'Lite';
-
-  @override
-  String get settingsPerformanceStandard => 'Standard';
-
-  @override
-  String get settingsPerformanceRich => 'Rich';
 
   @override
   String get settingsPerformanceHint => 'Choose Lite for low-end devices';
@@ -261,22 +141,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLogoutConfirm => 'Are you sure you want to sign out?';
 
   @override
-  String get profileTitle => 'Me';
-
-  @override
-  String get profileEditProfile => 'Edit profile';
-
-  @override
   String get profileChangePassword => 'Change password';
-
-  @override
-  String get profileEmployeeCode => 'Employee code';
-
-  @override
-  String get profileDepartment => 'Department';
-
-  @override
-  String get profilePosition => 'Position';
 
   @override
   String get entryStaff => 'Staff Sign In';
@@ -318,9 +183,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get visitorLoggingIn => 'Signing in…';
-
-  @override
-  String get visitorCodeSent => 'Code sent';
 
   @override
   String visitorCodeSentDev(Object code) {
@@ -398,9 +260,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyHost => 'Host';
 
   @override
-  String get visitorApplyHostHint => 'Select the person to visit';
-
-  @override
   String get visitorApplyDept => 'Department';
 
   @override
@@ -470,9 +329,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorDetailVisitTime => 'Visit time';
 
   @override
-  String get visitorDetailVehicle => 'Vehicle';
-
-  @override
   String get visitorDetailAppliedAt => 'Submitted';
 
   @override
@@ -500,9 +356,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApprovalPending => 'Pending';
 
   @override
-  String get visitorApprovalProcessed => 'Processed';
-
-  @override
   String get visitorApprovalApprove => 'Approve';
 
   @override
@@ -512,19 +365,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApprovalForward => 'Forward to host';
 
   @override
-  String get visitorApprovalRejectReason => 'Reject reason';
-
-  @override
   String get visitorApprovalRejectReasonHint => 'Optional';
 
   @override
   String get visitorApprovalConfirmApprove => 'Approve this visitor?';
-
-  @override
-  String get visitorApprovalConfirmReject => 'Reject this visitor?';
-
-  @override
-  String get visitorApprovalHostConfirmed => 'Host confirmed';
 
   @override
   String get visitorApprovalEmpty => 'No visitors to approve';
@@ -542,9 +386,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get myVisitorsReject => 'Decline';
 
   @override
-  String get myVisitorsConfirmHint => 'Confirm to host this visitor?';
-
-  @override
   String get securityTitle => 'Visitor Check';
 
   @override
@@ -554,16 +395,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityScanManual => 'Enter code manually';
 
   @override
-  String get securityManualInputHint => 'Paste or enter the QR content';
-
-  @override
   String get securityPasscodeHint => 'Enter the 6-digit pass code';
 
   @override
   String get visitorPasscodeLabel => 'Pass code';
-
-  @override
-  String get securityVerifying => 'Verifying…';
 
   @override
   String get securityPass => 'Allow entry';
@@ -608,24 +443,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityVisitTime => 'Visit time';
 
   @override
-  String get navHrGroup => 'HR Management';
-
-  @override
-  String get navHrEmployees => 'Employees';
-
-  @override
-  String get navHrDepartments => 'Departments';
-
-  @override
-  String get navHrOnboarding => 'Onboarding';
-
-  @override
-  String get navHrPayrollGenerate => 'Payslip Generation';
-
-  @override
-  String get navHrNoticePublish => 'Publish Notice';
-
-  @override
   String get employeeTitle => 'Employees';
 
   @override
@@ -638,19 +455,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeEmpty => 'No employees yet';
 
   @override
-  String get employeeEmptyHint => 'Tap the Onboard button to add';
-
-  @override
-  String get employeeLoadMore => 'Load more';
-
-  @override
   String get employeeDetailTitle => 'Employee Detail';
 
   @override
   String get employeeDetailBasic => 'Basic info';
-
-  @override
-  String get employeeDetailContact => 'Contact & address';
 
   @override
   String get employeeDetailOrg => 'Organization';
@@ -845,21 +653,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeEditSalary => 'Salary & Bank';
 
   @override
-  String get employeeEditFieldPhone => 'Mobile';
-
-  @override
-  String get employeeEditFieldDepartment => 'Department';
-
-  @override
-  String get employeeEditFieldPosition => 'Position';
-
-  @override
-  String get employeeEditFieldEmploymentType => 'Employment type';
-
-  @override
-  String get employeeEditFieldStatus => 'Status';
-
-  @override
   String get employeeEditSaved => 'Saved';
 
   @override
@@ -869,9 +662,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String employeeEditLoadFailed(Object error) {
     return 'Failed to load: $error';
   }
-
-  @override
-  String get employeeEditNotFound => 'Employee not found';
 
   @override
   String get employeeEditRequired => 'Required';
@@ -1014,51 +804,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get idTypeOther => 'Other';
 
   @override
-  String get employeeOffboardTitle => 'Offboarding';
-
-  @override
-  String get employeeOffboardFieldType => 'Resign type';
-
-  @override
-  String get employeeOffboardFieldDate => 'Last day';
-
-  @override
-  String get employeeOffboardPickDate => 'Pick a date';
-
-  @override
-  String get employeeOffboardFieldReason => 'Reason';
-
-  @override
-  String get employeeOffboardPickDateRequired => 'Please pick the last day';
-
-  @override
-  String get employeeOffboardChecksRequired =>
-      'Please confirm all recovery items';
-
-  @override
-  String get employeeOffboardConfirmTitle => 'Confirm offboarding?';
-
-  @override
-  String get employeeOffboardConfirmBody =>
-      'This employee account will be disabled.';
-
-  @override
-  String get employeeOffboardConfirmAction => 'Confirm offboarding';
-
-  @override
-  String get employeeOffboardNext => 'Next';
-
-  @override
-  String get employeeOffboardBack => 'Back';
-
-  @override
-  String get employeeOffboardCompleted => 'Offboarding completed';
-
-  @override
   String get employeeOffboardLoadFailed => 'Failed to load';
-
-  @override
-  String get employeeActions => 'More actions';
 
   @override
   String get employeeActionTransfer => 'Transfer';
@@ -1071,9 +817,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeActionRehire => 'Rehire';
-
-  @override
-  String get employeeActionDelete => 'Delete record';
 
   @override
   String get employeeActionProvision => 'Provision login account';
@@ -1101,13 +844,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeTransferFieldDate => 'Effective date';
 
   @override
-  String get employeeTransferPickDate => 'Pick a date';
-
-  @override
   String get employeeTransferFieldRemark => 'Remark';
-
-  @override
-  String get employeeTransferDateRequired => 'Please pick the effective date';
 
   @override
   String get employeeTransferSuccess => 'Transfer completed';
@@ -1130,40 +867,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeRehireSuccess => 'Rehired';
-
-  @override
-  String get employeeDeleteTitle => 'Delete this employee record?';
-
-  @override
-  String get employeeDeleteBody =>
-      'The login account will be disabled. This cannot be undone.';
-
-  @override
-  String get employeeDeleteSuccess => 'Employee record deleted';
-
-  @override
-  String get resignTypeVoluntary => 'Voluntary';
-
-  @override
-  String get resignTypeDismissed => 'Dismissed';
-
-  @override
-  String get resignTypeContractEnd => 'Contract ended';
-
-  @override
-  String get resignTypeRetire => 'Retirement';
-
-  @override
-  String get resignCheckAccess => 'Return access card';
-
-  @override
-  String get resignCheckAssets => 'Recover company assets';
-
-  @override
-  String get resignCheckAccount => 'Disable system account';
-
-  @override
-  String get resignCheckSocial => 'Stop social insurance & housing fund';
 
   @override
   String get employeeStatusActive => 'Active';
@@ -1226,9 +929,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get departmentTitle => 'Departments';
 
   @override
-  String get departmentTreeTitle => 'Organization';
-
-  @override
   String get departmentEmpty => 'Select a department';
 
   @override
@@ -1238,40 +938,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get departmentEmptySelect => 'Pick a department on the left';
 
   @override
-  String get departmentTooltipAdd => 'Add department';
-
-  @override
   String get departmentTooltipRefresh => 'Refresh';
 
   @override
   String get departmentTooltipTree => 'Tree';
 
   @override
-  String get departmentDialogAddTitle => 'New department';
-
-  @override
   String get departmentDialogDeleteTitle => 'Delete department';
-
-  @override
-  String get departmentFieldCode => 'Department code';
-
-  @override
-  String get departmentFieldCodeHint => 'e.g. DEPT-XX';
-
-  @override
-  String get departmentFieldName => 'Department name';
-
-  @override
-  String get departmentFieldLevel => 'Level';
 
   @override
   String get departmentCreate => 'Create';
 
   @override
   String get departmentDelete => 'Delete';
-
-  @override
-  String get departmentRequireCodeAndName => 'Code and name are required';
 
   @override
   String get departmentCreated => 'Created';
@@ -1290,51 +969,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get departmentStatEmployees => 'Employees';
-
-  @override
-  String get departmentStatChildren => 'Sub-departments';
-
-  @override
-  String get departmentStatManager => 'Manager';
-
-  @override
-  String get departmentStatParent => 'Parent';
-
-  @override
-  String departmentEmployeesHeader(Object count) {
-    return 'Employees ($count)';
-  }
-
-  @override
   String get departmentEmployeesEmpty =>
       'No employees in this department (or its sub-departments)';
 
   @override
-  String departmentStatValue(Object label, Object value) {
-    return '$label: $value';
-  }
-
-  @override
   String get departmentLoadFailed => 'Failed to load';
-
-  @override
-  String get departmentLevelCompany => 'Company';
-
-  @override
-  String get departmentLevelDecision => 'Decision layer';
-
-  @override
-  String get departmentLevelManagement => 'Management center';
-
-  @override
-  String get departmentLevelPrimary => 'Primary department';
-
-  @override
-  String get departmentLevelSecondary => 'Secondary team';
-
-  @override
-  String get departmentLevelTertiary => 'Tertiary unit';
 
   @override
   String get payrollGenerateTitle => 'Payslip Generation';
@@ -1377,41 +1016,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get payrollSubmitButton => 'Submit for review';
 
   @override
-  String get payrollSubmitted => 'Submitted for finance review';
-
-  @override
-  String payrollLoadFailed(Object error) {
-    return 'Failed to load: $error';
-  }
-
-  @override
-  String get payrollEmptyPreview => 'No employees in this scope';
-
-  @override
-  String get payrollTableTotalLabel => 'Total';
-
-  @override
-  String payrollTableTotalValue(Object total, Object count) {
-    return '¥ $total · $count';
-  }
-
-  @override
-  String get payrollTableHeaderName => 'Code/Name';
-
-  @override
-  String get payrollTableHeaderNet => 'Net';
-
-  @override
-  String payrollTableRowName(Object name, Object code) {
-    return '$name ($code)';
-  }
-
-  @override
-  String payrollTableRowNet(Object net) {
-    return '¥ $net';
-  }
-
-  @override
   String get payrollNext => 'Next';
 
   @override
@@ -1421,25 +1025,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get payrollDeptAll => 'All employees';
 
   @override
-  String get payrollDeptProduction => 'Production';
-
-  @override
-  String get payrollDeptQuality => 'Quality';
-
-  @override
-  String get payrollDeptHr => 'HR';
-
-  @override
-  String get payrollDeptFinance => 'Finance';
-
-  @override
   String get noticePublishTitle => 'Publish Notice';
-
-  @override
-  String get noticePublishSaveDraft => 'Save draft';
-
-  @override
-  String get noticePublishDraftSaved => 'Draft saved';
 
   @override
   String get noticePublishPublishButton => 'Publish';
@@ -1460,19 +1046,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishScopeAll => 'Everyone';
 
   @override
-  String get noticePublishScopeDept => 'By department';
-
-  @override
-  String get noticePublishFieldDept => 'Department';
-
-  @override
   String get noticePublishScopeAllHint =>
       'Notify every employee in the company';
-
-  @override
-  String noticePublishScopeDeptHint(Object dept) {
-    return 'Notify everyone in \"$dept\"';
-  }
 
   @override
   String get noticePublishValidateTitle => 'Please enter a title';
@@ -1485,11 +1060,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noticePublishConfirmBodyAll => 'Notify all employees';
-
-  @override
-  String noticePublishConfirmBodyDept(Object dept) {
-    return 'Notify \"$dept\"';
-  }
 
   @override
   String get noticePublishPublished => 'Notice published';
@@ -1670,9 +1240,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get noticeAckRecent => 'Recent';
-
-  @override
   String get noticeSendBlessing => 'Send blessing';
 
   @override
@@ -1704,9 +1271,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeBlessingSending => 'Sending…';
 
   @override
-  String get noticeBlessingWithdraw => 'Withdraw';
-
-  @override
   String noticeBlessingViewAll(int count) {
     return 'View all $count';
   }
@@ -1728,14 +1292,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => 'Please choose an honoree';
 
   @override
-  String get noticeCelebrationSubjectIsYou => 'You';
-
-  @override
-  String noticeCelebrationFor(Object name, Object event) {
-    return '$name · $event';
-  }
-
-  @override
   String get noticeQuickCelebrationTitle => 'Quick celebration';
 
   @override
@@ -1744,12 +1300,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noticeQuickPublish => 'New notice';
-
-  @override
-  String get noticeQuickBirthday => 'Birthday';
-
-  @override
-  String get noticeQuickAnniversary => 'Anniversary';
 
   @override
   String get noticeQuickWedding => 'Wedding';
@@ -1801,45 +1351,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get celebrationCardCta => 'Send blessings';
-
-  @override
   String get celebrationCardWall => 'View blessing wall';
-
-  @override
-  String get noticeAutoCelebrationTitle => 'Auto celebration notices';
-
-  @override
-  String get noticeAutoCelebrationEnabled =>
-      'Auto-publish a company-wide blessing daily for birthdays and anniversaries';
-
-  @override
-  String get noticeAutoCelebrationTypes => 'Auto types';
-
-  @override
-  String get noticeAutoCelebrationPublisher => 'Publisher name';
 
   @override
   String get profileChangeEditTitle => 'Edit profile';
 
   @override
   String get profileChangeEditCta => 'Edit my profile';
-
-  @override
-  String get profileChangeEditHrOnlyHint =>
-      'Please contact HR to change the fields below';
-
-  @override
-  String get profileChangeSectionBasic =>
-      'Basic info (changes apply immediately)';
-
-  @override
-  String get profileChangeSectionReview =>
-      'Contact & important fields (require HR review)';
-
-  @override
-  String get profileChangeSectionIdentity =>
-      'Name & emergency contacts (require HR review)';
 
   @override
   String get profileChangeFieldDirect => 'Direct edit';
@@ -1881,9 +1399,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeListTitle => 'My change requests';
 
   @override
-  String get profileChangeListCta => 'View my requests';
-
-  @override
   String get profileChangeListEmpty => 'No change requests yet';
 
   @override
@@ -1896,13 +1411,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeFilterApplied => 'Applied';
 
   @override
-  String get profileChangeFilterApproved => 'Approved';
-
-  @override
   String get profileChangeFilterRejected => 'Rejected';
-
-  @override
-  String get profileChangeFilterCancelled => 'Cancelled';
 
   @override
   String get profileChangeStatusPending => 'Pending HR review';
@@ -1924,9 +1433,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileChangeCancelledByMe => 'Cancelled by me';
-
-  @override
-  String get profileChangeFieldLabel => 'Field';
 
   @override
   String get profileChangeBefore => 'Before';
@@ -2000,9 +1506,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeFieldFullName => 'Full name';
 
   @override
-  String get profileChangeFieldHujiAddress => 'Hukou address';
-
-  @override
   String get profileChangeFieldEmergencyName => 'Emergency contact name';
 
   @override
@@ -2020,23 +1523,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profilePendingSectionTitle => 'Pending profile change reviews';
 
   @override
-  String get profilePendingSectionEmpty =>
-      'No pending reviews for this employee';
-
-  @override
   String get profilePendingSectionViewAll => 'All →';
-
-  @override
-  String get profileFieldPhoneMask => '138****1234';
-
-  @override
-  String get profileFieldIdCardMask => '****';
-
-  @override
-  String get profileFieldBankAccountMask => '****1234';
-
-  @override
-  String get profileFieldGroupIdentity => 'Identity';
 
   @override
   String get profileFieldGroupContact => 'Contact';
@@ -2063,12 +1550,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileEditFieldAction => 'Edit';
 
   @override
-  String get profileFieldGroupOrg => 'Organization';
-
-  @override
-  String get profileFieldGroupCompensation => 'Compensation & bank';
-
-  @override
   String get profileFieldWorkLocation => 'Work location';
 
   @override
@@ -2076,9 +1557,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileFieldOfficePhone => 'Office phone';
-
-  @override
-  String get profileFieldMobile => 'Mobile';
 
   @override
   String get profileFieldEmail => 'Email';
@@ -2105,77 +1583,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileFieldGender => 'Gender';
 
   @override
-  String get profileFieldIdType => 'ID type';
-
-  @override
-  String get profileFieldIdNumber => 'ID number';
-
-  @override
-  String get profileFieldSupervisor => 'Supervisor';
-
-  @override
-  String get profileFieldHireDate => 'Hire date';
-
-  @override
-  String get profileFieldConfirmedAt => 'Confirmed at';
-
-  @override
-  String get profileFieldEmploymentType => 'Employment type';
-
-  @override
-  String get profileFieldAttendanceGroup => 'Attendance group';
-
-  @override
-  String get profileFieldPaperArchiveNo => 'Paper archive no.';
-
-  @override
-  String get profileFieldBaseSalary => 'Base salary';
-
-  @override
-  String get profileFieldPerfSalary => 'Performance salary';
-
-  @override
-  String get profileFieldSocialInsuranceBase => 'Social insurance base';
-
-  @override
-  String get profileFieldSocialInsuranceLocation => 'Social insurance location';
-
-  @override
-  String get profileFieldHousingFundBase => 'Housing fund base';
-
-  @override
-  String get profileFieldAllowanceStandard => 'Allowance standard';
-
-  @override
-  String get profileFieldBankBranch => 'Bank branch';
-
-  @override
-  String get profileFieldBankAccount => 'Bank account';
-
-  @override
-  String get profileFieldContractType => 'Contract type';
-
-  @override
-  String get profileFieldContractStart => 'Contract start';
-
-  @override
-  String get profileFieldContractEnd => 'Contract end';
-
-  @override
-  String get profileFieldProbationMonths => 'Probation (months)';
-
-  @override
-  String get profileFieldRenewCount => 'Renewal count';
-
-  @override
   String get hubDisabledChip => 'Not enabled';
 
   @override
   String get hubSectionTaskCenter => 'Task center';
-
-  @override
-  String get hubDisabledDocNotice =>
-      'This document type is not yet enabled (no legacy data)';
 
   @override
   String get hubSubDetailPerItem => 'Line-by-item details';
@@ -2351,10 +1762,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionHubMaterialAnalysis => 'Material readiness analysis';
 
   @override
-  String get productionHubMaterialAnalysisSub =>
-      'Readiness, route confirmation, batch planning';
-
-  @override
   String get productionHubDaily => 'Production daily';
 
   @override
@@ -2383,9 +1790,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get financeHubSectionReports => 'Finance reports';
-
-  @override
-  String get financeHubApprovalOwners => 'Approval owners';
 
   @override
   String get financeHubTaskApproval => 'Order approval tasks';
@@ -2524,10 +1928,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseHubSectionDocs => 'Stock documents';
 
   @override
-  String get warehouseHubSectionDocsDesc =>
-      'Transfer, in/out, picking, finished goods, stocktake';
-
-  @override
   String get warehouseHubSectionInventory => 'Inventory queries';
 
   @override
@@ -2542,64 +1942,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Detail (per item) & summary (per doc)';
 
   @override
-  String get warehouseHubTaskExpected => 'Expected arrivals';
-
-  @override
-  String get warehouseHubTaskExpectedSub => 'Register actual arrivals';
-
-  @override
-  String get warehouseHubTaskException => 'Arrival exceptions';
-
-  @override
-  String get warehouseHubTaskExceptionSub => 'Hold over-deliveries';
-
-  @override
-  String get warehouseHubTaskPicking => 'Picking tasks';
-
-  @override
-  String get warehouseHubTaskPickingSub => 'Prep & track picking';
-
-  @override
   String get warehouseHubDocTransfer => 'Stock transfer';
 
   @override
   String get warehouseHubDocTransferSub => 'Between warehouses';
-
-  @override
-  String get warehouseHubDocOtherIn => 'Other stock-in';
-
-  @override
-  String get warehouseHubDocOtherInSub => 'No-source stock-in';
-
-  @override
-  String get warehouseHubDocOtherOut => 'Other stock-out';
-
-  @override
-  String get warehouseHubDocOtherOutSub => 'No-source stock-out';
-
-  @override
-  String get warehouseHubDocDraw => 'Material picking';
-
-  @override
-  String get warehouseHubDocDrawSub => 'Picking for production';
-
-  @override
-  String get warehouseHubDocWdraw => 'Material return';
-
-  @override
-  String get warehouseHubDocWdrawSub => 'Return to stores';
-
-  @override
-  String get warehouseHubDocFinishedIn => 'Finished goods in';
-
-  @override
-  String get warehouseHubDocFinishedInSub => 'Finished goods inbound';
-
-  @override
-  String get warehouseHubDocFinishedOut => 'Finished goods out';
-
-  @override
-  String get warehouseHubDocFinishedOutSub => 'Finished goods outbound';
 
   @override
   String get warehouseHubDocCheck => 'Stocktake';
@@ -2609,21 +1955,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get warehouseHubInventoryLive => 'Live stock';
-
-  @override
-  String get warehouseHubInventoryLiveSub => 'Real-time on-hand';
-
-  @override
-  String get warehouseHubInventoryBalance => 'Stock balance';
-
-  @override
-  String get warehouseHubInventoryBalanceSub => 'Balances by item';
-
-  @override
-  String get warehouseHubInventoryMovement => 'Stock movements';
-
-  @override
-  String get warehouseHubInventoryMovementSub => 'In/out movement log';
 
   @override
   String get warehouseHubReportDetail => 'Warehouse detail report';
@@ -2715,9 +2046,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get impersonationPasswordLabel => 'Login password';
 
   @override
-  String get impersonationConfirm => 'Confirm';
-
-  @override
   String get impersonationTargetPickerTitle => 'Select an employee to view';
 
   @override
@@ -2744,9 +2072,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get impersonationExited => 'Exited impersonation';
-
-  @override
-  String get impersonationWindowExpired => 'Impersonation window expired';
 
   @override
   String get impersonationRecent => 'Recent';
@@ -2839,24 +2164,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileEmploymentHistoryTitle => 'Employment history';
 
   @override
-  String get profileScopeNoticeTitle => 'Information scope';
-
-  @override
   String get profileCompensationBoundaryDescription =>
       'Salary and bank information are intentionally not shown on My Profile. Check monthly income in Payslips, or contact authorized HR for other questions.';
 
   @override
   String get profileMissingEmergencyContact =>
       'No emergency contact is registered. Ask HR to register one before requesting changes here.';
-
-  @override
-  String profileAlternatePhoneCount(int count) {
-    return '$count alternate phone(s) registered';
-  }
-
-  @override
-  String get profileVehiclesPhonesEmptyHint =>
-      'Register vehicles and alternate phones for quick plate lookup';
 
   @override
   String get historyEventConfirm => 'Confirmation';
@@ -2942,13 +2255,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRequired => 'Qty needed';
 
   @override
-  String get materialAllocated => 'Prepared quantity';
-
-  @override
-  String get materialPreparedQuantityHint =>
-      'Qualified material allocated to this batch, including its formal reservations and material already issued. Qualified receipts are included once; pending inspection and future supply are excluded. This is batch coverage, not the current warehouse balance.';
-
-  @override
   String get materialShortage => 'Still short';
 
   @override
@@ -2980,9 +2286,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialCreateRoutes(int count) {
     return 'Confirm routes ($count)';
   }
-
-  @override
-  String get materialRouteReasonTitle => 'Route reason (optional)';
 
   @override
   String get materialRouteChangedRetry =>
@@ -3066,27 +2369,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
 
   @override
-  String get materialRouteMemoryLoading =>
-      'Loading previous routes. Confirm after they are ready.';
-
-  @override
-  String get materialRouteMemoryUnavailable =>
-      'Previous routes could not be loaded. Review the displayed routes before confirming.';
-
-  @override
-  String get materialRootSupply => 'Top-level supply task';
-
-  @override
   String get materialRootRoutePending => 'Route pending';
 
   @override
   String get materialRootExternalRoute =>
       'Issue this top-level product from its purchasing or subcontracting entry';
-
-  @override
-  String materialRootExistingStock(String quantity) {
-    return 'Allocated stock of $quantity will be handed over first. Enter only additional supply below.';
-  }
 
   @override
   String get materialRootSupplyCompleted => 'Supply demand fulfilled';
@@ -3236,10 +2523,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Select the agreed supplier settlement terms. Different suppliers, currencies or terms may produce separate orders.';
 
   @override
-  String get workflowPlanningQuantityHint =>
-      'This is the quantity to arrange now, not the received quantity. Incoming supply is not stock, and issuing a task does not make it ready to start.';
-
-  @override
   String get workflowWorkshopQuantityHint =>
       'Enter the quantity assigned to the workshop now. Dispatch can happen first; starting and material issue still require the necessary materials and state.';
 
@@ -3299,18 +2582,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workflowOptionalDetails => 'Additional details (optional)';
 
   @override
-  String get workflowReceiptEvidence => 'Rate and receipt evidence';
-
-  @override
-  String get workflowReceiptNoFees => 'No fees: no fee details are needed';
-
-  @override
   String get workflowUnitUnknown => 'Inspection unit needs review';
-
-  @override
-  String workflowIqcUnitHint(String sourceUnit, String rate, String baseUnit) {
-    return 'One $sourceUnit on the source equals $rate $baseUnit. Inspect in $baseUnit, not the original package count.';
-  }
 
   @override
   String get moneySummaryCustomerPaid => 'Customer paid';
@@ -3581,9 +2853,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.';
 
   @override
-  String get productionMaterialRegisterUsage => 'Record actual usage';
-
-  @override
   String get productionMaterialViewUsage => 'View usage records';
 
   @override
@@ -3692,9 +2961,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get warehouseOutboundBatchSelect => 'Select actionable tasks first';
-
-  @override
   String get warehouseOutboundBatchReason => 'Processing note';
 
   @override
@@ -3705,9 +2971,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get warehouseOutboundClient => 'Customer';
-
-  @override
-  String get warehouseOutboundWarehouse => 'Warehouse';
 
   @override
   String get warehouseOutboundStatus => 'Warehouse status';
@@ -3801,9 +3064,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseStockOutboundSource => 'Source document';
 
   @override
-  String get warehouseStockOutboundRemark => 'Notes';
-
-  @override
   String get warehouseSubcontractOutboundBatchTitle => 'Batch outbound details';
 
   @override
@@ -3858,9 +3118,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundLegacyParentCode =>
       'Parent goods code';
-
-  @override
-  String get warehouseSubcontractOutboundGoods => 'Goods';
 
   @override
   String get warehouseSubcontractOutboundColor => 'Colour';
@@ -3954,22 +3211,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseSubcontractOutboundVerify => 'Verify processing result';
 
   @override
-  String get warehouseSubcontractOutboundSelectAll =>
-      'Select all outbound lines';
-
-  @override
   String get warehouseSubcontractOutboundDraft => 'Outbound draft';
-
-  @override
-  String get warehouseSubcontractOutboundRemark => 'Remark';
 
   @override
   String get warehouseSubcontractOutboundNoLines =>
       'No outbound lines are currently available';
-
-  @override
-  String get warehouseSubcontractOutboundLegacyParent =>
-      'Historical parent goods';
 
   @override
   String get warehouseStockOutboundConfirmSingle => 'Confirm outbound';
@@ -4157,11 +3403,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'Available materials cannot form a complete batch. Review again after materials are received.';
 
   @override
-  String get productionBatchReuse => 'No additional materials required';
-
-  @override
   String get productionBatchReuseHint =>
       'This batch uses materials already issued for earlier batches. Confirm, then return to workshop tasks to start.';
+
+  @override
+  String get productionBatchDirectTransferBadge =>
+      'Workshop direct transfer · auto-issued';
+
+  @override
+  String get productionBatchDirectTransferHint =>
+      'All materials of this batch come from same-workshop direct transfers (line-side warehouse): they are issued automatically on confirm. No draw request, no warehouse step — return to workshop tasks and start.';
+
+  @override
+  String productionBatchSubmittedDirectTransfer(String quantity, String unit) {
+    return 'Batch of $quantity $unit arranged; direct-transfer materials were issued automatically. No draw needed — start right away.';
+  }
 
   @override
   String get productionBatchFlow =>
@@ -4209,9 +3465,4 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get productionBatchNoAdditionalMaterials =>
       'No additional materials are needed; arrange production using the existing material sources.';
-
-  @override
-  String productionBatchConfirmedSummary(String quantity, String unit) {
-    return 'This batch: $quantity $unit';
-  }
 }

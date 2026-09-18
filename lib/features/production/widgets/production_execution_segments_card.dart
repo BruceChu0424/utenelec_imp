@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -56,6 +58,9 @@ class _ProductionExecutionSegmentsCardState
   String? _error;
   bool _loading = false;
   bool _busy = false;
+
+  /// 段级状态流转（开工/暂缓/解除等）的纯网络段：全屏加载遮罩只挂这段。
+  bool _commanding = false;
   bool _detailOpening = false;
 
   @override
@@ -383,24 +388,20 @@ class _ProductionExecutionSegmentsCardState
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: workshopId ?? '',
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: '生产车间'),
+                    UtenDropdownField(
+                      label: '生产车间',
+                      value: workshopId ?? '',
+                      allowClear: false,
                       items: [
-                        const DropdownMenuItem(value: '', child: Text('待分配')),
+                        const UtenDropdownItem(value: '', label: '待分配'),
                         if (currentWorkshopMissing)
-                          DropdownMenuItem(
+                          UtenDropdownItem(
                             value: workshopId,
-                            child: Text(
-                              '${segment.workshopName?.isNotEmpty == true ? segment.workshopName! : '当前车间'}（当前记录）',
-                            ),
+                            label:
+                                '${segment.workshopName?.isNotEmpty == true ? segment.workshopName! : '当前车间'}（当前记录）',
                           ),
                         for (final item in workshops)
-                          DropdownMenuItem(
-                            value: item.id,
-                            child: Text(item.name),
-                          ),
+                          UtenDropdownItem(value: item.id, label: item.name),
                       ],
                       onChanged: (value) => setDialogState(() {
                         workshopId = value == null || value.isEmpty
@@ -411,34 +412,27 @@ class _ProductionExecutionSegmentsCardState
                       }),
                     ),
                     const SizedBox(height: UtenSpacing.s12),
-                    DropdownButtonFormField<String>(
+                    UtenDropdownField(
                       key: ValueKey('$workshopId-$teamId-${teams.length}'),
-                      initialValue: teamId ?? '',
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: '生产班组'),
+                      label: '生产班组',
+                      value: teamId ?? '',
+                      allowClear: false,
+                      enabled: workshopId != null,
                       items: [
-                        const DropdownMenuItem(value: '', child: Text('待分配')),
+                        const UtenDropdownItem(value: '', label: '待分配'),
                         if (currentTeamMissing)
-                          DropdownMenuItem(
+                          UtenDropdownItem(
                             value: teamId,
-                            child: Text(
-                              '${segment.teamName?.isNotEmpty == true ? segment.teamName! : '当前班组'}（当前记录）',
-                            ),
+                            label:
+                                '${segment.teamName?.isNotEmpty == true ? segment.teamName! : '当前班组'}（当前记录）',
                           ),
                         for (final item in teams)
-                          DropdownMenuItem(
-                            value: item.id,
-                            child: Text(item.name),
-                          ),
+                          UtenDropdownItem(value: item.id, label: item.name),
                       ],
-                      onChanged: workshopId == null
-                          ? null
-                          : (value) => setDialogState(() {
-                              teamId = value == null || value.isEmpty
-                                  ? null
-                                  : value;
-                              responsible = null;
-                            }),
+                      onChanged: (value) => setDialogState(() {
+                        teamId = value == null || value.isEmpty ? null : value;
+                        responsible = null;
+                      }),
                     ),
                     const SizedBox(height: UtenSpacing.s12),
                     UtenEmployeePicker(
@@ -589,7 +583,12 @@ class _ProductionExecutionSegmentsCardState
     String success,
   ) async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      // 加载遮罩只挂这段网络流转（开工/暂缓/解除等）；_busy 其余用法是页面
+      // 跳转（push 领料/报工页），遮罩会盖住跳转目标页，不能跟着亮。
+      _commanding = true;
+    });
     try {
       final updated = await run();
       if (!mounted) return;
@@ -609,7 +608,12 @@ class _ProductionExecutionSegmentsCardState
       if (mounted) context.appError('操作失败，请刷新后重试');
       await _load();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _commanding = false;
+        });
+      }
     }
   }
 
@@ -741,6 +745,12 @@ class _ProductionExecutionSegmentsCardState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 段级流转网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+            if (_commanding)
+              const UtenBusyOverlay(
+                title: '正在执行工单操作',
+                description: '正在写入工单状态，请勿重复提交或离开本页。',
+              ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

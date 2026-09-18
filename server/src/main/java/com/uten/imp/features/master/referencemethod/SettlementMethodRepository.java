@@ -1,15 +1,19 @@
 package com.uten.imp.features.master.referencemethod;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
 import java.util.UUID;
 
-public interface SettlementMethodRepository extends JpaRepository<SettlementMethod, UUID> {
-    List<SettlementMethod> findByStatusAndDeletedFalseOrderBySortOrderAscCodeAsc(String status);
+/**
+ * <p>管理页列表查询用 {@link JpaSpecificationExecutor}（动态：软删排除 + 表头字段精确
+ * + 空值白名单），范式同 {@code ColorRepository}。
+ */
+public interface SettlementMethodRepository
+        extends JpaRepository<SettlementMethod, UUID>, JpaSpecificationExecutor<SettlementMethod> {
 
-    /** 管理页全量（含禁用行；软删行仍排除）。 */
-    List<SettlementMethod> findByDeletedFalseOrderBySortOrderAscCodeAsc();
+    List<SettlementMethod> findByStatusAndDeletedFalseOrderBySortOrderAscCodeAsc(String status);
 
     boolean existsByNameIgnoreCaseAndDeletedFalse(String name);
 

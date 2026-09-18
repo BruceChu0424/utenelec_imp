@@ -29,6 +29,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/buttons/uten_drafts_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -684,79 +685,97 @@ class _SubcontractDocEditPageState
         actions: _draftsAction,
       ),
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : UtenGridPageScrollbar(
-                pinned: _gridPinned,
-                controller: _scrollCtl,
-                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
-                // 恒在屏幕最右，不随限宽容器/列宽漂移。
-                child: UtenContentContainer(
-                  child: ListView(
+        child: Stack(
+          children: [
+            _loading
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : UtenGridPageScrollbar(
+                    pinned: _gridPinned,
                     controller: _scrollCtl,
-                    // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenFloatingActionGroup.scrollClearance,
-                    ),
-                    children: [
-                      if (_cfg.approvalBlockedReason != null) ...[
-                        _materialIssueSafetyBanner(theme),
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                      _headerCard(theme),
-                      const SizedBox(height: UtenSpacing.s12),
-                      // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
-                      Row(
+                    // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                    // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                    child: UtenContentContainer(
+                      child: ListView(
+                        controller: _scrollCtl,
+                        // 底部多留一个悬浮动作组的高度，否则明细表最后一行被「取消/保存」压住。
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.scrollClearance,
+                        ),
                         children: [
-                          const Spacer(),
-                          if (_cfg.hasUpstreamLink)
-                            UtenImportButton(
-                              label: '从上游引入',
-                              onPressed: _importFromUpstream,
-                            ),
+                          if (_cfg.approvalBlockedReason != null) ...[
+                            _materialIssueSafetyBanner(theme),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          _headerCard(theme),
+                          const SizedBox(height: UtenSpacing.s12),
+                          // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
+                          Row(
+                            children: [
+                              const Spacer(),
+                              if (_cfg.hasUpstreamLink)
+                                UtenImportButton(
+                                  label: '从上游引入',
+                                  onPressed: _importFromUpstream,
+                                ),
+                            ],
+                          ),
+                          // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
+                          Builder(
+                            builder: (_) {
+                              final columnPrefs = ref.watch(
+                                subcontractApplicationGridColumnPrefsProvider,
+                              )[widget.docType.name];
+                              return UtenEditableGrid<SubcontractGridRow>(
+                                controller: _grid,
+                                stickyHeaderPinned: _gridPinned,
+                                showColumnSettings: true,
+                                initialColumnOrder: columnPrefs?.order,
+                                initialHiddenColumnKeys: columnPrefs?.hidden,
+                                onColumnSettingsChanged: (order, hidden) => ref
+                                    .read(
+                                      subcontractApplicationGridColumnPrefsProvider
+                                          .notifier,
+                                    )
+                                    .updateFor(
+                                      widget.docType.name,
+                                      order,
+                                      hidden,
+                                    ),
+                                columns: subcontractGridColumns(
+                                  _pickGoods,
+                                  _cfg,
+                                  context: context,
+                                  unitEntries: ref
+                                      .watch(mn.masterNameServiceProvider)
+                                      .unitEntries,
+                                  // 每行末尾备注列（随行提交 remark）。
+                                  showRemark: true,
+                                ),
+                                createBlankRow: () => SubcontractGridRow(),
+                                cloneRow: (r) => r.clone(),
+                                footer: _gridFooter(theme),
+                              );
+                            },
+                          ),
                         ],
                       ),
-                      // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
-                      Builder(
-                        builder: (_) {
-                          final columnPrefs = ref.watch(
-                            subcontractApplicationGridColumnPrefsProvider,
-                          )[widget.docType.name];
-                          return UtenEditableGrid<SubcontractGridRow>(
-                            controller: _grid,
-                            stickyHeaderPinned: _gridPinned,
-                            showColumnSettings: true,
-                            initialColumnOrder: columnPrefs?.order,
-                            initialHiddenColumnKeys: columnPrefs?.hidden,
-                            onColumnSettingsChanged: (order, hidden) => ref
-                                .read(
-                                  subcontractApplicationGridColumnPrefsProvider
-                                      .notifier,
-                                )
-                                .updateFor(widget.docType.name, order, hidden),
-                            columns: subcontractGridColumns(
-                              _pickGoods,
-                              _cfg,
-                              context: context,
-                              unitEntries: ref
-                                  .watch(mn.masterNameServiceProvider)
-                                  .unitEntries,
-                              // 每行末尾备注列（随行提交 remark）。
-                              showRemark: true,
-                            ),
-                            createBlankRow: () => SubcontractGridRow(),
-                            cloneRow: (r) => r.clone(),
-                            footer: _gridFooter(theme),
-                          );
-                        },
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+            // 保存网络段的全屏加载遮罩。
+            if (_saving)
+              UtenBusyOverlay(
+                title: widget.id == null
+                    ? '正在创建${_cfg.label}'
+                    : '正在保存${_cfg.label}',
+                description: '正在写入单据内容，请勿重复提交或离开本页。',
               ),
+          ],
+        ),
       ),
       // 加载中不给保存入口（表单还没填回来，此时保存会把空值提交上去）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../models/master_facet.dart';
 import '../models/reference_method_option.dart';
 import '../models/settlement_method_admin.dart';
 
@@ -29,9 +30,23 @@ class ReferenceMethodRepository {
   }
 
   /// 结算方式管理页全量（含禁用行与账期策略；settlement_method:view）。
-  Future<List<SettlementMethodAdminItem>> settlementAdminList() async {
-    final rows = await api.getList(ApiEndpoints.settlementMethodsAdmin);
+  ///
+  /// [filters] 表头字段精确筛选（状态/系统角色/到期基准/到期规则），值为
+  /// [kMasterFilterNullValue] 表示筛该字段为空（nullFields 哨兵）。
+  Future<List<SettlementMethodAdminItem>> settlementAdminList({
+    Map<String, String?> filters = const {},
+  }) async {
+    final rows = await api.getList(
+      ApiEndpoints.settlementMethodsAdmin,
+      query: masterFilterQueryParams(filters),
+    );
     return rows.map(SettlementMethodAdminItem.fromJson).toList();
+  }
+
+  /// 结算方式表头筛选桶（各可筛字段可选值 + 空值计数）。
+  Future<SettlementMethodFacets> settlementAdminFacets() async {
+    final json = await api.get(ApiEndpoints.settlementMethodsAdminFacets);
+    return SettlementMethodFacets.fromJson(json);
   }
 
   /// 维护账期策略与可选改名（settlement_method:edit；系统角色锁定由服务端拒绝）。

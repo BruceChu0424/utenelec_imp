@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -204,11 +205,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (_monthly.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('暂无数据'),
-                      ),
+                    if (_monthly.isEmpty) const UtenEmpty(),
                     for (final r in _monthly)
                       ListTile(
                         dense: true,
@@ -228,11 +225,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (_pending.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('暂无数据'),
-                      ),
+                    if (_pending.isEmpty) const UtenEmpty(),
                     for (final r in _pending)
                       ListTile(
                         dense: true,

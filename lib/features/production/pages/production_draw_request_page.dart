@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -292,38 +293,48 @@ class _ProductionDrawRequestPageState
         ),
         body: SafeArea(
           child: UtenContentContainer.wide(
-            child: !_hasPermission
-                ? const UtenEmpty(
-                    icon: Icons.lock_outline,
-                    message: '当前账号没有查看并提交车间领料的权限',
-                  )
-                : _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _loadError != null
-                ? UtenEmpty.error(
-                    message: _loadError,
-                    actionLabel: '重新加载',
-                    onAction: () => _load(currentVersions: true),
-                  )
-                : preview == null ||
-                      preview.summaries.isEmpty ||
-                      preview.tasks.isEmpty
-                ? UtenEmpty(
-                    message: '暂无可领物料',
-                    description: '请返回我的车间任务，刷新后重新选择齐套任务。',
-                    actionLabel: '返回我的车间任务',
-                    onAction: _back,
-                  )
-                : AbsorbPointer(
-                    absorbing: _saving,
-                    child: UtenCollapsingHeaderScrollView(
-                      collapsingHeader: _header(preview),
-                      body: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: _summaryTable(preview),
+            child: Stack(
+              children: [
+                !_hasPermission
+                    ? const UtenEmpty(
+                        icon: Icons.lock_outline,
+                        message: '当前账号没有查看并提交车间领料的权限',
+                      )
+                    : _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _loadError != null
+                    ? UtenEmpty.error(
+                        message: _loadError,
+                        actionLabel: '重新加载',
+                        onAction: () => _load(currentVersions: true),
+                      )
+                    : preview == null ||
+                          preview.summaries.isEmpty ||
+                          preview.tasks.isEmpty
+                    ? UtenEmpty(
+                        message: '暂无可领物料',
+                        description: '请返回我的车间任务，刷新后重新选择齐套任务。',
+                        actionLabel: '返回我的车间任务',
+                        onAction: _back,
+                      )
+                    : AbsorbPointer(
+                        absorbing: _saving,
+                        child: UtenCollapsingHeaderScrollView(
+                          collapsingHeader: _header(preview),
+                          body: Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s12),
+                            child: _summaryTable(preview),
+                          ),
+                        ),
                       ),
-                    ),
+                // 提交领料（生成领料单）网络段的全屏加载遮罩。
+                if (_saving)
+                  const UtenBusyOverlay(
+                    title: '正在提交领料',
+                    description: '正在生成领料单，请勿重复提交或离开本页。',
                   ),
+              ],
+            ),
           ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

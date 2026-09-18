@@ -37,12 +37,6 @@ public class CommercialPriceVisibility {
 
     private final SecurityContextCurrentUser currentUser;
 
-    /** Receipt-only compatibility alias. */
-    @Deprecated(forRemoval = false)
-    public boolean canViewPurchase() {
-        return canViewPurchaseReceipt();
-    }
-
     public boolean canViewPurchaseOrder() {
         return canViewPurchaseCommercial(PURCHASE_ORDER_PERMISSION);
     }
@@ -57,12 +51,6 @@ public class CommercialPriceVisibility {
 
     public boolean canViewPurchaseReport() {
         return canViewPurchaseCommercial(PURCHASE_REPORT_PERMISSION);
-    }
-
-    /** Compatibility alias for the receipt arrival path only. */
-    @Deprecated(forRemoval = false)
-    public boolean canViewSubcontract() {
-        return canViewSubcontractReceipt();
     }
 
     public boolean canViewSubcontractInquiry() {

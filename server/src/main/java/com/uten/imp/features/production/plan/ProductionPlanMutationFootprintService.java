@@ -51,6 +51,22 @@ public class ProductionPlanMutationFootprintService {
         return guard;
     }
 
+    /**
+     * 多张计划共用一次预锁(V595：车间动作要就地出库线边仓领料单时的前置)：足迹取各计划家族之并，
+     * 计划行按 UUID 序上锁。必须在任何库存维度锁之前调用。
+     */
+    public FulfillmentMutationLocks.Guard beginPlans(Collection<UUID> planIds) {
+        List<UUID> ids=planIds==null?List.of():planIds.stream().filter(java.util.Objects::nonNull)
+                .distinct().sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+        var guard=locks.acquire(() -> discoverPlans(ids,List.of()));
+        if(!ids.isEmpty()) {
+            List<?> found=em.createNativeQuery("SELECT id FROM production_plans WHERE id IN (:ids) ORDER BY id FOR UPDATE")
+                    .setParameter("ids",ids).getResultList();
+            if(found.size()!=ids.size())throw new ApiException(ErrorCode.NOT_FOUND,"生产计划不存在");
+        }
+        return guard;
+    }
+
     public FulfillmentMutationLockPlan discover(UUID id, Collection<RequestedLine> requested) {
         return discoverPlans(id==null?List.of():List.of(id),requested);
     }

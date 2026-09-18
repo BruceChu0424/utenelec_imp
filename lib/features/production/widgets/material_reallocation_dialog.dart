@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -883,6 +884,12 @@ class _MaterialReallocationDialogBodyState
         child: SafeArea(
           child: Column(
             children: [
+              // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+              if (_submitting)
+                const UtenBusyOverlay(
+                  title: '正在提交跨批复用',
+                  description: '正在写入供给归属调整，请勿重复提交或关闭面板。',
+                ),
               _header(theme),
               const Divider(height: 1),
               _sourceSummary(theme),

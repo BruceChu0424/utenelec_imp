@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/warehouse_sales_outbound.dart';
 
@@ -88,35 +87,26 @@ class WarehouseSalesPickingFields extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DropdownButtonFormField<String>(
+        UtenDropdownField(
           key: ValueKey('sales-picking-warehouse-${draft.detail.header.id}'),
-          initialValue: draft.warehouseId,
-          isExpanded: true,
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              labelText: '实际发货仓库',
-              error: draft.error == null
-                  ? null
-                  : UtenFieldMessage.error(draft.error!),
-            ),
-          ),
+          label: '实际发货仓库',
+          value: draft.warehouseId,
+          allowClear: false,
+          enabled: enabled,
+          errorMessage: draft.error,
           items: [
             for (final warehouse in draft.detail.warehouseOptions)
-              DropdownMenuItem(
+              UtenDropdownItem(
                 value: warehouse.warehouseId,
                 enabled: warehouse.canFulfill,
-                child: Text(
-                  '${warehouse.warehouseName}${warehouse.canFulfill ? '' : ' · 可发量不足'}',
-                  overflow: TextOverflow.ellipsis,
-                ),
+                label:
+                    '${warehouse.warehouseName}${warehouse.canFulfill ? '' : ' · 可发量不足'}',
               ),
           ],
-          onChanged: !enabled
-              ? null
-              : (value) {
-                  draft.changeWarehouse(value);
-                  onChanged();
-                },
+          onChanged: (value) {
+            draft.changeWarehouse(value);
+            onChanged();
+          },
         ),
         if (draft.detail.warehouseOptions.isEmpty) ...[
           const SizedBox(height: UtenSpacing.s8),

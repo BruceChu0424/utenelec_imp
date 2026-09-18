@@ -38,6 +38,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -1430,16 +1431,15 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final value = (_workshop != null && _workshops.contains(_workshop))
         ? _workshop!
         : '';
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      decoration: const InputDecoration(
-        isDense: true,
-        labelText: '车间',
-        border: OutlineInputBorder(),
-      ),
+    return UtenDropdownField(
+      dense: true,
+      label: '车间',
+      value: value,
+      allowClear: false,
+      hintText: '全部车间',
       items: [
-        const DropdownMenuItem(value: '', child: Text('全部车间')),
-        for (final w in _workshops) DropdownMenuItem(value: w, child: Text(w)),
+        const UtenDropdownItem(value: '', label: '全部车间'),
+        for (final w in _workshops) UtenDropdownItem(value: w, label: w),
       ],
       onChanged: (v) {
         _workshop = (v == null || v.isEmpty) ? null : v;
@@ -1449,20 +1449,22 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   Widget _sortDropdown() {
-    return DropdownButtonFormField<_PlanSort>(
-      initialValue: _sort,
-      decoration: const InputDecoration(
-        isDense: true,
-        labelText: '排序',
-        border: OutlineInputBorder(),
-      ),
+    return UtenDropdownField(
+      dense: true,
+      label: '排序',
+      value: _sort.name,
+      allowClear: false,
+      searchable: false,
       items: const [
-        DropdownMenuItem(value: _PlanSort.billDate, child: Text('开单远→近')),
-        DropdownMenuItem(value: _PlanSort.billDateDesc, child: Text('开单近→远')),
-        DropdownMenuItem(value: _PlanSort.deliveryDate, child: Text('交货日期')),
-        DropdownMenuItem(value: _PlanSort.progress, child: Text('完工进度')),
+        UtenDropdownItem(value: 'billDate', label: '开单远→近'),
+        UtenDropdownItem(value: 'billDateDesc', label: '开单近→远'),
+        UtenDropdownItem(value: 'deliveryDate', label: '交货日期'),
+        UtenDropdownItem(value: 'progress', label: '完工进度'),
       ],
-      onChanged: (v) => _setSort(v ?? _PlanSort.billDate),
+      onChanged: (v) => _setSort(
+        _PlanSort.values.where((s) => s.name == v).firstOrNull ??
+            _PlanSort.billDate,
+      ),
     );
   }
 

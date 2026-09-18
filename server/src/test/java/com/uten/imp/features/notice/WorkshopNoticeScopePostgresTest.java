@@ -342,6 +342,7 @@ class WorkshopNoticeScopePostgresTest {
                 mock(NoticeAcknowledgmentRepository.class),mock(NoticeBlessingRepository.class),mock(NoticeCelebrationSubjectRepository.class),
                 mock(com.uten.imp.features.org.employee.EmployeeRepository.class),current,new ObjectMapper(),mock(NoticeAudienceService.class),
                 mock(com.uten.imp.security.TxSessionVars.class),mock(com.uten.imp.features.admin.systemsetting.SystemSettingsService.class),
+                mock(com.uten.imp.features.admin.systemsetting.SystemSettingRepository.class),
                 mock(com.uten.imp.audit.AuditService.class),mock(com.uten.imp.features.common.taskclaim.TaskClaimRepository.class),
                 mock(com.uten.imp.application.port.EmployeeNameLookupPort.class),audience);
     }

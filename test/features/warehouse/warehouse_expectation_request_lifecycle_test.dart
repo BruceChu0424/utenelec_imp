@@ -116,4 +116,12 @@ class _DelayedApi extends ApiClient {
     countReads++;
     return Future.value(const <String, dynamic>{});
   }
+
+  /// 字典预热（主档 dict）走 getList：全局共享缓存，不算页面的补充读，
+  /// 也不能落到真 Dio（会留下挂起 Timer 破坏本测试的卸载语义）。
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const <Map<String, dynamic>>[];
 }

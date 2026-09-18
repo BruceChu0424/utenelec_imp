@@ -46,7 +46,9 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT document.id,document.warehouse_id,document.to_warehouse_id,document.doc_type,
                        item.id,item.goods_id,item.color_id,item.upstream_item_id,
-                       md5(to_jsonb(document)::text),md5(to_jsonb(item)::text)
+                       md5(to_jsonb(document)::text),md5(to_jsonb(item)::text),
+                       EXISTS(SELECT 1 FROM warehouses line_side
+                              WHERE line_side.id=document.warehouse_id AND line_side.is_line_side)
                 FROM stock_documents document LEFT JOIN stock_document_items item
                   ON item.doc_id=document.id AND item.is_deleted=FALSE
                 WHERE document.id IN (:ids) AND document.is_deleted=FALSE
@@ -55,7 +57,12 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             result.row("document", row);
             UUID goods = (UUID) row[5], color = (UUID) row[6];
             result.inventory(goods, color);
-            if ("FINISHED_IN".equals(row[3]) && goods != null && row[1] != null) {
+            // 线边仓成品入库(车间直送，V595)不进公共可用量、不唤醒任何物料分析(见
+            // ProductionCompletionReverseService)，因此也不把「同主仓要这个货的别的分析」拉进
+            // 预锁集合——否则同车间只要有第二张分析也要这个子件，直送审核就会撞
+            // 「回调来源超出本次完整预锁集合」而永远转不了下一道工序。
+            if ("FINISHED_IN".equals(row[3]) && goods != null && row[1] != null
+                    && !Boolean.TRUE.equals(row[10])) {
                 changed.add(new WarehouseDimension((UUID) row[1], goods, color));
             }
             if (row[7] != null) planItems.add((UUID) row[7]);
@@ -239,6 +246,55 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         List<WarehouseDimension> changed = changedDimensions == null ? List.of() : changedDimensions.stream()
                 .filter(Objects::nonNull).filter(d -> d.goodsId()!=null && d.warehouseId()!=null).distinct().toList();
         changed.forEach(d -> result.inventory(d.goodsId(), d.colorId()));
+        addWakeupTargets(result, changed); expandAnalyses(result); return result.build();
+    }
+
+    @Override
+    public FulfillmentMutationLockPlan forFutureFinishedInbound(
+            Collection<WarehouseDimension> shelvedDimensions, Collection<UUID> planItemIds) {
+        var result = new Footprint();
+        List<WarehouseDimension> changed = shelvedDimensions == null ? List.of()
+                : shelvedDimensions.stream().filter(Objects::nonNull)
+                        .filter(d -> d.goodsId() != null && d.warehouseId() != null).distinct().toList();
+        List<UUID> items = ids(planItemIds);
+        result.parts.add("future-finished-in:" + changed + ":" + items);
+        changed.forEach(d -> result.inventory(d.goodsId(), d.colorId()));
+        if (!items.isEmpty()) {
+            // 与 forStockDocuments 的 plan-sales 同口径：入库会回写计划进度与销售归属。
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
+                           link.id,linked_sale.order_id,md5(to_jsonb(item)::text),md5(to_jsonb(link)::text)
+                    FROM production_plan_items item
+                    LEFT JOIN sales_order_items sales_item ON sales_item.id=item.sales_order_item_id
+                    LEFT JOIN plan_order_item_links link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
+                    LEFT JOIN sales_order_items linked_sale ON linked_sale.id=link.order_item_id
+                    WHERE item.id IN (:ids) AND item.is_deleted=FALSE ORDER BY item.id,link.id
+                    """).setParameter("ids", items))) {
+                result.row("future-plan-sales", row); result.sales((UUID) row[3]); result.sales((UUID) row[5]);
+            }
+            // 与 forStockDocuments 的 parent-demand 同口径：本件入库后父段可能齐套，
+            // 父段其余需求维度属于同一批初始库存锁集合(父计划不在本计划的子计划家族里)。
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    WITH affected_segments AS (
+                        SELECT DISTINCT demand.execution_segment_id
+                        FROM production_material_supply_pegs peg
+                        JOIN production_material_demands demand
+                          ON demand.id=peg.demand_id AND demand.is_deleted=FALSE
+                        WHERE peg.supply_type='PRODUCTION_PLAN_ITEM' AND peg.supply_item_id IN (:ids)
+                          AND peg.status<>'REVERSED' AND demand.execution_segment_id IS NOT NULL
+                    )
+                    SELECT demand.id,demand.goods_id,demand.color_id,plan.material_analysis_id,
+                           md5(to_jsonb(demand)::text)
+                    FROM affected_segments source JOIN production_material_demands demand
+                      ON demand.execution_segment_id=source.execution_segment_id AND demand.is_deleted=FALSE
+                      AND demand.status NOT IN ('RELEASED','REVERSED')
+                    JOIN production_plans plan ON plan.id=demand.plan_id AND plan.is_deleted=FALSE
+                    ORDER BY demand.id
+                    """).setParameter("ids", items))) {
+                result.row("future-parent-demand", row); result.inventory((UUID) row[1], (UUID) row[2]);
+                result.analysis((UUID) row[3]);
+            }
+        }
         addWakeupTargets(result, changed); expandAnalyses(result); return result.build();
     }
 

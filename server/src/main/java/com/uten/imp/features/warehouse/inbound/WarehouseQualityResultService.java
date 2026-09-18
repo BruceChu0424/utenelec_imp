@@ -7,6 +7,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.StockInHistoryItem;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockedLocation;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.InspectionLineItem;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.RejectionCaseItem;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.TaskDetail;
@@ -119,7 +120,10 @@ public class WarehouseQualityResultService {
                        COUNT(*) FILTER (WHERE inspection.failed_base_qty > 0)
                            AS failed_line_count,
                        COUNT(*) FILTER (WHERE inspection.status IN ('PENDING','PARTIAL'))
-                           AS open_item_count
+                           AS open_item_count,
+                       COUNT(*) FILTER (WHERE inspection.status IN ('PENDING','PARTIAL')
+                                          AND inspection.pre_stocked_at IS NOT NULL)
+                           AS pre_stocked_line_count
                 FROM procurement_inspection_items inspection
                 JOIN receipt_scope scope
                   ON scope.receipt_type = inspection.receipt_type
@@ -279,7 +283,8 @@ public class WarehouseQualityResultService {
                        inspection.open_item_count,
                        COALESCE(pending_release.pending_slice_count, 0),
                        COALESCE(pending_return.pending_return_count, 0),
-                       last_event.last_event_at
+                       last_event.last_event_at,
+                       inspection.pre_stocked_line_count
                 %s%s
                 ORDER BY (CASE WHEN (%s) = 'COMPLETED' THEN 1 ELSE 0 END),
                          COALESCE(last_event.last_event_at,
@@ -307,7 +312,7 @@ public class WarehouseQualityResultService {
                 number(row[9]).longValue(), number(row[10]).longValue(),
                 number(row[11]).longValue(), number(row[12]).longValue(),
                 number(row[13]).longValue(), number(row[14]).longValue(),
-                offsetDateTime(row[15]))).toList();
+                offsetDateTime(row[15]), number(row[16]).longValue())).toList();
         int totalPages = total == 0 ? 0
                 : (int) ((total + normalizedSize - 1) / normalizedSize);
         return new PageResponse<>(
@@ -404,6 +409,12 @@ public class WarehouseQualityResultService {
                 && containsOwnRelease(type, receiptId, actorEmployeeId);
         boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
                 && !slices.isEmpty();
+        // 先入库后检(V596)：仍有「等结论且未上架」的行时可先上架；权限独立于确认入库。
+        boolean canPreStockIn = hasAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION)
+                && lines.stream().anyMatch(InspectionLineItem::preStockable);
+        List<String> allowedActions = new java.util.ArrayList<>();
+        if (canConfirm) allowedActions.add("CONFIRM");
+        if (canPreStockIn) allowedActions.add(TaskDetail.ACTION_PRE_STOCK_IN);
         String workStatus = deriveWorkStatus(
                 slices.size(), counts.failedLineCount(), counts.openItemCount(),
                 counts.passedLineCount(), counts.pendingReturnCount());
@@ -417,8 +428,9 @@ public class WarehouseQualityResultService {
                 slices.size(), counts.pendingReturnCount(),
                 workStatus.equals(COMPLETED),
                 containsOwnRelease,
-                canConfirm ? List.of("CONFIRM") : List.of(),
-                lines, slices, history, rejections);
+                allowedActions,
+                lines, slices, history, rejections,
+                counts.preStockedLineCount());
     }
 
     /**
@@ -466,7 +478,8 @@ public class WarehouseQualityResultService {
             long passedLineCount,
             long failedLineCount,
             long openItemCount,
-            long pendingReturnCount) {
+            long pendingReturnCount,
+            long preStockedLineCount) {
     }
 
     private Counts counts(String type, UUID receiptId) {
@@ -474,7 +487,9 @@ public class WarehouseQualityResultService {
                 SELECT COUNT(*),
                        COUNT(*) FILTER (WHERE inspection.passed_base_qty > 0),
                        COUNT(*) FILTER (WHERE inspection.failed_base_qty > 0),
-                       COUNT(*) FILTER (WHERE inspection.status IN ('PENDING','PARTIAL'))
+                       COUNT(*) FILTER (WHERE inspection.status IN ('PENDING','PARTIAL')),
+                       COUNT(*) FILTER (WHERE inspection.status IN ('PENDING','PARTIAL')
+                                          AND inspection.pre_stocked_at IS NOT NULL)
                 FROM procurement_inspection_items inspection
                 WHERE inspection.receipt_type = :receiptType
                   AND inspection.receipt_id = :receiptId
@@ -509,7 +524,8 @@ public class WarehouseQualityResultService {
                 number(inspectionRow[1]).longValue(),
                 number(inspectionRow[2]).longValue(),
                 number(inspectionRow[3]).longValue(),
-                number(returnRow).longValue());
+                number(returnRow).longValue(),
+                number(inspectionRow[4]).longValue());
     }
 
     private Object[] headerRow(String type, UUID receiptId) {
@@ -578,14 +594,25 @@ public class WarehouseQualityResultService {
                                inspection.passed_base_qty,
                                inspection.failed_base_qty,
                                inspection.warehouse_stocked_base_qty,
-                               COALESCE(pending_release.pending_qty, 0),inspection.warehouse_id,source_warehouse.name
+                               COALESCE(pending_release.pending_qty, 0),inspection.warehouse_id,source_warehouse.name,
+                               inspection.pre_stocked_warehouse_id, pre_stocked_warehouse.name,
+                               inspection.pre_stocked_place, inspection.pre_stocked_at, pre_stocked_by.full_name,
+                               COALESCE(preference.place, NULLIF(BTRIM(goods.stock_place), ''))
                         FROM procurement_inspection_items inspection
                         LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
+                        LEFT JOIN warehouses pre_stocked_warehouse
+                          ON pre_stocked_warehouse.id = inspection.pre_stocked_warehouse_id
+                        LEFT JOIN employees pre_stocked_by
+                          ON pre_stocked_by.id = inspection.pre_stocked_by_employee_id
                         LEFT JOIN goods ON goods.id = inspection.goods_id
                         LEFT JOIN colors color ON color.id = inspection.color_id
                         LEFT JOIN units source_unit
                           ON source_unit.id = inspection.unit_id
                         LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
+                        LEFT JOIN warehouse_goods_place_preferences preference
+                          ON preference.warehouse_id = inspection.warehouse_id
+                         AND preference.goods_id = inspection.goods_id
+                         AND preference.color_id IS NOT DISTINCT FROM inspection.color_id
                         LEFT JOIN pending_release
                           ON pending_release.inspection_item_id = inspection.id
                         WHERE inspection.receipt_type = :receiptType
@@ -600,7 +627,9 @@ public class WarehouseQualityResultService {
                 uuid(row[0]), uuid(row[1]), str(row[2]), str(row[3]),
                 str(row[4]), uuid(row[5]), str(row[6]), str(row[7]),
                 decimal(row[8]), decimal(row[9]), decimal(row[10]),
-                decimal(row[11]), decimal(row[12]),uuid(row[13]),str(row[14]))).toList();
+                decimal(row[11]), decimal(row[12]),uuid(row[13]),str(row[14]),
+                preStocked(row[15], row[16], row[17], row[18], row[19]),
+                row[20] == null ? null : str(row[20]))).toList();
     }
 
     /** 品质放行待入库切片（与 IQC 待入库详情同口径、只读不加锁）。 */
@@ -730,7 +759,8 @@ public class WarehouseQualityResultService {
                                color.name, COALESCE(base_unit.name, source_unit.name),
                                item.base_qty, item.weight, weight_unit.name,
                                item.place_snapshot, employee.full_name,
-                               batch.confirmed_at,item.warehouse_id,actual_warehouse.name
+                               batch.confirmed_at,item.warehouse_id,actual_warehouse.name,
+                               batch.origin
                         FROM procurement_iqc_stock_in_batch_items item
                         JOIN procurement_iqc_stock_in_batches batch
                           ON batch.id = item.batch_id
@@ -758,7 +788,8 @@ public class WarehouseQualityResultService {
                 uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
                 str(row[4]), str(row[5]), str(row[6]), str(row[7]),
                 decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
-                str(row[11]), str(row[12]), offsetDateTime(row[13]),List.of(),uuid(row[14]),str(row[15]))).toList();
+                str(row[11]), str(row[12]), offsetDateTime(row[13]),List.of(),uuid(row[14]),str(row[15]),
+                str(row[16]))).toList();
     }
 
     /** 检查不合格的实物退回案件（V440 拒收案件在仓库侧的投影）。 */
@@ -796,10 +827,16 @@ public class WarehouseQualityResultService {
                                                'PROCUREMENT_IQC_REJECTION_DETECTED'
                                            AND pending_outbox.aggregate_id = inspection.id
                                            AND pending_outbox.status <> 1)
-                                    THEN TRUE ELSE FALSE END
+                                    THEN TRUE ELSE FALSE END,
+                               inspection.pre_stocked_warehouse_id, pre_stocked_warehouse.name,
+                               inspection.pre_stocked_place, inspection.pre_stocked_at, pre_stocked_by.full_name
                         FROM procurement_iqc_rejection_cases rejection
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = rejection.inspection_item_id
+                        LEFT JOIN warehouses pre_stocked_warehouse
+                          ON pre_stocked_warehouse.id = inspection.pre_stocked_warehouse_id
+                        LEFT JOIN employees pre_stocked_by
+                          ON pre_stocked_by.id = inspection.pre_stocked_by_employee_id
                         LEFT JOIN goods ON goods.id = rejection.goods_id
                         LEFT JOIN colors color ON color.id = rejection.color_id
                         LEFT JOIN units unit ON unit.id = rejection.unit_id
@@ -821,7 +858,8 @@ public class WarehouseQualityResultService {
                 nullableDecimal(row[7]), str(row[8]), str(row[9]),
                 localDate(row[10]), str(row[11]), str(row[12]),
                 offsetDateTime(row[13]), number(row[14]).longValue(),
-                canRecord && bool(row[15]))).toList();
+                canRecord && bool(row[15]),
+                preStocked(row[16], row[17], row[18], row[19], row[20]))).toList();
     }
 
     private String qualityStatus(String type, UUID receiptId) {
@@ -918,6 +956,14 @@ public class WarehouseQualityResultService {
         return authentication != null && authentication.isAuthenticated()
                 && authentication.getAuthorities().stream()
                 .anyMatch(granted -> authority.equals(granted.getAuthority()));
+    }
+
+    /** 先入库后检(V596)：四列同进同出，仓 UUID 为空即未上架。 */
+    static PreStockedLocation preStocked(Object warehouseId, Object warehouseName,
+                                         Object place, Object at, Object byName) {
+        if (warehouseId == null) return null;
+        return new PreStockedLocation(
+                uuid(warehouseId), str(warehouseName), str(place), offsetDateTime(at), str(byName));
     }
 
     private static UUID uuid(Object value) {

@@ -31,6 +31,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/widgets/metric_filter_cards.dart' show metricToneColor;
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/operations_workbench.dart';
 import '../repositories/operations_workbench_repository.dart';
@@ -82,6 +83,9 @@ class _OperationsWorkbenchPageState
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
+  /// 表头列筛选（服务端 facet key → 值）；repository 以 `f.{key}` 前缀回传。
+  final Map<String, String?> _columnFilters = {};
 
   final Set<String> _selectedIds = {};
 
@@ -152,6 +156,7 @@ class _OperationsWorkbenchPageState
         exception: seg == null || seg.history ? null : _exception,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+        columnFilters: _columnFilters,
       );
       if (!mounted || requestId != _requestId) return;
       setState(() {
@@ -178,6 +183,8 @@ class _OperationsWorkbenchPageState
       _page = 1;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
       _selectedIds.clear();
+      // 各阶段的 facet 集合不同（与委外任务中心同口径）：切段时清表头筛选。
+      _columnFilters.clear();
     });
     if (!seg.history || !_historyTime.isNone) {
       _load(page: 1);
@@ -210,6 +217,55 @@ class _OperationsWorkbenchPageState
     _keyword = normalized;
     _load(page: 1);
   }
+
+  // —— 表头筛选（与委外任务中心 subcontract_decomposition_page 同款）——
+  // 端点已返回 facets/nullCounts（模型已解析），repository 以 `f.{服务端 key}`
+  // 回传。本页两列的 key 与服务端 facet key 不同名（docNo/goods），用映射对齐。
+
+  /// 本页列 key → 服务端工作台 facet/`f.` key（null = 该列不支持表头筛选）。
+  static const Map<String, String> _serverKeyByColumn = {
+    'planNo': 'planNo',
+    'actionDocNo': 'docNo',
+    'goodsName': 'goods',
+    'spec': 'spec',
+    'status': 'status',
+    'needDate': 'needDate',
+  };
+
+  void _onColumnFilterChanged(String column, String? value) {
+    final serverKey = _serverKeyByColumn[column];
+    if (serverKey == null) return;
+    setState(() {
+      if (value == null) {
+        _columnFilters.remove(serverKey);
+      } else {
+        _columnFilters[serverKey] = value;
+      }
+      _selectedIds.clear();
+    });
+    _load(page: 1);
+  }
+
+  /// 服务端 facets/nullCounts → 按本页列 key 提供给 MasterDataTableView。
+  Map<String, List<MasterFacetBucket>> _facetsByColumn(
+    OperationsWorkbenchData data,
+  ) => {
+    for (final entry in _serverKeyByColumn.entries)
+      if (data.facets.containsKey(entry.value))
+        entry.key: data.facets[entry.value]!,
+  };
+
+  Map<String, int> _nullCountsByColumn(OperationsWorkbenchData data) => {
+    for (final entry in _serverKeyByColumn.entries)
+      if (data.nullCounts.containsKey(entry.value))
+        entry.key: data.nullCounts[entry.value]!,
+  };
+
+  Map<String, String?> _columnFilterValues() => {
+    for (final entry in _serverKeyByColumn.entries)
+      if (_columnFilters.containsKey(entry.value))
+        entry.key: _columnFilters[entry.value],
+  };
 
   void _toggleSelected(OperationsWorkbenchTask task) {
     if (task.id.isEmpty) return;
@@ -515,6 +571,10 @@ class _OperationsWorkbenchPageState
                         setState(() => _page = page);
                         _load(page: page);
                       },
+                      facets: _facetsByColumn(data),
+                      nullCounts: _nullCountsByColumn(data),
+                      filters: _columnFilterValues(),
+                      onColumnFilterChanged: _onColumnFilterChanged,
                       batchActions: selectionAction == null
                           ? null
                           : (_, _) => [
@@ -669,6 +729,10 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.onSelectedIdsChanged,
     required this.onOpenTask,
     required this.onPageChanged,
+    this.facets = const {},
+    this.nullCounts = const {},
+    this.filters = const {},
+    this.onColumnFilterChanged,
     this.batchActions,
   });
 
@@ -680,6 +744,10 @@ class _DesktopTaskTable extends StatelessWidget {
   final ValueChanged<Set<String>> onSelectedIdsChanged;
   final ValueChanged<OperationsWorkbenchTask> onOpenTask;
   final ValueChanged<int> onPageChanged;
+  final Map<String, List<MasterFacetBucket>> facets;
+  final Map<String, int> nullCounts;
+  final Map<String, String?> filters;
+  final void Function(String column, String? value)? onColumnFilterChanged;
   final List<Widget> Function(BuildContext, Set<String>)? batchActions;
 
   @override
@@ -826,10 +894,10 @@ class _DesktopTaskTable extends StatelessWidget {
         ),
       ],
       items: items,
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      facets: facets,
+      nullCounts: nullCounts,
+      filters: filters,
+      onFilterChanged: onColumnFilterChanged ?? (_, _) {},
       batchActionsBuilder: batchActions,
       onRowTap: onOpenTask,
       canOpenRow: (item) => item.actionDocument?.canView ?? false,

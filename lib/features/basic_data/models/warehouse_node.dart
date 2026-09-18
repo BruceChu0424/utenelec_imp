@@ -149,7 +149,7 @@ class WarehouseFacets {
   final Map<String, List<MasterFacetBucket>> fields;
   final Map<String, int> nullCounts;
 
-  static const _keys = ['code', 'name', 'status'];
+  static const _keys = ['code', 'name', 'status', 'parent', 'accountable'];
 
   factory WarehouseFacets.fromJson(Map<String, dynamic> json) {
     final fields = <String, List<MasterFacetBucket>>{};

@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
+import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -846,7 +847,18 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     private List<PreparedPlanTransfer> transferToPlanDemands(
             UUID analysisId, UUID planId, UUID warehouseId,
             List<DemandSlice> demands, UUID actorId, boolean explicitActor) {
-        return selectPlanDemandTransfers(analysisId,planId,warehouseId,demands,actorId,explicitActor,true,null);
+        return selectPlanDemandTransfers(analysisId,planId,warehouseId,demands,actorId,explicitActor,true,null,false);
+    }
+
+    /**
+     * 线边仓叶仓内的权益转正(V595)：批次只取 {@code leafWarehouseId} 这一个叶仓(不同主仓、不跟合格
+     * 来源跨仓)，其余选源顺序、预算与绑定规则与 {@link #transferToPlanDemands} 完全相同。
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<PreparedPlanTransfer> transferToPlanDemandsWithinWarehouse(
+            UUID analysisId, UUID planId, UUID leafWarehouseId, List<DemandSlice> demands) {
+        return selectPlanDemandTransfers(analysisId,planId,leafWarehouseId,demands,null,false,true,null,true);
     }
 
     @Override
@@ -854,12 +866,17 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     public List<PreviewPlanTransfer> previewPlanDemandTransfers(UUID analysisId,UUID planId,
                                                                UUID warehouseId,List<DemandSlice> demands) {
         List<PreviewPlanTransfer> preview=new ArrayList<>();
-        selectPlanDemandTransfers(analysisId,planId,warehouseId,demands,null,false,false,preview);
+        selectPlanDemandTransfers(analysisId,planId,warehouseId,demands,null,false,false,preview,false);
         return List.copyOf(preview);
     }
 
+    /**
+     * @param leafOnly 只取 {@code warehouseId} 这一个叶仓里的批次(V595 线边仓补投)；false 时按
+     *                 「同主仓 + 合格来源跟随实际仓」的下达口径选源。
+     */
     private List<PreparedPlanTransfer> selectPlanDemandTransfers(UUID analysisId,UUID planId,UUID warehouseId,
-            List<DemandSlice> demands,UUID actorId,boolean explicitActor,boolean write,List<PreviewPlanTransfer> preview) {
+            List<DemandSlice> demands,UUID actorId,boolean explicitActor,boolean write,List<PreviewPlanTransfer> preview,
+            boolean leafOnly) {
         if(write)tx.bind();
         if (analysisId == null || planId == null || warehouseId == null
                 || demands == null || demands.isEmpty()) {
@@ -925,8 +942,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     UUID.class);
             for (UUID materialId : materialIds) {
                 if (remaining.signum() <= 0) break;
-                List<PreplanStockEntitlementService.AvailableLot> lots =
-                        entitlement.listAvailableBeneficiaryLotsForProduction(
+                List<PreplanStockEntitlementService.AvailableLot> lots = leafOnly
+                        ? entitlement.listAvailableBeneficiaryLots(
+                                analysisId, materialId, warehouseId,
+                                demand.goodsId(), demand.colorId(), write)
+                        : entitlement.listAvailableBeneficiaryLotsForProduction(
                                 analysisId, materialId, warehouseId,
                                 demand.goodsId(), demand.colorId(), write);
                 for (PreplanStockEntitlementService.AvailableLot lot : lots) {
@@ -975,8 +995,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                   AND reservation.status = :effective
                                   AND reservation.owner_type = :ownerType
                                   AND reservation.owner_id = :analysisId
-                                  AND fn_warehouse_same_main(
-                                      reservation.warehouse_id, :warehouseId)
+                                  AND %s
                                   AND reservation.goods_id = :goodsId
                                   AND reservation.color_id IS NOT DISTINCT FROM
                                       CAST(:colorId AS uuid)
@@ -992,7 +1011,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                           reservation.id)
                                 ORDER BY reservation.created_at, reservation.id
                                 %s
-                                """.formatted(write?"FOR UPDATE OF reservation":""))
+                                """.formatted(leafOnly
+                                        ? "reservation.warehouse_id = :warehouseId"
+                                        : "fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)",
+                                        write?"FOR UPDATE OF reservation":""))
                                 .setParameter("effective", STATUS_EFFECTIVE)
                                 .setParameter("ownerType", OWNER_TYPE)
                                 .setParameter("analysisId", analysisId)
@@ -1037,7 +1059,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                           AND (r.warehouse_id IS NULL OR r.warehouse_id = :warehouseId)
                           AND r.status = 0 AND r.is_deleted = FALSE), 0) AS reserved_qty,
                     GREATEST(COALESCE(goods.min_qty,0),0)::numeric AS safety_qty,
-                    (NOT warehouse.is_defective AND fn_warehouse_same_main(warehouse.id,:plannedWarehouseId)) AS local_normal
+                    (NOT warehouse.is_defective AND NOT warehouse.is_line_side
+                     AND fn_warehouse_same_main(warehouse.id,:plannedWarehouseId)) AS local_normal
                     FROM goods JOIN warehouses warehouse ON warehouse.id=:warehouseId
                       AND NOT warehouse.is_deleted AND warehouse.is_accountable
                       AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
@@ -1104,12 +1127,31 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID packageId, List<PreparedPlanTransfer> prepared,
             List<FormalReservationSlice> formalReservations, UUID actorId) {
         entitlement.requireFormalizationActor(actorId);
-        formalizePlanDemandTransfers(packageId, prepared, formalReservations, actorId, true);
+        formalizePlanDemandTransfers(packageId, prepared, formalReservations, actorId, true, null);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void formalizePlanDemandTransfersForCommand(
+            UUID packageId, List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations, String commandKey) {
+        if (commandKey == null || commandKey.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "分批转正缺少命令键");
+        }
+        formalizePlanDemandTransfers(packageId, prepared, formalReservations, null, false, commandKey);
     }
 
     private void formalizePlanDemandTransfers(
             UUID packageId, List<PreparedPlanTransfer> prepared,
             List<FormalReservationSlice> formalReservations, UUID actorId, boolean explicitActor) {
+        formalizePlanDemandTransfers(packageId, prepared, formalReservations, actorId, explicitActor, null);
+    }
+
+    /** @param commandKey 非空时拼进 FORMALIZE 幂等键(V595 线边仓分次补投)，空时保持下达一次性的原键。 */
+    private void formalizePlanDemandTransfers(
+            UUID packageId, List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations, UUID actorId, boolean explicitActor,
+            String commandKey) {
         tx.bind();
         if (prepared == null || prepared.isEmpty()) return;
         List<FormalReservationSlice> formal = formalReservations == null
@@ -1147,8 +1189,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 BigDecimal available = availableByReservation.get(target.stockReservationId());
                 BigDecimal take = remaining.min(available);
                 if (take.signum() <= 0) continue;
+                // 基础键 165 字符，事件键上限 200(V309)：命令键只拼 SHA-256 前 32 位。
                 String key = "PREPLAN-FORMALIZE:" + packageId + ":" + slice.demandId() + ":"
-                        + slice.sourceEntitlementEventId() + ":" + target.stockReservationId();
+                        + slice.sourceEntitlementEventId() + ":" + target.stockReservationId()
+                        + (commandKey == null ? "" : ":" + CanonicalFingerprint.sha256(
+                                List.of(commandKey)).substring(0, 32));
                 if (explicitActor) {
                     entitlement.appendFormalize(packageId,
                             slice.sourceEntitlementEventId(), slice.sourceStockReservationId(),

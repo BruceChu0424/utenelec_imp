@@ -9,6 +9,7 @@ class FinancePayablesFilter {
     this.supplierId,
     this.status,
     this.settlementMethodId,
+    this.currencyId,
     this.keyword,
     this.dateFrom,
     this.dateTo,
@@ -20,6 +21,9 @@ class FinancePayablesFilter {
   final String? supplierId;
   final String? status;
   final String? settlementMethodId;
+
+  /// 币种（2026-09-16 表头筛选，currencies/dict 桶回传 currencyId）
+  final String? currencyId;
   final String? keyword;
   final String? dateFrom;
   final String? dateTo;
@@ -64,6 +68,8 @@ class FinancePayablesRepository {
         if (filter.supplierId?.isNotEmpty == true)
           'supplierId': filter.supplierId,
         if (filter.status?.isNotEmpty == true) 'status': filter.status,
+        if (filter.currencyId?.isNotEmpty == true)
+          'currencyId': filter.currencyId,
         if (filter.settlementMethodId?.isNotEmpty == true)
           'settlementMethodId': filter.settlementMethodId,
         if (filter.keyword?.trim().isNotEmpty == true)

@@ -22,8 +22,10 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -32,6 +34,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -52,6 +55,38 @@ String fqty(double value) => value
     .replaceFirst(RegExp(r'\.$'), '');
 
 /// 不合格处置方式（与服务端 dispositionCode 同域）。
+/// 先入库后检(V597)：已上架到成品仓库位的待检行，品质部到储放区域检验。
+/// 没有上架行时返回 null(不渲染)。
+Widget? fqcPreStockedNotice(
+  Iterable<ProductionFqcInspection> inspections, {
+  required Key key,
+}) {
+  final shelved = [
+    for (final item in inspections)
+      if (item.preStocked != null) item,
+  ];
+  if (shelved.isEmpty) return null;
+  final shown = shelved.take(3).toList(growable: false);
+  return UtenInlineNotice(
+    key: key,
+    level: UtenInlineNoticeLevel.error,
+    title: '货品已入库，需到对应储放区域检查',
+    message: [
+      for (final item in shown)
+        '${item.goodsName ?? item.goodsCode ?? '货品'} → ${item.preStocked!.label}',
+      if (shelved.length > shown.length) '另 ${shelved.length - shown.length} 行见明细',
+      '合格由系统按上架位置自动点收入库，不合格由仓库从库位取出处理',
+    ].join('；'),
+  );
+}
+
+/// 储放位置文本：已上架行「已入库 · 仓 / 库位」，否则登记库位。
+String fqcStorageText(ProductionFqcInspection inspection) {
+  final shelf = inspection.preStocked;
+  if (shelf != null) return '已入库 · ${shelf.label}';
+  return inspection.place ?? '—';
+}
+
 const List<(String, String)> kFqcDispositions = [
   ('REWORK', '返工'),
   ('SCRAP', '报废'),
@@ -397,6 +432,19 @@ class _ProductionFqcSheetHandlingPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (fqcPreStockedNotice(
+                  activeRows.map((row) => row.inspection),
+                  key: const Key('fqc-sheet-pre-stocked-notice'),
+                )
+                case final notice?) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s16,
+                ),
+                child: notice,
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
             _buildSummaryCard(theme, detail, activeRows.length),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s8),
@@ -662,11 +710,23 @@ class _ProductionFqcSheetHandlingPageState
       type: 'number',
       value: (row) => fqty(row.inspection.reportedQty),
     ),
+    // 先入库后检(V597)：已上架行红字「已入库 · 仓 / 库位」，品质部按此到储放区域检验。
     MasterColumnDef<FqcReportRow>(
       key: 'place',
-      label: '库位',
-      width: 110,
-      value: (row) => row.inspection.place ?? '—',
+      label: '储放位置',
+      width: 150,
+      value: (row) => fqcStorageText(row.inspection),
+      cellBuilder: (context, row) {
+        final text = fqcStorageText(row.inspection);
+        if (row.inspection.preStocked == null) return Text(text);
+        return Text(
+          text,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: UtenColors.error,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      },
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'passedQty',
@@ -723,18 +783,18 @@ class _ProductionFqcSheetHandlingPageState
       info: '仅「不合格数量 > 0」的行需要选择；纯合格行不需要处置方式。',
       value: (row) =>
           row.failValue > 0 ? _dispositionLabel(row.disposition) : '—',
-      cellBuilder: (context, row) => DropdownButtonFormField<String>(
+      cellBuilder: (context, row) => UtenDropdownField(
         key: Key('fqc-sheet-disposition-${row.inspection.id}'),
-        initialValue: row.disposition,
-        isExpanded: true,
-        decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
+        dense: true,
+        value: row.disposition,
+        hintText: '选择处置',
         items: [
           for (final entry in kFqcDispositions)
-            DropdownMenuItem(value: entry.$1, child: Text(entry.$2)),
+            UtenDropdownItem(value: entry.$1, label: entry.$2),
         ],
-        onChanged: !_canDecide || _submitting || row.failValue <= 0
-            ? null
-            : (value) => setState(() => row.disposition = value ?? 'REWORK'),
+        enabled: _canDecide && !_submitting && row.failValue > 0,
+        onChanged: (value) =>
+            setState(() => row.disposition = value ?? 'REWORK'),
       ),
     ),
   ];
@@ -989,7 +1049,15 @@ class _ProductionFqcInspectionPageState
                     UtenFloatingActionGroup.scrollClearance,
                   ),
                   children: [
-                    _buildFactsCard(theme, inspection!),
+                    if (fqcPreStockedNotice(
+                          [inspection!],
+                          key: const Key('fqc-inspection-pre-stocked-notice'),
+                        )
+                        case final notice?) ...[
+                      notice,
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
+                    _buildFactsCard(theme, inspection),
                     const SizedBox(height: UtenSpacing.s12),
                     if (_canDecide && _row != null) ...[
                       _buildDecisionForm(theme, _row!),
@@ -1086,8 +1154,8 @@ class _ProductionFqcInspectionPageState
                 ),
                 MasterColumnDef<_FactRow>(
                   key: 'place',
-                  label: '库位',
-                  width: 110,
+                  label: '储放位置',
+                  width: 150,
                   value: (row) => row.place,
                 ),
                 MasterColumnDef<_FactRow>(
@@ -1117,7 +1185,7 @@ class _ProductionFqcInspectionPageState
                   colorName: inspection.colorName,
                   sheetNo: inspection.sheetNo ?? '无检查单',
                   warehouse: inspection.warehouseName ?? '—',
-                  place: inspection.place ?? '—',
+                  place: fqcStorageText(inspection),
                   receiver: inspection.receiverName ?? '—',
                   qty:
                       '${fqty(inspection.reportedQty)} / '
@@ -1233,27 +1301,19 @@ class _ProductionFqcInspectionPageState
                   value: (row) => row.failValue > 0
                       ? _dispositionLabel(row.disposition)
                       : '—',
-                  cellBuilder: (context, row) =>
-                      DropdownButtonFormField<String>(
-                        key: const Key('fqc-inspection-disposition'),
-                        initialValue: row.disposition,
-                        isExpanded: true,
-                        decoration: const UtenInputDecoration(
-                          InputDecoration(isDense: true),
-                        ),
-                        items: [
-                          for (final entry in kFqcDispositions)
-                            DropdownMenuItem(
-                              value: entry.$1,
-                              child: Text(entry.$2),
-                            ),
-                        ],
-                        onChanged: _saving || row.failValue <= 0
-                            ? null
-                            : (value) => setState(
-                                () => row.disposition = value ?? 'REWORK',
-                              ),
-                      ),
+                  cellBuilder: (context, row) => UtenDropdownField(
+                    key: const Key('fqc-inspection-disposition'),
+                    dense: true,
+                    value: row.disposition,
+                    hintText: '选择处置',
+                    items: [
+                      for (final entry in kFqcDispositions)
+                        UtenDropdownItem(value: entry.$1, label: entry.$2),
+                    ],
+                    enabled: !_saving && row.failValue > 0,
+                    onChanged: (value) =>
+                        setState(() => row.disposition = value ?? 'REWORK'),
+                  ),
                 ),
                 MasterColumnDef(
                   key: 'remaining',

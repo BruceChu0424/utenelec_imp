@@ -265,7 +265,8 @@ public class PreplanStockEntitlementService {
                         (fn_preplan_reservation_has_qualified_origin(reservation.id)
                          OR (fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)
                              AND EXISTS(SELECT 1 FROM warehouses warehouse
-                                 WHERE warehouse.id=reservation.warehouse_id AND NOT warehouse.is_defective)))
+                                 WHERE warehouse.id=reservation.warehouse_id AND NOT warehouse.is_defective
+                                   AND NOT warehouse.is_line_side)))
                         """ : sameMain
                         ? "fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)"
                         : "reservation.warehouse_id = :warehouseId",

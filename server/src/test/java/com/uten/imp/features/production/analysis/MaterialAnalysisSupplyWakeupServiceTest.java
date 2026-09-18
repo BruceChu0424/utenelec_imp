@@ -35,7 +35,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 com.uten.imp.common.web.ErrorCode.CONFLICT,"source changed"))
                 .when(locks).requireCovered(needed);
         routeQueries(em,query(List.<Object[]>of(new Object[]{target,UUID.randomUUID()})));
-        var service = new MaterialAnalysisSupplyWakeupService(em,analysis,locks,footprints);
+        var service = new MaterialAnalysisSupplyWakeupService(em,analysis,locks,footprints,
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> service.afterPurchaseReceiptApproved(UUID.randomUUID()));
@@ -57,7 +58,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterPurchaseReceiptApproved(receiptId);
 
@@ -92,7 +94,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterInspectionStockInConfirmed(
                 "PURCHASE", receiptId, firstBatchId, List.of(inspectionItemId));
@@ -126,7 +129,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterInspectionStockInConfirmed(
                 "SUBCONTRACT", receiptId, UUID.randomUUID(),
@@ -156,7 +160,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         List<String> statements = routeQueries(em, candidates);
         var service = new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
         var batches = new ArrayList<com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn>();
         for (int i = 0; i < 100; i++) {
             batches.add(new com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn(
@@ -181,7 +186,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
         var service = new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
         service.afterInspectionStockInConfirmed("PURCHASE", UUID.randomUUID(), null, List.of(UUID.randomUUID()));
         service.afterInspectionStockInConfirmed("PURCHASE", UUID.randomUUID(), UUID.randomUUID(), List.of());
         service.afterInspectionStockInConfirmed("PURCHASE", UUID.randomUUID(), UUID.randomUUID(), null);
@@ -199,7 +205,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterSubcontractReceiptApproved(UUID.randomUUID());
 
@@ -220,7 +227,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterPurchaseReceiptReversed(UUID.randomUUID());
 
@@ -238,7 +246,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterFinishedInboundApproved(UUID.randomUUID());
 
@@ -261,7 +270,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterFinishedInboundReversed(UUID.randomUUID());
 
@@ -279,7 +289,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         List<String> statements = routeQueries(em, candidates);
         var service = new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         service.afterFinishedInboundApproved(java.util.Collections.nCopies(100, document));
 
@@ -303,7 +314,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         assertThrows(IllegalStateException.class,
                 () -> service.afterSubcontractReceiptApproved(UUID.randomUUID()));

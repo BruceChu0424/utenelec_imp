@@ -87,14 +87,14 @@ class UnitDetail {
   );
 }
 
-/// 字段 facet 结果：各筛选字段（编号/名称/状态）的可选值桶 + 各字段空值计数。
+/// 字段 facet 结果：各筛选字段（编号/名称/状态/计量维度）的可选值桶 + 空值计数。
 class UnitFacets {
   const UnitFacets({required this.fields, required this.nullCounts});
 
   final Map<String, List<MasterFacetBucket>> fields;
   final Map<String, int> nullCounts;
 
-  static const _keys = ['code', 'name', 'status'];
+  static const _keys = ['code', 'name', 'status', 'dimension'];
 
   factory UnitFacets.fromJson(Map<String, dynamic> json) {
     final fields = <String, List<MasterFacetBucket>>{};

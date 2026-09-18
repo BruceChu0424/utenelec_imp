@@ -9,6 +9,7 @@
 // 2026-09-10 表头筛选：「状态」列筛选桶 = 当前分段的状态集（全部段 = 六态），
 // 选中后下推后端 status 参数并回第 1 页，同时把顶部分段切到该状态所属段；
 // 换分段清空状态筛选。
+// 2026-09-16 增「类别」列筛选桶（固定八类，明细项级别下推 category 参数）。
 //
 // 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
 // medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器；
@@ -31,6 +32,7 @@ import '../../../core/router/route_names.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
+import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
 
 class ExpenseListPage extends ConsumerWidget {
@@ -41,6 +43,7 @@ class ExpenseListPage extends ConsumerWidget {
     final list = ref.watch(expenseListProvider);
     final filter = ref.watch(expenseFilterProvider);
     final statusFilter = ref.watch(expenseStatusFilterProvider);
+    final categoryFilter = ref.watch(expenseCategoryFilterProvider);
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.receipt_long_outlined,
       emptyMessage: '暂无报销单',
@@ -73,9 +76,13 @@ class ExpenseListPage extends ConsumerWidget {
             key: const Key('expense-list-table'),
             columns: _columns,
             items: claims,
-            facets: {'status': _statusFacets(filter)},
+            facets: {
+              'status': _statusFacets(filter),
+              // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
+              'category': _categoryFacets(),
+            },
             nullCounts: const {},
-            filters: {'status': statusFilter?.name},
+            filters: {'status': statusFilter?.name, 'category': categoryFilter},
             onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
             // 双击行进入报销详情（保留现有路由与 push 语义）。
             onRowTap: (claim) =>
@@ -132,8 +139,23 @@ List<MasterFacetBucket> _statusFacets(ExpenseFilter filter) {
   ];
 }
 
-/// 表头状态筛选 → 精确状态下推后端（provider 重建即回第 1 页）+ 顶部分段同步切换。
+/// 「类别」列筛选桶（固定枚举，前端硬编码；count=0 表示不强调计数）。
+List<MasterFacetBucket> _categoryFacets() => [
+  for (final category in ExpenseCategory.values)
+    MasterFacetBucket(
+      value: category.apiValue,
+      count: 0,
+      label: category.label,
+    ),
+];
+
+/// 表头筛选 → 下推后端（provider 重建即回第 1 页）；状态桶同时同步顶部分段。
 void _onFilterChanged(WidgetRef ref, String key, String? value) {
+  if (key == 'category') {
+    ref.read(expenseCategoryFilterProvider.notifier).state =
+        value?.trim().isEmpty == true ? null : value;
+    return;
+  }
   if (key != 'status') return;
   final status = value == null
       ? null

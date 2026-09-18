@@ -12,9 +12,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get appTitle => '우텅 통합 관리 플랫폼';
 
   @override
-  String get appName => 'UTEN IMP';
-
-  @override
   String get commonConfirm => '확인';
 
   @override
@@ -22,18 +19,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get commonSave => '저장';
-
-  @override
-  String get commonDelete => '삭제';
-
-  @override
-  String get commonEdit => '편집';
-
-  @override
-  String get commonAdd => '추가';
-
-  @override
-  String get commonSearch => '검색';
 
   @override
   String get commonRefresh => '새로고침';
@@ -54,9 +39,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get connectionRetryNow => '지금 다시 시도';
 
   @override
-  String get commonClose => '닫기';
-
-  @override
   String get commonBack => '뒤로';
 
   @override
@@ -72,18 +54,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get commonSuccess => '완료';
 
   @override
-  String get commonFailed => '실패';
-
-  @override
-  String get commonMore => '더보기';
-
-  @override
-  String get commonViewAll => '전체 보기';
-
-  @override
-  String get commonAction => '작업';
-
-  @override
   String get loginAccountHint => '사번 또는 전화번호';
 
   @override
@@ -96,19 +66,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get loginPasswordRequired => '비밀번호를 입력해 주세요';
 
   @override
-  String get loginForgotPassword => '비밀번호 찾기';
-
-  @override
   String get loginButton => '로그인';
 
   @override
   String get loginLoggingIn => '로그인 중…';
-
-  @override
-  String get loginSuccess => '로그인됨';
-
-  @override
-  String get loginFailed => '계정 또는 비밀번호가 올바르지 않습니다';
 
   @override
   String get loginServerRecoveryAction => '자동 서버 선택 복원';
@@ -142,45 +103,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get navSettings => '설정';
 
   @override
-  String dashboardWelcome(Object name) {
-    return '환영합니다, $name님';
-  }
-
-  @override
-  String get dashboardWelcomeSubtitle => '오늘도 화이팅하세요';
-
-  @override
-  String get dashboardTodayStats => '오늘의 개요';
-
-  @override
-  String get dashboardQuickActions => '빠른 실행';
-
-  @override
-  String get statTodayOutput => '오늘 생산량';
-
-  @override
-  String get statOutputUnit => '개';
-
-  @override
-  String get statInventory => '현재 재고';
-
-  @override
-  String get statOnlineEmployees => '접속 중 직원';
-
-  @override
-  String get statPendingTodos => '대기 중 작업';
-
-  @override
-  String statTrendUp(Object percent) {
-    return '전일 대비 +$percent%';
-  }
-
-  @override
-  String statTrendDown(Object percent) {
-    return '전일 대비 $percent%';
-  }
-
-  @override
   String get settingsTitle => '설정';
 
   @override
@@ -190,58 +112,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsThemeMode => '테마';
 
   @override
-  String get settingsThemeLight => '라이트';
-
-  @override
-  String get settingsThemeDark => '다크';
-
-  @override
-  String get settingsThemeSystem => '시스템';
-
-  @override
   String get settingsLanguage => '언어';
 
   @override
-  String get settingsLanguageZh => '简体中文';
-
-  @override
-  String get settingsLanguageEn => 'English';
-
-  @override
   String get settingsFontSize => '글자 크기';
-
-  @override
-  String get settingsFontSmall => '작게';
-
-  @override
-  String get settingsFontMedium => '표준';
-
-  @override
-  String get settingsFontLarge => '크게';
-
-  @override
-  String get settingsFontXLarge => '아주 크게';
-
-  @override
-  String get settingsFontXXLarge => '최대 크기';
 
   @override
   String get settingsSectionPerformance => '성능';
 
   @override
   String get settingsPerformanceTier => '성능 모드';
-
-  @override
-  String get settingsPerformanceAuto => '자동';
-
-  @override
-  String get settingsPerformanceLite => '절전';
-
-  @override
-  String get settingsPerformanceStandard => '표준';
-
-  @override
-  String get settingsPerformanceRich => '최고 성능';
 
   @override
   String get settingsPerformanceHint => '사양이 낮은 기기는 절전 모드를 권장합니다';
@@ -259,22 +139,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsLogoutConfirm => '로그아웃하시겠습니까?';
 
   @override
-  String get profileTitle => '내 정보';
-
-  @override
-  String get profileEditProfile => '프로필 편집';
-
-  @override
   String get profileChangePassword => '비밀번호 변경';
-
-  @override
-  String get profileEmployeeCode => '사번';
-
-  @override
-  String get profileDepartment => '부서';
-
-  @override
-  String get profilePosition => '직책';
 
   @override
   String get entryStaff => '임직원 로그인';
@@ -316,9 +181,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get visitorLoggingIn => '로그인 중…';
-
-  @override
-  String get visitorCodeSent => '인증번호가 전송되었습니다';
 
   @override
   String visitorCodeSentDev(Object code) {
@@ -395,9 +257,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorApplyHost => '담당자';
 
   @override
-  String get visitorApplyHostHint => '방문할 담당자를 선택해 주세요';
-
-  @override
   String get visitorApplyDept => '담당 부서';
 
   @override
@@ -465,9 +324,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorDetailVisitTime => '방문 시간';
 
   @override
-  String get visitorDetailVehicle => '차량';
-
-  @override
   String get visitorDetailAppliedAt => '제출 시간';
 
   @override
@@ -495,9 +351,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorApprovalPending => '대기 중';
 
   @override
-  String get visitorApprovalProcessed => '처리됨';
-
-  @override
   String get visitorApprovalApprove => '승인';
 
   @override
@@ -507,19 +360,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorApprovalForward => '담당자 전달';
 
   @override
-  String get visitorApprovalRejectReason => '반려 사유';
-
-  @override
   String get visitorApprovalRejectReasonHint => '선택';
 
   @override
   String get visitorApprovalConfirmApprove => '이 방문자를 승인하시겠습니까?';
-
-  @override
-  String get visitorApprovalConfirmReject => '이 방문자를 반려하시겠습니까?';
-
-  @override
-  String get visitorApprovalHostConfirmed => '담당자 확인 완료';
 
   @override
   String get visitorApprovalEmpty => '승인할 방문자가 없습니다';
@@ -537,9 +381,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get myVisitorsReject => '거절';
 
   @override
-  String get myVisitorsConfirmHint => '이 방문자를 접수하시겠습니까?';
-
-  @override
   String get securityTitle => '방문자 확인';
 
   @override
@@ -549,16 +390,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityScanManual => '코드 직접 입력';
 
   @override
-  String get securityManualInputHint => 'QR 내용을 붙여넣거나 입력해 주세요';
-
-  @override
   String get securityPasscodeHint => '6자리 출입 코드 입력';
 
   @override
   String get visitorPasscodeLabel => '출입 코드';
-
-  @override
-  String get securityVerifying => '확인 중…';
 
   @override
   String get securityPass => '입장 허용';
@@ -603,24 +438,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityVisitTime => '방문 시간';
 
   @override
-  String get navHrGroup => '인사 관리';
-
-  @override
-  String get navHrEmployees => '직원';
-
-  @override
-  String get navHrDepartments => '부서';
-
-  @override
-  String get navHrOnboarding => '입사 처리';
-
-  @override
-  String get navHrPayrollGenerate => '급여명세서 생성';
-
-  @override
-  String get navHrNoticePublish => '공지 게시';
-
-  @override
   String get employeeTitle => '직원';
 
   @override
@@ -633,19 +450,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeEmpty => '직원이 없습니다';
 
   @override
-  String get employeeEmptyHint => '입사 버튼을 눌러 추가하세요';
-
-  @override
-  String get employeeLoadMore => '더 보기';
-
-  @override
   String get employeeDetailTitle => '직원 상세';
 
   @override
   String get employeeDetailBasic => '기본 정보';
-
-  @override
-  String get employeeDetailContact => '연락처 및 주소';
 
   @override
   String get employeeDetailOrg => '조직';
@@ -840,21 +648,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeEditSalary => '급여 및 계좌';
 
   @override
-  String get employeeEditFieldPhone => '휴대전화';
-
-  @override
-  String get employeeEditFieldDepartment => '부서';
-
-  @override
-  String get employeeEditFieldPosition => '직책';
-
-  @override
-  String get employeeEditFieldEmploymentType => '고용 형태';
-
-  @override
-  String get employeeEditFieldStatus => '상태';
-
-  @override
   String get employeeEditSaved => '저장됨';
 
   @override
@@ -864,9 +657,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String employeeEditLoadFailed(Object error) {
     return '로드 실패: $error';
   }
-
-  @override
-  String get employeeEditNotFound => '직원을 찾을 수 없습니다';
 
   @override
   String get employeeEditRequired => '필수';
@@ -1001,49 +791,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get idTypeOther => '기타';
 
   @override
-  String get employeeOffboardTitle => '퇴사 처리';
-
-  @override
-  String get employeeOffboardFieldType => '퇴사 유형';
-
-  @override
-  String get employeeOffboardFieldDate => '마지막 근무일';
-
-  @override
-  String get employeeOffboardPickDate => '날짜 선택';
-
-  @override
-  String get employeeOffboardFieldReason => '사유';
-
-  @override
-  String get employeeOffboardPickDateRequired => '마지막 근무일을 선택해 주세요';
-
-  @override
-  String get employeeOffboardChecksRequired => '모든 반수 항목을 확인해 주세요';
-
-  @override
-  String get employeeOffboardConfirmTitle => '퇴사 처리하시겠습니까?';
-
-  @override
-  String get employeeOffboardConfirmBody => '이 직원의 계정이 비활성화됩니다.';
-
-  @override
-  String get employeeOffboardConfirmAction => '퇴사 처리 확인';
-
-  @override
-  String get employeeOffboardNext => '다음';
-
-  @override
-  String get employeeOffboardBack => '이전';
-
-  @override
-  String get employeeOffboardCompleted => '퇴사 처리 완료';
-
-  @override
   String get employeeOffboardLoadFailed => '로드 실패';
-
-  @override
-  String get employeeActions => '추가 작업';
 
   @override
   String get employeeActionTransfer => '부서 이동';
@@ -1056,9 +804,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeActionRehire => '재입사';
-
-  @override
-  String get employeeActionDelete => '기록 삭제';
 
   @override
   String get employeeActionProvision => '로그인 계정 개통';
@@ -1086,13 +831,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeTransferFieldDate => '적용일';
 
   @override
-  String get employeeTransferPickDate => '날짜 선택';
-
-  @override
   String get employeeTransferFieldRemark => '비고';
-
-  @override
-  String get employeeTransferDateRequired => '적용일을 선택해 주세요';
 
   @override
   String get employeeTransferSuccess => '부서 이동 완료';
@@ -1114,39 +853,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeRehireSuccess => '재입사 완료';
-
-  @override
-  String get employeeDeleteTitle => '이 직원 기록을 삭제하시겠습니까?';
-
-  @override
-  String get employeeDeleteBody => '로그인 계정이 비활성화됩니다. 되돌릴 수 없습니다.';
-
-  @override
-  String get employeeDeleteSuccess => '직원 기록이 삭제되었습니다';
-
-  @override
-  String get resignTypeVoluntary => '자발적 퇴사';
-
-  @override
-  String get resignTypeDismissed => '해고';
-
-  @override
-  String get resignTypeContractEnd => '계약 만료';
-
-  @override
-  String get resignTypeRetire => '정년 퇴직';
-
-  @override
-  String get resignCheckAccess => '출입카드 회수';
-
-  @override
-  String get resignCheckAssets => '회사 자산 반납';
-
-  @override
-  String get resignCheckAccount => '시스템 계정 비활성화';
-
-  @override
-  String get resignCheckSocial => '사회보험·주택기금 정지';
 
   @override
   String get employeeStatusActive => '재직';
@@ -1209,9 +915,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get departmentTitle => '부서';
 
   @override
-  String get departmentTreeTitle => '조직도';
-
-  @override
   String get departmentEmpty => '부서 선택';
 
   @override
@@ -1221,40 +924,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get departmentEmptySelect => '왼쪽에서 부서를 선택해 주세요';
 
   @override
-  String get departmentTooltipAdd => '부서 추가';
-
-  @override
   String get departmentTooltipRefresh => '새로고침';
 
   @override
   String get departmentTooltipTree => '조직도';
 
   @override
-  String get departmentDialogAddTitle => '신규 부서';
-
-  @override
   String get departmentDialogDeleteTitle => '부서 삭제';
-
-  @override
-  String get departmentFieldCode => '부서 코드';
-
-  @override
-  String get departmentFieldCodeHint => '예: DEPT-XX';
-
-  @override
-  String get departmentFieldName => '부서명';
-
-  @override
-  String get departmentFieldLevel => '계층';
 
   @override
   String get departmentCreate => '생성';
 
   @override
   String get departmentDelete => '삭제';
-
-  @override
-  String get departmentRequireCodeAndName => '코드와 부서명은 필수입니다';
 
   @override
   String get departmentCreated => '생성됨';
@@ -1273,50 +955,10 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get departmentStatEmployees => '직원';
-
-  @override
-  String get departmentStatChildren => '하위 부서';
-
-  @override
-  String get departmentStatManager => '책임자';
-
-  @override
-  String get departmentStatParent => '상위 부서';
-
-  @override
-  String departmentEmployeesHeader(Object count) {
-    return '직원 ($count)';
-  }
-
-  @override
   String get departmentEmployeesEmpty => '이 부서(하위 포함)에 직원이 없습니다';
 
   @override
-  String departmentStatValue(Object label, Object value) {
-    return '$label: $value';
-  }
-
-  @override
   String get departmentLoadFailed => '로드 실패';
-
-  @override
-  String get departmentLevelCompany => '회사';
-
-  @override
-  String get departmentLevelDecision => '의사결정층';
-
-  @override
-  String get departmentLevelManagement => '경영센터';
-
-  @override
-  String get departmentLevelPrimary => '1차 부서';
-
-  @override
-  String get departmentLevelSecondary => '2차 팀';
-
-  @override
-  String get departmentLevelTertiary => '3차 단위';
 
   @override
   String get payrollGenerateTitle => '급여명세서 생성';
@@ -1359,41 +1001,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get payrollSubmitButton => '검토 제출';
 
   @override
-  String get payrollSubmitted => '재무 검토 대기 중입니다';
-
-  @override
-  String payrollLoadFailed(Object error) {
-    return '로드 실패: $error';
-  }
-
-  @override
-  String get payrollEmptyPreview => '이 대상에 계산할 직원이 없습니다';
-
-  @override
-  String get payrollTableTotalLabel => '합계';
-
-  @override
-  String payrollTableTotalValue(Object total, Object count) {
-    return '¥ $total · $count';
-  }
-
-  @override
-  String get payrollTableHeaderName => '사번/이름';
-
-  @override
-  String get payrollTableHeaderNet => '실수령액';
-
-  @override
-  String payrollTableRowName(Object name, Object code) {
-    return '$name ($code)';
-  }
-
-  @override
-  String payrollTableRowNet(Object net) {
-    return '¥ $net';
-  }
-
-  @override
   String get payrollNext => '다음';
 
   @override
@@ -1403,25 +1010,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get payrollDeptAll => '전체 직원';
 
   @override
-  String get payrollDeptProduction => '생산';
-
-  @override
-  String get payrollDeptQuality => '품질';
-
-  @override
-  String get payrollDeptHr => '인사';
-
-  @override
-  String get payrollDeptFinance => '재무';
-
-  @override
   String get noticePublishTitle => '공지 게시';
-
-  @override
-  String get noticePublishSaveDraft => '임시 저장';
-
-  @override
-  String get noticePublishDraftSaved => '임시 저장됨';
 
   @override
   String get noticePublishPublishButton => '게시';
@@ -1442,18 +1031,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticePublishScopeAll => '전체';
 
   @override
-  String get noticePublishScopeDept => '부서별';
-
-  @override
-  String get noticePublishFieldDept => '부서';
-
-  @override
   String get noticePublishScopeAllHint => '전사 모든 직원에게 알립니다';
-
-  @override
-  String noticePublishScopeDeptHint(Object dept) {
-    return '“$dept” 전 직원에게 알립니다';
-  }
 
   @override
   String get noticePublishValidateTitle => '제목을 입력해 주세요';
@@ -1466,11 +1044,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get noticePublishConfirmBodyAll => '전체 직원에게 알립니다';
-
-  @override
-  String noticePublishConfirmBodyDept(Object dept) {
-    return '“$dept”에 알립니다';
-  }
 
   @override
   String get noticePublishPublished => '공지가 게시되었습니다';
@@ -1641,9 +1214,6 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get noticeAckRecent => '최근';
-
-  @override
   String get noticeSendBlessing => '축복 전송';
 
   @override
@@ -1675,9 +1245,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeBlessingSending => '전송 중…';
 
   @override
-  String get noticeBlessingWithdraw => '취소';
-
-  @override
   String noticeBlessingViewAll(int count) {
     return '전체 $count건 보기';
   }
@@ -1698,14 +1265,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => '축하 대상을 선택하세요';
 
   @override
-  String get noticeCelebrationSubjectIsYou => '나';
-
-  @override
-  String noticeCelebrationFor(Object name, Object event) {
-    return '$name · $event';
-  }
-
-  @override
   String get noticeQuickCelebrationTitle => '빠른 축하 발행';
 
   @override
@@ -1713,12 +1272,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get noticeQuickPublish => '알림 작성';
-
-  @override
-  String get noticeQuickBirthday => '생일';
-
-  @override
-  String get noticeQuickAnniversary => '입사 기념일';
 
   @override
   String get noticeQuickWedding => '결혼';
@@ -1770,40 +1323,13 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get celebrationCardCta => '축복 보내기';
-
-  @override
   String get celebrationCardWall => '축복 게시판 보기';
-
-  @override
-  String get noticeAutoCelebrationTitle => '자동 축하 알림';
-
-  @override
-  String get noticeAutoCelebrationEnabled => '매일 당일 생일/입사 기념일 직원에게 축하 알림 자동 발행';
-
-  @override
-  String get noticeAutoCelebrationTypes => '자동 유형';
-
-  @override
-  String get noticeAutoCelebrationPublisher => '발행자 이름';
 
   @override
   String get profileChangeEditTitle => '내 정보 수정';
 
   @override
   String get profileChangeEditCta => '내 정보 수정';
-
-  @override
-  String get profileChangeEditHrOnlyHint => '아래 항목은 인사팀에 변경을 요청하세요';
-
-  @override
-  String get profileChangeSectionBasic => '기본 정보 (즉시 반영)';
-
-  @override
-  String get profileChangeSectionReview => '연락처 및 주요 항목 (인사 검토 필요)';
-
-  @override
-  String get profileChangeSectionIdentity => '이름 및 비상 연락처 (인사 검토 필요)';
 
   @override
   String get profileChangeFieldDirect => '직접 수정';
@@ -1843,9 +1369,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileChangeListTitle => '내 변경 요청';
 
   @override
-  String get profileChangeListCta => '요청 기록 보기';
-
-  @override
   String get profileChangeListEmpty => '변경 요청이 없습니다';
 
   @override
@@ -1858,13 +1381,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileChangeFilterApplied => '반영됨';
 
   @override
-  String get profileChangeFilterApproved => '승인됨';
-
-  @override
   String get profileChangeFilterRejected => '반려됨';
-
-  @override
-  String get profileChangeFilterCancelled => '취소됨';
 
   @override
   String get profileChangeStatusPending => '인사 검토 대기';
@@ -1886,9 +1403,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get profileChangeCancelledByMe => '내가 취소함';
-
-  @override
-  String get profileChangeFieldLabel => '항목';
 
   @override
   String get profileChangeBefore => '변경 전';
@@ -1959,9 +1473,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileChangeFieldFullName => '이름';
 
   @override
-  String get profileChangeFieldHujiAddress => '호적 주소';
-
-  @override
   String get profileChangeFieldEmergencyName => '비상 연락처 이름';
 
   @override
@@ -1979,22 +1490,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profilePendingSectionTitle => '내가 검토할 변경 요청';
 
   @override
-  String get profilePendingSectionEmpty => '이 직원의 대기 중인 요청이 없습니다';
-
-  @override
   String get profilePendingSectionViewAll => '전체 →';
-
-  @override
-  String get profileFieldPhoneMask => '138****1234';
-
-  @override
-  String get profileFieldIdCardMask => '****';
-
-  @override
-  String get profileFieldBankAccountMask => '****1234';
-
-  @override
-  String get profileFieldGroupIdentity => '신분 정보';
 
   @override
   String get profileFieldGroupContact => '연락처';
@@ -2021,12 +1517,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileEditFieldAction => '수정';
 
   @override
-  String get profileFieldGroupOrg => '조직 및 입사';
-
-  @override
-  String get profileFieldGroupCompensation => '급여 및 계좌';
-
-  @override
   String get profileFieldWorkLocation => '근무지';
 
   @override
@@ -2034,9 +1524,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get profileFieldOfficePhone => '사무실 전화';
-
-  @override
-  String get profileFieldMobile => '휴대전화';
 
   @override
   String get profileFieldEmail => '이메일';
@@ -2063,76 +1550,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileFieldGender => '성별';
 
   @override
-  String get profileFieldIdType => '신분증 종류';
-
-  @override
-  String get profileFieldIdNumber => '신분증 번호';
-
-  @override
-  String get profileFieldSupervisor => '직속 상급자';
-
-  @override
-  String get profileFieldHireDate => '입사일';
-
-  @override
-  String get profileFieldConfirmedAt => '정규직 전환일';
-
-  @override
-  String get profileFieldEmploymentType => '고용 형태';
-
-  @override
-  String get profileFieldAttendanceGroup => '근태 조';
-
-  @override
-  String get profileFieldPaperArchiveNo => '서류 기록 번호';
-
-  @override
-  String get profileFieldBaseSalary => '기본급';
-
-  @override
-  String get profileFieldPerfSalary => '성과급';
-
-  @override
-  String get profileFieldSocialInsuranceBase => '사회보험 기준액';
-
-  @override
-  String get profileFieldSocialInsuranceLocation => '사회보험 납부지';
-
-  @override
-  String get profileFieldHousingFundBase => '주택기금 기준액';
-
-  @override
-  String get profileFieldAllowanceStandard => '수당 기준';
-
-  @override
-  String get profileFieldBankBranch => '은행 지점';
-
-  @override
-  String get profileFieldBankAccount => '계좌 번호';
-
-  @override
-  String get profileFieldContractType => '계약 형태';
-
-  @override
-  String get profileFieldContractStart => '계약 시작';
-
-  @override
-  String get profileFieldContractEnd => '계약 종료';
-
-  @override
-  String get profileFieldProbationMonths => '수습기간(개월)';
-
-  @override
-  String get profileFieldRenewCount => '갱신 횟수';
-
-  @override
   String get hubDisabledChip => '미사용';
 
   @override
   String get hubSectionTaskCenter => '작업 센터';
-
-  @override
-  String get hubDisabledDocNotice => '이 전표 유형은 아직 활성화되지 않았습니다 (기존 데이터 없음)';
 
   @override
   String get hubSubDetailPerItem => '품목별 상세';
@@ -2306,9 +1727,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionHubMaterialAnalysis => '자재 준비 분석';
 
   @override
-  String get productionHubMaterialAnalysisSub => '준비도·경로 확인·배치 계획';
-
-  @override
   String get productionHubDaily => '생산 일보';
 
   @override
@@ -2337,9 +1755,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get financeHubSectionReports => '자금 보고서';
-
-  @override
-  String get financeHubApprovalOwners => '승인 담당자';
 
   @override
   String get financeHubTaskApproval => '주문 승인 작업';
@@ -2476,9 +1891,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseHubSectionDocs => '입출고 전표';
 
   @override
-  String get warehouseHubSectionDocsDesc => '이동·입출고·불출·완제품·재고조사';
-
-  @override
   String get warehouseHubSectionInventory => '재고 조회';
 
   @override
@@ -2491,64 +1903,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseHubSectionReportsDesc => '상세(품목별)·요약(전표별)';
 
   @override
-  String get warehouseHubTaskExpected => '입고 예정';
-
-  @override
-  String get warehouseHubTaskExpectedSub => '실제 입고 등록';
-
-  @override
-  String get warehouseHubTaskException => '입고 예외';
-
-  @override
-  String get warehouseHubTaskExceptionSub => '초과 입고 보류';
-
-  @override
-  String get warehouseHubTaskPicking => '불출 작업';
-
-  @override
-  String get warehouseHubTaskPickingSub => '준비·불출 추적';
-
-  @override
   String get warehouseHubDocTransfer => '창고 이동';
 
   @override
   String get warehouseHubDocTransferSub => '창고 간 이동';
-
-  @override
-  String get warehouseHubDocOtherIn => '기타 입고';
-
-  @override
-  String get warehouseHubDocOtherInSub => '임의 입고';
-
-  @override
-  String get warehouseHubDocOtherOut => '기타 출고';
-
-  @override
-  String get warehouseHubDocOtherOutSub => '임의 출고';
-
-  @override
-  String get warehouseHubDocDraw => '자재 불출';
-
-  @override
-  String get warehouseHubDocDrawSub => '생산 불출';
-
-  @override
-  String get warehouseHubDocWdraw => '자재 반입';
-
-  @override
-  String get warehouseHubDocWdrawSub => '창고 반입';
-
-  @override
-  String get warehouseHubDocFinishedIn => '완제품 입고';
-
-  @override
-  String get warehouseHubDocFinishedInSub => '완제품 입고';
-
-  @override
-  String get warehouseHubDocFinishedOut => '완제품 출고';
-
-  @override
-  String get warehouseHubDocFinishedOutSub => '완제품 출고';
 
   @override
   String get warehouseHubDocCheck => '재고조사';
@@ -2558,21 +1916,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseHubInventoryLive => '실시간 재고';
-
-  @override
-  String get warehouseHubInventoryLiveSub => '실시간 가용 재고';
-
-  @override
-  String get warehouseHubInventoryBalance => '재고 잔액';
-
-  @override
-  String get warehouseHubInventoryBalanceSub => '품목별 잔액';
-
-  @override
-  String get warehouseHubInventoryMovement => '재고 이동';
-
-  @override
-  String get warehouseHubInventoryMovementSub => '입출고 이력';
 
   @override
   String get warehouseHubReportDetail => '창고 상세 보고서';
@@ -2663,9 +2006,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get impersonationPasswordLabel => '로그인 비밀번호';
 
   @override
-  String get impersonationConfirm => '확인';
-
-  @override
   String get impersonationTargetPickerTitle => '조회할 직원 선택';
 
   @override
@@ -2692,9 +2032,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get impersonationExited => '가장을 종료했습니다';
-
-  @override
-  String get impersonationWindowExpired => '가장 시간이 만료되어 종료되었습니다';
 
   @override
   String get impersonationRecent => '최근';
@@ -2784,23 +2121,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileEmploymentHistoryTitle => '재직 이력';
 
   @override
-  String get profileScopeNoticeTitle => '정보 범위 안내';
-
-  @override
   String get profileCompensationBoundaryDescription =>
       '급여와 은행 정보는 개인정보 보호를 위해 내 정보 화면에 표시하지 않습니다. 월별 소득은 급여명세서에서 확인하고, 그 밖의 문의는 권한이 있는 인사 담당자에게 하세요.';
 
   @override
   String get profileMissingEmergencyContact =>
       '등록된 비상 연락처가 없습니다. 먼저 인사 담당자에게 등록을 요청한 뒤 여기에서 변경을 신청하세요.';
-
-  @override
-  String profileAlternatePhoneCount(int count) {
-    return '보조 전화번호 $count개 등록';
-  }
-
-  @override
-  String get profileVehiclesPhonesEmptyHint => '차량과 보조 전화번호를 등록하여 번호판으로 빠르게 찾기';
 
   @override
   String get historyEventConfirm => '정규 전환';
@@ -2882,13 +2208,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialRequired => 'Demand';
 
   @override
-  String get materialAllocated => '준비 수량';
-
-  @override
-  String get materialPreparedQuantityHint =>
-      '이번 생산분에 배정된 합격 자재 수량으로, 정식 예약 및 이미 출고한 자재를 포함합니다. 합격 입고는 한 번만 계산하며 검사 대기 및 입고 예정 수량은 제외합니다. 창고의 현재 잔량과는 다릅니다.';
-
-  @override
   String get materialShortage => 'Kit shortage';
 
   @override
@@ -2920,9 +2239,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String materialCreateRoutes(int count) {
     return 'Confirm routes ($count)';
   }
-
-  @override
-  String get materialRouteReasonTitle => 'Route reason (optional)';
 
   @override
   String get materialRouteChangedRetry =>
@@ -3006,27 +2322,11 @@ class AppLocalizationsKo extends AppLocalizations {
       'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
 
   @override
-  String get materialRouteMemoryLoading =>
-      'Loading previous routes. Confirm after they are ready.';
-
-  @override
-  String get materialRouteMemoryUnavailable =>
-      'Previous routes could not be loaded. Review the displayed routes before confirming.';
-
-  @override
-  String get materialRootSupply => 'Top-level supply task';
-
-  @override
   String get materialRootRoutePending => 'Route pending';
 
   @override
   String get materialRootExternalRoute =>
       'Issue this top-level product from its purchasing or subcontracting entry';
-
-  @override
-  String materialRootExistingStock(String quantity) {
-    return 'Allocated stock of $quantity will be handed over first. Enter only additional supply below.';
-  }
 
   @override
   String get materialRootSupplyCompleted => 'Supply demand fulfilled';
@@ -3171,10 +2471,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '공급업체와 합의한 결제 조건을 선택하세요. 공급업체, 통화 또는 조건이 다르면 발주서가 나뉠 수 있습니다.';
 
   @override
-  String get workflowPlanningQuantityHint =>
-      '이번에 배정할 수량이며 실입고 수량이 아닙니다. 입고 예정 물량은 재고가 아니고 작업 지시만으로 착수 가능해지지 않습니다.';
-
-  @override
   String get workflowWorkshopQuantityHint =>
       '이번에 작업장에 지시할 수량을 입력하세요. 지시는 먼저 할 수 있지만 착수와 자재 출고 조건은 별도로 충족해야 합니다.';
 
@@ -3234,18 +2530,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get workflowOptionalDetails => '추가 정보(선택)';
 
   @override
-  String get workflowReceiptEvidence => '환율 및 입금 증빙';
-
-  @override
-  String get workflowReceiptNoFees => '수수료가 없으면 비용 내역을 입력할 필요가 없습니다';
-
-  @override
   String get workflowUnitUnknown => '검사 단위 확인 필요';
-
-  @override
-  String workflowIqcUnitHint(String sourceUnit, String rate, String baseUnit) {
-    return '원본의 1$sourceUnit은 $rate$baseUnit입니다. 포장 수량이 아닌 $baseUnit으로 검사하세요.';
-  }
 
   @override
   String get moneySummaryCustomerPaid => '고객 결제액';
@@ -3505,9 +2790,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 작업의 합격 입고와 가용 재고를 다시 확인합니다. 창고 입고나 실제 사용량 등록을 대신하지 않습니다.';
 
   @override
-  String get productionMaterialRegisterUsage => '실제 사용량 등록';
-
-  @override
   String get productionMaterialViewUsage => '사용 기록 보기';
 
   @override
@@ -3612,9 +2894,6 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get warehouseOutboundBatchSelect => 'Select actionable tasks first';
-
-  @override
   String get warehouseOutboundBatchReason => 'Processing note';
 
   @override
@@ -3625,9 +2904,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseOutboundClient => 'Customer';
-
-  @override
-  String get warehouseOutboundWarehouse => 'Warehouse';
 
   @override
   String get warehouseOutboundStatus => 'Warehouse status';
@@ -3721,9 +2997,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseStockOutboundSource => 'Source document';
 
   @override
-  String get warehouseStockOutboundRemark => 'Notes';
-
-  @override
   String get warehouseSubcontractOutboundBatchTitle => 'Batch outbound details';
 
   @override
@@ -3778,9 +3051,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundLegacyParentCode =>
       'Parent goods code';
-
-  @override
-  String get warehouseSubcontractOutboundGoods => 'Goods';
 
   @override
   String get warehouseSubcontractOutboundColor => 'Colour';
@@ -3874,22 +3144,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseSubcontractOutboundVerify => 'Verify processing result';
 
   @override
-  String get warehouseSubcontractOutboundSelectAll =>
-      'Select all outbound lines';
-
-  @override
   String get warehouseSubcontractOutboundDraft => 'Outbound draft';
-
-  @override
-  String get warehouseSubcontractOutboundRemark => 'Remark';
 
   @override
   String get warehouseSubcontractOutboundNoLines =>
       'No outbound lines are currently available';
-
-  @override
-  String get warehouseSubcontractOutboundLegacyParent =>
-      'Historical parent goods';
 
   @override
   String get warehouseStockOutboundConfirmSingle => 'Confirm outbound';
@@ -4077,11 +3336,21 @@ class AppLocalizationsKo extends AppLocalizations {
       'Available materials cannot form a complete batch. Review again after materials are received.';
 
   @override
-  String get productionBatchReuse => 'No additional materials required';
-
-  @override
   String get productionBatchReuseHint =>
       'This batch uses materials already issued for earlier batches. Confirm, then return to workshop tasks to start.';
+
+  @override
+  String get productionBatchDirectTransferBadge =>
+      'Workshop direct transfer · auto-issued';
+
+  @override
+  String get productionBatchDirectTransferHint =>
+      'All materials of this batch come from same-workshop direct transfers (line-side warehouse): they are issued automatically on confirm. No draw request, no warehouse step — return to workshop tasks and start.';
+
+  @override
+  String productionBatchSubmittedDirectTransfer(String quantity, String unit) {
+    return 'Batch of $quantity $unit arranged; direct-transfer materials were issued automatically. No draw needed — start right away.';
+  }
 
   @override
   String get productionBatchFlow =>
@@ -4129,9 +3398,4 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get productionBatchNoAdditionalMaterials =>
       'No additional materials are needed; arrange production using the existing material sources.';
-
-  @override
-  String productionBatchConfirmedSummary(String quantity, String unit) {
-    return 'This batch: $quantity $unit';
-  }
 }

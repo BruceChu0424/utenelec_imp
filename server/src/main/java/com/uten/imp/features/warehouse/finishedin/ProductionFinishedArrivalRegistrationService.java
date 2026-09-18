@@ -183,6 +183,25 @@ public class ProductionFinishedArrivalRegistrationService {
     }
 
     /**
+     * 先入库后质检(V597)：把未检成品的入库结果先定死在登记的成品仓 + 库位上，
+     * 是一个独立的、可回收的决定，不靠 stock_doc:approve 顺带(它同时是登记与点收的按钮码)。
+     */
+    public static final String BEFORE_INSPECTION_AUTHORITY =
+            "production_finished_in:before_inspection";
+
+    private static void requireStockInBeforeInspectionAuthority() {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        boolean granted = authentication != null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream().anyMatch(authority ->
+                        BEFORE_INSPECTION_AUTHORITY.equals(authority.getAuthority()));
+        if (!granted) {
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "当前账号没有「产成品先入库后质检」权限，请改用「登记并送检」或联系管理员授权");
+        }
+    }
+
+    /**
      * 单张登记：登记头/行 + 逐行 FQC PENDING + 一张品质检查单（V547）同事务提交。
      * 页面按行仓分组后每个仓调用一次（幂等键 = 页面键 + ':' + 仓库 UUID）。
      */
@@ -195,6 +214,9 @@ public class ProductionFinishedArrivalRegistrationService {
         access.requireWarehouseTaskAccess("无权登记生产成品送检");
         if (reportId == null || request == null) {
             throw validation("生产成品送检登记请求不能为空");
+        }
+        if (request.stockInBeforeInspectionRequested()) {
+            requireStockInBeforeInspectionAuthority();
         }
         NormalizedRequest normalized = normalize(request);
         RegistrationOutcome outcome = registerNormalized(reportId, normalized);
@@ -283,13 +305,20 @@ public class ProductionFinishedArrivalRegistrationService {
                             id, source_report_id, warehouse_id,
                             warehouse_code_snapshot, warehouse_name_snapshot,
                             receiver_employee_id, receiver_name_snapshot,
-                            idempotency_key, request_hash, remark, created_by)
+                            idempotency_key, request_hash, remark, created_by,
+                            stock_in_before_inspection, pre_stocked_at,
+                            pre_stocked_by_employee_id)
                         VALUES (
                             :id, :reportId, :warehouseId,
                             :warehouseCode, :warehouseName,
                             :receiverId, :receiverName,
-                            :idempotencyKey, :requestHash, :remark, :actorId)
+                            :idempotencyKey, :requestHash, :remark, :actorId,
+                            :preStock,
+                            CASE WHEN :preStock THEN now() END,
+                            CASE WHEN :preStock THEN CAST(:preStockBy AS uuid) END)
                         """)
+                .setParameter("preStock", normalized.stockInBeforeInspection())
+                .setParameter("preStockBy", receiverEmployeeId)
                 .setParameter("id", registrationId)
                 .setParameter("reportId", reportId)
                 .setParameter("warehouseId", normalized.warehouseId())
@@ -718,7 +747,8 @@ public class ProductionFinishedArrivalRegistrationService {
                 current == null ? null : current.reversedAt(),
                 current == null ? null : current.reversalReason(),
                 current != null && current.reversible(),
-                batches);
+                batches,
+                registered && Boolean.TRUE.equals(registration[8]));
     }
 
     /** 同一报工的全部登记批次（含检查单号、撤回态、可撤回判定）；无登记时为空。 */
@@ -868,7 +898,8 @@ public class ProductionFinishedArrivalRegistrationService {
                                registration.receiver_employee_id,
                                registration.receiver_name_snapshot,
                                registration.created_at,
-                               registration.remark
+                               registration.remark,
+                               registration.stock_in_before_inspection
                         FROM production_finished_arrival_registrations registration
                         WHERE registration.source_report_id = :reportId
                         """ + exact + """
@@ -959,7 +990,7 @@ public class ProductionFinishedArrivalRegistrationService {
                     text(header[4]), null, null, null,
                     receiver.id(), receiver.name(), null, null,
                     mapArrivalItems(items),
-                    null, null, null, null, false, List.of()));
+                    null, null, null, null, false, List.of(), false));
         }
         return List.copyOf(result);
     }
@@ -993,6 +1024,9 @@ public class ProductionFinishedArrivalRegistrationService {
                 || request.reports() == null || request.reports().isEmpty()) {
             throw validation("批量送检登记请求不能为空");
         }
+        if (request.stockInBeforeInspectionRequested()) {
+            requireStockInBeforeInspectionAuthority();
+        }
         String batchKey = request.idempotencyKey().strip();
         if (batchKey.length() < 8 || batchKey.length() > 128
                 || !batchKey.matches("[A-Za-z0-9._:-]+")) {
@@ -1025,7 +1059,8 @@ public class ProductionFinishedArrivalRegistrationService {
             // 子键 = 批量键 + 报工单 UUID（UUID 仅含十六进制与 '-'，落在合法字符集内）。
             String reportKey = batchKey + ":" + reportId;
             NormalizedRequest normalized = normalize(new ArrivalRegistrationRequest(
-                    reportKey, report.warehouseId(), report.items(), request.remark()));
+                    reportKey, report.warehouseId(), report.items(), request.remark(),
+                    request.stockInBeforeInspection()));
             normalizedReports.put(reportId, normalized);
         }
         UUID actorId = currentUser.requireId();
@@ -1360,8 +1395,12 @@ public class ProductionFinishedArrivalRegistrationService {
         hashParts.add(request.warehouseId().toString());
         places.forEach((id, place) -> hashParts.add(id + "|" + place));
         hashParts.add("remark=" + (remark == null ? "" : remark));
+        // 先入库后质检改变的是「合格后要不要人工点收」这件事实，必须进哈希：
+        // 同键不同选择要 409，而不是静默按第一次的选择重放。不勾时不写，老哈希逐字不变。
+        boolean preStock = request.stockInBeforeInspectionRequested();
+        if (preStock) hashParts.add("stockInBeforeInspection=1");
         return new NormalizedRequest(
-                key, request.warehouseId(), Map.copyOf(places), remark,
+                key, request.warehouseId(), Map.copyOf(places), remark, preStock,
                 CanonicalFingerprint.sha256(hashParts));
     }
 
@@ -1488,6 +1527,7 @@ public class ProductionFinishedArrivalRegistrationService {
             UUID warehouseId,
             Map<UUID, String> places,
             String remark,
+            boolean stockInBeforeInspection,
             String requestHash) {
     }
 

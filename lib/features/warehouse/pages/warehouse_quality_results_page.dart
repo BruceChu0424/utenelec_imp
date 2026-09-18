@@ -112,6 +112,23 @@ class _WarehouseQualityResultsPageState
         .contains(Perm.procurementIqcRejectionRecordReturn);
   }
 
+  /// 先入库后检(V596)：查看 + 先入库上架双权限(与确认入库相互独立)。
+  bool get _canPreStockIn {
+    if (_isSuperAdmin) return true;
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.warehouseIqcStockInView) &&
+        permissions.contains(Perm.warehouseIqcStockInBeforeInspection);
+  }
+
+  /// 等待检查结果的收货单先落库位：进逐行上架页，回来重拉列表。
+  Future<void> _openPreStockIn(WarehouseQualityResultTask task) async {
+    final done = await context.push<bool>(
+      RouteName.warehouseQualityPreStockIn(task.receiptTypeValue, task.receiptId),
+    );
+    if (!mounted) return;
+    if (done == true) await _load(_result?.page ?? 1);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -441,6 +458,13 @@ class _WarehouseQualityResultsPageState
           icon: Icons.assignment_return_outlined,
           onTap: () => _openDetail(task),
         ),
+      // 先入库后检(V596)：品质没空时先把货落到库位；合格自动转正，不合格从库位退回。
+      if (task.hasPreStockableLines && _canPreStockIn)
+        UtenMenuItem(
+          label: '先入库上架(待检)',
+          icon: Icons.shelves,
+          onTap: () => _openPreStockIn(task),
+        ),
     ];
   }
 
@@ -531,7 +555,8 @@ class _WarehouseQualityResultsPageState
       key: 'workStatus',
       label: '作业状态',
       width: 190,
-      value: (task) => task.workStatus.label,
+      // 先入库后检(V596)：等待结果时补「已上架 n 行」，仓库一眼看出实物已在库位。
+      value: (task) => task.workStatusLabel,
     ),
     MasterColumnDef(
       key: 'receiptType',

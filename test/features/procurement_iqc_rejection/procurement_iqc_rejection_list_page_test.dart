@@ -4,12 +4,59 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/models/procurement_iqc_rejection.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets('header filters send status and receiptType to gateway', (
+    tester,
+  ) async {
+    // 表头筛选生效冒烟：状态/来源固定枚举桶选桶后，repository.list 的既有
+    // status / receiptType 参数收到对应值，并重拉回第 1 页。
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final gateway = _Gateway(items: [_case()]);
+    await tester.pumpWidget(_app(gateway));
+    await tester.pumpAndSettle();
+
+    final table = tester
+        .widget<MasterDataTableView<ProcurementIqcRejectionCase>>(
+          find.byKey(const Key('iqc-rejection-task-table')),
+        );
+    expect(table.facets.keys, containsAll(<String>['receiptType', 'status']));
+    expect(
+      table.facets['receiptType']?.map((bucket) => bucket.value),
+      containsAll(<String>['PURCHASE', 'SUBCONTRACT']),
+    );
+    expect(
+      table.facets['status']?.map((bucket) => bucket.value),
+      containsAll(<String>['PENDING_RETURN', 'TERMINAL']),
+    );
+
+    table.onFilterChanged('status', 'PENDING_RETURN');
+    await tester.pumpAndSettle();
+    expect(gateway.filters.last.status, 'PENDING_RETURN');
+    expect(gateway.filters.last.page, 1);
+
+    final refreshed = tester
+        .widget<MasterDataTableView<ProcurementIqcRejectionCase>>(
+          find.byKey(const Key('iqc-rejection-task-table')),
+        );
+    refreshed.onFilterChanged('receiptType', 'SUBCONTRACT');
+    await tester.pumpAndSettle();
+    expect(
+      gateway.filters.last.receiptType,
+      ProcurementIqcReceiptType.subcontract,
+    );
+    expect(gateway.filters.last.status, 'PENDING_RETURN');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('375dp uses task cards and preserves server amount masking', (
     tester,
   ) async {

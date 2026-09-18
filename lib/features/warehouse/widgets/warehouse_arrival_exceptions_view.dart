@@ -20,9 +20,11 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/procurement_inbound_repository.dart';
 
 class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
@@ -56,6 +58,11 @@ class _WarehouseArrivalExceptionsViewState
   String _keyword = '';
   bool _history = false;
   String? _stockingId;
+
+  /// 表头列筛选（2026-09-16）：供应商/仓库（dict 桶，value=UUID）+ 状态（固定枚举）。
+  String? _supplierIdFilter;
+  String? _warehouseIdFilter;
+  String? _statusFilter;
   Set<String> _selectedIds = const {};
   bool _batchStocking = false;
   String? _batchSelectionFingerprint;
@@ -65,7 +72,15 @@ class _WarehouseArrivalExceptionsViewState
   void initState() {
     super.initState();
     _keyword = widget.keyword;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // dict 装载（供应商/仓库表头桶）：完成后补一次 setState——MasterNameService
+      // 内部缓存变化不触发 provider 通知，dict 桶需要重建才可见。
+      ref
+          .read(masterNameServiceProvider)
+          .ensureLoaded()
+          .then((_) => mounted ? setState(() {}) : null);
+      _load(1);
+    });
   }
 
   @override
@@ -306,6 +321,9 @@ class _WarehouseArrivalExceptionsViewState
             page: page,
             keyword: _keyword,
             history: _history,
+            supplierId: _supplierIdFilter,
+            warehouseId: _warehouseIdFilter,
+            status: _statusFilter,
           );
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -380,10 +398,62 @@ class _WarehouseArrivalExceptionsViewState
             key: const Key('warehouse-arrival-exception-task-table'),
             columns: _columns,
             items: result.items,
-            facets: const {},
+            // 表头筛选桶（2026-09-16）：供应商/仓库走主档 dict；状态固定枚举六档。
+            facets: {
+              'supplierName': masterDictionaryFacets(
+                ref.watch(masterNameServiceProvider).supplierEntries,
+              ),
+              'warehouseName': masterDictionaryFacets(
+                ref.watch(masterNameServiceProvider).warehouseEntries,
+              ),
+              'status': const [
+                MasterFacetBucket(
+                  value: 'PENDING_FINANCE',
+                  count: 0,
+                  label: '未入库，等待财务审批超量',
+                ),
+                MasterFacetBucket(
+                  value: 'RECEIPT_ADJUSTED',
+                  count: 0,
+                  label: '已调整收货草稿，等待仓库重新审核',
+                ),
+                MasterFacetBucket(
+                  value: 'RETURN_REQUIRED',
+                  count: 0,
+                  label: '部分接收，余量待退供应商',
+                ),
+                MasterFacetBucket(
+                  value: 'RECEIPT_POSTED',
+                  count: 0,
+                  label: '已按批准数量入库',
+                ),
+                MasterFacetBucket(value: 'CLOSED', count: 0, label: '到货异常已完成'),
+                MasterFacetBucket(
+                  value: 'CANCELED',
+                  count: 0,
+                  label: '到货异常已取消',
+                ),
+              ],
+            },
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: {
+              'supplierName': _supplierIdFilter,
+              'warehouseName': _warehouseIdFilter,
+              'status': _statusFilter,
+            },
+            onFilterChanged: (key, value) {
+              setState(() {
+                switch (key) {
+                  case 'supplierName':
+                    _supplierIdFilter = value;
+                  case 'warehouseName':
+                    _warehouseIdFilter = value;
+                  case 'status':
+                    _statusFilter = value;
+                }
+              });
+              _load(1);
+            },
             selectable: canBatchStockIn,
             idOf: (task) => task.canStockIn ? task.id : null,
             selectedIds: _selectedIds,

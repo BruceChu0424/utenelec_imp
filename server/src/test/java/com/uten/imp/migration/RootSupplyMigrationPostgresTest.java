@@ -1,14 +1,6 @@
 package com.uten.imp.migration;
 
-import com.uten.imp.application.port.SubcontractPreparationPort;
-import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
-import com.uten.imp.features.production.analysis.MaterialAnalysisService;
-import com.uten.imp.security.OwnerVisibility;
-import com.uten.imp.security.SecurityContextCurrentUser;
-import com.uten.imp.security.TxSessionVars;
 import org.flywaydb.core.Flyway;
-import org.hibernate.SessionFactory;
-import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -20,17 +12,24 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 
-/** Independent database conservation checks for externally supplied root products. */
+/**
+ * Independent database conservation checks for externally supplied root products.
+ *
+ * <p>同类还锁了 V598「货品来源按最近一次确认路线回填」的两条取数口径 (停用节点仍算数、
+ * 确认时刻并列取最新一条)：那两条用例原本是按历史分析推导的 /last-routes 记忆查询的回归，
+ * 2026-09-16 供应方式收口成货品主档单一事实源后，同一口径的落点从查询结果变成 goods.source_type。
+ */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class RootSupplyMigrationPostgresTest {
     private static final PostgreSQLContainer<?> POSTGRES =
@@ -46,7 +45,6 @@ class RootSupplyMigrationPostgresTest {
     private static UUID historicalItem;
     private static JdbcTemplate jdbc;
     private static TransactionTemplate transaction;
-    private static SessionFactory memoryFactory;
     private static Fixture legacyRoot;
     private static UUID legacyReservation;
     private static UUID legacyOutput;
@@ -95,13 +93,6 @@ class RootSupplyMigrationPostgresTest {
         zeroMaterialFunctionBeforeV479 = zeroMaterialFunction();
         migrate("479");
         flyway("479").validate();
-        memoryFactory = new Configuration()
-                .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
-                .setProperty("hibernate.connection.url", POSTGRES.getJdbcUrl())
-                .setProperty("hibernate.connection.username", POSTGRES.getUsername())
-                .setProperty("hibernate.connection.password", POSTGRES.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "none")
-                .buildSessionFactory();
     }
 
     private static void migrate(String target) {
@@ -179,7 +170,6 @@ class RootSupplyMigrationPostgresTest {
 
     @AfterAll
     static void stopPostgres() {
-        if (memoryFactory != null) memoryFactory.close();
         POSTGRES.stop();
     }
 
@@ -289,43 +279,71 @@ class RootSupplyMigrationPostgresTest {
         assertThat(definition).contains("('preplan_root_output_events', 'CLEAR')");
     }
 
+    /**
+     * 2026-09-16 供应方式收口成货品主档单一事实源：按历史分析推导的 /last-routes
+     * 记忆整套退役，存量确认由 V598 一次性种进 goods.source_type。
+     *
+     * <p>这条守的是旧记忆查询当年就定下的口径——**停用节点 (active = FALSE) 上
+     * 的确认仍然算数**：那次确认是人做的，不能因为节点后来被 BOM 刷新掉就丢掉
+     * 用户选过的供应方式。重放一次零行，回填幂等。
+     */
     @Test
-    void inactiveConfirmedNodesStillProvideTheLastRouteMemory() {
+    void inactiveConfirmedNodesStillSeedTheGoodsMasterSourceType() {
         UUID goods = historyGoods();
         historyMaterial(goods, "SUBCONTRACT", false, "2026-09-05T10:00:00Z");
-        try (var em = memoryFactory.createEntityManager()) {
-            var service = new MaterialAnalysisService(em,
-                    mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
-                    mock(ProductionDocumentAccessPolicy.class), mock(OwnerVisibility.class),
-                    mock(SubcontractPreparationPort.class),
-                    mock(com.uten.imp.features.notice.ChainNoticeService.class),
-                mock(com.uten.imp.features.production.analysis.PreplanStockEntitlementService.class),
-                new com.uten.imp.features.production.analysis.MaterialAnalysisFlowStageService(em),
-                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
-            assertThat(service.lastRoutesPerGoods(Set.of(goods)).get(goods.toString()))
-                    .singleElement().satisfies(route -> assertThat(route.route()).isEqualTo("SUBCONTRACT"));
+
+        backfillGoodsSourceTypeFromRouteHistory();
+
+        assertThat(goodsSourceType(goods)).isEqualTo("委外");
+        backfillGoodsSourceTypeFromRouteHistory();
+        assertThat(goodsSourceType(goods)).isEqualTo("委外");
+    }
+
+    /**
+     * 同一货品在多份分析里确认过不同路线时，主档只认**最近一次**确认：并列到同一
+     * 确认时刻的按建行时间兜底取最新，更早的确认一律不写进主档。
+     *
+     * <p>口径变更留痕：旧 /last-routes 在这种并列上拒绝给默认值 (宁可留空也不猜)，
+     * 主档是单值列没有「留空」这个选项，所以 V598 按稳定排序取最新一条；但绝不
+     * 倒退回更早的那次确认。
+     */
+    @Test
+    void conflictingRoutesAtTheSameLatestConfirmationTakeTheNewestRowOnly() {
+        UUID goods = historyGoods();
+        historyMaterial(goods, "BUY", false, "2026-09-04T10:00:00Z");
+        historyMaterial(goods, "MAKE", false, "2026-09-05T10:00:00Z", "2026-09-05T09:00:00Z");
+        historyMaterial(goods, "SUBCONTRACT", true, "2026-09-05T10:00:00Z", "2026-09-05T09:30:00Z");
+
+        backfillGoodsSourceTypeFromRouteHistory();
+
+        assertThat(goodsSourceType(goods))
+                .as("并列时刻取建行更晚的 SUBCONTRACT；并列里较早的 MAKE 与更早的 BUY 都不得写进主档")
+                .isEqualTo("委外")
+                .isNotEqualTo("自制")
+                .isNotEqualTo("采购");
+    }
+
+    /**
+     * 直接执行 V598 脚本原文而不是在测试里复写一遍 SQL：本类的库停在 V479，
+     * 回填口径一旦改了这两条断言就跟着红。脚本只有一条 UPDATE，它依赖的表与列
+     * 在 V479 时点全部存在，不写 flyway_schema_history、不影响本类的 V478/V479 断言。
+     */
+    private static void backfillGoodsSourceTypeFromRouteHistory() {
+        jdbc.execute(readMigration("V598__goods_source_type_backfill_from_route_history.sql"));
+    }
+
+    private static String readMigration(String fileName) {
+        try (InputStream script = RootSupplyMigrationPostgresTest.class
+                .getResourceAsStream("/db/migration/" + fileName)) {
+            assertThat(script).as("迁移脚本必须在测试 classpath 上: %s", fileName).isNotNull();
+            return new String(script.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new IllegalStateException("无法读取迁移脚本 " + fileName, failure);
         }
     }
 
-    @Test
-    void conflictingRoutesAtTheSameLatestConfirmationDoNotGuessADefault() {
-        UUID goods = historyGoods();
-        historyMaterial(goods, "BUY", false, "2026-09-04T10:00:00Z");
-        historyMaterial(goods, "MAKE", false, "2026-09-05T10:00:00Z");
-        historyMaterial(goods, "SUBCONTRACT", true, "2026-09-05T10:00:00Z");
-        try (var em = memoryFactory.createEntityManager()) {
-            var service = new MaterialAnalysisService(em,
-                    mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
-                    mock(ProductionDocumentAccessPolicy.class), mock(OwnerVisibility.class),
-                    mock(SubcontractPreparationPort.class),
-                    mock(com.uten.imp.features.notice.ChainNoticeService.class),
-                mock(com.uten.imp.features.production.analysis.PreplanStockEntitlementService.class),
-                new com.uten.imp.features.production.analysis.MaterialAnalysisFlowStageService(em),
-                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
-            assertThat(service.lastRoutesPerGoods(Set.of(goods))).doesNotContainKey(goods.toString());
-        }
+    private static String goodsSourceType(UUID goods) {
+        return jdbc.queryForObject("SELECT source_type FROM goods WHERE id = ?", String.class, goods);
     }
 
     private static UUID historyGoods() {
@@ -339,6 +357,15 @@ class RootSupplyMigrationPostgresTest {
     }
 
     private static void historyMaterial(UUID goods, String route, boolean active, String confirmedAt) {
+        historyMaterial(goods, route, active, confirmedAt, confirmedAt);
+    }
+
+    /**
+     * [createdAt] 显式给值而不是靠 DEFAULT now()：V598 在「确认时刻并列」时按建行
+     * 时间兜底排序，用真实时钟播种会让并列用例的胜出方随机。
+     */
+    private static void historyMaterial(
+            UUID goods, String route, boolean active, String confirmedAt, String createdAt) {
         UUID analysis = insertAnalysis();
         UUID item = UUID.randomUUID();
         insertManualSource(item, analysis, bd("1"));
@@ -348,11 +375,11 @@ class RootSupplyMigrationPostgresTest {
                     node_key, goods_id, unit_id, depth, path, per_product_qty,
                     required_qty, available_qty, allocated_available_qty, shortage_qty,
                     source_suggestion, confirmed_route, route_reason, route_confirmed_by,
-                    route_confirmed_at, active, created_by, updated_by)
+                    route_confirmed_at, active, created_at, created_by, updated_by)
                 VALUES (?, ?, ?, ?, ?, ?, 1, ?, 1, 1, 0, 0, 1,
-                    'BUY', ?, NULL, ?, CAST(? AS timestamptz), ?, ?, ?)
+                    'BUY', ?, NULL, ?, CAST(? AS timestamptz), ?, CAST(? AS timestamptz), ?, ?)
                 """, material, analysis, item, "HISTORY-" + material, goods, UNIT,
-                "HISTORY-" + material, route, actor, confirmedAt, active, actor, actor);
+                "HISTORY-" + material, route, actor, confirmedAt, active, createdAt, actor, actor);
     }
 
     private static Fixture root(boolean sales, String rate, String requested) {

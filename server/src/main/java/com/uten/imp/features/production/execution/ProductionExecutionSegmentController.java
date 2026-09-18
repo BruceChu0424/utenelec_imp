@@ -64,6 +64,26 @@ public class ProductionExecutionSegmentController {
         return service.start(planId, segmentId, request);
     }
 
+    /** 「部分开工 · 持续生产」(V595)：同车间直送子件分次到料、到一批投一批，同一张工单只开一次工。 */
+    @PostMapping("/{segmentId}/start-continuous")
+    @PreAuthorize("hasAuthority('production_execution:start')")
+    public ExecutionSegmentView startContinuous(
+            @PathVariable UUID planId,
+            @PathVariable UUID segmentId,
+            @Valid @RequestBody SegmentTransitionRequest request) {
+        return service.startContinuousSupply(planId, segmentId, request);
+    }
+
+    /** 「确认生产路线」(V599 / ADR-091)：开工前显式选定齐套生产 / 分批生产 / 持续生产。 */
+    @PostMapping("/{segmentId}/confirm-route")
+    @PreAuthorize("hasAuthority('production_execution:start')")
+    public ExecutionSegmentView confirmRoute(
+            @PathVariable UUID planId,
+            @PathVariable UUID segmentId,
+            @Valid @RequestBody SegmentRouteConfirmRequest request) {
+        return service.confirmRoute(planId, segmentId, request);
+    }
+
     @PostMapping("/{segmentId}/recheck-material")
     @PreAuthorize("hasAuthority('production_execution:start')")
     public ExecutionSegmentView recheckMaterial(

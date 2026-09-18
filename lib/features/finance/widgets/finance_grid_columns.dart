@@ -57,12 +57,22 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   String? prepaymentAppliedOriginal;
 
   // ---- allocate（分摊 expense/otherIncome）----
-  String? styleId; // expenseStyleId / incomeStyleId
+  /// 费用/收入项目（expenseStyleId / incomeStyleId）。ValueNotifier 承载：
+  /// 下拉选完单元格即时刷新，且列宽随所选名称自动加宽（textOf/listenableOf）。
+  final ValueNotifier<String?> styleIdNotifier = ValueNotifier<String?>(null);
+  String? get styleId => styleIdNotifier.value;
+  set styleId(String? v) => styleIdNotifier.value = v;
+
   /// 部门 UUID 文本（可空；TODO 升级为部门 picker，目前保持 UUID 文本录入）。
   final TextEditingController department = TextEditingController();
 
   // ---- transfer（转入 bankTransfer）----
-  String? inAccountId;
+  /// 转入账户。同 [styleId]：通知器承载，选完即时刷新 + 列宽自适应。
+  final ValueNotifier<String?> inAccountIdNotifier = ValueNotifier<String?>(
+    null,
+  );
+  String? get inAccountId => inAccountIdNotifier.value;
+  set inAccountId(String? v) => inAccountIdNotifier.value = v;
 
   /// 转入行日期（yyyy-MM-dd）；ValueNotifier 让日期单元格点击后自动刷新。
   final ValueNotifier<String?> occurDateNotifier = ValueNotifier<String?>(null);
@@ -174,6 +184,8 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     balanceAfterExactNotifier.dispose();
     department.dispose();
     occurDateNotifier.dispose();
+    styleIdNotifier.dispose();
+    inAccountIdNotifier.dispose();
     super.dispose();
   }
 }
@@ -235,10 +247,14 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       key: 'source',
       label: '来源类型 / 单号',
       width: 200,
+      // 单行省略号（2026-09-16 全站口径）+ 随文本自动加宽，不再折两行撑高整行。
+      textOf: (row) =>
+          '${financeArApSourceTypeLabel(row.sourceDocType)}'
+          '${row.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.sourceDocNo}' : ''}',
       cellBuilder: (context, row) => Text(
         '${financeArApSourceTypeLabel(row.sourceDocType)}'
         '${row.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.sourceDocNo}' : ''}',
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
     ),
@@ -246,9 +262,11 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       key: 'salesOrderNos',
       label: '销售订单号',
       width: 190,
+      textOf: (row) =>
+          row.salesOrderNos.isEmpty ? '—' : row.salesOrderNos.join('、'),
       cellBuilder: (context, row) => Text(
         row.salesOrderNos.isEmpty ? '—' : row.salesOrderNos.join('、'),
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
     ),
@@ -459,11 +477,25 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
   FinanceDocType type,
 ) {
   final cat = type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
+  // 所选项目的展示名（格内值与列宽测量共用同一份，所见即所量）。
+  String styleLabelOf(FinanceGridRow row) {
+    final styles = names.stylesFor(cat);
+    for (final s in styles) {
+      if (s.id == row.styleId) return s.name ?? s.id;
+    }
+    return row.styleId ?? '';
+  }
+
   return [
     EditableGridColumn<FinanceGridRow>(
       key: 'style',
       label: type == FinanceDocType.expense ? '费用项目' : '收入项目',
       width: 200,
+      // 随所选名称自动加宽（2026-09-16）：此前不接 textOf，选完长名称既不撑列
+      // 又折成两行把整行撑高。展开箭头(20)一并计入。
+      textOf: (row) => styleLabelOf(row),
+      listenableOf: (row) => row.styleIdNotifier,
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
         final styles = names.stylesFor(cat);
         return UtenDropdownField(
@@ -543,6 +575,12 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
       key: 'inAccount',
       label: '转入账户',
       width: 200,
+      // 同费用项目列：选完随账户名自动加宽（含展开箭头），不再折行撑高整行。
+      textOf: (row) => row.inAccountId == null
+          ? ''
+          : (names.accountEntries[row.inAccountId] ?? row.inAccountId!),
+      listenableOf: (row) => row.inAccountIdNotifier,
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => UtenDropdownField(
         value: row.inAccountId,
         items: [

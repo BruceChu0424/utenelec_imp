@@ -2,14 +2,24 @@ package com.uten.imp.features.master.referencemethod;
 
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -24,10 +34,28 @@ public class ReferenceMethodService {
     private static final Set<String> DUE_RULES = Set.of(
             "NET_DAYS", "EOM_PLUS_DAYS", "FIXED_DAY_OF_MONTH");
 
+    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
+    private static final Set<String> ALLOWED_NULL_FIELDS =
+            Set.of("status", "systemRole", "termsBase", "dueRule");
+
+    /** facet 截断阈值。 */
+    private static final int FACET_LIMIT = 50;
+
+    /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。 */
+    private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
+
+    static {
+        FACET_COLUMNS.put("status", "status");
+        FACET_COLUMNS.put("systemRole", "system_role");
+        FACET_COLUMNS.put("termsBase", "terms_base");
+        FACET_COLUMNS.put("dueRule", "due_rule");
+    }
+
     private final SettlementMethodRepository settlementMethods;
     private final FinancePaymentMethodRepository financeMethods;
     private final MasterCodeService masterCodeService;
     private final TxSessionVars tx;
+    private final EntityManager em;
 
     /**
      * 内联新增结算方式（销售/采购/委外单据编辑页「结账方式」下拉里点「添加」）。
@@ -58,12 +86,74 @@ public class ReferenceMethodService {
                 m.getId(), m.getLegacyId(), m.getCode(), m.getLegacyCode(), m.getName(), true);
     }
 
-    /** 管理页全量（含禁用行与账期策略；settlement_method:view）。 */
+    /**
+     * 管理页全量（含禁用行与账期策略；settlement_method:view）。
+     *
+     * <p>小字典不分页；表头筛选（状态/系统角色/到期基准/到期规则等值 + nullFields
+     * 空值白名单）在 {@link Specification} 中落到 SQL，范式同 {@code ColorService#list}。
+     */
     @Transactional(readOnly = true)
-    public List<SettlementMethodAdminItem> settlementAdminList() {
-        return settlementMethods.findByDeletedFalseOrderBySortOrderAscCodeAsc().stream()
+    public List<SettlementMethodAdminItem> settlementAdminList(SettlementMethodAdminQueryFilter f) {
+        Specification<SettlementMethod> spec = (Root<SettlementMethod> root,
+                jakarta.persistence.criteria.CriteriaQuery<?> q,
+                CriteriaBuilder cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(cb.isFalse(root.get("deleted")));
+            addEq(ps, cb, root, "status", f.status());
+            addEq(ps, cb, root, "systemRole", f.systemRole());
+            addEq(ps, cb, root, "termsBase", f.termsBase());
+            addEq(ps, cb, root, "dueRule", f.dueRule());
+            if (f.nullFields() != null) {
+                for (String fld : f.nullFields()) {
+                    if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
+                }
+            }
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        return settlementMethods.findAll(spec, Sort.by(Sort.Direction.ASC, "sortOrder")
+                        .and(Sort.by(Sort.Direction.ASC, "code")))
+                .stream()
                 .map(ReferenceMethodService::toAdminItem)
                 .toList();
+    }
+
+    private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<SettlementMethod> root,
+                              String field, String value) {
+        if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    // ===== facets（各可筛字段 distinct + 空值计数） =====
+
+    /**
+     * 结算方式表头筛选桶（settlement_method:view）。可筛列=状态/系统角色/到期基准/
+     * 到期规则等枚举列；编号/名称自由文本列不进 facet。范式同 {@code ColorService#facets}：
+     * 原生 SQL 聚合，列名来自硬编码白名单（非用户输入），软删行不进桶。
+     */
+    @Transactional(readOnly = true)
+    public SettlementMethodFacets settlementAdminFacets() {
+        Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
+        Map<String, Long> nullCounts = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
+            String field = e.getKey();
+            // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
+            String col = e.getValue();
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                    "select " + col + " as v, count(*) as c from settlement_methods "
+                            + "where is_deleted = false and " + col + " is not null "
+                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT));
+            List<FacetBucket> bucketList = new ArrayList<>(rows.size());
+            for (Object[] row : rows) {
+                bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
+            }
+            buckets.put(field, bucketList);
+            Long nc = ((Number) em.createNativeQuery(
+                    "select count(*) from settlement_methods where is_deleted = false and " + col + " is null")
+                    .getSingleResult()).longValue();
+            nullCounts.put(field, nc);
+        }
+        return new SettlementMethodFacets(
+                buckets.get("status"), buckets.get("systemRole"),
+                buckets.get("termsBase"), buckets.get("dueRule"), nullCounts);
     }
 
     /**

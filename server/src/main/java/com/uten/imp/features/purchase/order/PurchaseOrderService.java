@@ -220,11 +220,15 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         o.setStatus(STATUS_DRAFT);
         mutationLocks.expectCreatedOrder(orderType(),o.getId());
         orderRepo.save(o);
-        masterDefaultsSync.syncFromPurchaseOrder(o.getId());
         orderRepo.flush();
         mutationLocks.registerCreatedOrder(orderType(),o.getId());
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
+        // 主档写回必须在明细落库并 flush 之后：写回服务按订单 id 用 JDBC 读
+        // purchase_orders/purchase_order_items 取事实，Hibernate 未 flush 的头/行它看不见
+        // (此前放在 save 之后、明细之前，新建单永远学不到货品供应商与单价)。
+        orderRepo.flush();
+        masterDefaultsSync.syncFromPurchaseOrder(o.getId());
         return toDetail(o, items);
     }
 
@@ -342,49 +346,26 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     /**
-     * 货品 → 最近一次订货供应商（订货编辑页行级供应商「学习预填」：选货品后自动
-     * 带出上次该货品的订货供应商，减少逐行手选）。批量一次查询；无历史返回空 Map。
+     * 货品 → 主档默认条款 (新建单行级预填; 端点路径沿用 /last-terms, 语义已是主档默认值)。
+     *
+     * <p>V593 起主档是唯一来源: goods.default_supplier_id (货品绑定的默认供应商) →
+     * 该供应商主档默认条款 (结账方式/币种/税率, 每次保存订货单写回) → 货品默认采购单价
+     * (goods.default_purchase_price)。汇率取币种现行汇率。「按最近一张订货单推导」的
+     * 回退路径已退役 (2026-09-16): 主档没有绑定就不预填, 不再实时扫订单表。
+     *
+     * <p>货品有默认供应商或默认单价才返回行; supplierId 只在供应商未删且非内部车间时给出
+     * (停用供应商照给, 是否可回填由前端按字典判断), 条款随供应商一起为空。批量一次查询。
      */
     @Transactional(readOnly = true)
-    public Map<UUID, UUID> lastSuppliersPerGoods(Collection<UUID> goodsIds) {
+    public Map<UUID, MasterDefaultTermsPerGoods> masterDefaultTermsPerGoods(
+            Collection<UUID> goodsIds) {
         if (goodsIds == null || goodsIds.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, UUID> result = new LinkedHashMap<>();
-        // V593 主档优先：货品资料上绑定的默认供应商（每次下单自动写回最新）。
+        Map<UUID, MasterDefaultTermsPerGoods> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
                 """
-                SELECT g.id, g.default_supplier_id
-                FROM goods g
-                WHERE g.id IN (:ids)
-                  AND g.default_supplier_id IS NOT NULL
-                  AND g.is_deleted = false
-                """).setParameter("ids", goodsIds))) {
-            result.put((UUID) row[0], (UUID) row[1]);
-        }
-        // 无主档绑定的货品回落最近订单推导（回填前的老数据）。
-        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
-            result.putIfAbsent((UUID) row[0], (UUID) row[1]);
-        }
-        return result;
-    }
-
-    /**
-     * 货品 → 最近一次订货商业条款（行级条款「学习预填」：同一货品下次建单自动带出
-     * 上次的供应商/结账方式/币种/汇率/税率）。取每个货品最新一张未删订货单的头条款；
-     * 供应商是否可用（停用/内部车间）由前端在回填时判断。批量一次查询；无历史返回空 Map。
-     */
-    @Transactional(readOnly = true)
-    public Map<UUID, LastTermsPerGoods> lastTermsPerGoods(Collection<UUID> goodsIds) {
-        if (goodsIds == null || goodsIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, LastTermsPerGoods> result = new LinkedHashMap<>();
-        // V593 主档优先：货品绑定的默认供应商 + 该供应商主档默认条款
-        //（币种/税率/结账方式，每次下单写回）+ 货品默认采购单价。汇率取币种现行汇率。
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
-                """
-                SELECT g.id, g.default_supplier_id,
+                SELECT g.id, sup.id,
                        sup.default_settlement_method_id,
                        sup.default_currency_id,
                        cur.exchange_rate,
@@ -397,36 +378,22 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                  AND sup.is_internal_workshop = false
                 LEFT JOIN currencies cur ON cur.id = sup.default_currency_id
                 WHERE g.id IN (:ids)
-                  AND g.default_supplier_id IS NOT NULL
                   AND g.is_deleted = false
+                  AND (g.default_supplier_id IS NOT NULL
+                       OR g.default_purchase_price IS NOT NULL)
                 """).setParameter("ids", goodsIds))) {
-            result.put((UUID) row[0], new LastTermsPerGoods(
+            result.put((UUID) row[0], new MasterDefaultTermsPerGoods(
                     (UUID) row[1], (UUID) row[2], (UUID) row[3],
                     (BigDecimal) row[4], (BigDecimal) row[5], (BigDecimal) row[6]));
-        }
-        // 无主档绑定的货品回落最近订单推导（单价有主档默认则优先带上）。
-        Map<UUID, BigDecimal> masterPrices = new LinkedHashMap<>();
-        for (var entry : result.entrySet()) {
-            if (entry.getValue().purchasePrice() != null) {
-                masterPrices.put(entry.getKey(), entry.getValue().purchasePrice());
-            }
-        }
-        for (Object[] row : itemRepo.findLastTermsPerGoods(goodsIds)) {
-            UUID goodsId = (UUID) row[0];
-            if (result.containsKey(goodsId)) continue;
-            result.put(goodsId, new LastTermsPerGoods(
-                    (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    (BigDecimal) row[4], (BigDecimal) row[5],
-                    masterPrices.get(goodsId)));
         }
         return result;
     }
 
     /**
-     * 行级条款学习记忆视图（/last-terms 返回体；金额口径字段见 purchase_orders 头）。
-     * V593 起含 purchasePrice=货品默认采购单价（主档列，行价预填）。
+     * 主档默认条款视图 (/last-terms 返回体; 字段口径见 goods / suppliers 主档列)。
+     * purchasePrice=goods.default_purchase_price (行价预填)。
      */
-    public record LastTermsPerGoods(
+    public record MasterDefaultTermsPerGoods(
             UUID supplierId,
             UUID settlementMethodId,
             UUID currencyId,
@@ -452,8 +419,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         itemRepo.flush();
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
-                masterDefaultsSync.syncFromPurchaseOrder(o.getId());
-return toDetail(o, items);
+        // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
+        orderRepo.flush();
+        masterDefaultsSync.syncFromPurchaseOrder(o.getId());
+        return toDetail(o, items);
     }
 
     @Transactional

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -59,6 +60,9 @@ class _ProcurementIqcActualCreditDialogState
   ProcurementIqcCreditPreview? _preview;
   ProcurementIqcConfirmCreditCommand? _reviewedCommand;
   bool _busy = false, _needsRefresh = false, _uncertain = false;
+
+  /// 确认提交的纯网络段（预览/刷新与确认共用 _busy，遮罩只挂确认）。
+  bool _applying = false;
   int _generation = 0;
   ProcurementIqcCreditSource? get _source => _detail.creditSources
       .where((s) => s.sourceApLedgerId == _sourceId)
@@ -240,6 +244,8 @@ class _ProcurementIqcActualCreditDialogState
     if (_busy || command == null || _needsRefresh) return;
     setState(() {
       _busy = true;
+      // 加载遮罩只挂确认提交这段网络（_busy 还被预览/刷新共用，逐次闪遮罩会晃眼）。
+      _applying = true;
       _error = null;
     });
     try {
@@ -269,7 +275,12 @@ class _ProcurementIqcActualCreditDialogState
         });
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _applying = false;
+        });
+      }
     }
   }
 
@@ -384,6 +395,12 @@ class _ProcurementIqcActualCreditDialogState
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 确认提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+                  if (_applying)
+                    const UtenBusyOverlay(
+                      title: '正在确认供应商实际贷项',
+                      description: '正在写入贷项与案件分摊，请勿重复提交或关闭弹窗。',
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
                     child: Row(

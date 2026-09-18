@@ -32,6 +32,14 @@ public class ProcurementInspectionRecordQueryService {
     private static final List<String> DECISIONS =
             List.of("ALL", "PASS", "PARTIAL", "FAIL", "CANCELLED");
 
+    /** 表头筛选白名单（2026-09-16）：检验类型=收货来源（IQC 无生产来源）；当前效力按
+     *  列展示口径拆三档（当前有效/历史失效/撤销有效）；不良处置码与决定/撤销事件同源。 */
+    private static final List<String> SOURCE_TYPES = List.of("PURCHASE", "SUBCONTRACT");
+    private static final List<String> EFFECTS = List.of("ACTIVE", "EXPIRED", "CANCELLED");
+    private static final List<String> DISPOSITIONS = List.of(
+            "REWORK", "SCRAP", "REJECT",
+            "SOURCE_REPORT_REVERSED", "REGISTRATION_REVERSED", "RECEIPT_REVERSED");
+
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -41,10 +49,14 @@ public class ProcurementInspectionRecordQueryService {
             String rawKeyword,
             OffsetDateTime from,
             OffsetDateTime to,
+            String rawSourceType,
+            String rawEffective,
+            String rawDisposition,
             int requestedPage,
             int requestedSize) {
         NormalizedFilter filter = normalizeFilter(
                 rawDecision, rawKeyword, from, to,
+                rawSourceType, rawEffective, rawDisposition,
                 requestedPage, requestedSize);
         String predicate = filteredPredicate(filter, true);
         String records = "(" + recordSql() + ") record";
@@ -129,6 +141,24 @@ public class ProcurementInspectionRecordQueryService {
         if (filter.to() != null) {
             predicate.append(" AND record.decided_at <= :toAt");
         }
+        // 表头筛选三列（2026-09-16）：检验类型/当前效力/不良处置，全部参数化白名单等值。
+        if (filter.sourceType() != null) {
+            predicate.append(" AND record.source_type = :sourceType");
+        }
+        if (filter.effective() != null) {
+            // 与前端 effectLabel 三档一一对应：当前有效=effective 且非撤销；
+            // 历史失效=来源已红冲；撤销有效=decision CANCELLED（其 effective 恒真）。
+            predicate.append(switch (filter.effective()) {
+                case "ACTIVE" -> " AND record.effective AND record.decision <> 'CANCELLED'";
+                case "EXPIRED" -> " AND NOT record.effective";
+                case "CANCELLED" -> " AND record.decision = 'CANCELLED'";
+                default -> throw new IllegalStateException(
+                        "unreachable effective filter " + filter.effective());
+            });
+        }
+        if (filter.disposition() != null) {
+            predicate.append(" AND record.disposition_code = :disposition");
+        }
         if (includeDecision && !"ALL".equals(filter.decision())) {
             predicate.append(" AND record.decision = :decision");
         }
@@ -143,6 +173,12 @@ public class ProcurementInspectionRecordQueryService {
         query.setParameter("keywordLike", "%" + filter.keyword() + "%");
         if (filter.from() != null) query.setParameter("fromAt", filter.from());
         if (filter.to() != null) query.setParameter("toAt", filter.to());
+        if (filter.sourceType() != null) {
+            query.setParameter("sourceType", filter.sourceType());
+        }
+        if (filter.disposition() != null) {
+            query.setParameter("disposition", filter.disposition());
+        }
         if (includeDecision && !"ALL".equals(filter.decision())) {
             query.setParameter("decision", filter.decision());
         }
@@ -153,6 +189,9 @@ public class ProcurementInspectionRecordQueryService {
             String rawKeyword,
             OffsetDateTime from,
             OffsetDateTime to,
+            String rawSourceType,
+            String rawEffective,
+            String rawDisposition,
             int requestedPage,
             int requestedSize) {
         String decision = rawDecision == null || rawDecision.isBlank()
@@ -163,6 +202,12 @@ public class ProcurementInspectionRecordQueryService {
                     ErrorCode.VALIDATION_FAILED,
                     "检测记录结论仅支持 ALL、PASS、PARTIAL、FAIL 或 CANCELLED");
         }
+        String sourceType = normalizeWhitelist(
+                rawSourceType, SOURCE_TYPES, "检测记录检验类型仅支持 PURCHASE 或 SUBCONTRACT");
+        String effective = normalizeWhitelist(
+                rawEffective, EFFECTS, "检测记录当前效力仅支持 ACTIVE、EXPIRED 或 CANCELLED");
+        String disposition = normalizeWhitelist(
+                rawDisposition, DISPOSITIONS, "检测记录不良处置码无效");
         String keyword = rawKeyword == null
                 ? "" : rawKeyword.strip().toLowerCase(Locale.ROOT);
         if (keyword.length() > 200) {
@@ -181,9 +226,25 @@ public class ProcurementInspectionRecordQueryService {
                 keyword,
                 from,
                 to,
+                sourceType,
+                effective,
+                disposition,
                 pageable.getPageNumber() + 1,
                 pageable.getPageSize(),
                 pageable.getOffset());
+    }
+
+    /** 表头筛选枚举归一：空白 → null（不过滤）；非法值 fail-closed 抛校验错。 */
+    private static String normalizeWhitelist(
+            String raw, List<String> allowed, String message) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.strip().toUpperCase(Locale.ROOT);
+        if (!allowed.contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, message);
+        }
+        return normalized;
     }
 
     static record NormalizedFilter(
@@ -191,6 +252,9 @@ public class ProcurementInspectionRecordQueryService {
             String keyword,
             OffsetDateTime from,
             OffsetDateTime to,
+            String sourceType,
+            String effective,
+            String disposition,
             int page,
             int size,
             long offset) {

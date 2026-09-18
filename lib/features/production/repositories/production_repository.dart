@@ -206,40 +206,9 @@ class ProductionPlanRepository {
     return result;
   }
 
-  /// 货品 → 最近一次分析确认的供应路线（路线「学习预填」：无建议路线或上次
-  /// 确认与建议不同的物料，下次分析默认带出上次的选择）。同货品按颜色+单位
-  /// 维度各有记忆。无历史返回空 Map；失败由调用方静默处理。
-  /// 大分析几百货品时按 100/块并行分块（URL 编码后接近常见代理 8KB
-  /// request-line 上限，与 default-workshops 同款防护）。
-  Future<Map<String, List<MaterialRouteMemory>>> materialAnalysisLastRoutes(
-    Set<String> goodsIds,
-  ) async {
-    if (goodsIds.isEmpty) return const {};
-    const chunkSize = 100;
-    final ordered = goodsIds.toList(growable: false)..sort();
-    final requests = <Future<Map<String, dynamic>> Function()>[];
-    for (var start = 0; start < ordered.length; start += chunkSize) {
-      final end = (start + chunkSize).clamp(0, ordered.length);
-      final ids = ordered.sublist(start, end).join(',');
-      requests.add(
-        () => api.get(
-          '$_materialAnalysesBase/last-routes', // ENDPOINT
-          query: {'goodsIds': ids},
-        ),
-      );
-    }
-    final chunks = await _runBounded(requests);
-    return {
-      for (final chunk in chunks)
-        for (final entry in chunk.entries)
-          if (entry.value is List)
-            entry.key: [
-              for (final item in entry.value as List)
-                if (item is Map<String, dynamic>)
-                  MaterialRouteMemory.fromJson(item),
-            ],
-    };
-  }
+  // 2026-09-16：GET /last-routes 已退役。供应方式的单一事实源是货品主档
+  // goods.source_type——确认路线同事务回写主档，新分析的建议路线
+  // (sourceSuggestion) 随分析快照一起下发，前端不再另发一趟记忆请求。
 
   /// Avoid turning a large analysis into dozens of simultaneous GETs. Four
   /// workers keep latency low without overwhelming proxies or the API pool.
@@ -509,6 +478,48 @@ class ProductionPlanRepository {
       body: {
         'expectedVersion': expectedVersion,
         'idempotencyKey': idempotencyKey,
+      },
+    ); // ENDPOINT
+    return ProductionExecutionSegmentView.fromJson(json);
+  }
+
+  /// 「部分开工 · 持续生产」(V595)：同车间直送子件分次到料、到一批投一批，
+  /// 同一张工单只开一次工；仓库物料仍须一次领齐(服务端缺料时直接报出缺什么)。
+  Future<ProductionExecutionSegmentView> startContinuousExecutionSegment(
+    String planId,
+    String segmentId, {
+    required int expectedVersion,
+  }) async {
+    final json = await api.post(
+      '/production/plans/$planId/execution-segments/$segmentId/start-continuous',
+      body: {
+        'expectedVersion': expectedVersion,
+        'idempotencyKey': businessIdempotencyKey(
+          'execution-segment-start-continuous',
+          '$planId|$segmentId|$expectedVersion',
+        ),
+      },
+    ); // ENDPOINT
+    return ProductionExecutionSegmentView.fromJson(json);
+  }
+
+  /// 「确认生产路线」(V599)：开工前显式选定 齐套生产 / 分批生产 / 持续生产；
+  /// 未确认前开工侧动作被服务端拒绝，确认 FULL_KIT 时若已可齐套会就地补跑备料提升。
+  Future<ProductionExecutionSegmentView> confirmExecutionSegmentRoute(
+    String planId,
+    String segmentId, {
+    required int expectedVersion,
+    required String route,
+  }) async {
+    final json = await api.post(
+      '/production/plans/$planId/execution-segments/$segmentId/confirm-route',
+      body: {
+        'expectedVersion': expectedVersion,
+        'route': route,
+        'idempotencyKey': businessIdempotencyKey(
+          'execution-segment-confirm-route',
+          '$planId|$segmentId|$expectedVersion|$route',
+        ),
       },
     ); // ENDPOINT
     return ProductionExecutionSegmentView.fromJson(json);

@@ -216,7 +216,9 @@ class DailyReportExecutionSegmentGuardTest {
                 workshopId,
                 responsibleEmployeeId,
                 materialMode,
-                7L, null
+                7L, null,
+                // s.continuous_supply(V595)：普通工单不走直送到料折算上限。
+                false
         }));
         Query allocation = query();
         when(allocation.getResultList()).thenReturn(List.of());

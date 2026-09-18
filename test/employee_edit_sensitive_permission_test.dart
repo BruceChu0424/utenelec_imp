@@ -43,8 +43,11 @@ void main() {
       'lib/features/employee/pages/employee_edit_page.dart',
     ).readAsStringSync();
 
-    expect(source, contains("ValueKey('employee-edit-status-readonly')"));
-    expect(source, contains('onChanged: null'));
+    // 只锚 key 字面量本身：dart format 会按缩进换行，整段
+    // "ValueKey('…')" 单行匹配会被格式化打碎（2026-09-16 加载遮罩改版时踩过）。
+    // 2026-09-16 下拉统一改版后只读口径 = UtenDropdownField enabled:false。
+    expect(source, contains('employee-edit-status-readonly'));
+    expect(source, contains('enabled: false'));
     expect(source, isNot(contains("code('status'")));
   });
 

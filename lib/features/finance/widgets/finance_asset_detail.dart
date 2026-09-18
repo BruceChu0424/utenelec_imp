@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -576,7 +577,7 @@ class _FinanceAssetDetailSurfaceState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (detail.books.isEmpty)
-          const Text('暂无账簿快照')
+          const UtenEmpty(message: '暂无账簿快照')
         else
           Wrap(
             spacing: UtenSpacing.s12,
@@ -670,7 +671,7 @@ class _FinanceAssetDetailSurfaceState
   }
 
   Widget _approvalTrail(ThemeData theme, List<FinanceAssetTrailStep> steps) {
-    if (steps.isEmpty) return const Text('暂无审批记录');
+    if (steps.isEmpty) return const UtenEmpty(message: '暂无审批记录');
     return Column(
       children: [
         for (final step in steps)
@@ -698,7 +699,7 @@ class _FinanceAssetDetailSurfaceState
   }
 
   Widget _eventTimeline(ThemeData theme, List<FinanceAssetEvent> events) {
-    if (events.isEmpty) return const Text('暂无资产事件');
+    if (events.isEmpty) return const UtenEmpty(message: '暂无资产事件');
     return Column(
       children: [
         for (final event in events)
@@ -763,7 +764,7 @@ class _FinanceAssetDetailSurfaceState
           ),
         ),
         if (detail.documentReferences.isEmpty)
-          const Text('暂无文档引用。')
+          const UtenEmpty(message: '暂无文档引用')
         else
           for (final reference in detail.documentReferences)
             ListTile(

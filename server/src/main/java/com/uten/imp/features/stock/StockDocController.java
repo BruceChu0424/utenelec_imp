@@ -62,12 +62,13 @@ public class StockDocController {
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short issueStatus,
             @RequestParam(required = false) Boolean productionReturnRequests,
+            @RequestParam(required = false) UUID toWarehouseId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
-                departmentId, issueStatus, productionReturnRequests), page, size, sort, order);
+                departmentId, issueStatus, productionReturnRequests, toWarehouseId), page, size, sort, order);
     }
 
     @GetMapping("/{id}")

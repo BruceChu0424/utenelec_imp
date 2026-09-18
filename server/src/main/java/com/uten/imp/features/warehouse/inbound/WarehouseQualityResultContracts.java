@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockedLocation;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -35,7 +36,9 @@ public final class WarehouseQualityResultContracts {
             long openItemCount,
             long pendingSliceCount,
             long pendingReturnCount,
-            OffsetDateTime lastActivityAt) {
+            OffsetDateTime lastActivityAt,
+            /** 先入库后检(V596)：仍在等结论且已上架的明细行数(>0 表示实物已在库位、合格自动转正)。 */
+            long preStockedLineCount) {
     }
 
     public record TaskDetail(
@@ -61,7 +64,12 @@ public final class WarehouseQualityResultContracts {
             List<InspectionLineItem> lines,
             List<ProcurementIqcStockInContracts.ReleasedSlice> items,
             List<ProcurementIqcStockInContracts.StockInHistoryItem> history,
-            List<RejectionCaseItem> rejections) {
+            List<RejectionCaseItem> rejections,
+            /** 先入库后检(V596)：仍在等结论且已上架的明细行数。 */
+            long preStockedLineCount) {
+
+        /** 动作码：先把待检明细上架(需 warehouse_iqc_stock_in:before_inspection)。 */
+        public static final String ACTION_PRE_STOCK_IN = "PRE_STOCK_IN";
 
         public TaskDetail {
             allowedActions = allowedActions == null ? List.of() : List.copyOf(allowedActions);
@@ -91,7 +99,18 @@ public final class WarehouseQualityResultContracts {
             BigDecimal warehouseStockedBaseQty,
             BigDecimal pendingStockBaseQty,
             @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
-            String warehouseName) {
+            String warehouseName,
+            /** 先入库后检(V596)：该行已上架的实际仓/库位；null=未上架(原流程)。 */
+            PreStockedLocation preStocked,
+            /** 建议库位(仓库×货品×颜色学习偏好，回落货品主档)；先入库上架页预填用。 */
+            String placeHint) {
+
+        /** 仍等结论且未上架的行可被「先入库上架」。 */
+        public boolean preStockable() {
+            return preStocked == null && "PENDING".equals(lineStatus)
+                    && (passedBaseQty == null || passedBaseQty.signum() == 0)
+                    && (failedBaseQty == null || failedBaseQty.signum() == 0);
+        }
     }
 
     /** 检查不合格产生的实物退回任务（V440 拒收案件在仓库侧的投影）。 */
@@ -111,6 +130,8 @@ public final class WarehouseQualityResultContracts {
             String returnRecordedByName,
             OffsetDateTime returnRecordedAt,
             long rowVersion,
-            boolean canRecordReturn) {
+            boolean canRecordReturn,
+            /** 先入库后检(V596)：不合格实物当前所在的上架仓/库位，仓库据此取货退回；null=未上架。 */
+            PreStockedLocation preStocked) {
     }
 }

@@ -69,6 +69,17 @@ class _ProductionExecutionBatchPageState
   bool get _reusesIssuedMaterial =>
       _preview != null && _preview!.quantity > 0 && _preview!.summaries.isEmpty;
 
+  /// 本批物料全部来自本车间线边仓（车间直送）：提交事务内自动审核出库，
+  /// 不走领料申请、不等仓库发料（ADR-087）。
+  bool get _allDirectTransfer =>
+      _preview != null &&
+      _preview!.summaries.isNotEmpty &&
+      _preview!.summaries.every(
+        (row) => _preview!.lineSideWarehouseIds.contains(row.warehouseId),
+      );
+
+  bool get _noDrawRequestNeeded => _reusesIssuedMaterial || _allDirectTransfer;
+
   bool get _allowed {
     if (ref.read(isSuperAdminProvider)) return true;
     final permissions = ref.read(currentPermissionsProvider);
@@ -182,6 +193,11 @@ class _ProductionExecutionBatchPageState
       context.appSuccess(
         result.replayed
             ? l10n.productionBatchReplay
+            : _allDirectTransfer
+            ? l10n.productionBatchSubmittedDirectTransfer(
+                _number(preview.quantity),
+                preview.productUnitName ?? '',
+              )
             : result.documentIds.isEmpty
             ? l10n.productionBatchSubmittedReuse(
                 _number(preview.quantity),
@@ -210,7 +226,7 @@ class _ProductionExecutionBatchPageState
         _needsPreview = !uncertain;
         _submitError = uncertain
             ? l10n.productionBatchUncertain(
-                _reusesIssuedMaterial
+                _noDrawRequestNeeded
                     ? l10n.productionBatchRetryArrange
                     : l10n.productionBatchRetryRequest,
               )
@@ -221,7 +237,7 @@ class _ProductionExecutionBatchPageState
         setState(() {
           _uncertain = true;
           _submitError = l10n.productionBatchUncertain(
-            _reusesIssuedMaterial
+            _noDrawRequestNeeded
                 ? l10n.productionBatchRetryArrange
                 : l10n.productionBatchRetryRequest,
           );
@@ -304,10 +320,10 @@ class _ProductionExecutionBatchPageState
           onPressed: _canSubmit ? _submit : null,
           child: Text(
             _uncertain
-                ? _reusesIssuedMaterial
+                ? _noDrawRequestNeeded
                       ? l10n.productionBatchRetryArrange
                       : l10n.productionBatchRetryRequest
-                : _reusesIssuedMaterial
+                : _noDrawRequestNeeded
                 ? l10n.productionBatchConfirmArrange
                 : l10n.productionBatchConfirmRequest,
           ),
@@ -565,10 +581,14 @@ class _ProductionExecutionBatchPageState
                       ? l10n.productionBatchNoKitHint
                       : _reusesIssuedMaterial
                       ? l10n.productionBatchReuseHint
+                      : _allDirectTransfer
+                      ? l10n.productionBatchDirectTransferHint
                       : l10n.productionBatchFlow,
                   alert: _needsPreview || preview.maxReadyQty <= 0,
                   icon: _reusesIssuedMaterial
                       ? Icons.recycling_rounded
+                      : _allDirectTransfer
+                      ? Icons.sync_alt_rounded
                       : Icons.info_outline_rounded,
                 ),
                 if (_submitError != null) ...[
@@ -710,6 +730,35 @@ class _ProductionExecutionBatchPageState
     );
   }
 
+  Widget _directTransferBadge(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s2,
+      ),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.sync_alt_rounded, size: 12, color: colors.primary),
+          const SizedBox(width: UtenSpacing.s4),
+          Text(
+            l10n.productionBatchDirectTransferBadge,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colors.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _materials(ProductionExecutionBatchPreview preview) {
     final theme = Theme.of(context);
     final compact =
@@ -824,6 +873,27 @@ class _ProductionExecutionBatchPageState
                   label: l10n.productionBatchWarehouse,
                   width: 190,
                   value: (row) => row.warehouseName,
+                  // 线边仓（车间直送）行标注「自动投入」：这些料不走领料申请。
+                  cellBuilder: (context, row) {
+                    final name = Text(
+                      row.warehouseName ?? '—',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    );
+                    if (!preview.lineSideWarehouseIds.contains(
+                      row.warehouseId,
+                    )) {
+                      return name;
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        name,
+                        const SizedBox(height: UtenSpacing.s2),
+                        _directTransferBadge(context),
+                      ],
+                    );
+                  },
                 ),
               ],
               items: preview.summaries,

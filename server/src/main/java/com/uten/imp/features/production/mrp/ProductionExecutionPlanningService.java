@@ -595,6 +595,7 @@ public class ProductionExecutionPlanningService {
                                        COALESCE(own.qualified_qty, 0),
                                        GREATEST(COALESCE(g.min_qty, 0), 0)::numeric,
                                        (NOT warehouse.is_defective
+                                        AND NOT warehouse.is_line_side
                                         AND fn_warehouse_same_main(a.warehouse_id, :warehouseId))
                                 FROM v_stock_available a
                                 JOIN goods g ON g.id = a.goods_id

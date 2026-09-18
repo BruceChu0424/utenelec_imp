@@ -880,6 +880,9 @@ class FullChainEndToEndTest {
 
         PlanningPackageResult result = planningPackageService.confirm(planId, req);
 
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
+
         // CURRENT architecture = direct-layer-only (spec decision #16): confirming A's package
         // handles only A's DIRECT components. B (自制) -> MAKE child subplan; E (委外) -> subcontract
         // application.
@@ -955,6 +958,9 @@ class FullChainEndToEndTest {
         request.setGeneratePurchaseRequest(false);
         PlanningPackageResult first = planningPackageService.confirm(
                 planId, request);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals(
                 "EXACT_SNAPSHOT",
                 first.executionSegments().getFirst()
@@ -1006,6 +1012,9 @@ class FullChainEndToEndTest {
 
         PlanningPackageResult replay = planningPackageService.confirm(
                 planId, request);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertTrue(replay.replayed());
         assertEquals(first.packageId(), replay.packageId());
         assertEquals(1, count("""
@@ -1091,6 +1100,9 @@ class FullChainEndToEndTest {
 
         planningPackageService.confirm(planId, request);
 
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
+
         Map<String, Object> totals = jdbc.queryForMap("""
                 select count(*) as demand_count,
                        sum(d.required_qty) as required_qty,
@@ -1146,6 +1158,9 @@ class FullChainEndToEndTest {
         request.setGeneratePurchaseRequest(false);
         PlanningPackageResult result = planningPackageService.confirm(
                 planId, request);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         ExecutionSegmentResult zeroSegment =
                 result.executionSegments().getFirst();
         UUID segmentId = zeroSegment.segmentId();
@@ -1279,6 +1294,9 @@ class FullChainEndToEndTest {
                                 LocalDate.of(2026, 8, 8), null,
                                 assignment.workshopId(), null,
                                 assignment.workerId(), null, null))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertTrue(hasSegmentStatus(
                 childWaitingResult.plans().getFirst().planId(), "WAITING"));
         assertTrue(childWaitingResult.plans().getFirst().drawIds().isEmpty(),
@@ -1320,6 +1338,9 @@ class FullChainEndToEndTest {
                                 LocalDate.of(2026, 8, 8), null,
                                 assignment.workshopId(), null,
                                 assignment.workerId(), null, null))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         GeneratedPlan waitingPlan = waitingResult.plans().getFirst();
         assertEquals("APPROVED", waitingPlan.status(), "待料计划也可显式审核下达");
         assertTrue(hasSegmentStatus(waitingPlan.planId(), "WAITING"),
@@ -1390,6 +1411,9 @@ class FullChainEndToEndTest {
                                 null, productLineId, new BigDecimal("10"),
                                 LocalDate.of(2026, 8, 8), null,
                                 null, null, null, null, null))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertFalse(result.plans().isEmpty(), "生成了一张生产计划");
         GeneratedPlan g = result.plans().getFirst();
         assertEquals("APPROVED", g.status(), "approveNow=true → 计划已批准");
@@ -1414,6 +1438,9 @@ class FullChainEndToEndTest {
                         "gen-ma2-duplicate-" + analysisId,w.warehouseId(),
                         LocalDate.of(2026,8,8),null,true,
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(productLineId,BigDecimal.ONE)))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals(1,count("select count(*) from production_plans where material_analysis_id=?",
                 analysisId),"需求保留不能重复排产");
     }
@@ -1444,12 +1471,18 @@ class FullChainEndToEndTest {
                 new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"fixed-batch-first",
                         w.warehouseId(),LocalDate.of(2026,9,6),null,true,
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(sourceId,new BigDecimal("50")))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertTrue(hasSegmentStatus(first.plans().getFirst().planId(),"READY"));
         view=analysisService.detail(analysisId);
         GenerateResult second=analysisCommandService.issueWorkshopPlans(analysisId,
                 new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"fixed-batch-second",
                         w.warehouseId(),LocalDate.of(2026,9,6),null,true,
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(sourceId,new BigDecimal("50")))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertTrue(hasSegmentStatus(second.plans().getFirst().planId(),"WAITING"));
         assertTrue(second.plans().getFirst().drawIds().isEmpty());
         var materialView=second.analysis().flatMaterials().stream()
@@ -1493,6 +1526,9 @@ class FullChainEndToEndTest {
                                 null, itemId, new BigDecimal("10"),
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
 
         assertTrue(hasSegmentStatus(plan.planId(), "READY"));
         assertEquals(2, plan.drawIds().size(), "不同实际子仓各一张领料单");
@@ -1555,6 +1591,9 @@ class FullChainEndToEndTest {
                                 new BigDecimal("10"),startDate,null,assignment.workshopId(),
                                 null,assignment.workerId(),null,null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         UUID segmentId = plan.segmentIds().getFirst();
         assertTrue(hasSegmentStatus(plan.planId(),"READY"));
         assertEquals(assignment.workshopId(),jdbc.queryForObject("""
@@ -1600,6 +1639,8 @@ class FullChainEndToEndTest {
                 SELECT count(*) FROM production_execution_segment_events
                 WHERE execution_segment_id=? AND action IN ('DISPATCH','AUTO_START_ON_REPORT')
                 """,segmentId));
+        confirmFullKitRoute(plan.planId(), segmentId);
+        // 确认路线会抬 lock_version(事件账)，批量开工必须用确认后的新版本号。
         Long version = jdbc.queryForObject("""
                 SELECT lock_version FROM production_execution_segments WHERE id=?
                 """,Long.class,segmentId);
@@ -1651,6 +1692,9 @@ class FullChainEndToEndTest {
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,itemId,
                                 new BigDecimal("10"),null,null,null,null,null,null,null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals(2,plan.drawIds().size());
         UUID draw = plan.drawIds().getFirst();
         UUID actualWarehouse = jdbc.queryForObject(
@@ -1747,6 +1791,9 @@ class FullChainEndToEndTest {
                                 b.materialLineId(), null, b.demandSupplyGapQty(),
                                 LocalDate.of(2026, 8, 8), null,
                                 assignment.workshopId(), null, assignment.workerId(), null, null))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals(1, result.plans().size());
         assertEquals("APPROVED", result.plans().getFirst().status(),
                 "approveNow=true → 子件计划同事务审核下达");
@@ -1829,7 +1876,8 @@ class FullChainEndToEndTest {
                 new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(segment,
                         "surplus-before-start","未开工退料阻止",List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(notStarted.issuePostingId(),BigDecimal.ONE)))));
         var ready=executionSegmentService.list(plan).stream().filter(row->row.id().equals(segment)).findFirst().orElseThrow();
-        executionSegmentService.start(plan,segment,new SegmentTransitionRequest(ready.lockVersion(),"surplus-start-production"));
+        confirmFullKitRoute(plan, segment);
+        executionSegmentService.start(plan,segment,new SegmentTransitionRequest(jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment),"surplus-start-production"));
         UUID worker=createUserWithPerms(w,"surplus-worker","production_execution:view","production_material:settle");
         jdbc.update("update employees set department_id=? where id=?",workshop,employeeIdOf(worker));
         loginAs(worker);
@@ -1980,6 +2028,9 @@ class FullChainEndToEndTest {
                                 assignment.workshopId(), null,
                                 assignment.workerId(), null, null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         UUID drawId = generated.drawIds().getFirst();
         UUID segmentId = generated.segmentIds().getFirst();
         assertEquals(0, count("""
@@ -2199,6 +2250,9 @@ class FullChainEndToEndTest {
                 "实际领料并不等于开工，未显式开工不能创建报工");
         loginAs(w.superAdminUserId());
         long startVersion = jdbc.queryForObject(
+                "SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId);
+        confirmFullKitRoute(generated.planId(), segmentId);
+        startVersion = jdbc.queryForObject(
                 "SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId);
         executionSegmentService.start(generated.planId(),segmentId,
                 new SegmentTransitionRequest(startVersion,"draw-life-explicit-start-"+segmentId));
@@ -2433,6 +2487,9 @@ class FullChainEndToEndTest {
                                 null, itemId, new BigDecimal("10"),
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals(1, plan.drawIds().size(), tag + "：库存全在同一仓只生成一张领料单");
         return plan.drawIds().getFirst();
     }
@@ -2506,6 +2563,9 @@ class FullChainEndToEndTest {
                                 null, productLineId, new BigDecimal("10"),
                                 null, null, null, null, null, null, null))));
 
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
+
         GeneratedPlan plan = generated.plans().getFirst();
         assertEquals("APPROVED", plan.status());
         assertEquals(1, plan.segmentIds().size());
@@ -2558,15 +2618,17 @@ class FullChainEndToEndTest {
                         assignment.workshopId(), null, assignment.workerId(),
                         LocalDate.of(2026, 8, 29),
                         LocalDate.of(2026, 8, 30)));
+        confirmFullKitRoute(plan.planId(), segmentId);
         ExecutionSegmentView dispatched = executionSegmentService.dispatch(
                 plan.planId(), segmentId,
                 new SegmentTransitionRequest(
-                        assigned.lockVersion(),
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-ma-direct-dispatch-" + segmentId));
+        confirmFullKitRoute(plan.planId(), segmentId);
         executionSegmentService.start(
                 plan.planId(), segmentId,
                 new SegmentTransitionRequest(
-                        dispatched.lockVersion(),
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-ma-direct-start-" + segmentId));
 
         UUID reportId = reportAndApproveExecutionSegment(
@@ -2620,8 +2682,14 @@ class FullChainEndToEndTest {
 
         GeneratedPlan first = analysisCommandService
                 .issueWorkshopPlans(analysisId, request).plans().getFirst();
+
+                // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+                confirmAllUnconfirmedFullKitRoutes();
         GeneratedPlan replay = analysisCommandService
                 .issueWorkshopPlans(analysisId, request).plans().getFirst();
+
+                // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+                confirmAllUnconfirmedFullKitRoutes();
 
         assertEquals("DRAFT", first.status());
         assertEquals(first.planId(), replay.planId());
@@ -2678,6 +2746,9 @@ class FullChainEndToEndTest {
                         null,product.analysisLineId(),new BigDecimal("4"),
                         LocalDate.of(2026,9,5),LocalDate.of(2026,9,30),
                         assignment.workshopId(),null,assignment.workerId(),null,null)))).plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertTrue(generated.drawIds().isEmpty());
         assertEquals(1,count("select count(*) from production_execution_segments where plan_id=? and status='WAITING'",generated.planId()));
         assertEquals(0,count("select count(*) from production_material_analysis_items where analysis_id=? and source_type='MAKE_COMPONENT'",view.analysisId()));
@@ -3804,6 +3875,9 @@ class FullChainEndToEndTest {
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
                                 null, productLineId, new BigDecimal("5"),
                                 null, null, null, null, null, null, null))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         GeneratedPlan g = result.plans().getFirst();
         assertEquals("APPROVED", g.status(), "分批也是 approveNow 一步批准");
         assertEquals(1, planStatus(g.planId()));
@@ -3829,7 +3903,13 @@ class FullChainEndToEndTest {
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,productLineId,new BigDecimal("5"),
                         null,null,null,null,null,null,null)));
         var second = analysisCommandService.issueWorkshopPlans(analysisId,secondRequest);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         var replay = analysisCommandService.issueWorkshopPlans(analysisId,secondRequest);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals(second.plans().getFirst().planId(),replay.plans().getFirst().planId());
         assertEquals(0,plannedQty(orderId).compareTo(new BigDecimal("10")));
         assertEquals(0,bigDecimalFor("SELECT ready_start_qty+ready_finish_qty+ready_ship_qty FROM production_material_analysis_items WHERE id=?",
@@ -3877,6 +3957,9 @@ class FullChainEndToEndTest {
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
                                 null,productLineId,new BigDecimal("100"),
                                 null,null,null,null,null,null,null))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         UUID planId = generated.plans().getFirst().planId();
         Map<String, BigDecimal> segmentQty = new java.util.HashMap<>();
         jdbc.query("""
@@ -4307,6 +4390,9 @@ class FullChainEndToEndTest {
         assertNotNull(planningPackageService.confirm(planId, req).purchaseRequest(),
                 "H 直层采购件 (direct BUY) -> 采购申请");
 
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
+
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
                 "select pri.id from purchase_request_items pri "
@@ -4388,6 +4474,9 @@ class FullChainEndToEndTest {
         req.setPreviewFingerprint(preview.fingerprint());
         req.setGeneratePurchaseRequest(true);
         planningPackageService.confirm(planId, req);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
                 "select pri.id from purchase_request_items pri "
@@ -4622,6 +4711,9 @@ class FullChainEndToEndTest {
                                 subcontract ? null : componentRow.materialLineId(),
                                 anchorItem,new BigDecimal("10"),null,null,null,null,null,null,null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertTrue(hasSegmentStatus(plan.planId(),"WAITING"));
         AnalysisView awaiting = analysisService.detail(analysisId);
         MaterialView originalMaterial = awaiting.flatMaterials().stream()
@@ -5517,6 +5609,9 @@ class FullChainEndToEndTest {
                                 null, sourceProductLineId, new BigDecimal("10"),
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals("APPROVED", generated.status(), "approveNow=true 应审核生产计划");
         assertTrue(hasSegmentStatus(generated.planId(), "READY"),
                 "正式计划生成 READY 执行段");
@@ -5765,6 +5860,9 @@ class FullChainEndToEndTest {
                                 new BigDecimal("10"),
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         for (UUID drawId : makeGenerated.drawIds()) {
             var drawLines = jdbc.queryForList(
                     "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
@@ -6627,6 +6725,9 @@ class FullChainEndToEndTest {
                 try {return planningPackageService.confirm(planId,command);}
                 finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
             }).get(15,java.util.concurrent.TimeUnit.SECONDS);
+
+                // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+                confirmAllUnconfirmedFullKitRoutes();
             assertNull(result.purchaseRequest());
             assertEquals(0,count("""
                     SELECT count(*) FROM production_material_supply_pegs peg JOIN production_material_demands demand ON demand.id=peg.demand_id
@@ -6654,6 +6755,7 @@ class FullChainEndToEndTest {
                     try {if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("package prefix timeout");}
                     catch(InterruptedException error){Thread.currentThread().interrupt();throw new AssertionError(error);}
                     return planningPackageService.confirm(planId,command);
+
                 });} finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
             });
             assertTrue(held.await(10,java.util.concurrent.TimeUnit.SECONDS));
@@ -6662,6 +6764,7 @@ class FullChainEndToEndTest {
                 try {return new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(tx -> {
                     waiterPid.set(jdbc.queryForObject("SELECT pg_backend_pid()",Integer.class));
                     return planningPackageService.confirm(planId,command);
+
                 });} finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
             });
             long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(8); boolean waiting=false;
@@ -6682,6 +6785,9 @@ class FullChainEndToEndTest {
         var nextPreview=planningPackageService.preview(planId,w.warehouseId());
         command.setPreviewFingerprint(nextPreview.fingerprint()); command.setIdempotencyKey("recreated-package-"+planId);
         var recreated=planningPackageService.confirm(planId,command);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertFalse(packageId.equals(recreated.packageId()));
         assertEquals("CANCELLED",strFor("SELECT status FROM production_planning_packages WHERE id=?",packageId));
         assertEquals(0,bigDecimalFor("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",planId).compareTo(new BigDecimal("10")));
@@ -7001,6 +7107,9 @@ class FullChainEndToEndTest {
         confirm.setGeneratePurchaseRequest(false);
         PlanningPackageResult confirmed = planningPackageService.confirm(
                 planId, confirm);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         requestWorkshopDraws("exact-part", confirmed.drawDocuments().stream()
                 .map(com.uten.imp.features.production.mrp.MrpGenerateResult::requestId).toList());
         for (var draw : confirmed.drawDocuments()) {
@@ -7032,17 +7141,19 @@ class FullChainEndToEndTest {
                         assignment.workerId(),
                         LocalDate.of(2026, 1, 25),
                         LocalDate.of(2026, 1, 31)));
+        confirmFullKitRoute(planId, segmentId);
         ExecutionSegmentView dispatched = executionSegmentService.dispatch(
                 planId,
                 segmentId,
                 new SegmentTransitionRequest(
-                        assigned.lockVersion(),
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-s24-exact-dispatch"));
+        confirmFullKitRoute(planId, segmentId);
         executionSegmentService.start(
                 planId,
                 segmentId,
                 new SegmentTransitionRequest(
-                        dispatched.lockVersion(),
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-s24-exact-start"));
 
         UUID report1 = reportAndApproveExecutionSegment(
@@ -9387,6 +9498,9 @@ class FullChainEndToEndTest {
                 refreshed.analysisId(), new IssueWorkshopPlansRequest(refreshed.version(), refreshed.fingerprint(),
                         "amend-new-plan-" + salesOrder, w.warehouseId(), BusinessTime.today(), BusinessTime.today(),
                         false, List.of(new IssueWorkshopPlansRequest.IssuePlanLine(analysisItem, new BigDecimal("10"))))));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals(ErrorCode.CONFLICT, denied.getCode());
         assertTrue(denied.getMessage().contains("等待财务确认"));
         assertEquals(1, count("select count(*) from preplan_supply_actions where analysis_id=? and route='BUY'",
@@ -9814,6 +9928,9 @@ class FullChainEndToEndTest {
         req.setPreviewFingerprint(preview.fingerprint());
         req.setGeneratePurchaseRequest(true);
         planningPackageService.confirm(planId, req);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
                 "select pri.id from purchase_request_items pri "
@@ -10088,6 +10205,9 @@ class FullChainEndToEndTest {
         req.setPreviewFingerprint(preview.fingerprint());
         req.setGeneratePurchaseRequest(true);
         planningPackageService.confirm(planId, req);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
                 "select pri.id from purchase_request_items pri "
@@ -10420,6 +10540,9 @@ class FullChainEndToEndTest {
         assertTrue(analysisService.list("SC-ORDER:"+orderItem,null,null,1,20).getItems().stream().anyMatch(item->item.analysisId().equals(analysis)));
         var plan=analysisCommandService.issueWorkshopPlans(analysis,new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"sc-draft-plan-"+order.getId(),w.warehouseId(),BusinessTime.today(),null,true,
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,view.products().getFirst().analysisLineId(),new BigDecimal("5"),BusinessTime.today(),null,assignment.workshopId(),null,assignment.workerId(),null,null)))).plans().getFirst();
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertTrue(hasSegmentStatus(plan.planId(),"WAITING"));assertTrue(plan.drawIds().isEmpty());
         var changed=directSubcontractDraft(w,w.goodsA(),"6");loginAs(clerk);
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->subcontractOrderService.update(order.getId(),changed)).getCode());
@@ -10428,6 +10551,9 @@ class FullChainEndToEndTest {
         receiveOpeningInputsForA(w,"5");
         loginAs(planner);
         var waiting=executionSegmentService.list(plan.planId()).getFirst();
+        confirmFullKitRoute(plan.planId(), waiting.id());
+        // 确认路线会抬 lock_version(事件账)，重核必须用确认后的新版本号。
+        waiting=executionSegmentService.list(plan.planId()).getFirst();
         executionSegmentService.recheckMaterial(plan.planId(),waiting.id(),new SegmentTransitionRequest(waiting.lockVersion(),"sc-draft-recheck-"+plan.planId()));
         loginAs(keeper);
         List<UUID> scDraftDraws=jdbc.queryForList("select link.draw_id from plan_draw_links link join stock_documents doc on doc.id=link.draw_id where link.plan_id=? and link.is_deleted=false and doc.doc_type='DRAW' and doc.status=0",UUID.class,plan.planId());
@@ -10983,12 +11109,18 @@ class FullChainEndToEndTest {
         }
         packageRequest.setSegments(segmentRequests);
         var issued=planningPackageService.confirm(planId,packageRequest);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         requestWorkshopDraws("scope", issued.drawDocuments().stream()
                 .map(com.uten.imp.features.production.mrp.MrpGenerateResult::requestId).toList());
         for(var draw:issued.drawDocuments()) stockDocService.approveAndIssue(draw.requestId(),
                 drawIssueRequest(draw.requestId(),"scope-issue-"+draw.requestId(),null,BigDecimal.ZERO));
-        for (var segment:executionSegmentService.list(planId)) executionSegmentService.start(planId,segment.id(),
-                new SegmentTransitionRequest(segment.lockVersion(),"scope-start-"+segment.id()));
+        for (var segment:executionSegmentService.list(planId)) {
+            confirmFullKitRoute(planId, segment.id());
+            executionSegmentService.start(planId,segment.id(),
+                new SegmentTransitionRequest(jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment.id()),"scope-start-"+segment.id()));
+        }
         UUID ownSegment=issued.executionSegments().stream().filter(s -> s.workshopDepartmentId().equals(firstWorkshop.workshopId()))
                 .findFirst().orElseThrow().segmentId();
         UUID otherSegment=issued.executionSegments().stream().filter(s -> s.workshopDepartmentId().equals(secondWorkshop.workshopId()))
@@ -11375,6 +11507,9 @@ class FullChainEndToEndTest {
         request.setPreviewFingerprint(preview.fingerprint());
         request.setGeneratePurchaseRequest(false);
         PlanningPackageResult issued = planningPackageService.confirm(planId,request);
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
         assertFalse(issued.executionSegments().isEmpty());
         assertTrue(issued.executionSegments().stream().allMatch(segment -> "READY".equals(segment.status())),
                 "Fixture opening inputs must really cover the plan; never bypass WAITING");
@@ -11525,10 +11660,11 @@ class FullChainEndToEndTest {
                                 assignment.workshopId(),null,assignment.workerId(),
                                 LocalDate.of(2026,1,20),LocalDate.of(2026,1,31)));
             }
+            confirmFullKitRoute(planId, startedSegmentId);
             executionSegmentService.start(
                     planId, startedSegmentId,
                     new SegmentTransitionRequest(
-                            current.lockVersion(),
+                            jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,startedSegmentId),
                             "e2e-start-" + startedSegmentId));
         }
         return new StartedSegment(segmentId, salesAllocationId);
@@ -12235,6 +12371,8 @@ class FullChainEndToEndTest {
                                 + "where mapping.document_type='DRAW' and mapping.document_id = ?)",
                         workshop, drawId);
             }
+            // V599：提交领料前统一把未确认的段确认为齐套路线（本旅程的默认口径）。
+            confirmAllUnconfirmedFullKitRoutes();
             var perSegment = jdbc.queryForList("select mapping.execution_segment_id as segment_id, "
                             + "segment.lock_version as lock_version "
                             + "from production_planning_package_documents mapping "
@@ -12287,6 +12425,9 @@ class FullChainEndToEndTest {
         req.setPreviewFingerprint(preview.fingerprint());
         req.setGeneratePurchaseRequest(true);
         orchestrator.confirmFullTree(planId, req);
+
+        // V599：整树下达后统一确认齐套路线。
+        confirmAllUnconfirmedFullKitRoutes();
 
         // B = A's direct MAKE child; C = B's direct MAKE child (full tree, not just one level)
         UUID bPlanId = jdbc.queryForObject(
@@ -12367,6 +12508,9 @@ class FullChainEndToEndTest {
         req.setGeneratePurchaseRequest(true);
         orchestrator.confirmFullTree(planId, req);
 
+        // V599：整树下达后统一确认齐套路线。
+        confirmAllUnconfirmedFullKitRoutes();
+
         UUID yPlan = subplanOf(planId);
         UUID zPlan = subplanOf(yPlan);
         UUID zPlanItem = planItemOfPlan(zPlan);
@@ -12403,6 +12547,9 @@ class FullChainEndToEndTest {
         req.setPreviewFingerprint(preview.fingerprint());
         req.setGeneratePurchaseRequest(true);
         orchestrator.confirmFullTree(planId, req);
+
+        // V599：整树下达后统一确认齐套路线。
+        confirmAllUnconfirmedFullKitRoutes();
         int plansBefore = count("select count(*) from production_plans where is_deleted = false");
         int segmentsBefore = count("select count(*) from production_execution_segments where is_deleted = false");
         int pegsBefore = count("select count(*) from production_material_supply_pegs where supply_type = 'PRODUCTION_PLAN_ITEM' and status <> 'REVERSED'");
@@ -12436,6 +12583,9 @@ class FullChainEndToEndTest {
         req.setPreviewFingerprint(preview.fingerprint());
         req.setGeneratePurchaseRequest(true);
         orchestrator.confirmFullTree(planId, req);
+
+        // V599：整树下达后统一确认齐套路线。
+        confirmAllUnconfirmedFullKitRoutes();
         UUID bPlan = subplanOf(planId);
         UUID cPlan = subplanOf(bPlan);
         UUID aPkg = jdbc.queryForObject(
@@ -12523,6 +12673,54 @@ class FullChainEndToEndTest {
     // dept -> employee -> user; goods -> bom; parties; uom/currency/color). All NOT-NULL-without-
     // default columns supplied; CHECK/unique constraints satisfied. Returns the created IDs.
     // ---------------------------------------------------------------------------------------------
+
+    /** V599 / ADR-091：把段确认为齐套生产路线（主流程测试的默认旅程；未确认路线时开工侧动作被拒）。
+     * 幂等：已确认齐套路线的段直接跳过——首确 FULL_KIT 可能就地把它提升成 READY，
+     * 再确认一遍会撞「改路线仅限 WAITING 未动过」的服务端口径。 */
+    void confirmFullKitRoute(UUID planId, UUID segmentId) {
+        var row = jdbc.queryForMap(
+                "SELECT lock_version, start_route FROM production_execution_segments WHERE id=?",
+                segmentId);
+        if ("FULL_KIT".equals(row.get("start_route"))) {
+            return;
+        }
+        Long version = ((Number) row.get("lock_version")).longValue();
+        executionSegmentService.confirmRoute(planId, segmentId,
+                new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(
+                        version, "fullkit-" + segmentId + "-v" + version, "FULL_KIT"));
+    }
+    /** V599：下达后统一把所有未确认的 WAITING 段确认为齐套路线（保持当前登录不变，超管执行）。
+     * FullChain 的用户旅程默认走齐套链；验证路线门本身的用例在 ProductionExecutionRouteGateEndToEndTest。 */
+    void confirmAllUnconfirmedFullKitRoutes() {
+        java.util.List<UUID[]> pending = jdbc.query(
+                "SELECT s.id, s.plan_id FROM production_execution_segments s "
+                + "JOIN production_plans p ON p.id=s.plan_id AND p.status=1 "
+                // 不筛状态：CompleteKitAllocator 下达即齐套的段落生就是 READY，同样要先确认路线。
+                + "WHERE s.start_route IS NULL AND NOT s.is_deleted "
+                + "AND s.status IN ('WAITING','READY','DISPATCHED') ORDER BY s.id LIMIT 200",
+                (rs, i) -> new UUID[]{rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)});
+        if (pending.isEmpty()) return;
+        var security = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var previous = security.getAuthentication();
+        try {
+            loginAs(lastSeedSuperAdminUserId);
+            for (UUID[] pair : pending) confirmFullKitRoute(pair[1], pair[0]);
+        } finally {
+            security.setAuthentication(previous);
+        }
+    }
+    void confirmFullKitRoutes(UUID planId) {
+        for (UUID segmentId : jdbc.queryForList("""
+                SELECT id FROM production_execution_segments
+                WHERE plan_id=? AND status='WAITING' AND start_route IS NULL AND NOT is_deleted
+                ORDER BY id
+                """, UUID.class, planId)) {
+            confirmFullKitRoute(planId, segmentId);
+        }
+    }
+
+    /** V599：seedWorld 最后一次创建的超管（confirmAllUnconfirmedFullKitRoutes 借用执行）。 */
+    UUID lastSeedSuperAdminUserId;
     World seedWorld(String tag) {
         UUID deptId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
@@ -12590,6 +12788,7 @@ class FullChainEndToEndTest {
         insertBom(goodsB, goodsC, "3");
         insertBom(goodsB, goodsD, "5");
 
+        lastSeedSuperAdminUserId = superAdminUserId;
         return new World(deptId, employeeId, superAdminUserId,
                 goodsA, goodsB, goodsC, goodsD, goodsE,
                 clientId, supplierId, warehouseId, unitId, currencyId, colorId, unitLegacy);
@@ -12620,9 +12819,9 @@ class FullChainEndToEndTest {
             UUID categoryId, boolean excludeLegacyFinanceStub) {
         return new com.uten.imp.features.master.client.dto.ClientQueryFilter(
                 categoryId, null, java.util.Set.of(),
-                null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
                 excludeLegacyFinanceStub,
                 false);
     }

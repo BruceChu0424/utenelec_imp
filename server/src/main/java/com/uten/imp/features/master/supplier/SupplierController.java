@@ -69,6 +69,7 @@ public class SupplierController {
             @RequestParam(required = false) Integer tday,
             @RequestParam(required = false) String place,
             @RequestParam(name = "empId", required = false) String empId,
+            @RequestParam(name = "ownerEmployeeId", required = false) UUID ownerEmployeeId,
             @RequestParam(name = "legalPerson", required = false) String legalPerson,
             @RequestParam(required = false) String linkman,
             @RequestParam(required = false) String mobile,
@@ -89,8 +90,8 @@ public class SupplierController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(new SupplierQueryFilter(categoryId, keyword, nullFields,
-                name, description, tday, place, empId, legalPerson, linkman, mobile,
-                phone, phone2, fax, postcode, address, bank, bankAccount, taxId,
+                name, description, tday, place, empId, ownerEmployeeId, legalPerson, linkman,
+                mobile, phone, phone2, fax, postcode, address, bank, bankAccount, taxId,
                 website, shipVia, shipAddress, selectableOnly), page, size, sort, order);
     }
 
@@ -130,6 +131,7 @@ public class SupplierController {
             @RequestParam(required = false) Integer tday,
             @RequestParam(required = false) String place,
             @RequestParam(name = "empId", required = false) String empId,
+            @RequestParam(name = "ownerEmployeeId", required = false) UUID ownerEmployeeId,
             @RequestParam(name = "legalPerson", required = false) String legalPerson,
             @RequestParam(required = false) String linkman,
             @RequestParam(required = false) String mobile,
@@ -148,8 +150,8 @@ public class SupplierController {
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new SupplierQueryFilter(categoryId, keyword, nullFields,
-                name, description, tday, place, empId, legalPerson, linkman, mobile,
-                phone, phone2, fax, postcode, address, bank, bankAccount, taxId,
+                name, description, tday, place, empId, ownerEmployeeId, legalPerson, linkman,
+                mobile, phone, phone2, fax, postcode, address, bank, bankAccount, taxId,
                 website, shipVia, shipAddress), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

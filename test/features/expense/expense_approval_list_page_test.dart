@@ -25,6 +25,7 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   }) async {
     pendingCalls.add({
       'page': page,

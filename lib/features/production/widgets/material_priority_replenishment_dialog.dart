@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -405,6 +407,12 @@ class _MaterialPriorityReplenishmentDialogState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+              if (_saving)
+                const UtenBusyOverlay(
+                  title: '正在提交补供',
+                  description: '正在下达补自制计划或调拨，请勿重复提交或关闭弹窗。',
+                ),
               Padding(
                 padding: const EdgeInsets.all(UtenSpacing.s16),
                 child: Row(
@@ -452,29 +460,32 @@ class _MaterialPriorityReplenishmentDialogState
                                   '本次调用 ${_number(preview.transferredQty)} · 原计划待补 ${_number(preview.priorityPendingQty)} · 当前可补 ${_number(preview.remainingSupplementQty)}',
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
-                                DropdownButtonFormField<MaterialSupplyRoute>(
-                                  initialValue:
-                                      preview.allowedRoutes.contains(_route)
-                                      ? _route
+                                UtenDropdownField(
+                                  label: '补供方式',
+                                  info: '沿原计划已经确认的供货路线办理，不改写历史任务。',
+                                  value: preview.allowedRoutes.contains(_route)
+                                      ? _route?.name
                                       : null,
-                                  isExpanded: true,
-                                  decoration: const UtenInputDecoration(
-                                    InputDecoration(labelText: '补供方式'),
-                                    info: '沿原计划已经确认的供货路线办理，不改写历史任务。',
-                                  ),
+                                  allowClear: false,
+                                  searchable: false,
+                                  enabled:
+                                      !_locked &&
+                                      preview.allowedRoutes.length > 1,
                                   items: [
                                     for (final route in preview.allowedRoutes)
-                                      DropdownMenuItem(
-                                        value: route,
-                                        child: Text(route.label),
+                                      UtenDropdownItem(
+                                        value: route.name,
+                                        label: route.label,
                                       ),
                                   ],
-                                  onChanged:
-                                      _locked ||
-                                          preview.allowedRoutes.length <= 1
-                                      ? null
-                                      : (route) =>
-                                            setState(() => _route = route),
+                                  onChanged: (value) {
+                                    final route = preview.allowedRoutes
+                                        .where((r) => r.name == value)
+                                        .firstOrNull;
+                                    if (route != null) {
+                                      setState(() => _route = route);
+                                    }
+                                  },
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                                 TextField(

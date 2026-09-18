@@ -129,19 +129,23 @@ class PurchaseGoodsHistorySnapshotContractTest {
                 "java/com/uten/imp/features/purchase/report/PurchaseReportService.java"));
 
         // 2026-09-14：又有一处报表投影从 g.code 改成 i.goods_code_snapshot（方向与
-        // 本契约一致——历史单据一律读快照），计数 5 → 6。下面的 doesNotContain
-        // 才是真正的守卫：只要还有 g.code/g.name 直投就红。
+        // 本契约一致——历史单据一律读快照），计数 5 → 6。
+        // 2026-09-16：ReportQueryKit 抽取把共享的关键字搜索片段（含快照 COALESCE）
+        // 搬进 common/report，服务内计数 6 → 5，搬走的那份由 kit 侧断言守卫。
         assertThat(occurrences(report, "goods_code_snapshot"))
-                .isEqualTo(6);
+                .isEqualTo(5);
         assertThat(occurrences(report, "goods_name_snapshot"))
-                .isEqualTo(6);
+                .isEqualTo(5);
         assertThat(report)
-                .contains("COALESCE(i.goods_name_snapshot,'')")
-                .contains("COALESCE(i.goods_code_snapshot,'')")
                 .doesNotContain("g.code AS \"goodsCode\"")
                 .doesNotContain("g.name AS \"goodsName\"")
                 .doesNotContain("gg.name")
                 .doesNotContain("gg.code");
+        String kit = read(MAIN.resolve(
+                "java/com/uten/imp/common/report/ReportQueryKit.java"));
+        assertThat(kit)
+                .contains("COALESCE(i.goods_name_snapshot,'')")
+                .contains("COALESCE(i.goods_code_snapshot,'')");
     }
 
     @Test

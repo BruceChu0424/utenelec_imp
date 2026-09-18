@@ -81,6 +81,13 @@ public class ProductionFqcInspectionService
     private final BusinessEventPublisher outbox;
     private final ProductionQualityMutationFootprintService mutationFootprint;
     private final DocNumberService docNumbers;
+    /**
+     * 先入库后质检的合格自动点收(V597)。stock 侧反过来依赖本服务的放行校验
+     * (ProductionQualityInspectionPort)，构造注入会成环，这里按
+     * ProductionExecutionReadinessService 的既有做法用 ObjectProvider 取。
+     */
+    private final org.springframework.beans.factory.ObjectProvider<
+            com.uten.imp.features.stock.StockDocService> stockDocs;
 
     /**
      * Called by the warehouse-arrival registration transaction after the
@@ -414,6 +421,11 @@ public class ProductionFqcInspectionService
                            COUNT(sheet_item.id) FILTER (
                                WHERE inspection.status IN ('PENDING', 'PARTIAL')
                            )::integer AS active_count,
+                           -- 先入库后检(V597)：仍等结论且已上架的行数，队列按它标红。
+                           COUNT(sheet_item.id) FILTER (
+                               WHERE inspection.status IN ('PENDING', 'PARTIAL')
+                                 AND sheet_registration.stock_in_before_inspection
+                           )::integer AS pre_stocked_count,
                            string_agg(DISTINCT report.bill_no, '、') AS report_nos,
                            -- 与产成品待点收任务同一摘要口径「名称 (编号 · 颜色)」：
                            -- 一张检查单常含同名不同色的多行，只给名称必然认错货。
@@ -427,7 +439,12 @@ public class ProductionFqcInspectionService
                                             THEN NULL ELSE NULLIF(goods.code, '') END,
                                        NULLIF(line_color.name, '')), '') || ')', ''),
                                '、') AS goods_summary,
-                           pending.text AS pending_qty_text
+                           pending.text AS pending_qty_text,
+                           -- 登记库位去重清单（2026-09-17）：待检队列「库位号」列——
+                           -- 成品登记时逐行必填库位，品质部按此到储放区域检验。
+                           string_agg(DISTINCT NULLIF(reg_place.place_snapshot, ''), '、')
+                               FILTER (WHERE inspection.status IN ('PENDING', 'PARTIAL'))
+                               AS place_summary
                     FROM production_fqc_inspection_sheets sheet
                     JOIN production_fqc_inspection_sheet_items sheet_item
                       ON sheet_item.sheet_id = sheet.id
@@ -436,9 +453,16 @@ public class ProductionFqcInspectionService
                     JOIN production_daily_reports report
                       ON report.id = inspection.source_report_id
                     JOIN goods goods ON goods.id = inspection.goods_id
+                    LEFT JOIN production_finished_arrival_registration_items reg_place
+                      ON reg_place.id = sheet_item.registration_item_id
                     LEFT JOIN colors line_color
                       ON line_color.id = COALESCE(inspection.color_id, goods.color_id)
                      AND line_color.is_deleted = FALSE
+                    LEFT JOIN production_finished_arrival_registrations sheet_registration
+                      ON sheet_registration.id = (
+                          SELECT registration_item.registration_id
+                          FROM production_finished_arrival_registration_items registration_item
+                          WHERE registration_item.id = sheet_item.registration_item_id)
                     LEFT JOIN LATERAL (
                         SELECT string_agg(
                                    unit_total.qty_text || ' ' || unit_total.unit_name,
@@ -476,9 +500,11 @@ public class ProductionFqcInspectionService
                 (UUID) row[0], string(row[1]), (UUID) row[2], string(row[3]),
                 (UUID) row[4], string(row[5]), string(row[6]), string(row[7]),
                 ((Number) row[9]).intValue(), activeCount,
-                string(row[13]), string(row[11]), string(row[12]),
+                string(row[14]), string(row[12]), string(row[13]),
                 activeCount > 0 ? "ACTIVE" : "CLOSED",
-                NativeValueConverters.toOffsetDateTime(row[8]));
+                NativeValueConverters.toOffsetDateTime(row[8]),
+                ((Number) row[11]).intValue(),
+                string(row[15]));
     }
 
     @Transactional(readOnly = true)
@@ -802,6 +828,13 @@ public class ProductionFqcInspectionService
                     draft.stockDocumentItemId(),
                     resolved.passQty(),
                     "FQC-FINISHED-IN:" + eventId);
+            // V597 先入库后质检：仓库登记时已按成品仓 + 库位上架并承诺全量入库，
+            // 合格就在同一事务里按那个位置自动点收，仓库不再收到「待点收」任务。
+            // 放行分配必须先落(放行命令守卫要求单据仍是草稿)，再自动点收推到已审核。
+            if (preStockedForAutoConfirm((UUID) inspection[6])) {
+                stockDocs.getObject().confirmPreStockedFinishedInbound(
+                        draft.stockDocumentId(), "FQC-PRESTOCK:" + eventId);
+            }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("inspectionId", inspectionId);
             payload.put("decisionEventId", eventId);
@@ -1508,6 +1541,26 @@ public class ProductionFqcInspectionService
         return rows.getFirst();
     }
 
+    /**
+     * 该报工明细的现行送检登记是否勾了「先入库后质检」(V597)。
+     * 撤回的登记行不算；没有登记行(历史豁免任务)自然走原流程。
+     */
+    private boolean preStockedForAutoConfirm(UUID sourceReportItemId) {
+        if (sourceReportItemId == null) return false;
+        return Boolean.TRUE.equals(em.createNativeQuery("""
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM production_finished_arrival_registration_items registration_item
+                            JOIN production_finished_arrival_registrations registration
+                              ON registration.id = registration_item.registration_id
+                            WHERE registration_item.source_report_item_id = :reportItemId
+                              AND registration_item.reversal_id IS NULL
+                              AND registration.stock_in_before_inspection)
+                        """)
+                .setParameter("reportItemId", sourceReportItemId)
+                .getSingleResult());
+    }
+
     /** Common decision/reversal row-lock order: inspection -> segment -> plan item. */
     private void prelockDecisionDimensions(UUID inspectionId) {
         List<Object[]> dimensions = NativeQueryResults.objectArrayRows(
@@ -1559,7 +1612,10 @@ public class ProductionFqcInspectionService
                        inspection.created_at, inspection.updated_at,
                        sheet.id, sheet.sheet_no, warehouse.name,
                        registration.place_snapshot, registration.remark,
-                       registration.receiver_name_snapshot
+                       registration.receiver_name_snapshot,
+                       registration.stock_in_before_inspection,
+                       registration.pre_stocked_at,
+                       registration.pre_stocked_by_name
                 FROM production_fqc_inspections inspection
                 JOIN production_daily_reports report
                   ON report.id = inspection.source_report_id
@@ -1578,12 +1634,17 @@ public class ProductionFqcInspectionService
                 LEFT JOIN LATERAL (
                     SELECT registration_item.place_snapshot,
                            registration_header.remark,
-                           registration_header.receiver_name_snapshot
+                           registration_header.receiver_name_snapshot,
+                           registration_header.stock_in_before_inspection,
+                           registration_header.pre_stocked_at,
+                           pre_stocked_by.full_name AS pre_stocked_by_name
                     FROM production_finished_arrival_registration_items
                              registration_item
                     JOIN production_finished_arrival_registrations
                              registration_header
                       ON registration_header.id = registration_item.registration_id
+                    LEFT JOIN employees pre_stocked_by
+                      ON pre_stocked_by.id = registration_header.pre_stocked_by_employee_id
                     WHERE registration_item.source_report_item_id =
                           inspection.source_report_item_id
                       AND CASE
@@ -1622,7 +1683,16 @@ public class ProductionFqcInspectionService
                 NativeValueConverters.toOffsetDateTime(row[24]),
                 NativeValueConverters.toOffsetDateTime(row[25]),
                 (UUID) row[26], string(row[27]), string(row[28]),
-                string(row[29]), string(row[30]), string(row[31]));
+                string(row[29]), string(row[30]), string(row[31]),
+                preStocked(row));
+    }
+
+    /** 已上架待检行的实物位置：落仓 = 登记头的成品仓(= inspection.warehouse_id)。 */
+    private static ProductionFqcContracts.PreStockedLocationView preStocked(Object[] row) {
+        if (!Boolean.TRUE.equals(row[32]) || row[9] == null) return null;
+        return new ProductionFqcContracts.PreStockedLocationView(
+                (UUID) row[9], string(row[28]), string(row[29]),
+                NativeValueConverters.toOffsetDateTime(row[33]), string(row[34]));
     }
 
     private static void requireEligibleReportLine(Object[] row) {

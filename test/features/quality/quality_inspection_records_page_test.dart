@@ -155,6 +155,102 @@ void main() {
     },
   );
 
+  testWidgets('decision header filter sends decision to API', (tester) async {
+    // 表头筛选生效冒烟：检验结果列固定枚举桶（PASS/PARTIAL/FAIL/CANCELLED），
+    // 选桶 → repository.list 收到 decision 参数并回第 1 页。
+    final api = _RecordApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {Perm.procurementInspectionView},
+      size: const Size(1280, 900),
+    );
+
+    final table = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
+      find.byKey(const Key('quality-inspection-record-table')),
+    );
+    expect(table.facets.keys, contains('decision'));
+    expect(
+      table.facets['decision']?.map((bucket) => bucket.value),
+      containsAll(<String>['PASS', 'PARTIAL', 'FAIL', 'CANCELLED']),
+    );
+
+    table.onFilterChanged('decision', 'FAIL');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['decision'], 'FAIL');
+    expect(api.listQueries.last['page'], 1);
+
+    final refreshed = tester
+        .widget<MasterDataTableView<QualityInspectionRecord>>(
+          find.byKey(const Key('quality-inspection-record-table')),
+        );
+    expect(refreshed.filters['decision'], 'FAIL');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('column header filters send sourceType/effective/disposition', (
+    tester,
+  ) async {
+    // 表头三列（2026-09-16）：固定枚举桶随域变化——IQC 出检验类型桶不出处置桶，
+    // FQC 反之；选桶 → repository.list 收到同名参数并回第 1 页。
+    final api = _RecordApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {
+        Perm.procurementInspectionView,
+        Perm.productionQualityInspectionView,
+      },
+      size: const Size(1280, 900),
+    );
+
+    final table = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
+      find.byKey(const Key('quality-inspection-record-table')),
+    );
+    expect(table.facets.keys, containsAll(<String>['sourceType', 'effective']));
+    expect(table.facets.containsKey('disposition'), isFalse);
+    expect(
+      table.facets['sourceType']?.map((bucket) => bucket.value),
+      containsAll(<String>['PURCHASE', 'SUBCONTRACT']),
+    );
+    expect(
+      table.facets['effective']?.map((bucket) => bucket.value),
+      containsAll(<String>['ACTIVE', 'EXPIRED', 'CANCELLED']),
+    );
+
+    table.onFilterChanged('sourceType', 'PURCHASE');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['sourceType'], 'PURCHASE');
+    expect(api.listQueries.last['page'], 1);
+
+    var refreshed = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
+      find.byKey(const Key('quality-inspection-record-table')),
+    );
+    refreshed.onFilterChanged('effective', 'EXPIRED');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['effective'], 'EXPIRED');
+    expect(api.listQueries.last['sourceType'], 'PURCHASE');
+
+    // 换 FQC 域：处置桶出现、检验类型桶消失（FQC 来源恒为生产成品）。
+    await tester.tap(find.text('成品检验(FQC)'));
+    await tester.pumpAndSettle();
+    refreshed = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
+      find.byKey(const Key('quality-inspection-record-table')),
+    );
+    expect(refreshed.facets.containsKey('disposition'), isTrue);
+    expect(refreshed.facets.containsKey('sourceType'), isFalse);
+    expect(api.listQueries.last.containsKey('sourceType'), isFalse);
+    refreshed.onFilterChanged('disposition', 'REWORK');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['disposition'], 'REWORK');
+    final afterDisposition = tester
+        .widget<MasterDataTableView<QualityInspectionRecord>>(
+          find.byKey(const Key('quality-inspection-record-table')),
+        );
+    expect(afterDisposition.filters['disposition'], 'REWORK');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('no view permission fails closed without making API requests', (
     tester,
   ) async {

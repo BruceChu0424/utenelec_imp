@@ -791,8 +791,6 @@ abstract class _MaterialAnalysisMaterialTableState
       filters.join(','),
       drafts.join(','),
       dirty.join(','),
-      '$_routeMemoryGeneration',
-      '${_rememberedRouteDimensions.length}',
       owningWarehouses.join(','),
     ].join('|');
   }
@@ -1299,7 +1297,7 @@ abstract class _MaterialAnalysisMaterialTableState
   ];
 
   MaterialFutureTransferProgress _futureProgressFor(_MaterialTableRow row) {
-    if (_futureTransferReadScope != _routeMemoryScopeKey()) {
+    if (_futureTransferReadScope != _sessionScopeKey()) {
       return MaterialFutureTransferProgress.empty;
     }
     final ids =
@@ -1527,12 +1525,9 @@ abstract class _MaterialAnalysisMaterialTableState
         _hasExistingRootPlan(product)) {
       return false;
     }
-    return _rememberedRouteForGoods(
-          material.goodsId,
-          material.colorId,
-          material.unitId,
-        ) ==
-        null;
+    // 走到这里 = 没有草稿、没有已确认路线、主档也没给建议（服务端 REVIEW →
+    // 前端 null）：显示的委外只是硬回退的缺省值，挂黄标提醒核对。
+    return true;
   }
 
   Widget _materialTableRouteCell(ThemeData theme, _MaterialTableRow row) {
@@ -1547,63 +1542,38 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
     final blankSourceFallback = groups.any(_routeIsBlankSourceFallback);
-    final dropdown = DropdownButtonHideUnderline(
-      child: DropdownButton<MaterialSupplyRoute>(
-        key: ValueKey(
-          'material-route-dropdown-${row.material?.materialLineId ?? row.key}',
-        ),
-        value: route,
-        isExpanded: true,
-        dropdownColor: theme.colorScheme.surface,
-        iconEnabledColor: foreground,
-        hint: Text(
-          _l10n.materialMixedRoutes,
-          style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
-        ),
-        selectedItemBuilder: (_) => [
-          for (final option in MaterialSupplyRoute.values)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                option.label,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-        ],
-        items: [
-          for (final option in MaterialSupplyRoute.values)
-            DropdownMenuItem(
-              value: option,
-              child: Text(
-                option.label,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ),
-        ],
-        onChanged: (chosen) {
-          if (chosen == null) return;
-          setState(() {
-            for (final group in groups) {
-              _routeDraft[group.key] = chosen;
-              if (group.representative.confirmedRoute == chosen) {
-                // 改回已确认值 = 没有可提交的决定：脱脏并脱选（否则「已选 N 项」
-                // 计着一条既无勾选框也不计数的行）。
-                _dirtyRouteGroups.remove(group.key);
-                _selectedMaterialGroupKeys.remove(group.key);
-              } else {
-                _dirtyRouteGroups.add(group.key);
-                _selectedMaterialGroupKeys.add(group.key);
-              }
-            }
-            _invalidateBucketRowsCache();
-          });
-        },
+    // 2026-09-16 用户口径：表格内下拉统一用自家 UtenDropdownField（统一弹层/
+    // 单行省略号/描边与同行格一致），不再用原生 DropdownButton。
+    final dropdown = UtenDropdownField(
+      key: ValueKey(
+        'material-route-dropdown-${row.material?.materialLineId ?? row.key}',
       ),
+      dense: true,
+      value: route?.name,
+      hintText: _l10n.materialMixedRoutes,
+      items: [
+        for (final option in MaterialSupplyRoute.values)
+          UtenDropdownItem(value: option.name, label: option.label),
+      ],
+      onChanged: (chosen) {
+        if (chosen == null) return;
+        final next = MaterialSupplyRoute.values.byName(chosen);
+        setState(() {
+          for (final group in groups) {
+            _routeDraft[group.key] = next;
+            if (group.representative.confirmedRoute == next) {
+              // 改回已确认值 = 没有可提交的决定：脱脏并脱选（否则「已选 N 项」
+              // 计着一条既无勾选框也不计数的行）。
+              _dirtyRouteGroups.remove(group.key);
+              _selectedMaterialGroupKeys.remove(group.key);
+            } else {
+              _dirtyRouteGroups.add(group.key);
+              _selectedMaterialGroupKeys.add(group.key);
+            }
+          }
+          _invalidateBucketRowsCache();
+        });
+      },
     );
     if (!blankSourceFallback) return dropdown;
     // 主档来源为空的行：下拉预填的「委外」只是缺省值，黄标提醒核对（F8）。

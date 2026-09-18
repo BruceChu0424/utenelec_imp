@@ -106,12 +106,6 @@ abstract class AppLocalizations {
   /// **'优腾·综合管理平台'**
   String get appTitle;
 
-  /// 应用代号
-  ///
-  /// In zh, this message translates to:
-  /// **'UTEN IMP'**
-  String get appName;
-
   /// No description provided for @commonConfirm.
   ///
   /// In zh, this message translates to:
@@ -129,30 +123,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'保存'**
   String get commonSave;
-
-  /// No description provided for @commonDelete.
-  ///
-  /// In zh, this message translates to:
-  /// **'删除'**
-  String get commonDelete;
-
-  /// No description provided for @commonEdit.
-  ///
-  /// In zh, this message translates to:
-  /// **'编辑'**
-  String get commonEdit;
-
-  /// No description provided for @commonAdd.
-  ///
-  /// In zh, this message translates to:
-  /// **'新增'**
-  String get commonAdd;
-
-  /// No description provided for @commonSearch.
-  ///
-  /// In zh, this message translates to:
-  /// **'搜索'**
-  String get commonSearch;
 
   /// No description provided for @commonRefresh.
   ///
@@ -190,12 +160,6 @@ abstract class AppLocalizations {
   /// **'立即重试'**
   String get connectionRetryNow;
 
-  /// No description provided for @commonClose.
-  ///
-  /// In zh, this message translates to:
-  /// **'关闭'**
-  String get commonClose;
-
   /// No description provided for @commonBack.
   ///
   /// In zh, this message translates to:
@@ -226,30 +190,6 @@ abstract class AppLocalizations {
   /// **'操作成功'**
   String get commonSuccess;
 
-  /// No description provided for @commonFailed.
-  ///
-  /// In zh, this message translates to:
-  /// **'操作失败'**
-  String get commonFailed;
-
-  /// No description provided for @commonMore.
-  ///
-  /// In zh, this message translates to:
-  /// **'更多'**
-  String get commonMore;
-
-  /// No description provided for @commonViewAll.
-  ///
-  /// In zh, this message translates to:
-  /// **'查看全部'**
-  String get commonViewAll;
-
-  /// No description provided for @commonAction.
-  ///
-  /// In zh, this message translates to:
-  /// **'操作'**
-  String get commonAction;
-
   /// No description provided for @loginAccountHint.
   ///
   /// In zh, this message translates to:
@@ -274,12 +214,6 @@ abstract class AppLocalizations {
   /// **'请输入密码'**
   String get loginPasswordRequired;
 
-  /// No description provided for @loginForgotPassword.
-  ///
-  /// In zh, this message translates to:
-  /// **'忘记密码？'**
-  String get loginForgotPassword;
-
   /// No description provided for @loginButton.
   ///
   /// In zh, this message translates to:
@@ -291,18 +225,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'登录中…'**
   String get loginLoggingIn;
-
-  /// No description provided for @loginSuccess.
-  ///
-  /// In zh, this message translates to:
-  /// **'登录成功'**
-  String get loginSuccess;
-
-  /// No description provided for @loginFailed.
-  ///
-  /// In zh, this message translates to:
-  /// **'账号或密码错误'**
-  String get loginFailed;
 
   /// No description provided for @loginServerRecoveryAction.
   ///
@@ -358,72 +280,6 @@ abstract class AppLocalizations {
   /// **'设置'**
   String get navSettings;
 
-  /// No description provided for @dashboardWelcome.
-  ///
-  /// In zh, this message translates to:
-  /// **'欢迎，{name}'**
-  String dashboardWelcome(Object name);
-
-  /// No description provided for @dashboardWelcomeSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'今天也要加油哦'**
-  String get dashboardWelcomeSubtitle;
-
-  /// No description provided for @dashboardTodayStats.
-  ///
-  /// In zh, this message translates to:
-  /// **'今日概览'**
-  String get dashboardTodayStats;
-
-  /// No description provided for @dashboardQuickActions.
-  ///
-  /// In zh, this message translates to:
-  /// **'快捷操作'**
-  String get dashboardQuickActions;
-
-  /// No description provided for @statTodayOutput.
-  ///
-  /// In zh, this message translates to:
-  /// **'今日产量'**
-  String get statTodayOutput;
-
-  /// No description provided for @statOutputUnit.
-  ///
-  /// In zh, this message translates to:
-  /// **'件'**
-  String get statOutputUnit;
-
-  /// No description provided for @statInventory.
-  ///
-  /// In zh, this message translates to:
-  /// **'当前库存'**
-  String get statInventory;
-
-  /// No description provided for @statOnlineEmployees.
-  ///
-  /// In zh, this message translates to:
-  /// **'在线员工'**
-  String get statOnlineEmployees;
-
-  /// No description provided for @statPendingTodos.
-  ///
-  /// In zh, this message translates to:
-  /// **'待办事项'**
-  String get statPendingTodos;
-
-  /// No description provided for @statTrendUp.
-  ///
-  /// In zh, this message translates to:
-  /// **'较昨日 +{percent}%'**
-  String statTrendUp(Object percent);
-
-  /// No description provided for @statTrendDown.
-  ///
-  /// In zh, this message translates to:
-  /// **'较昨日 {percent}%'**
-  String statTrendDown(Object percent);
-
   /// No description provided for @settingsTitle.
   ///
   /// In zh, this message translates to:
@@ -442,77 +298,17 @@ abstract class AppLocalizations {
   /// **'主题模式'**
   String get settingsThemeMode;
 
-  /// No description provided for @settingsThemeLight.
-  ///
-  /// In zh, this message translates to:
-  /// **'浅色'**
-  String get settingsThemeLight;
-
-  /// No description provided for @settingsThemeDark.
-  ///
-  /// In zh, this message translates to:
-  /// **'深色'**
-  String get settingsThemeDark;
-
-  /// No description provided for @settingsThemeSystem.
-  ///
-  /// In zh, this message translates to:
-  /// **'跟随系统'**
-  String get settingsThemeSystem;
-
   /// No description provided for @settingsLanguage.
   ///
   /// In zh, this message translates to:
   /// **'语言'**
   String get settingsLanguage;
 
-  /// No description provided for @settingsLanguageZh.
-  ///
-  /// In zh, this message translates to:
-  /// **'简体中文'**
-  String get settingsLanguageZh;
-
-  /// No description provided for @settingsLanguageEn.
-  ///
-  /// In zh, this message translates to:
-  /// **'English'**
-  String get settingsLanguageEn;
-
   /// No description provided for @settingsFontSize.
   ///
   /// In zh, this message translates to:
   /// **'字号'**
   String get settingsFontSize;
-
-  /// No description provided for @settingsFontSmall.
-  ///
-  /// In zh, this message translates to:
-  /// **'小'**
-  String get settingsFontSmall;
-
-  /// No description provided for @settingsFontMedium.
-  ///
-  /// In zh, this message translates to:
-  /// **'标准'**
-  String get settingsFontMedium;
-
-  /// No description provided for @settingsFontLarge.
-  ///
-  /// In zh, this message translates to:
-  /// **'大'**
-  String get settingsFontLarge;
-
-  /// No description provided for @settingsFontXLarge.
-  ///
-  /// In zh, this message translates to:
-  /// **'超大'**
-  String get settingsFontXLarge;
-
-  /// 字号第 5 档：超超大
-  ///
-  /// In zh, this message translates to:
-  /// **'超超大'**
-  String get settingsFontXXLarge;
 
   /// No description provided for @settingsSectionPerformance.
   ///
@@ -525,30 +321,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'性能模式'**
   String get settingsPerformanceTier;
-
-  /// No description provided for @settingsPerformanceAuto.
-  ///
-  /// In zh, this message translates to:
-  /// **'自动'**
-  String get settingsPerformanceAuto;
-
-  /// No description provided for @settingsPerformanceLite.
-  ///
-  /// In zh, this message translates to:
-  /// **'省电'**
-  String get settingsPerformanceLite;
-
-  /// No description provided for @settingsPerformanceStandard.
-  ///
-  /// In zh, this message translates to:
-  /// **'标准'**
-  String get settingsPerformanceStandard;
-
-  /// No description provided for @settingsPerformanceRich.
-  ///
-  /// In zh, this message translates to:
-  /// **'极致'**
-  String get settingsPerformanceRich;
 
   /// No description provided for @settingsPerformanceHint.
   ///
@@ -580,41 +352,11 @@ abstract class AppLocalizations {
   /// **'确定要退出登录吗？'**
   String get settingsLogoutConfirm;
 
-  /// No description provided for @profileTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'我的'**
-  String get profileTitle;
-
-  /// No description provided for @profileEditProfile.
-  ///
-  /// In zh, this message translates to:
-  /// **'编辑资料'**
-  String get profileEditProfile;
-
   /// No description provided for @profileChangePassword.
   ///
   /// In zh, this message translates to:
   /// **'修改密码'**
   String get profileChangePassword;
-
-  /// No description provided for @profileEmployeeCode.
-  ///
-  /// In zh, this message translates to:
-  /// **'工号'**
-  String get profileEmployeeCode;
-
-  /// No description provided for @profileDepartment.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门'**
-  String get profileDepartment;
-
-  /// No description provided for @profilePosition.
-  ///
-  /// In zh, this message translates to:
-  /// **'岗位'**
-  String get profilePosition;
 
   /// No description provided for @entryStaff.
   ///
@@ -693,12 +435,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'登录中…'**
   String get visitorLoggingIn;
-
-  /// No description provided for @visitorCodeSent.
-  ///
-  /// In zh, this message translates to:
-  /// **'验证码已发送'**
-  String get visitorCodeSent;
 
   /// No description provided for @visitorCodeSentDev.
   ///
@@ -844,12 +580,6 @@ abstract class AppLocalizations {
   /// **'接待人'**
   String get visitorApplyHost;
 
-  /// No description provided for @visitorApplyHostHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'选择要拜访的同事'**
-  String get visitorApplyHostHint;
-
   /// No description provided for @visitorApplyDept.
   ///
   /// In zh, this message translates to:
@@ -982,12 +712,6 @@ abstract class AppLocalizations {
   /// **'到访时间'**
   String get visitorDetailVisitTime;
 
-  /// No description provided for @visitorDetailVehicle.
-  ///
-  /// In zh, this message translates to:
-  /// **'车辆'**
-  String get visitorDetailVehicle;
-
   /// No description provided for @visitorDetailAppliedAt.
   ///
   /// In zh, this message translates to:
@@ -1042,12 +766,6 @@ abstract class AppLocalizations {
   /// **'待审批'**
   String get visitorApprovalPending;
 
-  /// No description provided for @visitorApprovalProcessed.
-  ///
-  /// In zh, this message translates to:
-  /// **'已处理'**
-  String get visitorApprovalProcessed;
-
   /// No description provided for @visitorApprovalApprove.
   ///
   /// In zh, this message translates to:
@@ -1066,12 +784,6 @@ abstract class AppLocalizations {
   /// **'转接待人确认'**
   String get visitorApprovalForward;
 
-  /// No description provided for @visitorApprovalRejectReason.
-  ///
-  /// In zh, this message translates to:
-  /// **'拒绝原因'**
-  String get visitorApprovalRejectReason;
-
   /// No description provided for @visitorApprovalRejectReasonHint.
   ///
   /// In zh, this message translates to:
@@ -1083,18 +795,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'确认批准该访客来访？'**
   String get visitorApprovalConfirmApprove;
-
-  /// No description provided for @visitorApprovalConfirmReject.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认拒绝该访客来访？'**
-  String get visitorApprovalConfirmReject;
-
-  /// No description provided for @visitorApprovalHostConfirmed.
-  ///
-  /// In zh, this message translates to:
-  /// **'接待人已确认'**
-  String get visitorApprovalHostConfirmed;
 
   /// No description provided for @visitorApprovalEmpty.
   ///
@@ -1126,12 +826,6 @@ abstract class AppLocalizations {
   /// **'拒绝接待'**
   String get myVisitorsReject;
 
-  /// No description provided for @myVisitorsConfirmHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认接待该访客？'**
-  String get myVisitorsConfirmHint;
-
   /// No description provided for @securityTitle.
   ///
   /// In zh, this message translates to:
@@ -1150,12 +844,6 @@ abstract class AppLocalizations {
   /// **'手动输入凭证'**
   String get securityScanManual;
 
-  /// No description provided for @securityManualInputHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'粘贴或输入二维码内容'**
-  String get securityManualInputHint;
-
   /// No description provided for @securityPasscodeHint.
   ///
   /// In zh, this message translates to:
@@ -1167,12 +855,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'通行码'**
   String get visitorPasscodeLabel;
-
-  /// No description provided for @securityVerifying.
-  ///
-  /// In zh, this message translates to:
-  /// **'核验中…'**
-  String get securityVerifying;
 
   /// No description provided for @securityPass.
   ///
@@ -1258,42 +940,6 @@ abstract class AppLocalizations {
   /// **'到访时间'**
   String get securityVisitTime;
 
-  /// No description provided for @navHrGroup.
-  ///
-  /// In zh, this message translates to:
-  /// **'人事管理'**
-  String get navHrGroup;
-
-  /// No description provided for @navHrEmployees.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工档案'**
-  String get navHrEmployees;
-
-  /// No description provided for @navHrDepartments.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门管理'**
-  String get navHrDepartments;
-
-  /// No description provided for @navHrOnboarding.
-  ///
-  /// In zh, this message translates to:
-  /// **'入职办理'**
-  String get navHrOnboarding;
-
-  /// No description provided for @navHrPayrollGenerate.
-  ///
-  /// In zh, this message translates to:
-  /// **'工资条生成'**
-  String get navHrPayrollGenerate;
-
-  /// No description provided for @navHrNoticePublish.
-  ///
-  /// In zh, this message translates to:
-  /// **'通知发布'**
-  String get navHrNoticePublish;
-
   /// No description provided for @employeeTitle.
   ///
   /// In zh, this message translates to:
@@ -1318,18 +964,6 @@ abstract class AppLocalizations {
   /// **'暂无员工'**
   String get employeeEmpty;
 
-  /// No description provided for @employeeEmptyHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'点右下角「入职」添加新员工'**
-  String get employeeEmptyHint;
-
-  /// No description provided for @employeeLoadMore.
-  ///
-  /// In zh, this message translates to:
-  /// **'加载更多'**
-  String get employeeLoadMore;
-
   /// No description provided for @employeeDetailTitle.
   ///
   /// In zh, this message translates to:
@@ -1341,12 +975,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'基本信息'**
   String get employeeDetailBasic;
-
-  /// No description provided for @employeeDetailContact.
-  ///
-  /// In zh, this message translates to:
-  /// **'联系与地址'**
-  String get employeeDetailContact;
 
   /// No description provided for @employeeDetailOrg.
   ///
@@ -1696,36 +1324,6 @@ abstract class AppLocalizations {
   /// **'薪资与银行'**
   String get employeeEditSalary;
 
-  /// No description provided for @employeeEditFieldPhone.
-  ///
-  /// In zh, this message translates to:
-  /// **'手机'**
-  String get employeeEditFieldPhone;
-
-  /// No description provided for @employeeEditFieldDepartment.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门'**
-  String get employeeEditFieldDepartment;
-
-  /// No description provided for @employeeEditFieldPosition.
-  ///
-  /// In zh, this message translates to:
-  /// **'岗位'**
-  String get employeeEditFieldPosition;
-
-  /// No description provided for @employeeEditFieldEmploymentType.
-  ///
-  /// In zh, this message translates to:
-  /// **'用工性质'**
-  String get employeeEditFieldEmploymentType;
-
-  /// No description provided for @employeeEditFieldStatus.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工状态'**
-  String get employeeEditFieldStatus;
-
   /// No description provided for @employeeEditSaved.
   ///
   /// In zh, this message translates to:
@@ -1743,12 +1341,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'加载失败：{error}'**
   String employeeEditLoadFailed(Object error);
-
-  /// No description provided for @employeeEditNotFound.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工不存在'**
-  String get employeeEditNotFound;
 
   /// No description provided for @employeeEditRequired.
   ///
@@ -2002,95 +1594,11 @@ abstract class AppLocalizations {
   /// **'其他'**
   String get idTypeOther;
 
-  /// No description provided for @employeeOffboardTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'离职办理'**
-  String get employeeOffboardTitle;
-
-  /// No description provided for @employeeOffboardFieldType.
-  ///
-  /// In zh, this message translates to:
-  /// **'离职类型'**
-  String get employeeOffboardFieldType;
-
-  /// No description provided for @employeeOffboardFieldDate.
-  ///
-  /// In zh, this message translates to:
-  /// **'离职日期'**
-  String get employeeOffboardFieldDate;
-
-  /// No description provided for @employeeOffboardPickDate.
-  ///
-  /// In zh, this message translates to:
-  /// **'选择日期'**
-  String get employeeOffboardPickDate;
-
-  /// No description provided for @employeeOffboardFieldReason.
-  ///
-  /// In zh, this message translates to:
-  /// **'离职原因'**
-  String get employeeOffboardFieldReason;
-
-  /// No description provided for @employeeOffboardPickDateRequired.
-  ///
-  /// In zh, this message translates to:
-  /// **'请选择离职日期'**
-  String get employeeOffboardPickDateRequired;
-
-  /// No description provided for @employeeOffboardChecksRequired.
-  ///
-  /// In zh, this message translates to:
-  /// **'请确认所有回收项'**
-  String get employeeOffboardChecksRequired;
-
-  /// No description provided for @employeeOffboardConfirmTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认办理离职？'**
-  String get employeeOffboardConfirmTitle;
-
-  /// No description provided for @employeeOffboardConfirmBody.
-  ///
-  /// In zh, this message translates to:
-  /// **'该员工账号将被停用。'**
-  String get employeeOffboardConfirmBody;
-
-  /// No description provided for @employeeOffboardConfirmAction.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认办理离职'**
-  String get employeeOffboardConfirmAction;
-
-  /// No description provided for @employeeOffboardNext.
-  ///
-  /// In zh, this message translates to:
-  /// **'下一步'**
-  String get employeeOffboardNext;
-
-  /// No description provided for @employeeOffboardBack.
-  ///
-  /// In zh, this message translates to:
-  /// **'上一步'**
-  String get employeeOffboardBack;
-
-  /// No description provided for @employeeOffboardCompleted.
-  ///
-  /// In zh, this message translates to:
-  /// **'离职办理完成'**
-  String get employeeOffboardCompleted;
-
   /// No description provided for @employeeOffboardLoadFailed.
   ///
   /// In zh, this message translates to:
   /// **'加载失败'**
   String get employeeOffboardLoadFailed;
-
-  /// No description provided for @employeeActions.
-  ///
-  /// In zh, this message translates to:
-  /// **'更多操作'**
-  String get employeeActions;
 
   /// No description provided for @employeeActionTransfer.
   ///
@@ -2115,12 +1623,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'复职'**
   String get employeeActionRehire;
-
-  /// No description provided for @employeeActionDelete.
-  ///
-  /// In zh, this message translates to:
-  /// **'删除档案'**
-  String get employeeActionDelete;
 
   /// No description provided for @employeeActionProvision.
   ///
@@ -2170,23 +1672,11 @@ abstract class AppLocalizations {
   /// **'生效日期'**
   String get employeeTransferFieldDate;
 
-  /// No description provided for @employeeTransferPickDate.
-  ///
-  /// In zh, this message translates to:
-  /// **'选择日期'**
-  String get employeeTransferPickDate;
-
   /// No description provided for @employeeTransferFieldRemark.
   ///
   /// In zh, this message translates to:
   /// **'备注'**
   String get employeeTransferFieldRemark;
-
-  /// No description provided for @employeeTransferDateRequired.
-  ///
-  /// In zh, this message translates to:
-  /// **'请选择生效日期'**
-  String get employeeTransferDateRequired;
 
   /// No description provided for @employeeTransferSuccess.
   ///
@@ -2229,72 +1719,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'复职完成'**
   String get employeeRehireSuccess;
-
-  /// No description provided for @employeeDeleteTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认删除该员工档案？'**
-  String get employeeDeleteTitle;
-
-  /// No description provided for @employeeDeleteBody.
-  ///
-  /// In zh, this message translates to:
-  /// **'删除后其登录账号将被停用，此操作不可恢复。'**
-  String get employeeDeleteBody;
-
-  /// No description provided for @employeeDeleteSuccess.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工档案已删除'**
-  String get employeeDeleteSuccess;
-
-  /// No description provided for @resignTypeVoluntary.
-  ///
-  /// In zh, this message translates to:
-  /// **'主动辞职'**
-  String get resignTypeVoluntary;
-
-  /// No description provided for @resignTypeDismissed.
-  ///
-  /// In zh, this message translates to:
-  /// **'公司辞退'**
-  String get resignTypeDismissed;
-
-  /// No description provided for @resignTypeContractEnd.
-  ///
-  /// In zh, this message translates to:
-  /// **'合同到期'**
-  String get resignTypeContractEnd;
-
-  /// No description provided for @resignTypeRetire.
-  ///
-  /// In zh, this message translates to:
-  /// **'退休'**
-  String get resignTypeRetire;
-
-  /// No description provided for @resignCheckAccess.
-  ///
-  /// In zh, this message translates to:
-  /// **'收回门禁卡'**
-  String get resignCheckAccess;
-
-  /// No description provided for @resignCheckAssets.
-  ///
-  /// In zh, this message translates to:
-  /// **'回收公司资产'**
-  String get resignCheckAssets;
-
-  /// No description provided for @resignCheckAccount.
-  ///
-  /// In zh, this message translates to:
-  /// **'停用系统账号'**
-  String get resignCheckAccount;
-
-  /// No description provided for @resignCheckSocial.
-  ///
-  /// In zh, this message translates to:
-  /// **'停缴社保公积金'**
-  String get resignCheckSocial;
 
   /// No description provided for @employeeStatusActive.
   ///
@@ -2416,12 +1840,6 @@ abstract class AppLocalizations {
   /// **'部门管理'**
   String get departmentTitle;
 
-  /// No description provided for @departmentTreeTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'组织架构'**
-  String get departmentTreeTitle;
-
   /// No description provided for @departmentEmpty.
   ///
   /// In zh, this message translates to:
@@ -2440,12 +1858,6 @@ abstract class AppLocalizations {
   /// **'请选择左侧部门'**
   String get departmentEmptySelect;
 
-  /// No description provided for @departmentTooltipAdd.
-  ///
-  /// In zh, this message translates to:
-  /// **'新增部门'**
-  String get departmentTooltipAdd;
-
   /// No description provided for @departmentTooltipRefresh.
   ///
   /// In zh, this message translates to:
@@ -2458,41 +1870,11 @@ abstract class AppLocalizations {
   /// **'部门树'**
   String get departmentTooltipTree;
 
-  /// No description provided for @departmentDialogAddTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'新增部门'**
-  String get departmentDialogAddTitle;
-
   /// No description provided for @departmentDialogDeleteTitle.
   ///
   /// In zh, this message translates to:
   /// **'删除部门'**
   String get departmentDialogDeleteTitle;
-
-  /// No description provided for @departmentFieldCode.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门编码'**
-  String get departmentFieldCode;
-
-  /// No description provided for @departmentFieldCodeHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'如 DEPT-XX'**
-  String get departmentFieldCodeHint;
-
-  /// No description provided for @departmentFieldName.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门名称'**
-  String get departmentFieldName;
-
-  /// No description provided for @departmentFieldLevel.
-  ///
-  /// In zh, this message translates to:
-  /// **'层级'**
-  String get departmentFieldLevel;
 
   /// No description provided for @departmentCreate.
   ///
@@ -2505,12 +1887,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'删除'**
   String get departmentDelete;
-
-  /// No description provided for @departmentRequireCodeAndName.
-  ///
-  /// In zh, this message translates to:
-  /// **'编码与名称必填'**
-  String get departmentRequireCodeAndName;
 
   /// No description provided for @departmentCreated.
   ///
@@ -2536,89 +1912,17 @@ abstract class AppLocalizations {
   /// **'{level} · 编码 {code}'**
   String departmentLevelAndCode(Object level, Object code);
 
-  /// No description provided for @departmentStatEmployees.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工'**
-  String get departmentStatEmployees;
-
-  /// No description provided for @departmentStatChildren.
-  ///
-  /// In zh, this message translates to:
-  /// **'子部门'**
-  String get departmentStatChildren;
-
-  /// No description provided for @departmentStatManager.
-  ///
-  /// In zh, this message translates to:
-  /// **'负责人'**
-  String get departmentStatManager;
-
-  /// No description provided for @departmentStatParent.
-  ///
-  /// In zh, this message translates to:
-  /// **'上级'**
-  String get departmentStatParent;
-
-  /// No description provided for @departmentEmployeesHeader.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工({count})'**
-  String departmentEmployeesHeader(Object count);
-
   /// No description provided for @departmentEmployeesEmpty.
   ///
   /// In zh, this message translates to:
   /// **'该部门(含子部门)暂无员工'**
   String get departmentEmployeesEmpty;
 
-  /// No description provided for @departmentStatValue.
-  ///
-  /// In zh, this message translates to:
-  /// **'{label}：{value}'**
-  String departmentStatValue(Object label, Object value);
-
   /// No description provided for @departmentLoadFailed.
   ///
   /// In zh, this message translates to:
   /// **'加载失败'**
   String get departmentLoadFailed;
-
-  /// No description provided for @departmentLevelCompany.
-  ///
-  /// In zh, this message translates to:
-  /// **'公司'**
-  String get departmentLevelCompany;
-
-  /// No description provided for @departmentLevelDecision.
-  ///
-  /// In zh, this message translates to:
-  /// **'决策层'**
-  String get departmentLevelDecision;
-
-  /// No description provided for @departmentLevelManagement.
-  ///
-  /// In zh, this message translates to:
-  /// **'管理中心'**
-  String get departmentLevelManagement;
-
-  /// No description provided for @departmentLevelPrimary.
-  ///
-  /// In zh, this message translates to:
-  /// **'一级部门'**
-  String get departmentLevelPrimary;
-
-  /// No description provided for @departmentLevelSecondary.
-  ///
-  /// In zh, this message translates to:
-  /// **'二级班组'**
-  String get departmentLevelSecondary;
-
-  /// No description provided for @departmentLevelTertiary.
-  ///
-  /// In zh, this message translates to:
-  /// **'三级科室'**
-  String get departmentLevelTertiary;
 
   /// No description provided for @payrollGenerateTitle.
   ///
@@ -2698,60 +2002,6 @@ abstract class AppLocalizations {
   /// **'提交审核'**
   String get payrollSubmitButton;
 
-  /// No description provided for @payrollSubmitted.
-  ///
-  /// In zh, this message translates to:
-  /// **'已提交审核，等待财务审核'**
-  String get payrollSubmitted;
-
-  /// No description provided for @payrollLoadFailed.
-  ///
-  /// In zh, this message translates to:
-  /// **'加载失败：{error}'**
-  String payrollLoadFailed(Object error);
-
-  /// No description provided for @payrollEmptyPreview.
-  ///
-  /// In zh, this message translates to:
-  /// **'该范围无可计算员工'**
-  String get payrollEmptyPreview;
-
-  /// No description provided for @payrollTableTotalLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'合计'**
-  String get payrollTableTotalLabel;
-
-  /// No description provided for @payrollTableTotalValue.
-  ///
-  /// In zh, this message translates to:
-  /// **'¥ {total} · {count} 人'**
-  String payrollTableTotalValue(Object total, Object count);
-
-  /// No description provided for @payrollTableHeaderName.
-  ///
-  /// In zh, this message translates to:
-  /// **'工号/姓名'**
-  String get payrollTableHeaderName;
-
-  /// No description provided for @payrollTableHeaderNet.
-  ///
-  /// In zh, this message translates to:
-  /// **'实发'**
-  String get payrollTableHeaderNet;
-
-  /// No description provided for @payrollTableRowName.
-  ///
-  /// In zh, this message translates to:
-  /// **'{name}({code})'**
-  String payrollTableRowName(Object name, Object code);
-
-  /// No description provided for @payrollTableRowNet.
-  ///
-  /// In zh, this message translates to:
-  /// **'¥ {net}'**
-  String payrollTableRowNet(Object net);
-
   /// No description provided for @payrollNext.
   ///
   /// In zh, this message translates to:
@@ -2770,47 +2020,11 @@ abstract class AppLocalizations {
   /// **'全员'**
   String get payrollDeptAll;
 
-  /// No description provided for @payrollDeptProduction.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产部'**
-  String get payrollDeptProduction;
-
-  /// No description provided for @payrollDeptQuality.
-  ///
-  /// In zh, this message translates to:
-  /// **'质量部'**
-  String get payrollDeptQuality;
-
-  /// No description provided for @payrollDeptHr.
-  ///
-  /// In zh, this message translates to:
-  /// **'人事部'**
-  String get payrollDeptHr;
-
-  /// No description provided for @payrollDeptFinance.
-  ///
-  /// In zh, this message translates to:
-  /// **'财务部'**
-  String get payrollDeptFinance;
-
   /// No description provided for @noticePublishTitle.
   ///
   /// In zh, this message translates to:
   /// **'发布通知'**
   String get noticePublishTitle;
-
-  /// No description provided for @noticePublishSaveDraft.
-  ///
-  /// In zh, this message translates to:
-  /// **'存草稿'**
-  String get noticePublishSaveDraft;
-
-  /// No description provided for @noticePublishDraftSaved.
-  ///
-  /// In zh, this message translates to:
-  /// **'已保存草稿'**
-  String get noticePublishDraftSaved;
 
   /// No description provided for @noticePublishPublishButton.
   ///
@@ -2848,29 +2062,11 @@ abstract class AppLocalizations {
   /// **'全员'**
   String get noticePublishScopeAll;
 
-  /// No description provided for @noticePublishScopeDept.
-  ///
-  /// In zh, this message translates to:
-  /// **'按部门'**
-  String get noticePublishScopeDept;
-
-  /// No description provided for @noticePublishFieldDept.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门'**
-  String get noticePublishFieldDept;
-
   /// No description provided for @noticePublishScopeAllHint.
   ///
   /// In zh, this message translates to:
   /// **'将通知到全公司所有员工'**
   String get noticePublishScopeAllHint;
-
-  /// No description provided for @noticePublishScopeDeptHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'将通知到「{dept}」全体员工'**
-  String noticePublishScopeDeptHint(Object dept);
 
   /// No description provided for @noticePublishValidateTitle.
   ///
@@ -2895,12 +2091,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'将通知到全员'**
   String get noticePublishConfirmBodyAll;
-
-  /// No description provided for @noticePublishConfirmBodyDept.
-  ///
-  /// In zh, this message translates to:
-  /// **'将通知到「{dept}」'**
-  String noticePublishConfirmBodyDept(Object dept);
 
   /// No description provided for @noticePublishPublished.
   ///
@@ -3205,12 +2395,6 @@ abstract class AppLocalizations {
   /// **'你已收到 · 共 {count} 人收到'**
   String noticeAckYouAndCount(int count);
 
-  /// No description provided for @noticeAckRecent.
-  ///
-  /// In zh, this message translates to:
-  /// **'近期已收到'**
-  String get noticeAckRecent;
-
   /// No description provided for @noticeSendBlessing.
   ///
   /// In zh, this message translates to:
@@ -3265,12 +2449,6 @@ abstract class AppLocalizations {
   /// **'发送中…'**
   String get noticeBlessingSending;
 
-  /// No description provided for @noticeBlessingWithdraw.
-  ///
-  /// In zh, this message translates to:
-  /// **'撤回'**
-  String get noticeBlessingWithdraw;
-
   /// No description provided for @noticeBlessingViewAll.
   ///
   /// In zh, this message translates to:
@@ -3307,18 +2485,6 @@ abstract class AppLocalizations {
   /// **'请选择祝福对象'**
   String get noticeCelebrationSubjectRequired;
 
-  /// No description provided for @noticeCelebrationSubjectIsYou.
-  ///
-  /// In zh, this message translates to:
-  /// **'你'**
-  String get noticeCelebrationSubjectIsYou;
-
-  /// No description provided for @noticeCelebrationFor.
-  ///
-  /// In zh, this message translates to:
-  /// **'祝 {name} {event}'**
-  String noticeCelebrationFor(Object name, Object event);
-
   /// No description provided for @noticeQuickCelebrationTitle.
   ///
   /// In zh, this message translates to:
@@ -3336,18 +2502,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'发通知'**
   String get noticeQuickPublish;
-
-  /// No description provided for @noticeQuickBirthday.
-  ///
-  /// In zh, this message translates to:
-  /// **'生日'**
-  String get noticeQuickBirthday;
-
-  /// No description provided for @noticeQuickAnniversary.
-  ///
-  /// In zh, this message translates to:
-  /// **'入职周年'**
-  String get noticeQuickAnniversary;
 
   /// No description provided for @noticeQuickWedding.
   ///
@@ -3415,41 +2569,11 @@ abstract class AppLocalizations {
   /// **'{name} 喜添新丁'**
   String celebrationCardNewborn(Object name);
 
-  /// No description provided for @celebrationCardCta.
-  ///
-  /// In zh, this message translates to:
-  /// **'送上祝福'**
-  String get celebrationCardCta;
-
   /// No description provided for @celebrationCardWall.
   ///
   /// In zh, this message translates to:
   /// **'查看祝福墙'**
   String get celebrationCardWall;
-
-  /// No description provided for @noticeAutoCelebrationTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'自动祝福通知'**
-  String get noticeAutoCelebrationTitle;
-
-  /// No description provided for @noticeAutoCelebrationEnabled.
-  ///
-  /// In zh, this message translates to:
-  /// **'每日自动为当天生日 / 入职周年的员工发布全员祝福'**
-  String get noticeAutoCelebrationEnabled;
-
-  /// No description provided for @noticeAutoCelebrationTypes.
-  ///
-  /// In zh, this message translates to:
-  /// **'自动类型'**
-  String get noticeAutoCelebrationTypes;
-
-  /// No description provided for @noticeAutoCelebrationPublisher.
-  ///
-  /// In zh, this message translates to:
-  /// **'发布人名称'**
-  String get noticeAutoCelebrationPublisher;
 
   /// No description provided for @profileChangeEditTitle.
   ///
@@ -3462,30 +2586,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'修改我的信息'**
   String get profileChangeEditCta;
-
-  /// No description provided for @profileChangeEditHrOnlyHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'以下字段请联系人事修改'**
-  String get profileChangeEditHrOnlyHint;
-
-  /// No description provided for @profileChangeSectionBasic.
-  ///
-  /// In zh, this message translates to:
-  /// **'基本信息(直改生效)'**
-  String get profileChangeSectionBasic;
-
-  /// No description provided for @profileChangeSectionReview.
-  ///
-  /// In zh, this message translates to:
-  /// **'联系方式与重要字段(需 HR 审核)'**
-  String get profileChangeSectionReview;
-
-  /// No description provided for @profileChangeSectionIdentity.
-  ///
-  /// In zh, this message translates to:
-  /// **'姓名与紧急联系人(需 HR 审核)'**
-  String get profileChangeSectionIdentity;
 
   /// No description provided for @profileChangeFieldDirect.
   ///
@@ -3559,12 +2659,6 @@ abstract class AppLocalizations {
   /// **'我的修改申请'**
   String get profileChangeListTitle;
 
-  /// No description provided for @profileChangeListCta.
-  ///
-  /// In zh, this message translates to:
-  /// **'查看申请记录'**
-  String get profileChangeListCta;
-
   /// No description provided for @profileChangeListEmpty.
   ///
   /// In zh, this message translates to:
@@ -3589,23 +2683,11 @@ abstract class AppLocalizations {
   /// **'已生效'**
   String get profileChangeFilterApplied;
 
-  /// No description provided for @profileChangeFilterApproved.
-  ///
-  /// In zh, this message translates to:
-  /// **'已通过'**
-  String get profileChangeFilterApproved;
-
   /// No description provided for @profileChangeFilterRejected.
   ///
   /// In zh, this message translates to:
   /// **'已驳回'**
   String get profileChangeFilterRejected;
-
-  /// No description provided for @profileChangeFilterCancelled.
-  ///
-  /// In zh, this message translates to:
-  /// **'已撤销'**
-  String get profileChangeFilterCancelled;
 
   /// No description provided for @profileChangeStatusPending.
   ///
@@ -3648,12 +2730,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已由我撤销'**
   String get profileChangeCancelledByMe;
-
-  /// No description provided for @profileChangeFieldLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'字段'**
-  String get profileChangeFieldLabel;
 
   /// No description provided for @profileChangeBefore.
   ///
@@ -3787,12 +2863,6 @@ abstract class AppLocalizations {
   /// **'姓名'**
   String get profileChangeFieldFullName;
 
-  /// No description provided for @profileChangeFieldHujiAddress.
-  ///
-  /// In zh, this message translates to:
-  /// **'户籍地址'**
-  String get profileChangeFieldHujiAddress;
-
   /// No description provided for @profileChangeFieldEmergencyName.
   ///
   /// In zh, this message translates to:
@@ -3823,41 +2893,11 @@ abstract class AppLocalizations {
   /// **'待我审核的修改申请'**
   String get profilePendingSectionTitle;
 
-  /// No description provided for @profilePendingSectionEmpty.
-  ///
-  /// In zh, this message translates to:
-  /// **'该员工暂无待审申请'**
-  String get profilePendingSectionEmpty;
-
   /// No description provided for @profilePendingSectionViewAll.
   ///
   /// In zh, this message translates to:
   /// **'全部 →'**
   String get profilePendingSectionViewAll;
-
-  /// No description provided for @profileFieldPhoneMask.
-  ///
-  /// In zh, this message translates to:
-  /// **'138****1234'**
-  String get profileFieldPhoneMask;
-
-  /// No description provided for @profileFieldIdCardMask.
-  ///
-  /// In zh, this message translates to:
-  /// **'****'**
-  String get profileFieldIdCardMask;
-
-  /// No description provided for @profileFieldBankAccountMask.
-  ///
-  /// In zh, this message translates to:
-  /// **'****1234'**
-  String get profileFieldBankAccountMask;
-
-  /// No description provided for @profileFieldGroupIdentity.
-  ///
-  /// In zh, this message translates to:
-  /// **'身份信息'**
-  String get profileFieldGroupIdentity;
 
   /// No description provided for @profileFieldGroupContact.
   ///
@@ -3901,18 +2941,6 @@ abstract class AppLocalizations {
   /// **'修改'**
   String get profileEditFieldAction;
 
-  /// No description provided for @profileFieldGroupOrg.
-  ///
-  /// In zh, this message translates to:
-  /// **'组织与入职'**
-  String get profileFieldGroupOrg;
-
-  /// No description provided for @profileFieldGroupCompensation.
-  ///
-  /// In zh, this message translates to:
-  /// **'薪资与银行'**
-  String get profileFieldGroupCompensation;
-
   /// No description provided for @profileFieldWorkLocation.
   ///
   /// In zh, this message translates to:
@@ -3930,12 +2958,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'办公电话'**
   String get profileFieldOfficePhone;
-
-  /// No description provided for @profileFieldMobile.
-  ///
-  /// In zh, this message translates to:
-  /// **'手机号'**
-  String get profileFieldMobile;
 
   /// No description provided for @profileFieldEmail.
   ///
@@ -3985,132 +3007,6 @@ abstract class AppLocalizations {
   /// **'性别'**
   String get profileFieldGender;
 
-  /// No description provided for @profileFieldIdType.
-  ///
-  /// In zh, this message translates to:
-  /// **'证件类型'**
-  String get profileFieldIdType;
-
-  /// No description provided for @profileFieldIdNumber.
-  ///
-  /// In zh, this message translates to:
-  /// **'身份证号'**
-  String get profileFieldIdNumber;
-
-  /// No description provided for @profileFieldSupervisor.
-  ///
-  /// In zh, this message translates to:
-  /// **'直属主管'**
-  String get profileFieldSupervisor;
-
-  /// No description provided for @profileFieldHireDate.
-  ///
-  /// In zh, this message translates to:
-  /// **'入职日期'**
-  String get profileFieldHireDate;
-
-  /// No description provided for @profileFieldConfirmedAt.
-  ///
-  /// In zh, this message translates to:
-  /// **'转正日期'**
-  String get profileFieldConfirmedAt;
-
-  /// No description provided for @profileFieldEmploymentType.
-  ///
-  /// In zh, this message translates to:
-  /// **'用工性质'**
-  String get profileFieldEmploymentType;
-
-  /// No description provided for @profileFieldAttendanceGroup.
-  ///
-  /// In zh, this message translates to:
-  /// **'考勤组'**
-  String get profileFieldAttendanceGroup;
-
-  /// No description provided for @profileFieldPaperArchiveNo.
-  ///
-  /// In zh, this message translates to:
-  /// **'纸质档案号'**
-  String get profileFieldPaperArchiveNo;
-
-  /// No description provided for @profileFieldBaseSalary.
-  ///
-  /// In zh, this message translates to:
-  /// **'基本工资'**
-  String get profileFieldBaseSalary;
-
-  /// No description provided for @profileFieldPerfSalary.
-  ///
-  /// In zh, this message translates to:
-  /// **'绩效工资'**
-  String get profileFieldPerfSalary;
-
-  /// No description provided for @profileFieldSocialInsuranceBase.
-  ///
-  /// In zh, this message translates to:
-  /// **'社保基数'**
-  String get profileFieldSocialInsuranceBase;
-
-  /// No description provided for @profileFieldSocialInsuranceLocation.
-  ///
-  /// In zh, this message translates to:
-  /// **'社保缴纳地'**
-  String get profileFieldSocialInsuranceLocation;
-
-  /// No description provided for @profileFieldHousingFundBase.
-  ///
-  /// In zh, this message translates to:
-  /// **'公积金基数'**
-  String get profileFieldHousingFundBase;
-
-  /// No description provided for @profileFieldAllowanceStandard.
-  ///
-  /// In zh, this message translates to:
-  /// **'补贴标准'**
-  String get profileFieldAllowanceStandard;
-
-  /// No description provided for @profileFieldBankBranch.
-  ///
-  /// In zh, this message translates to:
-  /// **'开户行'**
-  String get profileFieldBankBranch;
-
-  /// No description provided for @profileFieldBankAccount.
-  ///
-  /// In zh, this message translates to:
-  /// **'银行账号'**
-  String get profileFieldBankAccount;
-
-  /// No description provided for @profileFieldContractType.
-  ///
-  /// In zh, this message translates to:
-  /// **'合同类型'**
-  String get profileFieldContractType;
-
-  /// No description provided for @profileFieldContractStart.
-  ///
-  /// In zh, this message translates to:
-  /// **'合同起始'**
-  String get profileFieldContractStart;
-
-  /// No description provided for @profileFieldContractEnd.
-  ///
-  /// In zh, this message translates to:
-  /// **'合同截止'**
-  String get profileFieldContractEnd;
-
-  /// No description provided for @profileFieldProbationMonths.
-  ///
-  /// In zh, this message translates to:
-  /// **'试用期(月)'**
-  String get profileFieldProbationMonths;
-
-  /// No description provided for @profileFieldRenewCount.
-  ///
-  /// In zh, this message translates to:
-  /// **'续签次数'**
-  String get profileFieldRenewCount;
-
   /// 未启用单据卡片上的角标
   ///
   /// In zh, this message translates to:
@@ -4122,12 +3018,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'任务中心'**
   String get hubSectionTaskCenter;
-
-  /// No description provided for @hubDisabledDocNotice.
-  ///
-  /// In zh, this message translates to:
-  /// **'该单据类型暂未启用(老库无数据)'**
-  String get hubDisabledDocNotice;
 
   /// 明细报表共享副标题：一行一货品
   ///
@@ -4471,12 +3361,6 @@ abstract class AppLocalizations {
   /// **'物料分析准备'**
   String get productionHubMaterialAnalysis;
 
-  /// No description provided for @productionHubMaterialAnalysisSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'齐套分析·路线确认·分批生成'**
-  String get productionHubMaterialAnalysisSub;
-
   /// No description provided for @productionHubDaily.
   ///
   /// In zh, this message translates to:
@@ -4536,12 +3420,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'钱流报表'**
   String get financeHubSectionReports;
-
-  /// No description provided for @financeHubApprovalOwners.
-  ///
-  /// In zh, this message translates to:
-  /// **'审批负责人设置'**
-  String get financeHubApprovalOwners;
 
   /// No description provided for @financeHubTaskApproval.
   ///
@@ -4795,12 +3673,6 @@ abstract class AppLocalizations {
   /// **'出入库单据'**
   String get warehouseHubSectionDocs;
 
-  /// No description provided for @warehouseHubSectionDocsDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'调拨·其它出入库·领退料·产成品进出仓·盘点'**
-  String get warehouseHubSectionDocsDesc;
-
   /// No description provided for @warehouseHubSectionInventory.
   ///
   /// In zh, this message translates to:
@@ -4825,42 +3697,6 @@ abstract class AppLocalizations {
   /// **'明细(一行一货品)·汇总(一行一单)'**
   String get warehouseHubSectionReportsDesc;
 
-  /// No description provided for @warehouseHubTaskExpected.
-  ///
-  /// In zh, this message translates to:
-  /// **'预计到货任务中心'**
-  String get warehouseHubTaskExpected;
-
-  /// No description provided for @warehouseHubTaskExpectedSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'登记实际到货'**
-  String get warehouseHubTaskExpectedSub;
-
-  /// No description provided for @warehouseHubTaskException.
-  ///
-  /// In zh, this message translates to:
-  /// **'到货异常任务中心'**
-  String get warehouseHubTaskException;
-
-  /// No description provided for @warehouseHubTaskExceptionSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'超量先隔离'**
-  String get warehouseHubTaskExceptionSub;
-
-  /// No description provided for @warehouseHubTaskPicking.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产领料任务中心'**
-  String get warehouseHubTaskPicking;
-
-  /// No description provided for @warehouseHubTaskPickingSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'备料·跟踪领取'**
-  String get warehouseHubTaskPickingSub;
-
   /// No description provided for @warehouseHubDocTransfer.
   ///
   /// In zh, this message translates to:
@@ -4872,78 +3708,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'仓库间调拨'**
   String get warehouseHubDocTransferSub;
-
-  /// No description provided for @warehouseHubDocOtherIn.
-  ///
-  /// In zh, this message translates to:
-  /// **'其它入库'**
-  String get warehouseHubDocOtherIn;
-
-  /// No description provided for @warehouseHubDocOtherInSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'无单据入库'**
-  String get warehouseHubDocOtherInSub;
-
-  /// No description provided for @warehouseHubDocOtherOut.
-  ///
-  /// In zh, this message translates to:
-  /// **'其它出库'**
-  String get warehouseHubDocOtherOut;
-
-  /// No description provided for @warehouseHubDocOtherOutSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'无单据出库'**
-  String get warehouseHubDocOtherOutSub;
-
-  /// No description provided for @warehouseHubDocDraw.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产领料'**
-  String get warehouseHubDocDraw;
-
-  /// No description provided for @warehouseHubDocDrawSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'车间领料'**
-  String get warehouseHubDocDrawSub;
-
-  /// No description provided for @warehouseHubDocWdraw.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产退料'**
-  String get warehouseHubDocWdraw;
-
-  /// No description provided for @warehouseHubDocWdrawSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'退回车间料'**
-  String get warehouseHubDocWdrawSub;
-
-  /// No description provided for @warehouseHubDocFinishedIn.
-  ///
-  /// In zh, this message translates to:
-  /// **'产成品进仓'**
-  String get warehouseHubDocFinishedIn;
-
-  /// No description provided for @warehouseHubDocFinishedInSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'成品入库'**
-  String get warehouseHubDocFinishedInSub;
-
-  /// No description provided for @warehouseHubDocFinishedOut.
-  ///
-  /// In zh, this message translates to:
-  /// **'产成品出仓'**
-  String get warehouseHubDocFinishedOut;
-
-  /// No description provided for @warehouseHubDocFinishedOutSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'成品出库'**
-  String get warehouseHubDocFinishedOutSub;
 
   /// No description provided for @warehouseHubDocCheck.
   ///
@@ -4962,36 +3726,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'即时库存'**
   String get warehouseHubInventoryLive;
-
-  /// No description provided for @warehouseHubInventoryLiveSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'实时可用库存'**
-  String get warehouseHubInventoryLiveSub;
-
-  /// No description provided for @warehouseHubInventoryBalance.
-  ///
-  /// In zh, this message translates to:
-  /// **'库存查询'**
-  String get warehouseHubInventoryBalance;
-
-  /// No description provided for @warehouseHubInventoryBalanceSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'按货品查余额'**
-  String get warehouseHubInventoryBalanceSub;
-
-  /// No description provided for @warehouseHubInventoryMovement.
-  ///
-  /// In zh, this message translates to:
-  /// **'出入库流水'**
-  String get warehouseHubInventoryMovement;
-
-  /// No description provided for @warehouseHubInventoryMovementSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'进出流水明细'**
-  String get warehouseHubInventoryMovementSub;
 
   /// No description provided for @warehouseHubReportDetail.
   ///
@@ -5167,12 +3901,6 @@ abstract class AppLocalizations {
   /// **'登录密码'**
   String get impersonationPasswordLabel;
 
-  /// No description provided for @impersonationConfirm.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认'**
-  String get impersonationConfirm;
-
   /// No description provided for @impersonationTargetPickerTitle.
   ///
   /// In zh, this message translates to:
@@ -5220,12 +3948,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已退出模拟身份'**
   String get impersonationExited;
-
-  /// No description provided for @impersonationWindowExpired.
-  ///
-  /// In zh, this message translates to:
-  /// **'模拟窗口已到期，已退出'**
-  String get impersonationWindowExpired;
 
   /// No description provided for @impersonationRecent.
   ///
@@ -5389,12 +4111,6 @@ abstract class AppLocalizations {
   /// **'任职记录'**
   String get profileEmploymentHistoryTitle;
 
-  /// No description provided for @profileScopeNoticeTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'信息范围说明'**
-  String get profileScopeNoticeTitle;
-
   /// No description provided for @profileCompensationBoundaryDescription.
   ///
   /// In zh, this message translates to:
@@ -5406,18 +4122,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。'**
   String get profileMissingEmergencyContact;
-
-  /// No description provided for @profileAlternatePhoneCount.
-  ///
-  /// In zh, this message translates to:
-  /// **'已登记 {count} 个备用号码'**
-  String profileAlternatePhoneCount(int count);
-
-  /// No description provided for @profileVehiclesPhonesEmptyHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'登记车辆与备用手机号，按车牌快速找到你'**
-  String get profileVehiclesPhonesEmptyHint;
 
   /// No description provided for @historyEventConfirm.
   ///
@@ -5563,18 +4267,6 @@ abstract class AppLocalizations {
   /// **'需要数量'**
   String get materialRequired;
 
-  /// No description provided for @materialAllocated.
-  ///
-  /// In zh, this message translates to:
-  /// **'已备数量'**
-  String get materialAllocated;
-
-  /// No description provided for @materialPreparedQuantityHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'已分配给本批的合格物料，含本批正式预留和已领用量。合格到货已包含在分配中，不重复相加；待检与在途不计入。本批已备数量不等于仓库即时余额。'**
-  String get materialPreparedQuantityHint;
-
   /// No description provided for @materialShortage.
   ///
   /// In zh, this message translates to:
@@ -5628,12 +4320,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'确认路线({count})'**
   String materialCreateRoutes(int count);
-
-  /// No description provided for @materialRouteReasonTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'路线原因(选填)'**
-  String get materialRouteReasonTitle;
 
   /// No description provided for @materialRouteChangedRetry.
   ///
@@ -5767,24 +4453,6 @@ abstract class AppLocalizations {
   /// **'请由有生成生产计划权限的员工填写数量、车间和负责人并提交计划。'**
   String get materialPreparedChildNeedPlanner;
 
-  /// No description provided for @materialRouteMemoryLoading.
-  ///
-  /// In zh, this message translates to:
-  /// **'正在读取上次路线，请稍后确认'**
-  String get materialRouteMemoryLoading;
-
-  /// No description provided for @materialRouteMemoryUnavailable.
-  ///
-  /// In zh, this message translates to:
-  /// **'上次路线读取失败，请核对当前路线后确认'**
-  String get materialRouteMemoryUnavailable;
-
-  /// No description provided for @materialRootSupply.
-  ///
-  /// In zh, this message translates to:
-  /// **'顶层供料任务'**
-  String get materialRootSupply;
-
   /// No description provided for @materialRootRoutePending.
   ///
   /// In zh, this message translates to:
@@ -5796,12 +4464,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'顶层已选择采购或委外，请到对应入口下达'**
   String get materialRootExternalRoute;
-
-  /// No description provided for @materialRootExistingStock.
-  ///
-  /// In zh, this message translates to:
-  /// **'将优先交接已分配现货 {quantity}，下方只填写剩余的追加供料数量。'**
-  String materialRootExistingStock(String quantity);
 
   /// No description provided for @materialRootSupplyCompleted.
   ///
@@ -6037,12 +4699,6 @@ abstract class AppLocalizations {
   /// **'按与供应商约定的结算方式选择。不同供应商、币种或结算条款可能拆成不同订货单。'**
   String get workflowSettlementHint;
 
-  /// No description provided for @workflowPlanningQuantityHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'这是本次要安排的数量，不是实收数量。已安排的在途货还未成为库存，下达任务也不代表车间已经可以开工。'**
-  String get workflowPlanningQuantityHint;
-
   /// No description provided for @workflowWorkshopQuantityHint.
   ///
   /// In zh, this message translates to:
@@ -6133,29 +4789,11 @@ abstract class AppLocalizations {
   /// **'补充信息(选填)'**
   String get workflowOptionalDetails;
 
-  /// No description provided for @workflowReceiptEvidence.
-  ///
-  /// In zh, this message translates to:
-  /// **'汇率与到账凭证'**
-  String get workflowReceiptEvidence;
-
-  /// No description provided for @workflowReceiptNoFees.
-  ///
-  /// In zh, this message translates to:
-  /// **'没有手续费，无需再填费用明细'**
-  String get workflowReceiptNoFees;
-
   /// No description provided for @workflowUnitUnknown.
   ///
   /// In zh, this message translates to:
   /// **'验收单位待核对'**
   String get workflowUnitUnknown;
-
-  /// No description provided for @workflowIqcUnitHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'原单1{sourceUnit} = {rate}{baseUnit}；这里按{baseUnit}验收，不要把原单包装数直接填进来。'**
-  String workflowIqcUnitHint(String sourceUnit, String rate, String baseUnit);
 
   /// No description provided for @moneySummaryCustomerPaid.
   ///
@@ -6625,12 +5263,6 @@ abstract class AppLocalizations {
   /// **'重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。'**
   String get productionMaterialRecheckHelp;
 
-  /// No description provided for @productionMaterialRegisterUsage.
-  ///
-  /// In zh, this message translates to:
-  /// **'登记实际用料'**
-  String get productionMaterialRegisterUsage;
-
   /// No description provided for @productionMaterialViewUsage.
   ///
   /// In zh, this message translates to:
@@ -6805,12 +5437,6 @@ abstract class AppLocalizations {
   /// **'已选 {count} 张单据'**
   String warehouseOutboundBatchSelection(int count);
 
-  /// No description provided for @warehouseOutboundBatchSelect.
-  ///
-  /// In zh, this message translates to:
-  /// **'请先选择可办理任务'**
-  String get warehouseOutboundBatchSelect;
-
   /// No description provided for @warehouseOutboundBatchReason.
   ///
   /// In zh, this message translates to:
@@ -6834,12 +5460,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'客户'**
   String get warehouseOutboundClient;
-
-  /// No description provided for @warehouseOutboundWarehouse.
-  ///
-  /// In zh, this message translates to:
-  /// **'仓库'**
-  String get warehouseOutboundWarehouse;
 
   /// No description provided for @warehouseOutboundStatus.
   ///
@@ -7009,12 +5629,6 @@ abstract class AppLocalizations {
   /// **'来源单据'**
   String get warehouseStockOutboundSource;
 
-  /// No description provided for @warehouseStockOutboundRemark.
-  ///
-  /// In zh, this message translates to:
-  /// **'备注'**
-  String get warehouseStockOutboundRemark;
-
   /// No description provided for @warehouseSubcontractOutboundBatchTitle.
   ///
   /// In zh, this message translates to:
@@ -7116,12 +5730,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'父件编号'**
   String get warehouseSubcontractOutboundLegacyParentCode;
-
-  /// No description provided for @warehouseSubcontractOutboundGoods.
-  ///
-  /// In zh, this message translates to:
-  /// **'货品'**
-  String get warehouseSubcontractOutboundGoods;
 
   /// No description provided for @warehouseSubcontractOutboundColor.
   ///
@@ -7279,35 +5887,17 @@ abstract class AppLocalizations {
   /// **'核实处理结果'**
   String get warehouseSubcontractOutboundVerify;
 
-  /// No description provided for @warehouseSubcontractOutboundSelectAll.
-  ///
-  /// In zh, this message translates to:
-  /// **'全选出库明细'**
-  String get warehouseSubcontractOutboundSelectAll;
-
   /// No description provided for @warehouseSubcontractOutboundDraft.
   ///
   /// In zh, this message translates to:
   /// **'出库草稿'**
   String get warehouseSubcontractOutboundDraft;
 
-  /// No description provided for @warehouseSubcontractOutboundRemark.
-  ///
-  /// In zh, this message translates to:
-  /// **'备注'**
-  String get warehouseSubcontractOutboundRemark;
-
   /// No description provided for @warehouseSubcontractOutboundNoLines.
   ///
   /// In zh, this message translates to:
   /// **'当前没有可出库明细'**
   String get warehouseSubcontractOutboundNoLines;
-
-  /// No description provided for @warehouseSubcontractOutboundLegacyParent.
-  ///
-  /// In zh, this message translates to:
-  /// **'历史父件'**
-  String get warehouseSubcontractOutboundLegacyParent;
 
   /// No description provided for @warehouseStockOutboundConfirmSingle.
   ///
@@ -7625,17 +6215,29 @@ abstract class AppLocalizations {
   /// **'现有物料尚不能配齐一个生产批次，请等待实际入库后重新核对'**
   String get productionBatchNoKitHint;
 
-  /// No description provided for @productionBatchReuse.
-  ///
-  /// In zh, this message translates to:
-  /// **'本批无需新增领料'**
-  String get productionBatchReuse;
-
   /// No description provided for @productionBatchReuseHint.
   ///
   /// In zh, this message translates to:
   /// **'本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。'**
   String get productionBatchReuseHint;
+
+  /// No description provided for @productionBatchDirectTransferBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间直送 · 自动投入'**
+  String get productionBatchDirectTransferBadge;
+
+  /// No description provided for @productionBatchDirectTransferHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批物料全部来自本车间直送（线边仓）：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。'**
+  String get productionBatchDirectTransferHint;
+
+  /// No description provided for @productionBatchSubmittedDirectTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'已安排本批 {quantity} {unit}，直送物料已自动投入，无需领料，可直接开工'**
+  String productionBatchSubmittedDirectTransfer(String quantity, String unit);
 
   /// No description provided for @productionBatchFlow.
   ///
@@ -7714,12 +6316,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'本批无需新增领料，沿已有物料来源安排生产'**
   String get productionBatchNoAdditionalMaterials;
-
-  /// No description provided for @productionBatchConfirmedSummary.
-  ///
-  /// In zh, this message translates to:
-  /// **'本批 {quantity} {unit}'**
-  String productionBatchConfirmedSummary(String quantity, String unit);
 }
 
 class _AppLocalizationsDelegate

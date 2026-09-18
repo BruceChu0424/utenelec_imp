@@ -2,6 +2,8 @@ package com.uten.imp.features.finance.report;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
@@ -320,7 +322,7 @@ public class FinanceReportService {
         List<ArApPartyLocation> items = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             String partyType = Objects.toString(row[0], "");
-            UUID categoryId = row[1] == null ? null : parseUuid(row[1].toString());
+            UUID categoryId = row[1] == null ? null : ReportQueryKit.parseUuid(row[1].toString());
             items.add(new ArApPartyLocation(partyType, categoryId));
         }
 
@@ -2573,15 +2575,15 @@ public class FinanceReportService {
             exportDocumentScope = access.scope();
         }
         String billNo = p == null ? null : p.get("billNo");
-        UUID clientId = parseUuid(p == null ? null : p.get("clientId"));
-        UUID supplierId = parseUuid(p == null ? null : p.get("supplierId"));
-        UUID accountId = parseUuid(p == null ? null : p.get("accountId"));
-        UUID departmentId = parseUuid(p == null ? null : p.get("departmentId"));
-        UUID partyId = parseUuid(p == null ? null : p.get("partyId"));
-        UUID categoryId = parseUuid(p == null ? null : p.get("categoryId"));
-        Short status = parseShort(p == null ? null : p.get("status"));
-        LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
-        LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
+        UUID clientId = ReportQueryKit.parseUuid(p == null ? null : p.get("clientId"));
+        UUID supplierId = ReportQueryKit.parseUuid(p == null ? null : p.get("supplierId"));
+        UUID accountId = ReportQueryKit.parseUuid(p == null ? null : p.get("accountId"));
+        UUID departmentId = ReportQueryKit.parseUuid(p == null ? null : p.get("departmentId"));
+        UUID partyId = ReportQueryKit.parseUuid(p == null ? null : p.get("partyId"));
+        UUID categoryId = ReportQueryKit.parseUuid(p == null ? null : p.get("categoryId"));
+        Short status = ReportQueryKit.parseShort(p == null ? null : p.get("status"));
+        LocalDate dateFrom = ReportQueryKit.parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = ReportQueryKit.parseDate(p == null ? null : p.get("dateTo"));
         String keyword = p == null ? null : p.get("keyword");
         String direction = p == null ? null : p.get("direction");
         String side = p == null ? null : p.get("side");
@@ -2589,7 +2591,7 @@ public class FinanceReportService {
         String categoryType = p == null ? null : p.get("categoryType");
         Boolean settled = parseBool(p == null ? null : p.get("settled"));
         int year = parseIntOrZero(p == null ? null : p.get("year"));
-        Map<String, String> facets = facetsOfMap(p);
+        Map<String, String> facets = ReportQueryKit.facetsOf(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
             case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
             case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
@@ -2636,7 +2638,11 @@ public class FinanceReportService {
             case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule();
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
-        return paginateAll(loader);
+        return ReportQueryKit.paginateAll(settings.readInt("export_max_rows", 100000), loader,
+                ReportTableResponse::total,
+                r -> r.columns() == null ? null : r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                ReportTableResponse::rows);
     }
 
     /**
@@ -2655,45 +2661,9 @@ public class FinanceReportService {
         };
     }
 
-    /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
-    private ExportPayload paginateAll(BiFunction<Integer, Integer, ReportTableResponse> loader) {
-        final int size = 500;
-        List<Map<String, Object>> all = new ArrayList<>();
-        List<ExportColumn> cols = null;
-        int page = 1;
-        while (page <= 2000) {
-            ReportTableResponse r = loader.apply(page, size);
-            if (page == 1 && r.total() > settings.readInt("export_max_rows", 100000)) {
-                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
-            }
-            if (cols == null && r.columns() != null) {
-                cols = r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type()))
-                        .toList();
-            }
-            all.addAll(r.rows());
-            if (r.rows().size() < size) break;
-            if ((long) all.size() >= r.total()) break;
-            page++;
-        }
-        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
-    }
+    /** 循环分页累积导出全量（size=500，硬上限 2000 页）2026-09-16 收敛到
+     *  {@code ReportQueryKit.paginateAll}（本包 ReportTableResponse 的取数适配在 export 调用点）。 */
 
-    private static Map<String, String> facetsOfMap(Map<String, String> p) {
-        Map<String, String> facets = new LinkedHashMap<>();
-        if (p == null) return facets;
-        for (Map.Entry<String, String> e : p.entrySet()) {
-            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
-                facets.put(e.getKey().substring(2), e.getValue());
-            }
-        }
-        return facets;
-    }
-
-    private static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
-    private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
-    private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
     private static Boolean parseBool(String s) { return (s == null || s.isBlank()) ? null : Boolean.valueOf(s); }
     private static BigDecimal parseBigDecimal(String s) { return (s == null || s.isBlank()) ? null : new BigDecimal(s); }
     private static int yearOf(Map<String, String> p, LocalDate dateTo) {
@@ -2713,10 +2683,12 @@ public class FinanceReportService {
 
     // ======================== 内部结构 ========================
 
-    /** 列 facet 规格。selectExpr 投影 v+lbl；groupExpr 分组；filterExpr 过滤表达式；filterType 值类型。 */
-    record FacetSpec(String key, String selectExpr, String groupExpr, String filterExpr, String filterType) {}
-
-    /** WHERE 构造器：base + 若干 AND 子句（带参数）。与销售/采购同型。 */
+    /**
+     * WHERE 构造器：base + 若干 AND 子句（带参数）。2026-09-16 五个报表服务的同型拷贝已收敛到
+     * {@code ReportQueryKit.WhereBuilder}；本类保留本地版本——它额外支持空 fragment 只挂参数
+     * （{@code w.add("", "kw", ...)} / {@code w.add("", "dir", dir)}，Z 总览与 A·C 明细在用），
+     * 与共享版逻辑有分歧，不强行合并。
+     */
     static final class WhereBuilder {
         private final String base;
         private final List<Clause> clauses = new ArrayList<>();

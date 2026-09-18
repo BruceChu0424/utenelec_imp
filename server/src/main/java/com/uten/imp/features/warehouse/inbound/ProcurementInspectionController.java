@@ -54,7 +54,13 @@ public class ProcurementInspectionController {
             long itemCount,
             BigDecimal pendingBaseQty,
             OffsetDateTime firstReceivedAt,
-            OffsetDateTime lastReceivedAt) {
+            OffsetDateTime lastReceivedAt,
+            /** 先入库后检(V596)：已上架待检的明细行数；>0 时品质页顶部标红「货品已入库，需到库位检验」。 */
+            long preStockedItemCount,
+            /** 已上架行的去重仓名清单（2026-09-17）：待检队列「仓库」列直接给出到哪验货。 */
+            String preStockedWarehouseNames,
+            /** 已上架行的去重库位清单（2026-09-17）：待检队列「库位号」列。 */
+            String preStockedPlaces) {
     }
 
     @GetMapping("/pending-receipts")
@@ -72,7 +78,10 @@ public class ProcurementInspectionController {
                         ((Number) row[2]).longValue(),
                         dec(row[3]),
                         toOffsetDateTime(row[4]),
-                        toOffsetDateTime(row[5])))
+                        toOffsetDateTime(row[5]),
+                        ((Number) row[11]).longValue(),
+                        (String) row[12],
+                        (String) row[13]))
                 .toList();
     }
 
@@ -114,7 +123,9 @@ public class ProcurementInspectionController {
                             received.subtract(passed).subtract(failed), (String) row[9],
                             (String) row[10], (String) row[11], (String) row[12],
                             (UUID) row[13], (String) row[14], nullableDec(row[15]),
-                            (UUID) row[16], (String) row[17], (String) row[18]);
+                            (UUID) row[16], (String) row[17], (String) row[18],
+                            WarehouseQualityResultService.preStocked(
+                                    row[19], row[20], row[21], row[22], row[23]));
                 })
                 .toList();
     }

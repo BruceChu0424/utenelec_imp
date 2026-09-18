@@ -30,6 +30,7 @@ final class AuditNoisePolicy {
             "/api/master/colors/facets",
             "/api/master/colors/dict",
             "/api/master/moulds/facets",
+            "/api/master/reference-methods/settlement-admin/facets",
             "/api/master/client-categories/tree",
             "/api/master/supplier-categories/tree",
             "/api/master/material-categories/tree",
@@ -69,8 +70,6 @@ final class AuditNoisePolicy {
             "/api/production/plans/progress/summary",
             "/api/production/plans/progress/workshops",
             "/api/production/quality-inspections/capability",
-            "/api/purchase/orders/last-suppliers",
-            "/api/subcontract/orders/last-suppliers",
             "/api/warehouse/inbound/expectations/type-counts");
     private static final Set<String> AUTOMATIC_SESSION_WRITE_PATHS = Set.of(
             "/api/auth/refresh",

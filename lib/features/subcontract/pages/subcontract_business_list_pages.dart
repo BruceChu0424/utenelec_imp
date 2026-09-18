@@ -36,6 +36,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
@@ -274,6 +275,10 @@ class _SubcontractBusinessListPageState
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染）。
   int? _actionableCount;
 
+  /// 表头列筛选：委外商/执行仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
+  String? _supplierIdFilter;
+  String? _warehouseIdFilter;
+
   String? _location;
 
   _ListPresentation get _p => widget.presentation;
@@ -322,6 +327,8 @@ class _SubcontractBusinessListPageState
           page: _controller.page,
           filter: SubcontractDocFilter(
             keyword: _controller.keyword.trim(),
+            supplierId: _supplierIdFilter,
+            warehouseId: _warehouseIdFilter,
             status: seg.history ? null : seg.status,
             closed: seg.history ? null : _closed,
             dateFrom: range == null
@@ -354,6 +361,18 @@ class _SubcontractBusinessListPageState
   void _onHistoryTime(UtenHistoryTimeValue value) {
     if (value == _historyTime) return;
     setState(() => _historyTime = value);
+    _reload(1);
+  }
+
+  /// 表头筛选回调：值并进既有 repository.list 参数，重拉回第 1 页。
+  void _onColumnFilterChanged(String key, String? value) {
+    setState(() {
+      if (key == 'supplier') {
+        _supplierIdFilter = value;
+      } else if (key == 'warehouse') {
+        _warehouseIdFilter = value;
+      }
+    });
     _reload(1);
   }
 
@@ -517,10 +536,20 @@ class _SubcontractBusinessListPageState
                           items:
                               _controller.result?.items ??
                               const <SubcontractDocListItem>[],
-                          facets: const {},
+                          facets: {
+                            'supplier': masterDictionaryFacets(
+                              names.supplierEntries,
+                            ),
+                            'warehouse': masterDictionaryFacets(
+                              names.warehouseEntries,
+                            ),
+                          },
                           nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
+                          filters: {
+                            'supplier': _supplierIdFilter,
+                            'warehouse': _warehouseIdFilter,
+                          },
+                          onFilterChanged: _onColumnFilterChanged,
                           onRowTap: (row) {
                             context.push(
                               SubcontractRoute.detail(

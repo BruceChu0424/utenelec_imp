@@ -37,6 +37,7 @@ class FinanceDocFilter {
     this.outAccountId, // bankTransfer
     this.departmentId, // expense/income
     this.status,
+    this.receiptKind, // receipt：收款类型（AR_SETTLEMENT/CUSTOMER_PREPAYMENT）
     this.dateFrom,
     this.dateTo,
   });
@@ -46,6 +47,7 @@ class FinanceDocFilter {
   final String? outAccountId;
   final String? departmentId;
   final int? status;
+  final String? receiptKind;
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
 }
@@ -88,6 +90,8 @@ class FinanceRepository {
               type == FinanceDocType.otherIncome) &&
           filter.departmentId != null)
         'departmentId': filter.departmentId,
+      if (type == FinanceDocType.receipt && filter.receiptKind != null)
+        'receiptKind': filter.receiptKind,
       if (filter.status != null) 'status': filter.status,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
@@ -147,6 +151,7 @@ class ArApFilter {
     this.direction, // AR / AP
     this.sourceDocType,
     this.partyId,
+    this.currencyId,
     this.settled,
     this.dateFrom,
     this.dateTo,
@@ -155,6 +160,7 @@ class ArApFilter {
   final String? direction;
   final String? sourceDocType;
   final String? partyId;
+  final String? currencyId; // 币别（表头筛选桶 value=字典 id）
   final bool? settled;
   final String? dateFrom;
   final String? dateTo;
@@ -179,6 +185,7 @@ class ArApLedgerRepository {
       if (filter.direction != null) 'direction': filter.direction,
       if (filter.sourceDocType != null) 'sourceDocType': filter.sourceDocType,
       if (filter.partyId != null) 'partyId': filter.partyId,
+      if (filter.currencyId != null) 'currencyId': filter.currencyId,
       if (filter.settled != null) 'settled': filter.settled,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
@@ -225,6 +232,7 @@ class ReconciliationFilter {
     this.checkNo,
     this.dateFrom,
     this.dateTo,
+    this.entryKind,
   });
   final String? keyword;
   final String? accountId;
@@ -232,6 +240,9 @@ class ReconciliationFilter {
   final String? checkNo;
   final String? dateFrom; // ISO date-time
   final String? dateTo;
+
+  /// 流水类型（2026-09-16 表头筛选）：POSTING 入账 / REVERSAL 反向冲销 / ADJUSTMENT 余额调整
+  final String? entryKind;
 }
 
 class ReconciliationRepository {
@@ -253,6 +264,7 @@ class ReconciliationRepository {
       if (filter.accountId != null) 'accountId': filter.accountId,
       if (filter.sourceDocType != null) 'sourceDocType': filter.sourceDocType,
       if (filter.checkNo != null) 'checkNo': filter.checkNo,
+      if (filter.entryKind != null) 'entryKind': filter.entryKind,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (sort != null && sort.isNotEmpty) 'sort': sort,

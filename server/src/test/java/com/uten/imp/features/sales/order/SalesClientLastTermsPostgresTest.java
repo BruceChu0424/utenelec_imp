@@ -17,8 +17,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Real PostgreSQL proof for the client-to-last-commercial-terms learning query
- * (新建销售订货单按客户记忆上次的结账方式/发运策略/币种).
+ * Real PostgreSQL proof for the client master default sales terms
+ * (V592 单一事实源: 保存销售订货单写回客户行 -> 新建单一律读客户行预填
+ * 结账方式/发运策略/币种)。
+ *
+ * <p>类名与端点路径 /last-terms 一样是历史遗留, 语义自 V592 起是主档默认值:
+ * 「按该客户最近一张订单实时推导」的回退路径已于 2026-09-16 退役。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(
@@ -77,8 +81,12 @@ class SalesClientLastTermsPostgresTest {
         return "XD20260904%06d".formatted(BILL_SEQUENCE.incrementAndGet());
     }
 
+    /**
+     * 预填只认客户行: 订单历史再多, 客户行没有默认值就不预填
+     * (旧的「按最近一张订单实时推导」已退役), 也不会串到别的客户。
+     */
     @Test
-    void lastTermsFollowsTheNewestOrderAndIgnoresOtherClients() {
+    void masterDefaultsIgnoreOrderHistoryUntilTheClientRowCarriesThem() {
         UUID clientA = client("A");
         UUID clientB = client("B");
         UUID settlementOld = settlement("OLD");
@@ -88,26 +96,24 @@ class SalesClientLastTermsPostgresTest {
 
         OffsetDateTime base = OffsetDateTime.of(
                 2026, 9, 4, 8, 0, 0, 0, ZoneOffset.UTC);
-        order(clientA, settlementOld, currencyOld, "ALLOW_PARTIAL",
-                base.plusMinutes(1), false);
-        // 最新一张：条款以它为准（同客户）。
-        order(clientA, settlementNew, currencyNew, "REQUIRE_COMPLETE",
-                base.plusMinutes(2), false);
-        // 别的客户晚于 A 的全部单，不得串档。
-        order(clientB, settlementOld, currencyOld, null,
-                base.plusMinutes(3), false);
-        // 已删单不参与学习。
-        order(clientA, settlementOld, currencyOld, "ALLOW_PARTIAL",
-                base.plusMinutes(4), true);
+        order(clientA, settlementOld, currencyOld, "ALLOW_PARTIAL", base.plusMinutes(1));
+        order(clientA, settlementNew, currencyNew, "REQUIRE_COMPLETE", base.plusMinutes(2));
+        order(clientB, settlementOld, currencyOld, null, base.plusMinutes(3));
 
-        SalesOrderService.LastTermsForClient terms = service.lastTermsForClient(clientA);
+        // ① 客户行三项全空: 不预填 (不再实时扫订单表)。
+        assertThat(service.masterDefaultTermsForClient(clientA)).isNull();
+        // ② 客户不存在: 同样是 null, 不抛。
+        assertThat(service.masterDefaultTermsForClient(UUID.randomUUID())).isNull();
+
+        // ③ 保存订单写回之后才有预填, 而且只写本客户那一行。
+        sync(clientA, settlementNew, "REQUIRE_COMPLETE", currencyNew);
+        SalesOrderService.MasterDefaultTermsForClient terms =
+                service.masterDefaultTermsForClient(clientA);
         assertThat(terms).isNotNull();
         assertThat(terms.settlementMethodId()).isEqualTo(settlementNew);
         assertThat(terms.currencyId()).isEqualTo(currencyNew);
         assertThat(terms.shipmentPolicy()).isEqualTo("REQUIRE_COMPLETE");
-
-        SalesOrderService.LastTermsForClient none = service.lastTermsForClient(UUID.randomUUID());
-        assertThat(none).isNull();
+        assertThat(service.masterDefaultTermsForClient(clientB)).isNull();
     }
 
     /**
@@ -163,11 +169,12 @@ class SalesClientLastTermsPostgresTest {
         sync(clientId, settlementB, "ALLOW_PARTIAL", currencyA);
         assertThat(clientRowXmin(clientId)).isEqualTo(xminStable);
 
-        // ④ 空项保持原值；⑤ lastTerms 预填读的是客户行（V592 单一事实源）。
+        // ④ 空项保持原值；⑤ 预填读的是客户行（V592 单一事实源）。
         sync(clientId, null, null, null);
         assertThat(defaultSettlement(clientId)).isEqualTo(settlementB);
         assertThat(defaultShipment(clientId)).isEqualTo("ALLOW_PARTIAL");
-        SalesOrderService.LastTermsForClient terms = service.lastTermsForClient(clientId);
+        SalesOrderService.MasterDefaultTermsForClient terms =
+                service.masterDefaultTermsForClient(clientId);
         assertThat(terms.settlementMethodId()).isEqualTo(settlementB);
         assertThat(terms.shipmentPolicy()).isEqualTo("ALLOW_PARTIAL");
         assertThat(terms.currencyId()).isEqualTo(currencyA);
@@ -230,19 +237,20 @@ class SalesClientLastTermsPostgresTest {
         return id;
     }
 
+    /** 订单历史夹具: 只用来证明「有订单也不预填」, 预填不再看这张表。 */
     private void order(
             UUID clientId, UUID settlementId, UUID currencyId, String shipmentPolicy,
-            OffsetDateTime createdAt, boolean deleted) {
+            OffsetDateTime createdAt) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO sales_orders(
                     id, bill_no, bill_date, client_id, status,
                     settlement_method_id, currency_id, shipment_policy,
                     created_at, updated_at, is_deleted
-                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, false)
                 """, id, billNo(),
                 LocalDate.of(2026, 9, 4), clientId,
                 settlementId, currencyId, shipmentPolicy,
-                createdAt, createdAt, deleted);
+                createdAt, createdAt);
     }
 }

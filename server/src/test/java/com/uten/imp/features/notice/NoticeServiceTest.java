@@ -3,6 +3,8 @@ package com.uten.imp.features.notice;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.admin.systemsetting.SystemSetting;
+import com.uten.imp.features.admin.systemsetting.SystemSettingRepository;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
 import com.uten.imp.features.notice.NoticeBlessingRepository.NoticeBlessingRow;
@@ -59,6 +61,7 @@ class NoticeServiceTest {
     private SecurityContextCurrentUser currentUser;
     private NoticeAudienceService audienceService;
     private SystemSettingsService systemSettings;
+    private SystemSettingRepository settingRepo;
     private NoticeService service;
     private ReviewNoticeAudience reviewAudience;
     private UUID userId;
@@ -78,6 +81,7 @@ class NoticeServiceTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         audienceService = mock(NoticeAudienceService.class);
         systemSettings = mock(SystemSettingsService.class);
+        settingRepo = mock(SystemSettingRepository.class);
         reviewAudience = mock(ReviewNoticeAudience.class);
         when(reviewAudience.workshopScope(any())).thenReturn(ReviewNoticeAudience.WorkshopScope.NONE);
         when(reviewAudience.eligibleEvents(any())).thenReturn(ReviewNoticeCatalog.events());
@@ -108,6 +112,7 @@ class NoticeServiceTest {
                 audienceService,
                 mock(TxSessionVars.class),
                 systemSettings,
+                settingRepo,
                 mock(com.uten.imp.audit.AuditService.class),
                 claims,
                 nameLookup, reviewAudience);
@@ -1110,7 +1115,8 @@ class NoticeServiceTest {
 
     @Test
     void getCelebrationSettingsReadsThreeKeys() {
-        when(systemSettings.readBool("celebration.auto_enabled", true)).thenReturn(true);
+        // V600：auto_enabled 代码默认值改 false（存量为 true 的库由迁移翻回）。
+        when(systemSettings.readBool("celebration.auto_enabled", false)).thenReturn(true);
         when(systemSettings.readString("celebration.auto_types", "birthday,anniversary"))
                 .thenReturn("birthday");
         when(systemSettings.readString("celebration.publisher_name", "公司"))
@@ -1120,6 +1126,50 @@ class NoticeServiceTest {
         assertTrue(dto.autoEnabled());
         assertEquals(List.of("birthday"), dto.autoTypes());
         assertEquals("人力资源部", dto.publisherName());
+    }
+
+    @Test
+    void getCelebrationSettingsDefaultsToAutoDisabled() {
+        // 未写任何 mock 桩：无存量值时 readBool 返回新默认 false。
+        var dto = service.getCelebrationSettings();
+        assertFalse(dto.autoEnabled());
+    }
+
+    @Test
+    void setCelebrationAutoEnabledFlipsRowAndAudits() {
+        SystemSetting row = celebrationAutoSetting("true");
+        when(settingRepo.findAllForUpdate(List.of("celebration.auto_enabled")))
+                .thenReturn(List.of(row));
+
+        var dto = service.setCelebrationAutoEnabled(false, userId, "hr");
+
+        assertEquals("false", row.getValue());
+        assertEquals(userId, row.getUpdatedBy());
+        verify(settingRepo).save(row);
+        verify(settingRepo).flush();
+        assertFalse(dto.autoEnabled());
+    }
+
+    @Test
+    void setCelebrationAutoEnabledSkipsWriteWhenUnchanged() {
+        SystemSetting row = celebrationAutoSetting("true");
+        when(settingRepo.findAllForUpdate(List.of("celebration.auto_enabled")))
+                .thenReturn(List.of(row));
+
+        service.setCelebrationAutoEnabled(true, userId, "hr");
+
+        verify(settingRepo, never()).save(any());
+    }
+
+    private static SystemSetting celebrationAutoSetting(String value) {
+        SystemSetting s = new SystemSetting();
+        s.setKey("celebration.auto_enabled");
+        s.setValue(value);
+        s.setValueType("bool");
+        s.setCategory("business");
+        s.setLabel("庆典通知自动发布");
+        s.setSortOrder(320);
+        return s;
     }
 
     // =========================== 庆典体验：我的今日 / 一键批量祝福 ===========================

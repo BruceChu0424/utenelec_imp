@@ -83,6 +83,7 @@ public class ExpenseClaimService {
             Integer year,
             Integer month,
             UUID departmentId,
+            String rawCategory,
             int page,
             int size) {
         AuthUser user = requireStaff();
@@ -93,6 +94,7 @@ public class ExpenseClaimService {
                 year,
                 month,
                 departmentId,
+                normalizeCategory(rawCategory),
                 page,
                 size,
                 true);
@@ -103,6 +105,7 @@ public class ExpenseClaimService {
             Integer year,
             Integer month,
             UUID departmentId,
+            String rawCategory,
             int page,
             int size) {
         AuthUser user = requireStaff();
@@ -113,6 +116,7 @@ public class ExpenseClaimService {
                 year,
                 month,
                 departmentId,
+                normalizeCategory(rawCategory),
                 page,
                 size,
                 false);
@@ -123,6 +127,7 @@ public class ExpenseClaimService {
             Integer year,
             Integer month,
             UUID departmentId,
+            String rawCategory,
             int page,
             int size) {
         AuthUser user = requireStaff();
@@ -133,9 +138,23 @@ public class ExpenseClaimService {
                 year,
                 month,
                 departmentId,
+                normalizeCategory(rawCategory),
                 page,
                 size,
                 false);
+    }
+
+    /** 表头「类别」筛选（2026-09-16）：报销类别挂在明细项上，筛类别=存在任一命中类别的明细行；
+     *  空白 → null（不过滤），非法值 fail-closed（与 CATEGORIES 白名单一致）。 */
+    private static String normalizeCategory(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if (!CATEGORIES.contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销类别无效");
+        }
+        return normalized;
     }
 
     private PageResponse<ExpenseClaimDto> listClaims(
@@ -144,6 +163,7 @@ public class ExpenseClaimService {
             Integer year,
             Integer month,
             UUID departmentId,
+            String category,
             int page,
             int size,
             boolean newestFirst) {
@@ -158,6 +178,14 @@ public class ExpenseClaimService {
             }
             if (departmentId != null) {
                 predicates.add(cb.equal(root.get("applicantDepartmentId"), departmentId));
+            }
+            if (category != null) {
+                jakarta.persistence.criteria.Subquery<UUID> itemIds = query.subquery(UUID.class);
+                jakarta.persistence.criteria.Root<ExpenseClaimItem> item =
+                        itemIds.from(ExpenseClaimItem.class);
+                itemIds.select(item.get("claimId")).where(
+                        cb.equal(item.get("category"), category));
+                predicates.add(root.get("id").in(itemIds));
             }
             if (dateRange != null) {
                 predicates.add(cb.greaterThanOrEqualTo(
@@ -215,7 +243,8 @@ public class ExpenseClaimService {
         }
         return new ExpenseClaimFacetsDto(
                 toBuckets(applicantQuery.departmentFacets(statuses)),
-                toBuckets(applicantQuery.monthFacets(statuses)));
+                toBuckets(applicantQuery.monthFacets(statuses)),
+                toBuckets(applicantQuery.categoryFacets(statuses)));
     }
 
     private static List<ExpenseClaimFacetsDto.Bucket> toBuckets(

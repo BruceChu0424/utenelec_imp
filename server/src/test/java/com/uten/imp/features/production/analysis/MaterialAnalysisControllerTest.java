@@ -108,11 +108,16 @@ class MaterialAnalysisControllerTest {
     }
 
     @Test
-    void routeMemoryCrossCandidatesAndSharedFutureRequireViewPlusAction()
+    void routeConfirmCrossCandidatesAndSharedFutureRequireViewPlusAction()
             throws Exception {
-        Method lastRoutes = MaterialAnalysisController.class.getDeclaredMethod(
-                "lastRoutes", String.class);
-        assertThat(lastRoutes.getAnnotation(PreAuthorize.class).value())
+        // 2026-09-16：/last-routes 记忆端点退役(供应方式单一事实源=货品主档，
+        // 确认路线即回写 goods.source_type)；路线维护权仍锁在 PUT /{id}/routes 上。
+        assertThat(java.util.Arrays.stream(MaterialAnalysisController.class.getDeclaredMethods())
+                .map(Method::getName))
+                .doesNotContain("lastRoutes");
+        Method saveRoutes = MaterialAnalysisController.class.getDeclaredMethod(
+                "saveRoutes", UUID.class, MaterialAnalysisContracts.RouteRequest.class);
+        assertThat(saveRoutes.getAnnotation(PreAuthorize.class).value())
                 .contains("production_material_analysis:view")
                 .contains("production_material_analysis:route");
 

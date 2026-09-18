@@ -240,6 +240,13 @@ class _FailingGateway implements WarehouseIqcStockInGateway {
     String receiptId,
     WarehouseIqcStockInConfirmCommand command,
   ) async => throw StateError('unexpected single confirm');
+
+  @override
+  Future<WarehouseIqcPreStockInResult> preStockIn(
+    String receiptType,
+    String receiptId,
+    WarehouseIqcPreStockInCommand command,
+  ) async => throw StateError('unexpected pre-stock-in');
 }
 
 const Map<String, dynamic> _qualitySummaryJson = {

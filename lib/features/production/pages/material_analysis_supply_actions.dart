@@ -2,87 +2,6 @@ part of 'production_material_analysis_page.dart';
 
 abstract class _MaterialAnalysisSupplyActionsState
     extends _MaterialAnalysisCandidatesState {
-  /// Read-only defaults are frozen for this analysis and never become writes on load.
-  Future<void> _prefillRememberedRoutes(
-    ProductionMaterialAnalysisView view,
-  ) async {
-    if (!mounted ||
-        !identical(_analysis, view) ||
-        !_canRoute ||
-        !_permissions.contains(Perm.productionMaterialAnalysisView)) {
-      return;
-    }
-    final scope = _routeMemoryScopeKey();
-    if (_routeMemoryScope != null && _routeMemoryScope != scope) {
-      _clearRememberedRoutes();
-    }
-    _routeMemoryScope = scope;
-    final goodsIds = <String>{
-      for (final material in view.materials)
-        if (material.goodsId?.trim().isNotEmpty == true)
-          material.goodsId!.trim(),
-      for (final product in view.products)
-        if (product.goodsId?.trim().isNotEmpty == true) product.goodsId!.trim(),
-    }..removeAll(_routeMemoryResolvedGoods);
-    if (goodsIds.isEmpty) return;
-    final orderedIds = goodsIds.toList()..sort();
-    final pendingKey =
-        '${view.analysisId}|${view.version}|${view.fingerprint}|'
-        '$scope|${orderedIds.join(',')}';
-    if (_routeMemoryPendingKey == pendingKey) return;
-    final generation = ++_routeMemoryGeneration;
-    setState(() {
-      _loadingRouteMemory = true;
-      _routeMemoryPendingKey = pendingKey;
-    });
-    bool current() =>
-        mounted &&
-        generation == _routeMemoryGeneration &&
-        identical(_analysis, view) &&
-        _routeMemoryScopeKey() == scope &&
-        _canRoute;
-    try {
-      final memories = await ref
-          .read(productionPlanRepositoryProvider)
-          .materialAnalysisLastRoutes(goodsIds);
-      if (!current()) return;
-      setState(() {
-        for (final entry in memories.entries) {
-          if (!goodsIds.contains(entry.key)) continue;
-          for (final memory in entry.value) {
-            _rememberedRouteDimensions.putIfAbsent((
-              goodsId: entry.key,
-              colorId: memory.colorId?.trim().isNotEmpty == true
-                  ? memory.colorId!.trim()
-                  : null,
-              unitId: memory.unitId?.trim().isNotEmpty == true
-                  ? memory.unitId!.trim()
-                  : null,
-            ), () => memory.route);
-          }
-        }
-        _routeMemoryResolvedGoods.addAll(goodsIds);
-        if (_serverRefreshNotice == _l10n.materialRouteMemoryUnavailable) {
-          _serverRefreshNotice = null;
-        }
-        _invalidateBucketRowsCache();
-      });
-    } catch (_) {
-      if (current()) {
-        setState(
-          () => _serverRefreshNotice ??= _l10n.materialRouteMemoryUnavailable,
-        );
-      }
-    } finally {
-      if (current()) {
-        setState(() {
-          _loadingRouteMemory = false;
-          _routeMemoryPendingKey = null;
-        });
-      }
-    }
-  }
-
   List<List<T>> _chunked<T>(List<T> values) {
     final result = <List<T>>[];
     for (
@@ -312,10 +231,6 @@ abstract class _MaterialAnalysisSupplyActionsState
 
   /// Dropdown changes are local. Only selected task identities are submitted.
   Future<void> _createSelectedRoutes() async {
-    if (_loadingRouteMemory) {
-      context.appInfo(_l10n.materialRouteMemoryLoading);
-      return;
-    }
     final analysis = _analysis;
     if (analysis == null || !_canRoute || _busy) return;
     final groups = _materialGroups(analysis)

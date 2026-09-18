@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -705,9 +706,11 @@ class _MaterialSettlementSheetState
                   ),
                 ),
               )
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Column(
+            : Stack(
+                children: [
+                  SingleChildScrollView(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _stats(theme),
@@ -839,6 +842,14 @@ class _MaterialSettlementSheetState
                     _history(theme),
                   ],
                 ),
+                  ),
+                  // 登记用料/冲销网络段的全屏加载遮罩（数量确认弹窗在置位之前，不会被遮）。
+                  if (_busy)
+                    const UtenBusyOverlay(
+                      title: '正在登记实际用料',
+                      description: '正在写入用料台账，请勿重复提交或关闭面板。',
+                    ),
+                ],
               ),
       ),
     );

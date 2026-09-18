@@ -13,6 +13,7 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 const _viewNotify = {
   Perm.productionMaterialAnalysisView,
@@ -265,10 +266,7 @@ void main() {
       const ValueKey('material-route-dropdown-root-line'),
     );
     expect(route, findsOneWidget);
-    expect(
-      tester.widget<DropdownButton<MaterialSupplyRoute>>(route).onChanged,
-      isNotNull,
-    );
+    expect(tester.widget<UtenDropdownField>(route).enabled, isTrue);
     await tester.tap(route);
     await tester.pumpAndSettle();
     await tester.tap(find.text('自制').last);

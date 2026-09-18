@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -600,36 +601,46 @@ class _ProcurementReturnTaskDetailPageState
                 ),
               ],
       ),
-      body: SafeArea(
-        child: _loading && task == null
-            ? const UtenSkeletonList()
-            : _error != null && task == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : task == null
-            ? UtenEmpty.error(message: '任务不存在或并非由您下单')
-            // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
-            // 改默认容器对齐新建销售订货单页。
-            : UtenContentContainer(
-                child: ListView(
-                  // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
-                  padding: const EdgeInsets.fromLTRB(
-                    0,
-                    UtenSpacing.s16,
-                    0,
-                    UtenFloatingActionGroup.scrollClearance,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: _loading && task == null
+                ? const UtenSkeletonList()
+                : _error != null && task == null
+                ? UtenEmpty.error(
+                    message: _error,
+                    actionLabel: '重新加载',
+                    onAction: _load,
+                  )
+                : task == null
+                ? UtenEmpty.error(message: '任务不存在或并非由您下单')
+                // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
+                // 改默认容器对齐新建销售订货单页。
+                : UtenContentContainer(
+                    child: ListView(
+                      // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        UtenSpacing.s16,
+                        0,
+                        UtenFloatingActionGroup.scrollClearance,
+                      ),
+                      children: [
+                        _ReturnStatusBanner(task: task),
+                        const SizedBox(height: UtenSpacing.s12),
+                        _ReturnFactsCard(task: task),
+                        const SizedBox(height: UtenSpacing.s24),
+                      ],
+                    ),
                   ),
-                  children: [
-                    _ReturnStatusBanner(task: task),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _ReturnFactsCard(task: task),
-                    const SizedBox(height: UtenSpacing.s24),
-                  ],
-                ),
-              ),
+          ),
+          // 确认退回供应商提交期间的全屏加载遮罩。
+          if (_saving)
+            const UtenBusyOverlay(
+              title: '正在记录退回供应商',
+              description: '正在写入退回完成事实，请勿重复提交或离开本页。',
+            ),
+        ],
       ),
       // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组（按钮已是 large）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

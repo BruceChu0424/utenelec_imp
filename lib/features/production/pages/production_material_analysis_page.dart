@@ -11,6 +11,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -135,7 +136,7 @@ abstract class _MaterialAnalysisPageBase
       return;
     }
     final request = ++_futureTransferRequest;
-    final scope = _routeMemoryScopeKey();
+    final scope = _sessionScopeKey();
     try {
       final records = await ref
           .read(productionPlanRepositoryProvider)
@@ -143,7 +144,7 @@ abstract class _MaterialAnalysisPageBase
       if (!mounted ||
           request != _futureTransferRequest ||
           _analysis?.analysisId != view.analysisId ||
-          scope != _routeMemoryScopeKey()) {
+          scope != _sessionScopeKey()) {
         return;
       }
       setState(() {
@@ -160,7 +161,7 @@ abstract class _MaterialAnalysisPageBase
       if (!mounted ||
           request != _futureTransferRequest ||
           _analysis?.analysisId != view.analysisId ||
-          scope != _routeMemoryScopeKey()) {
+          scope != _sessionScopeKey()) {
         return;
       }
       setState(() => _futureTransferError = '在途调拨进度暂不可用，请刷新核对');
@@ -168,7 +169,7 @@ abstract class _MaterialAnalysisPageBase
   }
 
   void _reloadFutureTransferScope() {
-    if (_futureTransferReadScope == _routeMemoryScopeKey()) return;
+    if (_futureTransferReadScope == _sessionScopeKey()) return;
     setState(() {
       ++_futureTransferRequest;
       _futureTransferRecords = const [];
@@ -319,19 +320,13 @@ abstract class _MaterialAnalysisPageBase
 
   final Set<String> _selectedPlanLineIds = {};
   final Map<String, MaterialSupplyRoute> _routeDraft = {};
-  final Map<
-    ({String goodsId, String? colorId, String? unitId}),
-    MaterialSupplyRoute
-  >
-  _rememberedRouteDimensions = {};
-  final Set<String> _routeMemoryResolvedGoods = {};
-  String? _routeMemoryScope;
-  String? _routeMemoryPendingKey;
-  int _routeMemoryGeneration = 0;
-  bool _loadingRouteMemory = false;
-  Set<String>? _routeMemoryScopePermissions;
-  String? _routeMemoryScopeIdentity;
-  String? _routeMemoryComputedScope;
+  // 2026-09-16：「按历史分析推导上次确认路线」的前端记忆整套退役——供应方式的
+  // 单一事实源是货品主档 goods.source_type，确认即回写主档，建议路线
+  // (sourceSuggestion) 随快照下发，不再另发一趟 /last-routes 也不再本地缓存。
+  // 只留下会话作用域键：在途调拨读取仍要用它隔离迟到响应。
+  Set<String>? _sessionScopePermissions;
+  String? _sessionScopeIdentity;
+  String? _sessionComputedScope;
 
   final Set<String> _dirtyRouteGroups = {};
   final Set<String> _selectedMaterialGroupKeys = {};
@@ -516,60 +511,35 @@ abstract class _MaterialAnalysisPageBase
         ? null
         : _analysisIndexes(_analysis!).productsById[material.analysisLineId];
     // A historical production plan proves MAKE even before its new root node
-    // has a route-confirmation record. Do not overwrite that fact with memory.
+    // has a route-confirmation record. Do not overwrite that fact.
     if (material.isRootSupply &&
         product != null &&
         _hasExistingRootPlan(product)) {
       return MaterialSupplyRoute.make;
     }
-    return _rememberedRouteForGoods(
-          material.goodsId,
-          material.colorId,
-          material.unitId,
-        ) ??
-        material.sourceSuggestion ??
-        MaterialSupplyRoute.subcontract;
+    // 建议路线来自货品主档 (服务端按 goods.source_type 算出 sourceSuggestion)；
+    // 主档来源为空且该件没有 BOM 子层时服务端给 REVIEW，前端解析成 null，
+    // 只能兜底委外——那是缺省值不是决定，路线格旁有黄标提醒核对。
+    return material.sourceSuggestion ?? MaterialSupplyRoute.subcontract;
   }
 
-  String _routeMemoryScopeKey() {
+  /// 会话作用域键（账号 / 模拟身份 / 权限集）：跨账号切换时用它丢弃迟到的
+  /// 异步响应，避免把上一个账号的数据显示给下一个账号。
+  String _sessionScopeKey() {
     final session = ref.read(sessionProvider);
     final permissions = _permissions;
     final identity =
         '${session.status}|${session.user?.id}|${session.actor?.id}|'
         '${session.impersonationReadOnly}|${identityHashCode(session.user)}|'
         '${identityHashCode(session.actor)}';
-    if (identity == _routeMemoryScopeIdentity &&
-        identical(permissions, _routeMemoryScopePermissions)) {
-      return _routeMemoryComputedScope!;
+    if (identity == _sessionScopeIdentity &&
+        identical(permissions, _sessionScopePermissions)) {
+      return _sessionComputedScope!;
     }
     final ordered = permissions.toList()..sort();
-    _routeMemoryScopeIdentity = identity;
-    _routeMemoryScopePermissions = permissions;
-    return _routeMemoryComputedScope = '$identity|${ordered.join(',')}';
-  }
-
-  MaterialSupplyRoute? _rememberedRouteForGoods(
-    String? goodsId,
-    String? colorId,
-    String? unitId,
-  ) {
-    if (goodsId == null || _routeMemoryScope != _routeMemoryScopeKey()) {
-      return null;
-    }
-    return _rememberedRouteDimensions[(
-      goodsId: goodsId.trim(),
-      colorId: colorId?.trim().isNotEmpty == true ? colorId!.trim() : null,
-      unitId: unitId?.trim().isNotEmpty == true ? unitId!.trim() : null,
-    )];
-  }
-
-  void _clearRememberedRoutes() {
-    _routeMemoryGeneration++;
-    _routeMemoryScope = null;
-    _routeMemoryPendingKey = null;
-    _loadingRouteMemory = false;
-    _rememberedRouteDimensions.clear();
-    _routeMemoryResolvedGoods.clear();
+    _sessionScopeIdentity = identity;
+    _sessionScopePermissions = permissions;
+    return _sessionComputedScope = '$identity|${ordered.join(',')}';
   }
 
   int get _selectedRouteCount {
@@ -611,8 +581,9 @@ abstract class _MaterialAnalysisPageBase
   /// 如实告诉用户——「下层都已下过单」和「下层全被权限/路线挡住」都不能静默
   /// 跳过，否则父件落库了用户还以为下层也办妥了。
   ({List<_ChildCascadeRow> rows, String? note}) _pendingChildCascadeRows(
-    List<_ChildCascadeSeed> seeds,
-  );
+    List<_ChildCascadeSeed> seeds, {
+    bool keepUnselectable = false,
+  });
 
   Future<bool> _showChildCascadeDialog({
     required List<_ChildCascadeSeed> seeds,
@@ -823,19 +794,12 @@ abstract class _MaterialAnalysisPageBase
     final previousAnalysisId = _analysis?.analysisId;
     ++_futureTransferRequest;
     if (previousAnalysisId != view.analysisId ||
-        _futureTransferReadScope != _routeMemoryScopeKey() ||
+        _futureTransferReadScope != _sessionScopeKey() ||
         !view.allowedActions.contains('VIEW_FUTURE_TRANSFERS')) {
       _futureTransferRecords = const [];
       _futureTransferByMaterial = const {};
       _futureTransferError = null;
       _futureTransferReadScope = null;
-    }
-    _routeMemoryGeneration++;
-    _routeMemoryPendingKey = null;
-    _loadingRouteMemory = false;
-    if (previousAnalysisId != view.analysisId ||
-        _routeMemoryScope != _routeMemoryScopeKey()) {
-      _clearRememberedRoutes();
     }
     if (previousAnalysisId != null && previousAnalysisId != view.analysisId) {
       for (final controller in _batchQtyControllers.values) {
@@ -1612,38 +1576,14 @@ class _ProductionMaterialAnalysisPageState
     });
   }
 
-  /// 任何路径装上新分析快照后只做路线学习预填。
-  /// 子件任务必须由计划员在表格/分桶中显式创建，不因刷新、
-  /// 轮询或采用路线而隐式下达。
-  @override
-  void _applyAnalysis(ProductionMaterialAnalysisView view) {
-    super._applyAnalysis(view);
-    unawaited(
-      Future<void>.microtask(() async {
-        if (mounted && identical(_analysis, view)) {
-          await _prefillRememberedRoutes(view);
-        }
-      }),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    void reloadMemory() {
-      if (_routeMemoryScope == _routeMemoryScopeKey()) return;
-      _clearRememberedRoutes();
-      final analysis = _analysis;
-      if (analysis != null) unawaited(_prefillRememberedRoutes(analysis));
-    }
-
-    ref.listen(sessionProvider, (_, _) {
-      reloadMemory();
-      _reloadFutureTransferScope();
-    });
-    ref.listen(currentPermissionsProvider, (_, _) {
-      reloadMemory();
-      _reloadFutureTransferScope();
-    });
+    // 账号 / 权限一变就重设跨账号读的作用域（在途调拨进度按会话隔离迟到响应）。
+    ref.listen(sessionProvider, (_, _) => _reloadFutureTransferScope());
+    ref.listen(
+      currentPermissionsProvider,
+      (_, _) => _reloadFutureTransferScope(),
+    );
 
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
     // 等下游事实由服务端在各自事务里重算分析快照；本页从子页面返回时静默重拉详情，

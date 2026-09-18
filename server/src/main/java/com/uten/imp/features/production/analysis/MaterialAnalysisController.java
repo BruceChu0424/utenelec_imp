@@ -62,19 +62,9 @@ public class MaterialAnalysisController {
         return queryService.salesCandidates(keyword, page, size);
     }
 
-    /**
-     * 货品 → 最近一次分析确认的供应路线（路线「学习预填」：无建议路线的物料、
-     * 或上次确认与建议不同的物料，下次分析默认带出上次的选择，前端黄标/草稿
-     * 提醒核对）。goodsIds 为逗号分隔 UUID，返回 {goodsId: [{colorId, unitId,
-     * route, reason}]}（同货品多颜色/单位各有记忆）。
-     */
-    @GetMapping("/last-routes")
-    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:route')")
-    public java.util.Map<String, java.util.List<MaterialAnalysisService.LastRoutePerGoods>> lastRoutes(
-            @RequestParam String goodsIds) {
-        java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(goodsIds, "货品 ID");
-        return queryService.lastRoutesPerGoods(ids);
-    }
+    // 2026-09-16：GET /last-routes(按历史分析推导「上次确认路线」的预填记忆)已退役——
+    // 供应方式的单一事实源是货品主档 goods.source_type：PUT /{id}/routes 确认即回写主档，
+    // 新分析的建议路线(source_suggestion)直接从主档来，前端不再另读记忆。
 
     /**
      * 物料行 → 下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单子件」

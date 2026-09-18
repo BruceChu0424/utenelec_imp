@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.inbound.dto;
 
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockedLocation;
+
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -24,5 +26,7 @@ public record ProcurementInspectionItemDto(
         BigDecimal receivedWeight,
         UUID baseUnitId,
         String baseUnitName,
-        String sourceUnitName) {
+        String sourceUnitName,
+        /** 先入库后检(V596)：实物已上架的仓/库位，品质部到该位置检验；null=按原流程在待检区。 */
+        PreStockedLocation preStocked) {
 }

@@ -127,7 +127,9 @@ class ProcurementIqcDispositionAmountBehaviorTest {
                 mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                 mock(com.uten.imp.common.finance.ProcurementReceiptConsiderationService.class),
-                procurementValue);
+                procurementValue,
+                mock(ProcurementIqcStockInService.class),
+                mock(com.uten.imp.application.port.ProductionInspectionStockInPort.class));
 
         if (!completeBatchEvidence) {
             assertThatThrownBy(() -> service.reverseResolvedStock(

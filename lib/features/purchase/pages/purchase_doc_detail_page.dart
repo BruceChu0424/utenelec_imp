@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -66,6 +67,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   PurchaseDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
+  // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
+  String _busyTitle = '正在处理，请稍候';
   bool _openingOrder = false;
   final Set<String> _selectedRequestItemIds = {};
 
@@ -174,7 +177,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       context.appError('数量必须大于 0');
       return;
     }
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在保存数量修正，请稍候';
+    });
     try {
       var updated = _detail!;
       for (final (item, qty) in changes) {
@@ -329,6 +335,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       message,
       (repo) => repo.approve(widget.id),
       '已审核',
+      busyTitle: '正在审核，请稍候',
       reviewerConfirmation: true,
       reviewerActionLabel: '${_cfg.shortLabel}审核',
       onApiError: (error) {
@@ -351,10 +358,15 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         '「订货审批任务中心」审核。确认提交？',
     (repo) => repo.submitFinance(widget.id),
     '已提交财务审核组，等待财务审核',
+    busyTitle: '正在提交财务审核，请稍候',
   );
 
-  Future<void> _reverse() async =>
-      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _reverse() async => _doAction(
+    '红冲将反向冲销，确认？',
+    (repo) => repo.reverse(widget.id),
+    '已红冲',
+    busyTitle: '正在红冲，请稍候',
+  );
 
   /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
   /// 重回财务复核；驳回不会自动还原数量。
@@ -465,7 +477,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     }
     _disposeChangeQtyControllers(ctrls.values);
     if (changes.isEmpty) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在提交数量修改，请稍候';
+    });
     try {
       await ref
           .read(purchaseRepositoryProvider(widget.docType))
@@ -500,6 +515,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         '（若已提交财务审核，财务侧任务同步撤回），不可再编辑或提交。确认取消？',
     (repo) => repo.cancelOrder(widget.id),
     '订货单已取消',
+    busyTitle: '正在取消，请稍候',
   );
 
   Future<void> _doAction(
@@ -509,6 +525,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     void Function(ApiException error)? onApiError,
     bool reviewerConfirmation = false,
     String reviewerActionLabel = '审核',
+    String? busyTitle,
   }) async {
     if (_busy) return;
     final c = reviewerConfirmation
@@ -536,7 +553,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             ),
           );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = busyTitle ?? '正在处理，请稍候';
+    });
     try {
       await fn(ref.read(purchaseRepositoryProvider(widget.docType)));
       if (!mounted) return;
@@ -581,7 +601,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       ),
     );
     if (c != true) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _busyTitle = '正在删除，请稍候';
+    });
     try {
       await ref
           .read(purchaseRepositoryProvider(widget.docType))
@@ -618,86 +641,99 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       body: SafeArea(
         // 2026-09-05 用户口径：明细表是本页主体，用全宽容器（与单据列表页
         // 同款），不再 narrow 居中导致宽屏两侧大片空白。
-        child: UtenContentContainer.wide(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : _error != null
-              ? Center(child: Text(_error!))
-              : _detail == null
-              ? const SizedBox.shrink()
-              // 2026-09-09 折叠头+表内滚（与货品资料页统一）：上滑先收头部
-              // （表头卡/横幅/附件），表头顶到页面顶部后再滚明细表内部。
-              : UtenCollapsingHeaderScrollView(
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      0,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (scopeCapability != null)
-                          DocumentScopeWriteNotice(
-                            capability: scopeCapability,
-                            ownerEmployeeId: _detail!.makerId,
-                            onRetry: () => ref.invalidate(
-                              documentScopeCapabilityProvider(
-                                DocumentDataScope.purchase,
+        child: Stack(
+          children: [
+            UtenContentContainer.wide(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : _error != null
+                  ? Center(child: Text(_error!))
+                  : _detail == null
+                  ? const SizedBox.shrink()
+                  // 2026-09-09 折叠头+表内滚（与货品资料页统一）：上滑先收头部
+                  // （表头卡/横幅/附件），表头顶到页面顶部后再滚明细表内部。
+                  : UtenCollapsingHeaderScrollView(
+                      collapsingHeader: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          0,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (scopeCapability != null)
+                              DocumentScopeWriteNotice(
+                                capability: scopeCapability,
+                                ownerEmployeeId: _detail!.makerId,
+                                onRetry: () => ref.invalidate(
+                                  documentScopeCapabilityProvider(
+                                    DocumentDataScope.purchase,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
-                        // SelectionArea（准则 §3.4），无需再单独包。
-                        _headerCard(theme, names),
-                        if (widget.docType == PurchaseDocType.order &&
-                            (_detail!.financeApproval?.isPending == true ||
-                                _detail!.financeApproval?.isRejected ==
-                                    true)) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          _financeApprovalBanner(theme),
-                        ],
-                        if (_detail!.productionLinked) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          _productionSourceBanner(theme),
-                        ],
-                        // 附件属「备注类小卡」：并入折叠头尾部，随头部一起收起。
-                        if (widget.docType == PurchaseDocType.order) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          BusinessAttachmentSection(
-                            ownerType: 'PURCHASE_ORDER',
-                            ownerId: _detail!.id,
-                            canView:
-                                _canViewCommercialAmounts &&
-                                (_hasPermission(Perm.purchaseOrderView) ||
-                                    (_hasPermission(
-                                          Perm.financeOrderApprovalView,
-                                        ) &&
-                                        _detail!.financeApproval?.isPending ==
-                                            true)),
-                            // 详情=审核页：文件只读（增删回编辑页）。
-                            canManage: false,
-                            readOnlyNote: BusinessAttachmentSection
-                                .kReviewReadOnlyAttachmentNote,
-                            categories: const ['合同', '供应商确认', '图片', '其他'],
-                          ),
-                        ],
-                      ],
+                            // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                            // SelectionArea（准则 §3.4），无需再单独包。
+                            _headerCard(theme, names),
+                            if (widget.docType == PurchaseDocType.order &&
+                                (_detail!.financeApproval?.isPending == true ||
+                                    _detail!.financeApproval?.isRejected ==
+                                        true)) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _financeApprovalBanner(theme),
+                            ],
+                            if (_detail!.productionLinked) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _productionSourceBanner(theme),
+                            ],
+                            // 附件属「备注类小卡」：并入折叠头尾部，随头部一起收起。
+                            if (widget.docType == PurchaseDocType.order) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              BusinessAttachmentSection(
+                                ownerType: 'PURCHASE_ORDER',
+                                ownerId: _detail!.id,
+                                canView:
+                                    _canViewCommercialAmounts &&
+                                    (_hasPermission(Perm.purchaseOrderView) ||
+                                        (_hasPermission(
+                                              Perm.financeOrderApprovalView,
+                                            ) &&
+                                            _detail!
+                                                    .financeApproval
+                                                    ?.isPending ==
+                                                true)),
+                                // 详情=审核页：文件只读（增删回编辑页）。
+                                canManage: false,
+                                readOnlyNote: BusinessAttachmentSection
+                                    .kReviewReadOnlyAttachmentNote,
+                                categories: const ['合同', '供应商确认', '图片', '其他'],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      // body：明细标题行（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                      body: Padding(
+                        // 底部让位右下悬浮操作组：末行可滚出按钮区。
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.controlHeight +
+                              UtenSpacing.s32,
+                        ),
+                        child: _itemsCard(theme, names),
+                      ),
                     ),
-                  ),
-                  // body：明细标题行（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                  body: Padding(
-                    // 底部让位右下悬浮操作组：末行可滚出按钮区。
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenSpacing.s12,
-                      UtenFloatingActionGroup.controlHeight + UtenSpacing.s32,
-                    ),
-                    child: _itemsCard(theme, names),
-                  ),
-                ),
+            ),
+            // 处理中屏幕中央加载遮罩（对齐销售单据详情 UtenBusyOverlay 口径）：
+            // 只跟随网络等待段，结果提示展示期间已撤下；按钮禁用逻辑不变。
+            if (_busy)
+              Positioned.fill(child: UtenBusyOverlay(title: _busyTitle)),
+          ],
         ),
       ),
       // 2026-09-14 UI 统一口径：底部吸底操作条改右下悬浮组，大小/高度/禁用态

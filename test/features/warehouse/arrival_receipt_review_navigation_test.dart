@@ -425,6 +425,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('当前有 1 行包含跨仓预定'), findsOneWidget);
+    // 2026-09-17 明细默认全选：先取消勾选「明细 B」（行框树序在表头框前，
+    // at(0)=A、at(1)=B），右键它时选中集才只剩这一行，菜单计数才是 (1)。
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pump();
     final row = find.text('明细 B');
     final gesture = await tester.startGesture(
       tester.getCenter(row),
@@ -445,6 +449,10 @@ void main() {
     );
     expect(find.textContaining('仍在待登记送检'), findsOneWidget);
     expect(api.arrivalPostBodies, isEmpty);
+
+    // 移出后选中集已空（提交集=勾选集）：勾回「明细 A」才能提交。
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pump();
 
     await tester.tap(find.text('登记并送检'));
     await tester.pumpAndSettle();
@@ -536,6 +544,9 @@ void main() {
 
     expect(find.text('登记实际到货 · 采购'), findsOneWidget);
     // 2026-09-14 起名称/编号各占一列，行内不再拼「名称(编号)」。
+    // 2026-09-17 默认全选：先取消勾选「采购明细 B」（at(1)=B 行框），右键计数才是 (1)。
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pump();
     final removedRow = find.text('采购明细 B');
     final gesture = await tester.startGesture(
       tester.getCenter(removedRow),
@@ -553,6 +564,10 @@ void main() {
     expect(find.textContaining('仍在待登记送检'), findsOneWidget);
     expect(api.arrivalPostBodies, isEmpty);
 
+    // 移出后选中集已空（提交集=勾选集）：勾回「采购明细 A」才能提交。
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pump();
+
     await tester.tap(find.text('登记并送检'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));
@@ -565,6 +580,133 @@ void main() {
     final items = (api.lastPostBody?['items'] as List)
         .cast<Map<String, dynamic>>();
     expect(items, hasLength(1));
+    expect(items.single['orderItemId'], 'purchase-order-item-1');
+  });
+
+  testWidgets('先入库后质检按钮：需独立权限、库位必填、提交带上架标记与库位', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _FakeApi();
+    const prefill = ProcurementReceiptPrefill(
+      expectationId: 'purchase-expectation-pre-stock',
+      orderType: ProcurementInboundOrderType.purchase,
+      orderBillNo: 'PO-PRE-STOCK',
+      supplierId: 'purchase-supplier-1',
+      supplierName: '测试采购供应商',
+      warehouseId: 'warehouse-1',
+      warehouseName: '成品仓',
+      suggestedWarehouseId: 'warehouse-1',
+      suggestedWarehouseName: '成品仓',
+      purchaserId: 'purchaser-1',
+      items: [
+        ProcurementReceiptPrefillItem(
+          orderItemId: 'purchase-order-item-1',
+          goodsId: 'purchase-goods-1',
+          goodsCode: 'PG-001',
+          goodsName: '采购明细 A',
+          unitRate: 1,
+          approvedRemainingQty: 5,
+        ),
+      ],
+    );
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => Scaffold(
+            body: FilledButton(
+              onPressed: () => context.push('/purchase-arrival'),
+              child: const Text('打开采购登记'),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/purchase-arrival',
+          builder: (_, _) => const WarehouseArrivalReceiptPage(
+            prefill: prefill,
+            canRegister: true,
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        sessionProvider.overrideWith(_TestSessionNotifier.new),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_testArrivalPermissionsProvider),
+        ),
+        isSuperAdminProvider.overrideWithValue(false),
+        masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        employeeRepositoryProvider.overrideWithValue(
+          DioEmployeeRepository(api),
+        ),
+        procurementInboundRepositoryProvider.overrideWithValue(
+          DioProcurementInboundRepository(api),
+        ),
+        departmentCodeIdMapProvider.overrideWith(
+          (ref) async => <String, String>{},
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(_testArrivalPermissionsProvider.notifier).replace({
+      Perm.warehouseInboundView,
+      Perm.warehouseInboundStockIn,
+    });
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.tap(find.text('打开采购登记'));
+    await tester.pumpAndSettle();
+
+    final preStockButton = find.byKey(
+      const Key('warehouse-arrival-stock-in-first'),
+    );
+    // 没有独立权限：只有「登记并送检」，看不到「先入库后质检」。
+    expect(preStockButton, findsNothing);
+    expect(find.widgetWithText(UtenButton, '登记并送检'), findsOneWidget);
+    expect(find.text('库位号'), findsWidgets);
+
+    container.read(_testArrivalPermissionsProvider.notifier).replace({
+      Perm.warehouseInboundView,
+      Perm.warehouseInboundStockIn,
+      Perm.warehouseIqcStockInBeforeInspection,
+    });
+    await tester.pumpAndSettle();
+    expect(preStockButton, findsOneWidget);
+    expect(find.widgetWithText(UtenButton, '先入库后质检'), findsOneWidget);
+
+    // 库位没填就点：不进确认弹窗、库位列切成必填(红框)，不发请求。
+    // (页内报错走顶部通知条，测试壳没有挂通知宿主，这里只验证后果。)
+    await tester.tap(preStockButton);
+    await tester.pumpAndSettle();
+    expect(find.text('确认登记并先入库'), findsNothing);
+    expect(find.textContaining('上架库位', findRichText: true), findsWidgets);
+    expect(api.arrivalPostBodies, isEmpty);
+
+    final placeField = find.descendant(
+      of: find.bySemanticsLabel('采购明细 A 库位号'),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(placeField, 'A-07');
+    await tester.pumpAndSettle();
+    await tester.tap(preStockButton);
+    await tester.pumpAndSettle();
+    expect(find.text('确认登记并先入库'), findsOneWidget);
+    await tester.tap(find.text('确认登记并先入库'));
+    await tester.pumpAndSettle();
+
+    expect(api.arrivalPostBodies, hasLength(1));
+    expect(api.lastPostBody?['stockInBeforeInspection'], isTrue);
+    final items = (api.lastPostBody?['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items.single['preStockPlace'], 'A-07');
     expect(items.single['orderItemId'], 'purchase-order-item-1');
   });
 
@@ -665,14 +807,8 @@ void main() {
     expect(lineWarehouseCell, findsOneWidget);
     expect(find.text('成品仓'), findsWidgets);
 
-    // 多行统一改仓（2026-09-11 新交互）：表头全选勾上所有行 → 点**其中任意一行**
-    // 的仓库格 → 主/子仓级联滑窗 → 选「原料仓」，全部明细行整体换仓。
-    await tester.tap(
-      find
-          .byWidgetPredicate((widget) => widget is Checkbox && widget.tristate)
-          .first,
-    );
-    await tester.pumpAndSettle();
+    // 多行统一改仓（2026-09-11 新交互；2026-09-17 起明细默认全选，无需先点表头）：
+    // 点**其中任意一行**的仓库格 → 主/子仓级联滑窗 → 选「原料仓」，全部明细行整体换仓。
     await tester.tap(lineWarehouseCell);
     await tester.pumpAndSettle();
     expect(find.text('先选主仓，再选子仓'), findsOneWidget);
@@ -764,13 +900,7 @@ void main() {
       ..remove('idempotencyKey');
     router.push<void>('/warehouse/inbound/receipts/new', extra: firstPrefill);
     await tester.pumpAndSettle();
-    // 同上：表头全选后点任意一行的仓库格即整批落仓。
-    await tester.tap(
-      find
-          .byWidgetPredicate((widget) => widget is Checkbox && widget.tristate)
-          .first,
-    );
-    await tester.pumpAndSettle();
+    // 同上：默认全选下点任意一行的仓库格即整批落仓。
     await tester.tap(
       find.descendant(
         of: find.byKey(const Key('warehouse-arrival-lines-grid')),

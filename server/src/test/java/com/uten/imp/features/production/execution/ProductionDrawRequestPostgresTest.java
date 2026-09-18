@@ -55,7 +55,8 @@ class ProductionDrawRequestPostgresTest {
                 CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,plan_id uuid,package_id uuid,status text,
                   lock_version bigint DEFAULT 1,workshop_department_id uuid,responsible_employee_id uuid,
                   material_requirement_mode text DEFAULT 'DEMANDED',segment_code text,product_goods_id uuid,planned_qty numeric,
-                  updated_at timestamptz,updated_by uuid,is_deleted boolean DEFAULT false);
+                  updated_at timestamptz,updated_by uuid,is_deleted boolean DEFAULT false,
+                  start_route text DEFAULT 'FULL_KIT');
                 CREATE TABLE production_execution_segment_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                   execution_segment_id uuid NOT NULL,action text CONSTRAINT production_execution_segment_events_action_check
                   CHECK(action IN ('START')),idempotency_key text,request_hash text,expected_version bigint,
@@ -73,7 +74,8 @@ class ProductionDrawRequestPostgresTest {
                   stock_document_item_id uuid,posting_type text);
                 CREATE TABLE departments(id uuid PRIMARY KEY,name text);
                 CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text);
-                CREATE TABLE warehouses(id uuid PRIMARY KEY,name text);
+                CREATE TABLE warehouses(id uuid PRIMARY KEY,name text,
+                    is_line_side boolean NOT NULL DEFAULT FALSE);
                 CREATE TABLE units(id uuid PRIMARY KEY,name text);
                 CREATE TABLE colors(id uuid PRIMARY KEY,name text);
                 """);
@@ -128,7 +130,10 @@ class ProductionDrawRequestPostgresTest {
         SecurityContextCurrentUser user = mock(SecurityContextCurrentUser.class);
         when(user.requireId()).thenReturn(ACTOR);
         when(user.employeeId()).thenReturn(Optional.of(ACTOR));
-        return new ProductionDrawRequestService(manager, user, mock(TxSessionVars.class), access, membership, notices);
+        // V595：提交领料申请前就地出库线边仓草稿——本用例没有线边仓，就绪服务只需空转。
+        var readiness = mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class);
+        return new ProductionDrawRequestService(manager, user, mock(TxSessionVars.class), access, membership, notices, readiness,
+                mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class));
     }
     private Preview preview() { return service.preview(new PreviewRequest(List.of(new Item(SEGMENT, 1L)))); }
     private SubmitRequest submitRequest(Preview preview) {

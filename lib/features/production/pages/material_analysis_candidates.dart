@@ -448,12 +448,7 @@ abstract class _MaterialAnalysisCandidatesState
         ),
       const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8)),
       if (lines.isEmpty)
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.all(UtenSpacing.s20),
-            child: Center(child: Text('暂无可分析的已审销售订单产品')),
-          ),
-        )
+        const SliverToBoxAdapter(child: UtenEmpty(message: '暂无可分析的已审销售订单产品'))
       else
         SliverList(
           delegate: SliverChildBuilderDelegate((_, index) {
@@ -732,24 +727,21 @@ abstract class _MaterialAnalysisCandidatesState
               children: [
                 SizedBox(
                   width: compact ? double.infinity : 180,
-                  child: DropdownButtonFormField<String>(
+                  child: UtenDropdownField(
                     key: ValueKey('manual-source-${_manualSourceType ?? ''}'),
-                    initialValue: _manualSourceType,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: '来源类型 *'),
+                    label: '来源类型',
+                    required: true,
+                    value: _manualSourceType,
+                    enabled: !_busy && _canManage,
                     items: [
                       for (final entry
                           in _MaterialAnalysisPageBase
                               ._manualSourceTypes
                               .entries)
-                        DropdownMenuItem(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
+                        UtenDropdownItem(value: entry.key, label: entry.value),
                     ],
-                    onChanged: _busy || !_canManage
-                        ? null
-                        : (value) => setState(() => _manualSourceType = value),
+                    onChanged: (value) =>
+                        setState(() => _manualSourceType = value),
                   ),
                 ),
                 SizedBox(

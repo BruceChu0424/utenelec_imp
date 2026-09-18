@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
@@ -125,20 +126,16 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final picker = tester.widget<DropdownButtonFormField<String>>(
+      final picker = tester.widget<UtenDropdownField>(
         find.byKey(const ValueKey('sales-picking-warehouse-shipment-1')),
       );
-      final dropdown = tester.widget<DropdownButton<String>>(
-        find.descendant(
-          of: find.byWidget(picker),
-          matching: find.byType(DropdownButton<String>),
-        ),
-      );
       expect(
-        dropdown.items!.singleWhere((item) => item.value == 'short').enabled,
+        picker.items.singleWhere((item) => item.value == 'short').enabled,
         isFalse,
       );
-      await tester.tap(find.byType(DropdownButton<String>));
+      await tester.tap(
+        find.byKey(const ValueKey('sales-picking-warehouse-shipment-1')),
+      );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },

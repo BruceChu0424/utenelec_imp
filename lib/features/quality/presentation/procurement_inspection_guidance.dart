@@ -66,26 +66,3 @@ String inspectionQuantityColumnHint(
   final text = workflowFieldText(context);
   return passed ? text.workflowIqcPassHint : text.workflowIqcFailHint;
 }
-
-/// IQC API quantities are already converted. Never label them with the order's
-/// packaging unit or convert them a second time while submitting a report.
-String inspectionQuantityHint(
-  BuildContext context,
-  ProcurementInspectionItem item, {
-  required bool passed,
-}) {
-  final text = workflowFieldText(context);
-  final rate = item.unitRate;
-  final basis =
-      item.baseUnitName?.trim().isNotEmpty == true &&
-          item.sourceUnitName?.trim().isNotEmpty == true &&
-          rate != null &&
-          rate > 0
-      ? text.workflowIqcUnitHint(
-          item.sourceUnitName!,
-          formatMeasurementValue(rate, scale: 6),
-          item.baseUnitName!,
-        )
-      : text.workflowUnitUnknown;
-  return '$basis ${passed ? text.workflowIqcPassHint : text.workflowIqcFailHint}';
-}

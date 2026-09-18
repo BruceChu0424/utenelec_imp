@@ -27,6 +27,7 @@ class _ExpenseRepository extends Fake implements ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   }) async {
     return PagedResult(
       items: items,

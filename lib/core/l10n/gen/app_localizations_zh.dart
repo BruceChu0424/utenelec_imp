@@ -12,9 +12,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get appTitle => '优腾·综合管理平台';
 
   @override
-  String get appName => 'UTEN IMP';
-
-  @override
   String get commonConfirm => '确认';
 
   @override
@@ -22,18 +19,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get commonSave => '保存';
-
-  @override
-  String get commonDelete => '删除';
-
-  @override
-  String get commonEdit => '编辑';
-
-  @override
-  String get commonAdd => '新增';
-
-  @override
-  String get commonSearch => '搜索';
 
   @override
   String get commonRefresh => '刷新';
@@ -54,9 +39,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get connectionRetryNow => '立即重试';
 
   @override
-  String get commonClose => '关闭';
-
-  @override
   String get commonBack => '返回';
 
   @override
@@ -72,18 +54,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commonSuccess => '操作成功';
 
   @override
-  String get commonFailed => '操作失败';
-
-  @override
-  String get commonMore => '更多';
-
-  @override
-  String get commonViewAll => '查看全部';
-
-  @override
-  String get commonAction => '操作';
-
-  @override
   String get loginAccountHint => '请输入员工工号或手机号';
 
   @override
@@ -96,19 +66,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get loginPasswordRequired => '请输入密码';
 
   @override
-  String get loginForgotPassword => '忘记密码？';
-
-  @override
   String get loginButton => '登 录';
 
   @override
   String get loginLoggingIn => '登录中…';
-
-  @override
-  String get loginSuccess => '登录成功';
-
-  @override
-  String get loginFailed => '账号或密码错误';
 
   @override
   String get loginServerRecoveryAction => '恢复自动选择服务器';
@@ -140,45 +101,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get navSettings => '设置';
 
   @override
-  String dashboardWelcome(Object name) {
-    return '欢迎，$name';
-  }
-
-  @override
-  String get dashboardWelcomeSubtitle => '今天也要加油哦';
-
-  @override
-  String get dashboardTodayStats => '今日概览';
-
-  @override
-  String get dashboardQuickActions => '快捷操作';
-
-  @override
-  String get statTodayOutput => '今日产量';
-
-  @override
-  String get statOutputUnit => '件';
-
-  @override
-  String get statInventory => '当前库存';
-
-  @override
-  String get statOnlineEmployees => '在线员工';
-
-  @override
-  String get statPendingTodos => '待办事项';
-
-  @override
-  String statTrendUp(Object percent) {
-    return '较昨日 +$percent%';
-  }
-
-  @override
-  String statTrendDown(Object percent) {
-    return '较昨日 $percent%';
-  }
-
-  @override
   String get settingsTitle => '设置';
 
   @override
@@ -188,58 +110,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsThemeMode => '主题模式';
 
   @override
-  String get settingsThemeLight => '浅色';
-
-  @override
-  String get settingsThemeDark => '深色';
-
-  @override
-  String get settingsThemeSystem => '跟随系统';
-
-  @override
   String get settingsLanguage => '语言';
 
   @override
-  String get settingsLanguageZh => '简体中文';
-
-  @override
-  String get settingsLanguageEn => 'English';
-
-  @override
   String get settingsFontSize => '字号';
-
-  @override
-  String get settingsFontSmall => '小';
-
-  @override
-  String get settingsFontMedium => '标准';
-
-  @override
-  String get settingsFontLarge => '大';
-
-  @override
-  String get settingsFontXLarge => '超大';
-
-  @override
-  String get settingsFontXXLarge => '超超大';
 
   @override
   String get settingsSectionPerformance => '性能';
 
   @override
   String get settingsPerformanceTier => '性能模式';
-
-  @override
-  String get settingsPerformanceAuto => '自动';
-
-  @override
-  String get settingsPerformanceLite => '省电';
-
-  @override
-  String get settingsPerformanceStandard => '标准';
-
-  @override
-  String get settingsPerformanceRich => '极致';
 
   @override
   String get settingsPerformanceHint => '性能差的设备建议选省电模式';
@@ -257,22 +137,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLogoutConfirm => '确定要退出登录吗？';
 
   @override
-  String get profileTitle => '我的';
-
-  @override
-  String get profileEditProfile => '编辑资料';
-
-  @override
   String get profileChangePassword => '修改密码';
-
-  @override
-  String get profileEmployeeCode => '工号';
-
-  @override
-  String get profileDepartment => '部门';
-
-  @override
-  String get profilePosition => '岗位';
 
   @override
   String get entryStaff => '内部人员登录';
@@ -314,9 +179,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get visitorLoggingIn => '登录中…';
-
-  @override
-  String get visitorCodeSent => '验证码已发送';
 
   @override
   String visitorCodeSentDev(Object code) {
@@ -393,9 +255,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApplyHost => '接待人';
 
   @override
-  String get visitorApplyHostHint => '选择要拜访的同事';
-
-  @override
   String get visitorApplyDept => '接待部门';
 
   @override
@@ -462,9 +321,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorDetailVisitTime => '到访时间';
 
   @override
-  String get visitorDetailVehicle => '车辆';
-
-  @override
   String get visitorDetailAppliedAt => '提交时间';
 
   @override
@@ -492,9 +348,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApprovalPending => '待审批';
 
   @override
-  String get visitorApprovalProcessed => '已处理';
-
-  @override
   String get visitorApprovalApprove => '批准';
 
   @override
@@ -504,19 +357,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApprovalForward => '转接待人确认';
 
   @override
-  String get visitorApprovalRejectReason => '拒绝原因';
-
-  @override
   String get visitorApprovalRejectReasonHint => '请填写拒绝原因(选填)';
 
   @override
   String get visitorApprovalConfirmApprove => '确认批准该访客来访？';
-
-  @override
-  String get visitorApprovalConfirmReject => '确认拒绝该访客来访？';
-
-  @override
-  String get visitorApprovalHostConfirmed => '接待人已确认';
 
   @override
   String get visitorApprovalEmpty => '暂无待审批的访客';
@@ -534,9 +378,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get myVisitorsReject => '拒绝接待';
 
   @override
-  String get myVisitorsConfirmHint => '确认接待该访客？';
-
-  @override
   String get securityTitle => '访客核验';
 
   @override
@@ -546,16 +387,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get securityScanManual => '手动输入凭证';
 
   @override
-  String get securityManualInputHint => '粘贴或输入二维码内容';
-
-  @override
   String get securityPasscodeHint => '输入6位通行码';
 
   @override
   String get visitorPasscodeLabel => '通行码';
-
-  @override
-  String get securityVerifying => '核验中…';
 
   @override
   String get securityPass => '允许通行';
@@ -600,24 +435,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get securityVisitTime => '到访时间';
 
   @override
-  String get navHrGroup => '人事管理';
-
-  @override
-  String get navHrEmployees => '员工档案';
-
-  @override
-  String get navHrDepartments => '部门管理';
-
-  @override
-  String get navHrOnboarding => '入职办理';
-
-  @override
-  String get navHrPayrollGenerate => '工资条生成';
-
-  @override
-  String get navHrNoticePublish => '通知发布';
-
-  @override
   String get employeeTitle => '员工档案';
 
   @override
@@ -630,19 +447,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeEmpty => '暂无员工';
 
   @override
-  String get employeeEmptyHint => '点右下角「入职」添加新员工';
-
-  @override
-  String get employeeLoadMore => '加载更多';
-
-  @override
   String get employeeDetailTitle => '员工详情';
 
   @override
   String get employeeDetailBasic => '基本信息';
-
-  @override
-  String get employeeDetailContact => '联系与地址';
 
   @override
   String get employeeDetailOrg => '组织与用工';
@@ -837,21 +645,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeEditSalary => '薪资与银行';
 
   @override
-  String get employeeEditFieldPhone => '手机';
-
-  @override
-  String get employeeEditFieldDepartment => '部门';
-
-  @override
-  String get employeeEditFieldPosition => '岗位';
-
-  @override
-  String get employeeEditFieldEmploymentType => '用工性质';
-
-  @override
-  String get employeeEditFieldStatus => '员工状态';
-
-  @override
   String get employeeEditSaved => '已保存';
 
   @override
@@ -861,9 +654,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String employeeEditLoadFailed(Object error) {
     return '加载失败：$error';
   }
-
-  @override
-  String get employeeEditNotFound => '员工不存在';
 
   @override
   String get employeeEditRequired => '必填';
@@ -998,49 +788,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get idTypeOther => '其他';
 
   @override
-  String get employeeOffboardTitle => '离职办理';
-
-  @override
-  String get employeeOffboardFieldType => '离职类型';
-
-  @override
-  String get employeeOffboardFieldDate => '离职日期';
-
-  @override
-  String get employeeOffboardPickDate => '选择日期';
-
-  @override
-  String get employeeOffboardFieldReason => '离职原因';
-
-  @override
-  String get employeeOffboardPickDateRequired => '请选择离职日期';
-
-  @override
-  String get employeeOffboardChecksRequired => '请确认所有回收项';
-
-  @override
-  String get employeeOffboardConfirmTitle => '确认办理离职？';
-
-  @override
-  String get employeeOffboardConfirmBody => '该员工账号将被停用。';
-
-  @override
-  String get employeeOffboardConfirmAction => '确认办理离职';
-
-  @override
-  String get employeeOffboardNext => '下一步';
-
-  @override
-  String get employeeOffboardBack => '上一步';
-
-  @override
-  String get employeeOffboardCompleted => '离职办理完成';
-
-  @override
   String get employeeOffboardLoadFailed => '加载失败';
-
-  @override
-  String get employeeActions => '更多操作';
 
   @override
   String get employeeActionTransfer => '调岗';
@@ -1053,9 +801,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeActionRehire => '复职';
-
-  @override
-  String get employeeActionDelete => '删除档案';
 
   @override
   String get employeeActionProvision => '开通登录账号';
@@ -1083,13 +828,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeTransferFieldDate => '生效日期';
 
   @override
-  String get employeeTransferPickDate => '选择日期';
-
-  @override
   String get employeeTransferFieldRemark => '备注';
-
-  @override
-  String get employeeTransferDateRequired => '请选择生效日期';
 
   @override
   String get employeeTransferSuccess => '调岗完成';
@@ -1111,39 +850,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeRehireSuccess => '复职完成';
-
-  @override
-  String get employeeDeleteTitle => '确认删除该员工档案？';
-
-  @override
-  String get employeeDeleteBody => '删除后其登录账号将被停用，此操作不可恢复。';
-
-  @override
-  String get employeeDeleteSuccess => '员工档案已删除';
-
-  @override
-  String get resignTypeVoluntary => '主动辞职';
-
-  @override
-  String get resignTypeDismissed => '公司辞退';
-
-  @override
-  String get resignTypeContractEnd => '合同到期';
-
-  @override
-  String get resignTypeRetire => '退休';
-
-  @override
-  String get resignCheckAccess => '收回门禁卡';
-
-  @override
-  String get resignCheckAssets => '回收公司资产';
-
-  @override
-  String get resignCheckAccount => '停用系统账号';
-
-  @override
-  String get resignCheckSocial => '停缴社保公积金';
 
   @override
   String get employeeStatusActive => '在职';
@@ -1206,9 +912,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get departmentTitle => '部门管理';
 
   @override
-  String get departmentTreeTitle => '组织架构';
-
-  @override
   String get departmentEmpty => '选择部门';
 
   @override
@@ -1218,40 +921,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get departmentEmptySelect => '请选择左侧部门';
 
   @override
-  String get departmentTooltipAdd => '新增部门';
-
-  @override
   String get departmentTooltipRefresh => '刷新';
 
   @override
   String get departmentTooltipTree => '部门树';
 
   @override
-  String get departmentDialogAddTitle => '新增部门';
-
-  @override
   String get departmentDialogDeleteTitle => '删除部门';
-
-  @override
-  String get departmentFieldCode => '部门编码';
-
-  @override
-  String get departmentFieldCodeHint => '如 DEPT-XX';
-
-  @override
-  String get departmentFieldName => '部门名称';
-
-  @override
-  String get departmentFieldLevel => '层级';
 
   @override
   String get departmentCreate => '创建';
 
   @override
   String get departmentDelete => '删除';
-
-  @override
-  String get departmentRequireCodeAndName => '编码与名称必填';
 
   @override
   String get departmentCreated => '已创建';
@@ -1270,50 +952,10 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get departmentStatEmployees => '员工';
-
-  @override
-  String get departmentStatChildren => '子部门';
-
-  @override
-  String get departmentStatManager => '负责人';
-
-  @override
-  String get departmentStatParent => '上级';
-
-  @override
-  String departmentEmployeesHeader(Object count) {
-    return '员工($count)';
-  }
-
-  @override
   String get departmentEmployeesEmpty => '该部门(含子部门)暂无员工';
 
   @override
-  String departmentStatValue(Object label, Object value) {
-    return '$label：$value';
-  }
-
-  @override
   String get departmentLoadFailed => '加载失败';
-
-  @override
-  String get departmentLevelCompany => '公司';
-
-  @override
-  String get departmentLevelDecision => '决策层';
-
-  @override
-  String get departmentLevelManagement => '管理中心';
-
-  @override
-  String get departmentLevelPrimary => '一级部门';
-
-  @override
-  String get departmentLevelSecondary => '二级班组';
-
-  @override
-  String get departmentLevelTertiary => '三级科室';
 
   @override
   String get payrollGenerateTitle => '工资条生成';
@@ -1355,41 +997,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get payrollSubmitButton => '提交审核';
 
   @override
-  String get payrollSubmitted => '已提交审核，等待财务审核';
-
-  @override
-  String payrollLoadFailed(Object error) {
-    return '加载失败：$error';
-  }
-
-  @override
-  String get payrollEmptyPreview => '该范围无可计算员工';
-
-  @override
-  String get payrollTableTotalLabel => '合计';
-
-  @override
-  String payrollTableTotalValue(Object total, Object count) {
-    return '¥ $total · $count 人';
-  }
-
-  @override
-  String get payrollTableHeaderName => '工号/姓名';
-
-  @override
-  String get payrollTableHeaderNet => '实发';
-
-  @override
-  String payrollTableRowName(Object name, Object code) {
-    return '$name($code)';
-  }
-
-  @override
-  String payrollTableRowNet(Object net) {
-    return '¥ $net';
-  }
-
-  @override
   String get payrollNext => '下一步';
 
   @override
@@ -1399,25 +1006,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get payrollDeptAll => '全员';
 
   @override
-  String get payrollDeptProduction => '生产部';
-
-  @override
-  String get payrollDeptQuality => '质量部';
-
-  @override
-  String get payrollDeptHr => '人事部';
-
-  @override
-  String get payrollDeptFinance => '财务部';
-
-  @override
   String get noticePublishTitle => '发布通知';
-
-  @override
-  String get noticePublishSaveDraft => '存草稿';
-
-  @override
-  String get noticePublishDraftSaved => '已保存草稿';
 
   @override
   String get noticePublishPublishButton => '发布';
@@ -1438,18 +1027,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishScopeAll => '全员';
 
   @override
-  String get noticePublishScopeDept => '按部门';
-
-  @override
-  String get noticePublishFieldDept => '部门';
-
-  @override
   String get noticePublishScopeAllHint => '将通知到全公司所有员工';
-
-  @override
-  String noticePublishScopeDeptHint(Object dept) {
-    return '将通知到「$dept」全体员工';
-  }
 
   @override
   String get noticePublishValidateTitle => '请填写标题';
@@ -1462,11 +1040,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noticePublishConfirmBodyAll => '将通知到全员';
-
-  @override
-  String noticePublishConfirmBodyDept(Object dept) {
-    return '将通知到「$dept」';
-  }
 
   @override
   String get noticePublishPublished => '通知已发布';
@@ -1636,9 +1209,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get noticeAckRecent => '近期已收到';
-
-  @override
   String get noticeSendBlessing => '送上祝福';
 
   @override
@@ -1670,9 +1240,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeBlessingSending => '发送中…';
 
   @override
-  String get noticeBlessingWithdraw => '撤回';
-
-  @override
   String noticeBlessingViewAll(int count) {
     return '查看全部 $count 条';
   }
@@ -1693,14 +1260,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => '请选择祝福对象';
 
   @override
-  String get noticeCelebrationSubjectIsYou => '你';
-
-  @override
-  String noticeCelebrationFor(Object name, Object event) {
-    return '祝 $name $event';
-  }
-
-  @override
   String get noticeQuickCelebrationTitle => '快捷发布祝福';
 
   @override
@@ -1708,12 +1267,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noticeQuickPublish => '发通知';
-
-  @override
-  String get noticeQuickBirthday => '生日';
-
-  @override
-  String get noticeQuickAnniversary => '入职周年';
 
   @override
   String get noticeQuickWedding => '新婚';
@@ -1765,40 +1318,13 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get celebrationCardCta => '送上祝福';
-
-  @override
   String get celebrationCardWall => '查看祝福墙';
-
-  @override
-  String get noticeAutoCelebrationTitle => '自动祝福通知';
-
-  @override
-  String get noticeAutoCelebrationEnabled => '每日自动为当天生日 / 入职周年的员工发布全员祝福';
-
-  @override
-  String get noticeAutoCelebrationTypes => '自动类型';
-
-  @override
-  String get noticeAutoCelebrationPublisher => '发布人名称';
 
   @override
   String get profileChangeEditTitle => '修改个人信息';
 
   @override
   String get profileChangeEditCta => '修改我的信息';
-
-  @override
-  String get profileChangeEditHrOnlyHint => '以下字段请联系人事修改';
-
-  @override
-  String get profileChangeSectionBasic => '基本信息(直改生效)';
-
-  @override
-  String get profileChangeSectionReview => '联系方式与重要字段(需 HR 审核)';
-
-  @override
-  String get profileChangeSectionIdentity => '姓名与紧急联系人(需 HR 审核)';
 
   @override
   String get profileChangeFieldDirect => '可直接修改';
@@ -1837,9 +1363,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileChangeListTitle => '我的修改申请';
 
   @override
-  String get profileChangeListCta => '查看申请记录';
-
-  @override
   String get profileChangeListEmpty => '暂无修改申请';
 
   @override
@@ -1852,13 +1375,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileChangeFilterApplied => '已生效';
 
   @override
-  String get profileChangeFilterApproved => '已通过';
-
-  @override
   String get profileChangeFilterRejected => '已驳回';
-
-  @override
-  String get profileChangeFilterCancelled => '已撤销';
 
   @override
   String get profileChangeStatusPending => '待 HR 审核';
@@ -1880,9 +1397,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileChangeCancelledByMe => '已由我撤销';
-
-  @override
-  String get profileChangeFieldLabel => '字段';
 
   @override
   String get profileChangeBefore => '修改前';
@@ -1953,9 +1467,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileChangeFieldFullName => '姓名';
 
   @override
-  String get profileChangeFieldHujiAddress => '户籍地址';
-
-  @override
   String get profileChangeFieldEmergencyName => '紧急联系人姓名';
 
   @override
@@ -1973,22 +1484,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profilePendingSectionTitle => '待我审核的修改申请';
 
   @override
-  String get profilePendingSectionEmpty => '该员工暂无待审申请';
-
-  @override
   String get profilePendingSectionViewAll => '全部 →';
-
-  @override
-  String get profileFieldPhoneMask => '138****1234';
-
-  @override
-  String get profileFieldIdCardMask => '****';
-
-  @override
-  String get profileFieldBankAccountMask => '****1234';
-
-  @override
-  String get profileFieldGroupIdentity => '身份信息';
 
   @override
   String get profileFieldGroupContact => '联系方式';
@@ -2015,12 +1511,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileEditFieldAction => '修改';
 
   @override
-  String get profileFieldGroupOrg => '组织与入职';
-
-  @override
-  String get profileFieldGroupCompensation => '薪资与银行';
-
-  @override
   String get profileFieldWorkLocation => '工作地';
 
   @override
@@ -2028,9 +1518,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileFieldOfficePhone => '办公电话';
-
-  @override
-  String get profileFieldMobile => '手机号';
 
   @override
   String get profileFieldEmail => '邮箱';
@@ -2057,76 +1544,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileFieldGender => '性别';
 
   @override
-  String get profileFieldIdType => '证件类型';
-
-  @override
-  String get profileFieldIdNumber => '身份证号';
-
-  @override
-  String get profileFieldSupervisor => '直属主管';
-
-  @override
-  String get profileFieldHireDate => '入职日期';
-
-  @override
-  String get profileFieldConfirmedAt => '转正日期';
-
-  @override
-  String get profileFieldEmploymentType => '用工性质';
-
-  @override
-  String get profileFieldAttendanceGroup => '考勤组';
-
-  @override
-  String get profileFieldPaperArchiveNo => '纸质档案号';
-
-  @override
-  String get profileFieldBaseSalary => '基本工资';
-
-  @override
-  String get profileFieldPerfSalary => '绩效工资';
-
-  @override
-  String get profileFieldSocialInsuranceBase => '社保基数';
-
-  @override
-  String get profileFieldSocialInsuranceLocation => '社保缴纳地';
-
-  @override
-  String get profileFieldHousingFundBase => '公积金基数';
-
-  @override
-  String get profileFieldAllowanceStandard => '补贴标准';
-
-  @override
-  String get profileFieldBankBranch => '开户行';
-
-  @override
-  String get profileFieldBankAccount => '银行账号';
-
-  @override
-  String get profileFieldContractType => '合同类型';
-
-  @override
-  String get profileFieldContractStart => '合同起始';
-
-  @override
-  String get profileFieldContractEnd => '合同截止';
-
-  @override
-  String get profileFieldProbationMonths => '试用期(月)';
-
-  @override
-  String get profileFieldRenewCount => '续签次数';
-
-  @override
   String get hubDisabledChip => '未启用';
 
   @override
   String get hubSectionTaskCenter => '任务中心';
-
-  @override
-  String get hubDisabledDocNotice => '该单据类型暂未启用(老库无数据)';
 
   @override
   String get hubSubDetailPerItem => '一行一货品';
@@ -2300,9 +1721,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubMaterialAnalysis => '物料分析准备';
 
   @override
-  String get productionHubMaterialAnalysisSub => '齐套分析·路线确认·分批生成';
-
-  @override
   String get productionHubDaily => '生产日报表';
 
   @override
@@ -2331,9 +1749,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get financeHubSectionReports => '钱流报表';
-
-  @override
-  String get financeHubApprovalOwners => '审批负责人设置';
 
   @override
   String get financeHubTaskApproval => '订货审批任务中心';
@@ -2470,9 +1885,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseHubSectionDocs => '出入库单据';
 
   @override
-  String get warehouseHubSectionDocsDesc => '调拨·其它出入库·领退料·产成品进出仓·盘点';
-
-  @override
   String get warehouseHubSectionInventory => '库存查询';
 
   @override
@@ -2485,64 +1897,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseHubSectionReportsDesc => '明细(一行一货品)·汇总(一行一单)';
 
   @override
-  String get warehouseHubTaskExpected => '预计到货任务中心';
-
-  @override
-  String get warehouseHubTaskExpectedSub => '登记实际到货';
-
-  @override
-  String get warehouseHubTaskException => '到货异常任务中心';
-
-  @override
-  String get warehouseHubTaskExceptionSub => '超量先隔离';
-
-  @override
-  String get warehouseHubTaskPicking => '生产领料任务中心';
-
-  @override
-  String get warehouseHubTaskPickingSub => '备料·跟踪领取';
-
-  @override
   String get warehouseHubDocTransfer => '仓库调拨';
 
   @override
   String get warehouseHubDocTransferSub => '仓库间调拨';
-
-  @override
-  String get warehouseHubDocOtherIn => '其它入库';
-
-  @override
-  String get warehouseHubDocOtherInSub => '无单据入库';
-
-  @override
-  String get warehouseHubDocOtherOut => '其它出库';
-
-  @override
-  String get warehouseHubDocOtherOutSub => '无单据出库';
-
-  @override
-  String get warehouseHubDocDraw => '生产领料';
-
-  @override
-  String get warehouseHubDocDrawSub => '车间领料';
-
-  @override
-  String get warehouseHubDocWdraw => '生产退料';
-
-  @override
-  String get warehouseHubDocWdrawSub => '退回车间料';
-
-  @override
-  String get warehouseHubDocFinishedIn => '产成品进仓';
-
-  @override
-  String get warehouseHubDocFinishedInSub => '成品入库';
-
-  @override
-  String get warehouseHubDocFinishedOut => '产成品出仓';
-
-  @override
-  String get warehouseHubDocFinishedOutSub => '成品出库';
 
   @override
   String get warehouseHubDocCheck => '盘点';
@@ -2552,21 +1910,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseHubInventoryLive => '即时库存';
-
-  @override
-  String get warehouseHubInventoryLiveSub => '实时可用库存';
-
-  @override
-  String get warehouseHubInventoryBalance => '库存查询';
-
-  @override
-  String get warehouseHubInventoryBalanceSub => '按货品查余额';
-
-  @override
-  String get warehouseHubInventoryMovement => '出入库流水';
-
-  @override
-  String get warehouseHubInventoryMovementSub => '进出流水明细';
 
   @override
   String get warehouseHubReportDetail => '仓库明细报表';
@@ -2657,9 +2000,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get impersonationPasswordLabel => '登录密码';
 
   @override
-  String get impersonationConfirm => '确认';
-
-  @override
   String get impersonationTargetPickerTitle => '选择要查看的员工';
 
   @override
@@ -2686,9 +2026,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get impersonationExited => '已退出模拟身份';
-
-  @override
-  String get impersonationWindowExpired => '模拟窗口已到期，已退出';
 
   @override
   String get impersonationRecent => '最近';
@@ -2777,23 +2114,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileEmploymentHistoryTitle => '任职记录';
 
   @override
-  String get profileScopeNoticeTitle => '信息范围说明';
-
-  @override
   String get profileCompensationBoundaryDescription =>
       '薪酬与银行信息不会在“我的”页展示；这是有意设置的隐私边界。本人月度收入请从工资条核对，其他问题请联系授权人事。';
 
   @override
   String get profileMissingEmergencyContact =>
       '尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。';
-
-  @override
-  String profileAlternatePhoneCount(int count) {
-    return '已登记 $count 个备用号码';
-  }
-
-  @override
-  String get profileVehiclesPhonesEmptyHint => '登记车辆与备用手机号，按车牌快速找到你';
 
   @override
   String get historyEventConfirm => '转正';
@@ -2871,13 +2197,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialRequired => '需要数量';
 
   @override
-  String get materialAllocated => '已备数量';
-
-  @override
-  String get materialPreparedQuantityHint =>
-      '已分配给本批的合格物料，含本批正式预留和已领用量。合格到货已包含在分配中，不重复相加；待检与在途不计入。本批已备数量不等于仓库即时余额。';
-
-  @override
   String get materialShortage => '还缺数量';
 
   @override
@@ -2909,9 +2228,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String materialCreateRoutes(int count) {
     return '确认路线($count)';
   }
-
-  @override
-  String get materialRouteReasonTitle => '路线原因(选填)';
 
   @override
   String get materialRouteChangedRetry => '分析已更新，请核对当前所选路线后重试';
@@ -2990,24 +2306,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '请由有生成生产计划权限的员工填写数量、车间和负责人并提交计划。';
 
   @override
-  String get materialRouteMemoryLoading => '正在读取上次路线，请稍后确认';
-
-  @override
-  String get materialRouteMemoryUnavailable => '上次路线读取失败，请核对当前路线后确认';
-
-  @override
-  String get materialRootSupply => '顶层供料任务';
-
-  @override
   String get materialRootRoutePending => '路线待确认';
 
   @override
   String get materialRootExternalRoute => '顶层已选择采购或委外，请到对应入口下达';
-
-  @override
-  String materialRootExistingStock(String quantity) {
-    return '将优先交接已分配现货 $quantity，下方只填写剩余的追加供料数量。';
-  }
 
   @override
   String get materialRootSupplyCompleted => '供料需求已完成';
@@ -3144,10 +2446,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workflowSettlementHint => '按与供应商约定的结算方式选择。不同供应商、币种或结算条款可能拆成不同订货单。';
 
   @override
-  String get workflowPlanningQuantityHint =>
-      '这是本次要安排的数量，不是实收数量。已安排的在途货还未成为库存，下达任务也不代表车间已经可以开工。';
-
-  @override
   String get workflowWorkshopQuantityHint =>
       '填写本次交给车间的数量。任务可先下达，但开工和领料仍须满足物料及状态条件。';
 
@@ -3203,18 +2501,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workflowOptionalDetails => '补充信息(选填)';
 
   @override
-  String get workflowReceiptEvidence => '汇率与到账凭证';
-
-  @override
-  String get workflowReceiptNoFees => '没有手续费，无需再填费用明细';
-
-  @override
   String get workflowUnitUnknown => '验收单位待核对';
-
-  @override
-  String workflowIqcUnitHint(String sourceUnit, String rate, String baseUnit) {
-    return '原单1$sourceUnit = $rate$baseUnit；这里按$baseUnit验收，不要把原单包装数直接填进来。';
-  }
 
   @override
   String get moneySummaryCustomerPaid => '客户已付';
@@ -3465,9 +2752,6 @@ class AppLocalizationsZh extends AppLocalizations {
       '重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。';
 
   @override
-  String get productionMaterialRegisterUsage => '登记实际用料';
-
-  @override
   String get productionMaterialViewUsage => '查看用料记录';
 
   @override
@@ -3567,9 +2851,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get warehouseOutboundBatchSelect => '请先选择可办理任务';
-
-  @override
   String get warehouseOutboundBatchReason => '处理说明';
 
   @override
@@ -3580,9 +2861,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseOutboundClient => '客户';
-
-  @override
-  String get warehouseOutboundWarehouse => '仓库';
 
   @override
   String get warehouseOutboundStatus => '仓库作业';
@@ -3674,9 +2952,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseStockOutboundSource => '来源单据';
 
   @override
-  String get warehouseStockOutboundRemark => '备注';
-
-  @override
   String get warehouseSubcontractOutboundBatchTitle => '批量出库详情';
 
   @override
@@ -3728,9 +3003,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundLegacyParentCode => '父件编号';
-
-  @override
-  String get warehouseSubcontractOutboundGoods => '货品';
 
   @override
   String get warehouseSubcontractOutboundColor => '颜色';
@@ -3816,19 +3088,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundVerify => '核实处理结果';
 
   @override
-  String get warehouseSubcontractOutboundSelectAll => '全选出库明细';
-
-  @override
   String get warehouseSubcontractOutboundDraft => '出库草稿';
 
   @override
-  String get warehouseSubcontractOutboundRemark => '备注';
-
-  @override
   String get warehouseSubcontractOutboundNoLines => '当前没有可出库明细';
-
-  @override
-  String get warehouseSubcontractOutboundLegacyParent => '历史父件';
 
   @override
   String get warehouseStockOutboundConfirmSingle => '确认出库';
@@ -4004,10 +3267,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionBatchNoKitHint => '现有物料尚不能配齐一个生产批次，请等待实际入库后重新核对';
 
   @override
-  String get productionBatchReuse => '本批无需新增领料';
+  String get productionBatchReuseHint => '本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。';
 
   @override
-  String get productionBatchReuseHint => '本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。';
+  String get productionBatchDirectTransferBadge => '车间直送 · 自动投入';
+
+  @override
+  String get productionBatchDirectTransferHint =>
+      '本批物料全部来自本车间直送（线边仓）：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。';
+
+  @override
+  String productionBatchSubmittedDirectTransfer(String quantity, String unit) {
+    return '已安排本批 $quantity $unit，直送物料已自动投入，无需领料，可直接开工';
+  }
 
   @override
   String get productionBatchFlow => '确认本批领料 → 仓库发齐 → 车间开工';
@@ -4052,9 +3324,4 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get productionBatchNoAdditionalMaterials => '本批无需新增领料，沿已有物料来源安排生产';
-
-  @override
-  String productionBatchConfirmedSummary(String quantity, String unit) {
-    return '本批 $quantity $unit';
-  }
 }

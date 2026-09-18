@@ -626,13 +626,18 @@ enum WarehouseArrivalRegistrationOutcome {
   /// 已审核并转品质部待检（IQC），合格后等待仓库确认实物入库。
   submittedForInspection,
 
+  /// 先入库后质检(V596)：已转待检且实物已按库位上架；品质合格后自动转正入库。
+  stockedPendingInspection,
+
   /// 实到超过财务批准量：未入库、未立应付，已隔离等待财务定案。
   excessQuarantined;
 
   static WarehouseArrivalRegistrationOutcome fromName(String? value) =>
-      value == 'EXCESS_QUARANTINED'
-      ? excessQuarantined
-      : submittedForInspection;
+      switch (value) {
+        'EXCESS_QUARANTINED' => excessQuarantined,
+        'STOCKED_PENDING_INSPECTION' => stockedPendingInspection,
+        _ => submittedForInspection,
+      };
 }
 
 class WarehouseArrivalRegistration {
@@ -676,6 +681,15 @@ class WarehouseArrivalRegistrationBatch {
       .length;
 
   bool get hasQuarantined => quarantinedCount > 0;
+
+  /// 先入库后质检(V596)：本次已上架待检的收货单张数。
+  int get preStockedCount => registrations
+      .where(
+        (item) =>
+            item.outcome ==
+            WarehouseArrivalRegistrationOutcome.stockedPendingInspection,
+      )
+      .length;
 }
 
 /// 预计到货「批量继续送检」结果：逐张收货单送检结果（alreadyCompleted = 同幂等键

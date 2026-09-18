@@ -6,7 +6,7 @@
 // 2026-09-10 明细多选下线（审计 A2-payroll-review）：明细表曾开多选 +「批量通过(N)」，
 // 但工资审核只有整批语义（后端仅 POST /batches/{id}/approve，无逐条审核 API），
 // 勾选 1 条点「批量通过」实际整批通过 —— 语义误导，已删除 selectable/batchActionsBuilder。
-// 审核入口唯一：底部 UtenBottomActionBar 的整批「审核通过 / 驳回」
+// 审核入口唯一：右下 UtenFloatingActionGroup 悬浮组的整批「审核通过 / 驳回」
 //（均带 UtenReviewerResponsibilityNotice）；明细表退回只读浏览。
 //
 // 响应式：compact 由页面自套 UtenContentContainer；明细表为定高内滚（沿用旧版

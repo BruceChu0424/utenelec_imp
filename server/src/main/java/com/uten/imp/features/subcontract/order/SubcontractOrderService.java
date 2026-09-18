@@ -241,12 +241,16 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         r.setStatus(STATUS_DRAFT);
         mutationLocks.expectCreatedOrder(orderType(),r.getId());
         orderRepo.save(r);
-        masterDefaultsSync.syncFromSubcontractOrder(r.getId());
         orderRepo.flush();
         mutationLocks.registerCreatedOrder(orderType(),r.getId());
         List<OrderItemDto> items = saveItems(r, req.getItems());
         applyTotals(r, items);
         prepareDraft(r);
+        // 主档写回必须在明细落库并 flush 之后: 写回服务按订单 id 用 JDBC 读
+        // subcontract_orders/subcontract_order_items 取事实, Hibernate 未 flush 的头/行它看不见
+        // (此前放在 save 之后、明细之前, 新建单永远学不到货品委外商与加工单价)。
+        orderRepo.flush();
+        masterDefaultsSync.syncFromSubcontractOrder(r.getId());
         return toDetail(r, items);
     }
 
@@ -364,52 +368,27 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     /**
-     * 货品 → 最近一次委外订货供应商（订货编辑页行级委外商「学习预填」用）。
-     * 明细不落供应商（拆单后归集到单头 supplier_id），取每个货品最新一张未删订货单
-     * 的单头供应商；批量一次查询，无历史返回空 Map。
+     * 货品 → 主档默认条款 (新建单行级预填; 端点路径沿用 /last-terms, 语义已是主档默认值)。
+     *
+     * <p>V593 起主档是唯一来源: goods.default_supplier_id (货品绑定的默认委外商) →
+     * 该供应商主档默认条款 (结算方式/币种/税率, 每次保存订货单写回) → 货品默认委外加工
+     * 单价 (goods.default_subcontract_price)。汇率取币种现行汇率。「按最近一张订货单推导」
+     * 的回退路径已退役 (2026-09-16): 主档没有绑定就不预填, 不再实时扫订单表。
+     *
+     * <p>货品有默认供应商或默认加工单价才返回行; supplierId 只在供应商未删且非内部车间时
+     * 给出 (停用供应商照给, 是否可回填由前端按字典判断), 条款随供应商一起为空。
      */
     @Transactional(readOnly = true)
-    public Map<UUID, UUID> lastSuppliersPerGoods(java.util.Collection<UUID> goodsIds) {
-        if (goodsIds == null || goodsIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, UUID> result = new LinkedHashMap<>();
-        // V593 主档优先：货品资料上绑定的默认供应商（每次下单自动写回最新）。
-        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
-                em.createNativeQuery(
-                """
-                SELECT g.id, g.default_supplier_id
-                FROM goods g
-                WHERE g.id IN (:ids)
-                  AND g.default_supplier_id IS NOT NULL
-                  AND g.is_deleted = false
-                """).setParameter("ids", goodsIds))) {
-            result.put((UUID) row[0], (UUID) row[1]);
-        }
-        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
-            result.putIfAbsent((UUID) row[0], (UUID) row[1]);
-        }
-        return result;
-    }
-
-    /**
-     * 货品 → 最近一次委外订货商业条款（行级条款「学习预填」：同一货品下次建单自动
-     * 带出上次的委外商/结算方式/币种/汇率/税率）。批量一次查询；无历史返回空 Map。
-     * 委外商是否可用（停用/内部车间已过滤）由前端在回填时判断。
-     */
-    @Transactional(readOnly = true)
-    public Map<UUID, LastTermsPerGoods> lastTermsPerGoods(
+    public Map<UUID, MasterDefaultTermsPerGoods> masterDefaultTermsPerGoods(
             java.util.Collection<UUID> goodsIds) {
         if (goodsIds == null || goodsIds.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, LastTermsPerGoods> result = new LinkedHashMap<>();
-        // V593 主档优先：货品绑定的默认供应商 + 供应商主档默认条款 + 货品默认
-        // 委外加工单价；无主档绑定回落最近订单推导。
+        Map<UUID, MasterDefaultTermsPerGoods> result = new LinkedHashMap<>();
         for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery(
                 """
-                SELECT g.id, g.default_supplier_id,
+                SELECT g.id, sup.id,
                        sup.default_settlement_method_id,
                        sup.default_currency_id,
                        cur.exchange_rate,
@@ -422,35 +401,22 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                  AND sup.is_internal_workshop = false
                 LEFT JOIN currencies cur ON cur.id = sup.default_currency_id
                 WHERE g.id IN (:ids)
-                  AND g.default_supplier_id IS NOT NULL
                   AND g.is_deleted = false
+                  AND (g.default_supplier_id IS NOT NULL
+                       OR g.default_subcontract_price IS NOT NULL)
                 """).setParameter("ids", goodsIds))) {
-            result.put((UUID) row[0], new LastTermsPerGoods(
+            result.put((UUID) row[0], new MasterDefaultTermsPerGoods(
                     (UUID) row[1], (UUID) row[2], (UUID) row[3],
                     (BigDecimal) row[4], (BigDecimal) row[5], (BigDecimal) row[6]));
-        }
-        Map<UUID, BigDecimal> masterPrices = new LinkedHashMap<>();
-        for (var entry : result.entrySet()) {
-            if (entry.getValue().subcontractPrice() != null) {
-                masterPrices.put(entry.getKey(), entry.getValue().subcontractPrice());
-            }
-        }
-        for (Object[] row : itemRepo.findLastTermsPerGoods(goodsIds)) {
-            UUID goodsId = (UUID) row[0];
-            if (result.containsKey(goodsId)) continue;
-            result.put(goodsId, new LastTermsPerGoods(
-                    (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    (BigDecimal) row[4], (BigDecimal) row[5],
-                    masterPrices.get(goodsId)));
         }
         return result;
     }
 
     /**
-     * 行级条款学习记忆视图（/last-terms 返回体；金额口径字段见 subcontract_orders 头）。
-     * V593 起含 subcontractPrice=货品默认委外加工单价（主档列，行价预填）。
+     * 主档默认条款视图 (/last-terms 返回体; 字段口径见 goods / suppliers 主档列)。
+     * subcontractPrice=goods.default_subcontract_price (行价预填)。
      */
-    public record LastTermsPerGoods(
+    public record MasterDefaultTermsPerGoods(
             UUID supplierId,
             UUID settlementMethodId,
             UUID currencyId,
@@ -495,8 +461,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         List<OrderItemDto> items = saveItems(r, req.getItems(),retained);
         applyTotals(r, items);
         prepareDraft(r);
-                masterDefaultsSync.syncFromSubcontractOrder(r.getId());
-return toDetail(r, items);
+        // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
+        orderRepo.flush();
+        masterDefaultsSync.syncFromSubcontractOrder(r.getId());
+        return toDetail(r, items);
     }
 
     @Transactional

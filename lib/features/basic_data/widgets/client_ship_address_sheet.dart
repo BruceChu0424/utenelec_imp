@@ -8,6 +8,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
+
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -210,6 +212,13 @@ class _ClientShipAddressSheetState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 新增/删除地址网络段的全屏加载遮罩（root Overlay 传送门，不占布局；
+            // 删除的确认弹窗在置位之前，不会被遮）。
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在保存收货地址',
+                description: '正在写入地址资料，请稍候。',
+              ),
             Text(
               '收货地址 · ${widget.clientName}',
               style: theme.textTheme.titleMedium,

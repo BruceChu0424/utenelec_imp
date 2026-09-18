@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -238,6 +239,12 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
       appBar: UtenAppBar(title: l10n.visitorApplyTitle, showBackButton: true),
       body: Column(
         children: [
+          // 提交访客申请网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+          if (_submitting)
+            UtenBusyOverlay(
+              title: l10n.visitorApplyTitle,
+              description: '正在提交访客申请，请勿重复提交或离开本页。',
+            ),
           Expanded(
             child: SingleChildScrollView(
               // 底部留出右下悬浮操作组的高度；水平 gutter 由容器提供

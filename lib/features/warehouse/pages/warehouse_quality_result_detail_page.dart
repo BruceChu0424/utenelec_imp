@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -8,7 +9,9 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -66,6 +69,10 @@ class _WarehouseQualityResultDetailPageState
   String? _error;
   String? _conflictMessage;
   int _requestVersion = 0;
+
+  /// 提交期间的全屏加载遮罩文案（null=无遮罩）。与 `_saving` 分开存：成功后
+  /// 遮罩必须在刷新/通知之前撤下（组件契约：遮罩只跟随网络调用本身）。
+  ({String title, String description})? _busy;
 
   @override
   void initState() {
@@ -225,6 +232,7 @@ class _WarehouseQualityResultDetailPageState
     if (!approved || !mounted) return;
     setState(() {
       _saving = true;
+      _busy = (title: '正在确认入库', description: '正在写入库存与生产预留事实，请勿重复提交或离开本页。');
       _conflictMessage = null;
     });
     try {
@@ -240,35 +248,21 @@ class _WarehouseQualityResultDetailPageState
           );
       if (!mounted) return;
       ref.invalidate(warehouseQualityResultPendingCountProvider);
-      setState(() => _saving = false);
-      final allocationsByPassEvent =
-          <String, List<WarehouseInboundAllocation>>{};
-      for (final allocation in result.allocations) {
-        final passEventId = allocation.passEventId;
-        if (passEventId == null) continue;
-        allocationsByPassEvent
-            .putIfAbsent(passEventId, () => [])
-            .add(allocation);
+      setState(() {
+        _saving = false;
+        _busy = null;
+      });
+      // 2026-09-16 用户口径：成功只走顶部通知条，不再弹「入库完成 · 实际去向」
+      // 中间结果弹窗（少一步关闭操作）；实际分配明细随下方「仓库入库历史」
+      // 刷新落位，每笔仍可点开看完整去向。
+      if (result.replayed) {
+        context.appInfo(
+          '本次入库此前已完成（安全重放 ${result.confirmedCount} 条），'
+          '实际去向见下方入库历史',
+        );
+      } else {
+        context.appSuccess('成功入库 ${result.confirmedCount} 条放行明细，实际去向见下方入库历史');
       }
-      await showWarehouseInboundAllocationResultDialog(
-        context,
-        title: result.replayed ? '入库结果 · 安全重放' : '入库完成 · 实际去向',
-        description: result.replayed
-            ? '该命令此前已经完成；以下为服务端重放的 ${result.confirmedCount} 条实际分配事实。'
-            : '已确认入库 ${result.confirmedCount} 条品质放行明细；以下为本次实际形成的预留与公共库存。',
-        sections: [
-          for (final section in sections)
-            WarehouseInboundAllocationSection(
-              id: section.id,
-              goodsLabel: section.goodsLabel,
-              quantity: section.quantity,
-              unitName: section.unitName,
-              sourceOrderNo: section.sourceOrderNo,
-              allocations: allocationsByPassEvent[section.id] ?? const [],
-            ),
-        ],
-      );
-      if (!mounted) return;
       await _load();
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -287,7 +281,12 @@ class _WarehouseQualityResultDetailPageState
         context.appError('入库确认失败，当前输入已保留，请稍后重试');
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _busy = null;
+        });
+      }
     }
   }
 
@@ -298,7 +297,10 @@ class _WarehouseQualityResultDetailPageState
       builder: (_) => _RecordReturnDialog(rejection: rejection),
     );
     if (command == null || !mounted) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _busy = (title: '正在登记实物退回', description: '正在写入退回凭证，请勿重复提交或离开本页。');
+    });
     try {
       await ref
           .read(warehouseIqcReturnRepositoryProvider)
@@ -313,7 +315,12 @@ class _WarehouseQualityResultDetailPageState
     } catch (_) {
       if (mounted) context.appError('实物退回登记失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _busy = null;
+        });
+      }
     }
   }
 
@@ -344,13 +351,40 @@ class _WarehouseQualityResultDetailPageState
           ),
         ],
       ),
-      body: SafeArea(child: _body()),
+      body: SafeArea(
+        // 提交期间的全屏加载遮罩（root Overlay 传送门，挂载位置只求在树里）。
+        child: Stack(
+          children: [
+            _body(),
+            if (_busy != null)
+              UtenBusyOverlay(
+                title: _busy!.title,
+                description: _busy!.description,
+              ),
+          ],
+        ),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: detail != null && _canConfirm && _drafts.isNotEmpty
+      floatingActionButton: detail != null &&
+              ((_canConfirm && _drafts.isNotEmpty) || detail.canPreStockIn)
           ? _floatingActions()
           : null,
     );
+  }
+
+  /// 先入库后检(V596)：跳到逐行上架页；回来后重拉详情(保留已填的入库输入)。
+  Future<void> _openPreStockIn() async {
+    final detail = _detail;
+    if (detail == null || _saving) return;
+    final done = await context.push<bool>(
+      RouteName.warehouseQualityPreStockIn(
+        detail.receiptType.apiValue,
+        detail.receiptId,
+      ),
+    );
+    if (!mounted) return;
+    if (done == true) await _load(preserveInputs: true);
   }
 
   Widget _body() {
@@ -373,6 +407,16 @@ class _WarehouseQualityResultDetailPageState
         ),
         children: [
           _headerCard(detail),
+          if (detail.preStockedLineCount > 0) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            UtenInlineNotice(
+              key: const Key('warehouse-quality-detail-pre-stocked'),
+              title: '先入库后检：${detail.preStockedLineCount} 行实物已上架待检',
+              message:
+                  '品质部到库位检验；合格后系统按上架位置自动转正入库，无需再点确认入库；'
+                  '不合格的请到库位取出后在下方「不合格实物退回」登记。',
+            ),
+          ],
           if (detail.containsOwnRelease && detail.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
             _OwnReleaseNotice(editable: _canConfirm),
@@ -490,6 +534,17 @@ class _WarehouseQualityResultDetailPageState
                             : '无',
                       ),
                     ),
+                    SizedBox(
+                      width: width,
+                      child: _InfoTile(
+                        label: '先入库后检',
+                        value: detail.preStockedLineCount > 0
+                            ? '已上架 ${detail.preStockedLineCount} 行 · 合格自动转正'
+                            : detail.canPreStockIn
+                            ? '可先入库上架(右下角按钮)'
+                            : '未启用（原流程）',
+                      ),
+                    ),
                   ],
                 );
               },
@@ -571,6 +626,9 @@ class _WarehouseQualityResultDetailPageState
                         Text(
                           [
                             '不合格 ${_qty(rejection.failedQty, rejection.unitName)}',
+                            // 先入库后检(V596)：实物在库位上，退回前先取出。
+                            if (rejection.preStocked != null)
+                              '实物位置 ${rejection.preStocked!.label}(请先从库位取出)',
                             if (rejection.returnReference?.isNotEmpty == true)
                               '凭证 ${rejection.returnReference}',
                             if (rejection.returnDate?.isNotEmpty == true)
@@ -646,6 +704,7 @@ class _WarehouseQualityResultDetailPageState
                       '入库 ${_qty(item.baseQty, item.unitName)}',
                       '实际仓库 ${item.warehouseName ?? item.warehouseId ?? '历史未记录'}',
                       '实际库位 ${item.place}',
+                      item.originLabel,
                       '确认人 ${item.confirmedBy ?? '—'}',
                       '确认时间 ${warehouseQualityDateTime(item.confirmedAt)}',
                     ].join(' · '),
@@ -684,31 +743,46 @@ class _WarehouseQualityResultDetailPageState
   /// （UtenButtonType.danger——「点了就往下走一步」的统一配色），
   /// 高度由 UtenFloatingActionGroup 统一到 52。
   Widget _floatingActions() {
+    final detail = _detail;
+    final canConfirmHere = _canConfirm && _drafts.isNotEmpty;
+    final preStockable = detail?.preStockableLines.length ?? 0;
     final selected = _drafts.where((draft) => draft.selected).length;
     return UtenFloatingActionGroup(
       children: [
-        UtenSelectionSummaryPill(
-          count: selected,
-          clearKey: const Key('warehouse-quality-detail-clear-selection'),
-          onClear: selected == 0 || _saving || _loading
-              ? null
-              : () => setState(() {
-                  for (final draft in _drafts) {
-                    draft.selected = false;
-                  }
-                }),
-        ),
-        UtenButton(
-          key: const Key('warehouse-quality-detail-confirm'),
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          icon: Icons.move_to_inbox_rounded,
-          isLoading: _saving,
-          onPressed: _saving || _loading || selected == 0
-              ? null
-              : _confirmStockIn,
-          child: Text(selected == 0 ? '确认入库' : '确认入库($selected)'),
-        ),
+        if (canConfirmHere)
+          UtenSelectionSummaryPill(
+            count: selected,
+            clearKey: const Key('warehouse-quality-detail-clear-selection'),
+            onClear: selected == 0 || _saving || _loading
+                ? null
+                : () => setState(() {
+                    for (final draft in _drafts) {
+                      draft.selected = false;
+                    }
+                  }),
+          ),
+        // 先入库后检(V596)：等结论且未上架的行可以先落库位(独立权限，服务端给动作码)。
+        if (detail?.canPreStockIn == true)
+          UtenButton(
+            key: const Key('warehouse-quality-detail-pre-stock'),
+            type: canConfirmHere ? UtenButtonType.tonal : UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.shelves,
+            onPressed: _saving || _loading ? null : _openPreStockIn,
+            child: Text('先入库上架($preStockable)'),
+          ),
+        if (canConfirmHere)
+          UtenButton(
+            key: const Key('warehouse-quality-detail-confirm'),
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.move_to_inbox_rounded,
+            isLoading: _saving,
+            onPressed: _saving || _loading || selected == 0
+                ? null
+                : _confirmStockIn,
+            child: Text(selected == 0 ? '确认入库' : '确认入库($selected)'),
+          ),
       ],
     );
   }

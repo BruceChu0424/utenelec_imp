@@ -290,7 +290,9 @@ class ProductionFqcInspectionServiceTest {
                 mock(ProductionFinishedInboundReleasePort.class),
                 mock(BusinessEventPublisher.class),
                 org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
-                org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class));
+                org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class),
+                // V597 先入库后质检的自动点收通道；这些纯单元测试不走那条路。
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
     }
 
     private static DecisionRequest request(

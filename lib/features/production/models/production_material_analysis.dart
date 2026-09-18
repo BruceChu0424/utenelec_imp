@@ -25,30 +25,6 @@ enum MaterialSupplyRoute {
   }
 }
 
-/// 货品一个颜色+单位维度的最近确认路线（/last-routes 学习预填用）。
-class MaterialRouteMemory {
-  const MaterialRouteMemory({
-    required this.route,
-    this.colorId,
-    this.unitId,
-    this.reason,
-  });
-
-  final MaterialSupplyRoute route;
-  final String? colorId;
-  final String? unitId;
-  final String? reason;
-
-  static MaterialRouteMemory fromJson(Map<String, dynamic> json) {
-    return MaterialRouteMemory(
-      route: MaterialSupplyRoute.fromWire(json['route'])!,
-      colorId: json['colorId'] as String?,
-      unitId: json['unitId'] as String?,
-      reason: json['reason'] as String?,
-    );
-  }
-}
-
 /// 一条物料行与它下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单
 /// 子件」分支）。基础需求已下过单的行，超产多出来的量按申请进度分两路：
 /// [adjustable] = 申请仍停在申请态（已审核、未分解出订货单），追加量直接

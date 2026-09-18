@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/network/api_exception.dart';
@@ -299,7 +300,7 @@ class _SupplierCreditApplyPanelState
     }
     if (_error != null) return Center(child: Text(_error!));
     if (_targets.isEmpty) {
-      return const Center(child: Text('暂无同供应商、同币种、同立账汇率的正应付'));
+      return const UtenEmpty(message: '暂无同供应商、同币种、同立账汇率的正应付');
     }
     return ListView.separated(
       padding: const EdgeInsets.all(UtenSpacing.s12),

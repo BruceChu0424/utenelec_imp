@@ -413,10 +413,11 @@ class NoticeCelebrationPreview {
   }
 }
 
-/// 自动庆典发布设置（系统设置）。
+/// 自动庆典发布设置（系统设置）。默认关（V600）：祝福由人事手动发布，
+/// 人事在 HR 任务中心打开「自动发送」后每日扫描器才代发。
 class NoticeCelebrationSettings {
   const NoticeCelebrationSettings({
-    this.autoEnabled = true,
+    this.autoEnabled = false,
     this.autoTypes = const ['birthday', 'anniversary'],
     this.publisherName = '公司',
   });
@@ -427,7 +428,7 @@ class NoticeCelebrationSettings {
 
   factory NoticeCelebrationSettings.fromJson(Map<String, dynamic> json) {
     return NoticeCelebrationSettings(
-      autoEnabled: json['autoEnabled'] as bool? ?? true,
+      autoEnabled: json['autoEnabled'] as bool? ?? false,
       autoTypes: (json['autoTypes'] as List<dynamic>? ?? const [])
           .cast<String>(),
       publisherName: json['publisherName'] as String? ?? '公司',

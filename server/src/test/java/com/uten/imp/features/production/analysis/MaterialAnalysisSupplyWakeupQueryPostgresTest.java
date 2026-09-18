@@ -78,7 +78,8 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         EntityManager observer=mock(EntityManager.class);
         when(observer.createNativeQuery(anyString())).thenAnswer(call->{lastSql=call.getArgument(0);return em.createNativeQuery(lastSql);});
         // Only query discovery is invoked; no refresh, locking or notification collaborator is mocked out of a write path.
-        service=new MaterialAnalysisSupplyWakeupService(observer,null,null,null);
+        service=new MaterialAnalysisSupplyWakeupService(observer,null,null,null,
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
         unit=UUID.randomUUID();db.update("INSERT INTO units(id,code,name) VALUES (?,?,'wakeup piece')",unit,"WU-U-"+unit);
         try(var connection=connection()){connection.setAutoCommit(false);actor=ProcurementReceiptFixtureSupport.createActor(connection);connection.commit();}
         maker=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,actor);

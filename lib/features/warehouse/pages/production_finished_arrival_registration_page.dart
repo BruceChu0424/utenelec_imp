@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -122,6 +123,19 @@ class _ProductionFinishedArrivalRegistrationPageState
 
   bool get _canRegister =>
       _hasRegisterPermission && !(_detail?.registered ?? false);
+
+  /// 先入库后质检(V597)：底部两个按钮二选一——「先入库后质检」= 登记的同时承诺
+  /// 「品质合格按本次登记的成品仓 + 库位自动点收入库」，仓库不再点第二次(实收恒等于
+  /// 报工量)；「登记并送检」= 原流程。按钮只对持有独立权限的账号显示，服务端同样兜底。
+  bool _stockInBeforeInspection = false;
+
+  bool get _canStockInBeforeInspection {
+    if (ref.read(isSuperAdminProvider)) return true;
+    return ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.productionFinishedInBeforeInspection);
+  }
+
 
   List<_FinishedArrivalRegistrationGridRow> get _editableRows =>
       _grid.rows.where((row) => !row.registered).toList(growable: false);
@@ -404,8 +418,13 @@ class _ProductionFinishedArrivalRegistrationPageState
     return row.item.lineNo > 0 ? '${row.item.lineNo}' : '${index + 1}';
   }
 
-  Future<void> _save() async {
+  /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「登记并送检」按钮。
+  Future<void> _save({required bool preStock}) async {
     if (_saving || _remembering || !_canRegister) return;
+    final wantPreStock = preStock && _canStockInBeforeInspection;
+    if (_stockInBeforeInspection != wantPreStock) {
+      setState(() => _stockInBeforeInspection = wantPreStock);
+    }
     if (_suggestionsLoading) {
       context.appInfo('正在读取该成品仓默认库位，请稍候再提交');
       return;
@@ -478,9 +497,13 @@ class _ProductionFinishedArrivalRegistrationPageState
     for (final entry in byWarehouse.entries) {
       if (_registrations.containsKey(entry.key)) continue;
       final body = <String, dynamic>{
-        'idempotencyKey': '$_idempotencyKey:${entry.key}',
+        // 幂等键含选择：同一页改用另一个按钮重提交是另一个请求，不是重放。
+        'idempotencyKey': _stockInBeforeInspection
+            ? '$_idempotencyKey:${entry.key}:prestock'
+            : '$_idempotencyKey:${entry.key}',
         'warehouseId': entry.key,
         if (remark.isNotEmpty) 'remark': remark,
+        if (_stockInBeforeInspection) 'stockInBeforeInspection': true,
         'items': [
           for (final row in entry.value)
             {
@@ -553,9 +576,12 @@ class _ProductionFinishedArrivalRegistrationPageState
         .where((sheetNo) => sheetNo.isNotEmpty)
         .toList(growable: false);
     final sheetText = sheets.isEmpty ? '' : '，品质检查单 ${sheets.join('、')}';
+    final tail = _stockInBeforeInspection
+        ? '；品质合格后系统按本次库位自动入库，无需再点收'
+        : '';
     return _registrations.length == 1
-        ? '成品仓和库位已登记，已送品质部检查$sheetText'
-        : '已按 ${_registrations.length} 个成品仓分别登记并送检$sheetText';
+        ? '成品仓和库位已登记，已送品质部检查$sheetText$tail'
+        : '已按 ${_registrations.length} 个成品仓分别登记并送检$sheetText$tail';
   }
 
   Future<void> _rememberRegisteredPlaces() async {
@@ -672,6 +698,11 @@ class _ProductionFinishedArrivalRegistrationPageState
       ref.watch(currentPermissionsProvider);
     }
     final theme = Theme.of(context);
+    // 「先入库后质检」按钮随权限快照实时显隐(独立权限点)。
+    final canPreStock = ref.watch(isSuperAdminProvider) ||
+        ref
+            .watch(currentPermissionsProvider)
+            .contains(Perm.productionFinishedInBeforeInspection);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
@@ -700,205 +731,230 @@ class _ProductionFinishedArrivalRegistrationPageState
         ],
       ),
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : _detail == null
-            ? UtenEmpty.error(
-                message: _error ?? '没有找到可登记的成品报工任务',
-                description: '任务可能已被其他仓库人员处理，请返回任务中心刷新。',
-                actionLabel: '重新加载',
-                onAction: _load,
-              )
-            : UtenGridPageScrollbar(
-                pinned: _gridPinned,
-                controller: _scrollController,
-                // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
-                // 恒在屏幕最右，不随限宽容器/列宽漂移。
-                child: UtenContentContainer(
-                  child: ListView(
+        child: Stack(
+          children: [
+            _loading
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : _detail == null
+                ? UtenEmpty.error(
+                    message: _error ?? '没有找到可登记的成品报工任务',
+                    description: '任务可能已被其他仓库人员处理，请返回任务中心刷新。',
+                    actionLabel: '重新加载',
+                    onAction: _load,
+                  )
+                : UtenGridPageScrollbar(
+                    pinned: _gridPinned,
                     controller: _scrollController,
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    children: [
-                      _buildStageBanner(theme),
-                      const SizedBox(height: UtenSpacing.s12),
-                      _buildHeaderCard(theme, names),
-                      const SizedBox(height: UtenSpacing.s12),
-                      if (_detail!.batches.isNotEmpty) ...[
-                        _buildBatchesCard(theme),
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                      if (_canRegister) ...[
-                        // 登记交互控件（默认仓/记忆开关/建议状态/备注）聚拢在工具区，
-                        // 一屏完成（2026-09-09 对照采购入库）；行级仓与批量动作在表格内。
-                        _buildRegistrationToolbar(theme),
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                      if (_rememberError != null) ...[
-                        _buildRememberFailure(theme),
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                      if (_validationError != null) ...[
-                        Semantics(
-                          liveRegion: true,
-                          child: Text(
-                            _validationError!,
-                            key: const Key(
-                              'production-finished-arrival-validation-error',
-                            ),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.error,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                      ],
-                      // 2026-09-14：提示常驻（原先只在 <840 窄屏出现）。
-                      LayoutBuilder(
-                        builder: (context, constraints) => Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: UtenSpacing.s8,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline_rounded,
-                                size: 18,
-                                color: theme.colorScheme.onSurfaceVariant,
+                    // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                    // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                    child: UtenContentContainer(
+                      child: ListView(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(UtenSpacing.s12),
+                        children: [
+                          _buildStageBanner(theme),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _buildHeaderCard(theme, names),
+                          const SizedBox(height: UtenSpacing.s12),
+                          if (_detail!.batches.isNotEmpty) ...[
+                            _buildBatchesCard(theme),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (_canRegister) ...[
+                            // 登记交互控件（默认仓/记忆开关/建议状态/备注）聚拢在工具区，
+                            // 一屏完成（2026-09-09 对照采购入库）；行级仓与批量动作在表格内。
+                            _buildRegistrationToolbar(theme),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (_rememberError != null) ...[
+                            _buildRememberFailure(theme),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (_validationError != null) ...[
+                            Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                _validationError!,
+                                key: const Key(
+                                  'production-finished-arrival-validation-error',
+                                ),
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.error,
+                                ),
                               ),
-                              const SizedBox(width: UtenSpacing.s8),
-                              Expanded(
-                                child: Text(
-                                  '本批可以只送检一部分产品：点行末 ⊖ 把该行移出本批送检'
-                                  '（也可勾选多行后右键批量移出），报工明细不会删除、'
-                                  '也不写库存，仍留在待登记送检。'
-                                  '${constraints.maxWidth < 840 ? '表格可左右滑动；' : ''}'
-                                  '报工数量只读；勾选多行后在任意一行改成品仓/库位即批量落值，'
-                                  '也可右键批量设置；库位说明见列头 ⓘ。',
-                                  style: theme.textTheme.bodySmall?.copyWith(
+                            ),
+                            const SizedBox(height: UtenSpacing.s8),
+                          ],
+                          // 2026-09-14：提示常驻（原先只在 <840 窄屏出现）。
+                          LayoutBuilder(
+                            builder: (context, constraints) => Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: UtenSpacing.s8,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    size: 18,
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // 「成品明细 (N)」标题行 2026-09-11 撤除（全站同改）。
-                      const SizedBox(height: UtenSpacing.s8),
-                      UtenEditableGrid<_FinishedArrivalRegistrationGridRow>(
-                        key: const Key(
-                          'production-finished-arrival-registration-grid',
-                        ),
-                        controller: _grid,
-                        stickyHeaderPinned: _gridPinned,
-                        columns: _columns(names),
-                        createBlankRow: () =>
-                            throw UnsupportedError('成品到货登记明细由已审核报工固定带入'),
-                        showAddRow: false,
-                        showRowDelete: false,
-                        selectable: _canRegister,
-                        selectionEnabled: !_saving && !_remembering,
-                        canSelectRow: (row) => !row.registered,
-                        onRemoveRows: _canRegister
-                            ? _removeFromThisRegistration
-                            : null,
-                        removeRowsActionLabel: '移出本批送检',
-                        removeRowsDialogTitle: '移出本批送检',
-                        removeRowsConfirmLabel: '确认移出',
-                        removeRowsMessageBuilder: (count) =>
-                            '确认从本批送检移出选中的 $count 行？'
-                            '报工明细不会删除，也不会产生 FQC、入库或库存事实；'
-                            '返回任务中心后仍保持待登记送检。',
-                        // 2026-09-12 表头上方常驻按钮全撤（与批量登记页、采购
-                        // 登记页同日同改）：全选走表头复选框，「移出本批送检」搬
-                        // 进行右键菜单，批量设仓/填库位改成「勾选多行后在任意
-                        // 一行改仓/写库位即整批落值」+ 右键菜单批量动作。
-                        showSelectAllToggle: false,
-                        showRemoveRowsAction: false,
-                        // 2026-09-14：行末常驻 ⊖（与到货登记页同一口径）——只走
-                        // 右键在宽屏等于没有入口，用户判定「不能删除部分产品」。
-                        // 已登记行 canSelectRow=false，组件自动只占位不出按钮。
-                        showInlineRemoveAction: true,
-                        rowMenuExtraBuilder: _canRegister && !_saving
-                            ? (context, selected) => [
-                                UtenMenuItem(
-                                  label: '批量设置成品仓 (${selected.length})',
-                                  icon: Icons.warehouse_outlined,
-                                  enabled: selected.isNotEmpty,
-                                  onTap: () => _pickWarehouseFor(
-                                    selected
-                                        .where((row) => !row.registered)
-                                        .toList(),
+                                  const SizedBox(width: UtenSpacing.s8),
+                                  Expanded(
+                                    child: Text(
+                                      '本批可以只送检一部分产品：点行末 ⊖ 把该行移出本批送检'
+                                      '（也可勾选多行后右键批量移出），报工明细不会删除、'
+                                      '也不写库存，仍留在待登记送检。'
+                                      '${constraints.maxWidth < 840 ? '表格可左右滑动；' : ''}'
+                                      '报工数量只读；勾选多行后在任意一行改成品仓/库位即批量落值，'
+                                      '也可右键批量设置；库位说明见列头 ⓘ。',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
                                   ),
-                                ),
-                                UtenMenuItem(
-                                  label: '批量设置库位号 (${selected.length})',
-                                  icon: Icons.edit_note_outlined,
-                                  enabled: selected.isNotEmpty,
-                                  onTap: () => _batchFillPlace(selected),
-                                ),
-                              ]
-                            : null,
-                        emptyMessage: '该报工单没有可登记明细，请返回任务中心刷新',
-                        footer: Padding(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          child: Text(
-                            _removedLineCount > 0
-                                ? '已移出 $_removedLineCount 行（仅本批）；未选行仍在待登记送检，'
-                                      '本次只提交表内剩余行。'
-                                : _canRegister
-                                ? _rememberPlaces
-                                      ? '按行仓分组登记：一个成品仓一个登记批次、一张品质检查单；'
-                                            '将按所选成品仓记住默认库位，不改变历史登记和库存事实。'
-                                      : '按行仓分组登记：一个成品仓一个登记批次、一张品质检查单；'
-                                            '仅保存本次到货库位快照，不更新以后默认建议。'
-                                : _detail!.registered
-                                ? '该到货登记已提交，仓库和库位仅供核对。'
-                                : '当前账号只有查看权限，不能修改仓库或库位。',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                      ListenableBuilder(
-                        listenable: _grid,
-                        builder: (context, _) => UtenTotalsSummaryBar(
-                          key: const Key('production-finished-arrival-totals'),
-                          density: true,
-                          entries: [
-                            UtenTotalEntry('成品明细', '${_grid.length} 行'),
-                            UtenTotalEntry(
-                              '报工合计',
-                              measurementTotalsText(
-                                _grid.rows.map(
-                                  (row) => MeasuredAmount(
-                                    value: row.item.reportedQty,
-                                    unitId: row.item.unitId,
-                                    unitName: row.item.unitName,
-                                  ),
+                          // 「成品明细 (N)」标题行 2026-09-11 撤除（全站同改）。
+                          const SizedBox(height: UtenSpacing.s8),
+                          UtenEditableGrid<_FinishedArrivalRegistrationGridRow>(
+                            key: const Key(
+                              'production-finished-arrival-registration-grid',
+                            ),
+                            controller: _grid,
+                            stickyHeaderPinned: _gridPinned,
+                            columns: _columns(names),
+                            createBlankRow: () =>
+                                throw UnsupportedError('成品到货登记明细由已审核报工固定带入'),
+                            showAddRow: false,
+                            showRowDelete: false,
+                            selectable: _canRegister,
+                            selectionEnabled: !_saving && !_remembering,
+                            canSelectRow: (row) => !row.registered,
+                            onRemoveRows: _canRegister
+                                ? _removeFromThisRegistration
+                                : null,
+                            removeRowsActionLabel: '移出本批送检',
+                            removeRowsDialogTitle: '移出本批送检',
+                            removeRowsConfirmLabel: '确认移出',
+                            removeRowsMessageBuilder: (count) =>
+                                '确认从本批送检移出选中的 $count 行？'
+                                '报工明细不会删除，也不会产生 FQC、入库或库存事实；'
+                                '返回任务中心后仍保持待登记送检。',
+                            // 2026-09-12 表头上方常驻按钮全撤（与批量登记页、采购
+                            // 登记页同日同改）：全选走表头复选框，「移出本批送检」搬
+                            // 进行右键菜单，批量设仓/填库位改成「勾选多行后在任意
+                            // 一行改仓/写库位即整批落值」+ 右键菜单批量动作。
+                            showSelectAllToggle: false,
+                            showRemoveRowsAction: false,
+                            // 2026-09-14：行末常驻 ⊖（与到货登记页同一口径）——只走
+                            // 右键在宽屏等于没有入口，用户判定「不能删除部分产品」。
+                            // 已登记行 canSelectRow=false，组件自动只占位不出按钮。
+                            showInlineRemoveAction: true,
+                            rowMenuExtraBuilder: _canRegister && !_saving
+                                ? (context, selected) => [
+                                    UtenMenuItem(
+                                      label: '批量设置成品仓 (${selected.length})',
+                                      icon: Icons.warehouse_outlined,
+                                      enabled: selected.isNotEmpty,
+                                      onTap: () => _pickWarehouseFor(
+                                        selected
+                                            .where((row) => !row.registered)
+                                            .toList(),
+                                      ),
+                                    ),
+                                    UtenMenuItem(
+                                      label: '批量设置库位号 (${selected.length})',
+                                      icon: Icons.edit_note_outlined,
+                                      enabled: selected.isNotEmpty,
+                                      onTap: () => _batchFillPlace(selected),
+                                    ),
+                                  ]
+                                : null,
+                            emptyMessage: '该报工单没有可登记明细，请返回任务中心刷新',
+                            footer: Padding(
+                              padding: const EdgeInsets.all(UtenSpacing.s12),
+                              child: Text(
+                                _removedLineCount > 0
+                                    ? '已移出 $_removedLineCount 行（仅本批）；未选行仍在待登记送检，'
+                                          '本次只提交表内剩余行。'
+                                    : _canRegister
+                                    ? _rememberPlaces
+                                          ? '按行仓分组登记：一个成品仓一个登记批次、一张品质检查单；'
+                                                '将按所选成品仓记住默认库位，不改变历史登记和库存事实。'
+                                          : '按行仓分组登记：一个成品仓一个登记批次、一张品质检查单；'
+                                                '仅保存本次到货库位快照，不更新以后默认建议。'
+                                    : _detail!.registered
+                                    ? '该到货登记已提交，仓库和库位仅供核对。'
+                                    : '当前账号只有查看权限，不能修改仓库或库位。',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          ListenableBuilder(
+                            listenable: _grid,
+                            builder: (context, _) => UtenTotalsSummaryBar(
+                              key: const Key(
+                                'production-finished-arrival-totals',
+                              ),
+                              density: true,
+                              entries: [
+                                UtenTotalEntry('成品明细', '${_grid.length} 行'),
+                                UtenTotalEntry(
+                                  '报工合计',
+                                  measurementTotalsText(
+                                    _grid.rows.map(
+                                      (row) => MeasuredAmount(
+                                        value: row.item.reportedQty,
+                                        unitId: row.item.unitId,
+                                        unitName: row.item.unitName,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(
+                            height: UtenFloatingActionGroup.scrollClearance,
+                          ),
+                        ],
                       ),
-                      const SizedBox(
-                        height: UtenFloatingActionGroup.scrollClearance,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+            // 登记/记忆/撤销网络段的全屏加载遮罩（root Overlay 传送门）。
+            if (_saving || _remembering || _reversing)
+              UtenBusyOverlay(
+                title: _saving
+                    ? '正在登记成品仓与库位'
+                    : _reversing
+                    ? '正在撤销本次登记'
+                    : '正在记忆库位',
+                description: _saving
+                    ? '正在按成品仓逐张登记并送检，请勿重复提交或离开本页。'
+                    : '请稍候，完成后自动继续。',
               ),
+          ],
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null ? null : _buildBottomBar(theme),
+      floatingActionButton:
+          _detail == null ? null : _buildBottomBar(theme, canPreStock),
     );
   }
 
-  /// 底部：「成品明细 N 行 · 报工合计 Σ(按单位)」合计条 + 取消/登记并送检。
-  Widget _buildBottomBar(ThemeData theme) => UtenFloatingActionGroup(
+  /// 底部：取消 + 先入库后质检 / 登记并送检(两个主动作二选一)。
+  Widget _buildBottomBar(ThemeData theme, bool canPreStock) =>
+      UtenFloatingActionGroup(
     children: [
       UtenButton(
         type: UtenButtonType.secondary,
@@ -908,21 +964,40 @@ class _ProductionFinishedArrivalRegistrationPageState
             : () => _leave(changed: _registrationCompletedThisSession),
         child: Text(_canRegister ? '取消' : '返回任务'),
       ),
-      if (_canRegister)
+      if (_canRegister) ...[
+        // 先入库后质检(V597 / ADR-090 第六节)：与「登记并送检」并排的第二个主动作。
+        // 点它 = 登记 + 送检 + 承诺「合格按本次登记的成品仓与库位自动点收」，仓库不再
+        // 收到待点收任务；代价是实收恒等于报工量(放弃短收改量)。需独立权限。
+        if (canPreStock)
+          Tooltip(
+            message: '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
+                '仓库不再确认第二次(实收恒等于报工量，放弃短收改量)；不合格仍不动库存',
+            child: UtenButton(
+              key: const Key('production-finished-arrival-stock-in-first'),
+              size: UtenButtonSize.large,
+              icon: Icons.shelves,
+              isLoading: _saving && _stockInBeforeInspection,
+              onPressed: _saving || _suggestionsLoading || _grid.isEmpty
+                  ? null
+                  : () => _save(preStock: true),
+              child: const Text('先入库后质检'),
+            ),
+          ),
         UtenButton(
           key: const Key('production-finished-arrival-submit'),
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.fact_check_outlined,
-          isLoading: _saving,
+          isLoading: _saving && !_stockInBeforeInspection,
           onPressed: _saving || _suggestionsLoading || _grid.isEmpty
               ? null
-              : _save,
+              : () => _save(preStock: false),
           onDisabledTap: _suggestionsLoading
               ? () => context.appInfo('正在读取该成品仓默认库位，请稍候再提交')
               : null,
           child: const Text('登记并送检'),
         ),
+      ],
     ],
   );
 
@@ -1378,6 +1453,10 @@ class _ProductionFinishedArrivalRegistrationPageState
         required: _canRegister,
         textOf: (row) => _warehouseLabel(row.warehouseId.value) ?? '',
         listenableOf: (row) => row.warehouseId,
+        // 格尾箭头(20) + 预填黄标 ⓘ(44)计入量宽（2026-09-16）。
+        chromeWidth:
+            UtenEditableGridCellSpec.dropdownChevronWidth +
+            UtenEditableGridCellSpec.hintIconWidth,
         cellBuilder: (context, row) => _buildWarehouseCell(context, row),
       ),
     EditableGridColumn(
@@ -1393,6 +1472,8 @@ class _ProductionFinishedArrivalRegistrationPageState
           '请核对本次实物存放位置，可直接修改。',
       textOf: (row) => row.place.text,
       listenableOf: (row) => row.place,
+      // 预填黄标 ⓘ(44)计入量宽（2026-09-16）。
+      chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
       cellBuilder: (context, row) => _buildPlaceCell(context, row),
     ),
   ];

@@ -31,7 +31,24 @@ public final class ProductionFinishedArrivalContracts {
             @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
             List<ArrivalRegistrationItemRequest> items,
             @Size(max = 500, message = "备注不能超过 500 个字符")
-            String remark) {
+            String remark,
+            /**
+             * 先入库后质检(V597)：TRUE = 品质合格时系统按本次登记的成品仓与库位自动点收入库，
+             * 仓库不再点第二次(实收恒等于报工量)。缺省/FALSE = 原「登记并送检」流程。
+             * 需要 production_finished_in:before_inspection，服务端另行兜底。
+             */
+            Boolean stockInBeforeInspection) {
+
+        /** 老客户端不传该字段时等价于原流程。 */
+        public ArrivalRegistrationRequest(
+                String idempotencyKey, UUID warehouseId,
+                List<ArrivalRegistrationItemRequest> items, String remark) {
+            this(idempotencyKey, warehouseId, items, remark, null);
+        }
+
+        public boolean stockInBeforeInspectionRequested() {
+            return Boolean.TRUE.equals(stockInBeforeInspection);
+        }
     }
 
     public record ArrivalRegistrationItemRequest(
@@ -60,7 +77,9 @@ public final class ProductionFinishedArrivalContracts {
             OffsetDateTime reversedAt,
             String reversalReason,
             boolean reversible,
-            List<RegistrationBatchView> batches) {
+            List<RegistrationBatchView> batches,
+            /** 先入库后质检(V597)：本登记批次是否「合格自动点收」。 */
+            boolean stockInBeforeInspection) {
 
         public ArrivalRegistrationView {
             items = List.copyOf(items);
@@ -147,7 +166,20 @@ public final class ProductionFinishedArrivalContracts {
             @Size(min = 1, max = 50)
             List<BatchReportRegistrationRequest> reports,
             @Size(max = 500, message = "备注不能超过 500 个字符")
-            String remark) {
+            String remark,
+            /** 先入库后质检(V597)：整批一个口径，逐单落到各自的登记头上。 */
+            Boolean stockInBeforeInspection) {
+
+        /** 老客户端不传该字段时等价于原流程。 */
+        public BatchArrivalRegistrationRequest(
+                String idempotencyKey,
+                List<BatchReportRegistrationRequest> reports, String remark) {
+            this(idempotencyKey, reports, remark, null);
+        }
+
+        public boolean stockInBeforeInspectionRequested() {
+            return Boolean.TRUE.equals(stockInBeforeInspection);
+        }
     }
 
     public record BatchReportRegistrationRequest(

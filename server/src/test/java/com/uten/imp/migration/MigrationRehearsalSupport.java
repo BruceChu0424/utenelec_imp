@@ -1,7 +1,11 @@
 package com.uten.imp.migration;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
@@ -12,22 +16,55 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Shared, fail-closed reconciliation rules for synthetic and real-clone migration rehearsals. */
 final class MigrationRehearsalSupport {
 
-    // 迁移头（新增迁移**必须**同步这两个常量，否则整组迁移演练/引导兼容性用例全红）。
-    // V564-V569 preserve physical quantities and explicit present/future material ownership;
-    // V570 adds goods price visibility; V571 forwards the later V569 enhancements
-    // while preserving the V569 checksum already applied to existing databases.
-    // 同一条耦合的另外两处：ops/reset_business_data.sql 的 fail-closed 白名单，
-    // 以及它的两份契约测试——BusinessDataResetSqlContractTest
-    // #resetScriptAllowlistCoversTheCurrentMigrationHead 会从迁移目录算出真实头再比对，
-    // 漏改时直接告诉你该补哪一行。
-    static final String CURRENT_HEAD_VERSION = "594";
-    static final int CURRENT_MIGRATION_COUNT = 551;
+    // 迁移头与迁移数：直接从 classpath 的 db/migration 目录推导（2026-09-16 起），
+    // 目录本身就是唯一事实源——新增迁移不再需要改这里（历史上"594/551 忘同步"
+    // 曾连炸四轮：b971674f/dfb07ebd/6bb5715e 等）。
+    // 同一耦合仍靠人肉同步的两处（各有自己的闸门测试兜底）：
+    //   - ops/reset_business_data.sql 的 (installed_rank, version) fail-closed 白名单
+    //     （BusinessDataResetSqlContractTest 会在漏改时报出该补的行）；
+    //   - docs/数据迁移/README.md 的头版本说明（LegacyMigrationSafetyContractTest 锁）。
+    static final String CURRENT_HEAD_VERSION;
+    static final int CURRENT_MIGRATION_COUNT;
+
+    static {
+        try {
+            Path migrationDir = Paths.get(
+                    MigrationRehearsalSupport.class.getResource("/db/migration").toURI());
+            Pattern versioned = Pattern.compile("V(\\d+)__.*\\.sql");
+            int head = 0;
+            int count = 0;
+            try (Stream<Path> files = Files.list(migrationDir)) {
+                for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
+                    Matcher matcher = versioned.matcher(file.getFileName().toString());
+                    if (!matcher.matches()) {
+                        continue;
+                    }
+                    count++;
+                    head = Math.max(head, Integer.parseInt(matcher.group(1)));
+                }
+            } catch (IOException failure) {
+                throw new IllegalStateException("无法枚举 db/migration 目录", failure);
+            }
+            if (head <= 0 || count <= 0) {
+                throw new IllegalStateException(
+                        "db/migration 下未发现任何 V*__*.sql，无法推导迁移头");
+            }
+            CURRENT_HEAD_VERSION = Integer.toString(head);
+            CURRENT_MIGRATION_COUNT = count;
+        } catch (Exception failure) {
+            throw new IllegalStateException(
+                    "推导迁移头失败：测试 classpath 必须以目录形式暴露 db/migration", failure);
+        }
+    }
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
     private static final Set<String> EXPECTED_ROW_COUNT_MUTATIONS = Set.of(

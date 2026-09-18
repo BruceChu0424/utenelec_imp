@@ -295,50 +295,6 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * 货品 → 最近一次分析确认的供应路线（路线「学习预填」）：同一货品按
-     * 颜色+单位维度各取最新一条 confirmed_route（无建议路线或上次确认与建议
-     * 不同的物料，前端用记忆默认带出并提醒核对）。只读、无行级隔离——
-     * 路线选择是计划口径知识，跨分析共享。
-     */
-    @Transactional(readOnly = true)
-    public java.util.Map<String, java.util.List<LastRoutePerGoods>> lastRoutesPerGoods(
-            java.util.Set<UUID> goodsIds) {
-        if (goodsIds.isEmpty()) {
-            return java.util.Map.of();
-        }
-        var query = em.createNativeQuery("""
-                WITH history AS (
-                    SELECT m.goods_id,m.color_id,m.unit_id,m.confirmed_route,m.route_reason,
-                      DENSE_RANK() OVER (
-                        PARTITION BY m.goods_id,m.color_id,m.unit_id
-                        ORDER BY COALESCE(m.route_confirmed_at,m.created_at) DESC) AS recency
-                    FROM production_material_analysis_materials m
-                    JOIN production_material_analyses a ON a.id=m.analysis_id
-                    WHERE m.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[]))) AND m.confirmed_route IS NOT NULL
-                      AND a.is_deleted=FALSE AND a.status<>'CANCELLED'
-                )
-                SELECT goods_id,color_id,unit_id,MIN(confirmed_route),
-                  CASE WHEN COUNT(DISTINCT route_reason)=1 THEN MIN(route_reason) ELSE NULL END
-                FROM history WHERE recency=1
-                GROUP BY goods_id,color_id,unit_id
-                HAVING COUNT(DISTINCT confirmed_route)=1
-                ORDER BY goods_id,color_id,unit_id
-                """);
-        query.setParameter("goodsIds", uuidArrayText(goodsIds));
-        java.util.Map<String, java.util.List<LastRoutePerGoods>> result = new java.util.LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
-            UUID goodsId = (UUID) row[0];
-            result.computeIfAbsent(goodsId.toString(), key -> new java.util.ArrayList<>())
-                    .add(new LastRoutePerGoods((UUID) row[1], (UUID) row[2],
-                            (String) row[3], (String) row[4]));
-        }
-        return result;
-    }
-
-    /** 货品一个颜色+单位维度的最近确认路线（route 为 BUY/SUBCONTRACT/MAKE）。 */
-    public record LastRoutePerGoods(UUID colorId, UUID unitId, String route, String reason) {}
-
-    /**
      * 物料行 → 下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单子件」
      * 分支）：基础需求已下过单的行，超产多出来的量怎么办取决于申请走到哪一步——
      *
@@ -565,6 +521,14 @@ public class MaterialAnalysisService {
     /**
      * 保存物料供给路线（按操作组）：幂等重放 + 乐观版本校验。操作组已有不同路线的下游任务时禁止改路线（须先撤回）；
      * 原因可选；确认人和确认时间始终保留，已有下游的路线仍须先撤回。
+     *
+     * <p>2026-09-16 供应方式单一事实源 = 货品主档 goods.source_type：确认路线同事务回写主档
+     * (BUY→采购、MAKE→自制、SUBCONTRACT→委外，含 ROOT_SUPPLY 根行——根确认为 MAKE 即产品是自制件)，
+     * 新分析的建议路线从主档来，用户在分析里改的供应方式下次进来就是新值；按历史分析推导的
+     * /last-routes 记忆整套退役。同一条 UPDATE 把本行 source_suggestion 对齐成确认值：否则
+     * 主档回写后下一次刷新算出的建议 = 刚确认的值，与旧建议不同，会被
+     * {@code NODE_FACT_CHANGED_CONDITION} 当成「主档事实变更」把确认清掉(反馈环)。
+     * 主档回写必须先于 {@link #refreshLocked}，刷新按新主档算建议才与本行对齐。
      */
     @Transactional
     public AnalysisView saveRoutes(UUID analysisId, RouteRequest request) {
@@ -585,6 +549,9 @@ public class MaterialAnalysisService {
         List<SourceLine> routeSources = loadSourceLines(analysisId, false);
         Map<UUID, String> planningBlocks = planningBlockedReasons(routeSources);
         Set<UUID> knownSources = routeSources.stream().map(SourceLine::analysisItemId).collect(Collectors.toSet());
+        // 本次确认涉及的货品 → 路线：同一货品出现多行时按 goods 去重，以本次确认值为准
+        // (后出现的决策覆盖先出现的)，主档回写一货品一条。
+        Map<UUID, String> goodsRoutes = new LinkedHashMap<>();
         for (RouteDecision decision : decisions) {
             MaterialGroup resolved = materialGroups.resolve(decision);
             List<MaterialRow> group = resolved.materials();
@@ -626,6 +593,7 @@ public class MaterialAnalysisService {
                 em.createNativeQuery("""
                         UPDATE production_material_analysis_materials
                         SET confirmed_route = :route,
+                            source_suggestion = :route,
                             route_reason = :reason,
                             route_confirmed_by = :actorId,
                             route_confirmed_at = now(),
@@ -639,11 +607,44 @@ public class MaterialAnalysisService {
                         .setParameter("materialId", material.id())
                         .setParameter("analysisId", analysisId)
                         .executeUpdate();
+                if (material.goodsId() != null) goodsRoutes.put(material.goodsId(), route);
             }
         }
+        writeBackGoodsSourceType(goodsRoutes);
         refreshLocked(analysisId);
         recordSimpleCommand(analysisId, "ROUTE", request.idempotencyKey(), requestHash);
         return detailInternal(analysisId, false);
+    }
+
+    /**
+     * 确认路线回写货品主档 goods.source_type (与 V587 所属仓库人工回写
+     * {@link GoodsOwningWarehouseWriteService} 同口径)：这是人工决定，所以抬 version；
+     * 值没变不落盘 (IS DISTINCT FROM)，已软删货品跳过。走原生 SQL 而不是 master 的
+     * JPA 仓储——production 包直接 import master 仓储会踩 ArchitectureBoundaryTest
+     * 的跨 feature 边界。goods 带行级审计触发器，saveRoutes 开头已 tx.bind() 绑定
+     * app.actor_id。返回实际改写的货品数。
+     */
+    private int writeBackGoodsSourceType(Map<UUID, String> routesByGoods) {
+        if (routesByGoods.isEmpty()) return 0;
+        UUID actorId = currentUser.requireId();
+        int updated = 0;
+        for (Map.Entry<UUID, String> entry : routesByGoods.entrySet()) {
+            String sourceType = sourceTypeForRoute(entry.getValue());
+            updated += em.createNativeQuery("""
+                    UPDATE goods
+                    SET source_type = :sourceType,
+                        version = version + 1,
+                        updated_at = now(),
+                        updated_by = :actorId
+                    WHERE id = :goodsId AND is_deleted = FALSE
+                      AND source_type IS DISTINCT FROM :sourceType
+                    """)
+                    .setParameter("sourceType", sourceType)
+                    .setParameter("actorId", actorId)
+                    .setParameter("goodsId", entry.getKey())
+                    .executeUpdate();
+        }
+        return updated;
     }
 
     /**
@@ -1582,8 +1583,22 @@ public class MaterialAnalysisService {
 
     /**
      * 节点 upsert「BOM 事实变更即清人工确认」条件，四个路线确认列共用。
-     * 2026-09-10（F8 前向批注）：旧快照的 REVIEW 建议升级为具体建议（如主档来源为空的
-     * BOM 父件改按自制建议）不算事实变更，不清人工确认；主档真的改了来源仍清。
+     *
+     * <p>2026-09-10（F8 前向批注）：旧快照的 REVIEW 建议升级为具体建议（如主档来源为空的
+     * BOM 父件改按自制建议）不算事实变更，不清人工确认。
+     *
+     * <p><b>2026-09-16：主档来源（source_suggestion）整项移出本条件</b>，它的变化不再
+     * 清掉人工确认。供应方式收口成货品主档单一事实源之后，确认路线本身会回写
+     * {@code goods.source_type}，于是「主档来源变了」与「有人确认过路线」成了同一件事，
+     * 这条判定就变成一个**跨分析的反馈环**：同一货品在 A 分析里被确认为自制，B 分析下
+     * 一次刷新算出的建议随之变成自制，与 B 里已确认的采购不一致，B 的人工确认被静默
+     * 清空，随后 issue-plans 报「候选物料节点不存在或路线未确认」。
+     * （{@code PreplanReallocationMakeSupplementEndToEndTest} 的让料用例正踩在这里：
+     * 让出方与借入方两份分析共用同一个货品、路线各不相同。）
+     *
+     * <p>结构性事实（货品 / 颜色 / 单位 / 父节点 / 路径 / 单耗 / 控制段 / BOM 数量）一条
+     * 没删，真改了照旧清确认并计入 {@code routeResetCount}。只有「来源」这一项交还给人：
+     * 它现在就是人填的，系统不该反过来替人作废。
      */
     private static final String NODE_FACT_CHANGED_CONDITION = """
             production_material_analysis_materials.goods_id
@@ -1610,10 +1625,6 @@ public class MaterialAnalysisService {
                 IS DISTINCT FROM EXCLUDED.hard_gate
             OR production_material_analysis_materials.bom_qty
                 IS DISTINCT FROM EXCLUDED.bom_qty
-            OR (production_material_analysis_materials.source_suggestion
-                    IS DISTINCT FROM EXCLUDED.source_suggestion
-                AND production_material_analysis_materials.source_suggestion
-                    IS DISTINCT FROM 'REVIEW')
             """;
 
     private static String resetUnlessFactsUnchanged(String column) {
@@ -5249,6 +5260,7 @@ public class MaterialAnalysisService {
                        GREATEST(COALESCE(v.available_qty,0),0),
                        COALESCE(own.own_qty,0),
                        (NOT w.is_defective
+                        AND NOT w.is_line_side
                         AND NOT EXISTS(SELECT 1 FROM warehouses child
                             WHERE child.parent_id=w.id AND child.is_deleted=FALSE)
                         AND (CAST(:warehouseId AS uuid) IS NULL
@@ -7078,6 +7090,20 @@ public class MaterialAnalysisService {
             case "自制" -> "MAKE";
             case "委外" -> "SUBCONTRACT";
             default -> hasChildren ? "MAKE" : "REVIEW";
+        };
+    }
+
+    /**
+     * 确认路线 → 货品主档来源 (goods.source_type 值域见 V128：'自制' / '采购' / '委外')，
+     * 是 {@link #suggestion(String, boolean)} 的逆映射：确认即回写主档，下次分析的建议
+     * 路线就是这次确认的值。非法路线与 {@link #normalizeRoute} 同一条报错。
+     */
+    static String sourceTypeForRoute(String route) {
+        return switch (normalizeRoute(route)) {
+            case "BUY" -> "采购";
+            case "MAKE" -> "自制";
+            case "SUBCONTRACT" -> "委外";
+            default -> throw validation("物料路线必须为 BUY、MAKE 或 SUBCONTRACT");
         };
     }
 

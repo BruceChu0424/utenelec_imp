@@ -49,6 +49,10 @@ final expenseStatusFilterProvider = StateProvider<ExpenseClaimStatus?>(
   (ref) => null,
 );
 
+/// 我的报销「类别」列表头筛选（2026-09-16）：明细项级别类别码（TRANSPORT/...），
+/// 下推后端 category 参数（类别挂在明细项上，命中任一明细即返回该单）。
+final expenseCategoryFilterProvider = StateProvider<String?>((ref) => null);
+
 /// 某状态所属的分段（表头筛选选中状态时同步切换顶部分段）。
 ExpenseFilter expenseFilterOfStatus(ExpenseClaimStatus status) {
   for (final filter in ExpenseFilter.values) {
@@ -69,6 +73,7 @@ class ExpenseListNotifier
   int _page = 1;
   ExpenseFilter? _lastFilter;
   ExpenseClaimStatus? _lastStatus;
+  String? _lastCategory;
 
   @override
   Future<PagedResult<ExpenseClaim>> build() async {
@@ -80,14 +85,21 @@ class ExpenseListNotifier
     });
     final filter = ref.watch(expenseFilterProvider);
     final status = ref.watch(expenseStatusFilterProvider);
-    // 换分段 / 换表头状态筛选都回第 1 页。
-    if (_lastFilter != filter || _lastStatus != status) _page = 1;
+    final category = ref.watch(expenseCategoryFilterProvider);
+    // 换分段 / 换表头状态或类别筛选都回第 1 页。
+    if (_lastFilter != filter ||
+        _lastStatus != status ||
+        _lastCategory != category) {
+      _page = 1;
+    }
     _lastFilter = filter;
     _lastStatus = status;
+    _lastCategory = category;
     return ref
         .watch(expenseRepositoryProvider)
         .listMine(
           statuses: status != null ? [status] : filter.apiStatuses,
+          category: category,
           page: _page,
         );
   }

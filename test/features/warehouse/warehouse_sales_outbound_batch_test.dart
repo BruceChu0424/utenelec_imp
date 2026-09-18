@@ -345,6 +345,41 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'work status header filter overrides segment and reloads page one',
+    (tester) async {
+      // 表头筛选生效冒烟：仓库作业固定枚举桶（含分段之外的 取消/红冲/迁移异常），
+      // 选桶 → warehouseWorkStatus 收到该值并回第 1 页；切段时清表头筛选。
+      await tester.binding.setSurfaceSize(const Size(1500, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _Gateway([_detail('1')]);
+      await _pump(tester, gateway, const WarehouseSalesOutboundPage());
+      await tester.tap(find.text('待出库'));
+      await tester.pumpAndSettle();
+
+      final table = tester
+          .widget<MasterDataTableView<WarehouseSalesOutboundSummary>>(
+            find.byKey(const Key('warehouse-sales-outbound-table')),
+          );
+      expect(table.facets.keys, contains('warehouseWorkStatus'));
+      expect(
+        table.facets['warehouseWorkStatus']?.map((bucket) => bucket.value),
+        containsAll(<String>['PENDING_PICK', 'SHIPPED', 'CANCELLED']),
+      );
+
+      table.onFilterChanged('warehouseWorkStatus', 'CANCELLED');
+      await tester.pumpAndSettle();
+      expect(gateway.workStatuses.last, 'CANCELLED');
+      expect(gateway.listPages.last, 1);
+
+      // 切回「已出库」段：表头状态桶被清，回分段口径。
+      await tester.tap(find.text('已出库'));
+      await tester.pumpAndSettle();
+      expect(gateway.workStatuses.last, 'SHIPPED');
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Future<void> _pump(WidgetTester tester, _Gateway gateway, Widget page) async {
@@ -438,6 +473,8 @@ class _Gateway implements WarehouseSalesOutboundGateway {
   final Map<String, Map<String, String>?> places = {};
   String? failId;
   int listReads = 0;
+  final List<String?> workStatuses = [];
+  final List<int> listPages = [];
 
   @override
   Future<int> pendingCount() async => values.length;
@@ -455,6 +492,8 @@ class _Gateway implements WarehouseSalesOutboundGateway {
     String? dateTo,
   }) async {
     listReads++;
+    workStatuses.add(warehouseWorkStatus);
+    listPages.add(page);
     final items = values.values
         .where(
           (d) =>

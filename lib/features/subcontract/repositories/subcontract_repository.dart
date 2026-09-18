@@ -108,9 +108,9 @@ class SubcontractRepository {
     ];
   }
 
-  /// 货品 → 最近一次委外订货商业条款（行级条款「学习预填」：委外商/结算方式/币种/
-  /// 汇率/税率一次带回；2026-09 行级条款改造起的预填契约）。无历史货品不在返回 Map 中。
-  /// （旧 /last-suppliers 仅回委外商的端点保留一个发布周期兼容旧客户端，前端已不再使用。）
+  /// 货品 → 主档默认委外条款(行级预填：默认委外商/结算方式/币种/汇率/税率/委外加工
+  /// 单价一次带回)。读的是货品与供应商主档的默认值，每次保存订单由服务端写回主档；
+  /// 主档没有默认值的货品不在返回 Map 中。端点路径 /last-terms 是历史遗留。
   Future<Map<String, ProcurementLastTerms>> lastTermsByGoods(
     Set<String> goodsIds,
   ) => loadProcurementTerms(api, '$_base/last-terms', goodsIds);

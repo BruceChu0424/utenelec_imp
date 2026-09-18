@@ -4,6 +4,7 @@ import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
+import com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -83,6 +84,9 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
     private final com.uten.imp.common.finance.ProcurementReceiptConsiderationService consideration;
     private final com.uten.imp.application.port.ProcurementInventoryValuePort procurementValue;
+    /** 先入库后检(V596)：品质合格时按上架位置自动完成正式入库，并同事务推进生产联动。 */
+    private final ProcurementIqcStockInService iqcStockIn;
+    private final com.uten.imp.application.port.ProductionInspectionStockInPort stockInProduction;
 
     /** 收货审核同事务调用：建冻结行 + RECEIVED 事件；不写 stock_balances。 */
     @Override
@@ -200,15 +204,17 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 }
             }
         }
+        List<ReceiptStockIn> autoStockIns = new ArrayList<>();
         for (var event : command.events()) {
             if (replay) {
                 notifyDispositionReplay(receiptType, receiptId, event.inspectionItemId(), event.id(),
                         event.action(), (Boolean) history.get(event.id())[5]);
             } else {
                 applyDisposition(receiptType, receiptId, rows.get(event.inspectionItemId()), event.id(),
-                        event.action(), event.quantity(), event.reason(), command.requestHash());
+                        event.action(), event.quantity(), event.reason(), command.requestHash(), autoStockIns);
             }
         }
+        advanceProductionAfterAutoStockIn(autoStockIns);
         completeReceiptDisposition(receiptType, receiptId);
     }
 
@@ -252,12 +258,23 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         UUID eventId = dispositionEventId(inspectionItemId, idempotencyKey);
         Boolean replayRequiresWarehouseStockIn = replayRequiresWarehouseStockIn(
                 eventId, inspectionItemId, action, requested, reason);
+        List<ReceiptStockIn> autoStockIns = new ArrayList<>();
         if (replayRequiresWarehouseStockIn != null) {
             notifyDispositionReplay(receiptType, receiptId, inspectionItemId, eventId, action, replayRequiresWarehouseStockIn);
         } else {
-            applyDisposition(receiptType, receiptId, row, eventId, action, requested, reason, null);
+            applyDisposition(receiptType, receiptId, row, eventId, action, requested, reason, null, autoStockIns);
         }
+        advanceProductionAfterAutoStockIn(autoStockIns);
         completeReceiptDisposition(receiptType, receiptId);
+    }
+
+    /**
+     * 先入库后检(V596)：本次命令里合格并按上架位置自动转正入库的批次，在结案回调前
+     * 一次性推进生产联动(与仓库手工确认入库同一入口，重放不会再次推进)。
+     */
+    private void advanceProductionAfterAutoStockIn(List<ReceiptStockIn> autoStockIns) {
+        if (autoStockIns.isEmpty()) return;
+        stockInProduction.afterInspectionStockInConfirmed(List.copyOf(autoStockIns));
     }
 
     /** The complete receipt remains locked until every event and final reconciliation commits. */
@@ -269,7 +286,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
                                received_base_qty, received_amount_local,
                                passed_base_qty, failed_base_qty, status, receipt_type,
-                               received_weight, received_weight_unit_id
+                               received_weight, received_weight_unit_id,
+                               pre_stocked_warehouse_id, pre_stocked_place
                         FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
                         ORDER BY id
@@ -302,7 +320,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     private void applyDisposition(String receiptType, UUID receiptId, Object[] row, UUID eventId,
-                                  String action, BigDecimal requested, String reason, String batchRequestHash) {
+                                  String action, BigDecimal requested, String reason, String batchRequestHash,
+                                  List<ReceiptStockIn> autoStockIns) {
         UUID inspectionItemId = (UUID) row[0];
         String currentStatus = (String) row[10];
         if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
@@ -363,10 +382,21 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         appendEvent(
                 eventId, inspectionItemId, action, requested, reason, actor, now,
                 releasedAmount, releasedWeight, releasedWeightUnitId, batchRequestHash);
-        if ("PASS".equals(action)) {
+        UUID preStockedWarehouseId = (UUID) row[14];
+        ReceiptStockIn autoStockIn = null;
+        if ("PASS".equals(action) && preStockedWarehouseId != null) {
+            // 先入库后检(V596)：实物早已在上架仓/库位，合格即按记录的位置自动完成正式入库
+            // (V446 同一套批次/流水/价值守卫)，不再给仓库发「待确认入库」任务。
+            // 上架仓已不可用(极少数运维情形)时返回 null，退回「待仓库确认入库」原流程。
+            autoStockIn = iqcStockIn.confirmPreStockedRelease(
+                    receiptType, receiptId, eventId, inspectionItemId,
+                    preStockedWarehouseId, (String) row[15]);
+            if (autoStockIn != null) autoStockIns.add(autoStockIn);
+        }
+        if ("PASS".equals(action) && autoStockIn == null) {
             publishIqcStockInPending(
                     receiptType, receiptId, inspectionItemId, eventId);
-        } else {
+        } else if (!"PASS".equals(action)) {
             publishIqcRejectionDetected(
                     receiptType, receiptId, inspectionItemId, eventId);
         }
@@ -530,8 +560,14 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                i.received_base_qty, i.passed_base_qty, i.failed_base_qty, i.status,
                                g.code, g.name, col.name, i.warehouse_id,
                                COALESCE(po.bill_no, so.bill_no), i.received_weight,
-                               g.unit_id, base_unit.name, source_unit.name
+                               g.unit_id, base_unit.name, source_unit.name,
+                               i.pre_stocked_warehouse_id, pre_stocked_warehouse.name,
+                               i.pre_stocked_place, i.pre_stocked_at, pre_stocked_by.full_name
                         FROM procurement_inspection_items i
+                        LEFT JOIN warehouses pre_stocked_warehouse
+                               ON pre_stocked_warehouse.id = i.pre_stocked_warehouse_id
+                        LEFT JOIN employees pre_stocked_by
+                               ON pre_stocked_by.id = i.pre_stocked_by_employee_id
                         LEFT JOIN goods g ON g.id = i.goods_id
                         LEFT JOIN units base_unit ON base_unit.id = g.unit_id
                         LEFT JOIN units source_unit ON source_unit.id = i.unit_id
@@ -562,20 +598,31 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     public List<Object[]> pendingReceiptSummaries() {
         return em.createNativeQuery("""
                         WITH agg AS (
-                            SELECT receipt_type, receipt_id,
+                            SELECT i.receipt_type, i.receipt_id,
                                    COUNT(*) AS item_count,
-                                   SUM(received_base_qty - passed_base_qty - failed_base_qty) AS pending_base_qty,
-                                   MIN(received_at) AS first_received_at,
-                                   MAX(received_at) AS last_received_at,
+                                   SUM(i.received_base_qty - i.passed_base_qty - i.failed_base_qty) AS pending_base_qty,
+                                   MIN(i.received_at) AS first_received_at,
+                                   MAX(i.received_at) AS last_received_at,
                                    -- PG 无 min(uuid) 聚合：同一收货单明细同仓，取文本序最小仓转回 uuid。
-                                   MIN(warehouse_id::text)::uuid AS warehouse_id
-                            FROM procurement_inspection_items
-                            WHERE status IN ('PENDING', 'PARTIAL')
-                            GROUP BY receipt_type, receipt_id
+                                   MIN(i.warehouse_id::text)::uuid AS warehouse_id,
+                                   -- 先入库后检(V596)：已上架待检的明细行数(>0 时品质部页面顶部标红提示到库位检验)。
+                                   COUNT(*) FILTER (WHERE i.pre_stocked_at IS NOT NULL) AS pre_stocked_item_count,
+                                   -- 已上架行的去重「仓名/库位」清单(2026-09-17)：品质部待检队列直接给出
+                                   -- 到哪验货，不必逐单点进明细；一单=一仓(CHECK 全有或全无)，库位逐行去重。
+                                   string_agg(DISTINCT COALESCE(NULLIF(w.name, ''), i.pre_stocked_warehouse_id::text), '、')
+                                       FILTER (WHERE i.pre_stocked_at IS NOT NULL) AS pre_stocked_warehouse_names,
+                                   string_agg(DISTINCT i.pre_stocked_place, '、')
+                                       FILTER (WHERE i.pre_stocked_at IS NOT NULL) AS pre_stocked_places
+                            FROM procurement_inspection_items i
+                            LEFT JOIN warehouses w ON w.id = i.pre_stocked_warehouse_id
+                            WHERE i.status IN ('PENDING', 'PARTIAL')
+                            GROUP BY i.receipt_type, i.receipt_id
                         )
                         SELECT a.receipt_type, a.receipt_id, a.item_count, a.pending_base_qty,
                                a.first_received_at, a.last_received_at, a.warehouse_id,
-                               x.bill_no, x.bill_date, x.supplier_id, s.name
+                               x.bill_no, x.bill_date, x.supplier_id, s.name,
+                               a.pre_stocked_item_count,
+                               a.pre_stocked_warehouse_names, a.pre_stocked_places
                         FROM agg a
                         JOIN (
                             SELECT 'PURCHASE'::text AS t, id, bill_no, bill_date, supplier_id
@@ -764,29 +811,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                              BigDecimal baseQty, String reason, UUID actor, OffsetDateTime occurredAt,
                              BigDecimal releasedAmountLocal, BigDecimal releasedWeight,
                              UUID releasedWeightUnitId, String batchRequestHash) {
-        em.createNativeQuery("""
-                INSERT INTO procurement_inspection_events (
-                    id, inspection_item_id, action, base_qty, reason,
-                    actor_employee_id, occurred_at, requires_warehouse_stock_in,
-                    released_amount_local, released_weight, released_weight_unit_id, batch_request_hash
-                ) VALUES (
-                    :id, :iid, :action, :qty, :reason,
-                    :actor, :at, :requiresWarehouseStockIn,
-                    :releasedAmountLocal, :releasedWeight, :releasedWeightUnitId, :batchRequestHash)
-                """)
-                .setParameter("id", eventId)
-                .setParameter("iid", inspectionItemId)
-                .setParameter("action", action)
-                .setParameter("qty", baseQty)
-                .setParameter("reason", reason)
-                .setParameter("actor", actor)
-                .setParameter("at", occurredAt)
-                .setParameter("requiresWarehouseStockIn", "PASS".equals(action))
-                .setParameter("releasedAmountLocal", releasedAmountLocal)
-                .setParameter("releasedWeight", releasedWeight)
-                .setParameter("releasedWeightUnitId", releasedWeightUnitId)
-                .setParameter("batchRequestHash", batchRequestHash)
-                .executeUpdate();
+        ProcurementInspectionEvents.append(em, eventId, inspectionItemId, action, baseQty, reason, actor,
+                occurredAt, releasedAmountLocal, releasedWeight, releasedWeightUnitId, batchRequestHash);
         if("PASS".equals(action)||"FAIL".equals(action)){
             consideration.freezeQuality(inspectionItemId);
             procurementValue.qualityRecorded(eventId,currentUser.requireId());

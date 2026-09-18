@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_return.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
@@ -247,15 +248,22 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 2026-09-16 全站口径：提交期间全屏加载遮罩，成功只走顶部通知条，
+      // 不再弹「入库完成 · 实际去向」中间结果框（少一步关闭操作）；实际
+      // 去向随下方入库历史刷新落位。
       expect(
         find.byKey(const Key('warehouse-inbound-allocation-result-dialog')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('正式工单'), findsOneWidget);
-      expect(find.text('公共库存'), findsWidgets);
-      expect(find.textContaining('是否完整齐套、可领料以车间任务'), findsOneWidget);
-      await tester.tap(find.text('关闭').last);
-      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(WarehouseQualityResultDetailPage)),
+      );
+      final notifications = container.read(appNotificationProvider);
+      expect(notifications.single.message, '成功入库 3 条放行明细，实际去向见下方入库历史');
+      expect(
+        container.read(appNotificationProvider).single.kind,
+        AppNotificationKind.success,
+      );
 
       expect(stockInGateway.confirmCalls, 1);
       final command = stockInGateway.lastCommand!;
@@ -669,6 +677,13 @@ class _StockInGateway implements WarehouseIqcStockInGateway {
       allocations: allocations,
     );
   }
+
+  @override
+  Future<WarehouseIqcPreStockInResult> preStockIn(
+    String receiptType,
+    String receiptId,
+    WarehouseIqcPreStockInCommand command,
+  ) async => throw StateError('unexpected pre-stock-in');
 }
 
 final List<Map<String, dynamic>> _fourExpectedAllocations = [

@@ -15,6 +15,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -347,6 +348,9 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
   late final TextEditingController _dateController;
   String? _accountId;
   String? _expenseStyleId;
+  // UtenDropdownField 非 FormField：必填校验在 _submit 里显式判空并回显 errorMessage。
+  String? _accountError;
+  String? _styleError;
   late DateTime _paymentDate;
 
   @override
@@ -379,6 +383,11 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
 
   void _submit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _accountError = _accountId == null ? '请选择付款账户' : null;
+      _styleError = _expenseStyleId == null ? '请选择费用类别' : null;
+    });
+    if (_accountId == null || _expenseStyleId == null) return;
     Navigator.of(context).pop(
       ExpensePaymentInput(
         accountId: _accountId!,
@@ -439,50 +448,42 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: _accountId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: '付款账户 *',
-                      border: OutlineInputBorder(),
-                    ),
+                  UtenDropdownField(
+                    label: '付款账户',
+                    required: true,
+                    value: _accountId,
+                    allowClear: false,
+                    errorMessage: _accountError,
                     items: [
                       for (final account in loaded.accounts)
-                        DropdownMenuItem(
+                        UtenDropdownItem(
                           value: account.id,
-                          child: Text(
-                            account.balanceCurrent == null
-                                ? account.label
-                                : '${account.label} · 余额 '
-                                      '¥${account.balanceCurrent!.toStringAsFixed(2)}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          label: account.balanceCurrent == null
+                              ? account.label
+                              : '${account.label} · 余额 '
+                                    '¥${account.balanceCurrent!.toStringAsFixed(2)}',
                         ),
                     ],
-                    onChanged: (value) => setState(() => _accountId = value),
-                    validator: (value) => value == null ? '请选择付款账户' : null,
+                    onChanged: (value) => setState(() {
+                      _accountId = value;
+                      _accountError = null;
+                    }),
                   ),
                   const SizedBox(height: UtenSpacing.s16),
-                  DropdownButtonFormField<String>(
-                    initialValue: _expenseStyleId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: '费用类别 *',
-                      border: OutlineInputBorder(),
-                    ),
+                  UtenDropdownField(
+                    label: '费用类别',
+                    required: true,
+                    value: _expenseStyleId,
+                    allowClear: false,
+                    errorMessage: _styleError,
                     items: [
                       for (final style in loaded.styles)
-                        DropdownMenuItem(
-                          value: style.id,
-                          child: Text(
-                            style.label,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                        UtenDropdownItem(value: style.id, label: style.label),
                     ],
-                    onChanged: (value) =>
-                        setState(() => _expenseStyleId = value),
-                    validator: (value) => value == null ? '请选择费用类别' : null,
+                    onChanged: (value) => setState(() {
+                      _expenseStyleId = value;
+                      _styleError = null;
+                    }),
                   ),
                   const SizedBox(height: UtenSpacing.s16),
                   TextFormField(

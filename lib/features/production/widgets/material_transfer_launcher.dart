@@ -154,6 +154,9 @@ class _MaterialTransferLauncherDialogState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // 注意：这里不挂 UtenBusyOverlay——_busy 包的是「打开调拨滑窗并等它
+            // 关闭」，遮罩会盖住整个滑窗；真正的网络段在滑窗内部（跨批复用
+            // _submitting / 未来调拨弹窗各自已挂）。
             if (needQty != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: UtenSpacing.s12),

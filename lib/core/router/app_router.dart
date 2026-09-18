@@ -92,6 +92,7 @@ import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart'
 import '../../features/warehouse/models/production_finished_inbound_task.dart';
 import '../../features/warehouse/models/warehouse_quality_result.dart';
 import '../../features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart';
+import '../../features/warehouse/pages/warehouse_quality_pre_stock_in_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_results_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_result_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
@@ -957,6 +958,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   : const [],
             ),
           ),
+          // 先入库后质检(V596)：逐行上架页(静态前缀段，须先于 :receiptType/:receiptId)。
+          GoRoute(
+            path:
+                '${RouteName.warehouseQualityPreStockInBase}/:receiptType/:receiptId',
+            name: 'warehouse-quality-pre-stock-in',
+            builder: (_, state) => WarehouseQualityPreStockInPage(
+              receiptType: state.pathParameters['receiptType']!,
+              receiptId: state.pathParameters['receiptId']!,
+            ),
+          ),
           GoRoute(
             path:
                 '${RouteName.warehouseQualityResults}/:receiptType/:receiptId',
@@ -1056,7 +1067,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           // 批量登记实际到货页（入库任务中心多选「批量登记送检」落点；
-          // extra 带 List<ProcurementReceiptPrefill>，每张=一张订货单）。
+          // extra 带 List<ProcurementReceiptPrefill>，每张=一张订货单；
+          // ?preStock=1 = 列表「先入库后质检(N)」直达，进页预置该模式）。
           GoRoute(
             path: RouteName.warehouseArrivalReceiptBatch,
             name: 'warehouse-arrival-receipt-batch',
@@ -1064,6 +1076,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               prefills: s.extra is List<ProcurementReceiptPrefill>
                   ? s.extra! as List<ProcurementReceiptPrefill>
                   : null,
+              initialStockInBeforeInspection:
+                  s.uri.queryParameters['preStock'] == '1',
             ),
           ),
           // 报表（静态段，需在 /warehouse/:code 之前声明以免被当作 :code 匹配）

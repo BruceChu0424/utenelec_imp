@@ -35,6 +35,72 @@ void _expectSourceInsideField(WidgetTester tester, String source) {
 }
 
 void main() {
+  testWidgets('先入库后质检按钮：需独立权限，提交带上架标记与独立幂等键', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArrivalRegistrationApi();
+    SharedPreferences.setMockInitialValues({});
+
+    Future<void> pump(Set<String> permissions) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(permissions),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: const MaterialApp(
+            home: ProductionFinishedArrivalRegistrationPage(reportId: _reportId),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // 没有独立权限：只有「登记并送检」。
+    await pump(const {Perm.stockDocView, Perm.stockDocApprove});
+    expect(
+      find.byKey(const Key('production-finished-arrival-stock-in-first')),
+      findsNothing,
+    );
+    expect(find.widgetWithText(UtenButton, '登记并送检'), findsOneWidget);
+
+    await pump(const {
+      Perm.stockDocView,
+      Perm.stockDocApprove,
+      Perm.productionFinishedInBeforeInspection,
+    });
+    expect(
+      find.byKey(const Key('production-finished-arrival-stock-in-first')),
+      findsOneWidget,
+    );
+
+    await _selectWarehouse(tester, '成品仓', settle: true);
+    await _revealGrid(tester);
+    await tester.enterText(
+      _placeField('30000000-0000-0000-0000-000000000001'),
+      'CP-A-09',
+    );
+    await tester.pumpAndSettle();
+    tester
+        .widget<UtenButton>(
+          find.byKey(const Key('production-finished-arrival-stock-in-first')),
+        )
+        .onPressed!
+        .call();
+    await tester.pumpAndSettle();
+
+    expect(api.lastPostBody?['stockInBeforeInspection'], isTrue);
+    // 幂等键含选择：改用另一个按钮重提交是另一个请求，不是重放。
+    expect(
+      (api.lastPostBody?['idempotencyKey'] as String).endsWith(':prestock'),
+      isTrue,
+    );
+    final items = (api.lastPostBody?['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items.first['place'], 'CP-A-09');
+  });
+
   testWidgets('自制单张登记右键移出一行后仅送检剩余行', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

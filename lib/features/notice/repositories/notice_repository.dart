@@ -108,6 +108,13 @@ abstract interface class NoticeRepository {
     required List<String> employeeIds,
   });
 
+  /// 庆典自动发布设置（notice:read；默认关——祝福由人事手动发布，V600）。
+  Future<NoticeCelebrationSettings> getCelebrationSettings();
+
+  /// 翻转「庆典自动发送」开关（notice:publish，HR 任务中心页面开关）。
+  /// 返回最新设置。
+  Future<NoticeCelebrationSettings> setCelebrationAutoEnabled(bool enabled);
+
   /// 「点击收到」回执（acknowledge 模式，幂等）。返回最新计数与本人状态。
   Future<Notice> acknowledge(String id);
 
@@ -370,6 +377,23 @@ class DioNoticeRepository implements NoticeRepository {
       body: {'type': type.name, 'employeeIds': employeeIds},
     );
     return CelebrationBatchResult.fromJson(json);
+  }
+
+  @override
+  Future<NoticeCelebrationSettings> getCelebrationSettings() async {
+    final json = await _api.get(ApiEndpoints.noticeCelebrationSettings);
+    return NoticeCelebrationSettings.fromJson(json);
+  }
+
+  @override
+  Future<NoticeCelebrationSettings> setCelebrationAutoEnabled(
+    bool enabled,
+  ) async {
+    final json = await _api.put(
+      ApiEndpoints.noticeCelebrationAuto,
+      body: {'enabled': enabled},
+    );
+    return NoticeCelebrationSettings.fromJson(json);
   }
 
   @override

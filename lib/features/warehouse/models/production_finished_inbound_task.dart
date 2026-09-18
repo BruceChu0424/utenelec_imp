@@ -337,6 +337,7 @@ class ProductionFinishedArrivalRegistration {
     this.reversedAt,
     this.reversalReason,
     this.reversible = false,
+    this.stockInBeforeInspection = false,
     this.batches = const [],
   });
 
@@ -363,6 +364,9 @@ class ProductionFinishedArrivalRegistration {
   final DateTime? reversedAt;
   final String? reversalReason;
   final bool reversible;
+
+  /// 先入库后质检(V597)：本登记批次是否「品质合格按登记的成品仓与库位自动点收」。
+  final bool stockInBeforeInspection;
 
   /// 同一报工的全部登记批次（含已撤回）；待登记视图也带回，便于回看历史批次。
   final List<ProductionFinishedRegistrationBatch> batches;
@@ -398,6 +402,7 @@ class ProductionFinishedArrivalRegistration {
     reversedAt: DateTime.tryParse(json['reversedAt']?.toString() ?? ''),
     reversalReason: json['reversalReason'] as String?,
     reversible: json['reversible'] as bool? ?? false,
+    stockInBeforeInspection: json['stockInBeforeInspection'] == true,
     batches:
         (json['batches'] as List?)
             ?.whereType<Map<String, dynamic>>()

@@ -140,7 +140,9 @@ class ProductionFqcPassAllServiceBehaviorTest {
                         finishedInbound,
                         outbox,
                 org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
-                org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class));
+                org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class),
+                // V597 先入库后质检的自动点收通道；这些纯单元测试不走那条路。
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
         return new Fixture(service, recovery, finishedInbound, outbox,em);
     }
 
@@ -181,13 +183,17 @@ class ProductionFqcPassAllServiceBehaviorTest {
                 OffsetDateTime.parse("2026-08-30T00:00:00Z"),
                 OffsetDateTime.parse("2026-08-30T00:01:00Z"),
                 // V547 品质检查单聚合列（2026-09-11）：检查单 id/单号、仓库名、库位快照、
-                // 登记备注、收货人——toView 读到 row[31]，缺列会直接数组越界。
+                // 登记备注、收货人；V597 再加先入库后质检三列(是否先入库/上架时间/上架人)
+                // ——toView 读到 row[34]，缺列会直接数组越界。
                 UUID.randomUUID(),
                 "FQC2609110001",
                 "成品仓",
                 "CP-A-01",
                 "夜班登记",
-                "收货人甲"
+                "收货人甲",
+                Boolean.FALSE,
+                null,
+                null
         };
     }
 

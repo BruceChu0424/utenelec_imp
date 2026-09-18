@@ -25,6 +25,7 @@ public record ClientQueryFilter(
         String region,
         String placeId,
         String empId,
+        UUID ownerEmployeeId,
         String legalPerson,
         String linkman,
         String mobile,

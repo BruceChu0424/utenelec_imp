@@ -168,7 +168,8 @@ class ProductionMainWarehouseAllocationTest {
                 if (sql.contains("SELECT id,fn_warehouse_main_id(id)"))
                     return List.of(new Object[]{warehouseA, mainWarehouse}, new Object[]{warehouseB, mainWarehouse});
                 if (sql.contains("SELECT warehouse.id,fn_warehouse_main_id"))
-                    return List.of(new Object[]{warehouseA, mainWarehouse}, new Object[]{warehouseB, mainWarehouse});
+                    // 第三列 warehouse.is_line_side(V595)：两个叶仓都是普通仓。
+                    return List.of(new Object[]{warehouseA, mainWarehouse, false}, new Object[]{warehouseB, mainWarehouse, false});
                 if (sql.contains("SELECT id\n") && sql.contains("production_material_demands")) return parameters.get("ids");
                 if (sql.contains("idempotency_key,requires_qualified_origin")) {
                     return writes.stream().map(write -> new Object[]{write.get("id"), write.get("demandId"),

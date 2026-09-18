@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_toast.dart';
@@ -139,6 +140,12 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
     return Column(
       children: [
+        // 个人数据权限保存/恢复默认网络段的全屏加载遮罩（root Overlay 传送门）。
+        if (_savingOverrides)
+          const UtenBusyOverlay(
+            title: '正在保存个人数据权限',
+            description: '正在写入权限覆盖并刷新生效权限，请勿重复提交或离开本页。',
+          ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(

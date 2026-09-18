@@ -10,8 +10,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -265,252 +267,268 @@ class _EmployeeOnboardingPageState
               message: '无员工入职或敏感信息写入权限', // TODO(l10n): 补 arb
             )
           : UtenContentContainer.narrow(
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
-                  ),
-                  children: [
-                    _group(l10n.employeeOnboardGroupProfile, [
-                      Builder(
-                        builder: (noteCtx) {
-                          final theme = Theme.of(noteCtx);
-                          return Container(
-                            padding: const EdgeInsets.all(UtenSpacing.s12),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHigh,
-                              borderRadius: UtenRadius.lgAll,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline_rounded,
-                                  size: 18,
-                                  color: theme.colorScheme.primary,
+              child: Stack(
+                children: [
+                  Form(
+                    key: _formKey,
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: UtenSpacing.s16,
+                      ),
+                      children: [
+                        _group(l10n.employeeOnboardGroupProfile, [
+                          Builder(
+                            builder: (noteCtx) {
+                              final theme = Theme.of(noteCtx);
+                              return Container(
+                                padding: const EdgeInsets.all(UtenSpacing.s12),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceContainerHigh,
+                                  borderRadius: UtenRadius.lgAll,
                                 ),
-                                const SizedBox(width: UtenSpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    l10n.employeeOnboardCodeAutoNote,
-                                    style: theme.textTheme.bodySmall,
-                                  ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline_rounded,
+                                      size: 18,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: UtenSpacing.s8),
+                                    Expanded(
+                                      child: Text(
+                                        l10n.employeeOnboardCodeAutoNote,
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                      _text(
-                        _name,
-                        l10n.employeeFieldName,
-                        l10n.employeeOnboardHintName,
-                        required: true,
-                        validator: (v) => _req(l10n, v, l10n.employeeFieldName),
-                        autofillHints: const [AutofillHints.name],
-                      ),
-                      DropdownButtonFormField<String>(
-                        initialValue: _idType,
-                        decoration: InputDecoration(
-                          labelText: '${l10n.employeeFieldIdType}*',
-                        ),
-                        items: _idTypeCodes
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(_idTypeLabel(l10n, c)),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _idType = v ?? _idType),
-                      ),
-                      _text(
-                        _idNumber,
-                        l10n.employeeFieldIdNumber,
-                        l10n.employeeOnboardHintIdNumber,
-                        required: true,
-                        validator: (v) =>
-                            _idType == '身份证' && !IdCardUtils.isValid(v)
-                            ? l10n.employeeOnboardIdNumberInvalid
-                            : _req(l10n, v, l10n.employeeFieldIdNumber),
-                        inputFormatters: _idType == '身份证'
-                            ? ChinaInputFormatters.residentId
-                            : null,
-                        textCapitalization: TextCapitalization.characters,
-                      ),
-                      _text(
-                        _phone,
-                        l10n.employeeFieldPhone,
-                        l10n.employeeOnboardHintPhone,
-                        required: true,
-                        validator: (v) {
-                          final error = InputValidators.phone(v);
-                          return error == null
-                              ? null
-                              : (v == null || v.trim().isEmpty)
-                              ? l10n.employeeOnboardPhoneRequired
-                              : l10n.employeeOnboardPhoneInvalid;
-                        },
-                        keyboardType: TextInputType.phone,
-                        inputFormatters: ChinaInputFormatters.phone,
-                        autofillHints: const [AutofillHints.telephoneNumber],
-                      ),
-                      _text(
-                        _email,
-                        l10n.employeeFieldEmail,
-                        l10n.employeeOnboardEmailOptional,
-                        validator: InputValidators.email,
-                        keyboardType: TextInputType.emailAddress,
-                        autofillHints: const [AutofillHints.email],
-                      ),
-                    ]),
-                    _group(l10n.employeeOnboardGroupOrg, [
-                      UtenDepartmentPicker(
-                        mode: UtenDepartmentPickerMode.single,
-                        label: '${l10n.employeeFieldDepartment}*',
-                        initialSelection: _departmentSelection,
-                        expandOnRowTap: true,
-                        onChanged: (sel) {
-                          final nextDepartmentId = sel.isEmpty
-                              ? null
-                              : sel.first.id;
-                          final departmentChanged =
-                              nextDepartmentId != _departmentId;
-                          setState(() {
-                            _departmentId = nextDepartmentId;
-                            _departmentSelection = List.unmodifiable(sel);
-                            if (departmentChanged) {
-                              _position = const PositionEntryValue.empty();
-                            }
-                          });
-                        },
-                        validator: (sel) => sel.isEmpty
-                            ? l10n.employeeOnboardPickDepartment
-                            : null,
-                      ),
-                      UtenPositionEntryPicker(
-                        departmentId: _departmentId,
-                        value: _position,
-                        label: l10n.employeeFieldPosition,
-                        onChanged: (value) => setState(() => _position = value),
-                      ),
-                      GestureDetector(
-                        onTap: _pickDate,
-                        child: AbsorbPointer(
-                          child: _text(
-                            _hireDate,
-                            l10n.employeeFieldHireDate,
-                            l10n.employeeOnboardHireDateHint,
+                              );
+                            },
+                          ),
+                          _text(
+                            _name,
+                            l10n.employeeFieldName,
+                            l10n.employeeOnboardHintName,
                             required: true,
-                            validator: (v) => (v == null || v.isEmpty)
-                                ? l10n.employeeOnboardPickHireDate
+                            validator: (v) =>
+                                _req(l10n, v, l10n.employeeFieldName),
+                            autofillHints: const [AutofillHints.name],
+                          ),
+                          UtenDropdownField(
+                            label: l10n.employeeFieldIdType,
+                            required: true,
+                            value: _idType,
+                            allowClear: false,
+                            searchable: false,
+                            items: [
+                              for (final c in _idTypeCodes)
+                                UtenDropdownItem(
+                                  value: c,
+                                  label: _idTypeLabel(l10n, c),
+                                ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _idType = v ?? _idType),
+                          ),
+                          _text(
+                            _idNumber,
+                            l10n.employeeFieldIdNumber,
+                            l10n.employeeOnboardHintIdNumber,
+                            required: true,
+                            validator: (v) =>
+                                _idType == '身份证' && !IdCardUtils.isValid(v)
+                                ? l10n.employeeOnboardIdNumberInvalid
+                                : _req(l10n, v, l10n.employeeFieldIdNumber),
+                            inputFormatters: _idType == '身份证'
+                                ? ChinaInputFormatters.residentId
+                                : null,
+                            textCapitalization: TextCapitalization.characters,
+                          ),
+                          _text(
+                            _phone,
+                            l10n.employeeFieldPhone,
+                            l10n.employeeOnboardHintPhone,
+                            required: true,
+                            validator: (v) {
+                              final error = InputValidators.phone(v);
+                              return error == null
+                                  ? null
+                                  : (v == null || v.trim().isEmpty)
+                                  ? l10n.employeeOnboardPhoneRequired
+                                  : l10n.employeeOnboardPhoneInvalid;
+                            },
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: ChinaInputFormatters.phone,
+                            autofillHints: const [
+                              AutofillHints.telephoneNumber,
+                            ],
+                          ),
+                          _text(
+                            _email,
+                            l10n.employeeFieldEmail,
+                            l10n.employeeOnboardEmailOptional,
+                            validator: InputValidators.email,
+                            keyboardType: TextInputType.emailAddress,
+                            autofillHints: const [AutofillHints.email],
+                          ),
+                        ]),
+                        _group(l10n.employeeOnboardGroupOrg, [
+                          UtenDepartmentPicker(
+                            mode: UtenDepartmentPickerMode.single,
+                            label: '${l10n.employeeFieldDepartment}*',
+                            initialSelection: _departmentSelection,
+                            expandOnRowTap: true,
+                            onChanged: (sel) {
+                              final nextDepartmentId = sel.isEmpty
+                                  ? null
+                                  : sel.first.id;
+                              final departmentChanged =
+                                  nextDepartmentId != _departmentId;
+                              setState(() {
+                                _departmentId = nextDepartmentId;
+                                _departmentSelection = List.unmodifiable(sel);
+                                if (departmentChanged) {
+                                  _position = const PositionEntryValue.empty();
+                                }
+                              });
+                            },
+                            validator: (sel) => sel.isEmpty
+                                ? l10n.employeeOnboardPickDepartment
                                 : null,
                           ),
-                        ),
-                      ),
-                      DropdownButtonFormField<String>(
-                        initialValue: _employmentType,
-                        decoration: InputDecoration(
-                          labelText: '${l10n.employeeFieldEmploymentType}*',
-                        ),
-                        items: _employmentTypeCodes
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(_employmentTypeLabel(l10n, c)),
+                          UtenPositionEntryPicker(
+                            departmentId: _departmentId,
+                            value: _position,
+                            label: l10n.employeeFieldPosition,
+                            onChanged: (value) =>
+                                setState(() => _position = value),
+                          ),
+                          GestureDetector(
+                            onTap: _pickDate,
+                            child: AbsorbPointer(
+                              child: _text(
+                                _hireDate,
+                                l10n.employeeFieldHireDate,
+                                l10n.employeeOnboardHireDateHint,
+                                required: true,
+                                validator: (v) => (v == null || v.isEmpty)
+                                    ? l10n.employeeOnboardPickHireDate
+                                    : null,
                               ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(
-                          () => _employmentType = v ?? _employmentType,
-                        ),
-                      ),
-                      // ADR-021：正式（active）入职必须填写转正日期；试用由合同试用期派生
-                      if (_status == 'active')
-                        GestureDetector(
-                          onTap: _pickConfirmedDate,
-                          child: AbsorbPointer(
-                            child: _text(
-                              _confirmedDate,
-                              '转正日期',
-                              '正式入职必填，默认=入职日期，可按实际修改',
-                              required: true,
-                              validator: (v) => (v == null || v.isEmpty)
-                                  ? '正式入职的员工必须填写转正日期'
-                                  : null,
                             ),
                           ),
-                        ),
-                      DropdownButtonFormField<String>(
-                        initialValue: _status,
-                        decoration: InputDecoration(
-                          labelText: '${l10n.employeeFieldStatus}*',
-                        ),
-                        items: _statusCodes
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(_statusLabel(l10n, c)),
+                          UtenDropdownField(
+                            label: l10n.employeeFieldEmploymentType,
+                            required: true,
+                            value: _employmentType,
+                            allowClear: false,
+                            searchable: false,
+                            items: [
+                              for (final c in _employmentTypeCodes)
+                                UtenDropdownItem(
+                                  value: c,
+                                  label: _employmentTypeLabel(l10n, c),
+                                ),
+                            ],
+                            onChanged: (v) => setState(
+                              () => _employmentType = v ?? _employmentType,
+                            ),
+                          ),
+                          // ADR-021：正式（active）入职必须填写转正日期；试用由合同试用期派生
+                          if (_status == 'active')
+                            GestureDetector(
+                              onTap: _pickConfirmedDate,
+                              child: AbsorbPointer(
+                                child: _text(
+                                  _confirmedDate,
+                                  '转正日期',
+                                  '正式入职必填，默认=入职日期，可按实际修改',
+                                  required: true,
+                                  validator: (v) => (v == null || v.isEmpty)
+                                      ? '正式入职的员工必须填写转正日期'
+                                      : null,
+                                ),
                               ),
-                            )
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _status = v ?? _status),
-                      ),
-                    ]),
-                    _group(l10n.employeeOnboardGroupPay, [
-                      if (canEditCompensation)
-                        _text(
-                          _baseSalary,
-                          l10n.employeeFieldBaseSalary,
-                          l10n.employeeOnboardEmailOptional,
+                            ),
+                          UtenDropdownField(
+                            label: l10n.employeeFieldStatus,
+                            required: true,
+                            value: _status,
+                            allowClear: false,
+                            searchable: false,
+                            items: [
+                              for (final c in _statusCodes)
+                                UtenDropdownItem(
+                                  value: c,
+                                  label: _statusLabel(l10n, c),
+                                ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _status = v ?? _status),
+                          ),
+                        ]),
+                        _group(l10n.employeeOnboardGroupPay, [
+                          if (canEditCompensation)
+                            _text(
+                              _baseSalary,
+                              l10n.employeeFieldBaseSalary,
+                              l10n.employeeOnboardEmailOptional,
+                            ),
+                          _text(
+                            _bankBranch,
+                            l10n.employeeFieldBankBranch,
+                            l10n.employeeOnboardEmailOptional,
+                          ),
+                          _text(
+                            _bankAccount,
+                            l10n.employeeFieldBankAccount,
+                            l10n.employeeOnboardEmailOptional,
+                          ),
+                        ]),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: UtenSpacing.s12,
+                          ),
+                          child: Builder(
+                            builder: (context) {
+                              final theme = Theme.of(context);
+                              return Container(
+                                padding: const EdgeInsets.all(UtenSpacing.s12),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceContainerHigh,
+                                  borderRadius: UtenRadius.lgAll,
+                                ),
+                                child: Text(
+                                  l10n.employeeOnboardNote,
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              );
+                            },
+                          ),
                         ),
-                      _text(
-                        _bankBranch,
-                        l10n.employeeFieldBankBranch,
-                        l10n.employeeOnboardEmailOptional,
-                      ),
-                      _text(
-                        _bankAccount,
-                        l10n.employeeFieldBankAccount,
-                        l10n.employeeOnboardEmailOptional,
-                      ),
-                    ]),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s12,
-                      ),
-                      child: Builder(
-                        builder: (context) {
-                          final theme = Theme.of(context);
-                          return Container(
-                            padding: const EdgeInsets.all(UtenSpacing.s12),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHigh,
-                              borderRadius: UtenRadius.lgAll,
-                            ),
-                            child: Text(
-                              l10n.employeeOnboardNote,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          );
-                        },
-                      ),
+                        FilledButton(
+                          onPressed: _submitting ? null : _submit,
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(l10n.employeeOnboardSubmit),
+                        ),
+                        const SizedBox(height: UtenSpacing.s24),
+                      ],
                     ),
-                    FilledButton(
-                      onPressed: _submitting ? null : _submit,
-                      child: _submitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(l10n.employeeOnboardSubmit),
+                  ),
+                  // 提交建档网络段的全屏加载遮罩（一次性凭据弹窗展示前已撤下）。
+                  if (_submitting)
+                    UtenBusyOverlay(
+                      title: l10n.employeeOnboardTitle,
+                      description: '正在创建员工档案与初始账号，请勿重复提交或离开本页。',
                     ),
-                    const SizedBox(height: UtenSpacing.s24),
-                  ],
-                ),
+                ],
               ),
             ),
     );

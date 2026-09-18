@@ -5,6 +5,7 @@ import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -22,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -71,7 +71,7 @@ public class ProductionReportController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.planDetail(billNo, goodsId, status, dateFrom, dateTo, keyword, facetsOf(allParams), page, size, sort, order);
+        return service.planDetail(billNo, goodsId, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     @GetMapping("/plan/summary")
@@ -87,7 +87,7 @@ public class ProductionReportController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.planSummary(billNo, status, dateFrom, dateTo, keyword, facetsOf(allParams), page, size, sort, order);
+        return service.planSummary(billNo, status, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
     }
 
     // ===== 物料反查产成品（BOM where-used） =====
@@ -121,18 +121,6 @@ public class ProductionReportController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "30") int size) {
         return whereUsedQuery.searchWhereUsedMaterials(keyword, page, size);
-    }
-
-    /** 从全部查询参数里抽出列筛选（键以 "f." 前缀）。 */
-    private static Map<String, String> facetsOf(Map<String, String> allParams) {
-        Map<String, String> facets = new HashMap<>();
-        if (allParams == null) return facets;
-        for (Map.Entry<String, String> e : allParams.entrySet()) {
-            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
-                facets.put(e.getKey().substring(2), e.getValue());
-            }
-        }
-        return facets;
     }
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------

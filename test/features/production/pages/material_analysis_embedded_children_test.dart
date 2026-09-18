@@ -10,6 +10,7 @@ import 'package:uten_imp/features/production/providers/material_analysis_warehou
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 void main() {
   for (final subcontract in [false, true]) {
@@ -106,10 +107,7 @@ void main() {
       );
       expect(orphan, findsOneWidget);
       expect(
-        find.descendant(
-          of: orphan,
-          matching: find.byType(DropdownButton<MaterialSupplyRoute>),
-        ),
+        find.descendant(of: orphan, matching: find.byType(UtenDropdownField)),
         findsNothing,
       );
 

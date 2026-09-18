@@ -23,6 +23,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/master_facet.dart';
 import '../models/unit_node.dart';
 import '../repositories/unit_repository.dart';
 import '../repositories/master_status_repository.dart';
@@ -132,6 +133,30 @@ class _UnitPageState extends ConsumerState<UnitPage> {
     });
     _loadUnits(1);
   }
+
+  /// 计量维度列固定枚举桶：六个维度全量可选（服务端 facet 只聚合有数据的维度，
+  /// 固定枚举保证下拉文案齐全），计数用服务端命中数、无数据时 0（菜单只在 >0 时显数）。
+  List<MasterFacetBucket> _dimensionBuckets() {
+    final counts = <String, int>{
+      for (final b
+          in _facets?.fields['dimension'] ?? const <MasterFacetBucket>[])
+        b.value: b.count,
+    };
+    return [
+      for (final e in kUnitMeasurementDimensions.entries)
+        MasterFacetBucket(
+          value: e.key,
+          label: e.value,
+          count: counts[e.key] ?? 0,
+        ),
+    ];
+  }
+
+  /// 表头筛选桶：dimension 列换成固定枚举桶（其余列用服务端 facet 原桶）。
+  Map<String, List<MasterFacetBucket>> get _columnFacets => {
+    ...(_facets?.fields ?? const <String, List<MasterFacetBucket>>{}),
+    'dimension': _dimensionBuckets(),
+  };
 
   void _onKeywordChanged(String kw) {
     setState(() => _keyword = kw);
@@ -424,7 +449,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                   child: MasterDataTableView<UnitListItem>(
                     columns: _columns,
                     items: _page?.items ?? const [],
-                    facets: _facets?.fields ?? const {},
+                    facets: _columnFacets,
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,
                     onFilterChanged: _onFilterChanged,

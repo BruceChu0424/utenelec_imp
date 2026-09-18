@@ -104,35 +104,19 @@ public class SubcontractOrderController {
     }
 
     /**
-     * 货品 → 最近一次委外订货供应商（订货编辑页行级委外商「学习预填」：选货品后自动
-     * 带出上次该货品的委外供应商）。goodsIds 为逗号分隔的货品 UUID，返回 {goodsId: supplierId}。
-     *
-     * @deprecated 2026-09 行级商业条款改造起由 /last-terms 取代（同一次查询带回整套条款）；
-     *     保留一个发布周期兼容已发版的旧客户端。
-     */
-    @Deprecated(since = "2026-09-03")
-    @GetMapping("/last-suppliers")
-    @PreAuthorize("hasAuthority('subcontract_order:view')")
-    public java.util.Map<String, UUID> lastSuppliers(@RequestParam String goodsIds) {
-        java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(goodsIds, "货品 ID");
-        java.util.Map<String, UUID> result = new java.util.LinkedHashMap<>();
-        service.lastSuppliersPerGoods(ids).forEach((k, v) -> result.put(k.toString(), v));
-        return result;
-    }
-
-    /**
-     * 货品 → 最近一次委外订货商业条款（行级条款「学习预填」：同一货品下次建单自动带出
-     * 上次的委外商/结算方式/币种/汇率/税率）。goodsIds 为逗号分隔的货品 UUID，
-     * 返回 {goodsId: {supplierId, settlementMethodId, currencyId, exchangeRate, taxRate}}。
+     * 货品 → 主档默认条款 (新建单行级预填)。路径沿用 /last-terms (前端在用), 语义自
+     * V593 起已是主档默认值: goods.default_supplier_id → 供应商主档条款 → 货品默认委外
+     * 加工单价, 不再按最近一张订货单推导。goodsIds 为逗号分隔的货品 UUID, 返回
+     * {goodsId: {supplierId, settlementMethodId, currencyId, exchangeRate, taxRate, subcontractPrice}}。
      */
     @GetMapping("/last-terms")
     @PreAuthorize("hasAuthority('subcontract_order:view')")
-    public java.util.Map<String, SubcontractOrderService.LastTermsPerGoods> lastTerms(
+    public java.util.Map<String, SubcontractOrderService.MasterDefaultTermsPerGoods> masterDefaultTerms(
             @RequestParam String goodsIds) {
         java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(goodsIds, "货品 ID");
-        java.util.Map<String, SubcontractOrderService.LastTermsPerGoods> result =
+        java.util.Map<String, SubcontractOrderService.MasterDefaultTermsPerGoods> result =
                 new java.util.LinkedHashMap<>();
-        service.lastTermsPerGoods(ids).forEach((k, v) -> result.put(k.toString(), v));
+        service.masterDefaultTermsPerGoods(ids).forEach((k, v) -> result.put(k.toString(), v));
         return result;
     }
 
@@ -167,6 +151,17 @@ public class SubcontractOrderController {
         return service.changeQty(id, request);
     }
 
+    @PostMapping("/{id}/reverse")
+    @PreAuthorize("hasAuthority('subcontract_order:reverse')")
+    public OrderDetail reverse(@PathVariable UUID id) {
+        return service.reverse(id);
+    }
+
+    // 单笔审批入口已停用（批量任务中心是唯一权威通道），但**路由必须留着且继续
+    // 按动作权限把门**：已发版的旧客户端仍会打到这两个路径，去掉路由等于让它们
+    // 落到 404/405 而不是「请到任务中心处理」的明确冲突；权限注解也必须留，
+    // DocumentActionPermissionContractTest#legacySingleRoutesStayActionGated...
+    // 逐条断言它们的 @PreAuthorize 仍是 finance_order_approval 的精确动作权限。
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_order_approval:approve')")
     @Deprecated(since = "2026-08-30", forRemoval = true)
@@ -179,12 +174,6 @@ public class SubcontractOrderController {
     @Deprecated(since = "2026-08-30", forRemoval = true)
     public void reject(@PathVariable("id") UUID ignoredId) {
         throw legacySingleDecisionDisabled();
-    }
-
-    @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('subcontract_order:reverse')")
-    public OrderDetail reverse(@PathVariable UUID id) {
-        return service.reverse(id);
     }
 
     private static ApiException legacySingleDecisionDisabled() {

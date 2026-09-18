@@ -95,7 +95,7 @@ public class ReportablePlanLineQueryService {
                          THEN COALESCE(allocation_done.reported_qty, 0)
                          ELSE COALESCE(l.produced_qty, 0)
                     END AS linked_produced_qty,
-                    CASE
+                    LEAST(CASE
                         WHEN recovery.authorization_id IS NOT NULL
                             THEN CASE
                                 WHEN recovery.disposition_code = 'REWORK'
@@ -126,7 +126,9 @@ public class ReportablePlanLineQueryService {
                                        ELSE COALESCE(l.produced_qty, 0)
                                   END, 0)
                         )
-                    END AS max_report_qty,
+                    END,
+                    -- 持续生产(V595)：可报量再封顶到「同车间直送已到料按单耗折算」的产量。
+                    COALESCE(direct_cap.remaining_qty, 999999999)) AS max_report_qty,
                     so.bill_no AS order_no,
                     oi.qty AS order_qty,
                     cl.name AS client_name,
@@ -170,6 +172,23 @@ public class ReportablePlanLineQueryService {
                  )
                 LEFT JOIN segment_progress segment_done
                   ON segment_done.execution_segment_id = segment.id
+                LEFT JOIN LATERAL (
+                    SELECT CASE WHEN MIN(TRUNC((clearance.issued_qty - clearance.returned_qty)
+                                              / demand.per_product_qty, 4)) IS NULL
+                                THEN NULL
+                                ELSE GREATEST(MIN(TRUNC((clearance.issued_qty - clearance.returned_qty)
+                                                        / demand.per_product_qty, 4))
+                                              - COALESCE(segment_done.active_qty, 0), 0)
+                           END AS remaining_qty
+                    FROM production_material_demands demand
+                    JOIN v_production_material_clearance clearance
+                      ON clearance.demand_id = demand.id
+                    WHERE segment.continuous_supply
+                      AND demand.execution_segment_id = segment.id
+                      AND demand.direct_supply
+                      AND demand.is_deleted = FALSE
+                      AND demand.per_product_qty > 0
+                ) direct_cap ON TRUE
                 LEFT JOIN departments segment_workshop
                   ON segment_workshop.id = segment.workshop_department_id
                  AND segment_workshop.is_deleted = FALSE

@@ -59,6 +59,7 @@ public class SalesShipmentController {
             @RequestParam(required = false) Boolean financeRejected,
             @RequestParam(required = false) String warehouseWorkStatus,
             @RequestParam(required = false) String shipmentKind,
+            @RequestParam(required = false) UUID currencyId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
@@ -68,7 +69,7 @@ public class SalesShipmentController {
         return service.list(new ShipmentQueryFilter(
                 keyword, clientId, warehouseId, status, arPosted, financeAudit,
                 financeRejected, warehouseWorkStatus,
-                dateFrom, dateTo,shipmentKind), page, size, sort, order);
+                dateFrom, dateTo,shipmentKind,currencyId), page, size, sort, order);
     }
 
     @GetMapping("/{id}")

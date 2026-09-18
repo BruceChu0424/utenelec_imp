@@ -467,6 +467,7 @@ public class ProductionPlanningPackageService {
                                   AND warehouse.is_deleted = FALSE
                                   AND warehouse.is_accountable = TRUE
                                   AND warehouse.is_defective = FALSE
+                                  AND warehouse.is_line_side = FALSE
                                   AND NOT EXISTS (SELECT 1 FROM warehouses child
                                       WHERE child.parent_id = warehouse.id AND child.is_deleted = FALSE)
                                 WHERE fn_warehouse_same_main(a.warehouse_id, :warehouseId)

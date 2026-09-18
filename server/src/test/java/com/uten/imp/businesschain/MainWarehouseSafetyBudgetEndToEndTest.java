@@ -104,9 +104,12 @@ class MainWarehouseSafetyBudgetEndToEndTest {
         Plan plan = issue(c, "80", "short"); // Establish one 80-unit workshop task before stock arrives.
         receive(c, c.a(), null, "30"); receive(c, c.b(), null, "69");
         assertEquals("WAITING", status(plan)); qty("0", reserved(plan)); assertTrue(draws(plan).isEmpty());
+        // V599：重新核对备料是齐套(FULL_KIT)路线专用动作——先确认路线再重核。
         var segment = execution.list(plan.plan()).getFirst();
-        assertTrue(assertThrows(ApiException.class, () -> execution.recheckMaterial(plan.plan(), segment.id(),
-                new SegmentTransitionRequest(segment.lockVersion(), "main-safety-short-" + plan.plan())))
+        fixture.confirmFullKitRoute(plan.plan(), segment.id());
+        var confirmed = execution.list(plan.plan()).getFirst();
+        assertTrue(assertThrows(ApiException.class, () -> execution.recheckMaterial(plan.plan(), confirmed.id(),
+                new SegmentTransitionRequest(confirmed.lockVersion(), "main-safety-short-" + plan.plan())))
                 .getMessage().contains("缺 1"));
         qty("0", reserved(plan)); assertTrue(draws(plan).isEmpty()); qty("99", balance(c, null));
     }
@@ -118,9 +121,12 @@ class MainWarehouseSafetyBudgetEndToEndTest {
         receive(c, c.a(), null, "30"); receive(c, c.b(), c.world().colorId(), "70");
         receive(c, otherMain, null, "100");
         assertEquals("WAITING", status(plan)); qty("0", reserved(plan));
+        // V599：重核前先确认齐套路线（确认本身不动库存——缺料不会提升）。
         var unavailable = execution.list(plan.plan()).getFirst();
-        assertTrue(assertThrows(ApiException.class, () -> execution.recheckMaterial(plan.plan(), unavailable.id(),
-                new SegmentTransitionRequest(unavailable.lockVersion(), "main-safety-color-short-" + plan.plan())))
+        fixture.confirmFullKitRoute(plan.plan(), unavailable.id());
+        var confirmedUnavailable = execution.list(plan.plan()).getFirst();
+        assertTrue(assertThrows(ApiException.class, () -> execution.recheckMaterial(plan.plan(), confirmedUnavailable.id(),
+                new SegmentTransitionRequest(confirmedUnavailable.lockVersion(), "main-safety-color-short-" + plan.plan())))
                 .getMessage().contains("缺 70"));
         receive(c, c.b(), null, "70");
         var segment = execution.list(plan.plan()).getFirst();
@@ -137,6 +143,12 @@ class MainWarehouseSafetyBudgetEndToEndTest {
         Case c = setup("main-safety-concurrent", 1, "20");
         Plan first = issue(c, "80", "one"), second = issue(c, "80", "two");
         receive(c, c.a(), null, "30"); receive(c, c.b(), null, "70");
+        // V599：两个任务先各自确认齐套路线，再并发重核——竞的是主仓安全预算，不是路线门。
+        fixture.loginAs(c.world().superAdminUserId());
+        for (Plan plan : List.of(first, second)) {
+            var pending = execution.list(plan.plan()).getFirst();
+            fixture.confirmFullKitRoute(plan.plan(), pending.id());
+        }
         var barrier = new CountDownLatch(1);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {

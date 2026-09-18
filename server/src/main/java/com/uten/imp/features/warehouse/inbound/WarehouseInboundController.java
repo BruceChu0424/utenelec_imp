@@ -46,8 +46,9 @@ public class WarehouseInboundController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "") String orderType,
-            @RequestParam(defaultValue = "") String keyword) {
-        return service.expectations(page, size, orderType, keyword);
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) UUID supplierId) {
+        return service.expectations(page, size, orderType, keyword, supplierId);
     }
 
     @GetMapping("/expectations/count")
@@ -66,8 +67,12 @@ public class WarehouseInboundController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String keyword,
-            @RequestParam(name = "history", defaultValue = "false") boolean includeHistory) {
-        return service.warehouseExceptions(page, size, keyword, includeHistory);
+            @RequestParam(name = "history", defaultValue = "false") boolean includeHistory,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) String status) {
+        return service.warehouseExceptions(page, size, keyword, includeHistory,
+                supplierId, warehouseId, status);
     }
 
     @GetMapping("/arrival-exceptions/count")

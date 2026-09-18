@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -203,6 +204,12 @@ class _StockBalanceDetailSheetState extends State<_StockBalanceDetailSheet> {
       child: SafeArea(
         child: Column(
           children: [
+            // 提交期间全屏加载遮罩（root Overlay 传送门，不占布局）。
+            if (_submitting)
+              const UtenBusyOverlay(
+                title: '正在调整库存余额',
+                description: '正在写入余量调整事实，请勿重复提交或关闭面板。',
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 UtenSpacing.s16,

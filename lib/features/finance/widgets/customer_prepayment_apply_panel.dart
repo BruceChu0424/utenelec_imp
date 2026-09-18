@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -301,7 +302,19 @@ class _CustomerPrepaymentApplyPanelState
           ),
         ],
       ),
-      body: SafeArea(child: _body(theme)),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            _body(theme),
+            // 应用/反转预收抵销网络段的全屏加载遮罩（原因弹窗之后才置位，不遮弹窗）。
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在应用客户预收',
+                description: '正在写入抵销批次与应收台账，请勿重复提交或关闭面板。',
+              ),
+          ],
+        ),
+      ),
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，按钮统一 large。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,

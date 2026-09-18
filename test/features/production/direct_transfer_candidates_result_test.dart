@@ -1,20 +1,22 @@
-// 报工页「转下一道工序」候选返回的解析契约(V584/V585)：
-// 候选列表 + 空候选原因标记。缺线边仓曾被误读成「没有可投的上层工单/方向查错」，
-// 这个标记就是为把两种空候选分开。
+// 报工页「转下一道工序」候选返回的解析契约(V584/V585/V595)：
+// 候选列表 + 上次报工的记忆(去向 + 父件产品)。V595 起线边仓由服务端自动配置，
+// 「缺线边仓」不再是空候选的原因，记忆字段取而代之。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 
 void main() {
-  test('parses candidates and defaults the line-side flag to false', () {
+  test('parses candidates and the remembered destination', () {
     final result = DirectTransferCandidatesResult.fromJson(const {
       'candidates': [
         {
           'demandId': 'demand-uuid',
           'executionSegmentId': 'segment-uuid',
           'executionSegmentCode': 'ZX00000214',
+          'executionSegmentStatus': 'WAITING',
           'planNo': 'PB20260915001',
           'goodsName': '外贸V5开关带三极多功能插座功能件',
           'unitName': '个',
+          'receivingGoodsId': 'parent-goods',
           'receivingGoodsCode': 'HV5G001',
           'receivingGoodsName': '外贸V5开关带三极多功能插座功能件',
           'requiredQty': 1000,
@@ -22,13 +24,21 @@ void main() {
           'remainingQty': 800,
         },
       ],
-      'lineSideWarehouseMissing': false,
+      'lastDestination': 'WORKSHOP',
+      'lastReceivingGoodsId': 'parent-goods',
+      'lastReceivingGoodsName': '外贸V5开关带三极多功能插座功能件',
     });
 
     expect(result.candidates, hasLength(1));
     expect(result.candidates.single.demandId, 'demand-uuid');
     expect(result.candidates.single.remainingQty, 800);
-    expect(result.lineSideWarehouseMissing, isFalse);
+    expect(result.hasMemory, isTrue);
+    expect(result.lastDestination, 'WORKSHOP');
+    expect(
+      result.rememberedCandidate?.demandId,
+      'demand-uuid',
+      reason: '上次投给的父件产品只对应一个候选时直接命中',
+    );
     expect(
       result.candidates.single.label,
       contains('外贸V5开关带三极多功能插座功能件 HV5G001'),
@@ -46,22 +56,51 @@ void main() {
     );
   });
 
-  test('empty candidates with line-side missing marks the real reason', () {
-    final result = DirectTransferCandidatesResult.fromJson(const {
-      'candidates': <dynamic>[],
-      'lineSideWarehouseMissing': true,
+  test('continuous receiving work orders are labelled in the dropdown', () {
+    final candidate = ProductionDirectTransferCandidate.fromJson(const {
+      'demandId': 'demand-uuid',
+      'executionSegmentId': 'segment-uuid',
+      'executionSegmentCode': 'ZX00000215',
+      'executionSegmentStatus': 'IN_PROGRESS',
+      'continuousSupply': true,
+      'remainingQty': 60,
+      'unitName': '个',
     });
 
-    expect(result.candidates, isEmpty);
-    expect(result.lineSideWarehouseMissing, isTrue);
+    expect(candidate.continuousSupply, isTrue);
+    expect(candidate.secondaryLabel, contains('持续生产中'));
   });
 
-  test('missing flag field falls back to false for old payloads', () {
+  test('memory does not guess between two work orders of the same product', () {
+    final result = DirectTransferCandidatesResult.fromJson(const {
+      'candidates': [
+        {
+          'demandId': 'demand-1',
+          'executionSegmentId': 'segment-1',
+          'receivingGoodsId': 'parent-goods',
+          'remainingQty': 10,
+        },
+        {
+          'demandId': 'demand-2',
+          'executionSegmentId': 'segment-2',
+          'receivingGoodsId': 'parent-goods',
+          'remainingQty': 20,
+        },
+      ],
+      'lastDestination': 'WORKSHOP',
+      'lastReceivingGoodsId': 'parent-goods',
+    });
+
+    expect(result.rememberedCandidate, isNull);
+  });
+
+  test('old payloads without memory fields still parse', () {
     final result = DirectTransferCandidatesResult.fromJson(const {
       'candidates': <dynamic>[],
     });
 
     expect(result.candidates, isEmpty);
-    expect(result.lineSideWarehouseMissing, isFalse);
+    expect(result.hasMemory, isFalse);
+    expect(result.rememberedCandidate, isNull);
   });
 }

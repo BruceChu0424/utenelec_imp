@@ -75,6 +75,61 @@ class WarehouseIqcStockInConfirmCommand {
   };
 }
 
+/// 先入库后质检(V596)：一行待检明细 → 上架仓 + 库位。
+class WarehouseIqcPreStockInItem {
+  const WarehouseIqcPreStockInItem({
+    required this.inspectionItemId,
+    required this.warehouseId,
+    required this.place,
+  });
+
+  final String inspectionItemId;
+  final String warehouseId;
+  final String place;
+
+  Map<String, dynamic> toJson() => {
+    'inspectionItemId': inspectionItemId,
+    'warehouseId': warehouseId,
+    'place': place.trim(),
+  };
+}
+
+class WarehouseIqcPreStockInCommand {
+  const WarehouseIqcPreStockInCommand({required this.items});
+
+  final List<WarehouseIqcPreStockInItem> items;
+
+  Map<String, dynamic> toJson() => {
+    'items': [for (final item in items) item.toJson()],
+  };
+}
+
+class WarehouseIqcPreStockInResult {
+  const WarehouseIqcPreStockInResult({
+    required this.requestedLineCount,
+    required this.stockedLineCount,
+    required this.replayedLineCount,
+    this.stockedAt,
+  });
+
+  final int requestedLineCount;
+  final int stockedLineCount;
+  final int replayedLineCount;
+  final String? stockedAt;
+
+  factory WarehouseIqcPreStockInResult.fromJson(Map<String, dynamic> json) {
+    int integer(Object? value) => value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '') ?? 0;
+    return WarehouseIqcPreStockInResult(
+      requestedLineCount: integer(json['requestedLineCount']),
+      stockedLineCount: integer(json['stockedLineCount']),
+      replayedLineCount: integer(json['replayedLineCount']),
+      stockedAt: _text(json['stockedAt']),
+    );
+  }
+}
+
 class WarehouseIqcStockInConfirmResult {
   const WarehouseIqcStockInConfirmResult({
     required this.batchId,

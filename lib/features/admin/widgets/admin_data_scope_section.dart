@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_toast.dart';
@@ -322,6 +323,12 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 保存数据范围网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+          if (_saving.isNotEmpty)
+            const UtenBusyOverlay(
+              title: '正在保存可查看数据',
+              description: '正在写入额外查看范围，请勿重复提交或离开本页。',
+            ),
           Text(
             '可查看数据',
             style: theme.textTheme.titleMedium?.copyWith(

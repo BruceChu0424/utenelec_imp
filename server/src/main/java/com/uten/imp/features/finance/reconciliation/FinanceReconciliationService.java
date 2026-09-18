@@ -54,6 +54,8 @@ public class FinanceReconciliationService {
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));
             if (f.sourceDocType() != null && !f.sourceDocType().isBlank())
                 ps.add(cb.equal(root.get("sourceDocType"), f.sourceDocType()));
+            if (f.entryKind() != null && !f.entryKind().isBlank())
+                ps.add(cb.equal(root.get("entryKind"), f.entryKind()));
             if (f.sourceDocId() != null) ps.add(cb.equal(root.get("sourceDocId"), f.sourceDocId()));
             if (f.checkNo() != null && !f.checkNo().isBlank()) ps.add(cb.equal(root.get("checkNo"), f.checkNo()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));

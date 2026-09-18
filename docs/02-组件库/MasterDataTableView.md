@@ -23,7 +23,13 @@
 
 ## 二、Excel 风格特性（开箱即用）
 
-- **横排 autofilter 列头**：每列表头一个「标签 ▼」单元格，点开下拉筛选项（facet 桶 + 空值档），选中高亮。
+- **横排 autofilter 列头**：每列表头一个「标签 ▼」单元格，点开下拉筛选项（facet 桶 + 末尾兜底档），选中高亮。
+- **空值兜底桶「其他 (n)」固定放列表末尾（2026-09-16 起，用户口径）**：菜单顺序为
+  「所有 → 各 facet 桶 → 其他 (n)」；语义=该列为空/未归类的行的**兜底桶**（如货品未分类、
+  单据未指定仓库——匹配不到任何已列出选项的行都落这里），选它即只看这些行。原「空值 (n)」桶
+  在菜单顶部（「所有」正下方），2026-09-16 改为末尾「其他」；回传仍是
+  `kMasterFilterNullValue` 哨兵（服务端 `nullFields` 参数），仅展示位置与文案变化。
+  桶计数来自 `nullCounts`，为 0 时不渲染该档。
 - **列头排序**：可排序列（日期/金额/数量）点表头出排序菜单（从远到近 / 从近到远 / 取消，数值列用 从小到大/从大到小），当前排序列显 ▲/▼。**日期列只显排序菜单、不列日期值 facet**（日期值各不相同，列成筛选桶无意义）。
 - **表头/表体横滚同步**：拖底部滚动条表头跟随，列始终对齐。
 - **竖向滚动条按滚动阶段显隐（2026-09-14 起）**：表内竖向滚动条在
@@ -151,7 +157,11 @@
 MasterDataTableView<T>(
   columns: <MasterColumnDef<T>>,        // 列定义(含可选 cellBuilder)
   items: <T>,                           // 行数据
-  facets: {colKey: [MasterFacetBucket]},// 列头 autofilter 桶（后端 facets）
+  facets: {colKey: [MasterFacetBucket]},// 列头 autofilter 桶；桶源三种（2026-09-16 口径）：
+                                        // ① 服务端 facet 端点（列表/报表自带的 facets 响应，计数真实）；
+                                        // ② 主档 dict 端点映射 → masterDictionaryFacets() 转桶
+                                        //   （供应商/仓库/客户/币种/员工等 id→名称，count=0，见组件总览）；
+                                        // ③ 前端固定枚举（状态/类型等小词表，页面自建桶）
   nullCounts: {colKey: int},            // 各列空值档计数
   filters: {colKey: String?},           // 当前激活的列筛选
   onFilterChanged: (key, value) {},     // 列筛选回调
@@ -213,7 +223,7 @@ MasterDataTableView<T>(
 - **响应式**：表格区随容器宽度横滚（列固定宽，不随断点变列数）；窄屏靠左筛选侧栏（`UtenListTwoPane`）折到顶部。
 - **性能档**：表体 `ListView.builder` 按行懒加载；每行数据外包 `RepaintBoundary`，选中 / 列宽拖拽 / 刷新时只重绘本行、不蔓延整表与外层页面；超大结果集走服务端分页（默认 size 50，上限 500）。
 - **主题**：取色全走 `colorScheme`（表头 `surfaceContainerHigh`、筛选/排序高亮 `primaryContainer`/`primary`）。
-- **i18n**：列头菜单文案（从远到近/取消排序/所有/空值 等）当前为中文，**待补 arb**（组件内有 `TODO(l10n)` 标记）。
+- **i18n**：列头菜单文案（从远到近/取消排序/所有/其他 等）当前为中文，**待补 arb**（组件内有 `TODO(l10n)` 标记）。
 
 ---
 
@@ -304,7 +314,7 @@ return MasterDataTableView<Map<String, dynamic>>(
   换关键字后剪掉已失效的筛选值（`_pruneMaterialTableFilters` 同款），否则列头 sanitize 回
   列名、表体仍在过滤，用户会面对一张没有出口的空表（空态「清除筛选」是最后兜底）。
 
-**最后更新**：2026-09-11 · 补记客户端 facet 的适用边界（只限整表装完的页面；服务端分页页面
+**最后更新**：2026-09-16 · 列头筛选菜单的空值桶改为**末尾「其他 (n)」**（原「空值 (n)」在顶部「所有」下方）：语义=该列为空/未归类行的兜底桶，回传哨兵与服务端 `nullFields` 参数不变；`facets` 桶源明确三种——服务端 facet 端点 / 主档 dict 端点（经 `masterDictionaryFacets` 转桶）/ 前端固定枚举。前序 2026-09-11 · 补记客户端 facet 的适用边界（只限整表装完的页面；服务端分页页面
 不得按当页自算桶）与失效筛选值的剪除义务。前序 2026-09-10 · 成功空态保留「全屏/退出全屏」与 `toolbarLeadingActions`，有激活 `filters` 时给「清除筛选」出口并在空态说明标注筛选生效数（新增 `master_data_table_view_empty_state_test.dart`）；物料分析表头筛选改稳定键 + 中文标签接入。前序 2026-09-04 · 行菜单动作完成后统一清选，纯取消保留选择；成功空态保留业务工具条；`MasterColumnDef.cellBuilder` 支持行内按钮等自定义内容，同时保留 `value` 的数据与无障碍语义。2026-08-17：`primary` 联动折叠模式接入范围扩大。
 此前：2026-08-14 · 新增 `primary` 联动折叠模式（配合 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md)：大屏列表页顶部卡上滑收起、表格内滚；联动模式下 `shrinkWrap` 为 false，默认 / `embedded` 路径仍 true）。货品 / 模具 / 客户 / 供应商 四个分类详情页接入。
 

@@ -76,6 +76,6 @@ class ClientSelectableOnlyFilterTest {
         return new ClientQueryFilter(
                 null, null, Set.of(), null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, true, true);
+                null, null, null, null, null, null, null, true, true);
     }
 }

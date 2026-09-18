@@ -51,7 +51,8 @@ public class WarehouseService {
 
     private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.WAREHOUSE;
 
-    private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status", "location");
+    private static final Set<String> ALLOWED_NULL_FIELDS =
+            Set.of("code", "name", "status", "location", "parentId");
 
     private static final int FACET_LIMIT = 50;
 
@@ -85,6 +86,12 @@ public class WarehouseService {
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "status", f.status());
             addEq(ps, cb, root, "location", f.location());
+            if (f.parentId() != null) {
+                ps.add(cb.equal(root.get("parentId"), f.parentId()));
+            }
+            if (f.accountable() != null) {
+                ps.add(cb.equal(root.get("accountable"), f.accountable()));
+            }
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
@@ -127,7 +134,36 @@ public class WarehouseService {
                     .getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
-        return new WarehouseFacets(buckets.get("code"), buckets.get("name"), buckets.get("status"), nullCounts);
+        // 上级仓库（parent）桶：值=parent_id（UUID）、label=上级仓名；空值=顶层/独立仓。
+        List<Object[]> parentRows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                "select child.parent_id as v, parent.name as label, count(*) as c "
+                        + "from warehouses child join warehouses parent on parent.id = child.parent_id "
+                        + "where child.is_deleted = false "
+                        + "group by child.parent_id, parent.name "
+                        + "order by c desc, label asc limit " + FACET_LIMIT));
+        List<FacetBucket> parentBuckets = new ArrayList<>(parentRows.size());
+        for (Object[] row : parentRows) {
+            parentBuckets.add(new FacetBucket(String.valueOf(row[0]),
+                    ((Number) row[2]).longValue(), String.valueOf(row[1])));
+        }
+        buckets.put("parent", parentBuckets);
+        nullCounts.put("parent", ((Number) em.createNativeQuery(
+                "select count(*) from warehouses where is_deleted = false and parent_id is null")
+                .getSingleResult()).longValue());
+        // 核算（accountable）桶：布尔 → true/false，label 出 是/否（列 NOT NULL，无空值桶）。
+        List<Object[]> accountableRows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                "select is_accountable as v, count(*) as c from warehouses "
+                        + "where is_deleted = false "
+                        + "group by is_accountable order by c desc limit " + FACET_LIMIT));
+        List<FacetBucket> accountableBuckets = new ArrayList<>(accountableRows.size());
+        for (Object[] row : accountableRows) {
+            String value = String.valueOf(row[0]);
+            accountableBuckets.add(new FacetBucket(value, ((Number) row[1]).longValue(),
+                    "true".equals(value) ? "是" : "否"));
+        }
+        buckets.put("accountable", accountableBuckets);
+        return new WarehouseFacets(buckets.get("code"), buckets.get("name"), buckets.get("status"),
+                buckets.get("parent"), buckets.get("accountable"), nullCounts);
     }
 
     /** 全量字典（采购单据/库存选仓库用）：返回全部未软删仓库，按编号排序。 */

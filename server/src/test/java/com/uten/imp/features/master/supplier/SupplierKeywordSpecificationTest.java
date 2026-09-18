@@ -72,7 +72,7 @@ class SupplierKeywordSpecificationTest {
         SupplierQueryFilter selectable = new SupplierQueryFilter(
                 null, null, Set.of(),
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, true);
+                null, null, null, null, null, null, null, null, null, null, true);
         service.list(selectable, 1, 20, null, null);
 
         ArgumentCaptor<Specification<Supplier>> captor = ArgumentCaptor.forClass(Specification.class);
@@ -106,7 +106,8 @@ class SupplierKeywordSpecificationTest {
     private static SupplierQueryFilter filter(String keyword) {
         return new SupplierQueryFilter(
                 null, keyword, Set.of(),
-                null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null);
     }
 }

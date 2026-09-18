@@ -130,6 +130,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       // 不是货品编号，不能顶替。
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
+      // 格尾搜索/锁图标(16)计入自动加宽量宽（2026-09-16）。
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
@@ -225,6 +227,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       width: 150,
       textOf: (r) => r.salesOrderNo.text,
       listenableOf: (r) => r.salesOrderNo,
+      // 格尾选择图标计入量宽。
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => InkWell(
         onTap: () => onPickSalesOrder(row),
         child: InputDecorator(

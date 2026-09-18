@@ -16,6 +16,7 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 void main() {
   testWidgets('pending finance blocks only its own product route selections', (
@@ -528,11 +529,9 @@ void main() {
         _analysis(routes: [null], withChildren: false),
       );
       expect(_root(1), findsOneWidget);
-      final dropdown = tester.widget<DropdownButton<MaterialSupplyRoute>>(
-        _route(1),
-      );
-      expect(dropdown.value, MaterialSupplyRoute.subcontract);
-      expect(dropdown.onChanged, isNotNull);
+      final dropdown = tester.widget<UtenDropdownField>(_route(1));
+      expect(dropdown.value, 'subcontract');
+      expect(dropdown.enabled, isTrue);
       await _selectRoot(tester, 1);
       await _confirm(tester);
       expect(_decisions(harness.writes.single), [

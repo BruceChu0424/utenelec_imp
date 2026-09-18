@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -207,6 +208,12 @@ class _ProcurementIqcRejectionActionDialogState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+                if (_busy)
+                  const UtenBusyOverlay(
+                    title: '正在提交拒收办理',
+                    description: '正在写入退回/入库/改判事实，请勿重复提交或关闭弹窗。',
+                  ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     UtenSpacing.s16,

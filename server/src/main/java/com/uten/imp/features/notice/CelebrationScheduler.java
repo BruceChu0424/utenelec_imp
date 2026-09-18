@@ -19,8 +19,10 @@ import java.util.UUID;
  * 庆典通知每日扫描：在职员工生日 / 入职纪念日，当天自动发布庆典广播（bless 互动）。
  *
  * <p>每天 08:00:07 跑一次（避开整点/半点拥堵，与 {@link DeliveryDueWarningScheduler} 同策略）。
- * 设置开关：{@code celebration.auto_enabled}（默认开）+ {@code celebration.auto_types}
- * （默认 birthday,anniversary）+ {@code celebration.publisher_name}（默认「公司」）。
+ * 设置开关：{@code celebration.auto_enabled}（<b>默认关</b>，V600 口径：祝福由人事在
+ * HR 任务中心手动发布，人事在页面打开「自动发送」后本调度器才代发）+
+ * {@code celebration.auto_types}（默认 birthday,anniversary）+
+ * {@code celebration.publisher_name}（默认「公司」）。
  *
  * <p><b>聚合卡（V454）</b>：每天每类型只发一张卡——今天 5 位同事生日就发一张生日卡，
  * 卡内列出 5 位主角，不再是 5 张单人卡；入职周年各人年数不同，逐人事件标签由
@@ -63,7 +65,8 @@ public class CelebrationScheduler {
     @Scheduled(cron = "7 0 8 * * *", zone = "Asia/Shanghai")
     public void scan() {
         try {
-            boolean autoEnabled = settings.readBool("celebration.auto_enabled", true);
+            // 默认关（V600）：不开自动发送时调度器空转返回，祝福由人事手动发布。
+            boolean autoEnabled = settings.readBool("celebration.auto_enabled", false);
             if (!autoEnabled) {
                 return;
             }

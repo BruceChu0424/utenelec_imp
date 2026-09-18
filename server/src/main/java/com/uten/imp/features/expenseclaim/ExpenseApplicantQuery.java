@@ -123,6 +123,34 @@ public class ExpenseApplicantQuery {
                 .toList();
     }
 
+    /**
+     * 某状态集合下报销单按明细项类别聚合（表头「类别」筛选桶，2026-09-16）。
+     * 类别挂在明细项上：count=含该类别明细的单数（一单多类别会在多桶各计一次）。
+     * 返回 [category, category, count]，按类别码稳定序。
+     */
+    public List<FacetRow> categoryFacets(Collection<String> statuses) {
+        if (statuses == null || statuses.isEmpty()) {
+            return List.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery("""
+                        SELECT i.category, COUNT(DISTINCT i.claim_id)
+                        FROM expense_claim_items i
+                        JOIN expense_claims c ON c.id = i.claim_id
+                        WHERE c.status IN (:statuses)
+                        GROUP BY i.category
+                        ORDER BY i.category
+                        """)
+                .setParameter("statuses", statuses)
+                .getResultList();
+        return rows.stream()
+                .map(row -> new FacetRow(
+                        (String) row[0],
+                        (String) row[0],
+                        ((Number) row[1]).longValue()))
+                .toList();
+    }
+
     public record ApplicantSnapshot(String name, UUID departmentId) {
     }
 

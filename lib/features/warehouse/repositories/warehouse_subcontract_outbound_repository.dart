@@ -15,6 +15,8 @@ class WarehouseSubcontractOutboundRepository {
     int page = 1,
     int size = 20,
     String? keyword,
+    String? supplierId,
+    String? status,
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -23,6 +25,9 @@ class WarehouseSubcontractOutboundRepository {
         'page': page,
         'size': size,
         if (kw != null && kw.isNotEmpty) 'keyword': kw,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplierId': supplierId,
+        if (status != null && status.isNotEmpty) 'status': status,
       },
     );
     return PagedResult.fromJson(json, OutboundTask.fromJson);

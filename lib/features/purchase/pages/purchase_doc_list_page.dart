@@ -31,6 +31,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -89,6 +90,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染，不把未知伪装成 0）。
   int? _actionableCount;
 
+  /// 表头列筛选：供应商/仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
+  String? _supplierIdFilter;
+  String? _warehouseIdFilter;
+
   /// 待处理段对应的状态：申请页=计划已下达（待分解）；其余=草稿（待提交/待审）。
   int get _actionableStatus => widget.docType == PurchaseDocType.request
       ? kPurchaseStatusApproved
@@ -138,6 +143,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
           page: _list.pageNum,
           filter: PurchaseDocFilter(
             keyword: _list.normalizedKeyword,
+            supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
+            warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
             status: seg.history ? null : seg.status,
             dateFrom: range == null
                 ? null
@@ -166,6 +173,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   void _onHistoryTime(UtenHistoryTimeValue value) {
     if (value == _historyTime) return;
     setState(() => _historyTime = value);
+    _reload(1);
+  }
+
+  /// 表头筛选回调：值并进既有 repository.list 参数，重拉回第 1 页。
+  void _onColumnFilterChanged(String key, String? value) {
+    setState(() {
+      if (key == 'supplier') {
+        _supplierIdFilter = value;
+      } else if (key == 'warehouse') {
+        _warehouseIdFilter = value;
+      }
+    });
     _reload(1);
   }
 
@@ -434,10 +453,24 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                                       canViewCommercialAmounts,
                                 ),
                                 items: _list.page?.items ?? const [],
-                                facets: const {},
+                                facets: {
+                                  if (_cfg.hasSupplier)
+                                    'supplier': masterDictionaryFacets(
+                                      names.supplierEntries,
+                                    ),
+                                  if (_cfg.hasWarehouse)
+                                    'warehouse': masterDictionaryFacets(
+                                      names.warehouseEntries,
+                                    ),
+                                },
                                 nullCounts: const {},
-                                filters: const {},
-                                onFilterChanged: (_, _) {},
+                                filters: {
+                                  if (_cfg.hasSupplier)
+                                    'supplier': _supplierIdFilter,
+                                  if (_cfg.hasWarehouse)
+                                    'warehouse': _warehouseIdFilter,
+                                },
+                                onFilterChanged: _onColumnFilterChanged,
                                 sortColumn: _list.sortKey,
                                 sortAscending: _list.sortAsc,
                                 onSortChange: (column, ascending) {

@@ -27,6 +27,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -831,6 +833,12 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 批量添加组件网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+              if (_saving)
+                const UtenBusyOverlay(
+                  title: '正在添加 BOM 组件',
+                  description: '正在逐个写入组件关系，请勿重复提交或关闭弹窗。',
+                ),
               _dialogHeader(context, theme, '添加组件'),
               const Divider(height: 1),
               Flexible(
@@ -846,21 +854,13 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s4),
-                      DropdownButtonFormField<String>(
-                        initialValue: _parentGoodsId,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
+                      UtenDropdownField(
+                        dense: true,
+                        value: _parentGoodsId,
+                        allowClear: false,
                         items: [
                           for (final p in widget.parentCandidates)
-                            DropdownMenuItem<String>(
-                              value: p.goodsId,
-                              child: Text(
-                                p.label,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            UtenDropdownItem(value: p.goodsId, label: p.label),
                         ],
                         onChanged: (v) {
                           if (v != null) setState(() => _parentGoodsId = v);

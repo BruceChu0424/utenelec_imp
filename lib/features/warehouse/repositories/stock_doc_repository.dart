@@ -13,6 +13,7 @@ class StockDocFilter {
   const StockDocFilter({
     this.keyword,
     this.warehouseId,
+    this.toWarehouseId,
     this.status,
     this.departmentId,
     this.issueStatus,
@@ -22,6 +23,9 @@ class StockDocFilter {
   });
   final String? keyword;
   final String? warehouseId;
+
+  /// 调入仓（仅转仓类单据；表头筛选，2026-09-16）
+  final String? toWarehouseId;
   final int? status;
 
   /// 领料车间（仅 DRAW）
@@ -57,6 +61,7 @@ class StockDocRepository {
         if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
           'keyword': filter.keyword!.trim(),
         if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
+        if (filter.toWarehouseId != null) 'toWarehouseId': filter.toWarehouseId,
         if (filter.status != null) 'status': filter.status,
         if (filter.departmentId != null) 'departmentId': filter.departmentId,
         if (filter.issueStatus != null) 'issueStatus': filter.issueStatus,

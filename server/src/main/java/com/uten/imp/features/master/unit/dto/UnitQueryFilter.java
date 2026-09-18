@@ -13,5 +13,6 @@ public record UnitQueryFilter(
         Set<String> nullFields,
         String code,
         String name,
-        String status) {
+        String status,
+        String dimension) {
 }

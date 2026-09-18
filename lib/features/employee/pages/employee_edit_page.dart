@@ -9,8 +9,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -368,190 +370,217 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
             )
           // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
           : UtenContentContainer.narrow(
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.only(
-                    top: UtenSpacing.s12,
-                    // 右下悬浮操作组让位（最后一节可滚出按钮区）。
-                    bottom: UtenFloatingActionGroup.scrollClearance,
-                  ),
-                  children: [
-                    _section(l10n.employeeEditBasic, [
-                      _text(
-                        _name,
-                        l10n.employeeFieldName,
-                        required: true,
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return l10n.employeeEditRequired;
-                          }
-                          return null;
-                        },
+              child: Stack(
+                children: [
+                  Form(
+                    key: _formKey,
+                    child: ListView(
+                      padding: const EdgeInsets.only(
+                        top: UtenSpacing.s12,
+                        // 右下悬浮操作组让位（最后一节可滚出按钮区）。
+                        bottom: UtenFloatingActionGroup.scrollClearance,
                       ),
-                      DropdownButtonFormField<String>(
-                        initialValue: _gender,
-                        decoration: _deco(l10n.employeeFieldGender),
-                        items: _genderCodes
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(_genderLabel(l10n, c)),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _gender = v ?? _gender),
-                      ),
-                      GestureDetector(
-                        onTap: _pickBirthDate,
-                        child: AbsorbPointer(
-                          child: _text(_birthDate, l10n.employeeFieldBirthDate),
-                        ),
-                      ),
-                      _text(_ethnicity, l10n.employeeFieldEthnicity),
-                      _text(
-                        _politicalStatus,
-                        l10n.employeeFieldPoliticalStatus,
-                      ),
-                      _text(_maritalStatus, l10n.employeeFieldMaritalStatus),
-                    ]),
-                    _section(l10n.employeeEditContact, [
-                      if (canEditPii)
-                        _text(
-                          _phone,
-                          l10n.employeeFieldPhone,
-                          required: true,
-                          validator: (v) {
-                            final s = v?.trim() ?? '';
-                            if (s.isEmpty) {
-                              return l10n.employeeOnboardPhoneRequired;
-                            }
-                            if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(s)) {
-                              return l10n.employeeOnboardPhoneInvalid;
-                            }
-                            return null;
-                          },
-                        ),
-                      _text(_officePhone, l10n.employeeFieldOfficePhone),
-                      _text(_email, l10n.employeeFieldEmail),
-                      _text(_huji, l10n.employeeFieldHujiAddress),
-                      _text(_residence, l10n.employeeFieldResidenceAddress),
-                    ]),
-                    _section(l10n.employeeEditOrg, [
-                      InputDecorator(
-                        decoration:
-                            _deco(
-                              l10n.employeeFieldDepartment,
-                              info: '调整部门请使用员工详情中的「调岗」功能',
-                            ).copyWith(
-                              prefixIcon: const Icon(
-                                Icons.account_tree_outlined,
+                      children: [
+                        _section(l10n.employeeEditBasic, [
+                          _text(
+                            _name,
+                            l10n.employeeFieldName,
+                            required: true,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return l10n.employeeEditRequired;
+                              }
+                              return null;
+                            },
+                          ),
+                          UtenDropdownField(
+                            label: l10n.employeeFieldGender,
+                            value: _gender,
+                            allowClear: false,
+                            searchable: false,
+                            items: [
+                              for (final c in _genderCodes)
+                                UtenDropdownItem(
+                                  value: c,
+                                  label: _genderLabel(l10n, c),
+                                ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _gender = v ?? _gender),
+                          ),
+                          GestureDetector(
+                            onTap: _pickBirthDate,
+                            child: AbsorbPointer(
+                              child: _text(
+                                _birthDate,
+                                l10n.employeeFieldBirthDate,
                               ),
                             ),
-                        child: Text(
-                          (_profile?.departmentName ?? '').trim().isEmpty
-                              ? '—'
-                              : _profile!.departmentName!,
-                        ),
-                      ),
-                      // 兼职部门（V459）：主部门之外兼任的部门，权限合成并入其
-                      // 部门链；待审弹卡按「主/兼职 ∈ 部门子树 且 持职责权限码」定向。
-                      if (ref
-                          .watch(currentPermissionsProvider)
-                          .contains(Perm.employeeEdit))
-                        UtenDepartmentPicker(
-                          mode: UtenDepartmentPickerMode.multi,
-                          initialSelection: _secondaryDepartments,
-                          label: '兼职部门',
-                          hint: '主部门之外兼任的部门（并入其权限配置）',
-                          onChanged: (selection) {
-                            final primaryId = _profile?.departmentId;
-                            var filtered = selection;
-                            if (primaryId != null &&
-                                selection.any((s) => s.id == primaryId)) {
-                              filtered = [
-                                for (final s in selection)
-                                  if (s.id != primaryId) s,
-                              ];
-                              context.appWarning('兼职部门不能与主部门相同，已自动剔除');
-                            }
-                            setState(() => _secondaryDepartments = filtered);
-                          },
-                        )
-                      else
-                        InputDecorator(
-                          decoration: _deco('兼职部门', info: '兼职部门维护需要员工编辑权限')
-                              .copyWith(
-                                prefixIcon: const Icon(
-                                  Icons.group_add_outlined,
-                                ),
-                              ),
-                          child: Text(
-                            _secondaryDepartments.isEmpty
-                                ? '—'
-                                : _secondaryDepartments
-                                      .map((s) => s.name)
-                                      .join('、'),
                           ),
-                        ),
-                      DropdownButtonFormField<String>(
-                        initialValue: _employmentType,
-                        decoration: _deco(l10n.employeeFieldEmploymentType),
-                        items: _employmentTypeCodes
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(_employmentTypeLabel(l10n, c)),
+                          _text(_ethnicity, l10n.employeeFieldEthnicity),
+                          _text(
+                            _politicalStatus,
+                            l10n.employeeFieldPoliticalStatus,
+                          ),
+                          _text(
+                            _maritalStatus,
+                            l10n.employeeFieldMaritalStatus,
+                          ),
+                        ]),
+                        _section(l10n.employeeEditContact, [
+                          if (canEditPii)
+                            _text(
+                              _phone,
+                              l10n.employeeFieldPhone,
+                              required: true,
+                              validator: (v) {
+                                final s = v?.trim() ?? '';
+                                if (s.isEmpty) {
+                                  return l10n.employeeOnboardPhoneRequired;
+                                }
+                                if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(s)) {
+                                  return l10n.employeeOnboardPhoneInvalid;
+                                }
+                                return null;
+                              },
+                            ),
+                          _text(_officePhone, l10n.employeeFieldOfficePhone),
+                          _text(_email, l10n.employeeFieldEmail),
+                          _text(_huji, l10n.employeeFieldHujiAddress),
+                          _text(_residence, l10n.employeeFieldResidenceAddress),
+                        ]),
+                        _section(l10n.employeeEditOrg, [
+                          InputDecorator(
+                            decoration:
+                                _deco(
+                                  l10n.employeeFieldDepartment,
+                                  info: '调整部门请使用员工详情中的「调岗」功能',
+                                ).copyWith(
+                                  prefixIcon: const Icon(
+                                    Icons.account_tree_outlined,
+                                  ),
+                                ),
+                            child: Text(
+                              (_profile?.departmentName ?? '').trim().isEmpty
+                                  ? '—'
+                                  : _profile!.departmentName!,
+                            ),
+                          ),
+                          // 兼职部门（V459）：主部门之外兼任的部门，权限合成并入其
+                          // 部门链；待审弹卡按「主/兼职 ∈ 部门子树 且 持职责权限码」定向。
+                          if (ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.employeeEdit))
+                            UtenDepartmentPicker(
+                              mode: UtenDepartmentPickerMode.multi,
+                              initialSelection: _secondaryDepartments,
+                              label: '兼职部门',
+                              hint: '主部门之外兼任的部门（并入其权限配置）',
+                              onChanged: (selection) {
+                                final primaryId = _profile?.departmentId;
+                                var filtered = selection;
+                                if (primaryId != null &&
+                                    selection.any((s) => s.id == primaryId)) {
+                                  filtered = [
+                                    for (final s in selection)
+                                      if (s.id != primaryId) s,
+                                  ];
+                                  context.appWarning('兼职部门不能与主部门相同，已自动剔除');
+                                }
+                                setState(
+                                  () => _secondaryDepartments = filtered,
+                                );
+                              },
+                            )
+                          else
+                            InputDecorator(
+                              decoration: _deco('兼职部门', info: '兼职部门维护需要员工编辑权限')
+                                  .copyWith(
+                                    prefixIcon: const Icon(
+                                      Icons.group_add_outlined,
+                                    ),
+                                  ),
+                              child: Text(
+                                _secondaryDepartments.isEmpty
+                                    ? '—'
+                                    : _secondaryDepartments
+                                          .map((s) => s.name)
+                                          .join('、'),
                               ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(
-                          () => _employmentType = v ?? _employmentType,
-                        ),
-                      ),
-                      DropdownButtonFormField<String>(
-                        key: const ValueKey('employee-edit-status-readonly'),
-                        initialValue: _status,
-                        decoration: _deco(
-                          l10n.employeeFieldStatus,
-                          info: '状态变更请使用员工详情中的转正、离职或复职专用按钮',
-                        ),
-                        // 离职/复职走专用流程（账号冻结/启用+任职记录），编辑页不可直改：
-                        // 在职员工选项剔除 resigned；已离职员工锁定为 resigned。
-                        items: _statusCodes
-                            .where(
-                              (c) =>
-                                  c != 'resigned' ||
-                                  _profile?.status == 'resigned',
-                            )
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(_statusLabel(l10n, c)),
+                            ),
+                          UtenDropdownField(
+                            label: l10n.employeeFieldEmploymentType,
+                            value: _employmentType,
+                            allowClear: false,
+                            searchable: false,
+                            items: [
+                              for (final c in _employmentTypeCodes)
+                                UtenDropdownItem(
+                                  value: c,
+                                  label: _employmentTypeLabel(l10n, c),
+                                ),
+                            ],
+                            onChanged: (v) => setState(
+                              () => _employmentType = v ?? _employmentType,
+                            ),
+                          ),
+                          UtenDropdownField(
+                            key: const ValueKey(
+                              'employee-edit-status-readonly',
+                            ),
+                            label: l10n.employeeFieldStatus,
+                            value: _status,
+                            allowClear: false,
+                            enabled: false,
+                            searchable: false,
+                            info: '状态变更请使用员工详情中的转正、离职或复职专用按钮',
+                            // 离职/复职走专用流程（账号冻结/启用+任职记录），编辑页不可直改：
+                            // 在职员工选项剔除 resigned；已离职员工锁定为 resigned。
+                            items: [
+                              for (final c in _statusCodes.where(
+                                (c) =>
+                                    c != 'resigned' ||
+                                    _profile?.status == 'resigned',
+                              ))
+                                UtenDropdownItem(
+                                  value: c,
+                                  label: _statusLabel(l10n, c),
+                                ),
+                            ],
+                            onChanged: (_) {},
+                          ),
+                          _text(_workLocation, l10n.employeeFieldWorkLocation),
+                          _text(_seatNo, l10n.employeeFieldSeatNo),
+                        ]),
+                        if (canEditPii || canEditCompensation)
+                          _section(l10n.employeeEditSalary, [
+                            if (canEditCompensation) ...[
+                              _text(_baseSalary, l10n.employeeFieldBaseSalary),
+                              _text(_perfSalary, l10n.employeeFieldPerfSalary),
+                              _text(_socialBase, l10n.employeeFieldSocialBase),
+                              _text(
+                                _housingBase,
+                                l10n.employeeFieldHousingBase,
                               ),
-                            )
-                            .toList(),
-                        onChanged: null,
-                      ),
-                      _text(_workLocation, l10n.employeeFieldWorkLocation),
-                      _text(_seatNo, l10n.employeeFieldSeatNo),
-                    ]),
-                    if (canEditPii || canEditCompensation)
-                      _section(l10n.employeeEditSalary, [
-                        if (canEditCompensation) ...[
-                          _text(_baseSalary, l10n.employeeFieldBaseSalary),
-                          _text(_perfSalary, l10n.employeeFieldPerfSalary),
-                          _text(_socialBase, l10n.employeeFieldSocialBase),
-                          _text(_housingBase, l10n.employeeFieldHousingBase),
-                        ],
-                        if (canEditPii) ...[
-                          _text(_bankBranch, l10n.employeeFieldBankBranch),
-                          _text(_bankAccount, l10n.employeeFieldBankAccount),
-                        ],
-                      ]),
-                  ],
-                ),
+                            ],
+                            if (canEditPii) ...[
+                              _text(_bankBranch, l10n.employeeFieldBankBranch),
+                              _text(
+                                _bankAccount,
+                                l10n.employeeFieldBankAccount,
+                              ),
+                            ],
+                          ]),
+                      ],
+                    ),
+                  ),
+                  // 保存员工资料网络段的全屏加载遮罩。
+                  if (_saving)
+                    UtenBusyOverlay(
+                      title: l10n.employeeEditTitle,
+                      description: '正在保存员工资料，请勿重复提交或离开本页。',
+                    ),
+                ],
               ),
             ),
       // 2026-09-14 UI 统一口径：吸底保存按钮改右下悬浮组，统一 large 尺寸。

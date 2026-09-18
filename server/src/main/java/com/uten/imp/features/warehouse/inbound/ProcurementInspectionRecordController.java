@@ -35,9 +35,12 @@ public class ProcurementInspectionRecordController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             OffsetDateTime to,
+            @RequestParam(required = false) String sourceType,
+            @RequestParam(required = false) String effective,
+            @RequestParam(required = false) String disposition,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "40") int size) {
-        return service.list(decision, keyword, from, to, page, size);
+        return service.list(decision, keyword, from, to, sourceType, effective, disposition, page, size);
     }
 
     @GetMapping("/{recordId}")

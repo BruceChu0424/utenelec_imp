@@ -15,7 +15,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -45,6 +48,9 @@ class _AdminSystemSettingsPageState
   final Set<String> _dirty = {};
   bool _loading = false;
   bool _saving = false;
+
+  /// 批量保存的纯网络段（密码确认弹窗之后）：全屏加载遮罩只挂这一段。
+  bool _applying = false;
   String? _error;
   final _formKey = GlobalKey<FormState>();
 
@@ -152,6 +158,8 @@ class _AdminSystemSettingsPageState
         ),
       );
       if (pwd == null || pwd.isEmpty || !mounted) return;
+      // 加载遮罩只挂纯网络段（密码确认弹窗展示期间不遮）。
+      setState(() => _applying = true);
       final saved = await ref
           .read(systemSettingRepositoryProvider)
           .updateBatch(changes, pwd);
@@ -177,7 +185,12 @@ class _AdminSystemSettingsPageState
       if (!mounted) return;
       context.appError('保存失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _applying = false;
+        });
+      }
     }
   }
 
@@ -187,39 +200,51 @@ class _AdminSystemSettingsPageState
     return Scaffold(
       appBar: const UtenAppBar(title: '系统设置', leading: UtenBackButton()),
       body: UtenContentContainer(
-        child: _loading && _all == null
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : _error != null
-            ? _ErrorState(error: _error!, onRetry: _load)
-            : _all == null || _all!.isEmpty
-            ? const Center(child: Text('暂无设置项'))
-            : RefreshIndicator(
-                onRefresh: _refresh,
-                child: Form(
-                  key: _formKey,
-                  child: ListView(
-                    padding: const EdgeInsets.all(UtenSpacing.s16),
-                    children: [
-                      _warningBanner(theme),
-                      for (final g in _groups)
-                        if (_all!.any((e) => e.category == g.$1))
-                          _SettingGroupCard(
-                            group: g,
-                            items: _all!
-                                .where((e) => e.category == g.$1)
-                                .toList(),
-                            controllers: _controllers,
-                            isDirty: (k) => _dirty.contains(k),
-                            onChanged: _markDirty,
-                            enabled: !_saving && !_loading,
+        child: Stack(
+          children: [
+            _loading && _all == null
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : _error != null
+                ? _ErrorState(error: _error!, onRetry: _load)
+                : _all == null || _all!.isEmpty
+                ? const UtenEmpty(message: '暂无设置项')
+                : RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: Form(
+                      key: _formKey,
+                      child: ListView(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        children: [
+                          _warningBanner(theme),
+                          for (final g in _groups)
+                            if (_all!.any((e) => e.category == g.$1))
+                              _SettingGroupCard(
+                                group: g,
+                                items: _all!
+                                    .where((e) => e.category == g.$1)
+                                    .toList(),
+                                controllers: _controllers,
+                                isDirty: (k) => _dirty.contains(k),
+                                onChanged: _markDirty,
+                                enabled: !_saving && !_loading,
+                              ),
+                          const SizedBox(
+                            height: UtenFloatingActionGroup.scrollClearance,
                           ),
-                      const SizedBox(
-                        height: UtenFloatingActionGroup.scrollClearance,
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+            // 批量保存网络段的全屏加载遮罩（密码确认弹窗期间不遮）。
+            if (_applying)
+              const UtenBusyOverlay(
+                title: '正在保存系统设置',
+                description: '正在写入设置并重载生效值，请勿重复提交或离开本页。',
               ),
+          ],
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
@@ -467,34 +492,35 @@ class _SettingRow extends StatelessWidget {
                 ),
               );
               final field = entry.valueType == 'bool'
-                  ? DropdownButtonFormField<String>(
+                  ? UtenDropdownField(
                       key: ValueKey('system-setting-${entry.key}'),
-                      initialValue: controller.text.toLowerCase(),
-                      decoration: UtenInputDecoration(
-                        decoration,
-                        info: entry.description,
-                      ),
+                      label: entry.label,
+                      value: controller.text.toLowerCase(),
+                      allowClear: false,
+                      searchable: false,
+                      enabled: enabled,
+                      info: entry.description,
+                      // 改动态（原 filled 高亮）由黄框 + 字段内提醒承接。
+                      warningMessage: dirty ? '已修改，尚未保存' : null,
                       items: [
-                        DropdownMenuItem(
+                        UtenDropdownItem(
                           value: 'true',
-                          child: Text(
-                            AppLocalizations.of(context).systemSettingEnabled,
-                          ),
+                          label: AppLocalizations.of(
+                            context,
+                          ).systemSettingEnabled,
                         ),
-                        DropdownMenuItem(
+                        UtenDropdownItem(
                           value: 'false',
-                          child: Text(
-                            AppLocalizations.of(context).systemSettingDisabled,
-                          ),
+                          label: AppLocalizations.of(
+                            context,
+                          ).systemSettingDisabled,
                         ),
                       ],
-                      onChanged: !enabled
-                          ? null
-                          : (value) {
-                              if (value == null) return;
-                              controller.text = value;
-                              onChanged();
-                            },
+                      onChanged: (value) {
+                        if (value == null) return;
+                        controller.text = value;
+                        onChanged();
+                      },
                     )
                   : TextFormField(
                       key: ValueKey('system-setting-${entry.key}'),

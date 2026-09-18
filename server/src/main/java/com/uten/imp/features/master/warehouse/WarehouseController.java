@@ -53,9 +53,12 @@ public class WarehouseController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String location,
+            @RequestParam(required = false) UUID parentId,
+            @RequestParam(required = false) Boolean accountable,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(new WarehouseQueryFilter(keyword, nullFields, code, name, status, location), page, size);
+        return service.list(new WarehouseQueryFilter(
+                keyword, nullFields, code, name, status, location, parentId, accountable), page, size);
     }
 
     @GetMapping("/facets")

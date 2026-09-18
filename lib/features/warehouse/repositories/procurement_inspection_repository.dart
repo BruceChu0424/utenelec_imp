@@ -2,6 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../models/warehouse_pre_stocked_location.dart';
+
+export '../models/warehouse_pre_stocked_location.dart';
 
 /// IQC 待检单聚合行（仍有 PENDING/PARTIAL 明细的采购/委外收货单）。
 class PendingInspectionReceipt {
@@ -17,6 +20,7 @@ class PendingInspectionReceipt {
     this.pendingBaseQty,
     this.firstReceivedAt,
     this.lastReceivedAt,
+    this.preStockedItemCount = 0,
   });
 
   final String receiptType; // PURCHASE / SUBCONTRACT
@@ -31,7 +35,12 @@ class PendingInspectionReceipt {
   final String? firstReceivedAt;
   final String? lastReceivedAt;
 
+  /// 先入库后质检(V596)：已上架待检的明细行数；>0 时页面顶部标红提示到库位检验。
+  final int preStockedItemCount;
+
   bool get isSubcontract => receiptType == 'SUBCONTRACT';
+
+  bool get hasPreStockedItems => preStockedItemCount > 0;
 
   factory PendingInspectionReceipt.fromJson(Map<String, dynamic> json) =>
       PendingInspectionReceipt(
@@ -46,6 +55,7 @@ class PendingInspectionReceipt {
         pendingBaseQty: (json['pendingBaseQty'] as num?)?.toDouble(),
         firstReceivedAt: json['firstReceivedAt'] as String?,
         lastReceivedAt: json['lastReceivedAt'] as String?,
+        preStockedItemCount: (json['preStockedItemCount'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -69,6 +79,7 @@ class ProcurementInspectionItem {
     this.remainingBaseQty,
     this.status,
     this.sourceOrderNo,
+    this.preStocked,
   });
 
   final String id;
@@ -91,6 +102,9 @@ class ProcurementInspectionItem {
   final String? status; // PENDING / PARTIAL / RESOLVED / REVERSED
   final String? sourceOrderNo;
 
+  /// 先入库后质检(V596)：实物已上架的仓/库位，品质部到该位置检验；null = 在待检区。
+  final WarehousePreStockedLocation? preStocked;
+
   factory ProcurementInspectionItem.fromJson(Map<String, dynamic> json) =>
       ProcurementInspectionItem(
         id: json['id'] as String,
@@ -110,6 +124,7 @@ class ProcurementInspectionItem {
         remainingBaseQty: (json['remainingBaseQty'] as num?)?.toDouble(),
         status: json['status'] as String?,
         sourceOrderNo: json['sourceOrderNo'] as String?,
+        preStocked: WarehousePreStockedLocation.tryParse(json['preStocked']),
       );
 }
 

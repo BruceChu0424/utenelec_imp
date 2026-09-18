@@ -35,6 +35,8 @@ public class ProductionDrawRequestService {
     private final ProductionDocumentAccessPolicy access;
     private final ProductionWorkshopMembership membership;
     private final ChainNoticeService notices;
+    private final com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService readiness;
+    private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService planFootprints;
 
     @Transactional(readOnly = true)
     public Preview preview(PreviewRequest request) {
@@ -63,12 +65,36 @@ public class ProductionDrawRequestService {
         String requestHash = selectionRequestHash(items, request.previewFingerprint(), request.lines());
         Result replay = replay(request.idempotencyKey(), requestHash, items);
         if (replay != null) return replay;
+        // 线边仓直送料的草稿领料单在这里就地出库(V595)：系统对账提升齐套时没有用户身份出库，
+        // 车间提交领料申请是第一个带身份的动作；仓库只收到真正落在仓库的那部分。
+        // 出库走仓库单据的审核/出库链，须先按计划预锁完整履约足迹(只在真有线边仓草稿时)。
+        if (items.stream().anyMatch(item -> readiness.mayIssueLineSideDraws(item.segmentId()))) {
+            planFootprints.beginPlans(before.stream().map(Segment::planId).distinct().toList());
+        }
+        for (Item item : items) readiness.issuePendingLineSideDraws(item.segmentId());
         // No inventory is mutated. Preserve established upstream -> segment -> document order.
         lockRows("production_plans", before.stream().map(Segment::planId).distinct().sorted().toList());
         lockRows("production_planning_packages", before.stream().map(Segment::packageId).distinct().sorted().toList());
         lockRows("production_execution_segments", items.stream().map(Item::segmentId).toList());
         List<Segment> locked = segments(items);
         requireAccess(locked); // Assignment or plan state may have changed while acquiring locks.
+        // 开工路线门控(V599)：未确认路线不能提交领料；分批生产路线走分批领料，不在这里整单领。
+        for (Segment segment : locked) {
+            String route = (String) em.createNativeQuery("""
+                    SELECT start_route FROM production_execution_segments
+                    WHERE id = :id AND is_deleted = FALSE
+                    """)
+                    .setParameter("id", segment.id())
+                    .getSingleResult();
+            if (route == null) {
+                throw conflict("请先确认生产路线——工单 " + segment.code()
+                        + " 尚未选定齐套/分批/持续生产之一，不能提交领料");
+            }
+            if ("BATCH".equals(route)) {
+                throw conflict("工单 " + segment.code()
+                        + " 已确认为「分批生产」路线，请用「分批领料」按批办理");
+            }
+        }
         List<UUID> drawIds = documentIds(items.stream().map(Item::segmentId).toList());
         if (drawIds.isEmpty()) throw conflict("任务没有有效领料明细，请刷新车间任务");
         lockRows("stock_documents", drawIds);
@@ -190,7 +216,8 @@ public class ProductionDrawRequestService {
                        document.warehouse_id, warehouse.name, item.goods_id,
                        item.goods_code_snapshot, item.goods_name_snapshot, item.color_id, color.name,
                        item.unit_id, unit.name, item.qty, document.status,
-                       fn_production_draw_item_requested_qty(item.id)
+                       fn_production_draw_item_requested_qty(item.id),
+                       COALESCE(warehouse.is_line_side, FALSE)
                 FROM production_planning_package_documents mapping
                 JOIN stock_documents document ON document.id=mapping.document_id
                   AND document.doc_type='DRAW' AND NOT document.is_deleted AND document.status IN (0,1)
@@ -206,17 +233,28 @@ public class ProductionDrawRequestService {
                 ORDER BY mapping.execution_segment_id, document.warehouse_id, document.id, item.id
                 """).setParameter("ids", segmentIds));
         List<Line> lines = new ArrayList<>();
+        java.util.Set<UUID> segmentsWithDraws = new java.util.HashSet<>();
         for (Object[] row : rows) {
             // Existing issued/requested sibling warehouses continue their own
             // workflow; submit only the remaining exact warehouse documents.
             BigDecimal qty = decimal(row[13]).subtract(decimal(row[15]));
             if (qty.signum() <= 0) continue;
+            segmentsWithDraws.add(uuid(row[0]));
+            // 线边仓(车间直送)的领料行不进领料申请(V595)：料是车间自产自检直送来的，
+            // 提交领料申请时就地自动出库，仓库不发这批料，汇总里也不出现。
+            if (Boolean.TRUE.equals(row[16])) continue;
             lines.add(new Line(uuid(row[0]), uuid(row[1]), str(row[2]), uuid(row[3]),
                     uuid(row[4]), str(row[5]), uuid(row[6]), str(row[7]), str(row[8]),
                     uuid(row[9]), str(row[10]), uuid(row[11]), str(row[12]), qty));
         }
-        if (lines.stream().map(Line::segmentId).distinct().count() != items.size()) {
+        if (segmentsWithDraws.size() != items.size()) {
             throw conflict("所选任务缺少有效领料明细，请刷新后重试");
+        }
+        // 线边仓行已被上面跳过：只剩线边仓的工单没有任何要仓库发的料，从前会以「零行」
+        // 静默提交成功(车间以为领到了、仓库什么也没收到)。持续生产工单最容易撞上这一条。
+        if (lines.stream().map(Line::segmentId).distinct().count() != items.size()) {
+            throw conflict("所选任务没有需要仓库发料的物料：同车间直送的料在开工与报工审核时"
+                    + "自动投入，已申请过的也不会重复提交，请取消勾选后再提交");
         }
         List<Task> tasks = segments.stream().map(segment -> new Task(segment.id(), segment.planId(),
                 segment.planNo(), segment.code(), segment.workshopId(), segment.workshopName(),

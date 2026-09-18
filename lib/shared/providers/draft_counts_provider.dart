@@ -268,7 +268,3 @@ final draftCountsProvider = FutureProvider<DraftCounts>((ref) async {
       .get(ApiEndpoints.documentDraftCounts);
   return DraftCounts.fromJson(json);
 });
-
-/// 当前草稿计数快照；加载中/失败按全零（与 module_badge_sum 的降级口径一致）。
-DraftCounts watchDraftCounts(WidgetRef ref) =>
-    ref.watch(draftCountsProvider).valueOrNull ?? DraftCounts.empty;

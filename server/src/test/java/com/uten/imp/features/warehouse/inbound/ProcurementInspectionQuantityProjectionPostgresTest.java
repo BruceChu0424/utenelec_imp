@@ -41,11 +41,16 @@ class ProcurementInspectionQuantityProjectionPostgresTest {
         jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, unit_id uuid)");
         jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
+        // V596: pendingForReceipt projects the pre-stocked shelf (warehouse name + employee name).
+        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text)");
+        jdbc.execute("CREATE TABLE employees(id uuid PRIMARY KEY, full_name text)");
         jdbc.execute("""
                 CREATE TABLE procurement_inspection_items(id uuid, receipt_type text, receipt_id uuid,
                     receipt_item_id uuid, goods_id uuid, color_id uuid, unit_id uuid, unit_rate numeric,
                     received_base_qty numeric, passed_base_qty numeric, failed_base_qty numeric,
-                    status text, warehouse_id uuid, received_weight numeric, received_at timestamptz)
+                    status text, warehouse_id uuid, received_weight numeric, received_at timestamptz,
+                    pre_stocked_warehouse_id uuid, pre_stocked_place text, pre_stocked_at timestamptz,
+                    pre_stocked_by_employee_id uuid)
                 """);
         for (String prefix : new String[]{"purchase", "subcontract"}) {
             jdbc.execute("CREATE TABLE " + prefix + "_receipt_items(id uuid PRIMARY KEY, order_item_id uuid)");
@@ -69,7 +74,9 @@ class ProcurementInspectionQuantityProjectionPostgresTest {
                 mock(BusinessEventPublisher.class), mock(ProcurementIqcRejectionPort.class), mock(ChainNoticeService.class),
                 org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                 mock(com.uten.imp.common.finance.ProcurementReceiptConsiderationService.class),
-                mock(com.uten.imp.application.port.ProcurementInventoryValuePort.class));
+                mock(com.uten.imp.application.port.ProcurementInventoryValuePort.class),
+                mock(ProcurementIqcStockInService.class),
+                mock(com.uten.imp.application.port.ProductionInspectionStockInPort.class));
         controller = new ProcurementInspectionController(service);
     }
 

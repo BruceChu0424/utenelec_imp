@@ -38,9 +38,11 @@ public class ProductionFinishedInboundTaskController {
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public PageResponse<ProductionFinishedInboundTask> tasks(
             @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) String taskStage,
+            @RequestParam(required = false) UUID warehouseId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "40") int size) {
-        return service.list(keyword, page, size);
+        return service.list(keyword, taskStage, warehouseId, page, size);
     }
 
     @GetMapping("/tasks/count")

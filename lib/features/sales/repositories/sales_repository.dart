@@ -20,6 +20,7 @@ class SalesDocFilter {
     this.keyword,
     this.clientId,
     this.warehouseId,
+    this.currencyId,
     this.status,
     this.dateFrom,
     this.dateTo,
@@ -34,6 +35,7 @@ class SalesDocFilter {
   final String? keyword;
   final String? clientId;
   final String? warehouseId;
+  final String? currencyId; // 币种表头筛选（2026-09-16：orders/shipments 端点）
   final int? status;
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
@@ -72,6 +74,7 @@ class SalesRepository {
       if (filter.clientId != null) 'clientId': filter.clientId,
       if (filter.sellerId != null) 'sellerId': filter.sellerId,
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
+      if (filter.currencyId != null) 'currencyId': filter.currencyId,
       if (filter.status != null) 'status': filter.status,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
@@ -97,9 +100,10 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 客户 → 最近一次销售订货条款（新建单「学习预填」：选客户后带出上次的
-  /// 结账方式/发运策略/币种；端点挂在 orders 下，5 类单据通用）。
-  /// 无历史订单或取数失败返回 null（预填静默失败，不阻塞开单）。
+  /// 客户 → 主档默认销售条款 (新建单预填：选客户后带出客户资料里的默认
+  /// 结账方式/发运策略/币种，每次保存订单由服务端写回客户资料；端点挂在 orders 下，
+  /// 5 类单据通用，路径 /last-terms 是历史遗留)。
+  /// 客户资料没有默认值或取数失败返回 null (预填静默失败，不阻塞开单)。
   Future<SalesClientLastTerms?> lastTermsForClient(String clientId) async {
     try {
       final json = await api.get(
@@ -442,8 +446,11 @@ final salesRepositoryProvider = Provider.family<SalesRepository, SalesDocType>(
   (ref, type) => SalesRepository(ref.watch(apiClientProvider), type),
 );
 
-/// 客户最近一次销售订货条款（/sales/orders/last-terms 学习预填）。
-/// 三字段均可空——历史单未必全填；前端只回填空字段并黄标提醒核对。
+/// 客户主档默认销售条款 (/sales/orders/last-terms 预填返回体)。
+///
+/// 类名 SalesClientLastTerms 与端点路径都是历史遗留：语义自 V592 起是**主档默认值**
+/// (clients 表三列)，不再是「按客户最近一张订单推导」。三字段均可空——客户资料未必
+/// 三项全填；前端只回填空字段并黄标提醒核对。
 class SalesClientLastTerms {
   const SalesClientLastTerms({
     this.settlementMethodId,

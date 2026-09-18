@@ -164,6 +164,7 @@ public class SalesShipmentService {
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
+            if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.arPosted() != null) ps.add(cb.equal(root.get("arPosted"), f.arPosted()));
             if (f.financeAudit() != null) {

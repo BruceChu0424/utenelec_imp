@@ -163,6 +163,9 @@ public class DailyReportExecutionSegmentGuard {
                         "执行段累计报工超过计划数量："
                                 + segment.segmentCode());
             }
+            if (segment.continuousSupply()) {
+                requireDirectSupplyCap(segment, existing, entry.getValue());
+            }
         }
         for (Map.Entry<UUID, BigDecimal> entry :
                 salesRequested.entrySet()) {
@@ -206,7 +209,8 @@ public class DailyReportExecutionSegmentGuard {
                                            s.workshop_department_id,
                                            s.responsible_employee_id,
                                            s.material_requirement_mode,
-                                           s.lock_version, s.source_segment_id
+                                           s.lock_version, s.source_segment_id,
+                                           s.continuous_supply
                                     FROM production_execution_segments s
                                     JOIN production_planning_packages package
                                       ON package.id = s.package_id
@@ -238,7 +242,8 @@ public class DailyReportExecutionSegmentGuard {
                     (UUID) row[11],
                     (UUID) row[12],
                     (String) row[13],
-                    ((Number) row[14]).longValue(),(UUID)row[15]);
+                    ((Number) row[14]).longValue(),(UUID)row[15],
+                    Boolean.TRUE.equals(row[16]));
             // Exact workshop assignment is the write-side object scope for an
             // execution task. Reusing the plan maker scope here would make a
             // workshop employee see the task but receive 404 when reporting a
@@ -317,7 +322,7 @@ public class DailyReportExecutionSegmentGuard {
             throw conflict("前批共享物料已退回或处于待退状态，请先核对后续批次用料");
         List<Object[]> demands = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT id, status
+                                SELECT id, status, direct_supply
                                 FROM production_material_demands
                                 WHERE execution_segment_id = :segmentId
                                   AND is_deleted = FALSE
@@ -331,12 +336,48 @@ public class DailyReportExecutionSegmentGuard {
                     .setParameter("id",segment.id()).getSingleResult())) return;
             throw conflict("执行工单缺少正式物料需求，不能按零物料任务报工");
         }
+        // 持续生产(V595)：同车间直送供给的子件按到料分次投入，未齐不挡报工；
+        // 报工量另受「已到料按单耗折算」的上限约束(requireDirectSupplyCap)。
         long pending = demands.stream()
                 .filter(row -> !"FULFILLED".equals(row[1]))
+                .filter(row -> !(segment.continuousSupply() && Boolean.TRUE.equals(row[2])))
                 .count();
         if (pending > 0) {
             throw conflict("仓库尚未完成全部生产领料，不能报工(待发料 "
                     + pending + " 项)");
+        }
+    }
+
+    /**
+     * 持续生产工单的报工上限(V595)：完工申报累计不得超过「同车间直送已到料按单耗折算」的产量——
+     * 子件只送来 40 套就不可能做出 50 个成品，多报的会在入库时把没有物料支撑的产出记进库存。
+     * 一件直送料都没到时上限为 0(等料，不能报)。单耗未知的需求不参与折算。
+     */
+    private void requireDirectSupplyCap(
+            SegmentSnapshot segment, BigDecimal existing, BigDecimal requested) {
+        Object cap = em.createNativeQuery("""
+                        SELECT MIN(TRUNC(
+                                   (clearance.issued_qty - clearance.returned_qty)
+                                   / demand.per_product_qty, 4))
+                        FROM production_material_demands demand
+                        JOIN v_production_material_clearance clearance
+                          ON clearance.demand_id = demand.id
+                        WHERE demand.execution_segment_id = :segmentId
+                          AND demand.direct_supply
+                          AND demand.is_deleted = FALSE
+                          AND demand.per_product_qty > 0
+                        """)
+                .setParameter("segmentId", segment.id())
+                .getSingleResult();
+        if (cap == null) return;
+        BigDecimal limit = decimal(cap).max(BigDecimal.ZERO);
+        BigDecimal total = existing.add(requested);
+        if (total.compareTo(limit.add(new BigDecimal("0.0001"))) > 0) {
+            throw conflict("持续生产工单 " + segment.segmentCode()
+                    + " 按同车间直送已到料折算最多可报 "
+                    + limit.stripTrailingZeros().toPlainString()
+                    + "，本次累计 " + total.stripTrailingZeros().toPlainString()
+                    + " 超出；请等子件送到并审核后再报");
         }
     }
 
@@ -574,6 +615,7 @@ public class DailyReportExecutionSegmentGuard {
             UUID responsibleEmployeeId,
             String materialRequirementMode,
             long lockVersion,
-            UUID sourceSegmentId) {
+            UUID sourceSegmentId,
+            boolean continuousSupply) {
     }
 }

@@ -159,19 +159,43 @@ public class StockQueryService {
                                                               String keyword, int page, int size,
                                                               String sort, String order) {
         return instantInventory(categoryId, warehouseId, includeDefective, keyword,
-                null, null, page, size, sort, order);
+                null, null, null, null, null, page, size, sort, order);
     }
 
     /**
      * 2026-09-15 起带「所属仓库」表头筛选（V587/V590 单一事实源）：
      * owningWarehouse=按 goods.owning_warehouse_id 等值；owningWarehouseNull=筛未登记。
-     * facet 桶随响应下发（在**未应用本筛选**的同一口径上聚合，翻页不变）。
+     * 2026-09-16 起再带 颜色/物料系列/单位 三列表头筛选（colorId=base.color_id 等值、
+     * series=g.series 等值、unitId=按行上解析出的单位等值）。
+     * facet 桶随响应下发（在**未应用这些筛选**的同一口径上聚合，翻页不变）。
      */
     public PageResponse<InstantInventoryRow> instantInventory(UUID categoryId, UUID warehouseId,
                                                               boolean includeDefective,
                                                               String keyword,
                                                               UUID owningWarehouse,
                                                               Boolean owningWarehouseNull,
+                                                              UUID colorId,
+                                                              String series,
+                                                              UUID unitId,
+                                                              int page, int size,
+                                                              String sort, String order) {
+        return instantInventory(categoryId, warehouseId, includeDefective, false, keyword,
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, page, size, sort, order);
+    }
+
+    /**
+     * @param includeLineSide 是否含线边仓(V595)。线边仓是车间内部直送的料架，现实里不是仓库：
+     *                        仓库=全部或父仓聚合时默认剔除；显式选中某个线边仓仍按单仓精确显示。
+     */
+    public PageResponse<InstantInventoryRow> instantInventory(UUID categoryId, UUID warehouseId,
+                                                              boolean includeDefective,
+                                                              boolean includeLineSide,
+                                                              String keyword,
+                                                              UUID owningWarehouse,
+                                                              Boolean owningWarehouseNull,
+                                                              UUID colorId,
+                                                              String series,
+                                                              UUID unitId,
                                                               int page, int size,
                                                               String sort, String order) {
         boolean canViewCost = costMasker.canView();
@@ -190,19 +214,26 @@ public class StockQueryService {
         StringBuilder stockInWhere = new StringBuilder();
         // V476：warehouseId 展开成查询范围——叶子仓=精确单仓（旧行为），父仓=子树聚合。
         Set<UUID> warehouseScope = warehouseScopeOf(warehouseId);
+        // 先入库后检(V596)：已上架的待检品按实际上架仓统计，未上架的仍按收货参考仓。
+        String iqcWarehouse = "COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)";
         if (warehouseScope != null && warehouseScope.size() == 1) {
             balWhere.append(" AND b.warehouse_id = :warehouseId");
-            iqcWhere.append(" AND i.warehouse_id = :warehouseId");
+            iqcWhere.append(" AND " + iqcWarehouse + " = :warehouseId");
             stockInWhere.append(" AND i.warehouse_id = :warehouseId");
         } else if (warehouseScope != null) {
             balWhere.append(" AND b.warehouse_id IN (:scopeIds) AND w.is_accountable");
-            iqcWhere.append(" AND i.warehouse_id IN (:scopeIds) AND w.is_accountable");
+            iqcWhere.append(" AND " + iqcWarehouse + " IN (:scopeIds) AND w.is_accountable");
             stockInWhere.append(" AND i.warehouse_id IN (:scopeIds) AND w.is_accountable");
             // 父仓聚合与「全部」同口径：开关关掉则剔除不良品子仓。
             if (!includeDefective) {
                 balWhere.append(" AND NOT w.is_defective");
                 iqcWhere.append(" AND NOT w.is_defective");
                 stockInWhere.append(" AND NOT w.is_defective");
+            }
+            if (!includeLineSide) {
+                balWhere.append(" AND NOT w.is_line_side");
+                iqcWhere.append(" AND NOT w.is_line_side");
+                stockInWhere.append(" AND NOT w.is_line_side");
             }
         } else {
             // 仓库=全部：只统计参与库存核算的仓库（老库 B_Storage.IsCal=0 口径）。
@@ -215,8 +246,16 @@ public class StockQueryService {
                 iqcWhere.append(" AND NOT w.is_defective");
                 stockInWhere.append(" AND NOT w.is_defective");
             }
+            // 「含线边仓」开关(V595)：线边仓是车间料架，默认不算进现实库存。
+            if (!includeLineSide) {
+                balWhere.append(" AND NOT w.is_line_side");
+                iqcWhere.append(" AND NOT w.is_line_side");
+                stockInWhere.append(" AND NOT w.is_line_side");
+            }
         }
-        iqcWhere.insert(0, " AND i.received_base_qty - i.passed_base_qty - i.failed_base_qty > 0");
+        // status 谓词与「待检余量 > 0」等价(V222 状态投影 CHECK)，写出来让 V222 的部分索引可用。
+        iqcWhere.insert(0, " AND i.status IN ('PENDING', 'PARTIAL')"
+                + " AND i.received_base_qty - i.passed_base_qty - i.failed_base_qty > 0");
         stockInWhere.insert(0,
                 " AND i.passed_base_qty - i.warehouse_stocked_base_qty > 0");
         StringBuilder goodsWhere = new StringBuilder(" WHERE g.is_deleted = false");
@@ -227,13 +266,24 @@ public class StockQueryService {
             goodsWhere.append(
                     " AND (g.name ILIKE :kw OR g.code ILIKE :kw OR g.model ILIKE :kw OR g.c_number ILIKE :kw)");
         }
-        // V587/V590 归属筛选只作用于列表本体；facet 桶在未应用本筛选的口径上聚合。
+        // V587/V590 归属筛选 + 颜色/系列/单位列筛选只作用于列表本体；
+        // facet 桶在未应用这些筛选的口径（goodsWhereBase）上聚合。
         String goodsWhereBase = goodsWhere.toString();
         if (owningWarehouse != null) {
             goodsWhere.append(" AND g.owning_warehouse_id = :ownWh");
         }
         if (Boolean.TRUE.equals(owningWarehouseNull)) {
             goodsWhere.append(" AND g.owning_warehouse_id IS NULL");
+        }
+        String seriesFilter = (series == null || series.isBlank()) ? null : series.trim();
+        if (colorId != null) {
+            goodsWhere.append(" AND base.color_id = :colorId");
+        }
+        if (seriesFilter != null) {
+            goodsWhere.append(" AND g.series = :series");
+        }
+        if (unitId != null) {
+            goodsWhere.append(" AND u.id = :unitId");
         }
 
         // 递归 CTE：仅 categoryId 过滤时才声明（锚为参数，无过滤时整段不出现，计划更简）。
@@ -278,7 +328,7 @@ public class StockQueryService {
                         -- 待检品尚无余额行：并入 0 量占位行，保证「货在待检」在即时库存可见(行粒度=货品×颜色)。
                         (SELECT i.goods_id, i.color_id, 0, 0, 0
                          FROM procurement_inspection_items i
-                         JOIN warehouses w ON w.id = i.warehouse_id
+                         JOIN warehouses w ON w.id = COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)
                 """ + iqcWhere + """
                         )
                         UNION ALL
@@ -301,7 +351,7 @@ public class StockQueryService {
                     SELECT i.goods_id, i.color_id,
                            SUM(i.received_base_qty - i.passed_base_qty - i.failed_base_qty) AS pending_qty
                     FROM procurement_inspection_items i
-                    JOIN warehouses w ON w.id = i.warehouse_id
+                    JOIN warehouses w ON w.id = COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)
                 """ + iqcWhere + """
                     GROUP BY i.goods_id, i.color_id
                 ) iqc ON iqc.goods_id = g.id AND iqc.color_id IS NOT DISTINCT FROM base.color_id
@@ -344,6 +394,9 @@ public class StockQueryService {
             if (categoryId != null) q.setParameter("categoryId", categoryId);
             if (keyword != null && !keyword.isBlank()) q.setParameter("kw", "%" + keyword.trim() + "%");
             if (owningWarehouse != null) q.setParameter("ownWh", owningWarehouse);
+            if (colorId != null) q.setParameter("colorId", colorId);
+            if (seriesFilter != null) q.setParameter("series", seriesFilter);
+            if (unitId != null) q.setParameter("unitId", unitId);
         }
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
@@ -384,6 +437,9 @@ public class StockQueryService {
                                 q.setParameter("kw", "%" + keyword.trim() + "%");
                             }
                             if (owningWarehouse != null) q.setParameter("ownWh", owningWarehouse);
+                            if (colorId != null) q.setParameter("colorId", colorId);
+                            if (seriesFilter != null) q.setParameter("series", seriesFilter);
+                            if (unitId != null) q.setParameter("unitId", unitId);
                         },
                         INSTANT_TOTAL_SPECS);
         // 归属仓库 facet：在同一口径（未应用归属筛选本身）的 core 上聚合，
@@ -426,10 +482,64 @@ public class StockQueryService {
             nullQ.setParameter("kw", "%" + keyword.trim() + "%");
         }
         long owningNullCount = ((Number) nullQ.getSingleResult()).longValue();
+
+        // 颜色/物料系列/单位 三列 facet：与 owningWarehouse 同范式——在 coreFacet
+        // （未应用归属与这三列筛选本身）的同一口径上聚合；空值桶不下发（前端无对应
+        // null 筛选参数），按值筛选走 colorId/series/unitId。
+        var colorFacetQ = em.createNativeQuery(
+                "SELECT t.color_id AS v, COALESCE(t.color_name, '') AS label, COUNT(*) AS c "
+                        + "FROM (" + coreFacet + ") t "
+                        + "WHERE t.color_id IS NOT NULL "
+                        + "GROUP BY t.color_id, t.color_name ORDER BY c DESC, label ASC LIMIT 50");
+        var seriesFacetQ = em.createNativeQuery(
+                "SELECT t.series AS v, t.series AS label, COUNT(*) AS c "
+                        + "FROM (" + coreFacet + ") t "
+                        + "WHERE t.series IS NOT NULL AND t.series <> '' "
+                        + "GROUP BY t.series ORDER BY c DESC, v ASC LIMIT 50");
+        var unitFacetQ = em.createNativeQuery(
+                "SELECT u2.id AS v, COALESCE(u2.name, '') AS label, COUNT(*) AS c "
+                        + "FROM (" + coreFacet + ") t "
+                        + "JOIN goods g2 ON g2.id = t.goods_id "
+                        + "LEFT JOIN units u2 ON (u2.id = g2.unit_id "
+                        + "    OR (g2.unit_id IS NULL AND u2.legacy_id = NULLIF(g2.unit_legacy_id, 0))) "
+                        + "WHERE u2.id IS NOT NULL "
+                        + "GROUP BY u2.id, u2.name ORDER BY c DESC, label ASC LIMIT 50");
+        for (var q : List.of(colorFacetQ, seriesFacetQ, unitFacetQ)) {
+            if (warehouseScope != null && warehouseScope.size() == 1) {
+                q.setParameter("warehouseId", warehouseId);
+            }
+            if (warehouseScope != null && warehouseScope.size() > 1) {
+                q.setParameter("scopeIds", warehouseScope);
+            }
+            if (categoryId != null) q.setParameter("categoryId", categoryId);
+            if (keyword != null && !keyword.isBlank()) {
+                q.setParameter("kw", "%" + keyword.trim() + "%");
+            }
+        }
+        List<com.uten.imp.common.web.FacetBucket> colorBuckets = facetBuckets(colorFacetQ);
+        List<com.uten.imp.common.web.FacetBucket> seriesBuckets = facetBuckets(seriesFacetQ);
+        List<com.uten.imp.common.web.FacetBucket> unitBuckets = facetBuckets(unitFacetQ);
         return new com.uten.imp.common.web.TotaledPageResponse<>(
                 new PageResponse<>(items, safePage, safeSize, total, totalPages), totals,
-                java.util.Map.of("owningWarehouse", owningBuckets),
+                java.util.Map.of(
+                        "owningWarehouse", owningBuckets,
+                        "color", colorBuckets,
+                        "series", seriesBuckets,
+                        "unit", unitBuckets),
                 java.util.Map.of("owningWarehouse", owningNullCount));
+    }
+
+    /** facet 聚合查询 → 桶列表（v=值、label=展示名、c=命中数；label 列可为 null）。 */
+    private static List<com.uten.imp.common.web.FacetBucket> facetBuckets(
+            jakarta.persistence.Query facetQuery) {
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(facetQuery);
+        List<com.uten.imp.common.web.FacetBucket> buckets = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            buckets.add(new com.uten.imp.common.web.FacetBucket(
+                    String.valueOf(r[0]), ((Number) r[2]).longValue(),
+                    r[1] == null ? null : String.valueOf(r[1])));
+        }
+        return buckets;
     }
 
     /**

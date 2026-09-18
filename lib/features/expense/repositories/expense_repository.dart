@@ -17,6 +17,7 @@ abstract interface class ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   });
   Future<PagedResult<ExpenseClaim>> listPending({
     int page = 1,
@@ -24,6 +25,7 @@ abstract interface class ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   });
   Future<PagedResult<ExpenseClaim>> listPayable({
     int page = 1,
@@ -31,6 +33,7 @@ abstract interface class ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   });
 
   /// 审批/打款队列表头筛选桶（部门 / 年月），queue = pending | payable。
@@ -61,6 +64,7 @@ class DioExpenseRepository implements ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   }) => _list(
     '$_claims/mine',
     statuses: statuses,
@@ -69,6 +73,7 @@ class DioExpenseRepository implements ExpenseRepository {
     year: year,
     month: month,
     departmentId: departmentId,
+    category: category,
   );
 
   @override
@@ -78,6 +83,7 @@ class DioExpenseRepository implements ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   }) => _list(
     '$_claims/pending',
     page: page,
@@ -85,6 +91,7 @@ class DioExpenseRepository implements ExpenseRepository {
     year: year,
     month: month,
     departmentId: departmentId,
+    category: category,
   );
 
   @override
@@ -94,6 +101,7 @@ class DioExpenseRepository implements ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   }) => _list(
     '$_claims/payable',
     page: page,
@@ -101,6 +109,7 @@ class DioExpenseRepository implements ExpenseRepository {
     year: year,
     month: month,
     departmentId: departmentId,
+    category: category,
   );
 
   Future<PagedResult<ExpenseClaim>> _list(
@@ -111,6 +120,7 @@ class DioExpenseRepository implements ExpenseRepository {
     int? year,
     int? month,
     String? departmentId,
+    String? category,
   }) async {
     final normalizedStatuses = statuses?.map((status) => status.apiValue);
     final json = await _api.get(
@@ -124,6 +134,8 @@ class DioExpenseRepository implements ExpenseRepository {
         'month': ?month,
         if (departmentId != null && departmentId.isNotEmpty)
           'departmentId': departmentId,
+        // 类别表头筛选（2026-09-16）：明细项类别码（TRANSPORT/TRAVEL/...），空 = 不筛。
+        if (category != null && category.isNotEmpty) 'category': category,
       },
     );
     return PagedResult.fromJson(json, ExpenseClaim.fromJson);
@@ -144,6 +156,8 @@ class DioExpenseRepository implements ExpenseRepository {
     return {
       'departmentName': parse(json['departments']),
       'yearMonth': parse(json['months']),
+      // 类别桶（2026-09-16 扩 facets 响应）：value=类别码（明细项级别聚合）。
+      'category': parse(json['categories']),
     };
   }
 

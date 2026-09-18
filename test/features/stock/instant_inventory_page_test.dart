@@ -105,6 +105,40 @@ void main() {
     },
   );
 
+  // V595 线边仓(车间内部直送的料架)退出即时库存：页面进来默认不要线边仓，
+  // 只有用户自己点开「含线边仓」才把它算回来——默认值翻了就是业务口径回归。
+  testWidgets('line-side stock stays out of instant inventory until asked', (
+    tester,
+  ) async {
+    final stock = _RecordingStockRepository();
+    await pumpPage(tester, stock: stock);
+
+    expect(stock.lastIncludeLineSide, isFalse);
+    // 同一口径里不良品仓仍是默认计入的，别把两个开关搞混。
+    expect(stock.lastIncludeDefective, isTrue);
+
+    // 换仓库口径(主仓子树聚合)不得顺手把线边仓带回来。
+    await tester.tap(find.byKey(const ValueKey('instant-inventory-warehouse')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
+    await tester.pumpAndSettle();
+    expect(stock.lastWarehouseId, 'w1');
+    expect(stock.lastIncludeLineSide, isFalse);
+
+    // 回到「全部」后点开关 → 显式要线边仓才带 true，再点一次收回。
+    await tester.tap(find.byKey(const ValueKey('instant-inventory-warehouse')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('instant-inventory-line-side')));
+    await tester.pumpAndSettle();
+    expect(stock.lastIncludeLineSide, isTrue);
+
+    await tester.tap(find.byKey(const Key('instant-inventory-line-side')));
+    await tester.pumpAndSettle();
+    expect(stock.lastIncludeLineSide, isFalse);
+  });
+
   testWidgets(
     'warehouse field opens the panel and re-queries with warehouseId',
     (tester) async {
@@ -184,6 +218,36 @@ void main() {
     expect(find.widgetWithText(FilterChip, '含不良品仓'), findsOneWidget);
     expect(find.textContaining(RegExp(r'^共 \d+ 项$')), findsOneWidget);
   });
+
+  // 2026-09-16 颜色/物料系列/单位表头筛选：选桶 → repository 收到对应参数。
+  testWidgets('color, series and unit header filters re-query the API', (
+    tester,
+  ) async {
+    final stock = _RecordingStockRepository();
+    await pumpPage(tester, stock: stock);
+
+    MasterDataTableView<InstantInventoryRow> table() =>
+        tester.widget<MasterDataTableView<InstantInventoryRow>>(
+          find.byType(MasterDataTableView<InstantInventoryRow>),
+        );
+
+    table().onFilterChanged('color', 'color-1');
+    await tester.pumpAndSettle();
+    expect(stock.lastColorId, 'color-1');
+
+    table().onFilterChanged('series', 'X系列');
+    await tester.pumpAndSettle();
+    expect(stock.lastSeries, 'X系列');
+
+    table().onFilterChanged('unit', 'unit-1');
+    await tester.pumpAndSettle();
+    expect(stock.lastUnitId, 'unit-1');
+
+    // 取消筛选（选「所有」）→ 参数回到 null。
+    table().onFilterChanged('unit', null);
+    await tester.pumpAndSettle();
+    expect(stock.lastUnitId, isNull);
+  });
 }
 
 class _InventoryApi extends ApiClient {
@@ -209,6 +273,12 @@ class _RecordingStockRepository extends StockQueryRepository {
   String? lastCategoryId;
   String? lastWarehouseId;
   String? lastKeyword;
+  String? lastOwningWarehouse;
+  String? lastColorId;
+  String? lastSeries;
+  String? lastUnitId;
+  bool? lastIncludeDefective;
+  bool? lastIncludeLineSide;
 
   @override
   Future<PagedResult<InstantInventoryRow>> instantInventory({
@@ -217,16 +287,26 @@ class _RecordingStockRepository extends StockQueryRepository {
     String? categoryId,
     String? warehouseId,
     bool includeDefective = true,
+    bool includeLineSide = false,
     String? keyword,
     String? owningWarehouse,
     bool owningWarehouseNull = false,
+    String? colorId,
+    String? series,
+    String? unitId,
     String? sort,
     String? order,
   }) {
     calls++;
     lastCategoryId = categoryId;
     lastWarehouseId = warehouseId;
+    lastIncludeDefective = includeDefective;
+    lastIncludeLineSide = includeLineSide;
     lastKeyword = keyword;
+    lastOwningWarehouse = owningWarehouse;
+    lastColorId = colorId;
+    lastSeries = series;
+    lastUnitId = unitId;
     return Future.value(
       const PagedResult<InstantInventoryRow>(
         items: <InstantInventoryRow>[],

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -169,6 +170,13 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
         child: UtenContentContainer(
           child: Column(
             children: [
+              // 让单提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局；
+              // 让单弹窗在置位之前，不会被遮）。
+              if (_busy)
+                const UtenBusyOverlay(
+                  title: '正在提交让单',
+                  description: '正在释放预留并回池库存，请勿重复提交或离开本页。',
+                ),
               Padding(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 child: Row(

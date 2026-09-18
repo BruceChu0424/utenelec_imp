@@ -54,7 +54,26 @@ public final class ProcurementArrivalContracts {
             @NotNull UUID receiverEmployeeId,
             @Size(max = 1000) String remark,
             @NotNull @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-                    List<@Valid ArrivalLine> items) {
+                    List<@Valid ArrivalLine> items,
+            /**
+             * 先入库后质检(V596 / ADR-090)：true = 登记送检的同一事务里把每行按其 {@code preStockPlace}
+             * 上架到本张收货单的入库仓，品质部到库位检验；null/false = 原流程(等品质放行后仓库确认入库)。
+             * 需要 warehouse_iqc_stock_in:before_inspection 权限。
+             */
+            Boolean stockInBeforeInspection) {
+
+        /** Compatibility for callers that predate the stock-in-before-inspection option. */
+        public WarehouseArrivalRegisterRequest(
+                String idempotencyKey, String orderType, LocalDate billDate, UUID supplierId,
+                UUID warehouseId, UUID purchaserId, UUID receiverEmployeeId, String remark,
+                List<ArrivalLine> items) {
+            this(idempotencyKey, orderType, billDate, supplierId, warehouseId, purchaserId,
+                    receiverEmployeeId, remark, items, null);
+        }
+
+        public boolean stockInBeforeInspectionRequested() {
+            return Boolean.TRUE.equals(stockInBeforeInspection);
+        }
 
         public record ArrivalLine(
                 @NotNull UUID goodsId,
@@ -66,12 +85,21 @@ public final class ProcurementArrivalContracts {
                 @DecimalMin(value = "0", inclusive = true)
                 @Digits(integer = 14, fraction = 4) BigDecimal weight,
                 @Size(max = 64) String sourceDocNo,
-                @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent) {
+                @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent,
+                /** 先入库后质检时本行实物上架的库位(1..100 字符)；原流程忽略。 */
+                @Size(max = 100) String preStockPlace) {
+
+            public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
+                               UUID colorId, UUID unitId, BigDecimal unitRate,
+                               BigDecimal weight, String sourceDocNo, String replacementIntent) {
+                this(goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo,
+                        replacementIntent, null);
+            }
 
             public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
                                UUID colorId, UUID unitId, BigDecimal unitRate,
                                BigDecimal weight,String sourceDocNo) {
-                this(goodsId,qty,orderItemId,colorId,unitId,unitRate,weight,sourceDocNo,null);
+                this(goodsId,qty,orderItemId,colorId,unitId,unitRate,weight,sourceDocNo,null,null);
             }
 
             /** Compatibility for callers that do not provide an actual total weight. */
@@ -79,13 +107,15 @@ public final class ProcurementArrivalContracts {
                                UUID colorId, UUID unitId, BigDecimal unitRate,
                                String sourceDocNo) {
                 this(goodsId, qty, orderItemId, colorId, unitId, unitRate,
-                        null, sourceDocNo,null);
+                        null, sourceDocNo,null,null);
             }
         }
     }
 
     /**
      * 一步登记结果：{@code SUBMITTED_FOR_INSPECTION} = 已审核并转品质待检；
+     * {@code STOCKED_PENDING_INSPECTION} = 已审核转待检且实物已按库位上架(先入库后质检，V596)，
+     * 品质合格后自动转正入库；
      * {@code EXCESS_QUARANTINED} = 实到超量，未入库未立应付，已隔离等待财务定案。
      */
     public record WarehouseArrivalRegisterResult(

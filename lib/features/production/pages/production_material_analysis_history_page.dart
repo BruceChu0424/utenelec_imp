@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -209,42 +210,40 @@ class _ProductionMaterialAnalysisHistoryPageState
         ),
         SizedBox(
           width: compact ? double.infinity : 190,
-          child: DropdownButtonFormField<String>(
+          child: UtenDropdownField(
             key: ValueKey('analysis-history-status-$_status'),
-            initialValue: _status,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: '状态'),
+            label: '状态',
+            value: _status,
+            allowClear: false,
+            enabled: !_loading,
             items: [
-              const DropdownMenuItem(value: '', child: Text('全部状态')),
+              const UtenDropdownItem(value: '', label: '全部状态'),
               for (final entry in _statuses.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                UtenDropdownItem(value: entry.key, label: entry.value),
             ],
-            onChanged: _loading
-                ? null
-                : (value) {
-                    setState(() => _status = value ?? '');
-                    _load();
-                  },
+            onChanged: (value) {
+              setState(() => _status = value ?? '');
+              _load();
+            },
           ),
         ),
         SizedBox(
           width: compact ? double.infinity : 190,
-          child: DropdownButtonFormField<String>(
+          child: UtenDropdownField(
             key: ValueKey('analysis-history-source-$_sourceType'),
-            initialValue: _sourceType,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: '需求来源'),
+            label: '需求来源',
+            value: _sourceType,
+            allowClear: false,
+            enabled: !_loading,
             items: [
-              const DropdownMenuItem(value: '', child: Text('全部来源')),
+              const UtenDropdownItem(value: '', label: '全部来源'),
               for (final entry in _sourceTypes.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                UtenDropdownItem(value: entry.key, label: entry.value),
             ],
-            onChanged: _loading
-                ? null
-                : (value) {
-                    setState(() => _sourceType = value ?? '');
-                    _load();
-                  },
+            onChanged: (value) {
+              setState(() => _sourceType = value ?? '');
+              _load();
+            },
           ),
         ),
         UtenButton(

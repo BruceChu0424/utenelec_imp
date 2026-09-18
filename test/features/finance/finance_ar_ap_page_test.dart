@@ -78,10 +78,42 @@ void main() {
     expect(financeArApSettlementStyleLabel(null), '未设置');
     expect(financeArApSettlementStyleLabel(99), '未设置');
   });
+
+  testWidgets('currency header filter sends currencyId to API', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArApApi();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: const MaterialApp(home: FinanceArApPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<ArApLedgerItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<ArApLedgerItem>,
+      ),
+    );
+    expect(table.facets.keys, contains('currency'));
+    expect(table.facets['currency']?.single.value, 'currency-1');
+    expect(table.facets['currency']?.single.label, '美元');
+
+    api.lastQuery = null;
+    table.onFilterChanged('currency', 'currency-1');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['currencyId'], 'currency-1');
+    expect(api.lastQuery?['page'], 1);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _ArApApi extends ApiClient {
   _ArApApi() : super(Dio());
+
+  Map<String, dynamic>? lastQuery;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -89,6 +121,7 @@ class _ArApApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path == '/finance/ar-ap') {
+      lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       return <String, dynamic>{
         'items': <Map<String, dynamic>>[
           <String, dynamic>{
@@ -122,5 +155,12 @@ class _ArApApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const <Map<String, dynamic>>[];
+  }) async {
+    if (path.contains('currencies')) {
+      return const [
+        {'id': 'currency-1', 'name': '美元'},
+      ];
+    }
+    return const <Map<String, dynamic>>[];
+  }
 }

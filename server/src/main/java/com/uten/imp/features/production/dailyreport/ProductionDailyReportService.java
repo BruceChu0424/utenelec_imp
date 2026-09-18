@@ -120,6 +120,9 @@ public class ProductionDailyReportService {
     /** V584/V585：车间内部直送，审核时同事务放行入线边仓并投给同车间上层工单。 */
     private final com.uten.imp.features.production.directtransfer
             .ProductionWorkshopDirectTransferService directTransfer;
+    /** V595：持续生产完结时释放直送子件余量后刷新需求状态。字段注入+可空——单测手工构造时缺省跳过。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService fulfillmentLedger;
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
@@ -156,7 +159,10 @@ public class ProductionDailyReportService {
                 r.getMakerId(), "生产日报单不存在",
                 "production_daily_report:approve",
                 "production_daily_report:reverse");
-        List<DailyReportItemDto> items = itemRepo.findByReportIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
+        List<ProductionDailyReportItem> rows = itemRepo.findByReportIdOrderByLineNoAsc(id);
+        Map<UUID, String> transferLabels = directTransferTargetLabels(rows);
+        List<DailyReportItemDto> items = rows.stream()
+                .map(item -> toItemDto(item, transferLabels)).toList();
         return toDetail(r, items);
     }
 
@@ -311,6 +317,8 @@ public class ProductionDailyReportService {
         // 2.5) V583 报工同页登记的本次实际用料：与完工量同事务记账，收尾按意愿提交余料退仓。
         // 放在计划结案重算之前——材料结清会改写 is_closed，顺序反过来会让刚算好的结案状态失效。
         settleMaterialUsageOnApprove(r);
+        // 2.6) V595 持续生产：完结行所在工单的直送子件余量就此释放(不会再有人送料)。
+        releaseDirectSupplyRemainderOnFinal(items);
 
         // 3) 受影响计划重算结案
         for (UUID planId : byPlan.keySet()) {
@@ -1893,6 +1901,11 @@ public class ProductionDailyReportService {
     }
 
     private DailyReportItemDto toItemDto(ProductionDailyReportItem it) {
+        return toItemDto(it, Map.of());
+    }
+
+    private DailyReportItemDto toItemDto(
+            ProductionDailyReportItem it, Map<UUID, String> directTransferLabels) {
         return new DailyReportItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getTotal(), it.getStotal(),
                 it.getSalesOrderItemId(), it.getSalesOrderNo(), it.getPlanItemId(),
@@ -1902,7 +1915,82 @@ public class ProductionDailyReportService {
                 it.getOutboundNo(), it.getOutboundQty(), it.getOrderQty(), it.getStepLegacyId(),
                 it.getOrderDate(), it.getBoxes(), it.getPerBoxQty(), it.getWeight(),
                 it.getClientName(), it.getSourceDocNo(), it.getRemark(), it.isFinal(),
-                it.getDestination(), it.getDirectTransferDemandId());
+                it.getDestination(), it.getDirectTransferDemandId(),
+                directTransferLabels.get(it.getId()));
+    }
+
+    /** 直送行的接收方(父件产品名 编号 · 工单号)，详情页「转给工单」列用；非直送行不出现。 */
+    private Map<UUID, String> directTransferTargetLabels(List<ProductionDailyReportItem> items) {
+        List<UUID> demandIds = items.stream()
+                .map(ProductionDailyReportItem::getDirectTransferDemandId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (demandIds.isEmpty()) return Map.of();
+        Map<UUID, String> byDemand = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT demand.id, goods.name, goods.code, receiving.segment_code
+                        FROM production_material_demands demand
+                        JOIN production_execution_segments receiving
+                          ON receiving.id = demand.execution_segment_id
+                        LEFT JOIN goods ON goods.id = receiving.product_goods_id
+                        WHERE demand.id IN (:ids)
+                        """).setParameter("ids", demandIds))) {
+            String product = (Objects.toString(row[1], "") + " " + Objects.toString(row[2], "")).strip();
+            String segment = Objects.toString(row[3], "").strip();
+            byDemand.put((UUID) row[0], product.isEmpty() ? segment
+                    : segment.isEmpty() ? product : product + " · " + segment);
+        }
+        Map<UUID, String> result = new HashMap<>();
+        for (ProductionDailyReportItem item : items) {
+            if (item.getDirectTransferDemandId() == null) continue;
+            String label = byDemand.get(item.getDirectTransferDemandId());
+            if (label != null) result.put(item.getId(), label);
+        }
+        return result;
+    }
+
+    /**
+     * 持续生产(V595)：最后一次报工审核后，同车间直送子件还没送到的那部分需求就此释放——
+     * 计划已按实际完工封顶，不会再有人送料，也不该让父件因为「需求没齐」永远结不了案。
+     * 只动 direct_supply 需求、只放掉未预留的余量，已投入的料一分不动；需求状态随之刷新。
+     */
+    private void releaseDirectSupplyRemainderOnFinal(List<ProductionDailyReportItem> items) {
+        List<UUID> segmentIds = items.stream()
+                .filter(ProductionDailyReportItem::isFinal)
+                .map(ProductionDailyReportItem::getExecutionSegmentId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (segmentIds.isEmpty() || fulfillmentLedger == null) return;
+        List<UUID> released = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        UPDATE production_material_demands demand
+                        SET released_qty = demand.required_qty - committed.qty,
+                            lock_version = demand.lock_version + 1,
+                            updated_at = now()
+                        FROM (
+                            SELECT d.id,
+                                   COALESCE((
+                                       SELECT SUM(r.qty - r.released_qty)
+                                       FROM stock_reservations r
+                                       WHERE r.demand_id = d.id
+                                         AND r.is_deleted = FALSE), 0) AS qty
+                            FROM production_material_demands d
+                            JOIN production_execution_segments s
+                              ON s.id = d.execution_segment_id
+                             AND s.continuous_supply
+                            WHERE d.execution_segment_id IN (:segmentIds)
+                              AND d.direct_supply
+                              AND d.is_deleted = FALSE
+                              AND d.status NOT IN ('RELEASED', 'REVERSED')
+                        ) committed
+                        WHERE demand.id = committed.id
+                          AND demand.required_qty - committed.qty > demand.released_qty
+                        RETURNING demand.id
+                        """).setParameter("segmentIds", segmentIds), UUID.class);
+        if (!released.isEmpty()) {
+            fulfillmentLedger.refreshDemandStatuses(released);
+        }
     }
 
     private DailyReportDetail toDetail(ProductionDailyReport r, List<DailyReportItemDto> items) {

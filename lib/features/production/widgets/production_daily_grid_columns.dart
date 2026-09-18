@@ -6,6 +6,9 @@
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -100,9 +103,30 @@ class DailyGridRow extends EditableGridRow {
   /// 本行可选的上层工单；空列表 = 这一行没有同车间的上层工单可转。
   List<ProductionDirectTransferCandidate> directTransferCandidates = const [];
 
-  /// 候选为空的原因：同车间有还缺料的上层工单，但本车间没有同主仓线边仓。
-  /// 界面据此提示「先建线边仓」，而不是笼统的「没有可转的上层」。
-  bool lineSideWarehouseMissing = false;
+  // ===== V595 记忆与自动计算：黄框 + 警示图标提醒核对，用户改动即清除 =====
+
+  /// 「产出去向」由上次报工记忆带入。
+  final ValueNotifier<bool> destinationAutofilled = ValueNotifier<bool>(false);
+
+  /// 「转给工单」由上次报工记忆带入。
+  final ValueNotifier<bool> directTransferAutofilled = ValueNotifier<bool>(
+    false,
+  );
+
+  /// 用户已亲手选过去向/接收工单：换来源前记忆不再覆盖。
+  bool destinationTouched = false;
+
+  /// 编辑既有草稿时回填用：候选加载后按这个需求 UUID 选中原接收工单，不标黄。
+  String? pendingDirectTransferDemandId;
+
+  /// 本次实际用料由完工申报量按单耗自动算出(物料子行)。
+  final ValueNotifier<bool> materialUsageAutofilled = ValueNotifier<bool>(false);
+
+  /// 自动算出的文本；当前文本与它不同即视为用户改过。
+  String? materialAutofillText;
+
+  /// 用户手改后的「用料 / 完工量」比例：完工量再变时按它等比换算并重新标黄。
+  double? materialManualRatio;
 
   bool get isMaterialRow => depth > 0;
 
@@ -209,8 +233,42 @@ class DailyGridRow extends EditableGridRow {
     materialUsed.dispose();
     destinationNotifier.dispose();
     directTransferNotifier.dispose();
+    destinationAutofilled.dispose();
+    directTransferAutofilled.dispose();
+    materialUsageAutofilled.dispose();
     super.dispose();
   }
+}
+
+/// 物料子行的单耗(每 1 个成品用多少，需求单位口径)。
+///
+/// 优先按需求本身的「需求量 / 对应产品数量」——分批子段是本批口径、整包/固定量物料
+/// 也已按批摊平；没有就退回 BOM 单耗；都没有返回 null(不自动算，留给人填)。
+double? materialUsagePerProduct(ProductionMaterialClearanceRow material) {
+  final forProduct = material.requiredForProductQty;
+  if (forProduct != null && forProduct > 0 && material.requiredQty > 0) {
+    return material.requiredQty / forProduct;
+  }
+  final perProduct = material.perProductQty;
+  if (perProduct != null && perProduct > 0) return perProduct;
+  return null;
+}
+
+/// 按完工申报量自动算本次实际用料(V595)：完工量 × 单耗(或用户手改后的比例)，
+/// 封顶到「本次可登记」上限，四位小数。算不出(无单耗/完工量无效)返回 null。
+double? expectedMaterialUsage({
+  required double reportedQty,
+  required ProductionMaterialClearanceRow material,
+  double? ratioOverride,
+}) {
+  if (!reportedQty.isFinite || reportedQty <= 0) return null;
+  final ratio = ratioOverride ?? materialUsagePerProduct(material);
+  if (ratio == null || !ratio.isFinite || ratio < 0) return null;
+  final raw = reportedQty * ratio;
+  final capped = raw > material.availableToSettleQty
+      ? material.availableToSettleQty
+      : raw;
+  return (capped * 10000).roundToDouble() / 10000;
 }
 
 /// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 / 实际重量 /
@@ -250,6 +308,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           ? (r.material?.goodsName ?? '')
           : (r.goods?.name ?? ''),
       listenableOf: (r) => r.goodsNotifier,
+      // 格尾树形/选择图标计入量宽（2026-09-16）；物料子行的树缩进仍由基础宽兜。
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
         if (row.isMaterialRow) {
           return UtenTreeTableCell(
@@ -416,21 +476,41 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           // 成品行的完工量是「必须大于 0」，物料实耗是「必须填、可以是 0」：
           // 逼车间为没用的料编个正数就是在造假账，所以这里判的是「空 / 负 / 超上限」。
           isEmpty: () => row.materialInvalid,
-          child: TextField(
-            key: ValueKey('daily-material-used-${row.material?.demandId}'),
-            controller: row.materialUsed,
-            enabled: !row.materialReadOnly,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            onChanged: (_) => onMaterialChanged?.call(),
-            // 可登记上限走 UtenInputDecoration 的 info（格内统一披露），
-            // 不能用裸 helperText——`uten_field_message_source_contract_test`
-            // 会直接判红（全站口径：提示与错误都留在字段里，不另开一行）。
-            decoration: UtenInputDecoration(
-              const InputDecoration(isDense: true, hintText: '0'),
-              info: row.materialReadOnly
-                  ? null
-                  : '可登记 ${_quantityText(row.materialCap)}',
+          child: ValueListenableBuilder<bool>(
+            valueListenable: row.materialUsageAutofilled,
+            builder: (context, autofilled, _) => TextField(
+              key: ValueKey('daily-material-used-${row.material?.demandId}'),
+              controller: row.materialUsed,
+              enabled: !row.materialReadOnly,
+              textAlign: TextAlign.right,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) => onMaterialChanged?.call(),
+              // 可登记上限走 UtenInputDecoration 的 info（格内统一披露），
+              // 不能用裸 helperText——`uten_field_message_source_contract_test`
+              // 会直接判红（全站口径：提示与错误都留在字段里，不另开一行）。
+              // V595：由完工申报量自动算出的值套「预填黄框 + 警示图标」，
+              // 提示文案走 UtenFieldMessage.autofill(与带记忆的框同款)，用户改动即清除。
+              decoration: applyAutofillHint(
+                UtenInputDecoration(
+                  InputDecoration(
+                    isDense: true,
+                    hintText: '0',
+                    helper: autofilled
+                        ? const UtenFieldMessage.autofill(
+                            '已按完工申报量 × 单耗自动算出，请核对本次实际用料；'
+                            '完工申报量改了会按比例重算',
+                          )
+                        : null,
+                  ),
+                  info: row.materialReadOnly
+                      ? null
+                      : '可登记 ${_quantityText(row.materialCap)}',
+                ),
+                Theme.of(context),
+                autofilled: autofilled && !row.materialReadOnly,
+              ),
             ),
           ),
         );
@@ -444,55 +524,44 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       headerInfo:
           '「送入仓库」= 交仓库送检登记、品质部检验、点收入库(默认)。\n'
           '「转下一道工序」= 班组自检合格后不入库，直接投给**本车间**的上层工单'
-          '(父件)；审核时自动完成放行、入本车间线边仓和投入，不用再走领料。\n'
-          '前提：本车间有与收料工单同主仓的**线边仓**(基础资料·仓库 里标记)，'
-          '没有时先建线边仓。\n'
+          '(父件)；审核时自动完成放行、入本车间线边仓和投入，不用再走领料。'
+          '线边仓由系统按车间自动配置，不用去仓库资料里建。\n'
+          '上次报工的去向会自动带入并标黄，改动即清除提醒。\n'
           '跨车间必须走仓库——料离开本车间就脱离同一批人的视线。',
       textOf: (r) =>
           r.isMaterialRow ? '' : (r.isDirectTransfer ? '转下一道工序' : '送入仓库'),
       listenableOf: (r) => r.destinationNotifier,
+      // 下拉格右侧展开箭头(20)计入自动加宽量宽。
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
         if (row.isMaterialRow) return const SizedBox.shrink();
         return ValueListenableBuilder<String>(
           valueListenable: row.destinationNotifier,
           builder: (context, value, _) {
             final canTransfer = row.directTransferCandidates.isNotEmpty;
-            return DropdownButtonFormField<String>(
-              initialValue: value,
-              // 不设 isExpanded 时下拉按最宽选项的固有宽度撑开，会把固定宽的
-              // 格子顶破(2026-09-15 实测溢出 150px，正好是本列宽)。
-              isExpanded: true,
-              decoration: const UtenInputDecoration(
-                InputDecoration(isDense: true),
-              ),
-              items: [
-                const DropdownMenuItem(value: 'WAREHOUSE', child: Text('送入仓库')),
-                DropdownMenuItem(
-                  value: 'WORKSHOP',
-                  enabled: canTransfer,
-                  child: Text(
-                    canTransfer
-                        ? '转下一道工序'
-                        : (row.lineSideWarehouseMissing
-                              ? '转下一道工序(缺线边仓)'
-                              : '转下一道工序(无同车间上层工单)'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: canTransfer
-                        ? null
-                        : TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
+            // 2026-09-16 用户口径：本文件内表格下拉已统一用自家 UtenDropdownField
+            //（统一弹层/单行省略号/列宽自适应），不再出现原生
+            // DropdownButtonFormField（全站其余处的替换由下拉组件批次负责）。
+            return ValueListenableBuilder<bool>(
+              valueListenable: row.destinationAutofilled,
+              builder: (context, autofilled, _) => UtenDropdownField(
+                dense: true,
+                value: value,
+                // V595 记忆预填：黄框 + 警示图标提醒核对(与带记忆的框同款)。
+                autofilled: autofilled,
+                items: [
+                  const UtenDropdownItem(value: 'WAREHOUSE', label: '送入仓库'),
+                  UtenDropdownItem(
+                    value: 'WORKSHOP',
+                    enabled: canTransfer,
+                    label: canTransfer ? '转下一道工序' : '转下一道工序(无同车间上层工单)',
                   ),
-                ),
-              ],
-              onChanged: (next) {
-                if (next == null) return;
-                if (next == 'WORKSHOP' && !canTransfer) return;
-                onDestinationChanged?.call(row, next);
-              },
+                ],
+                onChanged: (next) {
+                  if (next == null) return;
+                  onDestinationChanged?.call(row, next);
+                },
+              ),
             );
           },
         );
@@ -505,9 +574,13 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       required: true,
       headerInfo:
           '本批产出投给同车间的哪个上层工单。只有一个候选时自动选中；'
+          '上次投给过的父件产品会自动带入并标黄，改动即清除提醒；'
           '一次只投一个工单，要投多个就拆成多行。',
-      textOf: (r) => r.directTransfer?.label ?? '',
+      textOf: (r) => r.directTransfer == null
+          ? ''
+          : _directTransferCellText(r.directTransfer!),
       listenableOf: (r) => r.directTransferNotifier,
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
         if (row.isMaterialRow) return const SizedBox.shrink();
         return ValueListenableBuilder<String>(
@@ -526,66 +599,36 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               isEmpty: () => row.directTransfer == null,
               child: ValueListenableBuilder<ProductionDirectTransferCandidate?>(
                 valueListenable: row.directTransferNotifier,
-                builder: (context, picked, _) =>
-                    DropdownButtonFormField<String>(
-                      initialValue: picked?.demandId,
-                      isExpanded: true,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(isDense: true, hintText: '选择上层工单'),
+                builder: (context, picked, _) => ValueListenableBuilder<bool>(
+                  valueListenable: row.directTransferAutofilled,
+                  builder: (context, autofilled, _) => UtenDropdownField(
+                  dense: true,
+                  value: picked?.demandId,
+                  hintText: '选择上层工单',
+                  // V595 记忆预填：黄框 + 警示图标提醒核对。
+                  autofilled: autofilled && picked != null,
+                  items: [
+                    // 收起态与下拉项同一份文案（父件产品 · 工单号·还差多少）：
+                    // UtenDropdownField 的格内值与浮层条目共用 label，两行条目
+                    // 拼成一行省略号（2026-09-16 全站单行口径），textOf 量同款
+                    // 文案保证列宽跟手。
+                    for (final candidate in row.directTransferCandidates)
+                      UtenDropdownItem(
+                        value: candidate.demandId,
+                        label: _directTransferCellText(candidate),
                       ),
-                      // 收起态一行(父件产品·还差多少)，下拉项两行(产品名+编号 / 工单号·还差)：
-                      // 车间认「投给谁」认的是父件产品，工单号放第二行不挤占首行。
-                      selectedItemBuilder: (context) => [
-                        for (final candidate in row.directTransferCandidates)
-                          Text(
-                            candidate.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                      items: [
-                        for (final candidate in row.directTransferCandidates)
-                          DropdownMenuItem(
-                            value: candidate.demandId,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  candidate.receivingGoodsLabel.isEmpty
-                                      ? candidate.label
-                                      : candidate.receivingGoodsLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  candidate.secondaryLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                      onChanged: (demandId) {
-                        if (demandId == null) return;
-                        onDirectTransferPicked?.call(
-                          row,
-                          row.directTransferCandidates.firstWhere(
-                            (candidate) => candidate.demandId == demandId,
-                          ),
-                        );
-                      },
-                    ),
+                  ],
+                  onChanged: (demandId) {
+                    if (demandId == null) return;
+                    onDirectTransferPicked?.call(
+                      row,
+                      row.directTransferCandidates.firstWhere(
+                        (candidate) => candidate.demandId == demandId,
+                      ),
+                    );
+                  },
+                  ),
+                ),
               ),
             );
           },
@@ -601,6 +644,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       textOf: (row) => row.isMaterialRow
           ? ''
           : (row.executionSegmentCode ?? row.planNo.text),
+      // 格尾跳转图标计入量宽（2026-09-16）。
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => row.isMaterialRow
           ? const SizedBox.shrink()
           : ValueListenableBuilder<TextEditingValue>(
@@ -687,6 +732,17 @@ String _quantityText(double value) => value == value.roundToDouble()
           .toStringAsFixed(4)
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
+
+/// 「转给工单」格的单元格文案：父件产品(收货品名+编号) · 工单号·还差多少。
+/// 格内值、下拉条目与列宽测量(textOf)共用这一份，保证量宽与所见一致。
+String _directTransferCellText(ProductionDirectTransferCandidate candidate) {
+  final primary = candidate.receivingGoodsLabel.isEmpty
+      ? candidate.label
+      : candidate.receivingGoodsLabel;
+  return candidate.secondaryLabel.isEmpty
+      ? primary
+      : '$primary · ${candidate.secondaryLabel}';
+}
 
 /// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。
 Widget _readOnlyMasterCell(

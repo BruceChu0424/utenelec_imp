@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pages.dart';
@@ -197,6 +198,66 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('waste page headers send supplier and warehouse filters to API', (
+    tester,
+  ) async {
+    // 损耗页两列都有（supplier + warehouse）：选桶后 repository.list 的既有
+    // 参数 supplierId / warehouseId 收到字典项 id，筛选后重拉回第 1 页。
+    tester.view.physicalSize = const Size(1500, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _RecordingApi();
+    final router = GoRouter(
+      initialLocation: '/subcontract/wastes',
+      routes: [
+        GoRoute(
+          path: '/subcontract/wastes',
+          builder: (_, _) => const SubcontractWasteResponsibilityPage(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 默认不选阶段（引导占位不发请求）；点「草稿」段加载表格。
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<SubcontractDocListItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<SubcontractDocListItem>,
+      ),
+    );
+    expect(table.facets.keys, containsAll(<String>['supplier', 'warehouse']));
+    expect(table.facets['supplier']?.single.value, 'supplier-1');
+    expect(table.facets['warehouse']?.single.value, 'warehouse-1');
+
+    api.lastQuery = null;
+    table.onFilterChanged('supplier', 'supplier-1');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['supplierId'], 'supplier-1');
+    expect(api.lastQuery?['page'], 1);
+
+    final refreshed = tester
+        .widget<MasterDataTableView<SubcontractDocListItem>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<SubcontractDocListItem>,
+          ),
+        );
+    refreshed.onFilterChanged('warehouse', 'warehouse-1');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['warehouseId'], 'warehouse-1');
+    expect(api.lastQuery?['supplierId'], 'supplier-1');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'order page keeps single create entry regardless of decompose permission',
     (tester) async {
@@ -263,4 +324,53 @@ ApiClient _api() {
     ),
   );
   return ApiClient(dio);
+}
+
+/// 记录列表请求 query 的 ApiClient（表头筛选冒烟断言用）。
+class _RecordingApi extends ApiClient {
+  _RecordingApi() : super(Dio());
+
+  Map<String, dynamic>? lastQuery;
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    lastQuery = query == null ? null : Map<String, dynamic>.from(query);
+    return const <String, dynamic>{
+      'items': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'waste-1',
+          'billNo': 'WH26080001',
+          'billDate': '2026-08-31',
+          'supplierId': 'supplier-1',
+          'warehouseId': 'warehouse-1',
+          'status': 0,
+        },
+      ],
+      'page': 1,
+      'size': 20,
+      'total': 1,
+      'totalPages': 1,
+    };
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path.contains('suppliers')) {
+      return const [
+        {'id': 'supplier-1', 'name': '委外商甲'},
+      ];
+    }
+    if (path.contains('warehouses')) {
+      return const [
+        {'id': 'warehouse-1', 'name': '一号仓'},
+      ];
+    }
+    return const [];
+  }
 }

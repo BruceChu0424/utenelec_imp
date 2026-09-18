@@ -25,6 +25,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -761,7 +762,7 @@ class _SalesClientDetailDialogState
                         child: CircularProgressIndicator(strokeWidth: 2.5),
                       )
                     : data == null
-                    ? const Center(child: Text('暂无数据'))
+                    ? const UtenEmpty()
                     : MasterDataTableView<Map<String, dynamic>>(
                         columns: columns,
                         items: data.rows,

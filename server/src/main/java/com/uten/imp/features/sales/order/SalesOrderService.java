@@ -42,7 +42,6 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -138,6 +137,7 @@ public class SalesOrderService {
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.sellerId() != null) ps.add(cb.equal(root.get("sellerId"), f.sellerId()));
+            if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
@@ -350,31 +350,33 @@ public class SalesOrderService {
     }
 
     /**
-     * 客户 → 最近一次销售订货条款（新建单「学习预填」）：选客户后自动带出上次的
-     * 结账方式/发运策略/币种，前端只回填空字段并黄标提醒核对。无历史订单返回 null。
-     * 授权在 Controller（sales_order:view），与采购 /last-terms 同口径。
+     * 客户 → 主档默认销售条款 (新建单预填; 端点路径沿用 /last-terms, 语义已是主档默认值)。
+     *
+     * <p>V592 起客户表三列 (default_settlement_method_id / default_shipment_policy /
+     * default_currency_id) 是唯一来源: 基础资料可维护, 每次保存订货单自动写回。
+     * 「按最近一张订单推导」的回退路径 (SalesOrderRepository.findLastTermsByClientId)
+     * 已于 2026-09-16 退役: 客户不存在或三项全空返回 null, 不再实时扫订单表。
+     * 前端只回填空字段并黄标提醒核对。授权在 Controller (sales_order:view)。
      */
     @Transactional(readOnly = true)
-    public LastTermsForClient lastTermsForClient(UUID clientId) {
-        // V592 单一事实源：优先读客户表默认条款（基础资料可维护 + 每次下单自动写回）。
-        // 客户行三项全空时回落最近一张订单（回填前的老数据兜底）。
-        var client = em.find(com.uten.imp.features.master.client.Client.class, clientId);
-        if (client != null && (client.getDefaultSettlementMethodId() != null
-                || client.getDefaultShipmentPolicy() != null
-                || client.getDefaultCurrencyId() != null)) {
-            return new LastTermsForClient(client.getDefaultSettlementMethodId(),
-                    client.getDefaultShipmentPolicy(), client.getDefaultCurrencyId());
-        }
-        var rows = orderRepo.findLastTermsByClientId(clientId, PageRequest.of(0, 1));
-        if (rows.isEmpty()) {
+    public MasterDefaultTermsForClient masterDefaultTermsForClient(UUID clientId) {
+        if (clientId == null) {
             return null;
         }
-        Object[] row = rows.get(0);
-        return new LastTermsForClient((UUID) row[0], (String) row[1], (UUID) row[2]);
+        var client = em.find(com.uten.imp.features.master.client.Client.class, clientId);
+        if (client == null || client.isDeleted()
+                || (client.getDefaultSettlementMethodId() == null
+                        && client.getDefaultShipmentPolicy() == null
+                        && client.getDefaultCurrencyId() == null)) {
+            return null;
+        }
+        return new MasterDefaultTermsForClient(client.getDefaultSettlementMethodId(),
+                client.getDefaultShipmentPolicy(), client.getDefaultCurrencyId());
     }
 
-    /** 客户最近一次订货条款（结账方式/发运策略/币种，均可空——历史单未必全填）。 */
-    public record LastTermsForClient(UUID settlementMethodId, String shipmentPolicy, UUID currencyId) {}
+    /** 客户主档默认销售条款 (结账方式/发运策略/币种, 均可空——主档未必三项全有)。 */
+    public record MasterDefaultTermsForClient(
+            UUID settlementMethodId, String shipmentPolicy, UUID currencyId) {}
 
     /** 订单进度各阶段计数（顶部筛选卡口径）：全部已审订单按阶段聚合，不受分页/当前阶段筛选影响。 */
     @Transactional(readOnly = true)
@@ -946,6 +948,9 @@ public class SalesOrderService {
         itemRepo.flush();
         List<OrderItemDto> items = saveItems(o, req.getItems(), existingItems, null);
         applyTotals(o, items);
+        // 草稿修改同样写回客户默认条款 (V592「每次保存/修改」口径; 此前只有新建与
+        // 已审修订两条路径写回, 草稿改结账方式/发运策略/币种后主档学不到)。
+        clientDefaultTermsSync.syncOnOrderTerms(o.getClientId(), o.getSettlementMethodId(), o.getShipmentPolicy(), o.getCurrencyId());
         return toDetail(o, items, List.of(), true);
     }
 

@@ -64,6 +64,7 @@ public class ProductionCompletionReverseService
             UUID stockDocumentId,
             UUID warehouseId) {
         afterFinishedInboundPosted(stockDocumentId, warehouseId);
+        if (isLineSideWarehouse(warehouseId)) return;
         materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentId);
     }
 
@@ -77,6 +78,10 @@ public class ProductionCompletionReverseService
         }
         readiness.onFinishedInboundApproved(
                 stockDocumentId, warehouseId);
+        // 线边仓入库(车间直送，V595)：料不进公共可用量，不会喂给任何物料分析、委外备料或
+        // 委外订货准备——下面三套唤醒只会把整张分析重算一遍再发现什么都没变(实测占直送审核 0.8s)。
+        // 直送料投给谁由直送服务自己按需求补投，不经这里。
+        if (isLineSideWarehouse(warehouseId)) return;
         subcontractPreparation.afterFinishedInboundApproved(
                 stockDocumentId, warehouseId);
         // V458：有子层级委外件的前置自制产出先转 SUBCONTRACT_PREPARE_TASK
@@ -171,6 +176,13 @@ public class ProductionCompletionReverseService
                         "执行子计划已被其他操作修改，成品入库未红冲，请刷新后重试");
             }
         }
+    }
+
+    private boolean isLineSideWarehouse(UUID warehouseId) {
+        return Boolean.TRUE.equals(em.createNativeQuery(
+                        "SELECT EXISTS (SELECT 1 FROM warehouses WHERE id = :id AND is_line_side)")
+                .setParameter("id", warehouseId)
+                .getSingleResult());
     }
 
     private DocumentHeader lockAndRequireApprovedFinishedIn(UUID documentId) {

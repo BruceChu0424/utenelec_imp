@@ -74,7 +74,8 @@ Widget? fqcPreStockedNotice(
     message: [
       for (final item in shown)
         '${item.goodsName ?? item.goodsCode ?? '货品'} → ${item.preStocked!.label}',
-      if (shelved.length > shown.length) '另 ${shelved.length - shown.length} 行见明细',
+      if (shelved.length > shown.length)
+        '另 ${shelved.length - shown.length} 行见明细',
       '合格由系统按上架位置自动点收入库，不合格由仓库从库位取出处理',
     ].join('；'),
   );
@@ -1049,10 +1050,9 @@ class _ProductionFqcInspectionPageState
                     UtenFloatingActionGroup.scrollClearance,
                   ),
                   children: [
-                    if (fqcPreStockedNotice(
-                          [inspection!],
-                          key: const Key('fqc-inspection-pre-stocked-notice'),
-                        )
+                    if (fqcPreStockedNotice([
+                          inspection!,
+                        ], key: const Key('fqc-inspection-pre-stocked-notice'))
                         case final notice?) ...[
                       notice,
                       const SizedBox(height: UtenSpacing.s12),

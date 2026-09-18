@@ -216,8 +216,10 @@ class WarehouseQualityResultDetail {
       lines.any((line) => line.preStockable);
 
   /// 等结论且未上架、可被先入库上架的行。
-  List<WarehouseQualityInspectionLine> get preStockableLines =>
-      [for (final line in lines) if (line.preStockable) line];
+  List<WarehouseQualityInspectionLine> get preStockableLines => [
+    for (final line in lines)
+      if (line.preStockable) line,
+  ];
 
   String get qualityStatusLabel => switch (qualityStatus.trim().toUpperCase()) {
     'IN_PROGRESS' => '品质检验进行中',
@@ -525,7 +527,8 @@ class WarehouseQualityStockInHistoryItem {
   /// 入库批次来源：WAREHOUSE_CONFIRM(仓库确认) / PRE_STOCKED_AUTO(先入库后检合格自动转正)。
   final String origin;
 
-  bool get isAutoFromPreStock => origin.trim().toUpperCase() == 'PRE_STOCKED_AUTO';
+  bool get isAutoFromPreStock =>
+      origin.trim().toUpperCase() == 'PRE_STOCKED_AUTO';
 
   String get originLabel => isAutoFromPreStock ? '先入库后检 · 合格自动转正' : '仓库确认入库';
 

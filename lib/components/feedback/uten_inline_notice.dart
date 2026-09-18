@@ -74,7 +74,8 @@ class UtenInlineNotice extends StatelessWidget {
     return Semantics(
       container: true,
       liveRegion: level == UtenInlineNoticeLevel.error,
-      label: semanticLabel ??
+      label:
+          semanticLabel ??
           (titleText == null ? message : '$titleText。$message'),
       child: Container(
         padding: const EdgeInsets.all(UtenSpacing.s12),

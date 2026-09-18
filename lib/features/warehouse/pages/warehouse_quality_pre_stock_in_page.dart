@@ -219,7 +219,8 @@ class _WarehouseQualityPreStockInPageState
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: _canPreStockIn && !_loading && _grid.rows.isNotEmpty
+        floatingActionButton:
+            _canPreStockIn && !_loading && _grid.rows.isNotEmpty
             ? _buildBottomBar()
             : null,
         body: SafeArea(
@@ -233,7 +234,8 @@ class _WarehouseQualityPreStockInPageState
                         child: detail == null || _grid.rows.isEmpty
                             ? UtenEmpty.error(
                                 message: _error ?? '本单没有可先入库上架的待检明细',
-                                description: '只有仍在等待检查结果、尚未上架的明细行才能先入库；'
+                                description:
+                                    '只有仍在等待检查结果、尚未上架的明细行才能先入库；'
                                     '已出结论的行请按原流程办理。',
                                 actionLabel: '重新加载',
                                 onAction: _load,
@@ -327,14 +329,16 @@ class _WarehouseQualityPreStockInPageState
         label: '编号',
         width: 130,
         filterValueOf: (row) => row.line.goodsCode,
-        cellBuilder: (context, row) => UtenGoodsAttributeCell(row.line.goodsCode),
+        cellBuilder: (context, row) =>
+            UtenGoodsAttributeCell(row.line.goodsCode),
       ),
       EditableGridColumn(
         key: 'colorName',
         label: '颜色',
         width: 96,
         filterValueOf: (row) => row.line.colorName,
-        cellBuilder: (context, row) => UtenGoodsAttributeCell(row.line.colorName),
+        cellBuilder: (context, row) =>
+            UtenGoodsAttributeCell(row.line.colorName),
       ),
       EditableGridColumn(
         key: 'received',

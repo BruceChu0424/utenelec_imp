@@ -19,18 +19,21 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 class _FakeDepartmentRepository implements DepartmentRepository {
   @override
   Future<DepartmentInfo> detail(String id) async => DepartmentInfo(
-        id: id,
-        code: 'D01',
-        name: '生产部',
-        level: 'department',
-        path: '生产部',
-        childCount: 0,
-        employeeCount: 2,
-      );
+    id: id,
+    code: 'D01',
+    name: '生产部',
+    level: 'department',
+    path: '生产部',
+    childCount: 0,
+    employeeCount: 2,
+  );
 
   @override
   Future<WorkforceOverview> workforceOverview(String id) async =>
-      WorkforceOverview.fromJson({'organizationId': id, 'organizationName': id});
+      WorkforceOverview.fromJson({
+        'organizationId': id,
+        'organizationName': id,
+      });
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

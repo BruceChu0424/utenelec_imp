@@ -55,7 +55,8 @@ class PendingInspectionReceipt {
         pendingBaseQty: (json['pendingBaseQty'] as num?)?.toDouble(),
         firstReceivedAt: json['firstReceivedAt'] as String?,
         lastReceivedAt: json['lastReceivedAt'] as String?,
-        preStockedItemCount: (json['preStockedItemCount'] as num?)?.toInt() ?? 0,
+        preStockedItemCount:
+            (json['preStockedItemCount'] as num?)?.toInt() ?? 0,
       );
 }
 

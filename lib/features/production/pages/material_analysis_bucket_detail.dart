@@ -787,7 +787,8 @@ class _MaterialAnalysisBucketPageState
     final analysis = _host._analysis;
     final material = group.representative;
     final needsPreparation =
-        analysis == null || _host._subcontractNeedsPreparation(material, analysis);
+        analysis == null ||
+        _host._subcontractNeedsPreparation(material, analysis);
     if (!needsPreparation) return _CascadeParentChannel.subcontractDirect;
     return _host._canGenerate && !material.isRootSupply
         ? _CascadeParentChannel.workshop

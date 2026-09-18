@@ -123,7 +123,10 @@ class _WarehouseQualityResultsPageState
   /// 等待检查结果的收货单先落库位：进逐行上架页，回来重拉列表。
   Future<void> _openPreStockIn(WarehouseQualityResultTask task) async {
     final done = await context.push<bool>(
-      RouteName.warehouseQualityPreStockIn(task.receiptTypeValue, task.receiptId),
+      RouteName.warehouseQualityPreStockIn(
+        task.receiptTypeValue,
+        task.receiptId,
+      ),
     );
     if (!mounted) return;
     if (done == true) await _load(_result?.page ?? 1);

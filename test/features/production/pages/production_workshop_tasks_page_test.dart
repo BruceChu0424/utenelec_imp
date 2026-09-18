@@ -819,90 +819,91 @@ void main() {
 /// 2026-09-17（V599 / ADR-091）：「确认生产路线」是等待物料工单的第一个下一步——
 /// 未确认路线时开工侧入口全部隐藏；确认弹窗三选一后按路线过滤清单。
 void routeConfirmationTests() {
-  testWidgets('unconfirmed task shows route confirmation as the only primary step', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final router = _router();
-    addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          isSuperAdminProvider.overrideWithValue(false),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.productionExecutionView,
-            Perm.productionExecutionStart,
-          }),
-          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-            _repository(
-              withWaitingRow: true,
-              startRoute: null,
-              canConfirmRoute: true,
-              routeChangeable: true,
-              routeContinuousEligible: true,
+  testWidgets(
+    'unconfirmed task shows route confirmation as the only primary step',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(false),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionExecutionStart,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(
+                withWaitingRow: true,
+                startRoute: null,
+                canConfirmRoute: true,
+                routeChangeable: true,
+                routeContinuousEligible: true,
+              ),
             ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
           ),
-        ],
-        child: MaterialApp.router(
-          routerConfig: router,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('zh'),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await selectFilterSegment(tester, '等待物料');
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '等待物料');
+      await tester.pumpAndSettle();
 
-    // 2026-09-18：选项直接显示在「生产路线」格里——齐套/分批/持续三颗芯片；
-    // 不再是收起时显示「确认生产路线」的下拉框。
-    final waitingRow = _frozenRowOf('产品 C');
-    expect(
-      find.descendant(
-        of: waitingRow,
-        matching: find.byKey(
-          const ValueKey('workshop-route-chip-FULL_KIT-segment-c'),
+      // 2026-09-18：选项直接显示在「生产路线」格里——齐套/分批/持续三颗芯片；
+      // 不再是收起时显示「确认生产路线」的下拉框。
+      final waitingRow = _frozenRowOf('产品 C');
+      expect(
+        find.descendant(
+          of: waitingRow,
+          matching: find.byKey(
+            const ValueKey('workshop-route-chip-FULL_KIT-segment-c'),
+          ),
         ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: waitingRow,
-        matching: find.byKey(
-          const ValueKey('workshop-route-chip-BATCH-segment-c'),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: waitingRow,
+          matching: find.byKey(
+            const ValueKey('workshop-route-chip-BATCH-segment-c'),
+          ),
         ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: waitingRow,
-        matching: find.byKey(
-          const ValueKey('workshop-route-chip-CONTINUOUS-segment-c'),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: waitingRow,
+          matching: find.byKey(
+            const ValueKey('workshop-route-chip-CONTINUOUS-segment-c'),
+          ),
         ),
-      ),
-      findsOneWidget,
-    );
-    // 行右键菜单同款清单：有「确认生产路线」与「为什么不能开工」，没有开工/去领料/分批。
-    await _rightClick(tester, find.text('产品 C'));
-    expect(_menuEntry('确认生产路线'), findsOneWidget);
-    expect(_menuEntry('开工'), findsNothing);
-    expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
-    expect(_menuEntry('分批生产领料'), findsNothing);
-    // 未确认路线 = 为什么不能开工的第一原因。
-    await tester.tap(_menuEntry('为什么不能开工'));
-    await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(ProductionWorkshopTasksPage)),
-    );
-    expect(
-      container.read(appNotificationProvider).last.message,
-      contains('请先确认生产路线'),
-    );
-  });
+        findsOneWidget,
+      );
+      // 行右键菜单同款清单：有「确认生产路线」与「为什么不能开工」，没有开工/去领料/分批。
+      await _rightClick(tester, find.text('产品 C'));
+      expect(_menuEntry('确认生产路线'), findsOneWidget);
+      expect(_menuEntry('开工'), findsNothing);
+      expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
+      expect(_menuEntry('分批生产领料'), findsNothing);
+      // 未确认路线 = 为什么不能开工的第一原因。
+      await tester.tap(_menuEntry('为什么不能开工'));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionWorkshopTasksPage)),
+      );
+      expect(
+        container.read(appNotificationProvider).last.message,
+        contains('请先确认生产路线'),
+      );
+    },
+  );
 
   testWidgets('route dialog submits the chosen route and reports next step', (
     tester,
@@ -965,9 +966,7 @@ void routeConfirmationTests() {
     );
     expect(
       find.descendant(
-        of: find.byKey(
-          const ValueKey('workshop-route-option-BATCH-segment-c'),
-        ),
+        of: find.byKey(const ValueKey('workshop-route-option-BATCH-segment-c')),
         matching: find.byIcon(Icons.radio_button_checked),
       ),
       findsOneWidget,
@@ -1028,9 +1027,7 @@ void routeConfirmationTests() {
     expect(
       find.descendant(
         of: batchRow,
-        matching: find.byKey(
-          const ValueKey('workshop-route-badge-segment-c'),
-        ),
+        matching: find.byKey(const ValueKey('workshop-route-badge-segment-c')),
       ),
       findsOneWidget,
     );
@@ -1041,17 +1038,12 @@ void routeConfirmationTests() {
     expect(
       find.descendant(
         of: batchRow,
-        matching: find.byKey(
-          const ValueKey('workshop-route-action-segment-c'),
-        ),
+        matching: find.byKey(const ValueKey('workshop-route-action-segment-c')),
       ),
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: batchRow,
-        matching: find.text('分批生产领料'),
-      ),
+      find.descendant(of: batchRow, matching: find.text('分批生产领料')),
       findsOneWidget,
     );
     await _rightClick(tester, find.text('产品 C'));
@@ -1135,61 +1127,59 @@ void routeConfirmationTests() {
     );
   });
 
-  testWidgets('confirmed continuous route before start keeps only the continuous entry', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final router = _router();
-    addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          isSuperAdminProvider.overrideWithValue(false),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.productionExecutionView,
-            Perm.productionExecutionStart,
-          }),
-          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-            _repository(
-              withWaitingRow: true,
-              startRoute: 'CONTINUOUS',
-              // 已确认持续生产但尚未按持续生产开工：齐套链入口不应出现。
-              rowCanStartContinuous: true,
-              routeChangeable: true,
+  testWidgets(
+    'confirmed continuous route before start keeps only the continuous entry',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(false),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionExecutionStart,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(
+                withWaitingRow: true,
+                startRoute: 'CONTINUOUS',
+                // 已确认持续生产但尚未按持续生产开工：齐套链入口不应出现。
+                rowCanStartContinuous: true,
+                routeChangeable: true,
+              ),
             ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
           ),
-        ],
-        child: MaterialApp.router(
-          routerConfig: router,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('zh'),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await selectFilterSegment(tester, '等待物料');
-    await tester.pumpAndSettle();
-    // 已确认持续生产但尚未开工：格内主操作=部分开工·持续生产，齐套链入口不出现。
-    final continuousRow = _frozenRowOf('产品 C');
-    expect(
-      find.descendant(of: continuousRow, matching: find.text('持续生产')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: continuousRow,
-        matching: find.text('部分开工 · 持续生产'),
-      ),
-      findsOneWidget,
-    );
-    await _rightClick(tester, find.text('产品 C'));
-    expect(_menuEntry('部分开工 · 持续生产'), findsOneWidget);
-    expect(_menuEntry('开工'), findsNothing);
-    expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
-    expect(_menuEntry('分批生产领料'), findsNothing);
-  });
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '等待物料');
+      await tester.pumpAndSettle();
+      // 已确认持续生产但尚未开工：格内主操作=部分开工·持续生产，齐套链入口不出现。
+      final continuousRow = _frozenRowOf('产品 C');
+      expect(
+        find.descendant(of: continuousRow, matching: find.text('持续生产')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: continuousRow, matching: find.text('部分开工 · 持续生产')),
+        findsOneWidget,
+      );
+      await _rightClick(tester, find.text('产品 C'));
+      expect(_menuEntry('部分开工 · 持续生产'), findsOneWidget);
+      expect(_menuEntry('开工'), findsNothing);
+      expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
+      expect(_menuEntry('分批生产领料'), findsNothing);
+    },
+  );
 }
 
 void materialUsageEntryTests() {

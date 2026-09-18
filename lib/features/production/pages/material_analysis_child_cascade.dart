@@ -1135,8 +1135,7 @@ abstract class _MaterialAnalysisChildCascadeState
     if (kind == _CascadeKind.workshop && !material.hasPriorityMakeSupplement) {
       if (anchor != null) {
         if (!anchor.canSchedule) {
-          return anchor.scheduleBlockedReason ??
-              '本行的自制任务当前不可排产，请到「下达车间」核对';
+          return anchor.scheduleBlockedReason ?? '本行的自制任务当前不可排产，请到「下达车间」核对';
         }
         if (anchor.remainingQty <= 0.0001) {
           return '本行的自制任务需求已全部下达 (剩余 0)，多做的量无法在本页追加，请另立需求';

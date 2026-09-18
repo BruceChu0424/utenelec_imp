@@ -69,10 +69,11 @@ final noticeDetailProvider = FutureProvider.autoDispose.family<Notice?, String>(
 ///
 /// 默认关（V600）：祝福由人事手动批量发布；打开后每日 08:00（北京时间）
 /// 服务端调度器自动代发生日/入职周年祝福卡。仅 notice:publish 者可切换。
-final celebrationSettingsProvider = AsyncNotifierProvider.autoDispose<
-    CelebrationSettingsNotifier, NoticeCelebrationSettings>(
-  CelebrationSettingsNotifier.new,
-);
+final celebrationSettingsProvider =
+    AsyncNotifierProvider.autoDispose<
+      CelebrationSettingsNotifier,
+      NoticeCelebrationSettings
+    >(CelebrationSettingsNotifier.new);
 
 class CelebrationSettingsNotifier
     extends AutoDisposeAsyncNotifier<NoticeCelebrationSettings> {
@@ -89,7 +90,6 @@ class CelebrationSettingsNotifier
     state = AsyncData(latest);
   }
 }
-
 
 const Duration _kUnreadPollInterval = Duration(seconds: 60);
 

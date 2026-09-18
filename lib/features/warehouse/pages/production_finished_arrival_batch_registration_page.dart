@@ -128,7 +128,6 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         .contains(Perm.productionFinishedInBeforeInspection);
   }
 
-
   List<_BatchArrivalRegistrationRow> get _editableRows =>
       _grid.rows.where((row) => !row.registered).toList(growable: false);
 
@@ -546,20 +545,23 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
           ? '汇总登记并先入库(${reportIds.length} 张报工单)'
           : '汇总登记并送检（${reportIds.length} 张报工单）',
       confirmLabel: _stockInBeforeInspection ? '确认登记并先入库' : '确认登记并送检',
-      content: _confirmPoints(Theme.of(context), _stockInBeforeInspection
-          ? const [
-              '同一事务逐单登记成品仓与库位，逐行送品质部检查。',
-              '品质部到库位检验；合格由系统按本次登记的成品仓与库位自动点收入库，仓库不再确认第二次。',
-              '自动点收按报工量全量入库：需要按实物短收改量的批次请改用「登记并送检」。',
-              '不合格不动库存，照常走品质恢复与补产。',
-              '任一报工状态、权限、品质或并发校验失败，整批回滚。',
-            ]
-          : const [
-              '同一事务逐单登记成品仓与库位，逐行送品质部检查。',
-              '同一成品仓的行合并成一张品质检查单；品质放行后再按实物最终点收。',
-              '已移出明细仍留在仓库待登记，不产生 FQC 或库存事实。',
-              '任一报工状态、权限、品质或并发校验失败，整批回滚。',
-            ]),
+      content: _confirmPoints(
+        Theme.of(context),
+        _stockInBeforeInspection
+            ? const [
+                '同一事务逐单登记成品仓与库位，逐行送品质部检查。',
+                '品质部到库位检验；合格由系统按本次登记的成品仓与库位自动点收入库，仓库不再确认第二次。',
+                '自动点收按报工量全量入库：需要按实物短收改量的批次请改用「登记并送检」。',
+                '不合格不动库存，照常走品质恢复与补产。',
+                '任一报工状态、权限、品质或并发校验失败，整批回滚。',
+              ]
+            : const [
+                '同一事务逐单登记成品仓与库位，逐行送品质部检查。',
+                '同一成品仓的行合并成一张品质检查单；品质放行后再按实物最终点收。',
+                '已移出明细仍留在仓库待登记，不产生 FQC 或库存事实。',
+                '任一报工状态、权限、品质或并发校验失败，整批回滚。',
+              ],
+      ),
     );
     if (confirmed != true || !mounted) return;
 
@@ -732,7 +734,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   @override
   Widget build(BuildContext context) {
     // 「先入库后质检」按钮随权限快照实时显隐(独立权限点)。
-    final canPreStock = ref.watch(isSuperAdminProvider) ||
+    final canPreStock =
+        ref.watch(isSuperAdminProvider) ||
         ref
             .watch(currentPermissionsProvider)
             .contains(Perm.productionFinishedInBeforeInspection);
@@ -939,7 +942,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                   // 点收」，仓库不再收到待点收任务；代价是实收恒等于报工量。需独立权限。
                   if (canPreStock)
                     Tooltip(
-                      message: '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
+                      message:
+                          '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
                           '仓库不再确认第二次(实收恒等于报工量，放弃短收改量)；不合格仍不动库存',
                       child: UtenButton(
                         key: const Key(

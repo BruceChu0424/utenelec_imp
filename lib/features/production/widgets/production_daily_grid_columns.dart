@@ -120,7 +120,9 @@ class DailyGridRow extends EditableGridRow {
   String? pendingDirectTransferDemandId;
 
   /// 本次实际用料由完工申报量按单耗自动算出(物料子行)。
-  final ValueNotifier<bool> materialUsageAutofilled = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> materialUsageAutofilled = ValueNotifier<bool>(
+    false,
+  );
 
   /// 自动算出的文本；当前文本与它不同即视为用户改过。
   String? materialAutofillText;
@@ -602,31 +604,31 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 builder: (context, picked, _) => ValueListenableBuilder<bool>(
                   valueListenable: row.directTransferAutofilled,
                   builder: (context, autofilled, _) => UtenDropdownField(
-                  dense: true,
-                  value: picked?.demandId,
-                  hintText: '选择上层工单',
-                  // V595 记忆预填：黄框 + 警示图标提醒核对。
-                  autofilled: autofilled && picked != null,
-                  items: [
-                    // 收起态与下拉项同一份文案（父件产品 · 工单号·还差多少）：
-                    // UtenDropdownField 的格内值与浮层条目共用 label，两行条目
-                    // 拼成一行省略号（2026-09-16 全站单行口径），textOf 量同款
-                    // 文案保证列宽跟手。
-                    for (final candidate in row.directTransferCandidates)
-                      UtenDropdownItem(
-                        value: candidate.demandId,
-                        label: _directTransferCellText(candidate),
-                      ),
-                  ],
-                  onChanged: (demandId) {
-                    if (demandId == null) return;
-                    onDirectTransferPicked?.call(
-                      row,
-                      row.directTransferCandidates.firstWhere(
-                        (candidate) => candidate.demandId == demandId,
-                      ),
-                    );
-                  },
+                    dense: true,
+                    value: picked?.demandId,
+                    hintText: '选择上层工单',
+                    // V595 记忆预填：黄框 + 警示图标提醒核对。
+                    autofilled: autofilled && picked != null,
+                    items: [
+                      // 收起态与下拉项同一份文案（父件产品 · 工单号·还差多少）：
+                      // UtenDropdownField 的格内值与浮层条目共用 label，两行条目
+                      // 拼成一行省略号（2026-09-16 全站单行口径），textOf 量同款
+                      // 文案保证列宽跟手。
+                      for (final candidate in row.directTransferCandidates)
+                        UtenDropdownItem(
+                          value: candidate.demandId,
+                          label: _directTransferCellText(candidate),
+                        ),
+                    ],
+                    onChanged: (demandId) {
+                      if (demandId == null) return;
+                      onDirectTransferPicked?.call(
+                        row,
+                        row.directTransferCandidates.firstWhere(
+                          (candidate) => candidate.demandId == demandId,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

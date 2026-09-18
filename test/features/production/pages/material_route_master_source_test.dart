@@ -90,12 +90,9 @@ void main() {
     expect(harness.writes, isEmpty);
     await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
     await tester.pumpAndSettle();
-    expect(
-      (harness.writes.single.data as Map<String, dynamic>)['decisions'],
-      [
-        {'actionGroupKey': 'a-m1', 'route': 'MAKE'},
-      ],
-    );
+    expect((harness.writes.single.data as Map<String, dynamic>)['decisions'], [
+      {'actionGroupKey': 'a-m1', 'route': 'MAKE'},
+    ]);
   });
 }
 

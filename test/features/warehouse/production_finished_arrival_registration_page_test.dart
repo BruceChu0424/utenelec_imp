@@ -50,7 +50,9 @@ void main() {
             isSuperAdminProvider.overrideWithValue(false),
           ],
           child: const MaterialApp(
-            home: ProductionFinishedArrivalRegistrationPage(reportId: _reportId),
+            home: ProductionFinishedArrivalRegistrationPage(
+              reportId: _reportId,
+            ),
           ),
         ),
       );

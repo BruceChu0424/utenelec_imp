@@ -29,22 +29,28 @@ ProductionMaterialClearanceRow _material({
 );
 
 void main() {
-  test('uses the batch ratio (required / for-product) before the BOM ratio', () {
-    // 本批 100 个产品要 200 份料 → 单耗 2；BOM 单耗 3 不优先。
-    final material = _material(perProductQty: 3);
-    expect(materialUsagePerProduct(material), 2);
-    expect(expectedMaterialUsage(reportedQty: 30, material: material), 60);
-  });
+  test(
+    'uses the batch ratio (required / for-product) before the BOM ratio',
+    () {
+      // 本批 100 个产品要 200 份料 → 单耗 2；BOM 单耗 3 不优先。
+      final material = _material(perProductQty: 3);
+      expect(materialUsagePerProduct(material), 2);
+      expect(expectedMaterialUsage(reportedQty: 30, material: material), 60);
+    },
+  );
 
   test('falls back to the BOM ratio when the batch quantity is unknown', () {
     final material = _material(requiredForProductQty: null, perProductQty: 2.5);
     expect(expectedMaterialUsage(reportedQty: 4, material: material), 10);
   });
 
-  test('returns null when no ratio is known so the field is left to people', () {
-    final material = _material(requiredForProductQty: null);
-    expect(expectedMaterialUsage(reportedQty: 4, material: material), isNull);
-  });
+  test(
+    'returns null when no ratio is known so the field is left to people',
+    () {
+      final material = _material(requiredForProductQty: null);
+      expect(expectedMaterialUsage(reportedQty: 4, material: material), isNull);
+    },
+  );
 
   test('caps at the quantity still available to settle', () {
     final material = _material(availableToSettleQty: 50);
@@ -55,15 +61,25 @@ void main() {
     final material = _material();
     // 用户把 30 个的用料改成 45(比例 1.5)，完工量改成 40 → 60。
     expect(
-      expectedMaterialUsage(reportedQty: 40, material: material, ratioOverride: 1.5),
+      expectedMaterialUsage(
+        reportedQty: 40,
+        material: material,
+        ratioOverride: 1.5,
+      ),
       60,
     );
   });
 
-  test('rounds to four decimals and rejects non-positive reported quantities', () {
-    final material = _material(requiredQty: 1, requiredForProductQty: 3);
-    expect(expectedMaterialUsage(reportedQty: 1, material: material), 0.3333);
-    expect(expectedMaterialUsage(reportedQty: 0, material: material), isNull);
-    expect(expectedMaterialUsage(reportedQty: -5, material: material), isNull);
-  });
+  test(
+    'rounds to four decimals and rejects non-positive reported quantities',
+    () {
+      final material = _material(requiredQty: 1, requiredForProductQty: 3);
+      expect(expectedMaterialUsage(reportedQty: 1, material: material), 0.3333);
+      expect(expectedMaterialUsage(reportedQty: 0, material: material), isNull);
+      expect(
+        expectedMaterialUsage(reportedQty: -5, material: material),
+        isNull,
+      );
+    },
+  );
 }

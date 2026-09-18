@@ -266,8 +266,8 @@ class _ProductionWorkshopTasksPageState
           item: UtenMenuItem(
             label: _isPreparing
                 ? (_canStartTask(task) && _routeAllowsKitActions(task)
-                    ? '查看生产计划（可单独开工）'
-                    : '查看物料进度')
+                      ? '查看生产计划（可单独开工）'
+                      : '查看物料进度')
                 : '查看生产计划',
             icon: Icons.open_in_new_rounded,
             onTap: () => _openPlan(task),
@@ -567,9 +567,7 @@ class _ProductionWorkshopTasksPageState
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
           key: ValueKey('workshop-route-confirm-${task.segmentId}'),
-          title: Text(
-            task.startRoute == null ? '确认生产路线' : '重新确认生产路线',
-          ),
+          title: Text(task.startRoute == null ? '确认生产路线' : '重新确认生产路线'),
           content: SizedBox(
             width: 560,
             child: Column(
@@ -613,8 +611,10 @@ class _ProductionWorkshopTasksPageState
                                   : Theme.of(dialogContext).hintColor,
                             ),
                             const SizedBox(width: UtenSpacing.s12),
-                            Icon(_routeIcons[option] ?? Icons.alt_route_rounded,
-                                size: 20),
+                            Icon(
+                              _routeIcons[option] ?? Icons.alt_route_rounded,
+                              size: 20,
+                            ),
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
                               child: Column(
@@ -629,9 +629,9 @@ class _ProductionWorkshopTasksPageState
                                   const SizedBox(height: UtenSpacing.s4),
                                   Text(
                                     _routeOptionMeta[option]?.$2 ?? '',
-                                    style: Theme.of(dialogContext)
-                                        .textTheme
-                                        .bodySmall,
+                                    style: Theme.of(
+                                      dialogContext,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ],
                               ),
@@ -684,17 +684,11 @@ class _ProductionWorkshopTasksPageState
         'CONTINUOUS': '持续生产',
       };
       if (route == 'FULL_KIT' && result.status == 'READY') {
-        context.appSuccess(
-          '已确认生产路线：齐套生产；物料已齐套，可提交领料汇总，领齐后开工',
-        );
+        context.appSuccess('已确认生产路线：齐套生产；物料已齐套，可提交领料汇总，领齐后开工');
       } else if (route == 'BATCH') {
-        context.appSuccess(
-          '已确认生产路线：分批生产；物料到一部分就可以点「分批生产领料」切第一批',
-        );
+        context.appSuccess('已确认生产路线：分批生产；物料到一部分就可以点「分批生产领料」切第一批');
       } else if (route == 'CONTINUOUS') {
-        context.appSuccess(
-          '已确认生产路线：持续生产；直送子件到一部分后可点「部分开工 · 持续生产」',
-        );
+        context.appSuccess('已确认生产路线：持续生产；直送子件到一部分后可点「部分开工 · 持续生产」');
       } else {
         context.appSuccess('已确认生产路线：${labels[route] ?? route}');
       }
@@ -1471,7 +1465,8 @@ class _ProductionWorkshopTasksPageState
         key: 'route',
         label: '生产路线',
         width: 210,
-        info: '先定路线再开工：齐套生产=全部子件到齐一次领料开工(默认)；'
+        info:
+            '先定路线再开工：齐套生产=全部子件到齐一次领料开工(默认)；'
             '分批生产=物料到一部分先做第一批，剩余到货继续拆批；'
             '持续生产=同车间直送的子件到一批投一批，只开一次工、数量按报工结。'
             '路线在领料/报工前可重新确认；未确认时开工、领料、分批、持续生产都会被拒绝。',
@@ -1591,7 +1586,8 @@ class _RouteChoiceCell extends StatelessWidget {
     if (task.startRoute == null && !task.canConfirmRoute) {
       // 无开工权限(或状态不可确认)的人看得到路线未定，但动不了。
       return Tooltip(
-        message: '本工单尚未确认生产路线；确认路线需要开工权限'
+        message:
+            '本工单尚未确认生产路线；确认路线需要开工权限'
             '(production_execution:start)。',
         child: Text(
           '待确认',
@@ -1624,9 +1620,7 @@ class _RouteChoiceCell extends StatelessWidget {
                     borderRadius: BorderRadius.circular(UtenRadius.pill),
                     border: Border.all(color: scheme.outlineVariant),
                     color: enabled
-                        ? scheme.surfaceContainerHighest.withValues(
-                            alpha: 0.45,
-                          )
+                        ? scheme.surfaceContainerHighest.withValues(alpha: 0.45)
                         : null,
                   ),
                   child: Row(

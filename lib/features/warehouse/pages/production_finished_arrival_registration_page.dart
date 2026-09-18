@@ -136,7 +136,6 @@ class _ProductionFinishedArrivalRegistrationPageState
         .contains(Perm.productionFinishedInBeforeInspection);
   }
 
-
   List<_FinishedArrivalRegistrationGridRow> get _editableRows =>
       _grid.rows.where((row) => !row.registered).toList(growable: false);
 
@@ -576,9 +575,7 @@ class _ProductionFinishedArrivalRegistrationPageState
         .where((sheetNo) => sheetNo.isNotEmpty)
         .toList(growable: false);
     final sheetText = sheets.isEmpty ? '' : '，品质检查单 ${sheets.join('、')}';
-    final tail = _stockInBeforeInspection
-        ? '；品质合格后系统按本次库位自动入库，无需再点收'
-        : '';
+    final tail = _stockInBeforeInspection ? '；品质合格后系统按本次库位自动入库，无需再点收' : '';
     return _registrations.length == 1
         ? '成品仓和库位已登记，已送品质部检查$sheetText$tail'
         : '已按 ${_registrations.length} 个成品仓分别登记并送检$sheetText$tail';
@@ -699,7 +696,8 @@ class _ProductionFinishedArrivalRegistrationPageState
     }
     final theme = Theme.of(context);
     // 「先入库后质检」按钮随权限快照实时显隐(独立权限点)。
-    final canPreStock = ref.watch(isSuperAdminProvider) ||
+    final canPreStock =
+        ref.watch(isSuperAdminProvider) ||
         ref
             .watch(currentPermissionsProvider)
             .contains(Perm.productionFinishedInBeforeInspection);
@@ -947,59 +945,61 @@ class _ProductionFinishedArrivalRegistrationPageState
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton:
-          _detail == null ? null : _buildBottomBar(theme, canPreStock),
+      floatingActionButton: _detail == null
+          ? null
+          : _buildBottomBar(theme, canPreStock),
     );
   }
 
   /// 底部：取消 + 先入库后质检 / 登记并送检(两个主动作二选一)。
   Widget _buildBottomBar(ThemeData theme, bool canPreStock) =>
       UtenFloatingActionGroup(
-    children: [
-      UtenButton(
-        type: UtenButtonType.secondary,
-        size: UtenButtonSize.large,
-        onPressed: _saving || _remembering || _reversing
-            ? null
-            : () => _leave(changed: _registrationCompletedThisSession),
-        child: Text(_canRegister ? '取消' : '返回任务'),
-      ),
-      if (_canRegister) ...[
-        // 先入库后质检(V597 / ADR-090 第六节)：与「登记并送检」并排的第二个主动作。
-        // 点它 = 登记 + 送检 + 承诺「合格按本次登记的成品仓与库位自动点收」，仓库不再
-        // 收到待点收任务；代价是实收恒等于报工量(放弃短收改量)。需独立权限。
-        if (canPreStock)
-          Tooltip(
-            message: '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
-                '仓库不再确认第二次(实收恒等于报工量，放弃短收改量)；不合格仍不动库存',
-            child: UtenButton(
-              key: const Key('production-finished-arrival-stock-in-first'),
+        children: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            onPressed: _saving || _remembering || _reversing
+                ? null
+                : () => _leave(changed: _registrationCompletedThisSession),
+            child: Text(_canRegister ? '取消' : '返回任务'),
+          ),
+          if (_canRegister) ...[
+            // 先入库后质检(V597 / ADR-090 第六节)：与「登记并送检」并排的第二个主动作。
+            // 点它 = 登记 + 送检 + 承诺「合格按本次登记的成品仓与库位自动点收」，仓库不再
+            // 收到待点收任务；代价是实收恒等于报工量(放弃短收改量)。需独立权限。
+            if (canPreStock)
+              Tooltip(
+                message:
+                    '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
+                    '仓库不再确认第二次(实收恒等于报工量，放弃短收改量)；不合格仍不动库存',
+                child: UtenButton(
+                  key: const Key('production-finished-arrival-stock-in-first'),
+                  size: UtenButtonSize.large,
+                  icon: Icons.shelves,
+                  isLoading: _saving && _stockInBeforeInspection,
+                  onPressed: _saving || _suggestionsLoading || _grid.isEmpty
+                      ? null
+                      : () => _save(preStock: true),
+                  child: const Text('先入库后质检'),
+                ),
+              ),
+            UtenButton(
+              key: const Key('production-finished-arrival-submit'),
+              type: UtenButtonType.danger,
               size: UtenButtonSize.large,
-              icon: Icons.shelves,
-              isLoading: _saving && _stockInBeforeInspection,
+              icon: Icons.fact_check_outlined,
+              isLoading: _saving && !_stockInBeforeInspection,
               onPressed: _saving || _suggestionsLoading || _grid.isEmpty
                   ? null
-                  : () => _save(preStock: true),
-              child: const Text('先入库后质检'),
+                  : () => _save(preStock: false),
+              onDisabledTap: _suggestionsLoading
+                  ? () => context.appInfo('正在读取该成品仓默认库位，请稍候再提交')
+                  : null,
+              child: const Text('登记并送检'),
             ),
-          ),
-        UtenButton(
-          key: const Key('production-finished-arrival-submit'),
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          icon: Icons.fact_check_outlined,
-          isLoading: _saving && !_stockInBeforeInspection,
-          onPressed: _saving || _suggestionsLoading || _grid.isEmpty
-              ? null
-              : () => _save(preStock: false),
-          onDisabledTap: _suggestionsLoading
-              ? () => context.appInfo('正在读取该成品仓默认库位，请稍候再提交')
-              : null,
-          child: const Text('登记并送检'),
-        ),
-      ],
-    ],
-  );
+          ],
+        ],
+      );
 
   void _leave({bool changed = false}) {
     final navigator = Navigator.of(context);

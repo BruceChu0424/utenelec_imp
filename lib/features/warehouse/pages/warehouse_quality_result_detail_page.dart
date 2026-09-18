@@ -366,7 +366,8 @@ class _WarehouseQualityResultDetailPageState
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: detail != null &&
+      floatingActionButton:
+          detail != null &&
               ((_canConfirm && _drafts.isNotEmpty) || detail.canPreStockIn)
           ? _floatingActions()
           : null,

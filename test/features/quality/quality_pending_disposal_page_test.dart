@@ -263,9 +263,7 @@ void main() {
     expect(find.text('CJ20260822000001'), findsOneWidget);
   });
 
-  testWidgets('V597 先入库后检的检查单：队列储放位置标红，办理页顶部标红并逐行给出库位', (
-    tester,
-  ) async {
+  testWidgets('V597 先入库后检的检查单：队列储放位置标红，办理页顶部标红并逐行给出库位', (tester) async {
     final api = _FqcApi(withSheet: true, preStocked: true);
     await _pumpPage(
       tester,
@@ -279,7 +277,10 @@ void main() {
     expect(find.text('待检区'), findsWidgets);
 
     await _doubleTapRow(tester, _sheetNo);
-    expect(find.byKey(const Key('fqc-sheet-pre-stocked-notice')), findsOneWidget);
+    expect(
+      find.byKey(const Key('fqc-sheet-pre-stocked-notice')),
+      findsOneWidget,
+    );
     expect(find.text('货品已入库，需到对应储放区域检查'), findsOneWidget);
     expect(
       find.textContaining('V5多功能三极插座E极插套(酸洗) → 成品仓 / CP-A-01'),

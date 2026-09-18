@@ -930,14 +930,12 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
               error: (_, _) => IconButton(
                 tooltip: '重试',
                 icon: const Icon(Icons.refresh_rounded),
-                onPressed: () =>
-                    ref.invalidate(celebrationSettingsProvider),
+                onPressed: () => ref.invalidate(celebrationSettingsProvider),
               ),
               data: (settings) => Switch(
                 key: const Key('hr-task-celebration-auto-switch'),
                 value: settings.autoEnabled,
-                onChanged:
-                    _autoToggling ? null : _onToggleCelebrationAuto,
+                onChanged: _autoToggling ? null : _onToggleCelebrationAuto,
               ),
             ),
           ],
@@ -955,9 +953,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           .setAutoEnabled(enabled);
       if (!mounted) return;
       context.appSuccess(
-        enabled
-            ? '已开启自动发送：每天 08:00（北京时间）自动送祝福'
-            : '已关闭自动发送：祝福改由人事手动发布',
+        enabled ? '已开启自动发送：每天 08:00（北京时间）自动送祝福' : '已关闭自动发送：祝福改由人事手动发布',
       );
     } on ApiException catch (e) {
       if (!mounted) return;

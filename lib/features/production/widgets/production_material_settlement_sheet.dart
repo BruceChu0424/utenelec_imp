@@ -711,137 +711,142 @@ class _MaterialSettlementSheetState
                   SingleChildScrollView(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _stats(theme),
-                    const SizedBox(height: UtenSpacing.s8),
-                    _notice(theme),
-                    const SizedBox(height: UtenSpacing.s12),
-                    if (_grid.rows.isNotEmpty) ...[
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: UtenSpacing.s8,
-                        children: [
-                          Text(
-                            '待登记材料（${_grid.length} 项）',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (_canRegister)
-                            TextButton.icon(
-                              onPressed: _editingLocked
-                                  ? null
-                                  : _fillAllConsumed,
-                              icon: const Icon(
-                                Icons.done_all_rounded,
-                                size: 18,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _stats(theme),
+                        const SizedBox(height: UtenSpacing.s8),
+                        _notice(theme),
+                        const SizedBox(height: UtenSpacing.s12),
+                        if (_grid.rows.isNotEmpty) ...[
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: UtenSpacing.s8,
+                            children: [
+                              Text(
+                                '待登记材料（${_grid.length} 项）',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                              label: const Text('将待登记量填入实耗'),
-                            ),
-                        ],
-                      ),
-                      if (_canRegister)
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: _editingLocked
-                                ? null
-                                : () => setState(
-                                    () => _showLossAndWip = !_showLossAndWip,
+                              if (_canRegister)
+                                TextButton.icon(
+                                  onPressed: _editingLocked
+                                      ? null
+                                      : _fillAllConsumed,
+                                  icon: const Icon(
+                                    Icons.done_all_rounded,
+                                    size: 18,
                                   ),
-                            icon: Icon(
-                              _showLossAndWip
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                            ),
-                            label: Text(
-                              _showLossAndWip
-                                  ? '收起损耗 / 在制'
-                                  : _lossAndWipItems > 0
-                                  ? '损耗 / 在制（已填 $_lossAndWipItems 项）'
-                                  : '填写损耗 / 在制',
-                            ),
+                                  label: const Text('将待登记量填入实耗'),
+                                ),
+                            ],
                           ),
-                        ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      UtenEditableGrid<_SettlementGridRow>(
-                        controller: _grid,
-                        columns: _columns(),
-                        createBlankRow: () =>
-                            throw UnsupportedError('材料行只能来自需求台账'),
-                        showAddRow: false,
-                        showRowDelete: false,
-                      ),
-                    ],
-                    if (_canRegister) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      TextField(
-                        controller: _reason,
-                        enabled: !_editingLocked,
-                        maxLength: 500,
-                        decoration: const UtenInputDecoration(
-                          InputDecoration(
-                            labelText: '本次说明',
-                            hintText: '仅登记实耗时可选填',
-                            prefixIcon: Icon(Icons.notes_rounded),
-                          ),
-                          info: '登记损耗或在制时必须填写原因。',
-                        ),
-                      ),
-                    ],
-                    if (_submitError != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                        child: Semantics(
-                          liveRegion: true,
-                          child: Text(
-                            _submitError!,
-                            style: TextStyle(color: theme.colorScheme.error),
-                          ),
-                        ),
-                      ),
-                    if (_canRegister || _canClose || _canReturn) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      Wrap(
-                        spacing: UtenSpacing.s8,
-                        runSpacing: UtenSpacing.s8,
-                        children: [
                           if (_canRegister)
-                            UtenButton(
-                              icon: Icons.fact_check_outlined,
-                              isLoading: _busy,
-                              onPressed: _busy ? null : _submit,
-                              child: Text(
-                                _settlementUncertain ? '重试本次登记' : '提交用料登记',
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: _editingLocked
+                                    ? null
+                                    : () => setState(
+                                        () =>
+                                            _showLossAndWip = !_showLossAndWip,
+                                      ),
+                                icon: Icon(
+                                  _showLossAndWip
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                ),
+                                label: Text(
+                                  _showLossAndWip
+                                      ? '收起损耗 / 在制'
+                                      : _lossAndWipItems > 0
+                                      ? '损耗 / 在制（已填 $_lossAndWipItems 项）'
+                                      : '填写损耗 / 在制',
+                                ),
                               ),
                             ),
-                          if (_canReturn && _returnableItems > 0)
-                            UtenButton(
-                              type: UtenButtonType.secondary,
-                              icon: Icons.keyboard_return_rounded,
-                              onPressed: _editingLocked ? null : _startReturn,
-                              child: const Text('余料退库'),
-                            ),
-                          if (_canClose)
-                            UtenButton(
-                              type: UtenButtonType.tonal,
-                              icon: Icons.task_alt_rounded,
-                              onPressed: _editingLocked || !_allCleared
-                                  ? null
-                                  : _closePlan,
-                              child: const Text('检查并完成任务'),
-                            ),
+                          const SizedBox(height: UtenSpacing.s4),
+                          UtenEditableGrid<_SettlementGridRow>(
+                            controller: _grid,
+                            columns: _columns(),
+                            createBlankRow: () =>
+                                throw UnsupportedError('材料行只能来自需求台账'),
+                            showAddRow: false,
+                            showRowDelete: false,
+                          ),
                         ],
-                      ),
-                    ],
-                    const SizedBox(height: UtenSpacing.s16),
-                    if (_returns.isNotEmpty) _returnHistory(theme),
-                    _ledger(theme),
-                    _history(theme),
-                  ],
-                ),
+                        if (_canRegister) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          TextField(
+                            controller: _reason,
+                            enabled: !_editingLocked,
+                            maxLength: 500,
+                            decoration: const UtenInputDecoration(
+                              InputDecoration(
+                                labelText: '本次说明',
+                                hintText: '仅登记实耗时可选填',
+                                prefixIcon: Icon(Icons.notes_rounded),
+                              ),
+                              info: '登记损耗或在制时必须填写原因。',
+                            ),
+                          ),
+                        ],
+                        if (_submitError != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                            child: Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                _submitError!,
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (_canRegister || _canClose || _canReturn) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          Wrap(
+                            spacing: UtenSpacing.s8,
+                            runSpacing: UtenSpacing.s8,
+                            children: [
+                              if (_canRegister)
+                                UtenButton(
+                                  icon: Icons.fact_check_outlined,
+                                  isLoading: _busy,
+                                  onPressed: _busy ? null : _submit,
+                                  child: Text(
+                                    _settlementUncertain ? '重试本次登记' : '提交用料登记',
+                                  ),
+                                ),
+                              if (_canReturn && _returnableItems > 0)
+                                UtenButton(
+                                  type: UtenButtonType.secondary,
+                                  icon: Icons.keyboard_return_rounded,
+                                  onPressed: _editingLocked
+                                      ? null
+                                      : _startReturn,
+                                  child: const Text('余料退库'),
+                                ),
+                              if (_canClose)
+                                UtenButton(
+                                  type: UtenButtonType.tonal,
+                                  icon: Icons.task_alt_rounded,
+                                  onPressed: _editingLocked || !_allCleared
+                                      ? null
+                                      : _closePlan,
+                                  child: const Text('检查并完成任务'),
+                                ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: UtenSpacing.s16),
+                        if (_returns.isNotEmpty) _returnHistory(theme),
+                        _ledger(theme),
+                        _history(theme),
+                      ],
+                    ),
                   ),
                   // 登记用料/冲销网络段的全屏加载遮罩（数量确认弹窗在置位之前，不会被遮）。
                   if (_busy)

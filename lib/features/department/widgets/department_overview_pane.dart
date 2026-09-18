@@ -584,82 +584,82 @@ class _DepartmentOverviewPaneState
   List<MasterColumnDef<EmployeeSummary>> _employeeColumns(
     AppLocalizations l10n,
   ) => [
-        MasterColumnDef(
-          key: 'code',
-          label: '工号',
-          width: 90,
-          sortable: true,
-          value: (e) => e.code,
-        ),
-        MasterColumnDef(
-          key: 'fullName',
-          label: '姓名',
-          width: 150,
-          value: (e) => e.fullName,
-          cellBuilder: (context, e) => Row(
-            children: [
-              EmployeeLeadershipBadge(
-                departmentManager: e.departmentManager,
-                positionLevel: e.positionLevel,
-                leaderRank: e.leaderRank,
-              ),
-              const SizedBox(width: UtenSpacing.s4),
-              Flexible(child: Text(e.fullName)),
-            ],
+    MasterColumnDef(
+      key: 'code',
+      label: '工号',
+      width: 90,
+      sortable: true,
+      value: (e) => e.code,
+    ),
+    MasterColumnDef(
+      key: 'fullName',
+      label: '姓名',
+      width: 150,
+      value: (e) => e.fullName,
+      cellBuilder: (context, e) => Row(
+        children: [
+          EmployeeLeadershipBadge(
+            departmentManager: e.departmentManager,
+            positionLevel: e.positionLevel,
+            leaderRank: e.leaderRank,
           ),
-        ),
-        MasterColumnDef(
-          key: 'departmentName',
-          label: '部门',
-          width: 150,
-          value: (e) => e.departmentName,
-        ),
-        MasterColumnDef(
-          key: 'positionName',
-          label: '岗位',
-          width: 140,
-          value: (e) => e.positionName,
-        ),
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 100,
-          value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
-          cellBuilder: (context, e) => EmployeeStatusBadge(status: e.status),
-        ),
-        MasterColumnDef(
-          key: 'hireDate',
-          label: '入职日期',
-          width: 110,
-          type: 'date',
-          sortable: true,
-          value: (e) => e.hireDate,
-        ),
-        MasterColumnDef(
-          key: 'workYears',
-          label: '工龄',
-          width: 110,
-          sortable: true,
-          info: '按入职日期 + 当前日期动态计算（整年 + 整月），不落库。',
-          value: (e) => workYearsText(l10n, e.hireDate),
-        ),
-        // ADR-021：搜索命中车牌时显示（谁的车有问题 → 按车牌秒查人）。
-        MasterColumnDef(
-          key: 'matchedPlates',
-          label: '车牌命中',
-          width: 130,
-          info: '仅搜索词命中车牌时显示对应车牌；平时为空。',
-          value: (e) => e.matchedPlates,
-        ),
-      ];
+          const SizedBox(width: UtenSpacing.s4),
+          Flexible(child: Text(e.fullName)),
+        ],
+      ),
+    ),
+    MasterColumnDef(
+      key: 'departmentName',
+      label: '部门',
+      width: 150,
+      value: (e) => e.departmentName,
+    ),
+    MasterColumnDef(
+      key: 'positionName',
+      label: '岗位',
+      width: 140,
+      value: (e) => e.positionName,
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
+      cellBuilder: (context, e) => EmployeeStatusBadge(status: e.status),
+    ),
+    MasterColumnDef(
+      key: 'hireDate',
+      label: '入职日期',
+      width: 110,
+      type: 'date',
+      sortable: true,
+      value: (e) => e.hireDate,
+    ),
+    MasterColumnDef(
+      key: 'workYears',
+      label: '工龄',
+      width: 110,
+      sortable: true,
+      info: '按入职日期 + 当前日期动态计算（整年 + 整月），不落库。',
+      value: (e) => workYearsText(l10n, e.hireDate),
+    ),
+    // ADR-021：搜索命中车牌时显示（谁的车有问题 → 按车牌秒查人）。
+    MasterColumnDef(
+      key: 'matchedPlates',
+      label: '车牌命中',
+      width: 130,
+      info: '仅搜索词命中车牌时显示对应车牌；平时为空。',
+      value: (e) => e.matchedPlates,
+    ),
+  ];
 
   String _statusLabel(AppLocalizations l10n, String key) => switch (key) {
-        'active' => l10n.employeeStatusActive,
-        'probation' => l10n.employeeStatusProbation,
-        'onLeave' => l10n.employeeStatusOnLeave,
-        'resigned' => l10n.employeeStatusResigned,
-        _ => key,
-      };
+    'active' => l10n.employeeStatusActive,
+    'probation' => l10n.employeeStatusProbation,
+    'onLeave' => l10n.employeeStatusOnLeave,
+    'resigned' => l10n.employeeStatusResigned,
+    _ => key,
+  };
 
   void _onFilterChanged(String key, String? value) {
     setState(() {

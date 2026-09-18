@@ -75,7 +75,9 @@ void main() {
     expect(noAction.canPreStockIn, isFalse);
 
     expect(
-      WarehouseArrivalRegistrationOutcome.fromName('STOCKED_PENDING_INSPECTION'),
+      WarehouseArrivalRegistrationOutcome.fromName(
+        'STOCKED_PENDING_INSPECTION',
+      ),
       WarehouseArrivalRegistrationOutcome.stockedPendingInspection,
     );
     const batch = WarehouseArrivalRegistrationBatch(
@@ -102,58 +104,77 @@ void main() {
     );
   });
 
-  testWidgets('pre-stock page lists shelvable lines, requires a place and submits', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1400, 1000);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final stockIn = _StockInGateway();
-    await tester.pumpWidget(
-      await _app(
-        const WarehouseQualityPreStockInPage(
-          receiptType: 'PURCHASE',
-          receiptId: 'receipt-1',
+  testWidgets(
+    'pre-stock page lists shelvable lines, requires a place and submits',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1400, 1000);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final stockIn = _StockInGateway();
+      await tester.pumpWidget(
+        await _app(
+          const WarehouseQualityPreStockInPage(
+            receiptType: 'PURCHASE',
+            receiptId: 'receipt-1',
+          ),
+          quality: _QualityGateway(_detailJson()),
+          stockIn: stockIn,
+          permissions: const {
+            Perm.warehouseIqcStockInView,
+            Perm.warehouseIqcStockInBeforeInspection,
+          },
         ),
-        quality: _QualityGateway(_detailJson()),
-        stockIn: stockIn,
-        permissions: const {
-          Perm.warehouseIqcStockInView,
-          Perm.warehouseIqcStockInBeforeInspection,
-        },
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    // 只有「等结论且未上架」的行出现：已上架行与已结案行不进表。
-    expect(find.text('待检产品'), findsOneWidget);
-    expect(find.text('已上架产品'), findsNothing);
-    expect(find.text('已结案产品'), findsNothing);
-    expect(find.byKey(const Key('warehouse-quality-pre-stock-notice')), findsOneWidget);
-    // 建议库位预填、上架仓默认收货参考仓。
-    final placeField = find.byKey(const ValueKey('pre-stock-place-inspection-pending'));
-    expect(tester.widget<TextFormField>(placeField).controller!.text, 'C-07');
-    expect(find.text('原料仓'), findsWidgets);
+      // 只有「等结论且未上架」的行出现：已上架行与已结案行不进表。
+      expect(find.text('待检产品'), findsOneWidget);
+      expect(find.text('已上架产品'), findsNothing);
+      expect(find.text('已结案产品'), findsNothing);
+      expect(
+        find.byKey(const Key('warehouse-quality-pre-stock-notice')),
+        findsOneWidget,
+      );
+      // 建议库位预填、上架仓默认收货参考仓。
+      final placeField = find.byKey(
+        const ValueKey('pre-stock-place-inspection-pending'),
+      );
+      expect(tester.widget<TextFormField>(placeField).controller!.text, 'C-07');
+      expect(find.text('原料仓'), findsWidgets);
 
-    // 清空库位后提交：页内报错、不发请求。
-    await tester.enterText(placeField, '');
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('warehouse-quality-pre-stock-confirm')));
-    await tester.pumpAndSettle();
-    expect(stockIn.preStockCalls, 0);
-    expect(find.byKey(const Key('warehouse-quality-pre-stock-error')), findsOneWidget);
+      // 清空库位后提交：页内报错、不发请求。
+      await tester.enterText(placeField, '');
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(stockIn.preStockCalls, 0);
+      expect(
+        find.byKey(const Key('warehouse-quality-pre-stock-error')),
+        findsOneWidget,
+      );
 
-    await tester.enterText(placeField, ' D-08 ');
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('warehouse-quality-pre-stock-confirm')));
-    await tester.pumpAndSettle();
-    expect(stockIn.preStockCalls, 1);
-    expect(stockIn.lastPreStock!.items.single.inspectionItemId, 'inspection-pending');
-    expect(stockIn.lastPreStock!.items.single.warehouseId, 'warehouse-1');
-    expect(stockIn.lastPreStock!.items.single.place, 'D-08');
-    expect(find.byKey(const Key('warehouse-quality-pre-stock-error')), findsNothing);
-  });
+      await tester.enterText(placeField, ' D-08 ');
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(stockIn.preStockCalls, 1);
+      expect(
+        stockIn.lastPreStock!.items.single.inspectionItemId,
+        'inspection-pending',
+      );
+      expect(stockIn.lastPreStock!.items.single.warehouseId, 'warehouse-1');
+      expect(stockIn.lastPreStock!.items.single.place, 'D-08');
+      expect(
+        find.byKey(const Key('warehouse-quality-pre-stock-error')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('without the independent authority the page is read-only', (
     tester,
@@ -177,7 +198,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('warehouse-quality-pre-stock-confirm')), findsNothing);
+    expect(
+      find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
+      findsNothing,
+    );
     expect(find.textContaining('没有「到货先入库后质检」权限'), findsOneWidget);
   });
 
@@ -203,7 +227,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('warehouse-quality-detail-pre-stocked')), findsOneWidget);
+    expect(
+      find.byKey(const Key('warehouse-quality-detail-pre-stocked')),
+      findsOneWidget,
+    );
     expect(find.text('先入库上架(1)'), findsOneWidget);
     // 已上架行在合并表里显示上架库位；不合格退回卡片带实物位置。
     expect(find.text('已上架 · A-01'), findsOneWidget);
@@ -255,7 +282,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   Future<int> pendingCount() async => 0;
 
   @override
-  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async => const {};
+  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async =>
+      const {};
 
   @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
@@ -316,24 +344,25 @@ class _FailingReturnGateway implements WarehouseIqcReturnGateway {
   ) async => throw StateError('unexpected record return');
 }
 
-Map<String, dynamic> _summaryJson(String workStatus, {int openItemCount = 0}) => {
-  'receiptType': 'PURCHASE',
-  'receiptId': 'receipt-1',
-  'billNo': 'PR-001',
-  'billDate': '2026-09-16',
-  'supplierId': 'supplier-1',
-  'supplierName': '示例供应商',
-  'warehouseId': 'warehouse-1',
-  'warehouseName': '原料仓',
-  'workStatus': workStatus,
-  'goodsLineCount': 3,
-  'passedLineCount': 0,
-  'failedLineCount': 0,
-  'openItemCount': openItemCount,
-  'pendingSliceCount': 0,
-  'pendingReturnCount': 0,
-  'lastActivityAt': '2026-09-16T09:00:00Z',
-};
+Map<String, dynamic> _summaryJson(String workStatus, {int openItemCount = 0}) =>
+    {
+      'receiptType': 'PURCHASE',
+      'receiptId': 'receipt-1',
+      'billNo': 'PR-001',
+      'billDate': '2026-09-16',
+      'supplierId': 'supplier-1',
+      'supplierName': '示例供应商',
+      'warehouseId': 'warehouse-1',
+      'warehouseName': '原料仓',
+      'workStatus': workStatus,
+      'goodsLineCount': 3,
+      'passedLineCount': 0,
+      'failedLineCount': 0,
+      'openItemCount': openItemCount,
+      'pendingSliceCount': 0,
+      'pendingReturnCount': 0,
+      'lastActivityAt': '2026-09-16T09:00:00Z',
+    };
 
 Map<String, dynamic> _detailJson() => {
   'workStatus': 'WAITING_INSPECTION',

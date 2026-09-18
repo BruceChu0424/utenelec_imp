@@ -196,7 +196,8 @@ class ProductionFqcInspectionSheet {
         createdAt:
             DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
-        preStockedItemCount: (json['preStockedItemCount'] as num?)?.toInt() ?? 0,
+        preStockedItemCount:
+            (json['preStockedItemCount'] as num?)?.toInt() ?? 0,
         placeSummary: json['placeSummary'] as String?,
       );
 }

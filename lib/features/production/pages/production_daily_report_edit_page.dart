@@ -698,8 +698,9 @@ class _ProductionDailyReportEditPageState
           final saved = _savedMaterialUsage[clearance.demandId];
           if (saved != null && row.materialUsed.text.trim().isEmpty) {
             row.materialUsed.text = saved;
-          } else if (row.materialEditable && row.materialAutofillText == null
-              && row.materialUsed.text.trim().isEmpty) {
+          } else if (row.materialEditable &&
+              row.materialAutofillText == null &&
+              row.materialUsed.text.trim().isEmpty) {
             // V595：新挂上的物料子行按「完工申报量 × 单耗」先算一个数，标黄提醒核对。
             _autofillMaterialUsage(product, row);
           }

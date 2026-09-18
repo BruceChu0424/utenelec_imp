@@ -45,7 +45,7 @@ jobs:
   # 快道会重复慢道里的非 DB 测试——故意保留：慢道必须始终是完整套件，
   # 慢构建不允许静默变成部分跑（见原 job 注释）。
   backend-fast:
-    name: Backend / Java 21 (fast: unit + architecture)
+    name: "Backend / Java 21 (fast: unit + architecture)"
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -62,7 +62,7 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress verify
 
   backend-db:
-    name: Backend / Java 21 (full: DB full-chain)
+    name: "Backend / Java 21 (full: DB full-chain)"
     runs-on: ubuntu-latest
     # Full PostgreSQL rehearsals and business-chain tests need room for cold runners.
     # Keep the complete suite; a slow build must not silently become a partial run.

@@ -305,6 +305,9 @@ class QualifiedSourceWarehouseEndToEndTest {
         // 第二颗采购叶子(goodsD)的路由与下达都定型后再补库存：preview 时无货才保持
         // 可行动行，段就绪是实时读库存，晚播不影响（V581 夹具形态见上）。
         call("putDirectTargetStock",w,w.goodsD(),"100");
+        // V599：齐套自动提升按路线放行——把本次下达的全部段确认为齐套路线，
+        // 后续到货/产出入库的提升与 startedSegmentFor 才走得通(本组测的是资格与提升机械)。
+        fixture.confirmAllUnconfirmedFullKitRoutes();
         UUID parentPlan=db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=?",UUID.class,parentAnalysis);
         UUID childAnchor=db.queryForObject("SELECT id FROM production_material_analysis_items WHERE analysis_id=? AND parent_analysis_material_id=? AND NOT is_deleted",UUID.class,view.analysisId(),childMaterial);
         UUID childPlan=db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=?",UUID.class,childAnchor);
@@ -367,6 +370,9 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID plan=issued.plans().getFirst().planId();UUID analysis=view.analysisId();
         UUID orderItem=call("approveExistingAnalysisPurchase",w,analysis,w.goodsD());
         UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=?",UUID.class,plan);
+        // V599：齐套自动提升按路线放行——未确认路线的段不会被到货/对账提升成 READY。
+        // 本组用例测的是实际仓资格与提升机械，不测路线门，按 FullChain 默认旅程先确认为齐套。
+        fixture.confirmFullKitRoute(plan, segment);
         UUID packageId=db.queryForObject("SELECT package_id FROM production_execution_segments WHERE id=?",UUID.class,segment);
         Case result=new Case(w,analysis,plan,segment,packageId,w.goodsD(),orderItem);
         assertEquals("WAITING",status(result));return result;

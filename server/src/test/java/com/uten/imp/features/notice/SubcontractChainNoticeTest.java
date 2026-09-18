@@ -527,6 +527,14 @@ class SubcontractChainNoticeTest {
                 eq(receiptId))).thenReturn(List.of(Map.of(
                         "passed", new BigDecimal("3"),
                         "failed", new BigDecimal("1"))));
+        // V596 先入库后检统计也查 procurement_inspection_items——上面的宽匹配桩会
+        // 同时命中它，返回缺 pre_stocked_lines 键的 Map 而 NPE；单独桩住这张「未走上架」的单。
+        when(jdbc.queryForList(
+                contains("pre_stocked_at IS NOT NULL"),
+                eq("SUBCONTRACT"),
+                eq(receiptId))).thenReturn(List.of(Map.of(
+                        "pre_stocked_lines", 0L,
+                        "failed_pre_stocked_lines", 0L)));
         when(jdbc.queryForList(
                 contains("WITH RECURSIVE subtree(id)"),
                 eq(UUID.class),

@@ -56,11 +56,16 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         jdbc.execute("""
-                CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, status text, auto_promote_when_ready boolean DEFAULT TRUE, is_deleted boolean DEFAULT FALSE,source_segment_id uuid);
+                CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, status text, auto_promote_when_ready boolean DEFAULT TRUE, is_deleted boolean DEFAULT FALSE,source_segment_id uuid,
+                    continuous_supply boolean DEFAULT FALSE, start_route text, route_confirmed_at timestamptz);
                 CREATE TABLE production_execution_segment_splits(source_segment_id uuid);
                 CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_can_split_execution_batch(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_production_material_usage_source_segments(uuid) RETURNS TABLE(segment_id uuid) LANGUAGE sql AS 'SELECT NULL::uuid WHERE FALSE';
+                CREATE FUNCTION fn_can_start_continuous_supply(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_can_change_execution_route(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_demand_direct_supply_eligible(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE TABLE warehouses(id uuid PRIMARY KEY, is_line_side boolean DEFAULT FALSE);
                 CREATE TABLE departments(id uuid PRIMARY KEY, parent_id uuid, manager_id uuid, is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employees(id uuid PRIMARY KEY, department_id uuid, status text DEFAULT 'active', is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employee_secondary_departments(employee_id uuid, department_id uuid);
@@ -113,7 +118,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
                     posting_type text, qty_base numeric, stock_document_item_id uuid);
                 CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
-                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb);
                 CREATE TABLE production_material_return_request_items(issue_posting_id uuid,request_id uuid,qty_base numeric);

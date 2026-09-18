@@ -103,7 +103,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 "PURCHASE", receiptId, UUID.randomUUID(), List.of(inspectionItemId));
 
         verify(analysis, times(2)).refreshLocked(analysisId);
-        assertThat(statements).hasSize(2);
+        // 每次入库确认额外执行一次到货维度查询(空结果短路，不发通知)。
+        assertThat(statements).hasSize(4);
         assertThat(statements.getFirst())
                 .contains("inspection.id IN (:inspectionItemIds)")
                 .contains("inspection.receipt_type = 'PURCHASE'")
@@ -171,7 +172,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
 
         service.afterInspectionStockInConfirmed(batches);
 
-        assertThat(statements).hasSize(1);
+        // 目标解析 1 次 + 到货维度 1 次(空结果短路)。
+        assertThat(statements).hasSize(2);
         verify(candidates).setParameter("purchaseReceiptIds", purchase.toString());
         verify(candidates).setParameter("subcontractReceiptIds", subcontract.toString());
         var order = org.mockito.Mockito.inOrder(analysis);
@@ -294,7 +296,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
 
         service.afterFinishedInboundApproved(java.util.Collections.nCopies(100, document));
 
-        assertThat(statements).hasSize(1);
+        // 目标解析 1 次 + 到货维度 1 次(空结果短路)。
+        assertThat(statements).hasSize(2);
         verify(candidates).setParameter("sourceDocumentIds", List.of(document));
         verify(analysis).refreshLocked(analysisId);
     }
@@ -326,8 +329,18 @@ class MaterialAnalysisSupplyWakeupServiceTest {
 
     private static List<String> routeQueries(EntityManager em, Query candidates) {
         List<String> statements = new ArrayList<>();
+        // V599 到货进展通知的维度/命中查询也走 createNativeQuery——本测试类的候选行是
+        // 两列(analysisId, makerId)，落进通知路径会按 7 列维度解读而越界。通知路径不是
+        // 这里要验证的对象：按 SQL 特征路由到空结果，让它自然短路返回。
+        Query noArrivals = query(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
-            statements.add(invocation.getArgument(0));
+            String sql = invocation.getArgument(0, String.class);
+            statements.add(sql);
+            if (sql.contains("stock.batch_id IN (:batchIds)")
+                    || sql.contains("document.id IN (:documentIds)")
+                    || sql.contains("JOIN production_planning_packages package")) {
+                return noArrivals;
+            }
             return candidates;
         });
         return statements;

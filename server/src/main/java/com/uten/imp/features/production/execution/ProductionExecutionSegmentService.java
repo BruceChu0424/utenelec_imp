@@ -442,14 +442,15 @@ public class ProductionExecutionSegmentService {
         if (segment.startRoute() == null) {
             throw conflict("请先确认生产路线——派工与开工一样需要工单先选定齐套/分批/持续生产之一");
         }
-        return transition(
-                planId,
-                segmentId,
+        // 复用上面已锁的段：不再走 transition() 二次加锁(少一次锁查询，也让
+        // 单测的 lock+replay 两条桩序列保持稳定)。
+        return applyTransition(prepareTransition(
+                segment,
                 request,
                 ACTION_DISPATCH,
                 ProductionExecutionSegment.STATUS_READY,
                 ProductionExecutionSegment.STATUS_DISPATCHED,
-                "production_execution:dispatch");
+                "production_execution:dispatch"));
     }
 
     @Transactional

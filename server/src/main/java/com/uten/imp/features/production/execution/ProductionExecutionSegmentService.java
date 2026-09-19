@@ -284,6 +284,12 @@ public class ProductionExecutionSegmentService {
         // 不要求 WAITING/未动过(已提升的段重复确认是合法的空操作)；改值仍走严格门。
         boolean sameRoute = !firstConfirmation
                 && Objects.equals(segment.startRoute(), request.route());
+        // 先验「这个段允不允许选这条路线」再验「此刻能不能改」：零料直制段生而 READY，
+        // 给它改选分批要报「零料不可分批」的选型错误，而不是被阶段检查抢先报
+        // 「只能在等待物料阶段」（V606 自动识别后选型错误与阶段无关）。
+        if (!sameRoute) {
+            validateRouteChoice(segment, request.route());
+        }
         if (!firstConfirmation && !sameRoute) {
             if (!ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())) {
                 throw conflict("开工路线只能在等待物料阶段确认或更改");
@@ -293,9 +299,6 @@ public class ProductionExecutionSegmentService {
                             .setParameter("id", segmentId).getSingleResult())) {
                 throw conflict("工单已产生领料单、报工或预留，开工路线不能更改");
             }
-        }
-        if (!sameRoute) {
-            validateRouteChoice(segment, request.route());
         }
         // lock_version 由 trg_validate_production_execution_segment 触发器对每次
         // UPDATE 强制 +1（V155），语句无需（也不应）手工推进——与 assign() 同约定。

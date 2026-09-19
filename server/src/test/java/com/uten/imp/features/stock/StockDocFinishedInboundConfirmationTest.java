@@ -124,7 +124,8 @@ class StockDocFinishedInboundConfirmationTest {
                 mock(PreplanAnalysisPegPort.class),
                 qualityInspection,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
     }
 
     @Test

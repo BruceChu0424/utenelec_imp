@@ -71,6 +71,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionExecutionSegmentService segments;
+    @Autowired com.uten.imp.features.production.execution.ProductionDrawRequestService drawRequests;
     @Autowired ProductionExecutionBatchService batches;
     @Autowired ChainNoticeService chainNotices;
     @Autowired StockDocService stock;
@@ -98,10 +99,11 @@ class ProductionExecutionRouteGateEndToEndTest {
                 java.sql.Timestamp.class, c.segment()), "识别时间随创建事务落库");
         assertTrue(allowsAutoPromote(c.segment()), "FULL_KIT 放行自动提升");
 
-        // 料到齐 → 自动提升建领料单 → 直接开工：全程没有 confirmRoute。
+        // 料到齐 → 自动提升建领料单 → 仓库发料 → 直接开工：全程没有 confirmRoute。
         receive(c, c.material(), c.leaf(), "100");
         assertEquals("READY", status(c.segment()), "到货即自动提升，不再等人工确认");
         assertTrue(drawCount(c.segment()) >= 1, "提升就建领料单");
+        issueDraws(c);
         var started = segments.start(c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "rg-kit-start-" + c.segment()));
         assertEquals("IN_PROGRESS", started.status(), "开工不被任何路线确认门拦截");
@@ -168,16 +170,22 @@ class ProductionExecutionRouteGateEndToEndTest {
         receive(c, c.material(), c.leaf(), "100");
         fixture.loginAs(c.workerUser());
         assertEquals("READY", status(c.segment()), "自动提升后已有领料单=动过");
-        // 动过后不能改选持续生产(开工侧同口径)。
+        // 动过后不能改选持续生产(开工侧同口径；选型校验先于阶段校验——V606 报「只能按
+        // 齐套生产路线办理」的选型错误，语义同为拒绝切换)。
         ApiException continuous = assertThrows(ApiException.class, () -> segments.startContinuousSupply(
                 c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "rg-frozen-cont-" + c.segment())));
-        assertTrue(continuous.getMessage().contains("不能切换"), continuous.getMessage());
-        // 动过后手工改路线同样被拒(冻结尺不变)。
+        assertTrue(continuous.getMessage().contains("不能切换")
+                || continuous.getMessage().contains("只能按齐套生产路线办理"),
+                continuous.getMessage());
+        // 动过后手工改路线同样被拒(冻结尺不变)：选型校验在前，动过的工单选非默认路线
+        // 报「只能按齐套生产路线办理」——同为冻结拒绝。
         ApiException frozen = assertThrows(ApiException.class, () -> segments.confirmRoute(
                 c.plan(), c.segment(),
                 new SegmentRouteConfirmRequest(version(c.segment()), "rg-frozen-change-" + c.segment(), "BATCH")));
-        assertTrue(frozen.getMessage().contains("只能在等待物料阶段") || frozen.getMessage().contains("更改"),
+        assertTrue(frozen.getMessage().contains("只能在等待物料阶段")
+                || frozen.getMessage().contains("更改")
+                || frozen.getMessage().contains("只能按齐套生产路线办理"),
                 frozen.getMessage());
     }
 
@@ -403,6 +411,38 @@ class ProductionExecutionRouteGateEndToEndTest {
         line.setAmountLocal(line.getAmountOriginal());
         request.setItems(List.of(line));
         stock.approve(stock.create(request).getId());
+    }
+
+    /** 提升生成的草稿领料单：车间先确认领料汇总(领料申请)，再由仓库一次发料
+     * （开工要求「待发料=0」，申请确认与发料都仍是车间/仓库各自的职责）。 */
+    private void issueDraws(Case c) {
+        fixture.loginAs(c.workerUser());
+        var items = List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(
+                c.segment(), version(c.segment())));
+        var preview = drawRequests.preview(
+                new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(items));
+        drawRequests.submit(new com.uten.imp.features.production.execution.ProductionDrawRequest.SubmitRequest(
+                items, "rg-request-" + c.segment(), preview.fingerprint()));
+        fixture.loginAs(c.world().superAdminUserId());
+        for (UUID docId : db.queryForList("""
+                SELECT DISTINCT document.id FROM production_planning_package_documents mapping
+                JOIN stock_documents document ON document.id=mapping.document_id
+                 AND document.doc_type='DRAW' AND document.status=0 AND NOT document.is_deleted
+                WHERE mapping.execution_segment_id=?
+                """, UUID.class, c.segment())) {
+            var issue = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+            issue.setIdempotencyKey("rg-issue-" + docId);
+            issue.setLines(db.queryForList("""
+                    SELECT id, qty FROM stock_document_items
+                    WHERE doc_id=? AND NOT is_deleted ORDER BY line_no
+                    """, docId).stream().map(row -> {
+                var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+                line.setItemId((UUID) row.get("id"));
+                line.setQty((BigDecimal) row.get("qty"));
+                return line;
+            }).toList());
+            stock.approveAndIssue(docId, issue);
+        }
     }
 
     private String route(UUID segmentId) {

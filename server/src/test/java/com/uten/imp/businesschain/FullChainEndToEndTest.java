@@ -10551,10 +10551,16 @@ class FullChainEndToEndTest {
         receiveOpeningInputsForA(w,"5");
         loginAs(planner);
         var waiting=executionSegmentService.list(plan.planId()).getFirst();
-        confirmFullKitRoute(plan.planId(), waiting.id());
-        // 确认路线会抬 lock_version(事件账)，重核必须用确认后的新版本号。
-        waiting=executionSegmentService.list(plan.planId()).getFirst();
-        executionSegmentService.recheckMaterial(plan.planId(),waiting.id(),new SegmentTransitionRequest(waiting.lockVersion(),"sc-draft-recheck-"+plan.planId()));
+        if ("WAITING".equals(waiting.status())) {
+            confirmFullKitRoute(plan.planId(), waiting.id());
+            // 确认路线会抬 lock_version(事件账)，重核必须用确认后的新版本号。
+            waiting=executionSegmentService.list(plan.planId()).getFirst();
+            executionSegmentService.recheckMaterial(plan.planId(),waiting.id(),new SegmentTransitionRequest(waiting.lockVersion(),"sc-draft-recheck-"+plan.planId()));
+        } else {
+            // V606 到货即自动提升：OTHER_IN 审核已把齐套段从 WAITING 提到 READY，
+            // 不再需要确认+重核两步。
+            assertEquals("READY",waiting.status(),"开料入库后齐套段应已自动提升");
+        }
         loginAs(keeper);
         List<UUID> scDraftDraws=jdbc.queryForList("select link.draw_id from plan_draw_links link join stock_documents doc on doc.id=link.draw_id where link.plan_id=? and link.is_deleted=false and doc.doc_type='DRAW' and doc.status=0",UUID.class,plan.planId());
         requestWorkshopDraws("sc-draft", scDraftDraws);

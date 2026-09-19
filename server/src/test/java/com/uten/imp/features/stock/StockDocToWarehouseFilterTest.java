@@ -98,6 +98,7 @@ class StockDocToWarehouseFilterTest {
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
                 mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
                 mock(FulfillmentMutationLocks.class),
-                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
     }
 }

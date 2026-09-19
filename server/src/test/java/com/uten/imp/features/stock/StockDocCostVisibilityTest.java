@@ -219,7 +219,8 @@ class StockDocCostVisibilityTest {
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
                 mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
-                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.class));
     }
 
     private static EntityManager stubbedEntityManager(Query query) {

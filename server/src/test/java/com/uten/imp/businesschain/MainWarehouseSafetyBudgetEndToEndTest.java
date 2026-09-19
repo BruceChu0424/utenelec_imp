@@ -130,8 +130,11 @@ class MainWarehouseSafetyBudgetEndToEndTest {
                 .getMessage().contains("缺 70"));
         receive(c, c.b(), null, "70");
         var segment = execution.list(plan.plan()).getFirst();
-        execution.recheckMaterial(plan.plan(), segment.id(), new SegmentTransitionRequest(
-                segment.lockVersion(), "main-safety-boundary-recheck-" + plan.plan()));
+        // V606 到货即自动提升：补齐的那笔 OTHER_IN 若已把段提到 READY，就无需再重核。
+        if ("WAITING".equals(segment.status())) {
+            execution.recheckMaterial(plan.plan(), segment.id(), new SegmentTransitionRequest(
+                    segment.lockVersion(), "main-safety-boundary-recheck-" + plan.plan()));
+        }
         assertEquals("READY", status(plan)); qty("80", reserved(plan));
         assertEquals(0, db.queryForObject("""
                 SELECT COUNT(*) FROM stock_reservations reservation JOIN production_material_demands demand ON demand.id=reservation.demand_id

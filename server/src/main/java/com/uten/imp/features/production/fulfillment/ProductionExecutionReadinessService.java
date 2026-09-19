@@ -848,6 +848,51 @@ public class ProductionExecutionReadinessService
     }
 
     /**
+     * 「其它入库」到货即提升（V606 / ADR-091 批注）：开工路线确认步骤删除后，
+     * 齐套路线不再有确认动作可挂「同事务补跑提升」——仓库一审核其它入库，就对本仓
+     * 等待中、路线放行自动提升的段**尽力而为**补跑一次：物料没到齐静默留在 WAITING
+     * 等既有到货链路；已可齐套则与旧「到货即提升」完全一致（整批预留、建领料单、
+     * 升 READY、线边仓草稿就地出库）。路线门 {@code fn_execution_route_allows_auto_promote}
+     * 在 {@code tryPromote} 的段锁查询里复核，分批/未开工持续生产不被顶掉。
+     * 缺料要抛错解释的是人工重核路径，不是这里。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void onOtherInboundApproved(UUID stockDocumentId, UUID warehouseId) {
+        if (stockDocumentId == null || warehouseId == null) {
+            return;
+        }
+        List<Object[]> candidates = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT DISTINCT segment.id, package.warehouse_id
+                        FROM stock_document_items item
+                        JOIN production_material_demands demand
+                          ON demand.goods_id = item.goods_id
+                         AND demand.color_id IS NOT DISTINCT FROM item.color_id
+                         AND demand.execution_segment_id IS NOT NULL
+                         AND demand.is_deleted = FALSE
+                         AND demand.status NOT IN ('RELEASED', 'REVERSED')
+                        JOIN production_execution_segments segment
+                          ON segment.id = demand.execution_segment_id
+                         AND segment.status = 'WAITING'
+                         AND segment.auto_promote_when_ready = TRUE
+                         AND segment.is_deleted = FALSE
+                        JOIN production_planning_packages package
+                          ON package.id = segment.package_id
+                         AND package.status = 'CONFIRMED'
+                         AND package.is_deleted = FALSE
+                        WHERE item.doc_id = :docId
+                          AND item.is_deleted = FALSE
+                        ORDER BY segment.id
+                        """)
+                .setParameter("docId", stockDocumentId));
+        for (Object[] candidate : candidates) {
+            // tryPromote 以「包仓库 == expectedWarehouseId」为放行前提；入库叶仓与发料仓
+            // 可以不同（同主仓跨叶由齐套判定的合格来源口径处理），这里传段的包仓库。
+            tryPromote(uuid(candidate[0]), stockDocumentId, uuid(candidate[1]),
+                    ReceiptKind.RECHECK, null, true, false);
+        }
+    }
+
+    /**
      * 「确认生产路线 = 齐套生产」的就地补跑提升(V599 / ADR-091)：确认前齐套自动提升被
      * 路线门 {@code fn_execution_route_allows_auto_promote} 抑制，确认的那一刻补跑一次——
      * **尽力而为**：物料还没到齐就静默留在 WAITING 等既有到货链路；已可齐套则与旧的

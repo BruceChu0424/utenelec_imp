@@ -138,7 +138,9 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         assertEquals(Boolean.TRUE,row(after,G,null,UNIT,LEAF).get(12));
         assertEquals(MAIN,row(after,G,null,UNIT,LEAF).get(13));
         assertEquals(OTHER,row(after,G,null,UNIT,OTHER).get(13));
-        assertEquals(BigDecimal.ZERO,row(after,G2,null,UNIT,LEAF).get(10));
+        // min_qty 是 double precision(V32 起)，JDBC 回 Double——数值断言用 compareTo，不比类型。
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+                new BigDecimal(String.valueOf(row(after,G2,null,UNIT,LEAF).get(10)))));
         assertEquals(before,rows(captureCurrentService()),"The query actually called by the service must retain this contract");
     }
 

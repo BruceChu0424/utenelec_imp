@@ -133,6 +133,8 @@ public class StockDocService {
             productionQualityInspection;
     private final FulfillmentMutationLocks mutationLocks;
     private final ProductionMutationFootprintPort mutationFootprints;
+    // V606「其它入库到货即提升」(ADR-091 批注)：路线确认步骤删除后，齐套段的同事务提升挂到入库审核上。
+    private final com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService productionReadiness;
 
     // ===== 列表 =====
 
@@ -824,6 +826,13 @@ public class StockDocService {
         }
         Map<UUID,UUID> materialMovements=Map.of();
         if (!"DRAW".equals(d.getDocType())) materialMovements=applyStockEffect(d, items, +1);
+        if ("OTHER_IN".equals(d.getDocType())) {
+            // V606 / ADR-091 批注：其它入库落库存后，本仓等待中的齐套段尽力而为补跑提升
+            //（缺料静默返回，不把「别的段没齐」变成入库审核失败；路线门在段锁查询里复核）。
+            // 先 flush：齐套判定走原生 SQL 读库存视图，必须看到本单刚落的余额行。
+            em.flush();
+            productionReadiness.onOtherInboundApproved(d.getId(), d.getWarehouseId());
+        }
         if ("WDRAW".equals(d.getDocType())) {
             var posting=applyGoodReturnLedger(d, items, false);
             productionMaterialLedger.bindMovements(posting.eventId(),materialMovements);

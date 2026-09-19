@@ -348,7 +348,14 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(598, 555)")
                 .contains("(599, 556)")
                 .contains("(600, 557)")
-                .contains("V507/469、V508/470及V511至V602完整目录")
+                // V601 通知已读回填 / V602 路线记忆索引 / V603 访客黑名单三列 /
+                // V605 直送资格收紧 / V606 路线自动识别：均不加表（557→562，V604 跳号）。
+                .contains("(601, 558)")
+                .contains("(602, 559)")
+                .contains("(603, 560)")
+                .contains("(605, 561)")
+                .contains("(606, 562)")
+                .contains("V507/469、V508/470及V511至V606完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

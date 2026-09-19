@@ -2162,16 +2162,26 @@ class FullChainEndToEndTest {
         while (businessOutboxProcessor.processNext()) {
             // Drain plan/DRAW events so the active workshop card is current.
         }
-        assertEquals(1, count("""
-                select count(*) from notices
-                where audience_user_id = ?
-                  and source_event =
-                      'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
-                  and aggregate_kind =
-                      'PRODUCTION_EXECUTION_SEGMENT'
-                  and aggregate_id = ?
-                  and resolved_at is null
-                """, workshopUser, segmentId),
+        // CI 慢机上异步 outbox 投递线程可能正持行锁投递本事件(FOR UPDATE SKIP LOCKED
+        // 使手动 drain 空转提前返回 false)，有界等它的后台投递提交后再断言。
+        long activeWorkshopCards = 0;
+        for (int i = 0; i < 60 && activeWorkshopCards == 0; i++) {
+            while (businessOutboxProcessor.processNext()) { }
+            activeWorkshopCards = count("""
+                    select count(*) from notices
+                    where audience_user_id = ?
+                      and source_event =
+                          'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                      and aggregate_kind =
+                          'PRODUCTION_EXECUTION_SEGMENT'
+                      and aggregate_id = ?
+                      and resolved_at is null
+                    """, workshopUser, segmentId);
+            if (activeWorkshopCards == 0) {
+                try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+        }
+        assertEquals(1, activeWorkshopCards,
                 "全量实发只通知精确执行工单所属车间");
         assertEquals(0, count("""
                 select count(*) from notices

@@ -127,6 +127,10 @@ class ProductionExecutionBatchCostEndToEndTest {
         view=analyses.detail(view.analysisId());
         UUID plan=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"issue-"+tag,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,view.products().getFirst().analysisLineId(),new BigDecimal("100"),BusinessTime.today(),BusinessTime.today().plusDays(10),workshop,null,employee,null,null)))).plans().getFirst().planId();
         UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND status='WAITING'",UUID.class,plan);
+        // V606：拆批场景必须**先改选分批路线再收料**——齐套段的「到货即自动提升」会在
+        // 收料同事务建领料单并冻结路线(这正是给用户的提示语顺序)。
+        fixture.loginAs(w.superAdminUserId());
+        segments.confirmRoute(plan,segment,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(version(segment),"route-BATCH-setup-"+segment,"BATCH"));
         var opening=new StockDocSaveRequest();opening.setDocType("OTHER_IN");opening.setWarehouseId(w.warehouseId());opening.setBillDate(BusinessTime.today());
         var line=new StockDocItemLine();line.setGoodsId(material);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ONE);line.setPrice(new BigDecimal("100"));line.setAmountOriginal(new BigDecimal("100"));line.setAmountLocal(new BigDecimal("100"));opening.setItems(List.of(line));stock.approve(stock.create(opening).getId());
         return new Case(w,product,material,plan,segment,orderItem);

@@ -61,23 +61,31 @@ class ProductionExecutionBatchEndToEndTest {
         confirmRoute(c.plan(),c.segment(),"FULL_KIT","route-split-recheck-scope-"+c.segment());
         var waiting=segments.list(c.plan()).getFirst();
         assertTrue(waiting.canSplitBatch());assertFalse(waiting.canRequestDraw());
-        receive(c,"200");fixture.loginAs(c.workerUser());
+        receive(c,"50");fixture.loginAs(c.workerUser());
         assertThrows(ApiException.class,()->segments.list(c.plan()));
-        var ready=segments.recheckMaterial(c.plan(),c.segment(),
-                new SegmentTransitionRequest(version(c.segment()),"workshop-recheck-"+c.segment()));
-        assertEquals("READY",ready.status());
-        assertTrue(ready.canRequestDraw());assertFalse(ready.drawRequested());assertFalse(ready.canSplitBatch());
-        assertFalse(ready.materialIssued());
+        // 缺料下的重核可达=车间身份权限证明(不是 403)；报缺料解释而非权限错误。
+        assertTrue(assertThrows(ApiException.class,()->segments.recheckMaterial(c.plan(),c.segment(),
+                new SegmentTransitionRequest(version(c.segment()),"workshop-recheck-partial-"+c.segment())))
+                .getMessage().contains("缺"));
+        receive(c,"150");fixture.loginAs(c.workerUser());
+        // V606 到货即提升：补齐的那笔入库已把段提到 READY 并建领料单，无需再重核；
+        // 开工仍被「待发料>0」拦下(领料申请→仓库发料仍是车间/仓库各自职责)。
+        assertEquals("READY",db.queryForObject(
+                "SELECT status FROM production_execution_segments WHERE id=?",String.class,c.segment()));
         assertThrows(ApiException.class,()->segments.start(c.plan(),c.segment(),
-                new SegmentTransitionRequest(ready.lockVersion(),"recheck-before-issue-"+c.segment())));
+                new SegmentTransitionRequest(version(c.segment()),"recheck-before-issue-"+c.segment())));
     }
 
     @Test void requestedPartialMaterialIsTheWarehouseLimitUntilTheWorkshopRequestsTheRemainder() {
         Case c=create("draw-request-partial",false,"100",true);
         confirmRoute(c.plan(),c.segment(),"FULL_KIT","route-draw-request-partial-"+c.segment());
         receive(c,"200");receive(c,c.secondMaterial(),"300");fixture.loginAs(c.workerUser());
-        var ready=segments.recheckMaterial(c.plan(),c.segment(),new SegmentTransitionRequest(version(c.segment()),"partial-ready-"+c.segment()));
-        var items=List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(c.segment(),ready.lockVersion()));
+        // V606 到货即提升：料齐的段已自动提升(极端下未提升再走人工重核)。
+        if ("WAITING".equals(db.queryForObject(
+                "SELECT status FROM production_execution_segments WHERE id=?",String.class,c.segment()))) {
+            segments.recheckMaterial(c.plan(),c.segment(),new SegmentTransitionRequest(version(c.segment()),"partial-ready-"+c.segment()));
+        }
+        var items=List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(c.segment(),version(c.segment())));
         var preview=drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(items));
         var selected=preview.lines().stream().filter(line->line.goodsId().equals(c.material())).findFirst().orElseThrow();
         var submitted=drawRequests.submit(new com.uten.imp.features.production.execution.ProductionDrawRequest.SubmitRequest(items,

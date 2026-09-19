@@ -44,6 +44,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -826,12 +828,25 @@ public class StockDocService {
         }
         Map<UUID,UUID> materialMovements=Map.of();
         if (!"DRAW".equals(d.getDocType())) materialMovements=applyStockEffect(d, items, +1);
-        if ("OTHER_IN".equals(d.getDocType())) {
-            // V606 / ADR-091 批注：其它入库落库存后，本仓等待中的齐套段尽力而为补跑提升
-            //（缺料静默返回，不把「别的段没齐」变成入库审核失败；路线门在段锁查询里复核）。
-            // 先 flush：齐套判定走原生 SQL 读库存视图，必须看到本单刚落的余额行。
-            em.flush();
-            productionReadiness.onOtherInboundApproved(d.getId(), d.getWarehouseId());
+        if ("OTHER_IN".equals(d.getDocType()) && d.getWarehouseId() != null) {
+            // V606 / ADR-091 批注：其它入库提交后，本仓等待中的齐套段尽力而为补跑提升
+            //（缺料静默返回；路线门在段锁查询里复核）。必须挂在事务提交之后：本事务已持有
+            // 库存维度锁，齐套提升的履约足迹要求商业来源前缀先于库存锁，同事务内调用会
+            // 撞锁阶段冲突；afterCommit 同步执行，approve() 返回前即完成，用户无感延迟。
+            UUID inboundDocId = d.getId();
+            UUID inboundWarehouseId = d.getWarehouseId();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        productionReadiness.onOtherInboundApproved(inboundDocId, inboundWarehouseId);
+                    } catch (RuntimeException error) {
+                        org.slf4j.LoggerFactory.getLogger(StockDocService.class)
+                                .warn("其它入库到货即提升未完成，单据 {}，错误类型 {}，等待齐套对账兜底",
+                                        inboundDocId, error.getClass().getSimpleName());
+                    }
+                }
+            });
         }
         if ("WDRAW".equals(d.getDocType())) {
             var posting=applyGoodReturnLedger(d, items, false);

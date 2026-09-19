@@ -855,8 +855,12 @@ public class ProductionExecutionReadinessService
      * 升 READY、线边仓草稿就地出库）。路线门 {@code fn_execution_route_allows_auto_promote}
      * 在 {@code tryPromote} 的段锁查询里复核，分批/未开工持续生产不被顶掉。
      * 缺料要抛错解释的是人工重核路径，不是这里。
+     *
+     * <p>必须在入库单事务**提交之后**调用（调用方用 afterCommit 挂接）：入库审核事务
+     * 已持有库存维度锁时再进入齐套提升会违反履约足迹的锁阶段序（商业来源前缀必须
+     * 先于库存锁）；本方法自开新事务，按 tryPromote 的规范次序取锁。
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onOtherInboundApproved(UUID stockDocumentId, UUID warehouseId) {
         if (stockDocumentId == null || warehouseId == null) {
             return;

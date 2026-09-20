@@ -86,15 +86,18 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
 
         // 真实 migrate.sh 在执行任何 bootstrap SQL 前先登记 manifest 绑定的
         // RUNNING 运行（record_run_start）；migrate_measurement_profiles.sql 的
-        // 守卫要求该运行存在，这里按同形结构补一条测试运行。
+        // 守卫要求该运行存在，这里按同形结构补一条测试运行。真实 migrate.sh 会先
+        // SET LOCAL uten.bootstrap_run_id=<run_id> 再执行模块，采购/委外的来源
+        // 证明注册按该 GUC 关联运行，executeScript 用同一固定 run_id 注入。
         scalar("""
                 INSERT INTO legacy_migration_runs(
-                    target, status, migration_mode,
+                    run_id, target, status, migration_mode,
                     export_manifest_sha256, checksum_manifest_sha256,
                     source_backup_sha256, export_approval_reference,
                     migration_repository_commit, migration_script_sha256,
                     mapping_version)
                 VALUES (
+                    '77777777-7777-4777-8777-777777777777',
                     '--bootstrap-all', 'RUNNING', 'BOOTSTRAP',
                     repeat('a1', 32), repeat('b2', 32),
                     repeat('c3', 32), 'legacy-schema-compat-approval',
@@ -336,7 +339,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
             }
             jdbcSql.append(line).append('\n');
         }
-        String sql = "BEGIN;\n" + jdbcSql.toString()
+        String sql = "BEGIN;\nSET LOCAL uten.bootstrap_run_id = '77777777-7777-4777-8777-777777777777';\n" + jdbcSql.toString()
                 .replace(":'pgp_key'", "'legacy-schema-test-key'")
                 .replace(":'pgp_ver'", "'test-v1'")
                 .replace(":'hmac_key'", "'legacy-schema-test-hmac-key'") + "\nCOMMIT;\n";

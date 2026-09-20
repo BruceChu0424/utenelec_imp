@@ -56,6 +56,9 @@ class ProcurementInspectionQuantityProjectionPostgresTest {
             jdbc.execute("CREATE TABLE " + prefix + "_receipt_items(id uuid PRIMARY KEY, order_item_id uuid)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid PRIMARY KEY, order_id uuid)");
             jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid PRIMARY KEY, bill_no text)");
+            // V627 收货来源投影按头表 legacy_id/is_deleted 区分历史只读单据。
+            jdbc.execute("CREATE TABLE " + prefix + "_receipts(id uuid PRIMARY KEY, legacy_id integer, is_deleted boolean)");
+            jdbc.update("INSERT INTO " + prefix + "_receipts VALUES (?, NULL, FALSE)", RECEIPT);
         }
         jdbc.update("INSERT INTO units VALUES (?, '个'), (?, '箱')", BASE_UNIT, SOURCE_UNIT);
         jdbc.update("INSERT INTO goods VALUES (?, 'G-BOX', '盒装零件', ?)", GOODS, BASE_UNIT);

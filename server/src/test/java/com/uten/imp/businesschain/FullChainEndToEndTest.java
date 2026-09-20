@@ -5083,7 +5083,7 @@ class FullChainEndToEndTest {
     // 任务与可靠通知，仓库确认数量和库位后才增加库存并推进生产供给。
     // ---------------------------------------------------------------------------------------------
     @Test
-    void receiving_draftApproveIqcPassSyncsProgressAndNotifiesWarehouse() {
+    void receiving_draftApproveIqcPassSyncsProgressAndNotifiesWarehouse() throws InterruptedException {
         World w = seedWorld("s23c");
         UUID g = UUID.randomUUID(), h = UUID.randomUUID();
         insertGoods(g, "G-s23c", "成品G-s23c", "自制", w.unitId(), w.unitLegacy());
@@ -5207,8 +5207,17 @@ class FullChainEndToEndTest {
         // ④ outbox 送达：仓库人员收到待入库通知，点击直达仓库专用任务。
         // （测试类共享种子部门 SUB_WH：同批其他用例的结案通知也会送达该用户，
         //   故按本单 action_route 精确过滤。）
-        while (businessOutboxProcessor.processNext()) {
-            // 排空队列（含本链路早前投递的财务审批等事件）
+        // 待入库事件挂 PASS 事务提交后（afterCommit）发布：CI 慢机上一次性排空
+        // outbox 可能早于钩子写入，按既有先例加有界等待。
+        for (int attempt = 0; attempt < 100
+                && count("SELECT count(*) FROM notices WHERE audience_user_id = ?"
+                        + " AND source_event = 'PROCUREMENT_IQC_STOCK_IN_PENDING'"
+                        + " AND action_route = ?", warehouseUserId,
+                        "/warehouse/iqc-stock-ins/PURCHASE/" + receiptId) == 0; attempt++) {
+            while (businessOutboxProcessor.processNext()) {
+                // 排空队列（含本链路早前投递的财务审批等事件）
+            }
+            Thread.sleep(20);
         }
         List<Map<String, Object>> notices = jdbc.queryForList(
                 "select title, action_route from notices "
@@ -11980,7 +11989,12 @@ class FullChainEndToEndTest {
         assertEquals(4,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=?",report.id()));
         assertEquals(activeBefore+1,fqcService.countActive()); assertEquals(2,finishedArrivalRegistrationService.detail(report.id()).batches().size());
         MultiLineReport sibling=approvedMultiLineReportOfNewPlan(w,"10"); loginAs(w.superAdminUserId());
-        assertEquals(warehouseB,finishedArrivalRegistrationService.detail(sibling.id()).items().getFirst().lastWarehouseId(),"同货品最近有效登记仓作为逐行建议");
+        // V623 起待登记行的逐行建议只读货品主档归属仓（须为有效核算叶子仓），
+        // 不再扫描登记历史；主档缺省时建议为空。
+        jdbc.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?",warehouseB,w.goodsA());
+        assertEquals(warehouseB,finishedArrivalRegistrationService.detail(sibling.id()).items().getFirst().lastWarehouseId(),"待登记行建议来自货品主档归属仓");
+        jdbc.update("UPDATE goods SET owning_warehouse_id=NULL WHERE id=?",w.goodsA());
+        assertNull(finishedArrivalRegistrationService.detail(sibling.id()).items().getFirst().lastWarehouseId(),"主档无归属仓时建议为空");
         // 品质已处理（PASS 一行）后不能再撤回；数据库守卫同样拒绝绕过服务的撤回。
         UUID passed=jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=? AND status='PENDING'",UUID.class,report.itemIds().getFirst());
         fqcService.decide(passed,new DecisionRequest("PASS",null,null,null,null,"reg-reverse-pass-"+passed));

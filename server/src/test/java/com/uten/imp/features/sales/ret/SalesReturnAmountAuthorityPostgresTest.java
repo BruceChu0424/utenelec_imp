@@ -272,11 +272,13 @@ class SalesReturnAmountAuthorityPostgresTest {
         // Finish the import before freezing that read-only classification.
         jdbc.update("UPDATE sales_shipments SET shipment_kind='LEGACY' WHERE id=?", shipment);
         jdbc.update("""
-                INSERT INTO ar_ap_ledger(id, legacy_id, direction, source_doc_type, source_doc_id, source_doc_no,
+                INSERT INTO ar_ap_ledger(id, direction, source_doc_type, source_doc_id, source_doc_no,
                     bill_no, bill_date, client_id, currency_id, exchange_rate, amount_original,
                     amount_original_local, amount_balance, status)
-                VALUES (gen_random_uuid(), ?, 'AR', 'SALES_SHIPMENT', ?, ?, ?, DATE '2026-09-07', ?, ?, 7, 1, 7, 7, 1)
-                """, 200000 + sequence, shipment, billNo, billNo, client, currency);
+                VALUES (gen_random_uuid(), 'AR', 'SALES_SHIPMENT', ?, ?, ?, DATE '2026-09-07', ?, ?, 7, 1, 7, 7, 1)
+                """, shipment, billNo, billNo, client, currency);
+        // V626 起带 legacy_id 的台账行只能出自经核验的首导运行；本测试种的是
+        // 非历史口径的普通 AR 立账，退回额度权威语义不受影响。
         UUID originalMovement = UUID.randomUUID();
         // Historical stock import: the actual outbound quantity/source are known,
         // while its cost is explicitly unknown. The real return value service must

@@ -149,28 +149,48 @@ class BusinessDataResetSparsePostgresTest {
     }
 
     @Test
-    void missingTruncatePrivilegeOnAnEmptySkippedTableStillRejectsTheReset() throws Exception {
+    void callerWithoutExecuteIsRejectedWhileDefinerPrivilegesCoverMissingTruncate() throws Exception {
         connection.createStatement().execute("CREATE ROLE reset_probe_limited");
         connection.createStatement().execute("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO reset_probe_limited");
         connection.createStatement().execute("REVOKE TRUNCATE ON sales_quotes FROM reset_probe_limited");
         connection.createStatement().execute("SET LOCAL ROLE reset_probe_limited");
         assertThat(scalar("SELECT has_table_privilege('sales_quotes','TRUNCATE')::integer")).isZero();
+        // V625 keeps the entry SECURITY DEFINER with EXECUTE restricted to the
+        // owner and the runtime login, so the probe role is rejected at the entry.
+        Savepoint entry = connection.setSavepoint();
         SQLException rejected = assertThrows(SQLException.class, () -> scalar("SELECT cleared_rows FROM business_data_reset()"));
         assertThat(rejected.getSQLState()).isEqualTo("42501");
-        assertThat(rejected.getMessage()).contains("TRUNCATE");
+        assertThat(rejected.getMessage()).contains("permission denied for function business_data_reset");
+        connection.rollback(entry);
+        // With EXECUTE granted, the definer's own privileges complete the reset;
+        // the caller no longer needs TRUNCATE on any table in scope.
+        connection.createStatement().execute("SET LOCAL ROLE NONE");
+        connection.createStatement().execute("GRANT EXECUTE ON FUNCTION public.business_data_reset() TO reset_probe_limited");
+        connection.createStatement().execute("SET LOCAL ROLE reset_probe_limited");
+        assertThat(scalar("SELECT has_table_privilege('sales_quotes','TRUNCATE')::integer")).isZero();
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
     }
 
     @Test
-    void ownerThatRevokedItsOwnTruncatePrivilegeStillRejectsTheReset() throws Exception {
+    void ownerThatRevokedItsOwnTruncatePrivilegeStillRejectsUnauthorizedCallers() throws Exception {
         connection.createStatement().execute("CREATE ROLE reset_probe_owner");
         connection.createStatement().execute("ALTER TABLE sales_quotes OWNER TO reset_probe_owner");
         connection.createStatement().execute("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO reset_probe_owner");
         connection.createStatement().execute("REVOKE TRUNCATE ON sales_quotes FROM reset_probe_owner");
         connection.createStatement().execute("SET LOCAL ROLE reset_probe_owner");
         assertThat(scalar("SELECT has_table_privilege('sales_quotes','TRUNCATE')::integer")).isZero();
+        // Even a table owner that revoked its own TRUNCATE cannot stop the
+        // V625 definer reset once EXECUTE is granted for the maintenance entry.
+        Savepoint entry = connection.setSavepoint();
         SQLException rejected = assertThrows(SQLException.class, () -> scalar("SELECT cleared_rows FROM business_data_reset()"));
         assertThat(rejected.getSQLState()).isEqualTo("42501");
-        assertThat(rejected.getMessage()).contains("TRUNCATE");
+        assertThat(rejected.getMessage()).contains("permission denied for function business_data_reset");
+        connection.rollback(entry);
+        connection.createStatement().execute("SET LOCAL ROLE NONE");
+        connection.createStatement().execute("GRANT EXECUTE ON FUNCTION public.business_data_reset() TO reset_probe_owner");
+        connection.createStatement().execute("SET LOCAL ROLE reset_probe_owner");
+        assertThat(scalar("SELECT has_table_privilege('sales_quotes','TRUNCATE')::integer")).isZero();
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
     }
 
     @Test
@@ -185,7 +205,10 @@ class BusinessDataResetSparsePostgresTest {
         assertThat(scalar("SELECT current_setting('is_superuser')::boolean::integer")).isZero();
         assertThat(scalar("SELECT row_security_active('business_outbox'::regclass)::integer")).isEqualTo(1);
         assertThat(scalar("SELECT count(*) FROM business_outbox")).isZero();
-        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
+        // The V625 SECURITY DEFINER reset counts and truncates with the definer
+        // identity, so forced row security neither hides the row from the count
+        // nor protects it from the physical TRUNCATE.
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isEqualTo(1);
         connection.createStatement().execute("SET LOCAL ROLE uten");
         assertThat(scalar("SELECT count(*) FROM business_outbox")).isZero();
     }

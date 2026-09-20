@@ -233,6 +233,8 @@ public class ProductionExecutionWorkbenchService {
         String orderBy = "PREPARING".equals(status)
                 ? SEGMENT_ORDER_READINESS
                 : SEGMENT_ORDER_DEFAULT;
+        // 路线记忆的操作者档(ADR-096)：本产品没有历史时预填「你上次选的」；每页只查一次。
+        String operatorRouteMemory = history ? null : operatorRouteMemory();
         return segmentPage(
                 finalPredicate,
                 query -> {
@@ -257,7 +259,28 @@ public class ProductionExecutionWorkbenchService {
                 },
                 requestedPage,
                 requestedSize,
-                orderBy);
+                orderBy,
+                operatorRouteMemory);
+    }
+
+    /**
+     * 当前操作者最近一次确认的路线(ADR-096「记住上次的选择」)：取其最近一条 ROUTE_CONFIRMED
+     * 事件所在工单的当前路线；没有登录身份或从未确认过时为 null。V629 部分索引点查。
+     */
+    private String operatorRouteMemory() {
+        UUID userId = currentUser.get().map(AuthUser::getId).orElse(null);
+        if (userId == null) return null;
+        // Single-column native query: Hibernate hands back the scalar itself, not Object[].
+        List<String> rows = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT segment.start_route
+                FROM production_execution_segment_events event
+                JOIN production_execution_segments segment ON segment.id = event.execution_segment_id
+                WHERE event.action = 'ROUTE_CONFIRMED' AND event.created_by = :userId
+                  AND segment.start_route IS NOT NULL
+                ORDER BY event.created_at DESC
+                LIMIT 1
+                """).setParameter("userId", userId), String.class);
+        return rows.isEmpty() ? null : rows.getFirst();
     }
 
     /**
@@ -301,7 +324,7 @@ public class ProductionExecutionWorkbenchService {
                 JOIN goods ON goods.id = facts.goods_id
                 LEFT JOIN colors color ON color.id = facts.color_id
                 LEFT JOIN units unit ON unit.id = facts.unit_id
-                ORDER BY CASE facts.state WHEN 'SHORT_DIRECT' THEN 0 WHEN 'SHORT' THEN 1 WHEN 'DRAWABLE' THEN 2
+                ORDER BY CASE facts.state WHEN 'SHORT_MAKE' THEN 0 WHEN 'SHORT' THEN 1 WHEN 'DRAWABLE' THEN 2
                               WHEN 'AWAITING_WAREHOUSE' THEN 3 WHEN 'LINE_SIDE_PENDING' THEN 4
                               WHEN 'PREPARING' THEN 5 ELSE 6 END,
                          goods.name, goods.code, facts.demand_id
@@ -451,6 +474,16 @@ public class ProductionExecutionWorkbenchService {
             int requestedPage,
             int requestedSize,
             String orderBy) {
+        return segmentPage(predicate, binder, requestedPage, requestedSize, orderBy, null);
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy,
+            String operatorRouteMemory) {
         int size = boundedSize(requestedSize);
         int page = Math.max(requestedPage, 1);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
@@ -480,7 +513,8 @@ public class ProductionExecutionWorkbenchService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
         var usage = materialUsage.forVisibleSegments(rows.stream().map(row -> uuid(row[0])).toList());
         List<ProductionExecutionWorkbenchSegment> items = rows.stream()
-                        .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE)))
+                        .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE),
+                                operatorRouteMemory))
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
     }
@@ -785,7 +819,7 @@ public class ProductionExecutionWorkbenchService {
                        COALESCE(material.partial_issued_count, 0),
                        COALESCE(material.awaiting_warehouse_count, 0), COALESCE(material.drawable_count, 0),
                        COALESCE(material.line_side_pending_count, 0), COALESCE(material.preparing_count, 0),
-                       COALESCE(material.short_count, 0), COALESCE(material.short_direct_count, 0),
+                       COALESCE(material.short_count, 0), COALESCE(material.short_make_count, 0),
                        COALESCE(material.supported_output_qty, 0), COALESCE(material.prepared_output_qty, 0)
                 """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
     }
@@ -971,11 +1005,16 @@ public class ProductionExecutionWorkbenchService {
                 decimal(row[40]), decimal(row[41]), progressRatio);
     }
 
-    private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage) {
+    private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage,
+                                                                  String operatorRouteMemory) {
         // The same current plan/package facts gate every command capability. Compute once
         // per projected task, so historical or paused rows do not advertise rejected actions.
         boolean executable = bool(row[46]);
         boolean custodyValid = bool(row[47]);
+        // 路线记忆(ADR-096)：本产品的历史优先；没有才退回操作者上次的选择。只作预填展示。
+        String productMemory = text(row[48]);
+        String suggestedRoute = productMemory != null ? productMemory : operatorRouteMemory;
+        String suggestedSource = productMemory != null ? "PRODUCT" : operatorRouteMemory != null ? "OPERATOR" : null;
         return new ProductionExecutionWorkbenchSegment(
                 uuid(row[0]), uuid(row[1]), text(row[2]), text(row[3]),
                 text(row[4]), uuid(row[5]), text(row[6]), text(row[7]),
@@ -992,7 +1031,7 @@ public class ProductionExecutionWorkbenchService {
                 usage.hasPendingReturn(), usage.hasAvailableMaterial(),
                 bool(row[42]),
                 text(row[43]), executable && bool(row[44]), executable && bool(row[45]),
-                text(row[48]),
+                suggestedRoute, suggestedSource,
                 integer(row[49]), integer(row[50]), integer(row[51]), integer(row[52]), integer(row[53]),
                 integer(row[54]), integer(row[55]), integer(row[56]), integer(row[57]),
                 decimal(row[58]), decimal(row[59]));

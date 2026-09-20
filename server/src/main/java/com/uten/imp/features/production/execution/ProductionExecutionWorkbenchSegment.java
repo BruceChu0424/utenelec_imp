@@ -69,6 +69,11 @@ public record ProductionExecutionWorkbenchSegment(
          * 不自动生效——与 ADR-093「路线必须是明确确认的事实」不冲突。
          */
         String suggestedStartRoute,
+        /**
+         * 路线记忆来源(ADR-096)：PRODUCT=同产品最近一次确认；OPERATOR=本产品没有历史时取当前
+         * 操作者最近一次确认的路线(记住上次的选择)；无记忆为 null。
+         */
+        String suggestedStartRouteSource,
         /** 逐种物料事实(ADR-095/V628)：本任务正式物料需求的种数(零料任务为 0)。 */
         int materialKindCount,
         /** 已按需求量实领到车间的种数(含同车间直送已投入)。 */
@@ -83,10 +88,13 @@ public record ProductionExecutionWorkbenchSegment(
         int materialLineSidePendingKindCount,
         /** 已预留、领料指令尚未生成的种数。 */
         int materialPreparingKindCount,
-        /** 尚未备齐(预留不足需求量)的种数：采购/委外未到或同车间子件未流转。 */
+        /** 尚未备齐(预留不足需求量)的种数：采购/委外未到或自制子件尚未交到本任务。 */
         int materialShortKindCount,
-        /** 缺料中由同车间上下层直送供给、等子件工单完成流转的种数。 */
-        int materialShortDirectKindCount,
+        /**
+         * 缺料中由自制子件工单供给的种数(ADR-096)：子件做完可能直送本车间也可能入库后领料，
+         * 交接方式在子件报工时才决定，这里只说明来源是在产的自制子件。
+         */
+        int materialShortMakeKindCount,
         /** 已实领物料共同支持的可产量(冻结耗用曲线，V609)。 */
         BigDecimal materialSupportedOutputQty,
         /** 已预留物料(含未领)共同支持的可产量。 */

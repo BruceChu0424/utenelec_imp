@@ -199,6 +199,7 @@ class ProductionExecutionWorkbenchSegment {
     this.canConfirmRoute = false,
     this.routeChangeable = false,
     this.suggestedStartRoute,
+    this.suggestedStartRouteSource,
     this.materialKindCount = 0,
     this.materialIssuedKindCount = 0,
     this.materialPartialIssuedKindCount = 0,
@@ -207,7 +208,7 @@ class ProductionExecutionWorkbenchSegment {
     this.materialLineSidePendingKindCount = 0,
     this.materialPreparingKindCount = 0,
     this.materialShortKindCount = 0,
-    this.materialShortDirectKindCount = 0,
+    this.materialShortMakeKindCount = 0,
     this.materialSupportedOutputQty = 0,
     this.materialPreparedOutputQty = 0,
     this.salesOrderNos,
@@ -288,12 +289,15 @@ class ProductionExecutionWorkbenchSegment {
   /// 开工前（且尚无报工）可更改路线(ADR-095)：已备料、已领料、直送已投入全部保留。
   final bool routeChangeable;
 
-  /// 路线记忆(V602 恢复)：同产品最近一次确认的开工路线。只作未确认行的预填
-  /// 展示（黄标提醒核对），选中才提交，不自动生效。
+  /// 路线记忆(V602 恢复，ADR-096 扩到操作者)：同产品最近一次确认的路线，没有时取
+  /// 你上次确认的路线。只作未确认行的预填展示(黄标提醒核对)，选中/批量确认才提交。
   final String? suggestedStartRoute;
 
+  /// 路线记忆来源(ADR-096)：PRODUCT=同产品上次确认；OPERATOR=你上次的选择；null=无记忆。
+  final String? suggestedStartRouteSource;
+
   /// 逐种物料事实(ADR-095/V628)：每种正式物料需求落在且只落在一个桶里——
-  /// 已领 / 缺（等采购委外到货 或 等同车间子件直送）/ 可领 / 待仓库发 /
+  /// 已领 / 缺(等采购委外到货 或 等自制子件完成)/ 可领 / 待仓库发 /
   /// 线边仓待自动投入 / 备料中。零料任务 [materialKindCount] 为 0。
   final int materialKindCount;
   final int materialIssuedKindCount;
@@ -307,7 +311,7 @@ class ProductionExecutionWorkbenchSegment {
   final int materialShortKindCount;
 
   /// 缺料里由同车间上下层直送供给、等子件工单完成流转的种数。
-  final int materialShortDirectKindCount;
+  final int materialShortMakeKindCount;
 
   /// 已实领物料共同支持的可产量 / 已预留物料(含未领)共同支持的可产量。
   final double materialSupportedOutputQty;
@@ -411,6 +415,7 @@ class ProductionExecutionWorkbenchSegment {
     canConfirmRoute: json['canConfirmRoute'] == true,
     routeChangeable: json['routeChangeable'] == true,
     suggestedStartRoute: json['suggestedStartRoute'] as String?,
+    suggestedStartRouteSource: json['suggestedStartRouteSource'] as String?,
     materialKindCount: (json['materialKindCount'] as num?)?.toInt() ?? 0,
     materialIssuedKindCount:
         (json['materialIssuedKindCount'] as num?)?.toInt() ?? 0,
@@ -426,8 +431,8 @@ class ProductionExecutionWorkbenchSegment {
         (json['materialPreparingKindCount'] as num?)?.toInt() ?? 0,
     materialShortKindCount:
         (json['materialShortKindCount'] as num?)?.toInt() ?? 0,
-    materialShortDirectKindCount:
-        (json['materialShortDirectKindCount'] as num?)?.toInt() ?? 0,
+    materialShortMakeKindCount:
+        (json['materialShortMakeKindCount'] as num?)?.toInt() ?? 0,
     materialSupportedOutputQty:
         (json['materialSupportedOutputQty'] as num?)?.toDouble() ?? 0,
     materialPreparedOutputQty:
@@ -482,7 +487,7 @@ class ProductionWorkshopTaskMaterial {
   /// 提升同口径；齐套生产到齐前不预留，靠它回答「到了多少」。
   final double warehouseAvailableQty;
 
-  /// ISSUED / SHORT / SHORT_DIRECT / DRAWABLE / AWAITING_WAREHOUSE /
+  /// ISSUED / SHORT / SHORT_MAKE / DRAWABLE / AWAITING_WAREHOUSE /
   /// LINE_SIDE_PENDING / PREPARING。
   final String state;
 
@@ -501,7 +506,7 @@ class ProductionWorkshopTaskMaterial {
 
   String get stateLabel => switch (state) {
     'ISSUED' => '已领到车间',
-    'SHORT_DIRECT' => '等同车间子件直送',
+    'SHORT_MAKE' => '等自制子件完成',
     'SHORT' => switch (supplyRoute) {
       'BUY' => '等采购到货',
       'SUBCONTRACT' => '等委外回厂',

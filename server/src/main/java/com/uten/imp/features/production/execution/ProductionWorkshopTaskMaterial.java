@@ -4,8 +4,9 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * 车间任务的一种物料的事实(ADR-095/V628)：数量全部为基础单位；状态桶与列表汇总同口径
- * (ISSUED / SHORT / SHORT_DIRECT / DRAWABLE / AWAITING_WAREHOUSE / LINE_SIDE_PENDING / PREPARING)。
+ * 车间任务的一种物料的事实(ADR-095/V628，ADR-096/V629)：数量全部为基础单位；状态桶与列表汇总同口径
+ * (ISSUED / SHORT / SHORT_MAKE / DRAWABLE / AWAITING_WAREHOUSE / LINE_SIDE_PENDING / PREPARING)。
+ * SHORT_MAKE 只说明来源是自制子件工单：子件做完是直送本车间还是入库后领料，在子件报工时才决定。
  */
 public record ProductionWorkshopTaskMaterial(
         UUID demandId,
@@ -15,7 +16,7 @@ public record ProductionWorkshopTaskMaterial(
         String unitName,
         /** 需求的供料路线：BUY / SUBCONTRACT / MAKE。 */
         String supplyRoute,
-        /** 冻结为同车间上下层直送供给。 */
+        /** 持续生产确认时标记的分配偏好：同车间上下层可就地交接。不是承诺，子件仍可入库后领料。 */
         boolean directSupply,
         BigDecimal requiredQty,
         /** 已为本需求正式预留(含已领)。 */

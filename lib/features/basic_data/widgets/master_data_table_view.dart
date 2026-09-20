@@ -214,6 +214,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.rowKeyOf,
     this.rowWidgetKeyOf,
     this.unselectableLeadingBuilder,
+    this.leadingOverlayBuilder,
     this.selectedIds = const <String>{},
     this.onSelectedIdsChanged,
     this.selectionSummaryCount,
@@ -315,6 +316,13 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// with a concrete reason instead of presenting a checkbox that can never act.
   final Widget Function(BuildContext context, T item)?
   unselectableLeadingBuilder;
+
+  /// Optional small badge drawn over the bottom-right corner of a **selectable**
+  /// row's checkbox (e.g. a lock glyph with a tooltip). Lets a row stay
+  /// selectable for one batch action while visibly gated for another —
+  /// workshop tasks can be batch-routed yet locked for start while material is
+  /// short (2026-09-20). Return null for no badge.
+  final Widget? Function(BuildContext context, T item)? leadingOverlayBuilder;
 
   /// 多选选中集合（调用方拥有，单一真值源）。组件只读它判定勾选/高亮、只通过
   /// [onSelectedIdsChanged] 把"新集合"回交调用方，从不自行清空——故跨页天然保留。
@@ -2092,17 +2100,31 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // **行内这一份不能自带底色**：它要跟整行同底（选中淡绿/行语义色都由外层
     // ColoredBox 统一给），而且 DecoratedBox 的边框画在子节点之前——自带不透明底会把
     // 行底那条分隔线在这 48px 里盖掉（2026-09-11 用户截图：首列底色不一样、行线断了）。
+    final bool rowSelectable = multiId != null && multiId.isNotEmpty;
+    final Widget? leadingOverlay = rowSelectable
+        ? widget.leadingOverlayBuilder?.call(context, item)
+        : null;
+    final Widget checkbox = Checkbox(
+      value: selected,
+      // 无业务 id 的行禁用勾选(不计入全选)。
+      onChanged: !rowSelectable ? null : (v) => _toggleRow(item, v ?? false),
+    );
     final selectionCheckbox = Center(
-      child:
-          (multiId == null || multiId.isEmpty) &&
-              widget.unselectableLeadingBuilder != null
+      child: !rowSelectable && widget.unselectableLeadingBuilder != null
           ? widget.unselectableLeadingBuilder!(context, item)
-          : Checkbox(
-              value: selected,
-              // 无业务 id 的行禁用勾选（不计入全选）。
-              onChanged: (multiId == null || multiId.isEmpty)
-                  ? null
-                  : (v) => _toggleRow(item, v ?? false),
+          : leadingOverlay == null
+          ? checkbox
+          // 可勾选但另有门槛的行：勾选框右下角压一个小徽记(如锁)，勾选仍可用。
+          : SizedBox(
+              width: _selectionColWidth,
+              height: _selectionColWidth,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Center(child: checkbox),
+                  Positioned(right: 2, bottom: 4, child: leadingOverlay),
+                ],
+              ),
             ),
     );
     final selectionCell = DecoratedBox(

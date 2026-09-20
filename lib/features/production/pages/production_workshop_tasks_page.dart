@@ -139,7 +139,7 @@ class _ProductionWorkshopTasksPageState
     ),
     'CONTINUOUS': (
       '持续生产',
-      '每种必需物料共同支持一部分产量时即可开工；后续到货（采购、委外、同车间子件直送）'
+      '每种必需物料共同支持一部分产量时即可开工；后续到料(采购、委外、自制子件直送或入库)'
           '在同一工单继续领料或投入，不拆工单，不预填开工数量，按实际报工核算剩余。',
     ),
     'BATCH': (
@@ -149,12 +149,13 @@ class _ProductionWorkshopTasksPageState
     ),
   };
 
-  /// 当前可选的路线：齐套 / 持续恒可选（零料任务只有齐套）；分批要拆子任务，只在
-  /// 服务端判定「未动过」（canSplitBatch）时出现，否则悬停说明见 [_routeChangeHint]。
+  /// 当前可选的路线(ADR-096：每种任务都支持三条，含无需物料的任务)：齐套 / 持续
+  /// 恒可选；分批要拆出独立子任务，只在服务端判定「未动过」(canSplitBatch)时出现，
+  /// 否则悬停说明见 [_routeChangeHint]。
   List<String> _routeOptions(ProductionExecutionWorkbenchSegment task) => [
     'FULL_KIT',
-    if (!task.zeroMaterial) 'CONTINUOUS',
-    if (!task.zeroMaterial && task.canSplitBatch) 'BATCH',
+    'CONTINUOUS',
+    if (task.canSplitBatch) 'BATCH',
   ];
 
   /// 开工前随时可换（ADR-095）：未确认（canConfirmRoute）或服务端允许更改
@@ -173,18 +174,88 @@ class _ProductionWorkshopTasksPageState
           : '当前：${_routeOptionMeta[current]?.$1}——${_routeOptionMeta[current]?.$2}',
     );
     if (current != null) buffer.write(' 开工前可随时改选，已备物料不变。');
-    if (!task.zeroMaterial && !task.canSplitBatch) {
+    if (!task.canSplitBatch) {
       buffer.write(
         task.materialKindCount > 0 && task.materialCoveredKindCount > 0
             ? ' 本任务已备了部分物料，不能再拆分批（分批要拆出独立子任务，须在未备料时决定）。'
-            : ' 本任务不满足独立分批条件（须为等待物料、已安排车间、尚未备料或绑定供给的物料分析任务）。',
+            : ' 本任务不满足独立分批条件(须为已安排车间、尚未备料或绑定供给的物料分析任务)。',
       );
     }
     return buffer.toString();
   }
 
-  /// 首列勾选门：齐套链批量动作（批量领料 / 批量开工）。路线的选定在「下一步」
-  /// 下拉逐行完成（2026-09-20 口径），不再有按勾选批量设路线的入口。
+  /// 勾选中可设路线的行(批量设路线的目标)。
+  List<ProductionExecutionWorkbenchSegment> _selectedRouteTasks(
+    Set<String> ids,
+  ) => _items
+      .where((task) => ids.contains(task.segmentId) && _routeSettableTask(task))
+      .toList(growable: false);
+
+  /// 「批量设路线」菜单(2026-09-20 用户口径「能够批量选择路线，现在必须一个一个选」)：
+  /// 三条路线各显示能改的行数(不支持该路线或已是该路线的行自动跳过)，另有一条
+  /// 「按预填默认值确认」把每行各自记忆的路线一次确认。选中即提交，没有弹窗。
+  Future<void> _showBatchRouteMenu(
+    BuildContext anchorContext,
+    List<ProductionExecutionWorkbenchSegment> targets,
+  ) async {
+    if (targets.isEmpty || _navigating || _loading) return;
+    final box = anchorContext.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? Offset.zero
+        : box.localToGlobal(Offset(0, box.size.height));
+    List<ProductionExecutionWorkbenchSegment> eligible(String route) => targets
+        .where(
+          (task) =>
+              task.startRoute != route && _routeOptions(task).contains(route),
+        )
+        .toList(growable: false);
+    final defaults = targets
+        .where(
+          (task) =>
+              task.startRoute == null &&
+              task.suggestedStartRoute != null &&
+              _routeOptions(task).contains(task.suggestedStartRoute),
+        )
+        .toList(growable: false);
+    await showUtenContextMenu(
+      context,
+      globalPosition: origin,
+      entries: [
+        for (final route in const ['FULL_KIT', 'CONTINUOUS', 'BATCH'])
+          UtenMenuItem(
+            label: '${_routeOptionMeta[route]!.$1}(${eligible(route).length})',
+            icon: _routeIcons[route],
+            enabled: eligible(route).isNotEmpty,
+            onTap: () => _submitRoutes(eligible(route), route),
+          ),
+        const UtenMenuDivider(),
+        UtenMenuItem(
+          label: '按预填默认值确认(${defaults.length})',
+          icon: Icons.history_rounded,
+          enabled: defaults.isNotEmpty,
+          onTap: () => _submitRememberedRoutes(defaults),
+        ),
+      ],
+    );
+  }
+
+  /// 按每行各自的路线记忆逐组确认(同一路线的行一起提交，结果合并提示)。
+  Future<void> _submitRememberedRoutes(
+    List<ProductionExecutionWorkbenchSegment> targets,
+  ) async {
+    final byRoute = <String, List<ProductionExecutionWorkbenchSegment>>{};
+    for (final task in targets) {
+      byRoute.putIfAbsent(task.suggestedStartRoute!, () => []).add(task);
+    }
+    for (final entry in byRoute.entries) {
+      await _submitRoutes(entry.value, entry.key, reload: false);
+      if (!mounted) return;
+    }
+    await _load();
+  }
+
+  /// 首列勾选门之一：齐套链批量动作(批量领料 / 批量开工)。可设路线的行另由
+  /// [_routeSettableTask] 放进勾选集，供「批量设路线」使用。
   bool _kitSelectableTask(ProductionExecutionWorkbenchSegment task) =>
       _routeAllowsKitActions(task) &&
       (_canRequestDrawTask(task) || _canStartTask(task));
@@ -359,7 +430,7 @@ class _ProductionWorkshopTasksPageState
         Expanded(
           child: Tooltip(
             message: current == null && remembered != null
-                ? '已按同产品上次选择的路线预填，点开核对后选择确认。${_routeChangeHint(task)}'
+                ? '${_routeMemoryHint(task)}，点开核对后选择确认。${_routeChangeHint(task)}'
                 : _routeChangeHint(task),
             child: UtenDropdownField(
               key: ValueKey('workshop-next-step-${task.segmentId}'),
@@ -396,17 +467,24 @@ class _ProductionWorkshopTasksPageState
         if (remembered != null)
           UtenFieldHintIcon(
             key: ValueKey('workshop-route-memory-${task.segmentId}'),
-            autofillMessage: '已按上次选择预填，请核对',
+            autofillMessage: _routeMemoryHint(task),
           ),
       ],
     );
   }
 
+  /// 路线记忆的来源说明(ADR-096)：同产品上次的选择，或你上次的选择。
+  static String _routeMemoryHint(ProductionExecutionWorkbenchSegment task) =>
+      task.suggestedStartRouteSource == 'OPERATOR'
+      ? '已按你上次选择的路线预填，请核对'
+      : '已按本产品上次选择的路线预填，请核对';
+
   /// 逐单提交已确认路线；版本变化保留失败原因，完成后刷新服务端事实。
   Future<void> _submitRoutes(
     List<ProductionExecutionWorkbenchSegment> targets,
-    String route,
-  ) async {
+    String route, {
+    bool reload = true,
+  }) async {
     if (targets.isEmpty) return;
     setState(() {
       _navigating = true;
@@ -454,7 +532,7 @@ class _ProductionWorkshopTasksPageState
         force: true,
       );
     }
-    await _load();
+    if (reload) await _load();
   }
 
   /// 服务端同时复核已确认路线、实际投料及共同可支持产量。
@@ -492,9 +570,9 @@ class _ProductionWorkshopTasksPageState
       if (task.canRequestDraw) {
         return '已有物料可领，请先领料；每种必需物料共同支持部分产量后即可开工';
       }
-      if (task.materialShortDirectKindCount > 0) {
-        return '还有 ${task.materialShortDirectKindCount} 种物料等同车间子件工单完成后直送，'
-            '流转到本任务后才算到料；打开任务详情可看每种物料的到料与直送数量';
+      if (task.materialShortMakeKindCount > 0) {
+        return '还有 ${task.materialShortMakeKindCount} 种物料由自制子件工单供给，子件做完可能直送本车间'
+            '也可能入库后领料，交到本任务后才算到料；打开任务详情可看每种物料的到料数量';
       }
       if (task.materialShortKindCount > 0) {
         return '还有 ${task.materialShortKindCount} 种物料未到货（采购/委外未入库）；'
@@ -511,7 +589,7 @@ class _ProductionWorkshopTasksPageState
     if (task.materialStatus == 'KIT_SHORT') {
       if (task.materialKindCount > 0) {
         return '齐套生产：已备 ${task.materialCoveredKindCount}/${task.materialKindCount} 种物料，'
-            '还有 ${task.materialShortKindCount} 种未到（${task.materialShortDirectKindCount > 0 ? '含同车间子件直送 ${task.materialShortDirectKindCount} 种' : '采购/委外未入库'}）；'
+            '还有 ${task.materialShortKindCount} 种未到(${task.materialShortMakeKindCount > 0 ? '含自制子件 ${task.materialShortMakeKindCount} 种' : '采购/委外未入库'})；'
             '全部到齐并实领后才能开工，打开任务详情可看每种物料的到料数量';
       }
       return '子件还没全部备齐，打开任务可以查看缺少的物料和进度';
@@ -605,8 +683,28 @@ class _ProductionWorkshopTasksPageState
   /// 生产中勾选用于报工。未确认路线的行不可勾选——勾选只服务批量领料/开工，
   /// 路线未确认的行两个动作都进不去，锁位提示先选路线。
   bool _selectableTask(ProductionExecutionWorkbenchSegment task) => _isPreparing
-      ? _kitSelectableTask(task)
+      ? _kitSelectableTask(task) || _routeSettableTask(task)
       : task.segmentStatus == 'IN_PROGRESS' && task.canBatchReport;
+
+  /// 勾选框右下角的小锁(2026-09-20 用户口径「最前面可以锁住，物料不齐就是锁住」)：
+  /// 行能勾选去批量设路线，但物料不齐/未选路线时不能领料、开工——锁住并说明原因。
+  Widget? _leadingLockOf(
+    BuildContext context,
+    ProductionExecutionWorkbenchSegment task,
+  ) {
+    if (!_isPreparing || _kitSelectableTask(task)) return null;
+    return Tooltip(
+      message: _blockedReasonOf(task),
+      child: Icon(
+        Icons.lock_rounded,
+        key: ValueKey('workshop-leading-lock-${task.segmentId}'),
+        size: 12,
+        color: Theme.of(context).brightness == Brightness.dark
+            ? UtenColors.warningOnDark
+            : UtenColors.warningText,
+      ),
+    );
+  }
 
   /// 「批量领料」的计数与提交目标（同一谓词）：勾选中 ∩ 齐套链路线放行 ∩ 可提交领料。
   /// 2026-09-18 二轮勾选门放宽后未确认路线的行可勾选，这里必须保持路线门，
@@ -893,7 +991,7 @@ class _ProductionWorkshopTasksPageState
                 const SizedBox(height: UtenSpacing.s12),
                 Text(_flowStageOf(task).label),
                 const SizedBox(height: UtenSpacing.s8),
-                // 逐种物料（ADR-095）：同车间直送的子件只有流转到本任务后才算已领；
+                // 逐种物料(ADR-095/096)：自制子件只有交到本任务后才算已领(直送或经仓库)；
                 // 齐套生产到齐前不预留，「仓库已到」按齐套口径显示实物。
                 Text(
                   '物料：${_materialSummaryText(task)}'
@@ -1132,35 +1230,55 @@ class _ProductionWorkshopTasksPageState
     kindCount: task.materialKindCount,
     issuedKindCount: task.materialIssuedKindCount,
     shortKindCount: task.materialShortKindCount,
-    shortDirectKindCount: task.materialShortDirectKindCount,
+    shortMakeKindCount: task.materialShortMakeKindCount,
     drawableKindCount: task.materialDrawableKindCount,
     awaitingWarehouseKindCount: task.materialAwaitingWarehouseKindCount,
     lineSidePendingKindCount: task.materialLineSidePendingKindCount,
     supportedOutputQty: task.materialSupportedOutputQty,
   );
 
-  /// 「物料」列的一行摘要（ADR-095）：已领 a/n 种；缺 k 种（直送 j）；可领 / 待发。
+  /// 「物料」列的分段摘要(ADR-095/096)：已领 a/n 种；缺 k 种(自制子件 j)红；
+  /// 可领 m 种绿；待发 p 种灰(2026-09-20 用户口径「缺X种变红色、可领X种变绿色」)。
   /// 零料任务显示「无需物料」。数字只来自服务端逐种事实，不由页面猜。
-  static String _materialSummaryText(ProductionExecutionWorkbenchSegment task) {
-    if (task.zeroMaterial || task.materialKindCount == 0) return '无需物料';
-    final parts = <String>[
-      '已领 ${task.materialIssuedKindCount}/${task.materialKindCount} 种',
+  static List<(String, _MaterialSummaryTone)> _materialSummaryParts(
+    ProductionExecutionWorkbenchSegment task,
+  ) {
+    if (task.zeroMaterial || task.materialKindCount == 0) {
+      return const [('无需物料', _MaterialSummaryTone.plain)];
+    }
+    final parts = <(String, _MaterialSummaryTone)>[
+      (
+        '已领 ${task.materialIssuedKindCount}/${task.materialKindCount} 种',
+        _MaterialSummaryTone.plain,
+      ),
     ];
     if (task.materialShortKindCount > 0) {
-      parts.add(
-        task.materialShortDirectKindCount > 0
-            ? '缺 ${task.materialShortKindCount} 种(直送 ${task.materialShortDirectKindCount})'
+      parts.add((
+        task.materialShortMakeKindCount > 0
+            ? '缺 ${task.materialShortKindCount} 种(自制子件 ${task.materialShortMakeKindCount})'
             : '缺 ${task.materialShortKindCount} 种',
-      );
+        _MaterialSummaryTone.short,
+      ));
     }
     if (task.materialDrawableKindCount > 0) {
-      parts.add('可领 ${task.materialDrawableKindCount} 种');
+      parts.add((
+        '可领 ${task.materialDrawableKindCount} 种',
+        _MaterialSummaryTone.drawable,
+      ));
     }
     if (task.materialAwaitingWarehouseKindCount > 0) {
-      parts.add('待发 ${task.materialAwaitingWarehouseKindCount} 种');
+      parts.add((
+        '待发 ${task.materialAwaitingWarehouseKindCount} 种',
+        _MaterialSummaryTone.muted,
+      ));
     }
-    return parts.join(' · ');
+    return parts;
   }
+
+  /// 纯文本摘要(列宽测算、排序键、无障碍标签)。
+  static String _materialSummaryText(
+    ProductionExecutionWorkbenchSegment task,
+  ) => _materialSummaryParts(task).map((part) => part.$1).join(' · ');
 
   /// 「物料」列悬停：逐桶解释 + 已投料可产量。
   static String _materialSummaryTooltip(
@@ -1178,12 +1296,12 @@ class _ProductionWorkshopTasksPageState
       if (task.materialAwaitingWarehouseKindCount > 0)
         '已提交领料、待仓库发出 ${task.materialAwaitingWarehouseKindCount} 种',
       if (task.materialLineSidePendingKindCount > 0)
-        '同车间直送料已到、开工时自动投入 ${task.materialLineSidePendingKindCount} 种',
+        '车间直送料已到、开工时自动投入 ${task.materialLineSidePendingKindCount} 种',
       if (task.materialPreparingKindCount > 0)
         '已预留、领料指令生成中 ${task.materialPreparingKindCount} 种',
       if (task.materialShortKindCount > 0)
         '未到 ${task.materialShortKindCount} 种'
-            '${task.materialShortDirectKindCount > 0 ? '（其中 ${task.materialShortDirectKindCount} 种等同车间子件工单完成后直送）' : '（采购/委外未入库）'}',
+            '${task.materialShortMakeKindCount > 0 ? '(其中 ${task.materialShortMakeKindCount} 种由自制子件工单供给，做完直送本车间或入库后领料)' : '(采购/委外未入库)'}',
       '已投料可产 ${_taskQuantity(task.materialSupportedOutputQty)}'
           '${task.productUnitName ?? ''}'
           '，已预留可产 ${_taskQuantity(task.materialPreparedOutputQty)}${task.productUnitName ?? ''}',
@@ -1413,6 +1531,7 @@ class _ProductionWorkshopTasksPageState
                           rowKeyOf: (task) => task.segmentId,
                           // 未齐行的勾选位换成带原因的锁图标（悬停/长按可见），
                           // 不再呈现一个永远点不动的空复选框。
+                          leadingOverlayBuilder: _leadingLockOf,
                           unselectableLeadingBuilder: (context, task) =>
                               Tooltip(
                                 message: _blockedReasonOf(task),
@@ -1449,8 +1568,27 @@ class _ProductionWorkshopTasksPageState
                           },
                           batchActionsBuilder: (_, ids) => [
                             if (_isPreparing) ...[
-                              // 路线的选定在「下一步」下拉逐行完成（2026-09-20
-                              // 口径），这里只剩齐套链的批量领料 / 批量开工。
+                              // 批量设路线(ADR-096)：勾选多行 → 菜单里点一条路线
+                              // 即提交；单行仍走「下一步」下拉。
+                              Builder(
+                                builder: (menuContext) => UtenButton(
+                                  key: const Key('workshop-batch-route'),
+                                  type: UtenButtonType.danger,
+                                  icon: Icons.alt_route_rounded,
+                                  onPressed:
+                                      _loading ||
+                                          _navigating ||
+                                          _selectedRouteTasks(ids).isEmpty
+                                      ? null
+                                      : () => _showBatchRouteMenu(
+                                          menuContext,
+                                          _selectedRouteTasks(ids),
+                                        ),
+                                  child: Text(
+                                    '批量设路线(${_selectedRouteTasks(ids).length})',
+                                  ),
+                                ),
+                              ),
                               UtenButton(
                                 type: UtenButtonType.danger,
                                 icon: Icons.move_to_inbox_rounded,
@@ -1614,26 +1752,50 @@ class _ProductionWorkshopTasksPageState
         label: '物料',
         width: 230,
         info:
-            '每种物料只落一个桶：已领到车间 / 缺（等采购委外到货或等同车间子件直送）/ '
-            '可领（已备好待提交领料）/ 待发（已提交待仓库发料）。同车间直送的子件'
-            '只有真正流转到本任务后才算「已领」。双击行查看每种物料的数量。',
+            '每种物料只落一个桶：已领到车间 / 缺(等采购委外到货或等自制子件完成)/ '
+            '可领(已备好待提交领料)/ 待发(已提交待仓库发料)。自制子件做完可能直送'
+            '本车间也可能入库后领料，只有真正交到本任务后才算「已领」。缺=红、可领=绿。'
+            '双击行查看每种物料的数量。',
         value: _materialSummaryText,
-        cellBuilder: (context, task) => Tooltip(
-          message: _materialSummaryTooltip(task),
-          child: Text(
-            _materialSummaryText(task),
-            key: ValueKey('workshop-material-summary-${task.segmentId}'),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: task.materialShortKindCount > 0
-                  ? Theme.of(context).brightness == Brightness.dark
-                        ? UtenColors.warningOnDark
-                        : UtenColors.warningText
-                  : null,
+        cellBuilder: (context, task) {
+          final theme = Theme.of(context);
+          final dark = theme.brightness == Brightness.dark;
+          final base = theme.textTheme.bodySmall;
+          Color? toneColor(_MaterialSummaryTone tone) => switch (tone) {
+            _MaterialSummaryTone.short =>
+              dark ? UtenColors.errorOnDark : UtenColors.errorText,
+            _MaterialSummaryTone.drawable =>
+              dark ? UtenColors.successOnDark : UtenColors.successText,
+            _MaterialSummaryTone.muted => theme.colorScheme.onSurfaceVariant,
+            _MaterialSummaryTone.plain => null,
+          };
+          final parts = _materialSummaryParts(task);
+          return Tooltip(
+            message: _materialSummaryTooltip(task),
+            child: Text.rich(
+              TextSpan(
+                style: base,
+                children: [
+                  for (var index = 0; index < parts.length; index++) ...[
+                    if (index > 0) const TextSpan(text: ' · '),
+                    TextSpan(
+                      text: parts[index].$1,
+                      style: toneColor(parts[index].$2) == null
+                          ? null
+                          : TextStyle(
+                              color: toneColor(parts[index].$2),
+                              fontWeight: FontWeight.w700,
+                            ),
+                    ),
+                  ],
+                ],
+              ),
+              key: ValueKey('workshop-material-summary-${task.segmentId}'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ),
+          );
+        },
       ),
     // 2026-09-16 用户口径：产品名称 / 编号 / 颜色紧跟「下一步」列——先看清是
     // 哪个产品，再往右读订单 / 工单 / 车间。三列口径仍按全站统一（各占一列）。
@@ -1700,3 +1862,6 @@ class _ProductionWorkshopTasksPageState
       ),
   ];
 }
+
+/// 「物料」列分段的着色档：缺料=红、可领=绿、待发=灰、其余默认。
+enum _MaterialSummaryTone { plain, short, drawable, muted }

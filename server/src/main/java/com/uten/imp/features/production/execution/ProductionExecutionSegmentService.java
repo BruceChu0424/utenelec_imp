@@ -400,10 +400,9 @@ public class ProductionExecutionSegmentService {
      * 拆出有谱系的子任务，仍要求未动过的任务(fn_can_split_execution_batch)。
      */
     private void validateRouteChoice(LockedSegment segment, String route) {
+        // ADR-096：零物料工单同样三条路线都可选——齐套/持续对它只是「随时可开工」的两种
+        // 叫法，分批则按数量拆出独立零料子任务(fn_can_split_execution_batch 已放行 READY 零料)。
         if (ROUTE_FULL_KIT.equals(route)) return;
-        if (ProductionExecutionSegment.MATERIAL_REQUIREMENT_MODE_ZERO.equals(segment.materialRequirementMode())) {
-            throw validation("无物料子件的工单请选择齐套生产");
-        }
         // Continuous supply changes when materials are issued, not who owns them.
         // Existing draft preparation and purchase pegs remain attached to this task.
         if (ROUTE_CONTINUOUS.equals(route)) return;

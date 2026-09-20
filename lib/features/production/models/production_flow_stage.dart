@@ -20,31 +20,35 @@ enum ProductionFlowRoute { make, buy, subcontract }
 /// 分类里会同时出现的档位拉到互不相邻的色相（红 / 琥珀 / 蓝 / 绿 / 灰）。
 ///
 /// 按**该谁动手、动什么手**分色，同一条链里相邻步骤必然不同色：
-/// - [pending]    还没轮到本环节（等下达、待审核、已交仓库待发料）—— 中性灰
-/// - [decide]     车间必须先做决定（待选生产路线），其它动作全部锁着 —— 红
-/// - [waiting]    在等别人/等物料到位 —— 琥珀（看得见但不催人）
-/// - [toDraw]     料备好了，可由车间提交领料 —— 蓝
-/// - [ready]      料在手上，**可开工** —— 绿
-/// - [active]     生产中 · 可报工 —— 品牌青（主色系）
-/// - [done]       已完工 —— 绿（只在历史任务/分析列表出现，与可开工不同分类）
+/// - [pending]       还没轮到本环节(等下达、待审核、已交仓库待发料)—— 中性灰
+/// - [decide]        车间必须先做决定(待选生产路线)，其它动作全部锁着 —— 红
+/// - [waiting]       在等别人/等物料到位 —— 琥珀(看得见但不催人)
+/// - [toDrawPartial] 备好了一部分，可先领这部分(还缺料)—— 紫
+/// - [toDraw]        料全备齐了，可由车间提交领料 —— 蓝
+/// - [readyPartial]  部分物料已投，**可开工**(持续生产)—— 品牌青
+/// - [ready]         料全在手上，**可开工** —— 绿
+/// - [active]        生产中 · 可报工 —— 品牌青(主色系；与 readyPartial 不同分类)
+/// - [done]          已完工 —— 绿(只在历史任务/分析列表出现，与可开工不同分类)
 enum ProductionFlowTone {
   pending,
   decide,
   waiting,
+  toDrawPartial,
   toDraw,
+  readyPartial,
   ready,
   active,
   done,
 }
 
-/// 车间任务的逐种物料事实(ADR-095/V628)：每种正式物料需求只落一个桶。
+/// 车间任务的逐种物料事实(ADR-095/V628，ADR-096/V629)：每种正式物料需求只落一个桶。
 /// [kindCount] 为 0 表示零料任务或调用方没有事实（退回旧布尔口径）。
 class ProductionMaterialFacts {
   const ProductionMaterialFacts({
     required this.kindCount,
     this.issuedKindCount = 0,
     this.shortKindCount = 0,
-    this.shortDirectKindCount = 0,
+    this.shortMakeKindCount = 0,
     this.drawableKindCount = 0,
     this.awaitingWarehouseKindCount = 0,
     this.lineSidePendingKindCount = 0,
@@ -54,7 +58,10 @@ class ProductionMaterialFacts {
   final int kindCount;
   final int issuedKindCount;
   final int shortKindCount;
-  final int shortDirectKindCount;
+
+  /// 缺料中由自制子件工单供给的种数：子件做完可能直送本车间也可能入库后领料，
+  /// 交接方式在子件报工时才决定，这里只说明来源(ADR-096)。
+  final int shortMakeKindCount;
   final int drawableKindCount;
   final int awaitingWarehouseKindCount;
   final int lineSidePendingKindCount;
@@ -107,8 +114,10 @@ class ProductionFlowStage {
     ProductionFlowTone.done => Icons.task_alt_rounded,
     ProductionFlowTone.active => Icons.play_circle_outline_rounded,
     ProductionFlowTone.ready => Icons.play_arrow_rounded,
+    ProductionFlowTone.readyPartial => Icons.play_arrow_rounded,
     // 去领料 = 要跑一趟仓库，用「搬运/取货」语义的图标。
     ProductionFlowTone.toDraw => Icons.move_to_inbox_rounded,
+    ProductionFlowTone.toDrawPartial => Icons.move_to_inbox_rounded,
     ProductionFlowTone.waiting => Icons.hourglass_bottom_rounded,
     // 待选路线 = 车间要先做决定，用「岔路」图标。
     ProductionFlowTone.decide => Icons.alt_route_rounded,
@@ -207,7 +216,7 @@ class ProductionFlowStage {
   /// 持续等部分物料；未确认/null 保持通用「车间已收到 · 等待物料」。
   ///
   /// 传入 [materials]（ADR-095 逐种物料事实）时，未开工段的文案只按事实生成：
-  /// 已领 / 缺（等到货或等同车间子件直送）/ 可领 / 待仓库发料 / 可开工——
+  /// 已领 / 缺(等到货或等自制子件完成)/ 可领 / 待仓库发料 / 可开工——
   /// 2026-09-20 用户口径「物料没有齐不能显示齐，车间内流转的要流转了才算」。
   /// 没有事实（旧调用方）退回布尔口径。
   factory ProductionFlowStage.forSegment({
@@ -286,9 +295,9 @@ class ProductionFlowStage {
             ? '已提交领料 · 待仓库发料'
             : '等待物料支持开工',
         canStartNow
-            ? ProductionFlowTone.ready
+            ? ProductionFlowTone.readyPartial
             : canRequestDraw
-            ? ProductionFlowTone.toDraw
+            ? ProductionFlowTone.toDrawPartial
             : drawRequested
             ? ProductionFlowTone.pending
             : ProductionFlowTone.waiting,
@@ -404,9 +413,10 @@ class ProductionFlowStage {
     };
   }
 
-  /// 未开工段（READY/DISPATCHED）按逐种物料事实生成文案（ADR-095）。优先级：
-  /// 可开工 → 可领料 → 已交仓库待发 → 缺料（等到货 / 等同车间直送）→ 备料中。
+  /// 未开工段(READY/DISPATCHED)按逐种物料事实生成文案(ADR-095/096)。优先级：
+  /// 可开工 → 可领料 → 已交仓库待发 → 缺料(等到货 / 等自制子件完成)→ 备料中。
   /// 「齐」只在每种物料都实领到车间时才说；持续生产只要共同支持正产量就可开工。
+  /// 部分与全部各用一档色(2026-09-20 用户口径「部分物料可领和物料已备齐颜色要分开」)。
   static ProductionFlowStage _preparingStage({
     required ProductionMaterialFacts facts,
     required bool continuousRoute,
@@ -415,18 +425,14 @@ class ProductionFlowStage {
     required bool drawRequested,
   }) {
     if (canStartNow) {
-      return _make(
-        3,
-        facts.allIssued ? '物料已领齐 · 可开工' : '部分物料已投 · 可开工',
-        ProductionFlowTone.ready,
-      );
+      return facts.allIssued
+          ? _make(3, '物料已领齐 · 可开工', ProductionFlowTone.ready)
+          : _make(3, '部分物料已投 · 可开工', ProductionFlowTone.readyPartial);
     }
     if (canRequestDraw) {
-      return _make(
-        3,
-        facts.shortKindCount > 0 ? '部分物料可领 · 去领料' : '物料已备齐 · 去领料',
-        ProductionFlowTone.toDraw,
-      );
+      return facts.shortKindCount > 0
+          ? _make(3, '部分物料可领 · 去领料', ProductionFlowTone.toDrawPartial)
+          : _make(3, '物料已备齐 · 去领料', ProductionFlowTone.toDraw);
     }
     if (facts.awaitingWarehouseKindCount > 0 ||
         (drawRequested && facts.shortKindCount == 0)) {
@@ -434,11 +440,12 @@ class ProductionFlowStage {
     }
     if (facts.shortKindCount > 0) {
       final short = facts.shortKindCount;
+      // 自制子件做完可能直送本车间也可能入库后领料，不许诺交接方式，只说来源。
       return _make(
         3,
         continuousRoute
-            ? (facts.shortDirectKindCount > 0
-                  ? '等同车间直送 · 缺 $short 种'
+            ? (facts.shortMakeKindCount > 0
+                  ? '等自制子件完成 · 缺 $short 种'
                   : '等待到货 · 缺 $short 种')
             : '等待物料到齐 · 已备 ${facts.coveredKindCount}/${facts.kindCount} 种',
         ProductionFlowTone.waiting,

@@ -259,6 +259,47 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     /**
+     * ADR-096：无需物料的任务同样三条路线都可选。持续生产=随时可开工；分批从 READY 的零料
+     * 任务按数量拆出两个生来 READY 的零料子任务(快照空数组)，批次段可直接开工，剩余段继续分批。
+     */
+    @Test
+    void zeroMaterialTaskAcceptsEveryRouteAndSplitsIntoZeroMaterialBatches() {
+        Case c=create("rg-zero",true,"100",false);
+        UUID child=c.childSegment();
+        assertEquals("READY",status(child));
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_can_split_execution_batch(?)",Boolean.class,child),"零料 READY 任务可拆批");
+        fixture.loginAs(c.workerUser());
+        segments.confirmRoute(c.childPlan(),child,new SegmentRouteConfirmRequest(version(child),"rg-zero-cont","CONTINUOUS"));
+        assertEquals("CONTINUOUS",route(child));
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,child),"零料任务改持续后开工门为真");
+        segments.confirmRoute(c.childPlan(),child,new SegmentRouteConfirmRequest(version(child),"rg-zero-batch","BATCH"));
+        assertEquals("BATCH",route(child));
+        var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(child,version(child),null));
+        qty("100",preview.maxReadyQty()); assertTrue(preview.lines().isEmpty());
+        preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(child,version(child),new BigDecimal("30")));
+        var result=batches.submit(new ProductionExecutionBatch.SubmitRequest(child,preview.expectedVersion(),
+                preview.quantity(),preview.fingerprint(),"rg-zero-split-"+child));
+        assertNotNull(result.remainingSegmentId()); assertTrue(result.documentIds().isEmpty());
+        assertEquals("CANCELLED",status(child));
+        for(UUID segment:List.of(result.batchSegmentId(),result.remainingSegmentId())) {
+            assertEquals("READY",status(segment),"零料子任务生来就是 READY");
+            assertEquals("ZERO_MATERIAL",db.queryForObject("SELECT material_requirement_mode FROM production_execution_segments WHERE id=?",String.class,segment));
+            assertEquals("[]",db.queryForObject("SELECT split_material_snapshot::text FROM production_execution_segments WHERE id=?",String.class,segment));
+        }
+        qty("30",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,result.batchSegmentId()));
+        qty("70",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,result.remainingSegmentId()));
+        assertEquals("FULL_KIT",route(result.batchSegmentId())); assertEquals("BATCH",route(result.remainingSegmentId()));
+        fixture.loginAs(c.workerUser());
+        segments.start(c.childPlan(),result.batchSegmentId(),new SegmentTransitionRequest(version(result.batchSegmentId()),"rg-zero-start-batch"));
+        assertEquals("IN_PROGRESS",status(result.batchSegmentId()));
+        // 剩余零料段可以再改成齐套直接开工，也可以继续拆。
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_can_split_execution_batch(?)",Boolean.class,result.remainingSegmentId()));
+        segments.confirmRoute(c.childPlan(),result.remainingSegmentId(),new SegmentRouteConfirmRequest(version(result.remainingSegmentId()),"rg-zero-rest-kit","FULL_KIT"));
+        segments.start(c.childPlan(),result.remainingSegmentId(),new SegmentTransitionRequest(version(result.remainingSegmentId()),"rg-zero-start-rest"));
+        assertEquals("IN_PROGRESS",status(result.remainingSegmentId()));
+    }
+
+    /**
      * ADR-095 逐种物料事实：混合供料(同车间直送子件 + 采购辅料)的父件，仓库辅料先到一部分、
      * 子件尚未流转时，汇总必须说「缺 1 种且是直送」，子件真正直送到本任务后才算已领；
      * 车间任务列表行与详情端点给出同一份数字。
@@ -272,19 +313,19 @@ class ProductionExecutionRouteGateEndToEndTest {
         assertEquals(2,summary.get("kind_count"));
         // 辅料到了 40/100：既是「缺」也有「可领」的一片；子件还没直送：缺且是直送。
         assertEquals(2,summary.get("short_count"),"两种都还没备齐");
-        assertEquals(1,summary.get("short_direct_count"),"其中 1 种等同车间子件直送");
+        assertEquals(1,summary.get("short_make_count"),"其中 1 种由自制子件工单供给");
         assertEquals(1,summary.get("drawable_count"),"辅料已到的 40 可以提交领料");
         assertEquals(0,summary.get("issued_count"));
         var workbench=beans.getBean(com.uten.imp.features.production.execution.ProductionExecutionWorkbenchService.class);
         fixture.loginAs(c.workerUser());
         var row=workbench.workshopTasks(1,50,null,"PREPARING",null,null,null,null,"CONTINUOUS").getItems().stream()
                 .filter(task->task.segmentId().equals(c.segment())).findFirst().orElseThrow();
-        assertEquals(2,row.materialKindCount()); assertEquals(1,row.materialShortDirectKindCount());
+        assertEquals(2,row.materialKindCount()); assertEquals(1,row.materialShortMakeKindCount());
         assertEquals(2,row.materialShortKindCount()); assertEquals(1,row.materialDrawableKindCount());
         assertEquals(0,row.materialIssuedKindCount());
         var facts=workbench.workshopTaskMaterials(c.segment());
         var child=facts.stream().filter(fact->fact.demandId().equals(parentDemand(c))).findFirst().orElseThrow();
-        assertEquals("SHORT_DIRECT",child.state()); assertTrue(child.directSupply());
+        assertEquals("SHORT_MAKE",child.state()); assertTrue(child.directSupply());
         qty("0",child.directReceivedQty());
         assertTrue(child.producingSegments()!=null && child.producingSegments().contains("IN_PROGRESS"),
                 "直送来源工单必须指向同车间在产的子件工单："+child.producingSegments());
@@ -295,7 +336,7 @@ class ProductionExecutionRouteGateEndToEndTest {
                 .noneMatch(task->task.segmentId().equals(c.segment())),"路线筛选在服务端生效");
         transfer(c,"100");
         summary=db.queryForMap("SELECT * FROM fn_execution_segment_material_summary(?)",c.segment());
-        assertEquals(0,summary.get("short_direct_count"),"子件流转到本任务后才算到料");
+        assertEquals(0,summary.get("short_make_count"),"子件交到本任务(直送或经仓库)后才算到料");
         assertEquals(1,summary.get("short_count"),"辅料仍缺 60");
         assertEquals(1,summary.get("issued_count"),"直送料在持续备料里就地投入本任务");
         fixture.loginAs(c.workerUser());
@@ -1327,7 +1368,10 @@ class ProductionExecutionRouteGateEndToEndTest {
      */
     private Case create(String tag, boolean issueChild) { return create(tag, issueChild, "100"); }
 
-    private Case create(String tag, boolean issueChild, String total) {
+    private Case create(String tag, boolean issueChild, String total) { return create(tag, issueChild, total, true); }
+
+    /** [startChild]=false：只下达零料子件工单，不确认路线、不开工——给路线/拆批用例一个生来 READY 的零料任务。 */
+    private Case create(String tag, boolean issueChild, String total, boolean startChild) {
         var w = fixture.seedWorld(tag);
         fixture.loginAs(w.superAdminUserId());
         UUID parent = UUID.randomUUID(), child = UUID.randomUUID();
@@ -1387,12 +1431,14 @@ class ProductionExecutionRouteGateEndToEndTest {
             childPlan = childResult.plans().getFirst().planId();
             childSegment = childResult.plans().getFirst().segmentIds().getFirst();
             assertEquals("READY", status(childSegment), "零料直制子件任务直接可开工");
-            // The zero-material child still confirms its route before explicit start.
-            fixture.loginAs(workerUser);
-            segments.confirmRoute(childPlan, childSegment,new SegmentRouteConfirmRequest(version(childSegment),"rg-child-route-"+childSegment,"FULL_KIT"));
-            segments.start(childPlan, childSegment,
-                    new SegmentTransitionRequest(version(childSegment), "rg-child-open-start-" + childSegment));
-            fixture.loginAs(w.superAdminUserId());
+            if (startChild) {
+                // The zero-material child still confirms its route before explicit start.
+                fixture.loginAs(workerUser);
+                segments.confirmRoute(childPlan, childSegment,new SegmentRouteConfirmRequest(version(childSegment),"rg-child-route-"+childSegment,"FULL_KIT"));
+                segments.start(childPlan, childSegment,
+                        new SegmentTransitionRequest(version(childSegment), "rg-child-open-start-" + childSegment));
+                fixture.loginAs(w.superAdminUserId());
+            }
         }
 
         view = analyses.detail(view.analysisId());

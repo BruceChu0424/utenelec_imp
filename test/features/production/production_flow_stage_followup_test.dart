@@ -21,7 +21,8 @@ void main() {
       canRequestDraw: true,
     );
     expect(partial.label, '部分物料可领 · 去领料');
-    expect(partial.tone, ProductionFlowTone.toDraw);
+    // 部分可领是紫档，与「物料已备齐」的蓝档分开(ADR-096)。
+    expect(partial.tone, ProductionFlowTone.toDrawPartial);
     final available = ProductionFlowStage.forSegment(
       segmentStatus: 'READY',
       zeroMaterial: false,
@@ -52,17 +53,17 @@ void main() {
       canRequestDraw: canRequestDraw,
       drawRequested: drawRequested,
     );
-    // 2/3 已领、1 种等同车间子件直送：不是「待仓库发料」，也不是「已到」。
+    // 2/3 已领、1 种等自制子件完成(直送或经仓库)：不是「待仓库发料」，也不是「已到」。
     final directShort = stage(
       facts: const ProductionMaterialFacts(
         kindCount: 3,
         issuedKindCount: 2,
         shortKindCount: 1,
-        shortDirectKindCount: 1,
+        shortMakeKindCount: 1,
       ),
       drawRequested: true,
     );
-    expect(directShort.label, '等同车间直送 · 缺 1 种');
+    expect(directShort.label, '等自制子件完成 · 缺 1 种');
     expect(directShort.tone, ProductionFlowTone.waiting);
     // 缺的是采购/委外未到货。
     expect(
@@ -82,34 +83,37 @@ void main() {
     );
     expect(allIssued.label, '物料已领齐 · 可开工');
     expect(allIssued.tone, ProductionFlowTone.ready);
-    expect(
-      stage(
-        facts: const ProductionMaterialFacts(kindCount: 2, issuedKindCount: 1),
-        canStart: true,
-      ).label,
-      '部分物料已投 · 可开工',
+    // 部分已投可开工与全领齐可开工不同色(2026-09-20 用户口径)。
+    final partialStart = stage(
+      facts: const ProductionMaterialFacts(kindCount: 2, issuedKindCount: 1),
+      canStart: true,
     );
-    // 可领：还缺料时只说「部分物料可领」。
+    expect(partialStart.label, '部分物料已投 · 可开工');
+    expect(partialStart.tone, ProductionFlowTone.readyPartial);
     expect(
-      stage(
-        facts: const ProductionMaterialFacts(
-          kindCount: 2,
-          drawableKindCount: 1,
-          shortKindCount: 1,
-        ),
-        canRequestDraw: true,
-      ).label,
-      '部分物料可领 · 去领料',
+      productionFlowBadgeType(partialStart),
+      isNot(productionFlowBadgeType(allIssued)),
     );
+    // 可领：还缺料时只说「部分物料可领」，且与「物料已备齐」不同色。
+    final partialDraw = stage(
+      facts: const ProductionMaterialFacts(
+        kindCount: 2,
+        drawableKindCount: 1,
+        shortKindCount: 1,
+      ),
+      canRequestDraw: true,
+    );
+    expect(partialDraw.label, '部分物料可领 · 去领料');
+    expect(partialDraw.tone, ProductionFlowTone.toDrawPartial);
+    final fullDraw = stage(
+      facts: const ProductionMaterialFacts(kindCount: 2, drawableKindCount: 2),
+      canRequestDraw: true,
+    );
+    expect(fullDraw.label, '物料已备齐 · 去领料');
+    expect(fullDraw.tone, ProductionFlowTone.toDraw);
     expect(
-      stage(
-        facts: const ProductionMaterialFacts(
-          kindCount: 2,
-          drawableKindCount: 2,
-        ),
-        canRequestDraw: true,
-      ).label,
-      '物料已备齐 · 去领料',
+      productionFlowBadgeType(partialDraw),
+      isNot(productionFlowBadgeType(fullDraw)),
     );
     // 已交仓库待发。
     expect(
@@ -128,7 +132,7 @@ void main() {
           kindCount: 3,
           issuedKindCount: 2,
           shortKindCount: 1,
-          shortDirectKindCount: 1,
+          shortMakeKindCount: 1,
         ),
         route: 'FULL_KIT',
       ).label,
@@ -149,7 +153,9 @@ void main() {
     final tones = [
       ProductionFlowTone.decide,
       ProductionFlowTone.waiting,
+      ProductionFlowTone.toDrawPartial,
       ProductionFlowTone.toDraw,
+      ProductionFlowTone.readyPartial,
       ProductionFlowTone.ready,
       ProductionFlowTone.pending,
     ];

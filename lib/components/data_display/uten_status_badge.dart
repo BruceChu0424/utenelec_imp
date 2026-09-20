@@ -103,6 +103,10 @@ class UtenStatusBadge extends StatelessWidget {
           UtenColors.fuchsia.withValues(alpha: 0.18),
           UtenColors.fuchsiaOnDark,
         ),
+        UtenStatusBadgeType.violet => (
+          UtenColors.violet.withValues(alpha: 0.18),
+          UtenColors.violetOnDark,
+        ),
         UtenStatusBadgeType.accent => (
           UtenColors.teal500.withValues(alpha: 0.18),
           UtenColors.teal300,
@@ -127,6 +131,10 @@ class UtenStatusBadge extends StatelessWidget {
       UtenStatusBadgeType.fuchsia => (
         UtenColors.fuchsiaBg,
         UtenColors.fuchsiaText,
+      ),
+      UtenStatusBadgeType.violet => (
+        UtenColors.violetBg,
+        UtenColors.violetText,
       ),
       UtenStatusBadgeType.accent => (
         UtenColors.tealSurface,
@@ -156,6 +164,10 @@ enum UtenStatusBadgeType {
   /// 品红（分类强调，非语义状态：生产路线「持续生产」等类别色，
   /// 与绿/蓝拉开色相——2026-09-18 用户口径「颜色取差别大的」）
   fuchsia,
+
+  /// 紫(部分就绪：车间任务「部分物料可领」，与全备齐的蓝、等待的琥珀拉开——
+  /// 2026-09-20 用户口径「部分物料可领和物料已备齐的颜色还是一样的」)
+  violet,
 
   /// 品牌青绿（已查看/特殊状态）
   accent,

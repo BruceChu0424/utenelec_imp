@@ -215,7 +215,10 @@ UtenStatusBadgeType productionFlowBadgeType(ProductionFlowStage stage) =>
       ProductionFlowTone.done => UtenStatusBadgeType.success,
       ProductionFlowTone.active => UtenStatusBadgeType.accent,
       ProductionFlowTone.ready => UtenStatusBadgeType.success,
+      // 部分已投可开工=品牌青、部分可领=紫：与全领齐的绿、全备齐的蓝分开。
+      ProductionFlowTone.readyPartial => UtenStatusBadgeType.accent,
       ProductionFlowTone.toDraw => UtenStatusBadgeType.info,
+      ProductionFlowTone.toDrawPartial => UtenStatusBadgeType.violet,
       ProductionFlowTone.waiting => UtenStatusBadgeType.warning,
       ProductionFlowTone.decide => UtenStatusBadgeType.danger,
       ProductionFlowTone.pending => UtenStatusBadgeType.neutral,
@@ -235,10 +238,15 @@ Color productionFlowToneColor(ThemeData theme, ProductionFlowTone tone) =>
         theme.brightness == Brightness.dark
             ? UtenColors.successOnDark
             : UtenColors.success,
+      ProductionFlowTone.readyPartial => UtenColors.teal600,
       ProductionFlowTone.toDraw =>
         theme.brightness == Brightness.dark
             ? UtenColors.infoOnDark
             : UtenColors.info,
+      ProductionFlowTone.toDrawPartial =>
+        theme.brightness == Brightness.dark
+            ? UtenColors.violetOnDark
+            : UtenColors.violet,
       ProductionFlowTone.waiting => UtenColors.warning,
       ProductionFlowTone.decide =>
         theme.brightness == Brightness.dark

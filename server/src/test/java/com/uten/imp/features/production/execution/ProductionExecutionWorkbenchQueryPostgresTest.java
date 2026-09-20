@@ -69,7 +69,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE FUNCTION fn_can_change_execution_route(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_execution_segment_material_summary(uuid) RETURNS TABLE(kind_count integer, issued_count integer,
                     partial_issued_count integer, awaiting_warehouse_count integer, drawable_count integer,
-                    line_side_pending_count integer, preparing_count integer, short_count integer, short_direct_count integer,
+                    line_side_pending_count integer, preparing_count integer, short_count integer, short_make_count integer,
                     supported_output_qty numeric, prepared_output_qty numeric)
                     LANGUAGE sql AS 'SELECT 2, 1, 0, 0, 1, 0, 0, 0, 0, 0::numeric, 10::numeric';
                 CREATE FUNCTION fn_demand_direct_supply_eligible(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
@@ -130,7 +130,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
                 CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false);
-                CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb,receiving_confirmation_id uuid, counter_event_id uuid, receiving_direction smallint);
+                CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb,receiving_confirmation_id uuid, counter_event_id uuid, receiving_direction smallint,
+                    execution_segment_id uuid, created_by uuid, created_at timestamp with time zone DEFAULT now());
                 CREATE TABLE production_material_return_requests(id uuid,execution_segment_id uuid, created_at timestamp with time zone DEFAULT now(), created_by uuid, idempotency_key character varying(128), plan_id uuid, reason text, request_hash character(64), source_department_id uuid, warehouse_id uuid);
                 CREATE TABLE v_workshop_direct_supply_lots(to_demand_id uuid,received_qty numeric, available_qty numeric, color_id uuid, created_at timestamp with time zone, goods_id uuid, id uuid, line_side_warehouse_id uuid, producing_segment_id uuid, to_execution_segment_id uuid);
                 CREATE FUNCTION fn_execution_material_return_allowed(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
@@ -266,6 +267,69 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             jdbc.update("UPDATE production_execution_segments SET product_goods_id=NULL,start_route='FULL_KIT' WHERE id=?", task);
             jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=NULL WHERE segment_id=?", task);
         }
+    }
+
+    /**
+     * ADR-096 路线记忆两档：本产品有有效确认记忆时按产品预填(PRODUCT)；没有时退到
+     * 当前登录人最近一次路线确认(OPERATOR，V629 部分索引点查)；两者都没有则不预填。
+     * 记忆只是预填，任务自己的 startRoute/canConfirmRoute 不受影响。
+     */
+    @Test
+    void operatorRouteMemoryPrefillsOnlyWhenProductHasNoHistory() {
+        UUID task = new UUID(0, 1), goods = UUID.randomUUID(), userId = UUID.randomUUID();
+        UUID operatorHistory = UUID.randomUUID(), productHistory = UUID.randomUUID();
+        com.uten.imp.security.AuthUser me = mock(com.uten.imp.security.AuthUser.class);
+        when(me.getId()).thenReturn(userId);
+        when(currentUser.get()).thenReturn(Optional.of(me));
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET product_goods_id=?,start_route=NULL WHERE id=?", goods, task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=? WHERE segment_id=?", goods, task);
+        try {
+            var none = row(task);
+            assertThat(none.suggestedStartRoute()).isNull();
+            assertThat(none.suggestedStartRouteSource()).isNull();
+            // 本人在另一产品的另一工单上确认过持续生产 → 操作者记忆。
+            jdbc.update("""
+                    INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                        product_goods_id,start_route,route_confirmed_at)
+                    VALUES (?,'IN_PROGRESS',?,?,?,?,'CONTINUOUS',now())
+                    """, operatorHistory, UUID.randomUUID(), UUID.randomUUID(), OTHER_WORKSHOP, UUID.randomUUID());
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now()-interval '1 hour')",
+                    operatorHistory, userId);
+            // 别人的确认不算我的记忆(更新的事件但 created_by 不同)。
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now())",
+                    operatorHistory, UUID.randomUUID());
+            var operator = row(task);
+            assertThat(operator.startRoute()).isNull();
+            assertThat(operator.canConfirmRoute()).isTrue();
+            assertThat(operator.suggestedStartRoute()).isEqualTo("CONTINUOUS");
+            assertThat(operator.suggestedStartRouteSource()).isEqualTo("OPERATOR");
+            // 同产品出现有效确认后，产品记忆优先于操作者记忆。
+            jdbc.update("""
+                    INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                        product_goods_id,start_route,route_confirmed_at)
+                    VALUES (?,'WAITING',?,?,?,?,'BATCH',now()+interval '1 day')
+                    """, productHistory, UUID.randomUUID(), UUID.randomUUID(), OTHER_WORKSHOP, goods);
+            var product = row(task);
+            assertThat(product.suggestedStartRoute()).isEqualTo("BATCH");
+            assertThat(product.suggestedStartRouteSource()).isEqualTo("PRODUCT");
+            // 未登录身份(定时任务/系统调用)没有操作者记忆，产品记忆照常。
+            when(currentUser.get()).thenReturn(Optional.empty());
+            assertThat(row(task).suggestedStartRouteSource()).isEqualTo("PRODUCT");
+            jdbc.update("DELETE FROM production_execution_segments WHERE id=?", productHistory);
+            assertThat(row(task).suggestedStartRoute()).isNull();
+        } finally {
+            when(currentUser.get()).thenReturn(Optional.empty());
+            jdbc.update("DELETE FROM production_execution_segment_events WHERE execution_segment_id=?", operatorHistory);
+            jdbc.update("DELETE FROM production_execution_segments WHERE id IN (?,?)", operatorHistory, productHistory);
+            jdbc.update("UPDATE production_execution_segments SET product_goods_id=NULL,start_route='FULL_KIT' WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=NULL WHERE segment_id=?", task);
+        }
+    }
+
+    private ProductionExecutionWorkbenchSegment row(UUID task) {
+        return service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
     }
 
     @Test

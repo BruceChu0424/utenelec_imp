@@ -92,6 +92,19 @@ abstract final class UtenColors {
   /// 品红深档文字色（配合 fuchsiaBg 保证对比度）
   static const Color fuchsiaText = Color(0xFFA21CAF);
 
+  /// 紫(部分就绪档：车间任务「部分物料可领」——与全备齐的蓝、等待的琥珀、
+  /// 待选路线的红都拉开色相；2026-09-20 用户口径「部分可领和已备齐颜色要分开」)
+  static const Color violet = Color(0xFF7C3AED);
+
+  /// 紫深色表面高对比前景色
+  static const Color violetOnDark = Color(0xFFA78BFA);
+
+  /// 紫柔和底色(徽章浅底)
+  static const Color violetBg = Color(0xFFEDE9FE);
+
+  /// 紫深档文字色(配合 violetBg 保证对比度)
+  static const Color violetText = Color(0xFF5B21B6);
+
   /// 语义色柔和底色（徽章、提示条、浅色高亮块）
   static const Color successBg = Color(0xFFECFDF5);
   static const Color warningBg = Color(0xFFFFFBEB);

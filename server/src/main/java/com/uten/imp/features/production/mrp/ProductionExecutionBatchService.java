@@ -122,7 +122,9 @@ public class ProductionExecutionBatchService {
         if (remaining!=null) createChild(context,remaining,preview.remainingQty(),source.offset().add(quantity),
                 slices(context,source.offset().add(quantity),preview.remainingQty()),actor,"BATCH");
         splitSalesAllocations(source.id(),batch,remaining,quantity,actor);
-        if (batchMaterials.stream().allMatch(material->material.requiredQty().signum()==0)) {
+        if (source.zeroMaterial()) {
+            // 零物料子任务插入时已是 READY：无领料单、无提升，车间直接开工。
+        } else if (batchMaterials.stream().allMatch(material->material.requiredQty().signum()==0)) {
             em.createNativeQuery("UPDATE production_execution_segments SET status='READY',updated_by=:actor WHERE id=:id")
                     .setParameter("actor",actor).setParameter("id",batch).executeUpdate();
         } else {
@@ -157,7 +159,9 @@ public class ProductionExecutionBatchService {
         if(!"BATCH".equals(route))throw conflict("请先确认为分批生产路线，再核对本批数量");
         if (expectedVersion!=null && expectedVersion!=source.version()) throw conflict("车间任务已变化，请刷新后重新选择");
         if(!source.autoPromote())throw conflict("该任务已人工暂缓，请先解除暂缓后再分批领料");
-        if (!"WAITING".equals(source.status()) || source.analysisId()==null || source.closed()
+        // ADR-096：零物料任务生来就是 READY(V249 零料守卫)，拆批同样只认「未动过」的它。
+        boolean eligibleStatus="WAITING".equals(source.status()) || (source.zeroMaterial() && "READY".equals(source.status()));
+        if (!eligibleStatus || source.analysisId()==null || source.closed()
                 || source.workshopId()==null || !source.active()) throw conflict("仅有效物料分析来源的等待物料任务可以分批领料");
         Number activity=(Number)em.createNativeQuery("""
                 SELECT (SELECT count(*) FROM production_planning_package_documents WHERE execution_segment_id=:id)
@@ -168,6 +172,8 @@ public class ProductionExecutionBatchService {
                        JOIN stock_reservations reservation ON reservation.demand_id=demand.id WHERE demand.execution_segment_id=:id)
                 """).setParameter("id",id).getSingleResult();
         if (activity.longValue()!=0) throw conflict("该任务已有正式采购或委外供给绑定、物料预留或领用记录，须先核对来源，不能直接拆批");
+        // 零物料任务没有冻结物料、没有 BOM 用量可核对：按数量拆分即可，本批可齐套量=剩余全部。
+        if (source.zeroMaterial()) return new Context(source,null,List.of(),List.of());
         var snapshot=locked?planning.lockedSnapshot(source.planId(),source.warehouseId(),Map.of()):planning.preview(source.planId(),source.warehouseId());
         var product=snapshot.productLines().stream().filter(line->line.sourcePlanItemId().equals(source.planItemId()))
                 .findFirst().orElseThrow(()->conflict("原计划行BOM快照不可用"));
@@ -252,6 +258,7 @@ public class ProductionExecutionBatchService {
 
     private List<Line> previewLines(Context context,BigDecimal quantity) {
         List<Line> result=new ArrayList<>();
+        if (context.materials().isEmpty()) return List.of();
         List<MaterialSlice> selected=slices(context,context.source().offset(),quantity);
         List<PreplanAnalysisPegPort.DemandSlice> requests=new ArrayList<>();
         for(MaterialSlice slice:selected) {
@@ -332,22 +339,26 @@ public class ProductionExecutionBatchService {
         String snapshot;try{snapshot=json.writeValueAsString(slices);}catch(Exception failure){throw new IllegalStateException(failure);}
         // 路线落生即定(V599)：批次段=FULL_KIT(每一批就是一次小齐套，开工/领料不受新门影响)；
         // 剩余段=BATCH(继承分批谱系，下一批继续从「分批领料」走)。确认时间=拆批时刻，操作人=拆批事件账。
+        // 零物料子任务(ADR-096)：物料模式与零料理由原样继承，生来就是 READY(V249 零料守卫)，
+        // 快照为空数组(V629 放行)；有料子任务照旧 DEMANDED + WAITING，由提升链决定就绪。
         em.createNativeQuery("""
                 INSERT INTO production_execution_segments(id,package_id,plan_id,source_plan_item_id,segment_no,segment_code,
                     client_segment_key,product_goods_id,product_color_id,product_unit_id,product_unit_rate,planned_qty,status,
                     workshop_department_id,team_department_id,responsible_employee_id,plan_begin_date,plan_end_date,bom_fingerprint,
-                    idempotency_key,auto_promote_when_ready,material_requirement_mode,source_segment_id,split_root_segment_id,
+                    idempotency_key,auto_promote_when_ready,material_requirement_mode,zero_material_reason,zero_material_analysis_id,
+                    zero_material_exception_reason,zero_material_authorized_by,source_segment_id,split_root_segment_id,
                     split_start_qty,split_material_snapshot,created_by,updated_by,start_route,route_confirmed_at)
                 SELECT :id,package_id,plan_id,source_plan_item_id,
                     (SELECT COALESCE(max(segment_no),0)+1 FROM production_execution_segments WHERE package_id=source.package_id),:code,
-                    :key,product_goods_id,product_color_id,product_unit_id,product_unit_rate,:quantity,'WAITING',
+                    :key,product_goods_id,product_color_id,product_unit_id,product_unit_rate,:quantity,:status,
                     workshop_department_id,team_department_id,responsible_employee_id,plan_begin_date,plan_end_date,bom_fingerprint,
-                    :key,:promote,'DEMANDED',id,:root,:offset,CAST(:snapshot AS jsonb),:actor,:actor,:startRoute,now()
+                    :key,:promote,material_requirement_mode,zero_material_reason,zero_material_analysis_id,
+                    zero_material_exception_reason,zero_material_authorized_by,id,:root,:offset,CAST(:snapshot AS jsonb),:actor,:actor,:startRoute,now()
                 FROM production_execution_segments source WHERE id=:source
                 """).setParameter("id",id).setParameter("code",codes.nextCode(MasterCodePrefix.PRODUCTION_EXECUTION_SEGMENT))
                 .setParameter("key","SPLIT:"+id).setParameter("quantity",quantity).setParameter("root",context.source().rootId())
                 .setParameter("offset",offset).setParameter("snapshot",snapshot).setParameter("actor",actor)
-                .setParameter("startRoute",startRoute)
+                .setParameter("startRoute",startRoute).setParameter("status",context.source().zeroMaterial()?"READY":"WAITING")
                 .setParameter("source",context.source().id()).setParameter("promote",true).executeUpdate();
         for(MaterialSlice slice:slices) {
             if(slice.requiredQty().signum()==0)continue;
@@ -390,7 +401,8 @@ public class ProductionExecutionBatchService {
                     package.warehouse_id,plan.bill_no,s.segment_code,goods.code,goods.name,unit.name,
                     (plan.is_closed OR plan.is_canceled OR plan.is_stopped),
                     (plan.status=1 AND package.status='CONFIRMED' AND NOT package.is_deleted AND NOT plan.is_deleted),
-                    COALESCE(s.split_root_segment_id,s.id),s.split_start_qty,COALESCE(root.planned_qty,s.planned_qty),s.auto_promote_when_ready
+                    COALESCE(s.split_root_segment_id,s.id),s.split_start_qty,COALESCE(root.planned_qty,s.planned_qty),s.auto_promote_when_ready,
+                    s.material_requirement_mode='ZERO_MATERIAL'
                 FROM production_execution_segments s JOIN production_plans plan ON plan.id=s.plan_id
                 JOIN production_planning_packages package ON package.id=s.package_id JOIN goods ON goods.id=s.product_goods_id
                 LEFT JOIN units unit ON unit.id=s.product_unit_id
@@ -400,7 +412,8 @@ public class ProductionExecutionBatchService {
         if(found.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"车间任务不存在");
         Object[] r=found.getFirst();return new Source(uuid(r[0]),uuid(r[1]),uuid(r[2]),uuid(r[3]),str(r[4]),((Number)r[5]).longValue(),decimal(r[6]),str(r[7]),
                 uuid(r[8]),uuid(r[9]),uuid(r[10]),uuid(r[11]),uuid(r[12]),uuid(r[13]),str(r[14]),str(r[15]),str(r[16]),str(r[17]),str(r[18]),
-                Boolean.TRUE.equals(r[19]),Boolean.TRUE.equals(r[20]),uuid(r[21]),decimal(r[22]),decimal(r[23]),Boolean.TRUE.equals(r[24]));
+                Boolean.TRUE.equals(r[19]),Boolean.TRUE.equals(r[20]),uuid(r[21]),decimal(r[22]),decimal(r[23]),Boolean.TRUE.equals(r[24]),
+                Boolean.TRUE.equals(r[25]));
     }
     private void requireAccess(Source source) {
         membership.requireActiveOperator();
@@ -421,7 +434,7 @@ public class ProductionExecutionBatchService {
     private record Source(UUID id,UUID planId,UUID packageId,UUID planItemId,String status,long version,BigDecimal qty,String bomFingerprint,
                           UUID workshopId,UUID responsibleId,UUID makerId,UUID analysisId,UUID analysisItemId,UUID warehouseId,
                           String planNo,String code,String productCode,String productName,String unitName,boolean closed,boolean active,
-                          UUID rootId,BigDecimal offset,BigDecimal rootQty,boolean autoPromote){}
+                          UUID rootId,BigDecimal offset,BigDecimal rootQty,boolean autoPromote,boolean zeroMaterial){}
     private record Material(UUID rootDemandId,UUID currentDemandId,UUID goodsId,String goodsCode,String goodsName,UUID colorId,String colorName,
                             UUID unitId,String unitName,BigDecimal rootRequired,BigDecimal perProduct,String route,BigDecimal priorIssued,
                             CompleteKitAllocator.MaterialUsage usage){}

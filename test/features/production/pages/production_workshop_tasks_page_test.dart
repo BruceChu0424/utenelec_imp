@@ -1054,7 +1054,8 @@ void routeConfirmationTests() {
     );
   }
 
-  testWidgets('zero-material task only offers the full-kit route', (
+  // ADR-096：无需物料的任务同样三条路线都可选；分批仍只在服务端判定可拆时出现。
+  testWidgets('zero-material task offers every route the server allows', (
     tester,
   ) async {
     await mount(
@@ -1065,7 +1066,7 @@ void routeConfirmationTests() {
       find.byKey(const ValueKey('workshop-next-step-segment-a')),
     );
     expect(field.value, isNull);
-    expect(field.items.map((item) => item.value), ['FULL_KIT']);
+    expect(field.items.map((item) => item.value), ['FULL_KIT', 'CONTINUOUS']);
   });
 
   testWidgets(
@@ -1205,8 +1206,8 @@ void routeConfirmationTests() {
           cMaterialRows: _threeKindsOneDirectShortRows,
         ),
       );
-      expect(find.text('等同车间直送 · 缺 1 种'), findsOneWidget);
-      expect(find.text('已领 2/3 种 · 缺 1 种(直送 1)'), findsOneWidget);
+      expect(find.text('等自制子件完成 · 缺 1 种'), findsOneWidget);
+      expect(find.text('已领 2/3 种 · 缺 1 种(自制子件 1)'), findsOneWidget);
       final fieldFinder = find.byKey(
         const ValueKey('workshop-next-step-segment-c'),
       );
@@ -1238,7 +1239,7 @@ void routeConfirmationTests() {
         find.byKey(const Key('workshop-task-material-table')),
         findsOneWidget,
       );
-      expect(find.text('等同车间子件直送'), findsOneWidget);
+      expect(find.text('等自制子件完成'), findsOneWidget);
       expect(find.text('ZX00000351 生产中'), findsOneWidget);
       expect(find.text('已领到车间'), findsWidgets);
       expect(tester.takeException(), isNull);
@@ -1270,26 +1271,40 @@ void routeConfirmationTests() {
     expect(query['page'], 1);
   });
 
+  // ADR-096(2026-09-20 用户口径「能够批量选择路线」「最前面可以锁住，物料不齐就是
+  // 锁住」)：未选路线/物料不齐的行也能勾选，勾选框角上压一把锁说明不能开工；
+  // 「批量设路线」菜单点一条路线即对所有勾选且支持该路线的行提交；批量开工计数
+  // 仍只算真正可开工的行。
   testWidgets(
-    'batch route entry is retired; unconfirmed rows are not checkbox-selectable',
+    'unconfirmed rows are selectable for batch routing and locked for start',
     (tester) async {
+      final plans = _FakePlanRepository();
       await mount(
         tester,
+        planRepository: plans,
         repository: _repository(
           withWaitingRow: true,
           startRoute: null,
           canConfirmRoute: true,
           rowCanSplitBatch: true,
+          // 产品 A 已确认齐套但未开工：服务端说仍可改路线。
+          aRouteChangeable: true,
         ),
       );
-      expect(find.byKey(const Key('workshop-batch-set-routes')), findsNothing);
-      // 勾选只服务批量领料/开工；路线未确认的行没有勾选位（锁位提示先选路线），
-      // 路线在「下一步」下拉逐行选定。
       expect(
         find.descendant(
           of: _frozenRowOf('产品 C'),
           matching: find.byType(Checkbox),
         ),
+        findsWidgets,
+      );
+      expect(
+        find.byKey(const ValueKey('workshop-leading-lock-segment-c')),
+        findsWidgets,
+      );
+      // 可开工的行不上锁。
+      expect(
+        find.byKey(const ValueKey('workshop-leading-lock-segment-a')),
         findsNothing,
       );
       await tester.tap(
@@ -1298,9 +1313,64 @@ void routeConfirmationTests() {
         ),
       );
       await tester.pumpAndSettle();
+      // 全选两行：一行可开工、一行只能设路线。
       expect(find.text('批量开工(1)'), findsOneWidget);
+      expect(find.text('批量设路线(2)'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('workshop-batch-route')));
+      await tester.pumpAndSettle();
+      // 产品 A 已是齐套：改齐套只剩 1 行可改；持续 2 行；分批只有产品 C 可拆。
+      expect(_menuEntry('齐套生产(1)'), findsOneWidget);
+      expect(_menuEntry('持续生产(2)'), findsOneWidget);
+      expect(_menuEntry('分批生产(1)'), findsOneWidget);
+      await tester.tap(_menuEntry('持续生产(2)'));
+      await tester.pumpAndSettle();
+      expect(plans.confirmedRoutes, [
+        ('segment-a', 'CONTINUOUS'),
+        ('segment-c', 'CONTINUOUS'),
+      ]);
     },
   );
+
+  // 路线记忆的操作者档(ADR-096「记住上次的选择」)：本产品没有历史时预填你上次
+  // 选的路线并说明来源；「按预填默认值确认」把勾选行各自的默认一次确认。
+  testWidgets('operator route memory prefills and confirms in batch', (
+    tester,
+  ) async {
+    final plans = _FakePlanRepository();
+    await mount(
+      tester,
+      planRepository: plans,
+      repository: _repository(
+        withWaitingRow: true,
+        startRoute: null,
+        canConfirmRoute: true,
+        cLegacySuggestedStartRoute: 'CONTINUOUS',
+        cSuggestedStartRouteSource: 'OPERATOR',
+      ),
+    );
+    expect(
+      tester
+          .widget<UtenDropdownField>(
+            find.byKey(const ValueKey('workshop-next-step-segment-c')),
+          )
+          .value,
+      'CONTINUOUS',
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('已按你上次选择的路线预填'),
+      ),
+      findsWidgets,
+    );
+    await _selectRow(tester, '产品 C');
+    await tester.tap(find.byKey(const Key('workshop-batch-route')));
+    await tester.pumpAndSettle();
+    await tester.tap(_menuEntry('按预填默认值确认(1)'));
+    await tester.pumpAndSettle();
+    expect(plans.confirmedRoutes, [('segment-c', 'CONTINUOUS')]);
+  });
 }
 
 void materialUsageEntryTests() {
@@ -1558,6 +1628,7 @@ ProductionExecutionWorkbenchRepository _repository({
   bool aZeroMaterial = false,
   bool aRouteChangeable = false,
   String? cLegacySuggestedStartRoute,
+  String? cSuggestedStartRouteSource,
   bool cCanRecheck = true,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -1631,6 +1702,7 @@ ProductionExecutionWorkbenchRepository _repository({
                   routeChangeable: routeChangeable,
                   continuousSupply: rowContinuousSupply,
                   legacySuggestedStartRoute: cLegacySuggestedStartRoute,
+                  suggestedStartRouteSource: cSuggestedStartRouteSource,
                   canRecheck: cCanRecheck,
                   canStart: cCanStart,
                   canRequestDraw: cCanRequestDraw,
@@ -1674,6 +1746,7 @@ Map<String, dynamic> _task(
   bool zeroMaterial = false,
   bool canRecheck = true,
   String? legacySuggestedStartRoute,
+  String? suggestedStartRouteSource,
   String? startRoute = 'FULL_KIT',
   bool canConfirmRoute = false,
   bool routeChangeable = false,
@@ -1722,6 +1795,9 @@ Map<String, dynamic> _task(
   'startRoute': startRoute,
   // 路线记忆（V602 恢复）：同产品最近一次确认的路线，未确认行预填+黄标核对。
   'suggestedStartRoute': ?legacySuggestedStartRoute,
+  'suggestedStartRouteSource': ?(legacySuggestedStartRoute == null
+      ? null
+      : suggestedStartRouteSource ?? 'PRODUCT'),
   'canConfirmRoute': canConfirmRoute,
   'routeChangeable': routeChangeable,
   'continuousSupply': continuousSupply,
@@ -1729,12 +1805,12 @@ Map<String, dynamic> _task(
   ...materials,
 };
 
-/// 逐种物料事实夹具：3 种物料，2 种已领、1 种等同车间子件直送。
+/// 逐种物料事实夹具：3 种物料，2 种已领、1 种等自制子件完成(直送或经仓库)。
 const Map<String, dynamic> _threeKindsOneDirectShort = {
   'materialKindCount': 3,
   'materialIssuedKindCount': 2,
   'materialShortKindCount': 1,
-  'materialShortDirectKindCount': 1,
+  'materialShortMakeKindCount': 1,
   'materialSupportedOutputQty': 0,
   'materialPreparedOutputQty': 0,
 };
@@ -1783,7 +1859,7 @@ const List<Map<String, dynamic>> _threeKindsOneDirectShortRows = [
     'directReceivedQty': 0,
     'directAvailableQty': 0,
     'warehouseAvailableQty': 0,
-    'state': 'SHORT_DIRECT',
+    'state': 'SHORT_MAKE',
     'producingSegments': 'ZX00000351|IN_PROGRESS',
   },
 ];

@@ -135,11 +135,11 @@ class _WorkshopTaskMaterialTableState
                     ),
                     DataCell(
                       Tooltip(
-                        message: row.directSupply
-                            ? '同车间子件工单已直送到本车间的数量；其中尚未分配给本任务 ${_qty(row.directAvailableQty, row.unitName)}'
-                            : '本物料不走同车间直送',
+                        message: row.supplyRoute == 'MAKE'
+                            ? '自制子件工单已直送到本车间的数量(子件也可能入库后经领料到达，那部分计入「已领到车间」)；其中尚未分配给本任务 ${_qty(row.directAvailableQty, row.unitName)}'
+                            : '采购/委外物料一律经仓库领料，不走车间直送',
                         child: Text(
-                          row.directSupply
+                          row.supplyRoute == 'MAKE'
                               ? _qty(row.directReceivedQty, row.unitName)
                               : '—',
                         ),
@@ -189,7 +189,7 @@ class _WorkshopTaskMaterialTableState
     'ISSUED' => UtenStatusBadgeType.success,
     'DRAWABLE' => UtenStatusBadgeType.info,
     'AWAITING_WAREHOUSE' || 'PREPARING' => UtenStatusBadgeType.neutral,
-    'SHORT' || 'SHORT_DIRECT' => UtenStatusBadgeType.warning,
+    'SHORT' || 'SHORT_MAKE' => UtenStatusBadgeType.warning,
     _ => UtenStatusBadgeType.accent,
   };
 

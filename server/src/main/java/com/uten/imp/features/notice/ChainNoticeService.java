@@ -3267,7 +3267,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         List<Map<String, Object>> missingRows = jdbc.queryForList("""
                 SELECT material.demand_id, goods.code AS goods_code, goods.name AS goods_name,
                        COALESCE(color.name, '') AS color_name,
-                       material.stock_shortage_qty, units.name AS unit_name, material.direct_supply
+                       material.stock_shortage_qty, units.name AS unit_name,
+                       material.supply_route = 'MAKE' AS in_house_child
                 FROM v_production_execution_segment_materials material
                 JOIN goods ON goods.id = material.goods_id
                 LEFT JOIN colors color ON color.id = material.color_id
@@ -3319,7 +3320,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             ? "" : "(" + str(missing.get("color_name")) + ")")
                     .append(arrived.signum() > 0 ? " 仓库已到 " + qty(arrived) + unit + "，" : " ")
                     .append(remaining.signum() > 0 ? "还缺 " + qty(remaining) + unit : "已到齐待预留")
-                    .append(Boolean.TRUE.equals(missing.get("direct_supply")) ? "(同车间子件直送)" : "");
+                    // 自制子件做完可能直送本车间也可能入库后领料，只说来源不许诺交接方式(ADR-096)。
+                    .append(Boolean.TRUE.equals(missing.get("in_house_child")) ? "(自制子件在产)" : "");
             shown++;
         }
         String segmentCode = str(task.get("segment_code"));

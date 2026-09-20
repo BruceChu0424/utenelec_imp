@@ -187,10 +187,12 @@ class WarehouseQualityResultApiContractTest {
 
     private static String readSource(String fileName) {
         try {
+            // V607+ 重写后源码为 CRLF 行尾：统一行尾，多行锚点（confirmOne 调用形状）不受行尾差异影响。
             return Files.readString(Path.of(
                     "src/main/java/com/uten/imp/features/warehouse/inbound/"
                             + fileName),
-                    StandardCharsets.UTF_8);
+                    StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n");
         } catch (Exception error) {
             throw new IllegalStateException(error);
         }

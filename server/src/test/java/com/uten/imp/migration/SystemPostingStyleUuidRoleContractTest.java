@@ -47,13 +47,18 @@ class SystemPostingStyleUuidRoleContractTest {
         String java = compact(read(
                 "src/main/java/com/uten/imp/features/finance/gl/GlPostingService.java"));
 
+        // V607+ 重构后的 GL 角色键清单：银行手续费角色已移出 GL——收/付款审核时
+        // 解析并持久化 gl_bank_fee_style_id，GL 只消费单据上的 UUID 真源。
         for (String role : new String[]{
                 "ar_control", "sales_revenue", "inventory_asset", "ap_control",
-                "sales_cost", "bank_fee_expense", "fx_gain_loss"}) {
+                "sales_cost", "customer_advance", "fx_gain_loss",
+                "supplier_claim_receivable", "subcontract_loss_recovery"}) {
             assertThat(java).contains("system_posting_style_id('" + role + "')");
         }
         assertThat(java)
                 .contains("assertrequiredsystempostingroles(period)")
+                .contains("system_posting_style_id(required.role_key)")
+                .contains("receipt.gl_bank_fee_style_id")
                 .contains("coalesce(receipt.bank_fee,0)<>0")
                 .contains("having coalesce(sum(line.exchange_diff),0)<>0")
                 .contains("from sales_shipments shipment")
@@ -65,6 +70,13 @@ class SystemPostingStyleUuidRoleContractTest {
                 .doesNotContain("where path='/041/'")
                 .doesNotContain("name='手续费'")
                 .doesNotContain("name='汇兑损益'");
+        // BANK_FEE_EXPENSE 的角色解析去向：收/付款服务审核时绑定持久化 UUID。
+        String receiptSvc = compact(read(
+                "src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java"));
+        String paymentSvc = compact(read(
+                "src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java"));
+        assertThat(receiptSvc).contains("requiredpostingstyle(\"bank_fee_expense\")");
+        assertThat(paymentSvc).contains("paymentpostingstyle(\"bank_fee_expense\")");
     }
 
     private static String read(String relative) throws IOException {

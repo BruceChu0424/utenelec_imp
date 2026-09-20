@@ -116,10 +116,12 @@ class MeasurementCaptureLearningMigrationContractTest {
                 "legacy_migration/profile_measurement_evidence.py"));
         String shell = compact(read("legacy_migration/migrate.sh"));
 
+        // 导出清单 formatVersion 3 → 4（与 migrate.sh verify_full_bootstrap_export 的
+        // formatVersion=4 校验同步），缺清单的失败标签随之改版。
         assertThat(python)
                 .contains("aggregate_only_no_business_identifiers")
                 .contains("--require-authoritative")
-                .contains("format3_manifest_or_checksum_missing")
+                .contains("format4_manifest_or_checksum_missing")
                 .contains("manifest_file_digest_drift")
                 .contains("status !=")
                 .contains("legacy_dual_pattern_3_docs_2_days");

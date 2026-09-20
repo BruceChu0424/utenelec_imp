@@ -71,13 +71,22 @@ class SettlementMethodUuidAuthorityContractTest {
     @Test
     void legacyAndFlutterChainsCarryUuidTruthIncludingExpensePaidStyle() throws IOException {
         String legacy = read("server/legacy_migration/migrate_finance.sql");
+        // V626 起费用/付款头不再由迁移脚本直插列清单后 UPDATE 绑 UUID：
+        // 原始行 JSON 走 fn_import_legacy_finance_source，UUID 真值在投影函数里绑定。
+        String provenance = read("server/src/main/resources/db/migration/"
+                + "V626__legacy_finance_source_provenance.sql");
         String model = read("lib/features/finance/models/finance_doc.dart");
         String edit = read("lib/features/finance/pages/finance_doc_edit_page.dart");
 
         assertTrue(legacy.contains("CREATE TEMP TABLE recstyle_stage"));
         assertTrue(legacy.contains("legacy_name_confirmed = TRUE"));
-        assertTrue(legacy.contains("payment_method_legacy_id, status, remark"));
-        assertTrue(legacy.contains("UPDATE finance_expenses expense"));
+        assertTrue(legacy.contains("'EXPENSE', to_jsonb(legacy_row.*))"));
+        assertTrue(legacy.contains("FROM m_dpaid_stage"));
+        assertTrue(provenance.contains(
+                "'payment_method_legacy_id',NULLIF((s->>'paid_style')::integer,0)"));
+        assertTrue(provenance.contains(
+                "'payment_method_id',(SELECT id FROM public.finance_payment_methods "
+                        + "WHERE legacy_id=NULLIF((s->>'paid_style')::integer,0))"));
         assertTrue(model.contains("final String? paymentMethodId"));
         assertTrue(edit.contains("'receiptMethodId': _financePaymentMethodId"));
         assertTrue(edit.contains("'paymentMethodId': _financePaymentMethodId"));

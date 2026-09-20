@@ -94,6 +94,10 @@ class PaymentStyleReferenceGuardMigrationContractTest {
             "set_config\\s*\\(\\s*'uten\\.payment_style_reference_import'\\s*,\\s*"
                     + "'legacy-finance-v1'\\s*,\\s*true\\s*\\)",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern LEGACY_REFERENCE_IMPORT_MODE = Pattern.compile(
+            "set_config\\s*\\(\\s*'uten\\.legacy_reference_import'\\s*,\\s*"
+                    + "'legacy-finance-v273'\\s*,\\s*true\\s*\\)",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     @Test
     void migrationsGuardEveryRealUuidReferenceAndTheLegacyAccountReference() throws Exception {
@@ -187,16 +191,28 @@ class PaymentStyleReferenceGuardMigrationContractTest {
         Matcher importMode = TRANSACTION_LOCAL_IMPORT_MODE.matcher(sql);
         assertTrue(importMode.find(),
                 "legacy-finance-v1 must be set with set_config(..., true) transaction scope");
+        Matcher referenceImportMode = LEGACY_REFERENCE_IMPORT_MODE.matcher(sql);
+        assertTrue(referenceImportMode.find(),
+                "legacy-finance-v273 must be set with set_config(..., true) transaction scope");
 
-        int begin = sql.indexOf("BEGIN;");
+        // V624/V626/V627 重写后 migrate_finance.sql 不再自带 BEGIN/COMMIT：钱流只作为
+        // --bootstrap-all 单事务的模块执行（migrate.sh 装配 BEGIN ... 模块 ... 对账 ...
+        // COMMIT，单模块 --finance 入口被拒绝）。两个事务级导入标记必须先于首个破坏性
+        // DELETE 武装，且模块内不得自行 COMMIT。
+        int firstCleanupWrite = sql.indexOf("DELETE FROM finance_reconciliations;");
+        assertTrue(firstCleanupWrite > importMode.end()
+                        && firstCleanupWrite > referenceImportMode.end(),
+                "transaction-local import modes must be armed before the first destructive write");
+        assertTrue(!sql.contains("COMMIT;"),
+                "the finance module must not commit on its own; the bootstrap wrapper owns the COMMIT");
+
         int reconciliation = sql.indexOf(
                 "-- The import mode only relaxes runtime active/leaf rules.");
-        int commit = sql.indexOf("COMMIT;", reconciliation);
-        assertTrue(begin >= 0 && begin < importMode.start());
-        assertTrue(importMode.end() < reconciliation && reconciliation < commit,
-                "existence/category reconciliation must run after import mode and before COMMIT");
+        assertTrue(importMode.end() < reconciliation
+                        && referenceImportMode.end() < reconciliation,
+                "existence/category reconciliation must run after the import modes are armed");
 
-        String beforeCommit = normalizeWhitespace(sql.substring(reconciliation, commit));
+        String beforeCommit = normalizeWhitespace(sql.substring(reconciliation));
         assertLegacyReconciliation(
                 beforeCommit, "accounts", "a", "legacy_id", "style_legacy_id", "ACCOUNT");
         assertLegacyReconciliation(
@@ -208,13 +224,29 @@ class PaymentStyleReferenceGuardMigrationContractTest {
         assertTrue(beforeCommit.contains(
                 "RAISE EXCEPTION 'finance migration payment-style mapping violations: %'"));
 
-        String afterReconciliation = sql.substring(reconciliation, commit);
+        String afterReconciliation = sql.substring(reconciliation);
         assertTrue(Pattern.compile(
                         "set_config\\s*\\(\\s*'uten\\.payment_style_reference_import'\\s*,"
                                 + "\\s*'off'\\s*,\\s*true\\s*\\)",
                         Pattern.CASE_INSENSITIVE | Pattern.DOTALL)
                 .matcher(afterReconciliation)
                 .find(), "the transaction-local import marker must be cleared before COMMIT");
+
+        // 提交前对账由包装事务兜底：--bootstrap-all 先 BEGIN 并绑定 run_id；全部模块与
+        // 结构化对账通过、运行状态落 SUCCESS 之后，才发出装配序里唯一的 COMMIT。
+        String migrateSh = Files.readString(serverPath("legacy_migration/migrate.sh"));
+        assertTrue(migrateSh.contains("[ \"$TARGET\" = \"--finance\" ]")
+                        && migrateSh.contains("不支持这些模块单独重导"),
+                "finance source proof must only be created inside the full --bootstrap-all transaction");
+        int runIdBinding = migrateSh.indexOf("SET LOCAL uten.bootstrap_run_id = '$RUN_ID';");
+        int wrapperBegin = runIdBinding >= 0
+                ? migrateSh.lastIndexOf("'BEGIN;'", runIdBinding) : -1;
+        int successMark = migrateSh.indexOf("status='SUCCESS', reconciliation_status='PASSED'");
+        int wrapperCommit = migrateSh.lastIndexOf("COMMIT;");
+        assertTrue(wrapperBegin >= 0 && runIdBinding - wrapperBegin < 200,
+                "the wrapper must open BEGIN before binding the bootstrap run id");
+        assertTrue(successMark >= 0 && successMark < wrapperCommit,
+                "the wrapper may only COMMIT after the structural reconciliation marks the run SUCCESS");
     }
 
     private static Set<String> findPaymentStyleUuidReferences() throws IOException {

@@ -114,9 +114,28 @@ class PurchaseReportUuidReferenceContractTest {
                 .contains("warehouse_id, department_id, applicant_id")
                 .contains("select department_id from legacy_departments where legacy_id = s.step_id")
                 .contains("sender_id, receiver_id, purchaser_id, maker_id")
-                .contains("select id from employees where legacy_id = nullif(s.salesman_legacy, 0)")
                 .contains("department_legacy_id")
                 .contains("purchaser_legacy_id");
+        // V626/V627 重写后口径：收货单 purchaser_id 不再由 loader 内联子查询解析，改在
+        // V627 权威来源投影 fn_legacy_receipt_source_projection 内按 salesman_legacy →
+        // employees.legacy_id 解析；loader 先 set_config('uten.legacy_reference_import',
+        // 'legacy-purchase-v273') 再按 FK 逆序 DELETE，并以 legacy_import_run_id 引用
+        // legacy_procurement_receipt_import_sources 落来源证明。
+        assertThat(legacy)
+                .contains("set_config('uten.legacy_reference_import', 'legacy-purchase-v273', true)")
+                .contains("delete from purchase_return_items;")
+                .contains("legacy_import_run_id")
+                .contains("legacy_procurement_receipt_import_sources");
+        assertThat(compact(read(
+                "src/main/resources/db/migration/"
+                        + "V627__legacy_receipt_consideration_provenance.sql")))
+                .contains("'purchaser_id',(select id from public.employees "
+                        + "where legacy_id=nullif((s->>'salesman_legacy')::integer,0))");
+        // 破坏性重导只允许发生在 --bootstrap-all 单事务内；migrate.sh 拒绝 --purchase
+        // 单模块重导。
+        assertThat(compact(read("legacy_migration/migrate.sh")))
+                .contains("[ \"$target\" = \"--purchase\" ]")
+                .contains("不支持这些模块单独重导");
     }
 
     private static String read(String serverRelativePath) throws IOException {

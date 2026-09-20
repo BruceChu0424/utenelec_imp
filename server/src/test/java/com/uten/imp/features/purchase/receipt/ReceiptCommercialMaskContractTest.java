@@ -11,8 +11,10 @@ class ReceiptCommercialMaskContractTest {
 
     @Test
     void purchaseReceiptMasksCommercialHeaderAndAmountSortSideChannel() throws Exception {
+        // V607+ 重写后源码为 CRLF 行尾：统一行尾，多行锚点不受行尾差异影响。
         String source = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptService.java"));
+                "src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptService.java"))
+                .replace("\r\n", "\n");
 
         assertThat(source)
                 .contains("boolean priceMasked = !priceMasker.canViewPurchaseReceipt()")

@@ -148,8 +148,20 @@ class SubcontractGoodsHistorySnapshotContractTest {
                     .contains("insert into " + table + " (")
                     .contains("goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at");
         }
+        // V624/V627 重写后口径：七张 *_items 的明细自身快照 + cost/material_issue/
+        // material_return 三处 parent_* 快照共 9 个 'LEGACY_IMPORT' 字面量（原 10 的
+        // 第 10 处是收货明细）；收货明细改由 V627 权威来源投影
+        // fn_legacy_receipt_source_projection 固化 goods_snapshot_source='LEGACY_IMPORT'，
+        // loader 只注册来源证明并引用 projected.*。
         assertThat(occurrences(legacy, "'legacy_import'"))
-                .isGreaterThanOrEqualTo(10);
+                .isGreaterThanOrEqualTo(9);
+        assertThat(legacy)
+                .contains("fn_register_legacy_receipt_import_source(")
+                .contains("fn_legacy_receipt_source_projection('subcontract_item'")
+                .contains("projected.goods_snapshot_source");
+        assertThat(compact(read(MAIN.resolve(
+                "resources/db/migration/V627__legacy_receipt_consideration_provenance.sql"))))
+                .contains("'goods_snapshot_source','legacy_import'");
 
         Pattern directInsert = Pattern.compile(
                 "insert\\s+into\\s+subcontract_(?:inquiry|application|order|receipt|material_issue|return|material_return|waste|order_cost)_items\\s*\\((.*?)\\)\\s*values",

@@ -170,8 +170,19 @@ class PurchaseGoodsHistorySnapshotContractTest {
                     .contains("goods_code_snapshot, goods_name_snapshot,"
                             + " goods_snapshot_source, goods_snapshot_locked_at");
         }
+        // V626/V627 重写后口径：申请/订货/退货三张 *_items 仍由 loader 写死 'LEGACY_IMPORT'；
+        // 收货明细（第 4 张）的商业字段与 goods_snapshot_source 改由 V627 权威来源投影
+        // fn_legacy_receipt_source_projection 给出（其中固化 'LEGACY_IMPORT'），loader 只
+        // 注册来源证明并引用 projected.*，故脚本内字面量 4 → 3。
         assertThat(occurrences(legacy, "'legacy_import'"))
-                .isEqualTo(ITEM_TABLES.size());
+                .isEqualTo(ITEM_TABLES.size() - 1);
+        assertThat(legacy)
+                .contains("fn_register_legacy_receipt_import_source(")
+                .contains("fn_legacy_receipt_source_projection('purchase_item'")
+                .contains("projected.goods_snapshot_source");
+        assertThat(compact(read(MAIN.resolve(
+                "resources/db/migration/V627__legacy_receipt_consideration_provenance.sql"))))
+                .contains("'goods_snapshot_source','legacy_import'");
 
         Pattern insert = Pattern.compile(
                 "insert\\s+into\\s+purchase_(?:request|order|receipt|return)_items\\s*\\((.*?)\\)\\s*values",

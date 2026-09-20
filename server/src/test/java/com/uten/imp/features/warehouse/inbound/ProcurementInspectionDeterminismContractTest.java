@@ -147,6 +147,8 @@ class ProcurementInspectionDeterminismContractTest {
     }
 
     private static String source(String relative) throws Exception {
-        return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8);
+        // V607+ 重写后源码为 CRLF 行尾：统一行尾，多行锚点（ORDER BY id / FOR UPDATE）不受行尾差异影响。
+        return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
     }
 }

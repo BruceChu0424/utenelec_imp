@@ -97,12 +97,12 @@ class DocumentDraftCountSqlContractTest {
     }
 
     @Test
-    void historicalFinanceRecordsNeverBecomeActionableDraftBadges() {
-        var financeTables = Set.of("finance_receipts", "finance_payments", "finance_expenses",
-                "finance_other_incomes", "finance_bank_transfers");
+    void historicalImportedRecordsNeverBecomeActionableDraftBadges() {
+        var legacyIsolatedTables = Set.of("finance_receipts", "finance_payments", "finance_expenses",
+                "finance_other_incomes", "finance_bank_transfers", "purchase_receipts");
         var sources = DocumentDraftCountQueryService.SOURCES.stream()
-                .filter(source -> financeTables.contains(source.table())).toList();
-        assertThat(sources).hasSize(financeTables.size());
+                .filter(source -> legacyIsolatedTables.contains(source.table())).toList();
+        assertThat(sources).hasSize(legacyIsolatedTables.size());
         for (DraftSource source : sources) {
             assertThat(DocumentDraftCountQueryService.countSql(source, "owner_scope"))
                     .contains("o.legacy_id IS NULL", "o.status = 0", "o.is_deleted = false")
@@ -166,7 +166,7 @@ class DocumentDraftCountSqlContractTest {
 
     /**
      * 附加谓词是白名单：只有销售订货单（去重）、采购/委外订货单（排除在审单）
-     * 与仓库调拨/盘点（同表切片）、历史资金只读隔离才允许带，其余类型必须是裸口径，
+     * 与仓库调拨/盘点（同表切片）、历史资金/采购收货只读隔离才允许带，其余类型必须是裸口径，
      * 免得有人把业务过滤悄悄塞进草稿计数。
      */
     @Test
@@ -178,6 +178,7 @@ class DocumentDraftCountSqlContractTest {
                     || source == DocumentDraftCountQueryService.STOCK_DOCUMENT
                     || source == DocumentDraftCountQueryService.STOCK_TRANSFER
                     || source == DocumentDraftCountQueryService.STOCK_CHECK
+                    || source == DocumentDraftCountQueryService.PURCHASE_RECEIPT
                     || Set.of("finance_receipts", "finance_payments", "finance_expenses",
                             "finance_other_incomes", "finance_bank_transfers").contains(source.table())) {
                 continue;

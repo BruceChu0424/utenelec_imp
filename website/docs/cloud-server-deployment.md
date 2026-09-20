@@ -104,9 +104,13 @@ current schema. `next build` currently reads published catalogue aliases while
 building redirects, so CI must not receive the production database secret.
 
 ```bash
-npm ci
-npm run build
+node scripts/quality-gate.mjs --schema-contract /a/private/build/sqlite-schema-contract.json
 ```
+
+The shared gate provisions its own temporary databases, completes source/test/audit gates,
+then builds against a separate empty migrated database. It resolves the fixed production
+uploads setting without creating or writing that directory. The schema contract is retained
+for the signed release assembler; the temporary databases are deleted afterwards.
 
 `output: 'standalone'` creates `.next/standalone`. Next 15 also copies all of
 `public/` and may copy build-time `.env` into that raw intermediate, so **never

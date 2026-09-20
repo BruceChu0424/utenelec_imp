@@ -13,10 +13,10 @@ Promise.all([
     parentId: true, published: true, catalogRole: true, publicSlug: true,
   }}),
   client.product.findMany({ orderBy: { id: 'asc' }, select: {
-    id: true, sourceIdentity: true, legacyId: true, seriesId: true, published: true,
+    id: true, sourceIdentity: true, legacyId: true, seriesId: true, published: true, i18n: true,
   }}),
   client.productVariant.findMany({ orderBy: { id: 'asc' }, select: {
-    id: true, sourceIdentity: true, legacyId: true, productId: true, published: true,
+    id: true, sourceIdentity: true, legacyId: true, productId: true, published: true, i18n: true,
   }}),
   client.legacySourceRecord.findMany({ orderBy: { id: 'asc' }, select: {
     id: true, importRunId: true, sourceSystem: true, entityType: true, sourceId: true,
@@ -24,13 +24,16 @@ Promise.all([
     rawHtmlPath: true, rawPayload: true, publishable: true, seriesId: true, productId: true,
     variantId: true,
   }}),
-  client.series.findMany({ where: { sourceIdentity: { in: identities } }, select: { sourceIdentity: true, i18n: true } }),
-]).then(([series, products, variants, sourceRecords, repaired]) => {
-  const sourceAuditDigest = crypto.createHash('sha256').update(JSON.stringify(sourceRecords)).digest('hex');
+  client.series.findMany({ where: { sourceIdentity: { in: identities } }, select: { sourceIdentity: true, i18n: true, rowVersion: true } }),
+  client.series.findMany({ where: { OR: [{ sourceIdentity: null }, { sourceIdentity: { notIn: identities } }] },
+    orderBy: { id: 'asc' }, select: { id: true, i18n: true, rowVersion: true } }),
+  client.legacyImportRun.findMany({ orderBy: { id: 'asc' } }),
+]).then(([series, products, variants, sourceRecords, repaired, unrelatedSeries, importRuns]) => {
+  const sourceAuditDigest = crypto.createHash('sha256').update(JSON.stringify({ sourceRecords, importRuns })).digest('hex');
   console.log(JSON.stringify({
-    series, products, variants,
+    series, products, variants, unrelatedSeries,
     sourceAudit: { count: sourceRecords.length, digest: sourceAuditDigest },
-    repaired: repaired.map((row) => ({ sourceIdentity: row.sourceIdentity, i18n: JSON.parse(row.i18n) }))
+    repaired: repaired.map((row) => ({ sourceIdentity: row.sourceIdentity, i18n: JSON.parse(row.i18n), rowVersion: row.rowVersion }))
       .sort((a, b) => a.sourceIdentity.localeCompare(b.sourceIdentity)),
   }));
 }).finally(() => client.$disconnect());

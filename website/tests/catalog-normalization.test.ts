@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { spawnSync } from 'node:child_process';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { migratedDatabase, seedCatalog, websiteRoot, runNode, parseLastJsonObject } from './helpers/migrated-database';
 import {
   buildCatalogNormalizationPlan,
   FAMILY_PUBLIC_SLUGS,
@@ -150,83 +150,61 @@ test('normalization reports public slug collisions instead of stealing a manual 
   assert.match(plan.issues[0], /already owned/);
 });
 
-test('apply on a copied SQLite database preserves catalog identities and ownership', { timeout: 120_000 }, async () => {
-  const websiteRoot = fileURLToPath(new URL('..', import.meta.url));
-  const sourceDatabase = path.join(websiteRoot, 'prisma', 'dev.db');
-  const temporaryRoot = await mkdtemp(path.join(websiteRoot, '.catalog-normalization-test-'));
-  const copiedDatabase = path.join(temporaryRoot, 'catalog-copy.db');
-  const temporarySchema = path.join(temporaryRoot, 'schema.prisma');
-  const generatedClientDir = path.join(temporaryRoot, 'generated-client');
-  const databaseUrl = `file:${copiedDatabase.replaceAll('\\', '/')}`;
-  const runNode = (script: string, args: string[], extraEnv: Record<string, string | undefined> = {}) => {
-    // 测试经 npm scripts 运行，PATH 上必有 node；用固定程序名 + 参数数组，
-    // 不把解释器路径或数据拼进命令。
-    const result = spawnSync('node', [script, ...args], {
-      cwd: websiteRoot,
-      encoding: 'utf8',
-      env: { ...process.env, ...extraEnv },
-    });
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    return result;
-  };
-  const parseLastJsonObject = <T,>(stdout: string): T => {
-    const rootStart = Math.max(stdout.lastIndexOf('\n{'), stdout.startsWith('{') ? 0 : -1);
-    assert.notEqual(rootStart, -1, `No JSON object found in child output:\n${stdout}`);
-    return JSON.parse(stdout.slice(rootStart === 0 ? 0 : rootStart + 1)) as T;
-  };
+test('migrated SQLite fixture preserves nonempty identities, content and ownership', { timeout: 120_000 }, async () => {
+  const fixture = await migratedDatabase();
+  const { databasePath, databaseUrl } = fixture;
   const snapshotScript = path.join(websiteRoot, 'tests', 'helpers', 'catalog-snapshot-query.js');
-  const snapshot = (generatedClientPath: string) => {
-    const result = runNode(snapshotScript, [generatedClientPath], { DATABASE_URL: databaseUrl });
+  const snapshot = () => {
+    const result = runNode(snapshotScript, [], { DATABASE_URL: databaseUrl });
     return parseLastJsonObject<{
       seriesRows: Array<{ id: string; sourceIdentity: string | null; parentId: string | null }>;
       productRows: Array<{ id: string; sourceIdentity: string | null; seriesId: string | null; published: boolean }>;
       variantRows: Array<{ id: string; sourceIdentity: string | null; productId: string }>;
+      sourceAudit: { count: number; digest: string };
+      normalized: { families: number; collections: number; inferredProducts: number; syntheticVariants: number };
     }>(result.stdout);
   };
 
   try {
-    await copyFile(sourceDatabase, copiedDatabase);
-    const sourceSchema = await readFile(path.join(websiteRoot, 'prisma', 'schema.prisma'), 'utf8');
-    const generatedSchema = sourceSchema.replace(
-      'provider = "prisma-client-js"',
-      `provider = "prisma-client-js"\n  output   = "${generatedClientDir.replaceAll('\\', '/')}"`,
-    );
-    await writeFile(temporarySchema, generatedSchema, 'utf8');
-    runNode(
-      path.join(websiteRoot, 'node_modules', 'prisma', 'build', 'index.js'),
-      ['generate', '--schema', temporarySchema],
-      { DATABASE_URL: databaseUrl },
-    );
-    const generatedClientPath = path.join(generatedClientDir, 'index.js');
-    const isolatedClientModule = pathToFileURL(generatedClientPath).href;
-    runNode(
-      path.join(websiteRoot, 'node_modules', 'prisma', 'build', 'index.js'),
-      ['db', 'push', '--schema', temporarySchema, '--skip-generate'],
-      { DATABASE_URL: databaseUrl },
-    );
-    const before = snapshot(generatedClientPath);
+    await seedCatalog(databaseUrl);
+    const before = snapshot();
+    assert.equal(before.seriesRows.length, 4);
+    assert.equal(before.productRows.length, 2);
+    assert.equal(before.variantRows.length, 2);
+    assert.equal(before.sourceAudit.count, 3);
+    const digest = (value: Buffer) => createHash('sha256').update(value).digest('hex');
+    const beforeDigest = digest(await readFile(databasePath));
+    runNode(path.join(websiteRoot, 'node_modules/tsx/dist/cli.mjs'),
+      [path.join(websiteRoot, 'prisma/normalize-product-catalog.ts'), '--database', databasePath]);
+    assert.equal(digest(await readFile(databasePath)), beforeDigest, 'dry-run cannot write fixture state');
     const firstApply = runNode(
       path.join(websiteRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-      [path.join(websiteRoot, 'prisma', 'normalize-product-catalog.ts'), '--apply', '--database', copiedDatabase],
+      [path.join(websiteRoot, 'prisma', 'normalize-product-catalog.ts'), '--apply', '--database', databasePath],
       {
         UTEN_CATALOG_NORMALIZATION_CONFIRM: 'APPLY_REVIEWED_CATALOG_NORMALIZATION',
-        UTEN_CATALOG_PRISMA_CLIENT_MODULE: isolatedClientModule,
       },
     );
-    const firstResult = parseLastJsonObject<{ summary: { collectionCount: number } }>(firstApply.stdout);
-    const after = snapshot(generatedClientPath);
+    const firstResult = parseLastJsonObject<{ summary: { collectionCount: number };
+      changes: { series: number; products: number; variants: number }; backupPath: string; auditPath: string }>(firstApply.stdout);
+    assert.ok(firstResult.changes.series > 0);
+    assert.equal(firstResult.changes.products, 1);
+    assert.equal(firstResult.changes.variants, 1);
+    assert.ok((await readFile(firstResult.backupPath)).length > 0);
+    assert.ok((await readFile(firstResult.auditPath)).length > 0);
+    const after = snapshot();
     assert.deepEqual(after.seriesRows, before.seriesRows);
     assert.deepEqual(after.productRows, before.productRows);
     assert.deepEqual(after.variantRows, before.variantRows);
+    assert.deepEqual(after.sourceAudit, before.sourceAudit);
+    assert.deepEqual(after.normalized, { families: 2, collections: 1, inferredProducts: 1, syntheticVariants: 1 });
     assert.equal(after.seriesRows.length, before.seriesRows.length);
     assert.equal(after.productRows.length, before.productRows.length);
     assert.equal(after.variantRows.length, before.variantRows.length);
     const secondApply = runNode(
       path.join(websiteRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-      [path.join(websiteRoot, 'prisma', 'normalize-product-catalog.ts'), '--apply', '--database', copiedDatabase],
+      [path.join(websiteRoot, 'prisma', 'normalize-product-catalog.ts'), '--apply', '--database', databasePath],
       {
         UTEN_CATALOG_NORMALIZATION_CONFIRM: 'APPLY_REVIEWED_CATALOG_NORMALIZATION',
-        UTEN_CATALOG_PRISMA_CLIENT_MODULE: isolatedClientModule,
       },
     );
     const secondResult = parseLastJsonObject<{
@@ -235,12 +213,8 @@ test('apply on a copied SQLite database preserves catalog identities and ownersh
     }>(secondApply.stdout);
     assert.deepEqual(secondResult.changes, { series: 0, products: 0, variants: 0 });
     assert.equal(secondResult.summary.collectionCount, firstResult.summary.collectionCount);
+    assert.deepEqual(snapshot(), after);
   } finally {
-    await rm(temporaryRoot, {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    });
+    await fixture.dispose();
   }
 });

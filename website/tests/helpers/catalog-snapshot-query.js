@@ -1,18 +1,21 @@
 // catalog-normalization 测试的快照查询脚本（静态内容）。
-// 由测试以 `node 本文件 generatedClientPath` 方式调用；生成的 Prisma Client
-// 入口路径通过 argv 传入并用 createRequire 定位加载，数据库 URL 走 DATABASE_URL。
-const { createRequire } = require('node:module');
-
-const generatedClientEntry = process.argv[2];
-const generatedRequire = createRequire(generatedClientEntry);
-const { PrismaClient } = generatedRequire('./index.js');
+// 只访问测试通过 DATABASE_URL 指定的正式迁移临时库。
+const { PrismaClient } = require('@prisma/client');
+const { createHash } = require('node:crypto');
 
 const client = new PrismaClient();
 
 Promise.all([
-  client.series.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, parentId: true } }),
-  client.product.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, seriesId: true, published: true } }),
-  client.productVariant.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, productId: true } }),
-]).then(([seriesRows, productRows, variantRows]) => {
-  console.log(JSON.stringify({ seriesRows, productRows, variantRows }));
+  client.series.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, parentId: true, i18n: true } }),
+  client.product.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, seriesId: true, published: true, i18n: true } }),
+  client.productVariant.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, productId: true, i18n: true, widthMm: true } }),
+  client.legacySourceRecord.findMany({ orderBy: { id: 'asc' } }),
+  client.series.count({ where: { catalogRole: 'FAMILY' } }),
+  client.series.count({ where: { catalogRole: 'COLLECTION' } }),
+  client.product.count({ where: { classificationStatus: 'INFERRED' } }),
+  client.productVariant.count({ where: { legacySynthetic: true, dataStatus: 'NEEDS_REVIEW', isDefault: true } }),
+]).then(([seriesRows, productRows, variantRows, sourceRows, families, collections, inferredProducts, syntheticVariants]) => {
+  console.log(JSON.stringify({ seriesRows, productRows, variantRows,
+    sourceAudit: { count: sourceRows.length, digest: createHash('sha256').update(JSON.stringify(sourceRows)).digest('hex') },
+    normalized: { families, collections, inferredProducts, syntheticVariants } }));
 }).finally(() => client.$disconnect());

@@ -106,6 +106,26 @@ jobs:
       - name: Build production web bundle
         run: flutter build web --release --no-pub --no-web-resources-cdn --dart-define=API_BASE_URL=/api
 
+  website:
+    name: Website / Node 22
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Locked install, lint, typecheck, behavior, migrations, audit and isolated build
+        working-directory: website
+        run: node scripts/quality-gate.mjs
+      - name: Website deployment contracts
+        working-directory: website
+        run: python3 -m unittest discover -s deploy/tests -p 'test_*.py'
+
   deployment:
     name: Deployment contracts
     runs-on: ubuntu-latest

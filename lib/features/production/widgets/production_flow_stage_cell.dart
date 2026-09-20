@@ -206,29 +206,43 @@ class ProductionFlowSteps extends StatelessWidget {
 }
 
 /// 词表阶段 → 徽章类型的映射（需要胶囊形态时用 UtenStatusBadge）。
+///
+/// 2026-09-20 用户口径「不同状态不同颜色，颜色差别大点」：同一分类里会同时出现
+/// 的档位取互不相邻的色相——等待物料：待选路线=红 / 等待=琥珀 / 去领料=蓝 /
+/// 可开工=绿 / 待仓库发料=灰；生产中=品牌青（与同行路线徽章的绿/蓝/品红都分得开）。
 UtenStatusBadgeType productionFlowBadgeType(ProductionFlowStage stage) =>
     switch (stage.tone) {
       ProductionFlowTone.done => UtenStatusBadgeType.success,
-      ProductionFlowTone.active => UtenStatusBadgeType.info,
-      ProductionFlowTone.ready => UtenStatusBadgeType.info,
-      ProductionFlowTone.toDraw => UtenStatusBadgeType.accent,
+      ProductionFlowTone.active => UtenStatusBadgeType.accent,
+      ProductionFlowTone.ready => UtenStatusBadgeType.success,
+      ProductionFlowTone.toDraw => UtenStatusBadgeType.info,
       ProductionFlowTone.waiting => UtenStatusBadgeType.warning,
+      ProductionFlowTone.decide => UtenStatusBadgeType.danger,
       ProductionFlowTone.pending => UtenStatusBadgeType.neutral,
     };
 
 /// 阶段色调 → 颜色。一处定义，图标/文字/时间线点/产品卡共用，
 /// 避免各页各写一套 switch 又漏掉新档（2026-09-11 扩到 6 档时的教训）。
+/// 与 [productionFlowBadgeType] 同一套色相，徽章与图标不再各说各话。
 Color productionFlowToneColor(ThemeData theme, ProductionFlowTone tone) =>
     switch (tone) {
-      ProductionFlowTone.done => theme.colorScheme.primary,
+      ProductionFlowTone.done =>
+        theme.brightness == Brightness.dark
+            ? UtenColors.successOnDark
+            : UtenColors.success,
       ProductionFlowTone.active => UtenColors.teal600,
-      // 「可开工」与「生产中」相邻，必须换一个色系才分得开。
-      ProductionFlowTone.ready => UtenColors.info,
-      // 与等待物料的琥珀色分开：齐套后由车间主动提交领料。
+      ProductionFlowTone.ready =>
+        theme.brightness == Brightness.dark
+            ? UtenColors.successOnDark
+            : UtenColors.success,
       ProductionFlowTone.toDraw =>
         theme.brightness == Brightness.dark
-            ? UtenColors.teal300
-            : UtenColors.teal700,
+            ? UtenColors.infoOnDark
+            : UtenColors.info,
       ProductionFlowTone.waiting => UtenColors.warning,
+      ProductionFlowTone.decide =>
+        theme.brightness == Brightness.dark
+            ? UtenColors.errorOnDark
+            : UtenColors.error,
       ProductionFlowTone.pending => theme.colorScheme.outline,
     };

@@ -39,6 +39,9 @@ public class ProductionExecutionWorkbenchService {
     private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
+    /** 详情里「仓库已到多少」与齐套提升同口径(ADR-095)；只读端口，单任务粒度调用。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort materialAvailability;
 
     private String rootVisibility(String normal){
         return draftPreparationAccess.inPlanningPool()?"("+normal+" OR (root.root_type='ANALYSIS' AND "+draftPreparationAccess.sourcePredicate("root.root_id")+"))":normal;
@@ -145,6 +148,19 @@ public class ProductionExecutionWorkbenchService {
     public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
             int requestedPage, int requestedSize, String keyword, String rawStatus,
             UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter) {
+        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus,
+                workshopDepartmentId, dateFrom, dateTo, preparationFilter, null);
+    }
+
+    /**
+     * @param routeFilter 「下一步」表头筛选(ADR-095)：UNCONFIRMED(待选路线) / FULL_KIT /
+     *                    CONTINUOUS / BATCH；空=不筛。与其它筛选一样在分页前于服务端生效。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
+            int requestedPage, int requestedSize, String keyword, String rawStatus,
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter,
+            String routeFilter) {
         UUID employeeId = currentUser.employeeId().orElse(null);
         // 超管可查看并代办全部车间任务；普通员工仍按有效车间归属收敛。
         // 车间筛选只进一步缩小范围，不扩大普通员工的可见性。
@@ -202,6 +218,14 @@ public class ProductionExecutionWorkbenchService {
             };
         }
         predicate += preparationPredicate(preparationFilter);
+        String normalizedRoute = normalizeRouteFilter(routeFilter);
+        if (normalizedRoute != null) {
+            predicate += "UNCONFIRMED".equals(normalizedRoute)
+                    ? " AND EXISTS (SELECT 1 FROM production_execution_segments route_filter"
+                        + " WHERE route_filter.id = task.segment_id AND route_filter.start_route IS NULL)"
+                    : " AND EXISTS (SELECT 1 FROM production_execution_segments route_filter"
+                        + " WHERE route_filter.id = task.segment_id AND route_filter.start_route = :routeFilter)";
+        }
         String finalPredicate = predicate;
         UUID scopedEmployeeId = seeAll ? null : employeeId;
         // 我的车间任务「等待物料」（2026-09-15 用户口径）：可开工的排最前，
@@ -227,10 +251,118 @@ public class ProductionExecutionWorkbenchService {
                         query.setParameter("dateFrom", dateFrom);
                         query.setParameter("dateTo", dateTo);
                     }
+                    if (normalizedRoute != null && !"UNCONFIRMED".equals(normalizedRoute)) {
+                        query.setParameter("routeFilter", normalizedRoute);
+                    }
                 },
                 requestedPage,
                 requestedSize,
                 orderBy);
+    }
+
+    /**
+     * 车间任务的逐种物料事实(ADR-095)：需求量 / 已预留 / 已申请待仓库发 / 可申请 / 线边仓待
+     * 自动投入 / 已实领 / 缺口 / 同车间直送已交接与待分配，以及与汇总同口径的状态桶。
+     * 可见范围与任务列表同源(本人车间归属或超管)，不授予任何写能力。
+     */
+    @Transactional(readOnly = true)
+    public List<ProductionWorkshopTaskMaterial> workshopTaskMaterials(UUID segmentId) {
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        if (segmentId == null || (employeeId == null && !seeAll)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
+        }
+        Query visible = em.createNativeQuery("SELECT COUNT(*) FROM v_production_execution_workbench_segments task"
+                + " WHERE task.segment_id = :segmentId AND (" + (seeAll ? "TRUE" : assignmentPredicate("task")) + ")");
+        visible.setParameter("segmentId", segmentId);
+        if (!seeAll) visible.setParameter("employeeId", employeeId);
+        if (((Number) visible.getSingleResult()).longValue() == 0) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
+        }
+        Query query = em.createNativeQuery("""
+                SELECT facts.demand_id, goods.code, goods.name, color.name, unit.name,
+                       facts.supply_route, facts.direct_supply, facts.required_qty, facts.reserved_qty,
+                       facts.requested_unissued_qty, facts.requestable_qty, facts.line_side_pending_qty,
+                       facts.issued_qty, facts.shortage_qty, facts.direct_received_qty,
+                       facts.direct_available_qty, facts.state,
+                       CASE WHEN facts.supply_route = 'MAKE' THEN (
+                           SELECT string_agg(producing.segment_code || '|' || producing.status, '、'
+                                             ORDER BY producing.segment_code)
+                           FROM production_execution_segments producing
+                           JOIN production_execution_segments receiving ON receiving.id = :segmentId
+                           WHERE producing.product_goods_id = facts.goods_id
+                             AND producing.product_color_id IS NOT DISTINCT FROM facts.color_id
+                             AND producing.workshop_department_id = receiving.workshop_department_id
+                             AND producing.id <> receiving.id AND NOT producing.is_deleted
+                             AND producing.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS','COMPLETED')
+                             AND fn_workshop_direct_responsibility_allows(producing.id, facts.demand_id))
+                       END AS producing_segments
+                FROM fn_execution_segment_material_facts(:segmentId) facts
+                JOIN goods ON goods.id = facts.goods_id
+                LEFT JOIN colors color ON color.id = facts.color_id
+                LEFT JOIN units unit ON unit.id = facts.unit_id
+                ORDER BY CASE facts.state WHEN 'SHORT_DIRECT' THEN 0 WHEN 'SHORT' THEN 1 WHEN 'DRAWABLE' THEN 2
+                              WHEN 'AWAITING_WAREHOUSE' THEN 3 WHEN 'LINE_SIDE_PENDING' THEN 4
+                              WHEN 'PREPARING' THEN 5 ELSE 6 END,
+                         goods.name, goods.code, facts.demand_id
+                """);
+        query.setParameter("segmentId", segmentId);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
+        java.util.Map<UUID, BigDecimal> warehouseAvailable = warehouseAvailableByDemand(segmentId,
+                rows.stream().map(row -> uuid(row[0])).toList());
+        return rows.stream()
+                .map(row -> new ProductionWorkshopTaskMaterial(
+                        uuid(row[0]), text(row[1]), text(row[2]), text(row[3]), text(row[4]),
+                        text(row[5]), bool(row[6]), decimal(row[7]), decimal(row[8]), decimal(row[9]),
+                        decimal(row[10]), decimal(row[11]), decimal(row[12]), decimal(row[13]),
+                        decimal(row[14]), decimal(row[15]),
+                        warehouseAvailable.getOrDefault(uuid(row[0]), BigDecimal.ZERO),
+                        text(row[16]), text(row[17])))
+                .toList();
+    }
+
+    /**
+     * 「仓库已到多少」= 本任务专属来源权益 + 允许动用的公共库存(同主仓、扣安全库存)，与齐套
+     * 提升的 {@code batchAvailability} 同一口径；公共份额在同货品颜色的多条需求间不重复计入。
+     * 无可用端口(单元测试桩)或任务缺少确认计划包时返回空表，不猜数。
+     */
+    private java.util.Map<UUID, BigDecimal> warehouseAvailableByDemand(UUID segmentId, List<UUID> demandIds) {
+        if (materialAvailability == null || demandIds.isEmpty()) return java.util.Map.of();
+        List<Object[]> context = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT package.warehouse_id, plan.material_analysis_id, plan.material_analysis_item_id
+                FROM production_execution_segments segment
+                JOIN production_planning_packages package ON package.id = segment.package_id
+                  AND package.status = 'CONFIRMED' AND NOT package.is_deleted
+                JOIN production_plans plan ON plan.id = segment.plan_id
+                WHERE segment.id = :segmentId AND NOT segment.is_deleted
+                """).setParameter("segmentId", segmentId));
+        if (context.isEmpty() || context.getFirst()[0] == null) return java.util.Map.of();
+        Object[] first = context.getFirst();
+        var availability = materialAvailability.batchAvailability(uuid(first[0]), demandIds, uuid(first[1]), uuid(first[2]));
+        java.util.Map<UUID, BigDecimal> qualified = new java.util.HashMap<>();
+        java.util.Map<UUID, BigDecimal> publicQty = new java.util.HashMap<>();
+        java.util.Map<UUID, BigDecimal> safety = new java.util.HashMap<>();
+        for (var row : availability) {
+            qualified.merge(row.demandId(), row.qualifiedQty().max(BigDecimal.ZERO), BigDecimal::add);
+            publicQty.merge(row.demandId(), row.publicQty().max(BigDecimal.ZERO), BigDecimal::add);
+            safety.merge(row.demandId(), row.safetyQty(), BigDecimal::max);
+        }
+        java.util.Map<UUID, BigDecimal> result = new java.util.HashMap<>();
+        for (UUID demandId : demandIds) {
+            BigDecimal budget = com.uten.imp.common.inventory.MainWarehouseStockBudget.publicBudget(
+                    publicQty.getOrDefault(demandId, BigDecimal.ZERO), safety.getOrDefault(demandId, BigDecimal.ZERO));
+            result.put(demandId, qualified.getOrDefault(demandId, BigDecimal.ZERO).add(budget.max(BigDecimal.ZERO)));
+        }
+        return result;
+    }
+
+    private static String normalizeRouteFilter(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        if (!Set.of("UNCONFIRMED", "FULL_KIT", "CONTINUOUS", "BATCH").contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生产路线筛选无效");
+        }
+        return normalized;
     }
 
     @Transactional(readOnly = true)
@@ -328,7 +460,11 @@ public class ProductionExecutionWorkbenchService {
         long total = ((Number) count.getSingleResult()).longValue();
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
-        Query data = em.createNativeQuery(segmentSelect() + from + "\n" + orderBy
+        // 逐种物料事实(ADR-095)只在取页数据时按行 LATERAL 计算一次；计数查询不付这笔代价。
+        String dataFrom = " FROM v_production_execution_workbench_segments task"
+                + " LEFT JOIN LATERAL fn_execution_segment_material_summary(task.segment_id) material ON TRUE"
+                + " WHERE " + predicate;
+        Query data = em.createNativeQuery(segmentSelect() + dataFrom + "\n" + orderBy
                 + "\n LIMIT :limit OFFSET :offset");
         binder.accept(data);
         boolean activeOperator = workshopMembership.isActiveOperator();
@@ -619,10 +755,6 @@ public class ProductionExecutionWorkbenchService {
                        EXISTS(SELECT 1 FROM fn_production_material_usage_source_segments(task.segment_id) source
                               WHERE source.segment_id<>task.segment_id),
                        COALESCE((SELECT continuous_supply FROM production_execution_segments WHERE id=task.segment_id), FALSE),
-                       (task.segment_status IN ('READY','DISPATCHED') AND NOT task.zero_material
-                        AND NOT %s
-                        AND EXISTS (%s AND pending_warehouse.is_line_side)
-                        AND NOT EXISTS (%s AND NOT pending_warehouse.is_line_side)),
                        (SELECT route_segment.start_route FROM production_execution_segments route_segment
                            WHERE route_segment.id = task.segment_id),
                        (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
@@ -631,10 +763,6 @@ public class ProductionExecutionWorkbenchService {
                                 AND route_segment.start_route IS NOT NULL)),
                        (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
                          AND fn_can_change_execution_route(task.segment_id)),
-                       EXISTS (SELECT 1 FROM production_material_demands route_demand
-                           WHERE route_demand.execution_segment_id = task.segment_id
-                             AND route_demand.is_deleted = FALSE
-                             AND route_demand.status NOT IN ('RELEASED', 'REVERSED')),
                        EXISTS(SELECT 1 FROM production_execution_segments command_segment
                          JOIN production_plans command_plan ON command_plan.id=command_segment.plan_id
                          JOIN production_planning_packages command_package ON command_package.id=command_segment.package_id
@@ -642,9 +770,24 @@ public class ProductionExecutionWorkbenchService {
                            AND command_plan.status=1 AND NOT command_plan.is_deleted
                            AND NOT command_plan.is_closed AND NOT command_plan.is_canceled AND NOT command_plan.is_stopped
                            AND command_package.status='CONFIRMED' AND NOT command_package.is_deleted),
-                       fn_execution_material_custody_valid(task.segment_id)
-                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql(),
-                        effectiveIssuedPredicate(), pendingDrawItemSql(), pendingDrawItemSql());
+                       fn_execution_material_custody_valid(task.segment_id),
+                       (SELECT memory.start_route
+                          FROM production_execution_segments memory
+                         WHERE memory.product_goods_id = task.product_goods_id
+                           AND memory.id <> task.segment_id
+                           AND memory.is_deleted = FALSE
+                           AND memory.start_route IS NOT NULL
+                           AND memory.route_confirmed_at IS NOT NULL
+                           AND memory.status NOT IN ('CANCELLED', 'REVERSED')
+                         ORDER BY memory.route_confirmed_at DESC
+                         LIMIT 1),
+                       COALESCE(material.kind_count, 0), COALESCE(material.issued_count, 0),
+                       COALESCE(material.partial_issued_count, 0),
+                       COALESCE(material.awaiting_warehouse_count, 0), COALESCE(material.drawable_count, 0),
+                       COALESCE(material.line_side_pending_count, 0), COALESCE(material.preparing_count, 0),
+                       COALESCE(material.short_count, 0), COALESCE(material.short_direct_count, 0),
+                       COALESCE(material.supported_output_qty, 0), COALESCE(material.prepared_output_qty, 0)
+                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
     }
 
     /**
@@ -831,8 +974,8 @@ public class ProductionExecutionWorkbenchService {
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage) {
         // The same current plan/package facts gate every command capability. Compute once
         // per projected task, so historical or paused rows do not advertise rejected actions.
-        boolean executable = bool(row[48]);
-        boolean custodyValid = bool(row[49]);
+        boolean executable = bool(row[46]);
+        boolean custodyValid = bool(row[47]);
         return new ProductionExecutionWorkbenchSegment(
                 uuid(row[0]), uuid(row[1]), text(row[2]), text(row[3]),
                 text(row[4]), uuid(row[5]), text(row[6]), text(row[7]),
@@ -847,8 +990,12 @@ public class ProductionExecutionWorkbenchService {
                 usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), executable && bool(row[37]),
                 executable && bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
                 usage.hasPendingReturn(), usage.hasAvailableMaterial(),
-                bool(row[42]), bool(row[43]),
-                text(row[44]), executable && bool(row[45]), executable && bool(row[46]), bool(row[47]));
+                bool(row[42]),
+                text(row[43]), executable && bool(row[44]), executable && bool(row[45]),
+                text(row[48]),
+                integer(row[49]), integer(row[50]), integer(row[51]), integer(row[52]), integer(row[53]),
+                integer(row[54]), integer(row[55]), integer(row[56]), integer(row[57]),
+                decimal(row[58]), decimal(row[59]));
     }
 
     private static int boundedSize(int requested) {

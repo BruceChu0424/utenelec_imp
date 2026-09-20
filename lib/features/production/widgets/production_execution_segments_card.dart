@@ -1478,7 +1478,8 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                         '请先到我的车间任务确认生产路线，再领料或开工。',
                         theme.colorScheme.tertiary,
                       )
-                    else if (segment.continuousSupply &&
+                    // 持续生产口径只看已确认路线（V628 起 continuousSupply 只表示按增量备料）。
+                    else if (segment.startRoute == 'CONTINUOUS' &&
                         const [
                           'WAITING',
                           'READY',
@@ -1724,15 +1725,20 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     ? '已拆分为生产批次'
     : segment.startRoute == null &&
           const ['WAITING', 'READY', 'DISPATCHED'].contains(segment.status)
-    ? '待确认生产路线'
-    : segment.continuousSupply &&
+    ? '待选生产路线'
+    // 持续生产口径只看已确认路线（V628 起 continuousSupply 只表示按增量备料）。
+    : segment.startRoute == 'CONTINUOUS' &&
           const ['READY', 'DISPATCHED'].contains(segment.status)
     ? segment.canStart
-          ? '已支持部分产量 · 可开工'
+          ? (segment.materialIssued ? '物料已领齐 · 可开工' : '部分物料已投 · 可开工')
           : segment.canRequestDraw
-          ? '物料已到 · 去领料'
+          // 2026-09-20 用户口径：仍有必需料零覆盖（含直送子件未流转）只说
+          // 「部分物料可领」，全部覆盖才说「物料已备齐」。
+          ? (segment.materialReady ? '物料已备齐 · 去领料' : '部分物料可领 · 去领料')
           : segment.drawRequested
           ? '已提交领料 · 待仓库发料'
+          : segment.shortageKindCount > 0
+          ? '等待到货 · 缺 ${segment.shortageKindCount} 种'
           : '等待物料支持开工'
     : segment.status == 'WAITING' && !segment.autoPromoteWhenReady
     ? '人工暂缓'
@@ -1840,8 +1846,11 @@ String _postReportNextStep(ProductionExecutionSegmentView segment) {
 }
 
 String _materialProgressText(ProductionExecutionSegmentView segment) {
+  // 按增量备料的任务（持续生产，或曾按持续生产备过部分料再改齐套）按种报「已全量发料 a/n」，
+  // 不把部分覆盖说成齐套（2026-09-20 用户口径）。
   if (segment.continuousSupply && !segment.materialIssued) {
-    return '按到料分次投入 · 已全量发料 ${segment.fullyIssuedDemandCount}/${segment.materialDemandCount} 项';
+    return '按到料分次投入 · 已全量发料 ${segment.fullyIssuedDemandCount}/${segment.materialDemandCount} 项'
+        '${segment.shortageKindCount > 0 ? ' · 缺 ${segment.shortageKindCount} 种' : ''}';
   }
   if (!segment.materialReady) return '缺 ${segment.shortageKindCount} 种';
   if (segment.materialDemandCount == 0) return '零物料 · 无需发料';

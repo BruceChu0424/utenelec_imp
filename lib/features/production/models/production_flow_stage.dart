@@ -16,15 +16,58 @@ enum ProductionFlowRoute { make, buy, subcontract }
 
 /// 阶段色调。2026-09-11 由 3 档扩到 6 档——原先「等待物料 / 去领料 / 可开工 /
 /// 生产中」共用一个 active（清一色蓝），用户在车间任务里分不出哪一步该干什么。
+/// 2026-09-20 用户口径「不同状态不同颜色，差别大点」：再拆出 [decide]，并把同一
+/// 分类里会同时出现的档位拉到互不相邻的色相（红 / 琥珀 / 蓝 / 绿 / 灰）。
 ///
-/// 现在按**该谁动手、动什么手**分色，同一条链里相邻步骤必然不同色：
-/// - [pending]    还没轮到本环节（等下达、待审核）—— 中性灰
+/// 按**该谁动手、动什么手**分色，同一条链里相邻步骤必然不同色：
+/// - [pending]    还没轮到本环节（等下达、待审核、已交仓库待发料）—— 中性灰
+/// - [decide]     车间必须先做决定（待选生产路线），其它动作全部锁着 —— 红
 /// - [waiting]    在等别人/等物料到位 —— 琥珀（看得见但不催人）
-/// - [toDraw]     料齐了，可由车间提交领料 —— 青绿
-/// - [ready]      料在手上，**可开工** —— 靛蓝
+/// - [toDraw]     料备好了，可由车间提交领料 —— 蓝
+/// - [ready]      料在手上，**可开工** —— 绿
 /// - [active]     生产中 · 可报工 —— 品牌青（主色系）
-/// - [done]       已完工 —— 绿
-enum ProductionFlowTone { pending, waiting, toDraw, ready, active, done }
+/// - [done]       已完工 —— 绿（只在历史任务/分析列表出现，与可开工不同分类）
+enum ProductionFlowTone {
+  pending,
+  decide,
+  waiting,
+  toDraw,
+  ready,
+  active,
+  done,
+}
+
+/// 车间任务的逐种物料事实(ADR-095/V628)：每种正式物料需求只落一个桶。
+/// [kindCount] 为 0 表示零料任务或调用方没有事实（退回旧布尔口径）。
+class ProductionMaterialFacts {
+  const ProductionMaterialFacts({
+    required this.kindCount,
+    this.issuedKindCount = 0,
+    this.shortKindCount = 0,
+    this.shortDirectKindCount = 0,
+    this.drawableKindCount = 0,
+    this.awaitingWarehouseKindCount = 0,
+    this.lineSidePendingKindCount = 0,
+    this.supportedOutputQty = 0,
+  });
+
+  final int kindCount;
+  final int issuedKindCount;
+  final int shortKindCount;
+  final int shortDirectKindCount;
+  final int drawableKindCount;
+  final int awaitingWarehouseKindCount;
+  final int lineSidePendingKindCount;
+
+  /// 已实领物料共同支持的可产量。
+  final double supportedOutputQty;
+
+  /// 已备齐（预留足量或已领）的种数。
+  int get coveredKindCount => (kindCount - shortKindCount).clamp(0, kindCount);
+
+  /// 每种物料都已实领到车间（含直送已投入）。
+  bool get allIssued => kindCount > 0 && issuedKindCount >= kindCount;
+}
 
 class ProductionFlowStage {
   const ProductionFlowStage({
@@ -67,6 +110,8 @@ class ProductionFlowStage {
     // 去领料 = 要跑一趟仓库，用「搬运/取货」语义的图标。
     ProductionFlowTone.toDraw => Icons.move_to_inbox_rounded,
     ProductionFlowTone.waiting => Icons.hourglass_bottom_rounded,
+    // 待选路线 = 车间要先做决定，用「岔路」图标。
+    ProductionFlowTone.decide => Icons.alt_route_rounded,
     ProductionFlowTone.pending => Icons.schedule_rounded,
   };
 
@@ -159,7 +204,12 @@ class ProductionFlowStage {
   ///
   /// [startRoute]（V599 开工路线）确认后，WAITING 的等待方式按路线区分——
   /// 与物料分析「未下达段按路线显示第一步」同款：齐套等到齐、分批等部分到货、
-  /// 持续等直送料；未确认/null 保持通用「车间已收到 · 等待物料」。
+  /// 持续等部分物料；未确认/null 保持通用「车间已收到 · 等待物料」。
+  ///
+  /// 传入 [materials]（ADR-095 逐种物料事实）时，未开工段的文案只按事实生成：
+  /// 已领 / 缺（等到货或等同车间子件直送）/ 可领 / 待仓库发料 / 可开工——
+  /// 2026-09-20 用户口径「物料没有齐不能显示齐，车间内流转的要流转了才算」。
+  /// 没有事实（旧调用方）退回布尔口径。
   factory ProductionFlowStage.forSegment({
     required String segmentStatus,
     required bool zeroMaterial,
@@ -167,11 +217,11 @@ class ProductionFlowStage {
     bool drawRequested = false,
     bool splitReplaced = false,
     bool continuousSupply = false,
-    bool pendingLineSideOnly = false,
     String? startRoute,
     bool routeConfirmationRequired = false,
     bool? canStartNow,
     bool canRequestDraw = false,
+    ProductionMaterialFacts? materials,
     double? reportedQty,
     double? plannedQty,
     double? remainingReportQty,
@@ -186,26 +236,62 @@ class ProductionFlowStage {
     if (splitReplaced) {
       return _make(2, '已拆分为生产批次', ProductionFlowTone.pending);
     }
-    // V595：只剩线边仓直送料没出库的段不用去领料，开工时就地自动出库——按「可开工」呈现。
-    materialIssued = materialIssued || pendingLineSideOnly;
     final status = segmentStatus.trim().toUpperCase();
+    final route = startRoute?.trim().toUpperCase();
+    // 持续生产口径只看已确认路线；continuous_supply 自 V628 起只表示「按增量备料」
+    //（改回齐套的工单仍为真），不能再用它判断持续生产。
+    final continuousRoute = route == null
+        ? continuousSupply
+        : route == 'CONTINUOUS';
     if (routeConfirmationRequired &&
         const ['WAITING', 'READY', 'DISPATCHED'].contains(status)) {
-      return _make(2, '待确认生产路线', ProductionFlowTone.waiting);
+      return _make(2, '待选生产路线', ProductionFlowTone.decide);
     }
-    if (continuousSupply &&
+    final facts = materials;
+    if (facts != null &&
+        facts.kindCount > 0 &&
+        !zeroMaterial &&
+        const ['READY', 'DISPATCHED'].contains(status)) {
+      return _preparingStage(
+        facts: facts,
+        continuousRoute: continuousRoute,
+        canStartNow: canStartNow == true,
+        canRequestDraw: canRequestDraw,
+        drawRequested: drawRequested,
+      );
+    }
+    if (facts != null &&
+        facts.kindCount > 0 &&
+        !zeroMaterial &&
+        status == 'WAITING' &&
+        route == 'FULL_KIT' &&
+        facts.coveredKindCount > 0) {
+      return _make(
+        2,
+        '等待物料到齐 · 已备 ${facts.coveredKindCount}/${facts.kindCount} 种',
+        ProductionFlowTone.waiting,
+      );
+    }
+    if (continuousRoute &&
         const ['READY', 'DISPATCHED'].contains(status) &&
         canStartNow != null) {
+      // 旧布尔口径（无逐种事实的调用方）：持续生产 READY 只代表有增量物料可领。
       return _make(
         3,
         canStartNow
-            ? '已支持部分产量 · 可开工'
+            ? '部分物料已投 · 可开工'
             : canRequestDraw
-            ? '物料已到 · 去领料'
+            ? '部分物料可领 · 去领料'
             : drawRequested
             ? '已提交领料 · 待仓库发料'
             : '等待物料支持开工',
-        canStartNow ? ProductionFlowTone.ready : ProductionFlowTone.waiting,
+        canStartNow
+            ? ProductionFlowTone.ready
+            : canRequestDraw
+            ? ProductionFlowTone.toDraw
+            : drawRequested
+            ? ProductionFlowTone.pending
+            : ProductionFlowTone.waiting,
       );
     }
     if (status == 'IN_PROGRESS' &&
@@ -227,7 +313,7 @@ class ProductionFlowStage {
       return _make(4, label, ProductionFlowTone.waiting);
     }
     return switch (status) {
-      'WAITING' => _make(2, switch (startRoute?.trim().toUpperCase()) {
+      'WAITING' => _make(2, switch (route) {
         'FULL_KIT' => '等待物料到齐 · 齐套生产',
         'BATCH' => '等待到货 · 分批生产',
         'CONTINUOUS' => '等待部分物料 · 持续生产',
@@ -267,8 +353,8 @@ class ProductionFlowStage {
               ),
       'IN_PROGRESS' => _make(
         4,
-        // V595 持续生产：同车间直送子件到一批投一批，工单一直开着直到最后一次报工。
-        continuousSupply ? '持续生产中 · 按实际投料报工' : '生产中 · 可报工',
+        // V595 持续生产：仓库料与同车间直送料到一批投一批，工单一直开着直到最后一次报工。
+        continuousRoute ? '持续生产中 · 按实际投料报工' : '生产中 · 可报工',
         ProductionFlowTone.active,
         progress: _ratio(reportedQty, plannedQty),
       ),
@@ -316,6 +402,52 @@ class ProductionFlowStage {
       'COMPLETED' => _make(5, '已完工', ProductionFlowTone.done),
       _ => _make(1, '计划执行中', ProductionFlowTone.active),
     };
+  }
+
+  /// 未开工段（READY/DISPATCHED）按逐种物料事实生成文案（ADR-095）。优先级：
+  /// 可开工 → 可领料 → 已交仓库待发 → 缺料（等到货 / 等同车间直送）→ 备料中。
+  /// 「齐」只在每种物料都实领到车间时才说；持续生产只要共同支持正产量就可开工。
+  static ProductionFlowStage _preparingStage({
+    required ProductionMaterialFacts facts,
+    required bool continuousRoute,
+    required bool canStartNow,
+    required bool canRequestDraw,
+    required bool drawRequested,
+  }) {
+    if (canStartNow) {
+      return _make(
+        3,
+        facts.allIssued ? '物料已领齐 · 可开工' : '部分物料已投 · 可开工',
+        ProductionFlowTone.ready,
+      );
+    }
+    if (canRequestDraw) {
+      return _make(
+        3,
+        facts.shortKindCount > 0 ? '部分物料可领 · 去领料' : '物料已备齐 · 去领料',
+        ProductionFlowTone.toDraw,
+      );
+    }
+    if (facts.awaitingWarehouseKindCount > 0 ||
+        (drawRequested && facts.shortKindCount == 0)) {
+      return _make(3, '已提交领料 · 待仓库发料', ProductionFlowTone.pending);
+    }
+    if (facts.shortKindCount > 0) {
+      final short = facts.shortKindCount;
+      return _make(
+        3,
+        continuousRoute
+            ? (facts.shortDirectKindCount > 0
+                  ? '等同车间直送 · 缺 $short 种'
+                  : '等待到货 · 缺 $short 种')
+            : '等待物料到齐 · 已备 ${facts.coveredKindCount}/${facts.kindCount} 种',
+        ProductionFlowTone.waiting,
+      );
+    }
+    if (facts.lineSidePendingKindCount > 0) {
+      return _make(3, '直送料待投入 · 等待开工条件', ProductionFlowTone.waiting);
+    }
+    return _make(3, '备料中 · 等待领料指令', ProductionFlowTone.waiting);
   }
 
   /// 带百分比的展示标签（生产中 N%）。

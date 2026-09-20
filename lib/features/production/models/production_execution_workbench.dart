@@ -195,11 +195,21 @@ class ProductionExecutionWorkbenchSegment {
     this.hasMaterialActivity = false,
     this.hasUnregisteredMaterial = false,
     this.continuousSupply = false,
-    this.pendingLineSideOnly = false,
     this.startRoute,
     this.canConfirmRoute = false,
     this.routeChangeable = false,
-    this.routeContinuousEligible = false,
+    this.suggestedStartRoute,
+    this.materialKindCount = 0,
+    this.materialIssuedKindCount = 0,
+    this.materialPartialIssuedKindCount = 0,
+    this.materialAwaitingWarehouseKindCount = 0,
+    this.materialDrawableKindCount = 0,
+    this.materialLineSidePendingKindCount = 0,
+    this.materialPreparingKindCount = 0,
+    this.materialShortKindCount = 0,
+    this.materialShortDirectKindCount = 0,
+    this.materialSupportedOutputQty = 0,
+    this.materialPreparedOutputQty = 0,
     this.salesOrderNos,
     this.workshopDepartmentId,
     this.workshopName,
@@ -265,11 +275,9 @@ class ProductionExecutionWorkbenchSegment {
   /// This is independent of kit readiness and whether all material is issued.
   final bool hasUnregisteredMaterial;
 
-  /// 持续生产：仓库分次领料和车间直送可混合，同一张工单只开一次工。
+  /// 按增量备料(ADR-095 起的唯一含义)：持续生产恒为真；曾按持续生产备过部分料
+  /// 再改齐套的工单也保持为真。是否「持续生产」看 [startRoute]。
   final bool continuousSupply;
-
-  /// 只剩线边仓直送料没出库(V595)：不用去领料，开工时就地自动出库，按「可开工」呈现。
-  final bool pendingLineSideOnly;
 
   /// 已确认的开工路线(V599)：FULL_KIT/BATCH/CONTINUOUS；null=待车间确认。
   final String? startRoute;
@@ -277,11 +285,41 @@ class ProductionExecutionWorkbenchSegment {
   /// 待确认生产路线(V599)：等待物料且尚未选路，「下一步」首条=确认生产路线。
   final bool canConfirmRoute;
 
-  /// 可重新确认生产路线(V599)：等待物料且未动过(无领料单/报工/预留)。
+  /// 开工前（且尚无报工）可更改路线(ADR-095)：已备料、已领料、直送已投入全部保留。
   final bool routeChangeable;
 
-  /// 旧直送资格投影。持续生产选择不再依赖是否存在直送子件。
-  final bool routeContinuousEligible;
+  /// 路线记忆(V602 恢复)：同产品最近一次确认的开工路线。只作未确认行的预填
+  /// 展示（黄标提醒核对），选中才提交，不自动生效。
+  final String? suggestedStartRoute;
+
+  /// 逐种物料事实(ADR-095/V628)：每种正式物料需求落在且只落在一个桶里——
+  /// 已领 / 缺（等采购委外到货 或 等同车间子件直送）/ 可领 / 待仓库发 /
+  /// 线边仓待自动投入 / 备料中。零料任务 [materialKindCount] 为 0。
+  final int materialKindCount;
+  final int materialIssuedKindCount;
+
+  /// 实领了一部分、尚未领足的种数（说明用，不与其它桶互斥）。
+  final int materialPartialIssuedKindCount;
+  final int materialAwaitingWarehouseKindCount;
+  final int materialDrawableKindCount;
+  final int materialLineSidePendingKindCount;
+  final int materialPreparingKindCount;
+  final int materialShortKindCount;
+
+  /// 缺料里由同车间上下层直送供给、等子件工单完成流转的种数。
+  final int materialShortDirectKindCount;
+
+  /// 已实领物料共同支持的可产量 / 已预留物料(含未领)共同支持的可产量。
+  final double materialSupportedOutputQty;
+  final double materialPreparedOutputQty;
+
+  /// 已备齐(预留足量或已领)的种数 = 总种数 - 缺料种数。
+  int get materialCoveredKindCount =>
+      (materialKindCount - materialShortKindCount).clamp(0, materialKindCount);
+
+  /// 每种物料都已实领到车间(含直送已投入)。零料任务视为已领齐。
+  bool get materialAllIssued =>
+      materialKindCount == 0 || materialIssuedKindCount >= materialKindCount;
 
   /// 路线的中文短名(V599)：齐套生产 / 分批生产 / 持续生产；未确认为空。
   String get startRouteLabel => switch (startRoute) {
@@ -369,11 +407,158 @@ class ProductionExecutionWorkbenchSegment {
     hasMaterialActivity: json['hasMaterialActivity'] == true,
     hasUnregisteredMaterial: json['hasUnregisteredMaterial'] == true,
     continuousSupply: json['continuousSupply'] == true,
-    pendingLineSideOnly: json['pendingLineSideOnly'] == true,
     startRoute: json['startRoute'] as String?,
     canConfirmRoute: json['canConfirmRoute'] == true,
     routeChangeable: json['routeChangeable'] == true,
-    routeContinuousEligible: json['routeContinuousEligible'] == true,
+    suggestedStartRoute: json['suggestedStartRoute'] as String?,
+    materialKindCount: (json['materialKindCount'] as num?)?.toInt() ?? 0,
+    materialIssuedKindCount:
+        (json['materialIssuedKindCount'] as num?)?.toInt() ?? 0,
+    materialPartialIssuedKindCount:
+        (json['materialPartialIssuedKindCount'] as num?)?.toInt() ?? 0,
+    materialAwaitingWarehouseKindCount:
+        (json['materialAwaitingWarehouseKindCount'] as num?)?.toInt() ?? 0,
+    materialDrawableKindCount:
+        (json['materialDrawableKindCount'] as num?)?.toInt() ?? 0,
+    materialLineSidePendingKindCount:
+        (json['materialLineSidePendingKindCount'] as num?)?.toInt() ?? 0,
+    materialPreparingKindCount:
+        (json['materialPreparingKindCount'] as num?)?.toInt() ?? 0,
+    materialShortKindCount:
+        (json['materialShortKindCount'] as num?)?.toInt() ?? 0,
+    materialShortDirectKindCount:
+        (json['materialShortDirectKindCount'] as num?)?.toInt() ?? 0,
+    materialSupportedOutputQty:
+        (json['materialSupportedOutputQty'] as num?)?.toDouble() ?? 0,
+    materialPreparedOutputQty:
+        (json['materialPreparedOutputQty'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// 车间任务的一种物料的事实(ADR-095)：数量为基础单位；状态桶与列表汇总同口径。
+class ProductionWorkshopTaskMaterial {
+  const ProductionWorkshopTaskMaterial({
+    required this.demandId,
+    required this.goodsCode,
+    required this.goodsName,
+    required this.supplyRoute,
+    required this.directSupply,
+    required this.requiredQty,
+    required this.reservedQty,
+    required this.requestedUnissuedQty,
+    required this.requestableQty,
+    required this.lineSidePendingQty,
+    required this.issuedQty,
+    required this.shortageQty,
+    required this.directReceivedQty,
+    required this.directAvailableQty,
+    required this.warehouseAvailableQty,
+    required this.state,
+    this.colorName,
+    this.unitName,
+    this.producingSegments,
+  });
+
+  final String demandId;
+  final String goodsCode;
+  final String goodsName;
+  final String? colorName;
+  final String? unitName;
+
+  /// BUY / SUBCONTRACT / MAKE。
+  final String supplyRoute;
+  final bool directSupply;
+  final double requiredQty;
+  final double reservedQty;
+  final double requestedUnissuedQty;
+  final double requestableQty;
+  final double lineSidePendingQty;
+  final double issuedQty;
+  final double shortageQty;
+  final double directReceivedQty;
+  final double directAvailableQty;
+
+  /// 仓库里当前可给本需求用的实物（专属来源权益 + 允许动用的公共库存），与齐套
+  /// 提升同口径；齐套生产到齐前不预留，靠它回答「到了多少」。
+  final double warehouseAvailableQty;
+
+  /// ISSUED / SHORT / SHORT_DIRECT / DRAWABLE / AWAITING_WAREHOUSE /
+  /// LINE_SIDE_PENDING / PREPARING。
+  final String state;
+
+  /// 同车间承担直送责任的子件工单：`编号|状态` 以顿号分隔；非自制为空。
+  final String? producingSegments;
+
+  /// 来源口径：仓库领料(采购/委外/自制入库)还是同车间直送。
+  String get sourceLabel => directSupply
+      ? '同车间直送'
+      : switch (supplyRoute) {
+          'BUY' => '采购 · 仓库领料',
+          'SUBCONTRACT' => '委外 · 仓库领料',
+          'MAKE' => '自制 · 仓库领料',
+          _ => '仓库领料',
+        };
+
+  String get stateLabel => switch (state) {
+    'ISSUED' => '已领到车间',
+    'SHORT_DIRECT' => '等同车间子件直送',
+    'SHORT' => switch (supplyRoute) {
+      'BUY' => '等采购到货',
+      'SUBCONTRACT' => '等委外回厂',
+      _ => '等待到货',
+    },
+    'DRAWABLE' => '已备好 · 可领料',
+    'AWAITING_WAREHOUSE' => '已申请 · 待仓库发料',
+    'LINE_SIDE_PENDING' => '直送料待开工投入',
+    'PREPARING' => '备料中',
+    _ => state,
+  };
+
+  /// 子件工单的可读摘要：`ZX0001 生产中、ZX0002 已完工`。
+  String? get producingSegmentsLabel {
+    final raw = producingSegments;
+    if (raw == null || raw.isEmpty) return null;
+    return raw
+        .split('、')
+        .map((entry) {
+          final parts = entry.split('|');
+          final status = parts.length > 1 ? parts[1] : '';
+          final word = switch (status) {
+            'WAITING' => '等待物料',
+            'READY' || 'DISPATCHED' => '可开工',
+            'IN_PROGRESS' => '生产中',
+            'COMPLETED' => '已完工',
+            _ => status,
+          };
+          return word.isEmpty ? parts.first : '${parts.first} $word';
+        })
+        .join('、');
+  }
+
+  factory ProductionWorkshopTaskMaterial.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionWorkshopTaskMaterial(
+    demandId: json['demandId'] as String? ?? '',
+    goodsCode: json['goodsCode'] as String? ?? '',
+    goodsName: json['goodsName'] as String? ?? '',
+    colorName: json['colorName'] as String?,
+    unitName: json['unitName'] as String?,
+    supplyRoute: json['supplyRoute'] as String? ?? '',
+    directSupply: json['directSupply'] == true,
+    requiredQty: (json['requiredQty'] as num?)?.toDouble() ?? 0,
+    reservedQty: (json['reservedQty'] as num?)?.toDouble() ?? 0,
+    requestedUnissuedQty:
+        (json['requestedUnissuedQty'] as num?)?.toDouble() ?? 0,
+    requestableQty: (json['requestableQty'] as num?)?.toDouble() ?? 0,
+    lineSidePendingQty: (json['lineSidePendingQty'] as num?)?.toDouble() ?? 0,
+    issuedQty: (json['issuedQty'] as num?)?.toDouble() ?? 0,
+    shortageQty: (json['shortageQty'] as num?)?.toDouble() ?? 0,
+    directReceivedQty: (json['directReceivedQty'] as num?)?.toDouble() ?? 0,
+    directAvailableQty: (json['directAvailableQty'] as num?)?.toDouble() ?? 0,
+    warehouseAvailableQty:
+        (json['warehouseAvailableQty'] as num?)?.toDouble() ?? 0,
+    state: json['state'] as String? ?? '',
+    producingSegments: json['producingSegments'] as String?,
   );
 }
 

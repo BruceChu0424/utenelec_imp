@@ -27,13 +27,23 @@ public class ProductionWorkshopTaskController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String preparationFilter,
+            @RequestParam(required = false) String routeFilter,
             @RequestParam(required = false) UUID workshopDepartmentId,
             @RequestParam(required = false) LocalDate dateFrom,
             @RequestParam(required = false) LocalDate dateTo) {
         // dateFrom/dateTo 只对「历史任务」段生效（ADR-066 §1.3 时间门控：
         // 已完工/已取消/已红冲按计划完工日期筛选）；活动段忽略日期参数。
+        // routeFilter：「下一步」表头筛选(ADR-095)，UNCONFIRMED/FULL_KIT/CONTINUOUS/BATCH。
         return service.workshopTasks(page, size, keyword, status,
-                workshopDepartmentId, dateFrom, dateTo, preparationFilter);
+                workshopDepartmentId, dateFrom, dateTo, preparationFilter, routeFilter);
+    }
+
+    /** 本任务逐种物料事实(ADR-095)：只读，范围与列表同源。 */
+    @GetMapping("/{segmentId}/materials")
+    @PreAuthorize("hasAuthority('production_execution:view')")
+    public java.util.List<ProductionWorkshopTaskMaterial> materials(
+            @org.springframework.web.bind.annotation.PathVariable UUID segmentId) {
+        return service.workshopTaskMaterials(segmentId);
     }
 
     @GetMapping("/count")

@@ -3265,9 +3265,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         UUID workshopId = (UUID) task.get("workshop_department_id");
         if (workshopId == null) return;
         List<Map<String, Object>> missingRows = jdbc.queryForList("""
-                SELECT goods.code AS goods_code, goods.name AS goods_name,
+                SELECT material.demand_id, goods.code AS goods_code, goods.name AS goods_name,
                        COALESCE(color.name, '') AS color_name,
-                       material.stock_shortage_qty, units.name AS unit_name
+                       material.stock_shortage_qty, units.name AS unit_name, material.direct_supply
                 FROM v_production_execution_segment_materials material
                 JOIN goods ON goods.id = material.goods_id
                 LEFT JOIN colors color ON color.id = material.color_id
@@ -3277,6 +3277,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                   AND material.stock_shortage_qty > 0
                 ORDER BY goods.name, goods.code
                 """, segmentId);
+        // 齐套生产到齐前不做段级预留，缺口只看预留会把「已到 100 还缺 900」说成「还缺 1000」
+        // (ADR-095)：按齐套提升同口径的仓库可用量(专属权益 + 允许动用的公共库存)扣减后再说缺口。
+        Map<UUID, BigDecimal> arrivedByDemand = workshopWarehouseAvailableByDemand(segmentId,
+                missingRows.stream().map(row -> (UUID) row.get("demand_id")).toList());
         String route = str(task.get("start_route"));
         String nextStep;
         if (route.isBlank()) {
@@ -3304,13 +3308,18 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 break;
             }
             if (shown > 0) shortages.append("；");
+            BigDecimal shortage = bd(missing.get("stock_shortage_qty"));
+            BigDecimal arrived = arrivedByDemand.getOrDefault((UUID) missing.get("demand_id"), BigDecimal.ZERO)
+                    .max(BigDecimal.ZERO).min(shortage);
+            BigDecimal remaining = shortage.subtract(arrived);
+            String unit = str(missing.get("unit_name")).isBlank() ? "" : " " + str(missing.get("unit_name"));
             shortages.append(str(missing.get("goods_name"))).append(' ')
                     .append(str(missing.get("goods_code")))
                     .append(str(missing.get("color_name")).isBlank()
                             ? "" : "(" + str(missing.get("color_name")) + ")")
-                    .append(" 还缺 ").append(qty(bd(missing.get("stock_shortage_qty"))))
-                    .append(str(missing.get("unit_name")).isBlank()
-                            ? "" : " " + str(missing.get("unit_name")));
+                    .append(arrived.signum() > 0 ? " 仓库已到 " + qty(arrived) + unit + "，" : " ")
+                    .append(remaining.signum() > 0 ? "还缺 " + qty(remaining) + unit : "已到齐待预留")
+                    .append(Boolean.TRUE.equals(missing.get("direct_supply")) ? "(同车间子件直送)" : "");
             shown++;
         }
         String segmentCode = str(task.get("segment_code"));
@@ -3336,6 +3345,47 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
                     "normal", segmentId);
         }
+    }
+
+    /**
+     * 仓库当前可给这些需求用的实物(专属来源权益 + 允许动用的公共库存，扣安全库存)，与齐套提升
+     * 的 batchAvailability 同口径；无端口或任务无确认计划包时返回空表，卡片退回只说预留缺口。
+     */
+    private Map<UUID, BigDecimal> workshopWarehouseAvailableByDemand(UUID segmentId, List<UUID> demandIds) {
+        if (workshopReadiness == null || demandIds.isEmpty()) return Map.of();
+        List<Map<String, Object>> context = jdbc.queryForList("""
+                SELECT package.warehouse_id, plan.material_analysis_id, plan.material_analysis_item_id
+                FROM production_execution_segments segment
+                JOIN production_planning_packages package ON package.id = segment.package_id
+                  AND package.status = 'CONFIRMED' AND NOT package.is_deleted
+                JOIN production_plans plan ON plan.id = segment.plan_id
+                WHERE segment.id = ? AND NOT segment.is_deleted
+                """, segmentId);
+        if (context.isEmpty() || context.getFirst().get("warehouse_id") == null) return Map.of();
+        Map<String, Object> first = context.getFirst();
+        List<com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort.Availability> availability;
+        try {
+            availability = workshopReadiness.getObject().batchAvailability((UUID) first.get("warehouse_id"),
+                    demandIds, (UUID) first.get("material_analysis_id"), (UUID) first.get("material_analysis_item_id"));
+        } catch (RuntimeException unavailable) {
+            // 历史异常位置等让齐套口径拒绝计算时，卡片退回只按预留缺口说话，不猜到货量。
+            return Map.of();
+        }
+        Map<UUID, BigDecimal> qualified = new java.util.HashMap<>();
+        Map<UUID, BigDecimal> publicQty = new java.util.HashMap<>();
+        Map<UUID, BigDecimal> safety = new java.util.HashMap<>();
+        for (var row : availability) {
+            qualified.merge(row.demandId(), row.qualifiedQty().max(BigDecimal.ZERO), BigDecimal::add);
+            publicQty.merge(row.demandId(), row.publicQty().max(BigDecimal.ZERO), BigDecimal::add);
+            safety.merge(row.demandId(), row.safetyQty(), BigDecimal::max);
+        }
+        Map<UUID, BigDecimal> result = new java.util.HashMap<>();
+        for (UUID demandId : demandIds) {
+            BigDecimal budget = com.uten.imp.common.inventory.MainWarehouseStockBudget.publicBudget(
+                    publicQty.getOrDefault(demandId, BigDecimal.ZERO), safety.getOrDefault(demandId, BigDecimal.ZERO));
+            result.put(demandId, qualified.getOrDefault(demandId, BigDecimal.ZERO).add(budget));
+        }
+        return result;
     }
 
     static boolean workshopStartSupported(String status, String route, boolean materialReady) {

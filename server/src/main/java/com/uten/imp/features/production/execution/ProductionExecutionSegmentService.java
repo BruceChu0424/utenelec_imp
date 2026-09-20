@@ -333,10 +333,12 @@ public class ProductionExecutionSegmentService {
             if (!List.of("WAITING", "READY", "DISPATCHED").contains(segment.status())) {
                 throw conflict("开工后不能更改生产路线");
             }
+            // ADR-095：开工前路线随时可换，已备料/已领料/直送已投都保留；只有开工或已有
+            // 报工才冻结(fn_can_change_execution_route 的唯一口径)。
             if (!Boolean.TRUE.equals(em.createNativeQuery(
                             "SELECT fn_can_change_execution_route(:id)")
                             .setParameter("id", segmentId).getSingleResult())) {
-                throw conflict("工单已经实际领料或报工，开工路线不能更改");
+                throw conflict("工单已开工或已有报工，开工路线不能更改");
             }
         }
         if (ROUTE_CONTINUOUS.equals(request.route())) {
@@ -350,11 +352,18 @@ public class ProductionExecutionSegmentService {
         }
         // lock_version 由 trg_validate_production_execution_segment 触发器对每次
         // UPDATE 强制 +1（V155），语句无需（也不应）手工推进——与 assign() 同约定。
+        // continuous_supply(ADR-095 起=「按增量备料」)：持续生产恒为 TRUE；改回齐套时
+        // 已离开 WAITING 的工单保留增量备料(既有部分预留/领料/直送投入一件不动，
+        // READY 守卫据此继续接受部分覆盖)，开工门改由 start_route 决定(V628)；
+        // 仍在 WAITING 的齐套工单回到整批齐套备料；分批必须是未动过的任务。
         int updated = em.createNativeQuery("""
                         UPDATE production_execution_segments
                         SET start_route = :route,
                             route_confirmed_at = now(),
-                            continuous_supply = (:route = 'CONTINUOUS')
+                            continuous_supply = CASE
+                                WHEN :route = 'CONTINUOUS' THEN TRUE
+                                WHEN :route = 'FULL_KIT' THEN continuous_supply AND status <> 'WAITING'
+                                ELSE FALSE END
                         WHERE id = :id
                           AND lock_version = :expectedVersion
                           AND status IN ('WAITING', 'READY', 'DISPATCHED')
@@ -385,22 +394,13 @@ public class ProductionExecutionSegmentService {
         return result;
     }
 
-    /** Continuous supply preserves preparation; independent splitting requires an unused task. */
+    /**
+     * 路线随时可换(ADR-095)：齐套/持续只改开工门，已有部分预留、领料草稿、仓库发料与
+     * 直送投入原样保留(改齐套=保留已备物料、继续补齐、全部实领后才开工)；独立分批要
+     * 拆出有谱系的子任务，仍要求未动过的任务(fn_can_split_execution_batch)。
+     */
     private void validateRouteChoice(LockedSegment segment, String route) {
-        if (ROUTE_FULL_KIT.equals(route)) {
-            if (segment.continuousSupply() && !"WAITING".equals(segment.status())
-                    && Boolean.TRUE.equals(em.createNativeQuery("""
-                        SELECT EXISTS(SELECT 1 FROM production_material_demands demand
-                          WHERE demand.execution_segment_id=:id AND NOT demand.is_deleted
-                            AND demand.status NOT IN ('RELEASED','REVERSED')
-                            AND demand.required_qty>COALESCE((SELECT SUM(reservation.qty-reservation.released_qty)
-                              FROM stock_reservations reservation WHERE reservation.demand_id=demand.id
-                                AND NOT reservation.is_deleted),0))
-                        """).setParameter("id",segment.id()).getSingleResult())) {
-                throw conflict("持续生产已备部分物料，请继续本路线；全部物料备齐后才可改为齐套生产");
-            }
-            return;
-        }
+        if (ROUTE_FULL_KIT.equals(route)) return;
         if (ProductionExecutionSegment.MATERIAL_REQUIREMENT_MODE_ZERO.equals(segment.materialRequirementMode())) {
             throw validation("无物料子件的工单请选择齐套生产");
         }
@@ -410,7 +410,7 @@ public class ProductionExecutionSegmentService {
         if (ROUTE_BATCH.equals(route) && !Boolean.TRUE.equals(em.createNativeQuery(
                 "SELECT fn_can_split_execution_batch(:id)")
                 .setParameter("id", segment.id()).getSingleResult())) {
-            throw conflict("本任务不满足独立分批条件：须为已安排车间、自动等待物料且尚未备料或绑定供给的物料分析任务；请选择齐套生产或持续生产");
+            throw conflict("本任务不满足独立分批条件：分批要拆出独立子任务，须为已安排车间、等待物料且尚未备料、领料或绑定供给的物料分析任务；已备部分物料的任务请选择齐套生产或持续生产");
         }
     }
 
@@ -650,7 +650,9 @@ public class ProductionExecutionSegmentService {
     /** Uses the saved assignment; starting does not require optional schedule dates. */
     private void requireDispatchPreconditions(LockedSegment segment, boolean starting) {
         ExecutionSegmentView current = one(segment.planId(), segment.id());
-        if (!segment.continuousSupply() && !current.materialReady()) {
+        // 齐套判定跟着已确认路线走(ADR-095/V628)：持续生产允许部分覆盖，其余路线
+        // 要求物料视图逐种齐套——曾按持续生产备过部分料再改齐套的工单也在这里被拦住。
+        if (!ROUTE_CONTINUOUS.equals(segment.startRoute()) && !current.materialReady()) {
             throw conflict(starting ? "执行段尚未齐套，不能开工" : "执行段尚未齐套，不能派工");
         }
         assignmentValidator.validate(new ProductionAssignmentValidator.Assignment(
@@ -877,7 +879,9 @@ public class ProductionExecutionSegmentService {
         // 线边仓直送料的草稿领料单在开工这一刻就地出库(V595)：系统对账把父件提升为齐套时
         // 没有用户身份可以出库，留下的草稿不该逼车间去申请、逼仓库替车间发线边仓的料。
         readiness.issuePendingLineSideDraws(segment.id());
-        if (segment.continuousSupply()) {
+        // 开工门按路线(ADR-095)：持续生产=各项必需料共同支持正产出；齐套(含曾按持续
+        // 生产备过部分料的工单)=每种物料实领到位。continuous_supply 只表示增量备料。
+        if (ROUTE_CONTINUOUS.equals(segment.startRoute())) {
             BigDecimal capacity = decimal(em.createNativeQuery(
                     "SELECT fn_execution_material_output_capacity(:id, TRUE)")
                     .setParameter("id", segment.id()).getSingleResult());

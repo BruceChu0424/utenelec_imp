@@ -113,10 +113,10 @@ void main() {
       await tester.pumpAndSettle();
       await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
-      // 2026-09-18：「生产中」不再有「下一步」列——查看用料走双击行的详情弹窗
-      // (行右键菜单同款条目)，不再经过格子里的下拉框。
+      // 2026-09-20 用户口径：「生产中」不显示「下一步」列——查看用料走双击行的
+      // 详情弹窗(行右键菜单同款条目)。
       expect(
-        find.byKey(const ValueKey('workshop-route-cell-segment-a')),
+        find.byKey(const ValueKey('workshop-next-step-segment-a')),
         findsNothing,
       );
       await tester.tap(find.text('产品 A'));
@@ -263,9 +263,10 @@ void main() {
             (widget) => widget is UtenStatusBadge && widget.label == label,
           ),
         );
+        // 2026-09-20 用户口径「颜色差别大点」：去领料=蓝、待仓库发料=灰。
         expect(
           badge.type,
-          requested ? UtenStatusBadgeType.neutral : UtenStatusBadgeType.accent,
+          requested ? UtenStatusBadgeType.neutral : UtenStatusBadgeType.info,
         );
         expect(
           find.byKey(const ValueKey('workshop-request-draw-segment-a')),
@@ -273,7 +274,11 @@ void main() {
         );
         await tester.tap(find.text('状态'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text(label).last);
+        // 表头筛选桶 2026-09-20 起叫「物料可领 · 去领料」（持续生产行也在本桶，
+        // 桶名不宣称齐套）；行内徽章仍是各自的阶段文案。
+        await tester.tap(
+          find.text(requested ? '已提交领料 · 待仓库发料' : '物料可领 · 去领料').last,
+        );
         await tester.pumpAndSettle();
         final query = requests
             .lastWhere((r) => r.path == '/production/workshop-tasks')
@@ -335,10 +340,10 @@ void main() {
       await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
       expect(find.text('已入库 · 待登记实际用料'), findsOneWidget);
-      // 2026-09-18：「生产中」不再有「下一步」列——状态列直接说明下一步，
+      // 2026-09-20 用户口径：「生产中」不显示「下一步」列——状态列直接说明下一步，
       // 用料入口在行右键菜单与双击详情弹窗里。
       expect(
-        find.byKey(const ValueKey('workshop-route-cell-segment-a')),
+        find.byKey(const ValueKey('workshop-next-step-segment-a')),
         findsNothing,
       );
       expect(find.byIcon(Icons.info_outline_rounded), findsWidgets);
@@ -395,9 +400,7 @@ void main() {
       expect(find.text('进度'), findsNothing);
 
       // 未齐行右键菜单 = 「为什么不能开工」，点了给出明确原因。
-      // 菜单条目必须用 _menuEntry 限定：行内「生产路线」格的主操作按钮可能显示
-      // 同一条文案（这里是生产中行落进等待物料分类后显示「为什么不能开工」），
-      // 裸 find.text 会同时命中行内标签与菜单条目。
+      // 菜单条目一律用 _menuEntry 限定在弹出层内，避免与行内文案歧义。
       await _rightClick(tester, find.text('产品 C'));
       await tester.tap(_menuEntry('为什么不能开工'));
       await tester.pumpAndSettle();
@@ -466,7 +469,7 @@ void main() {
       // 2026-09-11 用户口径：这一步是车间自己去仓库领，不是干等仓库送。
       expect(find.text('物料齐套 · 去领料'), findsOneWidget);
       expect(find.text('物料齐套 · 待仓库发料'), findsNothing);
-      // 同上：行内「生产路线」格的主操作与菜单条目同名，只认弹出层里的那条。
+      // 同上：菜单条目只认弹出层里的那条，避免与行内文案歧义。
       await _rightClick(tester, find.text('产品 A'));
       await tester.tap(_menuEntry('为什么不能开工'));
       await tester.pumpAndSettle();
@@ -822,8 +825,10 @@ void main() {
   });
 }
 
-/// 2026-09-17（V599 / ADR-091）：「确认生产路线」是等待物料工单的第一个下一步——
-/// 未确认路线时开工侧入口全部隐藏；确认弹窗三选一后按路线过滤清单。
+/// 2026-09-20 用户口径（终版，勿再改回）：等待物料的「下一步」列=生产路线下拉，
+/// **选中即提交**——没有草稿、没有确认按钮、没有任何弹窗。底部确认面板、
+/// 「批量确认路线」按钮、详情弹窗里的路线按钮均已物理删除。
+/// 未确认路线时开工侧入口全部隐藏；「生产中」不显示「下一步」列。
 void routeConfirmationTests() {
   Future<void> mount(
     WidgetTester tester, {
@@ -869,7 +874,7 @@ void routeConfirmationTests() {
   }
 
   testWidgets(
-    'route confirmation precedes draw, batch and start even when capabilities are stale',
+    'unconfirmed task shows a pick-in-place route dropdown and hides start actions',
     (tester) async {
       await mount(
         tester,
@@ -881,37 +886,54 @@ void routeConfirmationTests() {
           aStartRouteNull: true,
         ),
       );
-      expect(find.text('待确认生产路线'), findsNWidgets(2));
-      await tester.tap(
+      expect(find.text('待选生产路线'), findsNWidgets(2));
+      // 待选路线 = 车间必须先做决定：红色徽章，与等待(琥珀)/去领料(蓝)/可开工(绿)拉开。
+      expect(
+        tester
+            .widget<UtenStatusBadge>(
+              find
+                  .byWidgetPredicate(
+                    (widget) =>
+                        widget is UtenStatusBadge && widget.label == '待选生产路线',
+                  )
+                  .first,
+            )
+            .type,
+        UtenStatusBadgeType.danger,
+      );
+      // 「下一步」格直接是路线下拉：未确认=空占位（不预填假默认），可改选。
+      final field = tester.widget<UtenDropdownField>(
         find.byKey(const ValueKey('workshop-next-step-segment-c')),
       );
-      await tester.pumpAndSettle();
-      expect(_menuEntry('路线确认'), findsOneWidget);
+      expect(field.value, isNull);
+      expect(field.enabled, isTrue);
+      // 两行都未确认：格子都显示「选择生产路线」空占位（InputDecorator 会把
+      // hint 渲染多份，断存在即可）。
+      expect(find.text('选择生产路线'), findsWidgets);
+      // 路线不在菜单里（选中即提交的单元格内动作）；开工侧入口在路线确认前
+      // 全部隐藏。
+      await _rightClick(tester, find.text('产品 C'));
+      expect(_menuEntry('路线确认'), findsNothing);
+      expect(_menuEntry('更改生产路线'), findsNothing);
       expect(_menuEntry('分批生产领料'), findsNothing);
       expect(_menuEntry('开工'), findsNothing);
       expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
-      expect(_menuEntry('部分开工 · 持续生产'), findsNothing);
     },
   );
 
   testWidgets(
-    'pure warehouse task can choose continuous and only explicit confirmation submits',
+    'picking a route submits immediately under the busy overlay, no sheet',
     (tester) async {
       final plans = _FakePlanRepository()..confirmGate = Completer<void>();
       await mount(tester, planRepository: plans);
+      // 弹窗流已物理删除：任何位置都不再有底部面板与「确认路线」按钮。
+      expect(find.byKey(const Key('workshop-route-batch-field')), findsNothing);
+      expect(find.byKey(const Key('workshop-route-batch-apply')), findsNothing);
       await tester.tap(
         find.byKey(const ValueKey('workshop-next-step-segment-c')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(_menuEntry('路线确认'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('workshop-route-batch-field')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('持续生产').last);
-      await tester.pumpAndSettle();
-      expect(plans.confirmedRoutes, isEmpty);
-      expect(find.textContaining('每种必需物料共同支持一部分产量'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('workshop-route-batch-apply')));
+      await tester.tap(_menuEntry('持续生产'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(
@@ -925,16 +947,28 @@ void routeConfirmationTests() {
     },
   );
 
-  testWidgets('view-only employee cannot confirm routes', (tester) async {
+  testWidgets('view-only employee sees a read-only badge, no dropdown', (
+    tester,
+  ) async {
     await mount(tester, canStart: false);
+    expect(
+      find.byKey(const ValueKey('workshop-next-step-segment-c')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: _frozenRowOf('产品 C'), matching: find.text('待确认')),
+      findsOneWidget,
+    );
     await _rightClick(tester, find.text('产品 C'));
     expect(_menuEntry('路线确认'), findsNothing);
     expect(find.byKey(const Key('workshop-batch-set-routes')), findsNothing);
   });
 
-  for (final oldRoute in ['BATCH', 'CONTINUOUS']) {
+  // 路线记忆（V602 恢复，2026-09-20 用户口径「记住上次选的」）：同产品最近一次
+  // 确认的路线预填未确认行 + 黄标提醒核对；预填不写事实，选中才提交。
+  for (final remembered in ['BATCH', 'CONTINUOUS']) {
     testWidgets(
-      'unconfirmed task ignores legacy $oldRoute suggestion from another task',
+      'unconfirmed task prefills remembered $remembered route for verification',
       (tester) async {
         final plans = _FakePlanRepository();
         await mount(
@@ -945,30 +979,56 @@ void routeConfirmationTests() {
             startRoute: null,
             canConfirmRoute: true,
             rowCanSplitBatch: true,
-            cLegacySuggestedStartRoute: oldRoute,
+            cLegacySuggestedStartRoute: remembered,
           ),
         );
-        await tester.tap(
-          find.byKey(const ValueKey('workshop-next-step-segment-c')),
+        final fieldFinder = find.byKey(
+          const ValueKey('workshop-next-step-segment-c'),
         );
-        await tester.pumpAndSettle();
-        await tester.tap(_menuEntry('路线确认'));
-        await tester.pumpAndSettle();
-        final field = tester.widget<UtenDropdownField>(
-          find.byKey(const Key('workshop-route-batch-field')),
+        final field = tester.widget<UtenDropdownField>(fieldFinder);
+        expect(field.value, remembered);
+        expect(
+          find.byKey(const ValueKey('workshop-route-memory-segment-c')),
+          findsOneWidget,
         );
-        expect(field.value, 'FULL_KIT');
+        // 预填只是展示：服务端事实仍是未确认，什么都不曾提交。
         expect(plans.confirmedRoutes, isEmpty);
-        await tester.tap(find.byKey(const Key('workshop-route-batch-apply')));
+        // 点开直接选预填的这条 → 提交的就是它（一步确认，无弹窗）。
+        await tester.tap(fieldFinder);
         await tester.pumpAndSettle();
-        expect(plans.confirmedRoutes, [('segment-c', 'FULL_KIT')]);
+        await tester.tap(_menuEntry(remembered == 'BATCH' ? '分批生产' : '持续生产'));
+        await tester.pumpAndSettle();
+        expect(plans.confirmedRoutes, [('segment-c', remembered)]);
       },
     );
   }
 
+  testWidgets('remembered route outside current options is not prefilled', (
+    tester,
+  ) async {
+    await mount(
+      tester,
+      repository: _repository(
+        withWaitingRow: true,
+        startRoute: null,
+        canConfirmRoute: true,
+        // canSplitBatch=false → 分批不在当前选项里，记忆（分批）不预填。
+        cLegacySuggestedStartRoute: 'BATCH',
+      ),
+    );
+    final field = tester.widget<UtenDropdownField>(
+      find.byKey(const ValueKey('workshop-next-step-segment-c')),
+    );
+    expect(field.value, isNull);
+    expect(
+      find.byKey(const ValueKey('workshop-route-memory-segment-c')),
+      findsNothing,
+    );
+  });
+
   for (final route in ['FULL_KIT', 'BATCH', 'CONTINUOUS']) {
     testWidgets(
-      'route editing keeps this task confirmed $route and ignores old cached suggestion',
+      'changeable task keeps confirmed $route displayed in the dropdown',
       (tester) async {
         await mount(
           tester,
@@ -982,40 +1042,31 @@ void routeConfirmationTests() {
                 : 'BATCH',
           ),
         );
-        await tester.tap(
+        final field = tester.widget<UtenDropdownField>(
           find.byKey(const ValueKey('workshop-next-step-segment-c')),
         );
-        await tester.pumpAndSettle();
-        await tester.tap(_menuEntry('更改生产路线'));
-        await tester.pumpAndSettle();
-        final field = tester.widget<UtenDropdownField>(
-          find.byKey(const Key('workshop-route-batch-field')),
-        );
         expect(field.value, route);
+        expect(
+          find.byKey(const ValueKey('workshop-route-bar-segment-c')),
+          findsOneWidget,
+        );
       },
     );
   }
 
-  testWidgets(
-    'zero-material task only defaults to its currently valid full-kit route',
-    (tester) async {
-      await mount(
-        tester,
-        repository: _repository(aZeroMaterial: true, aStartRouteNull: true),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('workshop-next-step-segment-a')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(_menuEntry('路线确认'));
-      await tester.pumpAndSettle();
-      final field = tester.widget<UtenDropdownField>(
-        find.byKey(const Key('workshop-route-batch-field')),
-      );
-      expect(field.value, 'FULL_KIT');
-      expect(field.items.map((item) => item.value), ['FULL_KIT']);
-    },
-  );
+  testWidgets('zero-material task only offers the full-kit route', (
+    tester,
+  ) async {
+    await mount(
+      tester,
+      repository: _repository(aZeroMaterial: true, aStartRouteNull: true),
+    );
+    final field = tester.widget<UtenDropdownField>(
+      find.byKey(const ValueKey('workshop-next-step-segment-a')),
+    );
+    expect(field.value, isNull);
+    expect(field.items.map((item) => item.value), ['FULL_KIT']);
+  });
 
   testWidgets(
     'route options omit independent batches when the task cannot split',
@@ -1032,31 +1083,27 @@ void routeConfirmationTests() {
         find.byKey(const ValueKey('workshop-next-step-segment-c')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(_menuEntry('路线确认'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('workshop-route-batch-field')));
-      await tester.pumpAndSettle();
-      expect(find.text('分批生产'), findsNothing);
-      expect(find.text('持续生产'), findsOneWidget);
+      expect(_menuEntry('分批生产'), findsNothing);
+      expect(_menuEntry('持续生产'), findsOneWidget);
     },
   );
 
-  testWidgets('route confirmation stays usable on a narrow short screen', (
-    tester,
-  ) async {
-    await mount(tester);
-    await tester.tap(
-      find.byKey(const ValueKey('workshop-next-step-segment-c')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(_menuEntry('路线确认'));
-    await tester.pumpAndSettle();
+  testWidgets('route picking submits on a narrow short screen', (tester) async {
+    final plans = _FakePlanRepository();
+    await mount(tester, planRepository: plans);
     await tester.binding.setSurfaceSize(const Size(375, 480));
     await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('workshop-next-step-segment-c'));
+    // ensureVisible 只是发起滚动动画：表格加宽后这一行要滚过来，必须先等它停稳再点，
+    // 否则点在移动中的格子上会被滚动手势吃掉（2026-09-20 加物料列后暴露）。
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    await tester.tap(_menuEntry('齐套生产'));
+    await tester.pumpAndSettle();
+    expect(plans.confirmedRoutes, [('segment-c', 'FULL_KIT')]);
     expect(tester.takeException(), isNull);
-    final button = find.byKey(const Key('workshop-route-batch-apply'));
-    await tester.ensureVisible(button);
-    expect(button.hitTestable(), findsOneWidget);
   });
 
   for (final (route, label, color) in [
@@ -1065,7 +1112,7 @@ void routeConfirmationTests() {
     ('CONTINUOUS', '持续生产', UtenStatusBadgeType.fuchsia),
   ]) {
     testWidgets(
-      'confirmed $route displays a distinct route badge and only its own actions',
+      'frozen $route row displays its route badge and only its own actions',
       (tester) async {
         await mount(
           tester,
@@ -1075,6 +1122,7 @@ void routeConfirmationTests() {
             rowCanSplitBatch: true,
           ),
         );
+        // 已确认且不可再改：「下一步」格退化为只读徽章（五轮路线配色口径不变）。
         final badge = tester.widget<UtenStatusBadge>(
           find.descendant(
             of: _frozenRowOf('产品 C'),
@@ -1084,6 +1132,19 @@ void routeConfirmationTests() {
           ),
         );
         expect(badge.type, color);
+        // 冻结必须说清原因与解锁路径（2026-09-20 用户口径「有些不能解锁」：
+        // 只显示路线说明、不解释为什么不能改，等于让车间猜）。
+        expect(
+          find.descendant(
+            of: _frozenRowOf('产品 C'),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Tooltip &&
+                  (widget.message ?? '').contains('生产路线已冻结'),
+            ),
+          ),
+          findsOneWidget,
+        );
         await _rightClick(tester, find.text('产品 C'));
         expect(
           _menuEntry('分批生产领料'),
@@ -1096,7 +1157,7 @@ void routeConfirmationTests() {
 
   for (final route in ['CONTINUOUS', 'FULL_KIT']) {
     testWidgets(
-      'in-progress $route task can replenish when the server allows it without a new task',
+      'in-progress $route task replenishes via row menu; no next-step column',
       (tester) async {
         await mount(
           tester,
@@ -1107,10 +1168,14 @@ void routeConfirmationTests() {
             aContinuousSupply: route == 'CONTINUOUS',
           ),
         );
-        await tester.tap(
+        // 2026-09-20 用户口径：「生产中」不显示「下一步」列，路线以徽章展示。
+        expect(
           find.byKey(const ValueKey('workshop-next-step-segment-a')),
+          findsNothing,
         );
-        await tester.pumpAndSettle();
+        expect(find.text('下一步'), findsNothing);
+        expect(find.text('生产路线'), findsOneWidget);
+        await _rightClick(tester, find.text('产品 A'));
         expect(_menuEntry('继续领料(查看领料汇总)'), findsOneWidget);
         await tester.tap(_menuEntry('继续领料(查看领料汇总)'));
         await tester.pumpAndSettle();
@@ -1120,35 +1185,122 @@ void routeConfirmationTests() {
     );
   }
 
-  testWidgets('batch route confirmation submits only eligible selected tasks', (
+  // ADR-095：开工前路线随时可换——已按持续生产备了部分料（直送已投入）的 READY
+  // 任务仍能在「下一步」下拉改选齐套；分批因要拆子任务、须未备料，不在选项里，
+  // 悬停说明原因。状态文案只按逐种物料事实生成：等同车间直送 · 缺 1 种。
+  testWidgets(
+    'prepared continuous task stays switchable and reads material facts',
+    (tester) async {
+      final plans = _FakePlanRepository();
+      await mount(
+        tester,
+        planRepository: plans,
+        repository: _repository(
+          withWaitingRow: true,
+          cStatus: 'READY',
+          startRoute: 'CONTINUOUS',
+          rowContinuousSupply: true,
+          routeChangeable: true,
+          cMaterials: _threeKindsOneDirectShort,
+          cMaterialRows: _threeKindsOneDirectShortRows,
+        ),
+      );
+      expect(find.text('等同车间直送 · 缺 1 种'), findsOneWidget);
+      expect(find.text('已领 2/3 种 · 缺 1 种(直送 1)'), findsOneWidget);
+      final fieldFinder = find.byKey(
+        const ValueKey('workshop-next-step-segment-c'),
+      );
+      final field = tester.widget<UtenDropdownField>(fieldFinder);
+      expect(field.value, 'CONTINUOUS');
+      expect(
+        field.items.where((item) => item.visible).map((item) => item.value),
+        ['FULL_KIT', 'CONTINUOUS'],
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip && (widget.message ?? '').contains('不能再拆分批'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(fieldFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(_menuEntry('齐套生产'));
+      await tester.pumpAndSettle();
+      expect(plans.confirmedRoutes, [('segment-c', 'FULL_KIT')]);
+      // 双击行：详情列出每种物料的数量与子件工单。
+      await tester.tap(find.text('产品 C'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('产品 C'));
+      await tester.pumpAndSettle();
+      expect(find.text('车间任务详情'), findsOneWidget);
+      expect(
+        find.byKey(const Key('workshop-task-material-table')),
+        findsOneWidget,
+      );
+      expect(find.text('等同车间子件直送'), findsOneWidget);
+      expect(find.text('ZX00000351 生产中'), findsOneWidget);
+      expect(find.text('已领到车间'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 「下一步」表头筛选（2026-09-20 用户口径）：按路线分桶，服务端 routeFilter。
+  testWidgets('next-step header filter sends the route to the server', (
     tester,
   ) async {
-    final plans = _FakePlanRepository();
+    final requests = <RequestOptions>[];
     await mount(
       tester,
-      planRepository: plans,
       repository: _repository(
         withWaitingRow: true,
         startRoute: null,
         canConfirmRoute: true,
-        rowCanSplitBatch: true,
+        onRequest: requests.add,
       ),
     );
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
+    await tester.tap(find.text('下一步'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('workshop-batch-set-routes')));
+    await tester.tap(find.text('持续生产').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('workshop-route-batch-field')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('分批生产').last);
-    await tester.pumpAndSettle();
-    expect(plans.confirmedRoutes, isEmpty);
-    await tester.tap(find.byKey(const Key('workshop-route-batch-apply')));
-    await tester.pumpAndSettle();
-    expect(plans.confirmedRoutes, [('segment-c', 'BATCH')]);
+    final query = requests
+        .lastWhere((r) => r.path == '/production/workshop-tasks')
+        .queryParameters;
+    expect(query['routeFilter'], 'CONTINUOUS');
+    expect(query['page'], 1);
   });
+
+  testWidgets(
+    'batch route entry is retired; unconfirmed rows are not checkbox-selectable',
+    (tester) async {
+      await mount(
+        tester,
+        repository: _repository(
+          withWaitingRow: true,
+          startRoute: null,
+          canConfirmRoute: true,
+          rowCanSplitBatch: true,
+        ),
+      );
+      expect(find.byKey(const Key('workshop-batch-set-routes')), findsNothing);
+      // 勾选只服务批量领料/开工；路线未确认的行没有勾选位（锁位提示先选路线），
+      // 路线在「下一步」下拉逐行选定。
+      expect(
+        find.descendant(
+          of: _frozenRowOf('产品 C'),
+          matching: find.byType(Checkbox),
+        ),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) => widget is Checkbox && widget.tristate,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('批量开工(1)'), findsOneWidget);
+    },
+  );
 }
 
 void materialUsageEntryTests() {
@@ -1194,8 +1346,8 @@ void materialUsageEntryTests() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('等待物料'));
         await tester.pumpAndSettle();
-        // 2026-09-18 二轮：「生产路线」格只剩路线本身（下拉/只读文本），主操作
-        // （含用料入口）回到行右键菜单与详情弹窗——这里断言行菜单的用料条目。
+        // 2026-09-20：「下一步」格=生产路线下拉（选中即提交）/冻结行的只读徽章，
+        // 主操作（含用料入口）在行右键菜单与详情弹窗——这里断言行菜单的用料条目。
         expect(
           find.descendant(
             of: _frozenRowOf('产品 A'),
@@ -1392,10 +1544,14 @@ ProductionExecutionWorkbenchRepository _repository({
   bool fullyReceived = false,
   String? startRoute = 'FULL_KIT',
   bool canConfirmRoute = false,
-  bool routeContinuousEligible = false,
   bool rowCanSplitBatch = false,
   bool routeChangeable = false,
   bool rowContinuousSupply = false,
+  String cStatus = 'WAITING',
+  bool cCanStart = false,
+  bool cCanRequestDraw = false,
+  Map<String, dynamic> cMaterials = const {},
+  List<Map<String, dynamic>> cMaterialRows = const [],
   bool aStartRouteNull = false,
   String aStartRoute = 'FULL_KIT',
   bool aContinuousSupply = false,
@@ -1409,6 +1565,19 @@ ProductionExecutionWorkbenchRepository _repository({
     InterceptorsWrapper(
       onRequest: (request, handler) {
         onRequest?.call(request);
+        // 逐种物料明细（ADR-095）：只对 segment-c 返回夹具行，其它任务无物料。
+        if (request.path.endsWith('/materials')) {
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: request.path.contains('segment-c')
+                  ? cMaterialRows
+                  : const <Object>[],
+            ),
+          );
+          return;
+        }
         final data = switch (request.path) {
           '/production/workshop-tasks' => {
             'items': [
@@ -1451,18 +1620,21 @@ ProductionExecutionWorkbenchRepository _repository({
                 _task(
                   'segment-c',
                   '产品 C',
-                  'WAITING',
+                  cStatus,
                   kitShort: true,
+                  issued: false,
                   canSplitBatch: canSplitBatch || rowCanSplitBatch,
                   canReport: false,
                   canBatchReport: false,
                   startRoute: startRoute,
                   canConfirmRoute: canConfirmRoute,
-                  routeContinuousEligible: routeContinuousEligible,
                   routeChangeable: routeChangeable,
                   continuousSupply: rowContinuousSupply,
                   legacySuggestedStartRoute: cLegacySuggestedStartRoute,
                   canRecheck: cCanRecheck,
+                  canStart: cCanStart,
+                  canRequestDraw: cCanRequestDraw,
+                  materials: cMaterials,
                 ),
             ],
             'page': 1,
@@ -1505,8 +1677,10 @@ Map<String, dynamic> _task(
   String? startRoute = 'FULL_KIT',
   bool canConfirmRoute = false,
   bool routeChangeable = false,
-  bool routeContinuousEligible = false,
   bool continuousSupply = false,
+  bool? canStart,
+  bool? canRequestDraw,
+  Map<String, dynamic> materials = const {},
 }) => {
   'segmentId': id,
   'canSplitBatch': canSplitBatch,
@@ -1534,9 +1708,11 @@ Map<String, dynamic> _task(
   'issued': issued,
   'zeroMaterial': zeroMaterial,
   'canStart':
-      (status == 'READY' || status == 'DISPATCHED') &&
-      issued &&
-      startRoute != null,
+      canStart ??
+      ((status == 'READY' || status == 'DISPATCHED') &&
+          issued &&
+          startRoute != null),
+  'canRequestDraw': ?canRequestDraw,
   'canReport': canReport,
   'canBatchReport': canBatchReport,
   'lockVersion': 1,
@@ -1544,13 +1720,73 @@ Map<String, dynamic> _task(
   'hasMaterialActivity': materialActivity,
   'hasUnregisteredMaterial': unregisteredMaterial,
   'startRoute': startRoute,
-  // A cached response from an older server may still carry this retired field.
+  // 路线记忆（V602 恢复）：同产品最近一次确认的路线，未确认行预填+黄标核对。
   'suggestedStartRoute': ?legacySuggestedStartRoute,
   'canConfirmRoute': canConfirmRoute,
   'routeChangeable': routeChangeable,
-  'routeContinuousEligible': routeContinuousEligible,
   'continuousSupply': continuousSupply,
+  // 逐种物料事实（ADR-095）：未给则为零料/旧口径（kindCount=0）。
+  ...materials,
 };
+
+/// 逐种物料事实夹具：3 种物料，2 种已领、1 种等同车间子件直送。
+const Map<String, dynamic> _threeKindsOneDirectShort = {
+  'materialKindCount': 3,
+  'materialIssuedKindCount': 2,
+  'materialShortKindCount': 1,
+  'materialShortDirectKindCount': 1,
+  'materialSupportedOutputQty': 0,
+  'materialPreparedOutputQty': 0,
+};
+
+/// 与 [_threeKindsOneDirectShort] 同口径的明细行。
+const List<Map<String, dynamic>> _threeKindsOneDirectShortRows = [
+  {
+    'demandId': 'demand-buy',
+    'goodsCode': 'UTZJ1001',
+    'goodsName': '插套',
+    'unitName': '个',
+    'supplyRoute': 'BUY',
+    'directSupply': false,
+    'requiredQty': 1000,
+    'reservedQty': 1000,
+    'issuedQty': 1000,
+    'shortageQty': 0,
+    'warehouseAvailableQty': 0,
+    'state': 'ISSUED',
+  },
+  {
+    'demandId': 'demand-sub',
+    'goodsCode': 'HV5G001',
+    'goodsName': '面板',
+    'unitName': '个',
+    'supplyRoute': 'SUBCONTRACT',
+    'directSupply': false,
+    'requiredQty': 1000,
+    'reservedQty': 1000,
+    'issuedQty': 1000,
+    'shortageQty': 0,
+    'warehouseAvailableQty': 0,
+    'state': 'ISSUED',
+  },
+  {
+    'demandId': 'demand-make',
+    'goodsCode': 'V50052',
+    'goodsName': '压板组件',
+    'unitName': '个',
+    'supplyRoute': 'MAKE',
+    'directSupply': true,
+    'requiredQty': 1000,
+    'reservedQty': 0,
+    'issuedQty': 0,
+    'shortageQty': 1000,
+    'directReceivedQty': 0,
+    'directAvailableQty': 0,
+    'warehouseAvailableQty': 0,
+    'state': 'SHORT_DIRECT',
+    'producingSegments': 'ZX00000351|IN_PROGRESS',
+  },
+];
 
 /// 只记录批量开工调用的计划仓库桩（等待物料分类的「批量开工」链路）。
 class _FakePlanRepository extends ProductionPlanRepository {
@@ -1649,9 +1885,9 @@ final Finder _menuSurface = find.byWidgetPredicate(
 
 /// 弹出菜单里的条目。
 ///
-/// 2026-09-18 起行右键菜单与表格「生产路线」格的主操作共用同一份清单——同一个
-/// 字符串会在表格行里再出现一次（多行各出现一次也有可能），裸 find.text 会歧义、
-/// tap 直接抛错。断言/点击菜单条目一律限定在弹出层内。
+/// 弹出菜单里的条目。下拉/徽章等行内文案可能与菜单条目同名（多行各出现一次也
+/// 有可能），裸 find.text 会歧义、tap 直接抛错。断言/点击菜单条目一律限定在
+/// 弹出层内（UtenContextMenu 与 UtenDropdownField 弹层同用 elevation 8 的 Material）。
 Finder _menuEntry(String label) =>
     find.descendant(of: _menuSurface, matching: find.text(label));
 
@@ -1687,6 +1923,7 @@ class _DelayedWorkshopRepository
     String keyword = '',
     String? status,
     String? preparationFilter,
+    String? routeFilter,
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,
@@ -1715,6 +1952,7 @@ class _RecordingWorkshopRepository
     String keyword = '',
     String? status,
     String? preparationFilter,
+    String? routeFilter,
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,

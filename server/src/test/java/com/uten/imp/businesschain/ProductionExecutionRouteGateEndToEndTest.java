@@ -185,18 +185,122 @@ class ProductionExecutionRouteGateEndToEndTest {
         assertEquals(1,db.queryForObject("SELECT count(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",Integer.class,c.segment()));
     }
 
+    /**
+     * ADR-095：开工前路线随时可换，实际领料不再冻结路线；只有开工(或已有报工)才冻结。
+     * 持续生产领了一部分料后改齐套：已领事实原样保留、状态不回退、开工门改为整套实领；
+     * 改回持续后按已投料的正产出开工；开工后再改一律 409。
+     */
     @Test
-    void routeConfirmationIsIdempotentAndActualIssueFreezesIt() {
-        Case c=create("rg-freeze",false);
+    void routeConfirmationIsIdempotentAndOnlyStartFreezesIt() {
+        Case c=create("rg-freeze",false,"100");
         fixture.loginAs(c.workerUser());
         var request=new SegmentRouteConfirmRequest(version(c.segment()),"rg-freeze-route","CONTINUOUS");
         segments.confirmRoute(c.plan(),c.segment(),request);
         segments.confirmRoute(c.plan(),c.segment(),request);
         assertEquals(1,db.queryForObject("SELECT count(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",Integer.class,c.segment()));
         receive(c,c.material(),c.leaf(),"10"); issueDraws(c);
+        assertEquals("READY",status(c.segment()));
+        qty("10",capacity(c));
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_can_change_execution_route(?)",Boolean.class,c.segment()));
+        var issuedBefore=db.queryForList("SELECT id FROM production_material_stock_postings WHERE demand_id=? ORDER BY id",UUID.class,parentDemand(c));
+        confirm(c,"FULL_KIT");
+        assertEquals("FULL_KIT",route(c.segment()));
+        assertEquals("READY",status(c.segment()),"改齐套不回退状态、不删已领事实");
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT continuous_supply FROM production_execution_segments WHERE id=?",Boolean.class,c.segment()),
+                "已按增量备过料的工单保留增量备料模式");
+        assertEquals(issuedBefore,db.queryForList("SELECT id FROM production_material_stock_postings WHERE demand_id=? ORDER BY id",UUID.class,parentDemand(c)));
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,c.segment()),
+                "齐套路线要求整套实领，10/100 不能开工");
         fixture.loginAs(c.workerUser());
-        assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()),"rg-freeze-change","FULL_KIT")));
+        assertThrows(ApiException.class,()->segments.start(c.plan(),c.segment(),
+                new SegmentTransitionRequest(version(c.segment()),"rg-freeze-start-short")));
+        assertEquals("READY",status(c.segment()));
+        var summary=db.queryForMap("SELECT * FROM fn_execution_segment_material_summary(?)",c.segment());
+        assertEquals(1,summary.get("kind_count")); assertEquals(0,summary.get("issued_count"));
+        assertEquals(1,summary.get("short_count")); assertEquals(1,summary.get("partial_issued_count"));
+        confirm(c,"CONTINUOUS");
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,c.segment()));
+        start(c);
+        qty("10",capacity(c));
+        fixture.loginAs(c.workerUser());
+        ApiException frozen=assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
+                new SegmentRouteConfirmRequest(version(c.segment()),"rg-freeze-after-start","FULL_KIT")));
+        assertTrue(frozen.getMessage().contains("开工后不能更改"),frozen.getMessage());
+    }
+
+    /**
+     * ADR-095：分批要拆出独立子任务，仍只在未动过时可选；已备料后改分批 409 且不留副作用，
+     * 改齐套/持续正常。齐套路线整套领齐后可开工。
+     */
+    @Test
+    void preparedTaskCannotBecomeBatchButMayStillSwitchBetweenKitAndContinuous() {
+        Case c=create("rg-switch",false,"100");
+        confirm(c,"CONTINUOUS");
+        receive(c,c.material(),c.leaf(),"100");
+        assertEquals("READY",status(c.segment()));
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT fn_can_split_execution_batch(?)",Boolean.class,c.segment()));
+        long versionBefore=version(c.segment());
+        fixture.loginAs(c.workerUser());
+        ApiException batch=assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
+                new SegmentRouteConfirmRequest(version(c.segment()),"rg-switch-batch","BATCH")));
+        assertTrue(batch.getMessage().contains("独立分批"),batch.getMessage());
+        assertEquals(versionBefore,version(c.segment()),"被拒的改路线不能留下任何写入");
+        assertEquals("CONTINUOUS",route(c.segment()));
+        confirm(c,"FULL_KIT");
+        assertEquals("READY",status(c.segment()));
+        qty("100",db.queryForObject("SELECT SUM(qty-released_qty) FROM stock_reservations WHERE demand_id=? AND NOT is_deleted",BigDecimal.class,parentDemand(c)));
+        issueDraws(c);
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,c.segment()));
+        var summary=db.queryForMap("SELECT * FROM fn_execution_segment_material_summary(?)",c.segment());
+        assertEquals(1,summary.get("issued_count")); assertEquals(0,summary.get("short_count"));
+        qty("100",(BigDecimal) summary.get("supported_output_qty"));
+        start(c);
+        assertEquals("IN_PROGRESS",status(c.segment()));
+    }
+
+    /**
+     * ADR-095 逐种物料事实：混合供料(同车间直送子件 + 采购辅料)的父件，仓库辅料先到一部分、
+     * 子件尚未流转时，汇总必须说「缺 1 种且是直送」，子件真正直送到本任务后才算已领；
+     * 车间任务列表行与详情端点给出同一份数字。
+     */
+    @Test
+    void materialFactsCountDirectChildOnlyAfterActualTransfer() {
+        Case c=create("rg-mixed-facts",true,"100");
+        confirm(c,"CONTINUOUS");
+        receive(c,c.extraMaterial(),c.leaf(),"40");
+        var summary=db.queryForMap("SELECT * FROM fn_execution_segment_material_summary(?)",c.segment());
+        assertEquals(2,summary.get("kind_count"));
+        // 辅料到了 40/100：既是「缺」也有「可领」的一片；子件还没直送：缺且是直送。
+        assertEquals(2,summary.get("short_count"),"两种都还没备齐");
+        assertEquals(1,summary.get("short_direct_count"),"其中 1 种等同车间子件直送");
+        assertEquals(1,summary.get("drawable_count"),"辅料已到的 40 可以提交领料");
+        assertEquals(0,summary.get("issued_count"));
+        var workbench=beans.getBean(com.uten.imp.features.production.execution.ProductionExecutionWorkbenchService.class);
+        fixture.loginAs(c.workerUser());
+        var row=workbench.workshopTasks(1,50,null,"PREPARING",null,null,null,null,"CONTINUOUS").getItems().stream()
+                .filter(task->task.segmentId().equals(c.segment())).findFirst().orElseThrow();
+        assertEquals(2,row.materialKindCount()); assertEquals(1,row.materialShortDirectKindCount());
+        assertEquals(2,row.materialShortKindCount()); assertEquals(1,row.materialDrawableKindCount());
+        assertEquals(0,row.materialIssuedKindCount());
+        var facts=workbench.workshopTaskMaterials(c.segment());
+        var child=facts.stream().filter(fact->fact.demandId().equals(parentDemand(c))).findFirst().orElseThrow();
+        assertEquals("SHORT_DIRECT",child.state()); assertTrue(child.directSupply());
+        qty("0",child.directReceivedQty());
+        assertTrue(child.producingSegments()!=null && child.producingSegments().contains("IN_PROGRESS"),
+                "直送来源工单必须指向同车间在产的子件工单："+child.producingSegments());
+        var extra=facts.stream().filter(fact->!fact.demandId().equals(parentDemand(c))).findFirst().orElseThrow();
+        qty("40",extra.reservedQty()); qty("60",extra.shortageQty()); qty("40",extra.requestableQty());
+        assertEquals("DRAWABLE",extra.state(),"有可领的一片时状态说下一步动作，缺口另列");
+        assertTrue(workbench.workshopTasks(1,50,null,"PREPARING",null,null,null,null,"FULL_KIT").getItems().stream()
+                .noneMatch(task->task.segmentId().equals(c.segment())),"路线筛选在服务端生效");
+        transfer(c,"100");
+        summary=db.queryForMap("SELECT * FROM fn_execution_segment_material_summary(?)",c.segment());
+        assertEquals(0,summary.get("short_direct_count"),"子件流转到本任务后才算到料");
+        assertEquals(1,summary.get("short_count"),"辅料仍缺 60");
+        assertEquals(1,summary.get("issued_count"),"直送料在持续备料里就地投入本任务");
+        fixture.loginAs(c.workerUser());
+        child=workbench.workshopTaskMaterials(c.segment()).stream().filter(fact->fact.demandId().equals(parentDemand(c))).findFirst().orElseThrow();
+        assertEquals("ISSUED",child.state()); qty("100",child.directReceivedQty()); qty("100",child.issuedQty());
     }
 
     @Test
@@ -284,10 +388,14 @@ class ProductionExecutionRouteGateEndToEndTest {
         assertEquals(1,db.queryForObject("SELECT count(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",Integer.class,c.segment()));
         receive(c,c.material(),c.leaf(),"10");
         fixture.loginAs(c.workerUser());
-        assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()),"adv-incomplete-to-kit","FULL_KIT")));
-        assertEquals("CONTINUOUS",route(c.segment()));
+        // ADR-095：已备部分料改齐套是允许的——预留原样保留、状态不回退、开工门改为整套实领。
+        segments.confirmRoute(c.plan(),c.segment(),
+                new SegmentRouteConfirmRequest(version(c.segment()),"adv-incomplete-to-kit","FULL_KIT"));
+        assertEquals("FULL_KIT",route(c.segment()));
+        assertEquals("READY",status(c.segment()));
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT continuous_supply FROM production_execution_segments WHERE id=?",Boolean.class,c.segment()));
         qty("10",db.queryForObject("SELECT SUM(qty-released_qty) FROM stock_reservations WHERE demand_id=? AND NOT is_deleted",BigDecimal.class,parentDemand(c)));
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,c.segment()));
     }
 
     @Test

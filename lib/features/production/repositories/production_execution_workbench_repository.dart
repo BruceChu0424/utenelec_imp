@@ -60,6 +60,7 @@ class ProductionExecutionWorkbenchRepository {
     String keyword = '',
     String? status,
     String? preparationFilter,
+    String? routeFilter,
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,
@@ -73,6 +74,8 @@ class ProductionExecutionWorkbenchRepository {
         if (status?.isNotEmpty == true) 'status': status,
         if (preparationFilter?.isNotEmpty == true)
           'preparationFilter': preparationFilter,
+        // 「下一步」表头筛选(ADR-095)：UNCONFIRMED / FULL_KIT / CONTINUOUS / BATCH。
+        if (routeFilter?.isNotEmpty == true) 'routeFilter': routeFilter,
         if (workshopDepartmentId?.isNotEmpty == true)
           'workshopDepartmentId': workshopDepartmentId,
         if (dateFrom?.isNotEmpty == true) 'dateFrom': dateFrom,
@@ -83,6 +86,18 @@ class ProductionExecutionWorkbenchRepository {
       json,
       ProductionExecutionWorkbenchSegment.fromJson,
     );
+  }
+
+  /// 本任务逐种物料事实(ADR-095)：只读，服务端按车间任务范围校验。
+  Future<List<ProductionWorkshopTaskMaterial>> workshopTaskMaterials(
+    String segmentId,
+  ) async {
+    final rows = await _api.getList(
+      '/production/workshop-tasks/${Uri.encodeComponent(segmentId)}/materials',
+    );
+    return [
+      for (final item in rows) ProductionWorkshopTaskMaterial.fromJson(item),
+    ];
   }
 
   /// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段（等待物料/生产中，

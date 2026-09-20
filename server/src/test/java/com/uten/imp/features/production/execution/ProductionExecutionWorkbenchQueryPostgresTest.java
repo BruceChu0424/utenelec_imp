@@ -67,6 +67,11 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE FUNCTION fn_execution_start_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_execution_material_custody_valid(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE';
                 CREATE FUNCTION fn_can_change_execution_route(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_execution_segment_material_summary(uuid) RETURNS TABLE(kind_count integer, issued_count integer,
+                    partial_issued_count integer, awaiting_warehouse_count integer, drawable_count integer,
+                    line_side_pending_count integer, preparing_count integer, short_count integer, short_direct_count integer,
+                    supported_output_qty numeric, prepared_output_qty numeric)
+                    LANGUAGE sql AS 'SELECT 2, 1, 0, 0, 1, 0, 0, 0, 0, 0::numeric, 10::numeric';
                 CREATE FUNCTION fn_demand_direct_supply_eligible(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, is_line_side boolean DEFAULT FALSE);
                 CREATE TABLE departments(id uuid PRIMARY KEY, parent_id uuid, manager_id uuid, is_deleted boolean DEFAULT FALSE);
@@ -230,6 +235,10 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThat(original.canConfirmRoute()).isTrue();
             String[] statuses = {"CANCELLED", "REVERSED", "WAITING"};
             String[] routes = {"BATCH", "CONTINUOUS", "BATCH"};
+            // 路线记忆(V602 恢复，2026-09-20)只是未确认行的预填展示：终态(已取消/已红冲)
+            // 任务不算历史；另一车间同产品的有效确认才成为记忆。任务自己的路线事实
+            // (startRoute/canConfirmRoute)在任何历史下都不变。
+            String[] expectedMemory = {null, null, "BATCH"};
             for (int index = 0; index < history.size(); index++) {
                 // Actual PostgreSQL history includes terminal tasks and another
                 // workshop's current task, all sharing this exact product UUID.
@@ -241,9 +250,11 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                         OTHER_WORKSHOP, goods, routes[index]);
                 var current = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
                         .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
-                assertThat(current).as("route history from %s must not change this task", statuses[index]).isEqualTo(original);
-                assertThat(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()
-                        .valueToTree(current).has("suggestedStartRoute")).isFalse();
+                assertThat(current.startRoute()).as("route history from %s must not change this task", statuses[index]).isNull();
+                assertThat(current.canConfirmRoute()).isTrue();
+                assertThat(current.suggestedStartRoute())
+                        .as("only a live confirmed task of the same product feeds the prefill memory (%s)", statuses[index])
+                        .isEqualTo(expectedMemory[index]);
             }
             jdbc.update("UPDATE production_execution_segments SET start_route='FULL_KIT' WHERE id=?", task);
             var confirmed = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)

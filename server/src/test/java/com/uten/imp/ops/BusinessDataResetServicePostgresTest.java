@@ -168,11 +168,17 @@ class BusinessDataResetServicePostgresTest {
             assertThat(readEpoch(dataSource)).isEqualTo(epochBefore);
             assertThat(countRefreshTokens(dataSource)).isEqualTo(1);
             assertThat(countBusinessOutbox(dataSource)).isEqualTo(2);
-            assertThat(countAuditLog(dataSource)).isEqualTo(auditBefore);
+            // ADR-067 §9：受理回执独立于清库事务、先行提交，回滚后仍在（+1）；提交确认丢失
+            // 的不确定结果不写失败回执，完成回执随事务回滚——重登核对时只看到「已受理未完成」。
+            assertThat(countAuditLog(dataSource)).isEqualTo(auditBefore + 1);
             assertThat(countFullyZeroedAccounts(dataSource)).isZero();
             assertThat(nextPostingSeqValue(dataSource)).isEqualTo(postingBefore + 1);
             assertUnchangedMoneyAndStock(dataSource);
-            assertThat(service.lastResult(operator, attempt).available()).isFalse();
+            var uncertain = service.lastResult(operator, attempt);
+            assertThat(uncertain.available()).isFalse();
+            assertThat(uncertain.attemptReceived()).isTrue();
+            assertThat(uncertain.attemptReceivedByCurrentServer()).isTrue();
+            assertThat(uncertain.attemptFailed()).isFalse();
             assertThat(drain.blockingNewRequests()).isFalse();
             assertThat(drain.tryEnter()).isTrue();
             drain.leave();
@@ -337,6 +343,71 @@ class BusinessDataResetServicePostgresTest {
                 new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-empty", 0L, List.of(), false));
         assertThat(service.reset(UUID.randomUUID(), "superadmin").authorizationEpochAfter())
                 .isEqualTo(epochBefore + 1);
+    }
+
+    /**
+     * ADR-067 §9 受理/失败回执：服务器从未收到的请求没有受理回执；排水前被拒绝的请求有受理回执
+     * 和带原因的失败回执而没有完成回执；成功的请求有受理回执且由当前进程受理；受理进程与当前
+     * 进程不同(重启)时 {@code attemptReceivedByCurrentServer=false}。别的操作者查不到这些回执。
+     */
+    @Test
+    void attemptReceiptsDistinguishNeverReceivedRefusedAndCompletedRequests() throws Exception {
+        SimpleDriverDataSource dataSource = migratedDataSource();
+        BusinessAttachmentResetPreparationPort attachmentReset =
+                mock(BusinessAttachmentResetPreparationPort.class);
+        when(attachmentReset.unpurgeableBlockers(any())).thenReturn(List.of(
+                new BusinessAttachmentResetPreparationPort.UnpurgeableGroup(
+                        "原件状态为 LEGACY_UNVERIFIED，需先附件对账", 1L, List.of("合同A.pdf"))));
+        BusinessDataResetService service = newService(dataSource, attachmentReset);
+        var request = new MockHttpServletRequest("POST", "/api/system-test/business-data/reset");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        UUID operator = UUID.randomUUID();
+        UUID neverSent = UUID.randomUUID();
+        UUID refusedAttempt = UUID.randomUUID();
+        UUID completedAttempt = UUID.randomUUID();
+        long auditBefore = countAuditLog(dataSource);
+
+        var unknown = service.lastResult(operator, neverSent);
+        assertThat(unknown.available()).isFalse();
+        assertThat(unknown.attemptReceived()).isFalse();
+        assertThat(unknown.attemptFailed()).isFalse();
+
+        ApiException refused = assertThrows(ApiException.class,
+                () -> service.reset(operator, "superadmin", refusedAttempt));
+        assertThat(refused.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        var refusedReceipt = service.lastResult(operator, refusedAttempt);
+        assertThat(refusedReceipt.available()).isFalse();
+        assertThat(refusedReceipt.attemptReceived()).isTrue();
+        assertThat(refusedReceipt.attemptReceivedAt()).isNotNull();
+        assertThat(refusedReceipt.attemptReceivedByCurrentServer()).isTrue();
+        assertThat(refusedReceipt.attemptFailed()).isTrue();
+        assertThat(refusedReceipt.attemptFailureMessage()).contains("无法自动清理").contains("合同A.pdf");
+        assertThat(countAuditLog(dataSource)).isEqualTo(auditBefore + 2);
+        // 别的操作者查同一 attemptId：既无完成回执也无受理回执。
+        assertThat(service.lastResult(UUID.randomUUID(), refusedAttempt).attemptReceived()).isFalse();
+
+        when(attachmentReset.unpurgeableBlockers(any())).thenReturn(List.of());
+        when(attachmentReset.preview(any())).thenReturn(
+                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-empty", 0L, List.of(), false));
+        var result = service.reset(operator, "superadmin", completedAttempt);
+        var completed = service.lastResult(operator, completedAttempt);
+        assertThat(completed.available()).isTrue();
+        assertThat(completed.attemptId()).isEqualTo(completedAttempt);
+        assertThat(completed.clearedRows()).isEqualTo(result.clearedRows());
+        assertThat(completed.attemptReceived()).isTrue();
+        assertThat(completed.attemptReceivedByCurrentServer()).isTrue();
+        assertThat(completed.attemptFailed()).isFalse();
+
+        // 受理它的进程已经不在(模拟重启后另一实例)：仍有受理回执，但不属于当前进程。
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE audit_log SET result = 'received,server=' || gen_random_uuid()::text WHERE action = 'business_data_reset_received' AND target_id = ?")) {
+            statement.setString(1, refusedAttempt.toString());
+            assertThat(statement.executeUpdate()).isEqualTo(1);
+        }
+        var restarted = service.lastResult(operator, refusedAttempt);
+        assertThat(restarted.attemptReceived()).isTrue();
+        assertThat(restarted.attemptReceivedByCurrentServer()).isFalse();
     }
 
     private static SimpleDriverDataSource migratedDataSource() {

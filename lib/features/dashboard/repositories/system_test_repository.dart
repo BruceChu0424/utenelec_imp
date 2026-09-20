@@ -67,7 +67,13 @@ class BusinessDataResetLastResult {
     this.deletedAttachmentFiles = 0,
     this.operatorId,
     this.attemptId,
+    this.receiptsSupported = false,
+    this.attemptReceived = false,
+    this.attemptReceivedByCurrentServer = false,
+    this.attemptFailed = false,
+    this.attemptFailureMessage,
     this.confirmedPendingAttempt = false,
+    this.retiredPendingReason,
   });
 
   factory BusinessDataResetLastResult.fromJson(Map<String, dynamic> json) {
@@ -84,6 +90,13 @@ class BusinessDataResetLastResult {
           (json['deletedAttachmentFiles'] as num?)?.toInt() ?? 0,
       operatorId: json['operatorId'] as String?,
       attemptId: json['attemptId'] as String?,
+      // 旧服务端没有受理回执字段：不能把「字段缺失」当「从未受理」去撤销本地记录。
+      receiptsSupported: json.containsKey('attemptReceived'),
+      attemptReceived: json['attemptReceived'] == true,
+      attemptReceivedByCurrentServer:
+          json['attemptReceivedByCurrentServer'] == true,
+      attemptFailed: json['attemptFailed'] == true,
+      attemptFailureMessage: json['attemptFailureMessage']?.toString(),
     );
   }
 
@@ -100,24 +113,56 @@ class BusinessDataResetLastResult {
   final String? operatorId;
   final String? attemptId;
 
+  /// 服务端受理回执（ADR-067 §9，只对本地待确认的 attemptId 查询时有意义）：
+  /// 服务器是否收到过该请求、受理它的进程是否还是当前进程、受理后是否明确失败。
+  /// [receiptsSupported] 为假表示服务端还是旧版本、没有回执字段，上述三项不可采信。
+  final bool receiptsSupported;
+  final bool attemptReceived;
+  final bool attemptReceivedByCurrentServer;
+  final bool attemptFailed;
+  final String? attemptFailureMessage;
+
   /// Local correlation result, never accepted from a server JSON flag.
   final bool confirmedPendingAttempt;
 
+  /// 本地待确认记录已按服务端回执**确定地**撤销的原因（未收到 / 已失败 / 进程重启回滚）；
+  /// 非空表示可以重新提交。只由本地推导，不接受服务端 JSON 直接给出。
+  final String? retiredPendingReason;
+
+  BusinessDataResetLastResult _copy({
+    bool? confirmedPendingAttempt,
+    String? retiredPendingReason,
+  }) => BusinessDataResetLastResult(
+    available: available,
+    finishedAt: finishedAt,
+    operatorAccount: operatorAccount,
+    clearedTableCount: clearedTableCount,
+    clearedRows: clearedRows,
+    preservedTableCount: preservedTableCount,
+    authorizationEpochAfter: authorizationEpochAfter,
+    deletedAttachmentFiles: deletedAttachmentFiles,
+    operatorId: operatorId,
+    attemptId: attemptId,
+    receiptsSupported: receiptsSupported,
+    attemptReceived: attemptReceived,
+    attemptReceivedByCurrentServer: attemptReceivedByCurrentServer,
+    attemptFailed: attemptFailed,
+    attemptFailureMessage: attemptFailureMessage,
+    confirmedPendingAttempt:
+        confirmedPendingAttempt ?? this.confirmedPendingAttempt,
+    retiredPendingReason: retiredPendingReason ?? this.retiredPendingReason,
+  );
+
   BusinessDataResetLastResult confirmedForPendingAttempt() =>
-      BusinessDataResetLastResult(
-        available: available,
-        finishedAt: finishedAt,
-        operatorAccount: operatorAccount,
-        clearedTableCount: clearedTableCount,
-        clearedRows: clearedRows,
-        preservedTableCount: preservedTableCount,
-        authorizationEpochAfter: authorizationEpochAfter,
-        deletedAttachmentFiles: deletedAttachmentFiles,
-        operatorId: operatorId,
-        attemptId: attemptId,
-        confirmedPendingAttempt: true,
-      );
+      _copy(confirmedPendingAttempt: true);
+
+  BusinessDataResetLastResult retiredPendingAttempt(String reason) =>
+      _copy(retiredPendingReason: reason);
 }
+
+/// 「服务器未收到」只在请求发出这么久之后才采信：受理回执是请求进入服务的第一步、
+/// 独立提交，正常几毫秒；留出网关排队的余量，避免把仍在路上的请求当成没送到。
+const businessDataResetNeverReceivedGrace = Duration(seconds: 30);
 
 bool isBusinessDataResetOutcomeUncertain(ApiException error) {
   final status = error.httpStatus;
@@ -294,8 +339,8 @@ class ApiSystemTestRepository implements SystemTestRepository {
         query: attempt == null ? null : {'attemptId': attempt.id},
       ),
     );
-    if (attempt != null &&
-        result.available &&
+    if (attempt == null) return result;
+    if (result.available &&
         attempt.matchesCompletion(
           currentServer: server,
           currentOperatorId: operatorId ?? '',
@@ -305,6 +350,28 @@ class ApiSystemTestRepository implements SystemTestRepository {
         )) {
       await journal.removeIfSame(attempt);
       return result.confirmedForPendingAttempt();
+    }
+    // 服务端回执（ADR-067 §9）把待确认记录**确定地**收尾，不靠「查不到完成回执」猜：
+    // 受理后明确失败 → 撤销并给出原因；受理它的进程已重启而没有完成回执 → 清库事务已随
+    // 进程消亡回滚，撤销；从未受理且请求发出已超过余量 → 服务器根本没收到，撤销。
+    // 受理了、还是当前进程、也没失败 → 仍在执行（或提交确认丢失），继续等待。
+    // 旧服务端没有回执字段：沿用 §8 只认精确完成回执，不撤销。
+    if (!result.receiptsSupported) return result;
+    if (result.attemptFailed) {
+      await journal.removeIfSame(attempt);
+      return result.retiredPendingAttempt(
+        '本次清空未执行：${result.attemptFailureMessage?.trim().isNotEmpty == true ? result.attemptFailureMessage!.trim() : '服务器已拒绝本次请求'}',
+      );
+    }
+    if (result.attemptReceived && !result.attemptReceivedByCurrentServer) {
+      await journal.removeIfSame(attempt);
+      return result.retiredPendingAttempt('服务器在执行本次清空期间重启，清空未完成并已整体回滚');
+    }
+    if (!result.attemptReceived &&
+        _now().toUtc().difference(attempt.startedAt) >=
+            businessDataResetNeverReceivedGrace) {
+      await journal.removeIfSame(attempt);
+      return result.retiredPendingAttempt('服务器没有收到本次清空请求（提交时连接中断），没有执行清空');
     }
     return result;
   }
@@ -335,7 +402,11 @@ final lastBusinessDataResetResultProvider =
       final result = await ref
           .watch(systemTestRepositoryProvider)
           .lastBusinessDataResetResult();
-      if (active && result.confirmedPendingAttempt) {
+      // 精确完成回执或按服务端受理回执确定撤销，都已改写本地记录：待确认状态随之刷新，
+      // 清空按钮据此重新放开。
+      if (active &&
+          (result.confirmedPendingAttempt ||
+              result.retiredPendingReason != null)) {
         ref.invalidate(pendingBusinessDataResetProvider);
       }
       return result;

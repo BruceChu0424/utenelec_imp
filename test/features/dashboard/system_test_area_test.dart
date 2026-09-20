@@ -82,7 +82,11 @@ class _FakeRepository implements SystemTestRepository {
   Future<BusinessDataResetLastResult> lastBusinessDataResetResult() async {
     lastResultCalls++;
     if (lastResultError != null) throw lastResultError!;
-    if (lastResult.confirmedPendingAttempt) pending = null;
+    // 真仓库在精确完成回执或按服务端受理回执确定撤销时都会删掉本地记录。
+    if (lastResult.confirmedPendingAttempt ||
+        lastResult.retiredPendingReason != null) {
+      pending = null;
+    }
     return lastResult;
   }
 
@@ -535,6 +539,39 @@ void main() {
     expect(repository.lastResultCalls, 2);
     expect(find.textContaining('本次清空已确认'), findsOneWidget);
     expect(repository.calls, 0);
+  });
+
+  // ADR-067 §9：服务器从未收到的清空请求（提交时连接中断）不能把按钮永久锁死——服务端
+  // 受理回执说「没收到」，本地待确认记录撤销、明确提示可以重新提交，弹窗内不必重开。
+  testWidgets('服务器未受理的待确认记录按回执撤销并恢复提交', (tester) async {
+    final repository =
+        _FakeRepository(result: _okResult, error: NetworkException())
+          ..lastResult = BusinessDataResetLastResult.none.retiredPendingAttempt(
+            '服务器没有收到本次清空请求（提交时连接中断），没有执行清空',
+          );
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    await _expandAndOpenDialog(tester);
+    await _typePhraseAndSubmit(tester);
+    expect(repository.calls, 1);
+    // 提交失败 → 弹窗进入等待态 → 核对结果时服务端回执判定「未收到」→ 撤销并提示。
+    await tester.pumpAndSettle();
+    // 结果行在弹窗内与系统测试区各渲染一份，两处都要说清已撤销。
+    expect(
+      find.byKey(const Key('system-test-reset-retired-notice')),
+      findsWidgets,
+    );
+    expect(find.textContaining('现在可以重新提交清空'), findsWidgets);
+    expect(find.text('尚未查到本次清空的完成记录，可能仍在执行。请稍后核对，不要再次提交。'), findsNothing);
+    // 记录已撤销：口令仍在，确认按钮重新可点，再次提交真的会发第二次请求。
+    repository.error = null;
+    await tester.tap(find.byKey(const Key('system-test-clear-confirm-submit')));
+    await tester.pumpAndSettle();
+    expect(repository.calls, 2);
   });
 
   testWidgets('清空成功：登出并跳登录页', (tester) async {

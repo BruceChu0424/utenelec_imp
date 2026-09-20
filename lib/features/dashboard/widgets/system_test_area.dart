@@ -130,9 +130,27 @@ class _LastResetResultLine extends ConsumerWidget {
             '${waiting ? '。结果仍待确认，请勿再次提交。' : ''}',
           ),
           data: (result) {
+            // 服务端受理回执已确定本次请求没有执行（未收到 / 已拒绝 / 进程重启回滚）：
+            // 本地待确认记录已撤销，明确告知可以重新提交（ADR-067 §9）。
+            if (result.retiredPendingReason != null) {
+              return Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                child: Text(
+                  '${result.retiredPendingReason}。本地待确认记录已撤销，现在可以重新提交清空。',
+                  key: const Key('system-test-reset-retired-notice'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: UtenColors.warning,
+                  ),
+                ),
+              );
+            }
             if (!result.available) {
               return waiting
-                  ? retry('尚未查到本次清空的完成记录，可能仍在执行。请稍后核对，不要再次提交。')
+                  ? retry(
+                      result.attemptReceived
+                          ? '服务器已受理本次清空、尚未完成，可能仍在执行。请稍后核对，不要再次提交。'
+                          : '尚未查到本次清空的受理记录，正在核对是否已送达。请稍后核对，不要再次提交。',
+                    )
                   : const SizedBox.shrink();
             }
             final finishedAt = result.finishedAt;
@@ -410,10 +428,22 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
     final theme = Theme.of(context);
     final pending = ref.watch(pendingBusinessDataResetProvider);
     final last = ref.watch(lastBusinessDataResetResultProvider);
+    // 服务端受理回执确定本次请求没有执行后（ADR-067 §9），弹窗内的等待态一并解除，
+    // 口令仍在就能直接重新提交，不必关掉重开。
+    ref.listen(lastBusinessDataResetResultProvider, (_, next) {
+      if (_awaitingConfirmation &&
+          next.asData?.value.retiredPendingReason != null) {
+        setState(() {
+          _awaitingConfirmation = false;
+          _timeoutHint = null;
+        });
+      }
+    });
     final awaiting =
         _awaitingConfirmation ||
         pending.asData?.value != null ||
-        pending.hasError;
+        pending.hasError ||
+        last.asData?.value.retiredPendingReason != null;
     return AlertDialog(
       key: const Key('system-test-clear-confirm-dialog'),
       title: const Text('清空业务数据'),

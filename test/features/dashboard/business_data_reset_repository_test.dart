@@ -219,6 +219,115 @@ void main() {
     },
   );
 
+  // ADR-067 §9：服务端受理/失败回执把本地待确认记录确定地收尾，不靠「查不到完成回执」猜。
+  group('server receipts settle a pending reset', () {
+    final startedAt = DateTime.utc(2026, 9, 20, 15, 40);
+    Future<(ApiSystemTestRepository, BusinessDataResetJournal)> pending(
+      Map<String, Object?> lastResult, {
+      required DateTime now,
+    }) async {
+      final scope = _MemoryScope();
+      final journal = BusinessDataResetJournal(scope);
+      await journal.save(
+        BusinessDataResetAttempt(
+          id: 'attempt-pending',
+          server: _server,
+          operatorId: _operator,
+          startedAt: startedAt,
+        ),
+      );
+      final dio = Dio(BaseOptions(baseUrl: _server))
+        ..httpClientAdapter = _Adapter((request) => (200, lastResult));
+      final repository = ApiSystemTestRepository(
+        ApiClient(dio),
+        server: _server,
+        operatorId: _operator,
+        journal: journal,
+        now: () => now,
+      );
+      return (repository, journal);
+    }
+
+    test('never received: retired only after the grace window', () async {
+      final notReceived = <String, Object?>{
+        'available': false,
+        'attemptReceived': false,
+      };
+      final (early, earlyJournal) = await pending(
+        notReceived,
+        now: startedAt.add(const Duration(seconds: 5)),
+      );
+      final earlyResult = await early.lastBusinessDataResetResult();
+      expect(earlyResult.retiredPendingReason, isNull);
+      expect(await earlyJournal.read(_server, _operator), isNotNull);
+
+      final (late, lateJournal) = await pending(
+        notReceived,
+        now: startedAt.add(businessDataResetNeverReceivedGrace),
+      );
+      final lateResult = await late.lastBusinessDataResetResult();
+      expect(lateResult.retiredPendingReason, contains('没有收到本次清空请求'));
+      expect(lateResult.confirmedPendingAttempt, isFalse);
+      expect(await lateJournal.read(_server, _operator), isNull);
+    });
+
+    test('received and still running keeps the pending record', () async {
+      final (repository, journal) = await pending({
+        'available': false,
+        'attemptReceived': true,
+        'attemptReceivedByCurrentServer': true,
+      }, now: startedAt.add(const Duration(minutes: 30)));
+      final result = await repository.lastBusinessDataResetResult();
+      expect(result.retiredPendingReason, isNull);
+      expect(result.attemptReceived, isTrue);
+      expect(await journal.read(_server, _operator), isNotNull);
+    });
+
+    test('received by a previous server process retires the record', () async {
+      final (repository, journal) = await pending({
+        'available': false,
+        'attemptReceived': true,
+        'attemptReceivedByCurrentServer': false,
+      }, now: startedAt.add(const Duration(seconds: 1)));
+      final result = await repository.lastBusinessDataResetResult();
+      expect(result.retiredPendingReason, contains('重启'));
+      expect(await journal.read(_server, _operator), isNull);
+    });
+
+    test(
+      'explicit failure retires the record with the server reason',
+      () async {
+        final (repository, journal) = await pending({
+          'available': false,
+          'attemptReceived': true,
+          'attemptReceivedByCurrentServer': true,
+          'attemptFailed': true,
+          'attemptFailureMessage': '拒绝执行：business_outbox 仍有 2 条待处理或失败事件，请先处理',
+        }, now: startedAt.add(const Duration(seconds: 1)));
+        final result = await repository.lastBusinessDataResetResult();
+        expect(result.retiredPendingReason, contains('business_outbox 仍有 2 条'));
+        expect(await journal.read(_server, _operator), isNull);
+      },
+    );
+
+    test('an older completion by the same operator never retires it', () async {
+      final (repository, journal) = await pending({
+        ..._success,
+        'available': true,
+        'finishedAt': '2026-09-20T05:43:30Z',
+        'operatorAccount': 'admin',
+        'operatorId': _operator,
+        'attemptId': 'some-earlier-attempt',
+        'attemptReceived': true,
+        'attemptReceivedByCurrentServer': true,
+      }, now: startedAt.add(const Duration(hours: 2)));
+      final result = await repository.lastBusinessDataResetResult();
+      expect(result.retiredPendingReason, isNull);
+      expect(result.confirmedPendingAttempt, isFalse);
+      expect(await journal.read(_server, _operator), isNotNull);
+    });
+  });
+
   test(
     'only exact target operator and attempt ID can confirm a pending reset',
     () async {

@@ -78,6 +78,29 @@ public class BusinessDataResetService {
     /** 显式审计事件的 action（{@link #lastResult()} 按它取最近一条）。 */
     static final String AUDIT_ACTION = "business_data_reset";
 
+    /**
+     * 受理回执(ADR-067 §9)：请求进入服务的第一步就独立提交一条 audit_log，之后才排水/清库。
+     * 有它没有完成回执 = 受理后仍在执行(或随进程消亡已回滚)；没有它 = 服务器从未收到该请求，
+     * 客户端可据此撤销本地待确认记录，而不是靠「查不到完成回执」去猜。
+     */
+    static final String AUDIT_ACTION_RECEIVED = "business_data_reset_received";
+
+    /** 受理后明确失败(排水前拒绝、附件清理失败、函数拒绝或回滚)的回执；提交确认丢失的不确定结果不写。 */
+    static final String AUDIT_ACTION_FAILED = "business_data_reset_failed";
+
+    /**
+     * 本进程实例标识，写进受理回执：受理它的进程已不在而又没有完成/失败回执，说明清库事务
+     * 已随进程消亡整体回滚(完成回执与清库同一事务提交)，客户端可以确定地撤销待确认记录。
+     */
+    static final UUID SERVER_INSTANCE_ID = UUID.randomUUID();
+
+    /** 提交确认丢失(可能已提交)的不确定结果：不写失败回执，只提示重登核对。 */
+    static final class UncertainResetOutcome extends ApiException {
+        UncertainResetOutcome(String message) {
+            super(ErrorCode.INTERNAL, message);
+        }
+    }
+
     private final DataSource dataSource;
     private final PlatformTransactionManager transactionManager;
     private final BusinessDataResetFeatureGate featureGate;
@@ -95,7 +118,13 @@ public class BusinessDataResetService {
             long deletedAttachmentFiles) {
     }
 
-    /** 上次清空结果（来自 audit_log 最近一条显式事件；{@code available=false} 表示尚无记录）。 */
+    /**
+     * 上次清空结果（来自 audit_log 最近一条显式事件；{@code available=false} 表示尚无记录）。
+     * 带 attemptId 查询时另附该请求的受理/失败回执(ADR-067 §9)：
+     * {@code attemptReceived=false} 表示服务器从未收到该请求；
+     * {@code attemptReceivedByCurrentServer=false} 表示受理它的进程已重启、未完成的事务已回滚；
+     * {@code attemptFailed=true} 表示受理后明确失败并附原因。
+     */
     public record LastResult(
             boolean available,
             Instant finishedAt,
@@ -106,10 +135,23 @@ public class BusinessDataResetService {
             long authorizationEpochAfter,
             long deletedAttachmentFiles,
             UUID operatorId,
-            UUID attemptId) {
+            UUID attemptId,
+            boolean attemptReceived,
+            Instant attemptReceivedAt,
+            boolean attemptReceivedByCurrentServer,
+            boolean attemptFailed,
+            String attemptFailureMessage) {
 
         static LastResult none() {
-            return new LastResult(false, null, null, 0, 0, 0, 0, 0, null, null);
+            return new LastResult(false, null, null, 0, 0, 0, 0, 0, null, null,
+                    false, null, false, false, null);
+        }
+
+        LastResult withReceipts(boolean received, Instant receivedAt, boolean byCurrentServer,
+                                boolean failed, String failureMessage) {
+            return new LastResult(available, finishedAt, operatorAccount, clearedTableCount, clearedRows,
+                    preservedTableCount, authorizationEpochAfter, deletedAttachmentFiles, operatorId, attemptId,
+                    received, receivedAt, byCurrentServer, failed, failureMessage);
         }
     }
 
@@ -120,6 +162,44 @@ public class BusinessDataResetService {
     /** Optional correlation only; it never retries or bypasses any reset gate. */
     public Result reset(UUID operatorId, String operatorAccount, UUID attemptId) {
         featureGate.requireEnabled();
+        // 受理回执先于一切(ADR-067 §9)：写不进去就不清库——「没有受理回执」必须严格等价于「没执行」。
+        recordAttemptReceived(operatorId, operatorAccount, attemptId);
+        try {
+            return resetAfterReceipt(operatorId, operatorAccount, attemptId);
+        } catch (UncertainResetOutcome uncertain) {
+            throw uncertain;
+        } catch (RuntimeException failure) {
+            recordAttemptFailed(operatorId, operatorAccount, attemptId, failure);
+            throw failure;
+        }
+    }
+
+    private void recordAttemptReceived(UUID operatorId, String operatorAccount, UUID attemptId) {
+        if (attemptId == null) return;
+        try {
+            auditService.logExplicit(operatorId, operatorAccount, AUDIT_ACTION_RECEIVED, "system_test",
+                    attemptId.toString(), "received,server=" + SERVER_INSTANCE_ID);
+        } catch (RuntimeException ex) {
+            ApiException refused = new ApiException(ErrorCode.INTERNAL,
+                    "清空请求的受理回执写入失败，本次未执行清空，请稍后重试：" + rootMessage(ex));
+            refused.initCause(ex);
+            throw refused;
+        }
+    }
+
+    private void recordAttemptFailed(UUID operatorId, String operatorAccount, UUID attemptId, RuntimeException failure) {
+        if (attemptId == null) return;
+        String code = failure instanceof ApiException api ? api.getCode().name() : ErrorCode.INTERNAL.name();
+        String message = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+        try {
+            auditService.logExplicit(operatorId, operatorAccount, AUDIT_ACTION_FAILED, "system_test",
+                    attemptId.toString(), "failed,code=" + code + ",message=" + message);
+        } catch (RuntimeException receiptFailure) {
+            log.warn("business_data_reset 失败回执写入失败（原失败原因照常返回）", receiptFailure);
+        }
+    }
+
+    private Result resetAfterReceipt(UUID operatorId, String operatorAccount, UUID attemptId) {
         // 排水之前先分类：自动清理消化不了的阻塞直接 409，不进入排水（避免全站无谓 503）。
         rejectUnpurgeableAttachments(operatorId);
         boolean drained;
@@ -261,32 +341,67 @@ public class BusinessDataResetService {
         if (attemptId != null && operatorId == null) {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "请重新登录后核对清空结果");
         }
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement("SELECT actor_id, actor_account, target_id, result, created_at FROM audit_log WHERE action = ? AND event_source = 'business' AND target_type = 'system_test' AND (CAST(? AS uuid) IS NULL OR (target_id = ? AND actor_id = ?)) ORDER BY created_at DESC, id DESC LIMIT 1")) {
-            statement.setString(1, AUDIT_ACTION);
-            statement.setObject(2, attemptId);
-            statement.setString(3, attemptId == null ? null : attemptId.toString());
-            statement.setObject(4, operatorId);
-            try (ResultSet rows = statement.executeQuery()) {
-                if (!rows.next()) {
-                    return LastResult.none();
+        try (Connection connection = dataSource.getConnection()) {
+            LastResult completion = LastResult.none();
+            try (PreparedStatement statement = connection.prepareStatement("SELECT actor_id, actor_account, target_id, result, created_at FROM audit_log WHERE action = ? AND event_source = 'business' AND target_type = 'system_test' AND (CAST(? AS uuid) IS NULL OR (target_id = ? AND actor_id = ?)) ORDER BY created_at DESC, id DESC LIMIT 1")) {
+                statement.setString(1, AUDIT_ACTION);
+                statement.setObject(2, attemptId);
+                statement.setString(3, attemptId == null ? null : attemptId.toString());
+                statement.setObject(4, operatorId);
+                try (ResultSet rows = statement.executeQuery()) {
+                    if (rows.next()) {
+                        Map<String, Long> values = parseResultSummary(rows.getString("result"));
+                        completion = new LastResult(
+                                true,
+                                rows.getTimestamp("created_at").toInstant(),
+                                rows.getString("actor_account"),
+                                (int) (long) values.getOrDefault("cleared_tables", 0L),
+                                values.getOrDefault("cleared_rows", 0L),
+                                (int) (long) values.getOrDefault("preserved_tables", 0L),
+                                values.getOrDefault("epoch", 0L),
+                                values.getOrDefault("deleted_attachment_files", 0L),
+                                rows.getObject("actor_id", UUID.class),
+                                parseAttemptId(rows.getString("target_id")),
+                                false, null, false, false, null);
+                    }
                 }
-                Map<String, Long> values = parseResultSummary(rows.getString("result"));
-                return new LastResult(
-                        true,
-                        rows.getTimestamp("created_at").toInstant(),
-                        rows.getString("actor_account"),
-                        (int) (long) values.getOrDefault("cleared_tables", 0L),
-                        values.getOrDefault("cleared_rows", 0L),
-                        (int) (long) values.getOrDefault("preserved_tables", 0L),
-                        values.getOrDefault("epoch", 0L),
-                        values.getOrDefault("deleted_attachment_files", 0L),
-                        rows.getObject("actor_id", UUID.class),
-                        parseAttemptId(rows.getString("target_id")));
             }
+            if (attemptId == null) return completion;
+            return withAttemptReceipts(connection, completion, operatorId, attemptId);
         } catch (SQLException ex) {
             throw new ApiException(ErrorCode.INTERNAL, "读取上次清空结果失败：" + ex.getMessage());
         }
+    }
+
+    /** 同一请求的受理/失败回执(ADR-067 §9)：只认同一操作者、同一 attemptId。 */
+    private static LastResult withAttemptReceipts(
+            Connection connection, LastResult completion, UUID operatorId, UUID attemptId) throws SQLException {
+        boolean received = false;
+        Instant receivedAt = null;
+        boolean byCurrentServer = false;
+        boolean failed = false;
+        String failureMessage = null;
+        try (PreparedStatement statement = connection.prepareStatement("SELECT action, result, created_at FROM audit_log WHERE action IN (?, ?) AND event_source = 'business' AND target_type = 'system_test' AND target_id = ? AND actor_id = ? ORDER BY created_at ASC, id ASC")) {
+            statement.setString(1, AUDIT_ACTION_RECEIVED);
+            statement.setString(2, AUDIT_ACTION_FAILED);
+            statement.setString(3, attemptId.toString());
+            statement.setObject(4, operatorId);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    String result = rows.getString("result") == null ? "" : rows.getString("result");
+                    if (AUDIT_ACTION_RECEIVED.equals(rows.getString("action"))) {
+                        received = true;
+                        receivedAt = rows.getTimestamp("created_at").toInstant();
+                        byCurrentServer = result.contains("server=" + SERVER_INSTANCE_ID);
+                    } else {
+                        failed = true;
+                        int marker = result.indexOf("message=");
+                        failureMessage = marker < 0 ? result : result.substring(marker + "message=".length());
+                    }
+                }
+            }
+        }
+        return completion.withReceipts(received, receivedAt, byCurrentServer, failed, failureMessage);
     }
 
     private static UUID parseAttemptId(String value) {
@@ -352,7 +467,7 @@ public class BusinessDataResetService {
             // A lost commit acknowledgement can follow a committed reset.
             // Its receipt is atomic, so require reconciliation instead of
             // claiming rollback or encouraging another destructive request.
-            ApiException uncertain = new ApiException(ErrorCode.INTERNAL,
+            ApiException uncertain = new UncertainResetOutcome(
                     "业务数据清空未确认完成，请重新登录核对本次结果（事务提交或完成回执写入失败）");
             uncertain.initCause(ex);
             throw uncertain;

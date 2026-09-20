@@ -3,6 +3,7 @@ package com.uten.imp.features.stock.allocation;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.application.port.ActiveOperatorPort;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.ProductionMaterialReadAccessPolicy;
 import com.uten.imp.security.ProductionWorkshopAssignmentScope;
@@ -21,12 +22,14 @@ public class ProductionMaterialTaskAccessPolicy {
     private final SecurityContextCurrentUser currentUser;
     private final OwnerVisibility owners;
     private final ProductionMaterialReadAccessPolicy legacyReads;
+    private final ActiveOperatorPort membership;
 
     public record ReadScope(boolean all, List<UUID> segmentIds) {}
     public record Capabilities(boolean canSettle, boolean canReverse, boolean canClose, boolean canRequestReturn) {}
 
     public Capabilities capabilities(UUID planId, UUID segmentId) {
         readable(planId,segmentId);
+        if (!membership.isActiveOperator()) return new Capabilities(false,false,false,false);
         boolean manager=canManagePlan(planId);
         boolean writable=manager;
         if (!writable && segmentId!=null && has("production_execution:view")) {
@@ -42,7 +45,7 @@ public class ProductionMaterialTaskAccessPolicy {
             var returnable = em.createNativeQuery("""
                     SELECT EXISTS(SELECT 1 FROM production_execution_segments segment
                       WHERE segment.plan_id=:planId AND NOT segment.is_deleted
-                        AND segment.status IN ('IN_PROGRESS','COMPLETED')
+                        AND fn_execution_material_return_allowed(segment.id)
                     """ + (segmentId == null ? "" : " AND segment.id=:segmentId") + ")")
                     .setParameter("planId",planId);
             if (segmentId != null) returnable.setParameter("segmentId",segmentId);
@@ -73,6 +76,7 @@ public class ProductionMaterialTaskAccessPolicy {
 
     /** Run with the plan locked, before replay or any mutation. Locks assignments before demand rows. */
     public void requireDemandWrite(UUID planId, List<UUID> demandIds, UUID segmentId, String authority) {
+        membership.requireActiveOperator();
         requireAuthority(authority);
         boolean wholePlan = canManagePlan(planId);
         if (!wholePlan && !has("production_execution:view")) throw forbidden();
@@ -98,6 +102,7 @@ public class ProductionMaterialTaskAccessPolicy {
 
     /** Closing changes the whole plan: task membership alone is never sufficient. */
     public void requireClose(UUID planId) {
+        membership.requireActiveOperator();
         requireAuthority("production_material:close");
         if (!canManagePlan(planId)) throw forbidden();
     }

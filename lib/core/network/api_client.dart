@@ -256,6 +256,36 @@ class ApiClient {
     }
   }
 
+  /// multipart 文件上传并返回 JSON（报销发票 OCR 识别等单文件直传后端端点）。
+  Future<Map<String, dynamic>> postMultipartFile(
+    String path,
+    Uint8List bytes,
+    String filename,
+    String contentType, {
+    Duration? receiveTimeout,
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: filename,
+          contentType: DioMediaType.parse(contentType),
+        ),
+      });
+      final r = await _dio.post<dynamic>(
+        path,
+        data: form,
+        options: Options(
+          responseType: ResponseType.json,
+          receiveTimeout: receiveTimeout,
+        ),
+      );
+      return _asMap(r.data);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   /// 下载原始字节（附件本地后端 raw 端点流式下载）。
   Future<Uint8List> getBytes(String path) async {
     try {

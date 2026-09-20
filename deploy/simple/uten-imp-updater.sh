@@ -221,25 +221,34 @@ do_activate() {
 
   ln -sfn "releases/$version" "$UTEN_BASE/current.new"
   mv -T "$UTEN_BASE/current.new" "$UTEN_BASE/current"
-  systemctl start "$UTEN_APP_SERVICE"
-
-  if wait_health; then
+  # A failed systemctl start must use the same recovery path as an unhealthy
+  # process; an unguarded command would exit here under set -e.
+  if systemctl start "$UTEN_APP_SERVICE" && wait_health; then
     echo "$version" > "$ACTIVE_FILE"
     log "激活成功：$version（健康检查通过）"
     prune_old
     return 0
   fi
 
-  log "健康检查失败：$version"
-  ln -sfn "releases/$prev_ver" "$UTEN_BASE/current.new"
-  mv -T "$UTEN_BASE/current.new" "$UTEN_BASE/current"
-  if [ "$code_only" = 1 ]; then
-    systemctl restart "$UTEN_APP_SERVICE" || true
-    wait_health 10 || true
-    die "已自动回滚到 $prev_ver（应用已恢复）——请检查 $version 的后端日志后重试"
+  log "启动或健康检查失败：$version"
+  if [ "$prev_ver" != none ]; then
+    ln -sfn "releases/$prev_ver" "$UTEN_BASE/current.new"
+    mv -T "$UTEN_BASE/current.new" "$UTEN_BASE/current"
   else
-    systemctl stop "$UTEN_APP_SERVICE"
-    die "迁移版本失败：已回滚代码到 $prev_ver，应用保持停止。数据库备份：$backup_file。人工恢复后重试"
+    # First activation has no old release to restore, never create releases/none.
+    rm -f -- "$UTEN_BASE/current"
+  fi
+  if [ "$code_only" = 1 ] && [ "$prev_ver" != none ]; then
+    if systemctl restart "$UTEN_APP_SERVICE" && wait_health 10; then
+      die "已自动回滚到 $prev_ver（应用已恢复）——请检查 $version 的后端日志后重试"
+    fi
+    systemctl stop "$UTEN_APP_SERVICE" \
+      || die "已回滚代码到 $prev_ver，但应用恢复失败且停止失败，请立即人工排查"
+    die "已回滚代码到 $prev_ver，但应用未恢复，已停止；请人工排查"
+  else
+    systemctl stop "$UTEN_APP_SERVICE" \
+      || die "迁移版本激活失败且应用停止失败，请立即人工排查；数据库备份：$backup_file"
+    die "迁移版本失败：代码已恢复到先前状态（previous=$prev_ver），应用保持停止。数据库备份：$backup_file。人工恢复后重试"
   fi
 }
 

@@ -66,7 +66,7 @@ final class SalesShipmentBatchAllocation {
                                JOIN active_warehouses valid ON valid.id=leaf.id
                                WHERE stock.goods_id=i.goods_id AND stock.color_id IS NOT DISTINCT FROM i.color_id
                                  AND leaf.is_accountable AND NOT leaf.is_defective AND NOT leaf.is_line_side
-                                 AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=leaf.id AND NOT child.is_deleted)),0)
+                                 AND fn_warehouse_is_operational_leaf(leaf.id)),0)
                                -COALESCE((SELECT SUM(r.qty) FROM reservations r WHERE r.goods_id=i.goods_id
                                    AND r.color_id IS NOT DISTINCT FROM i.color_id
                                    AND (r.order_item_id IS DISTINCT FROM i.id OR r.warehouse_id IS NOT NULL)),0),0))
@@ -82,7 +82,7 @@ final class SalesShipmentBatchAllocation {
                 JOIN warehouses warehouse ON warehouse.id=balance.warehouse_id
                     AND NOT warehouse.is_deleted AND warehouse.status='使用'
                     AND warehouse.is_accountable AND NOT warehouse.is_defective AND NOT warehouse.is_line_side
-                    AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                    AND fn_warehouse_is_operational_leaf(warehouse.id)
                 LEFT JOIN reservations own ON own.order_item_id=i.id AND own.warehouse_id=warehouse.id
                     AND own.goods_id=i.goods_id AND own.color_id IS NOT DISTINCT FROM i.color_id
                 LEFT JOIN reservations global ON global.order_item_id=i.id AND global.warehouse_id IS NULL

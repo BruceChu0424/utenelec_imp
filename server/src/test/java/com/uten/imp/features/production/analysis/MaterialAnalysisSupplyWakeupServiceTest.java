@@ -337,6 +337,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
             String sql = invocation.getArgument(0, String.class);
             statements.add(sql);
             if (sql.contains("stock.batch_id IN (:batchIds)")
+                    || sql.contains("inspection.receipt_type=:sourceType")
                     || sql.contains("document.id IN (:documentIds)")
                     || sql.contains("JOIN production_planning_packages package")) {
                 return noArrivals;

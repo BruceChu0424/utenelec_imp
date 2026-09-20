@@ -2371,7 +2371,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, List.of(), null, null,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null);
+                BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null,
+                BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

@@ -205,8 +205,10 @@ class DocumentActionPermissionContractTest {
                 execution, "releaseDefer", "production_execution:release_defer");
         assertExactGateRejectsLegacy(
                 execution, "dispatch", "production_execution:dispatch");
-        assertExactGateRejectsLegacy(
-                execution, "start", "production_execution:start");
+        for (String action : List.of("start", "confirmRoute",
+                "recheckMaterial", "batchStart")) {
+            assertWorkshopActionGate(execution, action);
+        }
         assertExactGateRejectsLegacy(
                 execution, "cancel", "production_execution:cancel");
         assertExactGateRejectsLegacy(
@@ -399,6 +401,20 @@ class DocumentActionPermissionContractTest {
         assertThat(authorize(method, "production_plan:edit").isGranted())
                 .as(type.getSimpleName() + "." + methodName + " legacy edit")
                 .isFalse();
+    }
+
+    private static void assertWorkshopActionGate(Class<?> type, String methodName) {
+        String view = "production_execution:view";
+        String start = "production_execution:start";
+        assertGate(type, methodName, authority(view) + " and " + authority(start));
+        Method method = Arrays.stream(type.getDeclaredMethods())
+                .filter(candidate -> candidate.getName().equals(methodName))
+                .findFirst().orElseThrow();
+        assertThat(authorize(method, view, start).isGranted()).isTrue();
+        for (String insufficient : List.of(view, start, "production_plan:edit")) {
+            assertThat(authorize(method, insufficient).isGranted())
+                    .as(methodName + " rejects " + insufficient).isFalse();
+        }
     }
 
 

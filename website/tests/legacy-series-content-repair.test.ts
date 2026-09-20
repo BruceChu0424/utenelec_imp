@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { migratedDatabase, seedCatalog, runNode, parseLastJsonObject } from './helpers/migrated-database';
 import {
   buildLegacySeriesContentPlan,
   LEGACY_SERIES_CONTENT_REPAIRS,
@@ -14,8 +14,6 @@ import {
 } from '../scripts/lib/legacy-series-content';
 
 const WEBSITE_ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const TEMPORARY_PREFIX = '.legacy-series-content-test-';
-const TEMPORARY_PATTERN = /^\.legacy-series-content-test-[A-Za-z0-9]{6}$/u;
 
 type CatalogCategory = {
   locale: 'zh' | 'en';
@@ -178,28 +176,8 @@ test('raw detail breadcrumbs reconstruct all 50 Chinese names without conflicts'
   }
 });
 
-function parseLastJsonObject<T>(stdout: string): T {
-  const rootStart = Math.max(stdout.lastIndexOf('\n{'), stdout.startsWith('{') ? 0 : -1);
-  assert.notEqual(rootStart, -1, `No JSON object found in child output:\n${stdout}`);
-  return JSON.parse(stdout.slice(rootStart === 0 ? 0 : rootStart + 1)) as T;
-}
-
-function runNode(script: string, args: string[], environment: Record<string, string | undefined> = {}) {
-  // 测试经 npm scripts 运行，PATH 上必有 node；用固定程序名 + 参数数组，
-  // 不把解释器路径或数据拼进命令。
-  const result = spawnSync('node', [script, ...args], {
-    cwd: WEBSITE_ROOT,
-    encoding: 'utf8',
-    env: { ...process.env, ...environment },
-  });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  return result;
-}
-
 const SNAPSHOT_QUERY_SCRIPT = path.join(
   WEBSITE_ROOT, 'tests', 'helpers', 'legacy-series-snapshot-query.js');
-const PREPARE_FIXTURE_SCRIPT = path.join(
-  WEBSITE_ROOT, 'tests', 'helpers', 'legacy-series-prepare-fixture.js');
 
 function databaseSnapshot(databaseUrl: string) {
   const identities = JSON.stringify(
@@ -209,33 +187,25 @@ function databaseSnapshot(databaseUrl: string) {
     products: unknown[];
     variants: unknown[];
     sourceAudit: { count: number; digest: string };
-    repaired: Array<{ sourceIdentity: string; i18n: { zh?: { name?: string }; en?: { name?: string } } }>;
+    unrelatedSeries: unknown[];
+    repaired: Array<{ sourceIdentity: string; rowVersion: number; i18n: { zh?: { name?: string; subtitle?: string }; en?: { name?: string }; de?: { name?: string } } }>;
   }>(runNode(SNAPSHOT_QUERY_SCRIPT, [identities], { DATABASE_URL: databaseUrl }).stdout);
 }
 
-function prepareCopiedLegacyFixture(databaseUrl: string): void {
-  const fixture = JSON.stringify(LEGACY_SERIES_CONTENT_REPAIRS.map((repair) => ({
-    sourceIdentity: repair.sourceIdentity,
-    zh: firstNonTargetSourceName(repair.allowedSourceNames.zh, repair.publicNames.zh),
-    en: firstNonTargetSourceName(repair.allowedSourceNames.en, repair.publicNames.en),
-  })));
-  runNode(PREPARE_FIXTURE_SCRIPT, [fixture], { DATABASE_URL: databaseUrl });
-}
-
-test('copied database apply is atomic, audited and idempotent', { timeout: 120_000 }, async () => {
-  const sourceDatabase = path.join(WEBSITE_ROOT, 'prisma', 'dev.db');
-  const temporaryRoot = await mkdtemp(path.join(WEBSITE_ROOT, TEMPORARY_PREFIX));
-  assert.equal(path.dirname(temporaryRoot), WEBSITE_ROOT);
-  assert.match(path.basename(temporaryRoot), TEMPORARY_PATTERN);
-  const copiedDatabase = path.join(temporaryRoot, 'catalog-copy.db');
-  const databaseUrl = `file:${copiedDatabase.replaceAll('\\', '/')}`;
+test('migrated synthetic database repairs all 50 rows, preserving lineage and audit idempotently', { timeout: 120_000 }, async () => {
+  const fixture = await migratedDatabase();
+  const { databasePath: copiedDatabase, databaseUrl } = fixture;
   const cli = path.join(WEBSITE_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
   const repairScript = path.join(WEBSITE_ROOT, 'prisma', 'repair-legacy-series-content.ts');
   try {
-    await copyFile(sourceDatabase, copiedDatabase);
-    prepareCopiedLegacyFixture(databaseUrl);
+    await seedCatalog(databaseUrl, fixtureRows());
     const beforeFileDigest = sha256(await readFile(copiedDatabase));
     const before = databaseSnapshot(databaseUrl);
+    assert.equal(before.series.length, 52);
+    assert.equal(before.products.length, 2);
+    assert.equal(before.variants.length, 2);
+    assert.equal(before.sourceAudit.count, 53, 'every repaired series must retain its raw audit source');
+    assert.equal(before.unrelatedSeries.length, 2);
 
     const dryRun = runNode(cli, [repairScript, '--database', copiedDatabase]);
     const dryRunResult = parseLastJsonObject<{
@@ -269,6 +239,7 @@ test('copied database apply is atomic, audited and idempotent', { timeout: 120_0
     assert.deepEqual(after.products, before.products);
     assert.deepEqual(after.variants, before.variants);
     assert.deepEqual(after.sourceAudit, before.sourceAudit);
+    assert.deepEqual(after.unrelatedSeries, before.unrelatedSeries);
     assert.equal(after.repaired.length, 50);
     const repairs = new Map(LEGACY_SERIES_CONTENT_REPAIRS.map((item) => [item.sourceIdentity, item]));
     for (const row of after.repaired) {
@@ -276,6 +247,9 @@ test('copied database apply is atomic, audited and idempotent', { timeout: 120_0
       assert.ok(repair);
       assert.equal(row.i18n.zh?.name, repair.publicNames.zh);
       assert.equal(row.i18n.en?.name, repair.publicNames.en);
+      assert.equal(row.i18n.zh?.subtitle, `保留-${repair.sourceId}`);
+      assert.equal(row.i18n.de?.name, `Unchanged ${repair.sourceId}`);
+      assert.equal(row.rowVersion, before.repaired.find((item) => item.sourceIdentity === row.sourceIdentity)!.rowVersion + 1);
     }
 
     const secondApply = runNode(cli, [repairScript, '--apply', '--database', copiedDatabase], {
@@ -293,10 +267,6 @@ test('copied database apply is atomic, audited and idempotent', { timeout: 120_0
     assert.equal(secondResult.auditPath, null);
     assert.deepEqual(databaseSnapshot(databaseUrl), after);
   } finally {
-    const exactRoot = path.resolve(temporaryRoot);
-    if (path.dirname(exactRoot) !== WEBSITE_ROOT || !TEMPORARY_PATTERN.test(path.basename(exactRoot))) {
-      throw new Error(`Refusing to clean unexpected test directory: ${exactRoot}`);
-    }
-    await rm(exactRoot, { recursive: true, force: true });
+    await fixture.dispose();
   }
 });

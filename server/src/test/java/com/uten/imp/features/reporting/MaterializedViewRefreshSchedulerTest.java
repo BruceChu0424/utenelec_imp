@@ -55,7 +55,7 @@ class MaterializedViewRefreshSchedulerTest {
 
         for (String viewName : MaterializedViewRefreshScheduler.REPORT_VIEWS) {
             verify(refreshStatement).execute(
-                    "REFRESH MATERIALIZED VIEW CONCURRENTLY " + viewName);
+                    "SELECT public.refresh_" + viewName + "()");
         }
         verify(refreshStatement, times(MaterializedViewRefreshScheduler.REPORT_VIEWS.size()))
                 .execute(anyString());

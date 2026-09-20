@@ -22,9 +22,7 @@ final class MaterialAnalysisWarehouseBreakdownReader {
                   AND material.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[])))
             ), warehouse_facts AS MATERIALIZED (
                 SELECT w.id, w.code, w.name,
-                       (NOT w.is_defective AND NOT w.is_line_side AND NOT EXISTS (
-                           SELECT 1 FROM warehouses child
-                           WHERE child.parent_id=w.id AND child.is_deleted=FALSE)) AS public_allowed,
+                       (NOT w.is_defective AND NOT w.is_line_side AND fn_warehouse_is_operational_leaf(w.id)) AS public_allowed,
                        fn_warehouse_main_id(w.id) AS main_warehouse_id
                 FROM warehouses w
                 WHERE w.is_deleted=FALSE AND w.is_accountable=TRUE

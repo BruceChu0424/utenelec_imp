@@ -1,7 +1,10 @@
 package com.uten.imp.features.production;
 
+import com.uten.imp.application.port.ActiveOperatorPort;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -26,10 +29,33 @@ import java.util.UUID;
  */
 @Component
 @RequiredArgsConstructor
-public class ProductionWorkshopMembership {
+public class ProductionWorkshopMembership implements ActiveOperatorPort {
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
+
+    /** An owner/data-scope grant never reactivates an offboarded workshop operator. */
+    @Transactional(readOnly = true)
+    public boolean isActiveOperator() {
+        if (isSuperAdmin()) return true;
+        var actor = currentUser.get().orElse(null);
+        if (actor == null || actor.getEmployeeId() == null) return false;
+        return Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM users account
+                    JOIN employees employee ON employee.id=account.employee_id
+                    WHERE account.id=:actorId AND account.employee_id=:employeeId
+                      AND NOT account.is_deleted AND account.status='active'
+                      AND NOT employee.is_deleted AND employee.status IN ('active','probation','onLeave'))
+                """).setParameter("actorId", actor.getId())
+                .setParameter("employeeId", actor.getEmployeeId()).getSingleResult());
+    }
+
+    @Transactional(readOnly = true)
+    public void requireActiveOperator() {
+        if (!isActiveOperator()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "车间操作人员须为有效在职员工，历史计划归属不能恢复离职人员的操作权限");
+        }
+    }
 
     /**
      * @param workshopDepartmentId 执行段所属车间（为空表示未派工，一律不成立）
@@ -45,7 +71,6 @@ public class ProductionWorkshopMembership {
         // 不是 token 里可伪造的字段，所以这里放行是安全的。
         if (isSuperAdmin()) return true;
         if (employeeId == null) return false;
-        if (employeeId.equals(responsibleEmployeeId)) return true;
         if (workshopDepartmentId == null) return false;
         Boolean eligible = (Boolean) em.createNativeQuery("""
                         WITH RECURSIVE workshop_tree(id) AS (
@@ -65,7 +90,8 @@ public class ProductionWorkshopMembership {
                               AND employee.status IN (
                                   'active','probation','onLeave')
                               AND (
-                                  employee.department_id IN (
+                                  employee.id = CAST(:responsibleId AS uuid)
+                                  OR employee.department_id IN (
                                       SELECT id FROM workshop_tree)
                                   OR EXISTS (
                                       SELECT 1
@@ -85,6 +111,7 @@ public class ProductionWorkshopMembership {
                         """)
                 .setParameter("workshopId", workshopDepartmentId)
                 .setParameter("employeeId", employeeId)
+                .setParameter("responsibleId", responsibleEmployeeId)
                 .getSingleResult();
         return Boolean.TRUE.equals(eligible);
     }

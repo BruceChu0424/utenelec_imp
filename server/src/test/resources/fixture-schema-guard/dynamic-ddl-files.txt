@@ -11,7 +11,6 @@ com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java
 com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java
 com/uten/imp/migration/AccountBalanceReconciliationMigrationContractTest.java
-com/uten/imp/migration/AuditTriggerCoverageMigrationContractTest.java
 com/uten/imp/migration/CategoryDrivenMasterCodeMigrationContractTest.java
 com/uten/imp/migration/ClientDefaultSettlementMethodUuidContractTest.java
 com/uten/imp/migration/CrossAnalysisReallocationMigrationContractTest.java

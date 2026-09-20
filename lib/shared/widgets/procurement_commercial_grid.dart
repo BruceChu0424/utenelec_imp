@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../presentation/workflow_field_guidance.dart';
+import '../models/procurement_commercial_terms.dart';
 
 import '../../components/inputs/required_field_decoration.dart';
 import '../../components/layout/uten_editable_grid.dart';
@@ -61,6 +62,116 @@ mixin CommercialTermsRowMixin on EditableGridRow
       ValueNotifier<Set<String>>(const <String>{});
   final Map<String, String> _termsAutofillValues = {};
   bool _termsWatchAttached = false;
+  VoidCallback? _disposeDefaultPriceWatch;
+  VoidCallback? _checkDefaultPrice;
+  ProcurementPriceContext? _defaultPriceContext;
+  String? _defaultPriceGoodsId;
+  int _commercialRevision = 0;
+  VoidCallback? _disposeCommercialRevisionWatch;
+  int get commercialRevision => _commercialRevision;
+
+  /// Detect input -> clear ABA while an asynchronous defaults request is pending.
+  void trackCommercialEdits({
+    required TextEditingController price,
+    required ValueNotifier<String?> supplier,
+  }) {
+    if (_disposeCommercialRevisionWatch != null) return;
+    void changed() => _commercialRevision++;
+    final sources = <Listenable>[
+      price,
+      supplier,
+      currencyIdNotifier,
+      settlementMethodIdNotifier,
+      exchangeRate,
+      taxRate,
+    ];
+    for (final source in sources) {
+      source.addListener(changed);
+    }
+    _disposeCommercialRevisionWatch = () {
+      for (final source in sources) {
+        source.removeListener(changed);
+      }
+    };
+  }
+
+  /// 货品/颜色/单位由整行选择器赋值后复核，它们没有单独的通知器。
+  void revalidateDefaultPrice() => _checkDefaultPrice?.call();
+
+  /// 只在维度仍匹配时保留系统带入价；用户主动改过价格则保留人工值。
+  void watchDefaultPrice({
+    required TextEditingController price,
+    required ValueNotifier<String?> supplier,
+    required ProcurementPriceContext context,
+    required String goodsId,
+    required String? Function() currentGoodsId,
+    required String? Function() currentColorId,
+    required String? Function() currentUnitId,
+  }) {
+    _disposeDefaultPriceWatch?.call();
+    _defaultPriceContext = context;
+    _defaultPriceGoodsId = goodsId;
+    final learnedValue = price.text;
+    bool matchesContext() =>
+        currentGoodsId() == goodsId &&
+        context.matches(
+          supplierId: supplier.value,
+          colorId: currentColorId(),
+          unitId: currentUnitId(),
+          currencyId: currencyId,
+          taxRate: double.tryParse(taxRate.text.trim()),
+        );
+    void check() {
+      if (!termsAutofilled.contains('price')) return;
+      if (price.text != learnedValue) {
+        clearTermsAutofilled('price');
+      } else if (!matchesContext()) {
+        clearTermsAutofilled('price');
+        price.clear();
+      }
+    }
+
+    _checkDefaultPrice = check;
+
+    final sources = <Listenable>[price, supplier, currencyIdNotifier, taxRate];
+    for (final source in sources) {
+      source.addListener(check);
+    }
+    _disposeDefaultPriceWatch = () {
+      for (final source in sources) {
+        source.removeListener(check);
+      }
+    };
+  }
+
+  /// 复制自动价时保留其来源，但所有监听和读取必须绑定复制行。
+  void copyDefaultPriceFrom(
+    CommercialTermsRowMixin source, {
+    required TextEditingController price,
+    required ValueNotifier<String?> supplier,
+    required String? Function() currentGoodsId,
+    required String? Function() currentColorId,
+    required String? Function() currentUnitId,
+  }) {
+    final context = source._defaultPriceContext;
+    final goodsId = source._defaultPriceGoodsId;
+    if (!source.termsAutofilled.contains('price') ||
+        context == null ||
+        goodsId == null) {
+      return;
+    }
+    markTermsAutofilled('price', price.text);
+    watchDefaultPrice(
+      price: price,
+      supplier: supplier,
+      context: context,
+      goodsId: goodsId,
+      currentGoodsId: currentGoodsId,
+      currentColorId: currentColorId,
+      currentUnitId: currentUnitId,
+    );
+    revalidateDefaultPrice();
+  }
 
   /// 当前仍带预填黄标的条款 key 集合。
   Set<String> get termsAutofilled => termsAutofilledNotifier.value;
@@ -87,6 +198,7 @@ mixin CommercialTermsRowMixin on EditableGridRow
   /// 清除一个条款的预填黄标（用户改值=已核对）。
   @override
   void clearTermsAutofilled(String key) {
+    _commercialRevision++;
     if (!termsAutofilled.contains(key)) return;
     termsAutofilledNotifier.value = {...termsAutofilledNotifier.value}
       ..remove(key);
@@ -106,7 +218,7 @@ mixin CommercialTermsRowMixin on EditableGridRow
   set settlementMethodId(String? v) => settlementMethodIdNotifier.value = v;
 
   /// 行克隆时拷贝另一行的条款（不共享控制器/通知器；预填黄标不拷——克隆行是用户
-  /// 显式复制，值已随源行核对语境失效）。
+  /// 显式复制；自动价格的来源与标记另由 copyDefaultPriceFrom 保留并重绑）。
   void copyCommercialFrom(CommercialTermsRowMixin other) {
     currencyId = other.currencyId;
     settlementMethodId = other.settlementMethodId;
@@ -116,6 +228,8 @@ mixin CommercialTermsRowMixin on EditableGridRow
 
   @override
   void dispose() {
+    _disposeCommercialRevisionWatch?.call();
+    _disposeDefaultPriceWatch?.call();
     currencyIdNotifier.dispose();
     settlementMethodIdNotifier.dispose();
     termsAutofilledNotifier.dispose();

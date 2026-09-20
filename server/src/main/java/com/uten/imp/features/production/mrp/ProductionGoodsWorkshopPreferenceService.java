@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.common.util.PostgresUuidOrder;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -71,7 +72,9 @@ public class ProductionGoodsWorkshopPreferenceService {
                             segment.getResponsibleEmployeeId());
         }
 
-        selections.forEach((goodsId, selection) -> {
+        selections.entrySet().stream().sorted(Map.Entry.comparingByKey(PostgresUuidOrder.INSTANCE)).forEach(entry -> {
+            UUID goodsId = entry.getKey();
+            WorkshopSelection selection = entry.getValue();
             if (selection.isUnambiguous()) {
                 apply(goodsId, selection.workshopId, selection.learnedWorker());
             }
@@ -99,7 +102,7 @@ public class ProductionGoodsWorkshopPreferenceService {
                                 SELECT g.id,
                                        g.owning_workshop_department_id,
                                        workshop.name,
-                                       g.owning_responsible_employee_id,
+                                       employee.id,
                                        employee.full_name
                                 FROM goods g
                                 JOIN departments workshop
@@ -144,7 +147,10 @@ public class ProductionGoodsWorkshopPreferenceService {
                                 WHEN CAST(:workerId AS uuid) IS NOT NULL
                                     THEN :workerId
                                 ELSE g.owning_responsible_employee_id
-                            END
+                            END,
+                            version = g.version + 1,
+                            updated_at = now(),
+                            updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
                         WHERE g.id = :goodsId
                           AND g.is_deleted = FALSE
                           AND EXISTS (

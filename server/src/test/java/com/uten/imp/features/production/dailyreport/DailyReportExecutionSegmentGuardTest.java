@@ -160,6 +160,45 @@ class DailyReportExecutionSegmentGuardTest {
         assertTrue(error.getMessage().contains("车间必须与所选执行工单车间一致"));
     }
 
+    @Test
+    void continuousWarehouseSupplyCanReportOnlyItsActualCumulativeCapacity() {
+        Fixture fixture = fixture("IN_PROGRESS", "1000", "40", "DEMANDED", "PARTIAL", true, true, "100");
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
+                List.of(fixture.line("60"))));
+        ApiException error = assertThrows(ApiException.class, () -> fixture.guard.validateDraft(
+                UUID.randomUUID(), fixture.workshopId, List.of(fixture.line("60.0001"))));
+        assertTrue(error.getMessage().contains("最多可报 100"));
+    }
+
+    @Test
+    void continuousSupplyWithUnknownCapacityCannotReport() {
+        Fixture fixture = fixture("IN_PROGRESS", "1000", "0", "DEMANDED", "PARTIAL", true, true, null);
+        assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(),
+                fixture.workshopId,List.of(fixture.line("1"))));
+    }
+
+    @Test
+    void mismatchedMaterialCustodyRejectsOrdinaryAndRecoveryReports() {
+        Fixture fixture=fixture("IN_PROGRESS","10","0","ZERO_MATERIAL",null,true,false,null,false);
+        var ordinary=fixture.line("2");
+        var recovery=fixture.line("2"); recovery.setFqcRecoveryAuthorizationId(UUID.randomUUID());
+        for(var line:List.of(ordinary,recovery)) {
+            ApiException error=assertThrows(ApiException.class,()->fixture.guard.validateDraft(
+                    UUID.randomUUID(),fixture.workshopId,List.of(line)));
+            assertTrue(error.getMessage().contains("原领料或直送料"));
+        }
+    }
+
+    @Test
+    void mismatchedMaterialCustodyStillAllowsTheOriginalReportToReverse() {
+        Fixture fixture=fixture("IN_PROGRESS","10","0","ZERO_MATERIAL",null,true,false,null,false);
+        var item=new ProductionDailyReportItem(); item.setId(UUID.randomUUID());
+        item.setExecutionSegmentId(fixture.segmentId); item.setPlanItemId(fixture.planItemId);
+        item.setGoodsId(fixture.goodsId); item.setUnitId(fixture.unitId); item.setUnitRate(BigDecimal.ONE);
+        item.setQty(new BigDecimal("2"));
+        assertDoesNotThrow(()->fixture.guard.reverse(List.of(item)));
+    }
+
     private static Fixture fixture(
             String status, String planned, String existing) {
         return fixture(
@@ -183,6 +222,17 @@ class DailyReportExecutionSegmentGuardTest {
             String materialMode,
             String demandStatus,
             boolean workshopEligible) {
+        return fixture(status,planned,existing,materialMode,demandStatus,workshopEligible,false,null);
+    }
+
+    private static Fixture fixture(String status, String planned, String existing, String materialMode,
+                                   String demandStatus, boolean workshopEligible, boolean continuous, String capacity) {
+        return fixture(status,planned,existing,materialMode,demandStatus,workshopEligible,continuous,capacity,true);
+    }
+
+    private static Fixture fixture(String status, String planned, String existing, String materialMode,
+                                   String demandStatus, boolean workshopEligible, boolean continuous, String capacity,
+                                   boolean custodyValid) {
         UUID segmentId = UUID.randomUUID();
         UUID planItemId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
@@ -217,44 +267,27 @@ class DailyReportExecutionSegmentGuardTest {
                 responsibleEmployeeId,
                 materialMode,
                 7L, null,
-                // s.continuous_supply(V595)：普通工单不走直送到料折算上限。
-                false
+                // Route flag is preserved; every started ordinary report uses net material capacity.
+                continuous
         }));
         Query allocation = query();
         when(allocation.getResultList()).thenReturn(List.of());
         Query cumulative = query();
         when(cumulative.getSingleResult()).thenReturn(new BigDecimal(existing));
-        if ("IN_PROGRESS".equals(status)) {
-            when(em.createNativeQuery(anyString()))
-                    .thenReturn(lock, allocation, cumulative);
-        } else {
-            Query demands = query();
-            when(demands.getResultList()).thenReturn(
-                    demandStatus == null
-                            ? List.of()
-                            : Collections.singletonList(new Object[]{
-                                    UUID.randomUUID(), demandStatus
-                            }));
-            Query configOne = scalarQuery("");
-            Query configTwo = scalarQuery("");
-            Query update = query();
-            when(update.executeUpdate()).thenReturn(1);
-            Query event = query();
-            when(event.executeUpdate()).thenReturn(1);
-            Query clearOne = scalarQuery("");
-            Query clearTwo = scalarQuery("");
-            if ("ZERO_MATERIAL".equals(materialMode)) {
-                when(em.createNativeQuery(anyString())).thenReturn(
-                        lock,
-                        configOne, configTwo, update, event,
-                        clearOne, clearTwo, allocation, cumulative);
-            } else {
-                when(em.createNativeQuery(anyString())).thenReturn(
-                        lock, demands,
-                        configOne, configTwo, update, event,
-                        clearOne, clearTwo, allocation, cumulative);
-            }
-        }
+        Query demands=query();
+        when(demands.getResultList()).thenReturn(demandStatus==null ? List.of() : Collections.singletonList(
+                new Object[]{UUID.randomUUID(),demandStatus,false}));
+        Query capacityQuery=scalarQuery(capacity==null?null:new BigDecimal(capacity));
+        Query custodyQuery=scalarQuery(custodyValid);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql=invocation.getArgument(0);
+            if(sql.contains("fn_execution_material_custody_valid"))return custodyQuery;
+            if(sql.contains("fn_execution_material_output_capacity"))return capacityQuery;
+            if(sql.contains("FROM production_material_demands"))return demands;
+            if(sql.contains("FROM execution_segment_sales_allocations"))return allocation;
+            if(sql.contains("SUM(item.qty)"))return cumulative;
+            return lock;
+        });
         // 车间归属判定已抽到 ProductionWorkshopMembership（2026-09-11，与执行段写侧同一份
         // 口径：主职 ∪ 兼职 ∪ 车间子树负责人 ∪ 段负责人本人且在职）。守卫自己不再发那条
         // 递归 CTE 查询，故这里按 fixture 的 workshopEligible 桩住成员判定。

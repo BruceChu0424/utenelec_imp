@@ -9,10 +9,8 @@ package com.uten.imp.features.stock;
  * <p>口径：
  * <ul>
  *   <li>货品：未软删；{@code includeDisabled=false} 时排除 status='禁用'；</li>
- *   <li>库位号：选仓时 {@code COALESCE(本仓树偏好.place, goods.stock_place)}（偏好按
- *       last_selected_at 取最新一条，与产成品登记读取口径一致），未选仓只读主档；BTRIM 后为空的不列；</li>
- *   <li>即时库存：未选仓 = 全部核算仓（warehouses.is_accountable）余额汇总；选仓 = 该仓及子仓
- *       （V476 parent_id 递归）余额汇总；无余额行为 0；</li>
+ *   <li>库位是仓库×货品×颜色关系或货品一般建议，不代表库位实物余额；</li>
+ *   <li>库存按真实仓库×货品×颜色分别汇总，NULL色保持独立；无实际维度的主档建议行数量为0；</li>
  *   <li>parsed：库位号符合 {@link ShelfPlaceParser#SQL_PATTERN} 且层/位段不超过
  *       {@link ShelfPlaceParser#MAX_DIGITS} 位；排序 = 已分层在前 → 库行 → 层 → 位 → 库位号 → 编码；</li>
  *   <li>rack 过滤只对已分层行生效（残值不参与库行筛选）。</li>
@@ -27,33 +25,23 @@ final class ShelfLabelSql {
 
     /** 仓库子树 CTE（V476 parent_id 递归）+ 本仓树偏好 + 本仓树余额。 */
     private static final String WAREHOUSE_CTE = """
-            WITH RECURSIVE wh AS (
+            WITH RECURSIVE warehouse_tree AS (
                 SELECT id FROM warehouses WHERE id = :warehouseId AND is_deleted = false
                 UNION ALL
-                SELECT w.id FROM warehouses w JOIN wh ON w.parent_id = wh.id
+                SELECT w.id FROM warehouses w JOIN warehouse_tree tree ON w.parent_id = tree.id
                 WHERE w.is_deleted = false
             ),
-            pref AS (
-                SELECT DISTINCT ON (p.goods_id) p.goods_id, p.place
-                  FROM warehouse_goods_place_preferences p
-                  JOIN wh ON wh.id = p.warehouse_id
-                 ORDER BY p.goods_id, p.last_selected_at DESC
-            ),
-            sb AS (
-                SELECT b.goods_id, SUM(b.qty) AS qty
-                  FROM stock_balances b
-                  JOIN wh ON wh.id = b.warehouse_id
-                 GROUP BY b.goods_id
+            wh AS (
+                SELECT w.id, w.name FROM warehouses w JOIN warehouse_tree tree ON tree.id=w.id
+                WHERE w.is_accountable AND NOT w.is_line_side
             ),
             """;
 
     /** 未选仓：全部核算仓余额汇总（与即时库存「全部」口径一致）。 */
     private static final String GLOBAL_CTE = """
-            WITH sb AS (
-                SELECT b.goods_id, SUM(b.qty) AS qty
-                  FROM stock_balances b
-                  JOIN warehouses w ON w.id = b.warehouse_id AND w.is_accountable
-                 GROUP BY b.goods_id
+            WITH wh AS (
+                SELECT id, name FROM warehouses
+                WHERE is_accountable AND NOT is_deleted AND NOT is_line_side
             ),
             """;
 
@@ -64,24 +52,38 @@ final class ShelfLabelSql {
      * @param includeDisabled 是否包含禁用货品
      */
     private static String shelfCte(boolean warehouse, boolean includeDisabled) {
-        String placeExpr = warehouse
-                ? "COALESCE(NULLIF(BTRIM(pref.place), ''), NULLIF(BTRIM(g.stock_place), ''))"
-                : "NULLIF(BTRIM(g.stock_place), '')";
-        String prefJoin = warehouse ? "LEFT JOIN pref ON pref.goods_id = g.id\n" : "";
         String disabledWhere = includeDisabled ? "" : "  AND COALESCE(g.status, '') <> '禁用'\n";
         return (warehouse ? WAREHOUSE_CTE : GLOBAL_CTE)
-                + "base AS (\n"
+                + "sb AS (\n"
+                + "    SELECT b.warehouse_id, b.goods_id, b.color_id, SUM(b.qty) AS qty\n"
+                + "    FROM stock_balances b JOIN wh ON wh.id=b.warehouse_id\n"
+                + "    GROUP BY b.warehouse_id, b.goods_id, b.color_id\n"
+                + "), pref AS (\n"
+                + "    SELECT p.* FROM warehouse_goods_place_preferences p JOIN wh ON wh.id=p.warehouse_id\n"
+                + "), locations AS MATERIALIZED (\n"
+                + "    SELECT warehouse_id, goods_id, color_id FROM sb\n"
+                + "    UNION SELECT warehouse_id, goods_id, color_id FROM pref\n"
+                + "), dimensions AS (\n"
+                + "    SELECT warehouse_id, goods_id, color_id FROM locations\n"
+                + "    UNION ALL SELECT NULL::uuid, g.id, g.color_id FROM goods g\n"
+                + "    WHERE NOT EXISTS (SELECT 1 FROM locations location WHERE location.goods_id=g.id)\n"
+                + "), base AS (\n"
                 + "    SELECT g.id AS goods_id,\n"
-                + "           " + placeExpr + " AS place,\n"
+                + "           COALESCE(NULLIF(BTRIM(pref.place), ''), NULLIF(BTRIM(g.stock_place), '')) AS place,\n"
                 + "           g.code, g.series, g.name,\n"
                 + "           COALESCE(c.name, '') AS color_name,\n"
                 + "           COALESCE(u.name, '') AS unit_name,\n"
                 + "           COALESCE(sb.qty, 0) AS qty,\n"
-                + "           (COALESCE(g.status, '') = '禁用') AS disabled\n"
-                + "      FROM goods g\n"
-                + prefJoin
-                + "      LEFT JOIN sb ON sb.goods_id = g.id\n"
-                + "      LEFT JOIN colors c ON c.id = g.color_id\n"
+                + "           (COALESCE(g.status, '') = '禁用') AS disabled,\n"
+                + "           dimension.warehouse_id, wh.name AS warehouse_name, dimension.color_id,\n"
+                + "           CASE WHEN pref.id IS NOT NULL THEN 'WAREHOUSE_MASTER' ELSE 'GOODS_MASTER' END AS place_source\n"
+                + "      FROM dimensions dimension JOIN goods g ON g.id=dimension.goods_id\n"
+                + "      LEFT JOIN wh ON wh.id=dimension.warehouse_id\n"
+                + "      LEFT JOIN pref ON pref.warehouse_id=dimension.warehouse_id AND pref.goods_id=g.id\n"
+                + "        AND pref.color_id IS NOT DISTINCT FROM dimension.color_id\n"
+                + "      LEFT JOIN sb ON sb.warehouse_id=dimension.warehouse_id AND sb.goods_id=g.id\n"
+                + "        AND sb.color_id IS NOT DISTINCT FROM dimension.color_id\n"
+                + "      LEFT JOIN colors c ON c.id = dimension.color_id\n"
                 + "      LEFT JOIN units u\n"
                 + "        ON (u.id = g.unit_id\n"
                 + "            OR (g.unit_id IS NULL AND u.legacy_id = NULLIF(g.unit_legacy_id, 0)))\n"
@@ -105,7 +107,8 @@ final class ShelfLabelSql {
     static String rows(boolean warehouse, boolean includeDisabled, boolean hasRack, boolean hasKw) {
         StringBuilder sql = new StringBuilder(shelfCte(warehouse, includeDisabled));
         sql.append("SELECT r.goods_id, r.place, r.code, r.series, r.name,\n")
-           .append("       r.color_name, r.unit_name, r.qty, r.disabled, r.parsed\n")
+           .append("       r.color_name, r.unit_name, r.qty, r.disabled, r.parsed,\n")
+           .append("       r.warehouse_id, r.warehouse_name, r.color_id, r.place_source\n")
            .append("  FROM shelf r\n")
            .append(" WHERE 1 = 1\n");
         if (hasRack) {
@@ -119,7 +122,7 @@ final class ShelfLabelSql {
            .append("          split_part(r.place, '-', 1),\n")
            .append("          CASE WHEN r.parsed THEN split_part(r.place, '-', 2)::int END,\n")
            .append("          CASE WHEN r.parsed THEN split_part(r.place, '-', 3)::int END,\n")
-           .append("          r.place, r.code\n")
+           .append("          r.place, r.code, r.warehouse_id NULLS LAST, r.color_id NULLS FIRST\n")
            .append(" LIMIT ").append(ROW_LIMIT).append('\n');
         return sql.toString();
     }

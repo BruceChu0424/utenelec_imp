@@ -99,15 +99,11 @@ public class ProductionFinishedArrivalRegistrationService {
                                        CASE
                                            WHEN preference.id IS NOT NULL
                                                THEN preference.place
-                                           WHEN registration_history.place IS NOT NULL
-                                               THEN registration_history.place
                                            ELSE NULLIF(BTRIM(goods.stock_place), '')
                                        END AS suggested_place,
                                        CASE
                                            WHEN preference.id IS NOT NULL
                                                THEN 'WAREHOUSE_PREFERENCE'
-                                           WHEN registration_history.place IS NOT NULL
-                                               THEN 'REGISTRATION_HISTORY'
                                            WHEN NULLIF(BTRIM(goods.stock_place), '') IS NOT NULL
                                                THEN 'GOODS_MASTER'
                                            ELSE 'NONE'
@@ -122,47 +118,12 @@ public class ProductionFinishedArrivalRegistrationService {
                                  AND goods.is_deleted = FALSE
                                 JOIN warehouses selected_warehouse
                                   ON selected_warehouse.id = :warehouseId
-                                 AND selected_warehouse.is_deleted = FALSE
-                                 AND selected_warehouse.is_accountable = TRUE
-                                 AND COALESCE(selected_warehouse.status, '') <> '禁用'
+                                 AND fn_warehouse_is_active_accounting_leaf(selected_warehouse.id)
                                 LEFT JOIN warehouse_goods_place_preferences preference
                                  ON preference.warehouse_id = selected_warehouse.id
                                  AND preference.goods_id = report_item.goods_id
                                  AND preference.color_id
                                      IS NOT DISTINCT FROM report_item.color_id
-                                LEFT JOIN LATERAL (
-                                    SELECT latest_history.place
-                                    FROM (
-                                        SELECT history_registration.id,
-                                               history_registration.created_at,
-                                               MIN(BTRIM(
-                                                   history_item.place_snapshot)) AS place,
-                                               COUNT(DISTINCT BTRIM(
-                                                   history_item.place_snapshot)) AS place_count
-                                        FROM production_finished_arrival_registrations
-                                                  history_registration
-                                        JOIN production_finished_arrival_registration_items
-                                                  history_item
-                                          ON history_item.registration_id =
-                                             history_registration.id
-                                         AND history_item.reversal_id IS NULL
-                                        JOIN production_daily_report_items history_report_item
-                                          ON history_report_item.id =
-                                             history_item.source_report_item_id
-                                         AND history_report_item.goods_id =
-                                             report_item.goods_id
-                                         AND history_report_item.color_id
-                                             IS NOT DISTINCT FROM report_item.color_id
-                                        WHERE history_registration.warehouse_id =
-                                              selected_warehouse.id
-                                        GROUP BY history_registration.id,
-                                                 history_registration.created_at
-                                        ORDER BY history_registration.created_at DESC,
-                                                 history_registration.id DESC
-                                        LIMIT 1
-                                    ) latest_history
-                                    WHERE latest_history.place_count = 1
-                                ) registration_history ON preference.id IS NULL
                                 WHERE report.id IN (:reportIds)
                                   AND report.status = 1
                                   AND report.is_deleted = FALSE
@@ -834,13 +795,13 @@ public class ProductionFinishedArrivalRegistrationService {
                    report_item.qty,
                    NULL::text AS place_snapshot,
                    goods.stock_place,
-                   last_warehouse.warehouse_id,
-                   last_warehouse.warehouse_name_snapshot
+                   last_warehouse.id,
+                   last_warehouse.name
             """;
 
     /**
-     * 待登记行 + 逐行「上次成品仓」只读建议（同货品同颜色最近一次有效登记的仓；
-     * 不含已撤回登记）。仅作页面预填，服务端不据此决定任何事实。
+     * 待登记行的默认仓只读货品主档，并校验当前实际仓资格。
+     * DTO lastWarehouse 字段保留兼容名称；不再扫描登记历史，也不改历史快照。
      */
     private static final String PENDING_ITEM_JOINS = """
             FROM production_daily_report_items report_item
@@ -857,23 +818,7 @@ public class ProductionFinishedArrivalRegistrationService {
               ON color.id = report_item.color_id
             LEFT JOIN units unit
               ON unit.id = report_item.unit_id
-            LEFT JOIN LATERAL (
-                SELECT history_registration.warehouse_id,
-                       history_registration.warehouse_name_snapshot
-                FROM production_finished_arrival_registration_items history_item
-                JOIN production_finished_arrival_registrations history_registration
-                  ON history_registration.id = history_item.registration_id
-                JOIN production_daily_report_items history_report_item
-                  ON history_report_item.id = history_item.source_report_item_id
-                WHERE history_item.reversal_id IS NULL
-                  AND history_report_item.goods_id = report_item.goods_id
-                  AND history_report_item.color_id
-                      IS NOT DISTINCT FROM report_item.color_id
-                ORDER BY history_registration.created_at DESC,
-                         history_registration.id DESC
-                LIMIT 1
-            ) last_warehouse ON TRUE
-            """;
+            """ + com.uten.imp.features.warehouse.WarehouseMasterDefaultsSql.owningWarehouseJoin("goods", "last_warehouse");
 
     private List<Object[]> pendingItemRows(UUID reportId) {
         return NativeQueryResults.objectArrayRows(
@@ -1230,14 +1175,17 @@ public class ProductionFinishedArrivalRegistrationService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT registration.warehouse_id,
-                                       registration.warehouse_code_snapshot,
-                                       registration.warehouse_name_snapshot,
+                                       warehouse.code,
+                                       warehouse.name,
                                        registration.created_at
-                                FROM production_finished_arrival_registrations registration
-                                WHERE registration.created_by = :actorId
-                                ORDER BY registration.created_at DESC,
-                                         registration.id DESC
-                                LIMIT 1
+                                FROM (
+                                    SELECT warehouse_id, created_at
+                                    FROM production_finished_arrival_registrations
+                                    WHERE created_by = :actorId
+                                    ORDER BY created_at DESC, id DESC LIMIT 1
+                                ) registration
+                                JOIN warehouses warehouse ON warehouse.id=registration.warehouse_id
+                                  AND fn_warehouse_is_active_accounting_leaf(warehouse.id)
                                 """)
                         .setParameter("actorId", actorId));
         if (rows.isEmpty()) return null;
@@ -1303,10 +1251,9 @@ public class ProductionFinishedArrivalRegistrationService {
                                 WHERE id = :warehouseId
                                   AND is_deleted = FALSE
                                   AND is_accountable = TRUE
+                                  AND NOT is_line_side
                                   AND COALESCE(status, '') <> '禁用'
-                                  AND NOT EXISTS (SELECT 1 FROM warehouses c
-                                                  WHERE c.parent_id = warehouses.id
-                                                    AND c.is_deleted = FALSE)
+                                  AND fn_warehouse_is_operational_leaf(warehouses.id)
                                 FOR UPDATE
                                 """)
                         .setParameter("warehouseId", warehouseId));

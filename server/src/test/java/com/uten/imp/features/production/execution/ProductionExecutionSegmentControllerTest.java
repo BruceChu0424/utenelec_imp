@@ -39,7 +39,7 @@ class ProductionExecutionSegmentControllerTest {
         assertThat(method.getAnnotation(PostMapping.class).value())
                 .containsExactly("/batch-start");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasAuthority('production_execution:start')");
+                .isEqualTo("hasAuthority('production_execution:view') and hasAuthority('production_execution:start')");
     }
 
     @Test

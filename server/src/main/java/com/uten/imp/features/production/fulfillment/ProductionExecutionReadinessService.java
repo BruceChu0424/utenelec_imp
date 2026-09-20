@@ -39,10 +39,9 @@ import java.util.UUID;
 /**
  * Re-kits WAITING execution segments after purchase stock lands.
  *
- * <p>No partial reservation is ever persisted. The service first acquires all
- * material advisory locks and proves that every demand is coverable, then
- * atomically reserves the complete set, creates one exact segment DRAW and
- * promotes WAITING to READY.
+ * <p>Full-kit tasks reserve all material atomically. Confirmed continuous tasks
+ * reserve only new qualified physical stock against the remaining demand on the
+ * same task. Picking and explicit start remain separate workshop actions.
  */
 @Order(100)
 @Service
@@ -95,7 +94,8 @@ public class ProductionExecutionReadinessService
                         JOIN production_execution_segments segment
                           ON segment.package_id = package.id
                          AND segment.plan_id = plan.id
-                         AND segment.status = 'WAITING'
+                         AND (segment.status = 'WAITING' OR (segment.continuous_supply
+                              AND segment.status IN ('READY','DISPATCHED','IN_PROGRESS')))
                          AND segment.auto_promote_when_ready = TRUE
                          AND segment.is_deleted = FALSE
                         JOIN production_material_demands demand
@@ -137,10 +137,11 @@ public class ProductionExecutionReadinessService
                           ON d.id = peg.demand_id
                          AND d.execution_segment_id IS NOT NULL
                          AND d.is_deleted = FALSE
-                         AND d.warehouse_id = :warehouseId
+                         AND fn_warehouse_same_main(d.warehouse_id, :warehouseId)
                         JOIN production_execution_segments segment
                           ON segment.id = d.execution_segment_id
-                         AND segment.status = 'WAITING'
+                         AND (segment.status = 'WAITING' OR (segment.continuous_supply
+                              AND segment.status IN ('READY','DISPATCHED','IN_PROGRESS')))
                          AND segment.auto_promote_when_ready = TRUE
                          AND segment.is_deleted = FALSE
                         WHERE receipt_item.receipt_id = :receiptId
@@ -180,10 +181,11 @@ public class ProductionExecutionReadinessService
                           ON demand.id = peg.demand_id
                          AND demand.execution_segment_id IS NOT NULL
                          AND demand.is_deleted = FALSE
-                         AND demand.warehouse_id = :warehouseId
+                         AND fn_warehouse_same_main(demand.warehouse_id, :warehouseId)
                         JOIN production_execution_segments segment
                           ON segment.id = demand.execution_segment_id
-                         AND segment.status = 'WAITING'
+                         AND (segment.status = 'WAITING' OR (segment.continuous_supply
+                              AND segment.status IN ('READY','DISPATCHED','IN_PROGRESS')))
                          AND segment.auto_promote_when_ready = TRUE
                          AND segment.is_deleted = FALSE
                         WHERE receipt_item.receipt_id = :receiptId
@@ -229,7 +231,7 @@ public class ProductionExecutionReadinessService
                                      AND demand.execution_segment_id
                                             IS NOT NULL
                                      AND demand.is_deleted = FALSE
-                                     AND demand.warehouse_id = :warehouseId
+                                     AND fn_warehouse_same_main(demand.warehouse_id, :warehouseId)
                                     JOIN production_execution_segments segment
                                       ON segment.id =
                                             demand.execution_segment_id
@@ -262,7 +264,7 @@ public class ProductionExecutionReadinessService
                                      AND demand.is_deleted = FALSE
                                      AND demand.status NOT IN (
                                             'RELEASED', 'REVERSED')
-                                     AND demand.warehouse_id = :warehouseId
+                                     AND fn_warehouse_same_main(demand.warehouse_id, :warehouseId)
                                 )
                                 SELECT DISTINCT goods_id, color_id
                                 FROM dimensions
@@ -301,10 +303,11 @@ public class ProductionExecutionReadinessService
                                   ON demand.id = peg.demand_id
                                  AND demand.execution_segment_id IS NOT NULL
                                  AND demand.is_deleted = FALSE
-                                 AND demand.warehouse_id = :warehouseId
+                                 AND fn_warehouse_same_main(demand.warehouse_id, :warehouseId)
                                 JOIN production_execution_segments segment
                                   ON segment.id = demand.execution_segment_id
-                                 AND segment.status = 'WAITING'
+                                 AND (segment.status = 'WAITING' OR (segment.continuous_supply
+                              AND segment.status IN ('READY','DISPATCHED','IN_PROGRESS')))
                                  AND segment.auto_promote_when_ready = TRUE
                                  AND segment.is_deleted = FALSE
                                 WHERE receipt_item.doc_id = :receiptId
@@ -844,17 +847,98 @@ public class ProductionExecutionReadinessService
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void promoteAfterMaterialRecheck(UUID segmentId, UUID warehouseId) {
-        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK);
+        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK,null,false,true);
+    }
+
+    /** Explicit workshop command: re-request already owned, physically returned material. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void prepareReturnedMaterialDraws(UUID segmentId) {
+        // The caller owns the plan footprint before entering this method. Stock
+        // ownership is retained; this creates only the missing picking instruction.
+        List<Object[]> contexts=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.package_id,segment.plan_id,plan.bill_no,package.warehouse_id,
+                       segment.workshop_department_id,segment.responsible_employee_id
+                FROM production_execution_segments segment
+                JOIN production_planning_packages package ON package.id=segment.package_id
+                  AND package.status='CONFIRMED' AND NOT package.is_deleted
+                JOIN production_plans plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
+                  AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
+                WHERE segment.id=:segment AND NOT segment.is_deleted AND segment.start_route IS NOT NULL
+                  AND segment.status IN('READY','DISPATCHED','IN_PROGRESS')
+                """).setParameter("segment",segmentId));
+        if(contexts.isEmpty())return;
+        Object[] context=contexts.getFirst();UUID warehouse=uuid(context[3]);
+        lockExecutionSegmentMaterialDimensions(segmentId,warehouse);
+        em.createNativeQuery("SELECT id FROM production_execution_segments WHERE id=:id FOR UPDATE")
+                .setParameter("id",segmentId).getResultList();
+        em.createNativeQuery("SELECT id FROM production_planning_packages WHERE id=:id FOR UPDATE")
+                .setParameter("id",context[0]).getResultList();
+        if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_execution_material_custody_valid(:id)")
+                .setParameter("id",segmentId).getSingleResult()))
+            throw conflict("原领料与当前任务车间的实物归属不一致，请先核对原领退料记录");
+        // Match the stock ledger's authoritative pool: one demand and one actual
+        // leaf. Never borrow another task/path or replace a source with public stock.
+        List<Object[]> held=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT reservation.id,demand.id,demand.goods_id,demand.color_id,demand.unit_id,
+                       reservation.warehouse_id,reservation.qty-reservation.consumed_qty-reservation.released_qty
+                FROM production_material_demands demand
+                JOIN stock_reservations reservation ON reservation.demand_id=demand.id
+                  AND reservation.owner_type='PRODUCTION_MATERIAL_DEMAND' AND NOT reservation.is_deleted
+                  AND reservation.status=0 AND reservation.qty>reservation.consumed_qty+reservation.released_qty
+                WHERE demand.execution_segment_id=:segment AND NOT demand.is_deleted
+                  AND demand.status NOT IN('RELEASED','REVERSED')
+                ORDER BY demand.id,reservation.warehouse_id,reservation.id FOR UPDATE OF demand,reservation
+                """).setParameter("segment",segmentId));
+        if(held.isEmpty())return;
+        record Pool(UUID demandId,UUID warehouseId) {}
+        Map<Pool,BigDecimal> available=new LinkedHashMap<>();Map<UUID,DemandRow> demands=new LinkedHashMap<>();
+        for(Object[] row:held) {
+            UUID demand=uuid(row[1]);available.merge(new Pool(demand,uuid(row[5])),decimal(row[6]),BigDecimal::add);
+            demands.putIfAbsent(demand,new DemandRow(demand,uuid(row[2]),uuid(row[3]),uuid(row[4]),BigDecimal.ZERO));
+        }
+        em.createNativeQuery("""
+                SELECT document.id FROM stock_documents document
+                WHERE document.id IN(SELECT document_id FROM production_planning_package_documents
+                    WHERE execution_segment_id=:segment AND document_type='DRAW')
+                ORDER BY document.id FOR UPDATE
+                """).setParameter("segment",segmentId).getResultList();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT mapping.demand_id,document.warehouse_id,
+                       SUM(GREATEST(fn_production_draw_item_effective_qty(item.id)-COALESCE(item.issued_qty,0),0)*COALESCE(item.unit_rate,1))
+                FROM production_planning_package_document_items mapping
+                JOIN production_material_demands demand ON demand.id=mapping.demand_id
+                JOIN stock_document_items item ON item.id=mapping.document_item_id AND NOT item.is_deleted
+                JOIN stock_documents document ON document.id=item.doc_id AND document.status IN(0,1) AND NOT document.is_deleted
+                WHERE demand.execution_segment_id=:segment AND mapping.document_type='DRAW'
+                GROUP BY mapping.demand_id,document.warehouse_id
+                """).setParameter("segment",segmentId))) {
+            Pool pool=new Pool(uuid(row[0]),uuid(row[1]));
+            available.computeIfPresent(pool,(key,qty)->qty.subtract(decimal(row[2])).max(BigDecimal.ZERO));
+        }
+        if(available.values().stream().noneMatch(qty->qty.signum()>0))return;
+        var actor=new PromotionActor(currentUser.requireId(),currentUser.requireEmployeeId());
+        var snapshots=StockGoodsSnapshot.fromMaster(em,demands.values().stream().map(DemandRow::goodsId).distinct().toList(),StockGoodsSnapshot.MASTER_AT_SAVE);
+        Map<UUID,StockDocument> documents=new LinkedHashMap<>();Map<UUID,Integer> lines=new HashMap<>();
+        for(var entry:available.entrySet()) {
+            if(entry.getValue().signum()<=0)continue;
+            var pool=entry.getKey();var demand=demands.get(pool.demandId());
+            var document=documents.computeIfAbsent(pool.warehouseId(),leaf->createDraw(uuid(context[0]),segmentId,
+                    uuid(context[1]),(String)context[2],leaf,uuid(context[4]),uuid(context[5]),actor));
+            addDrawItem(document,uuid(context[0]),demand,entry.getValue(),nextDrawLine(document,lines),(String)context[2],
+                    "原任务保留的可用物料继续领用",StockGoodsSnapshot.require(snapshots,demand.goodsId(),"继续领料"),actor.userId());
+        }
+        stockDocumentItemRepo.flush();stockDocumentRepo.flush();
+        ledger.refreshDemandStatuses(demands.keySet());
+        // Technical material is already at this workshop's proven location;
+        // the explicit command authorizes the same existing automatic issue lane.
+        issuePendingLineSideDraws(segmentId);
     }
 
     /**
-     * 「其它入库」到货即提升（V606 / ADR-091 批注）：开工路线确认步骤删除后，
-     * 齐套路线不再有确认动作可挂「同事务补跑提升」——仓库一审核其它入库，就对本仓
-     * 等待中、路线放行自动提升的段**尽力而为**补跑一次：物料没到齐静默留在 WAITING
-     * 等既有到货链路；已可齐套则与旧「到货即提升」完全一致（整批预留、建领料单、
-     * 升 READY、线边仓草稿就地出库）。路线门 {@code fn_execution_route_allows_auto_promote}
-     * 在 {@code tryPromote} 的段锁查询里复核，分批/未开工持续生产不被顶掉。
-     * 缺料要抛错解释的是人工重核路径，不是这里。
+     * Physical OTHER_IN wakes confirmed routes after commit. Full-kit tasks wait
+     * for all material; continuous tasks reserve only new physical arrivals.
+     * A bounded foreground batch preserves receipt response time, and the cursor
+     * reconciler handles the remaining candidates without dropping any task.
      *
      * <p>必须在入库单事务**提交之后**调用（调用方用 afterCommit 挂接）：入库审核事务
      * 已持有库存维度锁时再进入齐套提升会违反履约足迹的锁阶段序（商业来源前缀必须
@@ -876,7 +960,8 @@ public class ProductionExecutionReadinessService
                          AND demand.status NOT IN ('RELEASED', 'REVERSED')
                         JOIN production_execution_segments segment
                           ON segment.id = demand.execution_segment_id
-                         AND segment.status = 'WAITING'
+                         AND (segment.status = 'WAITING' OR (segment.continuous_supply
+                              AND segment.status IN ('READY','DISPATCHED','IN_PROGRESS')))
                          AND segment.auto_promote_when_ready = TRUE
                          AND segment.is_deleted = FALSE
                         JOIN production_planning_packages package
@@ -885,14 +970,16 @@ public class ProductionExecutionReadinessService
                          AND package.is_deleted = FALSE
                         WHERE item.doc_id = :docId
                           AND item.is_deleted = FALSE
-                        ORDER BY segment.id
+                          AND fn_warehouse_same_main(package.warehouse_id,:warehouseId)
+                          AND fn_execution_route_allows_auto_promote(segment.id)
+                        ORDER BY segment.id LIMIT 200
                         """)
-                .setParameter("docId", stockDocumentId));
+                .setParameter("docId", stockDocumentId).setParameter("warehouseId",warehouseId));
         for (Object[] candidate : candidates) {
             // tryPromote 以「包仓库 == expectedWarehouseId」为放行前提；入库叶仓与发料仓
             // 可以不同（同主仓跨叶由齐套判定的合格来源口径处理），这里传段的包仓库。
             tryPromote(uuid(candidate[0]), stockDocumentId, uuid(candidate[1]),
-                    ReceiptKind.RECHECK, null, true, false);
+                    ReceiptKind.RECHECK, null, true);
         }
     }
 
@@ -904,11 +991,11 @@ public class ProductionExecutionReadinessService
      * 缺料原因要抛错解释的是 {@link #promoteAfterMaterialRecheck} 那条人工重核路径，不是这里。
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void promoteAfterRouteConfirmation(UUID segmentId, UUID warehouseId) {
+    public void promoteAfterRouteConfirmation(UUID segmentId, UUID warehouseId,boolean firstConfirmation) {
         if (segmentId == null || warehouseId == null) {
             return;
         }
-        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, true, false);
+        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, true,firstConfirmation);
     }
 
     /**
@@ -919,151 +1006,29 @@ public class ProductionExecutionReadinessService
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void promoteAfterWorkshopDirectTransfer(UUID segmentId, UUID warehouseId) {
-        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, true, false);
+        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, true);
     }
 
-    /**
-     * 「部分开工 · 持续生产」的齐套提升(V595 / ADR-089)：只对**仓库供给**的需求做齐套判定与
-     * 整批预留(缺料时抛错解释缺什么)；同车间直送供给的需求(direct_supply)不参与齐套——
-     * 线边仓里已经到了多少就先投多少，后面每一笔直送再补投。成功后段进 READY，线边仓领料单
-     * 同事务出库；仓库部分照旧走车间领料申请与仓库发料。
-     *
-     * <p>调用方已把 continuous_supply / direct_supply 两个标记落库并持有段行锁。
-     */
+    /** Actual direct-transfer provenance wakes the same incremental allocation path as warehouse receipts. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void promoteContinuousSupply(UUID segmentId, UUID warehouseId) {
-        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, false, true);
-    }
-
-    /**
-     * 持续生产工单收到一笔同车间直送后的补投(V595)：料刚落进本车间线边仓，按那条直送需求的
-     * 剩余量就地预留 → 线边仓领料单 → 同事务出库，上层接着做，不看齐套、不需要任何人点领料。
-     * 超出需求剩余量的部分留在线边仓(只对直送指名的需求可见)，等下一批需求。
-     *
-     * <p>幂等：同一报工行的补投用同一个 {@code idempotencyKey}，预留与出库都按键重放。
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void topUpDirectSupply(
-            UUID segmentId, UUID demandId, UUID lineSideWarehouseId,
+    public void topUpDirectSupply(UUID segmentId, UUID demandId, UUID lineSideWarehouseId,
             BigDecimal qty, String idempotencyKey) {
-        if (segmentId == null || demandId == null || lineSideWarehouseId == null
-                || qty == null || qty.signum() <= 0) {
-            return;
+        if (segmentId==null || demandId==null || lineSideWarehouseId==null || qty==null || qty.signum()<=0) return;
+        List<UUID> warehouses=NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT package.warehouse_id FROM production_execution_segments segment
+                JOIN production_planning_packages package ON package.id=segment.package_id
+                  AND package.status='CONFIRMED' AND NOT package.is_deleted
+                JOIN production_material_demands demand ON demand.id=:demand
+                  AND demand.execution_segment_id=segment.id AND NOT demand.is_deleted
+                WHERE segment.id=:segment AND segment.continuous_supply AND NOT segment.is_deleted
+                  AND segment.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
+                  AND fn_line_side_stock_targets_demand(:warehouse,demand.id)
+                """,UUID.class).setParameter("segment",segmentId).setParameter("demand",demandId)
+                .setParameter("warehouse",lineSideWarehouseId),UUID.class);
+        if (!warehouses.isEmpty()) {
+            tryPromote(segmentId,segmentId,warehouses.getFirst(),ReceiptKind.RECHECK,null,true);
+            issuePendingLineSideDraws(segmentId);
         }
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT segment.package_id, segment.plan_id, plan.bill_no,
-                               segment.workshop_department_id, segment.responsible_employee_id,
-                               segment.status, segment.continuous_supply,
-                               demand.goods_id, demand.color_id, demand.unit_id,
-                               demand.required_qty, demand.direct_supply,
-                               COALESCE((
-                                   SELECT SUM(reservation.qty - reservation.released_qty)
-                                   FROM stock_reservations reservation
-                                   WHERE reservation.demand_id = demand.id
-                                     AND reservation.is_deleted = FALSE), 0),
-                               plan.material_analysis_id, package.warehouse_id
-                        FROM production_execution_segments segment
-                        JOIN production_material_demands demand
-                          ON demand.id = :demandId
-                         AND demand.execution_segment_id = segment.id
-                         AND demand.is_deleted = FALSE
-                         AND demand.status NOT IN ('RELEASED', 'REVERSED')
-                        JOIN production_plans plan ON plan.id = segment.plan_id
-                        JOIN production_planning_packages package
-                          ON package.id = segment.package_id
-                         AND package.status = 'CONFIRMED'
-                         AND package.is_deleted = FALSE
-                        WHERE segment.id = :segmentId
-                          AND segment.is_deleted = FALSE
-                        FOR UPDATE OF segment, demand
-                        """)
-                .setParameter("segmentId", segmentId)
-                .setParameter("demandId", demandId));
-        if (rows.isEmpty()) return;
-        Object[] row = rows.getFirst();
-        String status = (String) row[5];
-        if (!Boolean.TRUE.equals(row[6]) || !Boolean.TRUE.equals(row[11])
-                || !List.of(ProductionExecutionSegment.STATUS_READY,
-                        ProductionExecutionSegment.STATUS_DISPATCHED,
-                        ProductionExecutionSegment.STATUS_IN_PROGRESS).contains(status)) {
-            return;
-        }
-        DemandRow demand = new DemandRow(
-                demandId, uuid(row[7]), uuid(row[8]), uuid(row[9]), decimal(row[10]), true);
-        BigDecimal remaining = demand.requiredQty().subtract(decimal(row[12]));
-        BigDecimal take = qty.min(remaining);
-        if (take.signum() <= 0) return;
-        stockAllocation.lockMaterialDimensions(List.of(
-                new ProductionMaterialAllocationFacade.MaterialDimension(
-                        demand.goodsId(), demand.colorId())));
-        PromotionActor actor = new PromotionActor(
-                currentUser.requireId(), currentUser.requireEmployeeId());
-        UUID packageId = uuid(row[0]);
-        UUID planId = uuid(row[1]);
-        String planNo = (String) row[2];
-        List<ProductionMaterialAllocationFacade.AllocationResult> allocated =
-                allocateDirectSupplyWithinLeaf(
-                        packageId, uuid(row[14]), planId, uuid(row[13]), demand,
-                        lineSideWarehouseId, take,
-                        packageId + ":TOPUP:" + demandId + ":" + idempotencyKey, actor.userId());
-        List<ProductionMaterialAllocationFacade.AllocationResult> fresh = allocated.stream()
-                .filter(allocation -> !allocation.replayed() && allocation.allocatedQty().signum() > 0)
-                .toList();
-        if (!fresh.isEmpty()) {
-            StockDocument draw = createDraw(
-                    packageId, segmentId, planId, planNo,
-                    lineSideWarehouseId, uuid(row[3]), uuid(row[4]), actor);
-            Map<UUID, StockGoodsSnapshot> goodsSnapshots = StockGoodsSnapshot.fromMaster(
-                    em, List.of(demand.goodsId()), StockGoodsSnapshot.MASTER_AT_SAVE);
-            int lineNumber = 0;
-            for (ProductionMaterialAllocationFacade.AllocationResult allocation : fresh) {
-                addDrawItem(draw, packageId, demand, allocation.allocatedQty(), ++lineNumber, planNo,
-                        "车间直送 · 持续生产补投",
-                        StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "直送补投领料明细"),
-                        actor.userId());
-            }
-            stockDocumentItemRepo.flush();
-            stockDocumentRepo.flush();
-            ledger.refreshDemandStatuses(List.of(demandId));
-        } else if (allocated.stream().noneMatch(ProductionMaterialAllocationFacade.AllocationResult::replayed)) {
-            return;
-        }
-        stockDocs.getObject().issueWorkshopDirectTransferDraws(
-                segmentId, lineSideWarehouseId, idempotencyKey);
-    }
-
-    /**
-     * 在一个线边仓里为一条直送需求就地预留(V595)。直送产出一入线边仓就被收料计划的分析备料
-     * 权益预留(ORIGIN_MAKE)，不先把该线边仓里的权益批次转成需求预留，它就永远「没有可用量」；
-     * 转完再取该线边仓里剩余的无主料，绝不外溢到同主仓其它叶仓。无分析来源的计划(手工计划)
-     * 直接取线边仓里指名给它的料。返回本次的全部分配结果(含幂等重放的)。
-     */
-    private List<ProductionMaterialAllocationFacade.AllocationResult> allocateDirectSupplyWithinLeaf(
-            UUID packageId, UUID packageWarehouseId, UUID planId, UUID analysisId, DemandRow demand,
-            UUID lineSideWarehouseId, BigDecimal qty, String idempotencyKey, UUID actorId) {
-        List<PreplanAnalysisPegPort.PreparedPlanTransfer> prepared = analysisId == null
-                ? List.of()
-                : preplanAnalysisPeg.transferToPlanDemandsWithinWarehouse(
-                        analysisId, planId, lineSideWarehouseId,
-                        List.of(new PreplanAnalysisPegPort.DemandSlice(
-                                demand.id(), demand.goodsId(), demand.colorId(), qty)));
-        List<ProductionMaterialAllocationFacade.AllocationResult> allocated =
-                stockAllocation.allocateWithinLeaf(
-                        new ProductionMaterialAllocationFacade.AllocationRequest(
-                                packageId, demand.id(), demand.goodsId(), demand.colorId(),
-                                packageWarehouseId, qty, idempotencyKey, actorId),
-                        lineSideWarehouseId,
-                        prepared.stream().map(value ->
-                                new ProductionMaterialAllocationFacade.QualifiedSourcePreference(
-                                        value.demandId(), value.warehouseId(), value.qty(),
-                                        value.sourceEntitlementEventId(), value.sourceStockReservationId()))
-                                .toList());
-        preplanAnalysisPeg.formalizePlanDemandTransfersForCommand(packageId, prepared, allocated.stream()
-                .filter(allocation -> allocation.allocationId() != null)
-                .map(allocation -> new PreplanAnalysisPegPort.FormalReservationSlice(
-                        allocation.demandId(), allocation.allocationId(), allocation.allocatedQty()))
-                .toList(), idempotencyKey);
-        return allocated;
     }
 
     /**
@@ -1099,7 +1064,7 @@ public class ProductionExecutionReadinessService
                                        JOIN stock_document_items item
                                          ON item.doc_id = document.id
                                         AND item.is_deleted = FALSE
-                                        AND COALESCE(item.issued_qty, 0) < item.qty
+                                        AND COALESCE(item.issued_qty, 0) < fn_production_draw_item_effective_qty(item.id)
                                        WHERE mapping.document_type = 'DRAW'
                                          AND mapping.execution_segment_id = segment.id)
                                    OR EXISTS (
@@ -1149,13 +1114,12 @@ public class ProductionExecutionReadinessService
             ReceiptKind triggeringKind,
             PromotionActor systemActor) {
         tryPromote(segmentId, triggeringReceiptId, expectedWarehouseId,
-                triggeringKind, systemActor, false, false);
+                triggeringKind, systemActor, false);
     }
 
     /**
      * @param tolerateShortage 车间直送路径为 true：缺料与供给未齐都静默返回，
      *                         不把「上层没齐套」抛成报工审核的失败(ADR-087 §2.3)。
-     * @param continuous       持续生产(V595)：直送供给的需求不参与齐套，仓库需求缺料时抛错解释。
      */
     private void tryPromote(
             UUID segmentId,
@@ -1163,8 +1127,12 @@ public class ProductionExecutionReadinessService
             UUID expectedWarehouseId,
             ReceiptKind triggeringKind,
             PromotionActor systemActor,
-            boolean tolerateShortage,
-            boolean continuous) {
+            boolean tolerateShortage) {
+        tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,tolerateShortage,false);
+    }
+
+    private void tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
+                            PromotionActor systemActor,boolean tolerateShortage,boolean reclaimReturnedCustody) {
         lockExecutionSegmentMaterialDimensions(
                 segmentId, expectedWarehouseId);
         List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
@@ -1178,7 +1146,8 @@ public class ProductionExecutionReadinessService
                                        plan.material_analysis_item_id,
                                        segment.workshop_department_id,
                                        segment.responsible_employee_id,
-                                       segment.lock_version
+                                       segment.lock_version,
+                                       segment.continuous_supply
                                 FROM production_execution_segments segment
                                 JOIN production_planning_packages package
                                   ON package.id = segment.package_id
@@ -1198,12 +1167,13 @@ public class ProductionExecutionReadinessService
                                 FOR UPDATE OF segment, package
                                 """)
                         .setParameter("segmentId", segmentId));
-        if (segmentRows.isEmpty()
-                || !ProductionExecutionSegment.STATUS_WAITING.equals(
-                        segmentRows.getFirst()[4])) {
+        if (segmentRows.isEmpty()) {
             return;
         }
         Object[] segmentRow = segmentRows.getFirst();
+        boolean continuous = Boolean.TRUE.equals(segmentRow[10]);
+        if (!"WAITING".equals(segmentRow[4])
+                && !(continuous && List.of("READY", "DISPATCHED", "IN_PROGRESS").contains(segmentRow[4]))) return;
         UUID packageId = uuid(segmentRow[0]);
         UUID planId = uuid(segmentRow[1]);
         String planNo = (String) segmentRow[2];
@@ -1212,7 +1182,8 @@ public class ProductionExecutionReadinessService
         UUID warehouseId = uuid(segmentRow[3]);
         UUID workshopDepartmentId = uuid(segmentRow[7]);
         UUID responsibleEmployeeId = uuid(segmentRow[8]);
-        if (!warehouseId.equals(expectedWarehouseId)) {
+        if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_warehouse_same_main(:logical,:actual)")
+                .setParameter("logical", warehouseId).setParameter("actual", expectedWarehouseId).getSingleResult())) {
             return;
         }
 
@@ -1235,20 +1206,13 @@ public class ProductionExecutionReadinessService
                         uuid(row[0]), uuid(row[1]), uuid(row[2]),
                         uuid(row[3]), decimal(row[4]), Boolean.TRUE.equals(row[5])))
                 .toList();
-        // 持续生产(V595)：同车间直送供给的需求不参与齐套判定与整批预留，
-        // 线边仓里到了多少先投多少；仓库供给的需求照旧整批齐套。
+        // Every supply source follows the same remaining-demand budget. Direct transfer
+        // changes physical handoff, not the material quantity needed for production.
         List<DemandRow> demands = continuous
-                ? allDemands.stream().filter(demand -> !demand.directSupply()).toList()
+                ? continuousIncrement(warehouseId, allDemands, analysisId, analysisItemId,
+                        triggeringReceiptId, triggeringKind,reclaimReturnedCustody)
                 : allDemands;
-        List<DemandRow> directDemands = continuous
-                ? allDemands.stream().filter(DemandRow::directSupply).toList()
-                : List.of();
-        if (continuous && demands.isEmpty()) {
-            promoteContinuousWithoutKitDemands(
-                    segmentId, packageId, planId, planNo, warehouseId,
-                    workshopDepartmentId, responsibleEmployeeId, allDemands, segmentRow);
-            return;
-        }
+        if (continuous && demands.isEmpty()) return;
         if (demands.isEmpty()) {
             // A continuation with no incremental material still needs the
             // workshop's explicit batch command and prior physical issue proof.
@@ -1265,8 +1229,8 @@ public class ProductionExecutionReadinessService
         }
 
         if (!isFullyAvailable(warehouseId, demands, analysisId, analysisItemId,
-                continuous || (!tolerateShortage
-                        && triggeringKind == ReceiptKind.RECHECK))) {
+                !continuous && (!tolerateShortage
+                        && triggeringKind == ReceiptKind.RECHECK),reclaimReturnedCustody)) {
             return;
         }
 
@@ -1275,14 +1239,14 @@ public class ProductionExecutionReadinessService
                         demands,
                         triggeringReceiptId,
                         triggeringKind,
-                        warehouseId);
+                        warehouseId,reclaimReturnedCustody);
         /*
          * counts an unconsumed supply peg and a physical reservation
          * against the same demand capacity. Only an exact received conversion
          * may replace that future commitment; unrelated stock never silently
          * releases a purchase/subcontract peg.
          */
-        if (!contributionsCoverOpenSupply(demands, contributions)) {
+        if (!continuous && !contributionsCoverOpenSupply(demands, contributions)) {
             if (!tolerateShortage && triggeringKind == ReceiptKind.RECHECK) {
                 throw conflict("采购或委外供给尚未完成对应来源入库，仍须等待仓库实际入库");
             }
@@ -1294,31 +1258,79 @@ public class ProductionExecutionReadinessService
                 .flatMap(List::stream)
                 .forEach(contribution -> updatePegConsumed(contribution, actor.userId()));
 
+        Map<UUID,BigDecimal> receiptTotals=new HashMap<>();
+        contributions.forEach((demand,parts)->receiptTotals.put(demand,parts.stream()
+                .map(ReceiptContribution::qty).reduce(BigDecimal.ZERO,BigDecimal::add)));
+        List<DemandRow> genericDemands=demands.stream().map(demand->new DemandRow(
+                demand.id(),demand.goodsId(),demand.colorId(),demand.unitId(),
+                demand.requiredQty().subtract(receiptTotals.getOrDefault(demand.id(),BigDecimal.ZERO)),demand.directSupply()))
+                .filter(demand->demand.requiredQty().signum()>0).toList();
+        List<ProductionMaterialAllocationFacade.AllocationResult> allocated=new ArrayList<>();
+        Set<UUID> custodyFormalReservations=new LinkedHashSet<>();
+        // An explicit supply peg converts only its exact qualified receipt in that
+        // receipt's actual leaf. Nearby public stock cannot stand in for its source.
+        for(DemandRow demand:demands) {
+            for(var physical:contributions.getOrDefault(demand.id(),List.of())) {
+                var request=new ProductionMaterialAllocationFacade.AllocationRequest(packageId,demand.id(),
+                        demand.goodsId(),demand.colorId(),warehouseId,physical.qty(),
+                        packageId+":RECEIPT:"+demand.id()+":"+physical.receiptItemId()+":"+physical.warehouseId()+":V"+segmentRow[9],actor.userId());
+                var exact=physical.custodyReservationId()==null
+                        ?stockAllocation.allocateWithinLeaf(request,physical.warehouseId(),List.of(),physical.receiptItemId())
+                        :stockAllocation.formalizeWorkshopCustody(request,physical.custodyReservationId());
+                BigDecimal received=exact.stream().map(ProductionMaterialAllocationFacade.AllocationResult::allocatedQty)
+                        .reduce(BigDecimal.ZERO,BigDecimal::add);
+                if(received.compareTo(physical.qty())!=0)throw conflict("本次供给的实际入库仓可用量已变化，请重新核对来源");
+                allocated.addAll(exact);
+                if(physical.custodyReservationId()!=null)exact.forEach(value->custodyFormalReservations.add(value.allocationId()));
+            }
+        }
+        if(reclaimReturnedCustody && !genericDemands.isEmpty()) {
+            Map<UUID,BigDecimal> reclaimed=new HashMap<>();
+            for(DemandRow demand:genericDemands) {
+                BigDecimal remaining=demand.requiredQty();
+                List<Object[]> sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT id,qty-consumed_qty-released_qty FROM stock_reservations
+                        WHERE owner_type='WORKSHOP_CUSTODY' AND owner_id=:demand AND NOT is_deleted
+                          AND source_doc_type='WORKSHOP_RETURN_CUSTODY' AND status=0
+                          AND qty>consumed_qty+released_qty AND fn_warehouse_same_main(warehouse_id,:warehouse)
+                          AND goods_id=:goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                        ORDER BY warehouse_id,id FOR UPDATE
+                        """).setParameter("demand",demand.id()).setParameter("warehouse",warehouseId)
+                        .setParameter("goods",demand.goodsId()).setParameter("color",demand.colorId()));
+                for(Object[] source:sources) {
+                    BigDecimal take=remaining.min(decimal(source[1])); if(take.signum()<=0)break;
+                    var request=new ProductionMaterialAllocationFacade.AllocationRequest(packageId,demand.id(),demand.goodsId(),demand.colorId(),
+                            warehouseId,take,packageId+":RETURN-RECLAIM:"+demand.id()+":V"+segmentRow[9],actor.userId());
+                    var owned=stockAllocation.formalizeWorkshopCustody(request,uuid(source[0]));
+                    BigDecimal formalized=owned.stream().map(ProductionMaterialAllocationFacade.AllocationResult::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add);
+                    if(formalized.compareTo(take)!=0)throw conflict("返回余料的实际专属来源在正式化时变化，请刷新");
+                    allocated.addAll(owned);owned.forEach(value->custodyFormalReservations.add(value.allocationId()));
+                    reclaimed.merge(demand.id(),formalized,BigDecimal::add);remaining=remaining.subtract(formalized);
+                }
+            }
+            genericDemands=genericDemands.stream().map(demand->new DemandRow(demand.id(),demand.goodsId(),demand.colorId(),demand.unitId(),
+                    demand.requiredQty().subtract(reclaimed.getOrDefault(demand.id(),BigDecimal.ZERO)),demand.directSupply()))
+                    .filter(demand->demand.requiredQty().signum()>0).toList();
+        }
         List<PreplanAnalysisPegPort.PreparedPlanTransfer> preparedTransfers =
-                analysisId == null
+                analysisId == null || genericDemands.isEmpty()
                         ? List.of()
                         : systemActor == null ? preplanAnalysisPeg.transferToPlanDemands(
-                                analysisId, planId, warehouseId, demandSlices(demands))
+                                analysisId, planId, warehouseId, demandSlices(genericDemands))
                         : preplanAnalysisPeg.transferToPlanDemands(
-                                analysisId, planId, warehouseId, demandSlices(demands), actor.userId());
-        List<ProductionMaterialAllocationFacade.AllocationRequest> requests = demands.stream()
+                                analysisId, planId, warehouseId, demandSlices(genericDemands), actor.userId());
+        List<ProductionMaterialAllocationFacade.AllocationRequest> requests = genericDemands.stream()
                 .map(demand -> new ProductionMaterialAllocationFacade.AllocationRequest(
                         packageId, demand.id(), demand.goodsId(), demand.colorId(),
                         warehouseId, demand.requiredQty(), packageId + ":REKIT:"
                                 + demand.id() + ":" + triggeringReceiptId
                                 + ":V" + segmentRow[9],
                         actor.userId())).toList();
-        boolean sameMainWarehouse = analysisId != null
-                && contributions.values().stream().allMatch(List::isEmpty);
-        List<ProductionMaterialAllocationFacade.AllocationResult> allocated =
-                sameMainWarehouse
-                        ? stockAllocation.allocateWithQualifiedSources(requests,
-                                preparedTransfers.stream().map(value ->
-                                        new ProductionMaterialAllocationFacade.QualifiedSourcePreference(
-                                                value.demandId(), value.warehouseId(), value.qty(),
-                                                value.sourceEntitlementEventId(), value.sourceStockReservationId()))
-                                        .toList())
-                        : stockAllocation.allocate(requests);
+        if(!requests.isEmpty())allocated.addAll(analysisId!=null
+                ? stockAllocation.allocateWithQualifiedSources(requests,preparedTransfers.stream().map(value ->
+                    new ProductionMaterialAllocationFacade.QualifiedSourcePreference(value.demandId(),value.warehouseId(),
+                        value.qty(),value.sourceEntitlementEventId(),value.sourceStockReservationId())).toList(),continuous)
+                : stockAllocation.allocate(requests,continuous));
         Map<UUID, BigDecimal> quantityByDemand = new HashMap<>();
         allocated.forEach(value -> quantityByDemand.merge(
                 value.demandId(), value.allocatedQty(), BigDecimal::add));
@@ -1328,11 +1340,20 @@ public class ProductionExecutionReadinessService
             throw conflict("齐套判定的可用库存在提升就绪时已变化，请刷新后重试");
         }
 
-        var formalReservations = allocated.stream().filter(allocation -> allocation.allocationId() != null)
-                .map(allocation -> new PreplanAnalysisPegPort.FormalReservationSlice(
-                        allocation.demandId(), allocation.allocationId(), allocation.allocatedQty())).toList();
-        if (systemActor == null) {
+        Map<UUID,PreplanAnalysisPegPort.FormalReservationSlice> formalByReservation=new LinkedHashMap<>();
+        allocated.stream().filter(allocation->allocation.allocationId()!=null && !custodyFormalReservations.contains(allocation.allocationId())).forEach(allocation->
+            formalByReservation.merge(allocation.allocationId(),new PreplanAnalysisPegPort.FormalReservationSlice(
+                allocation.demandId(),allocation.allocationId(),allocation.allocatedQty()),(first,next)->
+                    new PreplanAnalysisPegPort.FormalReservationSlice(first.demandId(),first.stockReservationId(),first.qty().add(next.qty()))));
+        var formalReservations=List.copyOf(formalByReservation.values());
+        if (systemActor == null && continuous) {
+            preplanAnalysisPeg.formalizePlanDemandTransfersForCommand(packageId, preparedTransfers, formalReservations,
+                    "CONTINUOUS:" + segmentId + ":V" + segmentRow[9]);
+        } else if (systemActor == null) {
             preplanAnalysisPeg.formalizePlanDemandTransfers(packageId, preparedTransfers, formalReservations);
+        } else if (continuous) {
+            preplanAnalysisPeg.formalizePlanDemandTransfersForCommand(packageId, preparedTransfers, formalReservations,
+                    "CONTINUOUS:" + segmentId + ":V" + segmentRow[9], actor.userId());
         } else {
             preplanAnalysisPeg.formalizePlanDemandTransfers(packageId, preparedTransfers, formalReservations, actor.userId());
         }
@@ -1345,6 +1366,8 @@ public class ProductionExecutionReadinessService
         Map<UUID, StockDocument> drawsByWarehouse = new LinkedHashMap<>();
         Map<UUID, Integer> lineNumbers = new HashMap<>();
         Set<UUID> touched = new LinkedHashSet<>();
+        Map<ReceiptContribution,BigDecimal> receiptUnassigned=new LinkedHashMap<>();
+        contributions.values().forEach(parts->parts.forEach(part->receiptUnassigned.put(part,part.qty())));
         for (DemandRow demand : demands) {
             List<ReceiptContribution> demandContributions =
                     contributions.getOrDefault(demand.id(), List.of());
@@ -1358,52 +1381,48 @@ public class ProductionExecutionReadinessService
                                 actualWarehouseId, workshopDepartmentId, responsibleEmployeeId, actor));
                 BigDecimal receiptQty = BigDecimal.ZERO;
                 for (ReceiptContribution contribution : demandContributions) {
-                    receiptQty = receiptQty.add(contribution.qty());
-                    UUID drawItemId = addDrawItem(draw, packageId, demand,
-                            contribution.qty(), lineNumbers.merge(actualWarehouseId, 1, Integer::sum),
-                            planNo, contribution.kind().name() + " receipt " + contribution.receiptId(),
-                            StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "齐套领料明细"), actor.userId());
-                    recordReceiptAllocation(contribution, packageId, demand.id(),
-                            allocation.allocationId(), draw.getId(), drawItemId, actor.userId());
+                    if(!actualWarehouseId.equals(contribution.warehouseId()))continue;
+                    BigDecimal take=receiptUnassigned.getOrDefault(contribution,BigDecimal.ZERO)
+                            .min(allocation.allocatedQty().subtract(receiptQty));
+                    if(take.signum()<=0)continue;
+                    receiptQty=receiptQty.add(take);
+                    receiptUnassigned.put(contribution,receiptUnassigned.get(contribution).subtract(take));
+                    UUID drawItemId=addDrawItem(draw,packageId,demand,take,nextDrawLine(draw,lineNumbers),
+                            planNo,contribution.kind().name()+" receipt "+contribution.receiptId(),
+                            StockGoodsSnapshot.require(goodsSnapshots,demand.goodsId(),"来源领料明细"),actor.userId());
+                    recordReceiptAllocation(contribution.withQty(take),packageId,demand.id(),allocation.allocationId(),
+                            draw.getId(),drawItemId,actor.userId());
                 }
-                // Formal receipt conversion keeps the existing one-warehouse path.
-                // Analysis entitlement conversion may produce several physical slices.
+                // Receipt and other entitled stock share the task while retaining
+                // each reservation's actual leaf and distinct source quantities.
                 BigDecimal genericQty = allocation.allocatedQty().subtract(receiptQty);
                 if (genericQty.signum() < 0) {
                     throw conflict("收货来源数量超出实际领料预留");
                 }
                 if (genericQty.signum() > 0) {
                     addDrawItem(draw, packageId, demand, genericQty,
-                            lineNumbers.merge(actualWarehouseId, 1, Integer::sum),
+                            nextDrawLine(draw, lineNumbers),
                             planNo, "齐套现有库存",
                             StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "齐套领料明细"), actor.userId());
                 }
             }
             touched.add(demand.id());
         }
+        if(receiptUnassigned.values().stream().anyMatch(value->value.signum()!=0))
+            throw conflict("正式供给来源未全部绑定到其真实入库仓领料行，当前备料已回滚");
         if (drawsByWarehouse.isEmpty() && !continuous) {
             throw conflict("执行分段领料单没有任何物料行");
-        }
-        // 持续生产：直送需求按线边仓已到的量就地预留 + 线边仓领料单(部分到料也算数)。
-        for (DemandRow demand : directDemands) {
-            allocateDirectSupplyFromLineSide(
-                    packageId, segmentId, planId, planNo, warehouseId, analysisId,
-                    workshopDepartmentId, responsibleEmployeeId, demand,
-                    demand.requiredQty(), packageId + ":REKIT:" + demand.id() + ":" + triggeringReceiptId
-                            + ":V" + segmentRow[9],
-                    actor, drawsByWarehouse, lineNumbers, goodsSnapshots);
-            touched.add(demand.id());
         }
         stockDocumentItemRepo.flush();
         stockDocumentRepo.flush();
 
         int promoted = em.createNativeQuery("""
                         UPDATE production_execution_segments
-                        SET status = 'READY',
+                        SET status = CASE WHEN status='WAITING' THEN 'READY' ELSE status END,
                             updated_at = now(),
                             updated_by = :actorId
                         WHERE id = :segmentId
-                          AND status = 'WAITING'
+                          AND (status = 'WAITING' OR (continuous_supply AND status IN ('READY','DISPATCHED','IN_PROGRESS')))
                           AND auto_promote_when_ready = TRUE
                           AND is_deleted = FALSE
                         """)
@@ -1502,115 +1521,6 @@ public class ProductionExecutionReadinessService
         }
     }
 
-    /**
-     * 持续生产且全部子件都由同车间直送供给(V595)：没有任何仓库需求要齐套，段直接进 READY，
-     * 线边仓已到的直送料按需求就地预留出库；一件都还没到也照样可以「部分开工」。
-     */
-    private void promoteContinuousWithoutKitDemands(
-            UUID segmentId, UUID packageId, UUID planId, String planNo, UUID warehouseId,
-            UUID workshopDepartmentId, UUID responsibleEmployeeId,
-            List<DemandRow> directDemands, Object[] segmentRow) {
-        PromotionActor actor = new PromotionActor(
-                currentUser.requireId(), currentUser.requireEmployeeId());
-        Map<UUID, StockGoodsSnapshot> goodsSnapshots = StockGoodsSnapshot.fromMaster(
-                em, directDemands.stream().map(DemandRow::goodsId).distinct().toList(),
-                StockGoodsSnapshot.MASTER_AT_SAVE);
-        Map<UUID, StockDocument> drawsByWarehouse = new LinkedHashMap<>();
-        Map<UUID, Integer> lineNumbers = new HashMap<>();
-        Set<UUID> touched = new LinkedHashSet<>();
-        for (DemandRow demand : directDemands) {
-            allocateDirectSupplyFromLineSide(
-                    packageId, segmentId, planId, planNo, warehouseId, uuid(segmentRow[5]),
-                    workshopDepartmentId, responsibleEmployeeId, demand,
-                    demand.requiredQty(), packageId + ":REKIT:" + demand.id() + ":" + segmentId
-                            + ":V" + segmentRow[9],
-                    actor, drawsByWarehouse, lineNumbers, goodsSnapshots);
-            touched.add(demand.id());
-        }
-        stockDocumentItemRepo.flush();
-        stockDocumentRepo.flush();
-        int promoted = em.createNativeQuery("""
-                        UPDATE production_execution_segments
-                        SET status = 'READY',
-                            updated_at = now(),
-                            updated_by = :actorId
-                        WHERE id = :segmentId
-                          AND status = 'WAITING'
-                          AND auto_promote_when_ready = TRUE
-                          AND is_deleted = FALSE
-                        """)
-                .setParameter("actorId", actor.userId())
-                .setParameter("segmentId", segmentId)
-                .executeUpdate();
-        if (promoted != 1) {
-            throw conflict("提升就绪时执行分段已被并发修改，请刷新后重试");
-        }
-        ledger.refreshDemandStatuses(touched);
-        issueLineSideDrawsAfterPromotion(segmentId, workshopDepartmentId, warehouseId);
-        chainNotice.notifyExecutionSegmentReady(segmentId, segmentId, "CONTINUOUS_SUPPLY");
-    }
-
-    /**
-     * 把直送指名给这条需求、且已经躺在本车间线边仓里的料预留出来并写进线边仓领料单(V595)。
-     * 只动线边仓、只动指名给它的料(分析权益先转正式预留，再取无主料)；一件都没到时不留任何
-     * 痕迹。返回用到的线边仓(无则 null)。
-     */
-    private UUID allocateDirectSupplyFromLineSide(
-            UUID packageId, UUID segmentId, UUID planId, String planNo, UUID warehouseId,
-            UUID analysisId, UUID workshopDepartmentId, UUID responsibleEmployeeId, DemandRow demand,
-            BigDecimal ceiling, String idempotencyKey, PromotionActor actor,
-            Map<UUID, StockDocument> drawsByWarehouse, Map<UUID, Integer> lineNumbers,
-            Map<UUID, StockGoodsSnapshot> goodsSnapshots) {
-        BigDecimal remaining = ceiling.subtract(decimal(em.createNativeQuery("""
-                        SELECT COALESCE(SUM(reservation.qty - reservation.released_qty), 0)
-                        FROM stock_reservations reservation
-                        WHERE reservation.demand_id = :demandId
-                          AND reservation.is_deleted = FALSE
-                        """).setParameter("demandId", demand.id()).getSingleResult()));
-        if (remaining.signum() <= 0) return null;
-        UUID used = null;
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT line_side.id, COALESCE(balance.qty, 0)
-                        FROM warehouses line_side
-                        LEFT JOIN stock_balances balance
-                          ON balance.warehouse_id = line_side.id
-                         AND balance.goods_id = :goodsId
-                         AND balance.color_id IS NOT DISTINCT FROM CAST(:colorId AS UUID)
-                        WHERE line_side.is_line_side
-                          AND line_side.is_deleted = FALSE
-                          AND line_side.workshop_department_id = :workshopId
-                          AND fn_warehouse_same_main(line_side.id, :warehouseId)
-                          AND fn_line_side_stock_targets_demand(line_side.id, :demandId)
-                          AND COALESCE(balance.qty, 0) > 0
-                        ORDER BY line_side.id
-                        """)
-                .setParameter("goodsId", demand.goodsId())
-                .setParameter("colorId", demand.colorId())
-                .setParameter("workshopId", workshopDepartmentId)
-                .setParameter("warehouseId", warehouseId)
-                .setParameter("demandId", demand.id()))) {
-            if (remaining.signum() <= 0) break;
-            UUID lineSide = uuid(row[0]);
-            for (ProductionMaterialAllocationFacade.AllocationResult allocation
-                    : allocateDirectSupplyWithinLeaf(packageId, warehouseId, planId, analysisId, demand,
-                            lineSide, remaining, idempotencyKey + ":LS:" + lineSide, actor.userId())) {
-                if (allocation.allocatedQty().signum() <= 0) continue;
-                remaining = remaining.subtract(allocation.allocatedQty());
-                used = lineSide;
-                if (allocation.replayed()) continue;
-                StockDocument draw = drawsByWarehouse.computeIfAbsent(lineSide,
-                        ignored -> createDraw(packageId, segmentId, planId, planNo,
-                                lineSide, workshopDepartmentId, responsibleEmployeeId, actor));
-                addDrawItem(draw, packageId, demand, allocation.allocatedQty(),
-                        lineNumbers.merge(lineSide, 1, Integer::sum), planNo,
-                        "车间直送 · 持续生产",
-                        StockGoodsSnapshot.require(goodsSnapshots, demand.goodsId(), "直送领料明细"),
-                        actor.userId());
-            }
-        }
-        return used;
-    }
-
     private static List<PreplanAnalysisPegPort.DemandSlice> demandSlices(List<DemandRow> demands) {
         return demands.stream().map(demand -> new PreplanAnalysisPegPort.DemandSlice(
                 demand.id(), demand.goodsId(), demand.colorId(), demand.requiredQty())).toList();
@@ -1621,6 +1531,21 @@ public class ProductionExecutionReadinessService
             List<UUID> demandIds,
             UUID analysisId,
             UUID analysisItemId) {
+        if (demandIds.isEmpty()) return List.of();
+        List<?> anomalies=em.createNativeQuery("""
+                SELECT DISTINCT warehouse.name
+                FROM production_material_demands demand
+                JOIN production_workshop_direct_transfer_items direct
+                  ON direct.to_demand_id IN(demand.id,demand.split_root_demand_id) AND direct.reversal_id IS NULL
+                JOIN production_workshop_direct_transfers transfer ON transfer.id=direct.transfer_id
+                JOIN production_workshop_direct_legacy_anomalies anomaly ON anomaly.warehouse_id=transfer.line_side_warehouse_id
+                  AND anomaly.goods_id=demand.goods_id AND anomaly.color_id IS NOT DISTINCT FROM demand.color_id
+                JOIN warehouses warehouse ON warehouse.id=anomaly.warehouse_id
+                WHERE demand.id IN (:demands)
+                LIMIT 3
+                """).setParameter("demands",demandIds).getResultList();
+        if (!anomalies.isEmpty()) throw conflict("车间流转位置存在历史非来源库存流水，需先核对原领退料和调拨记录，不能借用后续到货补平："
+                +String.join("、",anomalies.stream().map(Object::toString).toList()));
         return NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT demand.id, scope.id, COALESCE(balance.qty,0), COALESCE(reserved.qty,0),
@@ -1632,13 +1557,14 @@ public class ProductionExecutionReadinessService
                                (fn_warehouse_same_main(scope.id,:warehouseId)
                                 AND (NOT scope.is_line_side
                                      OR fn_line_side_stock_targets_demand(scope.id, demand.id))) AS may_allocate,
-                               goods.code, goods.name, scope.name, scope.is_line_side
+                               goods.code, goods.name, scope.name, scope.is_line_side,
+                               CASE WHEN scope.is_line_side THEN fn_workshop_direct_source_available(scope.id,demand.id) ELSE NULL END,
+                               COALESCE(custody.qty,0)
                         FROM production_material_demands demand
                         JOIN goods ON goods.id = demand.goods_id
                         JOIN warehouses scope ON scope.is_deleted = FALSE
                           AND scope.is_accountable = TRUE
-                          AND NOT EXISTS (SELECT 1 FROM warehouses child
-                              WHERE child.parent_id = scope.id AND child.is_deleted = FALSE)
+                          AND fn_warehouse_is_operational_leaf(scope.id)
                           AND (scope.id = :warehouseId OR fn_warehouse_same_main(scope.id, :warehouseId)
                                OR EXISTS (
                                    SELECT 1 FROM stock_reservations source
@@ -1711,6 +1637,11 @@ public class ProductionExecutionReadinessService
                                   IS NOT DISTINCT FROM demand.color_id
                             ) owned
                         ) own ON TRUE
+                        LEFT JOIN LATERAL (SELECT SUM(held.qty-held.consumed_qty-held.released_qty) AS qty
+                            FROM stock_reservations held WHERE held.owner_type='WORKSHOP_CUSTODY' AND held.owner_id=demand.id
+                              AND held.source_doc_type='WORKSHOP_RETURN_CUSTODY' AND held.status=0 AND NOT held.is_deleted
+                              AND held.warehouse_id=scope.id AND held.goods_id=demand.goods_id
+                              AND held.color_id IS NOT DISTINCT FROM demand.color_id) custody ON TRUE
                         WHERE demand.id IN (:demandIds)
                         ORDER BY demand.goods_id,
                                  demand.color_id NULLS FIRST, demand.id, scope.id
@@ -1731,6 +1662,7 @@ public class ProductionExecutionReadinessService
             boolean publicAllowed = Boolean.TRUE.equals(row[7]);
             BigDecimal owned = publicAllowed ? decimal(row[4]) : decimal(row[5]);
             BigDecimal physical = decimal(row[2]).subtract(decimal(row[3])).add(owned).max(BigDecimal.ZERO);
+            if (Boolean.TRUE.equals(row[12])) physical=physical.min(decimal(row[13]));
             BigDecimal qualified = decimal(row[5]).max(BigDecimal.ZERO).min(physical);
             return new BatchAvailability(uuid(row[0]), uuid(row[1]), Objects.toString(row[11], ""),
                     qualified, publicAllowed && Boolean.TRUE.equals(row[8])
@@ -1745,17 +1677,68 @@ public class ProductionExecutionReadinessService
                                     BigDecimal safetyQty, boolean ownedFirst, BigDecimal ownedQty,
                                     boolean normalWarehouse, boolean lineSide) {}
 
-    private boolean isFullyAvailable(UUID warehouseId, List<DemandRow> demands,
-                                     UUID analysisId, UUID analysisItemId, boolean explainShortage) {
-        List<Object[]> rows = availabilityRows(warehouseId,
-                demands.stream().map(DemandRow::id).toList(), analysisId, analysisItemId);
+    /**
+     * Only reserves new physical stock, bounded by both frozen demand and outstanding
+     * supply commitments. A purchase peg is consumed only by its qualified receipt.
+     * The material dimension budget is shared by repeated BOM demands in this task.
+     */
+    private List<DemandRow> continuousIncrement(UUID warehouseId, List<DemandRow> allDemands,
+            UUID analysisId, UUID analysisItemId, UUID receiptId, ReceiptKind kind,boolean reclaimReturnedCustody) {
+        if (allDemands.isEmpty()) return List.of();
+        Map<UUID, BigDecimal[]> covered = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT demand.id,
+                    COALESCE((SELECT SUM(r.qty-r.released_qty) FROM stock_reservations r
+                        WHERE r.demand_id=demand.id AND NOT r.is_deleted),0),
+                    COALESCE((SELECT SUM(p.allocated_qty-p.consumed_qty-p.released_qty)
+                        FROM production_material_supply_pegs p WHERE p.demand_id=demand.id
+                          AND p.status<>'REVERSED'),0)
+                FROM production_material_demands demand WHERE demand.id IN (:ids)
+                """).setParameter("ids", allDemands.stream().map(DemandRow::id).toList()))) {
+            covered.put(uuid(row[0]), new BigDecimal[]{decimal(row[1]), decimal(row[2])});
+        }
+        List<Object[]> availableRows=availabilityRows(warehouseId,allDemands.stream().map(DemandRow::id).toList(),analysisId,analysisItemId);
+        Map<UUID, BigDecimal> available = availabilityBudgets(availableRows);
+        Map<UUID, BigDecimal> privateCustody=custodyBudgets(availableRows);
+        Map<UUID, List<ReceiptContribution>> receipts = receiptContributions(allDemands, receiptId, kind, warehouseId,true);
+        Map<ProductionMaterialAllocationFacade.MaterialDimension, BigDecimal> claimed = new HashMap<>();
+        List<DemandRow> increments = new ArrayList<>();
+        for (DemandRow demand : allDemands) {
+            BigDecimal[] coverage = covered.get(demand.id());
+            BigDecimal remaining = demand.requiredQty().subtract(coverage[0]).max(BigDecimal.ZERO);
+            BigDecimal received = receipts.getOrDefault(demand.id(), List.of()).stream().filter(part->part.custodyReservationId()==null)
+                    .map(ReceiptContribution::qty).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal privateReceipt=receipts.getOrDefault(demand.id(),List.of()).stream().filter(part->part.custodyReservationId()!=null)
+                    .map(ReceiptContribution::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal custody=privateCustody.getOrDefault(demand.id(),BigDecimal.ZERO).min(remaining);
+            BigDecimal otherFuture=coverage[1].subtract(privateReceipt).max(BigDecimal.ZERO);
+            BigDecimal privateTake=reclaimReturnedCustody?custody.min(remaining.subtract(otherFuture).max(BigDecimal.ZERO)):BigDecimal.ZERO;
+            BigDecimal budget = remaining.subtract(custody).subtract(otherFuture).add(received).max(BigDecimal.ZERO);
+            var dimension = new ProductionMaterialAllocationFacade.MaterialDimension(demand.goodsId(), demand.colorId());
+            BigDecimal commonTake = remaining.subtract(privateTake).min(budget).min(available.getOrDefault(demand.id(), BigDecimal.ZERO)
+                    .subtract(claimed.getOrDefault(dimension, BigDecimal.ZERO)).max(BigDecimal.ZERO));
+            BigDecimal take=privateTake.add(commonTake);
+            if (take.signum() <= 0) continue;
+            increments.add(new DemandRow(demand.id(), demand.goodsId(), demand.colorId(), demand.unitId(), take, demand.directSupply()));
+            claimed.merge(dimension, commonTake, BigDecimal::add);
+        }
+        return increments;
+    }
+
+    private static Map<UUID, BigDecimal> availabilityBudgets(List<Object[]> rows) {
         Map<UUID, BigDecimal[]> budgets = new HashMap<>();
         for (Object[] row : rows) {
             boolean publicAllowed = Boolean.TRUE.equals(row[7]);
             BigDecimal owned = publicAllowed ? decimal(row[4]) : decimal(row[5]);
             BigDecimal physical = decimal(row[2]).subtract(decimal(row[3])).add(owned).max(BigDecimal.ZERO);
+            if (Boolean.TRUE.equals(row[12])) physical=physical.min(decimal(row[13]));
             BigDecimal qualified = decimal(row[5]).max(BigDecimal.ZERO).min(physical);
             BigDecimal unprotected = publicAllowed ? physical.subtract(qualified) : BigDecimal.ZERO;
+            if (Boolean.TRUE.equals(row[12]) && Boolean.TRUE.equals(row[8])) {
+                // Targeted workshop material is never reduced by public warehouse safety stock.
+                qualified = physical;
+                unprotected = BigDecimal.ZERO;
+            }
             BigDecimal[] budget = budgets.computeIfAbsent(uuid(row[0]), ignored -> new BigDecimal[]{
                     BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
             budget[0] = budget[0].add(unprotected);
@@ -1766,11 +1749,30 @@ public class ProductionExecutionReadinessService
         Map<UUID, BigDecimal> available = new HashMap<>();
         budgets.forEach((id, budget) -> available.put(id, budget[2].add(budget[1].min(
                 com.uten.imp.common.inventory.MainWarehouseStockBudget.publicBudget(budget[0], budget[3])))));
+        return available;
+    }
+
+    private static Map<UUID,BigDecimal> custodyBudgets(List<Object[]> rows) {
+        Map<UUID,BigDecimal> result=new HashMap<>();
+        for(Object[] row:rows) {
+            BigDecimal owned=Boolean.TRUE.equals(row[7])?decimal(row[4]):decimal(row[5]);
+            BigDecimal qty=decimal(row[14]).min(decimal(row[2]).subtract(decimal(row[3])).add(owned).add(decimal(row[14])).max(BigDecimal.ZERO));
+            result.merge(uuid(row[0]),qty,BigDecimal::add);
+        }
+        return result;
+    }
+
+    private boolean isFullyAvailable(UUID warehouseId, List<DemandRow> demands,
+                                     UUID analysisId, UUID analysisItemId, boolean explainShortage,boolean reclaimReturnedCustody) {
+        List<Object[]> rows = availabilityRows(warehouseId,
+                demands.stream().map(DemandRow::id).toList(), analysisId, analysisItemId);
+        Map<UUID, BigDecimal> available = availabilityBudgets(rows);
+        Map<UUID,BigDecimal> custody=reclaimReturnedCustody?custodyBudgets(rows):Map.of();
         Map<ProductionMaterialAllocationFacade.MaterialDimension, BigDecimal> required =
                 new LinkedHashMap<>();
         demands.forEach(demand -> required.merge(new ProductionMaterialAllocationFacade
                 .MaterialDimension(demand.goodsId(), demand.colorId()),
-                demand.requiredQty(), BigDecimal::add));
+                demand.requiredQty().subtract(custody.getOrDefault(demand.id(),BigDecimal.ZERO)).max(BigDecimal.ZERO), BigDecimal::add));
         List<String> shortages = new ArrayList<>();
         for (DemandRow demand : demands) {
             ProductionMaterialAllocationFacade.MaterialDimension key =
@@ -1801,7 +1803,7 @@ public class ProductionExecutionReadinessService
                                 SELECT DISTINCT goods_id, color_id
                                 FROM production_material_demands
                                 WHERE execution_segment_id = :segmentId
-                                  AND warehouse_id = :warehouseId
+                                  AND fn_warehouse_same_main(warehouse_id, :warehouseId)
                                   AND is_deleted = FALSE
                                   AND status NOT IN (
                                       'RELEASED', 'REVERSED')
@@ -1820,9 +1822,12 @@ public class ProductionExecutionReadinessService
             List<DemandRow> demands,
             UUID triggeringReceiptId,
             ReceiptKind triggeringKind,
-            UUID warehouseId) {
+            UUID warehouseId,boolean includeCustody) {
         Map<UUID, List<ReceiptContribution>> result =
                 new LinkedHashMap<>();
+        Map<ReceiptPhysicalKey,BigDecimal> physicalRemaining=new HashMap<>();
+        Map<UUID,BigDecimal> custodyRemaining=new HashMap<>();
+        Map<ReceiptSourceKey,BigDecimal> receiptRemaining=new HashMap<>();
         for (DemandRow demand : demands) {
             BigDecimal remaining = demand.requiredQty();
             List<Object[]> rows = NativeQueryResults.objectArrayRows(
@@ -1834,7 +1839,7 @@ public class ProductionExecutionReadinessService
                                                peg.allocated_qty
                                                    - peg.consumed_qty
                                                    - peg.released_qty,
-                                               fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId)
+                                               fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,actual.warehouse_id)
                                                     - COALESCE((
                                                        SELECT SUM(
                                                            allocation
@@ -1847,8 +1852,8 @@ public class ProductionExecutionReadinessService
                                                              = receipt_item.id
                                                          AND allocation.status
                                                              = 'EFFECTIVE'
-                                                         AND EXISTS(SELECT 1 FROM stock_reservations actual
-                                                             WHERE actual.id=allocation.reservation_id AND actual.warehouse_id=:warehouseId)
+                                                         AND EXISTS(SELECT 1 FROM stock_reservations reserved_source
+                                                             WHERE reserved_source.id=allocation.reservation_id AND reserved_source.warehouse_id=actual.warehouse_id)
                                                    ), 0)
                                            ) AS available_qty,
                                            peg.allocated_qty
@@ -1856,7 +1861,7 @@ public class ProductionExecutionReadinessService
                                                - peg.released_qty
                                                AS peg_available_qty,
                                            'PURCHASE'::text AS receipt_kind,
-                                           receipt.bill_date
+                                           receipt.bill_date,actual.warehouse_id,NULL::uuid AS custody_reservation_id
                                     FROM production_material_supply_pegs peg
                                     JOIN purchase_receipt_items receipt_item
                                       ON receipt_item.order_item_id =
@@ -1866,7 +1871,9 @@ public class ProductionExecutionReadinessService
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
-                                      AND fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId)>0
+                                    JOIN LATERAL fn_procurement_receipt_stock_warehouses('PURCHASE',receipt.id) actual
+                                      ON fn_warehouse_same_main(actual.warehouse_id,:warehouseId)
+                                     AND fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,actual.warehouse_id)>0
                                     LEFT JOIN procurement_inspection_items
                                       inspection
                                       ON inspection.receipt_type = 'PURCHASE'
@@ -1896,7 +1903,7 @@ public class ProductionExecutionReadinessService
                                                peg.allocated_qty
                                                    - peg.consumed_qty
                                                    - peg.released_qty,
-                                               fn_procurement_received_in_warehouse('SUBCONTRACT',receipt_item.id,:warehouseId)
+                                               fn_procurement_received_in_warehouse('SUBCONTRACT',receipt_item.id,actual.warehouse_id)
                                                     - COALESCE((
                                                        SELECT SUM(
                                                            allocation
@@ -1909,8 +1916,8 @@ public class ProductionExecutionReadinessService
                                                              = receipt_item.id
                                                          AND allocation.status
                                                              = 'EFFECTIVE'
-                                                         AND EXISTS(SELECT 1 FROM stock_reservations actual
-                                                             WHERE actual.id=allocation.reservation_id AND actual.warehouse_id=:warehouseId)
+                                                         AND EXISTS(SELECT 1 FROM stock_reservations reserved_source
+                                                             WHERE reserved_source.id=allocation.reservation_id AND reserved_source.warehouse_id=actual.warehouse_id)
                                                    ), 0)
                                            ) AS available_qty,
                                            peg.allocated_qty
@@ -1918,7 +1925,7 @@ public class ProductionExecutionReadinessService
                                                - peg.released_qty
                                                AS peg_available_qty,
                                            'SUBCONTRACT'::text AS receipt_kind,
-                                           receipt.bill_date
+                                           receipt.bill_date,actual.warehouse_id,NULL::uuid AS custody_reservation_id
                                     FROM production_material_supply_pegs peg
                                     JOIN subcontract_receipt_items receipt_item
                                       ON receipt_item.order_item_id =
@@ -1928,7 +1935,9 @@ public class ProductionExecutionReadinessService
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
-                                      AND fn_procurement_received_in_warehouse('SUBCONTRACT',receipt_item.id,:warehouseId)>0
+                                    JOIN LATERAL fn_procurement_receipt_stock_warehouses('SUBCONTRACT',receipt.id) actual
+                                      ON fn_warehouse_same_main(actual.warehouse_id,:warehouseId)
+                                     AND fn_procurement_received_in_warehouse('SUBCONTRACT',receipt_item.id,actual.warehouse_id)>0
                                     LEFT JOIN procurement_inspection_items
                                       inspection
                                       ON inspection.receipt_type =
@@ -1983,7 +1992,7 @@ public class ProductionExecutionReadinessService
                                                - peg.released_qty
                                                AS peg_available_qty,
                                            'MAKE'::text AS receipt_kind,
-                                           receipt.bill_date
+                                           receipt.bill_date,receipt.warehouse_id,NULL::uuid AS custody_reservation_id
                                     FROM production_material_supply_pegs peg
                                     JOIN stock_document_items receipt_item
                                       ON receipt_item.upstream_item_id =
@@ -1995,7 +2004,13 @@ public class ProductionExecutionReadinessService
                                       ON receipt.id = receipt_item.doc_id
                                      AND receipt.doc_type = 'FINISHED_IN'
                                      AND receipt.is_deleted = FALSE
-                                     AND receipt.warehouse_id = :warehouseId
+                                     AND fn_warehouse_same_main(receipt.warehouse_id,:warehouseId)
+                                     AND (NOT EXISTS(SELECT 1 FROM warehouses location WHERE location.id=receipt.warehouse_id AND location.is_line_side)
+                                          OR EXISTS(SELECT 1 FROM production_workshop_direct_transfer_items transfer
+                                              JOIN production_material_demands target ON target.id=:demandId
+                                              WHERE transfer.source_report_item_id=receipt_item.source_daily_report_item_id
+                                                AND transfer.to_demand_id IN(target.id,target.split_root_demand_id)
+                                                AND transfer.reversal_id IS NULL))
                                     WHERE peg.demand_id = :demandId
                                       AND peg.supply_type =
                                           'PRODUCTION_PLAN_ITEM'
@@ -2006,7 +2021,7 @@ public class ProductionExecutionReadinessService
                                       AND receipt_item.goods_id = :goodsId
                                       AND receipt_item.color_id IS NOT DISTINCT
                                           FROM :colorId
-                                      AND receipt_item.unit_id = :unitId
+                                      AND EXISTS(SELECT 1 FROM goods base_goods WHERE base_goods.id=receipt_item.goods_id AND base_goods.unit_id=:unitId)
                                       AND receipt.status = 1
                                     ORDER BY receipt.bill_date,
                                              receipt.id, receipt_item.id
@@ -2017,8 +2032,33 @@ public class ProductionExecutionReadinessService
                             .setParameter("goodsId", demand.goodsId())
                             .setParameter("colorId", demand.colorId())
                             .setParameter("unitId", demand.unitId())));
-            rows.sort(Comparator
-                    .comparing(
+            if(includeCustody)rows.addAll(NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT receipt.id,receipt_item.id,peg.id,
+                        LEAST(custody.qty-custody.consumed_qty-custody.released_qty,
+                          COALESCE(receipt_item.base_qty,receipt_item.qty*COALESCE(receipt_item.unit_rate,1))
+                           -COALESCE((SELECT SUM(allocated_qty) FROM production_material_make_receipt_allocations allocation
+                              WHERE allocation.receipt_item_id=receipt_item.id AND allocation.status='EFFECTIVE'),0)),
+                        peg.allocated_qty-peg.consumed_qty-peg.released_qty,'MAKE'::text,receipt.bill_date,custody.warehouse_id,custody.id
+                    FROM stock_reservations custody
+                    JOIN production_workshop_material_custody_moves moved ON moved.target_reservation_id=custody.id
+                    JOIN production_workshop_direct_transfer_items direct ON direct.id=moved.transfer_item_id
+                    JOIN production_workshop_direct_transfers transfer ON transfer.id=direct.transfer_id
+                    JOIN stock_document_items receipt_item ON receipt_item.source_daily_report_item_id=direct.source_report_item_id
+                      AND receipt_item.bill_type='FINISHED_IN' AND NOT receipt_item.is_deleted
+                    JOIN stock_documents receipt ON receipt.id=receipt_item.doc_id AND receipt.status=1 AND NOT receipt.is_deleted
+                      AND receipt.warehouse_id=transfer.line_side_warehouse_id
+                    JOIN production_material_supply_pegs peg ON peg.demand_id=:demand AND peg.supply_type='PRODUCTION_PLAN_ITEM'
+                      AND peg.supply_item_id=receipt_item.upstream_item_id AND peg.status<>'REVERSED'
+                      AND peg.allocated_qty>peg.consumed_qty+peg.released_qty
+                    WHERE custody.owner_type='WORKSHOP_CUSTODY' AND custody.owner_id=:demand AND NOT custody.is_deleted
+                      AND custody.qty>custody.consumed_qty+custody.released_qty
+                      AND custody.goods_id=:goods AND custody.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                      AND fn_warehouse_same_main(custody.warehouse_id,:warehouse)
+                    ORDER BY custody.id,receipt_item.id,peg.id FOR UPDATE OF peg
+                    """).setParameter("demand",demand.id()).setParameter("goods",demand.goodsId()).setParameter("color",demand.colorId())
+                    .setParameter("warehouse",warehouseId)));
+            rows.sort(Comparator.<Object[],Boolean>comparing(row->row[8]==null)
+                    .thenComparing(
                             (Object[] row) -> localDate(row[6]),
                             Comparator.nullsLast(
                                     Comparator.naturalOrder()))
@@ -2036,16 +2076,36 @@ public class ProductionExecutionReadinessService
                 BigDecimal available = decimal(row[3])
                         .max(BigDecimal.ZERO)
                         .min(pegAvailable);
+                UUID custodySource=uuid(row[8]);
+                ReceiptPhysicalKey physicalKey=new ReceiptPhysicalKey(uuid(row[7]),demand.goodsId(),demand.colorId());
+                BigDecimal physical=custodySource!=null?custodyRemaining.computeIfAbsent(custodySource,id->decimal(em.createNativeQuery(
+                        "SELECT qty-consumed_qty-released_qty FROM stock_reservations WHERE id=:id").setParameter("id",id).getSingleResult())):
+                        physicalRemaining.computeIfAbsent(physicalKey,key->decimal(em.createNativeQuery("""
+                        SELECT GREATEST(COALESCE(SUM(balance.qty),0)-COALESCE((SELECT SUM(held.qty-held.consumed_qty-held.released_qty)
+                            FROM stock_reservations held WHERE held.goods_id=:goods AND held.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                              AND (held.warehouse_id=:warehouse OR held.warehouse_id IS NULL) AND held.status=0 AND NOT held.is_deleted),0),0)
+                        FROM stock_balances balance WHERE balance.warehouse_id=:warehouse AND balance.goods_id=:goods
+                            AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                        """).setParameter("warehouse",key.warehouse()).setParameter("goods",key.goods()).setParameter("color",key.color()).getSingleResult()));
+                available=available.min(physical);
+                ReceiptSourceKey receiptKey=new ReceiptSourceKey(ReceiptKind.valueOf((String)row[5]),uuid(row[1]));
+                BigDecimal receiptFree = receiptRemaining.computeIfAbsent(
+                        receiptKey, key -> decimal(em.createNativeQuery(key.kind().remainingQuantitySql())
+                                .setParameter("id", key.itemId()).getSingleResult()));
+                available=available.min(receiptFree.max(BigDecimal.ZERO));
                 BigDecimal qty = available.min(remaining);
                 if (qty.signum() <= 0) continue;
                 values.add(new ReceiptContribution(
                         uuid(row[0]), uuid(row[1]),
                         pegId,
                         qty,
-                        ReceiptKind.valueOf((String) row[5])));
+                        ReceiptKind.valueOf((String) row[5]), uuid(row[7]),custodySource));
                 remaining = remaining.subtract(qty);
                 pegRemaining.put(
                         pegId, pegAvailable.subtract(qty));
+                if(custodySource==null)physicalRemaining.put(physicalKey,physical.subtract(qty));
+                else custodyRemaining.put(custodySource,physical.subtract(qty));
+                receiptRemaining.put(receiptKey,receiptFree.subtract(qty));
             }
             result.put(demand.id(), List.copyOf(values));
         }
@@ -2097,6 +2157,21 @@ public class ProductionExecutionReadinessService
             UUID warehouseId,
             UUID workshopDepartmentId,
             UUID responsibleEmployeeId, PromotionActor actor) {
+        // Merge newly arriving materials into the same unsubmitted draft per actual
+        // warehouse. Submitted/issued documents remain immutable business history.
+        List<UUID> reusable = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT document.id FROM production_planning_package_documents mapping
+                JOIN production_execution_segments segment ON segment.id=mapping.execution_segment_id
+                JOIN stock_documents document ON document.id=mapping.document_id
+                  AND document.doc_type='DRAW' AND document.status=0 AND NOT document.is_deleted
+                WHERE mapping.execution_segment_id=:segment AND mapping.document_type='DRAW'
+                  AND document.warehouse_id=:warehouse
+                  AND NOT EXISTS(SELECT 1 FROM stock_document_items item WHERE item.doc_id=document.id
+                      AND NOT item.is_deleted AND fn_production_draw_item_requested_qty(item.id)>0)
+                ORDER BY document.id LIMIT 1 FOR UPDATE OF document
+                """, UUID.class).setParameter("segment", segmentId)
+                .setParameter("warehouse", warehouseId), UUID.class);
+        if (!reusable.isEmpty()) return stockDocumentRepo.findById(reusable.getFirst()).orElseThrow();
         StockDocument document = new StockDocument();
         document.setDocType("DRAW");
         document.setBillNo(
@@ -2131,6 +2206,14 @@ public class ProductionExecutionReadinessService
                 .setParameter("actorId", actor.userId())
                 .executeUpdate();
         return document;
+    }
+
+    private int nextDrawLine(StockDocument draw, Map<UUID, Integer> lineNumbers) {
+        int previous = lineNumbers.computeIfAbsent(draw.getId(), id -> ((Number) em.createNativeQuery(
+                "SELECT COALESCE(MAX(line_no),0) FROM stock_document_items WHERE doc_id=:id")
+                .setParameter("id", id).getSingleResult()).intValue());
+        lineNumbers.put(draw.getId(), previous + 1);
+        return previous + 1;
     }
 
     private UUID addDrawItem(
@@ -2243,12 +2326,9 @@ public class ProductionExecutionReadinessService
                 .setParameter("qty", contribution.qty())
                 .setParameter(
                         "key",
-                        allocationKeyPrefix(contribution.kind())
-                                + contribution.receiptItemId()
-                                + ":"
-                                + contribution.pegId()
-                                + ":"
-                                + reservationId)
+                        allocationKeyPrefix(contribution.kind())+PlanningPackageFingerprint.sha256(List.of(
+                            contribution.receiptItemId().toString(),contribution.pegId().toString(),
+                            reservationId.toString(),drawItemId.toString())))
                 .setParameter("actorId", actorId)
                 .executeUpdate();
     }
@@ -2324,8 +2404,12 @@ public class ProductionExecutionReadinessService
             UUID receiptItemId,
             UUID pegId,
             BigDecimal qty,
-            ReceiptKind kind) {
+            ReceiptKind kind, UUID warehouseId,UUID custodyReservationId) {
+        ReceiptContribution withQty(BigDecimal value) { return new ReceiptContribution(receiptId,receiptItemId,pegId,value,kind,warehouseId,custodyReservationId); }
     }
+
+    private record ReceiptPhysicalKey(UUID warehouse,UUID goods,UUID color) {}
+    private record ReceiptSourceKey(ReceiptKind kind,UUID itemId) {}
 
     private record ReceiptAllocationRow(
             ReceiptKind kind,
@@ -2335,12 +2419,31 @@ public class ProductionExecutionReadinessService
             UUID drawId) {
     }
 
-    private enum ReceiptKind {
+    enum ReceiptKind {
         PURCHASE,
         SUBCONTRACT,
         MAKE,
         PREPLAN,
         RECHECK,
-        RECONCILE
+        RECONCILE;
+
+        String remainingQuantitySql() {
+            String table = switch (this) {
+                case PURCHASE -> "purchase_receipt_items";
+                case SUBCONTRACT -> "subcontract_receipt_items";
+                case MAKE -> "stock_document_items";
+                default -> throw new IllegalArgumentException("Physical receipt kind required");
+            };
+            // Procurement receipts freeze their unit rate but have no base_qty column.
+            // Stock documents additionally freeze an explicit base quantity.
+            String quantity = this == MAKE
+                    ? "COALESCE(item.base_qty, item.qty * COALESCE(item.unit_rate, 1))"
+                    : "item.qty * COALESCE(item.unit_rate, 1)";
+            return """
+                    SELECT %s - COALESCE((SELECT SUM(allocated_qty) FROM %s
+                        WHERE receipt_item_id = item.id AND status = 'EFFECTIVE'), 0)
+                    FROM %s item WHERE item.id = :id
+                    """.formatted(quantity, allocationTable(this), table);
+        }
     }
 }

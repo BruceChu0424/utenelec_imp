@@ -217,6 +217,8 @@ class GoodsDetail {
     this.owningWorkshopName,
     this.defaultPurchasePrice,
     this.defaultSubcontractPrice,
+    this.defaultPurchasePriceInfo,
+    this.defaultSubcontractPriceInfo,
   });
 
   final String id;
@@ -321,6 +323,8 @@ class GoodsDetail {
   // ===== 采购/委外单价 (V593；由订单保存自动写回，只读展示) =====
   final double? defaultPurchasePrice;
   final double? defaultSubcontractPrice;
+  final GoodsLearnedPriceInfo? defaultPurchasePriceInfo;
+  final GoodsLearnedPriceInfo? defaultSubcontractPriceInfo;
 
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
     id: json['id'] as String,
@@ -405,6 +409,18 @@ class GoodsDetail {
     owningWarehouseName: json['owningWarehouseName'] as String?,
     owningWorkshopId: json['owningWorkshopId'] as String?,
     owningWorkshopName: json['owningWorkshopName'] as String?,
+    defaultPurchasePriceInfo:
+        json['defaultPurchasePriceInfo'] is Map<String, dynamic>
+        ? GoodsLearnedPriceInfo.fromJson(
+            json['defaultPurchasePriceInfo'] as Map<String, dynamic>,
+          )
+        : null,
+    defaultSubcontractPriceInfo:
+        json['defaultSubcontractPriceInfo'] is Map<String, dynamic>
+        ? GoodsLearnedPriceInfo.fromJson(
+            json['defaultSubcontractPriceInfo'] as Map<String, dynamic>,
+          )
+        : null,
     defaultPurchasePrice: (json['defaultPurchasePrice'] as num?)?.toDouble(),
     defaultSubcontractPrice: (json['defaultSubcontractPrice'] as num?)
         ?.toDouble(),
@@ -589,4 +605,30 @@ class GoodsFacets {
     }
     return GoodsFacets(fields: fields, nullCounts: nullCounts);
   }
+}
+
+class GoodsLearnedPriceInfo {
+  const GoodsLearnedPriceInfo({
+    required this.price,
+    this.supplierName,
+    this.colorName,
+    this.unitName,
+    this.currencyName,
+    this.taxRate,
+    this.contextComplete = false,
+  });
+  factory GoodsLearnedPriceInfo.fromJson(Map<String, dynamic> json) =>
+      GoodsLearnedPriceInfo(
+        price: (json['price'] as num).toDouble(),
+        supplierName: json['supplierName'] as String?,
+        colorName: json['colorName'] as String?,
+        unitName: json['unitName'] as String?,
+        currencyName: json['currencyName'] as String?,
+        taxRate: (json['taxRate'] as num?)?.toDouble(),
+        contextComplete: json['contextComplete'] == true,
+      );
+  final double price;
+  final String? supplierName, colorName, unitName, currencyName;
+  final double? taxRate;
+  final bool contextComplete;
 }

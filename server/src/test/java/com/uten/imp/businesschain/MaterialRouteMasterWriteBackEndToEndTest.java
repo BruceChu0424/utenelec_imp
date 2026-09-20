@@ -50,6 +50,8 @@ class MaterialRouteMasterWriteBackEndToEndTest {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired MaterialAnalysisService analyses;
+    @Autowired com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService workshops;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     private FullChainEndToEndTest fixture;
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
 
@@ -104,6 +106,40 @@ class MaterialRouteMasterWriteBackEndToEndTest {
                 .findFirst().orElseThrow();
         assertEquals("SUBCONTRACT",line.sourceSuggestion(),"新分析的建议路线只从货品主档来");
         assertNull(line.sourceConfirmed(),"建议不是确认：新分析仍要人再确认一次");
+    }
+
+    @Test void workshopLearningRejectsStaleEditorsAndDoesNotReturnResignedWorkers() {
+        Case c = create("workshop-defaults");
+        UUID workshop = UUID.randomUUID();
+        db.update("""
+                INSERT INTO departments(id,code,name,parent_id,level)
+                SELECT ?,?,'默认车间',id,'二级班组' FROM departments WHERE code='DEPT_PROD'
+                """, workshop, "WS-DEFAULT-" + workshop);
+        long before = goodsVersion(c.root());
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx ->
+                workshops.learnSelection(c.root(), workshop, c.world().employeeId(), c.world().employeeId()));
+        assertEquals(before + 1, goodsVersion(c.root()));
+        assertEquals(0, db.update("UPDATE goods SET owning_workshop_department_id=NULL WHERE id=? AND version=?",
+                c.root(), before));
+        assertEquals(c.world().employeeId(), workshops.findValidByGoodsIds(java.util.Set.of(c.root()))
+                .getFirst().responsibleEmployeeId());
+        db.update("UPDATE employees SET status='resigned' WHERE id=?", c.world().employeeId());
+        assertNull(workshops.findValidByGoodsIds(java.util.Set.of(c.root())).getFirst().responsibleEmployeeId());
+    }
+
+    @Test void anotherAnalysisChangingMasterDefaultsDoesNotClearExistingConfirmedRoutes() {
+        Case c = create("route-master-cross");
+        confirm(c, "BUY", "buy");
+        AnalysisView second = newAnalysisFor(c, "cross");
+        MaterialView secondLine = second.flatMaterials().stream().filter(m -> m.goodsId().equals(c.leaf()))
+                .findFirst().orElseThrow();
+        analyses.saveRoutes(second.analysisId(), new RouteRequest(second.version(), second.fingerprint(),
+                "cross-confirm-" + c.analysis(), List.of(new RouteDecision(secondLine.materialLineId(),
+                secondLine.actionGroupKey(), "MAKE", null))));
+        assertEquals("自制", sourceType(c.leaf()));
+        AnalysisView refreshed = refresh(c, "cross-refresh");
+        assertEquals("BUY", material(refreshed, c.line()).sourceConfirmed());
+        assertEquals(0, refreshed.routeResetCount());
     }
 
     /** 根(自制成品) -> 叶子件(主档「采购」)：一条叶子物料行，改路线不牵扯任何子层展开。 */

@@ -29,7 +29,6 @@
 --   （WASTE 损耗老库 O_Waste 0 行，跳过；结构/枚举已留位。）
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 -- 清旧：仓库源流水 + 统一单据 + 余额（余额从 StockGoods 全量重建）
 DELETE FROM stock_movements WHERE source_doc_type = 'STOCK_DOC';
@@ -106,7 +105,10 @@ UPDATE item_stage SET doc_type='CHECK' WHERE doc_type IS NULL;
 WITH candidates AS (
     SELECT DISTINCT lid
     FROM (SELECT goods_legacy_id AS lid FROM item_stage
-          WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0) t
+          WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0
+          UNION ALL
+          SELECT goods_legacy FROM sg_stage
+          WHERE goods_legacy IS NOT NULL AND goods_legacy <> 0) t
     WHERE NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
 ), numbered AS (
     SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
@@ -138,7 +140,10 @@ ON CONFLICT (legacy_id) DO NOTHING;
 INSERT INTO colors (legacy_id, code, name, status)
 SELECT DISTINCT lid, 'LEGACY-C-' || lid, '（迁移自动补录）', '使用'
 FROM (SELECT color_legacy_id AS lid FROM item_stage
-      WHERE color_legacy_id IS NOT NULL AND color_legacy_id <> 0) t
+      WHERE color_legacy_id IS NOT NULL AND color_legacy_id <> 0
+      UNION ALL
+      SELECT color_legacy FROM sg_stage
+      WHERE color_legacy IS NOT NULL AND color_legacy <> 0) t
 WHERE NOT EXISTS (SELECT 1 FROM colors c WHERE c.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
@@ -153,6 +158,27 @@ FROM (SELECT stock_legacy_id AS lid FROM doc_stage UNION ALL
 WHERE lid IS NOT NULL AND lid <> 0
   AND NOT EXISTS (SELECT 1 FROM warehouses w WHERE w.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
+
+-- StockGoods is itself a historical source even if the old O_* documents have
+-- been removed. Never discard its nonzero facts or turn a missing real color
+-- into the distinct no-color dimension. Invalid zero/null identities fail closed.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM sg_stage source
+        LEFT JOIN warehouses warehouse ON warehouse.legacy_id = source.stock_legacy
+        LEFT JOIN goods material ON material.legacy_id = source.goods_legacy
+        LEFT JOIN colors color ON color.legacy_id = NULLIF(source.color_legacy, 0)
+        WHERE (COALESCE(source.fact_qty, source.qty, 0) <> 0
+               OR COALESCE(source.fact_weight, source.weight, 0) <> 0
+               OR COALESCE(source.total, 0) <> 0)
+          AND (warehouse.id IS NULL OR material.id IS NULL
+               OR (NULLIF(source.color_legacy, 0) IS NOT NULL AND color.id IS NULL))
+    ) THEN
+        RAISE EXCEPTION 'nonzero StockGoods facts require exact warehouse, goods and optional color identities';
+    END IF;
+END;
+$$;
 
 -- ======================== 人员补录：B_Worker → employees stub（融合键 legacy_id） ========================
 -- 用户要求：老库有、新库没有就在员工表添加、显示名字（名字后带「（子类）」标记，sub_class 非空时）。
@@ -410,7 +436,6 @@ FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
 WHERE d.status = 1 AND d.doc_type = 'CHECK' AND i.surplus_qty IS NOT NULL AND i.surplus_qty <> 0
   AND i.goods_id IS NOT NULL AND d.warehouse_id IS NOT NULL;
 
-COMMIT;
 
 -- ======================== 刷新仓库月度物化视图（防汇总报表空，同 sales 修复） ========================
 REFRESH MATERIALIZED VIEW stock_monthly_mv;

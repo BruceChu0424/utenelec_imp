@@ -7,6 +7,101 @@ import 'package:uten_imp/features/finance/models/finance_decimal.dart';
 import 'package:uten_imp/features/finance/widgets/ar_ap_picker_dialog.dart';
 
 void main() {
+  for (final scenario in [
+    (
+      name: 'positive legacy direct receipt is an ordinary settlement target',
+      kind: 'LEGACY_UNVERIFIED',
+      balance: 12,
+      currency: 'currency-usd',
+      allowed: true,
+    ),
+    (
+      name: 'negative legacy balance is not a credit',
+      kind: 'LEGACY_UNVERIFIED',
+      balance: -12,
+      currency: 'currency-usd',
+      allowed: false,
+    ),
+    (
+      name: 'zero legacy balance cannot be referenced',
+      kind: 'LEGACY_UNVERIFIED',
+      balance: 0,
+      currency: 'currency-usd',
+      allowed: false,
+    ),
+    (
+      name: 'unknown original legacy balance stays unavailable',
+      kind: 'LEGACY_UNVERIFIED',
+      balance: null,
+      currency: 'currency-usd',
+      allowed: false,
+    ),
+    (
+      name: 'unknown legacy currency stays unavailable',
+      kind: 'LEGACY_UNVERIFIED',
+      balance: 12,
+      currency: null,
+      allowed: false,
+    ),
+    (
+      name: 'native prepayment still requires apply prepayment',
+      kind: 'CUSTOMER_PREPAYMENT',
+      balance: 12,
+      currency: 'currency-usd',
+      allowed: false,
+    ),
+  ]) {
+    testWidgets(scenario.name, (tester) async {
+      final api = _ArReferenceApi(
+        overrides: {
+          'openItemKind': scenario.kind,
+          'sourceDocType': 'DIRECT_RECEIPT',
+          'amountBalanceOriginal': scenario.balance,
+          'currencyId': scenario.currency,
+        },
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, _) => Scaffold(
+                body: FilledButton(
+                  onPressed: () => showArApPickerDialog(
+                    context,
+                    ref,
+                    direction: 'AR',
+                    partyId: 'client-1',
+                  ),
+                  child: const Text('打开引用'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开引用'));
+      await tester.pumpAndSettle();
+      final checkbox = tester.widget<Checkbox>(
+        find.byKey(const ValueKey('ar-ap-select-ledger-1')),
+      );
+      expect(checkbox.onChanged != null, scenario.allowed);
+      await tester.tap(find.text('全选'));
+      await tester.pumpAndSettle();
+      expect(find.text('已选 ${scenario.allowed ? 1 : 0} 行'), findsOneWidget);
+      expect(
+        tester
+                .widget<FilledButton>(
+                  find.byKey(const ValueKey('ar-ap-confirm')),
+                )
+                .onPressed !=
+            null,
+        scenario.allowed,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   test('exact finance decimal keeps four-place money without double math', () {
     expect(financeExactDecimal('100.1200'), '100.1200');
     expect(financeExactDecimalUnits('100.1200'), BigInt.from(1001200));
@@ -70,7 +165,9 @@ void main() {
 }
 
 class _ArReferenceApi extends ApiClient {
-  _ArReferenceApi() : super(Dio());
+  _ArReferenceApi({this.overrides = const {}}) : super(Dio());
+
+  final Map<String, dynamic> overrides;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -100,6 +197,7 @@ class _ArReferenceApi extends ApiClient {
             'salesOrderIds': ['order-1'],
             'salesOrderNos': ['XD-001'],
             'settled': false,
+            ...overrides,
           },
         ],
         'page': 1,

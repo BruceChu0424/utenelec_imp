@@ -5,7 +5,6 @@
 -- Important: generic legacy Weight has no unit. It may create a PROVISIONAL
 -- UI suggestion, but never a CONFIRMED/ENFORCED measurement profile.
 
-BEGIN;
 
 DO $$
 BEGIN
@@ -529,5 +528,3 @@ SET inferred_preference =
     updated_at = now()
 WHERE measurement_capture_profiles.evidence_fingerprint
       IS DISTINCT FROM EXCLUDED.evidence_fingerprint;
-
-COMMIT;

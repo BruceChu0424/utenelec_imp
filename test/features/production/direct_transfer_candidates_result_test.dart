@@ -46,8 +46,8 @@ void main() {
     );
     expect(
       result.candidates.single.label,
-      contains('还差 800'),
-      reason: '还差多少是选择候选时的关键量，必须在收起态可见',
+      contains('最多可送 800'),
+      reason: '本来源可直送额度是关键量，不能误称整个接收任务的缺口',
     );
     expect(
       result.candidates.single.secondaryLabel,

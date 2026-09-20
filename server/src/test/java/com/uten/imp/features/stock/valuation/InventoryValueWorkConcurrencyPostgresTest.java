@@ -57,7 +57,7 @@ class InventoryValueWorkConcurrencyPostgresTest {
         manager=new JpaTransactionManager(factory);manager.setDataSource(source);
         jdbc.execute("CREATE TABLE stock_value_pools(id uuid PRIMARY KEY,goods_id uuid NOT NULL,color_id uuid)");
         jdbc.execute("CREATE TABLE stock_value_production_cost_objects(execution_segment_id uuid PRIMARY KEY,product_pool_id uuid,source_kind text,version bigint,state text,business_refresh_pending boolean,business_refresh_event_id uuid,business_refresh_actor_id uuid)");
-        jdbc.execute("CREATE TABLE stock_value_nodes(id uuid PRIMARY KEY,pool_id uuid,owner_kind text,owner_id uuid,active boolean)");
+        jdbc.execute("CREATE TABLE stock_value_nodes(id uuid PRIMARY KEY,pool_id uuid,owner_kind text,owner_id uuid,active boolean, reference_root_id uuid)");
         jdbc.execute("CREATE TABLE stock_value_production_cost_inputs(input_node_id uuid,execution_segment_id uuid)");
         jdbc.execute("CREATE TABLE stock_value_production_cost_outputs(source_node_id uuid,execution_segment_id uuid)");
         jdbc.execute("CREATE TABLE subcontract_receipt_material_consumptions(receipt_item_id uuid,issue_item_id uuid)");

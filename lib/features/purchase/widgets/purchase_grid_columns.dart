@@ -133,6 +133,14 @@ class PurchaseGridRow extends EditableGridRow
     c.weight.text = weight.text;
     c.price.text = price.text;
     c.copyCommercialFrom(this);
+    c.copyDefaultPriceFrom(
+      this,
+      price: c.price,
+      supplier: c.supplierIdNotifier,
+      currentGoodsId: () => c.goods?.id,
+      currentColorId: () => c.colorId,
+      currentUnitId: () => c.unitId,
+    );
     c.remark.text = remark.text;
     return c;
   }
@@ -421,6 +429,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             double.tryParse(row.price.text.trim()) == null,
         child: TextField(
           controller: row.price,
+          onChanged: (_) => row.clearTermsAutofilled('price'),
+          onSubmitted: (_) => row.clearTermsAutofilled('price'),
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(

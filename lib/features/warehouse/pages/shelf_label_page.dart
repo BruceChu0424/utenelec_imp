@@ -1,27 +1,7 @@
-// 货架目视化清单页（仓库管理 hub → 库存查询分区）。
-//
-// 2026-09-10 信息架构重做：从「打印件的屏幕镜像」改成「现场找货的工具」——
-// - 货架图（UtenRackGrid）：库行 × 层 × 位 网格，一格 = 一个库位号，同格多货
-//   聚合成一格并显「+n」；点格 = 把表格定位到该库位（过滤 + 高亮）；
-// - 统一表格（MasterDataTableView）：货架/层/位/库位号/货品编码/名称/颜色/
-//   单位/即时库存/状态；列头筛选（货架/层/状态）、排序、隐藏列、导出全部复用；
-//   点表格行 = 反查货架图（高亮该格并滚入视口）；
-// - 筛选工具条（UtenFilterToolbar）：库行分段 + 搜索（名称/编码/系列/库位号）
-//   + 行尾仓库筛选字段（UtenFilterPickerField，点开侧滑面板选；真过滤：
-//     本仓偏好库位优先 + 本仓树库存汇总，主仓 = 自身 + 全部子仓聚合）
-//   +「显示已禁用货品」开关 +「未分层」残值 chip + 共 N 项。
-//
-// 数据口径（GET /api/stock/shelf-labels，stock:view）：
-// - 行 = 货品主档已维护库位号（goods.stock_place）的货品；库位号按「库行-层-位」
-//   三段解析，不符合格式的老库残值 parsed=false 归「未分层」桶（治理脚本见
-//   server/legacy_migration/clean_shelf_place_residue.sql）；
-// - 即时库存是参考列：未选仓 = 全部核算仓汇总，选仓 = 该仓及子仓汇总；
-// - 禁用货品默认不列（includeDisabled=true 才出现并标「已禁用」），软删货品不列，
-//   库位号清空即自动下架。
-//
-// 预览打印：每个库行独立 A4 横版页，复刻挂牌版式（UTEN 头 + 库行徽章 + 斑马纹表），
-// 末尾留白行供现场手写补充；PDF 走 pdf/printing（NotoSansSC 全量字体）。
-// Excel 导出：/stock/reports/export report='shelf-labels'（stock_report:export，可加密）。
+// 货架目视化清单：仓库×货品×颜色独立成行，库位是主档存放建议。
+// 库存是该仓货色的参考总量，不代表某个库位的盘点数量。
+// 多仓不拼成一张物理货架图；单仓布局由当前行集推导，复用 UtenRackGrid。
+// 表格/定位/打印保持实际仓库身份；打印按仓库+库行分组，导出沿服务端同口径。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +19,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -68,7 +49,6 @@ class ShelfLabelPage extends ConsumerStatefulWidget {
 
 class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   List<String>? _racks;
-  List<ShelfLayoutRack>? _layout;
   List<ShelfLabelRow>? _rows;
   bool _loading = false;
   String? _error;
@@ -77,12 +57,13 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   String? _rackSegment;
   String _keyword = '';
 
-  /// 仓库：真过滤（本仓偏好库位优先 + 本仓树库存汇总），不再只是打印抬头。
+  /// 仓库只限定查询范围，所含实际仓库与颜色不合并。
   String? _warehouseId;
   bool _includeDisabled = false;
 
   /// 货架图 ↔ 表格 的双向定位键（库位号）。
   String? _selectedPlace;
+  String? _selectedPlaceWarehouseId;
 
   /// true = 定位来自点格（表格收敛到该库位）；false = 定位来自点行（只高亮）。
   bool _placeFilterActive = false;
@@ -127,7 +108,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     _load();
   }
 
-  /// 库行下拉 + 货架图布局（随仓库/禁用口径变化重取；失败不阻塞主表）。
+  /// 库行下拉随范围变化重取；货架图直接由精确行集推导。
   Future<void> _loadOptions() async {
     final generation = _optionRequests.begin();
     try {
@@ -136,17 +117,12 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         warehouseId: _warehouseId,
         includeDisabled: _includeDisabled,
       );
-      final layout = await repo.shelfLabelLayout(
-        warehouseId: _warehouseId,
-        includeDisabled: _includeDisabled,
-      );
       if (!mounted || !_optionRequests.isCurrent(generation)) return;
       setState(() {
         _racks = racks;
-        _layout = layout;
       });
     } catch (_) {
-      /* 库行/布局加载失败不阻塞主表：表格与搜索仍可用 */
+      /* 库行选项加载失败不阻塞表格与搜索 */
     }
   }
 
@@ -233,7 +209,13 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   List<ShelfLabelRow> get _tableRows {
     final rows = _filteredRows;
     if (!_placeFilterActive || _selectedPlace == null) return rows;
-    return rows.where((r) => r.place == _selectedPlace).toList();
+    return rows
+        .where(
+          (r) =>
+              r.place == _selectedPlace &&
+              r.warehouseId == _selectedPlaceWarehouseId,
+        )
+        .toList();
   }
 
   /// 货架/层/状态三列的筛选桶：按列头筛选前的全量行聚合，空值不进桶。
@@ -267,14 +249,9 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     };
   }
 
-  /// 未分层（老库残值）行数：布局桶优先，缺布局时按行数兜底。
-  int get _unparsedCount {
-    final bucket = (_layout ?? const <ShelfLayoutRack>[])
-        .where((r) => r.isUnparsedBucket)
-        .firstOrNull;
-    if (bucket != null) return bucket.count;
-    return (_rows ?? const <ShelfLabelRow>[]).where((r) => !r.parsed).length;
-  }
+  /// 计数与当前行集一致；货架布局也直接由这些精确维度行推导。
+  int get _unparsedCount =>
+      (_rows ?? const <ShelfLabelRow>[]).where((r) => !r.parsed).length;
 
   /// 导出/打印查询参数（与 _load 同口径；列头筛选是客户端态，不下传）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
@@ -287,13 +264,16 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   // ---- 货架图 ↔ 表格 双向联动 --------------------------------------------
 
   /// 点格：定位到该库位（表格收敛 + 高亮）；再点一次取消定位。
-  void _onCellTap(String place) {
+  void _onCellTap(String place, String? warehouseId) {
     setState(() {
-      if (_placeFilterActive && _selectedPlace == place) {
+      if (_placeFilterActive &&
+          _selectedPlace == place &&
+          _selectedPlaceWarehouseId == warehouseId) {
         _selectedPlace = null;
         _placeFilterActive = false;
       } else {
         _selectedPlace = place;
+        _selectedPlaceWarehouseId = warehouseId;
         _placeFilterActive = true;
       }
     });
@@ -305,6 +285,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     if (place == null || place.isEmpty) return;
     setState(() {
       _selectedPlace = place;
+      _selectedPlaceWarehouseId = row.warehouseId;
       _placeFilterActive = false;
     });
   }
@@ -317,17 +298,16 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   }
 
   List<MasterColumnDef<ShelfLabelRow>> _columns() {
-    // 列头 ⓘ：库位号来源与仓维度口径必须让非专业用户看得懂。
-    final placeInfo = StringBuffer(
-      '库位号由入库登记自动学习，可在货品资料改正（格式：库行-层-位，如 A31-3-1）',
-    );
-    if (_warehouseId != null) {
-      placeInfo.write('；本仓偏好优先——同一货品在不同仓可有不同库位');
-    }
-    final qtyInfo = _warehouseId == null
-        ? '即时库存参考量：全部参与核算仓库汇总（货架摆放以库位号为准，与库存多少无关）'
-        : '即时库存参考量：所选仓库及其子仓汇总（货架摆放以库位号为准，与库存多少无关）';
+    final l10n = AppLocalizations.of(context);
+    final placeInfo = l10n.shelfLocationQuantityHint;
+    final qtyInfo = l10n.shelfLocationQuantityHint;
     return <MasterColumnDef<ShelfLabelRow>>[
+      MasterColumnDef(
+        key: 'warehouse',
+        label: l10n.shelfActualWarehouse,
+        width: 150,
+        value: (row) => row.warehouseName ?? l10n.shelfMasterOnly,
+      ),
       const MasterColumnDef(
         key: 'rack',
         label: '货架',
@@ -352,7 +332,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         key: 'place',
         label: '库位号',
         width: 120,
-        info: placeInfo.toString(),
+        info: placeInfo,
         value: (r) => r.place ?? '',
       ),
       // 2026-09-14 全站列序统一（ADR-081 §4.1）：名称 → 编号 → 颜色。
@@ -411,7 +391,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   List<UtenRackGridItem> _gridItems(List<ShelfLabelRow> rows) => [
     for (final r in rows)
       UtenRackGridItem(
-        id: r.goodsId,
+        id: r.rowKey,
         place: r.place ?? '',
         level: r.level,
         slot: r.slot,
@@ -424,23 +404,25 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
       ),
   ];
 
-  List<UtenRackGridRack> get _gridRacks => [
-    for (final rack in _layout ?? const <ShelfLayoutRack>[])
-      UtenRackGridRack(
-        rack: rack.rack,
-        maxLevel: rack.maxLevel,
-        maxSlot: rack.maxSlot,
-        count: rack.count,
-      ),
-  ];
-
   /// 打印分组（按库行，未分层单独一组；用列头筛选后的行，与屏上所见一致）。
   List<MapEntry<String, List<ShelfLabelRow>>> get _printGroups {
     final map = <String, List<ShelfLabelRow>>{};
     for (final r in _filteredRows) {
-      map.putIfAbsent(_rackLabel(r), () => []).add(r);
+      map
+          .putIfAbsent(
+            '${r.warehouseId ?? 'master'}|${_rackLabel(r)}',
+            () => [],
+          )
+          .add(r);
     }
-    return map.entries.toList();
+    final l10n = AppLocalizations.of(context);
+    return [
+      for (final rows in map.values)
+        MapEntry(
+          '${rows.first.warehouseName ?? l10n.shelfMasterOnly} · ${_rackLabel(rows.first)}',
+          rows,
+        ),
+    ];
   }
 
   @override
@@ -475,12 +457,21 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
             child: Column(
               children: [
                 _toolbar(theme, names, filtered.length, unparsed),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s4,
+                  ),
+                  child: Text(
+                    AppLocalizations.of(context).shelfLocationQuantityHint,
+                  ),
+                ),
                 _gridPane(filtered),
                 if (_placeFilterActive && _selectedPlace != null)
                   _locateBanner(theme),
                 Expanded(
                   child: MasterDataTableView<ShelfLabelRow>(
                     columns: _columns(),
+                    rowKeyOf: (row) => row.rowKey,
                     items: _tableRows,
                     facets: _facets,
                     nullCounts: const {},
@@ -493,7 +484,9 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                       }
                     }),
                     isSelected: (r) =>
-                        _selectedPlace != null && r.place == _selectedPlace,
+                        _selectedPlace != null &&
+                        r.place == _selectedPlace &&
+                        r.warehouseId == _selectedPlaceWarehouseId,
                     onSelectionChanged: _onRowSelected,
                     toolbarActions: [
                       UtenButton(
@@ -618,6 +611,14 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
 
   /// 货架图区：限高 + 竖向滚动（表格反查时 ensureVisible 在这里生效）。
   Widget _gridPane(List<ShelfLabelRow> rows) {
+    final physicalRows = rows.where((row) => row.warehouseId != null).toList();
+    final diagramRows = physicalRows.isEmpty ? rows : physicalRows;
+    if (diagramRows.map((row) => row.warehouseId).toSet().length > 1) {
+      return Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s4),
+        child: Text(AppLocalizations.of(context).shelfChooseWarehouseForRack),
+      );
+    }
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 320),
       child: SingleChildScrollView(
@@ -628,10 +629,14 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         ),
         child: UtenRackGrid(
           key: const Key('shelf-label-rack-grid'),
-          racks: _gridRacks,
-          items: _gridItems(rows),
-          selectedPlace: _selectedPlace,
-          onCellTap: _onCellTap,
+          racks: const [],
+          items: _gridItems(diagramRows),
+          selectedPlace:
+              _selectedPlaceWarehouseId == diagramRows.firstOrNull?.warehouseId
+              ? _selectedPlace
+              : null,
+          onCellTap: (place) =>
+              _onCellTap(place, diagramRows.firstOrNull?.warehouseId),
         ),
       ),
     );
@@ -783,6 +788,10 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
+        pw.Text(
+          AppLocalizations.of(context).shelfLocationQuantityHint,
+          style: pw.TextStyle(font: font, fontSize: 8),
+        ),
         pw.Container(
           color: _teal,
           padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1002,6 +1011,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text(AppLocalizations.of(context).shelfLocationQuantityHint),
           Container(
             color: UtenColors.teal700,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

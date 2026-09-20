@@ -1,0 +1,43 @@
+{
+  "goods_bom.csv": [
+    {
+      "legacy_id": 900902,
+      "goods_legacy_id": 900101,
+      "component_legacy_id": 919999,
+      "color_legacy_id": 900401,
+      "qty": "2.00000",
+      "price": "2.500",
+      "total": "5.00",
+      "vend_legacy_id": 900601,
+      "summary": "合成孤儿BOM：缺失组件主档",
+      "bom_status": true,
+      "sstatus": false
+    },
+    {
+      "legacy_id": 900903,
+      "goods_legacy_id": 919998,
+      "component_legacy_id": 900102,
+      "color_legacy_id": 900401,
+      "qty": "2.00000",
+      "price": "2.500",
+      "total": "5.00",
+      "vend_legacy_id": 900601,
+      "summary": "合成孤儿BOM：缺失父货品主档",
+      "bom_status": true,
+      "sstatus": false
+    },
+    {
+      "legacy_id": 900904,
+      "goods_legacy_id": 900101,
+      "component_legacy_id": 910101,
+      "color_legacy_id": 900401,
+      "qty": "2.00000",
+      "price": "2.500",
+      "total": "5.00",
+      "vend_legacy_id": 900601,
+      "summary": "合成孤儿BOM：组件只存在历史引用锚，禁止接入活动BOM",
+      "bom_status": true,
+      "sstatus": false
+    }
+  ]
+}

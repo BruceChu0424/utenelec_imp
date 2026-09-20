@@ -126,6 +126,16 @@ public class GoodsDetail {
     private UUID owningWorkshopId;       // null=尚未学习
     private String owningWorkshopName;   // 展示名；部门已软删或未解析时为 null
 
+    private GoodsLearnedPriceView defaultPurchasePriceInfo;
+    private GoodsLearnedPriceView defaultSubcontractPriceInfo;
+
+    public BigDecimal getDefaultPurchasePrice() {
+        return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();
+    }
+    public BigDecimal getDefaultSubcontractPrice() {
+        return defaultSubcontractPriceInfo == null ? null : defaultSubcontractPriceInfo.price();
+    }
+
     @JsonProperty("mWeight")
     public BigDecimal getMWeight() {
         return mWeight;

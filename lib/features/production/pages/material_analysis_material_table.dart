@@ -1558,21 +1558,12 @@ abstract class _MaterialAnalysisMaterialTableState
       onChanged: (chosen) {
         if (chosen == null) return;
         final next = MaterialSupplyRoute.values.byName(chosen);
-        setState(() {
-          for (final group in groups) {
-            _routeDraft[group.key] = next;
-            if (group.representative.confirmedRoute == next) {
-              // 改回已确认值 = 没有可提交的决定：脱脏并脱选（否则「已选 N 项」
-              // 计着一条既无勾选框也不计数的行）。
-              _dirtyRouteGroups.remove(group.key);
-              _selectedMaterialGroupKeys.remove(group.key);
-            } else {
-              _dirtyRouteGroups.add(group.key);
-              _selectedMaterialGroupKeys.add(group.key);
-            }
-          }
-          _invalidateBucketRowsCache();
-        });
+        if (groups.every(
+          (group) => group.representative.confirmedRoute == next,
+        )) {
+          return;
+        }
+        unawaited(_confirmRouteChanges(groups, next));
       },
     );
     if (!blankSourceFallback) return dropdown;

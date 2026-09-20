@@ -62,7 +62,7 @@ Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan
 
 ```bash
 # 1. 系统包与账号
-apt update && apt install -y openjdk-21-jre-headless postgresql-16 nginx curl python3
+apt update && apt install -y openjdk-21-jre-headless nginx curl python3
 # 1b. 附件办公文档在线预览（可选）：LibreOffice 无头转换 + 中日韩字体，缺失时预览接口回落为下载原件
 #     writer=doc/docx/rtf/odt，calc=xls/xlsx/ods，impress=ppt/pptx/odp，draw=svg（2026-09-11 起需要）
 apt install -y --no-install-recommends libreoffice-core libreoffice-writer libreoffice-calc \
@@ -73,14 +73,13 @@ useradd --system --home /opt/uten-imp --shell /usr/sbin/nologin uten-imp
 mkdir -p /opt/uten-imp/releases /etc/uten-imp /etc/uten-imp-updater /var/backups/uten-imp
 chown root:root /opt/uten-imp /opt/uten-imp/releases
 
-# 3. 数据库（空库；schema 由首版 migrator 建到最新）
-sudo -u postgres createuser uten-app
-sudo -u postgres psql -c "ALTER USER uten-app PASSWORD '应用密码';"   # 写进 server.env
-sudo -u postgres createdb -O uten-app uten_imp
+# 3. 数据库先按下文的独立安装/现有主机协议准备。
+#    不在这里创建应用账号拥有的数据库，不将密码放进 shell 命令。
+#    应用使用 uten，迁移使用 uten_migrator；schema 由正式 migrator 建立。
 
 # 4. 配置文件（从本仓库 deploy/ 拷贝后改 REPLACE）
 #    /etc/uten-imp/server.env        ← 参考 deploy/setup/server.env.internal-test.example
-#    /etc/uten-imp/migrator.env      ← 同源，用同一个数据库账号
+#    /etc/uten-imp/migrator.env      ← 独立迁移角色 uten_migrator，不能复制应用账号配置
 #    /etc/uten-imp-updater.env       ← 参考 deploy/simple/updater.env.example
 #    /etc/uten-imp-updater/allowed_signers ← 发布公钥（见上）
 chmod 600 /etc/uten-imp/server.env /etc/uten-imp/migrator.env /etc/uten-imp-updater.env
@@ -106,9 +105,19 @@ nginx -t && systemctl enable --now nginx
 systemctl enable --now uten-imp.service uten-imp-updater.timer
 ```
 
+数据库必须先区分全新主机与已有 PostgreSQL 的主机。全新专用主机使用[数据库初始化脚本](../setup/phase2-postgres.sh)及对应前置检查；它负责安装 PostgreSQL 和分离应用、迁移、所有者身份，拒绝任何已有集群。已有数据库不得执行该脚本，也不能删掉集群来通过检查；按[现有角色加固协议](../setup/harden-existing-postgres-roles.sh)先核对当前权限和恢复路径，再实施适合该主机的改动。公司已有库的小版本更新仅执行正式前向迁移，不重新初始化角色、数据库或密钥。
+
 验证：浏览器开内网域名登录；`uten-imp-updater status` 全绿。
 
 附件办公文档预览（装了 1b 才需要，覆盖 doc/docx/rtf/odt、xls/xlsx/ods、ppt/pptx/odp、svg 共 11 种；图片/PDF/文本/CSV/zip 由客户端自己渲染，不经服务器）：`server.env` 加 `UTEN_ATTACHMENT_PREVIEW_ENABLED=true`（可选 `UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH=/usr/bin/soffice`、`UTEN_ATTACHMENT_PREVIEW_TIMEOUT_SECONDS=60`、`UTEN_ATTACHMENT_PREVIEW_MAX_CONCURRENT=2`、`UTEN_ATTACHMENT_PREVIEW_CACHE_MAX_BYTES=1073741824`）。转换缓存与 LibreOffice 用户配置目录都落在附件根目录 `/data/uten-imp/attachments/{preview,scratch}` 下，`uten-imp.service` 的 `ReadWritePaths=/data/uten-imp/attachments` 已覆盖，无需再放开其它目录（`PrivateTmp=true` 保持）。验收：上传一个 docx 和一个 pptx，点「预览」都应弹出 PDF；`journalctl -u uten-imp | grep -i preview` 无 "soffice is not executable" 告警。没装 `libreoffice-draw` 时 svg 预览会失败并回落为下载，其余类型不受影响。
+
+当前独立 migrator 固定连接同机 `127.0.0.1:5432/uten_imp`、使用 `uten_migrator`，从 `UTEN_MIGRATOR_DB_PASSWORD` 读取专用密码（20–512 位字母数字）。激活前只检查变量存在、格式和该角色真实连接/DDL权限，不打印密码。应用角色与迁移角色分离，数据库名、主机或端口不符合这一部署协议时先修正部署方案，不能等到停服后才发现凭据缺失。
+
+## 数据与附件备份
+
+日常备份统一使用[配套备份](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)，以同一数据库快照和原件校验生成可恢复集合。旧 `uten-backup-daily` 入口只委托该程序，不再先导出数据库、后 `rsync --delete` 或自动覆盖上一份附件副本。安装入口前必须配齐 `/usr/local/lib/uten-imp/paired_internal_backup.py`、系统依赖和 `/etc/uten-imp/paired-internal-backup.json`；配置保持 root:root、0600，备份集合保持私有权限。
+
+每台服务器仅启用一条日常备份定时器。已经使用 `uten-paired-internal-backup.timer` 的主机继续沿用它，不重复启用旧 `uten-backup.timer`。修改前查实际 unit、最后成功时间与恢复结果，不能从脚本存在推断已生效。历史备份只在核对实际路径、保留需求和可恢复性后处理。
 
 ## 四、日常发版（全自动）
 
@@ -159,134 +168,26 @@ git tag v1.4.1 && git push origin v1.4.1
 
 升级旧更新器时，另行只读列出实际`UTEN_BACKUP_DIR`及其已有dump的所有者/权限，确认后按明确路径收紧旧备份为`0600`、目录为`0700`；新代码不会自动重写历史文件。恢复时由root读取私有dump并流入postgres的`pg_restore`，不需要把备份临时开放给普通用户。相关回归为`deploy/updater/test_simple_release_backup.py`，文件权限验证必须在Linux执行。
 
-## 五、数据刷新：把本地/外部数据库灌到服务器
+## 五、数据库替换与旧系统首次导入
 
-> 适用：测试期把本地开发库刷上去重测；正式数据切换同流程但必须先对账演练。
-> 日常经营数据由员工操作直接写入服务器库，**永远不需要手动传输**（需要真实数据做测试时
-> 方向反过来：从服务器 `pg_dump` 拉副本下来）。
+日常小版本更新只走第四节的前向迁移，不替换公司数据库。开发副本刷新、旧系统首次导入和公司已有库升级是三个不同入口，不能共用“先删库、再恢复”的操作清单。
 
-### 0. 前提
+- **已有公司库升级**：签名候选先在可丢弃的公司备份副本上演练，核对 Flyway 校验和、行数、数量、金额与审计证据，再在维护窗口由更新器执行前向迁移。
+- **旧系统首次导入**：使用[旧数据导入入口](../../server/legacy_migration/README.md)的当前候选校验、来源清单和显式目标库证明。只能导入独立空业务库，通过全模块对账后才具备切换资格；不能对已经经营的公司库执行 bootstrap。
+- **确需替换公司数据库**：先按下列步骤准备独立恢复库，保留现行库及其原版本，维护窗口仅切换已经验收的应用与数据库组合。
 
-- Tailscale 通：`ssh utenelec@<服务器IP>` 免密可登
-- 本地库容器在跑：`docker ps --filter name=uten-imp-postgres`
-- 若本地库 Flyway 版本**高于**服务器发布版本：先确认新迁移对现行后端透明（纯新增表/索引），
-  否则先走第四节发版再灌数据
+### 替换前必须具备的证据
 
-### 1. 本地打包
+1. 固定源端导出时点与业务停止写入边界；在允许业务写入后重新导出的旧快照不能作为最终切换依据。生成数据库与附件配套备份，使用 SHA-256 验证传输和存储摘要，并实际恢复验证。
+2. 只向显式命名的独立恢复库导入，使用 `pg_restore --exit-on-error`；任何非零退出都停止。遇到扩展、所有者或授权不兼容，先在副本查明依赖并修复导出/恢复方案，不能忽略错误或直接删除源库扩展。
+3. 使用与待发布 JAR 一致的正式 migrator 前向升级，保留完整 Flyway 身份与校验和。较新的数据库也不能未经兼容验证直接搭配较旧的后端。
+4. 核对应用角色、迁移角色、对象所有者和最小权限；保留公司的加密、签名及数据库配置。不能套用宽泛的全表/全函数授权，也不能用本机环境文件覆盖公司配置。
+5. 对账主档、库存数量、预留与消耗、应收应付与关键金额、审计、附件原件和可用账号；在隔离环境走岗位业务流程。核对现有管理员映射，不能靠修改引导账号或反复启动来绕过身份冲突。
+6. 记录旧应用、旧库、附件集合、新组合及回退路径；停写后做最终增量核对，切换后验证 HTTPS readiness、Flyway、登录与权限、业务读取及错误日志。验收通过再恢复员工写入。
 
-```bash
-# 记下版本号（写进文件名）
-docker exec uten-imp-postgres psql -U uten -d uten_imp -Atc \
-  "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"
-docker exec uten-imp-postgres pg_dump -U uten -Fc uten_imp > ~/uten_imp-dev-V<版本>-<日期>.dump
-```
+失败时保留停写状态，先确定迁移与新业务写入是否发生。恢复数据库和附件必须使用同一已验证集合；先恢复到独立库、完成校验，再切回匹配的应用和数据库配置。不能直接在唯一现行库上执行 `--clean`，不能把旧 JAR 指向已经不兼容的新结构。旧库与备份保留到明确的恢复保留期结束。
 
-### 2. 传输并校验（两端 md5 一致才继续）
-
-```bash
-scp ~/uten_imp-dev-V*.dump utenelec@<服务器IP>:/tmp/
-md5sum ~/uten_imp-dev-V*.dump
-ssh utenelec@<服务器IP> 'md5sum /tmp/uten_imp-dev-V*.dump'
-```
-
-### 3. 服务器执行（整段贴入，逐步有输出）
-
-```bash
-ssh utenelec@<服务器IP> 'bash -s' <<'REMOTE'
-set -e
-echo "== 1. 备份现有库（保后悔药）"
-sudo -u postgres pg_dump -Fc uten_imp > ~/db-before-refresh-$(date +%Y%m%d-%H%M).dump
-ls -lh ~/db-before-refresh-*.dump | tail -1
-echo "== 2. 停应用（数据库保持运行）"
-sudo systemctl stop uten-imp
-echo "== 3. 清空重建"
-sudo -u postgres psql -c "DROP DATABASE uten_imp WITH (FORCE);"
-sudo -u postgres psql -c "CREATE DATABASE uten_imp OWNER uten;"
-echo "== 4. 恢复（postgis 类报错无害，见坑②）"
-DBPASS=$(sudo grep -E "^UTEN_DB_PASSWORD=" /etc/uten-imp/server.env | cut -d= -f2-)
-PGPASSWORD="$DBPASS" pg_restore -h 127.0.0.1 -U uten --no-owner --no-privileges \
-  -d uten_imp /tmp/uten_imp-dev-V*.dump || echo "(已忽略 postgis 类报错)"
-echo "== 5. 核对（版本号与员工数应与预期一致）"
-PGPASSWORD="$DBPASS" psql -h 127.0.0.1 -U uten -d uten_imp -Atc \
-  "SELECT installed_rank||' / '||version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"
-PGPASSWORD="$DBPASS" psql -h 127.0.0.1 -U uten -d uten_imp -Atc "SELECT count(*) FROM employees"
-echo "== 6. 启动 + 健康检查"
-sudo systemctl start uten-imp
-for i in $(seq 1 30); do sleep 3
-  curl -fsS --max-time 4 http://127.0.0.1:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"' \
-    && { echo "健康 UP"; exit 0; }
-done
-echo "未就绪——优先查坑①（引导账号撞库）"; sudo journalctl -u uten-imp -n 40 --no-pager | tail -15; exit 1
-REMOTE
-```
-
-### 4. 验收
-
-浏览器登录（账号 = 灌入库里的账号）抽查数据是否符合预期。
-
-### 已知坑（2026-09-03 实战记录）
-
-1. **引导账号撞库（会崩溃循环）**：应用启动时确保 `BOOTSTRAP_ADMIN_LOGIN`
-   （`/etc/uten-imp/server.env`）在库中存在，不存在就新建并可能撞 employees 唯一约束。
-   **灌库后该值必须是库中已有账号**（当前=〈管理员手机号，见本地密码记录〉）。修复：
-
-   ```bash
-   ssh utenelec@<服务器IP>
-   sudo sed -i 's/^BOOTSTRAP_ADMIN_LOGIN=.*/BOOTSTRAP_ADMIN_LOGIN=<库中已有账号>/' /etc/uten-imp/server.env
-   sudo systemctl reset-failed uten-imp && sudo systemctl start uten-imp   # StartLimit 卡死必须先 reset
-   ```
-
-2. **postgis 噪音（约 14 条报错，无害）**：本地 postgis 镜像自动装的地理扩展混进 dump，
-   服务器没有也不需要，业务零影响。根治（下次 dump 前在本地库执行一次即可）：
-
-   ```sql
-   DROP EXTENSION postgis_tiger_geocoder CASCADE;
-   DROP EXTENSION postgis_topology CASCADE;
-   DROP EXTENSION postgis CASCADE;   -- ERP 无几何字段，安全
-   ```
-
-3. **版本不匹配**：库**可以**高于后端（新迁移纯新增时透明）；库**低于**发布版本时恢复后必须补跑
-   `java -jar /opt/uten-imp/current/server/uten-imp-migrator.jar`（加载 `/etc/uten-imp/migrator.env`）。
-
-4. **刷新库后 migrator 全挂（validate 阶段 UTEN_MIGRATION_FAILED 且无细节）**：第五节刷新流程
-   `pg_restore --no-owner --no-privileges` 会把所有 GRANT 剥掉、对象全归恢复角色 `uten` 所有，
-   `uten_migrator` 连 `flyway_schema_history` 都读不了。刷新后必须补一段（2026-09-03 实战）：
-
-   ```sql
-   REASSIGN OWNED BY uten TO uten_migrator;
-   ALTER DATABASE uten_imp OWNER TO uten_migrator;
-   ALTER SCHEMA public OWNER TO uten_migrator;
-   GRANT USAGE ON SCHEMA public TO uten;
-   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO uten;
-   GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO uten;
-   GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO uten;
-   ALTER DEFAULT PRIVILEGES FOR ROLE uten_migrator IN SCHEMA public
-     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO uten;
-   ALTER DEFAULT PRIVILEGES FOR ROLE uten_migrator IN SCHEMA public
-     GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO uten;
-   ```
-
-5. **含迁移版本被误判纯代码自动激活（2026-09-03 v2026.09.03-1 事故，已修复）**：
-   `migration_digest` 原只匹配 jar 根路径 `db/migration/`，而 server JAR 是 Spring Boot
-   fat jar（资源在 `BOOT-INF/classes/db/migration/`），两边各匹配 0 条、哈希恒等 →
-   永远判纯代码 → 带迁移版本自动激活 → Hibernate 校验炸缺表 → 反复回滚/重试循环停机。
-   修复：digest 前先剥 `BOOT-INF/classes/` 前缀（已入仓库并部署服务器）。此形态下
-   timer 不会自动回滚成功时也停机超过 2 个周期，处置照第六节故障速查。
-
-6. **仓库版 oss_get 签名串的反斜杠陷阱（2026-09-03 发现，已修复）**：首装热修版
-   `printf '%s' "GET\n\n\n…"` 里 `\n` 是**参数**内容，printf 不解释参数里的转义，
-   签名串成了字面反斜杠文本 → 一律 `SignatureDoesNotMatch` 403。首装时服务器装的
-   是真换行版所以能用；仓库「回带」版带此 bug，部署到服务器后 403（易误诊为密钥
-   被轮换——先用两个独立实现交叉验签再下结论）。修复：换行写进**格式串**
-   `printf 'GET\n\n\n%s\n/%s/%s' …`（已入仓库并部署服务器）。
-
-
-
-### 正式数据切换（老系统 → 服务器，未来做）
-
-同一流程，但顺序必须是：**源头先在本地演练并逐项对账**（客户/供应商/库存数量/关键金额）
-→ 打包传输 → 恢复 →（版本低时）跑 migrator → 员工岗位 UAT 抽查 → **冻结源头机器**。
-对账不过关不得让员工开始使用。
+详细备份与恢复协议见[配套备份手册](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)；当前候选和服务器的实际证据见[当前版本验证](../../docs/99-项目治理/当前版本验证.md)。历史事故记录仅供诊断，不替代本节步骤。
 
 ## 六、故障速查
 
@@ -296,10 +197,10 @@ REMOTE
 |---|---|
 | 看更新器在干什么 | `journalctl -u uten-imp-updater.service -n 100` |
 | 看后端日志 | `journalctl -u uten-imp.service -n 200` |
-| 手动回滚到旧版 | `ln -sfn releases/<旧版> /opt/uten-imp/current.new && mv -T /opt/uten-imp/current.new /opt/uten-imp/current && systemctl restart uten-imp && echo <旧版> > /opt/uten-imp/active-version.txt` |
-| 迁移失败恢复库 | 用 `/var/backups/uten-imp/*.dump`：`pg_restore -U postgres -d uten_imp --clean --if-exists <dump>` |
+| 回退应用 | 先确认数据库结构兼容，并使用已验签的保留版本；含迁移时按第五节恢复匹配的数据库与应用组合 |
+| 迁移失败恢复库 | 保持停写；核对失败迁移及备份摘要，先向独立库恢复并验证，再切换匹配组合，见第五节 |
 | 误激活坏版本 | 纯代码版早已自动回滚；含迁移版按上一条恢复备份 |
-| 应用反复崩溃（duplicate key users_employee_id_key） | 坑①：BOOTSTRAP_ADMIN_LOGIN 不是库中账号；改 env 后 reset-failed 再 start（见第五节） |
+| 应用反复崩溃（duplicate key users_employee_id_key） | 核对引导账号与已有员工/用户映射及环境配置；修复已确认的冲突后再启动，不能新建重复身份 |
 
 ## 七、纪律红线
 
@@ -307,3 +208,29 @@ REMOTE
 - 私钥（`RELEASE_SIGNING_KEY`）只存在 GitHub secret + 你的冷备份两处，不出现在任何服务器；
 - 服务器/数据库/SSH 不暴露公网；远程管理走 VPN；
 - 打 tag 前确认对应提交 Quality Gate 全绿（自动触发，看到红叉别发）。
+
+## 八、发票识别侧车（PaddleOCR，可选，ADR-094）
+
+报销图片识别使用本地开源PaddleOCR，固定 `PP-OCRv5_mobile_det/mobile_rec` 与文本行方向模型、CPU推理，服务只监听回环8501。
+Apache-2.0 许可不等于零运行成本；票据不发往外部 AI 服务。部署文件、步骤、验证及回滚见
+[OCR 部署说明](../ocr/README.md)，法规及人工核验边界见[报销凭证清单](../../docs/07-业务链路/员工报销合规依据与凭证清单.md)。
+
+- 后端默认 `UTEN_EXPENSE_OCR_PROVIDER=disabled`。完成样本验证并按发布流程批准后再设置 `paddle`；
+  endpoint 默认 `http://127.0.0.1:8501`，应用限制为同机回环 HTTP，不允许外部票据服务地址。
+- 图片仅 JPEG/PNG/WebP，最大8MB、4000万像素、单边30000像素；拒绝动画图与格式不符内容。
+  后端和侧车均限制并发。PDF/OFD/XML 作为原件附件保存，不能直接发送给图片识别端点。
+- `/health` 仅证明 HTTP 存活，`engine_loaded` 仅说明是否加载过引擎；部署还须使用脱敏样本实际推理，
+  检查字段建议、耗时、内存、并发拒绝、错误路径及断网重启。不能用健康接口200代替识别验收。
+- Nginx对 `/api/expense-claims/invoices/recognize` 精确路径使用9MB请求体/130秒代理等待，
+  原通用2MB/45秒不能直接用于照片识别；Dart该请求140秒，Java默认60秒且可配置不超过120秒。
+  9MB仅容纳multipart封装，实际图片仍限制8MB，其他接口不随此放宽。
+- 侧车只回传文字行，Java `InvoiceTextParser` 生成待人工确认的建议；不得在日志记录票据文字或完整原图。
+  模型缓存位于 `/opt/uten-ocr/models`，运维通过 `prepare_models.py` 显式预置并核验；
+  侧车只读取现成v5缓存，缺失即失败，不在员工提交图片时下载模型。
+- PaddleX固定3.7.2，OpenCV使用上游指定 `opencv-contrib-python==4.10.0.84`；本轮真实模型准备
+  确认headless替代会被上游依赖检查拒绝。Linux补 `libgomp1/libgl1` 及对应glib运行库，无需桌面；
+  具体清理冲突wheel和安装步骤以[部署说明](../ocr/README.md)及安装脚本为准。
+- 停用时把 provider 改为 `disabled` 并按发布流程重启后端，再 `systemctl disable --now uten-paddle-ocr`。
+  仅停侧车但保留 `paddle` 会返回识别失败，而不是“未配置”；两者都应允许员工改为手工录入。
+
+2026-09-19的[历史验收](../../docs/99-项目治理/2026-09-19-员工报销全链路验收.md)仅记录当时的未启用状态。当前 PP-OCRv5 的实机推理、隔离权限、断网重启及后端配置状态，以[当前版本验证](../../docs/99-项目治理/当前版本验证.md)中的同次证据为准；不能用旧实现的耗时或健康接口替代。

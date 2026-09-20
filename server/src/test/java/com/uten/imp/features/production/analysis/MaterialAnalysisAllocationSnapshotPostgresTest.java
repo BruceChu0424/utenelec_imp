@@ -321,7 +321,8 @@ class MaterialAnalysisAllocationSnapshotPostgresTest {
         for (int i = 0; i < count; i++) rows.add(constructor.newInstance(id(label + "-item-" + i / 98),
                 "root/" + i % 98, new BigDecimal("10.0001"), new BigDecimal("2.0001"),
                 ZERO, ZERO, ZERO, new BigDecimal("8.0000"), true, ZERO, ZERO, ZERO, ZERO, DATE));
-        ReflectionTestUtils.invokeMethod(service, "updateNodeAllocations", analysis, rows);
+        ReflectionTestUtils.invokeMethod(service, "updateNodeAllocations", analysis, rows,
+                mock(MaterialAnalysisSnapshotBaseline.class));
         assertEquals(java.util.Set.of("actorId", "snapshots"), parameters.keySet());
         assertEquals(ACTOR, parameters.get("actorId"));
         JsonNode input = new ObjectMapper().readTree((String) parameters.get("snapshots"));

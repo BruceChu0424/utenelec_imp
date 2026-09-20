@@ -26,16 +26,12 @@
 //
 // 加载中 / 失败一律按 0 计（与既有降级口径一致：不把「未知」放大成异常态）。
 //
-// ## 接线状态（2026-09-11）
-//
-// 本表已是权威口径，但工作台模块卡与导航 Tab 仍走旧的
-// `features/dashboard/widgets/module_badge_sum.dart`（该目录由另一会话持有）。
-// 待 `_resolveCount` 改为委托 [todoModuleCountProvider]、`workbenchTotalTodoCountProvider`
-// 改为委托 [todoTotalCountProvider] 后，工作台「采购/委外管理」卡才会把
-// 「待退回供应商」计进去、「钱流管理」卡才会把 IQC 驳回计进去。
-// **两处必须同批切换**，否则 Tab 总数会一时高于各卡之和。
+// 工作台模块卡、导航总数及各业务入口均通过本表取数。
+// `features/dashboard/widgets/module_badge_sum.dart` 只负责组件接线与渲染，
+// 不维护另一套待办计数规则。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/expense/providers/expense_counts_provider.dart';
 
 import '../../features/finance/providers/finance_procurement_approval_count_provider.dart';
 import '../../features/finance/providers/sales_order_finance_confirmation_count_provider.dart';
@@ -114,6 +110,9 @@ enum TodoEntry {
   /// HR 任务中心：今日转正/逾期转正/今日生日/今日周年。
   hrTaskCenter(TodoModule.people),
 
+  /// 本人的报销草稿与驳回待修订单。
+  expenseMine(TodoModule.people),
+
   // —— 钱流 ——
   /// 销售订单财务确认（含「销售订单修改」队列，见「已知切片」）。
   financeSalesOrderConfirmation(TodoModule.finance),
@@ -129,6 +128,9 @@ enum TodoEntry {
 
   /// IQC 不合格退回与贷项（财务确认贷项/结案）。
   financeIqcRejection(TodoModule.finance),
+
+  /// 财务报销待审批与待付款(每张单仅处于一个队列)。
+  expenseFinance(TodoModule.finance),
 
   // —— 生产 ——
   /// 生产调度：待排产行。
@@ -230,6 +232,8 @@ int todoEntryCount(TodoEntry entry, TodoWatch watch) => switch (entry) {
   TodoEntry.visitorApproval => watch(visitorPendingCountProvider),
   TodoEntry.hrProfileReview => watch(pendingReviewCountProvider),
   TodoEntry.hrTaskCenter => watch(hrTaskCountProvider),
+  TodoEntry.expenseMine => watch(expenseMineTodoCountProvider),
+  TodoEntry.expenseFinance => watch(expenseFinanceTodoCountProvider),
   TodoEntry.financeSalesOrderConfirmation => _async(
     watch,
     salesOrderFinanceConfirmationCountProvider,
@@ -397,6 +401,7 @@ final todoTotalCountProvider = Provider<int>(
 /// 60s 轮询的 `StateNotifier` 角标（生产待排产/车间/采购/委外/研发/访客/HR/通知）
 /// 走各自的 `notifier.refresh()`，不在此列。
 void invalidateTodoBadgeCaches(WidgetRef ref) {
+  ref.invalidate(expenseCountsProvider);
   ref.invalidate(warehouseProductionReturnPendingCountProvider);
   ref.invalidate(salesOrderFinanceConfirmationCountProvider);
   ref.invalidate(salesShipmentFinanceCountProvider);

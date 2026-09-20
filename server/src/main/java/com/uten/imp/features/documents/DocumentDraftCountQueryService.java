@@ -32,6 +32,9 @@ import java.util.Map;
  *   <li><b>销售订货单去重</b>：额外要求 {@code finance_rejected = false}。财务驳回单同样是
  *       {@code status = 0}，但已计入销售关注徽章的 REJECTED 桶，若此处再数一次就会双计。
  *       故草稿计数的语义是「待自审的新建/修订草稿」，驳回件继续走驳回徽章。</li>
+ *   <li><b>采购/委外订货单排除在审单</b>：两族订货单财务通过前 {@code status = 0}，
+ *       但存在 PENDING 财务审批 case 的单已交由财务处理（列表有独立的「等待财务审核」段），
+ *       不再算「我的草稿」；财务退回件无 PENDING case，仍按草稿计数。</li>
  *   <li><b>仓库单据切片</b>：{@code stock_documents} 一张表装 8 种单据，除整表合计
  *       （{@code stockDocument}）外再按 {@code doc_type} 切出调拨 / 盘点两类，
  *       供仓库 hub 的两张卡各显各的数——前端择一展示，不得同时用合计与切片（会双计）。</li>
@@ -82,12 +85,22 @@ public class DocumentDraftCountQueryService {
             "sales_quotes", "o.maker_id", "sales", "sales:view:all",
             "sales_quote:view", null);
 
+    // 采购/委外订货单：财务通过前单据 status 保持 0，但已提交财务审核的单
+    // 不再是「我的草稿」（在等财务处理，列表另设「等待财务审核」段），故排除
+    // 存在 PENDING 审批 case 的单。财务退回件（最新 case=REJECTED，无 PENDING）
+    // 仍算草稿——它回到提交人手上，是必须由本人处理完的活。
     static final DraftSource PURCHASE_ORDER = new DraftSource(
             "purchase_orders", "o.maker_id", "purchase", "purchase:view:all",
-            "purchase_order:view", null);
+            "purchase_order:view",
+            "NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
+                    + " WHERE c.order_type = 'PURCHASE' AND c.order_id = o.id"
+                    + " AND c.status = 'PENDING')");
     static final DraftSource SUBCONTRACT_ORDER = new DraftSource(
             "subcontract_orders", "o.maker_id", "subcontract", "subcontract:view:all",
-            "subcontract_order:view", null);
+            "subcontract_order:view",
+            "NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
+                    + " WHERE c.order_type = 'SUBCONTRACT' AND c.order_id = o.id"
+                    + " AND c.status = 'PENDING')");
     static final DraftSource STOCK_DOCUMENT = new DraftSource(
             "stock_documents", "o.maker_id", "stock_doc", "stock_doc:view:all",
             "stock_doc:view", "NOT fn_is_production_linked_stock_document(o.id)");
@@ -103,19 +116,19 @@ public class DocumentDraftCountQueryService {
 
     static final DraftSource FINANCE_RECEIPT = new DraftSource(
             "finance_receipts", "o.maker_id", "finance", "finance:view:all",
-            "finance_receipt:view", null);
+            "finance_receipt:view", "o.legacy_id IS NULL");
     static final DraftSource FINANCE_PAYMENT = new DraftSource(
             "finance_payments", "o.maker_id", "finance", "finance:view:all",
-            "finance_payment:view", null);
+            "finance_payment:view", "o.legacy_id IS NULL");
     static final DraftSource FINANCE_EXPENSE = new DraftSource(
             "finance_expenses", "o.maker_id", "finance", "finance:view:all",
-            "finance_expense:view", null);
+            "finance_expense:view", "o.legacy_id IS NULL");
     static final DraftSource FINANCE_OTHER_INCOME = new DraftSource(
             "finance_other_incomes", "o.maker_id", "finance", "finance:view:all",
-            "finance_other_income:view", null);
+            "finance_other_income:view", "o.legacy_id IS NULL");
     static final DraftSource FINANCE_BANK_TRANSFER = new DraftSource(
             "finance_bank_transfers", "o.maker_id", "finance", "finance:view:all",
-            "finance_bank_transfer:view", null);
+            "finance_bank_transfer:view", "o.legacy_id IS NULL");
 
     // —— 2026-09-11 补齐：采购收货/退货、委外三类退回与损耗、仓库调拨/盘点 ——
     // 这 7 张 hub 卡此前一个数字都没有，用户进去才知道自己还有没提交的单。
@@ -123,7 +136,7 @@ public class DocumentDraftCountQueryService {
     //（PurchaseDocumentAccessPolicy / SubcontractDocumentAccessPolicy / StockDocAccessPolicy）。
     static final DraftSource PURCHASE_RECEIPT = new DraftSource(
             "purchase_receipts", "o.maker_id", "purchase", "purchase:view:all",
-            "purchase_receipt:view", null);
+            "purchase_receipt:view", "o.legacy_id IS NULL");
     static final DraftSource PURCHASE_RETURN = new DraftSource(
             "purchase_returns", "o.maker_id", "purchase", "purchase:view:all",
             "purchase_return:view", null);

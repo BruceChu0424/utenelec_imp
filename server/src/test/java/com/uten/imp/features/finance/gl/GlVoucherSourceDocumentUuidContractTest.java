@@ -42,14 +42,13 @@ class GlVoucherSourceDocumentUuidContractTest {
         String normalized = canonical(service);
         String compact = service.replaceAll("\\s+", "");
 
-        assertThat(count(service, "INSERT INTO gl_vouchers")).isEqualTo(17);
-        assertThat(count(compact, "source_type,source_doc_id,remark")).isEqualTo(16);
+        assertThat(count(service, "INSERT INTO gl_vouchers")).isEqualTo(16);
+        assertThat(count(compact, "source_type,source_doc_id,remark")).isEqualTo(15);
         assertThat(compact).contains(
                 "source_type,source_doc_id,source_ref,idempotency_key,reversal_of_voucher_id,remark");
         assertThat(normalized)
                 .contains("'AUTO', 'AR_POST', l.source_doc_id")
                 .contains("'AUTO', 'AP_POST', l.source_doc_id")
-                .contains("'AUTO', 'RECEIPT', t.id")
                 .contains("'AUTO', 'PAYMENT', t.id")
                 .contains("'AUTO', 'EXPENSE', t.id")
                 .contains("'AUTO', 'INCOME', t.id")

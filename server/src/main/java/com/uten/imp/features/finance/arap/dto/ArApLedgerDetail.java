@@ -53,6 +53,7 @@ public class ArApLedgerDetail {
     private List<String> salesOrderNos;
     private List<UUID> salesOrderIds;
     private UUID authoritativeSalesOrderId;
+    private java.util.Map<String, Object> legacySourceResolution;
 
     // Additive exact text never passes through a binary floating-point value.
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }

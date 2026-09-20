@@ -23,6 +23,18 @@ import static org.mockito.Mockito.mock;
 class ProcurementArrivalExpectationQueryContractTest {
 
     @Test
+    void defaultWarehouseUsesTheGoodsMasterWithSourceScopeRatherThanReceiptHistory() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java"));
+        int start = source.indexOf("private InboundExpectationTask expectationTask(");
+        int end = source.indexOf("Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected", start);
+        String query = source.substring(start, end);
+        assertThat(query).contains("WarehouseMasterDefaultsSql.owningWarehouseJoin(\"goods\", \"remembered\")")
+                .contains("fn_warehouse_same_main(remembered.id")
+                .doesNotContain("LEFT JOIN LATERAL", "history.updated_at", "FROM purchase_receipt_items line");
+    }
+
+    @Test
     void listAndCountShareTheRealSubcontractOutboundVisibilityPredicate() {
         CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
         ProcurementArrivalControlService service =

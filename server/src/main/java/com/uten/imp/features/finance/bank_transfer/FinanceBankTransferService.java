@@ -135,6 +135,7 @@ public class FinanceBankTransferService {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
         access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -153,6 +154,7 @@ public class FinanceBankTransferService {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
         access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
@@ -169,6 +171,7 @@ public class FinanceBankTransferService {
         FinanceBankTransfer t = lockActive(id);
         access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
                 "finance_bank_transfer:approve");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -196,6 +199,7 @@ public class FinanceBankTransferService {
         FinanceBankTransfer t = lockActive(id);
         access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
                 "finance_bank_transfer:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

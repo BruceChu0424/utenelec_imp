@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/models/procurement_finance_approval.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
 
 /// 采购单据类型。pathSegment 对齐后端 /api/purchase/{requests|orders|receipts|returns}。
 enum PurchaseDocType {
@@ -118,8 +119,9 @@ class PurchaseDocListItem {
     this.status,
     this.closed = false,
     this.legacyId,
+    bool legacyImported = false,
     this.financeApproval,
-  });
+  }) : legacyImported = legacyImported || legacyId != null;
 
   final String id;
   final String? billNo;
@@ -133,6 +135,7 @@ class PurchaseDocListItem {
   final int? status;
   final bool closed;
   final int? legacyId;
+  final bool legacyImported;
   final ProcurementFinanceApproval? financeApproval;
 
   factory PurchaseDocListItem.fromJson(Map<String, dynamic> json) =>
@@ -147,6 +150,7 @@ class PurchaseDocListItem {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        legacyImported: json['legacyImported'] as bool? ?? false,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),
@@ -163,10 +167,15 @@ class PurchaseDocItem {
     this.colorId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
     this.qty,
+    this.qtyText,
     this.price,
+    this.priceText,
     this.amountOriginal,
+    this.amountOriginalText,
     this.amountLocal,
+    this.amountLocalText,
     this.orderedQty,
     this.pendingQty,
     this.remainingQty,
@@ -193,10 +202,15 @@ class PurchaseDocItem {
   final String? colorId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
   final double? qty;
+  final String? qtyText;
   final double? price;
+  final String? priceText;
   final double? amountOriginal;
+  final String? amountOriginalText;
   final double? amountLocal;
+  final String? amountLocalText;
   final double? orderedQty;
   final double? pendingQty;
   final double? remainingQty;
@@ -231,10 +245,15 @@ class PurchaseDocItem {
         colorId: json['colorId'] as String?,
         unitId: json['unitId'] as String?,
         unitRate: (json['unitRate'] as num?)?.toDouble(),
+        unitRateText: receiptRecordedDecimal(json, 'unitRate'),
         qty: (json['qty'] as num?)?.toDouble(),
+        qtyText: receiptRecordedDecimal(json, 'qty'),
         price: (json['price'] as num?)?.toDouble(),
+        priceText: receiptRecordedDecimal(json, 'price'),
         amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+        amountOriginalText: receiptRecordedDecimal(json, 'amountOriginal'),
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+        amountLocalText: receiptRecordedDecimal(json, 'amountLocal'),
         orderedQty: (json['orderedQty'] as num?)?.toDouble(),
         pendingQty: (json['pendingQty'] as num?)?.toDouble(),
         remainingQty: (json['remainingQty'] as num?)?.toDouble(),
@@ -285,6 +304,7 @@ class PurchaseDocDetail {
   const PurchaseDocDetail({
     required this.id,
     this.legacyId,
+    bool legacyImported = false,
     this.billNo,
     this.billDate,
     this.supplierId,
@@ -292,6 +312,7 @@ class PurchaseDocDetail {
     this.departmentId,
     this.currencyId,
     this.exchangeRate,
+    this.exchangeRateText,
     this.taxRate,
     this.applicantId,
     this.applicantName,
@@ -308,7 +329,9 @@ class PurchaseDocDetail {
     this.deliverDate,
     this.remark,
     this.totalOriginal,
+    this.totalOriginalText,
     this.totalLocal,
+    this.totalLocalText,
     this.priceMasked = false,
     this.status,
     this.closed = false,
@@ -324,10 +347,11 @@ class PurchaseDocDetail {
     this.sourceRequestNo,
     this.sourceOrderId,
     this.sourceOrderNo,
-  });
+  }) : legacyImported = legacyImported || legacyId != null;
 
   final String id;
   final int? legacyId;
+  final bool legacyImported;
   final String? billNo;
   final String? billDate;
   final String? supplierId;
@@ -335,6 +359,7 @@ class PurchaseDocDetail {
   final String? departmentId;
   final String? currencyId;
   final double? exchangeRate;
+  final String? exchangeRateText;
   final double? taxRate;
   final String? applicantId;
   final String? applicantName;
@@ -355,7 +380,9 @@ class PurchaseDocDetail {
   final String? deliverDate;
   final String? remark;
   final double? totalOriginal;
+  final String? totalOriginalText;
   final double? totalLocal;
+  final String? totalLocalText;
 
   /// 价格已对当前用户脱敏（金额族/明细价格族为 null；渲染 ***，V302 收货单价格脱敏）。
   final bool priceMasked;
@@ -382,6 +409,7 @@ class PurchaseDocDetail {
       PurchaseDocDetail(
         id: json['id'] as String,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        legacyImported: json['legacyImported'] as bool? ?? false,
         billNo: json['billNo'] as String?,
         billDate: json['billDate'] as String?,
         supplierId: json['supplierId'] as String?,
@@ -389,6 +417,7 @@ class PurchaseDocDetail {
         departmentId: json['departmentId'] as String?,
         currencyId: json['currencyId'] as String?,
         exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+        exchangeRateText: receiptRecordedDecimal(json, 'exchangeRate'),
         taxRate: (json['taxRate'] as num?)?.toDouble(),
         applicantId: json['applicantId'] as String?,
         applicantName: json['applicantName'] as String?,
@@ -405,7 +434,9 @@ class PurchaseDocDetail {
         deliverDate: json['deliverDate'] as String?,
         remark: json['remark'] as String?,
         totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
+        totalOriginalText: receiptRecordedDecimal(json, 'totalOriginal'),
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        totalLocalText: receiptRecordedDecimal(json, 'totalLocal'),
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,

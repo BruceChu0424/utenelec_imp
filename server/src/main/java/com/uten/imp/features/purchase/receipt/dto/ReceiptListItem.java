@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 收货单列表项。 */
 @Getter
 @AllArgsConstructor
-public class ReceiptListItem {
+public class ReceiptListItem implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
     private UUID id;
     private String billNo;
     private LocalDate billDate;

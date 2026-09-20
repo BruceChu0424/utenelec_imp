@@ -41,6 +41,7 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../widgets/production_draw_detail_table.dart';
+import '../widgets/production_material_return_receive_dialog.dart';
 import '../widgets/warehouse_stock_outbound_detail_table.dart';
 import '../providers/production_draw_count_provider.dart';
 import '../providers/production_return_count_provider.dart';
@@ -68,6 +69,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   bool _busy = false;
   bool _confirmingOutbound = false;
   String? _outboundReviewToken;
+  String? _materialReturnWarehouseId, _materialReturnKey;
+  bool _confirmingMaterialReturn = false;
 
   // 2026-09-12 用户口径「数量在表格里改，出库只弹总结」：DRAW 待出库行的
   // 「本次出库/行备注」输入由页面持有（_load 后按最新明细重建，随路由销毁）；
@@ -112,8 +115,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     _d?.makerId,
   );
 
-  bool get _canCreate => _allows(DocumentPermissionAction.create);
-  bool get _canEdit => _allows(DocumentPermissionAction.edit);
+  bool get _canEdit =>
+      widget.docType.supportsManualDraft &&
+      _allows(DocumentPermissionAction.edit);
   bool get _canDelete => _allows(DocumentPermissionAction.delete);
   bool get _canApprove => _allows(DocumentPermissionAction.approve);
   bool get _canReverse => _allows(DocumentPermissionAction.reverse);
@@ -154,6 +158,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       setState(() {
         _d = d;
         _outboundReviewToken = review?.reviewToken;
+        if (d.status != 0) {
+          _materialReturnWarehouseId = null;
+          _materialReturnKey = null;
+        }
       });
       _rebuildIssueInputs();
     } catch (e) {
@@ -212,19 +220,99 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
   }
 
+  Future<void> _confirmMaterialReturn() async {
+    final detail = _d;
+    if (_busy ||
+        _loading ||
+        _confirmingMaterialReturn ||
+        !_canApprove ||
+        detail == null ||
+        detail.status != 0 ||
+        !detail.productionMaterialReturn) {
+      return;
+    }
+    setState(() => _confirmingMaterialReturn = true);
+    try {
+      final warehouseId =
+          _materialReturnWarehouseId ??
+          await showProductionMaterialReturnReceiveDialog(
+            context,
+            hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
+            mainWarehouseId: detail.materialReturnMainWarehouseId,
+            initialWarehouseId: detail.warehouseId,
+          );
+      if (warehouseId == null || !mounted) return;
+      setState(() {
+        _materialReturnWarehouseId = warehouseId;
+        _materialReturnKey ??= businessIdempotencyKey(
+          'material-return-confirm',
+          '${widget.id}|$warehouseId',
+        );
+        _busy = true;
+      });
+      await ref
+          .read(stockDocRepositoryProvider(widget.docType))
+          .confirmMaterialReturn(
+            widget.id,
+            warehouseId: warehouseId,
+            idempotencyKey: _materialReturnKey!,
+          );
+      if (!mounted) return;
+      setState(() {
+        _materialReturnWarehouseId = null;
+        _materialReturnKey = null;
+      });
+      context.appSuccess('余料已收进实际仓库，库存与车间台账已更新');
+      bumpListRefresh(ref, widget.docType.refreshKey);
+      ref.invalidate(warehouseProductionDrawPendingCountProvider);
+      ref.invalidate(warehouseProductionReturnPendingCountProvider);
+      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      refreshAfterProductionPlanGenerated(ref);
+      await _load();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      final uncertain =
+          error is NetworkException ||
+          error is NetworkTimeoutException ||
+          error.code == 'INTERNAL' ||
+          (error.httpStatus != null && error.httpStatus! >= 500);
+      if (!uncertain) {
+        setState(() {
+          _materialReturnWarehouseId = null;
+          _materialReturnKey = null;
+        });
+      }
+      context.appError(
+        uncertain
+            ? '暂未确认收料结果，请重试本次收料；原收料仓库和提交信息已保留。'
+            : error.fieldErrors?.firstOrNull?.message ?? error.message,
+      );
+    } catch (_) {
+      if (mounted) context.appError('暂未确认收料结果，请重试本次收料；原收料仓库和提交信息已保留。');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _confirmingMaterialReturn = false;
+        });
+      }
+    }
+  }
+
   Future<void> _act(
     String confirm,
     Future<void> Function() fn,
     String ok, {
     bool reviewerResponsibility = false,
     String? confirmLabel,
+    String? confirmTitle,
   }) async {
     if (_busy) return;
     final c = reviewerResponsibility
         ? await showUtenReviewerConfirmDialog(
             context,
             message: confirm,
-            title: confirmLabel == null ? '确认审核' : '核对退料实收',
+            title: confirmTitle ?? (confirmLabel == null ? '确认审核' : '核对退料实收'),
             confirmLabel: confirmLabel ?? '确认审核',
             actionLabel: confirmLabel ?? '审核',
           )
@@ -260,8 +348,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         refreshAfterProductionPlanGenerated(ref);
       }
       await _load();
-    } catch (_) {
-      if (mounted) context.appError('操作失败');
+    } catch (error) {
+      if (mounted) context.appApiError(error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -868,8 +956,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                         ),
                                         if (widget.docType != StockDocType.draw)
                                           _kv(
-                                            '仓库',
-                                            names.warehouse(_d!.warehouseId),
+                                            _d!.productionMaterialReturn
+                                                ? '实际收料仓库'
+                                                : '仓库',
+                                            _d!.productionMaterialReturn &&
+                                                    _d!.warehouseId == null
+                                                ? '待仓库确认'
+                                                : names.warehouse(
+                                                    _d!.warehouseId,
+                                                  ),
                                             theme,
                                           ),
                                         if (widget.docType ==
@@ -1285,6 +1380,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                 detail.productionLinked &&
                     widget.docType == StockDocType.finishedIn
                 ? _confirmFinishedInboundDialog
+                : detail.productionMaterialReturn &&
+                      widget.docType == StockDocType.wdraw
+                ? (_confirmingMaterialReturn ? null : _confirmMaterialReturn)
                 : _isOrdinaryOutbound
                 ? (_outboundReviewToken == null || _confirmingOutbound
                       ? null
@@ -1316,7 +1414,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                             AppLocalizationsZh())
                         .warehouseStockOutboundConfirmSingle
                   : widget.docType == StockDocType.wdraw
-                  ? '确认实收并入库'
+                  ? (_materialReturnKey == null ? '确认实收并入库' : '重试本次收料')
                   : '审核',
             ),
           ),
@@ -1338,18 +1436,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             ),
           );
         }
-        if (anyIssued && _canCreate) {
-          addAction(
-            UtenButton(
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.assignment_return_outlined,
-              onPressed: () =>
-                  context.push(RoutePath.stockWdrawNewFromDraw(widget.id)),
-              child: const Text('余料退库'),
-            ),
-          );
-        }
         if (anyIssued && _canReverseIssue) {
           addAction(
             UtenButton(
@@ -1365,10 +1451,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (_canReverse &&
           (detail.productionLinked || _ordinaryWritable) &&
           (!detail.productionLinked ||
-              widget.docType == StockDocType.finishedIn)) {
+              widget.docType == StockDocType.finishedIn ||
+              (widget.docType == StockDocType.wdraw &&
+                  detail.productionMaterialReturn))) {
         final productionFinishedInbound =
             detail.productionLinked &&
             widget.docType == StockDocType.finishedIn;
+        final materialReturn =
+            widget.docType == StockDocType.wdraw &&
+            detail.productionMaterialReturn;
         addAction(
           UtenButton(
             size: UtenButtonSize.large,
@@ -1377,6 +1468,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             onPressed: () => _act(
               productionFinishedInbound
                   ? '红冲将反向库存与入库累计，并按原实收量重建待点收草稿，确认？'
+                  : materialReturn
+                  ? '撤回后按原凭据恢复车间余料与库存。若已有后续领用，须先处理对应后续业务。确认撤回本次收仓？'
                   : '红冲将反向冲销库存，确认？',
               () {
                 final repository = ref.read(
@@ -1386,9 +1479,16 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                     ? repository.reverseFinishedInbound(widget.id)
                     : repository.reverse(widget.id);
               },
-              productionFinishedInbound ? '已红冲并重建待点收任务' : '已红冲',
+              productionFinishedInbound
+                  ? '已红冲并重建待点收任务'
+                  : materialReturn
+                  ? '已撤回收仓'
+                  : '已红冲',
+              reviewerResponsibility: materialReturn,
+              confirmLabel: materialReturn ? '撤回收仓' : null,
+              confirmTitle: materialReturn ? '核对并撤回收仓' : null,
             ),
-            child: const Text('红冲'),
+            child: Text(materialReturn ? '撤回收仓' : '红冲'),
           ),
         );
       }

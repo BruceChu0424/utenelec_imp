@@ -20,6 +20,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -129,6 +130,7 @@ class _SubcontractDocEditPageState
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _existingEditable = false;
   bool _loading = false;
 
   @override
@@ -186,6 +188,14 @@ class _SubcontractDocEditPageState
         final d = await ref
             .read(subcontractRepositoryProvider(widget.docType))
             .detail(widget.id!);
+        if (widget.docType == SubcontractDocType.receipt && d.legacyImported) {
+          if (!mounted) return;
+          context.appWarning(historicalReceiptReadOnlyMessage, force: true);
+          context.replace(
+            SubcontractRoute.detail(_cfg.pathSegment, widget.id!),
+          );
+          return;
+        }
         if (widget.docType != SubcontractDocType.application) {
           final writable =
               d.status == kSubcontractStatusDraft &&
@@ -204,6 +214,7 @@ class _SubcontractDocEditPageState
             return;
           }
         }
+        _existingEditable = true;
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()
@@ -469,6 +480,9 @@ class _SubcontractDocEditPageState
   }
 
   Future<void> _save() async {
+    if (_loading || _saving || (widget.id != null && !_existingEditable)) {
+      return;
+    }
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');

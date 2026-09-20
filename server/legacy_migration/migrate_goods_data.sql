@@ -10,7 +10,6 @@
 --   后模镶件用X」两类写法（口径同 V457 存量回填），其余保持 NULL。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 -- FK RESTRICT is intentional: an individual master reload must refuse to erase
 -- goods already used by documents, stock, production, BOM or analysis rows.
@@ -87,7 +86,10 @@ SELECT
     gs.pieces, gs.lost_rate, gs.cap,
     gs.material, gs.thickness, gs.l_style, gs.z_weight, gs.m_weight,
     gs.pack, gs.b_pack, gs.paper, gs.series, gs.chart_id, gs.lights,
-    gs.stock_place, gs.c_number, gs.v_number, gs.bs_test, gs.require_remark,
+    -- B_Goods.StockPlace contains unrelated legacy residues (for example 18/20),
+    -- not reviewed warehouse rack locations. Keep the source CSV as evidence;
+    -- actual place masters are maintained separately by --shelf-labels.
+    NULL, gs.c_number, gs.v_number, gs.bs_test, gs.require_remark,
     -- 后模镶件编号：老备注（Paper）只回填能确定后模镶件标识的写法（口径同 V457 存量回填）；
     -- 「换镶件」「换6M镶件」等未点明后模的保持 NULL，备注原文照迁不动。
     COALESCE(
@@ -101,7 +103,6 @@ SELECT
     FALSE, reserved.last_seq - gs.allocation_count + gs.seq_ordinal
 FROM numbered gs CROSS JOIN reserved;
 
-COMMIT;
 
 SELECT '✔ 货品 ' || count(*) ||
        '，已挂分类 ' || count(category_id) ||

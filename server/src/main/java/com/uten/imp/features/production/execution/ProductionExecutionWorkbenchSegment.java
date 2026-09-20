@@ -52,20 +52,16 @@ public record ProductionExecutionWorkbenchSegment(
         boolean hasSharedMaterialActivity,
         boolean hasPendingReturn,
         boolean hasAvailableMaterial,
-        /** 持续生产(V595)：同车间直送子件分次到料、到一批投一批，同一张工单只开一次工。 */
+        /** 持续生产：仓库料及同车间直送料分次投入，同一张工单只开一次工。 */
         boolean continuousSupply,
-        /** 可按「部分开工 · 持续生产」开工(V595)。 */
-        boolean canStartContinuous,
         /** 只剩线边仓直送料没出库(V595)：不用去领料，开工时就地自动出库，按「可开工」呈现。 */
         boolean pendingLineSideOnly,
         /** 已确认的开工路线(V599)：FULL_KIT/BATCH/CONTINUOUS；NULL=待车间确认。 */
         String startRoute,
         /** 待确认生产路线(V599)：等待物料且尚未选路，「下一步」首条=确认生产路线。 */
         boolean canConfirmRoute,
-        /** 可重新确认生产路线(V599)：WAITING 且未动过(无领料单/报工/供给钉/预留)。 */
+        /** 开工前且尚无实领或报工，可在保留已有备料事实的前提下调整路线。 */
         boolean routeChangeable,
-        /** 存在可由本车间直送供给的子件(V599)：持续生产路线的候选项。 */
-        boolean routeContinuousEligible,
-        /** 路线记忆(2026-09-18)：同产品最近一次确认的开工路线；未确认工单的下拉预填默认。 */
-        String suggestedStartRoute) {
+        /** 存在正式物料需求，允许选择持续生产；来源可以为仓库、直送或混合。 */
+        boolean routeContinuousEligible) {
 }

@@ -64,6 +64,21 @@ public class ProductionQualityMutationFootprintService {
                 result.row("report",row); result.plan((UUID)row[2]); result.inventory((UUID)row[3],(UUID)row[4]);
                 result.authorization((UUID)row[5]);
             }
+            // A workshop handoff also mutates the receiving task and its material
+            // ownership. Discover that plan before any report/stock lock, even
+            // when it belongs to another analysis in the same workshop.
+            for(var row:rows("""
+                    SELECT item.id,demand.id,receiving.plan_id,demand.goods_id,demand.color_id,
+                           md5(to_jsonb(demand)::text),md5(to_jsonb(receiving)::text)
+                    FROM production_daily_report_items item
+                    JOIN production_material_demands demand ON demand.id=item.direct_transfer_demand_id
+                    JOIN production_execution_segments receiving ON receiving.id=demand.execution_segment_id
+                    WHERE item.report_id IN (:ids) AND NOT item.is_deleted AND item.destination='WORKSHOP'
+                    ORDER BY receiving.plan_id,receiving.id,demand.id,item.id
+                    """,ids)) {
+                result.row("report-direct-receiver",row);
+                result.plan((UUID)row[2]); result.inventory((UUID)row[3],(UUID)row[4]);
+            }
             // Reversing the source report cancels only its actual, still-live
             // recovery authorizations; do not expand unrelated matching SKUs.
             for(var row:rows("""

@@ -10,7 +10,6 @@
 --   文本字段做 BTRIM + 空串→NULL。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 -- Never erase stock/documents as a side effect of a warehouse master reload.
 -- Existing references make DELETE fail before any replacement row is read.
@@ -55,7 +54,6 @@ FROM warehouse_stage stage
 LEFT JOIN legacy_warehouse_workshop_links link
   ON link.warehouse_legacy_id = stage.legacy_id;
 
-COMMIT;
 
 SELECT '✔ 仓库 总 ' || count(*) ||
        '，使用 ' || count(*) FILTER (WHERE status = N'使用') ||

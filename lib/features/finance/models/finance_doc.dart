@@ -66,29 +66,42 @@ double? _financeDecimalDouble(Object? value) {
   return null;
 }
 
-String financeReceiptKindLabel(String? value) => switch (value?.toUpperCase()) {
-  'AR_SETTLEMENT' => '货款收款(核销应收)',
-  'CUSTOMER_PREPAYMENT' => '客户订单预收',
-  _ => value?.trim().isNotEmpty == true ? value! : '未标记',
-};
+const financeLegacyReadOnlyMessage =
+    '历史资金记录仅供查询，不能编辑、删除、审核、红冲或再次核销；如需更正，请先核对原始凭证。';
+
+String financeReceiptKindLabel(String? value, {bool historical = false}) {
+  final kind = value?.trim().toUpperCase();
+  final label = switch (kind) {
+    'AR_SETTLEMENT' => '货款收款(核销应收)',
+    'CUSTOMER_PREPAYMENT' => '客户订单预收',
+    'LEGACY_UNCLASSIFIED' => '历史收款类型待核实',
+    _ => value?.trim().isNotEmpty == true ? value! : '未标记',
+  };
+  return historical && kind != 'LEGACY_UNCLASSIFIED'
+      ? '历史标记：$label（待核实）'
+      : label;
+}
 
 String financeArApSourceTypeLabel(String? value) =>
     switch (value?.toUpperCase()) {
       'SALES_SHIPMENT' => '销售发运',
       'SALES_RETURN' => '销售退货',
-      'DIRECT_RECEIPT' => '财务直接预收',
+      'DIRECT_RECEIPT' => '财务收款',
+      'DIRECT_PAYMENT' => '财务付款',
       'PURCHASE_RECEIPT' => '采购收货',
       'PURCHASE_RETURN' => '采购退货',
       'SUBCONTRACT_RECEIPT' => '委外进仓',
       'SUBCONTRACT_RETURN' => '委外退货',
       'SUBCONTRACT_WASTE' || 'SUBCONTRACT_WASTE_DEDUCTION' => '委外损耗扣款',
       'OPENING_BALANCE' => '期初余额',
+      'LEGACY_OPENING' => '历史期初（原单来源待核实）',
       'MANUAL' || 'MANUAL_AR' || 'MANUAL_AP' => '手工立账',
       _ => value?.trim().isNotEmpty == true ? value! : '—',
     };
 
 String financeArApOpenItemKindLabel(String? value) =>
     switch (value?.toUpperCase()) {
+      'LEGACY_UNVERIFIED' => '历史往来余额',
       'CUSTOMER_PREPAYMENT' => '客户预收',
       'RECEIVABLE' => '客户应收',
       'PAYABLE' => '供应商应付',
@@ -127,7 +140,11 @@ class FinanceDocListItem {
     this.amountLocalText,
     this.status,
     this.legacyId,
-  });
+    bool legacyImported = false,
+  }) : legacyImported =
+           legacyImported ||
+           legacyId != null ||
+           receiptKind == 'LEGACY_UNCLASSIFIED';
 
   final String id;
   final String? billNo;
@@ -141,6 +158,7 @@ class FinanceDocListItem {
   final String? amountLocalText;
   final int? status;
   final int? legacyId;
+  final bool legacyImported;
 
   factory FinanceDocListItem.fromJson(Map<String, dynamic> json) =>
       FinanceDocListItem(
@@ -159,6 +177,7 @@ class FinanceDocListItem {
         ),
         status: (json['status'] as num?)?.toInt(),
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        legacyImported: json['legacyImported'] as bool? ?? false,
       );
 }
 
@@ -316,6 +335,7 @@ class FinanceDocDetail {
     required this.id,
     this.version,
     this.legacyId,
+    bool legacyImported = false,
     this.billNo,
     this.billDate,
     this.receiptKind,
@@ -381,11 +401,15 @@ class FinanceDocDetail {
     this.closed = false,
     this.glStatus,
     this.items = const [],
-  });
+  }) : legacyImported =
+           legacyImported ||
+           legacyId != null ||
+           receiptKind == 'LEGACY_UNCLASSIFIED';
 
   final String id;
   final int? version;
   final int? legacyId;
+  final bool legacyImported;
   final String? billNo;
   final String? billDate;
   final String? receiptKind;
@@ -466,6 +490,7 @@ class FinanceDocDetail {
     id: json['id'] as String,
     version: (json['version'] as num?)?.toInt(),
     legacyId: (json['legacyId'] as num?)?.toInt(),
+    legacyImported: json['legacyImported'] as bool? ?? false,
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,
     receiptKind: json['receiptKind'] as String?,
@@ -578,6 +603,7 @@ class ArApLedgerItem {
     this.sourceDocNo,
     this.openItemKind,
     this.billNo,
+    this.legacySourceResolutionStatus,
     this.billDate,
     this.clientId,
     this.supplierId,
@@ -628,6 +654,7 @@ class ArApLedgerItem {
   final String? sourceDocNo;
   final String? openItemKind;
   final String? billNo;
+  final String? legacySourceResolutionStatus;
   final String? billDate;
   final String? clientId;
   final String? supplierId;
@@ -683,6 +710,8 @@ class ArApLedgerItem {
     sourceDocNo: json['sourceDocNo'] as String?,
     openItemKind: json['openItemKind'] as String?,
     billNo: json['billNo'] as String?,
+    legacySourceResolutionStatus:
+        (json['legacySourceResolution'] as Map?)?['status'] as String?,
     billDate: json['billDate'] as String?,
     clientId: json['clientId'] as String?,
     supplierId: json['supplierId'] as String?,

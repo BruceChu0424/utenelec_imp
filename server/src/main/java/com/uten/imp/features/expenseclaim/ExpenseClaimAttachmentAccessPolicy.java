@@ -30,8 +30,9 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
         if (claim.getApplicantId().equals(user.getEmployeeId()) && has(user, "expense:apply")) {
             return;
         }
-        if (Set.of("SUBMITTED", "REVIEWING").contains(claim.getStatus())
-                && has(user, "expense:approve")) {
+        if (has(user,"expense:approve") && (Set.of("SUBMITTED","REVIEWING").contains(claim.getStatus())
+                || java.util.Objects.equals(user.getEmployeeId(),claim.getApprovedBy())
+                || java.util.Objects.equals(user.getEmployeeId(),claim.getRejectedBy()))) {
             return;
         }
         if (Set.of("APPROVED", "PAID").contains(claim.getStatus())

@@ -72,38 +72,48 @@ class LegacyMigrationSafetyContractTest {
     void hrKeyHandoffUsesPrivateUnpredictableTemporaryFiles() throws IOException {
         String shell = compact(Files.readString(LEGACY_ROOT.resolve("migrate.sh")));
         assertThat(occurrences(shell, "mktemp \"$here/.uten_keys.xxxxxx.sql\""))
-                .isEqualTo(2);
+                .isEqualTo(1);
         assertThat(occurrences(shell, "chmod 600 \"$keyf\""))
-                .isEqualTo(2);
-        assertThat(occurrences(shell,
-                "exec \"$container\" chmod 600 /tmp/_uten_keys.sql"))
-                .isEqualTo(2);
-        assertThat(shell).doesNotContain(".uten_keys.tmp.sql");
+                .isEqualTo(1);
+        assertThat(shell).contains("mktemp /tmp/uten-legacy-keys.xxxxxx.sql")
+                .contains("if [ \"$lock_owned\" -eq 1 ]")
+                .contains("-v \"legacy_key_file=$remote_key_file\"")
+                .doesNotContain("/tmp/_uten_keys.sql", ".uten_keys.tmp.sql");
+        for (String file : List.of("migrate_hr_workers.sql", "migrate_hr_roster.sql")) {
+            assertThat(Files.readString(LEGACY_ROOT.resolve(file))).contains("\\i :legacy_key_file");
+        }
     }
 
     @Test
     void destructiveBootstrapRequiresTheExactCurrentFlywayInventory() throws IOException {
         String shell = compact(Files.readString(LEGACY_ROOT.resolve("migrate.sh")));
         assertThat(shell)
-                .contains("expected_flyway_migration_count=388")
-                .contains("expected_flyway_head=426")
-                .contains("uten-imp-flyway-checksums-v1")
+                .contains("python3 -i \"$here/verify_candidate.py\"")
+                .contains("read -r expected_flyway_migration_count expected_flyway_head mapping_version")
                 .contains("select count(*), count(*) filter (where success), "
                         + "count(distinct version), coalesce(max(version::integer), 0) "
                         + "from flyway_schema_history where version is not null")
-                .contains("select version, script, checksum from flyway_schema_history "
-                        + "where version is not null order by installed_rank")
+                .contains("select version::integer, script, checksum from flyway_schema_history "
+                        + "where version is not null order by version::integer")
                 .contains("cmp -s")
                 .contains("tail -n +2 \"$flyway_checksum_manifest\"")
                 .contains("'uten-imp-flyway-checksums.tsv'")
-                .contains("mapping_version=\"bootstrap-v10-v426\"");
+                .contains("uten_legacy_target_system_identifier")
+                .contains("uten_legacy_target_approval_reference")
+                .contains("current_database(), system_identifier from pg_control_system()")
+                .doesNotContain("expected_flyway_migration_count=388", "expected_flyway_head=426");
+        String verifier = compact(Files.readString(LEGACY_ROOT.resolve("verify_candidate.py")));
+        assertThat(verifier).contains("uten-imp-flyway-checksums-v1")
+                .contains("flyway_checksum(path.read_bytes())")
+                .contains("ls-files").contains("--error-unmatch")
+                .contains("manifest is not the exact reviewed source inventory");
 
         String legacyReadme = compact(Files.readString(LEGACY_ROOT.resolve("README.md")));
         assertThat(legacyReadme)
-                .contains("最高 v426，共 388 个迁移文件、388 个唯一版本")
-                .contains("exact-set 一致的 388 行 checksum manifest")
-                .contains("bootstrap-v10-v426")
-                .contains("v426 不授权跨越或执行尚未获准的破坏性 v425");
+                .contains("mapping-version.txt")
+                .contains("verify_candidate.py")
+                .contains("24 项")
+                .contains("不会自动授权目标库");
 
         String migrationReadme = compact(Files.readString(
                 Path.of("../docs/数据迁移/README.md")));
@@ -112,10 +122,9 @@ class LegacyMigrationSafetyContractTest {
         assertThat(migrationReadme)
                 .contains("当前正式目录：v" + MigrationRehearsalSupport.CURRENT_HEAD_VERSION
                         + "/" + MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT)
-                .contains("离线 bootstrap 目标冻结为 v426/388")
-                .contains("`bootstrap-v10-v426`")
-                .contains("受保护 388 行 manifest")
-                .contains("v426 不授权跨越或执行尚未获准的破坏性 v425");
+                .contains("mapping-version.txt")
+                .contains("verify_candidate.py")
+                .contains("目标库名、集群身份和首导批准");
     }
 
     @Test
@@ -124,9 +133,11 @@ class LegacyMigrationSafetyContractTest {
         String shell = compact(Files.readString(LEGACY_ROOT.resolve("migrate.sh")));
         assertThat(shell)
                 .contains("verify_full_bootstrap_export")
-                .contains("manifest[\"formatversion\"] != 3")
+                .contains("manifest[\"formatversion\"] != 4")
                 .contains("manifest[\"target\"] != \"all\"")
                 .contains("serializable-read-transaction")
+                .contains("sourceSnapshotAsOfUtc".toLowerCase(Locale.ROOT))
+                .contains("legacy_source_snapshot_as_of_utc")
                 .contains("offline source backup digest is missing")
                 .contains("export approval reference is missing or invalid")
                 .contains("export repository commit does not match the importer candidate")
@@ -146,7 +157,7 @@ class LegacyMigrationSafetyContractTest {
         assertThat(exporter)
                 .contains("begintransaction( [system.data.isolationlevel]::serializable)")
                 .contains("$cmd.transaction = $script:exporttransaction")
-                .contains("formatversion = 3")
+                .contains("formatversion = 4")
                 .contains("legacy_source_backup_sha256")
                 .contains("legacy_export_approval_reference")
                 .contains("raw server/database identifiers are never persisted")
@@ -161,7 +172,8 @@ class LegacyMigrationSafetyContractTest {
                 .contains("record_run_file ()")
                 .contains("migrate_reconciliation.sql")
                 .contains("reconcile_full_bootstrap")
-                .contains("reconciliation_state\" != \"24|0")
+                .contains("24-item bootstrap structural reconciliation failed")
+                .contains("errcode='ut702'")
                 .contains("sourcetargetbusinessreconciliationrequired")
                 .contains("reconciliation_status=not_run")
                 .contains("git -c \"$here/../..\" status --porcelain=v1 --untracked-files=all");

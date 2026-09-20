@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,6 +29,7 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 @RestControllerAdvice(assignableTypes = MaterialAnalysisController.class)
 public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Object> {
     public static final String VERSION = "shared-warehouses-v1";
+    public static final String VERSION_V2 = MaterialAnalysisSparseProjection.VERSION;
 
     @Override
     public boolean supports(MethodParameter method, Class<? extends HttpMessageConverter<?>> converter) {
@@ -40,7 +40,16 @@ public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Ob
     @Override
     public Object beforeBodyWrite(Object body, MethodParameter method, MediaType contentType,
             Class<? extends HttpMessageConverter<?>> converter, ServerHttpRequest request, ServerHttpResponse response) {
+        response.getHeaders().add("Vary", "X-Material-Analysis-Projection");
         String projection = UriComponentsBuilder.fromUri(request.getURI()).build().getQueryParams().getFirst("projection");
+        if (projection == null) projection = request.getHeaders().getFirst("X-Material-Analysis-Projection");
+        if (VERSION_V2.equals(projection)) {
+            if (body instanceof AnalysisView analysis) return MaterialAnalysisSparseProjection.project(analysis);
+            if (body instanceof GenerateResult generated) {
+                return new MaterialAnalysisSparseProjection.SparseGenerateResult(
+                        MaterialAnalysisSparseProjection.project(generated.analysis()), generated.replayed(), generated.plans());
+            }
+        }
         if (!VERSION.equals(projection)) return body;
         if (body instanceof AnalysisView analysis) return project(analysis);
         if (body instanceof GenerateResult generated) {
@@ -50,8 +59,12 @@ public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Ob
     }
 
     public static SharedAnalysis project(AnalysisView analysis) {
+        List<SharedMaterial> materials = analysis.flatMaterials().stream().map(SharedMaterial::new).toList();
+        return new SharedAnalysis(analysis, materials, sharedWarehouses(analysis), VERSION);
+    }
+
+    static Map<String, List<WarehouseBreakdown>> sharedWarehouses(AnalysisView analysis) {
         Map<String, List<WarehouseBreakdown>> shared = new LinkedHashMap<>();
-        List<SharedMaterial> materials = new ArrayList<>(analysis.flatMaterials().size());
         for (MaterialView material : analysis.flatMaterials()) {
             String key = material.materialKey();
             if (key == null || key.isBlank()) throw new IllegalStateException("Material stock projection requires its stable dimension key");
@@ -62,9 +75,8 @@ public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Ob
                 // total. This must be corrected at the authoritative projection.
                 throw new IllegalStateException("One material dimension has conflicting warehouse snapshots");
             }
-            materials.add(new SharedMaterial(material));
         }
-        return new SharedAnalysis(analysis, List.copyOf(materials), Collections.unmodifiableMap(shared), VERSION);
+        return Collections.unmodifiableMap(shared);
     }
 
     public record SharedAnalysis(

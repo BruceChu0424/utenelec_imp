@@ -9,7 +9,6 @@
 -- 字段语义见 V34（MStatus=制造年月、Status=使用/报废、summary=保管人）。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 DO $$
@@ -74,7 +73,6 @@ SELECT
     FALSE, reserved.last_seq - ms.allocation_count + ms.seq_ordinal
 FROM numbered ms CROSS JOIN reserved;
 
-COMMIT;
 
 SELECT '✔ 模具 ' || count(*) ||
        '，已挂分类 ' || count(category_id) ||

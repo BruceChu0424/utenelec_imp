@@ -2,17 +2,13 @@
 -- Finance module migration: legacy M_* -> accounts/payment_styles
 --                                  + ar_ap_ledger + 6 doc types + reconciliations
 -- =====================================================================
--- Usage: bash server/legacy_migration/migrate.sh --finance --confirm-destructive
+-- Usage: only as a module of the verified --bootstrap-all transaction.
 -- Pre: V50 (accounts/payment_styles) + V57 (finance docs) applied;
 --      clients/suppliers/currencies migrated (V36/V38/V42).
--- Order: (1) master data accounts + payment_styles (docs reference accounts)
---        (2) ar_ap_ledger: M_in + M_out merged (direction derivation
---            + source_doc_type by BillNo prefix)
---        (3) finance_receipts/payments (main tables)
---        (4) back-fill ar_ap_ledger.source_doc_id (DIRECT_RECEIPT ->
---            finance_receipts, DIRECT_PAYMENT -> finance_payments)
---        (5) finance_expenses + items / finance_other_incomes + items
---        (6) finance_reconciliations (M_AllCheck, BStyle-routed JOIN)
+-- Order: (1) payment-style tree, final account UUID references, optional reverse links
+--        (2) employee UUIDs, immutable original cash headers/items/flows
+--        (3) M_In/M_Out source balances with exact source evidence or explicit
+--            LEGACY_OPENING when the relationship cannot be uniquely proven
 --        (M_Bank legacy 0 rows: structure already in V57, no data to ingest)
 -- Bootstrap-only: FK-ordered DELETE of finance transaction tables/accounts;
 --                 payment_styles is upserted to preserve references held by
@@ -26,7 +22,7 @@
 --             status=resigned，legacy_category=子类括注），报表 LEFT JOIN employees 出名。
 --             与 V65-V69 + stock/subcontract stub 范式同构（四模块共用 P0 基础设施）。
 -- settlement_style: M_in/M_out.PStyle → ar_ap_ledger.settlement_style_legacy（B_PStyle
---             字典未 dump，暂留 SMALLINT 原值，前端按字典常量渲染）。
+--             原始字典已在受验 CSV 中，对照现行种子并保留源 SMALLINT 证据）。
 -- department_id: SystemItem.ItemID <-> departments has no legacy_id mapping
 --             (V02 table has no legacy_id column), leave NULL (open item
 --             design doc 26 sec 9-8).
@@ -35,9 +31,8 @@
 -- Money: float -> numeric(18,4); exchange rate -> numeric(18,6).
 -- =====================================================================
 
-BEGIN;
 -- V265 payment-style reference guards are immediate. The bootstrap loads
--- accounts before payment_styles, so use a transaction-local import mode and
+-- styles with their final account UUIDs, using a transaction-local import mode and
 -- perform an explicit mapping reconciliation before COMMIT. The guard still
 -- takes PAYMENT_STYLE_HIERARCHY for the whole migration transaction.
 SELECT set_config(
@@ -372,59 +367,6 @@ BEGIN
     END IF;
 END $$;
 
-INSERT INTO accounts (
-    legacy_id, code, name, bank_account_no, account_type,
-    currency_id,
-    init_balance, receipts_total, payments_total, balance_current,
-    parent_legacy_id, style_legacy_id, status)
-SELECT
-    s.legacy_id, NULLIF(s.code, ''), s.name, NULLIF(s.bank_account_no, ''),
-    CASE
-        -- Chinese keyword mapping (AccName is Chinese in the live legacy DB)
-        WHEN s.name LIKE '%' || chr(39321) || '%'                                       THEN 'OFFSHORE'        -- Xianggang (Hong Kong)
-        WHEN s.name LIKE '%' || chr(24494) || '%'                                       THEN 'THIRD_PARTY'     -- Wei Xin (WeChat)
-        WHEN s.name LIKE '%' || chr(25903) || chr(20184) || chr(23453) || '%'           THEN 'THIRD_PARTY'     -- Zhi Fu Bao (Alipay)
-        WHEN s.name LIKE '%' || chr(29616) || chr(37329) || '%'                         THEN 'CASH'            -- Xian Jin (cash)
-        WHEN s.name = chr(25903) || chr(31080) AND s.status = chr(31105) || chr(29992) THEN 'CHECK'           -- Zhi Piao + Jin Yong
-        WHEN s.name = chr(25903) || chr(31080) THEN 'FOREIGN_CHECK'                     -- Zhi Piao + other
-        WHEN s.name = chr(19968) || chr(33324) || chr(24080) || chr(25143) THEN 'GENERAL'  -- Yi Ban Zhang Hu
-        WHEN s.name LIKE '%' || chr(20892) || '%'
-             OR s.name LIKE '%' || chr(24037) || chr(21830) || '%'
-             OR s.name LIKE '%' || chr(24037) || chr(34892) || '%'
-             OR s.name LIKE '%' || chr(24314) || chr(35774) || '%'
-             OR s.name LIKE '%' || chr(24314) || chr(34892) || '%'
-             OR s.name LIKE '%' || chr(20132) || chr(36890) || '%'
-             OR s.name LIKE '%' || chr(20132) || chr(34892) || '%'
-             OR s.name LIKE '%' || chr(25307) || chr(21830) || '%'
-             OR s.name LIKE '%' || chr(25307) || chr(34892) || '%'
-             OR s.name LIKE '%' || chr(37038) || chr(25919) || '%'
-             OR s.name LIKE '%' || chr(20449) || chr(29992) || chr(31038) || '%'
-             OR s.name LIKE '%' || chr(20852) || chr(19994) || '%'
-             OR s.name = chr(20013) || chr(22269) || chr(38134) || chr(34892)
-             OR s.name LIKE '%' || chr(20013) || chr(34892) || '%'
-             OR s.name LIKE '%' || chr(24191) || chr(21457) || '%'
-             OR s.name = chr(22522) || chr(26412) || chr(25143) THEN 'BANK'
-        ELSE 'GENERAL'
-    END,
-    CASE
-        WHEN s.name LIKE '%' || chr(39321) || '%' THEN (
-            SELECT currency.id FROM currencies currency
-            WHERE currency.legacy_id=3
-              AND currency.status=chr(20351) || chr(29992)
-              AND COALESCE(currency.is_deleted,FALSE)=FALSE)
-        ELSE (
-            SELECT currency.id FROM currencies currency
-            WHERE currency.legacy_id=1
-              AND currency.status=chr(20351) || chr(29992)
-              AND COALESCE(currency.is_deleted,FALSE)=FALSE)
-    END,
-    COALESCE(s.init_balance, 0), COALESCE(s.receipts_total, 0),
-    COALESCE(s.payments_total, 0), COALESCE(s.balance_current, 0),
-    NULLIF(s.parent_legacy_id, 0), NULLIF(s.style_legacy_id, 0),
-    COALESCE(NULLIF(s.status, ''), chr(20351) || chr(29992))  -- 'Shi Yong' (In Use) default
-FROM m_acc_stage s;
-
-
 -- =====================================================================
 -- (2) payment_styles tree (M_Style 124 nodes -> payment_styles, by category)
 -- =====================================================================
@@ -477,9 +419,7 @@ BEGIN
             COALESCE(s.dept_status, FALSE),
             COALESCE(s.orient_status1, FALSE),
             COALESCE(s.orient_status2, FALSE),
-            NULLIF(s.item_id, 0),
-            (SELECT account.id FROM accounts account
-              WHERE account.legacy_id = NULLIF(s.item_id, 0)),
+            NULL::integer, NULL::uuid, -- bind the optional reverse account link after final accounts exist
             s.init_total,
             chr(20351) || chr(29992) -- '使用'
         FROM m_style_stage s JOIN ps_depth n ON n.legacy_id = s.legacy_id
@@ -501,338 +441,72 @@ BEGIN
     END LOOP;
 END $$;
 
--- UUID relationship truth is populated after the style tree exists.  Legacy
--- columns remain trace shadows only.
-UPDATE accounts account
-SET style_id = style.id
-FROM payment_styles style
-WHERE style.legacy_id = NULLIF(account.style_legacy_id, 0);
-
-
--- =====================================================================
--- (3) ar_ap_ledger (M_in 42,489 UNION ALL M_out 44,534 -> unified ledger)
--- =====================================================================
--- direction / source_doc_type derivation:
---   M_in  -> direction='AR', source_doc_type by BillNo prefix:
---            XC=SALES_SHIPMENT / XT=SALES_RETURN / XS=DIRECT_RECEIPT
---   M_out -> direction='AP', source_doc_type by BillNo prefix:
---            CJ=PURCHASE_RECEIPT / CT=PURCHASE_RETURN /
---            EJ=SUBCONTRACT_RECEIPT / CF=DIRECT_PAYMENT
--- amount_original_local = Total (local currency)
--- amount_settled = M_In / M_Out (received/paid accumulated)
--- amount_balance = M_Rare; is_settled is derived from the canonical balance
---                  equation (legacy Paid bit is inconsistent on historical
---                  rows); status default 1 (posting is immediately effective)
--- legacy_source + legacy_id + legacy_bstyle three fields for traceability
---   (resolves M_in/M_out ID collision)
--- amount_original temporarily equals amount_original_local (reverse-dividing
---   Total by CRate for original-currency has precision risk; we keep Total
---   in amount_original_local and CRate in exchange_rate, design doc 26 sec 9-14)
--- source_doc_id back-filled in step (4) (depends on finance_receipts/payments)
-
--- (3-a) M_in -> AR
-INSERT INTO ar_ap_ledger (
-    direction, source_doc_type, source_doc_no, bill_no, bill_date, due_date,
-    client_id, supplier_id, currency_id, exchange_rate,
-    amount_original, amount_original_local, amount_settled, amount_balance,
-    is_settled, settled_date, status, remark,
-    legacy_source, legacy_id, legacy_bstyle, settlement_style_legacy)
+INSERT INTO accounts (
+    legacy_id, code, name, bank_account_no, account_type,
+    currency_id, style_id,
+    init_balance, receipts_total, payments_total, balance_current,
+    parent_legacy_id, style_legacy_id, status)
 SELECT
-    'AR',
+    s.legacy_id, NULLIF(s.code, ''), s.name, NULLIF(s.bank_account_no, ''),
     CASE
-        WHEN s.bill_no LIKE 'XC%' THEN 'SALES_SHIPMENT'
-        WHEN s.bill_no LIKE 'XT%' THEN 'SALES_RETURN'
-        WHEN s.bill_no LIKE 'XS%' THEN 'DIRECT_RECEIPT'
-        ELSE 'SALES_SHIPMENT'
+        -- Chinese keyword mapping (AccName is Chinese in the live legacy DB)
+        WHEN s.name LIKE '%' || chr(39321) || '%'                                       THEN 'OFFSHORE'        -- Xianggang (Hong Kong)
+        WHEN s.name LIKE '%' || chr(24494) || '%'                                       THEN 'THIRD_PARTY'     -- Wei Xin (WeChat)
+        WHEN s.name LIKE '%' || chr(25903) || chr(20184) || chr(23453) || '%'           THEN 'THIRD_PARTY'     -- Zhi Fu Bao (Alipay)
+        WHEN s.name LIKE '%' || chr(29616) || chr(37329) || '%'                         THEN 'CASH'            -- Xian Jin (cash)
+        WHEN s.name = chr(25903) || chr(31080) AND s.status = chr(31105) || chr(29992) THEN 'CHECK'           -- Zhi Piao + Jin Yong
+        WHEN s.name = chr(25903) || chr(31080) THEN 'FOREIGN_CHECK'                     -- Zhi Piao + other
+        WHEN s.name = chr(19968) || chr(33324) || chr(24080) || chr(25143) THEN 'GENERAL'  -- Yi Ban Zhang Hu
+        WHEN s.name LIKE '%' || chr(20892) || '%'
+             OR s.name LIKE '%' || chr(24037) || chr(21830) || '%'
+             OR s.name LIKE '%' || chr(24037) || chr(34892) || '%'
+             OR s.name LIKE '%' || chr(24314) || chr(35774) || '%'
+             OR s.name LIKE '%' || chr(24314) || chr(34892) || '%'
+             OR s.name LIKE '%' || chr(20132) || chr(36890) || '%'
+             OR s.name LIKE '%' || chr(20132) || chr(34892) || '%'
+             OR s.name LIKE '%' || chr(25307) || chr(21830) || '%'
+             OR s.name LIKE '%' || chr(25307) || chr(34892) || '%'
+             OR s.name LIKE '%' || chr(37038) || chr(25919) || '%'
+             OR s.name LIKE '%' || chr(20449) || chr(29992) || chr(31038) || '%'
+             OR s.name LIKE '%' || chr(20852) || chr(19994) || '%'
+             OR s.name = chr(20013) || chr(22269) || chr(38134) || chr(34892)
+             OR s.name LIKE '%' || chr(20013) || chr(34892) || '%'
+             OR s.name LIKE '%' || chr(24191) || chr(21457) || '%'
+             OR s.name = chr(22522) || chr(26412) || chr(25143) THEN 'BANK'
+        ELSE 'GENERAL'
     END,
-    s.bill_no, s.bill_no, s.bill_date, s.due_date,
-    (SELECT id FROM clients WHERE legacy_id = s.client_legacy_id),
-    NULL::uuid,
-    (SELECT id FROM currencies WHERE legacy_id = s.currency_legacy_id),
-    COALESCE(NULLIF(s.exchange_rate, 0), 1),
-    s.total,         -- amount_original (same as local for now, see note above)
-    s.total,         -- amount_original_local (local)
-    COALESCE(s.settled, 0),
-    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)),
-    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0,
     CASE
-        WHEN COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0
-            THEN COALESCE(s.paid_date::date, s.bill_date)
-        ELSE NULL
+        WHEN s.name LIKE '%' || chr(39321) || '%' THEN (
+            SELECT currency.id FROM currencies currency
+            WHERE currency.legacy_id=3
+              AND currency.status=chr(20351) || chr(29992)
+              AND COALESCE(currency.is_deleted,FALSE)=FALSE)
+        ELSE (
+            SELECT currency.id FROM currencies currency
+            WHERE currency.legacy_id=1
+              AND currency.status=chr(20351) || chr(29992)
+              AND COALESCE(currency.is_deleted,FALSE)=FALSE)
     END,
-    1, NULLIF(s.note, ''),
-    'M_in', s.legacy_id, s.b_style::smallint,
-    NULLIF(s.p_style, 0)::smallint
-FROM m_in_stage s;
+    (SELECT style.id FROM payment_styles style WHERE style.legacy_id = NULLIF(s.style_legacy_id, 0)),
+    COALESCE(s.init_balance, 0), COALESCE(s.receipts_total, 0),
+    COALESCE(s.payments_total, 0), COALESCE(s.balance_current, 0),
+    NULLIF(s.parent_legacy_id, 0), NULLIF(s.style_legacy_id, 0),
+    COALESCE(NULLIF(s.status, ''), chr(20351) || chr(29992))  -- 'Shi Yong' (In Use) default
+FROM m_acc_stage s;
 
--- (3-b) M_out -> AP
-INSERT INTO ar_ap_ledger (
-    direction, source_doc_type, source_doc_no, bill_no, bill_date, due_date,
-    client_id, supplier_id, currency_id, exchange_rate,
-    amount_original, amount_original_local, amount_settled, amount_balance,
-    is_settled, settled_date, status, remark,
-    legacy_source, legacy_id, legacy_bstyle, settlement_style_legacy)
-SELECT
-    'AP',
-    CASE
-        WHEN s.bill_no LIKE 'CJ%' THEN 'PURCHASE_RECEIPT'
-        WHEN s.bill_no LIKE 'CT%' THEN 'PURCHASE_RETURN'
-        WHEN s.bill_no LIKE 'EJ%' THEN 'SUBCONTRACT_RECEIPT'
-        WHEN s.bill_no LIKE 'CF%' THEN 'DIRECT_PAYMENT'
-        ELSE 'PURCHASE_RECEIPT'
-    END,
-    s.bill_no, s.bill_no, s.bill_date, s.due_date,
-    NULL::uuid,
-    (SELECT id FROM suppliers WHERE legacy_id = s.supplier_legacy_id),
-    (SELECT id FROM currencies WHERE legacy_id = s.currency_legacy_id),
-    COALESCE(NULLIF(s.exchange_rate, 0), 1),
-    s.total,
-    s.total,
-    COALESCE(s.settled, 0),
-    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)),
-    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0,
-    CASE
-        WHEN COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0
-            THEN COALESCE(s.paid_date::date, s.bill_date)
-        ELSE NULL
-    END,
-    1, NULLIF(s.note, ''),
-    'M_out', s.legacy_id, s.b_style::smallint,
-    NULLIF(s.p_style, 0)::smallint
-FROM m_out_stage s;
 
-UPDATE ar_ap_ledger ledger
-SET settlement_type_id = method.id
-FROM settlement_methods method
-WHERE method.legacy_id = ledger.settlement_style_legacy;
-
+-- Accounts require final active ACCOUNT leaf UUIDs at insertion (V277).
+-- Once they exist, resolve the style's optional reverse account reference;
+-- no approved money fact or historical account authority is patched later.
+UPDATE payment_styles style
+SET linked_account_legacy_id = NULLIF(source.item_id, 0),
+    linked_account_id = account.id
+FROM m_style_stage source
+LEFT JOIN accounts account ON account.legacy_id = NULLIF(source.item_id, 0)
+WHERE style.legacy_id = source.legacy_id;
 
 -- =====================================================================
--- (4) finance_receipts (M_Get) + finance_payments (M_Paid)
--- =====================================================================
-INSERT INTO finance_receipts (
-    legacy_id, bill_no, bill_date, client_id, account_id, counterpart_account_id,
-    currency_id, exchange_rate, amount_original, amount_local,
-    bank_fee, other_fee, other_fee_style_id, receipt_method_legacy_id,
-    invoice_no, cancel_date, source_remark, remark, status,
-    maker_legacy_id, approver_legacy_id, operator_legacy_id,
-    maker_name, approver_name, operator_name)
-SELECT
-    s.legacy_id, s.bill_no, s.bill_date,
-    (SELECT id FROM clients    WHERE legacy_id = s.client_legacy_id),
-    (SELECT id FROM accounts   WHERE legacy_id = s.rec_acc),
-    (SELECT id FROM accounts   WHERE legacy_id = NULLIF(s.dfch, 0)),
-    (SELECT id FROM currencies WHERE legacy_id = s.cur_id),
-    COALESCE(NULLIF(s.crate, 0), 1),
-    COALESCE(s.mtotal, 0), COALESCE(s.total, 0),
-    COALESCE(s.slf, 0), COALESCE(s.qtfy, 0),
-    (SELECT id FROM payment_styles WHERE legacy_id = NULLIF(s.qtfymc, 0)),
-    NULLIF(s.rec_style, 0),
-    NULLIF(s.invoices_no, ''), s.cancel_date,
-    NULLIF(s.source, ''), NULLIF(s.remark, ''), COALESCE(s.status, 0),
-    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
-    NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
-FROM m_get_stage s;
-
-INSERT INTO finance_payments (
-    legacy_id, bill_no, bill_date, supplier_id, account_id, counterpart_account_id,
-    currency_id, exchange_rate, amount_original, amount_local,
-    payment_method_legacy_id, invoice_no, cancel_date,
-    operator_name, source_remark, remark, status,
-    maker_legacy_id, approver_legacy_id, operator_legacy_id,
-    maker_name, approver_name)
-SELECT
-    s.legacy_id, s.bill_no, s.bill_date,
-    (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
-    (SELECT id FROM accounts   WHERE legacy_id = s.paid_acc),
-    (SELECT id FROM accounts   WHERE legacy_id = NULLIF(s.dfzh, 0)),
-    (SELECT id FROM currencies WHERE legacy_id = s.cur_id),
-    COALESCE(NULLIF(s.crate, 0), 1),
-    COALESCE(s.mtotal, 0), COALESCE(s.total, 0),
-    NULLIF(s.paid_style, 0),
-    NULLIF(s.invoices_no, ''), s.cancel_date,
-    NULLIF(s.jsr, ''),
-    NULLIF(s.source, ''), NULLIF(s.remark, ''), COALESCE(s.status, 0),
-    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
-    NULLIF(s.maker_name,''), NULLIF(s.approver_name,'')
-FROM m_paid_stage s;
-
-UPDATE finance_receipts receipt
-SET receipt_method_id = method.id
-FROM finance_payment_methods method
-WHERE method.legacy_id = receipt.receipt_method_legacy_id;
-
-UPDATE finance_payments payment
-SET payment_method_id = method.id
-FROM finance_payment_methods method
-WHERE method.legacy_id = payment.payment_method_legacy_id;
-
-
--- =====================================================================
--- (5) ar_ap_ledger.source_doc_id back-fill
---     (DIRECT_RECEIPT/PAYMENT -> finance_receipts/payments)
--- =====================================================================
--- Cross-module sources (BStyle=3/1/17/18/30 postings from sales/purchase/
--- subcontract docs) stay source_doc_id=NULL until those modules land and
--- call postArAp explicitly.
--- Direct receipt/payment (BStyle=20/21) sources are finance_receipts/payments
--- which are already migrated here; precise back-fill is possible.
-UPDATE ar_ap_ledger a
-SET source_doc_id = r.id
-FROM finance_receipts r, m_in_stage s
-WHERE a.legacy_source = 'M_in' AND a.legacy_id = s.legacy_id
-  AND s.b_style = 20 AND s.bill_legacy_id = r.legacy_id;
-
-UPDATE ar_ap_ledger a
-SET source_doc_id = p.id
-FROM finance_payments p, m_out_stage s
-WHERE a.legacy_source = 'M_out' AND a.legacy_id = s.legacy_id
-  AND s.b_style = 21 AND s.bill_legacy_id = p.legacy_id;
-
-
--- =====================================================================
--- (6) finance_expenses + items (M_DPaid + M_DPaidItem, by department)
--- =====================================================================
-INSERT INTO finance_expenses (
-    legacy_id, bill_no, bill_date, account_id, counterpart_account_id,
-    currency_id, exchange_rate, amount_original, amount_local,
-    payment_method_legacy_id, status, remark,
-    maker_legacy_id, approver_legacy_id, operator_legacy_id,
-    maker_name, approver_name, operator_name)
-SELECT
-    s.legacy_id, s.bill_no, s.bill_date,
-    (SELECT id FROM accounts   WHERE legacy_id = s.paid_acc),
-    (SELECT id FROM accounts   WHERE legacy_id = NULLIF(s.dfzh, 0)),
-    (SELECT id FROM currencies WHERE legacy_id = s.cur_id),
-    COALESCE(NULLIF(s.crate, 0), 1),
-    COALESCE(s.mtotal, 0), COALESCE(s.total, 0), NULLIF(s.paid_style, 0),
-    COALESCE(s.status, 0), NULLIF(s.remark, ''),
-    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
-    NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
-FROM m_dpaid_stage s;
-
-UPDATE finance_expenses expense
-SET payment_method_id = method.id
-FROM finance_payment_methods method
-WHERE method.legacy_id = expense.payment_method_legacy_id;
-
-INSERT INTO finance_expense_items (
-    legacy_id, expense_id, bill_no, bill_date,
-    expense_style_id, department_id, counterpart_account_id, counterpart_name,
-    qty, price, amount_original, amount_local, summary, line_no)
-SELECT
-    s.legacy_id,
-    (SELECT id FROM finance_expenses WHERE legacy_id = s.bill_legacy_id),
-    e.bill_no, e.bill_date,
-    (SELECT id FROM payment_styles WHERE legacy_id = NULLIF(s.style_legacy_id, 0)),
-    NULL::uuid,  -- department_id: SystemItem<->departments not aligned, NULL (open item 26 sec 9-8)
-    (SELECT id FROM accounts WHERE legacy_id = NULLIF(s.acc_id, 0)),
-    NULLIF(s.dfmc, ''),
-    s.qty, s.price, COALESCE(s.ctotal, 0), COALESCE(s.total, 0),
-    NULLIF(s.summary, ''),
-    ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id)
-FROM m_dpaid_item_stage s
-JOIN finance_expenses e ON e.legacy_id = s.bill_legacy_id;
-
-
--- =====================================================================
--- (7) finance_other_incomes + items (M_OGet + M_OGetItem)
--- =====================================================================
-INSERT INTO finance_other_incomes (
-    legacy_id, bill_no, bill_date, account_id, counterpart_account_id,
-    currency_id, exchange_rate, amount_original, amount_local,
-    receipt_method_legacy_id, status, remark,
-    maker_legacy_id, approver_legacy_id, operator_legacy_id,
-    maker_name, approver_name, operator_name)
-SELECT
-    s.legacy_id, s.bill_no, s.bill_date,
-    (SELECT id FROM accounts   WHERE legacy_id = s.rec_acc),
-    (SELECT id FROM accounts   WHERE legacy_id = NULLIF(s.dfzh, 0)),
-    (SELECT id FROM currencies WHERE legacy_id = s.cur_id),
-    COALESCE(NULLIF(s.crate, 0), 1),
-    COALESCE(s.mtotal, 0), COALESCE(s.total, 0),
-    NULLIF(s.rec_style, 0),
-    COALESCE(s.status, 0), NULLIF(s.remark, ''),
-    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
-    NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
-FROM m_oget_stage s;
-
-UPDATE finance_other_incomes income
-SET receipt_method_id = method.id
-FROM finance_payment_methods method
-WHERE method.legacy_id = income.receipt_method_legacy_id;
-
-INSERT INTO finance_other_income_items (
-    legacy_id, income_id, bill_no, bill_date,
-    income_style_id, department_id, counterpart_name,
-    qty, price, amount_original, amount_local, summary, line_no)
-SELECT
-    s.legacy_id,
-    (SELECT id FROM finance_other_incomes WHERE legacy_id = s.bill_legacy_id),
-    o.bill_no, o.bill_date,
-    (SELECT id FROM payment_styles WHERE legacy_id = NULLIF(s.style_legacy_id, 0)),
-    NULL::uuid,  -- department_id: same as expenses, NULL
-    NULLIF(s.df, ''),
-    NULL::numeric, NULL::numeric,  -- legacy M_OGetItem has no QTY/Price columns
-    COALESCE(s.ctotal, 0), COALESCE(s.total, 0),
-    NULLIF(s.summary, ''),
-    ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id)
-FROM m_oget_item_stage s
-JOIN finance_other_incomes o ON o.legacy_id = s.bill_legacy_id;
-
-
--- =====================================================================
--- (8) finance_reconciliations (M_AllCheck 30,626 rows -> account register)
--- =====================================================================
--- source_doc_type routed by BStyle
---   (20->RECEIPT / 21->PAYMENT / 22->INCOME / 23->EXPENSE / 27->BANK_TRANSFER);
---   posting BStyles (3/18/1/17/30) do NOT write M_AllCheck in the legacy DB
---   (design doc 25 sec 4.2); fallback to RECEIPT (most common source).
--- source_doc_id JOINed by BStyle to the right finance doc table legacy_id;
---   no match -> NULL (tolerates historical dirty rows).
-INSERT INTO finance_reconciliations (
-    legacy_id, bill_no, source_doc_type, source_doc_id, account_id, check_no,
-    counterpart_name, in_amount, out_amount, bill_date, settled_date,
-    source_remark, remark, legacy_bstyle)
-SELECT
-    s.legacy_id, s.bill_no,
-    CASE s.b_style
-        WHEN 20 THEN 'RECEIPT'
-        WHEN 21 THEN 'PAYMENT'
-        WHEN 22 THEN 'INCOME'
-        WHEN 23 THEN 'EXPENSE'
-        WHEN 27 THEN 'BANK_TRANSFER'
-        ELSE 'RECEIPT'  -- fallback: abnormal legacy BStyle bucketed as RECEIPT (most common)
-    END,
-    CASE s.b_style
-        WHEN 20 THEN (SELECT id FROM finance_receipts       WHERE legacy_id = s.bill_id)
-        WHEN 21 THEN (SELECT id FROM finance_payments       WHERE legacy_id = s.bill_id)
-        WHEN 22 THEN (SELECT id FROM finance_other_incomes  WHERE legacy_id = s.bill_id)
-        WHEN 23 THEN (SELECT id FROM finance_expenses       WHERE legacy_id = s.bill_id)
-        WHEN 27 THEN NULL::uuid  -- M_Bank 0 rows, not migrated this batch, leave NULL
-        ELSE NULL::uuid
-    END,
-    (SELECT id FROM accounts WHERE legacy_id = s.acc_id),
-    NULLIF(s.check_no, ''),
-    NULLIF(s.company, ''),
-    COALESCE(s.in_total, 0), COALESCE(s.out_total, 0),
-    s.bill_date, s.out_date,
-    NULLIF(s.source, ''), NULLIF(s.remark, ''),
-    s.b_style
-FROM m_allcheck_stage s;
-
-
--- =====================================================================
--- (9) finance_bank_transfers (M_Bank legacy 0 rows -> empty structure)
--- =====================================================================
--- Legacy M_Bank/M_BankItem 0 rows (never activated); V57 has the empty
--- structure preserving the Service skeleton (cross-currency conversion).
--- Future activation: export M_Bank/M_BankItem + add INSERT here
--- (mirror the receipt/payment pattern in step 4).
-
-
--- =====================================================================
--- (10) 人员补录：B_Worker → employees stub（融合键 legacy_id，经手人/收款人）
+-- Historical employee identity before immutable finance source rows：B_Worker → employees stub（融合键 legacy_id，经手人/收款人）
 -- =====================================================================
 -- 用户钦定"老库有、新库没有就在员工表添加、显示名字（名字后带（子类）括注）"。
 -- operator/work（WorkID → B_Worker）：建 employees stub，legacy_id=B_Worker.ID（融合键），
@@ -855,6 +529,81 @@ SELECT w.legacy_id, 'LEGACY-W-' || w.legacy_id, NULLIF(w.name,''), '其他',
 FROM finance_worker_stage w
 WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0 AND NULLIF(w.name,'') IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.legacy_id = w.legacy_id);
+
+-- =====================================================================
+-- (4) finance_receipts (M_Get) + finance_payments (M_Paid)
+-- =====================================================================
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'RECEIPT', to_jsonb(legacy_row.*))
+FROM m_get_stage legacy_row ORDER BY legacy_row.legacy_id;
+
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'PAYMENT', to_jsonb(legacy_row.*))
+FROM m_paid_stage legacy_row ORDER BY legacy_row.legacy_id;
+
+-- Approved historical money facts are inserted with final UUID references.
+-- A later UPDATE would correctly be rejected by the modern immutability guard.
+
+
+-- =====================================================================
+-- (6) finance_expenses + items (M_DPaid + M_DPaidItem, by department)
+-- =====================================================================
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'EXPENSE', to_jsonb(legacy_row.*))
+FROM m_dpaid_stage legacy_row ORDER BY legacy_row.legacy_id;
+
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'EXPENSE_ITEM', to_jsonb(legacy_row.*),
+    (row_number() OVER (PARTITION BY legacy_row.bill_legacy_id ORDER BY legacy_row.legacy_id))::integer)
+FROM m_dpaid_item_stage legacy_row ORDER BY legacy_row.bill_legacy_id, legacy_row.legacy_id;
+
+
+-- =====================================================================
+-- (7) finance_other_incomes + items (M_OGet + M_OGetItem)
+-- =====================================================================
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'INCOME', to_jsonb(legacy_row.*))
+FROM m_oget_stage legacy_row ORDER BY legacy_row.legacy_id;
+
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'INCOME_ITEM', to_jsonb(legacy_row.*),
+    (row_number() OVER (PARTITION BY legacy_row.bill_legacy_id ORDER BY legacy_row.legacy_id))::integer)
+FROM m_oget_item_stage legacy_row ORDER BY legacy_row.bill_legacy_id, legacy_row.legacy_id;
+
+
+-- =====================================================================
+-- (8) finance_reconciliations (M_AllCheck 30,626 rows -> account register)
+-- =====================================================================
+-- source_doc_type routed by BStyle
+--   (20->RECEIPT / 21->PAYMENT / 22->INCOME / 23->EXPENSE / 27->BANK_TRANSFER);
+--   posting BStyles (3/18/1/17/30) do NOT write M_AllCheck in the legacy DB
+--   (design doc 25 sec 4.2); unsupported source kinds require source reconciliation.
+-- source_doc_id JOINed by BStyle to the right finance doc table legacy_id;
+--   no match -> NULL (tolerates historical dirty rows).
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'ACCOUNT_FLOW', to_jsonb(legacy_row.*))
+FROM m_allcheck_stage legacy_row ORDER BY legacy_row.legacy_id;
+
+
+-- Verified source open items come after all original cash headers so actual
+-- BillID/party/number relationships can be resolved without later rebinding.
+-- The database importer preserves unresolved relationships as LEGACY_OPENING;
+-- raw settled totals are historical opening facts, never invented payment lines.
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'AR_OPENING', to_jsonb(legacy_row.*))
+FROM m_in_stage legacy_row ORDER BY legacy_row.legacy_id;
+SELECT fn_import_legacy_finance_source(
+    current_setting('uten.bootstrap_run_id')::uuid, 'AP_OPENING', to_jsonb(legacy_row.*))
+FROM m_out_stage legacy_row ORDER BY legacy_row.legacy_id;
+
+-- =====================================================================
+-- (9) finance_bank_transfers (M_Bank legacy 0 rows -> empty structure)
+-- =====================================================================
+-- Legacy M_Bank/M_BankItem 0 rows (never activated); V57 has the empty
+-- structure preserving the Service skeleton (cross-currency conversion).
+-- A nonempty M_Bank export is rejected before import; a future protocol must
+-- define its own source proof before supporting these historical rows.
+
 
 -- =====================================================================
 -- 刷新钱流应收应付物化视图（防汇总报表 Z/B/D 空数据，同 sales/stock 修复）
@@ -935,36 +684,6 @@ FROM m_out_stage;
 
 SELECT 'ar_ap_ledger AP amount_original_local          ' || COALESCE(SUM(amount_original_local), 0)::text
 FROM ar_ap_ledger WHERE direction='AP';
-
--- ---------------- 跨模块 source_doc_id 回填（P0-3，修历史红冲校验） ----------------
--- 历史 M_in/M_out 行只记 source_doc_no；按单号 JOIN 各业务单据表回填 source_doc_id，
--- 使 reverseArAp(sourceDocId,type) 对历史单据也能命中。幂等（WHERE source_doc_id IS NULL）。
--- 未命中的=单号在新表不存在（超迁移范围/它类），保留 NULL。
-UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM sales_shipments s
-WHERE a.source_doc_type='SALES_SHIPMENT' AND a.source_doc_no = s.bill_no
-  AND a.source_doc_id IS DISTINCT FROM s.id;
-UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM sales_returns s
-WHERE a.source_doc_type='SALES_RETURN' AND a.source_doc_no = s.bill_no
-  AND a.source_doc_id IS DISTINCT FROM s.id;
-UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM subcontract_receipts s
-WHERE a.source_doc_type='SUBCONTRACT_RECEIPT' AND a.source_doc_no = s.bill_no
-  AND a.source_doc_id IS DISTINCT FROM s.id;
-UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM subcontract_returns s
-WHERE a.source_doc_type='SUBCONTRACT_RETURN' AND a.source_doc_no = s.bill_no
-  AND a.source_doc_id IS DISTINCT FROM s.id;
-UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM purchase_receipts s
-WHERE a.source_doc_type='PURCHASE_RECEIPT' AND a.source_doc_no = s.bill_no
-  AND a.source_doc_id IS DISTINCT FROM s.id;
-UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM purchase_returns s
-WHERE a.source_doc_type='PURCHASE_RETURN' AND a.source_doc_no = s.bill_no
-  AND a.source_doc_id IS DISTINCT FROM s.id;
--- DIRECT_RECEIPT/PAYMENT 回填（指向 finance_receipts/payments）
-UPDATE ar_ap_ledger a SET source_doc_id = r.id FROM finance_receipts r
-WHERE a.source_doc_type='DIRECT_RECEIPT' AND a.source_doc_no = r.bill_no
-  AND a.source_doc_id IS DISTINCT FROM r.id;
-UPDATE ar_ap_ledger a SET source_doc_id = p.id FROM finance_payments p
-WHERE a.source_doc_type='DIRECT_PAYMENT' AND a.source_doc_no = p.bill_no
-  AND a.source_doc_id IS DISTINCT FROM p.id;
 
 -- source_doc_id 回填命中率（全部 8 类）
 SELECT 'source_doc_id hit rate by type                ' || source_doc_type || '  ' ||
@@ -1186,4 +905,3 @@ SELECT set_config(
     'off',
     true
 );
-COMMIT;

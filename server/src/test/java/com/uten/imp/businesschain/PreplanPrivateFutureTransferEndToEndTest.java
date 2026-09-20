@@ -63,6 +63,8 @@ class PreplanPrivateFutureTransferEndToEndTest {
         qty("40",material(analyses.detail(a.analysisId()),c.material()).additionalSupplyRecommendedQty());
         qty("60",material(b,c.material()).additionalSupplyRecommendedQty());
         qty("100",material(b,c.material()).demandSupplyGapQty());qty("0",material(b,c.material()).exactPeggedQty());
+        qty("40", material(b, c.material()).externalFutureCoverageQty());
+        qty("0", material(b, c.material()).internalCommittedOutputQty());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_reservations WHERE goods_id=?",Integer.class,c.material()));
         assertEquals(1,transfers.list(b.analysisId(),null).size());
         var replenishment=transfers.replenishmentByKey(a.analysisId(),request.idempotencyKey());qty("40",replenishment.remainingSupplementQty());assertTrue(replenishment.canOverSupply());
@@ -76,6 +78,7 @@ class PreplanPrivateFutureTransferEndToEndTest {
 
         receive(c,original.item(),"20","first");
         var partialB=material(analyses.detail(b.analysisId()),c.material());qty("20",partialB.exactPeggedQty());qty("60",partialB.additionalSupplyRecommendedQty());
+        qty("20", partialB.externalFutureCoverageQty());
         var state=transfers.list(b.analysisId(),null).getFirst();qty("20",state.receivedQty());qty("20",state.remainingQty());
         qty("0",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());qty("0",material(analyses.detail(d.analysisId()),c.material()).exactPeggedQty());
         receive(c,original.item(),"980","rest");

@@ -37,6 +37,8 @@ public class SupplierOffsetCommandService {
                 SELECT supplier_id,currency_id,open_item_kind
                 FROM ar_ap_ledger
                 WHERE id=:id AND direction='AP' AND status=1
+                  AND source_doc_type<>'LEGACY_OPENING' AND legacy_import_run_id IS NULL
+                  AND legacy_id IS NULL AND legacy_source IS NULL
                   AND COALESCE(is_deleted,FALSE)=FALSE
                 """).setParameter("id",request.sourceLedgerId()).getResultList();
         if(rows.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"贷项或索赔不存在");

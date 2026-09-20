@@ -51,5 +51,7 @@ public interface InventoryPositionPort {
     PositionValue returnConsumed(ReturnConsumed command);
     MovementValue store(Store command);
     MovementValue reverseStore(ReverseStore command);
+    /** Reverse one actual workshop return receipt to its original WIP/transit slices. */
+    MovementValue reverseMaterialStore(ReverseStore command);
     PositionView position(UUID rootId);
 }

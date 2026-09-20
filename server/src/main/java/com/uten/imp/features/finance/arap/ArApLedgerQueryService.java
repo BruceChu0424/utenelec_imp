@@ -186,7 +186,7 @@ public class ArApLedgerQueryService {
                 settlement.offsetOriginal(), settlement.offsetLocal(),
                 settlement.balanceOriginal(), ledger.getSettlementStyleLegacy(),
                 metadata.salesOrderNos(), metadata.salesOrderIds(),
-                authoritativeOrder(metadata.salesOrderIds()));
+                authoritativeOrder(metadata.salesOrderIds()), ledger.getLegacySourceResolution());
     }
 
     /** New AP postings and V246-authoritative payments maintain the same dual-currency fields as AR. */

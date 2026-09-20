@@ -951,6 +951,8 @@ Map<String, dynamic> _segmentJson({
   'shortageKindCount': 0,
   'materialReady': true,
   'canRequestDraw': canRequestDraw,
+  'startRoute': canSplitBatch ? 'BATCH' : 'FULL_KIT',
+  'canStart': (status == 'READY' || status == 'DISPATCHED') && materialIssued,
   'canSplitBatch': canSplitBatch,
   'materialDemandCount': materialDemandCount,
   'fullyIssuedDemandCount': fullyIssuedDemandCount,

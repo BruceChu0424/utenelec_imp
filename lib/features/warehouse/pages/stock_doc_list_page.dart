@@ -129,10 +129,12 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     super.dispose();
   }
 
-  bool get _canCreate => DocumentPermissionCatalog.stockDocument.allows(
-    ref.read(currentPermissionsProvider),
-    DocumentPermissionAction.create,
-  );
+  bool get _canCreate =>
+      widget.docType.supportsManualDraft &&
+      DocumentPermissionCatalog.stockDocument.allows(
+        ref.read(currentPermissionsProvider),
+        DocumentPermissionAction.create,
+      );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<StockDocListItem>> _fetch() {

@@ -127,8 +127,11 @@ public class ReportablePlanLineQueryService {
                                   END, 0)
                         )
                     END,
-                    -- 持续生产(V595)：可报量再封顶到「同车间直送已到料按单耗折算」的产量。
-                    COALESCE(direct_cap.remaining_qty, 999999999)) AS max_report_qty,
+                    -- Quality recovery owns a separate material authorization;
+                    -- normal cumulative production uses frozen material capacity.
+                    CASE WHEN recovery.authorization_id IS NOT NULL THEN recovery.available_qty
+                         ELSE COALESCE(material_cap.remaining_qty, segment.planned_qty)
+                    END) AS max_report_qty,
                     so.bill_no AS order_no,
                     oi.qty AS order_qty,
                     cl.name AS client_name,
@@ -150,6 +153,7 @@ public class ReportablePlanLineQueryService {
                   ON segment.source_plan_item_id = i.id
                  AND segment.is_deleted = FALSE
                  AND segment.status = 'IN_PROGRESS'
+                 AND fn_execution_material_custody_valid(segment.id)
                  AND segment.workshop_department_id IS NOT NULL
                  AND segment.responsible_employee_id IS NOT NULL
                  AND (
@@ -161,34 +165,17 @@ public class ReportablePlanLineQueryService {
                              WHERE demand.execution_segment_id = segment.id
                                AND demand.is_deleted = FALSE
                                AND demand.status NOT IN ('RELEASED', 'REVERSED'))
-                         AND NOT EXISTS (
-                             SELECT 1
-                             FROM production_material_demands demand
-                             WHERE demand.execution_segment_id = segment.id
-                               AND demand.is_deleted = FALSE
-                               AND demand.status NOT IN (
-                                   'FULFILLED', 'RELEASED', 'REVERSED'))
+                         -- Readiness was proved by START; returns after START may
+                         -- change demand status without invalidating supported output.
                      )
                  )
                 LEFT JOIN segment_progress segment_done
                   ON segment_done.execution_segment_id = segment.id
                 LEFT JOIN LATERAL (
-                    SELECT CASE WHEN MIN(TRUNC((clearance.issued_qty - clearance.returned_qty)
-                                              / demand.per_product_qty, 4)) IS NULL
-                                THEN NULL
-                                ELSE GREATEST(MIN(TRUNC((clearance.issued_qty - clearance.returned_qty)
-                                                        / demand.per_product_qty, 4))
-                                              - COALESCE(segment_done.active_qty, 0), 0)
-                           END AS remaining_qty
-                    FROM production_material_demands demand
-                    JOIN v_production_material_clearance clearance
-                      ON clearance.demand_id = demand.id
-                    WHERE segment.continuous_supply
-                      AND demand.execution_segment_id = segment.id
-                      AND demand.direct_supply
-                      AND demand.is_deleted = FALSE
-                      AND demand.per_product_qty > 0
-                ) direct_cap ON TRUE
+                    SELECT GREATEST(COALESCE(fn_execution_material_output_capacity(segment.id, TRUE),0)
+                                   - COALESCE(segment_done.active_qty, 0), 0) AS remaining_qty
+                    WHERE segment.id IS NOT NULL
+                ) material_cap ON TRUE
                 LEFT JOIN departments segment_workshop
                   ON segment_workshop.id = segment.workshop_department_id
                  AND segment_workshop.is_deleted = FALSE

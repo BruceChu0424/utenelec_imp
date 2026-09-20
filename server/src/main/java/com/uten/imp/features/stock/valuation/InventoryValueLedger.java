@@ -161,6 +161,29 @@ abstract class InventoryValueLedger {
     private Node createDerivedNode(UUID id,PoolIdentity pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
                                      BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
                                      boolean active,boolean finalValue,UUID event,List<Contribution> inputs){
+        return createDerivedNode(id,pool,kind,ownerKind,ownerId,movement,rootIssue,qty,from,to,value,pending,
+                active,finalValue,event,inputs,null);
+    }
+
+    /** A non-owning identity chain keeps repeated references within the binary fan-out contract. */
+    protected Node retainValueReference(Node root, UUID event) {
+        requireHeld(root.key());
+        Node original=node(root.id(),true);
+        List<UUID> existing=db.queryForList("""
+                SELECT id FROM stock_value_nodes WHERE reference_root_id=:root AND kind='VALUE_REFERENCE'
+                ORDER BY node_sequence DESC LIMIT 1 FOR UPDATE
+                """,args("root",root.id()),UUID.class);
+        Node parent=existing.isEmpty()?original:node(existing.getFirst(),true);
+        if(!Set.of("POOL","SOURCE","RETURN_SOURCE").contains(original.kind())
+                ||!parent.poolId().equals(original.poolId())||parent.qty().compareTo(original.qty())!=0)
+            throw conflict("保留成本引用必须沿同一原来源和完整数量延续");
+        return createDerivedNode(UUID.randomUUID(),parent.poolIdentity(),"VALUE_REFERENCE",null,null,null,null,
+                parent.qty(),ZERO,parent.qty(),parent.value(),pending(parent),false,true,event,List.of(whole(parent)),original.id());
+    }
+
+    private Node createDerivedNode(UUID id,PoolIdentity pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
+                                     BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
+                                     boolean active,boolean finalValue,UUID event,List<Contribution> inputs,UUID referenceRoot){
         if("SOURCE".equals(kind))throw conflict("取得来源必须使用独立的原额初始化入口");
         if(inputs==null||inputs.isEmpty())throw conflict("派生价值节点必须保留完整输入来源");
         List<PreparedContribution> prepared=new ArrayList<>(inputs.size());
@@ -179,7 +202,7 @@ abstract class InventoryValueLedger {
         }
         UUID returnHead="ISSUE_POSITION".equals(kind)&&id.equals(rootIssue)?id:null;
         Node child=insertNode(id,pool,kind,ownerKind,ownerId,movement,rootIssue,qty,from,to,value,pending,
-                active,finalValue,event,total,returnHead);
+                active,finalValue,event,total,returnHead,referenceRoot);
         // Child must already exist: edge parent/child FKs and the BEFORE sequence
         // and fan-out guard are immediate. Parent order and edge facts stay intact.
         for(PreparedContribution part:prepared)insertEdge(part,child,event);
@@ -189,16 +212,25 @@ abstract class InventoryValueLedger {
     private Node insertNode(UUID id,PoolIdentity p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
                             BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,
                             boolean finalValue,UUID event,ValueBounds initial,UUID returnHead){
+        return insertNode(id,p,kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,active,
+                finalValue,event,initial,returnHead,null);
+    }
+
+    private Node insertNode(UUID id,PoolIdentity p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
+                            BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,
+                            boolean finalValue,UUID event,ValueBounds initial,UUID returnHead,UUID referenceRoot){
         db.update("""
                 INSERT INTO stock_value_nodes(id,pool_id,kind,owner_kind,owner_id,movement_id,root_issue_id,
                     quantity_basis,range_from,range_to,initial_known_value,initial_pending,creation_event_id,
-                    basis_value_local,pending_parents,active,source_final,return_head_id%s)
-                VALUES (:id,:pool,:kind,:ownerKind,:owner,:movement,:root,:qty,:start,:end,:value,:pending,:event,:value,:pending,:active,:final,:returnHead%s)
+                    basis_value_local,pending_parents,active,source_final,return_head_id%s%s)
+                VALUES (:id,:pool,:kind,:ownerKind,:owner,:movement,:root,:qty,:start,:end,:value,:pending,:event,:value,:pending,:active,:final,:returnHead%s%s)
                 """.formatted(authority.installed?",value_model,initial_bound_lower,initial_bound_upper,bound_lower,bound_upper,initial_bound_scale,bound_scale,bound_revision":"",
-                        authority.installed?",'EXACT_SOURCE_SHARES',:lower,:upper,:lower,:upper,:scale,:scale,1":""),
+                        referenceRoot==null?"":",reference_root_id",
+                        authority.installed?",'EXACT_SOURCE_SHARES',:lower,:upper,:lower,:upper,:scale,:scale,1":"",
+                        referenceRoot==null?"":",:referenceRoot"),
                 args("id",id,"pool",p.id(),"kind",kind,"ownerKind",ownerKind,"owner",ownerId,"movement",movementId,"root",rootIssueId,
                 "qty",qty,"start",from,"end",to,"value",value,"pending",pending,"event",event,"active",active,"final",finalValue,
-                "returnHead",returnHead,"lower",ValueAuthorityStore.lower(initial),"upper",ValueAuthorityStore.upper(initial),"scale",ValueAuthorityStore.scale(initial)));
+                "returnHead",returnHead,"referenceRoot",referenceRoot,"lower",ValueAuthorityStore.lower(initial),"upper",ValueAuthorityStore.upper(initial),"scale",ValueAuthorityStore.scale(initial)));
         return new Node(id,p.id(),p.key(),kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,1,active,
                 finalValue,returnHead,null,ZERO,ZERO,null,initial,authority.installed?1L:null);
     }

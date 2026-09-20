@@ -75,8 +75,11 @@ public class ClientSaveRequest {
     private BigDecimal initTotal;// InitTotal（期初应收）
     private Integer tday;        // TDay（结算天数）
     private UUID defaultSettlementMethodId;
-    /** 月结/现金/定金人工分类；不能作为到账证明或放行规则。 */
-    @NotNull
+    /**
+     * 月结/现金/定金人工分类；不能作为到账证明或放行规则。
+     * V607 起创建可不填（未分类），财务放行时由
+     * {@code SalesShipmentService.requireClassifiedSalesPaymentType} 拦截补选。
+     */
     private ClientSalesPaymentType salesPaymentType;
     @JsonIgnore
     private boolean defaultSettlementMethodReferencePresent;

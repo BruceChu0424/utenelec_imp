@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.util.PostgresUuidOrder;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -90,13 +91,13 @@ public class GoodsOwningWarehouseWriteService {
         }
         requireWarehousesSelectable(byGoods.values());
 
-        List<UUID> ids = List.copyOf(byGoods.keySet());
+        List<UUID> ids = byGoods.keySet().stream().sorted(PostgresUuidOrder.INSTANCE).toList();
         String placeholders = String.join(", ", Collections.nCopies(ids.size(), "?"));
         // 现值：用于「无变化不落盘」以及区分「货品不存在」(containsKey 为 false)
         // 与「现值为空」(value 为 null)。
         Map<UUID, UUID> current = new HashMap<>();
         jdbc.query("SELECT id, owning_warehouse_id FROM goods WHERE id IN ("
-                + placeholders + ") AND is_deleted = FALSE", rs -> {
+                + placeholders + ") AND is_deleted = FALSE ORDER BY id FOR UPDATE", rs -> {
             current.put(
                     rs.getObject("id", UUID.class),
                     rs.getObject("owning_warehouse_id", UUID.class));
@@ -105,7 +106,8 @@ public class GoodsOwningWarehouseWriteService {
         UUID actor = currentUser.requireId();
         int updated = 0;
         int skipped = 0;
-        for (Map.Entry<UUID, OwningWarehouseRequest> entry : byGoods.entrySet()) {
+        for (Map.Entry<UUID, OwningWarehouseRequest> entry : byGoods.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(PostgresUuidOrder.INSTANCE)).toList()) {
             if (!current.containsKey(entry.getKey())) {
                 skipped++;
                 continue;
@@ -151,13 +153,13 @@ public class GoodsOwningWarehouseWriteService {
         String placeholders = String.join(", ", Collections.nCopies(ids.size(), "?"));
         Set<UUID> selectable = new LinkedHashSet<>();
         jdbc.query("SELECT id FROM warehouses WHERE id IN (" + placeholders
-                + ") AND is_deleted = FALSE", rs -> {
+                + ") AND is_deleted = FALSE AND NOT is_line_side", rs -> {
             selectable.add(rs.getObject("id", UUID.class));
         }, ids.toArray());
         if (selectable.size() != ids.size()) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "所属仓库不存在或已删除，请重新选择");
+                    "所属仓库不存在、已删除或是车间流转位置，请选择正常存放仓");
         }
     }
 }

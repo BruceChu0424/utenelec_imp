@@ -311,18 +311,22 @@ public class DashboardOverviewService {
             AuthUser user, DepartmentContext department, List<TodoCard> todos) {
         if (can(user, "expense:approve")
                 && belongsTo(department, "FINANCE")) {
-            long count = count("""
+            Long scopedCount = jdbc.queryForObject("""
                     SELECT COUNT(*) FROM expense_claims
                     WHERE status IN ('SUBMITTED', 'REVIEWING')
-                    """);
+                      AND applicant_id <> ?
+                    """, Long.class, user.getEmployeeId());
+            long count = scopedCount == null ? 0 : scopedCount;
             addCountTodo(todos, "expense-approval", count,
                     "报销申请待审批", "/expense/approval", "FINANCE");
         }
         if (can(user, "expense:pay")
                 && belongsTo(department, "FINANCE")) {
-            long count = count("""
+            Long scopedCount = jdbc.queryForObject("""
                     SELECT COUNT(*) FROM expense_claims WHERE status = 'APPROVED'
-                    """);
+                      AND applicant_id <> ? AND (approved_by IS NULL OR approved_by <> ?)
+                    """, Long.class, user.getEmployeeId(), user.getEmployeeId());
+            long count = scopedCount == null ? 0 : scopedCount;
             addCountTodo(todos, "expense-payment", count,
                     "已审批报销待付款", "/expense/approval", "FINANCE");
         }

@@ -39,6 +39,7 @@ import '../../procurement_iqc_rejection/repositories/procurement_iqc_rejection_r
 import '../providers/finance_procurement_approval_count_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../widgets/finance_audit_center_badge.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 
 class FinanceHubPage extends ConsumerWidget {
   const FinanceHubPage({super.key});
@@ -51,6 +52,7 @@ class FinanceHubPage extends ConsumerWidget {
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
       ref.invalidate(financeArrivalExceptionCountProvider);
       ref.invalidate(procurementIqcRejectionOpenCountProvider);
+      invalidateTodoBadgeCaches(ref);
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -64,6 +66,9 @@ class FinanceHubPage extends ConsumerWidget {
         superAdmin || permissions.contains(Perm.financeShipmentAudit);
     final canViewIqcRejections =
         superAdmin || permissions.contains(Perm.procurementIqcRejectionView);
+    final canHandleExpense =
+        permissions.contains(Perm.expenseApprove) ||
+        permissions.contains(Perm.expensePay);
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) {
           final requiredAny = requiredAnyPermFor(entry.location);
@@ -101,19 +106,38 @@ class FinanceHubPage extends ConsumerWidget {
               if (canViewProcurementApprovals ||
                   canViewSalesConfirmations ||
                   canAuditSalesShipments ||
-                  canViewIqcRejections) ...[
+                  canViewIqcRejections ||
+                  canHandleExpense) ...[
                 _section(context, theme, l10n.hubSectionTaskCenter, [
                   // 2026-09-18 合并：原 6 张审核队列卡（销售订单财务确认/销售订单
                   // 修改/出货财务审核/订货审批/超量到货审批/IQC 不合格退回与贷项）
                   // 并为一张「业务审核中心」卡，队列在页内按权限分段显示；
                   // 角标 = 五类队列待办之和（FinanceAuditCenterBadge 走注册表）。
-                  const _Entry(
-                    icon: Icons.fact_check_outlined,
-                    label: '业务审核中心',
-                    description: '销售订单 · 订单修改 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核',
-                    location: RouteName.financeAudits,
-                    badge: FinanceAuditCenterBadge(),
-                  ),
+                  if (canViewProcurementApprovals ||
+                      canViewSalesConfirmations ||
+                      canAuditSalesShipments ||
+                      canViewIqcRejections)
+                    const _Entry(
+                      icon: Icons.fact_check_outlined,
+                      label: '业务审核中心',
+                      description:
+                          '销售订单 · 订单修改 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核',
+                      location: RouteName.financeAudits,
+                      badge: FinanceAuditCenterBadge(),
+                    ),
+                  if (canHandleExpense)
+                    _Entry(
+                      icon: Icons.receipt_long_outlined,
+                      label: l10n.expenseFlowApprovalTitle,
+                      description: l10n.expenseFlowApprovalEntryDescription,
+                      location: '/expense/approval',
+                      badge: UtenNotificationBadge(
+                        count: todoEntryCount(
+                          TodoEntry.expenseFinance,
+                          ref.watch,
+                        ),
+                      ),
+                    ),
                 ]),
                 const SizedBox(height: UtenSpacing.s16),
               ],
@@ -122,6 +146,12 @@ class FinanceHubPage extends ConsumerWidget {
                 theme,
                 l10n.financeHubTitle,
                 visible([
+                  _Entry(
+                    icon: Icons.tune_outlined,
+                    label: l10n.expenseFlowSettingsTitle,
+                    description: l10n.expenseFlowSettingsEntryDescription,
+                    location: '/expense/settings',
+                  ),
                   _Entry(
                     icon: Icons.south_west_outlined,
                     label: l10n.financeHubDocReceipt,

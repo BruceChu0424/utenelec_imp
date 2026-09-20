@@ -44,12 +44,12 @@ class SubcontractOutboundDetailPostgresTest {
         DB.start();
         jdbc = new RecordingJdbcTemplate(new DriverManagerDataSource(
                 DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, stock_place text)");
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, stock_place text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)");
         jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE suppliers(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text)");
-        jdbc.execute("CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, deliver_date date)");
+        jdbc.execute("CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, deliver_date date, legacy_import_run_id uuid)");
         jdbc.execute("""
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, order_id uuid,
                     order_bill_no text, status text, supplier_id uuid, close_reason text, is_deleted boolean)

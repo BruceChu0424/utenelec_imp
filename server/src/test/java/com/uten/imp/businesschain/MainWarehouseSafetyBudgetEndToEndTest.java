@@ -55,6 +55,7 @@ class MainWarehouseSafetyBudgetEndToEndTest {
         Case c = setup("main-safety-80", 1, "20");
         receive(c, c.a(), null, "30"); receive(c, c.b(), null, "70");
         Plan plan = issue(c, "80", "first");
+        fixture.confirmFullKitRoute(plan.plan(), execution.list(plan.plan()).getFirst().id());
         assertEquals("READY", status(plan));
         qty("80", reserved(plan));
         List<UUID> draws = draws(plan);
@@ -180,6 +181,7 @@ class MainWarehouseSafetyBudgetEndToEndTest {
         Case c = setup("main-safety-zero-three", 3, "0");
         receive(c, c.a(), null, "30"); receive(c, c.b(), null, "50");
         Plan plan = issue(c, "80", "three");
+        fixture.confirmFullKitRoute(plan.plan(), execution.list(plan.plan()).getFirst().id());
         assertEquals("READY", status(plan)); qty("240", reserved(plan)); assertEquals(2, draws(plan).size());
         for (UUID material : c.materials()) {
             var row = material(plan, material); qty("0", row.shortageQty()); qty("80", row.allocatedAvailableQty());

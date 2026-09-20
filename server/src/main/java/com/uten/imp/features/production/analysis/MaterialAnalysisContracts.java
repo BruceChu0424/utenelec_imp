@@ -664,7 +664,11 @@ public final class MaterialAnalysisContracts {
              * V590 货品主档的「归属生产车间」：最近一次排产确认/车间改派学习回写。
              */
             UUID owningWorkshopId,
-            String owningWorkshopName) {
+            String owningWorkshopName,
+            /** External final output that can satisfy this node without consuming its children. */
+            BigDecimal externalFutureCoverageQty,
+            /** Existing internal output commitment; never subtract it as external finished supply. */
+            BigDecimal internalCommittedOutputQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

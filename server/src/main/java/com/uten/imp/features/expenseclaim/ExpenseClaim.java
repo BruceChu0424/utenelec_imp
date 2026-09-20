@@ -30,6 +30,10 @@ public class ExpenseClaim extends BaseEntity {
     @Column(name = "applicant_department_id")
     private UUID applicantDepartmentId;
 
+    /** 报销单号（BX + YYYYMMDD + 6 位日流水，V608 起创建时铸造；打印与归档编号）。 */
+    @Column(name = "claim_no", nullable = false, unique = true)
+    private String claimNo;
+
     @Column(nullable = false)
     private String title;
 

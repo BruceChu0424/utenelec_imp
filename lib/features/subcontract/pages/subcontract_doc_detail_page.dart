@@ -10,6 +10,8 @@
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（只读提示/表头卡/横幅/进度/附件），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部。
 import 'package:flutter/material.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
+import '../../../shared/widgets/historical_receipt_totals.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -94,7 +96,12 @@ class _SubcontractDocDetailPageState
   bool _hasPermission(String? code) =>
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
+  bool get _historicalReceipt =>
+      widget.docType == SubcontractDocType.receipt &&
+      (_detail?.legacyImported ?? false);
+
   bool get _ordinaryWritable =>
+      !_historicalReceipt &&
       !widget.forceReadOnly &&
       (widget.docType == SubcontractDocType.application ||
           documentOwnerCanWrite(
@@ -378,7 +385,7 @@ class _SubcontractDocDetailPageState
     String reviewerActionLabel = '审核',
     String? busyTitle,
   }) async {
-    if (_busy) return;
+    if (_busy || _historicalReceipt) return;
     final c = reviewerConfirmation
         ? await showUtenReviewerConfirmDialog(
             context,
@@ -431,7 +438,7 @@ class _SubcontractDocDetailPageState
   }
 
   Future<void> _delete() async {
-    if (_busy) return;
+    if (_busy || _historicalReceipt) return;
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -518,6 +525,13 @@ class _SubcontractDocDetailPageState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            if (_historicalReceipt)
+                              const Card(
+                                child: Padding(
+                                  padding: EdgeInsets.all(UtenSpacing.s12),
+                                  child: Text(historicalReceiptReadOnlyMessage),
+                                ),
+                              ),
                             if (widget.forceReadOnly) ...[
                               _readOnlyBusinessNotice(theme),
                               const SizedBox(height: UtenSpacing.s12),
@@ -690,6 +704,11 @@ class _SubcontractDocDetailPageState
         _KV('币种', names.currency(d.currencyId)),
       if (canViewCommercialAmounts && _cfg.hasSettlement)
         _KV('结算方式', settlementMethodLabel),
+      if (canViewCommercialAmounts && _historicalReceipt) ...[
+        _KV('原始汇率', historicalReceiptRate(d.exchangeRateText)),
+        _KV('原始表头 Total', historicalReceiptAmount(d.totalOriginalText)),
+        const _KV('金额口径', '行 STotal 是本币成本；原始表头值不代表行成本合计或加工应付'),
+      ],
       // 委外不展示汇率（固定 1 随单保存，进仓/退货与订单快照一致性由服务端校验）。
       if (canViewCommercialAmounts && _cfg.hasTaxRate && d.taxRate != null)
         _KV('税率', d.taxRate?.toString()),
@@ -706,7 +725,7 @@ class _SubcontractDocDetailPageState
           _cfg.hasDeductAmount &&
           (d.deductAmount ?? 0) > 0)
         _KV('建议索赔金额(本币)', '${d.deductAmount?.toStringAsFixed(2)}(仅建议，不自动冲应付)'),
-      if (canViewCommercialAmounts && _cfg.hasAmount)
+      if (canViewCommercialAmounts && _cfg.hasAmount && !_historicalReceipt)
         _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
@@ -881,7 +900,9 @@ class _SubcontractDocDetailPageState
                 label: '数量',
                 width: 90,
                 type: 'number',
-                value: (it) => it.qty?.toStringAsFixed(2),
+                value: (it) => _historicalReceipt
+                    ? historicalReceiptAmount(it.qtyText)
+                    : it.qty?.toStringAsFixed(2),
               ),
               if (_cfg.itemHasPrice && canViewCommercialAmounts) ...[
                 MasterColumnDef(
@@ -889,21 +910,40 @@ class _SubcontractDocDetailPageState
                   label: '单价',
                   width: 90,
                   type: 'money',
-                  value: (it) => it.price?.toStringAsFixed(2),
+                  value: (it) => _historicalReceipt
+                      ? historicalReceiptAmount(it.priceText)
+                      : it.price?.toStringAsFixed(2),
                 ),
                 MasterColumnDef(
                   key: 'amount',
-                  label: '金额',
+                  label: _historicalReceipt ? '原币对应值（已核验）' : '金额',
                   width: 100,
                   type: 'money',
                   // 优先服务端权威金额（含舍入口径）；仅历史缺失时本地乘算兜底。
-                  value: (it) => (it.amountOriginal ?? it.amountLocal) != null
+                  value: (it) => _historicalReceipt
+                      ? historicalReceiptAmount(it.amountOriginalText)
+                      : (it.amountOriginal ?? it.amountLocal) != null
                       ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(
                           2,
                         )
                       : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
                 ),
+                if (_historicalReceipt)
+                  MasterColumnDef(
+                    key: 'recordedLocalAmount',
+                    label: '本币成本（STotal）',
+                    width: 150,
+                    type: 'money',
+                    value: (it) => historicalReceiptAmount(it.amountLocalText),
+                  ),
               ],
+              if (_historicalReceipt)
+                MasterColumnDef(
+                  key: 'recordedUnitRate',
+                  label: '单位换算率',
+                  width: 180,
+                  value: (it) => historicalReceiptRate(it.unitRateText),
+                ),
               // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
               if (_cfg.showReceived)
                 MasterColumnDef(
@@ -981,48 +1021,65 @@ class _SubcontractDocDetailPageState
             // 明细下合计条（全站统一 summaryBar 槽位口径）：数量按单位分组，
             // 金额受商务金额门控；由表格统一挂在表体下方。
             summaryBar: items.isNotEmpty
-                ? UtenTotalsSummaryBar(
-                    key: const Key('subcontract-detail-totals'),
-                    density: true,
-                    compact: true,
-                    entries: [
-                      utenQuantityTotalEntry(
-                        items.map(
-                          (it) => MeasuredAmount(
-                            value: it.qty ?? 0,
-                            unitId: it.unitId,
-                            unitName: names.unit(it.unitId),
-                          ),
-                        ),
-                      ),
-                      if (canViewCommercialAmounts && _cfg.hasAmount) ...[
-                        UtenTotalEntry(
-                          utenAmountTotalLabel(
-                            _cfg.hasCurrency
-                                ? financeCurrencyDisplayLabel(
-                                    name: names.currency(d.currencyId),
-                                  )
-                                : null,
-                          ),
-                          (d.totalOriginal ??
-                                  items.fold<double>(
-                                    0,
-                                    (sum, it) =>
-                                        sum +
-                                        (it.amountOriginal ??
-                                            it.amountLocal ??
-                                            0),
-                                  ))
-                              .toStringAsFixed(2),
-                          danger: true,
-                        ),
-                        UtenTotalEntry(
-                          '合计(本币)',
-                          d.totalLocal?.toStringAsFixed(2) ?? '',
-                        ),
-                      ],
-                    ],
-                  )
+                ? _historicalReceipt
+                      ? HistoricalReceiptTotals(
+                          key: const Key('subcontract-detail-totals'),
+                          showAmounts: canViewCommercialAmounts,
+                          currencyLabel: names.currency(d.currencyId),
+                          subcontract: true,
+                          lines: [
+                            for (final item in items)
+                              HistoricalReceiptLineFacts(
+                                quantity: item.qtyText,
+                                unitId: item.unitId,
+                                unitName: names.unit(item.unitId),
+                                original: item.amountOriginalText,
+                                local: item.amountLocalText,
+                              ),
+                          ],
+                        )
+                      : UtenTotalsSummaryBar(
+                          key: const Key('subcontract-detail-totals'),
+                          density: true,
+                          compact: true,
+                          entries: [
+                            utenQuantityTotalEntry(
+                              items.map(
+                                (it) => MeasuredAmount(
+                                  value: it.qty ?? 0,
+                                  unitId: it.unitId,
+                                  unitName: names.unit(it.unitId),
+                                ),
+                              ),
+                            ),
+                            if (canViewCommercialAmounts && _cfg.hasAmount) ...[
+                              UtenTotalEntry(
+                                utenAmountTotalLabel(
+                                  _cfg.hasCurrency
+                                      ? financeCurrencyDisplayLabel(
+                                          name: names.currency(d.currencyId),
+                                        )
+                                      : null,
+                                ),
+                                (d.totalOriginal ??
+                                        items.fold<double>(
+                                          0,
+                                          (sum, it) =>
+                                              sum +
+                                              (it.amountOriginal ??
+                                                  it.amountLocal ??
+                                                  0),
+                                        ))
+                                    .toStringAsFixed(2),
+                                danger: true,
+                              ),
+                              UtenTotalEntry(
+                                '合计(本币)',
+                                d.totalLocal?.toStringAsFixed(2) ?? '',
+                              ),
+                            ],
+                          ],
+                        )
                 : null,
           ),
         ),

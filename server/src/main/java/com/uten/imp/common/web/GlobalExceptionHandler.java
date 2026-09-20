@@ -12,12 +12,17 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
+import java.sql.SQLException;
 
 /** 全局异常处理：统一转 ApiError，不向前端泄露堆栈/SQL/状态码细节。 */
 @Slf4j
@@ -87,6 +92,24 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, null));
     }
 
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiError> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
+        return ResponseEntity.status(ErrorCode.UNSUPPORTED_MEDIA_TYPE.getHttpStatus())
+                .body(ApiError.of(ErrorCode.UNSUPPORTED_MEDIA_TYPE, null));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleMultipartTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
+                .body(ApiError.of(ErrorCode.PAYLOAD_TOO_LARGE, null));
+    }
+
+    @ExceptionHandler({MissingServletRequestPartException.class, MultipartException.class})
+    public ResponseEntity<ApiError> handleMalformedMultipart(Exception ex) {
+        return ResponseEntity.status(ErrorCode.MALFORMED_REQUEST.getHttpStatus())
+                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "上传内容缺失或格式不正确"));
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiError> handleAuth(AuthenticationException ex) {
         return ResponseEntity.status(401).body(ApiError.of(ErrorCode.UNAUTHORIZED, null));
@@ -136,8 +159,20 @@ public class GlobalExceptionHandler {
                         ErrorCode.CONFLICT, "并发操作占用，请刷新后重试"));
     }
 
-    /** 到货收货数量超过财务核定可收上限时给出可操作提示；其余完整性冲突给通用提示。 */
+    /** Known business conflicts have actionable messages; database details remain private. */
     private String integrityMessage(Throwable root) {
+        int depth = 0;
+        for (Throwable cause = root; cause != null && depth < 16; cause = cause.getCause(), depth++) {
+            if (!(cause instanceof SQLException sql) || !"23514".equals(sql.getSQLState())) continue;
+            String detail = sql.getMessage();
+            if (detail != null && (detail.contains("Custody has already been issued by its destination task")
+                    || detail.contains("Returned source has already been consumed by its destination"))) {
+                return "这批余料已被后续工单领用，请先处理对应后续领料，再撤回收仓";
+            }
+            if (detail != null && detail.contains("Original material receipt has later actual stock consumption")) {
+                return "本次收仓之后已有依赖其成本的出库，请先处理对应后续出库，再撤回收仓";
+            }
+        }
         String message = root == null ? null : root.getMessage();
         if (message != null
                 && message.contains("master code is reserved for another identity")) {

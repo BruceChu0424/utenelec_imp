@@ -178,12 +178,16 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 供应方式也可以改变，改变了自动换到其他地方」）。
   ///
   /// 桶归属只认服务端的 `confirmed_route`，所以「换桶」必须真的写一次路线确认；
-  /// 主表那条「改下拉 → 勾选 → 确认路线(N)」的批量通道保持不变，这里只是给
-  /// 单行加一个显式的即时确认入口——弹窗点名「本行会从 X 桶移到 Y 桶」，
-  /// 仍然是人明确确认，不是自动保存（ADR-070 §2.3）。确认后的路线同时成为
-  /// 该货品/颜色/单位的上次路线记忆，下次默认带出它。
+  /// 主表和分桶复用明确确认后的即时保存；批量入口仍用于采用未确认建议。
+  /// 确认同时回写货品主档的默认供应方式，新分析直接从主档读取。
   Future<bool> _confirmRouteChange(
     _MaterialGroup group,
+    MaterialSupplyRoute route,
+  ) => _confirmRouteChanges([group], route);
+
+  /// Main preparation table and bucket detail use the same persisted decision.
+  Future<bool> _confirmRouteChanges(
+    List<_MaterialGroup> groups,
     MaterialSupplyRoute route,
   ) async {
     if (_busy) return false;
@@ -191,11 +195,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       context.appWarning('没有确认物料路线权限');
       return false;
     }
-    if (!_canEditMaterialRoute(group)) {
+    if (groups.isEmpty ||
+        groups.any((group) => !_canEditMaterialRoute(group))) {
       context.appWarning('本行已有下游行动或已被阻断，供料方式不可改');
       return false;
     }
-    final material = group.representative;
+    final material = groups.first.representative;
     final name = material.goodsName ?? material.goodsCode ?? '该物料';
     final current = material.confirmedRoute;
     final ok = await UtenDialog.show(
@@ -205,28 +210,30 @@ abstract class _MaterialAnalysisSupplyActionsState
         '把「$name」的供料方式'
         '${current == null ? '确认为' : '从「${current.label}」改为'}'
         '「${route.label}」？\n\n'
-        '确认后本行会立刻离开当前入口，出现在「下达${route.label}」里'
-        '（有自制子层的委外件会进「下达车间」先做前置自制）。'
-        '这次选择会记为该货品的上次路线，下次默认带出。',
+        '确认后所选 ${groups.length} 个物料节点立即按新路线归类'
+        '(有自制子层的委外件进入「下达车间」先做前置自制)。'
+        '同时更新货品资料中的默认供应方式，下次分析默认带出。',
       ),
       confirmLabel: '确认并换桶',
     );
     if (ok != true || !mounted) return false;
+    if (_busy) return false;
     setState(() {
-      _routeDraft[group.key] = route;
-      _dirtyRouteGroups.add(group.key);
+      for (final group in groups) {
+        _routeDraft[group.key] = route;
+        _dirtyRouteGroups.add(group.key);
+      }
       _invalidateBucketRowsCache();
     });
-    await _saveRoutes(onlyGroupKeys: {group.key});
+    final keys = groups.map((group) => group.key).toSet();
+    await _saveRoutes(onlyGroupKeys: keys);
     if (!mounted) return false;
     final analysis = _analysis;
     if (analysis == null) return false;
-    for (final current in _materialGroups(analysis)) {
-      if (current.key == group.key) {
-        return current.representative.confirmedRoute == route;
-      }
-    }
-    return false;
+    return _materialGroups(analysis)
+            .where((group) => keys.contains(group.key))
+            .every((group) => group.representative.confirmedRoute == route) &&
+        keys.every((key) => !_dirtyRouteGroups.contains(key));
   }
 
   /// Dropdown changes are local. Only selected task identities are submitted.
@@ -334,12 +341,21 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 下单。委外与车间桶不抬量（它们会产生下层责任，数量必须与需求一致）。
   double _defaultSubmitQty(_MaterialGroup group, MaterialSupplyRoute route) {
     final residual = _residualSubmitQty(group, route);
-    if (route != MaterialSupplyRoute.buy || residual <= 0) return residual;
+    return _submitQtyWithOrderPolicy(group, route, residual);
+  }
+
+  /// Apply the goods policy to this batch, never substitute the whole analysis.
+  double _submitQtyWithOrderPolicy(
+    _MaterialGroup group,
+    MaterialSupplyRoute route,
+    double quantity,
+  ) {
+    if (route != MaterialSupplyRoute.buy || quantity <= 0) return quantity;
     // 抬出来的富余是公共备货，没有超量下达权限的人填了也提交不了。
     // 这种情况下只填净需求，由「起订量提示」告诉他要找有权限的人。
-    if (!_canOverSupply) return residual;
+    if (!_canOverSupply) return quantity;
     return _raiseToOrderPolicy(
-      residual,
+      quantity,
       group.representative.minOrderQty,
       group.representative.orderMultipleQty,
     );

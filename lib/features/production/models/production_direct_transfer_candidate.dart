@@ -1,6 +1,6 @@
 /// 报工页「转下一道工序」的候选工单(V584/V585/V595)。
 ///
-/// 服务端只列**同车间**、同货品同颜色、还缺料的上层工单：跨车间必须走仓库，
+/// 服务端只列同车间、有真实父子责任、同货品同颜色且还缺料的上层工单：跨车间必须走仓库，
 /// 数据库守卫也会拒。等待/齐套/已派工的上层工单，以及**持续生产中**的上层工单
 /// 都可以收；普通已开工的段不列——料投过去挂不上，只会变成呆料。
 class ProductionDirectTransferCandidate {
@@ -48,7 +48,7 @@ class ProductionDirectTransferCandidate {
   final double requiredQty;
   final double alreadyCoveredQty;
 
-  /// 这条需求还差多少没被直送覆盖，也是本次直送的上限。
+  /// 本来源可直送的基础数量：接收需求未覆盖量与本生产来源剩余责任量的较小值。
   final double remainingQty;
 
   /// 父件产品名 + 编号，缺哪项少哪项。
@@ -61,7 +61,7 @@ class ProductionDirectTransferCandidate {
     ].join(' ');
   }
 
-  /// 收起态(选中后格子里的单行)：父件产品 + 还差多少。工单号放下拉第二行，
+  /// 收起态(选中后格子里的单行)：父件产品 + 本来源最多可送多少。工单号放下拉第二行，
   /// 不挤占这一行——车间认料认的是产品，不是工单号。
   String get label {
     final head = receivingGoodsLabel.isEmpty
@@ -69,17 +69,17 @@ class ProductionDirectTransferCandidate {
               ? executionSegmentCode!.trim()
               : (planNo ?? '上层工单'))
         : receivingGoodsLabel;
-    return '$head · 还差 ${_number(remainingQty)} ${unitName ?? ''}'.trim();
+    return '$head · 最多可送 ${_number(remainingQty)} ${unitName ?? ''}'.trim();
   }
 
-  /// 下拉第二行：工单号 · 还差多少(持续生产中的工单另加标注)。
+  /// 下拉第二行：工单号 · 本来源最多可送多少(持续生产中的工单另加标注)。
   String get secondaryLabel {
     final segment = executionSegmentCode?.trim();
     final head = segment == null || segment.isEmpty
         ? (planNo ?? '上层工单')
         : segment;
     final tail = continuousSupply ? ' · 持续生产中' : '';
-    return '$head · 还差 ${_number(remainingQty)} ${unitName ?? ''}'.trim() +
+    return '$head · 最多可送 ${_number(remainingQty)} ${unitName ?? ''}'.trim() +
         tail;
   }
 

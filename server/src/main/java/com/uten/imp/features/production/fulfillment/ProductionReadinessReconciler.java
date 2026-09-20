@@ -98,7 +98,10 @@ public class ProductionReadinessReconciler {
                 JOIN production_plans plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
                     AND NOT COALESCE(plan.is_closed,FALSE) AND NOT COALESCE(plan.is_canceled,FALSE)
                     AND NOT COALESCE(plan.is_stopped,FALSE)
-                WHERE segment.status='WAITING' AND segment.auto_promote_when_ready AND NOT segment.is_deleted
+                WHERE (segment.status='WAITING' OR (segment.continuous_supply
+                    AND segment.status IN ('READY','DISPATCHED','IN_PROGRESS')))
+                  AND segment.auto_promote_when_ready AND NOT segment.is_deleted
+                  AND fn_execution_route_allows_auto_promote(segment.id)
                   AND (?::uuid IS NULL OR segment.id>?::uuid)
                   AND EXISTS (
                     SELECT 1 FROM production_material_demands demand
@@ -106,9 +109,11 @@ public class ProductionReadinessReconciler {
                         AND stock.color_id IS NOT DISTINCT FROM demand.color_id AND stock.qty>0
                     JOIN warehouses warehouse ON warehouse.id=stock.warehouse_id
                         AND NOT warehouse.is_deleted AND warehouse.is_accountable
-                        AND NOT EXISTS (SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                        AND fn_warehouse_is_operational_leaf(warehouse.id)
                     WHERE demand.execution_segment_id=segment.id AND NOT demand.is_deleted
                       AND demand.status NOT IN ('RELEASED','REVERSED')
+                      AND demand.required_qty > COALESCE((SELECT SUM(held.qty-held.released_qty)
+                          FROM stock_reservations held WHERE held.demand_id=demand.id AND NOT held.is_deleted),0)
                       AND (fn_warehouse_same_main(warehouse.id,package.warehouse_id) OR EXISTS (
                         SELECT 1 FROM stock_reservations source
                         JOIN v_preplan_stock_entitlement_beneficiary_balance owned ON owned.stock_reservation_id=source.id

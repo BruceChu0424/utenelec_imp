@@ -12,7 +12,7 @@
 //  2. 显示的路线优先级 = 本地草稿 > 已确认 > 主档建议 > 兜底委外；
 //  3. 主档来源为空（服务端 REVIEW → 前端 null）的行显示的委外只是缺省值，
 //     必须挂黄标提醒核对，不能看着像「已决定」；
-//  4. 改下拉只是本地草稿，勾选 + 点「确认路线」才提交，原因不强制；
+//  4. 修改供应方式经明确确认立即保存，取消不变；勾选批量确认仍只保存所选行；
 //  5. 提交的 decisions 逐字等于表里显示的那几行。
 import 'dart:convert';
 
@@ -57,30 +57,37 @@ void main() {
     expect(_hintIconNear(tester, 'm1'), isFalse);
   });
 
-  testWidgets('改下拉只是本地草稿，勾选并确认后才提交，且不强制填原因', (tester) async {
+  testWidgets('修改供应方式确认后立即保存，重进仍显示最新路线', (tester) async {
     final harness = await _pump(tester);
     await _choose(tester, 'm1', '委外');
-    await _select(tester, 'm2');
+    expect(harness.writes, isEmpty, reason: '尚未确认不落盘');
+    await tester.tap(find.text('确认并换桶'));
+    await tester.pumpAndSettle();
+    expect(harness.writes, hasLength(1));
+    expect((harness.writes.single.data as Map<String, dynamic>)['decisions'], [
+      {'actionGroupKey': 'a-m1', 'route': 'SUBCONTRACT'},
+    ]);
     expect(_value(tester, 'm1'), MaterialSupplyRoute.subcontract);
-    expect(harness.writes, isEmpty, reason: '改下拉不落盘');
+    expect(_value(tester, 'm3'), MaterialSupplyRoute.make);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pump(tester, existing: harness);
+    expect(_value(tester, 'm1'), MaterialSupplyRoute.subcontract);
+    expect(harness.writes, hasLength(1), reason: '重进只读已保存路线');
+  });
 
+  testWidgets('取消供应方式修改不改变当前行，也不影响随后批量确认', (tester) async {
+    final harness = await _pump(tester);
+    await _choose(tester, 'm1', '委外');
+    await tester.tap(find.text('取消').last);
+    await tester.pumpAndSettle();
+    expect(_value(tester, 'm1'), MaterialSupplyRoute.make);
+    expect(harness.writes, isEmpty);
+    await _select(tester, 'm2');
     await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
     await tester.pumpAndSettle();
-    // 原因不强制：不弹任何补原因的对话框。
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(harness.writes, hasLength(1));
-    expect(
-      (harness.writes.single.data as Map<String, dynamic>)['decisions'],
-      [
-        {'actionGroupKey': 'a-m1', 'route': 'SUBCONTRACT'},
-        // m2 没被改过下拉：按它的主档建议（采购）原样提交。
-        {'actionGroupKey': 'a-m2', 'route': 'BUY'},
-      ],
-      reason: '提交的内容逐字等于表里显示的那两行',
-    );
-    // 未参与本次确认的行保持原样。
-    expect(_value(tester, 'm3'), MaterialSupplyRoute.make);
-    expect(_value(tester, 'm4'), MaterialSupplyRoute.subcontract);
+    expect((harness.writes.single.data as Map<String, dynamic>)['decisions'], [
+      {'actionGroupKey': 'a-m2', 'route': 'BUY'},
+    ]);
   });
 
   testWidgets('只勾选不改下拉：按当前显示的路线提交，一行都不多发', (tester) async {
@@ -132,12 +139,12 @@ Future<void> _select(WidgetTester tester, String id) async {
   await tester.pumpAndSettle();
 }
 
-Future<_Harness> _pump(WidgetTester tester) async {
+Future<_Harness> _pump(WidgetTester tester, {_Harness? existing}) async {
   tester.view.physicalSize = const Size(1600, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final harness = _Harness();
+  final harness = existing ?? _Harness();
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(

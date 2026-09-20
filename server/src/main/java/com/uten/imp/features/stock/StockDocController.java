@@ -107,6 +107,13 @@ public class StockDocController {
         return service.approveReviewed(id, request);
     }
 
+    @PostMapping("/{id}/material-return/confirm")
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public StockDocDetail confirmProductionMaterialReturn(@PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest request) {
+        return service.confirmProductionMaterialReturn(id,request);
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('stock_doc:edit')")
     public StockDocDetail update(@PathVariable UUID id, @Valid @RequestBody StockDocSaveRequest req) {

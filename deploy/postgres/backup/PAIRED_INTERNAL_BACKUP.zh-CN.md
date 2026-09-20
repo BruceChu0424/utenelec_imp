@@ -6,9 +6,9 @@ WAL 归档或异机数据库灾备。当前数据库和该备份目录都在 HDD
 
 ## 一致性依据
 
-旧 `deploy/simple/uten-backup-daily.sh` 在数据库导出后才执行 `rsync --delete`；期间删除文件
+已退役的日常备份实现在数据库导出后才执行 `rsync --delete`；期间删除文件
 可能使数据库快照仍引用已被删除的原件。其 rsync 失败只输出警告，却仍删除旧数据库备份，
-所以不能把该脚本的成功当作启用内部附件后的完整恢复证明。
+所以不能把旧脚本的成功当作启用内部附件后的完整恢复证明。`deploy/simple/uten-backup-daily.sh` 现在只委托本文件描述的同一个配套备份程序和受控配置，不再维护另一份复制或轮转逻辑。部署需先安装 Python helper、依赖和 root-only 配置；配置缺失时直接失败。
 
 新脚本使用 PostgreSQL `REPEATABLE READ` 事务，按 UUID 顺序对快照中的 `CLEAN` 附件行
 加 `FOR SHARE` 锁。系统的正常删除先在同一事务更新附件为 `DELETE_PENDING` 并写入

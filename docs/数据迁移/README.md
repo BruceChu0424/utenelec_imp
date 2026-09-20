@@ -1,6 +1,6 @@
 # 老库数据迁移 · 总索引
 
-> **当前正式目录：V606/562 (2026-09-18)**。V606 开工路线自动识别（删除「确认生产路线」步骤，ADR-091 批注）：路线改为创建事务内按工单事实自动判定（`fn_auto_execution_start_route`：WAITING 且存在可直送子件[V605 收紧口径]→CONTINUOUS，否则 FULL_KIT），存量 `start_route IS NULL` 一次性回填；`confirm-route` 端点保留为人工纠偏并改同值幂等；不加表(见[195](195-V606开工路线自动识别.md))。V605 直送资格按 sourcing 收紧（ADR-092）：`fn_demand_direct_supply_eligible` 第一判支（同车间在做）额外要求 `demand.supply_route='MAKE'`——采购/委外子件不再因「恰好有同货品工单」被判可直送，堵住 V606 自动识别把带采购/委外子件的工单打成持续生产后「领料/开工两头堵死」的路径；只替换函数、不加表、不改数据行(见[194](194-V605直送规格按sourcing收紧.md))。V603 访客黑名单运营元数据：`visitor_accounts` 加 `blocked_reason/blocked_at/blocked_by` 三列（拉黑必填原因，解除时清空；历史留痕由行级审计触发器承载），配套门岗拉黑/解除接口与安全黑名单管理页；只加列(见[196](196-V603访客黑名单运营元数据.md))。V602 生产路线记忆点查：只为车间任务页 `suggested_start_route` 的派生子查询（同产品最近一次确认路线，`ORDER BY route_confirmed_at DESC LIMIT 1`）建部分索引 `idx_execution_segments_route_memory`（product_goods_id 前导 + route_confirmed_at DESC，部分谓词与子查询同源），只 CREATE INDEX + COMMENT、不加表、不改任何行(见[193](193-V602生产路线记忆索引.md))。V601 通知「办结即已读」存量回填：已办结(`resolved_at` 非空)的定向审核待办通知，对其接收人幂等补 `notice_user_states.read_at`（`INSERT..SELECT..ON CONFLICT`，已读不回退、已删除列表项不复活）；同批应用层 `NoticeService.resolveReviewNotices` 改为撤回同时置已读，此后办结不再滞留未读；无 DDL、不改任何其它行、重放幂等(见[192](192-V601通知办结即已读.md))。V599 给执行段加「开工路线」两列(齐套/分批/持续生产三选一，NULL=待车间确认；存量全部回填为已确认，升级零摩擦)，齐套自动提升按路线放行——未确认/分批/未开工的持续生产不再被系统替车间做决定，确认齐套路线那一刻同事务补跑提升；同批上线「确认生产路线」端点与到货进展聚合卡(见[190](190-V599开工路线确认与到货进展通知.md))。V600 把庆典通知（生日/入职周年祝福）改为**默认不自动发送**：`system_settings.celebration.auto_enabled` 存量 true 一律翻为 false（有意策略变更，幂等），同批代码把读取处默认值 true→false、新增 `PUT /api/notices/celebration/auto`（notice:publish，与手动批量祝福同级）供 HR 任务中心「自动发送祝福」开关翻转，祝福默认由人事在生日关怀/入职周年页手动批量发布；无 DDL、不改其它行、重放零行(见[191](191-V600庆典自动发送默认关.md))。V598 把存量货品的「来源」按历史路线确认一次性回填进货品主档:每个货品取最近一次确认路线(`confirmed_route IS NOT NULL`，所属分析未删除未取消，停用节点上的确认仍然算数，按 `COALESCE(route_confirmed_at, created_at)` DESC 用 `DISTINCT ON` 取最新一条、跨颜色/单位取最新)，BUY→'采购'、MAKE→'自制'、SUBCONTRACT→'委外'，只在与现值不同时更新。为什么要有它：同批 Java 把供应方式收口成**货品主档单一事实源**(确认路线同事务回写 `goods.source_type`、新分析的建议路线只读主档、按历史分析推导的 `/last-routes` 记忆整套退役)，修的是用户实测「在物料分析准备页改了供应方式，下次进来还是老的」——根因是确认只写分析行、货品主档从没更新，而新分析的建议路线又从主档来；但回写只对**今后**的确认生效，库里既有的确认不会倒灌，所以存量要靠本迁移种进主档(口径取「最新确认胜出」而不是像 V591 那样只填空：旧前端本就是记忆优先于主档，这样用户看到的默认值不变)。**只 UPDATE `goods.source_type` 一列、无 DDL**，不加表、不抬 version、不改任何其它列，重放零行(见[189](189-V598货品来源按路线确认历史回填.md))。V597 把「先入库后质检」补到自制产成品(FQC)这条入库链上(用户口径「所有入库的行为都支持先入库后质检或者直接登记并质检」)：`production_finished_arrival_registrations` 加 `stock_in_before_inspection/pre_stocked_at/pre_stocked_by_employee_id` 三列 + 形状 CHECK + 部分索引，登记守卫补「选了先入库则目标仓必须是记账叶仓且非线边仓」，`production_finished_in_confirmations` 加 `origin`(WAREHOUSE_CONFIRM/PRE_STOCKED_AUTO)并由触发器要求自动点收全量接收且逐行落在登记的仓与库位，新增权限码 `production_finished_in:before_inspection`。语义是「登记时就承诺合格按这个位置全量入库」——品质合格同事务自动点收、仓库不再收到待点收任务，不合格照旧不动库存；代价是放弃短收改量。不新增表、不改任何既有行(见[188](188-V597产成品先入库后质检.md))。V596 是到货「先入库后质检」(ADR-090)：待检明细行加四列上架位置(`pre_stocked_warehouse_id/place/at/by_employee_id`，四列同进同出、出结论后触发器禁改、上架仓必须是记账叶仓且非线边仓)，事件动作白名单加 `PRE_STOCKED`，入库批次加 `origin`(WAREHOUSE_CONFIRM/PRE_STOCKED_AUTO，自动转正批次每行必须落在记录的上架仓与库位——触发器兜底)，到货登记幂等命令表的完成结果多一种 `STOCKED_PENDING_INSPECTION`，新增权限码 `warehouse_iqc_stock_in:before_inspection`(默认授仓储部/PMC/总经办，登记到四个权限面)；只读判定函数 `fn_warehouse_is_active_accounting_leaf`。不新增表、不改任何既有行(见[187](187-V596到货先入库后质检.md))。V595 是车间直送 v2(ADR-089)：执行段加 `continuous_supply`(持续生产)、物料需求加 `direct_supply`(同车间直送供给)，用锚点替换把段完整性守卫放宽为「持续生产段的直送需求允许部分到料」，改写 `v_production_execution_segment_materials.ready`(直送需求不参与齐套)，新增 `fn_line_side_stock_targets_demand`(线边仓料只算给直送指名的需求——线边仓退出公共可用量/即时库存/物料分析的唯一口径；段级匹配要比对货品，否则别的货品的料会被算给本段其它需求)、`fn_demand_direct_supply_eligible`、`fn_demand_has_direct_supply_on_hand`(持续生产开工前提：每种直送子件都已到一部分)、`fn_can_start_continuous_supply` 四个只读判定函数与两条索引，事件动作白名单加 `START_CONTINUOUS`，`uq_stock_reservation_demand_supply` 改为只约束「未动过」的正式预留行(持续生产逐次补投每次另起一行)；线边仓改由服务端按「车间 × 收料主仓」自动配置(`auto_created`)，不再要求手工到仓库资料里建。不新增表、不改任何既有行(见[186](186-V595车间直送v2持续生产与线边仓自动配置.md))。V594 修「生产日报登记了实际用料后点审核必 500」：V583 的审核/红冲要在同一事务里给刚插入的结算事件行回填 `production_material_settlement_events.daily_report_id`（红冲反查依据），却被 V161 只增不改守卫整单拦下；本迁移 CREATE OR REPLACE 守卫函数，**唯一放行**该列的 NULL→值首次回填（其余列逐列不变），DELETE 与其余一切 UPDATE/DELETE 仍按 V161 原样拒绝，不加表不改行(见[185](185-V594日报审核补链放行.md))。V593 把采购/委外链的主档默认值落进货品与供应商表(货品新增默认采购价/委外价两列，供应商新增默认币种/税率两列，全部按最近订单存量回填、结账方式复用既有列并成对过 V452 触发器；此后每次保存采购/委外订货单自动写回——货品记住本次供应商与行价、供应商记住本次头条款，新建单预填一律优先读主档，见[184](184-V593采购委外主档默认值.md))。V592 把客户「默认销售条款」落进客户表(新增默认货运策略/默认币种两列，结账方式复用既有列；按最近一张订单做存量回填，只填空不覆盖；此后每次保存/修改销售订货单自动写回客户行、新建单预填与基础资料编辑都读它——单一事实源，见[183](183-V592客户默认销售条款.md))。V591 给存量货品一次性回填归属仓/归属车间(最新入库流水→最大在库仓；车间取最近执行段；全部只填空绝不覆盖人工/Excel 值)，修「货品资料里所属仓库一片空白」(V590 的自动回写只对今后的入库生效，见[182](182-V591存量归属回填.md))。V590 收敛货品「归属仓库/归属生产车间」为货品表**单一事实源**：新增 goods.owning_workshop_department_id / owning_responsible_employee_id 两列，把 production_goods_workshop_preferences 的学习数据整表搬入后 DROP(清空函数策略行同步移除，PRESERVE 96→95)；归属仓 goods.owning_warehouse_id(V587) 改为**任何入库自动回写为最新入库仓**(StockService 过账内核收口，采购/委外/完工/调拨/退料/盘盈/手工单全路径无旁路；出库/红冲不翻转，值没变不落盘)，Excel 回填照旧只填空，见[181](181-V590货品归属单一事实源.md)。V589 让委外前置自制跟量（用户口径「顶层要做 5000、委外件就需要 5000」）：ARRANGE 行动记归需求量+公共超量、台账 required=两者之和、通知批申请明细整批一条而批行动只锁需求份(纯公共批不建 allocation，批次行 allocation 锚放开可空)、分析投影对被批行动取代的台账行动归零去重；同批修复 V588 引入的「超量>需求」409(草稿容量只记 link 的归需求量)，见[180](180-V589委外前置自制跟量.md)。V588 把超量下达的「销售顶层拆两张计划」收敛为**一张计划**（用户口径「多余的不要单独列一张单，直接合并」）：link 记 `submitted_qty` + `public_surplus_qty`，销售分摊（`plan_order_item_links` 容量、订单 `planned_qty`、执行段销售分摊）只认归需求量，公共备货产出不进销售账；同批放宽 `fn_guard_preplan_public_surplus_shape`（采购/委外申请的需求片与公共超量片合并成**一条明细**，数量=两者之和）与 `fn_assert_execution_segment_sales_allocation`（带公共备货的计划件改计划件级合计口径），两个函数体均为锚点替换、行尾归一 LF，不加表、不改历史行，见[179](179-V588分析超量单计划与销售分摊放宽.md)。V587 给货品主档加「所属仓库」一列(`goods.owning_warehouse_id` -> `warehouses(id)`，可空、ON DELETE RESTRICT、先 NOT VALID 再 VALIDATE)：新 ERP 产品列表里每个货品都带一个平时归哪个仓管的主档归属(五金仓库/塑胶仓库/包材仓库/成品仓库/五金车间)，平台一直没有这个字段，物料分析下达采购/委外/车间时计划员看不出这行料归哪个仓。命名用 owning_ 前缀而不是`warehouse_id`，是因为后者已经是单据落点仓的通名(6 张表在用)，物料分析另有一套「分析范围仓」，三个语义会在同一屏里撞名。**不限叶子仓**(V476 的叶子约束是给单据过账定的，所属仓库是主档分类，且「成品仓库」这类合法值本身可能挂着不良子仓)。**本迁移不回填**：名称→仓库对照在 `.gitignore` 排除的 `product lists/` 三个 .xls 里，回填走 `server/legacy_migration/import_product_lists.py` 的 `--warehouse` 段(按**产品名称**匹配，17010 个不重名、零冲突)，见[178](178-V587货品所属仓库.md)。只加列、不建表、不改任何既有行。V586 把 V583 新增的报工实耗表与 V584 新增的车间直送三张表补登记进清库策略：`business_data_reset()` 的 (表名, CLEAR/PRESERVE) 清单是 fail-closed 的，遇到未登记的表整体拒绝执行，两个建表迁移都漏了这一步，导致任何一次系统测试清库都在「ops/reset_business_data.sql 与本库不一致」上失败（`com.uten.imp.ops.**` 整包红）。四张都是纯业务事实，分类为 CLEAR；本迁移不建表、不改任何既有行，只按 V474 起的「读取已安装函数定义 + 锚点替换」方式补写函数定义。V585 给报工明细行加「直送的接收需求」列(destination=WORKSHOP 时必填，数据库 CHECK 保证两者同进同出)，并种下车间直送的审核权限码 `production_direct_transfer:approve`(默认授予 DEPT_PROD / MFG_CENTER / WS_*，登记到报工页与车间任务页权限面)——审核带直送的报工会连带写班组自检放行、线边仓入库与上层工单投入三类事实，这三件事在正常流程里分属品质部、仓库审核与仓库发料三个码，必须显式授权而不是靠日报审核权顺带。不新增业务表。V584 打通「车间内部不入库直送」：给仓库主档加线边仓标记(`warehouses.is_line_side` + `workshop_department_id`，必须是参与核算的非不良叶仓且属于某个车间)，给报工明细行加产出去向(`destination` ∈ WAREHOUSE/WORKSHOP，一行一个去向、要拆量就拆行)，新增车间直送单/行/撤回三张追加式表，并给 FQC 加检验种类(`inspection_kind` ∈ ARRIVAL/WORKSHOP_SELF)、把 V548 的来源守卫按种类分流到「仓库送检登记」或「车间直送行」两个锚点。适用边界是**同一个车间内部**：子件工单与上层工单必须同属一个车间部门，跨车间一律走仓库送检登记 → 品质部 FQC → 仓库点收入库的原路线，守卫在数据库层直接拒掉跨车间直送。不新增过账类型、不新增预留归属类型、不改任何既有业务行。V583 把「实际用料」并进报工页：新增 `production_daily_report_material_usages` 承载一张日报登记的本次实耗(草稿态只是事实、审核时才转成 CONSUMED 结算，红冲时按 `production_material_settlement_events.daily_report_id` 反查整单冲销)，并给日报加收尾余料退仓意愿列；顺序固定为「审核 → 先结实耗 → 再按剩余可退量开退料单」，反过来会因为退仓申请冻结领料过账额度而让实耗登记撞「超过准确原领料未耗用数量」。V582 把销售出货的仓库作业从四步压成一步：财务放行后仓库只点一次「确认出库」，`PENDING_PICK → SHIPPED` 在同一事务里完成选仓、逐行库位、可发量校验、扣库存、消费预留、回写订单已发与立唯一正式 AR；`PICKING`/`PICKED`/`EXCEPTION` 三个中间态连同退拣回路整体删除(它们既不占库存也不产生会计事实)，在途老单统一拨回 `PENDING_PICK` 并释放其拣货占用。同批重建 V566 的三个实仓取证触发器(锚点由 PICKING 改 SHIPPED，历史 PICKING 事件仍然算数)、待办部分索引与财务门禁异常视图；事件账里的历史 PICKING/PICKED/EXCEPTION 行一个字节不动。V581 打通「委外件只有一个叶子子件时直接发那个子件出去」：`subcontract_material_plan_items.flow_mode` 新增第 5 个取值 `COMPONENT_OUTBOUND`(父件=订货目标件、子件=待发材料、`bom_unit_qty`=冻结单耗)，并把 BOM 快照 CHECK、准备形态 CHECK、V502 数量基准守卫、V458 出仓分配断言、V507 先出后进与消费守恒逐条按新流向扩展(回厂量按单耗折算后再比，避免单耗≠1 时误判超收)，同时焊死「同一订货明细混用发子件与发目标件」和「COMPONENT 行的损耗补量」两个口子。历史 `LEGACY_BOM_COMPONENT` 行一个字节不动，不新增表。V580 补上 V577 漏掉的一项对账：销售订单来源顶层行超量下达时拆出的「公共备货计划单」按设计不带销售来源，而计划关联行对账仍要求计划明细的 `sales_order_item_id` 等于分析行的，导致销售来源产品超量下达车间 100% 失败；只放宽「纯公共备货 link」这一种情形，不加表、不改历史行。V579 为基础资料客户/供应商新增联系方式/地址/跟进记录三张子表(`party_contact_methods`/`party_addresses`/`party_activity_records`，party_type 区分主档)，从两表既有平铺联系列全量回填、老数据一条不丢，并给 `clients` 加可空 `credit_score`(首条评分记录按 100±delta 初始化)；平铺列保留，服务端在子表变化时把「每类第一条」同步回平铺列保证单据/导出口径不变。V578 为出货财务审核「撤回退回」扩展 `sales_shipment_finance_release_events` 事件类型 CHECK(新增 `REJECT_REVOKED`)，配合服务端端点让财务可收回退回决定、销售可原样重新提交，修复退回后两侧失联的悬空态。V577 为「下达车间允许超量」补上分账落点：计划关联行新增 `public_surplus_qty`，把一次下达拆成「归本需求的量 + 公共备货产出量」，前者照旧占 `submitted_qty`(V234/V478 两条需求守恒一个字节不动)，后者不绑定需求、产出入库即公共库存供他计划使用；只放宽计划行数量对账触发器，不新增表、不改历史行(V576 由并行分支占用，本分支顺延取号)。V575 为货品主档新增最小起订量与订货倍数，只影响采购下达数量的默认值(软约束，计划员可改)，不新增表、不改历史行。V574 打通跨路线在途调入：专属在途转拨的目标从「必须与来源同路线」改为「采购/委外/自制三条路线白名单 + 目标行形态不变量」，公共在途认领改为按来源路线取候选、认领动作沿用来源路线落库(仓库口径 V569 已是同主仓)，并补两条跨分析热路径索引(物料行按货品维度定位、在途调拨按外部明细反查)；只替换函数体与新增索引，不新增表。V573 将跨计划让出(`preplan_material_reallocations`)与专属在途调拨(`preplan_future_supply_transfers`)的业务原因改为可选(撤销类仍强制)，仅放宽 CHECK 约束、不加表不改行。V572 为 V560/V561/V568/V569 引入的退料申请、分批谱系、让料补自制与在途转拨七张业务表补齐行级审计触发器(fail-closed 全量巡检，不加表不改行)。V571将后续在途增强前向补齐，V569恢复数据库已应用原字节；旧取消事实不改写，不用repair掩盖校验冲突。V570新增货品售价查看权限(`goods:price:view`，销售两线+财务默认可见，其余部门价格字段脱敏，不随「一键全部授权」发放)；V569调整在途供给归属。V564增加逐行分批领料申请与实际可发上限；V565让同主仓计划之间的让料继续保留真实叶仓权益；V566将销售选产品数量与仓库明确选择实际仓/库位分离，保留旧财审快照；V567记录多仓出货草稿的批量请求幂等身份；V568追加让料引起的补自制责任事实，保留原父BOM需求及旧完成记录。V559–V563继续维护车间明确领料、余料退仓、完整子批谱系、共享成本池和品质实际入库仓。均为前向迁移，不伪造历史申请，不重写已领、已报或已实收事实。目录版本不代表目标服务器已经升级，各版本规则、数据影响和兼容要求见下表。
+> **当前正式目录：V627/583 (2026-09-20)**。V609–V613 重构车间执行：冻结准确耗用曲线、普通仓与内部流转位置分离、先确认路线、同任务持续补料，以及直送基础单位和混合供给去重。新任务不再按 V606 自动选择路线；已发生的历史库存/报工/成本事实保留。V607/V608 为共享工作区的客户选填与报销迁移；V617前向补齐报销人工核验、其他凭证与财务设置。V618/V619记录当前车间余料的实际正常收仓、来源保管与正反向。目录头仅表示源码集合，不代表目标服务已升级。各版本变更、存量影响与验证边界见下表。
 >
 > 本页的版本表示源码目录，不表示公司数据库已安装。最新候选验证与目标安装事实见[全站性能与稳定性验收](../99-项目治理/2026-09-12-全站性能与稳定性验收.md)；前轮业务链与旧库恢复证据见[2026-09-07统一验收](../99-项目治理/2026-09-07-全平台本地审计与整改验收.md)。
 >
@@ -17,8 +17,28 @@
 
 | 说明 | 迁移 | 本次变化 |
 | --- | --- | --- |
+| [217](217-V627历史收货对价来源证明.md) | V627 | 按完整首导原始头行证明保留采购、委外历史收货口径，不补造现代对价、库存或应付；未知币种金额与单位比率不猜补 |
+| [216](216-V626历史资金来源与只读边界.md) | V626 | 绑定完整首导来源的历史资金原始记录只读，往来余额保留原币未知与原单匹配状态；新收付按权威期初和业务截止日继续核销 |
+| [215](215-V625运行维护最小权限.md) | V625 | 固定报表刷新与业务重置的受限维护入口，运行账号不再需要继承迁移/所有者身份 |
+| [214](214-V624历史委外结算未知来源证明.md) | V624 | 按完整首导来源证明保留历史已审委外单的未知结算快照；普通在线新单仍须完整条款，证明与迁移审计永久保留 |
+| [213](213-V623仓库库位主档关系与精确货架维度.md) | V623 | 默认仓读取货品主档，仓货色库位关系保守回填，退役跨货品全局库位；货架数量按精确仓货色展示 |
+| [212](212-V622执行段物料覆盖集合校验.md) | V622 | 完整保留提交期守恒规则，以按段集合查询替代每需求反复聚合；不跳过约束或历史物料事实 |
+| [211](211-V621委外前置生产承诺守恒.md) | V621 | 两入口共用剩余承诺与公共超量，按不可变动作/计划交叉校验修正可变任务投影；冲突拒迁移 |
+| [210](210-V620主档单价上下文与记忆并发保护.md) | V620 | 单价绑定供应商/颜色/单位/币种/税率，主档版本保护、价格权限与供应方式持久化；旧价上下文留空不猜测 |
+| [209](209-V619车间余料正常仓保管与成本.md) | V619 | 直送及普通ISSUE余料按实际NORMAL收仓承接原任务权益和成本；未选路线保留专属保管，已领/未领分开，反向保留原来源及真实库存腿 |
+| [208](208-V618车间余料实际收仓.md) | V618 | 仓库确认实际正常叶仓；ISSUE与未领DIRECT_LOT来源兼容；待领指令按收仓事实撤减/恢复，原单据历史保留 |
+| [207](207-V617报销凭证核验与财务设置.md) | V617 | 区分算术相符与人工查验，扩展其他凭证和购买方税号，增加报销业务设置及独立配置权限；旧自动核验值前向降级，不改V608字节 |
+| [206](206-V616执行任务车间与实物归属.md) | V616 | 车间改派以真实物料归属和共享批次依赖为界；未实发领料草稿按同事务改派证据同步收料人 |
+| [205](205-V615车间直送来源分配与事件账.md) | V615 | 真实上下层直送按来源批次记录投入、退回和释放；收货/预留/发料保留实际叶仓；隔离技术位非来源出库与历史异常 |
+| [204](204-V614日报完结数量与物料释放溯源.md) | V614 | 提前完结与撤回按精确日报事件封顶/恢复，保留分析需求及物料释放来源 |
+| [203](203-V613运营叶仓与技术子位分离.md) | V613 | 技术子位不改变正常仓库的收发身份，统一运营叶仓与公共库存预算边界 |
+| [198](198-V608报销链路完整化.md) | V608 | 报销链路完整化：BX 单号回填、发票登记表（代码+号码唯一索引防重复报销）、事件表与存量回填；REJECTED 可修订重提（ADR-094） |
+| [199](199-V609执行物料耗用曲线与可产量.md) | V609 | 冻结物料耗用曲线，开工/报工共用实际净投入产量；保留旧非线性需求的保守兼容 |
+| [200](200-V610正常存放仓与车间流转位置边界.md) | V610 | 普通仓默认值隔离内部线边位置；有证据纠正污染主档，守卫拦截误选与有库存身份变化 |
+| [201](201-V611车间路线与同任务持续补料.md) | V611 | 新任务先确认路线，持续生产支持普通仓/直送混合分次到料与原任务追加领料，保留历史事实 |
+| [202](202-V612直送基础数量与混合供给去重.md) | V612 | 直送按冻结换算率转基础量；普通仓与直送覆盖相加、同源预留去重、分批谱系守恒 |
 | [196](196-V603访客黑名单运营元数据.md) | V603 | 访客黑名单运营元数据：`visitor_accounts` ADD COLUMN `blocked_reason`/`blocked_at`/`blocked_by`（拉黑必填原因，解除时三列清空，历史留痕由行级审计触发器承载）；配套 `VisitorGateService` 门岗拉黑/解除/黑名单列表、`VisitorAccountController`、安全黑名单管理页与 `VisitorBlacklistTest`；只加列、不加表、不改既有行 |
-| [194](194-V605直送规格按sourcing收紧.md) | V605 | 直送资格只认自制子件：`fn_demand_direct_supply_eligible` 第一判支（同车间在做）追加 `demand.supply_route='MAKE'`，BUY/SUBCONTRACT 子件回归主仓领料路径；函数替换、不加表、不改数据行 |
+| [194](194-V605直送资格收紧只认自制子件.md) | V605 | 直送资格只认自制子件：`fn_demand_direct_supply_eligible` 第一判支（同车间在做）追加 `demand.supply_route='MAKE'`，BUY/SUBCONTRACT 子件回归主仓领料路径；函数替换、不加表、不改数据行 |
 | [195](195-V606开工路线自动识别.md) | V606 | 开工路线自动识别（删除「确认生产路线」步骤，ADR-091 批注）：新增只读函数 `fn_auto_execution_start_route`（WAITING 且存在可直送子件[V605 收紧口径]→CONTINUOUS，否则 FULL_KIT）并把存量 `start_route IS NULL` 的段按同规则一次性回填+补 `route_confirmed_at`；应用层在创建事务 `createDemands` 后同事务赋值、开工侧动作删除 NULL 409 门、分批提交不再要求先确认 BATCH、部分开工对未动过工单同事务切 CONTINUOUS、confirm-route 改同值幂等纠偏。零 DDL、零索引、不改非空行、重放幂等 |
 | [193](193-V602生产路线记忆索引.md) | V602 | 生产路线记忆点查：`CREATE INDEX idx_execution_segments_route_memory ON production_execution_segments (product_goods_id, route_confirmed_at DESC) WHERE start_route IS NOT NULL AND is_deleted = FALSE`（同产品最近一次确认路线的 LIMIT 1 点查部分索引）+ COMMENT。只加索引、不加表、不改任何行、重放幂等（已存在即报错的常规 CREATE INDEX，由 Flyway 版本保证只执行一次） |
 | [192](192-V601通知办结即已读.md) | V601 | 通知办结即已读存量回填：对 `resolved_at IS NOT NULL AND audience_user_id IS NOT NULL` 的通知接收人 `INSERT INTO notice_user_states (notice_id, user_id, read_at) ... ON CONFLICT DO UPDATE SET read_at = COALESCE(旧值, now()) WHERE deleted_at IS NULL`（幂等，已读不回退、已删列表项不复活）。配套应用层 `NoticeService.resolveReviewNotices` 撤回同时置已读。无 DDL、不改其它行、重放幂等 |
@@ -137,7 +157,7 @@ V532只为往来来源增加按来源类型、来源UUID、账本UUID查询的�
 
 | 入口 | 覆盖范围 | 证据边界 | 可用于切流后追平 |
 |---|---|---|---|
-| `server/legacy_migration/migrate.sh --bootstrap-all` | 主档及采购、库存、销售、委外、生产、钱流等首次导入 | 导入协调器仍冻结V426/388及`bootstrap-v10-v426`。较新结构上的SQL兼容检查不授权直接在新库执行该协调器；真实导入、manifest与对账另行验收 | **不可以** |
+| `server/legacy_migration/migrate.sh --bootstrap-all` | 主档及采购、库存、销售、委外、生产、钱流等首次导入 | 协调器通过 `verify_candidate.py` 把受审源码、完整 manifest 和目标 history 精确绑定；`mapping-version.txt` 独立版本化。仅空业务目标可首次导入；真实来源与业务对账须另行验收 | **不可以** |
 | `/api/admin/dev/legacy-category-seed/*` | 四棵 classpath 分类样例 | 仅 `dev` profile 的页面/分类树调试 | **不可以** |
 
 运行中 ERP 不包含 SQL Server 驱动或老库 DataSource，也没有 `/api/admin/legacy-migration/all`。
@@ -171,7 +191,9 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 ---
 
 
-离线 bootstrap 目标冻结为 V426/388，使用映射标识 `bootstrap-v10-v426` 和受保护 388 行 manifest，实际目标库的版本、脚本名、校验值必须与该 manifest 精确一致。V426 不授权跨越或执行尚未获准的破坏性 V425。该约束属于旧系统首次导入，不是当前ERP升级或业务清库的目录头；V531结构兼容专项不代表整套旧导入协调器已在V531执行。
+离线 bootstrap 当前通过 `verify_candidate.py` 逐文件核对正式资源的 Flyway checksum 与受审 manifest，并核对目标全部版本、脚本名、校验值；head/count 从已核验集合导出，不再冻结另一份版本常量。`mapping-version.txt` 记录独立导入协议版本，历史 `bootstrap-v10-v426` 仅用于旧运行溯源。入口另核对目标库名、集群身份和首导批准，以及外部提供的源 identity/备份摘要/导出批准与 manifest 等值。任何尚未独立获准的破坏性 schema 迁移（包括 V425）仍不得执行。
+
+完整导入的各模块、24 项结构检查、逐模块源/目标行数检查和 SUCCESS 回执在一个事务提交。失败回滚业务数据，另留 FAILED 运行及输入摘要；仅本原子协议失败且目标仍无业务事实时允许重试。相同成功请求返回原回执，不重建已有 UUID。并发失败不会清理别人的锁或密钥文件。详细要求见 [执行契约](../../server/legacy_migration/README.md)。真实 Shell 合成演练不能替代真实旧库金额、数量、来源和业务签收；现役 ERP 的前向升级不调用 bootstrap。
 
 ## 📦 首次旧库导入的模块清单
 
@@ -196,13 +218,13 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 | **供应商分类** | ✅ 已实现 | `SystemItem` (ItemclassID=3，15 个扁平业务根) | `supplier_categories`（V272 候选目标 16 根，含系统“未分类”根） | `migrate.sh --supplier` | [08-老库溯源](08-供应商资料-老库溯源.md) · [09-新库与迁移](09-供应商资料-新库与迁移.md) |
 | **供应商主档** | ✅ 已实现 | `B_Provider`（386 条，29 字段，源端全有业务分类） | `suppliers`（V272 候选令 `category_id NULL` 为 0；财务占位绑定系统根） | `migrate.sh --supplier-data` | （字段映射见 V38__supplier.sql） |
 | **币种 / 仓库** | ✅ 已实现 | `B_Currency`(3) / `B_Storage`(6) | `currencies` / `warehouses` | `migrate.sh --currency-data` / `--warehouse-data` | [15-采购 §三](15-采购模块-新库与迁移.md)（归基础资料） |
-| **采购管理** | ✅ 已实现（单位歧义行待治理） | `P_Application`/`P_Order`/`P_In`/`P_Withdraw`（主+明，十几万行） | `purchase_requests/orders/receipts/returns(+_items)` + V65 报表列 + V168 历史单位安全规范化 | `migrate.sh --purchase`（`migrate_purchase.sql`） | [14-老库溯源](14-采购模块-老库溯源.md) · [15-新库与迁移](15-采购模块-新库与迁移.md)（**9 报表 + V65 迁移补全 + V168 单位治理**） |
+| **采购管理** | ✅ 已实现（单位歧义行待治理） | `P_Application`/`P_Order`/`P_In`/`P_Withdraw`（主+明，十几万行） | `purchase_requests/orders/receipts/returns(+_items)` + V65 报表列 + V168 历史单位安全规范化 | `migrate.sh --bootstrap-all --confirm-destructive`（完整受验首导包含 `migrate_purchase.sql`） | [14-老库溯源](14-采购模块-老库溯源.md) · [15-新库与迁移](15-采购模块-新库与迁移.md)（**9 报表 + V65 迁移补全 + V168 单位治理**） |
 | **库存（流水+余额）+ 仓库报表** | ✅ 已实现 | `StockGoods`(45万) + 9 类 `O_*` 单据 | `stock_movements` / `stock_balances` / `stock_documents(+_items)` | `migrate.sh --stock-docs`（含人员 *_legacy_id + B_Worker stub + 末尾刷 MV） | [16-老库溯源](16-仓库管理-老库溯源.md) · [17-新库与迁移](17-仓库管理-新库与迁移.md) · [50-盘点修正与历史处理](50-仓库盘点修正与历史单据处理.md) · **14 张仓库报表**（V67：7 单据 × 明细/汇总，`/api/stock/reports/{docType}/{detail|summary}`，明细已含「库位号」列） |
 | **货架库位（目视化清单）** | 🟡 源码候选；挂牌数据待仓库整理（迁移 SQL 已在开发库实弹演练：成功/幂等/拒绝三路径全过） | **无老库源**（现场挂牌；老库 `B_Goods.StockPlace` 为无关残值，`StockLabel`/`StockSLabel` 为数量快照非库位，均不迁） | `goods.stock_place`（V32 已有列） | 人工整理 `data/shelf_labels.csv` → `migrate.sh --shelf-labels`（不进 bootstrap-all；同键与跨键重复货品均显式拒绝） | [17 §十二](17-仓库管理-新库与迁移.md) · [货架目视化清单页](../03-页面/货架目视化清单页.md) |
 | **销售管理** | 🟡 单据导入已实现；V187–V189 与 V220 已包含在公司目标库 V238，历史对账、对象授权和岗位 UAT 待最终验收 | `S_Order`(10653)/`S_Out`(12124)/`S_OtherOut`(1558)/`S_Withdraw`(221)（在用）+`S_Quote`(0) | `sales_orders/shipments/other_shipments/returns(+_items)` + V187 发运/仓库字段 + V188 仓库事件 + V189 退货质量冻结 + V220 客户处置 | `--sales` 导单；员工迁入后 `--sales-owner` 回填（完整流程用 `--bootstrap-all`） | [18-总路线图](18-业务四模块-总路线图.md) · [20-新库与迁移](20-销售管理-新库与迁移.md) · [39-owner 迁移/授权](39-销售单据归属授权.md)；历史不补造确认、拣货事件、质检或客户处置结论 |
-| **委外管理** | ⛔ 历史发料待重迁验收；V436 新流为源码候选 | `E_` 前缀：`E_In`/`E_SOut`/`E_WithDraw`/`E_SWithDraw`/`E_SWaste` | `subcontract_*`（8 单据） | `migrate.sh --subcontract --confirm-destructive` | 现有历史库 49,889 发料明细数量口径失真；须用修正导出重迁并复核 [22](22-委外管理-新库与迁移.md) / [42](42-财务对账单自动生成.md)。新单目标件出仓/前置自制只认 [66](66-委外目标件出仓与前置自制准备.md) / [ADR-059](../99-决策记录-ADR/ADR-059-委外目标件出仓与前置自制准备.md) |
+| **委外管理** | ⛔ 历史发料待重迁验收；V436 新流为源码候选 | `E_` 前缀：`E_In`/`E_SOut`/`E_WithDraw`/`E_SWithDraw`/`E_SWaste` | `subcontract_*`（8 单据） | `migrate.sh --bootstrap-all --confirm-destructive` | 现有历史库 49,889 发料明细数量口径失真；须用修正导出重迁并复核 [22](22-委外管理-新库与迁移.md) / [42](42-财务对账单自动生成.md)。新单目标件出仓/前置自制只认 [66](66-委外目标件出仓与前置自制准备.md) / [ADR-059](../99-决策记录-ADR/ADR-059-委外目标件出仓与前置自制准备.md) |
 | **生产管理** | ✅ 已实现 | `F_Plan`(7235)+Item(73388) / **`F_PlanCostItem`(1359892)** / `F_DateReport`(0) | `production_plans(+items/+costs 按年分区)` / `production_daily_reports` | `migrate.sh --production` | [18] · [23-老库溯源](23-生产管理-老库溯源.md) · [24-新库与迁移](24-生产管理-新库与迁移.md) |
-| **钱流管理** | 🟡 功能主体已导入，财务验收未关闭 | `M_Get`/`M_In`/`M_Paid`/`M_Out`/`M_DPaid`/`M_OGet`/`M_Acc`/`M_Style`/`M_AllCheck` | `finance_receipts/payments/expenses/...(+_lines)` + `ar_ap_ledger` + 主档 | `migrate.sh --finance --confirm-destructive` | 总账开账、账户期初、材料领用结转和 AR/AP 对账必须由财务签字；见 [26](26-钱流管理-新库与迁移.md) / [44](44-总账子系统.md) |
+| **钱流管理** | 🟡 功能主体已导入，财务验收未关闭 | `M_Get`/`M_In`/`M_Paid`/`M_Out`/`M_DPaid`/`M_OGet`/`M_Acc`/`M_Style`/`M_AllCheck` | `finance_receipts/payments/expenses/...(+_lines)` + `ar_ap_ledger` + 主档 | `migrate.sh --bootstrap-all --confirm-destructive` | 总账开账、账户期初、材料领用结转和 AR/AP 对账必须由财务签字；见 [26](26-钱流管理-新库与迁移.md) / [44](44-总账子系统.md) |
 | **资产与长期待摊专业子账** | 🟡 新功能安全骨架；完整生产 **NO-GO** | **无老库业务数据，本次不迁移** | V123/V140 主档兼容升级 + V183 类别、账簿、计划、审批、事件、期间、不可变批次/明细 | **无 legacy flag；禁止用破坏性脚本或手工 SQL 回填** | 只能从经财务批准的当前期间初始化；历史期初/累计额/剩余期限能力未交付。核心落账门禁默认关闭，见 [51](51-资产与待摊专业化全链路.md) / [ADR-018](../99-决策记录-ADR/ADR-018-资产与待摊专业子账及不可变过账.md) / [验收报告](../99-项目治理/2026-08-01-资产与待摊全链路实现与验收报告.md) |
 | 工资 / 员工报销 / 检测 | ⏳ 待做 | 待最终探源 | 待 | 待 | V133 已建工资/员工报销新域，但老库源表、映射、导出、导入、reject 和对账尚未实现；一般费用单不是员工报销 |
 
@@ -237,13 +259,16 @@ powershell -ExecutionPolicy Bypass `
   -File server/legacy_migration/export_legacy.ps1 All
 
 # 4. 核验 export_manifest.json + export_manifest.sha256；迁移入口也会自动校验
-# 5. 在可清空目标库执行破坏性引导
+# 5. 私有环境提供批准目标的精确库名、system identifier、首导批准及同候选checksum manifest
+#    变量及单事务失败/重试边界见 server/legacy_migration/README.md
+# 6. 在无业务事实的批准新库执行首次引导
 bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 ```
 
-`export_manifest.json`（formatVersion 3）记录：
+`export_manifest.json`（formatVersion 4）记录：
 
 - 导出目标、UTC 时间、非秘密源 authority、离线备份 SHA-256 和批准引用；
+- 带外批准的 `sourceSnapshotAsOfUtc` 业务截止时点，导入时与 `LEGACY_SOURCE_SNAPSHOT_AS_OF_UTC` 再次精确核验；不能拿导出时间或备份文件时间代替；
 - 每个文件的行数、字节数和 SHA-256；
 - `consistency = serializable-read-transaction` 与 `offlineBackupRequired = true`；
 - 导出脚本 SHA、仓库 commit，以及 `export_manifest.sha256` 自身的 SHA；
@@ -256,7 +281,7 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 - 将 run 的两个 manifest 指纹、迁移脚本指纹、代码 commit 和映射版本写入
   `legacy_migration_runs`；
 - 将本次实际消费的 manifest、CSV、Shell、SQL、Flyway 清单及其 SHA-256/字节数写入 `legacy_migration_run_files`；
-- 对全量 bootstrap 固定写入 20 项核心行数、CSV 消费、系统根、UUID 关系、结算方式、仓库映射、活动 BOM、reject 与历史 anchor 结构化证据；任一强制项失败则 run 失败。
+- 对全量 bootstrap 固定写入 24 项核心行数、CSV 消费、系统根、UUID 关系、结算方式、仓库映射、活动 BOM、reject 与历史 anchor 结构化证据；任一强制项失败则 run 失败。
 
 Manifest 证明受审导出器在一个串行化事务中捕获了绑定到离线备份的文件集合，但不证明恢复可用或业务口径正确。最终迁移包还必须保存停写时间、恢复演练、目标 Flyway 版本、执行人、run_id、金额/数量/来源谱系报告和业务/财务签字。
 
@@ -267,7 +292,7 @@ Manifest 证明受审导出器在一个串行化事务中捕获了绑定到离�
 | 能力 | 当前状态 | 上线要求 |
 |---|---|---|
 | 四棵分类树 Java upsert | 已有 | 补源水位、删除语义、冲突与回滚测试 |
-| Shell 首次引导 | 已有破坏性脚本；输入、提交、实际消费文件和 20 项自动结构对账可追溯 | 仅在可清空库执行；必须用同一离线备份、manifest 和 run_id |
+| Shell 首次引导 | 已有破坏性脚本；输入、提交、实际消费文件和 24 项自动结构对账可追溯 | 仅在可清空库执行；必须用同一离线备份、manifest 和 run_id |
 | 全模块增量追平 | **未实现** | 按稳定业务键/watermark/CDC 实现，不得 TRUNCATE |
 | dry-run / reject / quarantine | V134 已有结构化 reject 表，但各模块尚未统一写入 | 所有丢弃/修复/存根均可追踪、可复核、可重放 |
 | checkpoint / resume / rollback | V134 已有未来 checkpoint 表；当前 bootstrap 不推进，增量 loader 未实现 | 中断可继续，切换失败可回退且不丢新写 |
@@ -309,7 +334,10 @@ server/src/main/java/com/uten/imp/legacy/       ← 仅 dev profile 的分类样
 
 server/legacy_migration/                        ← shell 离线破坏性引导（不依赖 server）
 ├─ migrate.sh                                   （一次一个目标；--bootstrap-all 才执行全量依赖链；强制破坏性确认）
-├─ migrate_reconciliation.sql                   （全量导入 20 项结构化对账；失败阻断候选）
+├─ migrate_reconciliation.sql                   （全量导入 24 项结构化对账；失败阻断候选）
+├─ verify_candidate.py / mapping-version.txt    （受审资源exact-set与独立映射协议）
+├─ compose_bootstrap.py                        （完整首导单事务装配）
+├─ reconcile_modules.py                        （逐单据模块源/目标行数对账）
 ├─ migrate_goods.sql / migrate_goods_data.sql   （货品分类 / 主档）
 ├─ migrate_mould.sql / migrate_mould_data.sql   （模具分类 / 主档）
 ├─ migrate_client.sql / migrate_client_data.sql （客户分类[递归CTE] / 主档）
@@ -349,9 +377,9 @@ server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classp
 关键金额/数量/状态汇总、外键/孤儿、抽样字段与业务单据。被跳过的数据必须进入 reject/quarantine
 并由业务批准处置；“脚本成功”或“源数−跳过数=目标数”不等于迁移验收通过。
 
-首次 `--bootstrap-all` 会写入 20 项固定结构对账，覆盖核心分类/主档行数、CSV inventory、系统根
+首次 `--bootstrap-all` 会写入 24 项固定结构对账，覆盖核心分类/主档行数、CSV inventory、系统根
 authority、当前 UUID 关系、客户默认结算方式、仓库/车间映射、活动 BOM 端点和 rejects。必须得到
-20 项 mandatory、0 项 failed 且 `legacy_migration_runs.reconciliation_status = PASSED`；单模块执行保持
+24 项 mandatory、0 项 failed 且 `legacy_migration_runs.reconciliation_status = PASSED`；单模块执行保持
 `NOT_RUN`。这些只是结构证据，仍须完成金额、数量、状态、来源谱系、抽样单据和岗位签收，才能形成
 目标环境迁移验收。
 

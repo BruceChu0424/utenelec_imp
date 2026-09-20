@@ -1,6 +1,8 @@
 package com.uten.imp.features.finance.arap;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
@@ -69,6 +71,9 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         }
         if (req.direction() == null || (!req.direction().equals("AR") && !req.direction().equals("AP"))) {
             throw new IllegalArgumentException("postArAp: direction must be AR or AP, got " + req.direction());
+        }
+        if ("LEGACY_OPENING".equals(req.sourceDocType())) {
+            throw new ApiException(ErrorCode.BUSINESS, "历史期初只能通过受验旧库导入建立，不能作为新单据立账来源");
         }
         if (req.sourceDocId() == null || req.sourceDocType() == null
                 || req.sourceDocType().isBlank()) {

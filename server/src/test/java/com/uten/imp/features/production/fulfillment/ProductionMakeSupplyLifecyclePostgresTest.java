@@ -318,7 +318,7 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                     connection,
                     decimal("10"),
                     decimal("9"),
-                    "production_make_receipt_reservation_capacity_guard");
+                    "new_receipt_reservation_capacity_guard");
         }
     }
 

@@ -15,6 +15,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -134,6 +135,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _existingEditable = false;
   bool _loading = false;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
@@ -194,6 +196,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         final d = await ref
             .read(purchaseRepositoryProvider(widget.docType))
             .detail(widget.id!);
+        if (widget.docType == PurchaseDocType.receipt && d.legacyImported) {
+          if (!mounted) return;
+          context.appWarning(historicalReceiptReadOnlyMessage, force: true);
+          context.replace(
+            RoutePath.purchaseDocDetail(_cfg.type.pathSegment, widget.id!),
+          );
+          return;
+        }
         if (widget.docType != PurchaseDocType.request) {
           final writable =
               d.status == kPurchaseStatusDraft &&
@@ -212,6 +222,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             return;
           }
         }
+        _existingEditable = true;
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()
@@ -456,6 +467,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   }
 
   Future<void> _save() async {
+    if (_loading || _saving || (widget.id != null && !_existingEditable)) {
+      return;
+    }
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');

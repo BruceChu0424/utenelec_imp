@@ -11,7 +11,9 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 import java.util.List;
 import java.util.UUID;
@@ -39,7 +41,7 @@ class ProcurementArrivalColumnFilterTest {
     void arrivalExceptionColumnsBindParametersAndStatusWhitelist() {
         when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class)))
                 .thenReturn(0L);
-        when(jdbc.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any(Object[].class)))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object>>any(), any(Object[].class)))
                 .thenReturn(List.of());
 
         UUID supplierId = UUID.randomUUID();
@@ -69,7 +71,7 @@ class ProcurementArrivalColumnFilterTest {
     void expectationSupplierFilterHitsBothListAndCountWithBoundParameter() {
         when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class)))
                 .thenReturn(0L);
-        when(jdbc.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), any(Object[].class)))
+        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object>>any(), any(Object[].class)))
                 .thenReturn(List.of());
 
         UUID supplierId = UUID.randomUUID();
@@ -82,7 +84,7 @@ class ProcurementArrivalColumnFilterTest {
                 sql.capture(), eq(Long.class), any(Object[].class));
         assertThat(sql.getValue()).contains("expectation.supplier_id = ?");
         verify(jdbc, org.mockito.Mockito.atLeastOnce()).query(
-                sql.capture(), any(org.springframework.jdbc.core.RowMapper.class), any(Object[].class));
+                sql.capture(), ArgumentMatchers.<RowMapper<Object>>any(), any(Object[].class));
         assertThat(sql.getAllValues()).anySatisfy(statement -> assertThat(statement)
                 .contains("expectation.supplier_id = ?"));
     }

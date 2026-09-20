@@ -423,6 +423,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       ..unitId = g.unitId
       ..unitRate = 1
       ..stockPlaceNotifier.value = g.stockPlace;
+    row.revalidateDefaultPrice();
     // 新建态手工选了货品 = 这行要进本次订货：自动勾上，避免用户填完一行
     // 还得回头补勾选（保存按钮只认勾选行）。
     if (_isCreate) _grid.setSelected([row], true);
@@ -437,9 +438,16 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
   Future<void> _prefillRememberedTerms() async {
     final generation = ++_termsLoadGeneration;
     final session = ref.read(sessionProvider);
+    for (final row in _grid.rows) {
+      row.trackCommercialEdits(
+        price: row.price,
+        supplier: row.supplierIdNotifier,
+      );
+    }
     final targets = {
       for (final row in _grid.rows)
-        if (row.goods != null) row: (row.goods!.id, row.supplierId),
+        if (row.goods != null)
+          row: (row.goods!.id, row.supplierId, row.commercialRevision),
     };
     final pending = targets.keys
         .where(
@@ -449,7 +457,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                   r.settlementMethodId == null ||
                   r.currencyId == null ||
                   r.exchangeRate.text.trim().isEmpty ||
-                  r.taxRate.text.trim().isEmpty),
+                  r.taxRate.text.trim().isEmpty ||
+                  r.price.text.trim().isEmpty),
         )
         .map((r) => r.goods!.id)
         .toSet();
@@ -477,7 +486,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       final r = target.key;
       if (!currentRows.contains(r) ||
           r.goods?.id != target.value.$1 ||
-          r.supplierId != target.value.$2) {
+          r.supplierId != target.value.$2 ||
+          r.commercialRevision != target.value.$3) {
         continue;
       }
       final goodsId = target.value.$1;
@@ -491,34 +501,66 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
           r.markTermsAutofilled('supplier', terms.supplierId!);
           changed = true;
         }
-        if (r.settlementMethodId == null &&
+        if (r.supplierId == terms.supplierId &&
+            r.supplierId != null &&
+            r.settlementMethodId == null &&
             terms.settlementMethodId != null &&
             settlementEntries.containsKey(terms.settlementMethodId)) {
           r.settlementMethodId = terms.settlementMethodId;
           r.markTermsAutofilled('settlement', terms.settlementMethodId!);
           changed = true;
         }
-        if (r.currencyId == null &&
+        if (r.supplierId == terms.supplierId &&
+            r.supplierId != null &&
+            r.currencyId == null &&
             terms.currencyId != null &&
             currencyEntries.containsKey(terms.currencyId)) {
           r.currencyId = terms.currencyId;
           r.markTermsAutofilled('currency', terms.currencyId!);
           changed = true;
         }
-        if (r.exchangeRate.text.trim().isEmpty && terms.exchangeRate != null) {
+        if (r.supplierId == terms.supplierId &&
+            r.supplierId != null &&
+            r.currencyId == terms.currencyId &&
+            r.exchangeRate.text.trim().isEmpty &&
+            terms.exchangeRate != null) {
           r.exchangeRate.text = terms.exchangeRate.toString();
           r.markTermsAutofilled('rate', r.exchangeRate.text);
           changed = true;
         }
-        if (r.taxRate.text.trim().isEmpty && terms.taxRate != null) {
+        if (r.supplierId == terms.supplierId &&
+            r.supplierId != null &&
+            r.taxRate.text.trim().isEmpty &&
+            terms.taxRate != null) {
           r.taxRate.text = terms.taxRate.toString();
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
         // V593 货品默认采购单价：行价空位时预填（主档列，每次下单自动写回最新）。
-        if (r.price.text.trim().isEmpty && terms.purchasePrice != null) {
+        bool matchesPriceContext() =>
+            r.goods?.id == goodsId &&
+            (terms.priceContext?.matches(
+                  supplierId: r.supplierId,
+                  colorId: r.colorId,
+                  unitId: r.unitId,
+                  currencyId: r.currencyId,
+                  taxRate: double.tryParse(r.taxRate.text.trim()),
+                ) ??
+                false);
+        if (r.price.text.trim().isEmpty &&
+            terms.purchasePrice != null &&
+            matchesPriceContext()) {
           r.price.text = terms.purchasePrice.toString();
           r.markTermsAutofilled('price', r.price.text);
+          r.watchDefaultPrice(
+            price: r.price,
+            supplier: r.supplierIdNotifier,
+            context: terms.priceContext!,
+            goodsId: goodsId,
+            currentGoodsId: () => r.goods?.id,
+            currentColorId: () => r.colorId,
+            currentUnitId: () => r.unitId,
+          );
           changed = true;
         }
       }

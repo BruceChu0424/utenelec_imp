@@ -23,6 +23,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/finance_doc.dart';
+import '../models/finance_legacy_balance.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
 import '../widgets/finance_table_facets.dart';
@@ -171,6 +172,13 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         label: '往来项目',
         width: 110,
         value: (it) => financeArApOpenItemKindLabel(it.openItemKind),
+      ),
+      MasterColumnDef(
+        key: 'legacySourceResolution',
+        label: '历史原单匹配',
+        width: 190,
+        value: (it) =>
+            financeLegacySourceResolutionLabel(it.legacySourceResolutionStatus),
       ),
       if (_direction != 'AP')
         MasterColumnDef(

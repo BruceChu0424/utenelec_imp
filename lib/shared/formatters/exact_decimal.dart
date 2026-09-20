@@ -62,6 +62,11 @@ BigInt? financeAmountUnits(String? raw) => financeExactDecimalUnits(
   scale: financeAmountScale,
 );
 
+BigInt? financeRateUnits(String? raw) => financeExactDecimalUnits(
+  _canonicalDecimalText(raw),
+  scale: financeRateScale,
+);
+
 String financeAmountFromUnits(BigInt units) {
   var result = financeExactDecimalFromUnits(units, scale: financeAmountScale);
   final minimumLength = result.indexOf('.') + 5;

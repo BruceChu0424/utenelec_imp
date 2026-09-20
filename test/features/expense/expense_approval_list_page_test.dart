@@ -10,13 +10,16 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/pages/expense_approval_list_page.dart';
 import 'package:uten_imp/features/expense/repositories/expense_repository.dart';
+import 'package:uten_imp/features/expense/providers/expense_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakeExpenseRepository extends Fake implements ExpenseRepository {
   final List<Map<String, dynamic>> pendingCalls = [];
-  final List<List<String>> rejectCalls = [];
+  final List<Map<String, dynamic>> historyCalls = [];
+  final List<Map<String, int>> batchVersions = [];
+  final List<List<String>> rejectBatchCalls = [];
 
   @override
   Future<PagedResult<ExpenseClaim>> listPending({
@@ -43,6 +46,31 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
   }
 
   @override
+  Future<PagedResult<ExpenseClaim>> listHistory({
+    int page = 1,
+    int size = 24,
+    int? year,
+    int? month,
+    String? departmentId,
+    String? category,
+  }) async {
+    historyCalls.add({
+      'page': page,
+      'year': year,
+      'month': month,
+      'departmentId': departmentId,
+      'category': category,
+    });
+    return PagedResult(
+      items: [_claim('c-1').copyWith(status: ExpenseClaimStatus.paid)],
+      page: page,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
+
+  @override
   Future<Map<String, List<MasterFacetBucket>>> facets(
     ApprovalFacetQueue queue,
   ) async => {
@@ -53,14 +81,33 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
   };
 
   @override
-  Future<ExpenseClaim?> reject(String id, String reason) async {
-    rejectCalls.add([id, reason]);
-    return null;
+  Future<ExpenseQueueSummary> summary() async => const ExpenseQueueSummary(
+    pendingCount: 2,
+    pendingAmount: 257.0,
+    payableCount: 0,
+    payableAmount: 0,
+    monthSubmittedCount: 2,
+    monthSubmittedAmount: 257.0,
+    monthPaidCount: 0,
+    monthPaidAmount: 0,
+  );
+
+  @override
+  Future<int> rejectBatch(
+    Iterable<String> ids,
+    String reason, {
+    Map<String, int> expectedVersions = const {},
+  }) async {
+    rejectBatchCalls.add([ids.toList().join(','), reason]);
+    batchVersions.add(expectedVersions);
+    return ids.length;
   }
 }
 
 ExpenseClaim _claim(String id) => ExpenseClaim(
   id: id,
+  claimNo: 'BX2026073000001$id',
+  version: id == 'c-1' ? 3 : 8,
   applicantId: 'emp-1',
   applicantName: '王小明',
   departmentId: 'dept-1',
@@ -93,6 +140,31 @@ MasterDataTableView<ExpenseClaim> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets(
+    'processed finance history remains readable with category filters and no actions',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final repo = _FakeExpenseRepository();
+      await tester.pumpWidget(_app(repo, preferences));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ExpenseApprovalListPage)),
+      );
+      container.read(approvalQueueProvider.notifier).state =
+          ApprovalQueue.history;
+      await tester.pumpAndSettle();
+      expect(repo.historyCalls, hasLength(1));
+      expect(_table(tester).selectable, isFalse);
+      expect(_table(tester).batchActionsBuilder, isNull);
+      _table(tester).onFilterChanged('category', 'TRAVEL');
+      await tester.pumpAndSettle();
+      expect(repo.historyCalls.last['category'], 'TRAVEL');
+      expect(repo.historyCalls.last['page'], 1);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('department and month header facets are pushed to the backend', (
     tester,
   ) async {
@@ -145,8 +217,11 @@ void main() {
     await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
     await tester.pumpAndSettle();
 
-    expect(repo.rejectCalls.length, 2);
-    expect(repo.rejectCalls.every((c) => c[1] == '发票缺失'), isTrue);
+    // V608：批量驳回走后端单事务端点（一次调用携带全部单号），不再逐单循环。
+    expect(repo.rejectBatchCalls.length, 1);
+    expect(repo.rejectBatchCalls.single[0], 'c-1,c-2');
+    expect(repo.rejectBatchCalls.single[1], '发票缺失');
+    expect(repo.batchVersions.single, {'c-1': 3, 'c-2': 8});
 
     await tester.pumpWidget(const SizedBox());
   });

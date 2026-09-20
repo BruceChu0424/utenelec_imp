@@ -1898,10 +1898,10 @@ class ProductionExecutionSegmentPostgresTest {
                     segment_no, segment_code, client_segment_key,
                     product_goods_id, product_unit_id, product_unit_rate,
                     planned_qty, status, bom_fingerprint, idempotency_key,
-                    auto_promote_when_ready
+                    auto_promote_when_ready, start_route, route_confirmed_at
                 ) values (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
-                    ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, 'FULL_KIT', now()
                 )
                 """,
                 segmentId,

@@ -354,8 +354,8 @@ public class ProductionMaterialStockLedgerService {
 
     /**
      * WDRAW is the good-material return path. Every line must point at one
-     * original DRAW item through upstream_item_id; dimensions and warehouse
-     * must match exactly. Unknown historical provenance is intentionally
+     * original DRAW item through upstream_item_id; dimensions must match and a
+     * different receiving warehouse requires its exact confirmation. Unknown historical provenance is intentionally
      * rejected instead of guessed.
      */
     @Transactional(propagation = Propagation.MANDATORY)
@@ -399,6 +399,18 @@ public class ProductionMaterialStockLedgerService {
                 actorId);
         if (event.replayed()) return new PostingResult(true,event.id());
 
+        List<UUID> requests = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM production_material_return_request_items
+                WHERE request_id=:document AND issue_posting_id IS NOT NULL
+                  AND stock_document_item_id IN (:items) ORDER BY id
+                """, UUID.class).setParameter("document", documentId)
+                .setParameter("items", lines.stream().map(MaterialLine::documentItemId).toList()), UUID.class);
+        for (UUID request : requests) {
+            em.createNativeQuery("SELECT fn_prepare_reverse_workshop_return_custody(:request,:event,:actor)")
+                    .setParameter("request", request).setParameter("event", event.id())
+                    .setParameter("actor", actorId).getSingleResult();
+        }
+
         Set<UUID> touched = new LinkedHashSet<>();
         for (MaterialLine line : lines) {
             validateReturnSource(line);
@@ -434,9 +446,7 @@ public class ProductionMaterialStockLedgerService {
                           AND mapping.document_id = :documentId
                           AND mapping.document_item_id = :documentItemId
                           AND d.package_id = :packageId
-                          AND (d.warehouse_id = :warehouseId
-                               OR (plan.material_analysis_id IS NOT NULL
-                                   AND fn_warehouse_same_main(d.warehouse_id,:warehouseId)))
+                          AND fn_production_material_actual_warehouse_allows(d.id,:warehouseId)
                           AND d.goods_id = :goodsId
                           AND d.color_id IS NOT DISTINCT FROM
                               CAST(:colorId AS uuid)
@@ -624,6 +634,7 @@ public class ProductionMaterialStockLedgerService {
                 : line.documentItemId();
         List<Object[]> sources = availableIssuePostings(sourceItemId,
                 "GOOD_RETURN".equals(postingType) ? line.documentItemId() : null);
+        boolean changesWarehouse = "GOOD_RETURN".equals(postingType) && hasReceivingConfirmation(line, null, true);
         BigDecimal remaining = line.qtyBase();
         for (Object[] row : sources) {
             if (remaining.signum() <= 0) break;
@@ -633,7 +644,9 @@ public class ProductionMaterialStockLedgerService {
             BigDecimal chunk = remaining.min(decimal(row[3]));
             lockDemand(demandId);
             lockReservation(reservationId);
-            int updated = em.createNativeQuery("""
+            // Cross-warehouse receipt exchanges original C for R atomically in
+            // the custody prepare step; a temporary free balance in TECH is invalid.
+            int updated = changesWarehouse ? 1 : em.createNativeQuery("""
                             UPDATE stock_reservations
                             SET consumed_qty = consumed_qty - :qty,
                                 status = :effective,
@@ -703,7 +716,11 @@ public class ProductionMaterialStockLedgerService {
             BigDecimal chunk = remaining.min(decimal(row[3]));
             lockDemand(demandId);
             lockReservation(reservationId);
-            int updated = em.createNativeQuery("""
+            BigDecimal prepared = preparedReturnReverseQty(returnPostingId, eventId, actorId);
+            if (prepared.signum() > 0 && prepared.compareTo(chunk) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "退仓反向准备与原实际领用数量不一致");
+            }
+            int updated = prepared.signum() > 0 ? 1 : em.createNativeQuery("""
                             UPDATE stock_reservations
                             SET consumed_qty = consumed_qty + :qty,
                                 status = CASE
@@ -795,7 +812,8 @@ public class ProductionMaterialStockLedgerService {
         Object[] source = rows.getFirst();
         if (!Objects.equals(source[0], line.goodsId())
                 || !Objects.equals(source[1], line.colorId())
-                || !Objects.equals(source[2], line.warehouseId())
+                || (!Objects.equals(source[2], line.warehouseId())
+                    && !hasReceivingConfirmation(line, (UUID) source[2], false))
                 || ((Number) source[3]).shortValue() != 1
                 || !Objects.equals(source[4], source[6])
                 || decimal(source[5]).signum() <= 0
@@ -804,6 +822,42 @@ public class ProductionMaterialStockLedgerService {
                     ErrorCode.CONFLICT,
                     "退料与原领料的货品、颜色、仓库、单位、换算率或有效状态不一致");
         }
+    }
+
+    private boolean hasReceivingConfirmation(MaterialLine line, UUID expectedSource, boolean differentWarehouse) {
+        return Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_material_return_receiving_confirmations confirmation
+                    JOIN production_material_return_request_items requested ON requested.request_id=confirmation.return_request_id
+                    WHERE confirmation.stock_document_id=:document AND requested.stock_document_item_id=:item
+                      AND requested.issue_posting_id IS NOT NULL AND confirmation.received_warehouse_id=:warehouse
+                      AND (CAST(:source AS uuid) IS NULL OR confirmation.source_warehouse_id=CAST(:source AS uuid))
+                      AND (NOT :different OR confirmation.source_warehouse_id<>confirmation.received_warehouse_id))
+                """).setParameter("document", line.documentId()).setParameter("item", line.documentItemId())
+                .setParameter("warehouse", line.warehouseId()).setParameter("source", expectedSource)
+                .setParameter("different", differentWarehouse).getSingleResult());
+    }
+
+    private BigDecimal preparedReturnReverseQty(UUID returned, UUID event, UUID actor) {
+        return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(move.qty_base),0) FROM production_workshop_material_custody_moves move
+                JOIN production_workshop_custody_reverse_preparations preparation ON preparation.move_id=move.id
+                LEFT JOIN production_workshop_direct_source_events source ON source.id=move.return_source_event_id
+                WHERE (move.material_return_posting_id=:returned OR source.stock_posting_id=:returned)
+                  AND preparation.reverse_material_event_id=:event AND preparation.created_by=:actor
+                """).setParameter("returned", returned).setParameter("event", event).setParameter("actor", actor).getSingleResult());
+    }
+
+    /** Refresh only after physical receipt and all original/receiving reservations agree. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void refreshReturnDemandStatuses(UUID documentId) {
+        Set<UUID> demands = new LinkedHashSet<>(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT posting.demand_id FROM production_material_stock_postings posting
+                JOIN production_material_stock_events event ON event.id=posting.event_id WHERE event.stock_document_id=:document
+                UNION
+                SELECT move.target_demand_id FROM production_workshop_material_custody_moves move
+                JOIN production_material_return_request_items item ON item.id=move.request_item_id WHERE item.request_id=:document
+                """, UUID.class).setParameter("document", documentId), UUID.class));
+        refreshDemandStatuses(demands);
     }
 
     private LockedPlanningPackage lockPackageForDraw(UUID documentId) {
@@ -966,49 +1020,10 @@ public class ProductionMaterialStockLedgerService {
     private void refreshDemandStatuses(Set<UUID> ids) {
         if (ids.isEmpty()) return;
         em.createNativeQuery("""
-                        WITH coverage AS (
-                            SELECT d.id, d.required_qty, d.released_qty,
-                                   COALESCE((
-                                       SELECT SUM(r.qty - r.released_qty)
-                                       FROM stock_reservations r
-                                       WHERE r.demand_id = d.id
-                                         AND r.is_deleted = FALSE
-                                   ), 0) AS stock_committed,
-                                   COALESCE((
-                                       SELECT SUM(
-                                           p.allocated_qty - p.consumed_qty
-                                             - p.released_qty)
-                                       FROM production_material_supply_pegs p
-                                       WHERE p.demand_id = d.id
-                                         AND p.status <> 'REVERSED'
-                                   ), 0) AS supply_committed,
-                                   COALESCE((
-                                       SELECT SUM(r.consumed_qty)
-                                       FROM stock_reservations r
-                                       WHERE r.demand_id = d.id
-                                         AND r.is_deleted = FALSE
-                                   ), 0) AS fulfilled
-                            FROM production_material_demands d
-                            WHERE d.id IN (:ids)
-                        )
                         UPDATE production_material_demands d
-                        SET status = CASE
-                                WHEN c.released_qty >= c.required_qty THEN 'RELEASED'
-                                WHEN c.fulfilled >= c.required_qty THEN 'FULFILLED'
-                                WHEN c.stock_committed + c.supply_committed
-                                     >= c.required_qty
-                                     AND c.supply_committed > 0
-                                     THEN 'WAITING_SUPPLY'
-                                WHEN c.stock_committed >= c.required_qty
-                                     THEN 'ALLOCATED'
-                                WHEN c.stock_committed + c.supply_committed > 0
-                                     THEN 'PARTIAL'
-                                ELSE 'OPEN'
-                            END,
-                            lock_version = lock_version + 1,
-                            updated_at = now()
-                        FROM coverage c
-                        WHERE d.id = c.id
+                        SET status=fn_production_material_demand_status(d.id),
+                            lock_version=lock_version+1, updated_at=now()
+                        WHERE d.id IN (:ids) AND NOT d.is_deleted
                         """)
                 .setParameter("ids", ids)
                 .executeUpdate();

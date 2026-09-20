@@ -270,6 +270,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.receipt_long_outlined,
         label: '我的报销',
         location: RouteName.expense,
+        badge: WorkbenchBadgeKind.expenseMine,
       ),
       _ModuleItem(
         icon: Icons.lightbulb_outline_rounded,
@@ -338,12 +339,7 @@ const _allGroups = <_ModuleGroup>[
         // 角标 = 订货审批待办 + 销售订单财务确认待办 + 超量到货审批待办（与钱流管理 hub 任务中心同源）。
         badge: WorkbenchBadgeKind.finance,
       ),
-      // 工资与报销审批均为真实后端入口，是否显示由对应权限控制。
-      _ModuleItem(
-        icon: Icons.fact_check_outlined,
-        label: '报销审批',
-        location: '/expense/approval',
-      ),
+      // 报销审批集中在钱流管理，待办只由其模块入口累加一次。
       // 工资条生成归属财务（payroll:generate 仅 finance/admin 持有）
       _ModuleItem(
         icon: Icons.request_quote_outlined,

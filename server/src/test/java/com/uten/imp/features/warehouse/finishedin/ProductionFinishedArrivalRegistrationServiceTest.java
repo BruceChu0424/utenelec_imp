@@ -202,50 +202,17 @@ class ProductionFinishedArrivalRegistrationServiceTest {
     }
 
     @Test
-    void placeSuggestionsUseExactUuidHistoryFallbackWithoutImplicitLearning()
-            throws Exception {
+    void placeSuggestionsReadExactMasterRelationsWithoutScanningHistoricalDocuments() throws Exception {
         String service = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
-                        + "ProductionFinishedArrivalRegistrationService.java"));
-        int suggestionsStart = service.indexOf(
-                "public PlaceSuggestionsView placeSuggestions(");
-        int registerStart = service.indexOf(
-                "public ArrivalRegistrationView register(", suggestionsStart);
-        assertThat(suggestionsStart).isGreaterThanOrEqualTo(0);
-        assertThat(registerStart).isGreaterThan(suggestionsStart);
-        String suggestions = service.substring(suggestionsStart, registerStart);
-
-        int preferencePrecedence = suggestions.indexOf(
-                "WHEN preference.id IS NOT NULL");
-        int historyPrecedence = suggestions.indexOf(
-                "WHEN registration_history.place IS NOT NULL");
-        int masterPrecedence = suggestions.indexOf(
-                "WHEN NULLIF(BTRIM(goods.stock_place), '') IS NOT NULL");
-        assertThat(preferencePrecedence).isGreaterThanOrEqualTo(0);
-        assertThat(historyPrecedence).isGreaterThan(preferencePrecedence);
-        assertThat(masterPrecedence).isGreaterThan(historyPrecedence);
-
-        int latestLimit = suggestions.indexOf("LIMIT 1");
-        int uniquePlaceGuard = suggestions.indexOf(
-                "WHERE latest_history.place_count = 1");
-        assertThat(latestLimit).isGreaterThanOrEqualTo(0);
-        assertThat(uniquePlaceGuard).isGreaterThan(latestLimit);
-        assertThat(suggestions)
-                .contains("'REGISTRATION_HISTORY'")
-                .contains("LEFT JOIN LATERAL (")
-                .contains("history_registration.warehouse_id =")
-                .contains("selected_warehouse.id")
-                .contains("history_item.reversal_id IS NULL")
-                .contains("history_report_item.goods_id =")
-                .contains("report_item.goods_id")
-                .contains("history_report_item.color_id")
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationService.java"));
+        int start = service.indexOf("private PlaceSuggestionsView placeSuggestionsInternal(");
+        int end = service.indexOf("public ArrivalRegistrationView register(", start);
+        String suggestions = service.substring(start, end);
+        assertThat(suggestions).contains("preference.warehouse_id = selected_warehouse.id")
+                .contains("preference.goods_id = report_item.goods_id")
                 .contains("IS NOT DISTINCT FROM report_item.color_id")
-                .contains("COUNT(DISTINCT BTRIM(")
-                .contains("GROUP BY history_registration.id,")
-                .contains("ORDER BY history_registration.created_at DESC,")
-                .contains("history_registration.id DESC")
-                .contains(") registration_history ON preference.id IS NULL")
-                .doesNotContain("HAVING")
+                .contains("'WAREHOUSE_PREFERENCE'").contains("'GOODS_MASTER'")
+                .doesNotContain("registration_history", "LEFT JOIN LATERAL", "REGISTRATION_HISTORY")
                 .doesNotContain("INSERT INTO warehouse_goods_place_preferences")
                 .doesNotContain("UPDATE warehouse_goods_place_preferences");
     }

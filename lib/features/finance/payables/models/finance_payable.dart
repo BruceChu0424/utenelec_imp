@@ -1,3 +1,5 @@
+import '../../models/finance_legacy_balance.dart';
+
 String? _decimalText(Object? value) {
   if (value == null) return null;
   if (value is String) return value;
@@ -27,6 +29,7 @@ String financePayableBusinessTypeLabel(String? value) =>
     switch (value?.toUpperCase()) {
       'PURCHASE' => '采购',
       'SUBCONTRACT' => '委外',
+      'DIRECT' => '其他往来',
       _ => value?.trim().isNotEmpty == true ? value! : '—',
     };
 
@@ -39,6 +42,8 @@ String financePayableSourceTypeLabel(String? value) =>
       'SUBCONTRACT_WASTE' || 'SUBCONTRACT_WASTE_DEDUCTION' => '委外损耗扣款',
       'SUBCONTRACT_LOSS_OFFSET' => '委外索赔抵销',
       'OPENING_BALANCE' => '期初应付',
+      'LEGACY_OPENING' => '历史期初（原单来源待核实）',
+      'DIRECT_PAYMENT' => '财务付款',
       'MANUAL' || 'MANUAL_AP' => '手工应付',
       _ => value?.trim().isNotEmpty == true ? value! : '—',
     };
@@ -60,6 +65,7 @@ String financePayableStatusLabel(String? value) =>
 String financePayableOpenItemKindLabel(String? value) =>
     switch (value?.toUpperCase()) {
       'PAYABLE' => '正应付',
+      'LEGACY_UNVERIFIED' => '历史往来余额',
       'CREDIT' => '供应商贷项',
       'CLAIM_CREDIT' => '委外索赔贷项',
       'PREPAYMENT' => '供应商预付款',
@@ -143,6 +149,7 @@ class FinancePayableItem {
     this.version,
     this.businessType,
     this.openItemKind,
+    this.legacyImported = false,
     this.sourceDocType,
     this.sourceDocId,
     this.sourceDocNo,
@@ -177,6 +184,7 @@ class FinancePayableItem {
   final int? version;
   final String? businessType;
   final String? openItemKind;
+  final bool legacyImported;
   final String? sourceDocType;
   final String? sourceDocId;
   final String? sourceDocNo;
@@ -213,6 +221,21 @@ class FinancePayableItem {
   String get statusLabel => financePayableStatusLabel(status);
   String get openItemKindLabel => financePayableOpenItemKindLabel(openItemKind);
 
+  String? get legacyPaymentBlockReason => openItemKind == 'LEGACY_UNVERIFIED'
+      ? financeLegacyBalanceBlockReason(
+          originalBalance: outstandingOriginal,
+          currencyId: currencyId,
+        )
+      : null;
+
+  bool get canCreatePayment =>
+      (openItemKind == 'PAYABLE' && !legacyImported) ||
+      (openItemKind == 'LEGACY_UNVERIFIED' && legacyPaymentBlockReason == null);
+
+  bool get canApplyCredit =>
+      !legacyImported &&
+      (openItemKind == 'CREDIT' || openItemKind == 'CLAIM_CREDIT');
+
   @Deprecated('Use grossOriginal')
   String? get payableOriginal => grossOriginal;
 
@@ -228,6 +251,10 @@ class FinancePayableItem {
       version: json['version'] == null ? null : _intValue(json['version']),
       businessType: json['businessType']?.toString(),
       openItemKind: json['openItemKind']?.toString(),
+      legacyImported:
+          json['legacyImported'] == true ||
+          json['legacyId'] != null ||
+          json['legacySource'] != null,
       sourceDocType: json['sourceDocType']?.toString(),
       sourceDocId: json['sourceDocId']?.toString(),
       sourceDocNo: _firstText([json['sourceDocNo'], json['billNo']]),

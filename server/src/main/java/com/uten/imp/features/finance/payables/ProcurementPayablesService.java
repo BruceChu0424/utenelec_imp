@@ -151,7 +151,7 @@ public class ProcurementPayablesService {
         if (items.stream().anyMatch(value -> !Objects.equals(currencyId, value.currencyId()))) {
             return previewFailure("跨币种核销需要独立双币模型；本次只能选择同一币种", items);
         }
-        if (items.stream().anyMatch(value -> !"PAYABLE".equals(value.openItemKind())
+        if (items.stream().anyMatch(value -> !("PAYABLE".equals(value.openItemKind()) || "LEGACY_UNVERIFIED".equals(value.openItemKind()))
                 || decimal(value.outstandingOriginal()).signum() <= 0)) {
             return previewFailure("付款只能引用仍有正数未付余额的应付项目", items);
         }
@@ -197,16 +197,21 @@ public class ProcurementPayablesService {
     private Summary summary(Filter filter) {
         Query query = em.createNativeQuery("""
                 SELECT
-                    COALESCE(SUM(CASE WHEN ledger.open_item_kind = 'PAYABLE'
+                    COALESCE(SUM(CASE WHEN (ledger.open_item_kind = 'PAYABLE' OR (ledger.legacy_import_run_id IS NOT NULL
+                        AND ledger.amount_original_local >= 0 AND ledger.amount_balance >= 0))
                         THEN GREATEST(ledger.amount_original_local, 0) ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN ledger.open_item_kind = 'PAYABLE'
+                    COALESCE(SUM(CASE WHEN (ledger.open_item_kind = 'PAYABLE' OR (ledger.legacy_import_run_id IS NOT NULL
+                        AND ledger.amount_original_local >= 0 AND ledger.amount_balance >= 0))
                         THEN GREATEST(ledger.amount_received_local, 0) ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN ledger.open_item_kind = 'PAYABLE'
+                    COALESCE(SUM(CASE WHEN (ledger.open_item_kind = 'PAYABLE' OR (ledger.legacy_import_run_id IS NOT NULL
+                        AND ledger.amount_original_local >= 0 AND ledger.amount_balance >= 0))
                         THEN GREATEST(ledger.amount_settled, 0) ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN ledger.open_item_kind = 'PAYABLE'
+                    COALESCE(SUM(CASE WHEN (ledger.open_item_kind = 'PAYABLE' OR (ledger.legacy_import_run_id IS NOT NULL
+                        AND ledger.amount_original_local >= 0 AND ledger.amount_balance >= 0))
                         THEN ledger.amount_received_local-ledger.amount_settled
                         ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN ledger.open_item_kind = 'PAYABLE'
+                    COALESCE(SUM(CASE WHEN (ledger.open_item_kind = 'PAYABLE' OR (ledger.legacy_import_run_id IS NOT NULL
+                        AND ledger.amount_original_local >= 0 AND ledger.amount_balance >= 0))
                         THEN GREATEST(ledger.amount_offset_local, 0) ELSE 0 END), 0),
                     COALESCE(SUM(GREATEST(ledger.amount_balance, 0)), 0),
                     COALESCE(SUM(CASE WHEN ledger.amount_balance > 0
@@ -337,7 +342,9 @@ public class ProcurementPayablesService {
                        END,
                        CASE WHEN ledger.amount_balance > 0 AND ledger.due_date < CURRENT_DATE
                            THEN CURRENT_DATE - ledger.due_date ELSE 0 END,
-                       ledger.remark
+                       ledger.remark,
+                       (ledger.legacy_id IS NOT NULL OR ledger.legacy_import_run_id IS NOT NULL
+                           OR ledger.legacy_source IS NOT NULL)
                 """ + baseFrom();
     }
 
@@ -371,7 +378,7 @@ public class ProcurementPayablesService {
                 text(row[18]), rate(row[19]), money(row[20]), money(row[21]), money(row[22]),
                 money(row[23]), money(row[24]), money(row[25]), money(row[26]), money(row[27]),
                 text(row[28]), integer(row[29]) == null ? 0 : integer(row[29]), text(row[30]),
-                hold.held(), hold.reason(), money(hold.failedBaseQty()));
+                hold.held(), hold.reason(), money(hold.failedBaseQty()), Boolean.TRUE.equals(row[31]));
     }
 
     private static String upper(String value) {

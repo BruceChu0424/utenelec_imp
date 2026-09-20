@@ -256,52 +256,10 @@ public class ProductionFulfillmentLedgerService {
             return;
         }
         int updated = em.createNativeQuery("""
-                        WITH coverage AS (
-                            SELECT d.id,
-                                   d.required_qty,
-                                   d.released_qty,
-                                   d.direct_supply,
-                                   COALESCE((
-                                       SELECT SUM(r.qty - r.released_qty)
-                                       FROM stock_reservations r
-                                       WHERE r.demand_id = d.id
-                                         AND r.is_deleted = FALSE
-                                   ), 0) AS stock_committed,
-                                   COALESCE((
-                                       SELECT SUM(p.allocated_qty
-                                                  - p.consumed_qty - p.released_qty)
-                                       FROM production_material_supply_pegs p
-                                       WHERE p.demand_id = d.id
-                                         AND p.status <> 'REVERSED'
-                                   ), 0) AS supply_committed,
-                                   COALESCE((
-                                       SELECT SUM(r.consumed_qty)
-                                       FROM stock_reservations r
-                                       WHERE r.demand_id = d.id
-                                         AND r.is_deleted = FALSE
-                                   ), 0) AS fulfilled
-                            FROM production_material_demands d
-                            WHERE d.id IN (:ids)
-                              AND d.is_deleted = FALSE
-                        )
                         UPDATE production_material_demands d
-                        SET status = CASE
-                                WHEN c.released_qty >= c.required_qty THEN 'RELEASED'
-                                WHEN c.fulfilled >= c.required_qty THEN 'FULFILLED'
-                                -- 持续生产的直送需求(V595)：完结时把没送到的余量释放后，
-                                -- 「已投入 + 已释放」覆盖需求量即视为履约完成。
-                                WHEN c.direct_supply
-                                     AND c.fulfilled + c.released_qty >= c.required_qty THEN 'FULFILLED'
-                                WHEN c.stock_committed + c.supply_committed >= c.required_qty
-                                     AND c.supply_committed > 0 THEN 'WAITING_SUPPLY'
-                                WHEN c.stock_committed >= c.required_qty THEN 'ALLOCATED'
-                                WHEN c.stock_committed + c.supply_committed > 0 THEN 'PARTIAL'
-                                ELSE 'OPEN'
-                            END,
-                            lock_version = lock_version + 1,
-                            updated_at = now()
-                        FROM coverage c
-                        WHERE d.id = c.id
+                        SET status=fn_production_material_demand_status(d.id),
+                            lock_version=lock_version+1, updated_at=now()
+                        WHERE d.id IN (:ids) AND NOT d.is_deleted
                         """)
                 .setParameter("ids", ids)
                 .executeUpdate();

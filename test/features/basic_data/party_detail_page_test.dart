@@ -62,6 +62,14 @@ void main() {
     expect(find.text('全称'), findsOneWidget);
     expect(find.text('地址与物流'), findsOneWidget);
 
+    // 销售条款与财务 Tab：默认货运策略显词表文案而非库代号（2026-09-19 修）。
+    await tester.tap(find.text('销售条款与财务'));
+    await tester.pumpAndSettle();
+    expect(find.text('允许分批发货'), findsOneWidget);
+    expect(find.textContaining('ALLOW_PARTIAL'), findsNothing);
+    await tester.tap(find.text('概览'));
+    await tester.pumpAndSettle();
+
     // 联系方式 Tab：子表 + 主选标注 + 添加弹窗走目录仓库。
     await tester.tap(find.text('联系方式'));
     await tester.pumpAndSettle();
@@ -175,6 +183,7 @@ class _FakeClientRepository implements ClientRepository {
     mobile: '13800000000',
     ownerEmployeeName: '李销售',
     salesPaymentType: ClientSalesPaymentType.monthly,
+    defaultShipmentPolicy: 'ALLOW_PARTIAL',
     writable: true,
   );
 

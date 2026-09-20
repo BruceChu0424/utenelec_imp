@@ -19,6 +19,7 @@ class PurchaseDocFilter {
     this.status,
     this.dateFrom,
     this.dateTo,
+    this.financeApproval,
   });
   final String? keyword;
   final String? supplierId;
@@ -26,6 +27,10 @@ class PurchaseDocFilter {
   final int? status;
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
+
+  /// 财务审批态切片（仅订货单端点支持）：财务通过前 status=0，
+  /// 「草稿」段传 'NONE'（排除在审单）、「等待财务审核」段传 'PENDING'。
+  final String? financeApproval;
 }
 
 class PurchaseRepository {
@@ -50,6 +55,8 @@ class PurchaseRepository {
       if (filter.supplierId != null) 'supplierId': filter.supplierId,
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
       if (filter.status != null) 'status': filter.status,
+      if (filter.financeApproval != null)
+        'financeApproval': filter.financeApproval,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (sort != null && sort.isNotEmpty) 'sort': sort,

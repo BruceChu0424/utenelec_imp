@@ -9,6 +9,7 @@ import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.util.PostgresUuidOrder;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalDecisionRequest;
@@ -94,7 +95,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                           ON draft_purchase_ri.order_item_id = draft_item.order_item_id
                         JOIN purchase_receipts draft_purchase_r
                           ON draft_purchase_r.id = draft_purchase_ri.receipt_id
-                         AND draft_purchase_r.status = 0
+                         AND draft_purchase_r.status = 0 AND draft_purchase_r.legacy_id IS NULL
                          AND draft_purchase_r.is_deleted = FALSE
                         WHERE draft_item.expectation_id = expectation.id
                     ) OR EXISTS (
@@ -103,7 +104,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                           ON draft_sub_ri.order_item_id = draft_item.order_item_id
                         JOIN subcontract_receipts draft_sub_r
                           ON draft_sub_r.id = draft_sub_ri.receipt_id
-                         AND draft_sub_r.status = 0
+                         AND draft_sub_r.status = 0 AND draft_sub_r.legacy_id IS NULL
                          AND draft_sub_r.is_deleted = FALSE
                         WHERE draft_item.expectation_id = expectation.id
                     ) OR EXISTS (
@@ -194,7 +195,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                      FROM subcontract_receipt_items visible_draft_item
                      JOIN subcontract_receipts visible_draft
                        ON visible_draft.id = visible_draft_item.receipt_id
-                      AND visible_draft.status = 0
+                      AND visible_draft.status = 0 AND visible_draft.legacy_id IS NULL
                       AND visible_draft.is_deleted = FALSE
                      WHERE visible_draft_item.order_item_id = %1$s.order_item_id
                        AND visible_draft_item.is_deleted = FALSE)
@@ -1238,7 +1239,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     JOIN %s receipt_item ON receipt_item.order_item_id = item.order_item_id
                     JOIN %s receipt ON receipt.id = receipt_item.receipt_id
                     WHERE item.expectation_id IN (%s)
-                      AND receipt.status = 0 AND receipt.is_deleted = FALSE
+                      AND receipt.status = 0 AND receipt.legacy_id IS NULL AND receipt.is_deleted = FALSE
                     ORDER BY receipt.created_at, receipt.id
                     """.formatted(receiptItemTable, receiptTable, placeholders), rs -> {
                 result.computeIfAbsent(
@@ -1401,12 +1402,12 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         if (byGoods.isEmpty()) {
             return Map.of("updated", 0, "skipped", 0);
         }
-        List<UUID> ids = List.copyOf(byGoods.keySet());
+        List<UUID> ids = byGoods.keySet().stream().sorted(PostgresUuidOrder.INSTANCE).toList();
         String placeholders = String.join(
                 ", ", java.util.Collections.nCopies(ids.size(), "?"));
         Map<UUID, GoodsMasterRow> masters = new HashMap<>();
         jdbc.query("SELECT id, code, series, stock_place FROM goods WHERE id IN ("
-                + placeholders + ") AND is_deleted = FALSE", rs -> {
+                + placeholders + ") AND is_deleted = FALSE ORDER BY id FOR UPDATE", rs -> {
             masters.put(rs.getObject("id", UUID.class), new GoodsMasterRow(
                     rs.getString("code"),
                     rs.getString("series"),
@@ -1416,7 +1417,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         UUID actor = currentUser.requireId();
         int updated = 0;
         int skipped = 0;
-        for (Map.Entry<UUID, GoodsProfileHintRequest> entry : byGoods.entrySet()) {
+        for (Map.Entry<UUID, GoodsProfileHintRequest> entry : byGoods.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(PostgresUuidOrder.INSTANCE)).toList()) {
             GoodsMasterRow master = masters.get(entry.getKey());
             if (master == null) {
                 skipped++;
@@ -1490,7 +1492,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        item.goods_id, goods.code AS goods_code,
                        goods.name AS goods_name,
                        goods.series AS goods_series,
-                       goods.stock_place AS goods_stock_place,
+                       COALESCE(place_default.place, goods.stock_place) AS goods_stock_place,
                        item.color_id,
                        color.name AS color_name, item.unit_id,
                        unit.name AS unit_name,
@@ -1509,8 +1511,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        END AS remaining_qty,
                        COALESCE(inflight.registered_qty, 0) AS registered_qty,
                        item.expected_date,
-                       remembered.warehouse_id AS last_receipt_warehouse_id,
-                       remembered.warehouse_name AS last_receipt_warehouse_name
+                       remembered.id AS last_receipt_warehouse_id,
+                       remembered.name AS last_receipt_warehouse_name
                 FROM inbound_expectation_items item
                 JOIN inbound_expectations expectation
                   ON expectation.id = item.expectation_id
@@ -1518,54 +1520,29 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
                 LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
-                LEFT JOIN LATERAL (
-                    SELECT history.warehouse_id, warehouse.name AS warehouse_name
-                    FROM (
-                        SELECT receipt.warehouse_id,receipt.updated_at,receipt.id
-                        FROM purchase_receipt_items line
-                        JOIN purchase_receipts receipt ON receipt.id=line.receipt_id
-                        WHERE line.goods_id=item.goods_id
-                          AND line.color_id IS NOT DISTINCT FROM item.color_id
-                          AND line.is_deleted=FALSE
-                          AND receipt.status=1 AND receipt.is_deleted=FALSE
-                        UNION ALL
-                        SELECT receipt.warehouse_id,receipt.updated_at,receipt.id
-                        FROM subcontract_receipt_items line
-                        JOIN subcontract_receipts receipt ON receipt.id=line.receipt_id
-                        WHERE line.goods_id=item.goods_id
-                          AND line.color_id IS NOT DISTINCT FROM item.color_id
-                          AND line.is_deleted=FALSE
-                          AND receipt.status=1 AND receipt.is_deleted=FALSE
-                    ) history
-                    JOIN warehouses warehouse ON warehouse.id=history.warehouse_id
-                     AND warehouse.is_deleted=FALSE
-                     AND COALESCE(warehouse.status,'')<>'禁用'
-                    WHERE (CAST(? AS uuid) IS NULL OR
-                           fn_warehouse_same_main(history.warehouse_id,CAST(? AS uuid)))
-                      AND NOT EXISTS (
-                          SELECT 1 FROM preplan_supply_action_allocations allocation
-                          JOIN preplan_supply_actions action ON action.id=allocation.action_id
-                           AND action.status<>'CANCELLED'
-                          WHERE allocation.external_item_id IN (
-                              SELECT source.request_item_id FROM purchase_order_item_sources source
-                              WHERE source.order_item_id=item.order_item_id
-                              UNION
-                              SELECT source.application_item_id FROM subcontract_order_item_sources source
-                              WHERE source.order_item_id=item.order_item_id)
-                            AND NOT fn_warehouse_same_main(
-                                history.warehouse_id,action.warehouse_id)
-                      )
-                      AND NOT EXISTS(SELECT 1 FROM warehouses child
-                          WHERE child.parent_id=warehouse.id AND child.is_deleted=FALSE)
-                    ORDER BY history.updated_at DESC,history.id DESC
-                    LIMIT 1
-                ) remembered ON TRUE
+                """ + com.uten.imp.features.warehouse.WarehouseMasterDefaultsSql.owningWarehouseJoin("goods", "remembered") + """
+                    AND (CAST(? AS uuid) IS NULL OR fn_warehouse_same_main(remembered.id,CAST(? AS uuid)))
+                    AND NOT EXISTS (
+                        SELECT 1 FROM preplan_supply_action_allocations allocation
+                        JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                          AND action.status<>'CANCELLED'
+                        WHERE allocation.external_item_id IN (
+                            SELECT source.request_item_id FROM purchase_order_item_sources source
+                            WHERE source.order_item_id=item.order_item_id
+                            UNION
+                            SELECT source.application_item_id FROM subcontract_order_item_sources source
+                            WHERE source.order_item_id=item.order_item_id)
+                          AND NOT fn_warehouse_same_main(remembered.id,action.warehouse_id)
+                    )
+                LEFT JOIN warehouse_goods_place_preferences place_default
+                  ON place_default.warehouse_id=remembered.id AND place_default.goods_id=item.goods_id
+                 AND place_default.color_id IS NOT DISTINCT FROM item.color_id
                 LEFT JOIN (
                     SELECT receipt_item.order_item_id,
                            SUM(receipt_item.qty) AS registered_qty
                     FROM %s receipt_item
                     JOIN %s receipt ON receipt.id = receipt_item.receipt_id
-                    WHERE receipt.status = 0 AND receipt.is_deleted = FALSE
+                    WHERE receipt.status = 0 AND receipt.legacy_id IS NULL AND receipt.is_deleted = FALSE
                       AND receipt_item.order_item_id IS NOT NULL
                     GROUP BY receipt_item.order_item_id
                 ) inflight ON inflight.order_item_id = item.order_item_id
@@ -1932,7 +1909,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 ) purchaser_owner ON TRUE
                 WHERE receipt.id = ?
                   AND COALESCE(receipt.is_deleted, FALSE) = FALSE
-                  AND receipt.status = 0
+                  AND receipt.status = 0 AND receipt.legacy_id IS NULL
                   AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
                   AND COALESCE(order_item.is_deleted, FALSE) = FALSE
                   AND COALESCE(procurement_order.is_deleted, FALSE) = FALSE
@@ -2242,7 +2219,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     USING %s receipt
                     WHERE item.id = ?
                       AND receipt.id = item.receipt_id
-                      AND receipt.status = 0
+                      AND receipt.status = 0 AND receipt.legacy_id IS NULL
                       AND receipt.is_deleted = FALSE
                       AND item.is_deleted = FALSE
                     """.formatted(itemTable, receiptTable), row.receiptItemId()));
@@ -2260,7 +2237,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     FROM %s receipt
                     WHERE item.id = ?
                       AND receipt.id = item.receipt_id
-                      AND receipt.status = 0
+                      AND receipt.status = 0 AND receipt.legacy_id IS NULL
                       AND receipt.is_deleted = FALSE
                       AND item.is_deleted = FALSE
                     """.formatted(itemTable, receiptTable),
@@ -2287,7 +2264,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         FROM subcontract_receipts receipt
                         WHERE item.id = ?
                           AND receipt.id = item.receipt_id
-                          AND receipt.status = 0
+                          AND receipt.status = 0 AND receipt.legacy_id IS NULL
                           AND receipt.is_deleted = FALSE
                           AND item.is_deleted = FALSE
                         """,
@@ -2321,7 +2298,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       ELSE receipt.deleted_at END,
                     updated_at = now()
                 WHERE receipt.id = ?
-                  AND receipt.status = 0
+                  AND receipt.status = 0 AND receipt.legacy_id IS NULL
                   AND receipt.is_deleted = FALSE
                 """.formatted(
                         receiptTable, itemTable, itemTable, itemTable, itemTable),

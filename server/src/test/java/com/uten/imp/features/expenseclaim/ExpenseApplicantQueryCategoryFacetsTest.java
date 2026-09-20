@@ -31,7 +31,7 @@ class ExpenseApplicantQueryCategoryFacetsTest {
         when(query.getResultList()).thenReturn(List.of(
                 new Object[]{"TRANSPORT", 3L}, new Object[]{"MEAL", 1L}));
 
-        var rows = new ExpenseApplicantQuery(em).categoryFacets(List.of("SUBMITTED"));
+        var rows = new ExpenseApplicantQuery(em).categoryFacets(List.of("SUBMITTED"), java.util.UUID.randomUUID(), false);
 
         var sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
@@ -52,6 +52,6 @@ class ExpenseApplicantQueryCategoryFacetsTest {
     @Test
     void emptyStatusesShortCircuitToNoBucket() {
         EntityManager em = mock(EntityManager.class);
-        assertThat(new ExpenseApplicantQuery(em).categoryFacets(List.of())).isEmpty();
+        assertThat(new ExpenseApplicantQuery(em).categoryFacets(List.of(), java.util.UUID.randomUUID(), false)).isEmpty();
     }
 }

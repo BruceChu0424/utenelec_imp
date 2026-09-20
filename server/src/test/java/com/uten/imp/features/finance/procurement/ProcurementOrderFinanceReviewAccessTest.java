@@ -137,7 +137,7 @@ class ProcurementOrderFinanceReviewAccessTest {
                 .thenReturn(Map.of());
 
         purchase.service().list(
-                new OrderQueryFilter(null, null, null, null, null, null),
+                new OrderQueryFilter(null, null, null, null, null, null, null),
                 1, 20, null, null);
         verify(purchase.access()).scope();
         verify(purchase.projection(), never())
@@ -156,11 +156,68 @@ class ProcurementOrderFinanceReviewAccessTest {
 
         subcontract.service().list(
                 new com.uten.imp.features.subcontract.order.dto.OrderQueryFilter(
-                        null, null, null, null, null, null, null),
+                        null, null, null, null, null, null, null, null),
                 1, 20, null, null);
         verify(subcontract.access()).scope();
         verify(subcontract.projection(), never())
                 .canCurrentActorReviewPending(anyString(), any(UUID.class));
+    }
+
+    /**
+     * 财务审批态切片（2026-09-19）：「草稿」段与「等待财务审核」段同为 status=0，
+     * 靠 financeApproval=NONE/PENDING 区分——切片时必须向投影查询要 PENDING 集合
+     * （采购/委外各自按 orderType 取），不切片（null）不得多查一次；
+     * 非法值 fail-closed 抛 VALIDATION_FAILED。
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void listFinanceApprovalSliceConsultsPendingProjectionPerOrderType() {
+        PurchaseFixture purchase = purchaseFixture((short) 0);
+        OwnerVisibility.OwnerScope purchaseScope =
+                new OwnerVisibility.OwnerScope(false, Set.of(purchase.ownerId()));
+        when(purchase.access().scope()).thenReturn(purchaseScope);
+        when(purchase.orders().findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(Page.empty());
+        when(purchase.projection().latestForOrders(eq("PURCHASE"), any(Map.class)))
+                .thenReturn(Map.of());
+
+        purchase.service().list(
+                new OrderQueryFilter(null, null, null, (short) 0, null, null, "NONE"),
+                1, 20, null, null);
+        verify(purchase.projection()).pendingOrderIds("PURCHASE");
+
+        purchase.service().list(
+                new OrderQueryFilter(null, null, null, (short) 0, null, null, "PENDING"),
+                1, 20, null, null);
+        verify(purchase.projection(), org.mockito.Mockito.times(2))
+                .pendingOrderIds("PURCHASE");
+
+        purchase.service().list(
+                new OrderQueryFilter(null, null, null, (short) 0, null, null, null),
+                1, 20, null, null);
+        verify(purchase.projection(), org.mockito.Mockito.times(2))
+                .pendingOrderIds("PURCHASE");
+
+        assertEquals(ErrorCode.VALIDATION_FAILED,
+                assertThrows(ApiException.class, () -> purchase.service().list(
+                        new OrderQueryFilter(null, null, null, (short) 0, null, null, "BOGUS"),
+                        1, 20, null, null)).getCode(),
+                "非法切片值必须 fail-closed");
+
+        SubcontractFixture subcontract = subcontractFixture((short) 0);
+        OwnerVisibility.OwnerScope subcontractScope =
+                new OwnerVisibility.OwnerScope(false, Set.of(subcontract.ownerId()));
+        when(subcontract.access().scope()).thenReturn(subcontractScope);
+        when(subcontract.orders().findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(Page.empty());
+        when(subcontract.projection().latestForOrders(eq("SUBCONTRACT"), any(Map.class)))
+                .thenReturn(Map.of());
+
+        subcontract.service().list(
+                new com.uten.imp.features.subcontract.order.dto.OrderQueryFilter(
+                        null, null, null, (short) 0, null, null, null, "PENDING"),
+                1, 20, null, null);
+        verify(subcontract.projection()).pendingOrderIds("SUBCONTRACT");
     }
 
     @Test

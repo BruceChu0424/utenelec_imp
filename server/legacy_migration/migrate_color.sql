@@ -10,7 +10,6 @@
 -- staging 用真实类型，COPY csv 自动 cast + 空字段→null。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 -- Preserve FK/audit enforcement; referenced colors make a reload fail closed.
 DELETE FROM colors;
@@ -31,7 +30,6 @@ SELECT
     status
 FROM color_stage;
 
-COMMIT;
 
 SELECT '✔ 颜色 总 ' || count(*) ||
        '，使用 ' || count(*) FILTER (WHERE status = N'使用') ||

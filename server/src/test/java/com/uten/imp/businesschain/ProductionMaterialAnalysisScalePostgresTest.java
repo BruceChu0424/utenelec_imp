@@ -167,6 +167,92 @@ class ProductionMaterialAnalysisScalePostgresTest {
 
     @Test
     @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
+    void profileWorkshopIssueDeferredFunctionsInAnIsolatedTransaction() throws Exception {
+        int size = Integer.getInteger("uten.production.functionProfileSize", 100);
+        assertTrue(size == 100 || size == 500);
+        var scenario = factory.sharedTree("function-scale-" + size + "-" + suffix(), size);
+        var initial = analysis.preview(request(scenario, null, "function-preview-" + suffix()));
+        var selected = initial.products().stream().limit(20).map(ProductView::analysisLineId).collect(java.util.stream.Collectors.toSet());
+        var rootRoutes = initial.flatMaterials().stream().filter(row -> row.level() == 0 && selected.contains(row.analysisLineId()))
+                .map(row -> new RouteDecision(row.materialLineId(), row.actionGroupKey(), "MAKE", null)).toList();
+        assertEquals(20, rootRoutes.size());
+        var view = analysis.saveRoutes(initial.analysisId(), new RouteRequest(initial.version(), initial.fingerprint(),
+                "function-routes-" + suffix(), rootRoutes));
+        var issue = issueRequest(scenario, view, 20, "function-issue-" + suffix());
+        var before = ProductionFunctionMeasurement.snapshot(jdbc);
+        var generated = measured("SERVICE", "analysis.issueWorkshopPlans.20.function-profile", size,
+                () -> new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status -> {
+                    // Same real transaction and durability profile. The setting resets
+                    // at commit and applies only to this private test transaction.
+                    jdbc.execute("SET LOCAL track_functions = 'all'");
+                    jdbc.execute("SELECT pg_stat_force_next_flush()");
+                    return commands.issueWorkshopPlans(view.analysisId(), issue);
+                }));
+        assertNotNull(generated);
+        assertWaitingPlanConservation(scenario, generated, 20);
+        assertNoInventoryOrSalesCompletion(scenario);
+        List<Map<String, Object>> functions = List.of();
+        for (int attempt = 0; attempt < 20 && functions.isEmpty(); attempt++) {
+            Thread.sleep(100);
+            functions = ProductionFunctionMeasurement.differences(before, ProductionFunctionMeasurement.snapshot(jdbc));
+        }
+        assertFalse(functions.isEmpty(), "The isolated tracking transaction must produce real PostgreSQL counters");
+        emit(Map.of("event", "issue-function-profile", "products", size, "plans", 20,
+                "tracking", "SET LOCAL track_functions=all for the issue transaction only", "functions", functions,
+                "databaseSettings", databaseSettings()));
+        assertEquals("none", jdbc.queryForObject("SHOW track_functions", String.class), "No tracking setting leaks to later operations");
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
+    void hundredAndMaximumSourcesCompareSparseWireWithoutDuplicatingTheSnapshot() throws Exception {
+        int samples = integerEnv("UTEN_PRODUCTION_STRESS_SAMPLES", 3, 1, 30);
+        historyRows = integerEnv("UTEN_PRODUCTION_STRESS_HISTORY_ROWS", 20_000, 20_000, 500_000);
+        boolean historySeeded = false;
+        for (String sizeText : System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_SIZES", "100,500").split(",")) {
+            int size = Integer.parseInt(sizeText.trim());
+            assertTrue(size == 100 || size == 500);
+            var scenario = factory.sharedTree("wire-scale-" + size + "-" + suffix(), size);
+            if (!historySeeded) {
+                factory.terminalAnalysisMetadata(scenario, historyRows);
+                factory.historicalBomMasters(scenario, historyRows);
+                historySeeded = true;
+            }
+            for (String table : List.of("production_material_analyses", "production_material_analysis_items", "goods_bom_items", "goods")) {
+                jdbc.execute("ANALYZE " + table);
+            }
+            emit(Map.of("event", "wire-scale", "products", size, "materials", size * 98,
+                    "historyRows", historyRows, "databaseSettings", databaseSettings(),
+                    "databaseProfile", System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE", "test-default")));
+            AnalysisView view = analysis.preview(request(scenario, null, "wire-preview-" + suffix()));
+            assertInitialDemand(scenario, view);
+            MaterialAnalysisWireMeasurement.compare(json, view, size, samples, this::emit);
+            var actor = SecurityContextHolder.getContext().getAuthentication();
+            UUID id = view.analysisId();
+            byte[] response = measured("MOCK_HTTP", "GET material-analyses/detail.sparse", size, () -> {
+                var result = http.perform(get("/api/production/material-analyses/{id}", id)
+                        .queryParam("projection", com.uten.imp.features.production.analysis.MaterialAnalysisSparseProjection.VERSION)
+                        .with(authentication(actor))).andReturn().getResponse();
+                assertEquals(200, result.getStatus());
+                return result.getContentAsByteArray();
+            });
+            var wire = json.readTree(response);
+            assertEquals(com.uten.imp.features.production.analysis.MaterialAnalysisSparseProjection.VERSION, wire.path("projection").asText());
+            assertEquals(size * 98, wire.path("flatMaterials").size());
+            factory.login(scenario);
+            var decisions = view.flatMaterials().stream().filter(MaterialView::actionable).limit(500)
+                    .map(row -> new RouteDecision(row.materialLineId(), row.actionGroupKey(), row.sourceSuggestion(), null)).toList();
+            assertEquals(500, decisions.size());
+            var routes = new RouteRequest(view.version(), view.fingerprint(), "wire-batch-routes-" + suffix(), decisions);
+            var confirmed = measured("SERVICE", "analysis.saveRoutes.500.batch", size,
+                    () -> analysis.saveRoutes(id, routes));
+            for (var decision : decisions) assertTrue(confirmed.flatMaterials().stream().anyMatch(row ->
+                    row.materialLineId().equals(decision.materialLineId()) && decision.route().equals(row.sourceConfirmed())));
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
     void hundredSourcesCompareFootprintHashRepresentations() throws Exception {
         var scenario = factory.sharedTree("hash-compare-" + suffix(), 100);
         factory.terminalAnalysisMetadata(scenario, 20_000);
@@ -407,13 +493,16 @@ class ProductionMaterialAnalysisScalePostgresTest {
                     assertEquals(200, response.getStatus());
                     return response.getContentAsByteArray();
                 });
-                measured("MOCK_HTTP", "GET material-analyses/detail.shared", size, () -> {
+                byte[] sharedResponse = measured("MOCK_HTTP", "GET material-analyses/detail.shared", size, () -> {
                     var response = http.perform(get("/api/production/material-analyses/{id}", id)
-                            .param("projection",com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjection.VERSION)
+                            .queryParam("projection",com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjection.VERSION)
                             .with(authentication(actor))).andReturn().getResponse();
                     assertEquals(200,response.getStatus());
                     return response.getContentAsByteArray();
                 });
+                assertEquals(com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjection.VERSION,
+                        json.readTree(sharedResponse).path("projection").asText(),
+                        "The shared HTTP sample must actually negotiate the shared wire representation");
                 // Spring Security clears the MockMvc request's thread context.
                 // Restore the fixture actor before the next direct service call.
                 factory.login(scenario);
@@ -631,6 +720,12 @@ class ProductionMaterialAnalysisScalePostgresTest {
             row.put("operationUsedHeapBytes", Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
             profile.complete(row);
             long serializationStart = System.nanoTime();
+            if(result instanceof GenerateResult generated) {
+                var sparse=MaterialAnalysisWireMeasurement.generatedResponse(json,generated);
+                row.putAll(sparse);
+                row.put("serviceAndSparseSerializationMillis",(double)row.get("elapsedMillis")
+                        +(double)sparse.get("sparseSerializationMillis"));
+            }
             row.put("responseBytes", result instanceof byte[] bytes ? bytes.length : json.writeValueAsBytes(result).length);
             if (result instanceof AnalysisView view) {
                 row.put("legacyResponseBytes",row.get("responseBytes"));

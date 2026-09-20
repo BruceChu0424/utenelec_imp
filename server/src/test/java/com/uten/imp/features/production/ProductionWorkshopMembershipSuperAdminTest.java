@@ -3,6 +3,7 @@ package com.uten.imp.features.production;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -13,6 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 
 /**
  * 超级管理员不隶属任何车间，却必须能替任何车间办理执行段（开工 / 报工 / 确认用料）。
@@ -67,17 +70,33 @@ class ProductionWorkshopMembershipSuperAdminTest {
         verifyNoInteractions(em);
     }
 
-    /** 段负责人本人的短路仍在超管判定之后、查库之前。 */
+    /** Being named on an old task does not exempt a former employee from current eligibility. */
     @Test
-    void segmentOwnerStillShortCircuits() {
+    void inactiveSegmentOwnerCannotBypassEmployeeStatus() {
         EntityManager em = mock(EntityManager.class);
         UUID me = UUID.randomUUID();
+        Query query=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(),any())).thenReturn(query);
+        when(query.getSingleResult()).thenReturn(false);
 
         boolean allowed = membership(em, staff(false))
                 .isWorkshopMember(UUID.randomUUID(), me, me);
 
-        assertThat(allowed).isTrue();
-        verifyNoInteractions(em);
+        assertThat(allowed).isFalse();
+        org.mockito.Mockito.verify(query).setParameter("responsibleId",me);
+        org.mockito.Mockito.verify(query).getSingleResult();
+    }
+
+    @Test
+    void activeSegmentOwnerRetainsExplicitTaskAssignment() {
+        EntityManager em=mock(EntityManager.class);
+        Query query=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(),any())).thenReturn(query);
+        when(query.getSingleResult()).thenReturn(true);
+        UUID me=UUID.randomUUID();
+        assertThat(membership(em,staff(false)).isWorkshopMember(UUID.randomUUID(),me,me)).isTrue();
     }
 
     /** 未登录（无安全上下文）不能当成超管。 */

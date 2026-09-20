@@ -13,7 +13,6 @@
 -- sort_order 按老库 ID 序生成（保持老系统 001.jpg 的行序）。
 -- =====================================================================
 
-BEGIN;
 -- Analysis/material rows may reference BOM evidence in the current schema.
 -- Keep FK/audit triggers active so a reload on a used database fails closed.
 DELETE FROM goods_bom_items;
@@ -24,6 +23,39 @@ CREATE TEMP TABLE bom_stage (
     vend_legacy_id int, summary text, bom_status boolean, sstatus boolean
 );
 \copy bom_stage FROM '/tmp/goods_bom.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM bom_stage GROUP BY legacy_id HAVING legacy_id IS NULL OR count(*) <> 1) THEN
+        RAISE EXCEPTION 'legacy BOM requires one non-null unique source identity per edge';
+    END IF;
+END;
+$$;
+
+-- The full bootstrap preserves this explicit source evidence across modules.
+-- Standalone execution also reports it; an excluded legacy edge never becomes
+-- an operational BOM through a later historical-reference master insertion.
+CREATE TEMP TABLE IF NOT EXISTS bootstrap_bom_exclusions (
+    source_file text NOT NULL,
+    source_legacy_id integer NOT NULL,
+    parent_legacy_id integer,
+    component_legacy_id integer,
+    reason text NOT NULL CHECK (reason = 'EXCLUDED_NON_OPERATIONAL_MASTER'),
+    PRIMARY KEY (source_file, source_legacy_id)
+);
+INSERT INTO bootstrap_bom_exclusions (
+    source_file, source_legacy_id, parent_legacy_id, component_legacy_id, reason)
+SELECT 'goods_bom.csv', source.legacy_id, source.goods_legacy_id, source.component_legacy_id,
+       'EXCLUDED_NON_OPERATIONAL_MASTER'
+FROM bom_stage source
+WHERE NOT EXISTS (
+          SELECT 1 FROM goods parent_goods
+          WHERE parent_goods.legacy_id = source.goods_legacy_id
+            AND NOT parent_goods.is_deleted AND NOT parent_goods.auto_created)
+   OR NOT EXISTS (
+          SELECT 1 FROM goods component_goods
+          WHERE component_goods.legacy_id = source.component_legacy_id
+            AND NOT component_goods.is_deleted AND NOT component_goods.auto_created);
 
 INSERT INTO goods_bom_items (
     legacy_id, goods_id, component_goods_id,
@@ -78,7 +110,17 @@ BEGIN
 END
 $$;
 
-COMMIT;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM bom_stage) <>
+       (SELECT count(*) FROM goods_bom_items item
+        JOIN bom_stage source ON source.legacy_id = item.legacy_id)
+       + (SELECT count(*) FROM bootstrap_bom_exclusions WHERE source_file = 'goods_bom.csv') THEN
+        RAISE EXCEPTION 'legacy BOM source rows must equal imported edges plus exact non-operational exclusions';
+    END IF;
+END;
+$$;
+
 
 SELECT '✔ 组装信息 迁入 ' || count(*) || ' 行，覆盖成品 ' || count(DISTINCT goods_id) || ' 个' AS 结果
 FROM goods_bom_items;

@@ -54,6 +54,7 @@ class MaterialWorkshopAnchorEndToEndTest {
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionPlanService plans;
+    @Autowired com.uten.imp.features.production.execution.ProductionExecutionSegmentService segments;
     @Autowired com.uten.imp.features.sales.order.SalesOrderService sales;
     @Autowired com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService finance;
     @Autowired com.uten.imp.features.common.taskclaim.TaskClaimService claims;
@@ -99,6 +100,22 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertTrue(refreshed.flatMaterials().stream().noneMatch(row -> row.materialLineId().equals(removedMaterial)));
         var after = materialRowVersions(c);
         for (var row : before.entrySet()) if (!row.getKey().equals(removedMaterial)) assertEquals(row.getValue(), after.get(row.getKey()));
+    }
+
+    @Test void reactivatedChangedBomStillClearsAndCountsItsHistoricalConfirmation() {
+        Case c = create("snapshot-reactivate", false);
+        UUID material = c.materials().getFirst();
+        UUID edge = db.queryForObject("SELECT id FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",
+                UUID.class, c.root(), c.world().goodsC());
+        fixture.loginAs(c.world().superAdminUserId()); goodsBom.delete(c.root(), edge);
+        fixture.loginAs(c.planner()); refreshCase(c, "deactivate");
+        assertEquals(false, db.queryForObject("SELECT active FROM production_material_analysis_materials WHERE id=?", Boolean.class, material));
+        // An administrative correction restores the same historical BOM identity.
+        db.update("UPDATE goods_bom_items SET is_deleted=FALSE,deleted_at=NULL,qty=2 WHERE id=?", edge);
+        var restored = refreshCase(c, "restore-changed-edge");
+        assertEquals(1, restored.routeResetCount());
+        assertEquals(null, material(restored, material).sourceConfirmed());
+        qty("20000", material(restored, material).requiredQty());
     }
 
     private Map<UUID, String> materialRowVersions(Case c) {
@@ -204,17 +221,114 @@ class MaterialWorkshopAnchorEndToEndTest {
                 .filter(row -> row.level() == 1 && "MAKE".equals(row.sourceConfirmed()))
                 .map(MaterialView::materialLineId).toList();
         assertEquals(2, parents.size());
-        for (UUID parent : parents) issue(c, parent, "3000", "partial-" + parent, true);
+        for (UUID parent : parents) {
+            var result = issue(c, parent, "3000", "partial-" + parent, true);
+            UUID planId = result.plans().getFirst().planId();
+            UUID segmentId = db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=?", UUID.class, planId);
+            fixture.loginAs(c.world().superAdminUserId());
+            segments.confirmRoute(planId, segmentId,
+                    new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(
+                            db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segmentId),
+                            "formal-path-route-" + segmentId, "FULL_KIT"));
+            fixture.loginAs(c.planner());
+        }
 
-        var view = analyses.detail(c.analysis());
+        var view = refreshCase(c, "formal-path-route-selected");
         for (UUID materialId : c.materials()) {
             qty("3000", material(view, materialId).allocatedAvailableQty());
             qty("7000", material(view, materialId).demandSupplyGapQty());
+            qty("0", material(view, materialId).externalFutureCoverageQty());
         }
         qty("6000", c.materials().stream().map(id -> material(view, id).allocatedAvailableQty())
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
         assertEquals(2, count("SELECT count(*) FROM production_material_demands demand JOIN production_plans plan ON plan.id=demand.plan_id "
                 + "WHERE plan.material_analysis_id=? AND demand.required_qty=3000 AND demand.is_deleted=FALSE", c.analysis()));
+    }
+
+    @Test void mixedGoodsRoutesRemainIndependentAndDoNotLearnARequestOrderDependentDefault() {
+        Case c = create("routes-mixed", true);
+        var before = analyses.detail(c.analysis());
+        long goodsVersion = db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC());
+        var choices = List.of(new RouteDecision(c.materials().get(0), null, "BUY", "外购物料路径"),
+                new RouteDecision(c.materials().get(1), null, "MAKE", "车间自制路径"));
+        var changed = analyses.saveRoutes(c.analysis(), new RouteRequest(before.version(), before.fingerprint(),
+                "route-mixed-" + c.analysis(), choices));
+        assertEquals("BUY", material(changed, c.materials().get(0)).sourceConfirmed());
+        assertEquals("MAKE", material(changed, c.materials().get(1)).sourceConfirmed());
+        assertEquals("自制", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
+        assertEquals(goodsVersion, db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC()));
+        var routeFacts = db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_by,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis());
+        var reversed = new ArrayList<>(choices); java.util.Collections.reverse(reversed);
+        var repeated = analyses.saveRoutes(c.analysis(), new RouteRequest(changed.version(), changed.fingerprint(),
+                "route-mixed-reverse-" + c.analysis(), reversed));
+        assertEquals(routeFacts, db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_by,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis()),
+                "Equal confirmations must not rewrite their actor or time when request order changes");
+        assertEquals("BUY", material(repeated, c.materials().get(0)).sourceConfirmed());
+        assertEquals("MAKE", material(repeated, c.materials().get(1)).sourceConfirmed());
+        var uniform = choices.stream().map(choice -> new RouteDecision(choice.materialLineId(), null, "BUY", null)).toList();
+        var learned = analyses.saveRoutes(c.analysis(), new RouteRequest(repeated.version(), repeated.fingerprint(),
+                "route-uniform-" + c.analysis(), uniform));
+        assertEquals("采购", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
+        assertEquals(goodsVersion + 1, db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC()));
+        for (UUID id : c.materials()) assertEquals("BUY", material(learned, id).sourceConfirmed());
+    }
+
+    @Test void routeBatchRejectsDuplicateInvalidForeignAndCommittedChangesWithoutPartialWrites() {
+        Case c = create("routes-atomic", true);
+        var initial = analyses.detail(c.analysis());
+        var good = new RouteDecision(c.materials().get(0), null, "BUY", null);
+        var original = db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis());
+        for (var choices : List.of(List.of(good, good),
+                List.of(good, new RouteDecision(c.materials().get(1), null, "INVALID", null)),
+                List.of(good, new RouteDecision(UUID.randomUUID(), null, "MAKE", null)))) {
+            assertThrows(ApiException.class, () -> analyses.saveRoutes(c.analysis(), new RouteRequest(initial.version(),
+                    initial.fingerprint(), "bad-route-" + UUID.randomUUID(), choices)));
+            assertEquals(original, db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis()));
+            assertEquals(initial.version(), analyses.detail(c.analysis()).version());
+            assertEquals("自制", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
+        }
+        var buyer = analyses.saveRoutes(c.analysis(), new RouteRequest(initial.version(), initial.fingerprint(),
+                "route-buy-" + c.analysis(), List.of(good)));
+        var supplied = commands.notifySupply(c.analysis(), new NotifyRequest(buyer.version(), buyer.fingerprint(),
+                "route-committed-" + c.analysis(), "BUY", List.of(good.materialLineId()), null, null));
+        var facts = db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis());
+        var incompatible = List.of(new RouteDecision(c.materials().get(1), null, "SUBCONTRACT", null),
+                new RouteDecision(c.materials().get(0), null, "MAKE", null));
+        assertThrows(ApiException.class, () -> analyses.saveRoutes(c.analysis(), new RouteRequest(supplied.version(),
+                supplied.fingerprint(), "route-conflict-" + c.analysis(), incompatible)));
+        assertEquals(facts, db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis()));
+        assertEquals("采购", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
+    }
+
+    @Test void concurrentRouteBatchesRejectTheStaleVersionAndLearnGoodsExactlyOnce() throws Exception {
+        Case c = create("routes-concurrent", true);
+        var initial = analyses.detail(c.analysis());
+        long goodsVersion = db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC());
+        var choices = c.materials().stream().map(id -> new RouteDecision(id, null, "BUY", null)).toList();
+        var workers = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            var jobs = java.util.stream.IntStream.range(0, 2).mapToObj(index -> workers.submit(() -> {
+                fixture.loginAs(c.planner());
+                try {
+                    assertTrue(start.await(30, TimeUnit.SECONDS));
+                    return analyses.saveRoutes(c.analysis(), new RouteRequest(initial.version(), initial.fingerprint(),
+                            "concurrent-route-" + c.analysis() + "-" + index, choices));
+                } finally { SecurityContextHolder.clearContext(); }
+            })).toList();
+            start.countDown();
+            int succeeded = 0, conflicted = 0;
+            for (var job : jobs) {
+                try { job.get(120, TimeUnit.SECONDS); succeeded++; }
+                catch (java.util.concurrent.ExecutionException failure) {
+                    assertInstanceOf(ApiException.class, failure.getCause()); conflicted++;
+                }
+            }
+            assertEquals(1, succeeded); assertEquals(1, conflicted);
+        } finally { workers.shutdownNow(); }
+        fixture.loginAs(c.planner());
+        assertEquals(goodsVersion + 1, db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC()));
+        for (UUID id : c.materials()) assertEquals("BUY", material(analyses.detail(c.analysis()), id).sourceConfirmed());
     }
 
     private void postGenericStock(Case c, UUID goods, String quantity, String type) {
@@ -421,6 +535,85 @@ class MaterialWorkshopAnchorEndToEndTest {
         AnalysisView after=analyses.detail(c.analysis());
         UUID anchor=material(after,c.subcontractLine()).planAnchorAnalysisLineId();
         qty("10000",product(after,anchor).requestedQty());
+        qty("0", material(after, c.subcontractLine()).externalFutureCoverageQty());
+        qty("15000", material(after, c.subcontractLine()).internalCommittedOutputQty());
+    }
+
+    @Test void subcontractSecondCandidateBatchConsumesExistingCommitmentBeforeAddingSurplus() {
+        assertSubcontractSecondBatch(false, "4000", "10000", "0");
+    }
+
+    @Test void subcontractSecondCandidateOverquantityAddsOnlyTrueSurplus() {
+        assertSubcontractSecondBatch(false, "6000", "12000", "2000");
+    }
+
+    @Test void subcontractSecondAnchorBatchConsumesExistingCommitmentBeforeAddingSurplus() {
+        assertSubcontractSecondBatch(true, "4000", "10000", "0");
+    }
+
+    @Test void subcontractSecondAnchorOverquantityUpdatesPreparationCommitment() {
+        assertSubcontractSecondBatch(true, "6000", "12000", "2000");
+    }
+
+    @Test void subcontractSurplusCancellationProtectsPlansThenReleasesExactAndPublicCommitment() {
+        MixedCase c = createMixed("sc-cancel-" + UUID.randomUUID().toString().substring(0, 8));
+        var before = analyses.detail(c.analysis());
+        var first = commands.issueWorkshopPlans(c.analysis(), new IssueWorkshopPlansRequest(
+                before.version(), before.fingerprint(), "sc-cancel-first-" + c.analysis(), c.world().warehouseId(),
+                BusinessTime.today(), null, false, List.of(line(c.subcontractLine(), "6000"))));
+        var second = commands.issueWorkshopPlans(c.analysis(), new IssueWorkshopPlansRequest(
+                first.analysis().version(), first.analysis().fingerprint(), "sc-cancel-second-" + c.analysis(),
+                c.world().warehouseId(), BusinessTime.today(), null, false, List.of(line(c.subcontractLine(), "6000"))));
+        UUID surplusAction = db.queryForObject("SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND public_surplus_qty>0",
+                UUID.class, c.analysis());
+        assertThrows(ApiException.class, () -> commands.cancelAction(c.analysis(), surplusAction,
+                cancel(second.analysis(), "blocked")), "Public-only actions also protect actual plan output");
+        plans.delete(second.plans().getFirst().planId());
+        commands.cancelAction(c.analysis(), surplusAction, cancel(analyses.detail(c.analysis()), "surplus"));
+        qty("10000", db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
+                BigDecimal.class, c.analysis()));
+        plans.delete(first.plans().getFirst().planId());
+        UUID original = db.queryForObject("SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND requested_qty>0",
+                UUID.class, c.analysis());
+        commands.cancelAction(c.analysis(), original, cancel(analyses.detail(c.analysis()), "original"));
+        assertEquals("CANCELLED", db.queryForObject("SELECT status FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
+                String.class, c.analysis()));
+        assertEquals(0, count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND status<>'CANCELLED'", c.analysis()));
+    }
+
+    private static CancelRequest cancel(AnalysisView view, String suffix) {
+        return new CancelRequest(view.version(), view.fingerprint(), "cancel-" + view.analysisId() + "-" + suffix,
+                "回归验证撤回未生产承诺");
+    }
+
+    private void assertSubcontractSecondBatch(boolean anchorInput, String secondQty,
+            String required, String surplus) {
+        MixedCase c = createMixed("sc-repeat-" + UUID.randomUUID().toString().substring(0, 8));
+        var first = commands.issueWorkshopPlans(c.analysis(), issueRequest(c.analysis(),
+                analyses.detail(c.analysis()), c.world(), "first", line(c.subcontractLine(), "6000")));
+        UUID anchor = material(first.analysis(), c.subcontractLine()).planAnchorAnalysisLineId();
+        var secondLine = anchorInput
+                ? new IssueWorkshopPlansRequest.IssuePlanLine(null, anchor, new BigDecimal(secondQty),
+                        null, null, null, null, null, null, null)
+                : line(c.subcontractLine(), secondQty);
+        var request = issueRequest(c.analysis(), first.analysis(), c.world(), "second", secondLine);
+        var second = commands.issueWorkshopPlans(c.analysis(), request);
+        assertEquals(1, second.plans().size());
+        qty(required, db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
+                BigDecimal.class, c.analysis()));
+        qty("10000", db.queryForObject("SELECT SUM(requested_qty) FROM preplan_supply_actions WHERE analysis_id=? AND status<>'CANCELLED'",
+                BigDecimal.class, c.analysis()));
+        qty(surplus, db.queryForObject("SELECT SUM(public_surplus_qty) FROM preplan_supply_actions WHERE analysis_id=? AND status<>'CANCELLED'",
+                BigDecimal.class, c.analysis()));
+        qty(surplus, db.queryForObject("SELECT SUM(public_surplus_qty) FROM production_material_analysis_plan_links WHERE analysis_id=?",
+                BigDecimal.class, c.analysis()));
+        qty("10000", product(second.analysis(), anchor).requestedQty());
+        var replay = commands.issueWorkshopPlans(c.analysis(), request);
+        assertTrue(replay.replayed());
+        assertEquals(second.plans().getFirst().planId(), replay.plans().getFirst().planId());
+        qty(required, db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
+                BigDecimal.class, c.analysis()));
+        assertEquals(2, count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?", c.analysis()));
     }
 
     /** 同一批自制候选二次下达：走既有锚点（不新建子件行），只消费剩余配额，计划数累加。 */

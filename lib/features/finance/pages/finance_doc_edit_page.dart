@@ -212,6 +212,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
             .read(financeRepositoryProvider(widget.docType))
             .detail(widget.id!);
         final writable =
+            !d.legacyImported &&
             d.status == kFinanceStatusDraft &&
             await loadDocumentOwnerCanWrite(
               ref,
@@ -220,7 +221,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
             );
         if (!mounted) return;
         if (!writable) {
-          context.appWarning(documentScopeReadOnlyMessage, force: true);
+          _initializationError = d.legacyImported
+              ? financeLegacyReadOnlyMessage
+              : documentScopeReadOnlyMessage;
+          context.appWarning(_initializationError!, force: true);
           context.replace(
             RoutePath.financeDocDetail(_cfg.type.pathSegment, widget.id!),
           );
@@ -249,11 +253,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
         }
         if (_cfg.type == FinanceDocType.receipt) {
-          _receiptKind =
-              d.receiptKind ??
-              (d.items.isEmpty
-                  ? _receiptKindCustomerPrepayment
-                  : _receiptKindArSettlement);
+          final kind = d.receiptKind?.trim().toUpperCase();
+          if (kind != _receiptKindCustomerPrepayment &&
+              kind != _receiptKindArSettlement) {
+            _initializationError = '收款类型待核实，不能根据明细数量推断或编辑。';
+            return;
+          }
+          _receiptKind = kind!;
           _receiptSalesOrderId = d.salesOrderId;
           if (d.salesOrderId case final orderId?) {
             try {
@@ -618,6 +624,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   }
 
   Future<void> _save() async {
+    if (_loading || _saving || _initializationError != null) return;
     if (_createdDocId case final createdId?) {
       // 单据已创建、凭证未全部上传：只补传附件，成功后进入详情。
       await _finishCreatedDocument(createdId);

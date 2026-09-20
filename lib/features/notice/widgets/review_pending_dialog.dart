@@ -69,6 +69,7 @@ String workbenchRouteFor(
   'VISITOR_HOST_CONFIRM_REQUIRED' => '/my-visitors',
   'EXPENSE_CLAIM_SUBMITTED' ||
   'EXPENSE_CLAIM_PENDING_PAYMENT' => '/expense/approval',
+  'EXPENSE_CLAIM_REJECTED' => RouteName.expense,
   'PAYROLL_BATCH_SUBMITTED' ||
   'PAYROLL_BATCH_PENDING_PUBLISH' => '/payroll/review',
   // 建议箱列表默认「建议广场」（全部建议），scope 是页面状态不是 URL 参数。
@@ -375,11 +376,13 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
               const SizedBox(height: UtenSpacing.s16),
               Flexible(
                 child: singleReviewOnly
-                    ? _LargeItemCard(
-                        theme: theme,
-                        notice: _items.first,
-                        status: _statusById[_items.first.id],
-                        onTap: () => _openWorkbench(),
+                    ? SingleChildScrollView(
+                        child: _LargeItemCard(
+                          theme: theme,
+                          notice: _items.first,
+                          status: _statusById[_items.first.id],
+                          onTap: () => _openWorkbench(),
+                        ),
                       )
                     : ListView(
                         shrinkWrap: true,
@@ -590,7 +593,8 @@ String _eventGroupLabel(String? sourceEvent) => switch (sourceEvent) {
   'VISITOR_APPLY_SUBMITTED' => '访客申请待审批',
   'VISITOR_HOST_CONFIRM_REQUIRED' => '访客待确认接待',
   'EXPENSE_CLAIM_SUBMITTED' => '报销待审批',
-  'EXPENSE_CLAIM_PENDING_PAYMENT' => '报销待打款',
+  'EXPENSE_CLAIM_PENDING_PAYMENT' => '报销待付款',
+  'EXPENSE_CLAIM_REJECTED' => '报销待修订',
   'PAYROLL_BATCH_SUBMITTED' => '工资批次待审核',
   'PAYROLL_BATCH_PENDING_PUBLISH' => '工资批次待发布',
   'SUGGESTION_SUBMITTED' => '建议待回复',
@@ -610,6 +614,7 @@ IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
   'VISITOR_HOST_CONFIRM_REQUIRED' => Icons.handshake_outlined,
   'EXPENSE_CLAIM_SUBMITTED' => Icons.receipt_long_outlined,
   'EXPENSE_CLAIM_PENDING_PAYMENT' => Icons.payments_outlined,
+  'EXPENSE_CLAIM_REJECTED' => Icons.edit_note_outlined,
   'PAYROLL_BATCH_SUBMITTED' => Icons.request_quote_outlined,
   'PAYROLL_BATCH_PENDING_PUBLISH' => Icons.publish_outlined,
   'SUGGESTION_SUBMITTED' => Icons.lightbulb_outline,
@@ -688,8 +693,17 @@ class _LargeItemCard extends StatelessWidget {
                   color: scheme.onSurfaceVariant,
                   height: 1.45,
                 ),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+                // 到料、尚缺和领料提示是一条完整业务信息，不能截断其后半段。
+                maxLines:
+                    notice.sourceEvent ==
+                        'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                    ? null
+                    : 3,
+                overflow:
+                    notice.sourceEvent ==
+                        'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                    ? TextOverflow.visible
+                    : TextOverflow.ellipsis,
               ),
             ],
             const SizedBox(height: UtenSpacing.s12),
@@ -739,13 +753,31 @@ class _CompactItemCard extends StatelessWidget {
             ),
             const SizedBox(width: UtenSpacing.s8),
             Expanded(
-              child: Text(
-                notice.title,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    notice.title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (notice.sourceEvent ==
+                          'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' &&
+                      notice.content.isNotEmpty) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    Text(
+                      notice.content,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(width: UtenSpacing.s8),

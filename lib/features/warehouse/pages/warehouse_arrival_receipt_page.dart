@@ -259,7 +259,7 @@ class _WarehouseArrivalReceiptPageState
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
     ).selectableIds;
-    // 上次落仓/库位记忆只补空位：行内已有值（上次收货仓 / 建议仓 / 货品资料带出的
+    // 个人选仓上下文只补空位：行内已有值（上次收货仓 / 建议仓 / 货品资料带出的
     // 库位）优先级都更高，见 warehouse_arrival_fill_memory.dart。
     final memory = ref.read(warehouseArrivalFillMemoryProvider);
     final rememberedWarehouse = selectable.contains(memory.warehouseId)
@@ -269,10 +269,6 @@ class _WarehouseArrivalReceiptPageState
       if (!selectable.contains(line.warehouseId)) {
         line.warehouseId = rememberedWarehouse;
         line.warehouseAutofilled = rememberedWarehouse != null;
-      }
-      final place = memory.stockPlace;
-      if (place != null && line.stockPlace.text.trim().isEmpty) {
-        line.stockPlace.setAutomaticText(place);
       }
     }
     _removedLineCount = 0;
@@ -337,9 +333,6 @@ class _WarehouseArrivalReceiptPageState
         }
       });
     }
-    ref
-        .read(warehouseArrivalFillMemoryProvider.notifier)
-        .rememberStockPlace(value);
   }
 
   /// 行级入库仓库选择（主/子仓级联滑窗；行级必填）：
@@ -370,6 +363,9 @@ class _WarehouseArrivalReceiptPageState
     if (picked == null || !mounted) return;
     setState(() {
       for (final target in targets) {
+        if (target.warehouseId != picked.id && target.stockPlace.autofilled) {
+          target.stockPlace.clear();
+        }
         target.warehouseId = picked.id;
         target.warehouseAutofilled = false;
       }
@@ -383,7 +379,7 @@ class _WarehouseArrivalReceiptPageState
   }
 
   /// 右键「批量设置库位号」（2026-09-12，与批量登记页统一口径）：一次输入应用
-  /// 到全部选中行，并记住这次写的库位号（下次登记自动带）。
+  /// 到全部选中行，只作用本次选中行(成功入库后按仓库、货品和颜色学习)。
   Future<void> _batchFillStockPlace(List<_ArrivalReceiptLine> rows) async {
     if (_saving || rows.isEmpty) return;
     final place = await showBatchPlaceFillDialog(
@@ -402,9 +398,6 @@ class _WarehouseArrivalReceiptPageState
         line.setCheckedStockPlace(place);
       }
     });
-    ref
-        .read(warehouseArrivalFillMemoryProvider.notifier)
-        .rememberStockPlace(place);
   }
 
   /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「登记并送检」按钮。

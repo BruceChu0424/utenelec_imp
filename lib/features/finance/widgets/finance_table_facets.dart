@@ -12,7 +12,7 @@ List<MasterFacetBucket> financeDictionaryFacets(Map<String, String> entries) {
 const financeDocumentStatusFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: '0', label: '草稿', count: 0),
   MasterFacetBucket(value: '1', label: '已审', count: 0),
-  MasterFacetBucket(value: '2', label: '红冲', count: 0),
+  MasterFacetBucket(value: '-1', label: '红冲', count: 0),
 ];
 
 /// 收款类型固定枚举桶（financeReceiptKindLabel 同口径；计数由列表页动态数据体现，
@@ -20,6 +20,7 @@ const financeDocumentStatusFacets = <MasterFacetBucket>[
 const financeReceiptKindFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: 'AR_SETTLEMENT', label: '货款收款(核销应收)', count: 0),
   MasterFacetBucket(value: 'CUSTOMER_PREPAYMENT', label: '客户订单预收', count: 0),
+  MasterFacetBucket(value: 'LEGACY_UNCLASSIFIED', label: '历史收款类型待核实', count: 0),
 ];
 
 const financeArApDirectionFacets = <MasterFacetBucket>[
@@ -35,13 +36,15 @@ const financeArApSettledFacets = <MasterFacetBucket>[
 const financeArApSourceTypeFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: 'SALES_SHIPMENT', label: '销售发运', count: 0),
   MasterFacetBucket(value: 'SALES_RETURN', label: '销售退货', count: 0),
-  MasterFacetBucket(value: 'DIRECT_RECEIPT', label: '财务直接预收', count: 0),
+  MasterFacetBucket(value: 'DIRECT_RECEIPT', label: '财务收款', count: 0),
+  MasterFacetBucket(value: 'DIRECT_PAYMENT', label: '财务付款', count: 0),
   MasterFacetBucket(value: 'PURCHASE_RECEIPT', label: '采购收货', count: 0),
   MasterFacetBucket(value: 'PURCHASE_RETURN', label: '采购退货', count: 0),
   MasterFacetBucket(value: 'SUBCONTRACT_RECEIPT', label: '委外进仓', count: 0),
   MasterFacetBucket(value: 'SUBCONTRACT_RETURN', label: '委外退货', count: 0),
   MasterFacetBucket(value: 'SUBCONTRACT_WASTE', label: '委外损耗扣款', count: 0),
   MasterFacetBucket(value: 'OPENING_BALANCE', label: '期初余额', count: 0),
+  MasterFacetBucket(value: 'LEGACY_OPENING', label: '历史期初（原单来源待核实）', count: 0),
   MasterFacetBucket(value: 'MANUAL_AR', label: '手工应收', count: 0),
   MasterFacetBucket(value: 'MANUAL_AP', label: '手工应付', count: 0),
 ];
@@ -58,6 +61,7 @@ const financeReconciliationSourceFacets = <MasterFacetBucket>[
 const financePayablesBusinessTypeFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: 'PURCHASE', label: '采购', count: 0),
   MasterFacetBucket(value: 'SUBCONTRACT', label: '委外', count: 0),
+  MasterFacetBucket(value: 'DIRECT', label: '其他往来', count: 0),
 ];
 
 const financePayablesStatusFacets = <MasterFacetBucket>[

@@ -10,7 +10,6 @@
 -- emp_id 原样保留为 legacy 快照；owner_employee_id 仅按唯一 employees.legacy_id 精确写入。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 DO $$
@@ -113,7 +112,6 @@ LEFT JOIN unique_employees employee_owner
       ELSE NULL
   END;
 
-COMMIT;
 
 SELECT '✔ 供应商 ' || count(*) ||
        '，已挂分类 ' || count(category_id) ||

@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
+import 'expense_counts_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -10,16 +12,18 @@ import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
 import '../../basic_data/repositories/payment_style_repository.dart';
 import '../models/expense_claim.dart';
+import '../models/expense_invoice.dart';
 import '../models/expense_item.dart';
 import '../models/expense_payment.dart';
 import '../repositories/expense_repository.dart';
 
-enum ExpenseFilter { all, draft, processing, finished }
+enum ExpenseFilter { all, draft, rejected, processing, finished }
 
 extension ExpenseFilterValue on ExpenseFilter {
   String get label => switch (this) {
     ExpenseFilter.all => '全部',
     ExpenseFilter.draft => '草稿',
+    ExpenseFilter.rejected => '待修订',
     ExpenseFilter.processing => '处理中',
     ExpenseFilter.finished => '已完成',
   };
@@ -27,15 +31,13 @@ extension ExpenseFilterValue on ExpenseFilter {
   Iterable<ExpenseClaimStatus>? get apiStatuses => switch (this) {
     ExpenseFilter.all => null,
     ExpenseFilter.draft => const [ExpenseClaimStatus.draft],
+    ExpenseFilter.rejected => const [ExpenseClaimStatus.rejected],
     ExpenseFilter.processing => const [
       ExpenseClaimStatus.submitted,
       ExpenseClaimStatus.reviewing,
       ExpenseClaimStatus.approved,
     ],
-    ExpenseFilter.finished => const [
-      ExpenseClaimStatus.paid,
-      ExpenseClaimStatus.rejected,
-    ],
+    ExpenseFilter.finished => const [ExpenseClaimStatus.paid],
   };
 }
 
@@ -149,18 +151,60 @@ final expenseDetailProvider = FutureProvider.autoDispose
       return ref.watch(expenseRepositoryProvider).getById(id);
     });
 
-Future<void> submitExpense(WidgetRef ref, String id) async {
-  await ref.read(expenseRepositoryProvider).submit(id);
+/// 队列汇总（审批页统计卡：待审批/待打款/本月口径）。
+final expenseQueueSummaryProvider =
+    FutureProvider.autoDispose<ExpenseQueueSummary>((ref) {
+      ref.watch(masterDataSessionKeyProvider);
+      return ref.watch(expenseRepositoryProvider).summary();
+    });
+
+Future<void> submitExpense(
+  WidgetRef ref,
+  String id, {
+  int? expectedVersion,
+}) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .submit(
+        id,
+        expectedVersion:
+            expectedVersion ??
+            ref.read(expenseDetailProvider(id)).requireValue.version,
+      );
   _invalidateExpense(ref, id);
 }
 
-Future<void> withdrawExpense(WidgetRef ref, String id) async {
-  await ref.read(expenseRepositoryProvider).withdraw(id);
+Future<void> withdrawExpense(
+  WidgetRef ref,
+  String id, {
+  int? expectedVersion,
+}) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .withdraw(
+        id,
+        expectedVersion:
+            expectedVersion ??
+            ref.read(expenseDetailProvider(id)).requireValue.version,
+      );
   _invalidateExpense(ref, id);
 }
 
-Future<void> deleteExpense(WidgetRef ref, String id) async {
-  await ref.read(expenseRepositoryProvider).delete(id);
+Future<void> deleteExpense(
+  WidgetRef ref,
+  String id, {
+  int? expectedVersion,
+}) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .delete(
+        id,
+        expectedVersion:
+            expectedVersion ??
+            ref.read(expenseDetailProvider(id)).requireValue.version,
+      );
+  ref.invalidate(expenseCountsProvider);
+  ref.invalidate(draftCountsProvider);
   ref.invalidate(expenseListProvider);
   ref.invalidate(expenseApprovalListProvider);
 }
@@ -176,16 +220,79 @@ Future<ExpenseClaim> createExpense(
       .create(
         ExpenseClaimCreateInput(title: title, items: items, remark: remark),
       );
+  ref.invalidate(expenseCountsProvider);
+  ref.invalidate(draftCountsProvider);
   ref.invalidate(expenseListProvider);
   return claim;
 }
 
-enum ApprovalQueue { pending, payable }
+/// 编辑保存（DRAFT/REJECTED；明细整组替换，V608）。
+Future<ExpenseClaim> updateExpense(
+  WidgetRef ref,
+  String id, {
+  required int expectedVersion,
+  required String title,
+  required List<ExpenseItem> items,
+  String? remark,
+}) async {
+  final claim = await ref
+      .read(expenseRepositoryProvider)
+      .update(
+        id,
+        ExpenseClaimCreateInput(
+          title: title,
+          items: items,
+          remark: remark,
+          expectedVersion: expectedVersion,
+        ),
+      );
+  ref.invalidate(expenseCountsProvider);
+  ref.invalidate(draftCountsProvider);
+  ref.invalidate(expenseListProvider);
+  ref.invalidate(expenseDetailProvider(id));
+  return claim;
+}
+
+/// 发票登记/修改（V608）：成功后刷新详情（发票表/轨迹联动）。
+Future<ExpenseClaim> saveExpenseInvoice(
+  WidgetRef ref,
+  String claimId,
+  ExpenseClaimInvoiceInput input, {
+  String? invoiceId,
+}) async {
+  final repository = ref.read(expenseRepositoryProvider);
+  final claim = invoiceId == null
+      ? await repository.addInvoice(claimId, input)
+      : await repository.updateInvoice(claimId, invoiceId, input);
+  ref.invalidate(expenseDetailProvider(claimId));
+  return claim;
+}
+
+Future<void> deleteExpenseInvoice(
+  WidgetRef ref,
+  String claimId,
+  String invoiceId,
+) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .deleteInvoice(
+        claimId,
+        invoiceId,
+        expectedVersion: ref
+            .read(expenseDetailProvider(claimId))
+            .requireValue
+            .version,
+      );
+  ref.invalidate(expenseDetailProvider(claimId));
+}
+
+enum ApprovalQueue { pending, payable, history }
 
 extension ApprovalQueueValue on ApprovalQueue {
   String get label => switch (this) {
     ApprovalQueue.pending => '待审批',
-    ApprovalQueue.payable => '待打款',
+    ApprovalQueue.payable => '待付款',
+    ApprovalQueue.history => '已处理',
   };
 }
 
@@ -199,9 +306,14 @@ final approvalQueueProvider = StateProvider.autoDispose<ApprovalQueue>((ref) {
 /// 审批列表表头筛选（2026-09-10）：部门 id + 年月（yyyy-MM），下推后端
 /// departmentId / year / month 参数（非页内裁剪）。
 class ExpenseApprovalFilters {
-  const ExpenseApprovalFilters({this.departmentId, this.yearMonth});
+  const ExpenseApprovalFilters({
+    this.departmentId,
+    this.yearMonth,
+    this.category,
+  });
 
   final String? departmentId;
+  final String? category;
 
   /// yyyy-MM（业务时区），拆成后端 year/month。
   final String? yearMonth;
@@ -224,6 +336,7 @@ class ExpenseApprovalFilters {
   Map<String, String?> get asTableFilters => {
     if (departmentId != null) 'departmentName': departmentId,
     if (yearMonth != null) 'yearMonth': yearMonth,
+    if (category != null) 'category': category,
   };
 
   ExpenseApprovalFilters withColumn(String key, String? value) {
@@ -231,10 +344,17 @@ class ExpenseApprovalFilters {
       'departmentName' => ExpenseApprovalFilters(
         departmentId: value,
         yearMonth: yearMonth,
+        category: category,
       ),
       'yearMonth' => ExpenseApprovalFilters(
         departmentId: departmentId,
         yearMonth: value,
+        category: category,
+      ),
+      'category' => ExpenseApprovalFilters(
+        departmentId: departmentId,
+        yearMonth: yearMonth,
+        category: value,
       ),
       _ => this,
     };
@@ -255,6 +375,7 @@ final expenseApprovalFacetsProvider = FutureProvider.autoDispose
       return ref.watch(expenseRepositoryProvider).facets(switch (queue) {
         ApprovalQueue.pending => ApprovalFacetQueue.pending,
         ApprovalQueue.payable => ApprovalFacetQueue.payable,
+        ApprovalQueue.history => ApprovalFacetQueue.history,
       });
     });
 
@@ -266,8 +387,18 @@ final expenseApprovalListProvider =
 
 class ExpenseApprovalListNotifier
     extends AutoDisposeAsyncNotifier<PagedResult<ExpenseClaim>> {
+  int _requestGeneration = 0;
+
   @override
   Future<PagedResult<ExpenseClaim>> build() {
+    _requestGeneration++;
+    ref.listen(masterDataSessionKeyProvider, (previous, next) {
+      if (previous == next) return;
+      _requestGeneration++;
+      state = const AsyncLoading();
+      ref.invalidateSelf();
+    });
+    ref.onDispose(() => _requestGeneration++);
     // 换分段 / 换表头筛选 → 重建即回第 1 页。
     ref.watch(approvalQueueProvider);
     ref.watch(expenseApprovalFiltersProvider);
@@ -299,7 +430,9 @@ class ExpenseApprovalListNotifier
     state = const AsyncLoading<PagedResult<ExpenseClaim>>().copyWithPrevious(
       state,
     );
-    state = await AsyncValue.guard(() => _fetch(page));
+    final generation = _requestGeneration;
+    final result = await AsyncValue.guard(() => _fetch(page));
+    if (generation == _requestGeneration) state = result;
   }
 
   Future<PagedResult<ExpenseClaim>> _fetch(int page) {
@@ -312,12 +445,21 @@ class ExpenseApprovalListNotifier
         year: filters.year,
         month: filters.month,
         departmentId: filters.departmentId,
+        category: filters.category,
+      ),
+      ApprovalQueue.history => repository.listHistory(
+        page: page,
+        year: filters.year,
+        month: filters.month,
+        departmentId: filters.departmentId,
+        category: filters.category,
       ),
       ApprovalQueue.payable => repository.listPayable(
         page: page,
         year: filters.year,
         month: filters.month,
         departmentId: filters.departmentId,
+        category: filters.category,
       ),
     };
   }
@@ -325,6 +467,7 @@ class ExpenseApprovalListNotifier
 
 final expensePaymentOptionsProvider =
     FutureProvider.autoDispose<ExpensePaymentOptions>((ref) async {
+      ref.watch(masterDataSessionKeyProvider);
       final accountFuture = ref.watch(accountRepositoryProvider).dict();
       final styleFuture = ref
           .watch(paymentStyleRepositoryProvider)
@@ -334,22 +477,55 @@ final expensePaymentOptionsProvider =
       return buildExpensePaymentOptions(accounts, styles);
     });
 
-Future<void> approveExpense(WidgetRef ref, String id) async {
-  await ref.read(expenseRepositoryProvider).approve(id);
+Future<void> approveExpense(
+  WidgetRef ref,
+  String id, {
+  int? expectedVersion,
+}) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .approve(
+        id,
+        expectedVersion:
+            expectedVersion ??
+            ref.read(expenseDetailProvider(id)).requireValue.version,
+      );
   _invalidateExpense(ref, id);
 }
 
-Future<void> rejectExpense(WidgetRef ref, String id, String reason) async {
-  await ref.read(expenseRepositoryProvider).reject(id, reason);
+Future<void> rejectExpense(
+  WidgetRef ref,
+  String id,
+  String reason, {
+  int? expectedVersion,
+}) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .reject(
+        id,
+        reason,
+        expectedVersion:
+            expectedVersion ??
+            ref.read(expenseDetailProvider(id)).requireValue.version,
+      );
   _invalidateExpense(ref, id);
 }
 
 Future<void> payExpense(
   WidgetRef ref,
   String id,
-  ExpensePaymentInput input,
-) async {
-  await ref.read(expenseRepositoryProvider).pay(id, input);
+  ExpensePaymentInput input, {
+  int? expectedVersion,
+}) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .pay(
+        id,
+        input,
+        expectedVersion:
+            expectedVersion ??
+            ref.read(expenseDetailProvider(id)).requireValue.version,
+      );
   _invalidateExpense(ref, id);
 }
 
@@ -422,6 +598,10 @@ bool _isSelectableMasterStatus(String? status) {
 }
 
 void _invalidateExpense(WidgetRef ref, String id) {
+  ref.invalidate(expenseQueueSummaryProvider);
+  ref.invalidate(expenseApprovalFacetsProvider);
+  ref.invalidate(expenseCountsProvider);
+  ref.invalidate(draftCountsProvider);
   ref.invalidate(expenseListProvider);
   ref.invalidate(expenseApprovalListProvider);
   ref.invalidate(expenseDetailProvider(id));

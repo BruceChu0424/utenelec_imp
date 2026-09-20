@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.common.integrity.ProcurementReceiptOriginPolicy;
+
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProcurementIqcRejectionPort;
@@ -94,6 +96,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     public void receive(String receiptType, UUID receiptId, UUID warehouseId,
                         List<ProcurementInspectionPort.ReceivedLine> lines, OffsetDateTime receivedAt) {
         mutationLocks.requireReceiptCovered(receiptType,receiptId);
+        ProcurementReceiptOriginPolicy.requireNative(em,receiptType,List.of(receiptId));
         UUID actor = currentUser.requireEmployeeId();
         for (ReceivedLine l : lines) {
             BigDecimal rate = positiveRate(l.unitRate());
@@ -295,6 +298,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         """)
                 .setParameter("rt", receiptType).setParameter("rid", receiptId).getResultList();
         mutationGuard.verifyUnchanged();
+        ProcurementReceiptOriginPolicy.requireNative(em,receiptType,List.of(receiptId));
         Map<UUID, Object[]> result = new java.util.LinkedHashMap<>();
         for (Object[] row : rows) result.put((UUID) row[0], row);
         return result;
@@ -580,9 +584,9 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                ON i.receipt_type = 'SUBCONTRACT' AND sri.id = i.receipt_item_id
                         LEFT JOIN subcontract_order_items soi ON soi.id = sri.order_item_id
                         LEFT JOIN subcontract_orders so ON so.id = soi.order_id
-                        WHERE i.receipt_type = :rt AND i.receipt_id = :rid
+                        WHERE i.receipt_type = :rt AND i.receipt_id = :rid AND %s
                         ORDER BY i.received_at, i.id
-                        """)
+                        """.formatted(ProcurementReceiptOriginPolicy.currentInspectionReceipt("i")))
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
                 .getResultList();
@@ -626,10 +630,10 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         FROM agg a
                         JOIN (
                             SELECT 'PURCHASE'::text AS t, id, bill_no, bill_date, supplier_id
-                            FROM purchase_receipts WHERE COALESCE(is_deleted, false) = false
+                            FROM purchase_receipts WHERE COALESCE(is_deleted, false) = false AND legacy_id IS NULL
                             UNION ALL
                             SELECT 'SUBCONTRACT'::text, id, bill_no, bill_date, supplier_id
-                            FROM subcontract_receipts WHERE COALESCE(is_deleted, false) = false
+                            FROM subcontract_receipts WHERE COALESCE(is_deleted, false) = false AND legacy_id IS NULL
                         ) x ON x.t = a.receipt_type AND x.id = a.receipt_id
                         LEFT JOIN suppliers s ON s.id = x.supplier_id
                         ORDER BY a.first_received_at
@@ -650,8 +654,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                             FROM procurement_inspection_items
                             WHERE status IN ('PENDING', 'PARTIAL')
                             GROUP BY receipt_type, receipt_id
-                        ) pending
-                        """)
+                        ) pending WHERE %s
+                        """.formatted(ProcurementReceiptOriginPolicy.currentInspectionReceipt("pending")))
                 .getSingleResult()).longValue();
     }
 

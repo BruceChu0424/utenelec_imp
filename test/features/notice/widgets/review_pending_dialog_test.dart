@@ -65,6 +65,14 @@ class _FakeNoticeRepository implements NoticeRepository {
 
 void main() {
   setUp(resetReviewPendingDialogForTest);
+  test('expense correction returns to the applicant workbench', () {
+    expect(workbenchRouteFor('EXPENSE_CLAIM_REJECTED'), RouteName.expense);
+    expect(workbenchRouteFor('EXPENSE_CLAIM_SUBMITTED'), '/expense/approval');
+    expect(
+      workbenchRouteFor('EXPENSE_CLAIM_PENDING_PAYMENT'),
+      '/expense/approval',
+    );
+  });
 
   test('production workshop tasks use their dedicated workbench route', () {
     expect(
@@ -138,11 +146,12 @@ void main() {
     String title = '待财务确认：SO-001',
     String? actionRoute,
     String sourceEvent = 'SALES_ORDER_PENDING_FINANCE_CONFIRM',
+    String content = '销售订货单已审核，待财务确认。',
   }) {
     return Notice(
       id: id,
       title: title,
-      content: '销售订货单已审核，待财务确认。',
+      content: content,
       type: NoticeType.approval,
       publisher: '系统',
       publishedAt: DateTime.now().subtract(const Duration(minutes: 2)),
@@ -203,6 +212,38 @@ void main() {
       showReviewPendingDialog(context, pending: pending, manual: manual),
     );
     await tester.pumpAndSettle();
+  }
+
+  for (final grouped in [false, true]) {
+    testWidgets(
+      'workshop material progress remains complete in ${grouped ? 'grouped' : 'single'} popup',
+      (tester) async {
+        const content =
+            'A 物料本次到货 100 件，尚缺 900 件。\n'
+            'B 物料尚缺 1000 件。\n'
+            '仓库料请先领取，直送料按交接投入。\n'
+            '两种物料共同支持产量后才能开工；进行中请继续领料。';
+        final repo = _FakeNoticeRepository();
+        await pumpDialog(
+          tester,
+          repo: repo,
+          pending: [
+            noticeOf(
+              'workshop',
+              title: '车间物料到货',
+              sourceEvent: 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED',
+              content: content,
+            ),
+            if (grouped) noticeOf('finance'),
+          ],
+        );
+        final text = tester.widget<Text>(find.text(content));
+        expect(text.maxLines, isNull);
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+        expect(find.text('去工作台处理'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   // ---------------- 人工通知（人事/公司通知）分组（2026-09-10，ADR-063 §8）----------------

@@ -45,6 +45,7 @@ public class InventoryMutationLock {
             return;
         }
         List<InventoryKey> keys = requested.stream().distinct().sorted().toList();
+        GoodsOwningWarehouseSyncService.requireDeclaredInventory(keys);
         com.uten.imp.application.concurrency.FulfillmentLockState.beforeInventoryLocks(keys.stream()
                 .map(key -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
                         key.goodsId(), key.colorId())).toList());
@@ -108,13 +109,40 @@ public class InventoryMutationLock {
         }
         if (held.closed) throw new IllegalStateException("A completed transaction cannot own an inventory mutex");
         held.keys.add(key.canonical());
+        held.inventory.add(key);
+    }
+
+    /** Re-establish the complete current inventory proof before acquiring posting goods rows. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    List<InventoryKey> reacquirePostingScope() {
+        HeldKeys held = (HeldKeys) TransactionSynchronizationManager.getResource(heldKeysResource);
+        if (held == null || held.closed || held.inventory.isEmpty()) {
+            throw new IllegalStateException("Posting goods locks require the complete inventory prefix");
+        }
+        List<InventoryKey> scope = held.inventory.stream().sorted().toList();
+        lockAll(scope);
+        return scope;
     }
 
     private final class HeldKeys implements TransactionSynchronization {
         private final Set<String> keys = new HashSet<>();
+        private final Set<InventoryKey> inventory = new HashSet<>();
+        private final com.uten.imp.common.concurrency.SavepointSnapshots<Set<InventoryKey>> savepoints =
+                new com.uten.imp.common.concurrency.SavepointSnapshots<>();
         private boolean closed;
 
         @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
+
+        @Override public void savepoint(Object savepoint) { savepoints.record(savepoint, Set.copyOf(inventory)); }
+
+        @Override public void savepointRollback(Object savepoint) {
+            Set<InventoryKey> retained = savepoints.rollback(savepoint);
+            inventory.clear(); keys.clear();
+            if (retained != null) {
+                inventory.addAll(retained);
+                retained.forEach(key -> keys.add(key.canonical()));
+            }
+        }
 
         @Override public void suspend() {
             if (TransactionSynchronizationManager.getResource(heldKeysResource) == this) {
@@ -131,11 +159,13 @@ public class InventoryMutationLock {
             // run, but PostgreSQL has already released transaction locks.
             closed = true;
             keys.clear();
+            inventory.clear(); savepoints.clear();
         }
 
         @Override public void afterCompletion(int status) {
             closed = true;
             keys.clear();
+            inventory.clear(); savepoints.clear();
             if (TransactionSynchronizationManager.getResource(heldKeysResource) == this) {
                 TransactionSynchronizationManager.unbindResource(heldKeysResource);
             }

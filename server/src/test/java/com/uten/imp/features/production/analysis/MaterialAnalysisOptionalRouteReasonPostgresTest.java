@@ -185,6 +185,21 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
         }
     }
 
+    @Test void refreshComparisonUsesPostgresNullNumericAndDateEquality() {
+        for (Object[] pair : List.of(
+                new Object[] {new java.math.BigDecimal("1.000000"), java.math.BigDecimal.ONE},
+                new Object[] {new java.math.BigDecimal("12345678901234.5678"), new java.math.BigDecimal("12345678901234.5679")},
+                new Object[] {java.math.BigDecimal.ZERO, null}, new Object[] {null, null})) {
+            assertThat(MaterialAnalysisSnapshotBaseline.sameSqlValue(pair[0], pair[1])).isEqualTo(
+                    jdbc.queryForObject("SELECT CAST(? AS numeric) IS NOT DISTINCT FROM CAST(? AS numeric)", Boolean.class, pair));
+        }
+        var date = java.time.LocalDate.of(2026, 9, 20);
+        assertThat(MaterialAnalysisSnapshotBaseline.sameSqlValue(java.sql.Date.valueOf(date), date)).isEqualTo(
+                jdbc.queryForObject("SELECT CAST(? AS date) IS NOT DISTINCT FROM CAST(? AS date)", Boolean.class, java.sql.Date.valueOf(date), date));
+        assertThat(MaterialAnalysisSnapshotBaseline.sameSqlValue(false, null)).isFalse();
+        assertThat(MaterialAnalysisSnapshotBaseline.sameSqlValue("", null)).isFalse();
+    }
+
     @Test
     void oversizedReasonFailsAtServiceAndDatabaseWithoutChangingTheSavedRoute() {
         Fixture fixture = createFixture();

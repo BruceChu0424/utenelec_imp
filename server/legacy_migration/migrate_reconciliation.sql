@@ -3,7 +3,6 @@
 -- sign-off. They make silent source-row loss and stale UUID relationships block
 -- the bootstrap before it can be considered a cutover candidate.
 
-BEGIN;
 
 UPDATE legacy_migration_runs
 SET reconciliation_status = 'RUNNING'
@@ -21,73 +20,73 @@ SELECT :'run_id'::uuid, 'goods_categories.csv', 'material_categories',
        'legacy_row_count', :'expected_material_categories'::bigint, count(*),
        count(*) = :'expected_material_categories'::bigint,
        'Counts imported legacy identities; the protected system root is excluded.'
-FROM material_categories WHERE legacy_id IS NOT NULL AND legacy_id <> -1
+FROM material_categories WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'material_categories') AND legacy_id <> -1
 UNION ALL
 SELECT :'run_id'::uuid, 'mould_categories.csv', 'mould_categories',
        'legacy_row_count', :'expected_mould_categories'::bigint, count(*),
        count(*) = :'expected_mould_categories'::bigint,
        'Counts imported legacy identities; the protected system root is excluded.'
-FROM mould_categories WHERE legacy_id IS NOT NULL AND legacy_id <> -1
+FROM mould_categories WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'mould_categories') AND legacy_id <> -1
 UNION ALL
 SELECT :'run_id'::uuid, 'client_categories.csv', 'client_categories',
        'legacy_row_count', :'expected_client_categories'::bigint, count(*),
        count(*) = :'expected_client_categories'::bigint,
        'Counts imported legacy identities; the protected system root is excluded.'
-FROM client_categories WHERE legacy_id IS NOT NULL AND legacy_id <> -1
+FROM client_categories WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'client_categories') AND legacy_id <> -1
 UNION ALL
 SELECT :'run_id'::uuid, 'supplier_categories.csv', 'supplier_categories',
        'legacy_row_count', :'expected_supplier_categories'::bigint, count(*),
        count(*) = :'expected_supplier_categories'::bigint,
        'Counts imported legacy identities; the protected system root is excluded.'
-FROM supplier_categories WHERE legacy_id IS NOT NULL AND legacy_id <> -1
+FROM supplier_categories WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'supplier_categories') AND legacy_id <> -1
 UNION ALL
 SELECT :'run_id'::uuid, 'color.csv', 'colors', 'legacy_row_count',
        :'expected_colors'::bigint, count(*),
        count(*) = :'expected_colors'::bigint,
        'Counts rows retaining the reviewed legacy primary key.'
-FROM colors WHERE legacy_id IS NOT NULL
+FROM colors WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'colors')
 UNION ALL
 SELECT :'run_id'::uuid, 'unit.csv', 'units', 'legacy_row_count',
        :'expected_units'::bigint, count(*),
        count(*) = :'expected_units'::bigint,
        'Counts rows retaining the reviewed legacy primary key.'
-FROM units WHERE legacy_id IS NOT NULL
+FROM units WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'units')
 UNION ALL
 SELECT :'run_id'::uuid, 'currency.csv', 'currencies', 'legacy_row_count',
        :'expected_currencies'::bigint, count(*),
        count(*) = :'expected_currencies'::bigint,
        'Counts rows retaining the reviewed legacy primary key.'
-FROM currencies WHERE legacy_id IS NOT NULL
+FROM currencies WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'currencies')
 UNION ALL
 SELECT :'run_id'::uuid, 'warehouse.csv', 'warehouses', 'legacy_row_count',
        :'expected_warehouses'::bigint, count(*),
        count(*) = :'expected_warehouses'::bigint,
        'Counts rows retaining the reviewed legacy primary key.'
-FROM warehouses WHERE legacy_id IS NOT NULL
+FROM warehouses WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'warehouses')
 UNION ALL
 SELECT :'run_id'::uuid, 'mould.csv', 'moulds', 'legacy_row_count',
        :'expected_moulds'::bigint, count(*),
        count(*) = :'expected_moulds'::bigint,
        'Counts rows retaining the reviewed legacy primary key.'
-FROM moulds WHERE legacy_id IS NOT NULL
+FROM moulds WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'moulds')
 UNION ALL
 SELECT :'run_id'::uuid, 'client.csv', 'clients', 'legacy_row_count',
        :'expected_clients'::bigint, count(*),
        count(*) = :'expected_clients'::bigint,
        'Counts rows retaining the reviewed legacy primary key.'
-FROM clients WHERE legacy_id IS NOT NULL
+FROM clients WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'clients')
 UNION ALL
 SELECT :'run_id'::uuid, 'supplier.csv', 'suppliers', 'legacy_row_count',
        :'expected_suppliers'::bigint, count(*),
        count(*) = :'expected_suppliers'::bigint,
        'Counts rows retaining the reviewed legacy primary key.'
-FROM suppliers WHERE legacy_id IS NOT NULL
+FROM suppliers WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'suppliers')
 UNION ALL
 SELECT :'run_id'::uuid, 'goods.csv', 'goods', 'legacy_row_count',
        :'expected_goods'::bigint, count(*),
        count(*) = :'expected_goods'::bigint,
-       'Historical FK anchors have no legacy primary key and are excluded.'
-FROM goods WHERE legacy_id IS NOT NULL
+       'Count exact B_Goods source identities; separately proven historical FK anchors are excluded.'
+FROM goods WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table = 'goods')
 UNION ALL
 SELECT :'run_id'::uuid, 'export_manifest.json', 'legacy_migration_run_files',
        'consumed_csv_inventory', :'expected_csv_files'::bigint, count(*),
@@ -183,6 +182,7 @@ SELECT :'run_id'::uuid, 'B_Client.PStyle/manual review', 'clients.sales_payment_
        'unresolved_sales_payment_types', 0, count(*), count(*) = 0,
        'Every non-deleted client must be classified as MONTHLY, CASH, or DEPOSIT before cutover; disabled clients may still own historical AR/receipts.'
 FROM v_client_sales_payment_type_migration_issues
+WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table='clients')
 UNION ALL
 SELECT :'run_id'::uuid, 'S_Out active legacy drafts',
        'v_sales_shipment_finance_gate_migration_exceptions',
@@ -230,5 +230,3 @@ SELECT :'run_id'::uuid, 'historical orphan references', 'goods',
        'retained_fk_anchor_goods', NULL, count(*), TRUE,
        'Informational: retained auto-created goods are historical FK anchors and remain excluded from live BOM/MRP.'
 FROM goods WHERE auto_created = TRUE;
-
-COMMIT;

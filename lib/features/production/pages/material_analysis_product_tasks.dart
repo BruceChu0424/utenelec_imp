@@ -218,7 +218,9 @@ abstract class _MaterialAnalysisProductTasksState
     final names = ref.read(masterNameServiceProvider);
     final picked = await showUtenWarehousePickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy,
+      hierarchy: names.warehouseHierarchy
+          .where((warehouse) => !warehouse.isLineSide)
+          .toList(),
       initialWarehouseId: currentWarehouseId,
       title: '选择所属仓库', // TODO(l10n): 补 arb
       allowParent: true,

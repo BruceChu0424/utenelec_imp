@@ -11,16 +11,15 @@
 --   · 部门：ParentID → SystemItem(ItemclassID=5) → legacy_departments.department_id → departments
 --     （映射表集中在本文件 §1，HR review 改这里即可，重跑幂等）。
 --   · 职位：老库 Post/Duty 全空，实际工种在 Emp_Style → 按 (工种, 映射部门) 建 positions（LEG-P-* 码）。
---   · PII：身份证/手机按服务端同口径 pgcrypto 加密 + HMAC 查重哈希（密钥经 /tmp/_uten_keys.sql
+--   · PII：身份证/手机按服务端同口径 pgcrypto 加密 + HMAC 查重哈希（密钥经 :legacy_key_file
 --     注入，migrate.sh 用后即时删除，不落库不明文）。
 -- 幂等：全量 upsert（employees 按 legacy_id、positions 按 (code,department_id)、
 --   sensitive 按 employee_id），重跑安全。
 -- =====================================================================
 
 -- 注入密钥变量（:pgp_key / :pgp_ver / :hmac_key），文件由 migrate.sh 生成、用后删除
-\i /tmp/_uten_keys.sql
+\i :legacy_key_file
 
-BEGIN;
 -- Serialize with the V282 JVM backfill.  The capability is transaction-local
 -- and dedicated to this reviewed legacy import; ordinary online SQL cannot
 -- change the seven employees plaintext PII columns after V282.
@@ -130,7 +129,7 @@ WHERE s.legacy_id IS NOT NULL AND s.legacy_id <> 0
 -- ---------------- §4 敏感信息：身份证/手机（pgcrypto + HMAC，与服务端同口径） ----------------
 -- 仅 stub 员工；V286 后缺失身份证/主手机号必须保持 NULL，不得用空串密文伪造已登记身份。
 -- enc/hash/last4 同源同空：源值空白时三者均为 NULL，非空时才生成版本化密文及派生值。
--- 老库存在同人重复建档（如 罗孝南 231/362 同身份证号）：id_card_hash 有唯一约束，
+-- 老库可能存在同一人的重复档案：id_card_hash 有唯一约束，
 -- 同证号只给最小 legacy_id 那行挂哈希，其余留 NULL（查重语义保留给唯一档）。
 INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_last4, id_card_hash, phone_enc, phone_hash)
 SELECT e.id,
@@ -154,7 +153,6 @@ ON CONFLICT (employee_id) DO UPDATE
         phone_enc     = EXCLUDED.phone_enc,
         phone_hash    = EXCLUDED.phone_hash;
 
-COMMIT;
 
 -- ---------------- 校验 ----------------
 SELECT '✔ 老库 B_Worker 总数 ' || (SELECT count(*) FROM hr_stage) AS r

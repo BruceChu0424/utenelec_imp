@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/payables/models/finance_payable.dart';
@@ -15,6 +16,88 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  for (final scenario in [
+    (
+      name: 'positive',
+      amount: '12.0000',
+      currency: 'currency-1',
+      allowed: true,
+    ),
+    (
+      name: 'negative',
+      amount: '-12.0000',
+      currency: 'currency-1',
+      allowed: false,
+    ),
+    (name: 'zero', amount: '0.0000', currency: 'currency-1', allowed: false),
+    (
+      name: 'unknown original',
+      amount: null,
+      currency: 'currency-1',
+      allowed: false,
+    ),
+    (
+      name: 'unknown currency',
+      amount: '12.0000',
+      currency: null,
+      allowed: false,
+    ),
+  ]) {
+    testWidgets('legacy payable ${scenario.name} payment eligibility', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final api = _PageApi(
+        itemOverrides: {
+          'businessType': 'DIRECT',
+          'sourceDocType': 'LEGACY_OPENING',
+          'openItemKind': 'LEGACY_UNVERIFIED',
+          'outstandingOriginal': scenario.amount,
+          'currencyId': scenario.currency,
+        },
+      );
+      await tester.binding.setSurfaceSize(const Size(1440, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            financePayablesRepositoryProvider.overrideWithValue(
+              FinancePayablesRepository(api),
+            ),
+            apiClientProvider.overrideWithValue(api),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            settlementMethodOptionsProvider.overrideWith((_) async => const []),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.arApLedgerView,
+              Perm.financeViewAll,
+              Perm.financePaymentCreate,
+            }),
+          ],
+          child: const MaterialApp(home: FinancePayablesPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<FinancePayableItem>>(
+        find.byType(MasterDataTableView<FinancePayableItem>),
+      );
+      final item = table.items.single;
+      expect(item.openItemKindLabel, '历史往来余额');
+      expect(item.sourceTypeLabel, '历史期初（原单来源待核实）');
+      expect(item.businessTypeLabel, '其他往来');
+      table.onFilterChanged('businessType', 'DIRECT');
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['businessType'], 'DIRECT');
+      table.onSelectedIdsChanged!({'ap-1'});
+      await tester.pump();
+      final button = tester.widget<UtenButton>(
+        find.byKey(const ValueKey('finance-payables-create-payment')),
+      );
+      expect(button.onPressed != null, scenario.allowed);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('renders KPI, payable columns and payment deep link', (
     tester,
   ) async {
@@ -299,9 +382,10 @@ void main() {
 }
 
 class _PageApi extends ApiClient {
-  _PageApi({this.itemCount = 1}) : super(Dio());
+  _PageApi({this.itemCount = 1, this.itemOverrides = const {}}) : super(Dio());
 
   final int itemCount;
+  final Map<String, dynamic> itemOverrides;
   Map<String, dynamic>? lastQuery;
 
   @override
@@ -349,6 +433,7 @@ class _PageApi extends ApiClient {
             'outstandingLocal': '5200.00',
             'status': 'OVERDUE',
             'overdueDays': 7,
+            ...itemOverrides,
           },
       ],
       'page': 1,

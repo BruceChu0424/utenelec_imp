@@ -46,4 +46,10 @@ public class DailyReportItemDto {
     private UUID directTransferDemandId;
     /** 直送接收方的可读标识(V595)：父件产品名 编号 · 工单号；详情页「转给工单」列用，非直送行为空。 */
     private String directTransferTargetLabel;
+    /** Exact plan identity for reloading a draft's material rows. */
+    @lombok.Setter
+    private UUID planId;
+    /** Remaining task target after approved ordinary reports; drafts are not completion. */
+    @lombok.Setter
+    private BigDecimal remainingPlanQty;
 }

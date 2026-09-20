@@ -1,12 +1,16 @@
 [Unit]
-Description=Uten IMP daily database+attachments backup
+Description=Uten IMP consistent database and attachment backup
 After=postgresql@16-main.service
 Wants=postgresql@16-main.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/uten-backup-daily
-# 备份脚本内部用 sudo -u postgres pg_dump；以 root 运行最简
+# The paired helper uses local postgres peer authentication and protects media.
 User=root
+UMask=0077
+TimeoutStartSec=35min
+TimeoutStopSec=15s
+KillMode=control-group
 Nice=10
 IOSchedulingClass=idle

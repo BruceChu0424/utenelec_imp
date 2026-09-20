@@ -56,7 +56,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -121,6 +123,13 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = purchasePriceMasked();
         var readScope = access.scope();
+        // 财务审批态切片（financeApproval）：财务通过前 status 保持 0，草稿段与
+        // 「等待财务审核」段同为 status=0，按 PENDING case 集合区分。待审队列很小，
+        // 整集预取后用 IN 谓词，避免逐行子查询。
+        String financeApproval = normalizeFinanceApprovalSlice(f.financeApproval());
+        Set<UUID> pendingFinanceIds = financeApproval == null
+                ? null
+                : approvalProjection.pendingOrderIds(orderType());
         Specification<PurchaseOrder> spec = (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -134,6 +143,19 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            if (financeApproval != null) {
+                if ("PENDING".equals(financeApproval)) {
+                    // 空集时 in() 会生成非法 SQL：无在审单 → 恒假。
+                    if (pendingFinanceIds.isEmpty()) {
+                        ps.add(cb.disjunction());
+                    } else {
+                        ps.add(root.get("id").in(pendingFinanceIds));
+                    }
+                } else if (!pendingFinanceIds.isEmpty()) {
+                    // NONE：排除在审单；没有在审单时无需谓词。
+                    ps.add(cb.not(root.get("id").in(pendingFinanceIds)));
+                }
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
@@ -362,6 +384,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         if (goodsIds == null || goodsIds.isEmpty()) {
             return Map.of();
         }
+        boolean priceMasked = purchasePriceMasked();
         Map<UUID, MasterDefaultTermsPerGoods> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
                 """
@@ -370,7 +393,12 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                        sup.default_currency_id,
                        cur.exchange_rate,
                        sup.default_tax_rate,
-                       g.default_purchase_price
+                       g.default_purchase_price,
+                       g.default_purchase_price_supplier_id,
+                       g.default_purchase_price_color_id,
+                       g.default_purchase_price_unit_id,
+                       g.default_purchase_price_currency_id,
+                       g.default_purchase_price_tax_rate
                 FROM goods g
                 LEFT JOIN suppliers sup
                   ON sup.id = g.default_supplier_id
@@ -383,8 +411,12 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                        OR g.default_purchase_price IS NOT NULL)
                 """).setParameter("ids", goodsIds))) {
             result.put((UUID) row[0], new MasterDefaultTermsPerGoods(
-                    (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    (BigDecimal) row[4], (BigDecimal) row[5], (BigDecimal) row[6]));
+                    (UUID) row[1], priceMasked ? null : (UUID) row[2],
+                    priceMasked ? null : (UUID) row[3], priceMasked ? null : (BigDecimal) row[4],
+                    priceMasked ? null : (BigDecimal) row[5], priceMasked ? null : (BigDecimal) row[6],
+                    priceMasked ? null : new com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext(
+                            (UUID) row[7], (UUID) row[8], (UUID) row[9],
+                            (UUID) row[10], (BigDecimal) row[11])));
         }
         return result;
     }
@@ -399,7 +431,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             UUID currencyId,
             BigDecimal exchangeRate,
             BigDecimal taxRate,
-            BigDecimal purchasePrice) {}
+            BigDecimal purchasePrice,
+            com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext) {}
 
     @Transactional
     @PreAuthorize("hasAuthority('purchase_order:edit')")
@@ -443,6 +476,19 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Override
     public String orderType() {
         return "PURCHASE";
+    }
+
+    /**
+     * 财务审批态切片参数：null/空 = 不切片（legacy 口径，status=0 含在审单）；
+     * NONE = 未提交的真草稿；PENDING = 已提交在审。非法值 fail-closed。
+     */
+    private static String normalizeFinanceApprovalSlice(String raw) {
+        String value = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
+        return switch (value) {
+            case "", "NONE", "PENDING" -> value.isEmpty() ? null : value;
+            default -> throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "财务审批态筛选无效");
+        };
     }
 
     private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockOrderRequest(UUID id,OrderSaveRequest req) {

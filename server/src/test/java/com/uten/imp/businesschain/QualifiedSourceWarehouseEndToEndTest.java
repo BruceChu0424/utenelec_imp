@@ -183,6 +183,47 @@ class QualifiedSourceWarehouseEndToEndTest {
         assertEquals(w.warehouseId(),db.queryForObject("SELECT warehouse_id FROM production_planning_packages WHERE id=?",UUID.class,c.packageId()));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void qualifiedCrossLogicalMainMaterialKeepsItsActualScopeWhenReturnedToNormalSibling(boolean pickAgain){
+        var world=fixture.seedWorld("qualified-normal-return-"+pickAgain);Case c=create(world,"return-custody");
+        UUID actualMain=warehouse("qualified-return-actual-main",false);
+        UUID actual=warehouse("qualified-return-original-leaf",false),received=warehouse("qualified-return-normal-leaf",false);
+        db.update("UPDATE warehouses SET parent_id=? WHERE id IN (?,?)",actualMain,actual,received);
+        pass(c,actual,receive(c,actual,"10"),"10");
+        assertEquals("READY",status(c));
+        UUID draw=db.queryForObject("SELECT document_id FROM production_planning_package_documents WHERE package_id=? AND document_type='DRAW'",UUID.class,c.packageId());
+        fixture.requestWorkshopDraws("qualified-return",List.of(draw));
+        com.uten.imp.features.stock.dto.StockDocIssueRequest issue=call("drawIssueRequest",draw,"qualified-return-first-issue",null,BigDecimal.ZERO);
+        stockDocuments.approveAndIssue(draw,issue);
+        var returns=beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService.class);
+        var source=returns.sources(c.plan(),c.segment()).stream().filter(row->row.issuePostingId()!=null).findFirst().orElseThrow();
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT held.requires_qualified_origin FROM stock_reservations held JOIN production_material_stock_postings posting ON posting.reservation_id=held.id WHERE posting.id=?",Boolean.class,source.issuePostingId()));
+        db.update("UPDATE goods SET min_qty=100 WHERE id=?",c.material());
+        var request=returns.submit(c.plan(),new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(
+                c.segment(),"qualified-return-request","原合格来源保持原实际主仓，余料转正常叶仓",
+                List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),new BigDecimal("3"))))).getFirst();
+        stockDocuments.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(received,"qualified-return-receive"));
+        qty("3",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,received,c.material()));
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT requires_qualified_origin FROM stock_reservations WHERE demand_id IN(SELECT id FROM production_material_demands WHERE execution_segment_id=?) AND warehouse_id=?",Boolean.class,c.segment(),received));
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT fn_warehouse_same_main(?,warehouse_id) FROM production_material_demands WHERE execution_segment_id=?",Boolean.class,received,c.segment()));
+        if(pickAgain){
+            execution.recheckMaterial(c.plan(),c.segment(),new com.uten.imp.features.production.execution.SegmentTransitionRequest(
+                    db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,c.segment()),"qualified-private-repick"));
+            UUID normalDraw=db.queryForObject("SELECT document.id FROM stock_documents document JOIN production_planning_package_documents mapping ON mapping.document_id=document.id WHERE mapping.package_id=? AND mapping.document_type='DRAW' AND document.warehouse_id=?",UUID.class,c.packageId(),received);
+            fixture.requestWorkshopDraws("qualified-normal-repick",List.of(normalDraw));
+            com.uten.imp.features.stock.dto.StockDocIssueRequest repeat=call("drawIssueRequest",normalDraw,"qualified-normal-repeat-issue",null,BigDecimal.ZERO);
+            stockDocuments.approveAndIssue(normalDraw,repeat);
+            qty("10",db.queryForObject("SELECT SUM(consumed_qty) FROM stock_reservations WHERE demand_id IN(SELECT id FROM production_material_demands WHERE execution_segment_id=?)",BigDecimal.class,c.segment()));
+            assertThrows(RuntimeException.class,()->stockDocuments.reverse(request.documentId()));
+            assertEquals(1,db.queryForObject("SELECT status FROM stock_documents WHERE id=?",Integer.class,request.documentId()));
+            return;
+        }
+        stockDocuments.reverse(request.documentId());
+        qty("0",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,received,c.material()));
+        qty("10",db.queryForObject("SELECT SUM(consumed_qty) FROM stock_reservations WHERE demand_id IN(SELECT id FROM production_material_demands WHERE execution_segment_id=?)",BigDecimal.class,c.segment()));
+    }
+
     @Test void publicUninspectedAndOtherAnalysisStockCannotFillTheQualifiedSourceShortage(){
         var w=fixture.seedWorld("qualified-boundaries");
         Case c=create(w,"primary");UUID b=warehouse("qualified-isolated",true);

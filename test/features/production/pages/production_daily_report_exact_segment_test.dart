@@ -18,8 +18,231 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/auth/document_scope_capability.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
 
 void main() {
+  for (final scenario in [
+    'ready',
+    'material-failure',
+    'draft-failure',
+    'legacy-final',
+  ]) {
+    final failMaterialRead = scenario == 'material-failure';
+    final failDraftRead = scenario == 'draft-failure';
+    testWidgets('editing draft preserves stored use: $scenario', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      Map<String, dynamic>? saved;
+      var detailUnavailable = failDraftRead;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            if (detailUnavailable &&
+                request.method == 'GET' &&
+                request.path.endsWith('/daily-reports/draft')) {
+              handler.reject(
+                DioException(
+                  requestOptions: request,
+                  type: DioExceptionType.connectionError,
+                ),
+              );
+              return;
+            }
+            if (request.method == 'PUT' &&
+                request.path.endsWith('/daily-reports/draft')) {
+              saved = Map<String, dynamic>.from(request.data as Map);
+              handler.reject(
+                DioException(
+                  requestOptions: request,
+                  type: DioExceptionType.connectionError,
+                ),
+              );
+              return;
+            }
+            if (failMaterialRead && request.path.endsWith('/clearance')) {
+              handler.reject(
+                DioException(
+                  requestOptions: request,
+                  type: DioExceptionType.connectionError,
+                ),
+              );
+              return;
+            }
+            dynamic data = <dynamic>[];
+            if (request.path.endsWith('/daily-reports/draft')) {
+              data = {
+                'id': 'draft',
+                'status': 0,
+                'rowVersion': 1,
+                'makerId': 'employee-1',
+                'departmentId': 'workshop',
+                'workshopName': '装配第一车间',
+                'workerIds': ['employee-1'],
+                'surplusReturnRequested': failMaterialRead,
+                'items': [
+                  {
+                    'id': 'line',
+                    'goodsId': 'goods-1',
+                    'planId': 'plan-1',
+                    'planItemId': 'plan-item-1',
+                    'planNo': 'SJ-001',
+                    'executionSegmentId': 'segment-1',
+                    'unitId': 'unit-1',
+                    'unitRate': 1,
+                    'qty': 5,
+                    'isFinal': scenario == 'legacy-final',
+                    'remainingPlanQty': 20,
+                  },
+                ],
+                'materialUsages': [
+                  {
+                    'demandId': 'demand-1',
+                    'qtyBase': 7,
+                    'planId': 'plan-1',
+                    'materialExecutionSegmentId': 'segment-1',
+                  },
+                ],
+              };
+            } else if (request.path.endsWith('/material-usage-sources')) {
+              data = [
+                {
+                  'executionSegmentId': 'segment-1',
+                  'executionSegmentCode': 'SEG-001',
+                  'canOpen': true,
+                  'canSettle': true,
+                  'shared': false,
+                },
+              ];
+            } else if (request.path.endsWith('/clearance')) {
+              data = [
+                {
+                  'planId': 'plan-1',
+                  'demandId': 'demand-1',
+                  'goodsId': 'raw',
+                  'goodsName': '测试原料',
+                  'executionSegmentId': 'segment-1',
+                  'issuedQty': 10,
+                  'unclearedQty': 10,
+                  'availableToSettleQty': 10,
+                  'requiredQty': 10,
+                  'requiredForProductQty': 10,
+                  'requirementMode': 'LINEAR',
+                },
+              ];
+            } else if (request.path.endsWith('/direct-transfers/candidates')) {
+              data = {'candidates': <dynamic>[]};
+            }
+            handler.resolve(
+              Response(requestOptions: request, statusCode: 200, data: data),
+            );
+          },
+        ),
+      );
+      final api = ApiClient(dio);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            departmentRepositoryProvider.overrideWithValue(
+              _FakeDepartmentRepository(),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            productionDailyReportRepositoryProvider.overrideWithValue(
+              ProductionDailyReportRepository(api),
+            ),
+            employeeRepositoryProvider.overrideWithValue(
+              _FakeEmployeeRepository(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportEdit,
+            }),
+            documentScopeCapabilityProvider(
+              DocumentDataScope.productionPlan,
+            ).overrideWith(
+              (ref) async => const DocumentScopeCapability(
+                scope: 'production_plan',
+                writeAll: true,
+                writableOwnerIds: {},
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Column(
+              children: [
+                AppNotificationHost(),
+                Expanded(child: ProductionDailyReportEditPage(id: 'draft')),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (failDraftRead) {
+        expect(find.byType(UtenEditableGrid<DailyGridRow>), findsNothing);
+        expect(find.byKey(const ValueKey('uten-edit-save')), findsNothing);
+        expect(saved, isNull);
+        detailUnavailable = false;
+        await tester.tap(find.text('重新读取草稿'));
+        await tester.pumpAndSettle();
+      }
+      if (scenario == 'legacy-final') {
+        await tester.tap(find.text('改为普通报工'));
+        await tester.pumpAndSettle();
+        expect(find.text('改为普通报工'), findsNothing);
+      }
+      if (!failMaterialRead) {
+        expect(find.text('测试原料'), findsOneWidget);
+        var grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
+          find.byType(UtenEditableGrid<DailyGridRow>),
+        );
+        final first = grid.controller.rows.firstWhere(
+          (row) => !row.isMaterialRow,
+        );
+        final copy = first.clone();
+        grid.controller.addRow(copy);
+        await tester.pumpAndSettle();
+        final material = grid.controller.rows.firstWhere(
+          (row) => row.materialEditable,
+        );
+        material.materialUsed.text = '8';
+        grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
+          find.byType(UtenEditableGrid<DailyGridRow>),
+        );
+        grid.onDeleteRow!(first, 0);
+        await tester.pumpAndSettle();
+        final remaining = grid.controller.rows
+            .where((row) => row.materialEditable)
+            .toList();
+        expect(remaining, hasLength(1));
+        expect(remaining.single.materialParent, copy);
+        expect(remaining.single.materialUsed.text, '8');
+      }
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(saved, isNotNull);
+      expect(saved!['materialLines'], [
+        {'demandId': 'demand-1', 'qtyBase': failMaterialRead ? 7 : 8},
+      ]);
+      expect(saved!['surplusReturnRequested'] == true, failMaterialRead);
+      expect(
+        (saved!['items'] as List).every(
+          (item) => (item as Map)['isFinal'] != true,
+        ),
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   test(
     'production workforce tree keeps the center and production branch only',
     () async {

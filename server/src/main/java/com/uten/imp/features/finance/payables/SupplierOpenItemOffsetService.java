@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.gl.GlPostingService;
+import com.uten.imp.features.finance.LegacyOpeningOffsetScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -117,7 +118,9 @@ public class SupplierOpenItemOffsetService {
                         targets.stream().map(Target::payableId))
                 .distinct().sorted().toList();
         Map<UUID, OpenItem> locked = lock(ids);
+        LegacyOpeningOffsetScope history=LegacyOpeningOffsetScope.load(em,ids,"AP",effectiveDate);
         OpenItem source = require(locked, sourceLedgerId);
+        history.requireNativeSource(sourceLedgerId);
         if ("PREPAYMENT".equals(source.kind())) {
             throw conflict(
                     "供应商预付款是资产；专用资产科目、应用、退款和总账链完成前禁止自动核销");
@@ -141,7 +144,7 @@ public class SupplierOpenItemOffsetService {
         for (Target input : targets) {
             OpenItem target = require(locked, input.payableId());
             BigDecimal amount = money(input.amountOriginal());
-            if (!"PAYABLE".equals(target.kind())
+            if (!history.permitsTarget(target.id(),target.kind(),"PAYABLE")
                     || !Objects.equals(target.supplierId(), supplierId)
                     || !Objects.equals(target.currencyId(), currencyId)
                     || target.balanceOriginal() == null || target.balanceOriginal().signum() <= 0
@@ -257,6 +260,7 @@ public class SupplierOpenItemOffsetService {
                 .flatMap(row -> java.util.stream.Stream.of((UUID) row[1], (UUID) row[2]))
                 .distinct().sorted().toList();
         Map<UUID, OpenItem> locked = lock(ledgerIds);
+        LegacyOpeningOffsetScope history=LegacyOpeningOffsetScope.load(em,ledgerIds,"AP",BusinessTime.today());
         LocalDate effectiveDate=com.uten.imp.common.util.NativeValueConverters.toLocalDate(rows.getFirst()[10]);
         if(effectiveDate==null)throw conflict("抵销批次缺少生效日期，不能撤回");
         UUID resolutionId=(UUID)rows.getFirst()[11];
@@ -287,6 +291,8 @@ public class SupplierOpenItemOffsetService {
             BigDecimal expectedTargetAfter = decimal(row[9]);
             OpenItem source = require(locked, sourceId);
             OpenItem target = require(locked, targetId);
+            history.requireNativeSource(sourceId);
+            if(!history.permitsTarget(targetId,target.kind(),"PAYABLE"))throw conflict("原抵扣目标已失去合法应付身份");
             if (source.balanceOriginal().compareTo(expectedSourceAfter) != 0
                     || target.balanceOriginal().compareTo(expectedTargetAfter) != 0
                     || (row.length>15 && row[14]!=null &&

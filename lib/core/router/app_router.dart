@@ -41,7 +41,8 @@ import '../../features/expense/pages/expense_approval_detail_page.dart';
 import '../../features/expense/pages/expense_approval_list_page.dart';
 import '../../features/expense/pages/expense_detail_page.dart';
 import '../../features/expense/pages/expense_list_page.dart';
-import '../../features/expense/pages/expense_new_page.dart';
+import '../../features/expense/pages/expense_claim_edit_page.dart';
+import '../../features/expense/pages/expense_settings_page.dart';
 import '../../features/finance/models/finance_doc.dart';
 import '../../features/finance/pages/finance_ar_ap_page.dart';
 import '../../features/finance/pages/finance_assets_page.dart';
@@ -190,6 +191,17 @@ String? _rejectUnknownStockDoc(BuildContext _, GoRouterState state) =>
     StockDocType.tryByCode(state.pathParameters['code']!) == null
     ? RouteName.notFound
     : null;
+
+String? _rejectStockDocManualEdit(BuildContext context, GoRouterState state) {
+  final unknown = _rejectUnknownStockDoc(context, state);
+  if (unknown != null) return unknown;
+  final code = state.pathParameters['code']!;
+  if (StockDocType.byCode(code).supportsManualDraft) return null;
+  final id = state.pathParameters['id'];
+  return id == null
+      ? RoutePath.stockDocList(code)
+      : RoutePath.stockDocDetail(code, id);
+}
 
 String? _rejectUnknownWarehouseHistoryType(
   BuildContext _,
@@ -458,7 +470,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/expense/new',
             name: 'expense-new',
-            builder: (_, _) => const ExpenseNewPage(),
+            builder: (_, _) => const ExpenseClaimEditPage(),
+          ),
+          GoRoute(
+            path: '/expense/settings',
+            name: 'expense-settings',
+            builder: (_, _) => const ExpenseSettingsPage(),
+          ),
+          GoRoute(
+            path: '/expense/:id/edit',
+            name: 'expense-edit',
+            builder: (_, s) =>
+                ExpenseClaimEditPage(claimId: s.pathParameters['id']!),
           ),
           GoRoute(
             path: '/expense/approval',
@@ -1196,16 +1219,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
-            redirect: _rejectUnknownStockDoc,
+            redirect: _rejectStockDocManualEdit,
             builder: (_, s) => StockDocEditPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
-              sourceDrawId: s.uri.queryParameters['drawId'],
             ),
           ),
           GoRoute(
             path: '/warehouse/:code/:id/edit',
             name: 'stock-doc-edit',
-            redirect: _rejectUnknownStockDoc,
+            redirect: _rejectStockDocManualEdit,
             builder: (_, s) => StockDocEditPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               id: s.pathParameters['id'],

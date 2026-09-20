@@ -136,7 +136,7 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
           continue;
         }
         if (qty > 0) {
-          items.add({'issuePostingId': row.source.issuePostingId, 'qty': qty});
+          items.add(row.source.returnItem(qty));
         }
       }
       if (malformed.isNotEmpty || overAvailable.isNotEmpty) {
@@ -242,12 +242,12 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        '${_grid.rows.where((row) => row.source.availableQty > 0).length} 项可退物料 · ${_grid.rows.map((row) => row.source.warehouseId).toSet().length} 个实际仓库',
+                        '${_grid.rows.where((row) => row.source.availableQty > 0).length} 项可退物料 · ${_grid.rows.map((row) => row.source.sourceWarehouseId).toSet().length} 个来源位置',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: UtenSpacing.s8),
                       const Text(
-                        '填写本次准备退回的数量，其余材料可留待后续生产。提交后由各原领料仓库核对收料，仓库确认后才增加库存。',
+                        '填写当前车间本次送仓的余料数量，其余材料可留待后续生产。仓库核对实物后选择正常仓库收料；来源记录仅用于追溯。',
                       ),
                       const SizedBox(height: UtenSpacing.s8),
                       Align(
@@ -346,9 +346,9 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
   List<EditableGridColumn<_ReturnRow>> _columns() => [
     EditableGridColumn(
       key: 'warehouse',
-      label: '退入仓库',
+      label: '来源位置',
       width: 145,
-      cellBuilder: (_, row) => Text(row.source.warehouseName),
+      cellBuilder: (_, row) => Text(row.source.sourceWarehouseName),
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。退错
     // 同名不同色的料会把库存加到别的货上，三属性必须同屏且能各自筛。后端对
@@ -356,7 +356,7 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
     // 单号不是货品属性，跟在名称下面单独一行。
     EditableGridColumn(
       key: 'material',
-      label: '物料名称 / 原领料单',
+      label: '物料名称 / 来源',
       width: 200,
       cellBuilder: (context, row) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -364,7 +364,7 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
         children: [
           UtenGoodsIdentityCell(name: _omitPlaceholder(row.source.goodsName)),
           Text(
-            '领料单 ${row.source.drawNo}',
+            row.source.sourceLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -430,7 +430,7 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
       numeric: true,
       headerInfo: '仅填写本次交回仓库的实际数量；留待后续生产的部分保持不退。',
       cellBuilder: (_, row) => TextField(
-        key: ValueKey('material-return-qty-${row.source.issuePostingId}'),
+        key: ValueKey('material-return-qty-${row.source.sourceKey}'),
         controller: row.qty,
         enabled: !_locked && row.source.availableQty > 0,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -446,7 +446,7 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
 /// 汇总文案里的行标识：同一物料可能来自多张领料单（表里就是两行），只报货品名
 /// 找不到是哪一行，故与「物料 / 原领料单」列同口径带上领料单号。
 String _rowLabel(_ReturnRow row) =>
-    '${row.source.goodsName}（领料单 ${row.source.drawNo}）';
+    '${row.source.goodsName}（${row.source.sourceLabel}）';
 
 /// 批量校验的行问题清单：最多列前 8 条，其余折成「等 N 行」——顶部通知里十几条
 /// 会刷屏，前几条足够定位，改完再提交剩下的还会继续提示。

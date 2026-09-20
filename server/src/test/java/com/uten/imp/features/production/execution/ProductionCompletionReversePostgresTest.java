@@ -298,8 +298,8 @@ class ProductionCompletionReversePostgresTest {
                             segment_no,segment_code,client_segment_key,
                             product_goods_id,product_unit_id,
                             product_unit_rate,planned_qty,status,
-                            bom_fingerprint,idempotency_key
-                        ) VALUES(?,?,?,?,?,?,?,?,?,1,10,'READY',?,?)
+                            bom_fingerprint,idempotency_key,start_route,route_confirmed_at
+                        ) VALUES(?,?,?,?,?,?,?,?,?,1,10,'READY',?,?,'FULL_KIT',now())
                         """, segment, pkg, plan, planItem, index + 1,
                         canonicalSegmentCode(segment), "client-" + segment,
                         product, unit, "e".repeat(64),
@@ -443,6 +443,13 @@ class ProductionCompletionReversePostgresTest {
                     """, issuePostingId, stockEvent,
                     segment.drawItemId(), segment.demandId(),
                     segment.reservationId());
+            // The reservation projection and its exact ISSUE fact are one
+            // atomic posting; an event alone must never consume the claim.
+            assertEquals(1, update(connection, """
+                    UPDATE stock_reservations
+                    SET consumed_qty=10, status=1, lock_version=lock_version+1
+                    WHERE id=? AND consumed_qty=0 AND released_qty=0 AND qty=10
+                    """, segment.reservationId()));
             com.uten.imp.support.ProductionMaterialMovementTestSupport.bindAndCommit(connection,stockEvent,segment.drawItemId());
         }
         UUID settlementEvent = UUID.randomUUID();

@@ -443,19 +443,26 @@ def main() -> None:
             wh_by_name.pop(key, None)
 
         # ---- 平台侧：仓库字典 + 根仓(新建存根挂在它下面) ----
-        cur.execute("SELECT id, name, code FROM warehouses WHERE is_deleted = false")
+        # V610：正常归属不得指向车间流转位置。to_jsonb 保留对 V587 老目录的兼容。
+        cur.execute("""
+            SELECT id, name, code,
+                   COALESCE((to_jsonb(warehouse)->>'is_line_side')::boolean, false),
+                   is_deleted
+              FROM warehouses warehouse
+        """)
         warehouse_rows = cur.fetchall()
         warehouse_by_name = {}
         used_warehouse_codes = set()
-        for wid, wname, wcode in warehouse_rows:
+        for wid, wname, wcode, is_line_side, is_deleted in warehouse_rows:
             clean = norm_name(wname or "")
-            if clean and clean not in warehouse_by_name:
+            if clean and not is_line_side and not is_deleted and clean not in warehouse_by_name:
                 warehouse_by_name[clean] = wid
             if wcode:
                 used_warehouse_codes.add(wcode)
         cur.execute("""
-            SELECT id FROM warehouses
+            SELECT id FROM warehouses warehouse
              WHERE is_deleted = false AND parent_id IS NULL
+               AND COALESCE((to_jsonb(warehouse)->>'is_line_side')::boolean, false) = false
              ORDER BY code NULLS LAST LIMIT 1
         """)
         root_row = cur.fetchone()

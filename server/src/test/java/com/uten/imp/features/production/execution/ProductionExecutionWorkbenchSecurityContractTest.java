@@ -29,7 +29,7 @@ class ProductionExecutionWorkbenchSecurityContractTest {
     }
 
     @Test
-    void replacementQueryNeverExposesManualDispatchOrStart() throws Exception {
+    void workbenchUsesExplicitStartAuthorityAndRetiresManualDispatch() throws Exception {
         String service = source("ProductionExecutionWorkbenchService.java");
 
         // 2026-09-10：READY_TO_REPORT 兼容参数与 breakdown.readyToReport 端到端删除
@@ -41,7 +41,8 @@ class ProductionExecutionWorkbenchSecurityContractTest {
                 .contains("('COMPLETED','CANCELLED','REVERSED')")
                 .contains("CAST(:dateFrom AS date) IS NULL")
                 .contains("CAST(:dateTo AS date) IS NULL")
-                .contains("FALSE,\n                       FALSE,")
+                .contains("fn_execution_start_material_ready")
+                .contains("production_execution:start")
                 .contains("production_daily_report:view")
                 .contains("production_daily_report:create")
                 .contains("production_execution:view")

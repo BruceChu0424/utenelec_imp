@@ -31,5 +31,7 @@ public record ProductionMaterialClearanceRow(
         /** 本条需求对应的产品数量(分批子段为本批量)；requiredQty / requiredForProductQty 即平均单耗。 */
         BigDecimal requiredForProductQty,
         /** 同车间直送供给(V595)：持续生产工单上允许分次到料的需求。 */
-        boolean directSupply) {
+        boolean directSupply,
+        /** LINEAR supports proportional suggestions; exact batch rules must not be averaged. */
+        String requirementMode) {
 }

@@ -30,6 +30,14 @@ public class FinanceReceiptSourceAllocationService {
     /** Choose carrying value from each immutable order source, never from an aggregated display cache. */
     @Transactional(propagation = Propagation.MANDATORY)
     public BigDecimal plannedBookAmount(com.uten.imp.features.finance.arap.ArApLedger ledger,BigDecimal original) {
+        if (ledger.getLegacySourceResolution()!=null) {
+            Number opening=(Number)em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger WHERE id=:id AND fn_is_verified_legacy_opening_ar(id)")
+                    .setParameter("id",ledger.getId()).getSingleResult();
+            if (opening.longValue()==1) {
+                return com.uten.imp.common.finance.FinancialBookAllocation.part(original,
+                        ledger.getAmountBalanceOriginal(),ledger.getAmountBalance());
+            }
+        }
         @SuppressWarnings("unchecked")
         List<Object[]> refs=em.createNativeQuery("""
                 SELECT ref.amount_original-COALESCE((SELECT sum(a.cash_original+a.write_off_original)
@@ -44,7 +52,7 @@ public class FinanceReceiptSourceAllocationService {
                 ORDER BY ref.source_sequence,ref.id FOR UPDATE
                 """).setParameter("ledger",ledger.getId()).getResultList();
         if(refs.isEmpty()) {
-            Number verified=(Number)em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger WHERE id=:id AND fn_is_direct_customer_shipment_ar(id)")
+            Number verified=(Number)em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger WHERE id=:id AND (fn_is_direct_customer_shipment_ar(id) OR fn_is_verified_legacy_opening_ar(id))")
                     .setParameter("id",ledger.getId()).getSingleResult();
             if(verified.longValue()!=1)throw conflict("应收缺少可验证的发货或销售单账面来源");
             return com.uten.imp.common.finance.FinancialBookAllocation.part(original,ledger.getAmountBalanceOriginal(),ledger.getAmountBalance());
@@ -65,6 +73,7 @@ public class FinanceReceiptSourceAllocationService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void allocateApprovedReceipt(FinanceReceipt receipt, List<FinanceReceiptLine> lines) {
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(receipt.getLegacyId());
         if (!"AR_SETTLEMENT".equals(receipt.getReceiptKind()) || lines == null || lines.isEmpty()) {
             throw conflict("普通应收收款必须有明确的核销明细和单据类型");
         }
@@ -79,6 +88,7 @@ public class FinanceReceiptSourceAllocationService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void reverseApprovedReceipt(FinanceReceipt receipt, List<FinanceReceiptLine> lines) {
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(receipt.getLegacyId());
         if (!"AR_SETTLEMENT".equals(receipt.getReceiptKind())) {
             throw conflict("只有普通应收收款存在销售单来源分配");
         }
@@ -90,8 +100,8 @@ public class FinanceReceiptSourceAllocationService {
                 .setParameter("ids",ledgerIds).getResultList();
         int orderLinkedLines=0;
         for (FinanceReceiptLine line : lines) {
-            if (isVerifiedDirectShipment(receipt,line)) {
-                requireDirectReceiptLatest(receipt,line);
+            if (hasIndependentLedgerAuthority(receipt,line)) {
+                requireIndependentReceiptLatest(receipt,line);
                 continue;
             }
             orderLinkedLines++;
@@ -137,7 +147,7 @@ public class FinanceReceiptSourceAllocationService {
         if (line.getAppliedLedgerId() == null || line.getId() == null) {
             throw validation("收款明细必须关联稳定的应收台账 UUID");
         }
-        if (isVerifiedDirectShipment(receipt,line)) return;
+        if (hasIndependentLedgerAuthority(receipt,line)) return;
         long existing = number(em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_receipt_source_allocations
                 WHERE receipt_line_id=:lineId
@@ -275,27 +285,27 @@ public class FinanceReceiptSourceAllocationService {
         }
     }
 
-    /** An immutable, current direct SHIP is authoritative without inventing an order UUID. */
-    private boolean isVerifiedDirectShipment(FinanceReceipt receipt,FinanceReceiptLine line) {
+    /** Verified direct shipments and imported opening balances need no invented order allocations. */
+    private boolean hasIndependentLedgerAuthority(FinanceReceipt receipt,FinanceReceiptLine line) {
         Number direct=(Number)em.createNativeQuery("""
                 SELECT COUNT(*) FROM ar_ap_ledger ledger WHERE ledger.id=:ledger
-                  AND fn_is_direct_customer_shipment_ar(ledger.id)
+                  AND (fn_is_direct_customer_shipment_ar(ledger.id) OR fn_is_verified_legacy_opening_ar(ledger.id))
                   AND ledger.client_id=:client AND ledger.currency_id=:currency
                 """).setParameter("ledger",line.getAppliedLedgerId()).setParameter("client",receipt.getClientId())
                 .setParameter("currency",receipt.getCurrencyId()).getSingleResult();
         if (direct.longValue()!=1) return false;
         long fabricated=number(em.createNativeQuery("SELECT COUNT(*) FROM finance_receipt_source_allocations WHERE receipt_line_id=:line")
                 .setParameter("line",line.getId()).getSingleResult()).longValue();
-        if (fabricated!=0) throw conflict("零星发货收款存在不应有的订货分配，请先财务核对");
+        if (fabricated!=0) throw conflict("该收款存在不应有的订货分配，请先财务核对");
         return true;
     }
 
-    private void requireDirectReceiptLatest(FinanceReceipt receipt,FinanceReceiptLine line) {
+    private void requireIndependentReceiptLatest(FinanceReceipt receipt,FinanceReceiptLine line) {
         List<?> posting=em.createNativeQuery("""
                 SELECT settled_date FROM finance_reconciliations WHERE source_doc_type='RECEIPT'
                   AND source_doc_id=:receipt AND entry_kind='POSTING' AND NOT is_deleted ORDER BY id
                 """).setParameter("receipt",receipt.getId()).getResultList();
-        if (posting.size()!=1) throw conflict("零星发货收款缺少唯一实际到账记录，不能直接反向");
+        if (posting.size()!=1) throw conflict("该收款缺少唯一实际到账记录，不能直接反向");
         long later=number(em.createNativeQuery("""
                 SELECT (SELECT COUNT(*) FROM finance_receipt_lines later_line
                     JOIN finance_receipts later ON later.id=later_line.receipt_id

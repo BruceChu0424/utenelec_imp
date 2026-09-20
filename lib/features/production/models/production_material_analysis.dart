@@ -5,6 +5,7 @@
 // Flutter client never derives availability from inventory fields.
 
 import '../../../shared/models/progress_ratio.dart';
+import 'material_analysis_projection.dart';
 
 enum MaterialSupplyRoute {
   make('MAKE', '自制'),
@@ -642,12 +643,21 @@ class ProductionMaterialAnalysisView {
 
   factory ProductionMaterialAnalysisView.fromJson(Map<String, dynamic> json) {
     final shared = _sharedWarehouseStocks(json);
-    final rawMaterials = json['flatMaterials'] ?? json['materials'];
+    final defaults = json['projection'] == materialAnalysisProjectionVersion
+        ? MaterialAnalysisMaterialDefaults(json['materialDefaults'])
+        : null;
+    final rawMaterials = defaults == null
+        ? json['flatMaterials'] ?? json['materials']
+        : json['flatMaterials'];
     if (shared != null &&
-        (rawMaterials is! List || rawMaterials.any((row) => row is! Map))) {
+        (rawMaterials is! List ||
+            rawMaterials.any(
+              (row) => row is! Map || row.keys.any((key) => key is! String),
+            ))) {
       throw const FormatException('物料分析节点快照不完整');
     }
     ProductionMaterialAnalysisMaterial material(Map<String, dynamic> row) {
+      if (defaults != null) row = defaults.hydrate(row);
       if (shared == null) {
         return ProductionMaterialAnalysisMaterial.fromJson(row);
       }
@@ -707,13 +717,19 @@ Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
 ) {
   final version = json['projection'];
   if (version == null) {
-    if (json.containsKey('warehouseBreakdownsByMaterialKey')) {
+    if (json.containsKey('warehouseBreakdownsByMaterialKey') ||
+        json.containsKey('materialDefaults')) {
       throw const FormatException('物料分析共享快照缺少格式版本');
     }
     return null;
   }
-  if (version != 'shared-warehouses-v1') {
+  if (version != 'shared-warehouses-v1' &&
+      version != materialAnalysisProjectionVersion) {
     throw const FormatException('不支持的物料分析快照格式');
+  }
+  if (version == 'shared-warehouses-v1' &&
+      json.containsKey('materialDefaults')) {
+    throw const FormatException('物料分析默认值与格式版本不匹配');
   }
   final raw = json['warehouseBreakdownsByMaterialKey'];
   if (raw is! Map) {
@@ -1083,6 +1099,8 @@ class ProductionMaterialAnalysisMaterial {
     this.materialKey,
     this.requiredQty = 0,
     this.perProductQty = 0,
+    this.bomQty,
+    this.parentPerProductQty,
     this.availableQty = 0,
     this.allocatedAvailableQty = 0,
     this.exactPeggedQty = 0,
@@ -1092,6 +1110,8 @@ class ProductionMaterialAnalysisMaterial {
     this.mainWarehouseOpenSafetySupplyQty = 0,
     this.mainWarehouseSafetyReplenishmentGapQty = 0,
     this.inboundQty = 0,
+    this.externalFutureCoverageQty = 0,
+    this.internalCommittedOutputQty = 0,
     this.publicSurplusApprovedInboundQty = 0,
     this.publicSurplusRemainingQty = 0,
     this.sharedFutureClaimedQty = 0,
@@ -1200,6 +1220,10 @@ class ProductionMaterialAnalysisMaterial {
   final double requiredQty;
   final double perProductQty;
 
+  /// Frozen direct BOM edge. Cumulative averages cannot reproduce package rounding.
+  final double? bomQty;
+  final double? parentPerProductQty;
+
   /// Qualified stock in the selected warehouse before this analysis allocates
   /// the shared pool to individual demand nodes.
   final double availableQty;
@@ -1221,6 +1245,8 @@ class ProductionMaterialAnalysisMaterial {
   final double mainWarehouseOpenSafetySupplyQty;
   final double mainWarehouseSafetyReplenishmentGapQty;
   final double inboundQty;
+  final double externalFutureCoverageQty;
+  final double internalCommittedOutputQty;
   final double publicSurplusApprovedInboundQty;
   final double publicSurplusRemainingQty;
   final double sharedFutureClaimedQty;
@@ -1345,6 +1371,8 @@ class ProductionMaterialAnalysisMaterial {
     actionGroupKey: _string(json['actionGroupKey']),
     materialKey: _string(json['materialKey']),
     perProductQty: _double(json['perProductQty']) ?? 0,
+    bomQty: _double(json['bomQty']),
+    parentPerProductQty: _double(json['parentPerProductQty']),
     requiredQty: _double(json['requiredQty']) ?? 0,
     availableQty: _double(json['availableQty']) ?? 0,
     allocatedAvailableQty: _double(json['allocatedAvailableQty']) ?? 0,
@@ -1358,6 +1386,9 @@ class ProductionMaterialAnalysisMaterial {
     mainWarehouseSafetyReplenishmentGapQty:
         _double(json['mainWarehouseSafetyReplenishmentGapQty']) ?? 0,
     inboundQty: _double(json['inboundQty']) ?? 0,
+    externalFutureCoverageQty: _double(json['externalFutureCoverageQty']) ?? 0,
+    internalCommittedOutputQty:
+        _double(json['internalCommittedOutputQty']) ?? 0,
     publicSurplusApprovedInboundQty:
         _double(json['publicSurplusApprovedInboundQty']) ?? 0,
     publicSurplusRemainingQty: _double(json['publicSurplusRemainingQty']) ?? 0,

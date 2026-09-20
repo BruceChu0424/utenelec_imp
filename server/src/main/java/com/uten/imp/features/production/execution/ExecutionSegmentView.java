@@ -56,8 +56,8 @@ public record ExecutionSegmentView(
         boolean splitReplaced,
         /** 持续生产(V595)：同车间直送子件分次到料、到一批投一批。 */
         boolean continuousSupply,
-        /** 可按「部分开工 · 持续生产」开工(V595)：未被动过的等待物料段且至少一条子件可直送。 */
-        boolean canStartContinuous,
         /** 已确认的开工路线(V599)：FULL_KIT/BATCH/CONTINUOUS；NULL=待车间确认。 */
-        String startRoute) {
+        String startRoute,
+        /** Explicit start is authorized and all required material jointly supports output. */
+        boolean canStart) {
 }

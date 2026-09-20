@@ -15,7 +15,8 @@ class SupplierSettlementAndClaimContractTest {
     void monthlySnapshotIsDatedImmutableAndServerTermControlled() throws Exception{
         String schema=Files.readString(MIGRATIONS.resolve("V360__supplier_settlement_batches.sql"));
         String guards=Files.readString(MIGRATIONS.resolve("V362__supplier_settlement_snapshot_guards.sql"));
-        String service=Files.readString(MAIN.resolve("SupplierSettlementService.java"));
+        String service=Files.readString(MAIN.resolve("SupplierSettlementService.java"))
+                +Files.readString(MAIN.resolve("SupplierSettlementSnapshotSql.java"));
         assertThat(schema).contains("opening_balance_local","period_posted_local",
                 "period_paid_local","period_offset_local","closing_balance_local","snapshot_hash");
         assertThat(guards).contains("financial snapshot is immutable",

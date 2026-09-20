@@ -1,0 +1,125 @@
+{
+  "subcontract_order_m.csv": [
+    {
+      "legacy_id": 908001,
+      "bill_no": "ED-SYN-AMBIGUOUS",
+      "bill_date": "2025-01-02",
+      "supplier_legacy_id": 900601,
+      "deliver_date": "2025-01-02",
+      "send_legacy": 900701,
+      "maker_legacy": 900801,
+      "approver_legacy": 900801,
+      "fulfill_bit": true,
+      "stop_bit": false,
+      "currency_legacy_id": 1,
+      "exchange_rate": 1,
+      "tax_rate": 0,
+      "total_original": 2,
+      "status": 1,
+      "cancel_bit": false,
+      "remark": "合成首导回归样本；非公司业务数据"
+    }
+  ],
+  "subcontract_order_i.csv": [
+    {
+      "legacy_id": 908002,
+      "bill_legacy_id": 908001,
+      "goods_legacy_id": 900101,
+      "color_legacy_id": 0,
+      "unit_legacy_id": 900301,
+      "unit_rate": 1,
+      "qty": 1,
+      "price": 2,
+      "amount_original": 2,
+      "received_qty": 1,
+      "issued_qty": 0,
+      "returned_qty": 0,
+      "weight": 0,
+      "source_doc_no": null
+    }
+  ],
+  "subcontract_in_m.csv": [
+    {
+      "legacy_id": 901005,
+      "bill_no": "CJ-SYN-001",
+      "bill_date": "2025-01-02",
+      "supplier_legacy_id": 900601,
+      "warehouse_legacy_id": 900201,
+      "sender_legacy": 0,
+      "maker_legacy": 900801,
+      "approver_legacy": 900801,
+      "last_date": null,
+      "currency_legacy_id": 1,
+      "exchange_rate": 1,
+      "tax_rate": 0,
+      "total_original": 2,
+      "settlement_style_legacy": 1,
+      "status": 1,
+      "cancel_bit": false,
+      "remark": "合成首导回归样本；非公司业务数据"
+    }
+  ],
+  "subcontract_in_i.csv": [
+    {
+      "legacy_id": 908004,
+      "bill_legacy_id": 901005,
+      "goods_legacy_id": 900101,
+      "color_legacy_id": 0,
+      "qty": 1,
+      "price": 2,
+      "amount_original": 2,
+      "order_item_legacy_id": 908002,
+      "unit_legacy_id": 900301,
+      "unit_rate": 1,
+      "amount_local": 2,
+      "check_qty": 1,
+      "order_qty": 1,
+      "returned_qty": 0,
+      "weight": 0,
+      "girth_qty": 0,
+      "step_legacy_id": 0,
+      "return_amount": 0,
+      "return_no": null,
+      "order_no": "ED-SYN-AMBIGUOUS",
+      "source_doc_no": null
+    }
+  ],
+  "m_in.csv": [
+    {
+      "legacy_id": 908005,
+      "bill_no": "SYN-UNVERIFIED-NEGATIVE",
+      "client_legacy_id": 900501,
+      "bill_date": "2025-01-02",
+      "due_date": "2025-02-02",
+      "total": 0,
+      "settled": 8,
+      "balance": -8,
+      "note": "合成首导回归样本；非公司业务数据",
+      "paid_bit": false,
+      "paid_date": null,
+      "b_style": 999,
+      "p_style": 1,
+      "bill_legacy_id": 999999,
+      "currency_legacy_id": 1,
+      "exchange_rate": 1
+    },
+    {
+      "legacy_id": 908006,
+      "bill_no": "SYN-UNVERIFIED-FOREIGN",
+      "client_legacy_id": 900501,
+      "bill_date": "2025-01-02",
+      "due_date": "2025-02-02",
+      "total": 5,
+      "settled": 0,
+      "balance": 5,
+      "note": "合成首导回归样本；非公司业务数据",
+      "paid_bit": false,
+      "paid_date": null,
+      "b_style": 3,
+      "p_style": 1,
+      "bill_legacy_id": 999998,
+      "currency_legacy_id": 3,
+      "exchange_rate": 0
+    }
+  ]
+}

@@ -73,6 +73,21 @@ class SalesClientLastTermsPostgresTest {
                 .executeWithoutResult(tx -> termsSync.syncOnOrderTerms(clientId, sm, sp, cur));
     }
 
+    @Test
+    void learningInvalidatesAnAlreadyOpenMasterEditorWithoutTouchingItOnReplay() {
+        UUID clientId = client("VERSION");
+        long before = jdbc.queryForObject("SELECT version FROM clients WHERE id=?", Long.class, clientId);
+        UUID currency = currency("VERSION");
+        sync(clientId, null, "ALLOW_PARTIAL", currency);
+        assertThat(jdbc.queryForObject("SELECT version FROM clients WHERE id=?", Long.class, clientId))
+                .isEqualTo(before + 1);
+        assertThat(jdbc.update("UPDATE clients SET default_shipment_policy='REQUIRE_COMPLETE' WHERE id=? AND version=?",
+                clientId, before)).isZero();
+        sync(clientId, null, "ALLOW_PARTIAL", currency);
+        assertThat(jdbc.queryForObject("SELECT version FROM clients WHERE id=?", Long.class, clientId))
+                .isEqualTo(before + 1);
+    }
+
     /** 类级共享：号段触发器要求 XD+日期+6 位序号的注册格式，序号不重复。 */
     private static final java.util.concurrent.atomic.AtomicInteger BILL_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger();

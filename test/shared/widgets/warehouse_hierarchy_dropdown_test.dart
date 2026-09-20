@@ -27,6 +27,65 @@ const _defective = WarehouseDictEntry(
 const _hierarchy = [_main, _finished, _defective];
 
 void main() {
+  const lineSide = WarehouseDictEntry(
+    id: 'line-side',
+    name: '车间流转位置',
+    parentId: 'main',
+    isLineSide: true,
+  );
+  testWidgets(
+    'technical child keeps a standalone physical warehouse directly selectable',
+    (tester) async {
+      final entries = [_main, lineSide];
+      expect(WarehouseSelection(entries).selectableIds, {'main'});
+      WarehousePickerResult? picked;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async =>
+                    picked = await showUtenWarehousePickerPanel(
+                      context,
+                      hierarchy: entries,
+                    ),
+                child: const Text('选仓'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('选仓'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
+      await tester.pumpAndSettle();
+      expect(picked?.id, 'main');
+    },
+  );
+  test(
+    'workshop locations remain identifiable but cannot be newly selected',
+    () {
+      final entries = [..._hierarchy, lineSide];
+      expect(
+        WarehouseSelection(entries).selectableIds,
+        isNot(contains('line-side')),
+      );
+      final items = warehouseHierarchyItems(entries, currentValue: 'line-side');
+      final historical = items.singleWhere((item) => item.value == 'line-side');
+      expect(historical.label, '车间流转位置');
+      expect(historical.enabled, isFalse);
+      expect(historical.visible, isFalse);
+      expect(warehouseFullLabel(entries, 'line-side'), '仓库（14年版）-车间流转位置');
+      expect(
+        WarehouseDictEntry.fromJson({
+          'id': 'line-side',
+          'name': '车间流转位置',
+          'lineSide': true,
+        }).isLineSide,
+        isTrue,
+      );
+    },
+  );
   const disabled = WarehouseDictEntry(
     id: 'hardware',
     name: '五金仓库',

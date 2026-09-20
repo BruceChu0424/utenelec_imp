@@ -12,7 +12,7 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class ReceiptDetail
-        implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
+        implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -50,4 +50,9 @@ public class ReceiptDetail
     private String sourceOrderNo;
     /** 价格已对当前用户脱敏（单价/金额族置 null，前端据此渲染 ***；V302 收货单价格脱敏）。 */
     private boolean priceMasked;
+
+    // Exact text preserves recorded decimals and explicit unknown values.
+    public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
+    public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
 }

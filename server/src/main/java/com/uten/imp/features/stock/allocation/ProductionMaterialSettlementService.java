@@ -54,7 +54,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
         }
         var query = em.createNativeQuery("""
                 SELECT segment.id,
-                       EXISTS (
+                       (EXISTS (
                            SELECT 1 FROM production_material_demands demand
                            WHERE demand.execution_segment_id=segment.id
                              AND (EXISTS (
@@ -65,7 +65,11 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                  SELECT 1 FROM production_material_settlement_postings posting
                                  JOIN production_material_settlement_events event ON event.id=posting.event_id
                                  WHERE posting.demand_id=demand.id
-                                   AND event.event_type='POST' AND posting.qty_base>0))),
+                                   AND event.event_type='POST' AND posting.qty_base>0)))
+                        OR EXISTS(SELECT 1 FROM production_material_demands demand
+                            JOIN v_workshop_direct_supply_lots lot ON lot.to_demand_id IN(demand.id,demand.split_root_demand_id)
+                            WHERE demand.execution_segment_id=segment.id AND NOT demand.is_deleted AND lot.received_qty>0)
+                        OR EXISTS(SELECT 1 FROM production_material_return_requests request WHERE request.execution_segment_id=segment.id)),
                        EXISTS (
                            SELECT 1 FROM v_production_material_clearance clearance
                            JOIN production_material_demands demand ON demand.id=clearance.demand_id
@@ -75,18 +79,19 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                      FROM production_material_stock_postings issue
                                      WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE'),0)),
                        EXISTS (
-                           SELECT 1 FROM production_material_demands demand
-                           JOIN production_material_stock_postings issue ON issue.demand_id=demand.id
-                           WHERE demand.execution_segment_id=segment.id AND issue.posting_type='ISSUE'
-                             AND fn_material_issue_pending_return(issue.id,NULL)>0)
+                           SELECT 1 FROM production_material_return_requests request
+                           JOIN stock_documents document ON document.id=request.id AND document.status=0 AND NOT document.is_deleted
+                           WHERE request.execution_segment_id=segment.id
+                             AND NOT EXISTS(SELECT 1 FROM production_material_return_request_cancellations cancellation WHERE cancellation.request_id=request.id)),
+                       fn_execution_material_return_allowed(segment.id)
                 FROM production_execution_segments segment
                 WHERE segment.id IN (:segments) AND segment.is_deleted=FALSE
                 """).setParameter("segments", segmentIds.stream().distinct().sorted().toList());
         Map<UUID, UsageFlags> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
-            boolean available = Boolean.TRUE.equals(row[2]);
-            result.put((UUID) row[0], new UsageFlags(Boolean.TRUE.equals(row[1]),available,
-                    Boolean.TRUE.equals(row[3]),available));
+            boolean unregistered = Boolean.TRUE.equals(row[2]);
+            result.put((UUID) row[0], new UsageFlags(Boolean.TRUE.equals(row[1]),unregistered,
+                    Boolean.TRUE.equals(row[3]),unregistered||Boolean.TRUE.equals(row[4])));
         }
         return Map.copyOf(result);
     }
@@ -449,7 +454,8 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                GREATEST(c.uncleared_qty - COALESCE(pending.qty,0), 0),
                                c.uncleared_qty, c.can_close, demand_unit.name,
                                COALESCE(pending.qty,0), GREATEST(c.uncleared_qty - COALESCE(pending.qty,0),0),
-                               demand.per_product_qty, demand.required_for_product_qty, demand.direct_supply
+                               demand.per_product_qty, demand.required_for_product_qty, demand.direct_supply,
+                               demand.requirement_mode
                         FROM v_production_material_clearance c
                         JOIN production_material_demands demand
                           ON demand.id = c.demand_id
@@ -479,7 +485,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         Boolean.TRUE.equals(row[17]), (String) row[18], decimal(row[19]), decimal(row[20]),
                         row[21] == null ? null : decimal(row[21]),
                         row[22] == null ? null : decimal(row[22]),
-                        Boolean.TRUE.equals(row[23])))
+                        Boolean.TRUE.equals(row[23]), (String) row[24]))
                 .toList();
     }
 

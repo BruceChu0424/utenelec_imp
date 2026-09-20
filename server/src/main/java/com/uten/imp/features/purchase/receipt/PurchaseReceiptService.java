@@ -115,6 +115,7 @@ public class PurchaseReceiptService {
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null && f.status() == STATUS_DRAFT) ps.add(cb.isNull(root.get("legacyId")));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
@@ -171,6 +172,7 @@ public class PurchaseReceiptService {
         var mutationGuard=lockReceiptRequest(id,req);
         PurchaseReceipt r = requireReceiptForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -191,6 +193,7 @@ public class PurchaseReceiptService {
         PurchaseReceipt r = requireReceiptForUpdate(id);
         mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -228,6 +231,7 @@ public class PurchaseReceiptService {
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -243,6 +247,8 @@ public class PurchaseReceiptService {
         }
         requireNonNegativeStoredCommercial(r, items);
         normalizePersistedItemUnits(items);
+        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireKnownReceiptBasis(em,"PURCHASE",
+                items.stream().map(PurchaseReceiptItem::getOrderItemId).filter(java.util.Objects::nonNull).distinct().toList());
         sourceIntegrity.validatePurchaseReceipt(
                 r.getSupplierId(),
                 items.stream()
@@ -339,6 +345,7 @@ public class PurchaseReceiptService {
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

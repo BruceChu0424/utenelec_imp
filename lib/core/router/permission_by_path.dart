@@ -107,6 +107,9 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.departmentView];
   }
   // 财务
+  if (location == '/expense/settings') {
+    return const [Perm.expenseSettings];
+  }
   if (location == '/expense/approval' ||
       location.startsWith('/expense/approval/')) {
     return const [Perm.expenseApprove, Perm.expensePay];
@@ -643,6 +646,9 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.finance) {
     // hub：任一钱流单据 view 即可见
     return const [
+      Perm.expenseApprove,
+      Perm.expensePay,
+      Perm.expenseSettings,
       Perm.financeReceiptView,
       Perm.financePaymentView,
       Perm.financeExpenseView,

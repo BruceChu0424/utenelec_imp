@@ -107,6 +107,9 @@ Local pages:
 
 ### Tests and checks
 
+- `node scripts/quality-gate.mjs` — the same complete gate used by Quality Gate and signed website release: locked install, lint, typecheck, all behavior tests, formal migration verification, dependency audit and an empty migrated database build. Requires Node 22; CI pins 22.13.1.
+- `npm run test:all`
+- `npm run test:prisma-migrations`
 - `npm run test:admin-guardrails`
 - `npm run test:catalog-normalization`
 - `npm run test:catalog-public`
@@ -116,6 +119,8 @@ Local pages:
 - `npm run test:news-content`
 - `npm run test:seo-localization`
 - `npm run test:legacy-import`
+
+Catalog normalization and the 50-series repair integration tests create private disposable SQLite databases from the checked-in Prisma migrations and seed synthetic catalog/source-audit records. They do not read or copy `prisma/dev.db`. Build validation uses another fresh empty migrated database and does not write the production uploads path.
 
 ## Docs map
 

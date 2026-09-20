@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -60,7 +61,7 @@ String _rowIssueMessage(
 /// 2026-09-12 对齐采购到货登记（批量页同日同改）：表头不再有「默认成品仓」下拉与
 /// 「统一设置成品仓 / 统一填写库位」按钮——成品仓、库位号行级必填（空时红框），
 /// **勾选多行后在其中任意一行改仓/写库位 = 批量落到全部选中行**，右键选中集可
-/// 「批量设置成品仓 / 批量设置库位号」；行级预填优先级 = 同货品最近登记仓 >
+/// 「批量设置成品仓 / 批量设置库位号」；行级预填优先级 = 货品主档默认仓 >
 /// 上次登记仓（服务端 last-warehouse）> 本页上次显式选择（账号记忆），均为黄框
 /// 待核对。提交按行仓分组，一个仓一个登记批次（V469 一批一仓），每个批次同事务
 /// 形成一张品质检查单（V547）；部分仓失败停在本页，已成功仓不重复提交。
@@ -208,12 +209,12 @@ class _ProductionFinishedArrivalRegistrationPageState
         }
       } else {
         for (final row in _grid.rows) {
-          // 行级预填优先级：同货品同颜色最近登记仓 > 页面默认仓；均为黄框待核对。
+          // 行级预填优先级：货品主档默认仓 > 页面默认仓；均为黄框待核对。
           final rowLast = row.item.lastWarehouseId;
           if (rowLast != null && selection.selectableIds.contains(rowLast)) {
             row.setWarehouse(
               rowLast,
-              source: _FinishedArrivalWarehouseSource.goodsHistory,
+              source: _FinishedArrivalWarehouseSource.goodsMaster,
             );
           } else if (defaultWarehouseId != null) {
             row.setWarehouse(
@@ -1565,7 +1566,7 @@ class _ProductionFinishedArrivalRegistrationPageState
                         ? requiredEmptyBorder(theme)
                         : null,
                   ),
-                  info: row.warehouseSource.info,
+                  info: row.warehouseSource.info(AppLocalizations.of(context)),
                 ),
                 theme,
                 autofilled: autofilled,
@@ -1821,14 +1822,14 @@ class _FinishedArrivalRegistrationGridRow extends EditableGridRow {
 
 enum _FinishedArrivalWarehouseSource {
   none,
-  goodsHistory,
+  goodsMaster,
   pageDefault,
   manual;
 
-  bool get isSuggested => this == goodsHistory || this == pageDefault;
+  bool get isSuggested => this == goodsMaster || this == pageDefault;
 
-  String? get info => switch (this) {
-    goodsHistory => '已带入该货品最近一次登记的成品仓，请核对本次实际存放仓库',
+  String? info(AppLocalizations l10n) => switch (this) {
+    goodsMaster => l10n.warehouseGoodsMasterDefaultHint,
     pageDefault => '已带入默认成品仓，请核对本次实际存放仓库',
     manual => null,
     none => null,

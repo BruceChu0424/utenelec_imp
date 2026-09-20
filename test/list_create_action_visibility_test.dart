@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/features/expense/providers/expense_counts_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/pages/expense_list_page.dart';
 import 'package:uten_imp/features/expense/repositories/expense_repository.dart';
@@ -62,13 +65,22 @@ class _SuggestionRepository extends Fake implements SuggestionRepository {
   }
 }
 
-Widget _expenseApp(List<ExpenseClaim> items) {
+Widget _expenseApp(List<ExpenseClaim> items, {bool canApply = true}) {
   return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_preferences),
       expenseRepositoryProvider.overrideWithValue(_ExpenseRepository(items)),
+      currentPermissionsProvider.overrideWithValue({
+        if (canApply) Perm.expenseApply,
+      }),
+      expenseCountsProvider.overrideWith((ref) async => const ExpenseCounts()),
     ],
-    child: const MaterialApp(home: ExpenseListPage()),
+    child: const MaterialApp(
+      locale: Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ExpenseListPage(),
+    ),
   );
 }
 
@@ -95,6 +107,7 @@ final _createdAt = DateTime(2026, 7, 30);
 
 final _claim = ExpenseClaim(
   id: 'expense-1',
+  claimNo: 'BX20260730000001',
   applicantId: 'employee-1',
   applicantName: '测试员工',
   title: '差旅报销',
@@ -132,15 +145,26 @@ void main() {
     expect(find.byType(FloatingActionButton), findsNothing);
   });
 
-  testWidgets('expense non-empty state exposes create action as FAB', (
+  testWidgets('expense non-empty state exposes header create button', (
     tester,
   ) async {
     _useCompactViewport(tester);
     await tester.pumpWidget(_expenseApp([_claim]));
     await tester.pumpAndSettle();
 
+    // 2026-09-19 V608 对齐 purchase 范式：新建入口迁到页面头行按钮，不再出 FAB。
     expect(find.text('新建报销'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsNothing);
+  });
+
+  testWidgets('expense creation stays hidden without apply permission', (
+    tester,
+  ) async {
+    _useCompactViewport(tester);
+    await tester.pumpWidget(_expenseApp([_claim], canApply: false));
+    await tester.pumpAndSettle();
+    expect(find.text('新建报销'), findsNothing);
+    expect(find.byType(FloatingActionButton), findsNothing);
   });
 
   testWidgets('suggestion empty state owns the only create action', (

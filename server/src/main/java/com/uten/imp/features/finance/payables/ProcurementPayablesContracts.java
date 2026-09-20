@@ -54,7 +54,8 @@ public final class ProcurementPayablesContracts {
             String remark,
             boolean paymentHeld,
             String holdReason,
-            String failedBaseQty) {}
+            String failedBaseQty,
+            boolean legacyImported) {}
 
     public record Page(
             Summary summary,

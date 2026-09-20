@@ -122,6 +122,9 @@ public class GoodsService {
     private final CategoryDrivenCodeService categoryCodes;
     private final com.uten.imp.security.OwnerVisibility ownerVisibility;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired
+    private GoodsLearnedPriceQuery learnedPrices;
+
     private final GoodsCostMasker costMasker;            // goods:cost:view 成本可见性
 
     /**
@@ -1233,7 +1236,12 @@ public class GoodsService {
                 g.isQuantityUnitLocked(), canWrite(g),
                 g.getMinOrderQty(), g.getOrderMultipleQty(),
                 owningWarehouseId, owningWarehouseName,
-                owningWorkshopId, owningWorkshopName);
+                owningWorkshopId, owningWorkshopName, null, null);
+        if (learnedPrices != null && costMasker.canView()) {
+            var prices = learnedPrices.find(g.getId());
+            d.setDefaultPurchasePriceInfo(prices.purchase());
+            d.setDefaultSubcontractPriceInfo(prices.subcontract());
+        }
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);

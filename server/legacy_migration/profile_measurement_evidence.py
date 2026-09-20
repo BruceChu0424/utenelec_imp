@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import hashlib
 import json
 import re
@@ -94,14 +95,14 @@ def profile_authority(data_dir: Path) -> dict[str, object]:
     if not manifest_path.is_file() or not checksum_path.is_file():
         return {
             "authoritative": False,
-            "reason": "FORMAT3_MANIFEST_OR_CHECKSUM_MISSING",
+            "reason": "FORMAT4_MANIFEST_OR_CHECKSUM_MISSING",
         }
     try:
         manifest = json.loads(
             manifest_path.read_text(encoding="utf-8-sig")
         )
         if (
-            manifest.get("formatVersion") != 3
+            manifest.get("formatVersion") != 4
             or manifest.get("target") != "All"
             or manifest.get("consistency")
             != "serializable-read-transaction"
@@ -123,6 +124,11 @@ def profile_authority(data_dir: Path) -> dict[str, object]:
             str(manifest.get("repositoryCommit", "")),
         ):
             raise ValueError("REPOSITORY_COMMIT_INVALID")
+
+        cutoff = str(manifest.get("sourceSnapshotAsOfUtc", ""))
+        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", cutoff):
+            raise ValueError("SOURCE_SNAPSHOT_CUTOFF_MISSING_OR_INVALID")
+        dt.datetime.fromisoformat(cutoff.replace("Z", "+00:00"))
 
         checksum_rows: dict[str, str] = {}
         for line in checksum_path.read_text(encoding="ascii").splitlines():
@@ -167,7 +173,7 @@ def profile_authority(data_dir: Path) -> dict[str, object]:
                 raise ValueError("MANIFEST_FILE_DIGEST_DRIFT")
         return {
             "authoritative": True,
-            "format_version": 3,
+            "format_version": 4,
             "target": "All",
             "manifest_sha256": sha256_file(manifest_path),
             "repository_commit": str(
@@ -537,7 +543,7 @@ def main() -> None:
         "--require-authoritative",
         action="store_true",
         help=(
-            "Fail unless a formatVersion 3 target=All manifest and every "
+            "Fail unless a formatVersion 4 target=All manifest and every "
             "declared CSV digest are valid."
         ),
     )

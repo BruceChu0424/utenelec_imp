@@ -602,9 +602,7 @@ public class ProductionExecutionPlanningService {
                                 JOIN warehouses warehouse ON warehouse.id = a.warehouse_id
                                   AND warehouse.is_deleted = FALSE
                                   AND warehouse.is_accountable = TRUE
-                                  AND NOT EXISTS (SELECT 1 FROM warehouses child
-                                      WHERE child.parent_id = warehouse.id
-                                        AND child.is_deleted = FALSE)
+                                  AND fn_warehouse_is_operational_leaf(warehouse.id)
                                 LEFT JOIN LATERAL (
                                     SELECT SUM(owned.qty) AS own_qty,
                                            SUM(CASE WHEN owned.qualified THEN owned.qty ELSE 0 END) AS qualified_qty

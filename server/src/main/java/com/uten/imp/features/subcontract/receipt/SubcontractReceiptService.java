@@ -124,6 +124,7 @@ public class SubcontractReceiptService {
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.status() != null && f.status() == STATUS_DRAFT) ps.add(cb.isNull(root.get("legacyId")));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
@@ -182,6 +183,7 @@ public class SubcontractReceiptService {
         var mutationGuard=lockReceiptRequest(id,req);
         SubcontractReceipt r = requireReceiptForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -208,6 +210,7 @@ public class SubcontractReceiptService {
         SubcontractReceipt r = requireReceiptForUpdate(id);
         mutationGuard.verifyUnchanged();
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -247,6 +250,7 @@ public class SubcontractReceiptService {
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -355,6 +359,7 @@ public class SubcontractReceiptService {
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -519,21 +524,26 @@ public class SubcontractReceiptService {
         }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                        SELECT id, goods_id, color_id, COALESCE(frozen_unit_qty, 0),
-                               COALESCE(at_supplier_qty, 0), COALESCE(consumed_qty, 0),
-                               COALESCE(returned_qty, 0), COALESCE(wasted_qty, 0),
-                               COALESCE(compensated_qty,0)
-                        FROM subcontract_material_issue_items
-                        WHERE order_item_id = :oid
-                          AND COALESCE(at_supplier_qty,0)+COALESCE(compensated_qty,0)>0
-                          AND COALESCE(frozen_unit_qty, 0) > 0
-                        ORDER BY goods_id, color_id NULLS FIRST, id
-                        FOR UPDATE
+                        SELECT item.id, item.goods_id, item.color_id, COALESCE(item.frozen_unit_qty, 0),
+                               COALESCE(item.at_supplier_qty, 0), COALESCE(item.consumed_qty, 0),
+                               COALESCE(item.returned_qty, 0), COALESCE(item.wasted_qty, 0),
+                               COALESCE(item.compensated_qty,0),item.unit_id,item.unit_rate
+                        FROM subcontract_material_issue_items item
+                        JOIN subcontract_material_issues header ON header.id=item.issue_id
+                          AND header.status=1 AND header.is_deleted=FALSE
+                        JOIN subcontract_material_plan_items plan ON plan.id=item.plan_item_id
+                          AND plan.order_item_id=item.order_item_id AND plan.is_deleted=FALSE
+                        WHERE item.order_item_id = :oid AND item.is_deleted=FALSE
+                          AND COALESCE(item.at_supplier_qty,0)+COALESCE(item.compensated_qty,0)>0
+                          AND COALESCE(item.frozen_unit_qty, 0) > 0
+                        ORDER BY item.goods_id, item.color_id NULLS FIRST, item.id
+                        FOR UPDATE OF item
                         """)
                 .setParameter("oid", orderItemId)
                 .getResultList();
         Map<ComponentKey, List<Object[]>> groups = new java.util.LinkedHashMap<>();
         for (Object[] row : rows) {
+            com.uten.imp.common.integrity.SourceQuantityBasis.requireKnown((UUID)row[9],(BigDecimal)row[10]);
             groups.computeIfAbsent(new ComponentKey((UUID) row[1], (UUID) row[2]), k -> new ArrayList<>())
                     .add(row);
         }
@@ -581,12 +591,12 @@ public class SubcontractReceiptService {
                     em.createNativeQuery("""
                             INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,
                                 qty_doc,qty_base,consumption_basis,created_by)
-                            SELECT :receipt,issue.id,:qty,:qty*COALESCE(issue.unit_rate,1),
+                            SELECT :receipt,issue.id,:qty,:qty*issue.unit_rate,
                                 CASE WHEN EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
                                     JOIN subcontract_receipt_items receipt ON receipt.id=:receipt
                                     WHERE plan.id=issue.plan_item_id AND plan.flow_mode<>'LEGACY_BOM_COMPONENT'
                                       AND issue.goods_id=receipt.goods_id AND issue.color_id IS NOT DISTINCT FROM receipt.color_id
-                                      AND issue.frozen_unit_qty*COALESCE(issue.unit_rate,1)=COALESCE(receipt.unit_rate,1))
+                                      AND issue.frozen_unit_qty*issue.unit_rate=receipt.unit_rate)
                                     THEN 'DIRECT_TARGET' ELSE 'FROZEN_BOM_ESTIMATE' END,:actor
                             FROM subcontract_material_issue_items issue WHERE issue.id=:issue
                             """).setParameter("receipt",receiptItemId).setParameter("issue",(UUID)row[0])
@@ -667,7 +677,7 @@ public class SubcontractReceiptService {
                       AND issue_item.is_deleted = FALSE
                     """).setParameter("orderItemId", orderItemId).getSingleResult());
             BigDecimal receivedBase = decimal(em.createNativeQuery("""
-                    SELECT COALESCE(SUM(receipt_item.qty * COALESCE(receipt_item.unit_rate,1)),0)
+                    SELECT COALESCE(SUM(receipt_item.qty * receipt_item.unit_rate),0)
                     FROM subcontract_receipt_items receipt_item
                     JOIN subcontract_receipts receipt
                       ON receipt.id = receipt_item.receipt_id
@@ -715,13 +725,14 @@ public class SubcontractReceiptService {
                 .sorted()
                 .toList();
         if (orderItemIds.isEmpty()) return;
+        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireConsistentTargetBasis(em,orderItemIds);
 
         String currentDraftExclusion = currentReceiptId == null
                 ? ""
                 : " AND draft.id <> :currentReceiptId";
         var query = em.createNativeQuery(("""
                 SELECT order_item.id,
-                       COALESCE(order_item.unit_rate, 1) AS order_unit_rate,
+                       order_item.unit_rate AS order_unit_rate,
                        EXISTS (
                            SELECT 1
                            FROM subcontract_material_plan_items plan_item
@@ -760,7 +771,7 @@ public class SubcontractReceiptService {
                                  'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
                        ), 0) AS returned_failure_base,
                        COALESCE((
-                           SELECT SUM(receipt_item.qty * COALESCE(receipt_item.unit_rate, 1))
+                           SELECT SUM(receipt_item.qty * receipt_item.unit_rate)
                            FROM subcontract_receipt_items receipt_item
                            JOIN subcontract_receipts receipt
                              ON receipt.id = receipt_item.receipt_id
@@ -770,11 +781,11 @@ public class SubcontractReceiptService {
                              AND receipt_item.is_deleted = FALSE
                        ), 0) AS approved_receipt_base,
                        COALESCE((
-                           SELECT SUM(draft_item.qty * COALESCE(draft_item.unit_rate, 1))
+                           SELECT SUM(draft_item.qty * draft_item.unit_rate)
                            FROM subcontract_receipt_items draft_item
                            JOIN subcontract_receipts draft
                              ON draft.id = draft_item.receipt_id
-                            AND draft.status = 0
+                            AND draft.status = 0 AND draft.legacy_id IS NULL
                             AND draft.is_deleted = FALSE
                            WHERE draft_item.order_item_id = order_item.id
                              AND draft_item.is_deleted = FALSE

@@ -81,13 +81,11 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 文档口径的守卫/豁免计数(权限体系总设计.md「192 条守卫 / 19 条豁免」、
-/// 页面权限一览.md 表头同数；2026-09-15 实跑核对三处已对齐——页面权限一览.md
-/// 表头此前停在 181/19 的旧值，本次一并修正)。
+/// 当前工作区逐条核对：196 条守卫 / 19 条豁免（2026-09-19）。
+/// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-/// 192 = 191 + ADR-088 物料分析关联销售订货单只读货品清单页。
-const _expectedGuardedCount = 195;
+const _expectedGuardedCount = 197;
 const _expectedExemptCount = 19;
 
 void main() {

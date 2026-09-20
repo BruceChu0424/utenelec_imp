@@ -1,39 +1,38 @@
-// 报销列表页（表格版）
+// 报销列表页（我的报销）
 // 文档：docs/03-页面/报销列表页.md
 //
-// 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
-// 列：标题/类别/明细项数/金额/状态/提交时间/审批打款信息（原卡片字段全部保留，
-// 类别与审批打款信息为表格化新增）。顶部 UtenSegmentedFilter 分段（全部/草稿/
-// 处理中/已完成）保留在标题行；行双击进详情；无多选。分页走表格内置翻页条
-//（含跳页，provider 补 goToPage——同批次一工资条先例）。空态/FAB 新建入口不变。
-// 2026-09-10 表头筛选：「状态」列筛选桶 = 当前分段的状态集（全部段 = 六态），
-// 选中后下推后端 status 参数并回第 1 页，同时把顶部分段切到该状态所属段；
-// 换分段清空状态筛选。
-// 2026-09-16 增「类别」列筛选桶（固定八类，明细项级别下推 category 参数）。
+// 2026-09-19 V608 全链路改版：对齐 purchase_doc_list_page 范式——
+// AppBar(标题+右上刷新) + UtenContentContainer.wide + UtenCollapsingHeaderScrollView
+// （折叠头=UtenFilterToolbar 分段，进页面默认不选，占位引导）+ 页面头行
+// （Icon + 标题(N) + 新建按钮）+ MasterDataTableView(primary:true)。
+// 列增「单号」（BX 单号，V608 创建即铸）、「进度」列带操作人姓名回显。
+// 历史：2026-09-09 卡片网格 → 表格化；2026-09-10 表头状态筛选；
+// 2026-09-16 类别筛选桶。
 //
-// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
-// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器；
-// 窄屏表格横向滚动即可
+// 响应式：medium+ 外壳（MainShellPage）已收敛内容区；表格自身处理窄屏横向滚动。
 
 import 'package:flutter/material.dart';
-
-import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_list_create_action.dart';
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
+import '../providers/expense_counts_provider.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 
 class ExpenseListPage extends ConsumerWidget {
   const ExpenseListPage({super.key});
@@ -41,90 +40,155 @@ class ExpenseListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(expenseListProvider);
+    final counts = ref.watch(expenseCountsProvider).valueOrNull;
+    final canApply = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.expenseApply);
     final filter = ref.watch(expenseFilterProvider);
     final statusFilter = ref.watch(expenseStatusFilterProvider);
     final categoryFilter = ref.watch(expenseCategoryFilterProvider);
-    final createAction = UtenListCreateAction(
-      emptyIcon: Icons.receipt_long_outlined,
-      emptyMessage: '暂无报销单',
-      emptyDescription: '新建第一笔报销，提交后可在这里跟踪处理进度',
-      emptyActionLabel: '新建报销',
-      fabLabel: '新建报销',
-      actionIcon: Icons.add_rounded,
-      onPressed: () => context.go(RouteName.expenseNew),
-    );
-
-    // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
-    Widget body = RefreshIndicator(
-      onRefresh: () => ref.read(expenseListProvider.notifier).refresh(),
-      child: list.when(
-        loading: () => const UtenSkeletonList(itemCount: 6),
-        error: (e, _) => UtenEmpty.error(
-          message: '加载失败：$e',
-          actionLabel: '重试',
-          onAction: () => ref.invalidate(expenseListProvider),
-        ),
-        data: (page) {
-          final claims = page.items;
-          // 空态保持「唯一新建入口」口径（新建按钮在空态里，不出 FAB）；
-          // 空态自带 ListView 占位（不可再外包滚动视图，无界高度会崩）。
-          if (claims.isEmpty) {
-            return createAction.emptyState(topSpacing: 80);
-          }
-          return MasterDataTableView<ExpenseClaim>(
-            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-            key: const Key('expense-list-table'),
-            columns: _columns,
-            items: claims,
-            facets: {
-              'status': _statusFacets(filter),
-              // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
-              'category': _categoryFacets(),
-            },
-            nullCounts: const {},
-            filters: {'status': statusFilter?.name, 'category': categoryFilter},
-            onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
-            // 双击行进入报销详情（保留现有路由与 push 语义）。
-            onRowTap: (claim) =>
-                context.push(RoutePath.expenseDetail(claim.id)),
-            emptyMessage: '暂无报销单',
-            currentPage: page.page,
-            totalPages: page.totalPages,
-            onPageChange: (p) =>
-                ref.read(expenseListProvider.notifier).goToPage(p),
-          );
-        },
-      ),
-    );
-    if (context.breakpoint.isCompact) {
-      body = UtenContentContainer(child: body);
-    }
+    final total = list.valueOrNull?.total ?? 0;
 
     return Scaffold(
       appBar: UtenAppBar(
-        title: '报销',
-        showBackButton: true,
-        centerWidget: UtenSegmentedFilter<ExpenseFilter>(
-          selected: filter,
-          onChanged: (v) {
-            ref.read(expenseFilterProvider.notifier).state = v;
-            // 分段换了口径，表头状态筛选随之失效。
-            ref.read(expenseStatusFilterProvider.notifier).state = null;
-          },
-          segments: const [
-            UtenSegment(value: ExpenseFilter.all, label: '全部'),
-            UtenSegment(value: ExpenseFilter.draft, label: '草稿'),
-            UtenSegment(value: ExpenseFilter.processing, label: '处理中'),
-            UtenSegment(value: ExpenseFilter.finished, label: '已完成'),
-          ],
+        title: '我的报销',
+        leading: UtenBackButton(
+          onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: '刷新',
+            onPressed: () => ref.read(expenseListProvider.notifier).refresh(),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: UtenContentContainer.wide(
+          child: Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: UtenCollapsingHeaderScrollView(
+              // 分段（进页面默认「全部」：我的报销是个人列表，落地即见数据；
+              // 计数段都是中性括号：草稿是「我自己没写完的」，处理中已在审批人手上）。
+              collapsingHeader: UtenFilterToolbar<ExpenseFilter>(
+                segmentsKey: const Key('expense-list-segments'),
+                segments: [
+                  const UtenFilterSegment(
+                    value: ExpenseFilter.all,
+                    label: '全部',
+                  ),
+                  UtenFilterSegment(
+                    value: ExpenseFilter.draft,
+                    label: '草稿',
+                    count: counts?.draftCount,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                  UtenFilterSegment(
+                    value: ExpenseFilter.rejected,
+                    label: '待修订',
+                    count: counts?.rejectedCount,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                  const UtenFilterSegment(
+                    value: ExpenseFilter.processing,
+                    label: '处理中',
+                  ),
+                  const UtenFilterSegment(
+                    value: ExpenseFilter.finished,
+                    label: '已完成',
+                  ),
+                ],
+                selected: {filter},
+                onSelectionChanged: (value) {
+                  ref.read(expenseFilterProvider.notifier).state = value;
+                  // 分段换了口径，表头状态筛选随之失效。
+                  ref.read(expenseStatusFilterProvider.notifier).state = null;
+                },
+              ),
+              body: Column(
+                children: [
+                  // 页面头：Icon + 标题 + 计数 + 新建按钮（唯一新建入口，
+                  // 空态由表格内置空态提示，不再出 FAB）。
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          size: 18,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Text(
+                          '我的报销 ($total)',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const Spacer(),
+                        if (canApply)
+                          UtenButton(
+                            type: UtenButtonType.tonal,
+                            icon: Icons.add_rounded,
+                            onPressed: () => context.push(RouteName.expenseNew),
+                            child: const Text('新建报销'),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: list.when(
+                      loading: () => const UtenSkeletonList(itemCount: 6),
+                      error: (e, _) => MasterDataTableView<ExpenseClaim>(
+                        key: const Key('expense-list-table'),
+                        columns: _columns,
+                        items: const [],
+                        facets: const {},
+                        nullCounts: const {},
+                        filters: const {},
+                        onFilterChanged: (_, _) {},
+                        emptyMessage: '加载失败，请重试',
+                        error: '加载失败，请重试',
+                        onRetry: () => ref.invalidate(expenseListProvider),
+                      ),
+                      data: (page) => MasterDataTableView<ExpenseClaim>(
+                        key: const Key('expense-list-table'),
+                        // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                        primary: true,
+                        columns: _columns,
+                        items: page.items,
+                        facets: {
+                          'status': _statusFacets(filter),
+                          // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
+                          'category': _categoryFacets(),
+                        },
+                        nullCounts: const {},
+                        filters: {
+                          'status': statusFilter?.name,
+                          'category': categoryFilter,
+                        },
+                        onFilterChanged: (key, value) =>
+                            _onFilterChanged(ref, key, value),
+                        // 双击行进入报销详情。
+                        onRowTap: (claim) =>
+                            context.push(RoutePath.expenseDetail(claim.id)),
+                        emptyMessage: '暂无报销单',
+                        currentPage: page.page,
+                        totalPages: page.totalPages,
+                        onPageChange: (p) =>
+                            ref.read(expenseListProvider.notifier).goToPage(p),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: createAction.floatingActionButton(
-        context,
-        hasItems: list.valueOrNull?.items.isNotEmpty ?? false,
-      ),
-      body: body,
     );
   }
 }
@@ -170,6 +234,12 @@ void _onFilterChanged(WidgetRef ref, String key, String? value) {
 
 final List<MasterColumnDef<ExpenseClaim>> _columns = [
   MasterColumnDef(
+    key: 'claimNo',
+    label: '报销单号',
+    width: 160,
+    value: (claim) => claim.claimNo,
+  ),
+  MasterColumnDef(
     key: 'title',
     label: '标题',
     width: 220,
@@ -181,13 +251,6 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
     width: 150,
     info: '本单全部明细项的报销类别（去重，顿号连接）。',
     value: (claim) => _categoryText(claim),
-  ),
-  MasterColumnDef(
-    key: 'itemCount',
-    label: '明细项数',
-    width: 90,
-    type: 'number',
-    value: (claim) => claim.items.length.toString(),
   ),
   MasterColumnDef(
     key: 'totalAmount',
@@ -211,10 +274,10 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
   ),
   MasterColumnDef(
     key: 'progress',
-    label: '审批/打款信息',
+    label: '审批/付款记录',
     width: 230,
     info:
-        '已驳回显示驳回原因；已通过显示审批时间；已打款显示打款时间；'
+        '已驳回显示驳回原因与驳回人；已通过显示审批人与时间；已付款显示付款登记时间；'
         '完整审批轨迹在详情页。',
     value: (claim) => _progressText(claim),
   ),
@@ -238,11 +301,14 @@ String? _progressText(ExpenseClaim claim) {
     case ExpenseClaimStatus.reviewing:
       return null;
     case ExpenseClaimStatus.approved:
-      return '审批通过 ${_formatTime(claim.approvedAt!)}';
+      return '${claim.approvedByName ?? ''} 审批通过 ${_formatTime(claim.approvedAt!)}'
+          .trim();
     case ExpenseClaimStatus.rejected:
-      return '驳回：${claim.rejectReason ?? '未填写原因'}';
+      return '驳回：${claim.rejectReason ?? '未填写原因'}'
+          '${claim.rejectedByName == null ? '' : '（${claim.rejectedByName}）'}';
     case ExpenseClaimStatus.paid:
-      return '打款 ${_formatTime(claim.paidAt!)}';
+      return '${claim.paidByName ?? ''} 已付款 ${_formatTime(claim.paidAt!)}'
+          .trim();
   }
 }
 

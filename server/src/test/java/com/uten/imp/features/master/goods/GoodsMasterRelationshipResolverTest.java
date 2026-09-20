@@ -86,4 +86,16 @@ class GoodsMasterRelationshipResolverTest {
         assertEquals(ErrorCode.CONFLICT, error.getCode());
         verify(unitRepo, never()).findByLegacyId(anyInt());
     }
+
+    @Test
+    void owningWarehouseRejectsWorkshopLocationButAllowsOrdinaryParent() {
+        UUID id = UUID.randomUUID();
+        var warehouse = new com.uten.imp.features.master.warehouse.Warehouse();
+        warehouse.setId(id);
+        when(warehouseRepo.findById(id)).thenReturn(Optional.of(warehouse));
+        assertSame(warehouse, resolver.owningWarehouse(id));
+        warehouse.setLineSide(true);
+        assertEquals(ErrorCode.VALIDATION_FAILED,
+                assertThrows(ApiException.class, () -> resolver.owningWarehouse(id)).getCode());
+    }
 }

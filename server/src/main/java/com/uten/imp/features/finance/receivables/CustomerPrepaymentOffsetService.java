@@ -5,6 +5,7 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.gl.GlPostingService;
+import com.uten.imp.features.finance.LegacyOpeningOffsetScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -64,7 +65,9 @@ public class CustomerPrepaymentOffsetService {
                         targets.stream().map(Target::receivableLedgerId))
                 .distinct().sorted().toList();
         Map<UUID, OpenItem> items = lockOpenItems(ledgerIds);
+        LegacyOpeningOffsetScope history=LegacyOpeningOffsetScope.load(em,ledgerIds,"AR",effectiveDate);
         OpenItem source = require(items, request.sourceLedgerId());
+        history.requireNativeSource(source.id());
         if (!"CUSTOMER_PREPAYMENT".equals(source.kind())
                 || !"DIRECT_RECEIPT".equals(source.sourceType())
                 || source.clientId() == null || source.currencyId() == null
@@ -108,7 +111,7 @@ public class CustomerPrepaymentOffsetService {
         int sequence = 1;
         for (Target input : targets) {
             OpenItem target = require(items, input.receivableLedgerId());
-            if (!"RECEIVABLE".equals(target.kind())
+            if (!history.permitsTarget(target.id(),target.kind(),"RECEIVABLE")
                     || !Objects.equals(source.clientId(), target.clientId())
                     || !Objects.equals(source.currencyId(), target.currencyId())
                     || target.balanceOriginal() == null || target.balanceOriginal().signum() <= 0
@@ -227,10 +230,13 @@ public class CustomerPrepaymentOffsetService {
                 .flatMap(row -> java.util.stream.Stream.of((UUID) row[2], (UUID) row[3]))
                 .distinct().sorted().toList();
         Map<UUID, OpenItem> items = lockOpenItems(ledgerIds);
+        LegacyOpeningOffsetScope history=LegacyOpeningOffsetScope.load(em,ledgerIds,"AR",BusinessTime.today());
         UUID actor = currentUser.requireId();
         for (Object[] row : rows) {
             OpenItem source = require(items, (UUID) row[2]);
             OpenItem target = require(items, (UUID) row[3]);
+            history.requireNativeSource(source.id());
+            if(!history.permitsTarget(target.id(),target.kind(),"RECEIVABLE"))throw conflict("原转销目标已失去合法应收身份");
             BigDecimal expectedSourceOriginal = decimal(row[8]);
             BigDecimal expectedTargetOriginal = decimal(row[10]);
             BigDecimal expectedSourceLocal = decimal(row[12]);
@@ -339,14 +345,19 @@ public class CustomerPrepaymentOffsetService {
     }
 
     private UUID boundSalesOrder(UUID sourceLedgerId) {
-        Object value = em.createNativeQuery("""
-                SELECT receipt.sales_order_id
+        @SuppressWarnings("unchecked")
+        List<Object[]> receipts = em.createNativeQuery("""
+                SELECT receipt.sales_order_id,receipt.legacy_id
                 FROM ar_ap_ledger ledger JOIN finance_receipts receipt ON receipt.id=ledger.source_doc_id
                 WHERE ledger.id=:id AND ledger.source_doc_type='DIRECT_RECEIPT'
                   AND receipt.receipt_kind='CUSTOMER_PREPAYMENT' AND receipt.status=1
                   AND COALESCE(receipt.is_deleted,FALSE)=FALSE
-                """).setParameter("id", sourceLedgerId).getSingleResult();
-        return (UUID) value;
+                """).setParameter("id", sourceLedgerId).getResultList();
+        if (receipts.size() != 1) throw conflict("预收来源收款不存在或不可用");
+        Object[] receipt = receipts.getFirst();
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(
+                receipt[1] == null ? null : ((Number) receipt[1]).intValue());
+        return (UUID) receipt[0];
     }
 
     @SuppressWarnings("unchecked")

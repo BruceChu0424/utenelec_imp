@@ -10,6 +10,7 @@ import java.util.List;
 public record ExpenseClaimCreateRequest(
         @NotBlank @Size(max = 200) String title,
         @Size(max = 2000) String remark,
-        @NotEmpty @Size(max = 100) List<@Valid ExpenseClaimItemInput> items
+        @NotEmpty @Size(max = 100) List<@Valid ExpenseClaimItemInput> items, Long expectedVersion
 ) {
+    public ExpenseClaimCreateRequest(String title, String remark, List<ExpenseClaimItemInput> items) { this(title,remark,items,null); }
 }

@@ -40,7 +40,7 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(name = "business_type", nullable = false)
     private String businessType;
 
-    /** RECEIVABLE / PAYABLE / CREDIT / CLAIM_CREDIT / PREPAYMENT。 */
+    /** RECEIVABLE / PAYABLE / CREDIT / CLAIM_CREDIT / PREPAYMENT / LEGACY_UNVERIFIED。 */
     @Column(name = "open_item_kind", nullable = false)
     private String openItemKind;
 
@@ -159,4 +159,9 @@ public class ArApLedger extends SoftDeletableEntity {
     private Short legacyBstyle;
 
     private String remark;
+
+    /** Immutable source-resolution evidence; ordinary document code cannot write it. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "legacy_source_resolution", insertable = false, updatable = false, columnDefinition = "jsonb")
+    private java.util.Map<String, Object> legacySourceResolution;
 }

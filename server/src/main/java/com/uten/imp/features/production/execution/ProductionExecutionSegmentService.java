@@ -45,7 +45,6 @@ public class ProductionExecutionSegmentService {
     private static final String ACTION_REVERSE = "REVERSE";
     private static final String ACTION_RELEASE_DEFER = "RELEASE_DEFER";
     private static final String ACTION_RECHECK_MATERIAL = "RECHECK_MATERIAL";
-    private static final String ACTION_START_CONTINUOUS = "START_CONTINUOUS";
     private static final String ACTION_ROUTE_CONFIRMED = "ROUTE_CONFIRMED";
 
     static final String ROUTE_FULL_KIT = "FULL_KIT";
@@ -80,6 +79,8 @@ public class ProductionExecutionSegmentService {
             SegmentAssignmentRequest request) {
         tx.bind();
         requireAssignmentRequest(request);
+        requireOperationAuthority("production_execution:assign");
+        var assignmentFootprint = planFootprints.beginPlan(planId, List.of());
         LockedSegment segment = lock(planId, segmentId);
         requireSegmentOperationAccess(
                 segment, "production_execution:assign");
@@ -87,6 +88,7 @@ public class ProductionExecutionSegmentService {
         ExecutionSegmentView replay =
                 replay(segment, ACTION_ASSIGNMENT, request.idempotencyKey(), requestHash);
         if (replay != null) return replay;
+        assignmentFootprint.verifyUnchanged();
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
         if (!List.of(
@@ -94,6 +96,11 @@ public class ProductionExecutionSegmentService {
                         ProductionExecutionSegment.STATUS_WAITING)
                 .contains(segment.status())) {
             throw conflict("仅待料或齐套未派工的执行段可以调整分配");
+        }
+        if (!Objects.equals(segment.workshopDepartmentId(), request.workshopDepartmentId())
+                && !Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_can_reassign_execution_workshop(:id)")
+                    .setParameter("id",segment.id()).getSingleResult())) {
+            throw conflict("任务已有实物交接、有效历史领料单或共用物料关系，请先由计划核对并处理原任务、领料及关联批次；涉及实物时须沿原来源退回或反向，同车间仍可调整负责人");
         }
         assignmentValidator.validate(new ProductionAssignmentValidator.Assignment(
                 request.workshopDepartmentId(),
@@ -135,6 +142,7 @@ public class ProductionExecutionSegmentService {
         boolean responsibleChanged = !Objects.equals(
                 segment.responsibleEmployeeId(),
                 request.responsibleEmployeeId());
+        synchronizeUnissuedDrawAssignments(segmentId, request, resultingVersion);
         // 2026-09-06 起改派同样学习负责人：车间或负责人任一变化都刷新记忆
         //（未选负责人时服务端保留旧记忆，不清空）。
         if (request.workshopDepartmentId() != null
@@ -157,6 +165,36 @@ public class ProductionExecutionSegmentService {
             }
         }
         return one(planId, segmentId);
+    }
+
+    /** Pending DRAW delivery follows the task; issued documents remain historical facts. */
+    private void synchronizeUnissuedDrawAssignments(
+            UUID segmentId, SegmentAssignmentRequest request, long resultingVersion) {
+        List<UUID> documents = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT document.id FROM stock_documents document
+                WHERE fn_execution_draw_assignment_syncable(document.id,:segment)
+                  AND (document.department_id IS DISTINCT FROM CAST(:workshop AS uuid)
+                    OR document.worker_id IS DISTINCT FROM CAST(:employee AS uuid))
+                  AND EXISTS(SELECT 1 FROM production_planning_package_documents mapping
+                      WHERE mapping.document_id=document.id AND mapping.document_type='DRAW'
+                        AND mapping.execution_segment_id=:segment)
+                ORDER BY document.id FOR UPDATE OF document
+                """,UUID.class).setParameter("segment",segmentId)
+                .setParameter("workshop",request.workshopDepartmentId())
+                .setParameter("employee",request.responsibleEmployeeId()),UUID.class);
+        if (documents.isEmpty()) return;
+        if (request.workshopDepartmentId()==null) {
+            throw validation("已有待发领料单的任务须保留有效收料车间，请选择新车间后再保存");
+        }
+        em.createNativeQuery("""
+                UPDATE stock_documents SET department_id=:workshop,worker_id=:employee,
+                    updated_at=now(),updated_by=:actor
+                WHERE id IN (:documents)
+                """).setParameter("workshop",request.workshopDepartmentId())
+                .setParameter("employee",request.responsibleEmployeeId())
+                .setParameter("actor",currentUser.requireId())
+                .setParameter("documents",documents).executeUpdate();
+        documents.forEach(document -> chainNotice.notifyProductionDrawReassigned(document,segmentId,resultingVersion));
     }
 
     /**
@@ -223,13 +261,13 @@ public class ProductionExecutionSegmentService {
         return result;
     }
 
-    /** Explicit repair of a waiting task using current physical inventory facts. */
+    /** Rechecks arrivals and explicitly prepares unused returned material on the same task. */
     @Transactional
     public ExecutionSegmentView recheckMaterial(
             UUID planId, UUID segmentId, SegmentTransitionRequest request) {
         tx.bind();
         requireTransitionRequest(request);
-        prelockForLineSideIssue(planId, List.of(segmentId));
+        var materialFootprint = planFootprints.beginPlan(planId, List.of());
         UUID warehouseId = readiness.lockManualReleaseDimensions(planId, segmentId);
         LockedSegment segment = lock(planId, segmentId);
         requireSegmentOperationAccess(segment, "production_execution:start");
@@ -239,13 +277,18 @@ public class ProductionExecutionSegmentService {
         if (replay != null) return replay;
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
-        if (!ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())
+        if (!List.of("WAITING", "READY", "DISPATCHED", "IN_PROGRESS").contains(segment.status())
                 || !segment.autoPromoteWhenReady()) {
-            throw conflict("仅自动待料中的执行段可以重新检查物料，人工暂缓须先解除暂缓");
+            throw conflict("仅有效待料或生产中的任务可以重新检查物料，人工暂缓须先解除暂缓");
         }
         if (warehouseId == null) throw conflict("执行段缺少有效的确认计划包或发料仓");
         requireRouteForRecheck(segment);
+        materialFootprint.verifyUnchanged();
         readiness.promoteAfterMaterialRecheck(segmentId, warehouseId);
+        readiness.prepareReturnedMaterialDraws(segmentId);
+        // Cancelling an unreceived surplus request can unfreeze an existing
+        // partial technical DRAW without requiring any new allocation or draft.
+        readiness.issuePendingLineSideDraws(segmentId);
         ExecutionSegmentView result = one(planId, segmentId);
         recordEvent(segmentId, ACTION_RECHECK_MATERIAL, request.idempotencyKey(),
                 requestHash, request.expectedVersion(), result.lockVersion());
@@ -265,7 +308,7 @@ public class ProductionExecutionSegmentService {
         requireRouteConfirmRequest(request);
         // 与人工重核同一把锁尺：确认齐套路线可能就地出库线边仓草稿/整批提升，
         // 先按计划预锁履约足迹，再进库存维度锁。
-        boolean kitCandidate = ROUTE_FULL_KIT.equals(request.route());
+        boolean kitCandidate = ROUTE_FULL_KIT.equals(request.route()) || ROUTE_CONTINUOUS.equals(request.route());
         UUID promotionWarehouseId = null;
         if (kitCandidate) {
             prelockForLineSideIssue(planId, List.of(segmentId));
@@ -280,32 +323,38 @@ public class ProductionExecutionSegmentService {
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
         boolean firstConfirmation = segment.startRoute() == null;
-        // V606 同值幂等：路线已由创建事务自动识别，再「确认成同一条」不是新决定——
-        // 不要求 WAITING/未动过(已提升的段重复确认是合法的空操作)；改值仍走严格门。
+        // A repeated confirmed route preserves existing preparation and physical history.
         boolean sameRoute = !firstConfirmation
                 && Objects.equals(segment.startRoute(), request.route());
-        // 先验「这个段允不允许选这条路线」再验「此刻能不能改」：零料直制段生而 READY，
-        // 给它改选分批要报「零料不可分批」的选型错误，而不是被阶段检查抢先报
-        // 「只能在等待物料阶段」（V606 自动识别后选型错误与阶段无关）。
-        if (!sameRoute) {
+        if (!sameRoute || ROUTE_BATCH.equals(request.route())) {
             validateRouteChoice(segment, request.route());
         }
         if (!firstConfirmation && !sameRoute) {
-            if (!ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())) {
-                throw conflict("开工路线只能在等待物料阶段确认或更改");
+            if (!List.of("WAITING", "READY", "DISPATCHED").contains(segment.status())) {
+                throw conflict("开工后不能更改生产路线");
             }
             if (!Boolean.TRUE.equals(em.createNativeQuery(
                             "SELECT fn_can_change_execution_route(:id)")
                             .setParameter("id", segmentId).getSingleResult())) {
-                throw conflict("工单已产生领料单、报工或预留，开工路线不能更改");
+                throw conflict("工单已经实际领料或报工，开工路线不能更改");
             }
+        }
+        if (ROUTE_CONTINUOUS.equals(request.route())) {
+            em.createNativeQuery("""
+                    UPDATE production_material_demands SET direct_supply=TRUE,
+                        lock_version=lock_version+1, updated_at=now()
+                    WHERE execution_segment_id=:id AND NOT is_deleted
+                      AND status NOT IN ('RELEASED','REVERSED')
+                      AND NOT direct_supply AND fn_demand_direct_supply_eligible(id)
+                    """).setParameter("id", segmentId).executeUpdate();
         }
         // lock_version 由 trg_validate_production_execution_segment 触发器对每次
         // UPDATE 强制 +1（V155），语句无需（也不应）手工推进——与 assign() 同约定。
         int updated = em.createNativeQuery("""
                         UPDATE production_execution_segments
                         SET start_route = :route,
-                            route_confirmed_at = now()
+                            route_confirmed_at = now(),
+                            continuous_supply = (:route = 'CONTINUOUS')
                         WHERE id = :id
                           AND lock_version = :expectedVersion
                           AND status IN ('WAITING', 'READY', 'DISPATCHED')
@@ -322,12 +371,13 @@ public class ProductionExecutionSegmentService {
         chainNotice.resolveProductionWorkshopTasks(
                 List.of(segmentId), "ROUTE_CONFIRMED");
         if (kitCandidate
-                && ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())
+                && (ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())
+                    || ROUTE_CONTINUOUS.equals(request.route()))
                 && segment.autoPromoteWhenReady()) {
             if (promotionWarehouseId == null) {
                 throw conflict("执行段缺少有效的确认计划包或发料仓，不能按齐套生产补跑备料提升");
             }
-            readiness.promoteAfterRouteConfirmation(segmentId, promotionWarehouseId);
+            readiness.promoteAfterRouteConfirmation(segmentId, promotionWarehouseId,segment.startRoute()==null);
         }
         ExecutionSegmentView result = one(planId, segmentId);
         recordEvent(segmentId, ACTION_ROUTE_CONFIRMED, request.idempotencyKey(),
@@ -335,65 +385,50 @@ public class ProductionExecutionSegmentService {
         return result;
     }
 
-    /** 路线本身合不合这张工单：非默认路线只允许在「还能改主意」的时候选——
-     * 对抗复审 M1：带供给钉/已动过的工单选了分批/持续会把全部出口封死成永久 WAITING
-     * (分批的拆批、持续的开工、改回路线三者都要求未动过)。 */
+    /** Continuous supply preserves preparation; independent splitting requires an unused task. */
     private void validateRouteChoice(LockedSegment segment, String route) {
         if (ROUTE_FULL_KIT.equals(route)) {
-            return;
-        }
-        if (!Boolean.TRUE.equals(em.createNativeQuery(
-                        "SELECT fn_can_change_execution_route(:id)")
-                .setParameter("id", segment.id()).getSingleResult())) {
-            throw validation("本工单已有在途供给或领料/预留记录，只能按齐套生产路线办理；"
-                    + "如需分批生产或持续生产，请在计划下达后、采购/委外供给绑定前确认路线");
-        }
-        if (ROUTE_BATCH.equals(route)) {
-            if (ProductionExecutionSegment.MATERIAL_REQUIREMENT_MODE_ZERO.equals(
-                    segment.materialRequirementMode())) {
-                throw validation("无物料子件的工单用不上分批生产，请选择齐套生产");
+            if (segment.continuousSupply() && !"WAITING".equals(segment.status())
+                    && Boolean.TRUE.equals(em.createNativeQuery("""
+                        SELECT EXISTS(SELECT 1 FROM production_material_demands demand
+                          WHERE demand.execution_segment_id=:id AND NOT demand.is_deleted
+                            AND demand.status NOT IN ('RELEASED','REVERSED')
+                            AND demand.required_qty>COALESCE((SELECT SUM(reservation.qty-reservation.released_qty)
+                              FROM stock_reservations reservation WHERE reservation.demand_id=demand.id
+                                AND NOT reservation.is_deleted),0))
+                        """).setParameter("id",segment.id()).getSingleResult())) {
+                throw conflict("持续生产已备部分物料，请继续本路线；全部物料备齐后才可改为齐套生产");
             }
             return;
         }
-        Number eligible = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_material_demands demand
-                        WHERE demand.execution_segment_id = :segmentId
-                          AND demand.is_deleted = FALSE
-                          AND demand.status NOT IN ('RELEASED', 'REVERSED')
-                          AND fn_demand_direct_supply_eligible(demand.id)
-                        """)
-                .setParameter("segmentId", segment.id())
-                .getSingleResult();
-        if (eligible.longValue() == 0) {
-            throw validation("本工单没有可由本车间直送供给的子件，持续生产路线不适用；请选择齐套或分批生产");
+        if (ProductionExecutionSegment.MATERIAL_REQUIREMENT_MODE_ZERO.equals(segment.materialRequirementMode())) {
+            throw validation("无物料子件的工单请选择齐套生产");
+        }
+        // Continuous supply changes when materials are issued, not who owns them.
+        // Existing draft preparation and purchase pegs remain attached to this task.
+        if (ROUTE_CONTINUOUS.equals(route)) return;
+        if (ROUTE_BATCH.equals(route) && !Boolean.TRUE.equals(em.createNativeQuery(
+                "SELECT fn_can_split_execution_batch(:id)")
+                .setParameter("id", segment.id()).getSingleResult())) {
+            throw conflict("本任务不满足独立分批条件：须为已安排车间、自动等待物料且尚未备料或绑定供给的物料分析任务；请选择齐套生产或持续生产");
         }
     }
 
-    /**
-     * 开工路线门控(V599)：齐套开工/批量开工/领料申请共用。V606 起路线由创建事务
-     * 自动识别，NULL 只可能是历史脏数据——按齐套放行(不阻塞车间)；已确认
-     * 「分批生产」的工单不能走齐套链；「持续生产」路线的工单须先按持续生产开工
-     * (混合链直送冻结、仓库料领齐后再点普通开工)。
-     */
+    /** Explicit route selection precedes every preparation/start action. */
     private void requireRouteForKitAction(LockedSegment segment, String actionLabel) {
         String route = segment.startRoute();
+        if (route == null) throw conflict("请先确认生产路线");
         if (ROUTE_BATCH.equals(route)) {
             throw conflict("本工单已确认为「分批生产」路线，请用「分批领料」按批办理，「" + actionLabel + "」不可用");
         }
-        if (ROUTE_CONTINUOUS.equals(route) && !segment.continuousSupply()) {
-            throw conflict("本工单已确认为「持续生产」路线，请先用「部分开工 · 持续生产」开工，仓库物料领齐后再点开工");
-        }
     }
 
-    /** 重新核对备料=齐套提升：分批/未开工的持续生产路线各自有专属视图，不走这里。 */
+    /** Independent batches retain their own preview; other active routes share exact-source picking. */
     private void requireRouteForRecheck(LockedSegment segment) {
         String route = segment.startRoute();
+        if (route == null) throw conflict("请先确认生产路线");
         if (ROUTE_BATCH.equals(route)) {
             throw conflict("分批生产路线不走齐套核对，请在分批领料核对页查看当前可生产量");
-        }
-        if (ROUTE_CONTINUOUS.equals(route) && !segment.continuousSupply()) {
-            throw conflict("持续生产工单请先按「部分开工 · 持续生产」开工，再核对仓库物料");
         }
     }
 
@@ -435,9 +470,7 @@ public class ProductionExecutionSegmentService {
         tx.bind();
         requireTransitionRequest(request);
         LockedSegment segment = lock(planId, segmentId);
-        // V606 路线自动识别后不再有「未确认」段挡派工；此处不再做 NULL 检查。
-        // 复用上面已锁的段：不再走 transition() 二次加锁(少一次锁查询，也让
-        // 单测的 lock+replay 两条桩序列保持稳定)。
+        requireRouteForKitAction(segment, "派工");
         return applyTransition(prepareTransition(
                 segment,
                 request,
@@ -456,9 +489,8 @@ public class ProductionExecutionSegmentService {
         requireTransitionRequest(request);
         prelockForLineSideIssue(planId, List.of(segmentId));
         LockedSegment segment = lock(planId, segmentId);
-        // 2026-09-06 车间任务页改版：物料齐套（READY）工单可直接开工——与报工
-        // 自动开工（AUTO_START_ON_REPORT，READY/DISPATCHED → IN_PROGRESS）同口径；
-        // READY 段在 prepareTransition 里补派工前置校验（齐套 + 完整分配）。
+        // Saved assignment and confirmed route are reused. START itself verifies
+        // real material capacity; reporting never starts a task implicitly.
         requireRouteForKitAction(segment, "开工");
         return applyTransition(prepareTransition(
                 segment,
@@ -598,12 +630,12 @@ public class ProductionExecutionSegmentService {
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
         if (!allowedFrom.contains(segment.status())) {
+            if (ACTION_START.equals(action) && ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())) {
+                throw conflict("当前仍在等待物料，请先按已确认路线备料并完成本次领料后开工");
+            }
             throw conflict("执行段状态已经变化，请刷新后重试");
         }
-        if (ACTION_DISPATCH.equals(action)
-                || (ACTION_START.equals(action)
-                        && ProductionExecutionSegment.STATUS_READY.equals(
-                                segment.status()))) {
+        if (ACTION_DISPATCH.equals(action) || ACTION_START.equals(action)) {
             // 开工沿用计划已保存的车间和负责人；可选计划日期不成为重复填写门槛。
             requireDispatchPreconditions(segment, ACTION_START.equals(action));
         }
@@ -618,7 +650,7 @@ public class ProductionExecutionSegmentService {
     /** Uses the saved assignment; starting does not require optional schedule dates. */
     private void requireDispatchPreconditions(LockedSegment segment, boolean starting) {
         ExecutionSegmentView current = one(segment.planId(), segment.id());
-        if (!current.materialReady()) {
+        if (!segment.continuousSupply() && !current.materialReady()) {
             throw conflict(starting ? "执行段尚未齐套，不能开工" : "执行段尚未齐套，不能派工");
         }
         assignmentValidator.validate(new ProductionAssignmentValidator.Assignment(
@@ -837,6 +869,7 @@ public class ProductionExecutionSegmentService {
     }
 
     private void requireMaterialsIssuedForStart(LockedSegment segment) {
+        assignmentValidator.requireMaterialCustody(segment.id());
         if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) return;
         if (segment.sourceSegmentId()!=null && !Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_prerequisites_issued(:id)")
                 .setParameter("id",segment.id()).getSingleResult()))
@@ -844,6 +877,15 @@ public class ProductionExecutionSegmentService {
         // 线边仓直送料的草稿领料单在开工这一刻就地出库(V595)：系统对账把父件提升为齐套时
         // 没有用户身份可以出库，留下的草稿不该逼车间去申请、逼仓库替车间发线边仓的料。
         readiness.issuePendingLineSideDraws(segment.id());
+        if (segment.continuousSupply()) {
+            BigDecimal capacity = decimal(em.createNativeQuery(
+                    "SELECT fn_execution_material_output_capacity(:id, TRUE)")
+                    .setParameter("id", segment.id()).getSingleResult());
+            if (capacity.signum() <= 0) {
+                throw conflict("已投入的各项开工物料尚不能支持生产，请继续领料或等待车间直送；全部必需物料须共同支持正产出");
+            }
+            return;
+        }
         List<Object[]> demands = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, status, direct_supply
@@ -860,167 +902,13 @@ public class ProductionExecutionSegmentService {
                     .setParameter("id",segment.id()).getSingleResult())) return;
             throw conflict("执行段缺少正式物料需求，不能按零物料任务开工");
         }
-        // 持续生产(V595)：同车间直送供给的子件允许部分到料甚至尚未到料，不挡开工；
-        // 仓库供给的物料仍必须全部实际发出。
         long pending = demands.stream()
                 .filter(row -> !"FULFILLED".equals(row[1]))
-                .filter(row -> !(segment.continuousSupply() && Boolean.TRUE.equals(row[2])))
                 .count();
         if (pending > 0) {
             throw conflict("仓库尚未完成全部生产领料，不能开工(待发料 "
                     + pending + " 项)");
         }
-    }
-
-    /**
-     * 「部分开工 · 持续生产」(V595 / ADR-089)。用户口径：「物料只准备了 20% 也可以先开工，
-     * 后面物料源源不断来了不用再开工，来物料了就继续做，数量最后交付的时候再算，不是再开个生产单。」
-     *
-     * <p>同一张工单、开一次工：
-     * <ol>
-     *   <li>把可由同车间直送供给的子件需求冻结为 direct_supply，段标记 continuous_supply；</li>
-     *   <li>仓库供给的需求照旧整批齐套(缺什么直接报出来)，形成仓库领料单等车间申请、仓库发料；
-     *       直送需求只把线边仓已到的量预留出库，一件没到也不拦；</li>
-     *   <li>没有任何仓库需求时直接开工(IN_PROGRESS)；否则停在「齐套 · 去领料」，仓库料领齐后再点开工。</li>
-     * </ol>
-     * 之后每一笔同车间直送审核都会自动补投给这张工单，报工量以已到料折算的上限为准。
-     */
-    @Transactional
-    public ExecutionSegmentView startContinuousSupply(
-            UUID planId,
-            UUID segmentId,
-            SegmentTransitionRequest request) {
-        tx.bind();
-        requireTransitionRequest(request);
-        prelockForLineSideIssue(planId, List.of(segmentId));
-        LockedSegment segment = lock(planId, segmentId);
-        requireSegmentOperationAccess(segment, "production_execution:start");
-        String requestHash = hashTransition(request, ACTION_START_CONTINUOUS);
-        ExecutionSegmentView replay =
-                replay(segment, ACTION_START_CONTINUOUS, request.idempotencyKey(), requestHash);
-        if (replay != null) return replay;
-        requireVersion(segment, request.expectedVersion());
-        requireActivePlan(segment);
-        // 路线自动识别配套(V606)：点「部分开工 · 持续生产」就是选择持续生产——
-        // 未动过(无领料单/报工/预留/供给钉)的工单在下方同一条 UPDATE 里把路线
-        // 切到 CONTINUOUS；已动过的按原路线口径拒绝，不替用户改主意。
-        if (!ROUTE_CONTINUOUS.equals(segment.startRoute())
-                && !Boolean.TRUE.equals(em.createNativeQuery(
-                        "SELECT fn_can_change_execution_route(:id)")
-                .setParameter("id", segmentId).getSingleResult())) {
-            throw conflict("本工单已产生领料单、报工或预留，不能切换为「持续生产」路线");
-        }
-        if (!ProductionExecutionSegment.STATUS_WAITING.equals(segment.status())) {
-            throw conflict("只有等待物料的工单可以按「部分开工 · 持续生产」开工，请刷新后重试");
-        }
-        if (!Boolean.TRUE.equals(em.createNativeQuery(
-                        "SELECT fn_can_start_continuous_supply(:id)")
-                .setParameter("id", segmentId).getSingleResult())) {
-            throw conflict(continuousStartBlockedReason(segmentId));
-        }
-        // 与开工/派工同一把尺子：车间与负责人必须已保存(持续生产同样要有人负责收料与报工)。
-        ExecutionSegmentView current = one(planId, segmentId);
-        if (current.workshopDepartmentId() == null || current.responsibleEmployeeId() == null) {
-            throw validation("工单尚未保存完整的生产车间和负责人，请核对计划分配");
-        }
-        int marked = em.createNativeQuery("""
-                        UPDATE production_material_demands
-                        SET direct_supply = TRUE,
-                            lock_version = lock_version + 1,
-                            updated_at = now()
-                        WHERE execution_segment_id = :segmentId
-                          AND is_deleted = FALSE
-                          AND status NOT IN ('RELEASED', 'REVERSED')
-                          AND fn_demand_direct_supply_eligible(id)
-                        """)
-                .setParameter("segmentId", segmentId)
-                .executeUpdate();
-        if (marked == 0) {
-            throw conflict("本工单没有可由本车间直送供给的子件，请按普通流程领料开工");
-        }
-        int flagged = em.createNativeQuery("""
-                        UPDATE production_execution_segments
-                        SET continuous_supply = TRUE,
-                            start_route = 'CONTINUOUS',
-                            route_confirmed_at = now()
-                        WHERE id = :id
-                          AND lock_version = :expectedVersion
-                          AND status = 'WAITING'
-                          AND is_deleted = FALSE
-                        """)
-                .setParameter("id", segmentId)
-                .setParameter("expectedVersion", request.expectedVersion())
-                .executeUpdate();
-        requireUpdated(flagged);
-        UUID warehouseId = readiness.lockManualReleaseDimensions(planId, segmentId);
-        if (warehouseId == null) {
-            throw conflict("工单所属计划包缺少主仓，不能持续生产开工");
-        }
-        readiness.promoteContinuousSupply(segmentId, warehouseId);
-        long version = currentVersion(segmentId);
-        recordEvent(segmentId, ACTION_START_CONTINUOUS, request.idempotencyKey(),
-                requestHash, request.expectedVersion(), version);
-        Number warehouseDemands = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_material_demands
-                        WHERE execution_segment_id = :segmentId
-                          AND is_deleted = FALSE
-                          AND status NOT IN ('RELEASED', 'REVERSED')
-                          AND direct_supply = FALSE
-                        """)
-                .setParameter("segmentId", segmentId)
-                .getSingleResult();
-        if (warehouseDemands.longValue() == 0) {
-            // 全部子件都由同车间直送：没有任何仓库领料要等，就地开工。
-            LockedSegment ready = lock(planId, segmentId);
-            return applyTransition(prepareTransition(
-                    ready,
-                    new SegmentTransitionRequest(version, request.idempotencyKey() + ":START"),
-                    ACTION_START,
-                    java.util.Set.of(ProductionExecutionSegment.STATUS_READY),
-                    ProductionExecutionSegment.STATUS_IN_PROGRESS,
-                    "production_execution:start"));
-        }
-        return one(planId, segmentId);
-    }
-
-    /**
-     * 「部分开工 · 持续生产」被拒的原因(V595)。最常见的一种单独说清：**某些直送子件一件都还没
-     * 送到**。用户口径(2026-09-17)：「持续开工的前提是已经有一部分的料，子层级每一种料都有一部分
-     * 了，至少能开始生产了。」空料架开工等于零物料在产，随后还会去领仓库的料，账就乱了。
-     */
-    private String continuousStartBlockedReason(UUID segmentId) {
-        List<String> missing = NativeQueryResults.typedRows(em.createNativeQuery("""
-                        SELECT goods.name
-                               || COALESCE(' ' || goods.code, '')
-                               || COALESCE('(' || color.name || ')', '')
-                        FROM production_material_demands demand
-                        JOIN goods ON goods.id = demand.goods_id
-                        LEFT JOIN colors color ON color.id = demand.color_id
-                        WHERE demand.execution_segment_id = :segmentId
-                          AND demand.is_deleted = FALSE
-                          AND demand.status NOT IN ('RELEASED', 'REVERSED')
-                          AND fn_demand_direct_supply_eligible(demand.id)
-                          AND NOT fn_demand_has_direct_supply_on_hand(demand.id)
-                        ORDER BY 1
-                        """)
-                .setParameter("segmentId", segmentId), String.class);
-        if (missing.isEmpty()) {
-            return "本工单不能按持续生产开工：需要至少一个子件由本车间直送供给，"
-                    + "且尚未领料、分批或预留；请用「分批领料」或等待物料齐套";
-        }
-        String names = String.join("、", missing.size() > 3 ? missing.subList(0, 3) : missing);
-        return "「部分开工 · 持续生产」要求每种同车间直送的子件都已经送到一部分，"
-                + "以下子件一件都还没到：" + names
-                + (missing.size() > 3 ? " 等 " + missing.size() + " 种" : "")
-                + "；请先在本车间把这些子件报工并选「转送车间」送过来，再按持续生产开工";
-    }
-
-    private long currentVersion(UUID segmentId) {
-        return ((Number) em.createNativeQuery(
-                        "SELECT lock_version FROM production_execution_segments WHERE id = :id")
-                .setParameter("id", segmentId)
-                .getSingleResult()).longValue();
     }
 
     private ExecutionSegmentView replay(
@@ -1156,20 +1044,25 @@ public class ProductionExecutionSegmentService {
                                base.material_requirement_mode = 'ZERO_MATERIAL'
                                    AS zero_material,
                                draw_request.fully_requested,
-                               (base.status IN ('READY','DISPATCHED')
+                               (base.status IN ('READY','DISPATCHED','IN_PROGRESS')
                                  AND plan.status=1 AND NOT plan.is_deleted
                                  AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
                                  AND package.status='CONFIRMED' AND NOT package.is_deleted
                                  AND base.material_requirement_mode<>'ZERO_MATERIAL'
-                                 AND issue.fulfilled_count<issue.demand_count
+                                 AND base.start_route IS NOT NULL AND base.start_route<>'BATCH'
                                  AND draw_request.has_unrequested),
                                fn_can_split_execution_batch(s.id),
                                base.source_segment_id,
                                EXISTS(SELECT 1 FROM production_execution_segment_splits split WHERE split.source_segment_id=s.id),
                                plan.maker_id,
                                base.continuous_supply,
-                               fn_can_start_continuous_supply(s.id),
-                               base.start_route
+                               base.start_route,
+                               (base.status IN ('READY','DISPATCHED')
+                                 AND base.start_route IS NOT NULL AND base.start_route<>'BATCH'
+                                 AND plan.status=1 AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
+                                 AND package.status='CONFIRMED' AND NOT package.is_deleted
+                                 AND base.workshop_department_id IS NOT NULL AND base.responsible_employee_id IS NOT NULL
+                                 AND fn_execution_start_material_ready(base.id))
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
                           ON base.id = s.id
@@ -1302,7 +1195,8 @@ public class ProductionExecutionSegmentService {
         if (segmentId != null) {
             query.setParameter("segmentId", segmentId);
         }
-        boolean hasDrawAuthority=access.hasAuthority("production_execution:view")
+        boolean hasDrawAuthority=workshopMembership.isActiveOperator()
+                && access.hasAuthority("production_execution:view")
                 && access.hasAuthority("production_execution:start");
         UUID employeeId=currentUser.employeeId().orElse(null);
         Map<String,Boolean> workshopAccess=new LinkedHashMap<>();
@@ -1349,6 +1243,7 @@ public class ProductionExecutionSegmentService {
 
     private void requirePlanOperationAccess(
             UUID planId, String operationAuthority) {
+        requireOperationAuthority(operationAuthority);
         access.requireScopedOperationWritable(
                 requirePlanOwner(planId),
                 "无权操作此生产计划的执行任务",
@@ -1357,6 +1252,7 @@ public class ProductionExecutionSegmentService {
 
     private void requireSegmentOperationAccess(
             LockedSegment segment, String operationAuthority) {
+        requireOperationAuthority(operationAuthority);
         // 车间口径（2026-09-11）：属于本段车间（或就是段负责人）且持动作权限的人可以操作
         // 自己的工单，不再要求能读计划制单人——V543 收回 production_plan:view:all 后，
         // 车间账号读不到计划归属，旧口径会把「开工 / 确认用料」一并锁死。
@@ -1372,6 +1268,16 @@ public class ProductionExecutionSegmentService {
                 segment.planMakerId(),
                 "无权操作此生产计划的执行任务",
                 operationAuthority);
+    }
+
+    /** An owner/data-scope grant chooses objects; it never grants the command itself. */
+    private void requireOperationAuthority(String operationAuthority) {
+        if (!access.hasAuthority(operationAuthority)
+                || ("production_execution:start".equals(operationAuthority)
+                    && !access.hasAuthority("production_execution:view"))) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少执行任务操作权限");
+        }
+        workshopMembership.requireActiveOperator();
     }
 
     private static void requireAssignmentRequest(
@@ -1523,8 +1429,8 @@ public class ProductionExecutionSegmentService {
                 (UUID)row[46],
                 Boolean.TRUE.equals(row[47]),
                 Boolean.TRUE.equals(row[49]),
-                canOperateDraw && Boolean.TRUE.equals(row[50]),
-                (String) row[51]);
+                (String) row[50],
+                canOperateDraw && Boolean.TRUE.equals(row[51]));
     }
 
     private static BigDecimal decimal(Object value) {

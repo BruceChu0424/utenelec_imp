@@ -161,6 +161,11 @@ public interface PreplanAnalysisPegPort {
             UUID packageId, List<PreparedPlanTransfer> prepared,
             List<FormalReservationSlice> formalReservations, String commandKey);
 
+    /** Automatic incremental supply keeps its system actor and distinct command identity. */
+    void formalizePlanDemandTransfersForCommand(
+            UUID packageId, List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations, String commandKey, UUID actorId);
+
     /**
      * Restore unissued formalized lots after their formal reservations have
      * been released by package cancellation or receipt-driven segment unwind.

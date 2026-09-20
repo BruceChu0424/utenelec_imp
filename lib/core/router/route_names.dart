@@ -102,6 +102,7 @@ abstract final class RouteName {
   // 报销
   static const String expense = '/expense';
   static const String expenseNew = '/expense/new';
+  static const String expenseEdit = '/expense/:id/edit';
   static const String expenseDetail = '/expense/:id';
 
   // 通知
@@ -510,6 +511,7 @@ abstract final class RoutePath {
   static String basicinfoAccountDetail(String id, {bool edit = false}) =>
       edit ? '/basicinfo/account/$id?edit=true' : '/basicinfo/account/$id';
   static String expenseDetail(String id) => '/expense/$id';
+  static String expenseEdit(String id) => '/expense/$id/edit';
   static String noticeDetail(String id) => '/notice/$id';
   static String suggestionDetail(String id) => '/suggestion/$id';
   static String websiteInquiryDetail(String id) => '/webinquiry/$id';
@@ -533,8 +535,6 @@ abstract final class RoutePath {
       '/warehouse/$code/$id';
   static String stockDocEdit(String code, String id) =>
       '/warehouse/$code/$id/edit';
-  static String stockWdrawNewFromDraw(String drawId) =>
-      '/warehouse/WDRAW/new?drawId=$drawId';
 
   static String warehouseProductionFinishedArrivalRegistration(
     String reportId, {

@@ -10,7 +10,6 @@
 --   unit_legacy_id 引用不悬空，用户可在 UI 禁用/删除）。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 -- Preserve FK/audit enforcement; referenced units make a reload fail closed.
 DELETE FROM units;
@@ -56,7 +55,6 @@ FROM (
 JOIN units source_unit ON source_unit.legacy_id = mapping.legacy_id
 JOIN units kg ON kg.legacy_id = 108;
 
-COMMIT;
 
 SELECT '✔ 单位 总 ' || count(*) ||
        '，使用 ' || count(*) FILTER (WHERE status = N'使用') ||

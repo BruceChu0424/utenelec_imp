@@ -71,6 +71,7 @@ class WorkshopContinuousSupplyEndToEndTest {
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionExecutionSegmentService segments;
     @Autowired ProductionDailyReportService reports;
+    @Autowired com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService reportable;
     @Autowired ProductionWorkshopDirectTransferService directTransfers;
     @Autowired ProductionDrawRequestService drawRequests;
     @Autowired StockDocService stock;
@@ -98,16 +99,16 @@ class WorkshopContinuousSupplyEndToEndTest {
         confirmRoute(c.plan(), c.segment(), "CONTINUOUS");
         // 用户口径(2026-09-17)：一件料都没到不是「部分开工」，是空开工——不许开，也不许去领料。
         assertEquals(Boolean.FALSE, db.queryForObject(
-                "SELECT fn_can_start_continuous_supply(?)", Boolean.class, c.segment()),
+                "SELECT fn_execution_start_material_ready(?)", Boolean.class, c.segment()),
                 "料架空着的工单不能按持续生产开工");
-        ApiException empty = assertThrows(ApiException.class, () -> segments.startContinuousSupply(
+        ApiException empty = assertThrows(ApiException.class, () -> segments.start(
                 c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "cs-all-empty-" + c.segment())));
-        assertTrue(empty.getMessage().contains("一件都还没到"), empty.getMessage());
+        assertTrue(empty.getMessage().contains("开工"), empty.getMessage());
         assertEquals("WAITING", status(c.segment()));
-        assertEquals(Boolean.FALSE, db.queryForObject(
+        assertEquals(Boolean.TRUE, db.queryForObject(
                 "SELECT continuous_supply FROM production_execution_segments WHERE id=?", Boolean.class, c.segment()),
-                "被拒的开工不留半个持续生产标记");
+                "路线已确认；开工被拒不会取消用户选择的持续路线");
 
         // 子件先报工直送 40 套：料落进自动配置的线边仓，父件仍在等待物料。
         var waitingListing = directTransfers.candidates(c.childSegment(), c.child(), null);
@@ -121,14 +122,16 @@ class WorkshopContinuousSupplyEndToEndTest {
                 "线边仓由系统自动配置");
         assertEquals(c.world().warehouseId(), db.queryForObject("SELECT parent_id FROM warehouses WHERE id=?", UUID.class, lineSide),
                 "线边仓挂在收料主仓下(同主仓分仓领料前提)");
-        qty("40", balance(lineSide, c.child()));
+        qty("0", balance(lineSide, c.child()));
+        qty("40", issued(parentDemand(c)));
+        assertEquals("READY", status(c.segment()), "直送到料即准备投入，但仍需明确开工");
 
         // 每种子件都到了一部分，这才是「部分开工」：开工即把料架上的 40 投进去。
         fixture.loginAs(c.workerUser());
         assertEquals(Boolean.TRUE, db.queryForObject(
-                "SELECT fn_can_start_continuous_supply(?)", Boolean.class, c.segment()),
+                "SELECT fn_execution_start_material_ready(?)", Boolean.class, c.segment()),
                 "每种直送子件都到了一部分：可以按持续生产开工");
-        var started = segments.startContinuousSupply(c.plan(), c.segment(),
+        var started = segments.start(c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "cs-all-start-" + c.segment()));
         assertEquals("IN_PROGRESS", started.status(), "没有任何仓库物料要等：一键即开工");
         assertTrue(started.continuousSupply());
@@ -182,28 +185,29 @@ class WorkshopContinuousSupplyEndToEndTest {
         // V599：混合链同样先确认「持续生产」路线。
         confirmRoute(c.plan(), c.segment(), "CONTINUOUS");
         // 两道前提各说各的话：先是直送子件一件没到，再是仓库子件没入库。
-        ApiException emptyRack = assertThrows(ApiException.class, () -> segments.startContinuousSupply(
+        ApiException emptyRack = assertThrows(ApiException.class, () -> segments.start(
                 c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "cs-mixed-empty-" + c.segment())));
-        assertTrue(emptyRack.getMessage().contains("一件都还没到"), emptyRack.getMessage());
+        assertTrue(emptyRack.getMessage().contains("开工"), emptyRack.getMessage());
 
         transfer(c, "50", false);
         fixture.loginAs(c.workerUser());
-        ApiException shortage = assertThrows(ApiException.class, () -> segments.startContinuousSupply(
+        ApiException shortage = assertThrows(ApiException.class, () -> segments.start(
                 c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "cs-mixed-early-" + c.segment())));
-        assertTrue(shortage.getMessage().contains("缺"), "仓库物料没到要说清缺什么: " + shortage.getMessage());
-        assertEquals("WAITING", status(c.segment()));
-        assertEquals(Boolean.FALSE, db.queryForObject(
+        assertTrue(shortage.getMessage().contains("物料") || shortage.getMessage().contains("开工"), shortage.getMessage());
+        assertEquals("READY", status(c.segment()), "已有直送料，但共同可生产能力仍为零");
+        assertEquals(Boolean.TRUE, db.queryForObject(
                 "SELECT continuous_supply FROM production_execution_segments WHERE id=?", Boolean.class, c.segment()),
-                "开工失败整单回滚，不留半个持续生产标记");
+                "开工失败不回退已确认路线和已有物料事实");
 
         receive(c, c.secondMaterial(), c.leaf(), "100");
         fixture.loginAs(c.workerUser());
-        var ready = segments.startContinuousSupply(c.plan(), c.segment(),
-                new SegmentTransitionRequest(version(c.segment()), "cs-mixed-start-" + c.segment()));
-        assertEquals("READY", ready.status(), "仓库物料要先领齐，停在齐套待领料");
-        assertTrue(ready.continuousSupply());
+        segments.recheckMaterial(c.plan(), c.segment(),
+                new SegmentTransitionRequest(version(c.segment()), "cs-mixed-prepare-" + c.segment()));
+        assertEquals("READY", status(c.segment()), "已准备的仓库物料需要提交并实际发料");
+        assertThrows(ApiException.class, () -> segments.start(c.plan(), c.segment(),
+                new SegmentTransitionRequest(version(c.segment()), "cs-mixed-unissued-" + c.segment())));
         // 领料汇总只剩仓库子件(直送子件不出现)。
         var items = List.of(new ProductionDrawRequest.Item(c.segment(), version(c.segment())));
         var preview = drawRequests.preview(new ProductionDrawRequest.PreviewRequest(items));
@@ -322,14 +326,14 @@ class WorkshopContinuousSupplyEndToEndTest {
         qty("30", balance(lineSide, c.child()));
         qty("0", reserved(parentDemand(c)));
         assertEquals("WAITING", status(c.segment()));
-        assertEquals(Boolean.TRUE, db.queryForObject(
-                "SELECT fn_can_start_continuous_supply(?)", Boolean.class, c.segment()),
-                "料只是躺在线边仓，工单本身没被动过，仍可按持续生产开工");
+        assertEquals(Boolean.FALSE, db.queryForObject(
+                "SELECT fn_execution_start_material_ready(?)", Boolean.class, c.segment()),
+                "路线尚未确认，料架上的库存不能直接等同于可开工");
 
         fixture.loginAs(c.workerUser());
         // V599：直送料已在线边仓、工单未被动过——先确认持续生产路线再开工。
         confirmRoute(c.plan(), c.segment(), "CONTINUOUS");
-        var started = segments.startContinuousSupply(c.plan(), c.segment(),
+        var started = segments.start(c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "cs-late-start-" + c.segment()));
         assertEquals("IN_PROGRESS", started.status(), "没有仓库物料要等：一键即开工");
         qty("30", reserved(parentDemand(c)));
@@ -509,20 +513,12 @@ class WorkshopContinuousSupplyEndToEndTest {
         stock.approve(stock.create(request).getId());
     }
 
-    /** 与 ReportablePlanLineQueryService / DailyReportExecutionSegmentGuard 同口径的直送折算上限。 */
+    /** Exercise the real report picker; do not duplicate its material arithmetic in the test. */
     private BigDecimal maxReportQty(Case c) {
-        Map<String, Object> row = db.queryForMap("""
-                SELECT COALESCE(MIN(TRUNC((clearance.issued_qty - clearance.returned_qty) / demand.per_product_qty, 4)), 0) AS cap,
-                       COALESCE((SELECT SUM(item.qty) FROM production_daily_report_items item
-                                 JOIN production_daily_reports report ON report.id=item.report_id
-                                 WHERE item.execution_segment_id=? AND NOT item.is_deleted
-                                   AND NOT report.is_deleted AND report.status IN (0,1)), 0) AS reported
-                FROM production_material_demands demand
-                JOIN v_production_material_clearance clearance ON clearance.demand_id=demand.id
-                WHERE demand.execution_segment_id=? AND demand.direct_supply AND NOT demand.is_deleted
-                  AND demand.per_product_qty > 0
-                """, c.segment(), c.segment());
-        return ((BigDecimal) row.get("cap")).subtract((BigDecimal) row.get("reported")).max(BigDecimal.ZERO);
+        return reportable.list(1,50,null,c.workshop(),List.of(c.segment())).getItems().stream()
+                .filter(line -> c.segment().equals(line.executionSegmentId()))
+                .findFirst().orElseThrow(() -> new AssertionError("已开工的持续任务必须可在报工来源中查询"))
+                .maxReportQty();
     }
 
     private int lineSideCount(UUID workshop) {

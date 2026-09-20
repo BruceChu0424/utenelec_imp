@@ -45,7 +45,7 @@ import java.util.UUID;
  * sanity check（见 {@link NoticeService#publishForUser} 6 参重载）。
  */
 @Service
-public class ChainNoticeService implements SubcontractChainNoticePort {
+public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.imp.application.port.ProductionDrawInstructionNoticePort {
 
     /** 合法类型见 NoticeService.TYPES；此处固定用到的子集。 */
     public static final String TYPE_WORKFLOW = "workflow";
@@ -220,6 +220,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     private final FinanceReviewerEligibilityPort financeReviewerEligibility;
     private final SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers;
     private final NoticePermissionCandidateQuery permissionCandidates;
+    private final org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort> workshopReadiness;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
@@ -234,7 +235,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 rdTaskService, financeReviewerEligibility, salesOrderFinanceConfirmers, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
                               PermissionResolver permissionResolver,
@@ -245,6 +245,18 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                               FinanceReviewerEligibilityPort financeReviewerEligibility,
                               SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers,
                               NoticePermissionCandidateQuery permissionCandidates) {
+        this(noticeService,userRepo,permissionResolver,userRoleRepo,jdbc,outbox,rdTaskService,
+                financeReviewerEligibility,salesOrderFinanceConfirmers,permissionCandidates,null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ChainNoticeService(NoticeService noticeService, UserAccountRepository userRepo,
+            PermissionResolver permissionResolver, UserRoleRepository userRoleRepo, JdbcTemplate jdbc,
+            BusinessEventPublisher outbox, RdTaskService rdTaskService,
+            FinanceReviewerEligibilityPort financeReviewerEligibility,
+            SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers,
+            NoticePermissionCandidateQuery permissionCandidates,
+            org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort> workshopReadiness) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.permissionResolver = permissionResolver;
@@ -255,6 +267,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         this.financeReviewerEligibility = financeReviewerEligibility;
         this.salesOrderFinanceConfirmers = salesOrderFinanceConfirmers;
         this.permissionCandidates = permissionCandidates;
+        this.workshopReadiness = workshopReadiness;
     }
 
     /** Called only by the locked outbox processor inside its delivery transaction. */
@@ -303,7 +316,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 case EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL ->
                         publishWorkshopMaterialArrival(
                                 aggregateId,
-                                payload.path("arrival").asText(""));
+                                payload.path("arrival").asText(""),
+                                payload.path("evidenceType").asText("CURRENT_STATE"),
+                                workshopEvidenceIds(payload.path("evidenceIds")));
                 case EVENT_SEGMENT_DISPATCHED ->
                         notifyExecutionSegmentTransition(aggregateId, false);
                 case EVENT_SEGMENT_STARTED ->
@@ -1054,17 +1069,34 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         deliverAtomically(() -> deliverProductionDrawPending(stockDocId, false));
     }
 
+    /** Assignment has its own durable intent; the same pending handler always renders current facts. */
+    public void notifyProductionDrawReassigned(UUID stockDocId, UUID segmentId, long resultingVersion) {
+        if (!Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT fn_production_draw_pending(?)", Boolean.class, stockDocId))) return;
+        outbox.publishOnce(EVENT_PRODUCTION_DRAW_PENDING,"STOCK_DOCUMENT",stockDocId,Map.of(),
+                EVENT_PRODUCTION_DRAW_PENDING+":ASSIGNMENT:"+segmentId+":"+resultingVersion+":"+stockDocId);
+    }
+
+    /** A return may remove every pending line; delivery must also retire that old card. */
+    public void notifyProductionDrawInstructionsChanged(UUID stockDocId, UUID confirmationId, boolean reverse) {
+        outbox.publishOnce(EVENT_PRODUCTION_DRAW_PENDING,"STOCK_DOCUMENT",stockDocId,Map.of(),
+                EVENT_PRODUCTION_DRAW_PENDING+":RETURN_INSTRUCTIONS:"+confirmationId+":"+(reverse?"RESTORE":"REDUCE")+":"+stockDocId);
+    }
+
     private void deliverProductionDrawPending(UUID stockDocId, boolean preserveExistingPending) {
+        jdbc.queryForList("SELECT id FROM stock_documents WHERE id=? FOR UPDATE",UUID.class,stockDocId);
         Map<String, Object> document = one("""
                 SELECT stock.bill_no, stock.plan_no,
                        warehouse.name AS warehouse_name,
                        department.name AS department_name,
+                       worker.full_name AS worker_name,
                        COUNT(item.id) AS line_count
                 FROM stock_documents stock
                 LEFT JOIN warehouses warehouse
                   ON warehouse.id = stock.warehouse_id
                 LEFT JOIN departments department
                   ON department.id = stock.department_id
+                LEFT JOIN employees worker ON worker.id=stock.worker_id
                 JOIN stock_document_items item
                   ON item.doc_id = stock.id
                  AND item.is_deleted = FALSE
@@ -1075,18 +1107,24 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                   AND stock.status IN (0,1)
                   AND stock.is_deleted = FALSE
                 GROUP BY stock.bill_no, stock.plan_no,
-                         warehouse.name, department.name
+                         warehouse.name, department.name, worker.full_name
                 """, stockDocId);
-        if (document == null) return;
+        if (document == null) {
+            noticeService.resolveReviewNotices("STOCK_DOCUMENT",stockDocId,"STATE_CHANGED");
+            return;
+        }
+        if (!preserveExistingPending) noticeService.resolveReviewNotices("STOCK_DOCUMENT",stockDocId,"PENDING_REFRESHED");
         String billNo = str(document.get("bill_no"));
         String planNo = str(document.get("plan_no"));
         String warehouse = str(document.get("warehouse_name"));
         String department = str(document.get("department_name"));
+        String worker = str(document.get("worker_name"));
         String content = "车间已提交生产领料单 " + billNo
                 + (planNo.isBlank() ? "" : "(生产计划 " + planNo + ")")
                 + "，共 " + str(document.get("line_count")) + " 行物料"
                 + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
                 + (department.isBlank() ? "" : "，领料车间「" + department + "」")
+                + (worker.isBlank() ? "" : "，领料负责人「" + worker + "」")
                 + "。请核对实物后直接点“出库”；首次出库会在同一事务完成审核与本次扣账，"
                 + "任一步失败都不会留下半审核状态。";
         for (UUID warehouseUser : departmentUserIdsWithAuthorities(
@@ -1221,7 +1259,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     FROM purchase_receipts receipt
                     LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
                     LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
-                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE AND receipt.legacy_id IS NULL
                     """
                     : """
                     SELECT receipt.bill_no, supplier.name AS supplier_name,
@@ -1229,7 +1267,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     FROM subcontract_receipts receipt
                     LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
                     LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
-                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE AND receipt.legacy_id IS NULL
                     """, receiptId);
             if (receipt == null) return;
             Map<String, Object> pending = one("""
@@ -1284,7 +1322,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     SELECT receipt.bill_no, supplier.name AS supplier_name
                     FROM %s receipt
                     LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
-                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE AND receipt.legacy_id IS NULL
                     """.formatted(purchase ? "purchase_receipts" : "subcontract_receipts"), receiptId);
             if (receipt == null) return;
             List<Map<String, Object>> lines = jdbc.queryForList("""
@@ -1486,7 +1524,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     FROM purchase_receipts receipt
                     LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
                     LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
-                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE AND receipt.legacy_id IS NULL
                     """
                     : """
                     SELECT receipt.bill_no, supplier.name AS supplier_name,
@@ -1494,7 +1532,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     FROM subcontract_receipts receipt
                     LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
                     LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
-                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE AND receipt.legacy_id IS NULL
                     """, receiptId);
             if (receipt == null) return;
             Map<String, Object> sums = one("""
@@ -3010,29 +3048,185 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         }
     }
 
-    /**
-     * 到货进展通知(V599 / ADR-091)：分批到货的物料按「仓×货品×颜色」命中仍在等待的车间工单，
-     * 给车间发「本次到了多少 + 还缺什么 + 按路线的下一步」的聚合卡。业务事务只投递事件与到货
-     * 摘要；重组卡片时按当时事实，段已不在等待(齐套/开工/取消)则不重复发，交给状态卡。
-     * 与既有车间行动卡同聚合、同 sourceEvent：一张工单同时最多一张活跃卡，开工/领料/分批/
-     * 确认路线即办结。
-     */
+    /** Existing callers and old outbox rows rebuild current facts without asserting unverifiable arrival quantities. */
     public void notifyWorkshopMaterialArrival(
             UUID segmentId, String triggerKey, String arrivalSummary) {
+        notifyWorkshopMaterialArrival(segmentId, triggerKey, arrivalSummary, "CURRENT_STATE", List.of());
+    }
+
+    /** A physical arrival carries its immutable source identity; delivery revalidates reversal state. */
+    public void notifyWorkshopMaterialArrival(UUID segmentId, String triggerKey, String arrivalSummary,
+            String evidenceType, Collection<UUID> evidenceIds) {
+        List<UUID> ids = evidenceIds == null ? List.of() : evidenceIds.stream()
+                .filter(Objects::nonNull).distinct().sorted().toList();
         if (!isOutboxDelivery()) {
-            outbox.publishOnce(
-                    EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,
-                    "PRODUCTION_EXECUTION_SEGMENT",
-                    segmentId,
-                    Map.of("arrival", arrivalSummary == null ? "" : arrivalSummary),
+            outbox.publishOnce(EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,
+                    "PRODUCTION_EXECUTION_SEGMENT", segmentId,
+                    Map.of("arrival", arrivalSummary == null ? "" : arrivalSummary,
+                            "evidenceType", evidenceType == null ? "CURRENT_STATE" : evidenceType,
+                            "evidenceIds", ids.stream().map(UUID::toString).toList()),
                     EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL + ':' + segmentId + ':'
                             + (triggerKey == null ? "" : triggerKey));
             return;
         }
-        publishWorkshopMaterialArrival(segmentId, arrivalSummary);
+        publishWorkshopMaterialArrival(segmentId, arrivalSummary, evidenceType, ids);
     }
 
-    private void publishWorkshopMaterialArrival(UUID segmentId, String arrivalSummary) {
+    private static List<UUID> workshopEvidenceIds(JsonNode node) {
+        if (!node.isArray()) return List.of();
+        List<UUID> ids = new ArrayList<>();
+        for (JsonNode value : node) {
+            try { ids.add(UUID.fromString(value.asText())); }
+            catch (IllegalArgumentException invalid) { return List.of(); }
+        }
+        return ids.stream().distinct().sorted().toList();
+    }
+
+    boolean workshopArrivalEvidenceValid(String type, Collection<UUID> evidenceIds) {
+        if (evidenceIds == null || evidenceIds.isEmpty()) return false;
+        String source = switch (type == null ? "" : type) {
+            case "FINISHED_IN" -> """
+                SELECT document.id FROM stock_documents document
+                WHERE document.id=ANY(CAST(string_to_array(?, ',') AS uuid[]))
+                  AND document.doc_type='FINISHED_IN' AND document.status=1 AND NOT document.is_deleted
+                """;
+            case "DIRECT_REPORT" -> """
+                SELECT report.id FROM production_daily_reports report
+                WHERE report.id=ANY(CAST(string_to_array(?, ',') AS uuid[]))
+                  AND report.status=1 AND NOT report.is_deleted
+                  AND EXISTS (SELECT 1 FROM production_workshop_direct_transfers transfer
+                      JOIN production_workshop_direct_transfer_items item ON item.transfer_id=transfer.id
+                      WHERE transfer.source_report_id=report.id AND item.reversal_id IS NULL)
+                  AND NOT EXISTS (SELECT 1 FROM production_workshop_direct_transfers transfer
+                      JOIN production_workshop_direct_transfer_items item ON item.transfer_id=transfer.id
+                      WHERE transfer.source_report_id=report.id AND item.reversal_id IS NOT NULL)
+                """;
+            case "IQC_STOCK_IN" -> """
+                SELECT batch.id FROM procurement_iqc_stock_in_batches batch
+                WHERE batch.id=ANY(CAST(string_to_array(?, ',') AS uuid[]))
+                  AND EXISTS (SELECT 1 FROM procurement_iqc_stock_in_batch_items item WHERE item.batch_id=batch.id)
+                  AND NOT EXISTS (SELECT 1 FROM procurement_iqc_stock_in_batch_items item
+                      JOIN procurement_inspection_items inspection ON inspection.id=item.inspection_item_id
+                      WHERE item.batch_id=batch.id AND inspection.status='REVERSED')
+                  AND ((batch.receipt_type='PURCHASE' AND EXISTS (
+                      SELECT 1 FROM purchase_receipts receipt WHERE receipt.id=batch.receipt_id
+                        AND receipt.status=1 AND NOT receipt.is_deleted))
+                    OR (batch.receipt_type='SUBCONTRACT' AND EXISTS (
+                      SELECT 1 FROM subcontract_receipts receipt WHERE receipt.id=batch.receipt_id
+                        AND receipt.status=1 AND NOT receipt.is_deleted)))
+                """;
+            default -> null;
+        };
+        if (source == null) return false;
+        Set<UUID> ids = Set.copyOf(evidenceIds);
+        String joined = ids.stream().sorted().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        return Set.copyOf(jdbc.queryForList(source, UUID.class, joined)).equals(ids);
+    }
+
+    /** Notification eligibility uses actual source rights plus the same availability projection as preparation. */
+    boolean workshopArrivalCanBenefit(UUID segmentId, String evidenceType, Collection<UUID> evidenceIds) {
+        if ("DIRECT_REPORT".equals(evidenceType)) {
+            if (evidenceIds == null || evidenceIds.isEmpty()) return false;
+            String reports=evidenceIds.stream().distinct().sorted().map(UUID::toString)
+                    .collect(java.util.stream.Collectors.joining(","));
+            return Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM production_material_demands demand
+                      JOIN v_workshop_direct_supply_lots lot
+                        ON lot.to_demand_id IN(demand.id,demand.split_root_demand_id) AND lot.received_qty>0
+                      JOIN production_workshop_direct_transfer_items item ON item.id=lot.id
+                      JOIN production_workshop_direct_transfers transfer ON transfer.id=item.transfer_id
+                      WHERE demand.execution_segment_id=? AND NOT demand.is_deleted
+                        AND demand.status NOT IN ('RELEASED','REVERSED')
+                        AND transfer.source_report_id=ANY(CAST(string_to_array(?, ',') AS uuid[]))
+                        AND fn_workshop_direct_relationship_allows(lot.producing_segment_id,demand.id))
+                    """,Boolean.class,segmentId,reports));
+        }
+        String sources = switch (evidenceType) {
+            case "IQC_STOCK_IN" -> """
+                SELECT item.id,item.warehouse_id,item.goods_id,item.color_id,item.base_qty AS qty
+                FROM procurement_iqc_stock_in_batch_items item
+                WHERE item.batch_id=ANY(CAST(string_to_array(?, ',') AS uuid[]))
+                """;
+            case "FINISHED_IN" -> """
+                SELECT item.id,document.warehouse_id,item.goods_id,item.color_id,
+                    COALESCE(item.base_qty,item.qty*COALESCE(item.unit_rate,1)) AS qty
+                FROM stock_documents document JOIN stock_document_items item ON item.doc_id=document.id
+                WHERE document.id=ANY(CAST(string_to_array(?, ',') AS uuid[])) AND NOT item.is_deleted
+                """;
+            default -> null;
+        };
+        if (sources == null || evidenceIds == null || evidenceIds.isEmpty()) return false;
+        String ids=evidenceIds.stream().distinct().sorted().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        List<Map<String,Object>> rows=jdbc.queryForList("""
+                WITH event_sources AS (%s), origins AS (
+                    SELECT origin.* FROM preplan_stock_entitlement_events origin
+                    JOIN event_sources source ON source.id=origin.event_group_id
+                    WHERE origin.event_type IN ('ORIGIN_IQC','ORIGIN_MAKE')
+                )
+                SELECT DISTINCT demand.id AS demand_id,source.warehouse_id,
+                    package.warehouse_id AS package_warehouse_id,plan.material_analysis_id AS analysis_id,
+                    plan.material_analysis_item_id AS analysis_item_id,
+                    source.qty>COALESCE((SELECT SUM(origin.qty) FROM origins origin
+                        WHERE origin.event_group_id=source.id),0) AS public_slice,
+                    EXISTS(SELECT 1 FROM origins origin
+                        JOIN v_preplan_stock_entitlement_beneficiary_balance beneficiary
+                          ON beneficiary.stock_reservation_id=origin.stock_reservation_id
+                        WHERE origin.event_group_id=source.id AND beneficiary.effective_qty>0
+                          AND beneficiary.beneficiary_analysis_id=plan.material_analysis_id
+                          AND fn_analysis_plan_material_matches(plan.material_analysis_item_id,beneficiary.beneficiary_analysis_material_id)
+                          AND fn_preplan_reservation_has_qualified_origin(origin.stock_reservation_id)) AS own_slice,
+                    EXISTS(SELECT 1 FROM origins origin
+                        JOIN preplan_stock_entitlement_events formal ON formal.stock_reservation_id=origin.stock_reservation_id
+                            AND formal.event_type='FORMALIZE'
+                        JOIN stock_reservations target ON target.id=formal.target_stock_reservation_id
+                            AND NOT target.is_deleted AND target.qty-target.released_qty>0
+                        WHERE origin.event_group_id=source.id
+                          AND (target.demand_id=demand.id OR target.demand_id=demand.split_root_demand_id)
+                          AND NOT EXISTS(SELECT 1 FROM preplan_stock_entitlement_events restored
+                              WHERE restored.event_type='RESTORE' AND restored.counter_event_id=formal.id)) AS handed_over,
+                    EXISTS(SELECT 1 FROM stock_reservations held
+                        WHERE held.demand_id=demand.id AND held.warehouse_id=source.warehouse_id
+                          AND fn_warehouse_same_main(source.warehouse_id,demand.warehouse_id)
+                          AND NOT held.is_deleted AND held.qty-held.released_qty>0) AS public_prepared
+                FROM event_sources source
+                JOIN production_material_demands demand ON demand.goods_id=source.goods_id
+                    AND demand.color_id IS NOT DISTINCT FROM source.color_id
+                JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
+                JOIN production_planning_packages package ON package.id=segment.package_id
+                JOIN production_plans plan ON plan.id=segment.plan_id
+                WHERE demand.execution_segment_id=? AND NOT demand.is_deleted
+                    AND demand.status NOT IN ('RELEASED','REVERSED')
+                """.formatted(sources),ids,segmentId);
+        // Formal promotion may already have moved this public stock into the exact demand.
+        if (rows.stream().anyMatch(row->Boolean.TRUE.equals(row.get("handed_over"))
+                || Boolean.TRUE.equals(row.get("public_slice")) && Boolean.TRUE.equals(row.get("public_prepared")))) return true;
+        if (rows.stream().noneMatch(row->Boolean.TRUE.equals(row.get("own_slice"))
+                || Boolean.TRUE.equals(row.get("public_slice")))) return false;
+        if (workshopReadiness == null || rows.isEmpty()) return false;
+        var context=rows.getFirst();
+        var availability=workshopReadiness.getObject().batchAvailability(
+                (UUID)context.get("package_warehouse_id"),rows.stream().map(row->(UUID)row.get("demand_id")).distinct().toList(),
+                (UUID)context.get("analysis_id"),(UUID)context.get("analysis_item_id"));
+        var byDemand=availability.stream().collect(java.util.stream.Collectors.groupingBy(
+                com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort.Availability::demandId));
+        Map<UUID,BigDecimal> publicBudgets=new java.util.HashMap<>();
+        for (var row:rows) {
+            UUID demand=(UUID)row.get("demand_id"),warehouse=(UUID)row.get("warehouse_id");
+            var material=byDemand.getOrDefault(demand,List.of());
+            BigDecimal publicBudget=publicBudgets.computeIfAbsent(demand,ignored->
+                    com.uten.imp.common.inventory.MainWarehouseStockBudget.publicBudget(
+                    material.stream().map(item->item.publicQty()).reduce(BigDecimal.ZERO,BigDecimal::add),
+                    material.stream().map(item->item.safetyQty()).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO)));
+            for (var item:material) if (item.warehouseId().equals(warehouse)) {
+                if (Boolean.TRUE.equals(row.get("own_slice")) && item.qualifiedQty().signum()>0) return true;
+                if (Boolean.TRUE.equals(row.get("public_slice")) && item.publicQty().signum()>0 && publicBudget.signum()>0) return true;
+            }
+        }
+        return false;
+    }
+
+    private void publishWorkshopMaterialArrival(UUID segmentId, String arrivalSummary,
+            String evidenceType, Collection<UUID> evidenceIds) {
         List<UUID> lockedSegmentIds = jdbc.queryForList("""
                 SELECT id
                 FROM production_execution_segments
@@ -3048,13 +3242,26 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                        task.planned_qty, task.workshop_department_id, task.workshop_name,
                        task.responsible_employee_id,
                        route.start_route, route.continuous_supply,
-                       fn_can_start_continuous_supply(task.segment_id) AS can_start_continuous
+                       fn_execution_start_material_ready(task.segment_id) AS start_material_ready,
+                       fn_execution_material_output_capacity(task.segment_id, FALSE) AS prepared_capacity
                 FROM v_production_execution_workbench_segments task
                 JOIN production_execution_segments route ON route.id = task.segment_id
+                JOIN production_plans active_plan ON active_plan.id=route.plan_id
+                  AND active_plan.status=1 AND NOT active_plan.is_deleted
+                  AND NOT active_plan.is_closed AND NOT active_plan.is_stopped AND NOT active_plan.is_canceled
                 WHERE task.segment_id = ?
                 """, segmentId);
-        if (task == null) return;
-        if (!"WAITING".equals(str(task.get("segment_status")))) return;
+        if (task == null) {
+            noticeService.resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", segmentId, "PLAN_INACTIVE");
+            return;
+        }
+        String status = str(task.get("segment_status"));
+        if (!Set.of("WAITING", "READY", "DISPATCHED", "IN_PROGRESS").contains(status)) {
+            noticeService.resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
+            return;
+        }
+        boolean validArrival = workshopArrivalEvidenceValid(evidenceType, evidenceIds);
+        if (validArrival && !workshopArrivalCanBenefit(segmentId, evidenceType, evidenceIds)) return;
         UUID workshopId = (UUID) task.get("workshop_department_id");
         if (workshopId == null) return;
         List<Map<String, Object>> missingRows = jdbc.queryForList("""
@@ -3067,7 +3274,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 LEFT JOIN units ON units.id = material.unit_id
                 WHERE material.execution_segment_id = ?
                   AND material.demand_status NOT IN ('RELEASED', 'REVERSED')
-                  AND NOT material.ready
+                  AND material.stock_shortage_qty > 0
                 ORDER BY goods.name, goods.code
                 """, segmentId);
         String route = str(task.get("start_route"));
@@ -3077,9 +3284,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         } else if ("BATCH".equals(route)) {
             nextStep = "本单为分批生产路线：部分物料已到，可按「分批领料」核对当前可生产量";
         } else if ("CONTINUOUS".equals(route)) {
-            nextStep = Boolean.TRUE.equals(task.get("can_start_continuous"))
-                    ? "直送料已到一部分，可按「部分开工 · 持续生产」开工"
-                    : "持续生产路线：等待同车间直送子件到料，到料后自动投入";
+            nextStep = "IN_PROGRESS".equals(status)
+                    ? "持续生产中：请核对原工单的补料和报工进度；同车间直送按实际交接投入，无需再开工或另建工单"
+                    : workshopStartSupported(status, route, Boolean.TRUE.equals(task.get("start_material_ready")))
+                        ? "现有物料已支持部分生产，可在原工单开工；直送料将在开工时实际投入，后续继续补料"
+                        : bd(task.get("prepared_capacity")).signum() > 0
+                            ? "持续生产路线：已备物料支持部分产量，请提交领料，实际发料后开工"
+                            : "持续生产路线：仍需等待各项必需物料共同支持部分产量；已有可领物料可先在原工单核对";
         } else if (missingRows.isEmpty()) {
             nextStep = "物料已齐套，可提交领料，领齐后开工";
         } else {
@@ -3106,8 +3317,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         String product = (str(task.get("product_code")) + " "
                 + str(task.get("product_name"))).strip();
         String workshop = str(task.get("workshop_name"));
-        String content = (arrivalSummary == null || arrivalSummary.isBlank()
-                ? "生产物料已到货" : arrivalSummary.strip())
+        String content = (validArrival && arrivalSummary != null && !arrivalSummary.isBlank()
+                ? arrivalSummary.strip()
+                : "物料来源状态已更新（原到货数量不再作为当前可用量依据），已重新核对当前缺口")
                 + "。生产计划 " + str(task.get("plan_no"))
                 + "，工单 " + segmentCode
                 + "，产品 " + (product.isBlank() ? "未命名产品" : product)
@@ -3119,11 +3331,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         for (UUID recipient : workshopRecipientUserIds(
                 workshopId, (UUID) task.get("responsible_employee_id"))) {
             sendToUser(
-                    recipient, TYPE_TASK, "物料到货进展：" + segmentCode, content,
+                    recipient, TYPE_TASK, (validArrival ? "物料到货进展：" : "物料状态更新：") + segmentCode, content,
                     "/production/workshop-tasks",
                     EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
                     "normal", segmentId);
         }
+    }
+
+    static boolean workshopStartSupported(String status, String route, boolean materialReady) {
+        return Set.of("READY", "DISPATCHED").contains(status)
+                && route != null && Set.of("FULL_KIT", "CONTINUOUS").contains(route) && materialReady;
     }
 
     /**
@@ -3154,6 +3371,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                        task.product_code, task.product_name,
                        task.product_color_name, task.product_unit_name,
                        task.planned_qty, task.segment_status,
+                       segment.start_route, segment.continuous_supply,
+                       fn_execution_start_material_ready(task.segment_id) AS start_material_ready,
                        task.material_status, task.preparation_status,
                        (task.issued OR fn_split_batch_empty_issued(task.segment_id)) AS issued,
                        task.workshop_department_id, task.workshop_name,
@@ -3162,6 +3381,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                        draw.summary AS draw_summary,
                        draw.requested AS draw_requested
                 FROM v_production_execution_workbench_segments task
+                JOIN production_execution_segments segment ON segment.id=task.segment_id
+                JOIN production_plans active_plan ON active_plan.id=segment.plan_id
+                  AND active_plan.status=1 AND NOT active_plan.is_deleted
+                  AND NOT active_plan.is_closed AND NOT active_plan.is_stopped AND NOT active_plan.is_canceled
                 LEFT JOIN LATERAL (
                     SELECT string_agg(draw_row.summary, '；'
                         ORDER BY draw_row.created_at,draw_row.id) AS summary,
@@ -3185,9 +3408,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 ) draw ON TRUE
                 WHERE task.segment_id = ?
                 """, segmentId);
-        if (task == null) return;
+        if (task == null) {
+            noticeService.resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", segmentId, "PLAN_INACTIVE");
+            return;
+        }
         String status = str(task.get("segment_status"));
-        if (!Set.of("WAITING", "READY", "DISPATCHED").contains(status)) {
+        boolean continuous = Boolean.TRUE.equals(task.get("continuous_supply"));
+        if (!Set.of("WAITING", "READY", "DISPATCHED").contains(status)
+                && !(continuous && "IN_PROGRESS".equals(status))) {
+            noticeService.resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
             return;
         }
         UUID workshopId = (UUID) task.get("workshop_department_id");
@@ -3195,19 +3424,32 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         if (workshopId == null) return;
 
         boolean issued = Boolean.TRUE.equals(task.get("issued"));
-        boolean canStart = issued && Set.of("READY", "DISPATCHED").contains(status);
+        String route = str(task.get("start_route"));
+        boolean canStart = workshopStartSupported(status, route, Boolean.TRUE.equals(task.get("start_material_ready")));
         String drawNo = str(task.get("draw_summary"));
-        if (onlyFullyIssued && !canStart) return;
+        if (onlyFullyIssued && !canStart && !"IN_PROGRESS".equals(status)) return;
         noticeService.resolveReviewNotices(
                 "PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
         // A delayed READY/assignment event must not recreate an action card
         // after the workshop already submitted its request. Warehouse issue
         // completion will publish the next actionable START card.
-        if (!issued && Boolean.TRUE.equals(task.get("draw_requested"))
+        if (!canStart && !issued && Boolean.TRUE.equals(task.get("draw_requested"))
                 && Set.of("READY", "DISPATCHED").contains(status)) return;
         String taskState;
         String titlePrefix;
-        if (canStart) {
+        if (route.isBlank()) {
+            taskState = "请先确认齐套或持续生产路线；只有需要独立管理各批次时才选择分批";
+            titlePrefix = "生产任务·待确认路线：";
+        } else if (continuous && "IN_PROGRESS".equals(status)) {
+            taskState = "本次物料状态已更新，请核对原工单补料与实际报工；无需再开工或另建工单";
+            titlePrefix = "持续生产·物料进展：";
+        } else if (continuous && canStart) {
+            taskState = "各项必需物料已共同支持部分产量，可以开工；后续到料在原工单继续领取或直送";
+            titlePrefix = "部分物料已支持·可以开工：";
+        } else if (continuous) {
+            taskState = "持续生产等待各项必需物料共同支持部分产量；请核对本次可领物料和直送交接";
+            titlePrefix = "持续生产·待补料：";
+        } else if (canStart) {
             taskState = "物料已领齐，可以开工"
                     + (drawNo.isBlank() ? "" : "；领料单 " + drawNo);
             titlePrefix = "物料已领齐·可以开工：";

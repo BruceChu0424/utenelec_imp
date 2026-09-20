@@ -20,6 +20,11 @@ import java.util.UUID;
 public interface StockBalanceRepository
         extends JpaRepository<StockBalance, UUID>, JpaSpecificationExecutor<StockBalance> {
 
+    @Query(value="SELECT fn_workshop_return_outbound_authorized(:request,:doc,:item,:warehouse,:qty,:kind)",nativeQuery=true)
+    Boolean workshopReturnOutboundAuthorized(@Param("request") UUID requestItemId,@Param("doc") UUID documentId,
+            @Param("item") UUID documentItemId,@Param("warehouse") UUID warehouseId,
+            @Param("qty") BigDecimal qty,@Param("kind") String kind);
+
     Optional<StockBalance> findByWarehouseIdAndGoodsIdAndColorId(UUID warehouseId, UUID goodsId, UUID colorId);
 
     interface PhysicalSnapshot {

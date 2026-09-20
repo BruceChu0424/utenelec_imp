@@ -116,6 +116,8 @@ class ProductionDailyReportItem {
     this.salesOrderItemId,
     this.salesOrderNo,
     this.planItemId,
+    this.planId,
+    this.remainingPlanQty,
     this.executionSegmentId,
     this.executionSegmentSalesAllocationId,
     this.fqcRecoveryAuthorizationId,
@@ -150,6 +152,8 @@ class ProductionDailyReportItem {
   final String? salesOrderItemId;
   final String? salesOrderNo;
   final String? planItemId; // → production_plan_items.id
+  final String? planId;
+  final double? remainingPlanQty;
   final String? executionSegmentId; // → production_execution_segments.id
   final String? executionSegmentSalesAllocationId;
   final String? fqcRecoveryAuthorizationId;
@@ -198,6 +202,8 @@ class ProductionDailyReportItem {
         salesOrderItemId: json['salesOrderItemId'] as String?,
         salesOrderNo: json['salesOrderNo'] as String?,
         planItemId: json['planItemId'] as String?,
+        planId: json['planId'] as String?,
+        remainingPlanQty: _asDouble(json['remainingPlanQty']),
         executionSegmentId: json['executionSegmentId'] as String?,
         executionSegmentSalesAllocationId:
             json['executionSegmentSalesAllocationId'] as String?,

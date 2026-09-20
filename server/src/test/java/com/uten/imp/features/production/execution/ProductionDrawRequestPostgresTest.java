@@ -56,12 +56,12 @@ class ProductionDrawRequestPostgresTest {
                   lock_version bigint DEFAULT 1,workshop_department_id uuid,responsible_employee_id uuid,
                   material_requirement_mode text DEFAULT 'DEMANDED',segment_code text,product_goods_id uuid,planned_qty numeric,
                   updated_at timestamptz,updated_by uuid,is_deleted boolean DEFAULT false,
-                  start_route text DEFAULT 'FULL_KIT');
+                  start_route text DEFAULT 'FULL_KIT',continuous_supply boolean DEFAULT FALSE);
                 CREATE TABLE production_execution_segment_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                   execution_segment_id uuid NOT NULL,action text CONSTRAINT production_execution_segment_events_action_check
                   CHECK(action IN ('START')),idempotency_key text,request_hash text,expected_version bigint,
                   resulting_version bigint,created_by uuid,created_at timestamptz DEFAULT now(),
-                  UNIQUE(execution_segment_id,action,idempotency_key));
+                  UNIQUE(execution_segment_id,action,idempotency_key), counter_event_id uuid, receiving_confirmation_id uuid, receiving_direction smallint);
                 CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,bill_no text,warehouse_id uuid,
                   status integer DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,goods_id uuid,goods_code_snapshot text,
@@ -69,11 +69,11 @@ class ProductionDrawRequestPostgresTest {
                   unit_rate numeric DEFAULT 1,is_deleted boolean DEFAULT false);
                 CREATE TABLE production_planning_package_documents(document_id uuid,document_type text,execution_segment_id uuid);
                 CREATE TABLE production_planning_package_document_items(document_item_id uuid,document_type text,demand_id uuid);
-                CREATE TABLE production_material_demands(id uuid,execution_segment_id uuid,is_deleted boolean DEFAULT false);
+                CREATE TABLE production_material_demands(id uuid,execution_segment_id uuid,is_deleted boolean DEFAULT false, consumption_snapshot jsonb);
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                  stock_document_item_id uuid,posting_type text);
+                  stock_document_item_id uuid,posting_type text, recorded_tx_id xid8);
                 CREATE TABLE departments(id uuid PRIMARY KEY,name text);
-                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text);
+                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY,name text,
                     is_line_side boolean NOT NULL DEFAULT FALSE);
                 CREATE TABLE units(id uuid PRIMARY KEY,name text);
@@ -81,6 +81,9 @@ class ProductionDrawRequestPostgresTest {
                 """);
         jdbc.execute(Files.readString(Path.of("src/main/resources/db/migration/V559__production_workshop_draw_request.sql")));
         jdbc.execute(Files.readString(Path.of("src/main/resources/db/migration/V564__production_draw_requested_quantities.sql")));
+        String receiving=Files.readString(Path.of("src/main/resources/db/migration/V618__production_material_return_receiving_warehouse.sql"));
+        int effective=receiving.indexOf("CREATE FUNCTION fn_production_draw_item_effective_qty(");
+        jdbc.execute(receiving.substring(effective,receiving.indexOf("$$;",effective)+3));
         factory = new Configuration().setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
                 .setProperty("hibernate.connection.url", PG.getJdbcUrl())
                 .setProperty("hibernate.connection.username", PG.getUsername())

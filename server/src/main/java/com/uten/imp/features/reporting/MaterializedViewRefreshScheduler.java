@@ -135,8 +135,9 @@ public class MaterializedViewRefreshScheduler {
         try {
             markRunning(connection, viewName);
             try (Statement statement = connection.createStatement()) {
-                // viewName comes exclusively from the immutable allowlist above.
-                statement.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY " + viewName);
+                // V625 gives this fixed entry only the required maintenance
+                // authority; the application no longer needs view ownership.
+                statement.execute("SELECT public.refresh_" + viewName + "()");
             }
             long durationMillis = elapsedMillis(startedAt);
             markSuccess(connection, viewName, durationMillis);

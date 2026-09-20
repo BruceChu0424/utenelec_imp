@@ -102,6 +102,17 @@ class StockDocRepository {
   Future<StockDocDetail> approve(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocApprove(id)));
 
+  Future<StockDocDetail> confirmMaterialReturn(
+    String id, {
+    required String warehouseId,
+    required String idempotencyKey,
+  }) async => StockDocDetail.fromJson(
+    await api.post(
+      '${ApiEndpoints.stockDoc(id)}/material-return/confirm',
+      body: {'warehouseId': warehouseId, 'idempotencyKey': idempotencyKey},
+    ),
+  );
+
   Future<StockDocOutboundReview> review(String id) async =>
       StockDocOutboundReview.fromJson(
         await api.get('${ApiEndpoints.stockDoc(id)}/outbound-review'),
@@ -195,20 +206,6 @@ class StockDocRepository {
       },
     ),
   );
-
-  Future<List<ReturnableMaterialSource>> returnableSources({
-    String? planId,
-    String? drawId,
-  }) async {
-    if (planId == null && drawId == null) {
-      throw ArgumentError('planId or drawId is required');
-    }
-    final list = await api.getList(
-      ApiEndpoints.productionMaterialReturnableSources,
-      query: {'planId': ?planId, 'drawId': ?drawId},
-    );
-    return list.map(ReturnableMaterialSource.fromJson).toList();
-  }
 }
 
 final stockDocRepositoryProvider =

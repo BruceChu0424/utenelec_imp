@@ -94,6 +94,10 @@ class ProductionDrawRequestGateTest {
         when(provenance.setParameter("id", draw.getId())).thenReturn(provenance);
         when(provenance.getSingleResult()).thenReturn(true);
         when(access.hasAuthority("stock_doc:issue")).thenReturn(true);
+        Query warehouse=mock(Query.class);
+        doReturn(warehouse).when(em).createNativeQuery(contains("FROM warehouses WHERE id=:id AND is_line_side"));
+        when(warehouse.setParameter("id",draw.getWarehouseId())).thenReturn(warehouse);
+        when(warehouse.getSingleResult()).thenReturn(false);
 
         assertThatThrownBy(() -> service.issue(draw.getId(), new StockDocIssueRequest()))
                 .isInstanceOfSatisfying(ApiException.class, error -> {
@@ -146,6 +150,7 @@ class ProductionDrawRequestGateTest {
         StockDocument draw = new StockDocument();
         draw.setId(UUID.randomUUID());
         draw.setDocType("DRAW");
+        draw.setWarehouseId(UUID.randomUUID());
         draw.setStatus((short) 0);
         Query gate = mock(Query.class);
         doReturn(gate).when(em).createNativeQuery(contains("fn_production_draw_requested"));

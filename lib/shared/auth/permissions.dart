@@ -43,6 +43,7 @@ abstract final class Perm {
   static const expenseApply = 'expense:apply';
   static const expenseApprove = 'expense:approve';
   static const expensePay = 'expense:pay';
+  static const expenseSettings = 'expense:settings';
   static const visitorView = 'visitor:view';
   static const visitorApply = 'visitor:apply';
   static const visitorApprove = 'visitor:approve';
@@ -930,6 +931,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.expenseApply,
       Perm.expenseApprove,
       Perm.expensePay,
+      Perm.expenseSettings,
       Perm.visitorView,
       Perm.visitorApply,
       Perm.visitorApprove,

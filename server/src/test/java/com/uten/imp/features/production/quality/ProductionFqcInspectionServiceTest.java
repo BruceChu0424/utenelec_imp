@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
+import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -14,6 +15,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -292,7 +294,12 @@ class ProductionFqcInspectionServiceTest {
                 org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                 org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class),
                 // V597 先入库后质检的自动点收通道；这些纯单元测试不走那条路。
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                stockDocServiceProvider());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<StockDocService> stockDocServiceProvider() {
+        return mock(ObjectProvider.class);
     }
 
     private static DecisionRequest request(

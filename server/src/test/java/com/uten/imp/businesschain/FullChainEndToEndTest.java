@@ -84,6 +84,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -1412,14 +1413,14 @@ class FullChainEndToEndTest {
                                 LocalDate.of(2026, 8, 8), null,
                                 null, null, null, null, null))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
         assertFalse(result.plans().isEmpty(), "生成了一张生产计划");
         GeneratedPlan g = result.plans().getFirst();
+        assertTrue(g.drawIds().isEmpty(), "尚未确认生产路线时不生成领料单");
+        confirmAllUnconfirmedFullKitRoutes();
         assertEquals("APPROVED", g.status(), "approveNow=true → 计划已批准");
         assertEquals(1, planStatus(g.planId()), "production_plans.status=1(已审核)");
         assertTrue(hasSegmentStatus(g.planId(), "READY"), "生成 READY 执行分段");
-        assertFalse(g.drawIds().isEmpty(), "approveNow → 同事务生成 DRAW 领料单");
+        assertFalse(currentPlanDrawIds(g.planId()).isEmpty(), "明确确认齐套路线后生成 DRAW 领料单");
         assertEquals(0, new BigDecimal("10").compareTo(plannedQty(orderId)),
                 "销售订单行 planned_qty=10");
         assertEquals("PARTIALLY_PLANNED",
@@ -1531,15 +1532,15 @@ class FullChainEndToEndTest {
         confirmAllUnconfirmedFullKitRoutes();
 
         assertTrue(hasSegmentStatus(plan.planId(), "READY"));
-        assertEquals(2, plan.drawIds().size(), "不同实际子仓各一张领料单");
+        assertEquals(2, currentPlanDrawIds(plan.planId()).size(), "不同实际子仓各一张领料单");
         assertEquals(2, count("""
                 select count(distinct reservation.warehouse_id)
                 from stock_reservations reservation
                 join production_material_demands demand on demand.id=reservation.demand_id
                 where demand.package_id=? and reservation.is_deleted=false
                 """, plan.packageId()));
-        requestWorkshopDraws("same-main-kit", plan.drawIds());
-        for (UUID drawId : plan.drawIds()) {
+        requestWorkshopDraws("same-main-kit", currentPlanDrawIds(plan.planId()));
+        for (UUID drawId : currentPlanDrawIds(plan.planId())) {
             var drawLines = jdbc.queryForList(
                     "select id,qty from stock_document_items where doc_id=? and is_deleted=false", drawId);
             assertEquals(1, drawLines.size(), "每张领料单只列本子仓分配的物料");
@@ -1605,8 +1606,8 @@ class FullChainEndToEndTest {
         assertEquals(startDate.toString(),strFor("""
                 SELECT plan_begin_date::text FROM production_execution_segments WHERE id=?
                 """,segmentId));
-        requestWorkshopDraws("assigned-direct-start", plan.drawIds());
-        for (UUID drawId : plan.drawIds()) {
+        requestWorkshopDraws("assigned-direct-start", currentPlanDrawIds(plan.planId()));
+        for (UUID drawId : currentPlanDrawIds(plan.planId())) {
             stockDocService.approveAndIssue(drawId,drawIssueRequest(
                     drawId,"assigned-direct-start-issue-" + drawId,null,BigDecimal.ZERO));
         }        UUID workshopUser = createUserWithPerms(w,"assigned-start-worker",
@@ -1695,8 +1696,8 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        assertEquals(2,plan.drawIds().size());
-        UUID draw = plan.drawIds().getFirst();
+        assertEquals(2,currentPlanDrawIds(plan.planId()).size());
+        UUID draw = currentPlanDrawIds(plan.planId()).getFirst();
         UUID actualWarehouse = jdbc.queryForObject(
                 "SELECT warehouse_id FROM stock_documents WHERE id=?",UUID.class,draw);
         UUID otherWarehouse = actualWarehouse.equals(second) ? w.warehouseId() : second;
@@ -1738,8 +1739,11 @@ class FullChainEndToEndTest {
                         WHERE source.stock_document_item_id=? AND source.posting_type='ISSUE'
                           AND other.warehouse_id=?
                         """,drawItem,otherWarehouse));
-        assertTrue(mismatch.getMostSpecificCause().getMessage()
-                .contains("material posting must consume or restore the actual document warehouse"));
+        var physicalGuard = assertInstanceOf(org.postgresql.util.PSQLException.class,
+                mismatch.getMostSpecificCause());
+        assertEquals("23514", physicalGuard.getSQLState());
+        assertEquals("material_stock_posting_physical_warehouse_guard",
+                physicalGuard.getServerErrorMessage().getConstraint());
         var reverse = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
         reverse.setIdempotencyKey("same-material-reverse");
         reverse.setReason("撤回本子仓误发的物料");
@@ -1818,13 +1822,17 @@ class FullChainEndToEndTest {
                 where demand.plan_id=? and demand.goods_id=? and mapping.document_type='DRAW'
                 """,UUID.class,plan,w.goodsB());
         assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).signum());
-        var request=new com.uten.imp.features.stock.dto.StockDocSaveRequest();
-        request.setDocType("WDRAW");request.setWarehouseId(w.warehouseId());request.setBillDate(BusinessTime.today());
-        var line=new com.uten.imp.features.stock.dto.StockDocItemLine();
-        line.setGoodsId(w.goodsB());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);
-        line.setQty(new BigDecimal("2"));line.setUpstreamItemId(originalItem);request.setItems(List.of(line));
-        UUID returned=stockDocService.create(request).getId();
-        stockDocService.approve(returned);
+        UUID segment=jdbc.queryForObject("select id from production_execution_segments where plan_id=?",UUID.class,plan);
+        var source=materialReturnRequests.sources(plan,segment).stream()
+                .filter(row->row.drawItemId().equals(originalItem)).findFirst().orElseThrow();
+        UUID returned=materialReturnRequests.submit(plan,
+                new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(segment,
+                        "material-links-return","按原实际领用来源退两件",
+                        List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),new BigDecimal("2")))))
+                .getFirst().documentId();
+        stockDocService.confirmProductionMaterialReturn(returned,
+                new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(w.warehouseId(),"material-links-receive"));
+        assertEquals(1,count("SELECT COUNT(*) FROM production_material_return_receiving_confirmations WHERE stock_document_id=?",returned));
         assertEquals(0,new BigDecimal("2").compareTo(stockBalance(w.warehouseId(),w.goodsB())));
         assertEquals(1,count("""
                 select count(*) from production_material_movement_links link
@@ -1868,13 +1876,16 @@ class FullChainEndToEndTest {
         issueReadyPlanAndMaterials(w,plan);
         UUID segment=jdbc.queryForObject("select id from production_execution_segments where plan_id=?",UUID.class,plan);
         UUID workshop=jdbc.queryForObject("select workshop_department_id from production_execution_segments where id=?",UUID.class,segment);
-        assertFalse(materialSettlementService.capabilities(plan,segment).canRequestReturn());
+        assertTrue(materialSettlementService.capabilities(plan,segment).canRequestReturn());
         var notStarted=materialReturnRequests.sources(plan,segment).getFirst();
-        assertEquals(0,notStarted.availableQty().signum());
-        assertTrue(notStarted.returnBlockedReason().contains("尚未开工"));
-        assertThrows(ApiException.class,()->materialReturnRequests.submit(plan,
+        assertTrue(notStarted.availableQty().signum()>0);
+        assertNull(notStarted.returnBlockedReason());
+        var beforeStart=materialReturnRequests.submit(plan,
                 new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(segment,
-                        "surplus-before-start","未开工退料阻止",List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(notStarted.issuePostingId(),BigDecimal.ONE)))));
+                        "surplus-before-start","已实领但未开工，按实物申请送仓",List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(notStarted.issuePostingId(),BigDecimal.ONE)))).getFirst();
+        materialReturnRequests.cancel(plan,beforeStart.documentId(),
+                new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Cancel("surplus-before-start-cancel","本次暂留待生产，撤回未实收申请"));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='START'",Integer.class,segment));
         var ready=executionSegmentService.list(plan).stream().filter(row->row.id().equals(segment)).findFirst().orElseThrow();
         confirmFullKitRoute(plan, segment);
         executionSegmentService.start(plan,segment,new SegmentTransitionRequest(jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment),"surplus-start-production"));
@@ -2031,7 +2042,7 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        UUID drawId = generated.drawIds().getFirst();
+        UUID drawId = currentPlanDrawIds(generated.planId()).getFirst();
         UUID segmentId = generated.segmentIds().getFirst();
         assertEquals(0, count("""
                 select count(*)
@@ -2500,8 +2511,8 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        assertEquals(1, plan.drawIds().size(), tag + "：库存全在同一仓只生成一张领料单");
-        return plan.drawIds().getFirst();
+        assertEquals(1, currentPlanDrawIds(plan.planId()).size(), tag + "：库存全在同一仓只生成一张领料单");
+        return currentPlanDrawIds(plan.planId()).getFirst();
     }
 
     private StockDocIssueBatchRequest drawBatchRequest(
@@ -2579,7 +2590,7 @@ class FullChainEndToEndTest {
         GeneratedPlan plan = generated.plans().getFirst();
         assertEquals("APPROVED", plan.status());
         assertEquals(1, plan.segmentIds().size());
-        assertTrue(plan.drawIds().isEmpty(), "无下层物料不得生成空 DRAW");
+        assertTrue(currentPlanDrawIds(plan.planId()).isEmpty(), "无下层物料不得生成空 DRAW");
         UUID segmentId = plan.segmentIds().getFirst();
         assertEquals(
                 "READY|ZERO_MATERIAL|DIRECT_MAKE",
@@ -2759,7 +2770,7 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        assertTrue(generated.drawIds().isEmpty());
+        assertTrue(currentPlanDrawIds(generated.planId()).isEmpty());
         assertEquals(1,count("select count(*) from production_execution_segments where plan_id=? and status='WAITING'",generated.planId()));
         assertEquals(0,count("select count(*) from production_material_analysis_items where analysis_id=? and source_type='MAKE_COMPONENT'",view.analysisId()));
         AnalysisView after=analysisService.detail(view.analysisId());
@@ -4105,10 +4116,12 @@ class FullChainEndToEndTest {
         UUID ownerId = UUID.randomUUID();
         jdbc.update("""
                 insert into expense_claims(
-                    id, applicant_id, applicant_name_snapshot, applicant_department_id,
+                    id, claim_no, applicant_id, applicant_name_snapshot, applicant_department_id,
                     title, total_amount, status)
-                values (?, ?, '员工-sAtt', ?, '附件真实链路测试', 1.00, 'DRAFT')
-                """, ownerId, employeeIdOf(user), w.departmentId());
+                values (?, ?, ?, '员工-sAtt', ?, '附件真实链路测试', 1.00, 'DRAFT')
+                """, ownerId, docNumberService.nextNumber(
+                        com.uten.imp.common.docnumber.DocNumberPrefix.EXPENSE_CLAIM),
+                employeeIdOf(user), w.departmentId());
         byte[] content = Base64.getDecoder().decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
         String contentType = "image/png";
@@ -5625,7 +5638,7 @@ class FullChainEndToEndTest {
         assertEquals("APPROVED", generated.status(), "approveNow=true 应审核生产计划");
         assertTrue(hasSegmentStatus(generated.planId(), "READY"),
                 "正式计划生成 READY 执行段");
-        assertFalse(generated.drawIds().isEmpty(),
+        assertFalse(currentPlanDrawIds(generated.planId()).isEmpty(),
                 "未领料前仍生成可取消的 DRAW 草稿");
         UUID packageId = jdbc.queryForObject("""
                 select id from production_planning_packages
@@ -5873,7 +5886,7 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        for (UUID drawId : makeGenerated.drawIds()) {
+        for (UUID drawId : currentPlanDrawIds(makeGenerated.planId())) {
             var drawLines = jdbc.queryForList(
                     "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
                     drawId);
@@ -7118,22 +7131,7 @@ class FullChainEndToEndTest {
         PlanningPackageResult confirmed = planningPackageService.confirm(
                 planId, confirm);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
-        requestWorkshopDraws("exact-part", confirmed.drawDocuments().stream()
-                .map(com.uten.imp.features.production.mrp.MrpGenerateResult::requestId).toList());
-        for (var draw : confirmed.drawDocuments()) {
-            stockDocService.approveAndIssue(draw.requestId(),drawIssueRequest(draw.requestId(),
-                    "exact-part-real-inputs-"+draw.requestId(),null,BigDecimal.ZERO));
-        }
         UUID segmentId = confirmed.executionSegments().getFirst().segmentId();
-        UUID salesAllocationId = jdbc.queryForObject("""
-                SELECT id
-                FROM execution_segment_sales_allocations
-                WHERE execution_segment_id = ?
-                  AND sales_order_item_id = ?
-                """, UUID.class, segmentId, orderItemId);
-
         ProductionAssignment assignment = productionAssignment("s24exactpart");
         ExecutionSegmentView current = executionSegmentService.list(planId)
                 .stream()
@@ -7151,6 +7149,21 @@ class FullChainEndToEndTest {
                         assignment.workerId(),
                         LocalDate.of(2026, 1, 25),
                         LocalDate.of(2026, 1, 31)));
+
+        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
+        confirmAllUnconfirmedFullKitRoutes();
+        requestWorkshopDraws("exact-part", currentPlanDrawIds(planId));
+        for (UUID drawId : currentPlanDrawIds(planId)) {
+            stockDocService.approveAndIssue(drawId,drawIssueRequest(drawId,
+                    "exact-part-real-inputs-"+drawId,null,BigDecimal.ZERO));
+        }
+        UUID salesAllocationId = jdbc.queryForObject("""
+                SELECT id
+                FROM execution_segment_sales_allocations
+                WHERE execution_segment_id = ?
+                  AND sales_order_item_id = ?
+                """, UUID.class, segmentId, orderItemId);
+
         confirmFullKitRoute(planId, segmentId);
         ExecutionSegmentView dispatched = executionSegmentService.dispatch(
                 planId,
@@ -9906,7 +9919,7 @@ class FullChainEndToEndTest {
 
     private com.uten.imp.features.purchase.order.dto.OrderQueryFilter emptyOrderFilter() {
         return new com.uten.imp.features.purchase.order.dto.OrderQueryFilter(
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     /** Header-only purchase-order save request (no item lines) — enough to pass the owner gate and
@@ -10553,7 +10566,7 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        assertTrue(hasSegmentStatus(plan.planId(),"WAITING"));assertTrue(plan.drawIds().isEmpty());
+        assertTrue(hasSegmentStatus(plan.planId(),"WAITING"));assertTrue(currentPlanDrawIds(plan.planId()).isEmpty());
         var changed=directSubcontractDraft(w,w.goodsA(),"6");loginAs(clerk);
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->subcontractOrderService.update(order.getId(),changed)).getCode());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->subcontractOrderService.delete(order.getId())).getCode());
@@ -11128,10 +11141,9 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        requestWorkshopDraws("scope", issued.drawDocuments().stream()
-                .map(com.uten.imp.features.production.mrp.MrpGenerateResult::requestId).toList());
-        for(var draw:issued.drawDocuments()) stockDocService.approveAndIssue(draw.requestId(),
-                drawIssueRequest(draw.requestId(),"scope-issue-"+draw.requestId(),null,BigDecimal.ZERO));
+        requestWorkshopDraws("scope", currentPlanDrawIds(planId));
+        for(UUID drawId:currentPlanDrawIds(planId)) stockDocService.approveAndIssue(drawId,
+                drawIssueRequest(drawId,"scope-issue-"+drawId,null,BigDecimal.ZERO));
         for (var segment:executionSegmentService.list(planId)) {
             confirmFullKitRoute(planId, segment.id());
             executionSegmentService.start(planId,segment.id(),
@@ -11526,25 +11538,29 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        assertFalse(issued.executionSegments().isEmpty());
-        assertTrue(issued.executionSegments().stream().allMatch(segment -> "READY".equals(segment.status())),
+        var preparedSegments = executionSegmentService.list(planId);
+        assertFalse(preparedSegments.isEmpty());
+        assertTrue(preparedSegments.stream().allMatch(segment -> "READY".equals(segment.status())),
                 "Fixture opening inputs must really cover the plan; never bypass WAITING");
         for (var segment : executionSegmentService.list(planId)) {
             if (count("select count(*) from production_planning_package_documents where execution_segment_id=? and document_type='DRAW'",segment.id())==0) continue;
-            if (segment.workshopDepartmentId()==null) {
-                var assignment=productionAssignment("fixture-draw-"+segment.id());
-                segment=executionSegmentService.assign(planId,segment.id(),new SegmentAssignmentRequest(segment.lockVersion(),
-                        "fixture-assign-"+segment.id(),assignment.workshopId(),null,assignment.workerId(),
-                        LocalDate.of(2026,1,20),LocalDate.of(2026,1,31)));
-            }
+            assertNotNull(segment.workshopDepartmentId(), "Workshop must be assigned before preparing DRAW");
+            assertNotNull(segment.responsibleEmployeeId(), "Responsible worker must be assigned before preparing DRAW");
             var items=List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(segment.id(),segment.lockVersion()));
             var drawPreview=workshopDrawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(items));
             workshopDrawRequests.submit(new com.uten.imp.features.production.execution.ProductionDrawRequest.SubmitRequest(
                     items,"fixture-request-"+segment.id(),drawPreview.fingerprint()));
         }
-        for (var draw : issued.drawDocuments()) {
-            stockDocService.approveAndIssue(draw.requestId(),drawIssueRequest(draw.requestId(),
-                    "explicit-fixture-draw-"+draw.requestId(),null,BigDecimal.ZERO));
+        for (UUID drawId : jdbc.queryForList("""
+                SELECT DISTINCT mapping.document_id FROM production_planning_package_documents mapping
+                JOIN production_planning_packages package ON package.id=mapping.package_id
+                JOIN stock_documents document ON document.id=mapping.document_id
+                WHERE package.plan_id=? AND package.status='CONFIRMED' AND NOT package.is_deleted
+                  AND mapping.document_type='DRAW' AND document.status=0 AND NOT document.is_deleted
+                ORDER BY mapping.document_id
+                """,UUID.class,planId)) {
+            stockDocService.approveAndIssue(drawId,drawIssueRequest(drawId,
+                    "explicit-fixture-draw-"+drawId,null,BigDecimal.ZERO));
         }
     }
 
@@ -11670,11 +11686,12 @@ class FullChainEndToEndTest {
             assertTrue(List.of("READY","DISPATCHED").contains(current.status()),
                     "Waiting material cannot be turned into a started fixture");
             if (current.workshopDepartmentId()==null || current.responsibleEmployeeId()==null) {
-                ProductionAssignment assignment = productionAssignment("e2e-" + planId);
+                ProductionAssignment assignment = productionAssignment(
+                        "e2e-" + startedSegmentId, current.workshopDepartmentId());
                 current = executionSegmentService.assign(planId,startedSegmentId,
                         new SegmentAssignmentRequest(current.lockVersion(),"e2e-assign-"+startedSegmentId,
-                                assignment.workshopId(),null,assignment.workerId(),
-                                LocalDate.of(2026,1,20),LocalDate.of(2026,1,31)));
+                                assignment.workshopId(),current.teamDepartmentId(),assignment.workerId(),
+                                current.planBeginDate(),current.planEndDate()));
             }
             confirmFullKitRoute(planId, startedSegmentId);
             executionSegmentService.start(
@@ -12140,11 +12157,17 @@ class FullChainEndToEndTest {
     private record MultiLineReport(UUID id,String billNo,UUID reporter,List<UUID> itemIds) {}
 
     private ProductionAssignment productionAssignment(String tag) {
+        return productionAssignment(tag, null);
+    }
+
+    /** Filling a missing worker must not move material already held by a workshop. */
+    private ProductionAssignment productionAssignment(String tag, UUID existingWorkshopId) {
         UUID productionDepartmentId = jdbc.queryForObject(
                 "SELECT id FROM departments WHERE code = 'DEPT_PROD'",
                 UUID.class);
-        UUID workshopId = UUID.randomUUID();
-        jdbc.update("""
+        UUID workshopId = existingWorkshopId == null ? UUID.randomUUID() : existingWorkshopId;
+        if (existingWorkshopId == null) {
+            jdbc.update("""
                 INSERT INTO departments(id, code, name, parent_id, level)
                 VALUES (?, ?, ?, ?, '二级班组')
                 """,
@@ -12152,6 +12175,7 @@ class FullChainEndToEndTest {
                 "WORKSHOP-" + tag,
                 "测试车间-" + tag,
                 productionDepartmentId);
+        }
         UUID workerId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(
@@ -12366,41 +12390,24 @@ class FullChainEndToEndTest {
                 "select id from users where is_super_admin order by created_at limit 1", UUID.class));
         try {
             String placeholders = String.join(",", java.util.Collections.nCopies(drawIds.size(), "?"));
-            // 领料申请只认「同一车间」的任务；E2E 早期建计划未填车间（UI 口径必填），
-            // 这里先把无车间的段补到一个 DEPT_PROD 直属夹具车间，等价于按 UI 正常下达
-            //（守卫要求车间是 DEPT_PROD 直接子部门，与 ProductionExecutionBatchEndToEndTest 同款）。
-            UUID production = jdbc.queryForObject(
-                    "select id from departments where code='DEPT_PROD'", UUID.class);
-            var existing = jdbc.queryForList(
-                    "select id from departments where code='E2E-DRAW-WS'", UUID.class);
-            UUID workshop = existing.isEmpty() ? UUID.randomUUID() : existing.getFirst();
-            if (existing.isEmpty()) {
-                jdbc.update("insert into departments(id, code, name, parent_id, level) "
-                                + "values (?, 'E2E-DRAW-WS', 'E2E领料夹具车间', ?, '二级班组')",
-                        workshop, production);
-            }
-            for (UUID drawId : drawIds) {
-                jdbc.update("update production_execution_segments set workshop_department_id = ? "
-                                + "where workshop_department_id is null and not is_deleted "
-                                + "and id in (select mapping.execution_segment_id "
-                                + "from production_planning_package_documents mapping "
-                                + "where mapping.document_type='DRAW' and mapping.document_id = ?)",
-                        workshop, drawId);
-            }
-            // V599：提交领料前统一把未确认的段确认为齐套路线（本旅程的默认口径）。
-            confirmAllUnconfirmedFullKitRoutes();
+            // Route and assignment are real preparation actions. A draw request
+            // must never rewrite the receiving workshop after allocation.
             var perSegment = jdbc.queryForList("select mapping.execution_segment_id as segment_id, "
-                            + "segment.lock_version as lock_version "
+                            + "segment.lock_version as lock_version, segment.workshop_department_id as workshop_id, "
+                            + "segment.responsible_employee_id as worker_id "
                             + "from production_planning_package_documents mapping "
                             + "join production_execution_segments segment "
                             + "  on segment.id = mapping.execution_segment_id "
                             + "where mapping.document_type='DRAW' and segment.is_deleted=FALSE "
                             + "  and segment.status in ('READY','DISPATCHED') "
                             + "  and mapping.document_id in (" + placeholders + ") "
-                            + "group by mapping.execution_segment_id, segment.lock_version "
+                            + "group by mapping.execution_segment_id, segment.lock_version, "
+                            + "segment.workshop_department_id, segment.responsible_employee_id "
                             + "order by mapping.execution_segment_id",
                     drawIds.toArray());
             for (var segmentRow : perSegment) {
+                assertNotNull(segmentRow.get("workshop_id"), "Assign the workshop before preparing its DRAW");
+                assertNotNull(segmentRow.get("worker_id"), "Assign the worker before preparing its DRAW");
                 UUID segmentId = (UUID) segmentRow.get("segment_id");
                 long version = ((Number) segmentRow.get("lock_version")).longValue();
                 List<com.uten.imp.features.production.execution.ProductionDrawRequest.Item> items =
@@ -12690,6 +12697,21 @@ class FullChainEndToEndTest {
     // default columns supplied; CHECK/unique constraints satisfied. Returns the created IDs.
     // ---------------------------------------------------------------------------------------------
 
+    /** V611: route confirmation creates DRAWs after generation; the earlier command
+     * receipt is immutable and cannot describe a later workshop decision. */
+    private List<UUID> currentPlanDrawIds(UUID planId) {
+        return jdbc.queryForList("""
+                SELECT DISTINCT mapping.document_id
+                FROM production_planning_package_documents mapping
+                JOIN production_planning_packages package ON package.id=mapping.package_id
+                JOIN stock_documents document ON document.id=mapping.document_id
+                WHERE package.plan_id=? AND package.status='CONFIRMED' AND NOT package.is_deleted
+                  AND mapping.document_type='DRAW' AND NOT document.is_deleted
+                  AND document.status>=0
+                ORDER BY mapping.document_id
+                """, UUID.class, planId);
+    }
+
     /** V599 / ADR-091：把段确认为齐套生产路线（主流程测试的默认旅程；未确认路线时开工侧动作被拒）。
      * 幂等：已确认齐套路线的段直接跳过——首确 FULL_KIT 可能就地把它提升成 READY，
      * 再确认一遍会撞「改路线仅限 WAITING 未动过」的服务端口径。 */
@@ -12700,7 +12722,24 @@ class FullChainEndToEndTest {
         if ("FULL_KIT".equals(row.get("start_route"))) {
             return;
         }
-        Long version = ((Number) row.get("lock_version")).longValue();
+        var current = executionSegmentService.list(planId).stream()
+                .filter(segment -> segment.id().equals(segmentId)).findFirst().orElseThrow();
+        if (current.workshopDepartmentId() == null || current.responsibleEmployeeId() == null) {
+            UUID workshop = current.workshopDepartmentId();
+            UUID worker = current.responsibleEmployeeId();
+            if (worker == null) {
+                var assignment = productionAssignment("route-" + segmentId, workshop);
+                workshop = assignment.workshopId();
+                worker = assignment.workerId();
+            } else if (workshop == null) {
+                workshop = jdbc.queryForObject("SELECT department_id FROM employees WHERE id=?", UUID.class, worker);
+            }
+            current = executionSegmentService.assign(planId, segmentId,
+                    new SegmentAssignmentRequest(current.lockVersion(), "route-assignment-" + segmentId,
+                            workshop, current.teamDepartmentId(), worker,
+                            current.planBeginDate(), current.planEndDate()));
+        }
+        Long version = current.lockVersion();
         executionSegmentService.confirmRoute(planId, segmentId,
                 new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(
                         version, "fullkit-" + segmentId + "-v" + version, "FULL_KIT"));

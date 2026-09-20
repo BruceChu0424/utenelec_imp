@@ -59,6 +59,7 @@ public class HrNoticeService implements HrNoticePort {
     public static final String EVENT_VISITOR_HOST_CONFIRM_REQUIRED = "VISITOR_HOST_CONFIRM_REQUIRED";
     public static final String EVENT_EXPENSE_CLAIM_SUBMITTED = "EXPENSE_CLAIM_SUBMITTED";
     public static final String EVENT_EXPENSE_CLAIM_PENDING_PAYMENT = "EXPENSE_CLAIM_PENDING_PAYMENT";
+    public static final String EVENT_EXPENSE_CLAIM_REJECTED = "EXPENSE_CLAIM_REJECTED";
     public static final String EVENT_PAYROLL_BATCH_SUBMITTED = "PAYROLL_BATCH_SUBMITTED";
     public static final String EVENT_PAYROLL_BATCH_PENDING_PUBLISH = "PAYROLL_BATCH_PENDING_PUBLISH";
     public static final String EVENT_SUGGESTION_SUBMITTED = "SUGGESTION_SUBMITTED";
@@ -178,22 +179,23 @@ public class HrNoticeService implements HrNoticePort {
     /** 审批通过 → 打款人接棒（待打款行动卡，申请人本人除外）+ 申请人回执。 */
     public void notifyExpenseClaimApproved(UUID claimId, String applicantName,
                                            String amountLabel, UUID applicantUserId,
-                                           UUID applicantEmployeeId) {
+                                           UUID applicantEmployeeId, UUID approverEmployeeId) {
         for (UUID target : userIdsWithNoticeAndAnyPermission("expense:pay")) {
-            if (applicantEmployeeId != null && belongsToEmployee(target, applicantEmployeeId)) {
+            if ((applicantEmployeeId != null && belongsToEmployee(target, applicantEmployeeId))
+                    || (approverEmployeeId != null && belongsToEmployee(target, approverEmployeeId))) {
                 continue;    // 申请人不能给自己打款，也不给自己弹卡
             }
             sameTransaction(() -> noticeService.publishForUser(
-                    target, "报销单待打款",
-                    applicantName + " 的报销单（合计 " + amountLabel + "）已审批通过，请打款。",
+                    target, "报销单待付款",
+                    applicantName + " 的报销单(合计 " + amountLabel + ")已审批通过，请付款后登记凭据。",
                     TYPE_TASK, "财务",
                     "/expense/approval", EVENT_EXPENSE_CLAIM_PENDING_PAYMENT, "important", claimId));
         }
         if (applicantUserId != null) {
             sameTransaction(() -> noticeService.publishForUser(
                     applicantUserId, "报销单已审批通过",
-                    "你的报销单（合计 " + amountLabel + "）已审批通过，等待打款。",
-                    TYPE_APPROVAL, "财务", "/expense"));
+                    "你的报销单(合计 " + amountLabel + ")已审批通过，等待财务付款。",
+                    TYPE_APPROVAL, "财务", "/expense/" + claimId));
         }
     }
 
@@ -204,8 +206,8 @@ public class HrNoticeService implements HrNoticePort {
         sameTransaction(() -> noticeService.publishForUser(
                 applicantUserId, "报销单被驳回",
                 "你的报销单已被驳回。驳回原因：" + reason,
-                TYPE_APPROVAL, "财务", "/expense",
-                null, "important", null));
+                TYPE_TASK, "财务", "/expense/" + claimId,
+                EVENT_EXPENSE_CLAIM_REJECTED, "important", claimId));
     }
 
     /** 打款完成 → 申请人回执 + 办结全部报销弹卡。 */
@@ -213,9 +215,9 @@ public class HrNoticeService implements HrNoticePort {
                                        String amountLabel, UUID applicantUserId) {
         if (applicantUserId != null) {
             sameTransaction(() -> noticeService.publishForUser(
-                    applicantUserId, "报销款已到账",
-                    "你的报销单（合计 " + amountLabel + "）已完成打款。",
-                    TYPE_APPROVAL, "财务", "/expense"));
+                    applicantUserId, "报销付款已登记",
+                    "财务已登记你的报销付款(合计 " + amountLabel + ")，请核对实际收款。",
+                    TYPE_APPROVAL, "财务", "/expense/" + claimId));
         }
         sameTransaction(() -> noticeService.resolveReviewNotices(
                 AGGREGATE_EXPENSE_CLAIM, claimId, "PAID"));

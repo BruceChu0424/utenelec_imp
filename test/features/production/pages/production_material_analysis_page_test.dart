@@ -2742,8 +2742,7 @@ void main() {
         hasLength(1),
       );
       buyRow = await _materialTableRowVisible(tester, 'material-path-1');
-      // 2026-09-10 F2d：已确认且未改动的行没有勾选框（勾了也不计数）；改下拉
-      // 成另一路线后勾选框出现并自动勾上，改回已确认值再次消失。
+      // Confirmed routes stay unchanged when the explicit change is cancelled.
       expect(
         find.descendant(of: buyRow, matching: find.byType(Checkbox)),
         findsNothing,
@@ -2754,22 +2753,9 @@ void main() {
         '委外',
         confirm: false,
       );
-      buyRow = await _materialTableRowVisible(tester, 'material-path-1');
-      expect(
-        tester
-            .widget<Checkbox>(
-              find.descendant(of: buyRow, matching: find.byType(Checkbox)),
-            )
-            .value,
-        isTrue,
-      );
-      expect(find.text('确认路线(1)'), findsOneWidget);
-      await _chooseMaterialRoute(
-        tester,
-        'material-path-1',
-        '采购',
-        confirm: false,
-      );
+      expect(find.text('确认并换桶'), findsOneWidget);
+      await tester.tap(find.text('取消').last);
+      await tester.pumpAndSettle();
       buyRow = await _materialTableRowVisible(tester, 'material-path-1');
       expect(
         find.descendant(of: buyRow, matching: find.byType(Checkbox)),
@@ -2904,7 +2890,7 @@ void main() {
     });
   });
 
-  testWidgets('route draft stays local until explicit confirmation', (
+  testWidgets('route change waits for its explicit confirmation', (
     tester,
   ) async {
     final json = _analysisJson(const ['CONFIRM_ROUTES']);
@@ -2933,7 +2919,7 @@ void main() {
       harness.requests.where((request) => request.method == 'PUT'),
       isEmpty,
     );
-    await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
+    await tester.tap(find.text('确认并换桶'));
     await tester.pumpAndSettle();
     final routeRequest = harness.requests.singleWhere(
       (request) => request.method == 'PUT',
@@ -2986,9 +2972,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('material-analysis-create-routes')),
-      );
+      await tester.tap(find.text('确认并换桶'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
@@ -7797,7 +7781,7 @@ Future<void> _chooseMaterialRoute(
   await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
   if (confirm) {
-    await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
+    await tester.tap(find.text('确认并换桶'));
     await tester.pumpAndSettle();
   }
 }

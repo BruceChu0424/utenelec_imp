@@ -1,0 +1,90 @@
+{
+  "purchase_orders.csv": [
+    {
+      "legacy_id": 930001,
+      "bill_no": "CD-SYN-MISSING",
+      "bill_date": "2025-01-02",
+      "deliver_date": "2025-01-02",
+      "purchaser_legacy": 900701,
+      "maker_legacy": 900801,
+      "approver_legacy": 900801,
+      "remark": "合成首导回归样本；非公司业务数据",
+      "total_original": 6,
+      "status": 1,
+      "fulfill_bit": true,
+      "stop_bit": false,
+      "supplier_legacy_id": 930601,
+      "tax_rate": 0,
+      "currency_legacy_id": 3,
+      "exchange_rate": 2,
+      "cancel_bit": false,
+      "settlement_style_legacy": 1
+    }
+  ],
+  "purchase_order_items.csv": [
+    {
+      "legacy_id": 930002,
+      "bill_legacy_id": 930001,
+      "goods_legacy_id": 930101,
+      "color_legacy_id": 900401,
+      "qty": 2,
+      "price": 3,
+      "amount_original": 6,
+      "received_qty": 2,
+      "returned_qty": 0,
+      "request_item_legacy_id": 0,
+      "unit_legacy_id": 900301,
+      "unit_rate": 1,
+      "deliver_date": "2025-01-02",
+      "weight": 0,
+      "source_doc_no": null,
+      "sales_order_no": null,
+      "receipt_no": "CJ-SYN-MISSING",
+      "production_plan_no": null
+    }
+  ],
+  "purchase_receipts.csv": [
+    {
+      "legacy_id": 930003,
+      "bill_no": "CJ-SYN-MISSING",
+      "bill_date": "2025-01-02",
+      "supplier_legacy_id": 930601,
+      "warehouse_legacy_id": 900201,
+      "sender_legacy": 0,
+      "receiver_legacy": 900701,
+      "maker_legacy": 900801,
+      "approver_legacy": 900801,
+      "remark": "合成首导回归样本；非公司业务数据",
+      "total_original": 6,
+      "status": 1,
+      "tax_rate": 0,
+      "currency_legacy_id": 3,
+      "exchange_rate": 2,
+      "cancel_bit": false,
+      "last_date": null,
+      "settlement_style_legacy": 1,
+      "salesman_legacy": 900701
+    }
+  ],
+  "purchase_receipt_items.csv": [
+    {
+      "legacy_id": 930004,
+      "bill_legacy_id": 930003,
+      "goods_legacy_id": 930101,
+      "color_legacy_id": 900401,
+      "qty": 2,
+      "price": 3,
+      "amount_original": 6,
+      "order_item_legacy_id": 930002,
+      "unit_legacy_id": 900301,
+      "unit_rate": 1,
+      "returned_qty": 0,
+      "gift_qty": 0,
+      "weight": 0,
+      "source_doc_no": null,
+      "order_no": "CD-SYN-MISSING",
+      "sales_order_no": null,
+      "production_plan_no": null
+    }
+  ]
+}

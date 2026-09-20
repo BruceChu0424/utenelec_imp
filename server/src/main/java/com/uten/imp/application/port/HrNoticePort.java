@@ -39,7 +39,7 @@ public interface HrNoticePort {
 
     void notifyExpenseClaimApproved(UUID claimId, String applicantName,
                                     String amountLabel, UUID applicantUserId,
-                                    UUID applicantEmployeeId);
+                                    UUID applicantEmployeeId, UUID approverEmployeeId);
 
     void notifyExpenseClaimRejected(UUID claimId, String applicantName,
                                     String reason, UUID applicantUserId);

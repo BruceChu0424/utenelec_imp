@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/unit_node.dart';
@@ -10,6 +11,73 @@ import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets('学习价格必须显示原单位币种且只向成本授权用户展示', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 1600);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final detail = GoodsDetail.fromJson({
+      'id': 'goods-default-price',
+      'name': '测试货品',
+      'status': '使用',
+      'defaultPurchasePrice': 78,
+      'defaultPurchasePriceInfo': {
+        'price': 78,
+        'supplierName': '供应商A',
+        'unitName': '箱',
+        'currencyName': '美元',
+        'taxRate': 13,
+        'contextComplete': true,
+      },
+      'defaultSubcontractPrice': 6,
+    });
+    Future<void> pump(Set<String> permissions) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          key: ValueKey(permissions),
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(permissions),
+            isSuperAdminProvider.overrideWithValue(false),
+            colorDictProvider.overrideWith((ref) async => const []),
+            unitDictProvider.overrideWith((ref) async => const []),
+          ],
+          child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: GoodsDetailBody(
+                initialDetail: detail,
+                initialCategoryId: null,
+                initialTab: 0,
+                canCreate: false,
+                canEdit: false,
+                canStatus: false,
+                canBomCreate: false,
+                canBomEdit: false,
+                canBomDelete: false,
+                onToggleStatus: null,
+                onDelete: null,
+                onViewMovements: null,
+                onDataChanged: null,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pump({Perm.goodsView, Perm.goodsPriceView});
+    expect(find.text('采购单价'), findsNothing);
+    expect(find.textContaining('78.0'), findsNothing);
+    await pump({Perm.goodsView, Perm.goodsCostView});
+    expect(find.textContaining('78.0 美元/箱'), findsOneWidget);
+    expect(find.textContaining('供应商A'), findsOneWidget);
+    expect(find.text('6.0 (计价单位与币种待核对)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('货品编辑态不再出现生产 BOM 策略字段', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1200, 900);

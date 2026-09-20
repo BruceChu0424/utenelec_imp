@@ -81,6 +81,10 @@ class DashboardOverviewServiceTest {
         when(user.getEmployeeId()).thenReturn(employeeId);
         when(user.getId()).thenReturn(userId);
         when(user.getLoginAccount()).thenReturn("admin");
+        when(jdbc.queryForObject(contains("FROM expense_claims"), eq(Long.class), eq(employeeId)))
+                .thenReturn(3L);
+        when(jdbc.queryForObject(contains("FROM expense_claims"), eq(Long.class), eq(employeeId), eq(employeeId)))
+                .thenReturn(3L);
         when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
                 Map.of("code", "DEPT_FIN", "name", "财税部", "depth", 0)));
         when(jdbc.query(anyString(), (RowMapper) any(RowMapper.class)))
@@ -471,6 +475,15 @@ class DashboardOverviewServiceTest {
                         "code", departmentCode,
                         "name", departmentCode,
                         "depth", 0)));
+    }
+
+    @Test
+    void expenseOverviewExcludesApplicantAndThePaymentsOwnApprover() {
+        configureDepartment("DEPT_FIN", Set.of("expense:approve", "expense:pay"));
+        service.overview();
+        verify(jdbc).queryForObject(contains("AND applicant_id <> ?"), eq(Long.class), eq(employeeId));
+        verify(jdbc).queryForObject(contains("approved_by IS NULL OR approved_by <> ?"),
+                eq(Long.class), eq(employeeId), eq(employeeId));
     }
 
     private void stubPolicyRows(java.sql.ResultSet... rows) {

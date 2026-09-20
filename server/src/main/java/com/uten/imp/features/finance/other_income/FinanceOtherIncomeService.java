@@ -138,6 +138,7 @@ public class FinanceOtherIncomeService {
         }
         FinanceOtherIncome o = lockActive(id);
         access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -157,6 +158,7 @@ public class FinanceOtherIncomeService {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
         access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
@@ -173,6 +175,7 @@ public class FinanceOtherIncomeService {
         FinanceOtherIncome o = lockActive(id);
         access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
                 "finance_other_income:approve");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -207,6 +210,7 @@ public class FinanceOtherIncomeService {
         FinanceOtherIncome o = lockActive(id);
         access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
                 "finance_other_income:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

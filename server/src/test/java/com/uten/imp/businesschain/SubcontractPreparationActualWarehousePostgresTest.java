@@ -77,6 +77,7 @@ class SubcontractPreparationActualWarehousePostgresTest {
                 "direct-owned-plan-"+orderItem,w.warehouseId(),BusinessTime.today(),null,true,
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,view.products().getFirst().analysisLineId(),BigDecimal.ONE,
                         BusinessTime.today(),null,null,null,null,null,null)))).plans().getFirst();
+        fixture.confirmFullKitRoutes(generated.planId());
         var directOwnedDraws=db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,generated.planId());
         fixture.requestWorkshopDraws("direct-owned",directOwnedDraws);
         for(UUID draw:directOwnedDraws){

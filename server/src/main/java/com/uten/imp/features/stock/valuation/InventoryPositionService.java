@@ -195,6 +195,15 @@ public class InventoryPositionService extends InventoryValueLedger implements In
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
     public MovementValue reverseStore(ReverseStore command){
+        return reverseStore(command,false);
+    }
+
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    public MovementValue reverseMaterialStore(ReverseStore command){
+        return reverseStore(command,true);
+    }
+
+    private MovementValue reverseStore(ReverseStore command,boolean materialReturn){
         transaction();EventContext c=context(command.context());PoolKey key=key(command.pool());requireHeld(key);
         required(command.movementId(),"撤回库存流水UUID");required(command.originalMovementId(),"原入库流水UUID");
         BigDecimal before=decimal(command.expectedQtyBefore(),"撤回前库存基本量",false);
@@ -204,7 +213,9 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         if(originals.size()!=1)throw conflict("原合格入库缺少唯一成本归属，不能猜测撤回金额");
         var original=originals.getFirst();UUID originalId=(UUID)original.get("id");
         Pool pool=lockPool(key);Node current=requireBefore(pool,before);
-        if(!pool.id().equals(original.get("pool_id"))||current==null||!Boolean.TRUE.equals(db.queryForObject(
+        if(!pool.id().equals(original.get("pool_id"))||current==null)
+            throw conflict("原入库与当前库存池不一致，不能猜测撤回来源");
+        if(!materialReturn && !Boolean.TRUE.equals(db.queryForObject(
                 "SELECT fn_stock_value_unused_receipt_head(:current,:original)",args("current",current.id(),"original",original.get("result_head_id")),Boolean.class)))
             throw conflict("原入库之后已有出库、调拨或其它未撤回入库，不能直接撤回原成本");
         Node originalHead=node((UUID)original.get("result_head_id"),false),source=node((UUID)original.get("result_node_id"),false);
@@ -216,20 +227,32 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 """,args("head",originalHead.id()),UUID.class);
         if(predecessors.size()>1)throw conflict("原入库前置库存归属不唯一");
         Node predecessor=predecessors.isEmpty()?null:node(predecessors.getFirst(),false);
+        // Keep later receipts as whole original contribution nodes. Removing a
+        // material return must never assign its old cost to a fraction of today's
+        // blended pool, or lose later receipts' eventual cost corrections.
+        List<Node> retained=materialReturn?db.query("""
+                SELECT node.*,pool.warehouse_id,pool.goods_id,pool.color_id
+                FROM fn_workshop_return_retained_value_nodes(:current,:original) kept
+                JOIN stock_value_nodes node ON node.id=kept.node_id
+                JOIN stock_value_pools pool ON pool.id=node.pool_id
+                ORDER BY node.id
+                """,args("current",current.id(),"original",originalId),(row,index)->nodeRow(row))
+                :(predecessor==null?List.of():List.of(predecessor));
         var transfers=db.queryForList("SELECT * FROM stock_value_position_transfers WHERE event_id=:event ORDER BY source_root_id,id",args("event",originalId));
         if(transfers.isEmpty()||transfers.size()>100)throw conflict("原入库来源切片缺失或超过单次核对范围");
         UUID eventId=UUID.randomUUID();BigDecimal cost=ZERO,qty=ZERO;
+        if(materialReturn)retained=retained.stream().map(component->retainValueReference(component,eventId)).toList();
         for(var transfer:transfers){
             UUID rootId=(UUID)transfer.get("source_root_id");Node root=node(rootId,true);requireRoot(root);Node held=node(root.returnHeadId(),true);
-            if(!"QUALITY_PASSED".equals(held.ownerKind())||!held.active()
+            if(!(materialReturn?Set.of("WIP","IN_TRANSIT").contains(held.ownerKind()):"QUALITY_PASSED".equals(held.ownerKind()))||!held.active()
                     ||!sameGoods(held.key(),key)||!held.poolId().equals(root.poolId()))
-                throw conflict("原合格来源位置已变更，不能把其它价值当作供应商费用归还");
+                throw conflict("原来源物料已有后续使用或转移，请先处理对应后续业务，再撤回收仓");
             BigDecimal partQty=(BigDecimal)transfer.get("qty_base"),from=(BigDecimal)transfer.get("range_from"),to=(BigDecimal)transfer.get("range_to");
             if(held.from().compareTo(to)<0)throw conflict("原入库切片尚未全部离开原合格位置");
             BigDecimal amount=interval(held.value(),from,to,held.qty());
             // Quality custody retains its original pool even when warehouse staff stored the goods elsewhere.
             Pool sourcePool=held.poolId().equals(pool.id())?pool:poolById(held.poolId(),false);
-            Node restored=newPosition(sourcePool,Owner.QUALITY_PASSED,held.ownerId(),partQty,amount,pending(held),eventId,
+            Node restored=newPosition(sourcePool,Owner.valueOf(held.ownerKind()),held.ownerId(),partQty,amount,pending(held),eventId,
                     List.of(fraction(held,from,to,held.qty())));
             Node remainder=createDerivedNode(held.poolIdentity(),"ISSUE_POSITION",held.ownerKind(),held.ownerId(),null,root.id(),held.qty(),held.from(),held.to(),held.value(),pending(held),true,true,eventId,List.of(whole(held)));
             deactivate(held);
@@ -244,14 +267,16 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                     "amount",amount,"original",transfer.get("id")));
             posting(eventId,null,restored.id(),restored.ownerKind(),restored.ownerId(),amount);cost=cost.add(amount);qty=qty.add(partQty);
         }
-        BigDecimal remainingQty=predecessor==null?ZERO:predecessor.qty(),remainingValue=value(predecessor);
+        BigDecimal remainingQty=retained.stream().map(Node::qty).reduce(ZERO,BigDecimal::add);
+        BigDecimal remainingValue=retained.stream().map(Node::value).reduce(ZERO,BigDecimal::add);
+        int remainingPending=retained.stream().mapToInt(InventoryPositionService::pending).sum();
         if(qty.compareTo((BigDecimal)original.get("qty_base"))!=0||cost.compareTo(source.value())!=0
-                ||before.compareTo(originalHead.qty())!=0||before.subtract(qty).compareTo(remainingQty)!=0
+                ||(!materialReturn && before.compareTo(originalHead.qty())!=0)||before.subtract(qty).compareTo(remainingQty)!=0
                 ||current.value().compareTo(remainingValue.add(cost))!=0)
             throw conflict("原入库成本尚未完成来源传播或余额核对，不能按混合均价撤回");
         Node archived=createDerivedNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,eventId,List.of(whole(current)));
-        Node next=createDerivedNode(pool,"POOL",null,null,null,null,remainingQty,ZERO,remainingQty,remainingValue,pending(predecessor),true,true,eventId,
-                List.of(predecessor==null?fraction(current,ZERO,ZERO,current.qty()):whole(predecessor)));
+        Node next=createDerivedNode(pool,"POOL",null,null,null,null,remainingQty,ZERO,remainingQty,remainingValue,remainingPending,true,true,eventId,
+                retained.isEmpty()?List.of(fraction(current,ZERO,ZERO,current.qty())):retained.stream().map(InventoryPositionService::whole).toList());
         deactivate(current);head(pool,next.id(),pool.headId());State state=state(source);
         db.update("""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,

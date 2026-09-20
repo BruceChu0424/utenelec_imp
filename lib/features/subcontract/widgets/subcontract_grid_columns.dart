@@ -127,6 +127,14 @@ class SubcontractGridRow extends EditableGridRow
     c.wasteRate.text = wasteRate.text;
     c.cause.text = cause.text;
     c.copyCommercialFrom(this);
+    c.copyDefaultPriceFrom(
+      this,
+      price: c.price,
+      supplier: c.supplierIdNotifier,
+      currentGoodsId: () => c.goods?.id,
+      currentColorId: () => c.colorId,
+      currentUnitId: () => c.unitId,
+    );
     c.remark.text = remark.text;
     return c;
   }
@@ -355,6 +363,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
               double.tryParse(row.price.text.trim()) == null,
           child: TextField(
             controller: row.price,
+            onChanged: (_) => row.clearTermsAutofilled('price'),
+            onSubmitted: (_) => row.clearTermsAutofilled('price'),
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const UtenInputDecoration(

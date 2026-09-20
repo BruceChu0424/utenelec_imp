@@ -495,25 +495,27 @@ public class StockReportService {
         UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
         boolean includeDisabled = p != null && "true".equalsIgnoreCase(p.get("includeDisabled"));
         var items = stockQueryService.shelfLabelRows(rack, kw, warehouseId, includeDisabled);
-        List<ExportColumn> cols = new ArrayList<>(List.of(
-                new ExportColumn("rack", "库行", "text"),
+          List<ExportColumn> cols = new ArrayList<>(List.of(
+                  new ExportColumn("warehouseName", "实际仓库", "text"),
+                  new ExportColumn("rack", "库行", "text"),
                 new ExportColumn("level", "层", "number"),
                 new ExportColumn("slot", "位", "number"),
-                new ExportColumn("place", "库位号", "text"),
+                  new ExportColumn("place", "建议库位", "text"),
                 // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布（与货架标签页/PDF 一致）。
                 new ExportColumn("goodsName", "物料名称", "text"),
                 new ExportColumn("goodsCode", "物料编码", "text"),
                 new ExportColumn("colorName", "颜色", "text"),
                 new ExportColumn("series", "物料系列", "text"),
                 new ExportColumn("unitName", "单位", "text"),
-                new ExportColumn("qty", "即时库存", "number")));
+                  new ExportColumn("qty", "仓库颜色库存(非库位盘点数)", "number")));
         if (includeDisabled) {
             cols.add(new ExportColumn("status", "状态", "text"));
         }
         List<Map<String, Object>> rows = new ArrayList<>(items.size());
         for (var it : items) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("rack", it.isParsed() ? it.getRack() : "未分层");
+              Map<String, Object> m = new LinkedHashMap<>();
+              m.put("warehouseName", it.getWarehouseName() == null ? "主档建议(未指定仓库)" : it.getWarehouseName());
+              m.put("rack", it.isParsed() ? it.getRack() : "未分层");
             m.put("level", it.getLevel());
             m.put("slot", it.getSlot());
             m.put("place", it.getPlace());

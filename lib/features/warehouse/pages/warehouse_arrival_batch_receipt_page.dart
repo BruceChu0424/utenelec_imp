@@ -185,7 +185,7 @@ class _WarehouseArrivalBatchReceiptPageState
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
     ).selectableIds;
-    // 上次落仓/库位记忆：只补空位，不覆盖来源建议仓与货品资料带出的库位
+    // 个人选仓上下文：只补空位，不覆盖来源建议仓与货品资料带出的库位
     //（优先级见 warehouse_arrival_fill_memory.dart）。补进来的一律带黄标提示核对。
     final memory = ref.read(warehouseArrivalFillMemoryProvider);
     final rememberedWarehouse = selectable.contains(memory.warehouseId)
@@ -195,10 +195,6 @@ class _WarehouseArrivalBatchReceiptPageState
       if (!selectable.contains(line.warehouseId)) {
         line.warehouseId = rememberedWarehouse;
         line.warehouseAutofilled = rememberedWarehouse != null;
-      }
-      final place = memory.stockPlace;
-      if (place != null && line.stockPlace.text.trim().isEmpty) {
-        line.stockPlace.setAutomaticText(place);
       }
     }
     _removedLineCount = 0;
@@ -297,6 +293,9 @@ class _WarehouseArrivalBatchReceiptPageState
     if (picked == null || !mounted) return;
     setState(() {
       for (final target in targets) {
+        if (target.warehouseId != picked.id && target.stockPlace.autofilled) {
+          target.stockPlace.clear();
+        }
         target.warehouseId = picked.id;
         target.warehouseAutofilled = false;
       }
@@ -310,7 +309,7 @@ class _WarehouseArrivalBatchReceiptPageState
   }
 
   /// 右键「批量设置库位号」：一次输入应用到全部选中行（整托同架场景），
-  /// 并记住这次写的库位号（下次登记自动带）。
+  /// 只作用本次选中行(成功入库后按仓库、货品和颜色学习)。
   Future<void> _batchFillStockPlace(List<_BatchArrivalLine> rows) async {
     if (_saving || rows.isEmpty) return;
     final place = await showBatchPlaceFillDialog(
@@ -329,9 +328,6 @@ class _WarehouseArrivalBatchReceiptPageState
         line.setCheckedStockPlace(place);
       }
     });
-    ref
-        .read(warehouseArrivalFillMemoryProvider.notifier)
-        .rememberStockPlace(place);
   }
 
   /// 行内写库位：同样落到 [_writeTargets]，并记住这次写的库位号。
@@ -348,9 +344,6 @@ class _WarehouseArrivalBatchReceiptPageState
         }
       });
     }
-    ref
-        .read(warehouseArrivalFillMemoryProvider.notifier)
-        .rememberStockPlace(value);
   }
 
   String _fmt(DateTime d) =>

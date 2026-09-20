@@ -14,6 +14,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +44,80 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "uten.bootstrap.admin-password=ProcDefaultsAdminPass-1!"
         })
 class ProcurementMasterDefaultsSyncPostgresTest {
+
+    @Autowired private com.uten.imp.features.production.analysis.GoodsOwningWarehouseWriteService warehouseDefaults;
+
+    @Test
+    void oppositeInputOrderCannotDeadlockWarehouseDefaultsAgainstPurchaseDefaults() throws Exception {
+        UUID low = UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff");
+        UUID high = UUID.fromString("80000000-0000-0000-0000-000000000000");
+        for (UUID id : List.of(low, high)) jdbc.update("""
+                INSERT INTO goods(id,code,name,status,code_sequence)
+                VALUES (?,?,'锁序测试','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
+                """, id, "G-SYNC-LOCK-" + id);
+        UUID supplier = supplier("SUP-SYNC-LOCK");
+        UUID order = purchaseOrder(supplier, low, null, null, null);
+        jdbc.update("""
+                INSERT INTO purchase_order_items(id,order_id,goods_id,qty,price,line_no,is_deleted,
+                    bill_no,bill_date,goods_snapshot_source)
+                VALUES (?,?,?,1,18,2,false,'POI-LOCK',DATE '2026-09-15','MASTER_AT_SAVE')
+                """, UUID.randomUUID(), order, high);
+        UUID warehouse = UUID.randomUUID();
+        jdbc.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES (?,?,'锁序仓','使用',true)",
+                warehouse, "WH-LOCK-" + warehouse);
+        UUID actor = jdbc.queryForObject("SELECT id FROM users LIMIT 1", UUID.class);
+        var firstLocked = new java.util.concurrent.CountDownLatch(1);
+        var continuePurchase = new java.util.concurrent.CountDownLatch(1);
+        var warehousePid = new java.util.concurrent.CompletableFuture<Integer>();
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var purchase = pool.submit(() -> inTx(() -> {
+                jdbc.queryForObject("SELECT id FROM goods WHERE id=? FOR UPDATE", UUID.class, low);
+                firstLocked.countDown();
+                await(continuePurchase);
+                sync.syncFromPurchaseOrder(order);
+            }));
+            assertThat(firstLocked.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var warehouseWrite = pool.submit(() -> {
+                var principal = org.mockito.Mockito.mock(com.uten.imp.security.AuthUser.class);
+                org.mockito.Mockito.when(principal.getId()).thenReturn(actor);
+                org.mockito.Mockito.when(principal.getLoginAccount()).thenReturn("master-lock-test");
+                org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(principal, null, List.of()));
+                try {
+                    inTx(() -> {
+                        warehousePid.complete(jdbc.queryForObject("SELECT pg_backend_pid()", Integer.class));
+                        warehouseDefaults.applyOwningWarehouses(List.of(
+                                new com.uten.imp.features.production.analysis.GoodsOwningWarehouseWriteService.OwningWarehouseRequest(high, warehouse),
+                                new com.uten.imp.features.production.analysis.GoodsOwningWarehouseWriteService.OwningWarehouseRequest(low, warehouse)));
+                    });
+                } finally { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+            });
+            try {
+                int pid = warehousePid.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+                boolean waiting = false;
+                while (System.nanoTime() < deadline) {
+                    waiting = Boolean.TRUE.equals(jdbc.queryForObject(
+                            "SELECT wait_event_type='Lock' FROM pg_stat_activity WHERE pid=?", Boolean.class, pid));
+                    if (waiting) break;
+                    Thread.sleep(10);
+                }
+                assertThat(waiting).as("competing writer must reach its row lock before the first command continues").isTrue();
+            } finally { continuePurchase.countDown(); }
+            purchase.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            warehouseWrite.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } finally { continuePurchase.countDown(); }
+        assertThat(goodsSupplier(low)).isEqualTo(supplier);
+        assertThat(goodsSupplier(high)).isEqualTo(supplier);
+        assertThat(jdbc.queryForList("SELECT owning_warehouse_id FROM goods WHERE id IN (?,?)", UUID.class, low, high))
+                .containsExactlyInAnyOrder(warehouse, warehouse);
+    }
+
+    private static void await(java.util.concurrent.CountDownLatch latch) {
+        try {
+            if (!latch.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("lock coordination timed out");
+        } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+    }
 
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -125,7 +200,8 @@ class ProcurementMasterDefaultsSyncPostgresTest {
         assertThat(supplierCurrency(supplier)).isEqualTo(currency);
         assertThat(supplierTaxRate(supplier)).isEqualByComparingTo("13.0000");
 
-        // ④ 值没变不落盘（货品行 xmin 不变）。
+        // ④ 恢复完整价格上下文后再重放，值没变不落盘。
+        inTx(() -> sync.syncFromPurchaseOrder(order2));
         String xmin = goodsXmin(goods);
         inTx(() -> sync.syncFromPurchaseOrder(order2));
         assertThat(goodsXmin(goods)).isEqualTo(xmin);
@@ -146,6 +222,56 @@ class ProcurementMasterDefaultsSyncPostgresTest {
         assertThat(supplierCurrency(supplier)).isEqualTo(currency);
         assertThat(supplierTaxRate(supplier)).isEqualByComparingTo("6.5000");
         // 采购单价不被委外单动（两价分列学习）。
+        assertThat(goodsPurchasePrice(goods)).isNull();
+    }
+
+    @Test
+    void orderedLineAndPriceContextAreLearnedTogetherAndInvalidateStaleMasterEditors() {
+        UUID supplier = supplier("SUP-SYNC-CONTEXT");
+        UUID goods = goods("G-SYNC-CONTEXT");
+        UUID currency = currency("CUR-SYNC-CONTEXT");
+        UUID unit = UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name,status) VALUES (?,?,'箱','使用')",
+                unit, "UNIT-SYNC-" + unit);
+        UUID order = purchaseOrder(supplier, goods, null, currency, "13.0000");
+        jdbc.update("UPDATE purchase_order_items SET line_no=1, unit_id=? WHERE order_id=?", unit, order);
+        // Lowest possible UUID on the last visible line: UUID sorting must not select the earlier price.
+        jdbc.update("""
+                INSERT INTO purchase_order_items(id,order_id,goods_id,qty,price,line_no,unit_id,is_deleted,
+                    bill_no,bill_date,goods_snapshot_source)
+                VALUES ('00000000-0000-4000-8000-000000000001',?,?,1,78,2,?,false,
+                    'POI-CONTEXT',DATE '2026-09-15','MASTER_AT_SAVE')
+                """, order, goods, unit);
+        long goodsVersion = jdbc.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, goods);
+        long supplierVersion = jdbc.queryForObject("SELECT version FROM suppliers WHERE id=?", Long.class, supplier);
+        inTx(() -> sync.syncFromPurchaseOrder(order));
+        assertThat(goodsPurchasePrice(goods)).isEqualByComparingTo("78");
+        assertThat(jdbc.queryForObject("SELECT default_purchase_price_unit_id FROM goods WHERE id=?", UUID.class, goods)).isEqualTo(unit);
+        assertThat(jdbc.queryForObject("SELECT default_purchase_price_supplier_id FROM goods WHERE id=?", UUID.class, goods)).isEqualTo(supplier);
+        assertThat(jdbc.queryForObject("SELECT default_purchase_price_currency_id FROM goods WHERE id=?", UUID.class, goods)).isEqualTo(currency);
+        assertThat(jdbc.queryForObject("SELECT default_purchase_price_tax_rate FROM goods WHERE id=?", BigDecimal.class, goods)).isEqualByComparingTo("13");
+        assertThat(jdbc.update("UPDATE goods SET default_purchase_price=1 WHERE id=? AND version=?", goods, goodsVersion)).isZero();
+        assertThat(jdbc.update("UPDATE suppliers SET default_tax_rate=0 WHERE id=? AND version=?", supplier, supplierVersion)).isZero();
+        String learnedXmin = goodsXmin(goods);
+        inTx(() -> sync.syncFromPurchaseOrder(order));
+        assertThat(goodsXmin(goods)).isEqualTo(learnedXmin);
+        // Another product changing supplier-wide currency must not reinterpret this saved price.
+        UUID otherCurrency = currency("CUR-SYNC-OTHER-CONTEXT");
+        UUID otherGoods = goods("G-SYNC-OTHER-CONTEXT");
+        UUID another = purchaseOrder(supplier, otherGoods, null, otherCurrency, "0");
+        inTx(() -> sync.syncFromPurchaseOrder(another));
+        assertThat(supplierCurrency(supplier)).isEqualTo(otherCurrency);
+        assertThat(jdbc.queryForObject("SELECT default_purchase_price_currency_id FROM goods WHERE id=?", UUID.class, goods)).isEqualTo(currency);
+    }
+
+    @Test
+    void deletedOrCancelledOrderNeverRelearnsDefaults() {
+        UUID supplier = supplier("SUP-SYNC-INACTIVE");
+        UUID goods = goods("G-SYNC-INACTIVE");
+        UUID order = purchaseOrder(supplier, goods, null, null, null);
+        jdbc.update("UPDATE purchase_orders SET is_deleted=true WHERE id=?", order);
+        inTx(() -> sync.syncFromPurchaseOrder(order));
+        assertThat(goodsSupplier(goods)).isNull();
         assertThat(goodsPurchasePrice(goods)).isNull();
     }
 

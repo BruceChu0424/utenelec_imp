@@ -34,6 +34,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/sales_shipment_policy.dart';
 import '../models/client_node.dart';
 import '../models/party_directory_models.dart';
 import '../repositories/client_repository.dart';
@@ -758,7 +759,13 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
           children: [
             _kv(theme, '销售货款类型', salesPaymentTypeLabelOf(d.salesPaymentType)),
             _kv(theme, '默认结账方式', d.defaultSettlementMethodName),
-            _kv(theme, '默认货运策略', d.defaultShipmentPolicy),
+            _kv(
+              theme,
+              '默认货运策略',
+              // 词表复用销售侧 salesShipmentPolicyLabel；空值交 _kv 显示「—」
+              //（其自带 null→「未返回」文案是订单语境，不适用主档）。
+              _shipmentPolicyLabelOf(d.defaultShipmentPolicy),
+            ),
             _kv(theme, '默认币种', d.defaultCurrencyName),
           ],
         ),
@@ -1732,3 +1739,11 @@ String salesPaymentTypeLabelOf(String? value) => switch (value?.trim()) {
   ClientSalesPaymentType.deposit => '定金',
   _ => '待人工分类',
 };
+
+/// 默认货运策略显示标签：词表复用销售侧 [salesShipmentPolicyLabel]；
+/// 空值返回 null 交 [_kv] 显示「—」。
+String? _shipmentPolicyLabelOf(String? value) {
+  final v = value?.trim();
+  if (v == null || v.isEmpty) return null;
+  return salesShipmentPolicyLabel(v);
+}

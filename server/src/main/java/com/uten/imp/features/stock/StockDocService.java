@@ -21,6 +21,7 @@ import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.StockDocOutboundReview;
 import com.uten.imp.features.stock.dto.StockDocReviewedApproveRequest;
+import com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchResponse;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
@@ -126,6 +127,10 @@ public class StockDocService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final ProductionMaterialStockLedgerService productionMaterialLedger;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.stock.allocation.ProductionMaterialReturnReceiptService> materialReturnReceipts;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.stock.allocation.ProductionMaterialReturnDrawInstructionService materialReturnDrawInstructions;
     private final ProductionCompletionReversePort productionCompletionReverse;
     private final TaskClaimService taskClaim;
     private final StockDocAccessPolicy access;
@@ -268,6 +273,7 @@ public class StockDocService {
     private StockDocDetail createInternal(
             StockDocSaveRequest req,
             String balanceAdjustmentRequestKey) {
+        rejectGenericMaterialReturn(req.getDocType());
         requireCostWritePermission(req.getItems());
         tx.bind();
         StockDocument d = new StockDocument();
@@ -294,6 +300,8 @@ public class StockDocService {
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_EDIT", id.toString());
         StockDocument d = requireDocForUpdate(id);
         access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
+        rejectGenericMaterialReturn(d.getDocType());
+        rejectGenericMaterialReturn(req.getDocType());
         requireBalanceAdjustmentPermission(d);
         rejectGenericMutationOfProductionDocument(d);
         if (d.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -569,7 +577,11 @@ public class StockDocService {
         }
         if (warehouseScopes != null && (batchContext == null
                 || batchContext.validatedWarehouseIds.add(document.getWarehouseId()))) {
-            warehouseScopes.requireActiveLeafWarehouse(document.getWarehouseId(), "入库仓库");
+            if (lane == FinishedInLane.WORKSHOP_DIRECT_TRANSFER) {
+                warehouseScopes.requireActiveLineSideWarehouse(document.getWarehouseId(), "车间流转位置");
+            } else {
+                warehouseScopes.requireActiveLeafWarehouse(document.getWarehouseId(), "入库仓库");
+            }
         }
         UUID planId = requireApprovedLinkedProductionPlan(document);
         List<StockDocumentItem> items =
@@ -727,6 +739,115 @@ public class StockDocService {
         return approveInternal(id, false, false);
     }
 
+    /** Receive the current workshop's surplus at a warehouse-selected ordinary leaf. */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public StockDocDetail confirmProductionMaterialReturn(UUID id, ProductionMaterialReturnConfirmRequest request) {
+        if (request==null || request.warehouseId()==null || request.idempotencyKey()==null
+                || !request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择实际收料仓库并提供有效确认键");
+        }
+        tx.bind();
+        if (!access.hasAuthority("stock_doc:approve")) throw new ApiException(ErrorCode.FORBIDDEN,"缺少仓库收料权限");
+        productionStockTaskAccess.requireWarehouseTaskAccess("无权确认此车间余料收货");
+        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,618))")
+                .setParameter("key",currentUser.requireId()+":"+request.idempotencyKey()).getSingleResult();
+        var guard=mutationLocks.acquire(()->{
+            var source=mutationFootprints.forStockDocuments(List.of(id));
+            var dimensions=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT goods_id,color_id FROM stock_document_items WHERE doc_id=:id AND NOT is_deleted ORDER BY id
+                    """).setParameter("id",id)).stream().map(row->new ProductionMutationFootprintPort.WarehouseDimension(
+                            request.warehouseId(),(UUID)row[0],(UUID)row[1])).toList();
+            var destination=mutationFootprints.forInventoryChange(dimensions,List.of());
+            return com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.merge(
+                    CanonicalFingerprint.sha256(List.of(source.fingerprint(),destination.fingerprint())),List.of(source,destination));
+        });
+        lockProductionDocumentGraphs(List.of(id));
+        lockFinishedInboundBatchAllocationGraph(List.of(id));
+        lockFinishedInboundBatchDocuments(List.of(id));
+        StockDocument document=requireDocForUpdate(id);
+        requireOperationWritable(document,"stock_doc:approve","无权确认此车间余料收货");
+        UUID sourceWarehouse=materialReturnSourceWarehouse(id);
+        String hash=materialReturnReceivingHash(id,sourceWarehouse,request.warehouseId());
+        List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT stock_document_id,request_hash FROM production_material_return_receiving_confirmations
+                WHERE created_by=:actor AND idempotency_key=:key
+                """).setParameter("actor",currentUser.requireId()).setParameter("key",request.idempotencyKey()));
+        if(!replay.isEmpty()) {
+            if(!id.equals(replay.getFirst()[0]) || !hash.equals(replay.getFirst()[1]))
+                throw new ApiException(ErrorCode.CONFLICT,"相同确认键对应不同的退料单或实际收仓");
+            return detail(id);
+        }
+        if(!"WDRAW".equals(document.getDocType()) || document.getStatus()!=STATUS_DRAFT)
+            throw new ApiException(ErrorCode.CONFLICT,"仅待收料的车间余料单可以确认实际仓库");
+        requireMaterialReturnWarehouse(sourceWarehouse,request.warehouseId());
+        guard.verifyUnchanged();
+        insertMaterialReturnReceivingConfirmation(document,sourceWarehouse,request.warehouseId(),request.idempotencyKey(),hash);
+        document.setWarehouseId(request.warehouseId());
+        docRepo.saveAndFlush(document);
+        return approveInternal(id,false,false);
+    }
+
+    private UUID materialReturnSourceWarehouse(UUID id) {
+        List<UUID> sources=NativeQueryResults.typedRows(em.createNativeQuery(
+                "SELECT warehouse_id FROM production_material_return_requests WHERE id=:id",UUID.class).setParameter("id",id),UUID.class);
+        if(sources.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"请从车间任务的原实际领料来源办理余料退库");
+        return sources.getFirst();
+    }
+
+    private void requireMaterialReturnWarehouse(UUID source,UUID received) {
+        if(received==null)throw new ApiException(ErrorCode.CONFLICT,"请由仓库确认实际接收余料的正常仓库");
+        Objects.requireNonNull(warehouseScopes,"Warehouse selection policy is required for material receipt")
+                .requireActiveLeafWarehouse(received,"实际收料仓库");
+        if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_warehouse_same_main(:source,:received)")
+                .setParameter("source",source).setParameter("received",received).getSingleResult()))
+            throw new ApiException(ErrorCode.CONFLICT,"余料须在原履约主仓范围选择正常收料仓，跨主仓需另行办理正式调配");
+    }
+
+    private static String materialReturnReceivingHash(UUID document,UUID source,UUID received) {
+        return CanonicalFingerprint.sha256(List.of("MATERIAL-RETURN-RECEIVING-V1",document.toString(),source.toString(),received.toString()));
+    }
+
+    private void insertMaterialReturnReceivingConfirmation(StockDocument document,UUID source,UUID received,String key,String hash) {
+        em.createNativeQuery("""
+                INSERT INTO production_material_return_receiving_confirmations(stock_document_id,return_request_id,
+                    source_warehouse_id,received_warehouse_id,previous_warehouse_id,idempotency_key,request_hash,created_by)
+                VALUES(:id,:id,:source,:received,:previous,:key,:hash,:actor)
+                """).setParameter("id",document.getId()).setParameter("source",source).setParameter("received",received)
+                .setParameter("previous",document.getWarehouseId()).setParameter("key",key).setParameter("hash",hash)
+                .setParameter("actor",currentUser.requireId()).executeUpdate();
+    }
+
+    private void ensureMaterialReturnReceivingConfirmation(StockDocument document) {
+        if(!isRequestedMaterialReturn(document))return;
+        UUID source=materialReturnSourceWarehouse(document.getId());
+        requireMaterialReturnWarehouse(source,document.getWarehouseId());
+        List<UUID> confirmed=NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT received_warehouse_id FROM production_material_return_receiving_confirmations WHERE stock_document_id=:id
+                """,UUID.class).setParameter("id",document.getId()),UUID.class);
+        if(!confirmed.isEmpty()) {
+            if(!document.getWarehouseId().equals(confirmed.getFirst()))
+                throw new ApiException(ErrorCode.CONFLICT,"实际收料仓与原确认不一致");
+            return;
+        }
+        // Existing ordinary same-source receipts retain their single approve
+        // action, with the same immutable receiving proof as explicit selection.
+        if(!source.equals(document.getWarehouseId()))throw new ApiException(ErrorCode.CONFLICT,"请显式确认余料的实际接收仓库");
+        insertMaterialReturnReceivingConfirmation(document,source,document.getWarehouseId(),
+                "MATERIAL-RETURN-APPROVE:"+document.getId(),materialReturnReceivingHash(document.getId(),source,document.getWarehouseId()));
+    }
+
+    private boolean isRequestedMaterialReturn(StockDocument document) {
+        return "WDRAW".equals(document.getDocType()) && Boolean.TRUE.equals(em.createNativeQuery(
+                "SELECT fn_is_production_material_return_request(:id)").setParameter("id",document.getId()).getSingleResult());
+    }
+
+    private static void rejectGenericMaterialReturn(String documentType) {
+        if ("WDRAW".equals(documentType)) {
+            throw new ApiException(ErrorCode.CONFLICT,"余料退库须从车间任务提交真实来源与基本数量，再由仓库确认实际收仓；不能手工新建或编辑退料单");
+        }
+    }
+
     /** Check the reviewed revision after acquiring the original mutation/document locks. */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:approve')")
@@ -793,6 +914,21 @@ public class StockDocService {
         }
         if (d.getStatus() == null || d.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
+        if("WDRAW".equals(d.getDocType())) {
+            if (!isRequestedMaterialReturn(d)) {
+                throw new ApiException(ErrorCode.CONFLICT,"此退料草稿没有正式材料来源申请，已禁止继续使用；请从车间任务重新提交余料退库");
+            }
+            if(d.getWarehouseId()==null || Boolean.TRUE.equals(em.createNativeQuery("SELECT is_line_side FROM warehouses WHERE id=:id")
+                    .setParameter("id",d.getWarehouseId()).getSingleResult()))
+                throw new ApiException(ErrorCode.CONFLICT,"请由仓库确认正常仓库接收当前车间的余料，不能收入车间流转位置");
+            ensureMaterialReturnReceivingConfirmation(d);
+        }
+        if (Set.of("TRANSFER", "OTHER_OUT", "WASTE", "FINISHED_OUT").contains(d.getDocType())
+                && Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=:id AND is_line_side)")
+                        .setParameter("id", d.getWarehouseId()).getSingleResult())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "不能以普通调拨或其他出库搬运车间直送料；请从原生产任务办理领料、退料或正式反向");
+        }
         if (warehouseScopes != null) {
             if (Set.of("OTHER_IN", "FINISHED_IN", "CHECK").contains(d.getDocType())
                     && !(warehouseQuantityConfirmed && "FINISHED_IN".equals(d.getDocType()))) {
@@ -826,8 +962,11 @@ public class StockDocService {
         if ("CHECK".equals(d.getDocType())) {
             validateCheckSnapshot(d, items);
         }
-        Map<UUID,UUID> materialMovements=Map.of();
-        if (!"DRAW".equals(d.getDocType())) materialMovements=applyStockEffect(d, items, +1);
+        boolean requestedMaterialReturn=isRequestedMaterialReturn(d);
+        if(requestedMaterialReturn) {
+            materialReturnDrawInstructions.adjust(d.getId(),false);
+            materialReturnReceipts.getObject().apply(d,items,false);
+        } else if (!"DRAW".equals(d.getDocType())) applyStockEffect(d, items, +1);
         if ("OTHER_IN".equals(d.getDocType()) && d.getWarehouseId() != null) {
             // V606 / ADR-091 批注：其它入库提交后，本仓等待中的齐套段尽力而为补跑提升
             //（缺料静默返回；路线门在段锁查询里复核）。必须挂在事务提交之后：本事务已持有
@@ -847,11 +986,6 @@ public class StockDocService {
                     }
                 }
             });
-        }
-        if ("WDRAW".equals(d.getDocType())) {
-            var posting=applyGoodReturnLedger(d, items, false);
-            productionMaterialLedger.bindMovements(posting.eventId(),materialMovements);
-            stockService.bindProductionMovements(posting.eventId(),materialMovements);
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
             applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty
@@ -946,11 +1080,16 @@ public class StockDocService {
                 }
                 applyFinishedInChain(d, items, -1);
             }
-            var returnPosting="WDRAW".equals(d.getDocType())?applyGoodReturnLedger(d, items, true):null;
-            var materialMovements=applyStockEffect(d, items, -1);
-            if(returnPosting!=null) {
-                productionMaterialLedger.bindMovements(returnPosting.eventId(),materialMovements);
-                stockService.bindProductionMovements(returnPosting.eventId(),materialMovements);
+            if(isRequestedMaterialReturn(d)) {
+                materialReturnDrawInstructions.adjust(d.getId(),true);
+                materialReturnReceipts.getObject().apply(d,items,true);
+            } else {
+                var returnPosting="WDRAW".equals(d.getDocType())?reverseExistingGoodReturnLedger(d, items):null;
+                var materialMovements=applyStockEffect(d, items, -1);
+                if(returnPosting!=null) {
+                    productionMaterialLedger.bindMovements(returnPosting.eventId(),materialMovements);
+                    stockService.bindProductionMovements(returnPosting.eventId(),materialMovements);
+                }
             }
         }
         d.setStatus(STATUS_REVERSED);
@@ -1233,6 +1372,9 @@ public class StockDocService {
         if (!workshopDirectTransfer) {
             requireOperationWritable(
                     d, "stock_doc:issue", "无权发出此生产领料单");
+            if(Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=:id AND is_line_side)")
+                    .setParameter("id",d.getWarehouseId()).getSingleResult()))
+                throw new ApiException(ErrorCode.CONFLICT,"车间直送料由任务开工或核料时自动投入，无需仓库另行发料");
             requireProductionDrawRequested(id);
         }
         // 生产链 DRAW：出库即审核口径下必须能证明「已审关联计划 + 逐行唯一执行
@@ -1249,13 +1391,14 @@ public class StockDocService {
             return detail(id);
         }
         mutationGuard.verifyUnchanged();
+        Map<UUID,BigDecimal> effectiveForDirect=workshopDirectTransfer?effectiveDrawQuantities(items):Map.of();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
             BigDecimal alreadyIssued = item.getIssuedQty() == null ? BigDecimal.ZERO : item.getIssuedQty();
             // 直送没有单独的领料申请步骤(那正是用户要砍掉的一步)，上限回到 DRAW 行
             // 自己冻结的需求量；其余出库仍以「车间已申请的剩余量」为准。
             BigDecimal ceiling = workshopDirectTransfer
-                    ? item.getQty()
+                    ? effectiveForDirect.get(item.getId())
                     : requestedDrawQuantity(item.getId());
             if (line.getQty().add(alreadyIssued).compareTo(ceiling) > 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
@@ -1443,7 +1586,7 @@ public class StockDocService {
                           ON document.id = mapping.document_id
                          AND document.doc_type = 'DRAW'
                          AND document.is_deleted = FALSE
-                         AND document.status = 0
+                         AND document.status IN (0,1)
                          AND document.warehouse_id = :warehouseId
                         WHERE mapping.document_type = 'DRAW'
                           AND mapping.execution_segment_id = :segmentId
@@ -1451,23 +1594,40 @@ public class StockDocService {
                               SELECT 1 FROM stock_document_items item
                               WHERE item.doc_id = document.id
                                 AND item.is_deleted = FALSE
-                                AND COALESCE(item.issued_qty, 0) < item.qty)
+                                AND COALESCE(item.issued_qty, 0) < fn_production_draw_item_effective_qty(item.id))
                         ORDER BY 1
                         """)
                 .setParameter("warehouseId", lineSideWarehouseId)
                 .setParameter("segmentId", receivingSegmentId), UUID.class);
         for (UUID drawId : draws) {
             List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(drawId);
+            Map<UUID,BigDecimal> effective=effectiveDrawQuantities(items);
+            Map<UUID,UUID> demandByItem=new HashMap<>();
+            for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT document_item_id,demand_id FROM production_planning_package_document_items
+                    WHERE document_id=:id AND document_type='DRAW'
+                    """).setParameter("id",drawId)))demandByItem.put((UUID)row[0],(UUID)row[1]);
+            Map<UUID,BigDecimal> availableByDemand=new HashMap<>();
+            if(!demandByItem.isEmpty())for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT demand_id,SUM(fn_workshop_reservation_unissued_available(id)) FROM stock_reservations
+                    WHERE demand_id IN(:demands) AND warehouse_id=:warehouse AND NOT is_deleted GROUP BY demand_id
+                    """).setParameter("demands",demandByItem.values().stream().distinct().toList())
+                    .setParameter("warehouse",lineSideWarehouseId)))availableByDemand.put((UUID)row[0],new BigDecimal(row[1].toString()));
             StockDocIssueRequest request = new StockDocIssueRequest();
-            request.setIdempotencyKey(idempotencyKey + "-" + drawId);
             request.setReason("车间内部直送 · 自动投入上层工单");
             request.setLines(items.stream()
                     .filter(item -> item.getQty() != null)
                     .map(item -> {
+                        requirePositiveStockItem(item,"车间直送投入");
                         BigDecimal issued = item.getIssuedQty() == null
                                 ? BigDecimal.ZERO : item.getIssuedQty();
-                        BigDecimal remaining = item.getQty().subtract(issued);
+                        UUID demand=demandByItem.get(item.getId());
+                        BigDecimal available=availableByDemand.getOrDefault(demand,BigDecimal.ZERO);
+                        BigDecimal rate=unitRateOrOne(item.getUnitRate());
+                        BigDecimal remaining = effective.get(item.getId()).subtract(issued)
+                                .min(available.divide(rate,4,RoundingMode.DOWN));
                         if (remaining.signum() <= 0) return null;
+                        availableByDemand.put(demand,available.subtract(remaining.multiply(rate)));
                         StockDocIssueRequest.Line line = new StockDocIssueRequest.Line();
                         line.setItemId(item.getId());
                         line.setQty(remaining);
@@ -1476,6 +1636,12 @@ public class StockDocService {
                     .filter(Objects::nonNull)
                     .toList());
             if (request.getLines().isEmpty()) continue;
+            Number priorEvents=(Number)em.createNativeQuery("SELECT COUNT(*) FROM production_material_stock_events WHERE stock_document_id=:id")
+                    .setParameter("id",drawId).getSingleResult();
+            List<String> issueState=new ArrayList<>(List.of(idempotencyKey==null?"":idempotencyKey,drawId.toString(),priorEvents.toString()));
+            request.getLines().stream().sorted(java.util.Comparator.comparing(StockDocIssueRequest.Line::getItemId)).forEach(line->
+                    issueState.add(line.getItemId()+":"+line.getQty().stripTrailingZeros().toPlainString()));
+            request.setIdempotencyKey("WORKSHOP-DRAW:"+drawId+":"+CanonicalFingerprint.sha256(issueState));
             StockDocument draw = requireDocForUpdate(drawId);
             // 生产领料单是草稿，出库前必须先审核 —— 与仓库那条「审核并出库」一段式端点
             // 同一条路径，只是授权走直送这条窄路。
@@ -1569,10 +1735,7 @@ public class StockDocService {
                                        package.plan_id,
                                        demand.source_plan_item_id,
                                        segment.source_plan_item_id,
-                                       (document.warehouse_id = demand.warehouse_id
-                                        OR (source_plan.material_analysis_id IS NOT NULL
-                                            AND fn_warehouse_same_main(
-                                                document.warehouse_id,demand.warehouse_id))),
+                                       fn_production_material_actual_warehouse_allows(demand.id,document.warehouse_id),
                                        EXISTS (
                                            SELECT 1 FROM stock_reservations reservation
                                            WHERE reservation.demand_id=demand.id
@@ -1798,9 +1961,9 @@ public class StockDocService {
         }
     }
 
-    private ProductionMaterialStockLedgerService.PostingResult applyGoodReturnLedger(
-            StockDocument document, List<StockDocumentItem> items,
-            boolean reverse) {
+    /** Existing physical return facts reverse through their original frozen item quantities. */
+    private ProductionMaterialStockLedgerService.PostingResult reverseExistingGoodReturnLedger(
+            StockDocument document, List<StockDocumentItem> items) {
         List<ProductionMaterialStockLedgerService.MaterialLine> lines =
                 items.stream().map(item ->
                         new ProductionMaterialStockLedgerService.MaterialLine(
@@ -1810,16 +1973,9 @@ public class StockDocService {
                                 item.getQty().multiply(
                                         unitRateOrOne(item.getUnitRate()))))
                         .toList();
-        ProductionMaterialStockLedgerService.PostingResult posting;
-        if (reverse) {
-            posting=productionMaterialLedger.reverseGoodReturn(
-                    document.getId(), document.getWarehouseId(), lines,
-                    currentUser.requireId());
-        } else {
-            posting=productionMaterialLedger.goodReturn(
-                    document.getId(), document.getWarehouseId(), lines,
-                    currentUser.requireId());
-        }
+        var posting=productionMaterialLedger.reverseGoodReturn(
+                document.getId(), document.getWarehouseId(), lines,
+                currentUser.requireId());
         if(posting.replayed()) throw new ApiException(ErrorCode.CONFLICT,"退料已经有处理记录，请刷新核对原单，不能重复改变库存");
         return posting;
     }
@@ -2684,15 +2840,28 @@ public class StockDocService {
     /** 派生 issue_status：全部出完=2 / 有出库=1 / 未出库=0；全出完 is_closed=true，否则复位。 */
     private void recomputeIssueStatus(StockDocument d, List<StockDocumentItem> items) {
         boolean anyIssued = false, allIssued = true;
+        Map<UUID,BigDecimal> effective=effectiveDrawQuantities(items);
         for (StockDocumentItem it : items) {
             BigDecimal issued = it.getIssuedQty() == null ? BigDecimal.ZERO : it.getIssuedQty();
             if (issued.signum() > 0) anyIssued = true;
-            if (issued.compareTo(it.getQty()) < 0) allIssued = false;
+            if (issued.compareTo(effective.get(it.getId())) < 0) allIssued = false;
         }
         short st = !anyIssued ? ISSUE_NONE : (allIssued ? ISSUE_FULL : ISSUE_PARTIAL);
         d.setIssueStatus(st);
         d.setClosed(st == ISSUE_FULL);
         docRepo.save(d);
+    }
+
+    private Map<UUID,BigDecimal> effectiveDrawQuantities(List<StockDocumentItem> items) {
+        if(items.isEmpty())return Map.of();
+        Map<UUID,BigDecimal> quantities=new HashMap<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,fn_production_draw_item_effective_qty(id) FROM stock_document_items WHERE id IN(:ids) AND NOT is_deleted
+                """).setParameter("ids",items.stream().map(StockDocumentItem::getId).toList()))) {
+            quantities.put((UUID)row[0],new BigDecimal(row[1].toString()));
+        }
+        if(quantities.size()!=items.size())throw new ApiException(ErrorCode.CONFLICT,"领料行已变化，请刷新后核对实际待发数量");
+        return quantities;
     }
 
     // ===== 业务链：成品入库 ↔ 订单行（docs/07-业务链路/02 §三） =====
@@ -3670,6 +3839,9 @@ public class StockDocService {
                         (String) confirmation.getFirst()[1];
             }
         }
+        List<Object[]> materialReturn="WDRAW".equals(d.getDocType())?NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT warehouse_id,fn_warehouse_main_id(warehouse_id) FROM production_material_return_requests WHERE id=:id
+                """).setParameter("id",d.getId())):List.of();
         return new StockDocDetail(d.getId(), d.getLegacyId(), d.getDocType(), d.getBillNo(), d.getBillDate(),
                 d.getWarehouseId(), d.getToWarehouseId(), d.getSupplierId(), d.getClientId(),
                 d.getWorkerId(), d.getMakerId(), d.getApproverId(), d.getAssTeam(), d.getPlanNo(), d.getRemark(),
@@ -3680,7 +3852,9 @@ public class StockDocService {
                 nameResolver.nameOf(d.getMakerId()), d.getCreatedAt(),
                 productionLinked, canEdit, canDelete, restrictionReason,
                 resolveSourcePlanId(d.getId()),
-                decision, finishedInboundVarianceReason, !canViewCost);
+                decision, finishedInboundVarianceReason, !canViewCost,!materialReturn.isEmpty(),
+                materialReturn.isEmpty()?null:(UUID)materialReturn.getFirst()[0],
+                materialReturn.isEmpty()?null:(UUID)materialReturn.getFirst()[1]);
     }
 
     private boolean canViewCost() {

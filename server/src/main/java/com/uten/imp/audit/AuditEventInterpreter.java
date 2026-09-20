@@ -1043,6 +1043,9 @@ public class AuditEventInterpreter {
         // 薪酬 / 费用
         values.put("expense_claims", "报销单");
         values.put("expense_claim_items", "报销单明细");
+        values.put("expense_claim_invoices", "报销凭证登记");
+        values.put("expense_claim_events", "报销流转记录");
+        values.put("expense_claim_settings", "报销业务设置");
         values.put("payroll_batches", "工资批次");
         values.put("payroll_items", "工资项目");
         values.put("payroll_slips", "工资条");

@@ -649,7 +649,8 @@ public class StockQueryService {
                     (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
                     r[7] == null ? BigDecimal.ZERO : new BigDecimal(r[7].toString()),
                     Boolean.TRUE.equals(r[8]),
-                    parsed.level(), parsed.slot(), parsed.parsed()));
+                    parsed.level(), parsed.slot(), parsed.parsed(),
+                    (UUID) r[10], (String) r[11], (UUID) r[12], (String) r[13]));
         }
         return out;
     }

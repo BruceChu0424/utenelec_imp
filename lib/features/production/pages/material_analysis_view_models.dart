@@ -51,6 +51,8 @@ final class _MaterialAnalysisIndexes {
     required this.materialsByProduct,
     required this.groups,
     required this.groupsByLine,
+    required this.groupsByKey,
+    required this.materialsByAnchorProduct,
     required this.childrenByParentNodeKey,
   });
 
@@ -59,6 +61,9 @@ final class _MaterialAnalysisIndexes {
   materialsByProduct;
   final List<_MaterialGroup> groups;
   final Map<String, _MaterialGroup> groupsByLine;
+  final Map<String, _MaterialGroup> groupsByKey;
+  final Map<String, ProductionMaterialAnalysisMaterial>
+  materialsByAnchorProduct;
 
   /// (analysisLineId, parentNodeKey) → 直接子节点。nodeKey 只在单个分析项内
   /// 唯一（V234 唯一键同样是 analysis_item_id + node_key）；若只按 nodeKey

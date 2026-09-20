@@ -1,6 +1,6 @@
 // StockGridRow.clone（明细复制/粘贴，2026-09-03）：
 // 拷货品、录入量与只读主档展示列；盘点模式保留（盘盈亏随控制器重算）；
-// 上游/执行段/退料来源引用与 maxQty 门控不拷。
+// 上游/执行段来源引用不拷。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/warehouse/widgets/stock_grid_columns.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
@@ -47,23 +47,16 @@ void main() {
     expect(c.amountValue, -2); // 实盘 - 账面
   });
 
-  test('clone 不拷上游/执行段/退料引用与门控', () {
-    final src = StockGridRow(sourceLocked: true)
+  test('clone 不拷上游与执行段引用', () {
+    final src = StockGridRow()
       ..upstreamItemId = 'up-1'
       ..executionSegmentId = 'seg-1'
-      ..executionSegmentSalesAllocationId = 'alloc-1'
-      ..sourceDrawId = 'draw-1'
-      ..sourceDrawNo = 'WD-1'
-      ..maxQty = 9;
+      ..executionSegmentSalesAllocationId = 'alloc-1';
     src.qty.text = '1';
 
     final c = src.clone();
     expect(c.upstreamItemId, isNull);
     expect(c.executionSegmentId, isNull);
     expect(c.executionSegmentSalesAllocationId, isNull);
-    expect(c.sourceDrawId, isNull);
-    expect(c.sourceDrawNo, isNull);
-    expect(c.maxQty, isNull);
-    expect(c.sourceLocked, isFalse);
   });
 }

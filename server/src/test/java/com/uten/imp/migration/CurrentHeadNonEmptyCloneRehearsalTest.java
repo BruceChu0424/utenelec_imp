@@ -61,7 +61,8 @@ class CurrentHeadNonEmptyCloneRehearsalTest {
         String expectedClientIssueSha = requiredEnv(CLIENT_ISSUE_SHA_ENV);
 
         assertThat(expectedStart).matches("[0-9]+");
-        assertThat(Integer.parseInt(expectedStart)).isBetween(238, 288);
+        int startVersion = Integer.parseInt(expectedStart);
+        assertThat(startVersion).isBetween(238, Integer.parseInt(CURRENT_HEAD_VERSION) - 1);
         assertThat(expectedSystemIdentifier).matches("[0-9]{10,32}");
         assertThat(backupSha).matches("(?i)[0-9a-f]{64}");
         assertThat(expectedIdentifierConflictSha).matches("(?i)[0-9a-f]{64}");
@@ -83,11 +84,20 @@ class CurrentHeadNonEmptyCloneRehearsalTest {
                     .isEqualTo(expectedSystemIdentifier);
             assertThat(latestSuccessfulVersion(connection)).isEqualTo(expectedStart);
             installedBefore = successfulMigrationCount(connection);
+            assertThat(installedBefore)
+                    .as("the clone baseline must contain the complete reviewed migration set")
+                    .isEqualTo(MigrationRehearsalSupport.migrationFileCountUpTo(startVersion));
             before = snapshot(connection);
             assertThat(before.tableRows().get("users")).isPositive();
-            assertThat(before.paymentTotals().activeCount())
-                    .as("real-data rehearsal must exercise active historical payments")
-                    .isPositive();
+            if (startVersion <= 288) {
+                assertThat(before.paymentTotals().activeCount())
+                        .as("legacy import rehearsal must exercise active historical payments")
+                        .isPositive();
+            } else {
+                assertThat(before.tableRows().get("goods"))
+                        .as("a current company clone must retain actual master data")
+                        .isPositive();
+            }
         }
 
         Flyway flyway = Flyway.configure()

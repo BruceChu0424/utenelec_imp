@@ -30,6 +30,15 @@ public class ProductionAssignmentValidator {
 
     private final EntityManager em;
 
+    /** Keep historical physical custody separate from mutable task assignment. */
+    public void requireMaterialCustody(UUID segmentId) {
+        if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_execution_material_custody_valid(:id)")
+                .setParameter("id",segmentId).getSingleResult())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "实领或直送物料的原车间与当前任务不一致，请先核对原领料并按来源退回或反向处理，不能跨车间计料开工");
+        }
+    }
+
     public void validate(Assignment assignment) {
         validateAll(List.of(assignment));
     }

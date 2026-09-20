@@ -17,7 +17,7 @@ class CustomerPrepaymentGlAccountingContractTest {
                 StandardCharsets.UTF_8).replaceAll("\\s+", " ");
 
         assertThat(source)
-                .contains("t.receipt_kind='CUSTOMER_PREPAYMENT'")
+                .contains("SELECT :voucher,2,receipt.gl_counter_style_id")
                 .contains("system_posting_style_id('CUSTOMER_ADVANCE')")
                 .contains("'AUTO','CUSTOMER_PREPAYMENT_OFFSET',batch.id")
                 .contains("voucher.id,1,advance_style.id,1,SUM(allocation.source_amount_local)")
@@ -26,5 +26,9 @@ class CustomerPrepaymentGlAccountingContractTest {
                 .contains("HAVING SUM(allocation.exchange_difference)<>0")
                 .contains("assertCustomerPrepaymentPostingConfiguration(period)")
                 .contains("assertCustomerPrepaymentProjectionOwnership(period)");
+        String receipt = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java"),
+                StandardCharsets.UTF_8).replaceAll("\\s+", " ");
+        assertThat(receipt).contains("\"CUSTOMER_PREPAYMENT\".equals(receipt.getReceiptKind()) ?\"CUSTOMER_ADVANCE\":\"AR_CONTROL\"");
     }
 }

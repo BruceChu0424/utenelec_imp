@@ -24,6 +24,7 @@ import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.TransactionManager;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -208,8 +209,10 @@ class BusinessDataResetServicePostgresTest {
         // V586 补登记 V583 报工实耗表与 V584 车间直送三张表（两个建表迁移都漏了
         // 这一步，清库函数 fail-closed 会整体拒跑）：276→280。
         // V590 废弃车间偏好表（数据搬进货品表随 goods 保留）：PRESERVE 99→98。
-        assertThat(result.clearedTableCount()).isEqualTo(280);
-        assertThat(result.preservedTableCount()).isEqualTo(98);
+        // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送分配/流水/历史隔离：V618 +1 收仓确认，V619 +8 保管溯源：280→296。
+        assertThat(result.clearedTableCount()).isEqualTo(296);
+        // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
+        assertThat(result.preservedTableCount()).isEqualTo(102);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）
@@ -369,7 +372,8 @@ class BusinessDataResetServicePostgresTest {
                 .getRepository(AuditLogRepository.class);
         var auditProxy = new ProxyFactory(new AuditService(
                 auditRepository, new AuditDeviceContext(new ObjectMapper())));
-        auditProxy.addAdvice(new TransactionInterceptor(transactions,
+        auditProxy.addAdvice(new TransactionInterceptor(
+                (TransactionManager) transactions,
                 new AnnotationTransactionAttributeSource()));
         return new BusinessDataResetService(
                 dataSource,

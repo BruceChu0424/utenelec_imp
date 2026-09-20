@@ -56,35 +56,16 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
 
-      - name: Install exact website dependency lock
+      - name: Website source, migration, audit and isolated build gates
         working-directory: website
-        run: npm ci --ignore-scripts=false
+        run: node scripts/quality-gate.mjs --schema-contract "$RUNNER_TEMP/website-sqlite-schema-contract.json"
 
-      - name: Website source, migration, and behavior gates
+      - name: Website deployment contracts and shell syntax
         working-directory: website
         run: |
           set -Eeuo pipefail
-          npm run lint
-          npx tsc --noEmit
-          npm run test:all
-          npm run test:prisma-migrations
           python3 -m unittest discover -s deploy/tests -p 'test_*.py'
           find deploy -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
-
-      - name: Build only against a disposable migrated SQLite database
-        working-directory: website
-        env:
-          DATABASE_URL: file:${{ runner.temp }}/website-build.db
-          AUTH_SECRET: build-only-not-a-production-secret-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ
-          UPLOADS_DIR: ${{ runner.temp }}/website-build-uploads
-        run: |
-          set -Eeuo pipefail
-          mkdir -m 0700 "$RUNNER_TEMP/website-build-uploads"
-          node node_modules/prisma/build/index.js migrate deploy --schema prisma/schema.prisma
-          python3 deploy/paired_state.py schema-contract \
-            --database "$RUNNER_TEMP/website-build.db" \
-            --output "$RUNNER_TEMP/website-sqlite-schema-contract.json"
-          npm run build
 
       - name: Assemble clean runtime, SBOM, deterministic archive and unsigned manifest
         id: bundle

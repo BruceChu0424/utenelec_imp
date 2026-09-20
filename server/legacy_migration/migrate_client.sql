@@ -11,7 +11,6 @@
 -- DELETE 让任何下游客户引用在写入前 fail-closed；禁止 TRUNCATE/CASCADE。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 DO $$
@@ -95,7 +94,6 @@ WHERE s.parent_legacy <> 0
   AND NOT EXISTS (SELECT 1 FROM mc_stage p WHERE p.legacy_id = s.parent_legacy)
   AND NOT EXISTS (SELECT 1 FROM mc_nodes   n WHERE n.legacy_id = s.legacy_id);
 
-COMMIT;
 
 SELECT '✔ 客户分类 总 ' || count(*) ||
        '，根 ' || count(*) FILTER (WHERE parent_id IS NULL) ||

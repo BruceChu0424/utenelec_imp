@@ -38,6 +38,8 @@ final class ProductionJdbcMeasurement {
         final Map<String, Long> fingerprints = new LinkedHashMap<>();
         final Map<String, Long> nanosByFingerprint = new LinkedHashMap<>();
         final Map<String, Long> maxNanosByFingerprint = new LinkedHashMap<>();
+        final Map<String, Long> affectedRowsByFingerprint = new LinkedHashMap<>();
+        final Map<String, Long> zeroDmlCallsByFingerprint = new LinkedHashMap<>();
         final Map<String, String> labelsByFingerprint = new LinkedHashMap<>();
         final Map<String, CapturedQuery> explainCandidates = new LinkedHashMap<>();
 
@@ -51,6 +53,8 @@ final class ProductionJdbcMeasurement {
             result.put("commitMillis", commitNanos / 1_000_000.0);
             result.put("rollbackMillis", rollbackNanos / 1_000_000.0);
             result.put("instrumentationMillis", instrumentationNanos / 1_000_000.0);
+            result.put("sqlAffectedRows", affectedRowsByFingerprint);
+            result.put("sqlZeroDmlCalls", zeroDmlCallsByFingerprint);
             return result;
         }
     }
@@ -76,6 +80,7 @@ final class ProductionJdbcMeasurement {
         String normalized=sql.replaceAll("\\s+"," ").trim().toLowerCase(java.util.Locale.ROOT);
         return normalized.startsWith("with recursive walk as") && normalized.contains("from goods_bom_items b")
                 || normalized.startsWith("with analysis_page as materialized")
+                || normalized.startsWith("with analysis_headers as materialized")
                 || normalized.startsWith("with recursive roots(") && normalized.contains("from goods_bom_items edge")
                 || normalized.startsWith("with recursive roots as") && (normalized.contains("from expansion") || normalized.contains("from parents"))
                 || normalized.contains("select material.id,material.goods_id,material.color_id,md5(")
@@ -188,7 +193,14 @@ final class ProductionJdbcMeasurement {
                     new CapturedQuery(fingerprint,preparedSql,Map.copyOf(bindings)));
             sample.instrumentationNanos += System.nanoTime() - accountingStarted;
             long start = System.nanoTime();
-            try { return invoke(target, method, args); }
+            try {
+                Object result = invoke(target, method, args);
+                if ((name.equals("executeUpdate") || name.equals("executeLargeUpdate")) && result instanceof Number count) {
+                    sample.affectedRowsByFingerprint.merge(fingerprint, count.longValue(), Long::sum);
+                    if (count.longValue() == 0) sample.zeroDmlCallsByFingerprint.merge(fingerprint, 1L, Long::sum);
+                }
+                return result;
+            }
             finally {
                 long duration = System.nanoTime() - start;
                 long finished = System.nanoTime();

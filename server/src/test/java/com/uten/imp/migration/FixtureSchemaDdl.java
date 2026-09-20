@@ -73,6 +73,11 @@ final class FixtureSchemaDdl {
                     int cursor = skipWhitespace(sql, create.end());
                     Name name = readIdentifier(sql, cursor);
                     cursor = skipWhitespace(sql, name.end());
+                    if (name.text().equalsIgnoreCase("public")
+                            && cursor < sql.length() && sql.charAt(cursor) == '.') {
+                        name = readIdentifier(sql, skipWhitespace(sql, cursor + 1));
+                        cursor = skipWhitespace(sql, name.end());
+                    }
                     // 表名来自 Java 变量拼接（或拼出了 _xxx 这种残名）时静态不可解析。
                     if (name.text().isEmpty() || name.text().startsWith("_")
                             || !startsWithParen(sql, cursor)) {

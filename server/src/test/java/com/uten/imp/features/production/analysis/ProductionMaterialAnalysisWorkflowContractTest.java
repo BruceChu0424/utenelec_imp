@@ -465,27 +465,18 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 .doesNotContain("LastRoutePerGoods");
         int saveRoutes = service.indexOf("public AnalysisView saveRoutes(");
         assertThat(saveRoutes).isGreaterThanOrEqualTo(0);
-        int updateStart = service.indexOf(
-                "UPDATE production_material_analysis_materials", saveRoutes);
-        int updateEnd = service.indexOf("\"\"\"", updateStart);
-        assertThat(updateStart).isGreaterThan(saveRoutes);
-        assertThat(updateEnd).isGreaterThan(updateStart);
-        assertThat(service.substring(updateStart, updateEnd))
-                .contains("SET confirmed_route = :route,")
-                .contains("source_suggestion = :route,");
-        // 主档回写必须先于 refreshLocked：刷新按新主档算建议才与本行的 source_suggestion 对齐。
-        int writeBack = service.indexOf("writeBackGoodsSourceType(goodsRoutes);", updateEnd);
+        int writeBack = service.indexOf("new MaterialAnalysisRouteBatchWriter(em).apply(", saveRoutes);
         int refresh = service.indexOf("refreshLocked(analysisId);", writeBack);
-        assertThat(writeBack).isGreaterThan(updateEnd);
+        assertThat(writeBack).isGreaterThan(saveRoutes);
         assertThat(refresh).isGreaterThan(writeBack);
-        int goodsUpdate = service.indexOf("UPDATE goods", writeBack);
-        assertThat(goodsUpdate).isGreaterThan(writeBack);
-        assertThat(service.substring(goodsUpdate, service.indexOf("\"\"\"", goodsUpdate)))
-                .contains("SET source_type = :sourceType,")
-                .contains("version = version + 1,")
+        String writer = source("features/production/analysis/MaterialAnalysisRouteBatchWriter.java");
+        assertThat(writer)
+                .contains("SET confirmed_route = input.route, source_suggestion = input.suggestion")
+                .contains("SET source_type = input.source_type, version = goods.version + 1,")
                 .contains("updated_by = :actorId")
-                .contains("WHERE id = :goodsId AND is_deleted = FALSE")
-                .contains("AND source_type IS DISTINCT FROM :sourceType");
+                .contains("NOT goods.is_deleted")
+                .contains("goods.source_type IS DISTINCT FROM input.source_type")
+                .contains("mixedGoods.contains(change.goodsId()) ? retainedSuggestions.get(change.goodsId()) : change.route()");
         assertThat(service).contains("static String sourceTypeForRoute(String route)");
         String controller = source("features/production/analysis/MaterialAnalysisController.java");
         assertThat(controller)

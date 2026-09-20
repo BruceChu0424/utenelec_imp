@@ -239,7 +239,8 @@ public class WarehouseSalesOutboundProjectionService {
                           AND reservation.status=0 AND NOT reservation.is_deleted
                           AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0),0)::numeric qty
                 ) global_budget ON TRUE
-                WHERE physical.is_accountable AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                WHERE physical.is_accountable AND NOT physical.is_line_side
+                  AND fn_warehouse_is_operational_leaf(warehouse.id)
                   AND (:choose OR warehouse.id=CAST(:warehouse AS uuid))
                   AND EXISTS(SELECT 1 FROM stock_balances present WHERE present.warehouse_id=warehouse.id AND present.qty>0
                     AND present.goods_id IN(SELECT goods_id FROM sales_shipment_items WHERE shipment_id=:shipment AND NOT is_deleted))

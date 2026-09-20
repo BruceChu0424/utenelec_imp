@@ -11,6 +11,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
 import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.LegacyOpeningReversalFloor;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
 import com.uten.imp.features.finance.payables.SupplierPayableHoldGuard;
@@ -170,6 +171,7 @@ public class FinancePaymentService {
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
         access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -199,6 +201,7 @@ public class FinancePaymentService {
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
         access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除");
         }
@@ -225,6 +228,7 @@ public class FinancePaymentService {
         requireActiveAfterLock(p);
         access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
                 "finance_payment:approve");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -268,6 +272,7 @@ public class FinancePaymentService {
         requireActiveAfterLock(p);
         access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
                 "finance_payment:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -379,8 +384,10 @@ public class FinancePaymentService {
             FinancePayment payment,
             List<FinancePaymentLine> lines,
             Map<UUID, ArApLedger> lockedLedgers) {
+        var floors=LegacyOpeningReversalFloor.load(em,lockedLedgers.values(),"AP");
         for (FinancePaymentLine line : lines) {
             ArApLedger ledger = lockedLedgers.get(line.getAppliedLedgerId());
+            var floor=floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO);
             validateAppliedLedger(payment, line.getSupplierId(), ledger, false);
             BigDecimal cashOriginal = positiveMoney(line.getAmountOriginal(), "本次付款金额");
             if(line.getAmountLocal()==null)throw new ApiException(ErrorCode.CONFLICT,"付款行缺少实际本币快照，禁止红冲");
@@ -388,7 +395,7 @@ public class FinancePaymentService {
             BigDecimal appliedLocal = authoritativeAppliedAmountLocal(line);
             if(cashLocal.signum()<0||appliedLocal.signum()<0)throw new ApiException(ErrorCode.CONFLICT,"付款账面快照不能为负数");
             BigDecimal newSettled = money(nz(ledger.getAmountSettled()).subtract(appliedLocal));
-            if (newSettled.signum() < 0) {
+            if (newSettled.compareTo(floor.settledLocal()) < 0) {
                 throw new ApiException(ErrorCode.CONFLICT, "应付累计核销不足，禁止红冲该付款单");
             }
 
@@ -400,8 +407,8 @@ public class FinancePaymentService {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "应付双币累计不完整，禁止红冲该付款单");
             }
-            if (receivedOriginal.compareTo(cashOriginal) < 0
-                    || receivedLocal.compareTo(cashLocal) < 0) {
+            if (receivedOriginal.subtract(cashOriginal).compareTo(floor.receivedOriginal()) < 0
+                    || receivedLocal.subtract(cashLocal).compareTo(floor.receivedLocal()) < 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "应付双币累计不足，禁止红冲该付款单");
             }
@@ -467,7 +474,7 @@ public class FinancePaymentService {
         if (!"AP".equals(ledger.getDirection())) {
             throw new ApiException(ErrorCode.BUSINESS, "采购付款只能引用应付记录");
         }
-        if (SRC_DIRECT_PAYMENT.equals(ledger.getSourceDocType())) {
+        if ("PREPAYMENT".equals(ledger.getOpenItemKind())) {
             throw new ApiException(ErrorCode.CONFLICT, "供应商预付款不能作为普通应付引用");
         }
         if (ledger.getSupplierId() == null) {

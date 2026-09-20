@@ -97,6 +97,20 @@ class DocumentDraftCountSqlContractTest {
     }
 
     @Test
+    void historicalFinanceRecordsNeverBecomeActionableDraftBadges() {
+        var financeTables = Set.of("finance_receipts", "finance_payments", "finance_expenses",
+                "finance_other_incomes", "finance_bank_transfers");
+        var sources = DocumentDraftCountQueryService.SOURCES.stream()
+                .filter(source -> financeTables.contains(source.table())).toList();
+        assertThat(sources).hasSize(financeTables.size());
+        for (DraftSource source : sources) {
+            assertThat(DocumentDraftCountQueryService.countSql(source, "owner_scope"))
+                    .contains("o.legacy_id IS NULL", "o.status = 0", "o.is_deleted = false")
+                    .endsWith("AND owner_scope");
+        }
+    }
+
+    @Test
     void ownerScopePredicateIsAppendedVerbatimWithBoundParameterOnly() {
         String sql = DocumentDraftCountQueryService.countSql(
                 DocumentDraftCountQueryService.PURCHASE_ORDER,
@@ -105,9 +119,13 @@ class DocumentDraftCountSqlContractTest {
         assertThat(sql).isEqualTo(
                 "SELECT count(*) FROM purchase_orders o WHERE o.is_deleted = false"
                         + " AND o.status = 0"
+                        + " AND NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
+                        + " WHERE c.order_type = 'PURCHASE' AND c.order_id = o.id"
+                        + " AND c.status = 'PENDING')"
                         + " AND (o.maker_id IS NULL OR o.maker_id IN (:draftOwners))");
-        // 归属集合只能经具名参数进入 SQL，不得被拼成字面量。
-        assertThat(sql).doesNotContain("'");
+        // 归属集合只能经具名参数进入 SQL，不得被拼成字面量（NOT EXISTS 里的引号
+        // 是编译期常量订单类型/PENDING，不是归属值）。
+        assertThat(sql).doesNotContain("IN ('");
     }
 
     /**
@@ -125,16 +143,43 @@ class DocumentDraftCountSqlContractTest {
     }
 
     /**
-     * 附加谓词是白名单：只有销售订货单（去重）与仓库调拨/盘点（同表切片）才允许带，
-     * 其余类型必须是裸口径，免得有人把业务过滤悄悄塞进草稿计数。
+     * 采购/委外订货单：财务通过前 status 保持 0，但存在 PENDING 审批 case 的单
+     * 已交由财务处理（列表另有「等待财务审核」段），不得再算「我的草稿」；
+     * 财务退回件无 PENDING case，仍按草稿计数（回到提交人手上）。
+     */
+    @Test
+    void orderDraftsExcludeOrdersAwaitingFinanceReview() {
+        for (DraftSource source : List.of(
+                DocumentDraftCountQueryService.PURCHASE_ORDER,
+                DocumentDraftCountQueryService.SUBCONTRACT_ORDER)) {
+            String orderType = "purchase_orders".equals(source.table())
+                    ? "PURCHASE" : "SUBCONTRACT";
+            assertThat(source.extraPredicate())
+                    .as("单据类型 %s 必须排除在审单", source.table())
+                    .isEqualTo(
+                            "NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
+                                    + " WHERE c.order_type = '" + orderType
+                                    + "' AND c.order_id = o.id"
+                                    + " AND c.status = 'PENDING')");
+        }
+    }
+
+    /**
+     * 附加谓词是白名单：只有销售订货单（去重）、采购/委外订货单（排除在审单）
+     * 与仓库调拨/盘点（同表切片）、历史资金只读隔离才允许带，其余类型必须是裸口径，
+     * 免得有人把业务过滤悄悄塞进草稿计数。
      */
     @Test
     void onlyDeclaredSourcesCarryAnExtraPredicate() {
         for (DraftSource source : DocumentDraftCountQueryService.SOURCES) {
             if (source == DocumentDraftCountQueryService.SALES_ORDER
+                    || source == DocumentDraftCountQueryService.PURCHASE_ORDER
+                    || source == DocumentDraftCountQueryService.SUBCONTRACT_ORDER
                     || source == DocumentDraftCountQueryService.STOCK_DOCUMENT
                     || source == DocumentDraftCountQueryService.STOCK_TRANSFER
-                    || source == DocumentDraftCountQueryService.STOCK_CHECK) {
+                    || source == DocumentDraftCountQueryService.STOCK_CHECK
+                    || Set.of("finance_receipts", "finance_payments", "finance_expenses",
+                            "finance_other_incomes", "finance_bank_transfers").contains(source.table())) {
                 continue;
             }
             assertThat(source.extraPredicate())

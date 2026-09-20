@@ -27,7 +27,6 @@
 -- 库存历史不在此迁（stock_movements/balances 归库存模块，从 StockGoods 单独迁）。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('uten.legacy_reference_import', 'legacy-purchase-v273', true);
 DELETE FROM purchase_return_items;
 DELETE FROM purchase_returns;
@@ -123,6 +122,49 @@ WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0 AND NULLIF(w.name, '') IS NOT
   AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.legacy_id = w.legacy_id);
 
 -- ---------------- 自动补录缺失基础资料（§3.3） ----------------
+-- A historical document may outlive a goods or supplier master. Preserve the
+-- exact source identity with an isolated master anchor; never create an order
+-- or inventory movement and never turn the missing party into a usable default.
+WITH candidates AS (
+    SELECT DISTINCT lid FROM (
+        SELECT goods_legacy_id AS lid FROM app_item_stage UNION ALL
+        SELECT goods_legacy_id FROM order_item_stage UNION ALL
+        SELECT goods_legacy_id FROM receipt_item_stage UNION ALL
+        SELECT goods_legacy_id FROM return_item_stage) source
+    WHERE lid IS NOT NULL AND lid<>0 AND NOT EXISTS(SELECT 1 FROM goods WHERE legacy_id=lid)
+), numbered AS (
+    SELECT candidates.*,row_number() OVER(ORDER BY lid) AS ordinal,count(*) OVER() AS allocation_count FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences(master_type,last_seq)
+    SELECT 'GOODS',COALESCE(max(allocation_count),0) FROM numbered
+    ON CONFLICT(master_type) DO UPDATE SET last_seq=category_master_code_sequences.last_seq+EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO goods(legacy_id,code,name,status,auto_created,code_managed,code_sequence)
+SELECT lid,'LEGACY-G-'||lid,'(migration missing master '||lid||')','禁用',true,false,
+       reserved.last_seq-numbered.allocation_count+numbered.ordinal
+FROM numbered CROSS JOIN reserved ON CONFLICT(legacy_id) DO NOTHING;
+
+WITH candidates AS (
+    SELECT DISTINCT lid FROM (
+        SELECT supplier_legacy_id AS lid FROM order_stage UNION ALL
+        SELECT supplier_legacy_id FROM receipt_stage UNION ALL
+        SELECT supplier_legacy_id FROM return_stage) source
+    WHERE lid IS NOT NULL AND lid<>0 AND NOT EXISTS(SELECT 1 FROM suppliers WHERE legacy_id=lid)
+), numbered AS (
+    SELECT candidates.*,row_number() OVER(ORDER BY lid) AS ordinal,count(*) OVER() AS allocation_count FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences(master_type,last_seq)
+    SELECT 'SUPPLIER',COALESCE(max(allocation_count),0) FROM numbered
+    ON CONFLICT(master_type) DO UPDATE SET last_seq=category_master_code_sequences.last_seq+EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO suppliers(legacy_id,category_id,code,name,status,code_managed,code_sequence)
+SELECT lid,(SELECT id FROM supplier_categories WHERE legacy_id=-1),
+       'LEGACY-S-'||lid,'(migration missing master '||lid||')','禁用',false,
+       reserved.last_seq-numbered.allocation_count+numbered.ordinal
+FROM numbered CROSS JOIN reserved ON CONFLICT(legacy_id) DO NOTHING;
+
 -- 单位（从所有明细反推；units 表无 auto_created 列，用 code 前缀标识补录行）
 INSERT INTO units (legacy_id, code, name, status)
 SELECT DISTINCT lid, 'LEGACY-U-' || lid, '（迁移自动补录）', '使用'
@@ -196,20 +238,8 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       COALESCE(
-           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
-           (
-               SELECT u.id
-               FROM goods g
-               JOIN units u ON u.legacy_id = g.unit_legacy_id
-                           AND u.is_deleted = FALSE
-               WHERE g.legacy_id = s.goods_legacy_id
-                 AND g.is_deleted = FALSE
-                 AND COALESCE(s.unit_legacy_id, 0) = 0
-                 AND COALESCE(s.unit_rate, 1) = 1
-           )
-       ),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
+       (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
+       s.unit_rate, s.qty, s.price, s.amount_original, s.amount_original,
        COALESCE(s.ordered_qty, 0), s.weight, NULLIF(s.source_doc_no, ''),
        s.deliver_date,
        NULLIF(s.production_no, ''), NULLIF(s.purchase_order_no, ''), NULLIF(s.sales_order_no, ''),
@@ -229,10 +259,10 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
        NULL,  -- P_Order 无仓库字段（订货单不指定仓库，收货时定）
        (SELECT id FROM currencies WHERE legacy_id = s.currency_legacy_id),
-       COALESCE(s.exchange_rate, 1), s.tax_rate,
+       s.exchange_rate, s.tax_rate,
        NULL, NULL, NULL,                  -- *_id(UUID) 待对齐
        s.deliver_date, s.remark,
-       s.total_original, s.total_original, s.status, COALESCE(s.fulfill_bit, FALSE),
+       s.total_original, fn_legacy_source_book_amount(s.total_original,s.exchange_rate), s.status, COALESCE(s.fulfill_bit, FALSE),
        NULLIF(s.purchaser_legacy, 0), NULLIF(s.maker_legacy, 0), NULLIF(s.approver_legacy, 0),
        s.settlement_style_legacy, COALESCE(s.stop_bit, FALSE),
        (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = s.maker_legacy),
@@ -249,20 +279,8 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       COALESCE(
-           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
-           (
-               SELECT u.id
-               FROM goods g
-               JOIN units u ON u.legacy_id = g.unit_legacy_id
-                           AND u.is_deleted = FALSE
-               WHERE g.legacy_id = s.goods_legacy_id
-                 AND g.is_deleted = FALSE
-                 AND COALESCE(s.unit_legacy_id, 0) = 0
-                 AND COALESCE(s.unit_rate, 1) = 1
-           )
-       ),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
+       (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
+       s.unit_rate, s.qty, s.price, s.amount_original, fn_legacy_source_book_amount(s.amount_original,a.exchange_rate),
        COALESCE(s.received_qty, 0), COALESCE(s.returned_qty, 0),
        (SELECT id FROM purchase_request_items WHERE legacy_id = s.request_item_legacy_id),
        s.deliver_date, s.weight, NULLIF(s.source_doc_no, ''),
@@ -274,59 +292,37 @@ FROM order_item_stage s JOIN order_stage a ON a.legacy_id = s.bill_legacy_id;
 
 -- ---------------- 3. 采购收货单 ----------------
 -- 采购员 = sman（业务员，老视图口径）；制单员/审核员名冻结自 Sys_Operator。
+-- One source projection owns all commercial fields; descriptive snapshots
+-- remain in this loader and cannot change the approved source identity.
+SELECT count(fn_register_legacy_receipt_import_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'PURCHASE_HEADER',to_jsonb(legacy_row.*)))
+FROM receipt_stage legacy_row;
 INSERT INTO purchase_receipts (
-    legacy_id, bill_no, bill_date, supplier_id, warehouse_id, currency_id, exchange_rate, tax_rate,
-    sender_id, receiver_id, purchaser_id, maker_id, approver_id, remark, total_original, total_local, status, is_closed,
-    sender_legacy_id, receiver_legacy_id, maker_legacy_id, approver_legacy_id, settlement_style_legacy,
-    purchaser_legacy_id, maker_name, approver_name)
-SELECT s.legacy_id, s.bill_no, s.bill_date,
-       (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
-       (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy_id),
-       (SELECT id FROM currencies WHERE legacy_id = s.currency_legacy_id),
-       COALESCE(s.exchange_rate, 1), s.tax_rate,
-       NULL, NULL,
-       (SELECT id FROM employees WHERE legacy_id = NULLIF(s.salesman_legacy, 0)),
-       NULL, NULL,                         -- maker/approver UUID 待对齐
-       s.remark, s.total_original, s.total_original, s.status, FALSE,
-       NULLIF(s.sender_legacy, 0), NULLIF(s.receiver_legacy, 0),
-       NULLIF(s.maker_legacy, 0), NULLIF(s.approver_legacy, 0),
-       s.settlement_style_legacy,
-       NULLIF(s.salesman_legacy, 0),
-       (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = s.maker_legacy),
-       (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = s.approver_legacy)
-FROM receipt_stage s;
+    id, legacy_import_run_id, legacy_id, bill_no, bill_date, supplier_id, warehouse_id, currency_id, exchange_rate, tax_rate, total_original, total_local, status, is_closed, consideration_required, settlement_style_legacy, settlement_method_id, maker_legacy_id, approver_legacy_id, sender_id, receiver_id, purchaser_id, maker_id, approver_id, sender_legacy_id, receiver_legacy_id, purchaser_legacy_id, remark, maker_name, approver_name)
+SELECT proof.target_id, proof.run_id, projected.legacy_id, projected.bill_no, projected.bill_date, projected.supplier_id, projected.warehouse_id, projected.currency_id, projected.exchange_rate, projected.tax_rate, projected.total_original, projected.total_local, projected.status, projected.is_closed, projected.consideration_required, projected.settlement_style_legacy, projected.settlement_method_id, projected.maker_legacy_id, projected.approver_legacy_id, projected.sender_id, projected.receiver_id, projected.purchaser_id, projected.maker_id, projected.approver_id, projected.sender_legacy_id, projected.receiver_legacy_id, projected.purchaser_legacy_id, legacy_row.remark, (SELECT name FROM operator_ref_stage op WHERE op.legacy_id=legacy_row.maker_legacy), (SELECT name FROM operator_ref_stage op WHERE op.legacy_id=legacy_row.approver_legacy)
+FROM receipt_stage legacy_row
+JOIN legacy_procurement_receipt_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='PURCHASE_HEADER' AND proof.source_legacy_id=legacy_row.legacy_id
+CROSS JOIN LATERAL jsonb_populate_record(NULL::purchase_receipts,
+    fn_legacy_receipt_source_projection('PURCHASE_HEADER',to_jsonb(legacy_row.*))) projected
+ORDER BY legacy_row.legacy_id;
 
+-- One source projection owns all commercial fields; descriptive snapshots
+-- remain in this loader and cannot change the approved source identity.
+SELECT count(fn_register_legacy_receipt_import_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'PURCHASE_ITEM',to_jsonb(legacy_row.*)))
+FROM receipt_item_stage legacy_row;
 INSERT INTO purchase_receipt_items (
-    legacy_id, bill_no, bill_date, receipt_id, order_item_id, line_no, goods_id, color_id, unit_id,
-    unit_rate, qty, price, amount_original, amount_local, returned_qty, gift_qty, weight, source_doc_no,
-    order_no, sales_order_no, production_plan_no,
-    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-SELECT s.legacy_id, a.bill_no, a.bill_date,
-       (SELECT id FROM purchase_receipts WHERE legacy_id = s.bill_legacy_id),
-       (SELECT id FROM purchase_order_items WHERE legacy_id = s.order_item_legacy_id),
-       ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
-       (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
-       (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       COALESCE(
-           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
-           (
-               SELECT u.id
-               FROM goods g
-               JOIN units u ON u.legacy_id = g.unit_legacy_id
-                           AND u.is_deleted = FALSE
-               WHERE g.legacy_id = s.goods_legacy_id
-                 AND g.is_deleted = FALSE
-                 AND COALESCE(s.unit_legacy_id, 0) = 0
-                 AND COALESCE(s.unit_rate, 1) = 1
-           )
-       ),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
-       COALESCE(s.returned_qty, 0), COALESCE(s.gift_qty, 0), s.weight, NULLIF(s.source_doc_no, ''),
-       NULLIF(s.order_no, ''), NULLIF(s.sales_order_no, ''), NULLIF(s.production_plan_no, ''),
-       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
-       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
-       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
-FROM receipt_item_stage s JOIN receipt_stage a ON a.legacy_id = s.bill_legacy_id;
+    id, legacy_import_run_id, legacy_id, bill_no, bill_date, receipt_id, order_item_id, goods_id, color_id, unit_id, unit_rate, qty, price, amount_original, amount_local, returned_qty, weight, source_doc_no, order_no, replacement_intent, goods_snapshot_source, gift_qty, sales_order_no, production_plan_no, line_no, goods_code_snapshot, goods_name_snapshot, goods_snapshot_locked_at)
+SELECT proof.target_id, proof.run_id, projected.legacy_id, projected.bill_no, projected.bill_date, projected.receipt_id, projected.order_item_id, projected.goods_id, projected.color_id, projected.unit_id, projected.unit_rate, projected.qty, projected.price, projected.amount_original, projected.amount_local, projected.returned_qty, projected.weight, projected.source_doc_no, projected.order_no, projected.replacement_intent, projected.goods_snapshot_source, projected.gift_qty, projected.sales_order_no, projected.production_plan_no, row_number() OVER(PARTITION BY legacy_row.bill_legacy_id ORDER BY legacy_row.legacy_id), (SELECT code FROM goods WHERE id=projected.goods_id), (SELECT name FROM goods WHERE id=projected.goods_id), CASE WHEN (SELECT status FROM purchase_receipts WHERE id=projected.receipt_id)<>0 THEN now() ELSE NULL END
+FROM receipt_item_stage legacy_row
+JOIN legacy_procurement_receipt_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='PURCHASE_ITEM' AND proof.source_legacy_id=legacy_row.legacy_id
+CROSS JOIN LATERAL jsonb_populate_record(NULL::purchase_receipt_items,
+    fn_legacy_receipt_source_projection('PURCHASE_ITEM',to_jsonb(legacy_row.*))) projected
+ORDER BY legacy_row.bill_legacy_id,legacy_row.legacy_id;
 
 -- ---------------- 4. 采购退货单 ----------------
 INSERT INTO purchase_returns (
@@ -338,10 +334,10 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
        (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy_id),
        (SELECT id FROM currencies WHERE legacy_id = s.currency_legacy_id),
-       COALESCE(s.exchange_rate, 1), NULL,          -- P_Withdraw 无 TRate → tax_rate NULL
+       s.exchange_rate, NULL,          -- P_Withdraw 无 TRate → tax_rate NULL
        NULL, NULL, NULL,                            -- receiver_id/maker_id/approver_id 待对齐（主表无 Receiver → receiver_legacy_id 恒 NULL）
        s.remark,
-       s.total_original, s.total_original, s.status, FALSE,
+       s.total_original, fn_legacy_source_book_amount(s.total_original,s.exchange_rate), s.status, FALSE,
        NULLIF(s.maker_legacy, 0), NULLIF(s.approver_legacy, 0), s.settlement_style_legacy, NULL,
        (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = s.maker_legacy),
        (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = s.approver_legacy)
@@ -359,20 +355,8 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       COALESCE(
-           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
-           (
-               SELECT u.id
-               FROM goods g
-               JOIN units u ON u.legacy_id = g.unit_legacy_id
-                           AND u.is_deleted = FALSE
-               WHERE g.legacy_id = s.goods_legacy_id
-                 AND g.is_deleted = FALSE
-                 AND COALESCE(s.unit_legacy_id, 0) = 0
-                 AND COALESCE(s.unit_rate, 1) = 1
-           )
-       ),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
+       (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
+       s.unit_rate, s.qty, s.price, s.amount_original, fn_legacy_source_book_amount(s.amount_original,a.exchange_rate),
        s.weight, NULLIF(s.source_doc_no, ''),
        NULLIF(s.receipt_no, ''), NULLIF(s.order_no, ''), NULLIF(s.sales_order_no, ''), NULLIF(s.production_plan_no, ''),
        (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
@@ -382,12 +366,9 @@ FROM return_item_stage s JOIN return_stage a ON a.legacy_id = s.bill_legacy_id;
 
 UPDATE purchase_orders d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;
-UPDATE purchase_receipts d SET settlement_method_id = m.id
-FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;
 UPDATE purchase_returns d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;
 
-COMMIT;
 
 -- ---------------- 校验 ----------------
 SELECT '✔ 申请 ' || (SELECT count(*) FROM purchase_requests) || ' / ' || (SELECT count(*) FROM purchase_request_items) AS r

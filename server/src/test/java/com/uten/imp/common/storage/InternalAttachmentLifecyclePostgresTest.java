@@ -257,20 +257,36 @@ class InternalAttachmentLifecyclePostgresTest {
         assertThat(preview.path("blockingCount").asLong()).isZero();
         long humans=jdbc.queryForObject("SELECT count(*) FROM employees",Long.class);
         String humanDigest=jdbc.queryForObject("SELECT md5(to_jsonb(attachment)::text) FROM attachments attachment WHERE id=?",String.class,UUID.fromString(human.attachment.path("id").asText()));
+        Map<String, Integer> expectedPolicyCounts = reviewedResetPolicyCounts();
         JsonNode result=json(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据"),HttpStatus.OK);
-        // V547 +2（品质检查单头/明细）、V548 +1（登记撤回）、V560 +3（退料申请）、
-        // V561 +1（分批谱系）、V568 +1（让料补自制）、V569 +2（在途转拨）：266→276（V572 目录）。
-        // V579 party 三子表 PRESERVE 96→99；V586 报工实耗 + 车间直送三表 CLEAR 276→280（V589 目录）。
-        // V590 废弃车间偏好表（搬进货品表）：PRESERVE 99→98。
-        assertThat(result.path("clearedTableCount").asInt()).isEqualTo(280);
-        assertThat(result.path("preservedTableCount").asInt()).isEqualTo(98);
+        assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class)
+                .getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        // Reset revokes this shared session. Recover it before any further
+        // assertion, so a failed receipt assertion cannot poison later tests.
+        login();
+        assertThat(result.path("clearedTableCount").asInt()).isEqualTo(expectedPolicyCounts.get("CLEAR"));
+        assertThat(result.path("preservedTableCount").asInt()).isEqualTo(expectedPolicyCounts.get("PRESERVE"));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM employees",Long.class)).isEqualTo(humans);
         assertThat(jdbc.queryForObject("SELECT md5(to_jsonb(attachment)::text) FROM attachments attachment WHERE id=?",String.class,UUID.fromString(human.attachment.path("id").asText()))).isEqualTo(humanDigest);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='business_attachment_reset_prepare'",Long.class)).isPositive();
-        login();
         var original=http.exchange("/api/attachments/raw/"+human.key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class);
         assertThat(original.getStatusCode()).isEqualTo(HttpStatus.OK);assertThat(original.getBody()).isEqualTo(humanBytes);
+    }
+
+    private Map<String, Integer> reviewedResetPolicyCounts() throws Exception {
+        // Match the separately reviewed operator catalog. Its dedicated
+        // contracts also validate each physical table and its disposition.
+        String sql = Files.readString(Path.of("ops/reset_business_data.sql"));
+        var entries = java.util.regex.Pattern.compile(
+                "(?m)^\\s*\\('([a-z_]+)',\\s*'(CLEAR|PRESERVE)'\\)[,;]?\\s*$").matcher(sql);
+        Map<String, String> policies = new HashMap<>();
+        while (entries.find()) assertThat(policies.put(entries.group(1), entries.group(2))).isNull();
+        assertThat(policies).isNotEmpty();
+        Map<String, Integer> counts = new HashMap<>();
+        policies.values().forEach(disposition -> counts.merge(disposition, 1, Integer::sum));
+        assertThat(counts.keySet()).containsExactlyInAnyOrder("CLEAR", "PRESERVE");
+        return counts;
     }
 
     private Upload upload(String name,String type,byte[] bytes) throws Exception {

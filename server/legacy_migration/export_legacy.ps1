@@ -283,19 +283,19 @@ $recStyleSql = 'SELECT ID AS legacy_id, Name AS name FROM RecStyle ORDER BY ID'
 # M_Style (124 rows) -> payment_styles. Status/DeptStatus/QStatus/OrientStatus1/OrientStatus2 bit -> True/False.
 $mStyleSql = 'SELECT ID AS legacy_id, StyleClassid AS style_class_id, StyleNumber AS code, StyleName AS name, ISNULL(Parentid,0) AS parent_legacy, ISNULL(Remark,'''') AS remark, ISNULL(Status,0) AS status, ISNULL(DeptStatus,0) AS dept_status, ISNULL(NextNumber,'''') AS next_number, InitTotal AS init_total, ISNULL(QStatus,0) AS q_status, ISNULL(OrientStatus1,0) AS orient_status1, ISNULL(OrientStatus2,0) AS orient_status2, ISNULL(Unit,'''') AS unit, ISNULL(ItemID,0) AS item_id FROM M_Style ORDER BY ID'
 # M_in (42,489 rows) -> ar_ap_ledger direction=AR. [M_In] bracket-quoted (column shares table name).
-$mInSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, ISNULL(ClientID,0) AS client_legacy_id, MIn_Date AS bill_date, Last_Date AS due_date, Total AS total, [M_In] AS settled, M_Rare AS balance, ISNULL(Note,'''') AS note, Paid AS paid_bit, PaidDate AS paid_date, ISNULL(BStyle,0) AS b_style, ISNULL(PStyle,0) AS p_style, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(CurID,0) AS currency_legacy_id, ISNULL(CRate,1) AS exchange_rate FROM M_In ORDER BY ID'
+$mInSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, ISNULL(ClientID,0) AS client_legacy_id, MIn_Date AS bill_date, Last_Date AS due_date, Total AS total, [M_In] AS settled, M_Rare AS balance, ISNULL(Note,'''') AS note, Paid AS paid_bit, PaidDate AS paid_date, ISNULL(BStyle,0) AS b_style, ISNULL(PStyle,0) AS p_style, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(CurID,0) AS currency_legacy_id, CRate AS exchange_rate FROM M_In ORDER BY ID'
 # M_out (44,534 rows) -> ar_ap_ledger direction=AP. Symmetric to M_in.
-$mOutSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, ISNULL(VendID,0) AS supplier_legacy_id, MOut_Date AS bill_date, Last_Date AS due_date, Total AS total, [M_Out] AS settled, M_Rare AS balance, ISNULL(Note,'''') AS note, Paid AS paid_bit, PaidDate AS paid_date, ISNULL(BStyle,0) AS b_style, ISNULL(PStyle,0) AS p_style, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(CurID,0) AS currency_legacy_id, ISNULL(CRate,1) AS exchange_rate FROM M_Out ORDER BY ID'
+$mOutSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, ISNULL(VendID,0) AS supplier_legacy_id, MOut_Date AS bill_date, Last_Date AS due_date, Total AS total, [M_Out] AS settled, M_Rare AS balance, ISNULL(Note,'''') AS note, Paid AS paid_bit, PaidDate AS paid_date, ISNULL(BStyle,0) AS b_style, ISNULL(PStyle,0) AS p_style, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(CurID,0) AS currency_legacy_id, CRate AS exchange_rate FROM M_Out ORDER BY ID'
 # M_Get (7,804 rows) -> finance_receipts.
-$mGetSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, GetDate AS bill_date, ISNULL(ClientID,0) AS client_legacy_id, WorkID AS work_id, RecStyle AS rec_style, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(RecAcc,0) AS rec_acc, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(InvoicesNo,'''') AS invoices_no, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, ISNULL(StepID,0) AS step_id, Cancel AS cancel, ISNULL(slf,0) AS slf, ISNULL(qtfy,0) AS qtfy, ISNULL(qtfymc,0) AS qtfymc, ISNULL(dfch,0) AS dfch, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Get.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Get.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_Get.WorkID),'''') AS work_name FROM M_Get ORDER BY ID'
+$mGetSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, GetDate AS bill_date, ISNULL(ClientID,0) AS client_legacy_id, WorkID AS work_id, RecStyle AS rec_style, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(RecAcc,0) AS rec_acc, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(InvoicesNo,'''') AS invoices_no, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, CRate AS crate, ISNULL(StepID,0) AS step_id, Cancel AS cancel, ISNULL(slf,0) AS slf, ISNULL(qtfy,0) AS qtfy, ISNULL(qtfymc,0) AS qtfymc, ISNULL(dfch,0) AS dfch, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Get.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Get.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_Get.WorkID),'''') AS work_name FROM M_Get ORDER BY ID'
 # M_Paid (4,545 rows) -> finance_payments. Symmetric to M_Get (VendID/PaidAcc/dfzh/jsr).
-$mPaidSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, PaidDate AS bill_date, ISNULL(VendID,0) AS supplier_legacy_id, WorkID AS work_id, PaidStyle AS paid_style, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(PaidAcc,0) AS paid_acc, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(InvoicesNo,'''') AS invoices_no, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, ISNULL(StepID,0) AS step_id, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh, ISNULL(jsr,'''') AS jsr, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Paid.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Paid.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_Paid.WorkID),'''') AS work_name FROM M_Paid ORDER BY ID'
+$mPaidSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, PaidDate AS bill_date, ISNULL(VendID,0) AS supplier_legacy_id, WorkID AS work_id, PaidStyle AS paid_style, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(PaidAcc,0) AS paid_acc, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(InvoicesNo,'''') AS invoices_no, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, CRate AS crate, ISNULL(StepID,0) AS step_id, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh, ISNULL(jsr,'''') AS jsr, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Paid.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_Paid.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_Paid.WorkID),'''') AS work_name FROM M_Paid ORDER BY ID'
 # M_DPaid (1,125 rows) -> finance_expenses.
-$mDpaidSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, PaidDate AS bill_date, WorkID AS work_id, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(PaidAcc,0) AS paid_acc, ISNULL(InvoicesNo,'''') AS invoices_no, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(PaidStyle,0) AS paid_style, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_DPaid.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_DPaid.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_DPaid.WorkID),'''') AS work_name FROM M_DPaid ORDER BY ID'
+$mDpaidSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, PaidDate AS bill_date, WorkID AS work_id, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(PaidAcc,0) AS paid_acc, ISNULL(InvoicesNo,'''') AS invoices_no, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(PaidStyle,0) AS paid_style, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, CRate AS crate, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_DPaid.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_DPaid.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_DPaid.WorkID),'''') AS work_name FROM M_DPaid ORDER BY ID'
 # M_DPaidItem (8,537 rows) -> finance_expense_items.
 $mDpaidItemSql = 'SELECT ID AS legacy_id, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(StyleID,0) AS style_legacy_id, Total AS total, ISNULL(Summary,'''') AS summary, DeptID AS dept_legacy_id, CTotal AS ctotal, ISNULL(dfmc,'''') AS dfmc, QTY AS qty, Price AS price, ISNULL(AccID,0) AS acc_id FROM M_DPaidItem ORDER BY ID'
 # M_OGet (1,552 rows) -> finance_other_incomes.
-$mOgetSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, GetDate AS bill_date, WorkID AS work_id, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(RecAcc,0) AS rec_acc, ISNULL(InvoicesNo,'''') AS invoices_no, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(RecStyle,0) AS rec_style, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_OGet.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_OGet.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_OGet.WorkID),'''') AS work_name FROM M_OGet ORDER BY ID'
+$mOgetSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, GetDate AS bill_date, WorkID AS work_id, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(RecAcc,0) AS rec_acc, ISNULL(InvoicesNo,'''') AS invoices_no, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(RecStyle,0) AS rec_style, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, CRate AS crate, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_OGet.MakeID),'''') AS maker_name, ISNULL((SELECT fname FROM Sys_Operator WHERE ID = M_OGet.ApproverID),'''') AS approver_name, ISNULL((SELECT Emp_Name FROM B_Worker WHERE ID = M_OGet.WorkID),'''') AS work_name FROM M_OGet ORDER BY ID'
 # M_OGetItem (1,551 rows) -> finance_other_income_items. NO QTY/Price in old schema.
 $mOgetItemSql = 'SELECT ID AS legacy_id, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(StyleID,0) AS style_legacy_id, Total AS total, ISNULL(Summary,'''') AS summary, DeptID AS dept_legacy_id, CTotal AS ctotal, ISNULL(df,'''') AS df FROM M_OGetItem ORDER BY ID'
 # M_Bank (0 rows) -> empty CSV. migrate_finance.sql skips ingest; structure in V57 finance_bank_transfers.
@@ -313,11 +313,17 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repositoryCommit)) {
 
 $sourceAuthorityId = $env:LEGACY_SOURCE_AUTHORITY_ID
 $sourceBackupSha256 = $env:LEGACY_SOURCE_BACKUP_SHA256
+$sourceSnapshotAsOfUtc = $env:LEGACY_SOURCE_SNAPSHOT_AS_OF_UTC
 $exportApprovalReference = $env:LEGACY_EXPORT_APPROVAL_REFERENCE
 if ($Target -eq 'All') {
     if ($sourceAuthorityId -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$') {
         throw 'LEGACY_SOURCE_AUTHORITY_ID must be a reviewed opaque CMDB identifier'
     }
+    if ($sourceSnapshotAsOfUtc -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$') {
+        throw 'LEGACY_SOURCE_SNAPSHOT_AS_OF_UTC must bind the approved offline snapshot cutoff'
+    }
+    $snapshotCutoff = [DateTimeOffset]::ParseExact($sourceSnapshotAsOfUtc, "yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal)
+    if ($snapshotCutoff -gt [DateTimeOffset]::UtcNow) { throw 'Offline snapshot cutoff cannot be in the future' }
     if ($sourceBackupSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
         throw 'LEGACY_SOURCE_BACKUP_SHA256 must bind the reviewed offline source backup'
     }
@@ -328,9 +334,7 @@ if ($Target -eq 'All') {
         throw 'A reviewed Git commit is required for a releasable All export'
     }
     $scopedStatus = @(& git -C $repoRoot status --porcelain=v1 --untracked-files=all -- `
-        'server/legacy_migration/export_legacy.ps1' `
-        'server/legacy_migration/migrate.sh' `
-        'server/legacy_migration/migrate_*.sql' `
+        'server/legacy_migration' `
         'server/src/main/resources/db/migration')
     if ($LASTEXITCODE -ne 0 -or $scopedStatus.Count -ne 0) {
         throw 'Releasable All export requires committed exporter, importer, and Flyway bytes'
@@ -615,8 +619,9 @@ $checksumManifestSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $checksum
 Write-Host ('OK  ' + $checksumPath + '  (migration input gate)')
 
 $manifest = [ordered]@{
-    formatVersion = 3
+    formatVersion = 4
     target = $Target
+    sourceSnapshotAsOfUtc = $sourceSnapshotAsOfUtc
     exportedAtUtc = [DateTime]::UtcNow.ToString('o')
     sourceAuthorityId = if ($Target -eq 'All') { $sourceAuthorityId } else { 'diagnostic-partial-export' }
     consistency = 'serializable-read-transaction'

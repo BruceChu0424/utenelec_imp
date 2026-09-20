@@ -68,7 +68,14 @@ class FixtureSchemaDriftGuardPostgresTest {
             Path.of("server", "src", "test", "resources")).resolve("fixture-schema-guard");
     private static final Set<String> OWN_FILES = Set.of(
             "FixtureSchemaDriftGuardPostgresTest.java",
-            "MigratedSchemaBaselinePostgresTest.java");
+            "FixtureSchemaDdlTest.java",
+            // Its CREATE TABLE strings are parser input samples only; this
+            // read-only migration contract class never creates a database fixture.
+            "AuditTriggerCoverageMigrationContractTest.java",
+            "MigratedSchemaBaselinePostgresTest.java",
+            // Creates complete projections from trusted live Flyway catalog
+            // metadata rather than hand-written fixture DDL.
+            "MigratedProjectionSchema.java");
 
     /**
      * 真实 schema 里不存在、且确属测试私有的关系（探针/影子表/投影桩）。
@@ -78,6 +85,10 @@ class FixtureSchemaDriftGuardPostgresTest {
             // 演练/清库探针：断言继承与拦截行为用的临时关系名。
             "reset_probe_inherited",
             "reset_probe_child",
+            // V625 verifies denied DDL and persistent-name shadow protection;
+            // neither name is a business fixture or a production table.
+            "runtime_ddl_should_fail",
+            "reset_business_table_policy",
             // 事务完整性/状态锁探针（tx_test_* 影子表）。
             "tx_test_inventory",
             "tx_test_reservations",

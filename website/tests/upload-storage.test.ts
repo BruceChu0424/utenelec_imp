@@ -15,7 +15,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 test('production uploads require the exact durable shared directory', () => {
   assert.throws(
-    () => resolveUploadsDirectory({ nodeEnv: 'production', configuredDirectory: undefined }),
+    () => resolveUploadsDirectory({ nodeEnv: 'production', configuredDirectory: '' }),
     /UPLOADS_DIR must be exactly/u,
   );
   assert.throws(
@@ -36,7 +36,7 @@ test('production uploads require the exact durable shared directory', () => {
 
 test('development keeps public/uploads fallback and accepts only absolute overrides', () => {
   assert.equal(
-    resolveUploadsDirectory({ nodeEnv: 'development', cwd: projectRoot }),
+    resolveUploadsDirectory({ nodeEnv: 'development', cwd: projectRoot, configuredDirectory: '' }),
     path.join(projectRoot, 'public', 'uploads'),
   );
   assert.throws(

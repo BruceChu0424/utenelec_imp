@@ -12,6 +12,7 @@ class _Repository extends ProductionMaterialRepository {
   _Repository() : super(ApiClient(Dio()));
   double consumed = 0, pending = 0;
   bool returnCreated = false, cancelled = false;
+  bool directLot = false;
   bool loseSettlementResponse = false, loseReturnResponse = false;
   String? returnBlockedReason;
   final settlementKeys = <String>[];
@@ -95,13 +96,15 @@ class _Repository extends ProductionMaterialRepository {
     sourceSegment = executionSegmentId;
     return [
       ProductionMaterialReturnSource.fromJson({
-        'issuePostingId': 'issue',
+        'sourceType': directLot ? 'DIRECT_LOT' : 'ISSUE',
+        'directTransferItemId': directLot ? 'direct-lot' : null,
+        'issuePostingId': directLot ? null : 'issue',
         'demandId': 'demand',
-        'drawId': 'draw',
+        'drawId': directLot ? null : 'draw',
         'drawNo': 'LL001',
-        'drawItemId': 'draw-item',
-        'warehouseId': 'leaf',
-        'warehouseName': '五金分仓',
+        'drawItemId': directLot ? null : 'draw-item',
+        'sourceWarehouseId': 'leaf',
+        'sourceWarehouseName': '五金分仓',
         'goodsId': 'goods',
         'goodsCode': 'WL001',
         'goodsName': '铝件',
@@ -129,6 +132,7 @@ class _Repository extends ProductionMaterialRepository {
         'lines': [
           {
             'itemId': 'return-item',
+            'sourceType': 'ISSUE',
             'issuePostingId': 'issue',
             'demandId': 'demand',
             'drawItemId': 'draw-item',
@@ -240,6 +244,63 @@ Future<void> _consume(WidgetTester tester, String qty) async {
 }
 
 void main() {
+  testWidgets(
+    'unissued direct lot sends its exact source without inventing an issue or receiving warehouse',
+    (tester) async {
+      final repository = _Repository()..directLot = true;
+      await _open(tester, repository);
+      await tester.ensureVisible(find.text('余料退库'));
+      await tester.tap(find.text('余料退库'));
+      await tester.pumpAndSettle();
+      expect(find.text('车间直送（未投用）'), findsOneWidget);
+      expect(find.text('来源位置'), findsOneWidget);
+      expect(find.text('退入仓库'), findsNothing);
+      await tester.enterText(
+        find.byKey(const ValueKey('material-return-qty-direct-direct-lot')),
+        '2',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('material-return-submit')),
+      );
+      await tester.tap(find.byKey(const Key('material-return-submit')));
+      await tester.pumpAndSettle();
+      expect(repository.returnBodies.single['items'], [
+        {'directTransferItemId': 'direct-lot', 'qty': 2.0},
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'pending direct return has nullable real destination and exact source lineage',
+    () {
+      final document = ProductionMaterialReturnDocument.fromJson({
+        'documentId': 'return',
+        'status': 'PENDING',
+        'warehouseId': null,
+        'sourceWarehouseId': 'technical',
+        'sourceWarehouseName': '车间位置',
+        'lines': [
+          {
+            'itemId': 'item',
+            'demandId': 'demand',
+            'sourceType': 'DIRECT_LOT',
+            'directTransferItemId': 'lot',
+            'issuePostingId': null,
+            'drawItemId': null,
+            'qty': 2,
+            'baseQty': 2,
+          },
+        ],
+      });
+      expect(document.warehouseId, isNull);
+      expect(document.warehouseName, '待仓库确认');
+      expect(document.sourceWarehouseId, 'technical');
+      expect(document.lines.single.issuePostingId, isNull);
+      expect(document.lines.single.directTransferItemId, 'lot');
+    },
+  );
+
   testWidgets(
     'material carried into a later batch shows why it cannot be returned',
     (tester) async {

@@ -78,6 +78,71 @@ class ProcurementSupplierHistoryPostgresTest {
     @Autowired
     private PlatformTransactionManager txm;
 
+    @org.junit.jupiter.api.BeforeEach
+    void grantCommercialReadForFixture() {
+        grant("purchase_order:price:view", "subcontract_order:price:view");
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearPrincipal() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+
+    private void grant(String... permissions) {
+        var principal = org.mockito.Mockito.mock(com.uten.imp.security.AuthUser.class);
+        org.mockito.Mockito.when(principal.getPermissions()).thenReturn(java.util.Set.of(permissions));
+        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                principal, null, java.util.List.of());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    @Test
+    void ordinaryViewPermissionCannotReadDefaultPricesOrCommercialTerms() {
+        UUID goods = goods("TRM-MASK");
+        UUID supplier = supplier(supplierCategory(), "使用", false, false, "mask-default");
+        UUID currency = currency("MASK", BigDecimal.ONE);
+        writeBackPurchase(goods, supplier, settlement("MASK"), currency, BASE, 89);
+        grant("purchase_order:view", "subcontract_order:view");
+        var hidden = purchaseDefaults(goods);
+        assertThat(hidden.supplierId()).isEqualTo(supplier);
+        assertThat(hidden.purchasePrice()).isNull();
+        assertThat(hidden.priceContext()).isNull();
+        assertThat(hidden.settlementMethodId()).isNull();
+        assertThat(hidden.currencyId()).isNull();
+        assertThat(hidden.taxRate()).isNull();
+        assertThat(subcontractOrders.masterDefaultTermsPerGoods(List.of(goods)).get(goods).priceContext()).isNull();
+        grant("purchase_order:price:view");
+        assertThat(purchaseDefaults(goods).purchasePrice()).isNotNull();
+        assertThat(subcontractOrders.masterDefaultTermsPerGoods(List.of(goods)).get(goods).priceContext()).isNull();
+    }
+
+    @Autowired private com.uten.imp.features.master.goods.GoodsService goodsService;
+
+    @Test void goodsDetailIncludesLearnedPriceDimensionsOnlyWithGoodsCostPermission() {
+        UUID goods = goods("TRM-GOODS-VIEW");
+        UUID supplier = supplier(supplierCategory(), "使用", false, false, "goods-cost");
+        UUID currency = currency("GOODS-VIEW", BigDecimal.ONE);
+        UUID unit = UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name,status) VALUES (?,?,'箱','使用')", unit, "UNIT-"+unit);
+        UUID order = purchase(goods, supplier, null, currency, new BigDecimal("13"),
+                new BigDecimal("78"), false, BASE, 90);
+        jdbc.update("UPDATE purchase_order_items SET unit_id=? WHERE order_id=?", unit, order);
+        inTransaction(() -> masterDefaultsSync.syncFromPurchaseOrder(order));
+        grant("goods:view", "goods:price:view");
+        var hidden = goodsService.detail(goods);
+        assertThat(hidden.getDefaultPurchasePrice()).isNull();
+        assertThat(hidden.getDefaultPurchasePriceInfo()).isNull();
+        grant("goods:view", "goods:cost:view");
+        var visible = goodsService.detail(goods);
+        assertThat(visible.getDefaultPurchasePrice()).isEqualByComparingTo("78");
+        assertThat(visible.getDefaultPurchasePriceInfo().unitName()).isEqualTo("箱");
+        assertThat(visible.getDefaultPurchasePriceInfo().currencyName()).isNotBlank();
+        assertThat(visible.getDefaultPurchasePriceInfo().contextComplete()).isTrue();
+        assertThat(visible.getDefaultSubcontractPrice()).isNull();
+        jdbc.update("UPDATE goods SET default_purchase_price_currency_id=NULL WHERE id=?", goods);
+        assertThat(goodsService.detail(goods).getDefaultPurchasePriceInfo().contextComplete()).isFalse();
+    }
+
     /** 类级共享：同一容器库内多测试方法的供应商编码不重复（code 唯一键+保留号段触发器）。 */
     private static int supplierCodeSequence = 990000;
 

@@ -1,0 +1,96 @@
+{
+  "stock_other_in_m.csv": [
+    {
+      "legacy_id": 902101,
+      "bill_no": "QI-SYN-DELETED-001",
+      "bill_date": "2025-01-02",
+      "stock_legacy_id": 910201,
+      "to_stock_legacy_id": 0,
+      "client_legacy_id": 0,
+      "supplier_legacy_id": 0,
+      "worker_legacy": 900701,
+      "maker_legacy": 900801,
+      "approver_legacy": 900801,
+      "plan_no": null,
+      "bill_type": null,
+      "remark": "合成历史引用：已删除主档不应成为当前可操作主档",
+      "total_original": "14.0000",
+      "status": 1,
+      "cancel_bit": false,
+      "ass_team": null
+    }
+  ],
+  "stock_other_in_i.csv": [
+    {
+      "legacy_id": 902102,
+      "bill_legacy_id": 902101,
+      "goods_legacy_id": 910101,
+      "color_legacy_id": 910401,
+      "qty": "2.0000",
+      "price": "7.0000",
+      "amount": "14.0000",
+      "unit_legacy_id": 910301,
+      "unit_rate": 1,
+      "weight": 0,
+      "surplus_qty": 0,
+      "count_qty": 0,
+      "place_legacy_id": 0,
+      "upstream_legacy_id": 0,
+      "source_doc_no": null,
+      "summary": "原始历史行精确保留被删除的货品/颜色/单位引用"
+    }
+  ],
+  "stock_goods.csv": [
+    {
+      "stock_legacy": 910201,
+      "goods_legacy": 910101,
+      "color_legacy": 910401,
+      "year": 2025,
+      "qty": "2.0000",
+      "fact_qty": "2.0000",
+      "total": "14.00",
+      "weight": 0,
+      "fact_weight": 0
+    }
+  ],
+  "m_in.csv": [
+    {
+      "legacy_id": 906101,
+      "bill_no": "XC-SYN-DELETED-001",
+      "client_legacy_id": 910501,
+      "bill_date": "2025-01-02",
+      "due_date": "2025-02-02",
+      "total": "15.0000",
+      "settled": "0.0000",
+      "balance": "15.0000",
+      "note": "合成历史应收：原客户主档已删除，保留冻结往来，不制造财审/发货凭证",
+      "paid_bit": false,
+      "paid_date": null,
+      "b_style": 3,
+      "p_style": 1,
+      "bill_legacy_id": 913003,
+      "currency_legacy_id": 1,
+      "exchange_rate": 1
+    }
+  ],
+  "m_out.csv": [
+    {
+      "legacy_id": 906102,
+      "bill_no": "CJ-SYN-DELETED-001",
+      "supplier_legacy_id": 910601,
+      "bill_date": "2025-01-02",
+      "due_date": "2025-02-02",
+      "total": "9.0000",
+      "settled": "0.0000",
+      "balance": "9.0000",
+      "note": "合成历史应付：原供应商主档已删除，保留冻结往来，不制造采购凭证",
+      "paid_bit": false,
+      "paid_date": null,
+      "b_style": 1,
+      "p_style": 1,
+      "bill_legacy_id": 911005,
+      "currency_legacy_id": 1,
+      "exchange_rate": 1
+    }
+  ]
+}

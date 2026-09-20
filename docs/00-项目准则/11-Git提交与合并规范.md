@@ -195,30 +195,26 @@ CodeQL 与 OSV 以 GitHub Actions 的本次远端运行结果为准。本地构�
 
 ### 4.3 Website 额外门禁
 
-当前 GitHub Actions 尚未覆盖 `website/`。只要修改 `website/`，除远端现有门禁外，还必须在
-`website` 目录执行：
+Quality Gate 已包含 `Website / Node 22`，与官网签名发布共用
+`website/scripts/quality-gate.mjs`。修改官网时，本地同样执行该入口：
 
 ```powershell
 Push-Location website
 try {
-  npm ci
-  npm run lint
-  npm run test:admin-guardrails
-  npm run test:catalog-public
-  npm run test:catalog-normalization
-  npm run test:legacy-series-content
-  npm run test:inquiry-security
-  npm run test:legacy-import
-  npm run test:news-content
-  npm run test:seo-localization
-  npm run test:publication-guards
-  npm run build
+  node scripts/quality-gate.mjs
 } finally {
   Pop-Location
 }
 ```
 
-提交验证不得运行 `db:push`、`db:seed`、`db:upgrade`、`*:apply` 或其它会改数据库/内容的脚本。
+该门禁使用 Node 22，依次安装 lockfile、生成 Prisma Client、在私有临时空库执行正式迁移，
+再完成 lint、TypeScript、`test:all`、迁移历史与 schema 一致性、全依赖漏洞审计和 Next 构建。
+数据库集成测试自行构造非空系列/产品/款式与来源审计夹具，覆盖身份、归属、内容保持、
+dry-run 无写入及重复执行幂等，不依赖本机 `prisma/dev.db`。签名发布复用同一门禁导出的
+SQLite schema contract；构建不创建或写入生产上传目录，不代表官网已部署。
+
+提交验证不得对开发或目标业务库运行 `db:push`、`db:seed`、`db:upgrade`、`*:apply`。
+受控测试只允许在本次新建的私有临时库执行正式迁移和带合成数据的 apply 回归，退出即清理。
 需要真实数据迁移时，必须作为单独受控步骤记录目标、备份、dry-run、审批、回滚和结果。
 
 ---

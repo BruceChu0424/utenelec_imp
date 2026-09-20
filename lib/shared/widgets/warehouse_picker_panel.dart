@@ -160,8 +160,9 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
     super.dispose();
   }
 
-  bool _hasChildren(String id) =>
-      widget.hierarchy.any((entry) => entry.parentId == id);
+  bool _hasChildren(String id) => widget.hierarchy.any(
+    (entry) => entry.parentId == id && !entry.isLineSide,
+  );
 
   /// 层级深度（按 parentId 链上溯；悬空父级按顶层计）。
   int _depth(WarehouseDictEntry entry) {

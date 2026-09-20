@@ -124,6 +124,7 @@ public final class MigrationRehearsalSupport {
 
     static Snapshot snapshot(Connection connection) throws SQLException {
         return new Snapshot(
+                Integer.parseInt(latestSuccessfulVersion(connection)),
                 tableRows(connection),
                 scalarText(connection, """
                         SELECT count(*) || '|' ||
@@ -165,6 +166,8 @@ public final class MigrationRehearsalSupport {
             Long afterCount = after.tableRows().get(entry.getKey());
             if (!entry.getValue().equals(afterCount)
                     && !EXPECTED_ROW_COUNT_MUTATIONS.contains(entry.getKey())
+                    && !reviewedExpenseNamespaceAddition(before, after, entry.getKey(),
+                            entry.getValue(), afterCount)
                     // 整表废弃后行数 0 -> null 同样合法（表已点名豁免删除）。
                     && !intentionallyDropped.contains(entry.getKey())) {
                 unexpected.put(entry.getKey(), entry.getValue() + " -> " + afterCount);
@@ -189,9 +192,38 @@ public final class MigrationRehearsalSupport {
         assertThat(after.stockTotals()).isEqualTo(before.stockTotals());
     }
 
+    private static boolean reviewedExpenseNamespaceAddition(
+            Snapshot before, Snapshot after, String table, long oldCount, Long newCount) {
+        // V608 registers exactly one BX namespace and its two prefix ownership rows.
+        // A later migration or any other quantity difference remains a failure.
+        return before.schemaVersion() < 608 && after.schemaVersion() >= 608
+                && Set.of("business_identifier_namespaces", "business_prefix_reservations",
+                        "business_prefix_reservation_members").contains(table)
+                && newCount != null && newCount == oldCount + 1;
+    }
+
     static void assertCurrentAuthority(Connection connection) throws SQLException {
         assertThat(latestSuccessfulVersion(connection)).isEqualTo(CURRENT_HEAD_VERSION);
         assertThat(successfulMigrationCount(connection)).isEqualTo(CURRENT_MIGRATION_COUNT);
+        assertThat(scalarLong(connection, """
+                SELECT count(*) FROM business_identifier_namespaces namespace
+                JOIN business_prefix_reservations reservation
+                  ON reservation.normalized_prefix = namespace.fixed_prefix
+                 AND reservation.first_owner_kind = 'NAMESPACE'
+                 AND reservation.first_owner_key = namespace.namespace_key
+                JOIN business_prefix_reservation_members member
+                  ON member.normalized_prefix = namespace.fixed_prefix
+                 AND member.owner_kind = 'NAMESPACE'
+                 AND member.owner_key = namespace.namespace_key
+                WHERE namespace.namespace_key = 'EXPENSE_CLAIM'
+                  AND namespace.identifier_family = 'DOCUMENT'
+                  AND namespace.fixed_prefix = 'BX'
+                  AND namespace.source_table = 'expense_claims'
+                  AND namespace.identifier_column = 'claim_no'
+                  AND namespace.discriminator_value IS NULL
+                """))
+                .as("V608 must register the exact expense namespace and prefix ownership")
+                .isEqualTo(1);
         assertThat(scalarLong(connection,
                 "SELECT count(*) FROM system_master_category_registry")).isEqualTo(1);
         assertThat(scalarLong(connection, """
@@ -397,6 +429,7 @@ public final class MigrationRehearsalSupport {
     }
 
     record Snapshot(
+            int schemaVersion,
             Map<String, Long> tableRows,
             String userIdentity,
             Map<String, Long> scopeRows,

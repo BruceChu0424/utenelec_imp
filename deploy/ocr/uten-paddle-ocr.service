@@ -1,0 +1,43 @@
+[Unit]
+# 发票识别侧车（ADR-094）：本地 PaddleOCR，仅回环 8501，供 Spring Boot
+# /api/expense-claims/invoices/recognize 在 uten.expense-ocr.provider=paddle 时调用。
+# 安装/升级/验证：deploy/simple/RUNBOOK.zh-CN.md §发票识别侧车。
+Description=uten PaddleOCR invoice sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=uten-ocr
+Group=uten-ocr
+WorkingDirectory=/opt/uten-ocr
+Environment=PADDLE_PDX_CACHE_HOME=/opt/uten-ocr/models
+Environment=UTEN_OCR_PORT=8501
+Environment=PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+Environment=OMP_NUM_THREADS=2
+Environment=OPENBLAS_NUM_THREADS=2
+Environment=MKL_NUM_THREADS=2
+ExecStart=/opt/uten-ocr/venv/bin/uvicorn ocr_server:app --host 127.0.0.1 --port 8501 --timeout-keep-alive 75
+Restart=on-failure
+RestartSec=5
+# CPU 推理即可（无需 GPU）；限内存防模型加载异常时吃满主机。
+# 内存预算须在目标主机按固定模型样张推理验证。
+MemoryMax=4G
+CPUQuota=200%
+TasksMax=128
+UMask=0077
+# 只读代码目录；模型缓存目录可写。
+ReadOnlyPaths=/opt/uten-ocr/ocr_server.py
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/opt/uten-ocr/models
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

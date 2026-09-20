@@ -16,7 +16,7 @@ import '../../../shared/providers/master_name_provider.dart';
 /// - 盘点（isCheck=true）：填 [bookQty]（账面）+ [checkQty]（实盘）；
 ///   amountNotifier = 盘盈亏 = 实盘 - 账面（订阅两控制器自动重算）。
 class StockGridRow extends EditableGridRow with AmountRowMixin {
-  StockGridRow({this.isCheck = false, this.sourceLocked = false}) {
+  StockGridRow({this.isCheck = false}) {
     // 仅盘点模式连线重算：非盘点无金额概念，amountNotifier 恒 0（不订阅省一次空更新）。
     if (isCheck) {
       bookQty.addListener(_recalc);
@@ -25,16 +25,12 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   }
 
   final bool isCheck;
-  final bool sourceLocked;
   String? upstreamItemId;
   String? executionSegmentId;
   String? executionSegmentSalesAllocationId;
-  String? sourceDrawId;
-  String? sourceDrawNo;
   String? colorId;
   String? unitId;
   double unitRate = 1;
-  double? maxQty;
 
   // 只读主档展示（选品/载入时填充）：编号/系列/库位号/颜色名/单位名——仓库对位拣货用。
   String? goodsCode;
@@ -68,7 +64,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   );
 
   /// 深拷贝（明细复制/粘贴用）：拷货品、录入量（非盘点=数量/重量；盘点=账面/实盘，
-  /// 盘盈亏随控制器自动重算）与只读主档展示列。上游/执行段/退料来源引用与 maxQty
+  /// 盘盈亏随控制器自动重算）与只读主档展示列。上游/执行段来源引用
   /// 门控不拷——可编辑模式下本就为空，防御性排除。
   StockGridRow clone() {
     final c = StockGridRow(isCheck: isCheck)
@@ -107,7 +103,6 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 List<EditableGridColumn<StockGridRow>> stockGridColumns(
   Future<void> Function(StockGridRow row) onPickGoods, {
   bool isCheck = false,
-  bool isWdraw = false,
 }) {
   return [
     EditableGridColumn<StockGridRow>(
@@ -125,7 +120,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
         child: InkWell(
-          onTap: row.sourceLocked ? null : () => onPickGoods(row),
+          onTap: () => onPickGoods(row),
           child: InputDecorator(
             decoration: const InputDecoration(isDense: true),
             child: Row(
@@ -143,10 +138,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
                     ),
                   ),
                 ),
-                Icon(
-                  row.sourceLocked ? Icons.lock_outline : Icons.search_rounded,
-                  size: 16,
-                ),
+                const Icon(Icons.search_rounded, size: 16),
               ],
             ),
           ),
@@ -208,24 +200,6 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ),
-    if (isWdraw) ...[
-      EditableGridColumn<StockGridRow>(
-        key: 'source',
-        label: '原领料单',
-        width: 150,
-        cellBuilder: (_, row) => Text(row.sourceDrawNo ?? '未选择来源'),
-      ),
-      EditableGridColumn<StockGridRow>(
-        key: 'maxReturn',
-        label: '最多可退',
-        width: 100,
-        numeric: true,
-        cellBuilder: (_, row) => Text(
-          row.maxQty == null ? '—' : row.maxQty!.toStringAsFixed(4),
-          textAlign: TextAlign.right,
-        ),
-      ),
-    ],
     if (isCheck) ...[
       EditableGridColumn<StockGridRow>(
         key: 'bookQty',

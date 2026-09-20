@@ -15,6 +15,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -75,17 +76,21 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   bool _hasPermission(String? code) =>
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _ordinaryWritable => documentOwnerCanWrite(
-    ref.read(documentScopeCapabilityProvider(DocumentDataScope.finance)),
-    _detail?.makerId,
-  );
+  bool get _canMutate => _detail != null && !_detail!.legacyImported;
+
+  bool get _ordinaryWritable =>
+      _canMutate &&
+      documentOwnerCanWrite(
+        ref.read(documentScopeCapabilityProvider(DocumentDataScope.finance)),
+        _detail?.makerId,
+      );
 
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
-  bool get _canApprove => _hasPermission(_cfg.approvePerm);
-  bool get _canReverse => _hasPermission(_cfg.reversePerm);
+  bool get _canApprove => _canMutate && _hasPermission(_cfg.approvePerm);
+  bool get _canReverse => _canMutate && _hasPermission(_cfg.reversePerm);
   bool get _canConfirmGeneralLedger =>
-      _hasPermission(Perm.financeExpenseGlConfirm);
+      _canMutate && _hasPermission(Perm.financeExpenseGlConfirm);
 
   String get _attachmentOwnerType => switch (widget.docType) {
     FinanceDocType.receipt => 'FINANCE_RECEIPT',
@@ -191,7 +196,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     String reviewerActionLabel = '审核',
     String? busyTitle,
   }) async {
-    if (_busy) return;
+    if (_busy || !_canMutate) return;
     final c = reviewerResponsibility
         ? await showUtenReviewerConfirmDialog(
             context,
@@ -237,6 +242,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   }
 
   Future<void> _delete() async {
+    if (!_canMutate) return;
     if (_busy) return;
     final c = await showDialog<bool>(
       context: context,
@@ -387,7 +393,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   /// 客户预收收款单没有明细行（金额直接落在表头），故不渲染明细表。
   bool get _hasItemsTable =>
       !(_cfg.type == FinanceDocType.receipt &&
-          _detail!.receiptKind == 'CUSTOMER_PREPAYMENT');
+          ((!_detail!.legacyImported &&
+                  _detail!.receiptKind == 'CUSTOMER_PREPAYMENT') ||
+              (_detail!.legacyImported && _detail!.items.isEmpty)));
 
   /// 折叠头内容（无明细表时即整页 ListView 的 children）：提示条 / 表头卡 /
   /// 预收汇总 / 附件——附件属「备注类小卡」，随头部一起收起。
@@ -398,6 +406,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     bool canViewFiles,
   ) {
     return [
+      if (_detail!.legacyImported) ...[
+        const UtenInlineNotice(message: financeLegacyReadOnlyMessage),
+        const SizedBox(height: UtenSpacing.s12),
+      ],
       DocumentScopeWriteNotice(
         capability: scopeCapability,
         ownerEmployeeId: _detail!.makerId,
@@ -409,6 +421,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       // SelectionArea（准则 §3.4），无需再单独包。
       _headerCard(theme, names),
       if (_cfg.type == FinanceDocType.receipt &&
+          !_detail!.legacyImported &&
           _detail!.receiptKind == 'CUSTOMER_PREPAYMENT' &&
           _detail!.salesOrderId != null) ...[
         const SizedBox(height: UtenSpacing.s12),
@@ -433,10 +446,15 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   Widget _headerCard(ThemeData theme, FinanceNameService names) {
     final d = _detail!;
     final isReceipt = _cfg.type == FinanceDocType.receipt;
+    final isHistoricalReceipt = isReceipt && d.legacyImported;
     final isCustomerPrepayment =
-        isReceipt && d.receiptKind == 'CUSTOMER_PREPAYMENT';
+        isReceipt &&
+        !d.legacyImported &&
+        d.receiptKind == 'CUSTOMER_PREPAYMENT';
     final isVersionedReceipt =
-        isReceipt && (d.settlementAuthorityVersion ?? 0) >= 1;
+        isReceipt &&
+        !d.legacyImported &&
+        (d.settlementAuthorityVersion ?? 0) >= 1;
     final isPayment = _cfg.type == FinanceDocType.payment;
     final partyName = _cfg.isClient
         ? names.client(d.clientId)
@@ -470,11 +488,17 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       _KV('日期', d.billDate),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      if (isReceipt) _KV('收款类型', financeReceiptKindLabel(d.receiptKind)),
+      if (isReceipt)
+        _KV(
+          '收款类型',
+          financeReceiptKindLabel(d.receiptKind, historical: d.legacyImported),
+        ),
       if (isReceipt)
         _KV(
           '结算口径',
-          (d.settlementAuthorityVersion ?? 0) >= 2
+          isHistoricalReceipt
+              ? '历史原始资金记录'
+              : (d.settlementAuthorityVersion ?? 0) >= 2
               ? '实际银行到账与本批结算分别记录'
               : isVersionedReceipt
               ? 'V1 到账与 AR 核销分层'
@@ -487,7 +511,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           (!isReceipt || isCustomerPrepayment) &&
           !isVersionedReceipt)
         _KV('币种', names.currency(d.currencyId)),
-      if (isReceipt && !isCustomerPrepayment && !isVersionedReceipt)
+      if (isReceipt &&
+          !isHistoricalReceipt &&
+          !isCustomerPrepayment &&
+          !isVersionedReceipt)
         _KV('应收币种', names.currency(d.currencyId)),
       if ((!isReceipt || isCustomerPrepayment) &&
           !isVersionedReceipt &&
@@ -501,6 +528,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           financeExactMoneyDisplay(d.amountOriginalText),
         ),
       if (isReceipt &&
+          !isHistoricalReceipt &&
           !isCustomerPrepayment &&
           !isVersionedReceipt &&
           d.amountOriginalText != null)
@@ -514,7 +542,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       if (_cfg.hasOtherFee && d.otherFeeStyleId != null)
         _KV('其它费用项目', names.styleName(d.otherFeeStyleId, 'EXPENSE')),
       if (_cfg.hasInvoiceNo) _KV('发票号', d.invoiceNo),
-      if (isVersionedReceipt) ...[
+      if (isHistoricalReceipt) ...[
+        _KV('原始币种', names.currency(d.currencyId)),
+        _KV('原始汇率', d.exchangeRateText),
+        _KV('原始收款金额', financeExactMoneyDisplay(d.amountOriginalText)),
+        _KV('原始本币金额', financeExactMoneyDisplay(d.amountLocalText)),
+      ] else if (isVersionedReceipt) ...[
         _KV(
           '结算渠道',
           d.settlementChannel == 'TRADE_AGENT_CONVERSION'

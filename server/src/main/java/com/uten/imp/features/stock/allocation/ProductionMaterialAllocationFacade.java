@@ -1,6 +1,7 @@
 package com.uten.imp.features.stock.allocation;
 
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.InventoryKey;
@@ -70,6 +71,12 @@ public class ProductionMaterialAllocationFacade {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public List<AllocationResult> allocate(List<AllocationRequest> requests) {
+        return allocate(requests, false);
+    }
+
+    /** Incremental workshop supply keeps the existing unconsumed reservation identity. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AllocationResult> allocate(List<AllocationRequest> requests, boolean extendExisting) {
         tx.bind();
         if (requests == null || requests.isEmpty()) {
             return List.of();
@@ -98,7 +105,7 @@ public class ProductionMaterialAllocationFacade {
                         ? new AllocationRequest(request.packageId(), request.demandId(), request.goodsId(),
                                 request.colorId(), warehouse, remaining, request.idempotencyKey(), request.actorId())
                         : withWarehouse(request, warehouse, remaining, "STOCK");
-                AllocationResult result = allocateOne(physical, BigDecimal.ZERO, false, batch);
+                AllocationResult result = allocateOne(physical, BigDecimal.ZERO, false, batch, extendExisting);
                 if (result.allocatedQty().signum() > 0) {
                     results.add(result); remaining = remaining.subtract(result.allocatedQty());
                 }
@@ -188,6 +195,13 @@ public class ProductionMaterialAllocationFacade {
     @Transactional(propagation = Propagation.MANDATORY)
     public List<AllocationResult> allocateWithQualifiedSources(
             List<AllocationRequest> requests, List<QualifiedSourcePreference> preferences) {
+        return allocateWithQualifiedSources(requests, preferences, false);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AllocationResult> allocateWithQualifiedSources(
+            List<AllocationRequest> requests, List<QualifiedSourcePreference> preferences,
+            boolean extendExisting) {
         tx.bind();
         if (requests == null || requests.isEmpty()) return List.of();
         validateRequests(requests);
@@ -220,12 +234,39 @@ public class ProductionMaterialAllocationFacade {
                     (warehouse,limit,qualified,requiresProof,isOwned)->{
                         if(isOwned)batch.releaseOwned(request,warehouse);
                         AllocationResult result=allocateOne(withWarehouse(request,warehouse,limit,isOwned?"OWN":"STOCK"),
-                                qualified,requiresProof,batch);
+                                qualified,requiresProof,batch,extendExisting,null,sources.stream()
+                                    .filter(source->source.demandId().equals(request.demandId()) && source.warehouseId().equals(warehouse)).toList());
                         if(isOwned||result.allocatedQty().signum()>0)results.add(withWarehouse(result,warehouse));
                         return result.allocatedQty();
                     });
         }
         return List.copyOf(results);
+    }
+
+    /** Explicit workshop reclaim of its returned private material; no public allocation or new receipt. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public List<AllocationResult> formalizeWorkshopCustody(AllocationRequest request,UUID sourceReservation) {
+        tx.bind(); validateRequests(List.of(request));
+        if(request.actorId()==null)throw allocationConflict("返回余料须由车间明确核料后继续领用");
+        lockDimensions(List.of(request)); lockDemandRows(List.of(request));
+        List<Object[]> sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT warehouse_id,lock_version FROM stock_reservations
+                WHERE id=:source AND owner_type='WORKSHOP_CUSTODY' AND owner_id=:demand
+                  AND source_doc_type='WORKSHOP_RETURN_CUSTODY' AND NOT is_deleted
+                  AND goods_id=:goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND fn_warehouse_same_main(warehouse_id,:scope)
+                  AND qty-consumed_qty-released_qty>=:qty FOR UPDATE
+                """).setParameter("source",sourceReservation).setParameter("demand",request.demandId())
+                .setParameter("goods",request.goodsId()).setParameter("color",request.colorId()).setParameter("scope",request.warehouseId())
+                .setParameter("qty",request.requiredQty()));
+        if(sources.size()!=1)throw allocationConflict("本任务返回余料的专属数量或实际仓库已变化");
+        UUID warehouse=(UUID)sources.getFirst()[0];
+        String key="RETURN-CUSTODY:"+CanonicalFingerprint.sha256(List.of(request.idempotencyKey(),sourceReservation.toString(),
+                sources.getFirst()[1].toString(),request.requiredQty().stripTrailingZeros().toPlainString()));
+        List<Object[]> allocated=NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                "SELECT target_reservation_id,qty_base FROM fn_formalize_workshop_return_custody(:source,:qty,:key,:actor)")
+                .setParameter("source",sourceReservation).setParameter("qty",request.requiredQty()).setParameter("key",key).setParameter("actor",request.actorId()));
+        return allocated.stream().map(row->new AllocationResult(request.demandId(),(UUID)row[0],null,decimal(row[1]),false,warehouse)).toList();
     }
 
     private Map<SourceDemandKey, SourceProof> verifyPreparedSources(
@@ -257,8 +298,7 @@ public class ProductionMaterialAllocationFacade {
                   AND reservation.is_deleted=FALSE AND reservation.owner_type='PREPLAN_ANALYSIS'
                 JOIN warehouses warehouse ON warehouse.id=reservation.warehouse_id
                   AND warehouse.is_deleted=FALSE AND warehouse.is_accountable=TRUE
-                  AND NOT EXISTS(SELECT 1 FROM warehouses child
-                      WHERE child.parent_id=warehouse.id AND child.is_deleted=FALSE)
+                  AND fn_warehouse_is_operational_leaf(warehouse.id)
                 JOIN production_material_demands demand ON demand.id IN (:demands)
                   AND demand.is_deleted=FALSE AND demand.goods_id=reservation.goods_id
                   AND demand.color_id IS NOT DISTINCT FROM reservation.color_id
@@ -413,8 +453,7 @@ public class ProductionMaterialAllocationFacade {
                 FROM warehouses warehouse
                 WHERE fn_warehouse_main_id(warehouse.id) IN (:mains)
                   AND NOT warehouse.is_deleted AND warehouse.is_accountable AND NOT warehouse.is_defective
-                  AND NOT EXISTS(SELECT 1 FROM warehouses child
-                      WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                  AND fn_warehouse_is_operational_leaf(warehouse.id)
                 ORDER BY warehouse.id
                 """).setParameter("mains", mains))) {
             UUID warehouse = (UUID) row[0], main = (UUID) row[1];
@@ -443,6 +482,7 @@ public class ProductionMaterialAllocationFacade {
                 SELECT id,demand_id,supply_id,qty,goods_id,color_id,warehouse_id,idempotency_key,requires_qualified_origin,
                        status,consumed_qty,released_qty
                 FROM stock_reservations WHERE demand_id IN (:demands) AND NOT is_deleted
+                  AND source_doc_type IS DISTINCT FROM 'WORKSHOP_RETURN_CUSTODY'
                 ORDER BY goods_id,color_id NULLS FIRST,warehouse_id,id FOR UPDATE
                 """).setParameter("demands", byDemand.keySet()))) batch.replays.put((String) row[7], row);
 
@@ -625,6 +665,12 @@ public class ProductionMaterialAllocationFacade {
     private AllocationResult allocateOne(AllocationRequest request, BigDecimal qualifiedQty,
                                          boolean requiresQualifiedOrigin, AllocationBatch batch,
                                          boolean extendExisting) {
+        return allocateOne(request,qualifiedQty,requiresQualifiedOrigin,batch,extendExisting,null,List.of());
+    }
+
+    private AllocationResult allocateOne(AllocationRequest request,BigDecimal qualifiedQty,
+            boolean requiresQualifiedOrigin,AllocationBatch batch,boolean extendExisting,
+            UUID receiptItemId,List<QualifiedSourcePreference> sourcePreferences) {
         Object[] replay = batch.replays.get(request.idempotencyKey());
         if (replay != null) {
             requireReplayMatch(request, replay);
@@ -645,6 +691,16 @@ public class ProductionMaterialAllocationFacade {
         if (lineSide && !batch.lineSideAllowed(request.warehouseId(), request.demandId())) {
             return new AllocationResult(request.demandId(), null, supplyId,
                     BigDecimal.ZERO, false, request.warehouseId());
+        }
+        if (lineSide) {
+            BigDecimal dedicated = decimal(em.createNativeQuery(
+                    "SELECT fn_workshop_direct_source_available(:warehouse,:demand)")
+                    .setParameter("warehouse",request.warehouseId()).setParameter("demand",request.demandId()).getSingleResult());
+            if(receiptItemId!=null)dedicated=dedicated.min(decimal(em.createNativeQuery(
+                    "SELECT fn_workshop_direct_receipt_available(:receipt,:demand)")
+                    .setParameter("receipt",receiptItemId).setParameter("demand",request.demandId()).getSingleResult()));
+            physical = physical.min(dedicated);
+            qualified = qualified.min(physical);
         }
         // 线边仓是直送指名给这条需求的专属料架：整批可动用，不套主仓公共预算与安全库存(V595)。
         BigDecimal publicLimit = lineSide
@@ -684,6 +740,7 @@ public class ProductionMaterialAllocationFacade {
             if (extended != 1) {
                 throw new ApiException(ErrorCode.CONFLICT, "物料分配追加写入失败");
             }
+            if (lineSide) claimDirectSources((UUID)existing[0],request,receiptItemId,take,sourcePreferences);
             position.free = position.free.subtract(take);
             return new AllocationResult(
                     request.demandId(), (UUID) existing[0], supplyId, take, false, request.warehouseId());
@@ -726,11 +783,24 @@ public class ProductionMaterialAllocationFacade {
         if (inserted != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "物料分配写入失败");
         }
+        if (lineSide) claimDirectSources(allocationId,request,receiptItemId,take,sourcePreferences);
         position.free = position.free.subtract(take);
+        BigDecimal publicTake = take.subtract(qualified);
         if (!requiresQualifiedOrigin && !lineSide) batch.publicRemaining.compute(group, (ignored, budget) ->
-                (budget == null ? BigDecimal.ZERO : budget).subtract(take.subtract(qualified)));
+                (budget == null ? BigDecimal.ZERO : budget).subtract(publicTake));
         return new AllocationResult(
                 request.demandId(), allocationId, supplyId, take, false, request.warehouseId());
+    }
+
+    private void claimDirectSources(UUID reservation,AllocationRequest request,UUID receiptItemId,
+            BigDecimal take,List<QualifiedSourcePreference> sources) {
+        List<Map<String,Object>> preferences=new ArrayList<>();
+        if(receiptItemId!=null)preferences.add(Map.of("receipt_item_id",receiptItemId,"qty",take));
+        else sources.forEach(source->preferences.add(Map.of("source_reservation_id",source.sourceStockReservationId(),"qty",source.qty())));
+        String json=new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(preferences).toString();
+        em.createNativeQuery("SELECT fn_claim_workshop_direct_sources(:reservation,:key,CAST(:actor AS uuid),FALSE,CAST(:preferences AS jsonb))")
+                .setParameter("reservation",reservation).setParameter("key",request.idempotencyKey())
+                .setParameter("actor",request.actorId()).setParameter("preferences",json).getSingleResult();
     }
 
     /**
@@ -747,6 +817,12 @@ public class ProductionMaterialAllocationFacade {
     @Transactional(propagation = Propagation.MANDATORY)
     public List<AllocationResult> allocateWithinLeaf(
             AllocationRequest request, UUID leafWarehouseId, List<QualifiedSourcePreference> preferences) {
+        return allocateWithinLeaf(request,leafWarehouseId,preferences,null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<AllocationResult> allocateWithinLeaf(AllocationRequest request,UUID leafWarehouseId,
+            List<QualifiedSourcePreference> preferences,UUID receiptItemId) {
         tx.bind();
         validateRequests(List.of(request));
         if (leafWarehouseId == null) {
@@ -783,7 +859,7 @@ public class ProductionMaterialAllocationFacade {
                     if (isOwned) batch.releaseOwned(request, warehouse);
                     AllocationResult result = allocateOne(
                             withWarehouse(request, warehouse, limit, isOwned ? "OWN" : "STOCK"),
-                            qualified, requiresProof, batch, true);
+                            qualified, requiresProof, batch, true,receiptItemId,sources);
                     if (isOwned || result.allocatedQty().signum() > 0) results.add(withWarehouse(result, warehouse));
                     return result.allocatedQty();
                 });

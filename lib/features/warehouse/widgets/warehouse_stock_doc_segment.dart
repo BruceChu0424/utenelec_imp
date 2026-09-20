@@ -144,6 +144,7 @@ class _WarehouseStockDocSegmentState
   }
 
   bool get _canCreate =>
+      widget.docType.supportsManualDraft &&
       widget.createLabel != null &&
       DocumentPermissionCatalog.stockDocument.allows(
         ref.read(currentPermissionsProvider),

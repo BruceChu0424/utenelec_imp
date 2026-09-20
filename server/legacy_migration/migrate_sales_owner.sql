@@ -7,7 +7,6 @@
 -- 幂等：先全量清零再灌入；HR 真员工替换 stub 后 legacy_id 不变，归属不断链。
 -- =====================================================================
 
-BEGIN;
 
 -- Requires Flyway V137 or later: the final verification and refresh depend on
 -- the owner-aware sales_monthly_mv definition.
@@ -132,12 +131,11 @@ FROM (
 ) source
 WHERE sales_return.id = source.return_id;
 
-COMMIT;
 
 -- migrate_sales.sql refreshes before HR/owner backfill in --bootstrap-all.
 -- Refresh again after ownership is final so V137 cannot leave aggregates in
 -- the legacy-public sentinel bucket after their headers become owned.
-SELECT refresh_sales_monthly_mv();
+REFRESH MATERIALIZED VIEW sales_monthly_mv;
 
 -- ---------------- 校验 ----------------
 SELECT r FROM (
@@ -150,10 +148,8 @@ SELECT r FROM (
         (SELECT count(*) FROM sales_shipments WHERE seller_legacy_id IS NOT NULL AND seller_legacy_id<>0 AND owner_employee_id IS NULL) +
         (SELECT count(*) FROM sales_other_shipments WHERE seller_legacy_id IS NOT NULL AND seller_legacy_id<>0 AND owner_employee_id IS NULL) +
         (SELECT count(*) FROM sales_returns WHERE seller_legacy_id IS NOT NULL AND seller_legacy_id<>0 AND owner_employee_id IS NULL))::text
-    UNION ALL SELECT 6, '  归属 TOP：' || string_agg(x.s, ' · ')
-        FROM (SELECT e.full_name || ' ' || count(*) AS s
-              FROM sales_orders t JOIN employees e ON e.id = t.owner_employee_id
-              GROUP BY e.full_name ORDER BY count(*) DESC LIMIT 5) x
+    UNION ALL SELECT 6, '  归属员工数 ' || count(DISTINCT owner_employee_id)
+        FROM sales_orders
     UNION ALL SELECT 7, '  MV owner buckets ' || count(DISTINCT owner_employee_id)
         FROM sales_monthly_mv
 ) t ORDER BY ord;

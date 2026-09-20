@@ -8,7 +8,6 @@
 --   name 做 BTRIM（含全角空格）+ 空串→NULL。其余原样保留（ExRate=0 也照搬，实际汇率在单据上）。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 CREATE TEMP TABLE currency_stage (
@@ -93,7 +92,6 @@ BEGIN
 END;
 $$;
 
-COMMIT;
 
 SELECT '✔ 币种 总 ' || count(*) ||
        '，使用 ' || count(*) FILTER (WHERE status = N'使用') ||

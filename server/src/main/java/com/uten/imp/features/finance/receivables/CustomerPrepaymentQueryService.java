@@ -40,6 +40,7 @@ public class CustomerPrepaymentQueryService {
                   AND ledger.source_doc_type='DIRECT_RECEIPT' AND ledger.status=1
                   AND COALESCE(ledger.is_deleted,FALSE)=FALSE
                   AND receipt.receipt_kind='CUSTOMER_PREPAYMENT' AND receipt.status=1
+                  AND receipt.legacy_id IS NULL
                   AND COALESCE(receipt.is_deleted,FALSE)=FALSE
                 """ + (clientId == null ? "" : " AND ledger.client_id=:clientId")
                 + (currencyId == null ? "" : " AND ledger.currency_id=:currencyId")

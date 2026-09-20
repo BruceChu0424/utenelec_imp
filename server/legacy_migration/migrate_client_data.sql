@@ -10,7 +10,6 @@
 -- emp_id 原样保留为 legacy 快照；owner_employee_id 仅按唯一 employees.legacy_id 精确写入。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 SELECT set_config('uten.legacy_reference_import', 'on', true);
 
@@ -164,7 +163,6 @@ WHERE client.price_style IS NOT NULL
   AND client.default_settlement_method_id IS NULL
 GROUP BY client.id, client.price_style;
 
-COMMIT;
 
 SELECT '✔ 客户 ' || count(*) ||
        '，已挂分类 ' || count(category_id) ||

@@ -1,0 +1,6 @@
+# Transport/security tests inject the engine; they do not download OCR models.
+fastapi==0.141.1
+httpx==0.28.1
+python-multipart==0.0.32
+Pillow>=11.3,<13
+numpy>=1.26,<3

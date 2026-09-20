@@ -125,9 +125,10 @@ class GlPostingServicePaymentAccountingTest {
                 paymentId, "CF-LOCK-1",
                 com.uten.imp.common.time.BusinessTime.today());
 
-        assertThat(sqlStatements).hasSize(3);
-        assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
-        assertThat(sqlStatements.get(1))
+        assertThat(sqlStatements).hasSize(4);
+        assertThat(sqlStatements.getFirst()).contains("SELECT legacy_id FROM finance_payments WHERE id=:id");
+        assertThat(sqlStatements.get(1)).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements.get(2))
                 .contains("FROM gl_vouchers voucher")
                 .contains("NOT EXISTS")
                 .contains("entry.source_doc_id=:sourceDocId");
@@ -162,8 +163,9 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("归属不一致")
                 .hasMessageContaining("禁止物理删除");
 
-        assertThat(sqlStatements).hasSize(2);
-        assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements).hasSize(3);
+        assertThat(sqlStatements.getFirst()).contains("SELECT legacy_id FROM finance_payments WHERE id=:id");
+        assertThat(sqlStatements.get(1)).contains("pg_advisory_xact_lock");
         assertThat(sqlStatements.getLast())
                 .contains("NOT EXISTS")
                 .contains("OR EXISTS")
@@ -216,8 +218,9 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("归属不符")
                 .hasMessageContaining("借贷不平");
 
-        assertThat(sqlStatements).hasSize(2);
-        assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements).hasSize(3);
+        assertThat(sqlStatements.getFirst()).contains("SELECT legacy_id FROM finance_expenses WHERE id=:id");
+        assertThat(sqlStatements.get(1)).contains("pg_advisory_xact_lock");
         assertThat(sqlStatements.getLast())
                 .contains("voucher.source_type='EXPENSE'")
                 .contains("voucher.source_doc_id=:expenseId")

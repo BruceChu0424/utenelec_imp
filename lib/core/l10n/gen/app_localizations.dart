@@ -6802,6 +6802,522 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。'**
   String get myVisitorsStatusColInfo;
+
+  /// No description provided for @expenseFlowNew.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建报销'**
+  String get expenseFlowNew;
+
+  /// No description provided for @expenseFlowEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑报销'**
+  String get expenseFlowEdit;
+
+  /// No description provided for @expenseFlowSaveAndContinue.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存并补充凭证'**
+  String get expenseFlowSaveAndContinue;
+
+  /// No description provided for @expenseFlowSaveDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'存草稿'**
+  String get expenseFlowSaveDraft;
+
+  /// No description provided for @expenseFlowSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
+  String get expenseFlowSave;
+
+  /// No description provided for @expenseFlowFlowGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写费用 → 保存草稿 → 上传原件并登记凭证 → 提交审批 → 财务登记付款'**
+  String get expenseFlowFlowGuide;
+
+  /// No description provided for @expenseFlowInvoiceGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先保存草稿，再上传发票或其他合法凭证原件。电子凭证应保留收到的原始文件；图片识别仅辅助填写，不能代替查验或归档。'**
+  String get expenseFlowInvoiceGuide;
+
+  /// No description provided for @expenseFlowNoInvoiceGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'无发票时，请在说明中写明原因及凭证情况，上传能够证明真实业务的合法凭证，由财务审核。'**
+  String get expenseFlowNoInvoiceGuide;
+
+  /// No description provided for @expenseFlowApplicant.
+  ///
+  /// In zh, this message translates to:
+  /// **'申请人'**
+  String get expenseFlowApplicant;
+
+  /// No description provided for @expenseFlowDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门'**
+  String get expenseFlowDepartment;
+
+  /// No description provided for @expenseFlowDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'制单日期'**
+  String get expenseFlowDate;
+
+  /// No description provided for @expenseFlowTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销标题 *'**
+  String get expenseFlowTitle;
+
+  /// No description provided for @expenseFlowTitleHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'如：上海客户拜访差旅'**
+  String get expenseFlowTitleHint;
+
+  /// No description provided for @expenseFlowTitleInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'简要说明费用用途，将打印在报销单事由栏。'**
+  String get expenseFlowTitleInfo;
+
+  /// No description provided for @expenseFlowRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'事由与说明'**
+  String get expenseFlowRemark;
+
+  /// No description provided for @expenseFlowRemarkHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'行程、项目、同行人员，或无发票的情况说明'**
+  String get expenseFlowRemarkHint;
+
+  /// No description provided for @expenseFlowMissingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写报销标题'**
+  String get expenseFlowMissingTitle;
+
+  /// No description provided for @expenseFlowTitleLength.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销标题最多 200 字'**
+  String get expenseFlowTitleLength;
+
+  /// No description provided for @expenseFlowMissingItems.
+  ///
+  /// In zh, this message translates to:
+  /// **'请至少添加一项报销明细'**
+  String get expenseFlowMissingItems;
+
+  /// No description provided for @expenseFlowItems.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销明细'**
+  String get expenseFlowItems;
+
+  /// No description provided for @expenseFlowAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加'**
+  String get expenseFlowAdd;
+
+  /// No description provided for @expenseFlowEmptyItems.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击添加，填写费用类别、实际金额及发生日期。'**
+  String get expenseFlowEmptyItems;
+
+  /// No description provided for @expenseFlowTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销合计'**
+  String get expenseFlowTotal;
+
+  /// No description provided for @expenseFlowCapital.
+  ///
+  /// In zh, this message translates to:
+  /// **'人民币大写'**
+  String get expenseFlowCapital;
+
+  /// No description provided for @expenseFlowDeleteItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除明细'**
+  String get expenseFlowDeleteItem;
+
+  /// No description provided for @expenseFlowDraftSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'草稿已保存，请补充凭证后提交审批'**
+  String get expenseFlowDraftSaved;
+
+  /// No description provided for @expenseFlowSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存'**
+  String get expenseFlowSaved;
+
+  /// No description provided for @expenseFlowRejectedGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'已被驳回，请根据原因修订，保存后重新提交。'**
+  String get expenseFlowRejectedGuide;
+
+  /// No description provided for @expenseFlowLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败，请重试'**
+  String get expenseFlowLoadFailed;
+
+  /// No description provided for @expenseFlowNotEditable.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅申请人可编辑草稿或已驳回的报销单。'**
+  String get expenseFlowNotEditable;
+
+  /// No description provided for @expenseFlowAmountInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额须大于 0，最多两位小数，不超过 9999999999.99 元'**
+  String get expenseFlowAmountInvalid;
+
+  /// No description provided for @expenseFlowInvoiceAmountInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额最多两位小数；价税合计须大于 0，其余金额不能为负'**
+  String get expenseFlowInvoiceAmountInvalid;
+
+  /// No description provided for @expenseFlowOcrGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择图片识别并预填，再对照原件逐项确认。识别不会查验真伪，也不会自动保存原件。'**
+  String get expenseFlowOcrGuide;
+
+  /// No description provided for @expenseFlowOcrConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'我已对照原件核对识别结果'**
+  String get expenseFlowOcrConfirm;
+
+  /// No description provided for @expenseFlowOcrConfirmRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先核对识别结果并勾选确认'**
+  String get expenseFlowOcrConfirmRequired;
+
+  /// No description provided for @expenseFlowOriginalRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先在详情页上传凭证原件，并在此关联对应文件'**
+  String get expenseFlowOriginalRequired;
+
+  /// No description provided for @expenseFlowInvoiceDateRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择凭证日期'**
+  String get expenseFlowInvoiceDateRequired;
+
+  /// No description provided for @expenseFlowOtherNumberInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他凭证号码可包含字母、数字、斜线和短横线，最多 60 位；请填写开具方'**
+  String get expenseFlowOtherNumberInvalid;
+
+  /// No description provided for @expenseFlowVerify.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记查验结果'**
+  String get expenseFlowVerify;
+
+  /// No description provided for @expenseFlowVerifyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'凭证人工查验'**
+  String get expenseFlowVerifyTitle;
+
+  /// No description provided for @expenseFlowVerifyGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'先核对业务真实性和附件原件。税务发票请在国家税务总局发票查验平台或电子税务局查验；其他合法凭证按其适用渠道核实。金额勾稽与图片识别均不代表税务查验。'**
+  String get expenseFlowVerifyGuide;
+
+  /// No description provided for @expenseFlowVerifyOfficial.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开国家税务总局查验平台'**
+  String get expenseFlowVerifyOfficial;
+
+  /// No description provided for @expenseFlowVerifyRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'查验记录(渠道、结果及必要说明) *'**
+  String get expenseFlowVerifyRemark;
+
+  /// No description provided for @expenseFlowVerifyPassed.
+  ///
+  /// In zh, this message translates to:
+  /// **'查验通过'**
+  String get expenseFlowVerifyPassed;
+
+  /// No description provided for @expenseFlowVerifyMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'查验不符'**
+  String get expenseFlowVerifyMismatch;
+
+  /// No description provided for @expenseFlowVerifyRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写查验渠道和结果说明'**
+  String get expenseFlowVerifyRequired;
+
+  /// No description provided for @expenseFlowVerifyBeforeApprove.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先逐张登记凭证的人工查验结果，再审批通过'**
+  String get expenseFlowVerifyBeforeApprove;
+
+  /// No description provided for @expenseFlowPaymentRecord.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记付款'**
+  String get expenseFlowPaymentRecord;
+
+  /// No description provided for @expenseFlowPaymentConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认已付款'**
+  String get expenseFlowPaymentConfirm;
+
+  /// No description provided for @expenseFlowPaymentGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先在线下完成实际付款。此操作只登记已发生的付款、扣减系统账户余额并生成财务记录，不会向银行发起转账。'**
+  String get expenseFlowPaymentGuide;
+
+  /// No description provided for @expenseFlowPaymentDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已登记付款，财务记录已生成'**
+  String get expenseFlowPaymentDone;
+
+  /// No description provided for @expenseFlowPrintDisclaimer.
+  ///
+  /// In zh, this message translates to:
+  /// **'内部报销审批展示单；不替代原始凭证、税务查验或法定电子档案。'**
+  String get expenseFlowPrintDisclaimer;
+
+  /// No description provided for @expenseFlowSettingsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销设置'**
+  String get expenseFlowSettingsTitle;
+
+  /// No description provided for @expenseFlowSettingsDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'由财务维护公司抬头和凭证要求，员工填单时自动显示。'**
+  String get expenseFlowSettingsDescription;
+
+  /// No description provided for @expenseFlowCompanyName.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司名称'**
+  String get expenseFlowCompanyName;
+
+  /// No description provided for @expenseFlowCompanyTaxNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'纳税人识别号'**
+  String get expenseFlowCompanyTaxNo;
+
+  /// No description provided for @expenseFlowSubmissionGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销及凭证说明'**
+  String get expenseFlowSubmissionGuide;
+
+  /// No description provided for @expenseFlowRequireInvoice.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交时必须登记发票'**
+  String get expenseFlowRequireInvoice;
+
+  /// No description provided for @expenseFlowRequireInvoiceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭后仍须上传合法原始凭证，并填写无发票情况说明。'**
+  String get expenseFlowRequireInvoiceHint;
+
+  /// No description provided for @expenseFlowSettingsSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销设置已保存'**
+  String get expenseFlowSettingsSaved;
+
+  /// No description provided for @expenseFlowSettingsSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存设置'**
+  String get expenseFlowSettingsSave;
+
+  /// No description provided for @expenseFlowSettingsLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销设置加载失败'**
+  String get expenseFlowSettingsLoadFailed;
+
+  /// No description provided for @expenseFlowRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get expenseFlowRetry;
+
+  /// No description provided for @expenseFlowCompanyNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写公司名称'**
+  String get expenseFlowCompanyNameRequired;
+
+  /// No description provided for @expenseFlowSettingsEntryDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司抬头、税号及提交凭证要求'**
+  String get expenseFlowSettingsEntryDescription;
+
+  /// No description provided for @expenseFlowApprovalEntryDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对凭证、审批及登记付款'**
+  String get expenseFlowApprovalEntryDescription;
+
+  /// No description provided for @expenseFlowApprovalTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销审批'**
+  String get expenseFlowApprovalTitle;
+
+  /// No description provided for @expenseFlowInvoiceRequiredGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'按财务设置，本单须登记发票并关联原件后才能提交。'**
+  String get expenseFlowInvoiceRequiredGuide;
+
+  /// No description provided for @expenseFlowReadEvidenceRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'审批通过前需要具备凭证预览与下载权限，请联系授权人。'**
+  String get expenseFlowReadEvidenceRequired;
+
+  /// No description provided for @expenseFlowHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'已处理'**
+  String get expenseFlowHistory;
+
+  /// No description provided for @expenseFlowPendingCorrection.
+  ///
+  /// In zh, this message translates to:
+  /// **'待修订'**
+  String get expenseFlowPendingCorrection;
+
+  /// No description provided for @expenseFlowPaymentProofs.
+  ///
+  /// In zh, this message translates to:
+  /// **'付款证明(银行回单或现金签收凭据)'**
+  String get expenseFlowPaymentProofs;
+
+  /// No description provided for @expenseFlowPaymentProofGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'先完成实际付款并上传凭据，再登记付款。'**
+  String get expenseFlowPaymentProofGuide;
+
+  /// No description provided for @expenseFlowPaymentProofRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先上传付款证明，再确认已付款。'**
+  String get expenseFlowPaymentProofRequired;
+
+  /// No description provided for @expenseFlowItemPurpose.
+  ///
+  /// In zh, this message translates to:
+  /// **'费用用途 *'**
+  String get expenseFlowItemPurpose;
+
+  /// No description provided for @expenseFlowItemPurposeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请说明这笔费用的真实用途，如客户、项目或具体行程。'**
+  String get expenseFlowItemPurposeHint;
+
+  /// No description provided for @expenseFlowItemPurposeRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写费用用途'**
+  String get expenseFlowItemPurposeRequired;
+
+  /// No description provided for @goodsLearnedPriceUnconfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'计价单位与币种待核对'**
+  String get goodsLearnedPriceUnconfirmed;
+
+  /// No description provided for @goodsLearnedPriceTaxRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'税率'**
+  String get goodsLearnedPriceTaxRate;
+
+  /// No description provided for @shelfLocationQuantityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'库位是存放建议；库存按实际仓库和颜色统计，不代表该库位的盘点数量。'**
+  String get shelfLocationQuantityHint;
+
+  /// No description provided for @shelfActualWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际仓库'**
+  String get shelfActualWarehouse;
+
+  /// No description provided for @shelfMasterOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'主档建议(未指定仓库)'**
+  String get shelfMasterOnly;
+
+  /// No description provided for @shelfChooseWarehouseForRack.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。'**
+  String get shelfChooseWarehouseForRack;
+
+  /// No description provided for @warehouseGoodsMasterDefaultHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已带入货品主档的默认存放仓，请核对本次实际仓库'**
+  String get warehouseGoodsMasterDefaultHint;
+
+  /// No description provided for @warehouseSuggestedDestinationHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已带入建议存放仓，请核对本次实际仓库'**
+  String get warehouseSuggestedDestinationHint;
+
+  /// No description provided for @warehouseBatchRegistrationHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。'**
+  String get warehouseBatchRegistrationHelp;
 }
 
 class _AppLocalizationsDelegate

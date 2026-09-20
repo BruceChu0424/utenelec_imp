@@ -7,7 +7,6 @@
 -- 幂等：只补 owner_employee_id IS NULL 的历史行，不清空或覆盖用户已经维护的新 UUID 关系。
 -- =====================================================================
 
-BEGIN;
 
 WITH unique_employees AS (
     SELECT legacy_id, (array_agg(id ORDER BY id))[1] AS employee_id
@@ -43,7 +42,6 @@ WHERE s.owner_employee_id IS NULL
       ELSE NULL
   END;
 
-COMMIT;
 
 -- ---------------- 校验 ----------------
 SELECT r FROM (

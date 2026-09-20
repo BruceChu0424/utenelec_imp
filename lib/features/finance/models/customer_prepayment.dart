@@ -93,6 +93,7 @@ class CustomerPrepaymentItem {
     this.availableOriginal,
     this.availableLocal,
     this.rowVersion = 0,
+    this.legacyImported = false,
   });
 
   final String ledgerId;
@@ -112,8 +113,10 @@ class CustomerPrepaymentItem {
   final String? availableOriginal;
   final String? availableLocal;
   final int rowVersion;
+  final bool legacyImported;
 
   bool get hasAvailable =>
+      !legacyImported &&
       (financeAmountUnits(availableOriginal) ?? BigInt.zero) > BigInt.zero;
 
   factory CustomerPrepaymentItem.fromJson(Map<String, dynamic> json) =>
@@ -141,6 +144,10 @@ class CustomerPrepaymentItem {
         availableOriginal: financeExactDecimal(json['availableOriginal']),
         availableLocal: financeExactDecimal(json['availableLocal']),
         rowVersion: _int(json['rowVersion']),
+        legacyImported:
+            (json['legacyImported'] as bool? ?? false) ||
+            json['legacyId'] != null ||
+            json['receiptLegacyId'] != null,
       );
 }
 

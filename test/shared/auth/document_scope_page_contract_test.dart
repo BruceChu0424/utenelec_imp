@@ -51,8 +51,21 @@ void main() {
       'lib/features/warehouse/pages/stock_doc_detail_page.dart',
     ).readAsStringSync();
 
-    expect(finance, contains('bool get _canApprove => _hasPermission'));
-    expect(finance, contains('bool get _canReverse => _hasPermission'));
+    // Finance review is pooled across document owners, while imported history
+    // remains immutable. Check the actual action expression so an unrelated
+    // permission check elsewhere in the page cannot satisfy this boundary.
+    for (final action in const {
+      'Approve': 'approve',
+      'Reverse': 'reverse',
+    }.entries) {
+      final expression = RegExp(
+        'bool\\s+get\\s+_can${action.key}\\s*=>\\s*([^;]+);',
+      ).firstMatch(finance)?.group(1);
+      expect(expression, isNotNull);
+      expect(expression, contains('_canMutate'));
+      expect(expression, contains('_hasPermission(_cfg.${action.value}Perm)'));
+      expect(expression, isNot(contains('_ordinaryWritable')));
+    }
     expect(daily, contains('bool get _canApprove => _allows'));
     expect(daily, contains('bool get _canReverse => _allows'));
     expect(stock, contains('detail.productionLinked || _ordinaryWritable'));

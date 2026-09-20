@@ -6,6 +6,7 @@
 // UUID=String；金额/数量=(json as num?)；日期=ISO 字符串直存（后端 LocalDate）；status=Short→int。
 
 import '../../../shared/models/procurement_finance_approval.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
 
 /// 委外单据类型。pathSegment 对齐后端 /api/subcontract/{inquiries|applications|orders|
 /// receipts|returns|material-issues|material-returns|wastes}。
@@ -54,10 +55,11 @@ class SubcontractDocListItem {
     this.apPosted = false,
     this.fulfill = false,
     this.legacyId,
+    bool legacyImported = false,
     this.financeApproval,
     this.statusOverride,
     this.warehouseNameOverride,
-  });
+  }) : legacyImported = legacyImported || legacyId != null;
 
   final String id;
   final String? billNo;
@@ -75,6 +77,7 @@ class SubcontractDocListItem {
   final bool apPosted;
   final bool fulfill;
   final int? legacyId;
+  final bool legacyImported;
   final ProcurementFinanceApproval? financeApproval;
 
   /// 显示覆盖（2026-09-05 计划委外申请页合并待生产行）：待生产合成行用
@@ -98,6 +101,7 @@ class SubcontractDocListItem {
         apPosted: (json['apPosted'] as bool?) ?? false,
         fulfill: (json['fulfill'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        legacyImported: json['legacyImported'] as bool? ?? false,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),
@@ -114,10 +118,15 @@ class SubcontractDocItem {
     this.colorId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
     this.qty,
+    this.qtyText,
     this.price,
+    this.priceText,
     this.amountOriginal,
+    this.amountOriginalText,
     this.amountLocal,
+    this.amountLocalText,
     this.checkQty,
     this.orderQty,
     this.receivedQty,
@@ -156,10 +165,15 @@ class SubcontractDocItem {
   final String? colorId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
   final double? qty;
+  final String? qtyText;
   final double? price;
+  final String? priceText;
   final double? amountOriginal;
+  final String? amountOriginalText;
   final double? amountLocal;
+  final String? amountLocalText;
   final double? checkQty;
   final double? orderQty;
   final double? receivedQty;
@@ -218,10 +232,15 @@ class SubcontractDocItem {
         colorId: json['colorId'] as String?,
         unitId: json['unitId'] as String?,
         unitRate: (json['unitRate'] as num?)?.toDouble(),
+        unitRateText: receiptRecordedDecimal(json, 'unitRate'),
         qty: (json['qty'] as num?)?.toDouble(),
+        qtyText: receiptRecordedDecimal(json, 'qty'),
         price: (json['price'] as num?)?.toDouble(),
+        priceText: receiptRecordedDecimal(json, 'price'),
         amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+        amountOriginalText: receiptRecordedDecimal(json, 'amountOriginal'),
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+        amountLocalText: receiptRecordedDecimal(json, 'amountLocal'),
         checkQty: (json['checkQty'] as num?)?.toDouble(),
         orderQty: (json['orderQty'] as num?)?.toDouble(),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
@@ -285,12 +304,14 @@ class SubcontractDocDetail {
   const SubcontractDocDetail({
     required this.id,
     this.legacyId,
+    bool legacyImported = false,
     this.billNo,
     this.billDate,
     this.supplierId,
     this.warehouseId,
     this.currencyId,
     this.exchangeRate,
+    this.exchangeRateText,
     this.taxRate,
     this.purchaserId,
     this.senderId,
@@ -307,7 +328,9 @@ class SubcontractDocDetail {
     this.settlementMethodId,
     this.remark,
     this.totalOriginal,
+    this.totalOriginalText,
     this.totalLocal,
+    this.totalLocalText,
     this.priceMasked = false,
     this.status,
     this.closed = false,
@@ -327,16 +350,18 @@ class SubcontractDocDetail {
     this.sourceOrderNo,
     this.deductAmount,
     this.deductPosted,
-  });
+  }) : legacyImported = legacyImported || legacyId != null;
 
   final String id;
   final int? legacyId;
+  final bool legacyImported;
   final String? billNo;
   final String? billDate;
   final String? supplierId;
   final String? warehouseId;
   final String? currencyId;
   final double? exchangeRate;
+  final String? exchangeRateText;
   final double? taxRate;
   final String? purchaserId;
   final String? senderId;
@@ -357,7 +382,9 @@ class SubcontractDocDetail {
   final String? settlementMethodId;
   final String? remark;
   final double? totalOriginal;
+  final String? totalOriginalText;
   final double? totalLocal;
+  final String? totalLocalText;
 
   /// 价格已对当前用户脱敏（金额族/明细价格族为 null；渲染 ***，V302 收货单价格脱敏）。
   final bool priceMasked;
@@ -390,12 +417,14 @@ class SubcontractDocDetail {
       SubcontractDocDetail(
         id: json['id'] as String,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        legacyImported: json['legacyImported'] as bool? ?? false,
         billNo: json['billNo'] as String?,
         billDate: json['billDate'] as String?,
         supplierId: json['supplierId'] as String?,
         warehouseId: json['warehouseId'] as String?,
         currencyId: json['currencyId'] as String?,
         exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+        exchangeRateText: receiptRecordedDecimal(json, 'exchangeRate'),
         taxRate: (json['taxRate'] as num?)?.toDouble(),
         purchaserId: json['purchaserId'] as String?,
         senderId: json['senderId'] as String?,
@@ -412,7 +441,9 @@ class SubcontractDocDetail {
         settlementMethodId: json['settlementMethodId'] as String?,
         remark: json['remark'] as String?,
         totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
+        totalOriginalText: receiptRecordedDecimal(json, 'totalOriginal'),
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        totalLocalText: receiptRecordedDecimal(json, 'totalLocal'),
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,

@@ -20,13 +20,11 @@
 
 
 -- ======================== 0. FK-ordered cleanup ========================
-BEGIN;
 DELETE FROM production_daily_report_items;
 DELETE FROM production_daily_reports;
 DELETE FROM production_plan_costs;
 DELETE FROM production_plan_items;
 DELETE FROM production_plans;
-COMMIT;
 
 
 -- ======================== 1. staging ========================
@@ -97,7 +95,6 @@ CREATE TEMP TABLE dri_stage (
 
 -- ======================== 2. 自动补录缺失基础资料（同采购范式） ========================
 -- 老库 BOM 可能引用已删货品/颜色/单位/供应商；引用完整性优先，最小存根补录。
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 -- 货品历史 FK 锚：legacy_id+name+auto_created=TRUE；不是待补全普通货品，V177/V181 要求选择器/BOM/MRP 隔离。
@@ -161,13 +158,12 @@ WITH candidates AS (
 )
 INSERT INTO suppliers (legacy_id, category_id, code, name, status, code_managed, code_sequence)
 SELECT lid, (SELECT id FROM supplier_categories WHERE legacy_id = -1),
-       'LEGACY-S-' || lid, '（迁移自动补录）', '使用', FALSE,
+       'LEGACY-S-' || lid, '（迁移自动补录）', '禁用', FALSE,
        reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
 FROM numbered CROSS JOIN reserved
 ON CONFLICT (legacy_id) DO UPDATE
 SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 
-COMMIT;
 
 
 -- ======================== 3. production_plans ========================
@@ -177,7 +173,6 @@ COMMIT;
 -- maker_name/approver_name：冻结老库 Sys_Operator.fname / B_Worker.Emp_Name
 --   （export 端双表 COALESCE 取名）。报表 COALESCE(em.full_name, maker_name)
 --   —— employees.legacy_id 对齐后用真名，否则用冻结名（同委外 V66 范式）。
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 INSERT INTO production_plans (
     legacy_id, bill_no, bill_date, f_style, delivery_date,
@@ -192,14 +187,12 @@ SELECT s.legacy_id, s.bill_no, s.bill_date, NULLIF(s.f_style,''), s.delivery_dat
        COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), COALESCE(s.cancel_bit, FALSE),
        NULL::uuid  -- 历史计划没有可证明的报工来源 UUID，禁止按自由文本猜测
 FROM plan_stage s;
-COMMIT;
 
 
 -- ======================== 4. production_plan_items ========================
 -- sales_order_item_id 子查询映射（V51 sales_order_items 必须先迁）；老库样本
 --   S_OrderID 多为 0（直接计划生产），JOIN 率预期较低，无 FK 强约束。
 -- bill_date/bill_no 反冗余自 plan_stage（裁剪索引 + 报表免 JOIN 主表）。
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 INSERT INTO production_plan_items (
     legacy_id, bill_no, bill_date, plan_id, line_no, product_no,
@@ -236,7 +229,6 @@ SELECT s.legacy_id, p.bill_no, p.bill_date,
                   CASE WHEN NULLIF(s.tran_no,'') IS NULL THEN NULL ELSE 'TRAN:' || s.tran_no END),
        NULLIF(s.remark,'')
 FROM item_stage s JOIN plan_stage p ON p.legacy_id = s.plan_legacy_id;
-COMMIT;
 
 
 -- ======================== 5. production_plan_costs（1.36M 行 · 按年分批 INSERT） ========================
@@ -248,9 +240,8 @@ COMMIT;
 --   bill_date 用 '1970-01-01' 兜底，落入 DEFAULT 分区，校验段报告此类异常行数。
 --
 -- 分批策略：先一次性物化 cost_prepared TEMP TABLE（含所有 FK UUID 解析 + 兜底 bill_date），
---   再用 PROCEDURE 循环 13 个年度（2018-2030）+ 1 个 outlier 批，每年独立 COMMIT
---   （PG 11+ PROCEDURE 允许循环内 COMMIT，DO 块不允许）。
---   单批 ~100k 行级，失败可单独重跑（NOT EXISTS 防重）。
+--   再用 DO 循环 13 个年度（2018-2030）+ 1 个 outlier 批，不提交调用方事务。
+--   单批 ~100k 行级；NOT EXISTS 防重，任一年度失败时整段成本插入回滚。
 
 -- 5a. 物化解析好的 cost_prepared（hash JOIN 一次性算完，避免 1.36M 次相关子查询）
 --     注：bill_item_id 来自 production_plan_items.legacy_id JOIN。若 BillID 找不到对应
@@ -294,8 +285,9 @@ CREATE INDEX idx_cost_prepared_date ON cost_prepared (bill_date);
 CREATE INDEX idx_cost_prepared_orphan ON cost_prepared ((bill_item_id IS NULL));
 ANALYZE cost_prepared;
 
--- 5b. 按年分批 INSERT（PROCEDURE 内 COMMIT，单批失败可重跑）
-CREATE OR REPLACE PROCEDURE migrate_plan_costs_yearly() LANGUAGE plpgsql AS $$
+-- 5b. 按年分批 INSERT，全部批次属于调用方事务。
+-- 首导协调器在同一事务内执行所有模块；这里禁止内部 COMMIT。
+DO $$
 DECLARE
     y int;
     n int;
@@ -323,7 +315,6 @@ BEGIN
           AND NOT EXISTS (SELECT 1 FROM production_plan_costs pc WHERE pc.legacy_id = cost_prepared.legacy_id);
         GET DIAGNOSTICS n = ROW_COUNT;
         RAISE NOTICE 'Year %: inserted % rows', y, n;
-        COMMIT;
     END LOOP;
 
     -- outlier 批：1970 兜底行 + 真实异常日期（<2018 / >2030），全进 DEFAULT 分区
@@ -348,11 +339,7 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM production_plan_costs pc WHERE pc.legacy_id = cost_prepared.legacy_id);
     GET DIAGNOSTICS n = ROW_COUNT;
     RAISE NOTICE 'Outlier year (<2018 or >2030, incl. 1970 fallback): inserted % rows', n;
-    COMMIT;
 END $$;
-
-CALL migrate_plan_costs_yearly();
-DROP PROCEDURE migrate_plan_costs_yearly();
 
 
 -- ======================== 6. parent_id 自引用回填 ========================
@@ -360,13 +347,11 @@ DROP PROCEDURE migrate_plan_costs_yearly();
 --   顶层行 parent_legacy_id = 0 不回填（保持 NULL）。
 --   查不到父行（父 legacy 不在结果集）也保持 NULL，校验段报告。
 -- 分区表 PK = (id, bill_date)，无法建 FK 自引用，靠此 UPDATE + 索引 + 应用层保证。
-BEGIN;
 UPDATE production_plan_costs c SET parent_id = p.id
 FROM production_plan_costs p
 WHERE c.parent_legacy_id <> 0
   AND p.legacy_id = c.parent_legacy_id
   AND p.bill_date = c.bill_date;
-COMMIT;
 
 
 -- ======================== 7. production_daily_reports(+items)：0 行跳过 INSERT ========================
@@ -417,7 +402,5 @@ UNION ALL SELECT '   approver_name 命中（冻结名） ' || (SELECT count(*) F
 
 -- ======================== 9. 刷新生产报表物化视图 ========================
 -- 迁完必须刷新，否则 production_monthly_mv 为空 → 月度/汇总报表无数据
--- （销售 migrate 踩过的坑，见 MEMORY「sales-report-completion」）。
--- refresh_production_monthly_mv() 用 CONCURRENTLY（V56 已建唯一索引
--- mv_production_monthly_uidx），须在所有 COMMIT 之后单语句调用（不在事务块内）。
-SELECT refresh_production_monthly_mv();
+-- 首导目标尚未放行业务读取；普通刷新与本次完整导入一起提交或回滚。
+REFRESH MATERIALIZED VIEW production_monthly_mv;

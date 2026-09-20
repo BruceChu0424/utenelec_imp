@@ -237,6 +237,14 @@ const List<AttachmentTypeRule> _rules = [
     preview: AttachmentPreviewKind.text,
   ),
 
+  // OFD 原件只保留/下载，不冒充 PDF 预览或电子签名查验。
+  AttachmentTypeRule(
+    extensions: ['ofd'],
+    contentType: 'application/ofd',
+    kind: AttachmentFileKind.other,
+    preview: AttachmentPreviewKind.none,
+  ),
+
   // ---- 压缩包：预览 = 列条目，不解压。zip 的中央目录能纯 Dart 读；
   //      7z/rar 的目录本身是压缩的，读不了，只收不预览。----
   AttachmentTypeRule(

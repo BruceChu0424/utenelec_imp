@@ -163,7 +163,35 @@ public class ProductionDailyReportService {
         Map<UUID, String> transferLabels = directTransferTargetLabels(rows);
         List<DailyReportItemDto> items = rows.stream()
                 .map(item -> toItemDto(item, transferLabels)).toList();
+        populateExecutionContext(r, items);
         return toDetail(r, items);
+    }
+
+    private void populateExecutionContext(ProductionDailyReport report, List<DailyReportItemDto> items) {
+        List<UUID> segmentIds = items.stream().map(DailyReportItemDto::getExecutionSegmentId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (segmentIds.isEmpty()) return;
+        Map<UUID, Object[]> contexts = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.id, segment.plan_id,
+                       CASE WHEN :draft THEN GREATEST(segment.planned_qty - COALESCE((
+                           SELECT SUM(item.qty) FROM production_daily_report_items item
+                           JOIN production_daily_reports other ON other.id=item.report_id
+                           WHERE item.execution_segment_id=segment.id
+                             AND item.fqc_recovery_authorization_id IS NULL AND NOT item.is_deleted
+                             AND other.status=1 AND NOT other.is_deleted
+                             AND other.id<>:report),0),0) ELSE NULL END
+                FROM production_execution_segments segment WHERE segment.id IN (:segments)
+                """).setParameter("segments",segmentIds).setParameter("report",report.getId())
+                .setParameter("draft",report.getStatus()==STATUS_DRAFT))) {
+            contexts.put((UUID) row[0],row);
+        }
+        for (DailyReportItemDto item : items) {
+            Object[] context = contexts.get(item.getExecutionSegmentId());
+            if (context == null) continue;
+            item.setPlanId((UUID) context[1]);
+            item.setRemainingPlanQty((BigDecimal) context[2]);
+        }
     }
 
     @Transactional
@@ -182,9 +210,7 @@ public class ProductionDailyReportService {
         lockCreateCommand(actorId, idempotencyKey);
         CreateCommand replay = findCreateCommand(actorId, idempotencyKey);
         if (replay != null) {
-            boolean legacyReplay = req.getWorkerIds() == null
-                    && legacyCreateRequestHash(req).equals(replay.requestHash());
-            if (!requestHash.equals(replay.requestHash()) && !legacyReplay) {
+            if (!requestHash.equals(replay.requestHash())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报创建请求");
             }
@@ -318,7 +344,7 @@ public class ProductionDailyReportService {
         // 放在计划结案重算之前——材料结清会改写 is_closed，顺序反过来会让刚算好的结案状态失效。
         settleMaterialUsageOnApprove(r);
         // 2.6) V595 持续生产：完结行所在工单的直送子件余量就此释放(不会再有人送料)。
-        releaseDirectSupplyRemainderOnFinal(items);
+        releaseContinuousMaterialRemainderOnFinal(r.getId(), items);
 
         // 3) 受影响计划重算结案
         for (UUID planId : byPlan.keySet()) {
@@ -389,6 +415,19 @@ public class ProductionDailyReportService {
                 "production_daily_report:reverse");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
+        executionSegments.prelockForReverse(items);
+        lockPlanItems(items.stream()
+                .map(ProductionDailyReportItem::getPlanItemId)
+                .filter(java.util.Objects::nonNull)
+                .toList());
+        Map<UUID, List<PlanOrderItemLink>> lockedLinks = lockPlanLinkGraph(
+                items.stream().map(ProductionDailyReportItem::getPlanItemId)
+                        .filter(Objects::nonNull).toList(), false);
+        // Validate the locked source before our own reversals change its state.
+        // Material reversal may legitimately reopen a completed segment; comparing
+        // the old fingerprint after that write mistakes our change for a race.
+        sourceGuard.verifyUnchanged();
         // V583：先退掉本单审核时登记的实际用料。放在执行段回退之前——材料冲销会把已完工段
         // 打回生产中，先冲再回退，后面的执行段校验看到的才是最终状态。
         reverseMaterialUsageOnReverse(r);
@@ -397,16 +436,7 @@ public class ProductionDailyReportService {
         directTransfer.reverseForReport(
                 r.getId(),
                 "生产日报 " + (r.getBillNo() == null ? "" : r.getBillNo()) + " 红冲");
-        List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
         executionSegments.reverse(items);
-        lockPlanItems(items.stream()
-                .map(ProductionDailyReportItem::getPlanItemId)
-                .filter(java.util.Objects::nonNull)
-                .toList());
-        Map<UUID, List<PlanOrderItemLink>> lockedLinks = lockPlanLinkGraph(
-                items.stream().map(ProductionDailyReportItem::getPlanItemId)
-                        .filter(Objects::nonNull).toList(), false);
-        sourceGuard.verifyUnchanged();
 
         // 1) 回退 fqty / links.produced / 行状态
         List<UUID> affectedPlans = new ArrayList<>();
@@ -498,6 +528,7 @@ public class ProductionDailyReportService {
             }
         }
 
+        restoreContinuousMaterialRemainder(r.getId(), items);
         for (UUID planId : affectedPlans) {
             recomputePlanClosed(planId);
         }
@@ -876,8 +907,30 @@ public class ProductionDailyReportService {
         BigDecimal shortfall = plannedQty.subtract(produced);
         if (shortfall.signum() <= 0) return; // 足量完结，无需补产
 
+        if(Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_daily_report_has_unissued_material(:item)")
+                .setParameter("item",planItemId).getSingleResult())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "仍有已备料但未实发的预留或领料明细，不能提前完结后遗留继续发料的任务；请先普通分次报工，继续按原任务领料生产，达量后再完成");
+        }
+        Number openSupply = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM production_material_demands demand
+                JOIN production_material_supply_pegs peg ON peg.demand_id=demand.id
+                WHERE demand.source_plan_item_id=:item AND NOT demand.is_deleted
+                  AND peg.status<>'REVERSED' AND peg.allocated_qty-peg.consumed_qty-peg.released_qty>0
+                """).setParameter("item",planItemId).getSingleResult();
+        if(openSupply.longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
+                "仍有未兑现的采购、委外或生产供给承诺，请先按原供给链撤回或改派后提前完结；本次可继续普通分次报工");
+
         UUID planId = (UUID) pi[1];
         String planNo = (String) pi[9];
+        // Freeze the exact owner of the target change before updating its projection.
+        em.createNativeQuery("""
+                INSERT INTO production_daily_report_target_events(
+                    report_id,plan_item_id,event_type,before_qty,after_qty,created_by)
+                VALUES(:report,:item,'CAP',:before,:after,:actor)
+                """).setParameter("report",r.getId()).setParameter("item",planItemId)
+                .setParameter("before",plannedQty).setParameter("after",produced)
+                .setParameter("actor",currentUser.requireId()).executeUpdate();
         // 封顶：计划行
         em.createNativeQuery("""
                 UPDATE production_plan_items
@@ -1011,11 +1064,31 @@ public class ProductionDailyReportService {
      * 并重算 production_execution_segments.planned_qty，保持总量等式。
      */
     private void restoreCap(UUID reportId,UUID planItemId, List<PlanOrderItemLink> lockedLinks) {
-        Object capObj = em.createNativeQuery(
-                "SELECT capped_qty FROM production_plan_items WHERE id = :id")
-                .setParameter("id", planItemId).getSingleResult();
-        BigDecimal cap = bd(capObj);
-        if (cap.signum() <= 0) return;
+        List<Object[]> caps = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT cap.id,cap.before_qty,cap.after_qty
+                FROM production_daily_report_target_events cap
+                WHERE cap.report_id=:report AND cap.plan_item_id=:item AND cap.event_type='CAP'
+                  AND NOT EXISTS(SELECT 1 FROM production_daily_report_target_events back WHERE back.source_event_id=cap.id)
+                """).setParameter("report",reportId).setParameter("item",planItemId));
+        if(caps.isEmpty()) {
+            Number ambiguous = (Number)em.createNativeQuery("""
+                    SELECT COUNT(*) FROM production_plan_items item
+                    WHERE item.id=:item AND COALESCE(item.capped_qty,0)>0
+                      AND NOT EXISTS(SELECT 1 FROM production_daily_report_target_events cap WHERE cap.plan_item_id=item.id)
+                    """).setParameter("item",planItemId).getSingleResult();
+            if(ambiguous.longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
+                    "历史完结封顶缺少原日报数量事实，请先核对封顶来源，不能按当前余额猜测恢复");
+            return; // This final report did not reduce the target; another report owns any cap.
+        }
+        Object[] source=caps.getFirst();
+        BigDecimal cap=bd(source[1]).subtract(bd(source[2]));
+        em.createNativeQuery("""
+                INSERT INTO production_daily_report_target_events(
+                    report_id,plan_item_id,event_type,before_qty,after_qty,source_event_id,created_by)
+                VALUES(:report,:item,'RESTORE',:before,:after,:source,:actor)
+                """).setParameter("report",reportId).setParameter("item",planItemId)
+                .setParameter("before",source[2]).setParameter("after",source[1])
+                .setParameter("source",source[0]).setParameter("actor",currentUser.requireId()).executeUpdate();
         int planUpdated = em.createNativeQuery("""
                 UPDATE production_plan_items
                 SET qty = COALESCE(qty,0) + :cap, capped_qty = NULL WHERE id = :id
@@ -1308,42 +1381,21 @@ public class ProductionDailyReportService {
      * readable plan/order number snapshots are intentionally excluded.
      */
     static String createRequestHash(DailyReportSaveRequest request) {
-        return createRequestHash(request, false);
-    }
-
-    /**
-     * V409 command rows created before V427 used the single workerId field in
-     * their hash. Old-client retries remain replayable after the forward
-     * migration, while every new command is recorded with the ordered list.
-     */
-    static String legacyCreateRequestHash(
-            DailyReportSaveRequest request) {
-        return createRequestHash(request, true);
-    }
-
-    private static String createRequestHash(
-            DailyReportSaveRequest request, boolean legacyWorkers) {
         if (request == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "生产日报创建请求不能为空");
         }
         List<String> parts = new ArrayList<>();
-        addCanonical(parts, "schema", legacyWorkers
-                ? "PRODUCTION-DAILY-REPORT-CREATE-V1"
-                : "PRODUCTION-DAILY-REPORT-CREATE-V2");
+        addCanonical(parts, "schema", "PRODUCTION-DAILY-REPORT-CREATE-V2");
         addCanonical(parts, "header.billDate", request.getBillDate());
         addCanonical(parts, "header.warehouseId", request.getWarehouseId());
         addCanonical(parts, "header.departmentId", request.getDepartmentId());
         addCanonical(parts, "header.workshopName", request.getWorkshopName());
-        if (legacyWorkers) {
-            addCanonical(parts, "header.workerId", request.getWorkerId());
-        } else {
-            List<UUID> workerIds = normalizeWorkerIds(request);
-            addCanonical(parts, "header.workerIds.count", workerIds.size());
-            for (int index = 0; index < workerIds.size(); index++) {
-                addCanonical(parts, "header.workerIds[" + index + "]",
-                        workerIds.get(index));
-            }
+        List<UUID> workerIds = normalizeWorkerIds(request);
+        addCanonical(parts, "header.workerIds.count", workerIds.size());
+        for (int index = 0; index < workerIds.size(); index++) {
+            addCanonical(parts, "header.workerIds[" + index + "]",
+                    workerIds.get(index));
         }
         addCanonical(parts, "header.supplierId", request.getSupplierId());
         addCanonical(parts, "header.remark", request.getRemark());
@@ -1395,8 +1447,8 @@ public class ProductionDailyReportService {
             addCanonical(parts, path + ".clientName", line.getClientName());
             addCanonical(parts, path + ".sourceDocNo", line.getSourceDocNo());
             addCanonical(parts, path + ".remark", line.getRemark());
-            // V584/V585：去向与接收工单只在非默认值时进指纹，不带这两项的历史请求
-            // 指纹必须逐字节不变，否则旧 command 行的重放会全部判成冲突。
+            // Normalize absent and explicit WAREHOUSE to the same destination.
+            // Only WORKSHOP has a meaningful receiving demand identity.
             if (line.getDestination() != null
                     && !"WAREHOUSE".equalsIgnoreCase(line.getDestination().strip())) {
                 addCanonical(parts, path + ".destination",
@@ -1408,8 +1460,7 @@ public class ProductionDailyReportService {
         // V583：实耗与收尾退仓意愿必须进指纹。漏掉的话，「同一幂等键、只改了实际用料数字」
         // 的重发会被当成重放，静默返回旧单，用户改的数字一个都没存进去。
         //
-        // 只在非默认值时追加(与上面 fqcRecoveryAuthorizationId 同范式)：不带用料的请求
-        // 指纹必须与本次改造之前逐字节相同，否则历史 command 行的重放会全部判成冲突。
+        // An absent material list and an empty list represent the same payload.
         List<DailyReportMaterialUsageLine> materialLines =
                 request.getMaterialLines() == null
                         ? List.of() : request.getMaterialLines();
@@ -1711,8 +1762,7 @@ public class ProductionDailyReportService {
     }
 
     private List<UUID> reportWorkerIds(
-            UUID reportId, UUID legacyWorkerId) {
-        if (legacyWorkerId == null) return List.of();
+            UUID reportId, UUID primaryWorkerId) {
         List<UUID> workerIds = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT employee_id
@@ -1722,7 +1772,11 @@ public class ProductionDailyReportService {
                                 """)
                         .setParameter("reportId", reportId),
                 UUID.class);
-        return workerIds.isEmpty() ? List.of(legacyWorkerId) : workerIds;
+        if (workerIds.isEmpty() && primaryWorkerId != null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "生产日报参与人员记录不完整，请联系管理员核对原始人员记录");
+        }
+        return workerIds;
     }
 
     private void applyHeader(
@@ -1916,7 +1970,7 @@ public class ProductionDailyReportService {
                 it.getOrderDate(), it.getBoxes(), it.getPerBoxQty(), it.getWeight(),
                 it.getClientName(), it.getSourceDocNo(), it.getRemark(), it.isFinal(),
                 it.getDestination(), it.getDirectTransferDemandId(),
-                directTransferLabels.get(it.getId()));
+                directTransferLabels.get(it.getId()), null, null);
     }
 
     /** 直送行的接收方(父件产品名 编号 · 工单号)，详情页「转给工单」列用；非直送行不出现。 */
@@ -1951,46 +2005,61 @@ public class ProductionDailyReportService {
     }
 
     /**
-     * 持续生产(V595)：最后一次报工审核后，同车间直送子件还没送到的那部分需求就此释放——
+     * 持续生产：最后一次报工审核后，尚未投入或预留的物料需求就此释放——
      * 计划已按实际完工封顶，不会再有人送料，也不该让父件因为「需求没齐」永远结不了案。
-     * 只动 direct_supply 需求、只放掉未预留的余量，已投入的料一分不动；需求状态随之刷新。
+     * 仓库与直送使用相同口径，只释放未预留的余量，已投入的料不变；需求状态随之刷新。
      */
-    private void releaseDirectSupplyRemainderOnFinal(List<ProductionDailyReportItem> items) {
+    private void releaseContinuousMaterialRemainderOnFinal(UUID reportId, List<ProductionDailyReportItem> items) {
         List<UUID> segmentIds = items.stream()
                 .filter(ProductionDailyReportItem::isFinal)
+                .filter(item -> item.getFqcRecoveryAuthorizationId()==null)
                 .map(ProductionDailyReportItem::getExecutionSegmentId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+                .filter(Objects::nonNull).distinct().sorted().toList();
         if (segmentIds.isEmpty() || fulfillmentLedger == null) return;
         List<UUID> released = NativeQueryResults.typedRows(em.createNativeQuery("""
-                        UPDATE production_material_demands demand
-                        SET released_qty = demand.required_qty - committed.qty,
-                            lock_version = demand.lock_version + 1,
-                            updated_at = now()
-                        FROM (
-                            SELECT d.id,
-                                   COALESCE((
-                                       SELECT SUM(r.qty - r.released_qty)
-                                       FROM stock_reservations r
-                                       WHERE r.demand_id = d.id
-                                         AND r.is_deleted = FALSE), 0) AS qty
-                            FROM production_material_demands d
-                            JOIN production_execution_segments s
-                              ON s.id = d.execution_segment_id
-                             AND s.continuous_supply
-                            WHERE d.execution_segment_id IN (:segmentIds)
-                              AND d.direct_supply
-                              AND d.is_deleted = FALSE
-                              AND d.status NOT IN ('RELEASED', 'REVERSED')
-                        ) committed
-                        WHERE demand.id = committed.id
-                          AND demand.required_qty - committed.qty > demand.released_qty
-                        RETURNING demand.id
-                        """).setParameter("segmentIds", segmentIds), UUID.class);
-        if (!released.isEmpty()) {
-            fulfillmentLedger.refreshDemandStatuses(released);
-        }
+                INSERT INTO production_daily_report_material_release_events(
+                    report_id,demand_id,event_type,qty_base,created_by)
+                SELECT :report,demand.id,'RELEASE',
+                       demand.required_qty-demand.released_qty-fn_daily_report_open_material_commitment(demand.id),:actor
+                FROM production_material_demands demand
+                JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
+                WHERE segment.id IN (:segments) AND segment.continuous_supply
+                  AND NOT demand.is_deleted AND demand.status NOT IN ('RELEASED','REVERSED')
+                  AND demand.required_qty-demand.released_qty>fn_daily_report_open_material_commitment(demand.id)
+                ORDER BY demand.id
+                RETURNING demand_id
+                """).setParameter("report",reportId).setParameter("segments",segmentIds)
+                .setParameter("actor",currentUser.requireId()), UUID.class);
+        if (!released.isEmpty()) fulfillmentLedger.refreshDemandStatuses(released);
+    }
+
+    private void restoreContinuousMaterialRemainder(UUID reportId, List<ProductionDailyReportItem> items) {
+        List<UUID> segmentIds=items.stream().filter(ProductionDailyReportItem::isFinal)
+                .filter(item -> item.getFqcRecoveryAuthorizationId()==null)
+                .map(ProductionDailyReportItem::getExecutionSegmentId)
+                .filter(Objects::nonNull).distinct().sorted().toList();
+        if(segmentIds.isEmpty() || fulfillmentLedger==null)return;
+        Number ambiguous=(Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM production_material_demands demand
+                JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
+                WHERE segment.id IN (:segments) AND segment.continuous_supply AND NOT demand.is_deleted
+                  AND demand.released_qty>0 AND NOT EXISTS(
+                      SELECT 1 FROM production_daily_report_material_release_events event
+                      WHERE event.demand_id=demand.id)
+                """).setParameter("segments",segmentIds).getSingleResult();
+        if(ambiguous.longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
+                "历史完结释放缺少原日报物料事实，请先核对释放来源，不能按当前余额猜测恢复");
+        List<UUID> restored=NativeQueryResults.typedRows(em.createNativeQuery("""
+                INSERT INTO production_daily_report_material_release_events(
+                    report_id,demand_id,event_type,qty_base,source_event_id,created_by)
+                SELECT source.report_id,source.demand_id,'RESTORE',source.qty_base,source.id,:actor
+                FROM production_daily_report_material_release_events source
+                WHERE source.report_id=:report AND source.event_type='RELEASE'
+                  AND NOT EXISTS(SELECT 1 FROM production_daily_report_material_release_events back
+                                 WHERE back.source_event_id=source.id)
+                ORDER BY source.demand_id RETURNING demand_id
+                """).setParameter("report",reportId).setParameter("actor",currentUser.requireId()), UUID.class);
+        if(!restored.isEmpty())fulfillmentLedger.refreshDemandStatuses(restored);
     }
 
     private DailyReportDetail toDetail(ProductionDailyReport r, List<DailyReportItemDto> items) {

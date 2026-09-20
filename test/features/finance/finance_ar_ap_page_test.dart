@@ -108,10 +108,50 @@ void main() {
     expect(api.lastQuery?['page'], 1);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'legacy opening has a distinct source filter and no fabricated original document link',
+    (tester) async {
+      final api = _ArApApi(sourceDocType: 'LEGACY_OPENING');
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: const MaterialApp(home: FinanceArApPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<ArApLedgerItem>>(
+        find.byType(MasterDataTableView<ArApLedgerItem>),
+      );
+      final source = table.columns.singleWhere(
+        (column) => column.key == 'sourceDocType',
+      );
+      expect(source.value(table.items.single), '历史期初（原单来源待核实）');
+      final resolution = table.columns.singleWhere(
+        (column) => column.key == 'legacySourceResolution',
+      );
+      expect(resolution.value(table.items.single), '原单有多个匹配');
+      expect(resolution.sortable, isFalse);
+      expect(table.items.single.sourceDocId, isNull);
+      expect(table.onRowTap, isNull);
+      final bucket = table.facets['sourceDocType']!.singleWhere(
+        (entry) => entry.value == 'LEGACY_OPENING',
+      );
+      expect(bucket.label, '历史期初（原单来源待核实）');
+      table.onFilterChanged('sourceDocType', bucket.value);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['sourceDocType'], 'LEGACY_OPENING');
+      expect(api.lastQuery?['page'], 1);
+    },
+  );
 }
 
 class _ArApApi extends ApiClient {
-  _ArApApi() : super(Dio());
+  _ArApApi({this.sourceDocType}) : super(Dio());
+
+  final String? sourceDocType;
 
   Map<String, dynamic>? lastQuery;
 
@@ -127,6 +167,11 @@ class _ArApApi extends ApiClient {
           <String, dynamic>{
             'id': 'ledger-1',
             'direction': 'AR',
+            'sourceDocType': sourceDocType,
+            'legacySourceResolution': sourceDocType == 'LEGACY_OPENING'
+                ? {'status': 'AMBIGUOUS_SOURCE'}
+                : null,
+            'sourceDocId': null,
             'billNo': 'AR-20260808-001',
             'billDate': '2026-08-08',
             'dueDate': '2026-09-07',

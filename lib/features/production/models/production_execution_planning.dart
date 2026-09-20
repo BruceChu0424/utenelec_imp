@@ -887,7 +887,8 @@ class ProductionExecutionSegmentView {
     this.canSplitBatch = false,
     this.splitReplaced = false,
     this.continuousSupply = false,
-    this.canStartContinuous = false,
+    this.startRoute,
+    this.canStart = false,
     this.sourceSegmentId,
     this.fqcPendingQty = 0,
     this.fqcPassedQty = 0,
@@ -951,11 +952,11 @@ class ProductionExecutionSegmentView {
   final bool canSplitBatch;
   final bool splitReplaced;
 
-  /// 持续生产(V595)：同车间直送子件分次到料、到一批投一批。
+  /// 持续生产：同任务分次领料或接收直送料，按实际报工推进。
   final bool continuousSupply;
 
-  /// 可按「部分开工 · 持续生产」开工(V595)。
-  final bool canStartContinuous;
+  final String? startRoute;
+  final bool canStart;
   final String? sourceSegmentId;
 
   /// 零料直制段（无下层领料物料）：可开工是因为不需要领料，不是备料完毕。
@@ -1011,7 +1012,8 @@ class ProductionExecutionSegmentView {
       canSplitBatch: json['canSplitBatch'] == true,
       splitReplaced: json['splitReplaced'] == true,
       continuousSupply: json['continuousSupply'] == true,
-      canStartContinuous: json['canStartContinuous'] == true,
+      startRoute: json['startRoute'] as String?,
+      canStart: json['canStart'] == true,
       sourceSegmentId: json['sourceSegmentId'] as String?,
       zeroMaterial: json['zeroMaterial'] == true,
       fqcPendingQty: _optionalDouble(json['fqcPendingQty']) ?? 0,

@@ -24,6 +24,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.nio.file.Files;
@@ -57,13 +58,14 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         jdbc.execute("""
                 CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, status text, auto_promote_when_ready boolean DEFAULT TRUE, is_deleted boolean DEFAULT FALSE,source_segment_id uuid,
-                    product_goods_id uuid,
-                    continuous_supply boolean DEFAULT FALSE, start_route text, route_confirmed_at timestamptz);
+                    product_goods_id uuid,plan_id uuid,package_id uuid,workshop_department_id uuid,responsible_employee_id uuid,
+                    continuous_supply boolean DEFAULT FALSE, start_route text DEFAULT 'FULL_KIT', route_confirmed_at timestamptz);
                 CREATE TABLE production_execution_segment_splits(source_segment_id uuid);
                 CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_can_split_execution_batch(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_production_material_usage_source_segments(uuid) RETURNS TABLE(segment_id uuid) LANGUAGE sql AS 'SELECT NULL::uuid WHERE FALSE';
-                CREATE FUNCTION fn_can_start_continuous_supply(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_execution_start_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_execution_material_custody_valid(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE';
                 CREATE FUNCTION fn_can_change_execution_route(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE FUNCTION fn_demand_direct_supply_eligible(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, is_line_side boolean DEFAULT FALSE);
@@ -71,8 +73,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE employees(id uuid PRIMARY KEY, department_id uuid, status text DEFAULT 'active', is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employee_secondary_departments(employee_id uuid, department_id uuid);
                 CREATE TABLE production_plans(id uuid PRIMARY KEY, bill_no text, status integer, maker_id uuid,
-                    material_analysis_id uuid, is_deleted boolean DEFAULT FALSE);
-                CREATE TABLE goods(id uuid, code text, name text);
+                    material_analysis_id uuid, is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,is_canceled boolean DEFAULT FALSE,is_stopped boolean DEFAULT FALSE);
+                CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text DEFAULT 'CONFIRMED',is_deleted boolean DEFAULT FALSE, cancel_idempotency_key text, created_at timestamp with time zone DEFAULT now(), created_by uuid, deleted_at timestamp with time zone, execution_model_version smallint DEFAULT 0, idempotency_key text, lifecycle_reason text, lock_version bigint DEFAULT 0, plan_id uuid, preview_fingerprint text, purchase_request_id uuid, request_hash text, reverse_idempotency_key text, updated_at timestamp with time zone DEFAULT now(), updated_by uuid, warehouse_id uuid);
+                CREATE TABLE goods(id uuid, code text, name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid);
                 CREATE TABLE production_material_analysis_items(analysis_id uuid, goods_id uuid,
                     sales_order_item_id uuid, is_deleted boolean, source_ref text);
                 CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean);
@@ -116,14 +119,17 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         jdbc.execute("""
                 CREATE TABLE production_material_demands(id uuid PRIMARY KEY, plan_id uuid,
                     execution_segment_id uuid, goods_id uuid, color_id uuid, required_qty numeric,
-                    status text DEFAULT 'ACTIVE', is_deleted boolean DEFAULT FALSE);
+                    status text DEFAULT 'ACTIVE', is_deleted boolean DEFAULT FALSE,split_root_demand_id uuid, consumption_snapshot jsonb);
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
-                    posting_type text, qty_base numeric, stock_document_item_id uuid);
+                    posting_type text, qty_base numeric, stock_document_item_id uuid, recorded_tx_id xid8);
                 CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
                 CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false);
-                CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb);
-                CREATE TABLE production_material_return_request_items(issue_posting_id uuid,request_id uuid,qty_base numeric);
+                CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb,receiving_confirmation_id uuid, counter_event_id uuid, receiving_direction smallint);
+                CREATE TABLE production_material_return_requests(id uuid,execution_segment_id uuid, created_at timestamp with time zone DEFAULT now(), created_by uuid, idempotency_key character varying(128), plan_id uuid, reason text, request_hash character(64), source_department_id uuid, warehouse_id uuid);
+                CREATE TABLE v_workshop_direct_supply_lots(to_demand_id uuid,received_qty numeric, available_qty numeric, color_id uuid, created_at timestamp with time zone, goods_id uuid, id uuid, line_side_warehouse_id uuid, producing_segment_id uuid, to_execution_segment_id uuid);
+                CREATE FUNCTION fn_execution_material_return_allowed(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE TABLE production_material_return_request_items(issue_posting_id uuid,request_id uuid,qty_base numeric, direct_transfer_item_id uuid);
                 CREATE TABLE production_material_return_request_cancellations(request_id uuid);
                 CREATE TABLE production_material_settlement_events(id uuid PRIMARY KEY, event_type text);
                 CREATE TABLE production_material_settlement_postings(id uuid PRIMARY KEY, demand_id uuid,
@@ -135,6 +141,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         String quantitiesMigration = Files.readString(Path.of("src/main/resources/db/migration/V564__production_draw_requested_quantities.sql"));
         jdbc.execute(quantitiesMigration.substring(quantitiesMigration.indexOf("CREATE FUNCTION fn_production_draw_item_requested_qty("),
                 quantitiesMigration.indexOf("CREATE FUNCTION fn_guard_production_draw_quantities(")));
+        String receiving=Files.readString(Path.of("src/main/resources/db/migration/V618__production_material_return_receiving_warehouse.sql"));
+        int effective=receiving.indexOf("CREATE FUNCTION fn_production_draw_item_effective_qty(");
+        jdbc.execute(receiving.substring(effective,receiving.indexOf("$$;",effective)+3));
         String returnMigration = Files.readString(Path.of("src/main/resources/db/migration/V560__production_material_return_requests.sql"));
         int pendingStart = returnMigration.indexOf("CREATE FUNCTION fn_material_issue_pending_return(");
         jdbc.execute(returnMigration.substring(pendingStart,returnMigration.indexOf("$$;",pendingStart)+3));
@@ -146,6 +155,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         jdbc.update("INSERT INTO departments(id) VALUES (?), (?)", WORKSHOP, OTHER_WORKSHOP);
         jdbc.update("INSERT INTO employees(id, department_id) VALUES (?, ?)", EMPLOYEE, WORKSHOP);
         jdbc.update("INSERT INTO production_plans(id, bill_no, status, maker_id) VALUES (?, 'PLAN-001', 1, ?)", PLAN, EMPLOYEE);
+        jdbc.update("INSERT INTO production_planning_packages(id) VALUES (?)",PLAN);
         jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id, owner_employee_id) VALUES (?, ?)", PLAN, EMPLOYEE);
         insertSegment(1, "WAITING", "PREPARING", false, WORKSHOP);
         insertSegment(2, "READY", "PREPARING", false, WORKSHOP);
@@ -176,7 +186,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 .setProperty("hibernate.hbm2ddl.auto", "none").buildSessionFactory();
     }
     private static void insertSegment(int number, String status, String preparation, boolean reportable, UUID workshop) {
-        jdbc.update("INSERT INTO production_execution_segments(id,status) VALUES (?, ?)", new UUID(0, number), status);
+        jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,responsible_employee_id) VALUES (?, ?,?,?,?,?)", new UUID(0, number), status,PLAN,PLAN,workshop,EMPLOYEE);
         jdbc.update("""
                 INSERT INTO v_production_execution_workbench_segments(
                     segment_id, plan_id, root_id, segment_code, segment_no, workshop_department_id,
@@ -196,12 +206,55 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.employeeId()).thenReturn(Optional.of(EMPLOYEE));
         when(currentUser.get()).thenReturn(Optional.empty());
+        var membership = mock(com.uten.imp.features.production.ProductionWorkshopMembership.class);
+        when(membership.isActiveOperator()).thenReturn(true);
         service = new ProductionExecutionWorkbenchService(em, access,
                 mock(PurchaseDocumentAccessPolicy.class), mock(SubcontractDocumentReadAccessPort.class), currentUser,
                 new ProductionMaterialSettlementService(em, mock(TxSessionVars.class),
-                        mock(ProductionMaterialTaskAccessPolicy.class), mock(ProductionInventoryValueService.class)));
+                        mock(ProductionMaterialTaskAccessPolicy.class), mock(ProductionInventoryValueService.class)), membership);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"draftPreparationAccess",
                 mock(com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy.class));
+    }
+
+    @Test
+    void cancelledReversedAndOtherTasksNeverProvideTheCurrentTasksRoute() {
+        UUID task = new UUID(0, 1), goods = UUID.randomUUID();
+        List<UUID> history = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET product_goods_id=?,start_route=NULL WHERE id=?", goods, task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=? WHERE segment_id=?", goods, task);
+        try {
+            var original = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                    .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+            assertThat(original.startRoute()).isNull();
+            assertThat(original.canConfirmRoute()).isTrue();
+            String[] statuses = {"CANCELLED", "REVERSED", "WAITING"};
+            String[] routes = {"BATCH", "CONTINUOUS", "BATCH"};
+            for (int index = 0; index < history.size(); index++) {
+                // Actual PostgreSQL history includes terminal tasks and another
+                // workshop's current task, all sharing this exact product UUID.
+                jdbc.update("""
+                        INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                            product_goods_id,start_route,route_confirmed_at)
+                        VALUES (?,?,?,?,?,?,?,now()+interval '1 day')
+                        """, history.get(index), statuses[index], UUID.randomUUID(), UUID.randomUUID(),
+                        OTHER_WORKSHOP, goods, routes[index]);
+                var current = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                        .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+                assertThat(current).as("route history from %s must not change this task", statuses[index]).isEqualTo(original);
+                assertThat(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()
+                        .valueToTree(current).has("suggestedStartRoute")).isFalse();
+            }
+            jdbc.update("UPDATE production_execution_segments SET start_route='FULL_KIT' WHERE id=?", task);
+            var confirmed = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                    .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+            assertThat(confirmed.startRoute()).isEqualTo("FULL_KIT");
+            assertThat(confirmed.canConfirmRoute()).isFalse();
+        } finally {
+            history.forEach(id -> jdbc.update("DELETE FROM production_execution_segments WHERE id=?", id));
+            jdbc.update("UPDATE production_execution_segments SET product_goods_id=NULL,start_route='FULL_KIT' WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=NULL WHERE segment_id=?", task);
+        }
     }
 
     @Test
@@ -230,8 +283,11 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     @Test
     void preparationFilterRunsBeforePaginationAndPartialWarehouseRequestStaysSelectable() {
         UUID segment = new UUID(0, 2), firstDraw = UUID.randomUUID(), secondDraw = UUID.randomUUID();
+        UUID warehouse=UUID.randomUUID();
         when(access.hasAuthority("production_execution:start")).thenReturn(true);
-        jdbc.update("INSERT INTO stock_documents(id,doc_type,status) VALUES (?,'DRAW',0),(?,'DRAW',0)", firstDraw, secondDraw);
+        jdbc.update("INSERT INTO warehouses(id) VALUES (?)",warehouse);
+        jdbc.update("INSERT INTO stock_documents(id,doc_type,status,warehouse_id) VALUES (?,'DRAW',0,?),(?,'DRAW',0,?)", firstDraw,warehouse,secondDraw,warehouse);
+        jdbc.update("INSERT INTO stock_document_items(id,doc_id,qty) VALUES (?,?,1),(?,?,1)",UUID.randomUUID(),firstDraw,UUID.randomUUID(),secondDraw);
         jdbc.update("INSERT INTO production_planning_package_documents VALUES (?,'DRAW',?),(?,'DRAW',?)",
                 firstDraw, segment, secondDraw, segment);
         jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[CAST(? AS uuid)])", firstDraw);
@@ -252,7 +308,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         } finally {
             jdbc.update("DELETE FROM production_execution_segment_events");
             jdbc.update("DELETE FROM production_planning_package_documents");
+            jdbc.update("DELETE FROM stock_document_items");
             jdbc.update("DELETE FROM stock_documents");
+            jdbc.update("DELETE FROM warehouses WHERE id=?",warehouse);
         }
     }
 

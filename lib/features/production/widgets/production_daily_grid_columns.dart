@@ -6,6 +6,7 @@
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -17,7 +18,21 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/production_direct_transfer_candidate.dart';
+import '../models/production_daily_report.dart';
 import '../repositories/production_material_repository.dart';
+
+/// One editable fact per demand, shared by all displayed output slices.
+class DailyMaterialInput {
+  final used = TextEditingController();
+  final autofilled = ValueNotifier<bool>(false);
+  String? autofillText;
+  double? manualRatio;
+
+  void dispose() {
+    used.dispose();
+    autofilled.dispose();
+  }
+}
 
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
 /// 完工量是生产声明；颜色/单位为来源任务冻结值。
@@ -49,6 +64,9 @@ class DailyGridRow extends EditableGridRow {
   double? unitRate;
   double? orderQty;
   double? maxReportQty;
+
+  /// Remaining output target, distinct from this delivery's material capacity.
+  double? remainingPlanQty;
   bool legacyManual = false;
 
   // ===== V583 物料子行：报工与实际用料合并到同一张表 =====
@@ -76,7 +94,17 @@ class DailyGridRow extends EditableGridRow {
   bool materialReadOnly = false;
 
   /// 本次实际用料(基本量)。允许 0——「这批料一点没用」是合法事实。
-  final TextEditingController materialUsed = TextEditingController();
+  DailyMaterialInput _materialInput = DailyMaterialInput();
+  bool _ownsMaterialInput = true;
+  DailyMaterialInput get materialInput => _materialInput;
+  TextEditingController get materialUsed => _materialInput.used;
+
+  void bindMaterialInput(DailyMaterialInput input) {
+    if (identical(_materialInput, input)) return;
+    if (_ownsMaterialInput) _materialInput.dispose();
+    _materialInput = input;
+    _ownsMaterialInput = false;
+  }
 
   // ===== V584/V585 产出去向：送仓库 还是 转下一道工序(同车间内部直送) =====
   // 一行只有一个去向，要拆量就拆行——送检登记与检验都按报工行唯一，行内拆量
@@ -102,6 +130,7 @@ class DailyGridRow extends EditableGridRow {
 
   /// 本行可选的上层工单；空列表 = 这一行没有同车间的上层工单可转。
   List<ProductionDirectTransferCandidate> directTransferCandidates = const [];
+  int directTransferRequestVersion = 0;
 
   // ===== V595 记忆与自动计算：黄框 + 警示图标提醒核对，用户改动即清除 =====
 
@@ -120,15 +149,16 @@ class DailyGridRow extends EditableGridRow {
   String? pendingDirectTransferDemandId;
 
   /// 本次实际用料由完工申报量按单耗自动算出(物料子行)。
-  final ValueNotifier<bool> materialUsageAutofilled = ValueNotifier<bool>(
-    false,
-  );
+  ValueNotifier<bool> get materialUsageAutofilled => _materialInput.autofilled;
 
   /// 自动算出的文本；当前文本与它不同即视为用户改过。
-  String? materialAutofillText;
+  String? get materialAutofillText => _materialInput.autofillText;
+  set materialAutofillText(String? value) =>
+      _materialInput.autofillText = value;
 
   /// 用户手改后的「用料 / 完工量」比例：完工量再变时按它等比换算并重新标黄。
-  double? materialManualRatio;
+  double? get materialManualRatio => _materialInput.manualRatio;
+  set materialManualRatio(double? value) => _materialInput.manualRatio = value;
 
   bool get isMaterialRow => depth > 0;
 
@@ -197,6 +227,12 @@ class DailyGridRow extends EditableGridRow {
       ..unitRate = unitRate
       ..orderQty = orderQty
       ..maxReportQty = maxReportQty
+      ..remainingPlanQty = remainingPlanQty
+      ..destination = destination
+      ..destinationTouched = destinationTouched
+      ..directTransfer = directTransfer
+      ..pendingDirectTransferDemandId = pendingDirectTransferDemandId
+      ..directTransferCandidates = List.of(directTransferCandidates)
       ..legacyManual = legacyManual
       ..goods = goods
       ..colorId = colorId
@@ -232,21 +268,190 @@ class DailyGridRow extends EditableGridRow {
     weight.dispose();
     planNo.dispose();
     remark.dispose();
-    materialUsed.dispose();
+    if (_ownsMaterialInput) _materialInput.dispose();
     destinationNotifier.dispose();
     directTransferNotifier.dispose();
     destinationAutofilled.dispose();
     directTransferAutofilled.dispose();
-    materialUsageAutofilled.dispose();
     super.dispose();
   }
 }
 
-/// 物料子行的单耗(每 1 个成品用多少，需求单位口径)。
-///
-/// 优先按需求本身的「需求量 / 对应产品数量」——分批子段是本批口径、整包/固定量物料
-/// 也已按批摊平；没有就退回 BOM 单耗；都没有返回 null(不自动算，留给人填)。
+/// Give the first submitted output slice the single input for each demand.
+void synchronizeMaterialInputOwners(
+  Iterable<DailyGridRow> rows,
+  Set<DailyGridRow> submitted,
+) {
+  final assigned = <String>{};
+  for (final row in rows) {
+    if (!row.isMaterialRow || row.material == null) continue;
+    row.materialOwnsInput =
+        !row.materialReadOnly &&
+        submitted.contains(row.materialParent) &&
+        assigned.add(row.material!.demandId);
+  }
+}
+
+double materialReportedQuantity(
+  String demandId,
+  Iterable<DailyGridRow> rows,
+  Set<DailyGridRow> submitted,
+) {
+  final parents = <DailyGridRow>{
+    for (final row in rows)
+      if (row.material?.demandId == demandId &&
+          submitted.contains(row.materialParent))
+        row.materialParent!,
+  };
+  return parents.fold(0, (total, row) {
+    final qty = double.tryParse(row.qty.text.trim());
+    return total + (qty != null && qty.isFinite && qty > 0 ? qty : 0);
+  });
+}
+
+/// A delivery's material cap does not mark the end of the production task.
+bool completesProductionTask(DailyGridRow row, Iterable<DailyGridRow> rows) {
+  if (row.isMaterialRow || row.isFqcRecovery) return false;
+  final remaining = row.remainingPlanQty;
+  final segment = row.executionSegmentId;
+  if (segment == null) return false;
+  var total = 0.0;
+  for (final candidate in rows) {
+    if (candidate.isMaterialRow ||
+        candidate.isFqcRecovery ||
+        candidate.executionSegmentId != segment) {
+      continue;
+    }
+    if (candidate.isFinal) return true;
+    final qty = double.tryParse(candidate.qty.text.trim());
+    if (qty != null && qty.isFinite && qty > 0) total += qty;
+  }
+  return remaining != null && remaining > 0 && total >= remaining - 0.000001;
+}
+
+double? productionReportBaseQuantity(DailyGridRow row) {
+  final qty = double.tryParse(row.qty.text.trim());
+  final rate = row.unitRate ?? 1;
+  if (qty == null || !qty.isFinite || qty <= 0 || !rate.isFinite || rate <= 0) {
+    return null;
+  }
+  final baseUnits = financeExactProductUnits(qty.toString(), rate.toString());
+  if (baseUnits == null || baseUnits <= BigInt.zero) return null;
+  final rounded = baseUnits.toDouble() / 10000;
+  return rounded.isFinite ? rounded : null;
+}
+
+/// An explicit destination may become invalid, but must never change silently.
+bool restoreExplicitDirectTransferSelection(DailyGridRow row) {
+  if (!row.destinationTouched) return false;
+  final requestedId =
+      row.pendingDirectTransferDemandId ?? row.directTransfer?.demandId;
+  row.directTransfer = null;
+  if (row.isDirectTransfer && requestedId != null) {
+    row.pendingDirectTransferDemandId = requestedId;
+    for (final candidate in row.directTransferCandidates) {
+      if (candidate.demandId == requestedId) {
+        row.directTransfer = candidate;
+        row.pendingDirectTransferDemandId = null;
+        break;
+      }
+    }
+  }
+  row.destinationAutofilled.value = false;
+  row.directTransferAutofilled.value = false;
+  return true;
+}
+
+/// Keep stored draft use when a transient read failure hides its editor.
+/// Only a successfully resolved change of output sources can remove old use.
+List<Map<String, dynamic>> mergeDraftMaterialUsages({
+  required Iterable<ProductionDailyReportMaterialUsage> saved,
+  required Iterable<Map<String, dynamic>> edited,
+  Set<String>? allowedSourceSegmentIds,
+}) {
+  final quantities = <String, double>{
+    for (final usage in saved)
+      if (allowedSourceSegmentIds == null ||
+          usage.materialExecutionSegmentId == null ||
+          allowedSourceSegmentIds.contains(usage.materialExecutionSegmentId))
+        usage.demandId: usage.qtyBase,
+  };
+  for (final line in edited) {
+    quantities[line['demandId'] as String] = (line['qtyBase'] as num)
+        .toDouble();
+  }
+  return [
+    for (final entry in quantities.entries)
+      {'demandId': entry.key, 'qtyBase': entry.value},
+  ];
+}
+
+List<String> directTransferAggregateIssues(Iterable<DailyGridRow> rows) {
+  final bySource = <(String?, String), List<DailyGridRow>>{};
+  final byDemand = <String, List<DailyGridRow>>{};
+  for (final row in rows) {
+    if (row.isMaterialRow ||
+        !row.isDirectTransfer ||
+        row.directTransfer == null) {
+      continue;
+    }
+    final demandId = row.directTransfer!.demandId;
+    bySource
+        .putIfAbsent((
+          row.planItemId ?? row.executionSegmentId,
+          demandId,
+        ), () => [])
+        .add(row);
+    byDemand.putIfAbsent(demandId, () => []).add(row);
+  }
+  final issues = <String>[];
+  for (final group in bySource.values.where((group) => group.length > 1)) {
+    var total = 0.0;
+    var limit = double.infinity;
+    for (final row in group) {
+      total += productionReportBaseQuantity(row) ?? 0;
+      final remaining = row.directTransfer!.remainingQty;
+      if (remaining < limit) limit = remaining;
+    }
+    if (total > limit + 0.000001) {
+      issues.add(
+        '${group.length} 行投给同一接收需求，基础数量合计 ${_quantityText(total)} '
+        '超过本来源可直送 ${_quantityText(limit)}，请合计核对',
+      );
+    }
+  }
+  for (final group in byDemand.values.where((group) => group.length > 1)) {
+    var total = 0.0;
+    double? limit;
+    for (final row in group) {
+      total += productionReportBaseQuantity(row) ?? 0;
+      final target = row.directTransfer!;
+      // Older clients may lack the aggregate demand snapshot. The server still
+      // validates it; a source-specific quota must never substitute for it.
+      if (target.requiredQty > 0 &&
+          target.requiredQty.isFinite &&
+          target.alreadyCoveredQty.isFinite &&
+          target.alreadyCoveredQty >= 0) {
+        final available = (target.requiredQty - target.alreadyCoveredQty).clamp(
+          0.0,
+          double.infinity,
+        );
+        if (limit == null || available < limit) limit = available;
+      }
+    }
+    if (limit != null && total > limit + 0.000001) {
+      issues.add(
+        '同一接收需求本次基础数量合计 ${_quantityText(total)} '
+        '超过其总缺口 ${_quantityText(limit)}，请合计核对',
+      );
+    }
+  }
+  return issues;
+}
+
+/// Only a proven linear requirement can provide a proportional suggestion.
 double? materialUsagePerProduct(ProductionMaterialClearanceRow material) {
+  if (material.requirementMode != 'LINEAR') return null;
   final forProduct = material.requiredForProductQty;
   if (forProduct != null && forProduct > 0 && material.requiredQty > 0) {
     return material.requiredQty / forProduct;
@@ -264,6 +469,8 @@ double? expectedMaterialUsage({
   double? ratioOverride,
 }) {
   if (!reportedQty.isFinite || reportedQty <= 0) return null;
+  // Exact package/batch quantities cannot be prorated, even from a prior edit.
+  if (material.requirementMode != 'LINEAR') return null;
   final ratio = ratioOverride ?? materialUsagePerProduct(material);
   if (ratio == null || !ratio.isFinite || ratio < 0) return null;
   final raw = reportedQty * ratio;
@@ -508,7 +715,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   ),
                   info: row.materialReadOnly
                       ? null
-                      : '可登记 ${_quantityText(row.materialCap)}',
+                      : row.material?.requirementMode == 'LINEAR'
+                      ? '可登记 ${_quantityText(row.materialCap)}；实际工艺耗用含 BOM 已计入的正常损耗'
+                      : '整包、固定批次或缺少计量依据不能按平均单耗估算。请填写实际工艺耗用（可填 0），可登记 ${_quantityText(row.materialCap)}',
                 ),
                 Theme.of(context),
                 autofilled: autofilled && !row.materialReadOnly,
@@ -606,7 +815,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   builder: (context, autofilled, _) => UtenDropdownField(
                     dense: true,
                     value: picked?.demandId,
-                    hintText: '选择上层工单',
+                    hintText: row.pendingDirectTransferDemandId == null
+                        ? '选择上层工单'
+                        : '原接收工单当前不可用，请刷新或重新选择',
                     // V595 记忆预填：黄框 + 警示图标提醒核对。
                     autofilled: autofilled && picked != null,
                     items: [

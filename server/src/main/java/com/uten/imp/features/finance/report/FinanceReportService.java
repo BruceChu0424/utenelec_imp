@@ -11,6 +11,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.LegacyOpeningBalanceSql;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import com.uten.imp.security.OwnerVisibility.OwnerScope;
 import jakarta.persistence.EntityManager;
@@ -599,6 +600,7 @@ public class FinanceReportService {
 
     private ReportTableResponse receivableSummaryAuthorized(
             String keyword, LocalDate from, LocalDate to, int page, int size) {
+        assertOpeningWindowReplayable("AR", keyword, from, to);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "客户编号", 110),
                 ReportColumn.text("partyName", "客户简称", 160),
@@ -626,82 +628,61 @@ public class FinanceReportService {
                 // 得出一个「看着没有风险」的假数，不声明合计。
                 ReportColumn.money("overFloor", "超出铺底额"),
                 // 物料金额当前投影为字面量 NULL（无数据源），不声明合计。
-                ReportColumn.money("materialAmount", "物料金额"));
-        // 立帐取 ar_ap_ledger.amount_original_local（按 bill_date 归期）。有引用明细的收款按行拆成：
+                ReportColumn.money("materialAmount", "物料金额"),
+                ReportColumn.number("unverifiedOriginalCount", "币种/原币待核验项数").totaled("合计待核验项数"));
+        // 已证明的迁入期初取不可变余额；当前立帐仍取原额（按 bill_date 归期）。有引用明细的收款按行拆成：
         // 实际到账、费用冲销、汇兑差额、按开账汇率冲减应收；无明细的历史/预收单保留头表事实。
         // 不能用累计 amount_settled 做期间发生额。外币下的恒等式是：
         // 期初 + 发货 + 退货 − 实际到账 − 费用冲销 + 汇兑差额 = 期末。
         NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
         String core = """
-                WITH posting AS (
-                    SELECT client_id,
-                        SUM(CASE WHEN bill_date < :from THEN amount_original_local ELSE 0 END) AS prior_posted,
-                        SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_SHIPMENT' THEN amount_original_local ELSE 0 END) AS shipped,
-                        SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_RETURN' THEN amount_original_local ELSE 0 END) AS returned,
-                        SUM(CASE WHEN bill_date <= :to THEN amount_original_local ELSE 0 END) AS total_posted
-                    FROM ar_ap_ledger
-                    WHERE is_deleted=false
-                      AND status=1
-                      AND direction='AR'
+                WITH ledger_origin AS (
+                    SELECT ledger.*, %s AS reporting_amount_local,
+                           CASE WHEN %s THEN 1 ELSE 0 END AS unverified_original
+                    FROM ar_ap_ledger ledger %s
+                ), posting_events AS (
+                    SELECT client_id,bill_date,source_doc_type,reporting_amount_local,unverified_original
+                    FROM ledger_origin WHERE direction='AR' AND client_id IS NOT NULL
+                      AND (open_item_kind='RECEIVABLE' OR legacy_import_run_id IS NOT NULL)
+                      AND ((status=1 AND NOT is_deleted) OR (status=-1 AND is_deleted AND deleted_at IS NOT NULL))
+                    UNION ALL
+                    SELECT client_id,(deleted_at AT TIME ZONE 'Asia/Shanghai')::date,
+                           source_doc_type,-reporting_amount_local,0
+                    FROM ledger_origin WHERE direction='AR' AND client_id IS NOT NULL
+                      AND legacy_import_run_id IS NULL AND status=-1 AND is_deleted AND deleted_at IS NOT NULL
                       AND open_item_kind='RECEIVABLE'
-                      AND client_id IS NOT NULL
-                    GROUP BY client_id
-                ), receipt_line_totals AS (
-                    SELECT receipt_id,
-                        COUNT(*) AS line_count,
-                        SUM(amount_local) AS cash_local,
-                        SUM(write_off_local) AS write_off_local,
-                        SUM(applied_amount_local) AS applied_local,
-                        SUM(exchange_diff) AS exchange_diff
-                    FROM finance_receipt_lines
-                    WHERE COALESCE(is_deleted,false)=false
-                    GROUP BY receipt_id
-                ), receipt_fact AS (
-                    SELECT receipt.client_id, receipt.bill_date,
-                        CASE WHEN COALESCE(lines.line_count,0) > 0
-                            THEN COALESCE(lines.cash_local,0) ELSE receipt.amount_local END AS cash_local,
-                        CASE WHEN COALESCE(lines.line_count,0) > 0
-                            THEN COALESCE(lines.write_off_local,0) ELSE 0 END AS write_off_local,
-                        CASE WHEN COALESCE(lines.line_count,0) > 0
-                            THEN COALESCE(lines.applied_local,0) ELSE receipt.amount_local END AS applied_local,
-                        CASE WHEN COALESCE(lines.line_count,0) > 0
-                            THEN COALESCE(lines.exchange_diff,0) ELSE 0 END AS exchange_diff
-                    FROM finance_receipts receipt
-                    LEFT JOIN receipt_line_totals lines ON lines.receipt_id=receipt.id
-                     WHERE COALESCE(receipt.is_deleted,false)=false
-                       AND receipt.status=1
-                       AND receipt.receipt_kind='AR_SETTLEMENT'
-                       AND receipt.client_id IS NOT NULL
-                """ + " AND " + documentScope.predicate() + " " + """
-                 ), prepayment_offset_fact AS (
-                    SELECT batch.client_id,allocation.effective_date AS bill_date,
-                           0::numeric AS cash_local,0::numeric AS write_off_local,
-                           allocation.target_amount_local AS applied_local,
-                           0::numeric AS exchange_diff
-                    FROM customer_open_item_offsets allocation
-                    JOIN customer_open_item_offset_batches batch
-                      ON batch.id=allocation.offset_batch_id
+                ), posting AS (
+                    SELECT client_id,
+                        SUM(CASE WHEN bill_date<:from THEN reporting_amount_local ELSE 0 END) AS prior_posted,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_SHIPMENT' THEN reporting_amount_local ELSE 0 END) AS shipped,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_RETURN' THEN reporting_amount_local ELSE 0 END) AS returned,
+                        SUM(CASE WHEN bill_date<=:to THEN reporting_amount_local ELSE 0 END) AS total_posted,
+                        SUM(CASE WHEN bill_date<=:to THEN unverified_original ELSE 0 END) AS unverified_original
+                    FROM posting_events GROUP BY client_id
+                ),
+                """.formatted(LegacyOpeningBalanceSql.localAmount("ledger.amount_original_local"),
+                        LegacyOpeningBalanceSql.unverifiedOriginalCondition(),LegacyOpeningBalanceSql.PROOF_JOIN)
+                +FinanceCashEventSql.ctes(true,"t.receipt_kind='AR_SETTLEMENT' AND t.client_id IS NOT NULL AND "+documentScope.predicate())+"""
+                , collection_events AS (
+                    SELECT party_id AS client_id,event_date AS bill_date,cash_local,write_off_local,
+                           book_local AS applied_local,exchange_diff FROM cash_events
+                    UNION ALL
+                    SELECT batch.client_id,allocation.effective_date,0::numeric,0::numeric,allocation.target_amount_local,0::numeric
+                    FROM customer_open_item_offsets allocation JOIN customer_open_item_offset_batches batch ON batch.id=allocation.offset_batch_id
                     UNION ALL
                     SELECT batch.client_id,(allocation.reversed_at AT TIME ZONE 'Asia/Shanghai')::date,
                            0::numeric,0::numeric,-allocation.target_amount_local,0::numeric
-                    FROM customer_open_item_offsets allocation
-                    JOIN customer_open_item_offset_batches batch
-                      ON batch.id=allocation.offset_batch_id
+                    FROM customer_open_item_offsets allocation JOIN customer_open_item_offset_batches batch ON batch.id=allocation.offset_batch_id
                     WHERE allocation.status='REVERSED' AND allocation.reversed_at IS NOT NULL
-                 ), coll AS (
+                ), coll AS (
                     SELECT client_id,
-                        SUM(CASE WHEN bill_date < :from THEN applied_local ELSE 0 END) AS prior_applied,
+                        SUM(CASE WHEN bill_date<:from THEN applied_local ELSE 0 END) AS prior_applied,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN cash_local ELSE 0 END) AS period_cash,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN write_off_local ELSE 0 END) AS period_write_off,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN exchange_diff ELSE 0 END) AS period_exchange_diff,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN applied_local ELSE 0 END) AS period_applied,
-                        SUM(CASE WHEN bill_date <= :to THEN applied_local ELSE 0 END) AS total_applied
-                    FROM (
-                        SELECT * FROM receipt_fact
-                        UNION ALL
-                        SELECT * FROM prepayment_offset_fact
-                    ) collection_event
-                    GROUP BY client_id
+                        SUM(CASE WHEN bill_date<=:to THEN applied_local ELSE 0 END) AS total_applied
+                    FROM collection_events GROUP BY client_id
                 )
                 SELECT c.code AS "partyCode", c.name AS "partyName", c.full_name AS "partyFull",
                     COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director",
@@ -734,7 +715,8 @@ public class FinanceReportService {
                     (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) AS "balance",
                     (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0))
                         - COALESCE(c.credit_floor,0) AS "overFloor",
-                    NULL AS "materialAmount"
+                    NULL AS "materialAmount",
+                    COALESCE(p.unverified_original,0) AS "unverifiedOriginalCount"
                 FROM clients c
                 JOIN posting p ON p.client_id=c.id
                 LEFT JOIN coll co ON co.client_id=c.id
@@ -763,6 +745,7 @@ public class FinanceReportService {
     private ReportTableResponse payableSummaryAuthorized(
             String keyword, LocalDate from, LocalDate to,
             Map<String, String> facets, int page, int size, String sort, String order) {
+        assertOpeningWindowReplayable("AP", keyword, from, to);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "供应商编号", 110),
                 ReportColumn.text("partyName", "供应商简称", 160),
@@ -788,16 +771,19 @@ public class FinanceReportService {
                 ReportColumn.money("creditReleasedAmount", "贷项已使用").totaled("合计贷项已使用"),
                 ReportColumn.money("balance", "期末应付").totaled("合计期末应付"),
                 // 应付合计与期末应付是同一个 SQL 表达式的重复列，再出一项合计只会把同一个数显示两遍。
-                ReportColumn.money("totalBalance", "应付合计"));
+                ReportColumn.money("totalBalance", "应付合计"),
+                ReportColumn.number("unverifiedOriginalCount", "币种/原币待核验项数").totaled("合计待核验项数"));
         // 立账、付款、往来抵销及各自反向均展开为带日期事件，再截断到 :to。
         // 本期实际付款（现金）、账面核销与汇兑差额分列；未付恒等式只减账面核销，不直接减现金。
         NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
         String core = """
                 WITH ledger_events AS (
                     SELECT ledger.supplier_id, ledger.bill_date AS event_date,
-                           ledger.amount_original_local AS amount_local,
-                           ledger.source_doc_type, 'POST' AS event_type
+                           %s AS amount_local,
+                           ledger.source_doc_type, 'POST' AS event_type,
+                           CASE WHEN %s THEN 1 ELSE 0 END AS unverified_original
                     FROM ar_ap_ledger ledger
+                    %s
                     WHERE ledger.direction='AP' AND ledger.supplier_id IS NOT NULL
                       AND ledger.bill_date <= :to
                       AND (
@@ -807,9 +793,10 @@ public class FinanceReportService {
                       )
                     UNION ALL
                     SELECT ledger.supplier_id, (ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::date,
-                           -ledger.amount_original_local,
-                           ledger.source_doc_type, 'REVERSE' AS event_type
+                           -(%s),
+                           ledger.source_doc_type, 'REVERSE' AS event_type, 0 AS unverified_original
                     FROM ar_ap_ledger ledger
+                    %s
                     WHERE ledger.direction='AP' AND ledger.supplier_id IS NOT NULL
                       AND ledger.status=-1 AND ledger.is_deleted=true
                       AND ledger.deleted_at IS NOT NULL
@@ -828,7 +815,8 @@ public class FinanceReportService {
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='SUBCONTRACT_WASTE' THEN amount_local ELSE 0 END) AS waste_deduction,
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='SUBCONTRACT_LOSS_OFFSET' THEN amount_local ELSE 0 END) AS claim_offset,
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='REVERSE' THEN amount_local ELSE 0 END) AS reversed_amount,
-                        SUM(CASE WHEN event_date <= :to THEN amount_local ELSE 0 END) AS posted_to
+                        SUM(CASE WHEN event_date <= :to THEN amount_local ELSE 0 END) AS posted_to,
+                        SUM(unverified_original) AS unverified_original
                     FROM ledger_events
                     GROUP BY supplier_id
                 ), payment_facts AS (
@@ -844,18 +832,22 @@ public class FinanceReportService {
                     LEFT JOIN LATERAL (
                         SELECT COUNT(*) AS line_count,
                                COALESCE(SUM(line.amount_local),0) AS cash_local,
-                               COALESCE(SUM(COALESCE(
-                                   line.applied_amount_local,
-                                   line.amount_local-COALESCE(line.exchange_diff,0))),0) AS book_local
+                               SUM(%s) AS book_local
                         FROM finance_payment_lines line
                         WHERE line.payment_id=payment.id
                           AND COALESCE(line.is_deleted,false)=false
                     ) line_total ON TRUE
                     WHERE COALESCE(payment.is_deleted,false)=false
+                      AND payment.legacy_id IS NULL
                       AND payment.status IN (1,-1)
                       AND payment.supplier_id IS NOT NULL
                       AND payment.bill_date <= :to
-                """ + " AND " + documentScope.predicate() + " " + """
+                """.formatted(LegacyOpeningBalanceSql.localAmount("ledger.amount_original_local"),
+                        LegacyOpeningBalanceSql.unverifiedOriginalCondition(),
+                        LegacyOpeningBalanceSql.PROOF_JOIN,
+                        LegacyOpeningBalanceSql.localAmount("ledger.amount_original_local"),
+                        LegacyOpeningBalanceSql.PROOF_JOIN,
+                        LegacyOpeningBalanceSql.paymentBookLocal("line")) + " AND " + documentScope.predicate() + " " + """
                 ), payment_events AS (
                     SELECT supplier_id, bill_date AS event_date,
                            cash_local, book_local, 'PAYMENT' AS event_type
@@ -931,13 +923,49 @@ public class FinanceReportService {
                     (COALESCE(p.posted_to,0) - COALESCE(pa.book_to,0)
                         + COALESCE(o.source_to,0) - COALESCE(o.target_to,0)) AS "balance",
                     (COALESCE(p.posted_to,0) - COALESCE(pa.book_to,0)
-                        + COALESCE(o.source_to,0) - COALESCE(o.target_to,0)) AS "totalBalance"
+                        + COALESCE(o.source_to,0) - COALESCE(o.target_to,0)) AS "totalBalance",
+                    COALESCE(p.unverified_original,0) AS "unverifiedOriginalCount"
                 FROM suppliers s
                 JOIN posting p ON p.supplier_id=s.id
                 LEFT JOIN paid pa ON pa.supplier_id=s.id
                 LEFT JOIN offsets o ON o.supplier_id=s.id
                 """;
         return executeRawPaged(cols, core, "s.name", keyword, from, to, page, size, "s", documentScope);
+    }
+
+    private void assertOpeningWindowReplayable(String direction, String keyword, LocalDate from, LocalDate to) {
+        assertCashBookKnown(direction, null, keyword, to);
+        String party = "AR".equals(direction) ? "clients" : "suppliers";
+        String partyColumn = "AR".equals(direction) ? "client_id" : "supplier_id";
+        String keywordCondition = keyword == null || keyword.isBlank() ? "" :
+                " AND (LOWER(COALESCE(party.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(party.code,'')) LIKE LOWER(:kw))";
+        var query = em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger ledger "
+                + LegacyOpeningBalanceSql.PROOF_JOIN + " JOIN " + party + " party ON party.id=ledger." + partyColumn
+                + " WHERE ledger.direction=:direction AND ledger.bill_date<=:to AND "
+                + "((ledger.status=1 AND NOT ledger.is_deleted) OR (ledger.status=-1 AND ledger.is_deleted AND ledger.deleted_at IS NOT NULL)) AND "
+                + LegacyOpeningBalanceSql.unreplayableCondition("from", false) + keywordCondition);
+        bindRaw(query, keyword, from, to);
+        query.setParameter("direction", direction);
+        if (((Number) query.getSingleResult()).longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "所选往来缺少已证明的历史本币期初，或期间跨越历史快照截止日；不能把原额或历史收付款猜作期初，请选择截止日之后的期间并核对来源证明");
+        }
+    }
+
+    private void assertCashBookKnown(String direction,UUID partyId,String keyword,LocalDate to) {
+        boolean receipt="AR".equals(direction);
+        String table=receipt?"finance_receipts":"finance_payments", party=receipt?"clients":"suppliers";
+        String column=receipt?"client_id":"supplier_id";
+        String filter=partyId==null?"":" AND cash."+column+"=:pid";
+        if(keyword!=null&&!keyword.isBlank())filter+=" AND (LOWER(COALESCE(party.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(party.code,'')) LIKE LOWER(:kw))";
+        var query=em.createNativeQuery("SELECT count(*) FROM "+table+" cash JOIN "+party+" party ON party.id=cash."+column
+                +" WHERE cash.status IN(1,-1) AND NOT COALESCE(cash.is_deleted,false) AND cash.legacy_id IS NULL"
+                +" AND (CAST(:to AS date) IS NULL OR cash.bill_date<=:to) AND "
+                +LegacyOpeningBalanceSql.unknownCashBook(receipt,"cash")+filter).setParameter("to",to);
+        if(partyId!=null)query.setParameter("pid",partyId);
+        if(keyword!=null&&!keyword.isBlank())query.setParameter("kw","%"+keyword.toLowerCase()+"%");
+        if(((Number)query.getSingleResult()).longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
+                "历史收付款核销的本币账面金额尚未核验，不能把未知冲减当成零重建余额");
     }
 
     /** 原生 SQL 分页执行器（CTE/聚合报表用，如 B 应收汇总 / D 应付汇总）。SQL 含 :from/:to[/:kw] 参数。
@@ -1593,56 +1621,39 @@ public class FinanceReportService {
 
     private ReportTableResponse partyStatementFlowAuthorized(
             UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo, int page, int size) {
-        if (partyId == null) return empty(List.of(
-                ReportColumn.date("billDate", "开单日期"), ReportColumn.text("refNo", "关联单号", 150),
-                ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.money("salesOriginal", "销售金额(外)"), ReportColumn.number("salesRate", "销售汇率"),
-                ReportColumn.money("salesLocal", "销售金额(本)"), ReportColumn.money("receiptOriginal", "收款金额(外)"),
-                ReportColumn.number("receiptRate", "收款汇率"), ReportColumn.money("receiptLocal", "收款金额(本)"),
-                ReportColumn.money("balanceOriginal", "应收余额(外)"), ReportColumn.number("balanceRate", "应收汇率"),
-                ReportColumn.money("balanceLocal", "应收余额(本)")));
-        boolean isAR = "AR".equalsIgnoreCase(side);
-        // 立帐行（ar_ap_ledger）+ 收/付款行（finance_receipts/payments 头表）
-        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
-        if (!isAR) {
-            String sql = supplierPayableStatementEventsSql(documentScope) + """
-                    SELECT event_date,ref_no,posted_original,posted_rate,posted_local,
-                           settled_original,settled_rate,settled_local,event_type,
-                           currency_code,remark,currency_id
-                    FROM supplier_payable_events
-                    WHERE supplier_id=:pid
-                      AND (CAST(:to AS date) IS NULL OR event_date<=:to)
-                    ORDER BY event_date,event_order,ref_no
-                    """;
-            return buildRunningBalance(partyStatementFlowCols(false), sql, partyId,
-                    dateFrom, dateTo, page, size, true, documentScope);
+        return partyStatement(partyId, side, dateFrom, dateTo, page, size, true);
+    }
+
+    private ReportTableResponse partyStatement(UUID partyId, String side, LocalDate dateFrom,
+                                                LocalDate dateTo, int page, int size, boolean simple) {
+        boolean isAR="AR".equalsIgnoreCase(side);
+        List<ReportColumn> columns=new ArrayList<>(partyStatementFlowCols(isAR));
+        if (!simple) {
+            columns.add(2,ReportColumn.text("type","类型",100));
+            columns.add(ReportColumn.text("remark","摘要",160));
         }
-        String posted = isAR
-                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, "
-                + "'立账', cur.code, l.remark, cur.id FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id "
-                + "WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
-                : "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0,0,0, "
-                + "'立账', cur.code, l.remark, cur.id FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id "
-                + "WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
-        String settled = isAR
-                ? "SELECT t.bill_date, t.bill_no, 0,0,0, "
-                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_original ELSE t.amount_original END AS r_org, "
-                + "t.exchange_rate AS r_rate, "
-                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_local ELSE t.amount_local END AS r_loc, "
-                + "'冲减应收', cur.code, t.remark, cur.id FROM finance_receipts t "
-                + "LEFT JOIN currencies cur ON cur.id=t.currency_id LEFT JOIN LATERAL (SELECT COUNT(*) AS line_count, "
-                + "SUM(i.amount_original+i.write_off_amount) AS applied_original, SUM(i.applied_amount_local) AS applied_local "
-                + "FROM finance_receipt_lines i WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false) lines ON TRUE "
-                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
-                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, "
-                + "'付款', cur.code, t.remark, cur.id FROM finance_payments t LEFT JOIN currencies cur ON cur.id=t.currency_id "
-                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
-        settled += " AND " + documentScope.predicate();
-        String sql = "SELECT * FROM (" + posted + " UNION ALL " + settled + ") u "
-                + "WHERE (CAST(:to AS date) IS NULL OR bill_date<=:to) "
-                + "ORDER BY bill_date ASC, bill_no ASC";
-        return buildRunningBalance(partyStatementFlowCols(isAR), sql, partyId, dateFrom, dateTo,
-                page, size, true, documentScope);
+        if (partyId==null) return empty(columns);
+        assertPartyOpeningWindowReplayable(partyId,isAR,dateFrom,dateTo);
+        NativeReadScope scope=COMPANY_WIDE_DOCUMENT_SCOPE;
+        return buildRunningBalance(columns,FinancePartyStatementSql.running(
+                FinancePartyStatementSql.events(isAR,scope.predicate())),partyId,dateFrom,dateTo,page,size,scope);
+    }
+
+    private void assertPartyOpeningWindowReplayable(UUID partyId,boolean isAR,LocalDate from,LocalDate to) {
+        assertCashBookKnown(isAR?"AR":"AP",partyId,null,to);
+        String partyColumn=isAR ? "client_id" : "supplier_id";
+        var query=em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger ledger "
+                +LegacyOpeningBalanceSql.PROOF_JOIN+" WHERE ledger."+partyColumn+"=:pid"
+                +" AND ledger.direction=:direction AND (CAST(:to AS date) IS NULL OR ledger.bill_date<=:to)"
+                +" AND ((ledger.status=1 AND NOT ledger.is_deleted) OR (ledger.status=-1 AND ledger.is_deleted AND ledger.deleted_at IS NOT NULL))"
+                +" AND ("+LegacyOpeningBalanceSql.unreplayableCondition("from",false)
+                +" OR (ledger.legacy_import_run_id IS NOT NULL AND CAST(:to AS date) IS NOT NULL"
+                +" AND ((ledger.legacy_source_resolution->>'snapshotAsOfUtc')::timestamptz AT TIME ZONE 'Asia/Shanghai')::date>:to))")
+                .setParameter("pid",partyId).setParameter("direction",isAR ? "AR" : "AP")
+                .setParameter("from",from).setParameter("to",to);
+        if (((Number)query.getSingleResult()).longValue()>0) {
+            throw new ApiException(ErrorCode.CONFLICT,"期间跨越历史快照截止日或缺少受验期初；迁入前逐月收付款无法还原，请选择截止日之后的期间");
+        }
     }
 
     private static List<ReportColumn> partyStatementFlowCols(boolean isAR) {
@@ -1663,7 +1674,8 @@ public class FinanceReportService {
                 ReportColumn.number("receiptRate", rec + "汇率"),
                 ReportColumn.money("receiptLocal", rec + "金额(本)").totaled("合计" + rec + "金额(本)"),
                 ReportColumn.money("balanceOriginal", bal + "余额(外)"), ReportColumn.number("balanceRate", bal + "汇率"),
-                ReportColumn.money("balanceLocal", bal + "余额(本)"));
+                ReportColumn.money("balanceLocal", bal + "余额(本)"),
+                ReportColumn.text("originalStatus", "原币状态", 100));
     }
 
     /** J/L 单客户/供应商明细对帐（逐行更详细：立帐单号/收付款单号/币别/摘要）。 */
@@ -1676,53 +1688,7 @@ public class FinanceReportService {
 
     private ReportTableResponse partyStatementDetailAuthorized(
             UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo, int page, int size) {
-        if (partyId == null) return empty(partyStatementFlowCols("AR".equalsIgnoreCase(side)));
-        // 复用 flow 的 UNION，扩列 type/currencyCode/remark
-
-        boolean isAR = "AR".equalsIgnoreCase(side);
-        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
-        if (!isAR) {
-            String sql = supplierPayableStatementEventsSql(documentScope) + """
-                    SELECT event_date,ref_no,posted_original,posted_rate,posted_local,
-                           settled_original,settled_rate,settled_local,event_type,
-                           currency_code,remark,currency_id
-                    FROM supplier_payable_events
-                    WHERE supplier_id=:pid
-                      AND (CAST(:to AS date) IS NULL OR event_date<=:to)
-                    ORDER BY event_date,event_order,ref_no
-                    """;
-            List<ReportColumn> cols = new ArrayList<>(partyStatementFlowCols(false));
-            cols.add(2, ReportColumn.text("type", "类型", 80));
-            cols.add(ReportColumn.text("remark", "摘要", 160));
-            return buildRunningBalance(cols, sql, partyId, dateFrom, dateTo,
-                    page, size, false, documentScope);
-        }
-        String posted = isAR
-                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, '立帐' AS typ, cur.code AS cur, l.remark, cur.id "
-                + "FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
-                : "SELECT l.bill_date, l.bill_no, l.amount_original, l.exchange_rate, l.amount_original_local, 0,0,0, '立帐', cur.code, l.remark, cur.id "
-                + "FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
-        String settled = isAR
-                ? "SELECT t.bill_date, t.bill_no, 0,0,0, "
-                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_original ELSE t.amount_original END, "
-                + "t.exchange_rate, CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_local ELSE t.amount_local END, "
-                + "'冲减应收', cur.code, t.remark, cur.id "
-                + "FROM finance_receipts t LEFT JOIN currencies cur ON cur.id=t.currency_id "
-                + "LEFT JOIN LATERAL (SELECT COUNT(*) AS line_count, "
-                + "SUM(i.amount_original+i.write_off_amount) AS applied_original, SUM(i.applied_amount_local) AS applied_local "
-                + "FROM finance_receipt_lines i WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false) lines ON TRUE "
-                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
-                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, '付款', cur.code, t.remark, cur.id "
-                + "FROM finance_payments t LEFT JOIN currencies cur ON cur.id=t.currency_id WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
-        settled += " AND " + documentScope.predicate();
-        String sql = "SELECT * FROM (" + posted + " UNION ALL " + settled + ") u "
-                + "WHERE (CAST(:to AS date) IS NULL OR bill_date<=:to) "
-                + "ORDER BY bill_date ASC, bill_no ASC";
-        List<ReportColumn> cols = new ArrayList<>(partyStatementFlowCols(isAR));
-        cols.add(2, ReportColumn.text("type", "类型", 80));
-        cols.add(ReportColumn.text("remark", "摘要", 160));
-        return buildRunningBalance(cols, sql, partyId, dateFrom, dateTo,
-                page, size, false, documentScope);
+        return partyStatement(partyId,side,dateFrom,dateTo,page,size,false);
     }
 
     /** X 客户/供应商年度对帐单（按月：期初/立帐(发货)/收款(回款)/退货/期末；一年 12 行 + 汇总）。 */
@@ -1751,178 +1717,10 @@ public class FinanceReportService {
         if (partyId == null || year <= 0) return empty(cols);
         LocalDate yearStart = LocalDate.of(year, 1, 1);
         LocalDate yearEnd = LocalDate.of(year, 12, 31);
-        String partyCol = isAR ? "client_id" : "supplier_id";
-        String dirLit = isAR ? "'AR'" : "'AP'";
-        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
-        if (!isAR) {
-            String sql = supplierPayableStatementEventsSql(documentScope) + """
-                    , party_ledger AS (
-                        SELECT event_date AS bill_date,posted_local AS posted,
-                               settled_local AS settled
-                        FROM supplier_payable_events WHERE supplier_id=:pid
-                    ), monthly AS (
-                        SELECT date_trunc('month',bill_date) AS ms,
-                               to_char(date_trunc('month',bill_date),'YYYY-MM') AS ym,
-                               COALESCE(SUM(posted),0) AS posted,
-                               COALESCE(SUM(settled),0) AS settled
-                        FROM party_ledger WHERE bill_date BETWEEN :ys AND :ye GROUP BY 1,2
-                    )
-                    SELECT month.ym,
-                           COALESCE((SELECT SUM(prior.posted-prior.settled)
-                               FROM party_ledger prior WHERE prior.bill_date<month.ms),0),
-                           month.posted,month.settled,0,
-                           COALESCE((SELECT SUM(closing.posted-closing.settled)
-                               FROM party_ledger closing
-                               WHERE closing.bill_date<month.ms+INTERVAL '1 month'),0)
-                    FROM monthly month ORDER BY month.ym
-                    """;
-            return executeRawGrouped(cols, sql, partyId, yearStart, yearEnd,
-                    page, size, documentScope);
-        }
-        String settledSelect = isAR
-                ? " SELECT t.bill_date, 0, CASE WHEN EXISTS (SELECT 1 FROM finance_receipt_lines x"
-                + " WHERE x.receipt_id=t.id AND COALESCE(x.is_deleted,false)=false)"
-                + " THEN COALESCE((SELECT SUM(x.applied_amount_local) FROM finance_receipt_lines x"
-                + " WHERE x.receipt_id=t.id AND COALESCE(x.is_deleted,false)=false),0) ELSE t.amount_local END"
-                + " FROM finance_receipts t WHERE COALESCE(t.is_deleted,false)=false"
-                + " AND t.status=1 AND t.client_id=:pid"
-                : " SELECT t.bill_date, 0, t.amount_local FROM finance_payments t"
-                + " WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
-        settledSelect += " AND " + documentScope.predicate();
-        // 按月：期初=该月初前累计余额；期末=下月初前累计余额（滚动）；posted/settled 为当月发生额。
-        // returned 简化为 0（退货已在 ar_ap_ledger SALES_RETURN/PURCHASE_RETURN 体现为负 posted）。
-        String sql = "WITH party_ledger AS ("
-                + " SELECT bill_date, amount_original_local AS posted, 0 AS settled FROM ar_ap_ledger l"
-                + " WHERE l.is_deleted=false AND l.direction=" + dirLit + " AND l.status=1 AND l." + partyCol + "=:pid"
-                + " UNION ALL"
-                + settledSelect
-                + "), monthly AS ("
-                + " SELECT date_trunc('month', pl.bill_date) AS ms, to_char(date_trunc('month', pl.bill_date),'YYYY-MM') AS ym,"
-                + " COALESCE(SUM(pl.posted),0) AS posted, COALESCE(SUM(pl.settled),0) AS settled"
-                + " FROM party_ledger pl WHERE pl.bill_date BETWEEN :ys AND :ye GROUP BY 1, 2)"
-                + " SELECT m.ym,"
-                + " COALESCE((SELECT SUM(p2.posted-p2.settled) FROM party_ledger p2 WHERE p2.bill_date < m.ms),0) AS prevBalance,"
-                + " m.posted, m.settled, 0 AS returned,"
-                + " COALESCE((SELECT SUM(p3.posted-p3.settled) FROM party_ledger p3 WHERE p3.bill_date < m.ms + INTERVAL '1 month'),0) AS balance"
-                + " FROM monthly m ORDER BY m.ym";
-        return executeRawGrouped(cols, sql, partyId, yearStart, yearEnd, page, size, documentScope);
-    }
-
-    /**
-     * One dated AP event authority shared by supplier flow/detail/annual reports.
-     * Posted columns increase AP; settled columns reduce AP. Reversals retain
-     * their actual event date, and payment local amount is the AP book amount
-     * rather than cash local amount, so FX never distorts the supplier balance.
-     */
-    private static String supplierPayableStatementEventsSql(NativeReadScope documentScope) {
-        return """
-                WITH payment_facts AS (
-                    SELECT payment.id,payment.supplier_id,payment.currency_id,payment.bill_no,
-                           payment.bill_date,
-                           (COALESCE(payment.reversed_at, payment.updated_at)
-                               AT TIME ZONE 'Asia/Shanghai')::DATE AS reverse_date,
-                           payment.exchange_rate,payment.status,payment.remark,
-                           CASE WHEN COALESCE(lines.line_count,0)>0
-                                THEN lines.applied_original ELSE payment.amount_original END AS book_original,
-                           CASE WHEN COALESCE(lines.line_count,0)>0
-                                THEN lines.applied_local ELSE payment.amount_local END AS book_local,
-                           CASE WHEN COALESCE(lines.line_count,0)>0
-                                THEN ROUND(lines.applied_local/NULLIF(lines.applied_original,0),6)
-                                ELSE payment.exchange_rate END AS book_rate
-                    FROM finance_payments payment
-                    LEFT JOIN LATERAL (
-                        SELECT COUNT(*) AS line_count,
-                               COALESCE(SUM(line.amount_original),0) AS applied_original,
-                               COALESCE(SUM(COALESCE(line.applied_amount_local,
-                                   line.amount_local-COALESCE(line.exchange_diff,0))),0) AS applied_local
-                        FROM finance_payment_lines line
-                        WHERE line.payment_id=payment.id
-                          AND COALESCE(line.is_deleted,FALSE)=FALSE
-                    ) lines ON TRUE
-                    WHERE payment.status IN(1,-1)
-                      AND COALESCE(payment.is_deleted,FALSE)=FALSE
-                      AND payment.supplier_id IS NOT NULL
-                      AND %s
-                ), supplier_payable_events AS (
-                    SELECT ledger.bill_date AS event_date,ledger.bill_no AS ref_no,
-                           ledger.amount_original AS posted_original,ledger.exchange_rate AS posted_rate,
-                           ledger.amount_original_local AS posted_local,
-                           0::NUMERIC AS settled_original,NULL::NUMERIC AS settled_rate,
-                           0::NUMERIC AS settled_local,'立账' AS event_type,
-                           currency.code AS currency_code,ledger.remark,ledger.currency_id,
-                           ledger.supplier_id,10 AS event_order
-                    FROM ar_ap_ledger ledger
-                    LEFT JOIN currencies currency ON currency.id=ledger.currency_id
-                    WHERE ledger.direction='AP' AND ledger.supplier_id IS NOT NULL
-                      AND ledger.source_doc_type<>'DIRECT_PAYMENT'
-                      AND ((ledger.status=1 AND COALESCE(ledger.is_deleted,FALSE)=FALSE)
-                        OR (ledger.status=-1 AND COALESCE(ledger.is_deleted,FALSE)=TRUE
-                            AND ledger.deleted_at IS NOT NULL))
-                    UNION ALL
-                    SELECT (ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::DATE,
-                           ledger.bill_no,
-                           -ledger.amount_original,ledger.exchange_rate,
-                           -ledger.amount_original_local,0::NUMERIC,NULL::NUMERIC,0::NUMERIC,
-                           '立账红冲',currency.code,ledger.remark,ledger.currency_id,
-                           ledger.supplier_id,20
-                    FROM ar_ap_ledger ledger
-                    LEFT JOIN currencies currency ON currency.id=ledger.currency_id
-                    WHERE ledger.direction='AP' AND ledger.supplier_id IS NOT NULL
-                      AND ledger.status=-1 AND COALESCE(ledger.is_deleted,FALSE)=TRUE
-                      AND ledger.deleted_at IS NOT NULL
-                    UNION ALL
-                    SELECT payment.bill_date,payment.bill_no,0::NUMERIC,NULL::NUMERIC,0::NUMERIC,
-                           payment.book_original,payment.book_rate,payment.book_local,
-                           '付款',currency.code,payment.remark,payment.currency_id,
-                           payment.supplier_id,30
-                    FROM payment_facts payment
-                    LEFT JOIN currencies currency ON currency.id=payment.currency_id
-                    UNION ALL
-                    SELECT payment.reverse_date,payment.bill_no,0::NUMERIC,NULL::NUMERIC,0::NUMERIC,
-                           -payment.book_original,payment.book_rate,-payment.book_local,
-                           '付款反审',currency.code,payment.remark,payment.currency_id,
-                           payment.supplier_id,40
-                    FROM payment_facts payment
-                    LEFT JOIN currencies currency ON currency.id=payment.currency_id
-                    WHERE payment.status=-1 AND payment.reverse_date IS NOT NULL
-                    UNION ALL
-                    SELECT allocation.effective_date,allocation.offset_batch_id::TEXT,
-                           0::NUMERIC,NULL::NUMERIC,0::NUMERIC,allocation.amount_original,
-                           allocation.target_rate,allocation.target_amount_local,
-                           '应付抵销',currency.code,allocation.reason,allocation.currency_id,
-                           allocation.supplier_id,50
-                    FROM supplier_open_item_offsets allocation
-                    LEFT JOIN currencies currency ON currency.id=allocation.currency_id
-                    UNION ALL
-                    SELECT allocation.effective_date,allocation.offset_batch_id::TEXT,
-                           allocation.amount_original,allocation.source_rate,allocation.source_amount_local,
-                           0::NUMERIC,NULL::NUMERIC,0::NUMERIC,
-                           '贷项使用',currency.code,allocation.reason,allocation.currency_id,
-                           allocation.supplier_id,60
-                    FROM supplier_open_item_offsets allocation
-                    LEFT JOIN currencies currency ON currency.id=allocation.currency_id
-                    UNION ALL
-                    SELECT (allocation.reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE,
-                           allocation.offset_batch_id::TEXT,
-                           0::NUMERIC,NULL::NUMERIC,0::NUMERIC,-allocation.amount_original,
-                           allocation.target_rate,-allocation.target_amount_local,
-                           '抵销反转',currency.code,allocation.reverse_reason,allocation.currency_id,
-                           allocation.supplier_id,70
-                    FROM supplier_open_item_offsets allocation
-                    LEFT JOIN currencies currency ON currency.id=allocation.currency_id
-                    WHERE allocation.status='REVERSED' AND allocation.reversed_at IS NOT NULL
-                    UNION ALL
-                    SELECT (allocation.reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE,
-                           allocation.offset_batch_id::TEXT,
-                           -allocation.amount_original,allocation.source_rate,-allocation.source_amount_local,
-                           0::NUMERIC,NULL::NUMERIC,0::NUMERIC,
-                           '贷项恢复',currency.code,allocation.reverse_reason,allocation.currency_id,
-                           allocation.supplier_id,80
-                    FROM supplier_open_item_offsets allocation
-                    LEFT JOIN currencies currency ON currency.id=allocation.currency_id
-                    WHERE allocation.status='REVERSED' AND allocation.reversed_at IS NOT NULL
-                )
-                """.formatted(documentScope.predicate());
+        assertPartyOpeningWindowReplayable(partyId,isAR,yearStart,yearEnd);
+        NativeReadScope scope=COMPANY_WIDE_DOCUMENT_SCOPE;
+        return executeRawGrouped(cols,FinancePartyStatementSql.annual(
+                FinancePartyStatementSql.events(isAR,scope.predicate())),partyId,yearStart,yearEnd,page,size,scope);
     }
 
     // ======================== ⑤ 账户流水 S / 银行存取 Q·R ========================
@@ -2323,44 +2121,43 @@ public class FinanceReportService {
         return new ReportTableResponse(cols, List.of(), new LinkedHashMap<>(), 1, 50, 0, 0);
     }
 
-    /** 滚动余额：取截止日以前的全量事实，Java 先累加期初再过滤开始日并手动分页。
-     *  金额列统一在索引 [2..7]（org/rate/loc/r_org/r_rate/r_loc），[8]type [9]cur [10]remark [11]currencyId。
-     *  原币余额按币别分别滚动，禁止把 USD/CNY 等原币金额直接相加；本币余额仍可统一累加。 */
-    @Transactional(readOnly = true)
-    private ReportTableResponse buildRunningBalance(List<ReportColumn> cols, String sql, UUID pid,
-                                                    LocalDate dateFrom, LocalDate dateTo, int page, int size,
-                                                    boolean simpleCols, NativeReadScope documentScope) {
-        var q = em.createNativeQuery(sql).setParameter("pid", pid).setParameter("to", dateTo);
-        documentScope.bind(q);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = q.getResultList();
-        Map<String, BigDecimal> runOrgByCurrency = new LinkedHashMap<>();
-        BigDecimal runLoc = BigDecimal.ZERO;
-        List<Map<String, Object>> all = new ArrayList<>(rows.size());
-        for (Object[] r : rows) {
-            BigDecimal org = num(r[2]); BigDecimal rate = numOrNull(r[3]); BigDecimal loc = num(r[4]);
-            BigDecimal rOrg = num(r[5]); BigDecimal rRate = numOrNull(r[6]); BigDecimal rLoc = num(r[7]);
-            String currencyCode = Objects.toString(r[9], "(未指定)");
-            String currencyBucket = r[11] == null ? "(未指定)" : r[11].toString();
-            BigDecimal runOrg = runOrgByCurrency.getOrDefault(currencyBucket, BigDecimal.ZERO)
-                    .add(org).subtract(rOrg);
-            runOrgByCurrency.put(currencyBucket, runOrg);
-            runLoc = runLoc.add(loc).subtract(rLoc);
-            LocalDate billDate = asLocalDate(r[0]);
-            if (dateFrom != null && billDate != null && billDate.isBefore(dateFrom)) {
-                continue;
-            }
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("billDate", norm(r[0])); m.put("refNo", norm(r[1]));
-            if (!simpleCols) m.put("type", norm(r[8]));
-            m.put("currencyCode", norm(r[9]));
-            m.put("salesOriginal", norm(org)); m.put("salesRate", norm(rate)); m.put("salesLocal", norm(loc));
-            m.put("receiptOriginal", norm(rOrg)); m.put("receiptRate", norm(rRate)); m.put("receiptLocal", norm(rLoc));
-            m.put("balanceOriginal", norm(runOrg)); m.put("balanceRate", norm(rate)); m.put("balanceLocal", norm(runLoc));
-            if (!simpleCols) { m.put("remark", norm(r[10])); }
-            all.add(m);
+    /** PostgreSQL computes balance before filtering/paging; only one page crosses JDBC. */
+    private ReportTableResponse buildRunningBalance(List<ReportColumn> columns,String core,UUID party,
+                                                     LocalDate from,LocalDate to,int page,int size,NativeReadScope scope) {
+        int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
+        String selected=columns.stream().map(column->"\""+column.key()+"\"")
+                .collect(java.util.stream.Collectors.joining(","));
+        var data=em.createNativeQuery("SELECT "+selected+" FROM ("+core+") report"
+                +" ORDER BY \"billDate\",\"eventOrder\",\"refNo\",\"eventId\" LIMIT :__limit OFFSET :__offset")
+                .setParameter("pid",party).setParameter("from",from).setParameter("to",to)
+                .setParameter("__limit",safeSize).setParameter("__offset",(long)(safePage-1)*safeSize);
+        scope.bind(data);
+        @SuppressWarnings("unchecked") List<Object[]> records=data.getResultList();
+        List<Map<String,Object>> items=new ArrayList<>(records.size());
+        for (Object[] row:records) {
+            Map<String,Object> item=new LinkedHashMap<>();
+            for(int index=0;index<columns.size();index++)item.put(columns.get(index).key(),norm(row[index]));
+            items.add(item);
         }
-        return paginate(cols, all, page, size);
+        var count=em.createNativeQuery("SELECT count(*) FROM ("+core+") report")
+                .setParameter("pid",party).setParameter("from",from).setParameter("to",to);
+        scope.bind(count);
+        long total=((Number)count.getSingleResult()).longValue();
+        // A missing original amount makes that currency's original total unknown;
+        // known local amounts and period cash remain fully reportable.
+        String totalSource="""
+                SELECT "currencyCode","salesLocal","receiptLocal",
+                       CASE WHEN BOOL_OR("salesOriginal" IS NULL) OVER(PARTITION BY "currencyCode")
+                            THEN NULL ELSE "salesOriginal" END AS "salesOriginal",
+                       CASE WHEN BOOL_OR("receiptOriginal" IS NULL) OVER(PARTITION BY "currencyCode")
+                            THEN NULL ELSE "receiptOriginal" END AS "receiptOriginal"
+                FROM (
+                """+core+") report";
+        var totals=com.uten.imp.common.report.ReportTotalsCalculator.compute(em,totalSource,"","",
+                query->{query.setParameter("pid",party).setParameter("from",from).setParameter("to",to);scope.bind(query);},
+                reportTotalSpecs(columns,columns));
+        return new ReportTableResponse(columns,items,new LinkedHashMap<>(),safePage,safeSize,total,
+                (int)((total+safeSize-1)/safeSize),totals);
     }
 
     private static LocalDate asLocalDate(Object value) {

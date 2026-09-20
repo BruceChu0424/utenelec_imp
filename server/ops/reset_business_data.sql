@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V606；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V627；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -219,6 +219,22 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('da_amortization_log', 'CLEAR'),
 ('deferred_expenses', 'CLEAR'),
 ('execution_segment_sales_allocations', 'CLEAR'),
+('expense_claim_events', 'CLEAR'),
+('production_daily_report_target_events', 'CLEAR'),
+('production_daily_report_material_release_events', 'CLEAR'),
+('production_workshop_direct_source_allocations', 'CLEAR'),
+('production_workshop_direct_source_events', 'CLEAR'),
+('production_workshop_direct_legacy_anomalies', 'CLEAR'),
+('production_material_return_receiving_confirmations', 'CLEAR'),
+('production_workshop_material_return_slices', 'CLEAR'),
+('production_workshop_material_custody_preparations', 'CLEAR'),
+('production_workshop_material_custody_moves', 'CLEAR'),
+('production_workshop_material_custody_reversals', 'CLEAR'),
+('production_workshop_material_custody_handoffs', 'CLEAR'),
+('production_workshop_custody_handoff_reversals', 'CLEAR'),
+('production_workshop_custody_reverse_preparations', 'CLEAR'),
+('production_workshop_return_preplan_events', 'CLEAR'),
+('expense_claim_invoices', 'CLEAR'),
 ('expense_claim_items', 'CLEAR'),
 ('expense_claims', 'CLEAR'),
 ('fa_depreciation_log', 'CLEAR'),
@@ -423,6 +439,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('warehouse_goods_place_preferences', 'CLEAR'),
 ('website_inquiries', 'CLEAR'),
 ('accounts', 'PRESERVE'),
+('expense_claim_settings', 'PRESERVE'),
 ('attachment_object_outbox', 'PRESERVE'),
 ('attachment_reconciliation_findings', 'PRESERVE'),
 ('attachment_upload_sessions', 'PRESERVE'),
@@ -551,6 +568,17 @@ SELECT optional.table_name, optional.disposition
 FROM (VALUES
 ('procurement_iqc_stock_in_batch_items', 'CLEAR'),
 ('procurement_iqc_stock_in_batches', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V624 source proofs share the lifetime of preserved migration runs. They do
+-- not disappear when their former business orders are reset.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('legacy_subcontract_order_import_sources', 'PRESERVE'),
+('legacy_finance_import_sources', 'PRESERVE'),
+('legacy_procurement_receipt_import_sources', 'PRESERVE')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
@@ -1082,10 +1110,39 @@ BEGIN
         (605, 561),
         -- V606 开工路线自动识别：路线在创建事务内自动判定（函数替换 + 存量回填
         -- UPDATE），不加表；条数 561→562。
-        (606, 562)
+        (606, 562),
+        -- V607 客户货款类型放开为选填（DROP 约束），不加表；条数 562→563。
+        (607, 563),
+        -- V608 报销链路完整化：发票登记表 + 审批事件表（+2 CLEAR）；条数 563→564。
+        (608, 564),
+        -- V609-V612 车间路线/容量/普通仓/直送守恒：无新增业务表。
+        (609, 565),
+        (610, 566),
+        (611, 567),
+        (612, 568),
+        -- V613 技术子位不改变普通仓收发身份，统一运营叶仓定义。
+        (613, 569),
+        (614, 570),
+        (615, 571),
+        (616, 572),
+        (617, 573),
+        (618, 574),
+        (619, 575),
+        (620, 576),
+        (621, 577),
+        (622, 578),
+        (623, 579),
+        -- V624 keeps immutable first-import subcontract source evidence across business resets.
+        (624, 580),
+        -- V625 restricts runtime maintenance capabilities without adding business tables.
+        (625, 581),
+        -- V626 preserves original financial source evidence without replaying historical cash events.
+        (626, 582),
+        -- V627 preserves historical purchase/subcontract receipt source evidence.
+        (627, 583)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V606完整目录(V544、V576、V604 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V627完整目录(V544、V576、V604 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1230,7 +1287,27 @@ BEGIN
             ('production_daily_report_material_usages', 583),
             ('production_workshop_direct_transfers', 584),
             ('production_workshop_direct_transfer_items', 584),
-            ('production_workshop_direct_transfer_reversals', 584)
+            ('production_workshop_direct_transfer_reversals', 584),
+            ('expense_claim_invoices', 608),
+            ('expense_claim_events', 608),
+            ('expense_claim_settings', 617),
+            ('legacy_subcontract_order_import_sources', 624),
+            ('legacy_finance_import_sources', 626),
+            ('legacy_procurement_receipt_import_sources', 627),
+            ('production_daily_report_target_events', 614),
+            ('production_daily_report_material_release_events', 614),
+            ('production_workshop_direct_source_allocations', 615),
+            ('production_workshop_direct_source_events', 615),
+            ('production_workshop_direct_legacy_anomalies', 615),
+            ('production_material_return_receiving_confirmations', 618),
+            ('production_workshop_material_return_slices', 619),
+            ('production_workshop_material_custody_preparations', 619),
+            ('production_workshop_material_custody_moves', 619),
+            ('production_workshop_material_custody_reversals', 619),
+            ('production_workshop_material_custody_handoffs', 619),
+            ('production_workshop_custody_handoff_reversals', 619),
+            ('production_workshop_custody_reverse_preparations', 619),
+            ('production_workshop_return_preplan_events', 619)
     ) AS required(table_name, introduced_version)
     WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
         IS DISTINCT FROM (applied_max_version >= required.introduced_version);
@@ -1239,7 +1316,7 @@ BEGIN
     END IF;
     SELECT count(*) INTO current_operational_table_count
     FROM reset_business_table_policy
-    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals');
+    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals','expense_claim_invoices','expense_claim_events','production_daily_report_target_events','production_daily_report_material_release_events','production_workshop_direct_source_allocations','production_workshop_direct_source_events','production_workshop_direct_legacy_anomalies','production_material_return_receiving_confirmations','production_workshop_material_return_slices','production_workshop_material_custody_preparations','production_workshop_material_custody_moves','production_workshop_material_custody_reversals','production_workshop_material_custody_handoffs','production_workshop_custody_handoff_reversals','production_workshop_custody_reverse_preparations','production_workshop_return_preplan_events');
 
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
     -- V579 新增客户/供应商联系方式·地址·跟进记录三张子表(PRESERVE 96→99，
@@ -1249,7 +1326,11 @@ BEGIN
        OR (applied_max_version BETWEEN 579 AND 589 AND preserve_count <> 99)
        -- V590 废弃车间偏好表 production_goods_workshop_preferences（数据搬进货品表
        -- 随 goods 继续保留）：PRESERVE 99→98。
-       OR (applied_max_version >= 590 AND preserve_count <> 98)
+       OR (applied_max_version BETWEEN 590 AND 616 AND preserve_count <> 98)
+       OR (applied_max_version BETWEEN 617 AND 623 AND preserve_count <> 99)
+       OR (applied_max_version BETWEEN 624 AND 625 AND preserve_count <> 100)
+       OR (applied_max_version = 626 AND preserve_count <> 101)
+       OR (applied_max_version >= 627 AND preserve_count <> 102)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0
@@ -1292,6 +1373,8 @@ BEGIN
                 AND v447_business_table_count=5
                 AND clear_count-v454_celebration_table_count=229)
            -- V500 eight value tables; V503 three source revision tables.
+           -- V608 报销链路完整化：发票登记表 + 审批事件表进 current_operational_
+           -- table_count 清单（clear_count 同步 +2，恒等式仍为 229）。
            OR (applied_max_version>=500 AND v446_business_table_count=2
                 AND v447_business_table_count=5
                 AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=229)

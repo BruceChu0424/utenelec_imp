@@ -2,7 +2,7 @@
 
 [准则索引与开发清单](00-项目准则/00-准则索引与开发清单.md)是开发起点。本页帮助从业务规则找到页面、服务、迁移和测试，不另维护当前版本或通过数量。
 
-当前性能、稳定性及发布结果见[全站性能与稳定性验收](99-项目治理/2026-09-12-全站性能与稳定性验收.md)。前轮业务范围见[全平台审计计划](01-规划/2026-09-07-全平台业务链审计与整改计划.md)，对应历史证据见[本地审计与整改验收](99-项目治理/2026-09-07-全平台本地审计与整改验收.md)。接手业务改动先读[续作指引](07-业务链路/03-续作指引.md)。
+当前候选、性能、安全与发布证据见[当前版本验证与交付](99-项目治理/当前版本验证.md)。接手业务改动先读[续作指引](07-业务链路/03-续作指引.md)，再按下表定位规则、实现和测试。历史审计报告保留原候选与时间，不作为当前通过结论。
 
 ## 业务到实现
 
@@ -10,13 +10,15 @@
 
 | 业务规则 | 页面 | 服务函数 | 迁移与测试 |
 |---|---|---|---|
+| [车间路线与供料场景](07-业务链路/车间任务路线与供料场景矩阵.md)、[计量与来源守恒](07-业务链路/生产计量与来源守恒.md) | [我的车间任务](03-页面/我的车间任务页.md) | ProductionExecutionSegmentService、ProductionExecutionReadinessService、ProductionDailyReportService、ProductionWorkshopDirectTransferService | V609–V616；[并行对抗验证](99-项目治理/2026-09-19-车间全链路并行对抗验证.md) |
 | [销售订货到发货SOP](07-业务链路/01-销售订货到发货全链路-SOP.md)；[财审租约](99-项目治理/2026-09-07-财务审核租约与订单互斥.md) | [销售订单财务审核](03-页面/销售订单财务审核页.md)、[客户零星发货](03-页面/客户零星发货与出货财务审核.md)、[仓库发货](03-页面/销售出货仓库作业页.md) | SalesOrderService 的审核/改量、SalesOrderFinanceConfirmService 的认领/决策、SalesShipmentService 的财审/仓库动作 | [V492修改复核](数据迁移/108-V492销售订单完整修改与财务版本复核.md)、[V511统一发货](数据迁移/125-V511客户零星发货统一流程.md)；[场景矩阵](07-业务链路/2026-09-07-销售资金库存场景矩阵与压力验收.md) |
 | [排产与执行需求](07-业务链路/04-生产订单排产与执行全链路需求.md)、[预留生命周期](07-业务链路/05-销售现货预留生命周期与稀缺仲裁.md) | [物料分析](03-页面/生产物料分析页.md)、[履约工作台](03-页面/生产履约任务工作台.md)、[我的车间任务](03-页面/我的车间任务页.md) | [MaterialAnalysisService.refreshLocked](../server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java)、MaterialAnalysisCommandService、MaterialAnalysisRootSupplyService | [ADR-073本批履约](99-决策记录-ADR/ADR-073-本批物料履约与同主仓分仓领料.md)；[PlanningEligibilityTest](../server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisPlanningEligibilityTest.java)、FullChain |
 | [分批生产、物料调度与销售出货](99-项目治理/2026-09-12-车间分批领退料本地验收.md) | [物料分析](03-页面/生产物料分析页.md)、[车间任务](03-页面/我的车间任务页.md)、[产品进度与发货](03-页面/销售订单进度详情页.md)、[仓库枢纽](03-页面/仓库管理枢纽页.md) | ProductionExecutionBatchService、ProductionDrawRequestService、PreplanFutureSupplyTransferService、SalesShipmentBatchAllocation | [逐行领料](数据迁移/160-V564逐行分批领料申请数量.md)、[实仓拣货](数据迁移/162-V566销售无仓提交与仓库实仓拣货.md)、[补自制](数据迁移/164-V568让料后的自制补供责任.md)、[在途归属](数据迁移/165-V569在途供给归属调整.md)；真实PG及Flutter证据按专题范围解释 |
 | [采购/委外到货与退换货](99-项目治理/采购与委外到货退换货实现与验收.md)、[委外SOP](07-业务链路/08-委外全链路-订货出仓回仓重设计.md) | [到货登记](03-页面/仓库到货登记页.md)、[IQC合格待入库](03-页面/采购委外IQC合格待入库任务页.md)、[应付结算](03-页面/采购委外应付结算工作台.md) | ProcurementReceiptConsiderationService.freezeReceipt/freezeQuality/settleStockIn、ProcurementIqcRejectionService.previewCredit/confirmCredit/reverse | V518+V519；[ProcurementConsiderationMigrationPostgresTest](../server/src/test/java/com/uten/imp/migration/ProcurementConsiderationMigrationPostgresTest.java)、IQC Widget、FullChain；链接在专题内 |
 | [实际库存成本与在制](99-项目治理/库存实际成本接线与验收.md) | [出入库记录](03-页面/出入库记录页.md)、[生产执行与报工](03-页面/生产执行分段与报工页.md)、[产成品点收](03-页面/产成品待点收任务页.md) | StockService→StockValuationCoordinator.value；ProductionInventoryValueService.settled/refresh；InventoryValueWorkService.runBatch | V506/V514/V517/V521–V527；[精度复核](99-项目治理/2026-09-07-库存成本账内精度与精确份额复核.md)、[守恒压力矩阵](99-项目治理/2026-09-07-生产链逐步守恒与压力测试矩阵.md) |
 | [销售退货品质与处置](07-业务链路/06-销售退货质检冻结与处置.md) | [销售退货品质页](03-页面/销售退货质检冻结处置页.md) | SalesReturnService.approve、SalesReturnQualityService、SalesReturnInventoryValueService.qualityEventRecorded | 原发货UUID/品质事件/真实成本来源；FullChain及成本专题中的分支证据 |
-| [实际金额与精确分摊](07-业务链路/2026-09-07-财务原始金额与精确分摊口径.md) | [财务表单源码](../lib/features/finance/pages/finance_doc_edit_page.dart)、[财务详情](../lib/features/finance/pages/finance_doc_detail_page.dart) | FinancialExactAmount、ProcurementCreditBookAllocationService.plan/applyOffset、FinanceReceiptService、FinancePaymentService、CustomerPrepaymentOffsetService | V519/V520/V523；[银行/Book/Exact专项](99-项目治理/2026-09-07-V519-V520-V523财务实际金额与银行链验收交接.md)。客户现金退款另见[工作包](07-业务链路/2026-09-07-客户现金退款工作包方案.md)，不能把负AR当现金退款 |
+| [实际金额与精确分摊](07-业务链路/2026-09-07-财务原始金额与精确分摊口径.md) | [钱流单据](03-页面/钱流单据页.md)、[财务表单源码](../lib/features/finance/pages/finance_doc_edit_page.dart)、[财务详情](../lib/features/finance/pages/finance_doc_detail_page.dart) | FinancialExactAmount、ProcurementCreditBookAllocationService.plan/applyOffset、FinanceReceiptService、FinancePaymentService、CustomerPrepaymentOffsetService | V519/V520/V523；[银行/Book/Exact专项](99-项目治理/2026-09-07-V519-V520-V523财务实际金额与银行链验收交接.md)。客户现金退款另见[工作包](07-业务链路/2026-09-07-客户现金退款工作包方案.md)，不能把负AR当现金退款 |
+| [员工报销 SOP](07-业务链路/员工报销全链路-SOP.md)、[合规依据与凭证清单](07-业务链路/员工报销合规依据与凭证清单.md) | [我的报销](03-页面/报销列表页.md)、[新建/编辑](03-页面/新建报销页.md)、[报销详情](03-页面/报销详情页.md)、[报销审批](03-页面/报销审批列表页.md) | ExpenseClaimService 的 create/edit/submit/approve(Batch)/pay、InvoiceRecognitionService | [ADR-094](99-决策记录-ADR/ADR-094-报销链路完整化.md)、[V608](数据迁移/198-V608报销链路完整化.md)；[本轮验收矩阵](99-项目治理/2026-09-19-员工报销全链路验收.md)，测试、部署与岗位验收分别记录 |
 
 ## 按文档职责查找
 

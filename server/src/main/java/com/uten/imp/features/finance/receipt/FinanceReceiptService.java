@@ -11,6 +11,7 @@ import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.LegacyOpeningReversalFloor;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
@@ -203,6 +204,7 @@ public class FinanceReceiptService {
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         requirePrepaymentView(req.getReceiptKind());
         if (r.getStatus() != STATUS_DRAFT) {
@@ -234,6 +236,7 @@ public class FinanceReceiptService {
         tx.bind();
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
@@ -254,6 +257,7 @@ public class FinanceReceiptService {
         FinanceReceipt r = lockActive(id);
         access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
                 "finance_receipt:approve");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -297,6 +301,7 @@ public class FinanceReceiptService {
         FinanceReceipt r = lockActive(id);
         access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
                 "finance_receipt:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -399,7 +404,7 @@ public class FinanceReceiptService {
                     && !Objects.equals(receipt.getClientId(), line.getClientId()))) {
                 throw new ApiException(ErrorCode.CONFLICT, "收款客户与引用应收客户不一致");
             }
-            if (SRC_DIRECT_RECEIPT.equals(ledger.getSourceDocType())) {
+            if ("CUSTOMER_PREPAYMENT".equals(ledger.getOpenItemKind())) {
                 throw new ApiException(ErrorCode.CONFLICT, "客户预收款不能作为普通应收引用");
             }
             if (ledger.isSettled()) {
@@ -535,8 +540,10 @@ public class FinanceReceiptService {
             FinanceReceipt receipt,
             List<FinanceReceiptLine> lines,
             Map<UUID, ArApLedger> lockedLedgers) {
+        var floors=LegacyOpeningReversalFloor.load(em,lockedLedgers.values(),"AR");
         for (FinanceReceiptLine line : lines) {
             ArApLedger ledger = lockedLedgers.get(line.getAppliedLedgerId());
+            var floor=floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO);
             if (!"AR".equals(ledger.getDirection())
                     || !Objects.equals(receipt.getClientId(), ledger.getClientId())) {
                 throw new ApiException(ErrorCode.CONFLICT, "收款红冲来源与当前应收不一致");
@@ -548,9 +555,9 @@ public class FinanceReceiptService {
             BigDecimal newWriteOffOriginal = money(nz(ledger.getAmountWriteOffOriginal()).subtract(writeOffOriginal));
             BigDecimal newWriteOffLocal = money(nz(ledger.getAmountWriteOffLocal()).subtract(nz(line.getWriteOffLocal())));
             BigDecimal newSettledLocal = money(nz(ledger.getAmountSettled()).subtract(nz(line.getAppliedAmountLocal())));
-            if (newReceivedOriginal.signum() < 0 || newReceivedLocal.signum() < 0
+            if (newReceivedOriginal.compareTo(floor.receivedOriginal()) < 0 || newReceivedLocal.compareTo(floor.receivedLocal()) < 0
                     || newWriteOffOriginal.signum() < 0 || newWriteOffLocal.signum() < 0
-                    || newSettledLocal.signum() < 0) {
+                    || newSettledLocal.compareTo(floor.settledLocal()) < 0) {
                 throw new ApiException(ErrorCode.CONFLICT, "应收累计值不足，禁止红冲该收款单");
             }
             ledger.setAmountReceivedOriginal(newReceivedOriginal);
@@ -575,7 +582,7 @@ public class FinanceReceiptService {
                 .subtract(nz(led.getAmountOffsetOriginal())));
         BigDecimal bal = money(nz(led.getAmountOriginalLocal())
                 .subtract(nz(led.getAmountSettled())).subtract(nz(led.getAmountOffsetLocal())));
-        if (!SRC_DIRECT_RECEIPT.equals(led.getSourceDocType()) && (original.signum()<0 || bal.signum()<0)) {
+        if (!"CUSTOMER_PREPAYMENT".equals(led.getOpenItemKind()) && (original.signum()<0 || bal.signum()<0)) {
             throw new ApiException(ErrorCode.CONFLICT, "应收余额不足以覆盖收款、冲销与已转销预收，请核对来源");
         }
         led.setAmountBalanceOriginal(original);

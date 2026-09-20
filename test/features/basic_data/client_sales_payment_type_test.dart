@@ -32,30 +32,38 @@ void main() {
     },
   );
 
-  test('client editor requires the three-way type and list exports floor', () {
-    // 2026-09-14：客户编辑表单抽到 widgets/client_master_edit.dart，分类页只留
-    // 列表与详情。契约按两文件并集判定，不绑死在某一个文件里。
-    final source =
-        File(
-          'lib/features/basic_data/pages/client_category_page.dart',
-        ).readAsStringSync() +
-        File(
-          'lib/features/basic_data/widgets/client_master_edit.dart',
-        ).readAsStringSync();
-    final field = _between(
-      source,
-      "key: 'salesPaymentType'",
-      "key: 'defaultSettlementMethodId'",
-    );
+  test(
+    'client editor offers the three-way type as optional and list exports floor',
+    () {
+      // 2026-09-14：客户编辑表单抽到 widgets/client_master_edit.dart，分类页只留
+      // 列表与详情。字段切片必须只取 widgets 文件：分类页列表列也带
+      // key: 'salesPaymentType'（MasterColumnDef），并集切片会把「基础」组的
+      // 名称/状态 required: true 误圈进来（2026-09-19 改选填断言时暴露）。
+      final editorSource = File(
+        'lib/features/basic_data/widgets/client_master_edit.dart',
+      ).readAsStringSync();
+      final source =
+          File(
+            'lib/features/basic_data/pages/client_category_page.dart',
+          ).readAsStringSync() +
+          editorSource;
+      final field = _between(
+        editorSource,
+        "key: 'salesPaymentType'",
+        "key: 'defaultSettlementMethodId'",
+      );
 
-    expect(field, contains('required: true'));
-    expect(field, contains('ClientSalesPaymentType.monthly'));
-    expect(field, contains('ClientSalesPaymentType.cash'));
-    expect(field, contains('ClientSalesPaymentType.deposit'));
-    expect(source, contains("'salesPaymentType': d.salesPaymentType ?? ''"));
-    expect(source, contains("key: 'creditFloor'"));
-    expect(source, contains("label: '铺底额'"));
-  });
+      // 2026-09-19 用户口径：除「基础」组（名称/状态）外全部选填——货款类型不再
+      // 必填（未分类客户财务放行时有专门闸门拦截补选），三选项词表保持不动。
+      expect(field, isNot(contains('required: true')));
+      expect(field, contains('ClientSalesPaymentType.monthly'));
+      expect(field, contains('ClientSalesPaymentType.cash'));
+      expect(field, contains('ClientSalesPaymentType.deposit'));
+      expect(source, contains("'salesPaymentType': d.salesPaymentType ?? ''"));
+      expect(source, contains("key: 'creditFloor'"));
+      expect(source, contains("label: '铺底额'"));
+    },
+  );
 
   test(
     'legacy Credit is a read-only snapshot distinct from the active floor',

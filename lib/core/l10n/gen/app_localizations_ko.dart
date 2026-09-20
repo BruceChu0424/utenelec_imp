@@ -3697,4 +3697,269 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get myVisitorsStatusColInfo =>
       '기본적으로 \'확인 대기\' 항목만 표시합니다. 헤더 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다(백엔드 전달).';
+
+  @override
+  String get expenseFlowNew => '新建报销';
+
+  @override
+  String get expenseFlowEdit => '编辑报销';
+
+  @override
+  String get expenseFlowSaveAndContinue => '保存并补充凭证';
+
+  @override
+  String get expenseFlowSaveDraft => '存草稿';
+
+  @override
+  String get expenseFlowSave => '保存';
+
+  @override
+  String get expenseFlowFlowGuide => '填写费用 → 保存草稿 → 上传原件并登记凭证 → 提交审批 → 财务登记付款';
+
+  @override
+  String get expenseFlowInvoiceGuide =>
+      '请先保存草稿，再上传发票或其他合法凭证原件。电子凭证应保留收到的原始文件；图片识别仅辅助填写，不能代替查验或归档。';
+
+  @override
+  String get expenseFlowNoInvoiceGuide =>
+      '无发票时，请在说明中写明原因及凭证情况，上传能够证明真实业务的合法凭证，由财务审核。';
+
+  @override
+  String get expenseFlowApplicant => '申请人';
+
+  @override
+  String get expenseFlowDepartment => '部门';
+
+  @override
+  String get expenseFlowDate => '制单日期';
+
+  @override
+  String get expenseFlowTitle => '报销标题 *';
+
+  @override
+  String get expenseFlowTitleHint => '如：上海客户拜访差旅';
+
+  @override
+  String get expenseFlowTitleInfo => '简要说明费用用途，将打印在报销单事由栏。';
+
+  @override
+  String get expenseFlowRemark => '事由与说明';
+
+  @override
+  String get expenseFlowRemarkHint => '行程、项目、同行人员，或无发票的情况说明';
+
+  @override
+  String get expenseFlowMissingTitle => '请填写报销标题';
+
+  @override
+  String get expenseFlowTitleLength => '报销标题最多 200 字';
+
+  @override
+  String get expenseFlowMissingItems => '请至少添加一项报销明细';
+
+  @override
+  String get expenseFlowItems => '报销明细';
+
+  @override
+  String get expenseFlowAdd => '添加';
+
+  @override
+  String get expenseFlowEmptyItems => '点击添加，填写费用类别、实际金额及发生日期。';
+
+  @override
+  String get expenseFlowTotal => '报销合计';
+
+  @override
+  String get expenseFlowCapital => '人民币大写';
+
+  @override
+  String get expenseFlowDeleteItem => '删除明细';
+
+  @override
+  String get expenseFlowDraftSaved => '草稿已保存，请补充凭证后提交审批';
+
+  @override
+  String get expenseFlowSaved => '已保存';
+
+  @override
+  String get expenseFlowRejectedGuide => '已被驳回，请根据原因修订，保存后重新提交。';
+
+  @override
+  String get expenseFlowLoadFailed => '加载失败，请重试';
+
+  @override
+  String get expenseFlowNotEditable => '仅申请人可编辑草稿或已驳回的报销单。';
+
+  @override
+  String get expenseFlowAmountInvalid => '金额须大于 0，最多两位小数，不超过 9999999999.99 元';
+
+  @override
+  String get expenseFlowInvoiceAmountInvalid => '金额最多两位小数；价税合计须大于 0，其余金额不能为负';
+
+  @override
+  String get expenseFlowOcrGuide => '选择图片识别并预填，再对照原件逐项确认。识别不会查验真伪，也不会自动保存原件。';
+
+  @override
+  String get expenseFlowOcrConfirm => '我已对照原件核对识别结果';
+
+  @override
+  String get expenseFlowOcrConfirmRequired => '请先核对识别结果并勾选确认';
+
+  @override
+  String get expenseFlowOriginalRequired => '请先在详情页上传凭证原件，并在此关联对应文件';
+
+  @override
+  String get expenseFlowInvoiceDateRequired => '请选择凭证日期';
+
+  @override
+  String get expenseFlowOtherNumberInvalid =>
+      '其他凭证号码可包含字母、数字、斜线和短横线，最多 60 位；请填写开具方';
+
+  @override
+  String get expenseFlowVerify => '登记查验结果';
+
+  @override
+  String get expenseFlowVerifyTitle => '凭证人工查验';
+
+  @override
+  String get expenseFlowVerifyGuide =>
+      '先核对业务真实性和附件原件。税务发票请在国家税务总局发票查验平台或电子税务局查验；其他合法凭证按其适用渠道核实。金额勾稽与图片识别均不代表税务查验。';
+
+  @override
+  String get expenseFlowVerifyOfficial => '打开国家税务总局查验平台';
+
+  @override
+  String get expenseFlowVerifyRemark => '查验记录(渠道、结果及必要说明) *';
+
+  @override
+  String get expenseFlowVerifyPassed => '查验通过';
+
+  @override
+  String get expenseFlowVerifyMismatch => '查验不符';
+
+  @override
+  String get expenseFlowVerifyRequired => '请填写查验渠道和结果说明';
+
+  @override
+  String get expenseFlowVerifyBeforeApprove => '请先逐张登记凭证的人工查验结果，再审批通过';
+
+  @override
+  String get expenseFlowPaymentRecord => '登记付款';
+
+  @override
+  String get expenseFlowPaymentConfirm => '确认已付款';
+
+  @override
+  String get expenseFlowPaymentGuide =>
+      '请先在线下完成实际付款。此操作只登记已发生的付款、扣减系统账户余额并生成财务记录，不会向银行发起转账。';
+
+  @override
+  String get expenseFlowPaymentDone => '已登记付款，财务记录已生成';
+
+  @override
+  String get expenseFlowPrintDisclaimer => '内部报销审批展示单；不替代原始凭证、税务查验或法定电子档案。';
+
+  @override
+  String get expenseFlowSettingsTitle => '报销设置';
+
+  @override
+  String get expenseFlowSettingsDescription => '由财务维护公司抬头和凭证要求，员工填单时自动显示。';
+
+  @override
+  String get expenseFlowCompanyName => '公司名称';
+
+  @override
+  String get expenseFlowCompanyTaxNo => '纳税人识别号';
+
+  @override
+  String get expenseFlowSubmissionGuide => '报销及凭证说明';
+
+  @override
+  String get expenseFlowRequireInvoice => '提交时必须登记发票';
+
+  @override
+  String get expenseFlowRequireInvoiceHint => '关闭后仍须上传合法原始凭证，并填写无发票情况说明。';
+
+  @override
+  String get expenseFlowSettingsSaved => '报销设置已保存';
+
+  @override
+  String get expenseFlowSettingsSave => '保存设置';
+
+  @override
+  String get expenseFlowSettingsLoadFailed => '报销设置加载失败';
+
+  @override
+  String get expenseFlowRetry => '重试';
+
+  @override
+  String get expenseFlowCompanyNameRequired => '请填写公司名称';
+
+  @override
+  String get expenseFlowSettingsEntryDescription => '公司抬头、税号及提交凭证要求';
+
+  @override
+  String get expenseFlowApprovalEntryDescription => '核对凭证、审批及登记付款';
+
+  @override
+  String get expenseFlowApprovalTitle => '报销审批';
+
+  @override
+  String get expenseFlowInvoiceRequiredGuide => '按财务设置，本单须登记发票并关联原件后才能提交。';
+
+  @override
+  String get expenseFlowReadEvidenceRequired => '审批通过前需要具备凭证预览与下载权限，请联系授权人。';
+
+  @override
+  String get expenseFlowHistory => '已处理';
+
+  @override
+  String get expenseFlowPendingCorrection => '待修订';
+
+  @override
+  String get expenseFlowPaymentProofs => '付款证明(银行回单或现金签收凭据)';
+
+  @override
+  String get expenseFlowPaymentProofGuide => '先完成实际付款并上传凭据，再登记付款。';
+
+  @override
+  String get expenseFlowPaymentProofRequired => '请先上传付款证明，再确认已付款。';
+
+  @override
+  String get expenseFlowItemPurpose => '费用用途 *';
+
+  @override
+  String get expenseFlowItemPurposeHint => '请说明这笔费用的真实用途，如客户、项目或具体行程。';
+
+  @override
+  String get expenseFlowItemPurposeRequired => '请填写费用用途';
+
+  @override
+  String get goodsLearnedPriceUnconfirmed => '计价单位与币种待核对';
+
+  @override
+  String get goodsLearnedPriceTaxRate => '税率';
+
+  @override
+  String get shelfLocationQuantityHint => '库位是存放建议；库存按实际仓库和颜色统计，不代表该库位的盘点数量。';
+
+  @override
+  String get shelfActualWarehouse => '实际仓库';
+
+  @override
+  String get shelfMasterOnly => '主档建议(未指定仓库)';
+
+  @override
+  String get shelfChooseWarehouseForRack =>
+      '当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。';
+
+  @override
+  String get warehouseGoodsMasterDefaultHint => '已带入货品主档的默认存放仓，请核对本次实际仓库';
+
+  @override
+  String get warehouseSuggestedDestinationHint => '已带入建议存放仓，请核对本次实际仓库';
+
+  @override
+  String get warehouseBatchRegistrationHelp =>
+      '成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。';
 }

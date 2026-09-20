@@ -217,12 +217,12 @@ class ReportablePlanLinePostgresTest {
                     product_goods_id, product_unit_id, product_unit_rate,
                     planned_qty, status, bom_fingerprint, idempotency_key,
                     material_requirement_mode, zero_material_reason,
-                    zero_material_analysis_id
+                    zero_material_analysis_id, start_route, route_confirmed_at
                 ) VALUES (?, ?, ?, ?, 1, ?,
                           'reportable-plan-line-segment', ?, ?, 1,
                           100, 'READY', ?,
                           'reportable-plan-line-segment', 'ZERO_MATERIAL',
-                          'DIRECT_MAKE', ?)
+                          'DIRECT_MAKE', ?, 'FULL_KIT', now())
                 """, SEGMENT_ID, PACKAGE_ID, PLAN_ID, PLAN_ITEM_ID,
                 canonicalSegmentCode(SEGMENT_ID), GOODS_ID, UNIT_ID,
                 "c".repeat(64), ANALYSIS_ID);

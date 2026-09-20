@@ -430,8 +430,6 @@ abstract final class ApiEndpoints {
       '/stock/docs/$id/approve-and-issue';
   static String stockDocIssueReverse(String id) =>
       '/stock/docs/$id/issue/reverse';
-  static const productionMaterialReturnableSources =
-      '/stock/production-materials/returnable-sources';
   static String productionMaterialClearance(String planId) =>
       '/stock/production-materials/plans/$planId/clearance';
   static String productionMaterialCapabilities(String planId) =>

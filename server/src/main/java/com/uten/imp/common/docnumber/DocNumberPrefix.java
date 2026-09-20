@@ -63,6 +63,8 @@ public enum DocNumberPrefix {
     FIN_ACCOUNT_BALANCE_ADJUSTMENT("TZ"),
     FIXED_ASSET("FA"),
     DEFERRED_EXPENSE("DA"),
+    /** V608 员工费用报销单（打印报销单/归档编号；打款侧仍生成 YF 财务费用单）。 */
+    EXPENSE_CLAIM("BX"),
     // 生产
     PRODUCTION_PLAN("SJ"),
     PRODUCTION_SUBPLAN("SZ"),

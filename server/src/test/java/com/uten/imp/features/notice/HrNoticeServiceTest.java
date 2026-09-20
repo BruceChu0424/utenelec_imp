@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -86,19 +87,19 @@ class HrNoticeServiceTest {
         UUID claimId = UUID.randomUUID();
         service.notifyExpenseClaimSubmitted(claimId, "张三", "100.00 元", applicantEmployee);
         service.notifyExpenseClaimApproved(claimId, "张三", "100.00 元",
-                applicant.getId(), applicantEmployee);
+                applicant.getId(), applicantEmployee, UUID.randomUUID());
         verify(notices, never()).publishForUser(eq(applicant.getId()), eq("报销单待审批"),
                 anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any(UUID.class));
-        verify(notices, never()).publishForUser(eq(applicant.getId()), eq("报销单待打款"),
+        verify(notices, never()).publishForUser(eq(applicant.getId()), eq("报销单待付款"),
                 anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any(UUID.class));
-        verify(notices).publishForUser(eq(reviewer.getId()), eq("报销单待打款"), anyString(),
+        verify(notices).publishForUser(eq(reviewer.getId()), eq("报销单待付款"), anyString(),
                 eq("task"), eq("财务"), eq("/expense/approval"),
                 eq("EXPENSE_CLAIM_PENDING_PAYMENT"), eq("important"), eq(claimId));
         // 申请人仍收普通回执（6 参重载，无聚合）
         verify(notices).publishForUser(eq(applicant.getId()), eq("报销单已审批通过"),
-                anyString(), eq("approval"), eq("财务"), eq("/expense"));
+                anyString(), eq("approval"), eq("财务"), eq("/expense/" + claimId));
 
         // 工资审核通过：审核人本人不收「待发布」卡
         UUID batchId = UUID.randomUUID();
@@ -135,6 +136,37 @@ class HrNoticeServiceTest {
                 eq("一位员工（匿名） 提交了建议「减少加班」，请查看并回复。"),
                 eq("task"), eq("人事"), eq("/suggestion"),
                 eq("SUGGESTION_SUBMITTED"), eq("important"), eq(suggestionId));
+    }
+
+    @Test
+    void expenseApproverCannotReceiveTheirOwnPaymentTask() {
+        UUID reviewerEmployee = UUID.randomUUID();
+        UserAccount reviewer = account(reviewerEmployee, "active", false, "notice:read", "expense:pay");
+        UserAccount cashier = account(UUID.randomUUID(), "active", false, "notice:read", "expense:pay");
+        when(users.findAll()).thenReturn(List.of(reviewer, cashier));
+        UUID claimId = UUID.randomUUID();
+        service.notifyExpenseClaimApproved(claimId, "申请人", "12.34 元", null,
+                UUID.randomUUID(), reviewerEmployee);
+        verify(notices, never()).publishForUser(eq(reviewer.getId()), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString(), any(UUID.class));
+        verify(notices).publishForUser(eq(cashier.getId()), eq("报销单待付款"), anyString(),
+                eq("task"), eq("财务"), eq("/expense/approval"),
+                eq("EXPENSE_CLAIM_PENDING_PAYMENT"), eq("important"), eq(claimId));
+    }
+
+    @Test
+    void rejectionIsAnActionableTaskButPaymentReceiptDoesNotAssertBankArrival() {
+        UUID claimId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        service.notifyExpenseClaimRejected(claimId, "申请人", "补齐原件", userId);
+        verify(notices).publishForUser(eq(userId), eq("报销单被驳回"), contains("补齐原件"),
+                eq("task"), eq("财务"), eq("/expense/" + claimId),
+                eq("EXPENSE_CLAIM_REJECTED"), eq("important"), eq(claimId));
+        assertThat(ReviewNoticeCatalog.of("EXPENSE_CLAIM_REJECTED").orElseThrow().aggregateKind()).isEqualTo("EXPENSE_CLAIM");
+        service.notifyExpenseClaimPaid(claimId, "申请人", "12.34 元", userId);
+        verify(notices).publishForUser(eq(userId), eq("报销付款已登记"), contains("核对实际收款"),
+                eq("approval"), eq("财务"), eq("/expense/" + claimId));
+        verify(notices).resolveReviewNotices("EXPENSE_CLAIM", claimId, "PAID");
     }
 
     @Test

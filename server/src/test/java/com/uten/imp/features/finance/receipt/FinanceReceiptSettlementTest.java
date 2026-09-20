@@ -761,6 +761,36 @@ class FinanceReceiptSettlementTest {
         assertMoney(draft.getAmountLocal(), "72.0000");
     }
 
+    @Test
+    void positiveHistoricalDirectReceiptBalanceUsesProvenKindInsteadOfGuessingPrepayment() {
+        ArApLedger ledger=receivable("20.0000","1.000000");
+        ledger.setLegacySource("M_in"); ledger.setLegacyId(906100);
+        ledger.setSourceDocType("DIRECT_RECEIPT"); ledger.setOpenItemKind("LEGACY_UNVERIFIED");
+        ledger.setAmountReceivedOriginal(new BigDecimal("8.0000"));
+        ledger.setAmountReceivedLocal(new BigDecimal("8.0000"));
+        ledger.setAmountSettled(new BigDecimal("8.0000"));
+        ledger.setAmountBalanceOriginal(new BigDecimal("12.0000"));
+        ledger.setAmountBalance(new BigDecimal("12.0000"));
+        FinanceReceiptDetail draft=service.create(request(ledger,"3.0000","1.000000","0","0","0","0"));
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));
+        service.approve(draft.getId());
+        assertMoney(ledger.getAmountReceivedOriginal(),"11.0000");
+        assertMoney(ledger.getAmountBalanceOriginal(),"9.0000");
+        assertMoney(ledger.getAmountBalance(),"9.0000");
+    }
+
+    @Test
+    void realPrepaymentKindCannotBeConsumedAsOrdinaryReceivable() {
+        ArApLedger ledger=receivable("12.0000","1.000000");
+        ledger.setSourceDocType("DIRECT_RECEIPT"); ledger.setOpenItemKind("CUSTOMER_PREPAYMENT");
+        FinanceReceiptDetail draft=service.create(request(ledger,"3.0000","1.000000","0","0","0","0"));
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        assertThatThrownBy(() -> service.approve(draft.getId())).isInstanceOf(ApiException.class)
+                .hasMessageContaining("预收款不能作为普通应收引用");
+        verify(accountUpdate,never()).executeUpdate();
+    }
+
     private ArApLedger receivable(String original, String recognitionRate) {
         ArApLedger ledger = new ArApLedger();
         ledger.setDirection("AR");

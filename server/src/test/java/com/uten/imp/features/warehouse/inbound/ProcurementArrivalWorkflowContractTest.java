@@ -377,6 +377,7 @@ class ProcurementArrivalWorkflowContractTest {
     }
 
     private static String source(String path) throws Exception {
-        return Files.readString(Path.of(path));
+        // Text-block contracts are semantic across Windows and Linux checkouts.
+        return Files.readString(Path.of(path)).replace("\r\n", "\n");
     }
 }

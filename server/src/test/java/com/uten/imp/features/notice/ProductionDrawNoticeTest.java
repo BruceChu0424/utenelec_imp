@@ -30,6 +30,18 @@ import static org.mockito.Mockito.when;
 class ProductionDrawNoticeTest {
 
     @Test
+    void reassignmentHasANewIntentWithoutReusingTheOldDrawRequestKey() {
+        UUID draw=UUID.randomUUID(),segment=UUID.randomUUID();
+        JdbcTemplate jdbc=mock(JdbcTemplate.class);
+        BusinessEventPublisher outbox=mock(BusinessEventPublisher.class);
+        when(jdbc.queryForObject(contains("fn_production_draw_pending"),eq(Boolean.class),eq(draw))).thenReturn(true);
+        var service=service(mock(NoticeService.class),mock(UserAccountRepository.class),mock(PermissionResolver.class),jdbc,outbox);
+        service.notifyProductionDrawReassigned(draw,segment,7);
+        verify(outbox).publishOnce(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING,"STOCK_DOCUMENT",draw,Map.of(),
+                ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING+":ASSIGNMENT:"+segment+":7:"+draw);
+    }
+
+    @Test
     void pendingAndIssuedEventsUseDocumentAndIssueScopedDedupeKeys() {
         UUID drawId = UUID.randomUUID();
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
@@ -130,7 +142,9 @@ class ProductionDrawNoticeTest {
         service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING,
                 drawId, new ObjectMapper().createObjectNode());
 
-        org.mockito.Mockito.verifyNoInteractions(notices, users);
+        verify(notices).resolveReviewNotices("STOCK_DOCUMENT",drawId,"STATE_CHANGED");
+        org.mockito.Mockito.verifyNoMoreInteractions(notices);
+        org.mockito.Mockito.verifyNoInteractions(users);
     }
 
     @Test
@@ -250,6 +264,8 @@ class ProductionDrawNoticeTest {
                 eq(segmentId))).thenReturn(List.of(Map.ofEntries(
                         Map.entry("segment_id", segmentId),
                         Map.entry("segment_code", "SEG-002"),
+                        Map.entry("start_route", "FULL_KIT"),
+                        Map.entry("start_material_ready", true),
                         Map.entry("plan_no", "SJ-002"),
                         Map.entry("product_code", "P-002"),
                         Map.entry("product_name", "测试产品"),

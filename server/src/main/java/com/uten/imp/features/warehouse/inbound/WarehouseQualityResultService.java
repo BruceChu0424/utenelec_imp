@@ -100,7 +100,7 @@ public class WarehouseQualityResultService {
                        receipt.id AS receipt_id, receipt.bill_no, receipt.bill_date,
                        receipt.supplier_id, receipt.warehouse_id
                 FROM purchase_receipts receipt
-                WHERE receipt.status = 1
+                WHERE receipt.status = 1 AND receipt.legacy_id IS NULL
                   AND COALESCE(receipt.is_deleted, FALSE) = FALSE
                   AND (:type = 'ALL' OR 'PURCHASE'::text = :type)
                 UNION ALL
@@ -108,7 +108,7 @@ public class WarehouseQualityResultService {
                        receipt.id, receipt.bill_no, receipt.bill_date,
                        receipt.supplier_id, receipt.warehouse_id
                 FROM subcontract_receipts receipt
-                WHERE receipt.status = 1
+                WHERE receipt.status = 1 AND receipt.legacy_id IS NULL
                   AND COALESCE(receipt.is_deleted, FALSE) = FALSE
                   AND (:type = 'ALL' OR 'SUBCONTRACT'::text = :type)
             ), inspection AS (

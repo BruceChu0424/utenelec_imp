@@ -13,7 +13,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * 销售收款核销明细。源老库 M_in 中 BStyle=20 行（DIRECT_RECEIPT）；运行时核销行新库独有。
+ * 销售收款核销明细。运行时核销行新库独有；旧 M_in 是期初台账，不能推造为核销明细。
  *
  * <p>每行 = 一次核销一笔 AR。{@code applied_ledger_id} 显式指向 {@code ar_ap_ledger.id}。
  *
@@ -26,7 +26,7 @@ import java.util.UUID;
 @Table(name = "finance_receipt_lines")
 public class FinanceReceiptLine extends BaseEntity {
 
-    private Integer legacyId;                       // M_in.ID（仅 DIRECT_RECEIPT 行有）
+    private Integer legacyId;                       // 历史版本兼容字段；受验首导不推造旧核销明细
 
     @Column(name = "receipt_id", nullable = false)
     private UUID receiptId;

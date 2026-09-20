@@ -1,6 +1,7 @@
 package com.uten.imp.features.expenseclaim;
 
 import com.uten.imp.application.port.HrNoticePort;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.PageResponse;
@@ -8,6 +9,8 @@ import com.uten.imp.features.attachment.AttachmentRepository;
 import com.uten.imp.features.attachment.AttachmentService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimDto;
+import com.uten.imp.features.master.account.AccountRepository;
+import com.uten.imp.features.master.paymentstyle.PaymentStyleRepository;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -96,6 +99,8 @@ class ExpenseClaimCategoryFilterTest {
         return new ExpenseClaimService(
                 repo,
                 mock(ExpenseClaimItemRepository.class),
+                mock(ExpenseClaimInvoiceRepository.class),
+                mock(ExpenseClaimEventRepository.class),
                 new ExpenseApplicantQuery(mock(EntityManager.class)),
                 mock(EmployeeClaimPostingPort.class),
                 currentUser,
@@ -104,6 +109,8 @@ class ExpenseClaimCategoryFilterTest {
                 mock(TaskClaimService.class),
                 mock(AttachmentRepository.class),
                 mock(AttachmentService.class),
-                mock(HrNoticePort.class));
+                mock(HrNoticePort.class),
+                mock(DocNumberService.class),
+                mock(com.uten.imp.application.port.PaymentReferenceLabelsPort.class), mock(ExpenseClaimSettingsService.class));
     }
 }

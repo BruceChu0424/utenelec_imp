@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.common.integrity.ProcurementReceiptOriginPolicy;
+
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.application.port.ProcurementInspectionPort;
@@ -109,7 +111,8 @@ public class ProcurementIqcStockInService {
         List<StockInHistoryItem> history = history(type, receiptId);
         // 单人维护场景允许同人完成「品质放行 + 仓库确认」：不再阻断；同人复核提示
         // 由合并页详情的 containsOwnRelease 标记承担（WarehouseQualityResultService）。
-        boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM);
+        boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
+                && ProcurementReceiptOriginPolicy.isNative(em,type,receiptId);
         return new TaskDetail(
                 type, receiptId, str(header[0]), localDate(header[1]),
                 uuid(header[2]), str(header[3]), uuid(header[4]), str(header[5]),
@@ -221,6 +224,11 @@ public class ProcurementIqcStockInService {
         for (UUID warehouseId : actualWarehouses) {
             warehouseScopes.requireActiveLeafWarehouse(warehouseId, "入库仓库");
         }
+        for(String type:List.of(PURCHASE,SUBCONTRACT)) {
+            List<UUID> receiptIds=prepared.stream().filter(item->item.existing()==null&&type.equals(item.batch().type()))
+                    .map(item->item.batch().receiptId()).distinct().toList();
+            ProcurementReceiptOriginPolicy.requireNative(em,type,receiptIds);
+        }
         mutationGuard.verifyUnchanged();
         List<ConfirmResult> results = new ArrayList<>();
         List<ReceiptStockIn> newStockIns = new ArrayList<>();
@@ -321,6 +329,7 @@ public class ProcurementIqcStockInService {
         if (prepared.existing() != null) {
             throw conflict("该品质放行已自动转正入库过，请刷新后重试");
         }
+        ProcurementReceiptOriginPolicy.requireNative(em,type,List.of(receiptId));
         mutationGuard.verifyUnchanged();
         ConfirmResult result = confirmOne(
                 type, receiptId, prepared.batch().command(), prepared.locked(), ORIGIN_PRE_STOCKED_AUTO);
@@ -520,8 +529,9 @@ public class ProcurementIqcStockInService {
             learnWarehousePreference(
                     entry.getKey(), place, batchId, confirmedAt, actorUserId, actorEmployeeId);
         }
-        goodsPlaces.forEach((goodsId,candidates)->{
-            if(candidates.size()==1)learnGoodsMasterPlace(goodsId,candidates.iterator().next(),actorUserId);
+        goodsPlaces.entrySet().stream().sorted(Map.Entry.comparingByKey(
+                com.uten.imp.common.util.PostgresUuidOrder.INSTANCE)).forEach(entry->{
+            if(entry.getValue().size()==1)learnGoodsMasterPlace(entry.getKey(),entry.getValue().iterator().next(),actorUserId);
         });
     }
 

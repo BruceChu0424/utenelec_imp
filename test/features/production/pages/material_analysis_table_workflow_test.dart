@@ -30,7 +30,7 @@ const _permissions = {
 
 void main() {
   testWidgets(
-    'table keeps the twelve decision columns and creates only chosen routes',
+    'preparation dropdown confirms and persists its chosen route immediately',
     (tester) async {
       final harness = await _pump(tester);
       // 2026-09-14：编号 / 颜色 / 单位从身份格副行拆成独立列（8 → 11）。
@@ -61,13 +61,13 @@ void main() {
       await tester.tap(find.text('采购').last);
       await tester.pumpAndSettle();
       dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
-      expect(dropdown.value, 'buy');
+      expect(dropdown.value, 'subcontract');
       expect(
         harness.writes,
         isEmpty,
-        reason: 'A dropdown change is a draft, not a write.',
+        reason: 'The change waits for the explicit confirmation.',
       );
-      expect(find.text('确认路线(1)'), findsOneWidget);
+      expect(find.text('确认并换桶'), findsOneWidget);
       // 2026-09-13 全站表格选中口径：选中行淡绿底+常态字色，树格不再切白字。
       expect(
         tester
@@ -77,9 +77,7 @@ void main() {
             .foregroundColor,
         isNull,
       );
-      await tester.tap(
-        find.byKey(const Key('material-analysis-create-routes')),
-      );
+      await tester.tap(find.text('确认并换桶'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('material-route-reason')), findsNothing);
       expect(harness.writes, hasLength(1));

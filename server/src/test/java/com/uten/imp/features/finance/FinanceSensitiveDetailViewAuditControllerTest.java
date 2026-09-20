@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.expenseclaim.ExpenseClaimController;
 import com.uten.imp.features.expenseclaim.ExpenseClaimService;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimDto;
+import com.uten.imp.features.expenseclaim.ocr.InvoiceRecognitionService;
 import com.uten.imp.features.finance.arap.ArApLedgerController;
 import com.uten.imp.features.finance.arap.ArApLedgerQueryService;
 import com.uten.imp.features.finance.arap.dto.ArApLedgerDetail;
@@ -126,7 +127,8 @@ class FinanceSensitiveDetailViewAuditControllerTest {
         ExpenseClaimDto claim = mock(ExpenseClaimDto.class);
         when(claim.title()).thenReturn("八月差旅报销");
         when(claimService.detail(claimId)).thenReturn(claim);
-        assertSame(claim, new ExpenseClaimController(claimService, recorder).detail(claimId));
+        assertSame(claim, new ExpenseClaimController(
+                claimService, mock(com.uten.imp.features.expenseclaim.ExpenseClaimSettingsService.class), mock(InvoiceRecognitionService.class), recorder).detail(claimId));
         verify(recorder).record("view_expense_claim_detail", "expense_claims",
                 claimId, "八月差旅报销", null, "费用报销单");
     }
@@ -180,7 +182,8 @@ class FinanceSensitiveDetailViewAuditControllerTest {
         ExpenseClaimService claimService = mock(ExpenseClaimService.class);
         when(claimService.detail(forbiddenId))
                 .thenThrow(new ApiException(ErrorCode.FORBIDDEN, "无权查看该报销单"));
-        ExpenseClaimController claimController = new ExpenseClaimController(claimService, recorder);
+        ExpenseClaimController claimController = new ExpenseClaimController(
+                claimService, mock(com.uten.imp.features.expenseclaim.ExpenseClaimSettingsService.class), mock(InvoiceRecognitionService.class), recorder);
         assertThrows(ApiException.class, () -> claimController.detail(forbiddenId));
 
         UUID failedId = UUID.randomUUID();

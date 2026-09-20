@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.common.integrity.ProcurementReceiptOriginPolicy;
+
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
@@ -120,6 +122,7 @@ public class ProcurementIqcPreStockInService {
                 throw conflict("待检明细已有品质结论或已撤销，不能再先入库；请按原流程等品质放行后由仓库确认入库");
             }
         }
+        ProcurementReceiptOriginPolicy.requireNative(em,type,List.of(receiptId));
         Map<UUID, String> warehouseNames = requireLeafWarehouses(
                 lines.stream().map(PreStockLine::warehouseId).distinct().toList());
         OffsetDateTime now = OffsetDateTime.now();

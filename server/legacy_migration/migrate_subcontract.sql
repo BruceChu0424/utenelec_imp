@@ -52,7 +52,6 @@
 --   ap_posted stays FALSE on receipts/returns.
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('uten.legacy_reference_import', 'legacy-subcontract-v273', true);
 DELETE FROM subcontract_waste_items;
 DELETE FROM subcontract_wastes;
@@ -349,25 +348,34 @@ WITH candidates AS (
     SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
     RETURNING last_seq
 )
-INSERT INTO suppliers (legacy_id, category_id, code, name, code_managed, code_sequence)
+INSERT INTO suppliers (legacy_id, category_id, code, name, status, code_managed, code_sequence)
 SELECT lid, (SELECT id FROM supplier_categories WHERE legacy_id = -1),
-       'LEGACY-S-' || lid, '(migration auto-stub legacy ' || lid || ')', FALSE,
+       'LEGACY-S-' || lid, '(migration auto-stub legacy ' || lid || ')', '禁用', FALSE,
        reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
 FROM numbered CROSS JOIN reserved
 ON CONFLICT (legacy_id) DO UPDATE
 SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 
 -- ============================ 1. subcontract_orders (+ items + cost items) ============================
+-- E_Order has no contractual settlement field. Only the full, privileged
+-- bootstrap may register this exact source row and preserve that unknown.
+SELECT fn_register_legacy_subcontract_order_source(
+    NULLIF(current_setting('uten.bootstrap_run_id', true), '')::uuid, to_jsonb(source.*))
+FROM order_stage source WHERE source.status = 1;
+
 INSERT INTO subcontract_orders (
-    legacy_id, bill_no, bill_date, supplier_id, currency_id, exchange_rate, tax_rate,
+    id, legacy_import_run_id, legacy_id, bill_no, bill_date, supplier_id, currency_id, exchange_rate, tax_rate,
     deliver_date, remark, total_original, total_local, status, fulfill, is_closed)
-SELECT s.legacy_id, s.bill_no, s.bill_date,
+SELECT COALESCE(proof.order_id, gen_random_uuid()), proof.run_id, s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
        (SELECT id FROM currencies WHERE legacy_id = s.currency_legacy_id),
-       COALESCE(s.exchange_rate, 1), s.tax_rate, s.deliver_date, s.remark,
-       s.total_original, s.total_original, s.status,
+       s.exchange_rate, s.tax_rate, s.deliver_date, s.remark,
+       s.total_original, fn_legacy_source_book_amount(s.total_original,s.exchange_rate), s.status,
        COALESCE(s.fulfill_bit, FALSE), COALESCE(s.fulfill_bit, FALSE)
-FROM order_stage s;
+FROM order_stage s
+LEFT JOIN legacy_subcontract_order_import_sources proof
+  ON s.status = 1 AND proof.source_legacy_id = s.legacy_id
+ AND proof.run_id = NULLIF(current_setting('uten.bootstrap_run_id', true), '')::uuid;
 
 INSERT INTO subcontract_order_items (
     legacy_id, bill_no, bill_date, order_id, line_no, goods_id, color_id, unit_id, unit_rate,
@@ -380,7 +388,7 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
+       s.unit_rate, s.qty, s.price, s.amount_original, fn_legacy_source_book_amount(s.amount_original,a.exchange_rate),
        COALESCE(s.received_qty, 0), COALESCE(s.returned_qty, 0), COALESCE(s.issued_qty, 0),
        NULL, s.weight, NULLIF(s.source_doc_no, ''),
        (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
@@ -498,7 +506,7 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
-       COALESCE(s.unit_rate, 1),
+       s.unit_rate,
        COALESCE(NULLIF(s.stqty, 0), s.qty),
        s.amount_local,
        COALESCE(s.returned_qty, 0),
@@ -515,47 +523,37 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
 FROM issue_item_stage s JOIN issue_stage a ON a.legacy_id = s.bill_legacy_id;
 
 -- ============================ 5. subcontract_receipts ============================
+-- One source projection owns all commercial fields; descriptive snapshots
+-- remain in this loader and cannot change the approved source identity.
+SELECT count(fn_register_legacy_receipt_import_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'SUBCONTRACT_HEADER',to_jsonb(legacy_row.*)))
+FROM receipt_stage legacy_row;
 INSERT INTO subcontract_receipts (
-    legacy_id, bill_no, bill_date, supplier_id, warehouse_id, currency_id, exchange_rate,
-    tax_rate, last_date, remark, total_original, total_local, status, is_closed,
-    settlement_style_legacy, receiver_legacy_id, receiver_name,
-    maker_legacy_id, maker_name, approver_legacy_id, approver_name)
-SELECT s.legacy_id, s.bill_no, s.bill_date,
-       (SELECT id FROM suppliers   WHERE legacy_id = s.supplier_legacy_id),
-       (SELECT id FROM warehouses  WHERE legacy_id = s.warehouse_legacy_id),
-       (SELECT id FROM currencies  WHERE legacy_id = s.currency_legacy_id),
-       COALESCE(s.exchange_rate, 1), s.tax_rate, s.last_date, s.remark,
-       s.total_original, s.total_original, s.status, FALSE,
-       NULLIF(s.settlement_style_legacy, 0),
-       NULLIF(s.sender_legacy, 0),
-       (SELECT name FROM worker_ref_stage w WHERE w.legacy_id = NULLIF(s.sender_legacy, 0)),
-       NULLIF(s.maker_legacy, 0),
-       (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = NULLIF(s.maker_legacy, 0)),
-       NULLIF(s.approver_legacy, 0),
-       (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = NULLIF(s.approver_legacy, 0))
-FROM receipt_stage s;
+    id, legacy_import_run_id, legacy_id, bill_no, bill_date, supplier_id, warehouse_id, currency_id, exchange_rate, tax_rate, total_original, total_local, status, is_closed, consideration_required, settlement_style_legacy, settlement_method_id, maker_legacy_id, approver_legacy_id, last_date, receiver_legacy_id, remark, maker_name, approver_name, receiver_name)
+SELECT proof.target_id, proof.run_id, projected.legacy_id, projected.bill_no, projected.bill_date, projected.supplier_id, projected.warehouse_id, projected.currency_id, projected.exchange_rate, projected.tax_rate, projected.total_original, projected.total_local, projected.status, projected.is_closed, projected.consideration_required, projected.settlement_style_legacy, projected.settlement_method_id, projected.maker_legacy_id, projected.approver_legacy_id, projected.last_date, projected.receiver_legacy_id, legacy_row.remark, (SELECT name FROM operator_ref_stage op WHERE op.legacy_id=legacy_row.maker_legacy), (SELECT name FROM operator_ref_stage op WHERE op.legacy_id=legacy_row.approver_legacy), (SELECT name FROM worker_ref_stage worker WHERE worker.legacy_id=NULLIF(legacy_row.sender_legacy,0))
+FROM receipt_stage legacy_row
+JOIN legacy_procurement_receipt_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='SUBCONTRACT_HEADER' AND proof.source_legacy_id=legacy_row.legacy_id
+CROSS JOIN LATERAL jsonb_populate_record(NULL::subcontract_receipts,
+    fn_legacy_receipt_source_projection('SUBCONTRACT_HEADER',to_jsonb(legacy_row.*))) projected
+ORDER BY legacy_row.legacy_id;
 
+-- One source projection owns all commercial fields; descriptive snapshots
+-- remain in this loader and cannot change the approved source identity.
+SELECT count(fn_register_legacy_receipt_import_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'SUBCONTRACT_ITEM',to_jsonb(legacy_row.*)))
+FROM receipt_item_stage legacy_row;
 INSERT INTO subcontract_receipt_items (
-    legacy_id, bill_no, bill_date, receipt_id, order_item_id, line_no, goods_id, color_id,
-    unit_id, unit_rate, qty, price, amount_original, amount_local, check_qty, order_qty,
-    returned_qty, weight, girth_qty, step_legacy_id, return_amount, return_no, order_no,
-    source_doc_no,
-    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-SELECT s.legacy_id, a.bill_no, a.bill_date,
-       (SELECT id FROM subcontract_receipts WHERE legacy_id = s.bill_legacy_id),
-       (SELECT id FROM subcontract_order_items WHERE legacy_id = s.order_item_legacy_id),
-       ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
-       (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
-       (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_local, s.amount_local,
-       s.check_qty, s.order_qty, COALESCE(s.returned_qty, 0), s.weight,
-       s.girth_qty, NULLIF(s.step_legacy_id, 0), s.return_amount,
-       NULLIF(s.return_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, ''),
-       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
-       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
-       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
-FROM receipt_item_stage s JOIN receipt_stage a ON a.legacy_id = s.bill_legacy_id;
+    id, legacy_import_run_id, legacy_id, bill_no, bill_date, receipt_id, order_item_id, goods_id, color_id, unit_id, unit_rate, qty, price, amount_original, amount_local, returned_qty, weight, source_doc_no, order_no, replacement_intent, goods_snapshot_source, check_qty, order_qty, girth_qty, step_legacy_id, return_amount, return_no, line_no, goods_code_snapshot, goods_name_snapshot, goods_snapshot_locked_at)
+SELECT proof.target_id, proof.run_id, projected.legacy_id, projected.bill_no, projected.bill_date, projected.receipt_id, projected.order_item_id, projected.goods_id, projected.color_id, projected.unit_id, projected.unit_rate, projected.qty, projected.price, projected.amount_original, projected.amount_local, projected.returned_qty, projected.weight, projected.source_doc_no, projected.order_no, projected.replacement_intent, projected.goods_snapshot_source, projected.check_qty, projected.order_qty, projected.girth_qty, projected.step_legacy_id, projected.return_amount, projected.return_no, row_number() OVER(PARTITION BY legacy_row.bill_legacy_id ORDER BY legacy_row.legacy_id), (SELECT code FROM goods WHERE id=projected.goods_id), (SELECT name FROM goods WHERE id=projected.goods_id), CASE WHEN (SELECT status FROM subcontract_receipts WHERE id=projected.receipt_id)<>0 THEN now() ELSE NULL END
+FROM receipt_item_stage legacy_row
+JOIN legacy_procurement_receipt_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='SUBCONTRACT_ITEM' AND proof.source_legacy_id=legacy_row.legacy_id
+CROSS JOIN LATERAL jsonb_populate_record(NULL::subcontract_receipt_items,
+    fn_legacy_receipt_source_projection('SUBCONTRACT_ITEM',to_jsonb(legacy_row.*))) projected
+ORDER BY legacy_row.bill_legacy_id,legacy_row.legacy_id;
 
 -- ============================ 6. subcontract_returns ============================
 INSERT INTO subcontract_returns (
@@ -566,8 +564,8 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers   WHERE legacy_id = s.supplier_legacy_id),
        (SELECT id FROM warehouses  WHERE legacy_id = s.warehouse_legacy_id),
        (SELECT id FROM currencies  WHERE legacy_id = s.currency_legacy_id),
-       COALESCE(s.exchange_rate, 1), NULL, s.last_date, s.remark,  -- E_WithDraw has no TRate
-       s.total_original, s.total_original, s.status, FALSE,
+       s.exchange_rate, NULL, s.last_date, s.remark,  -- E_WithDraw has no TRate
+       s.total_original, fn_legacy_source_book_amount(s.total_original,s.exchange_rate), s.status, FALSE,
        NULLIF(s.settlement_style_legacy, 0),
        NULLIF(s.maker_legacy, 0),
        (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = NULLIF(s.maker_legacy, 0)),
@@ -588,7 +586,9 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_local, s.amount_local,
+       s.unit_rate, s.qty, s.price,
+       CASE WHEN a.exchange_rate=1 AND EXISTS (SELECT 1 FROM currencies currency WHERE currency.legacy_id=a.currency_legacy_id AND currency.is_base_currency) THEN s.amount_local END,
+       s.amount_local,
        s.weight, s.girth_qty, NULLIF(s.step_legacy_id, 0),
        NULLIF(s.receipt_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, ''),
        (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
@@ -629,7 +629,7 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
-       COALESCE(s.unit_rate, 1), s.qty, s.amount_local,
+       s.unit_rate, s.qty, s.amount_local,
        (SELECT id FROM goods  WHERE legacy_id = s.parent_goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.parent_color_legacy_id),
        s.weight, s.girth_qty, NULLIF(s.issue_no, ''), NULLIF(s.order_no, ''),
@@ -666,19 +666,16 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
-       COALESCE(s.unit_rate, 1), s.qty, s.ending_qty, s.standard_qty, s.waste_rate, s.cause,
+       s.unit_rate, s.qty, s.ending_qty, s.standard_qty, s.waste_rate, s.cause,
        NULL, NULL, s.amount_local, s.weight, NULLIF(s.source_doc_no, ''),
        (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
        'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
 FROM waste_item_stage s JOIN waste_stage a ON a.legacy_id = s.bill_legacy_id;
 
-UPDATE subcontract_receipts d SET settlement_method_id = m.id
-FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;
 UPDATE subcontract_returns d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;
 
-COMMIT;
 
 -- ============================ 刷新委外月度物化视图（防汇总报表空，同 sales/stock 修复） ============================
 REFRESH MATERIALIZED VIEW subcontract_monthly_mv;

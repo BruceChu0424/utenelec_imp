@@ -18,6 +18,7 @@ public final class ProcurementOrderQuantityBounds {
     /** Legacy inconsistent target-unit facts require their original reversal path, never a guessed rewrite. */
     public static void requireConsistentTargetBasis(EntityManager em,Collection<UUID> orderItemIds) {
         if(orderItemIds.isEmpty()) return;
+        requireKnownReceiptBasis(em,"SUBCONTRACT",orderItemIds);
         var issues=em.createNativeQuery("""
                 SELECT problem.plan_item_id FROM v_subcontract_quantity_basis_issues problem
                 JOIN subcontract_material_plan_items pi ON pi.id=problem.plan_item_id
@@ -38,25 +39,26 @@ public final class ProcurementOrderQuantityBounds {
 
     public static ReceiptBound receipts(EntityManager em, String orderType, UUID itemId) {
         String prefix=prefix(orderType);
+        requireKnownReceiptBasis(em,orderType,java.util.List.of(itemId));
         Object[] row=(Object[])em.createNativeQuery("""
-                SELECT GREATEST(COALESCE(oi.received_qty,0)*COALESCE(oi.unit_rate,1),
+                SELECT GREATEST(COALESCE(oi.received_qty,0)*oi.unit_rate,
                            COALESCE(facts.received_base,0)),
-                       GREATEST(COALESCE(oi.returned_qty,0)*COALESCE(oi.unit_rate,1),
+                       GREATEST(COALESCE(oi.returned_qty,0)*oi.unit_rate,
                            COALESCE(facts.returned_base,0)),
                        COALESCE(facts.iqc_returned_base,0), COALESCE(facts.excess_base,0)
                 FROM %1$s_order_items oi
                 LEFT JOIN LATERAL (
-                    SELECT SUM(ri.qty*COALESCE(ri.unit_rate,1)) AS received_base,
+                    SELECT SUM(ri.qty*ri.unit_rate) AS received_base,
                            SUM(COALESCE(returns.qty_base,0)) AS returned_base,
                            SUM(COALESCE(iqc.qty_base,0)) AS iqc_returned_base,
                            SUM(LEAST(COALESCE(excess.qty_base,0), GREATEST(
-                               ri.qty*COALESCE(ri.unit_rate,1)-COALESCE(returns.qty_base,0)
+                               ri.qty*ri.unit_rate-COALESCE(returns.qty_base,0)
                                    -COALESCE(iqc.qty_base,0),0))) AS excess_base
                     FROM %1$s_receipt_items ri
                     JOIN %1$s_receipts receipt ON receipt.id=ri.receipt_id
                       AND receipt.status=1 AND receipt.is_deleted=FALSE
                     LEFT JOIN LATERAL (
-                        SELECT SUM(ret.qty*COALESCE(ret.unit_rate,1)) AS qty_base
+                        SELECT SUM(ret.qty*ret.unit_rate) AS qty_base
                         FROM %1$s_return_items ret JOIN %1$s_returns rh ON rh.id=ret.return_id
                         WHERE ret.receipt_item_id=ri.id AND ret.order_item_id=oi.id
                           AND ret.is_deleted=FALSE AND rh.status=1 AND rh.is_deleted=FALSE
@@ -71,7 +73,7 @@ public final class ProcurementOrderQuantityBounds {
                               'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
                     ) iqc ON TRUE
                     LEFT JOIN LATERAL (
-                        SELECT SUM(exception.approved_excess_qty*COALESCE(ri.unit_rate,1)) AS qty_base
+                        SELECT SUM(exception.approved_excess_qty*ri.unit_rate) AS qty_base
                         FROM procurement_arrival_exceptions exception
                         WHERE exception.order_type=:orderType AND exception.order_item_id=oi.id
                           AND exception.receipt_id=receipt.id AND exception.receipt_item_id=ri.id
@@ -89,6 +91,33 @@ public final class ProcurementOrderQuantityBounds {
         return new ReceiptBound(retained,decimal(row[3]).min(retained));
     }
 
+    /** Never turn a missing historical order/receipt/return conversion into a one-to-one quantity. */
+    public static void requireKnownReceiptBasis(EntityManager em,String orderType,Collection<UUID> orderItemIds) {
+        if(orderItemIds.isEmpty())return;
+        String prefix=prefix(orderType);
+        var unknown=em.createNativeQuery("""
+                SELECT source_id FROM (
+                    SELECT item.id AS source_id FROM %1$s_order_items item
+                    WHERE item.id IN(:ids) AND item.is_deleted=FALSE
+                      AND (item.unit_id IS NULL OR item.unit_rate IS NULL OR item.unit_rate<=0)
+                    UNION ALL
+                    SELECT item.id FROM %1$s_receipt_items item
+                    JOIN %1$s_receipts header ON header.id=item.receipt_id
+                    WHERE item.order_item_id IN(:ids) AND item.is_deleted=FALSE
+                      AND header.status=1 AND header.is_deleted=FALSE AND item.qty<>0
+                      AND (item.unit_id IS NULL OR item.unit_rate IS NULL OR item.unit_rate<=0)
+                    UNION ALL
+                    SELECT item.id FROM %1$s_return_items item
+                    JOIN %1$s_returns header ON header.id=item.return_id
+                    WHERE item.order_item_id IN(:ids) AND item.is_deleted=FALSE
+                      AND header.status=1 AND header.is_deleted=FALSE AND item.qty<>0
+                      AND (item.unit_id IS NULL OR item.unit_rate IS NULL OR item.unit_rate<=0)
+                ) unknown_basis LIMIT 1
+                """.formatted(prefix)).setParameter("ids",orderItemIds).getResultList();
+        if(!unknown.isEmpty())throw new ApiException(ErrorCode.CONFLICT,
+                "来源订单或已生效收退货的单位/换算率尚未核验，不能默认按1换算、忽略旧数量或继续累计，请先核对原始计量依据");
+    }
+
     /** Set the active expectation from current order capacity, including CLOSED rows on increase. */
     public static void synchronizeExpectation(EntityManager em, String orderType, UUID itemId,
                                               BigDecimal orderedQty, BigDecimal orderUnitRate,
@@ -96,10 +125,10 @@ public final class ProcurementOrderQuantityBounds {
         String prefix=prefix(orderType);
         em.createNativeQuery("""
                 UPDATE inbound_expectation_items item
-                SET ordered_qty=ROUND((:orderedBase + oi.arrival_overage_posted_qty*COALESCE(oi.unit_rate,1))
+                SET ordered_qty=ROUND((:orderedBase + oi.arrival_overage_posted_qty*oi.unit_rate)
                                          / item.unit_rate,4),
                     accepted_qty=LEAST(ROUND(:retainedBase/item.unit_rate,4),
-                        ROUND((:orderedBase + oi.arrival_overage_posted_qty*COALESCE(oi.unit_rate,1))
+                        ROUND((:orderedBase + oi.arrival_overage_posted_qty*oi.unit_rate)
                                          / item.unit_rate,4)), updated_at=now()
                 FROM inbound_expectations header, %s_order_items oi
                 WHERE item.expectation_id=header.id AND header.order_type=:orderType

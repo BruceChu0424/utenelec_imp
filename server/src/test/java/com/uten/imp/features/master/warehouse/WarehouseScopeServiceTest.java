@@ -199,4 +199,41 @@ class WarehouseScopeServiceTest {
         assertThatThrownBy(() -> service.requireActiveLeafWarehouse(UUID.randomUUID(), "仓库"))
                 .isInstanceOf(ApiException.class).hasMessageContaining("不存在");
     }
+
+    @Test
+    void workshopLocationRequiresDedicatedPostingLaneAndRetainsHistoricalIdentity() {
+        Warehouse main = wh(MAIN, null);
+        Warehouse leaf = wh(TRACK, MAIN);
+        leaf.setLineSide(true);
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(main, leaf));
+        UUID id = UUID.fromString(TRACK);
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("正常仓库");
+        assertThatThrownBy(() -> service.requireNewLeafSelection(null, id, "仓库"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("正常仓库");
+        assertThatCode(() -> service.requireActiveLineSideWarehouse(id, "车间流转位置"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> service.requireNewLeafSelection(id, id, "历史仓库"))
+                .doesNotThrowAnyException();
+        leaf.setLineSide(false);
+        assertThatThrownBy(() -> service.requireActiveLineSideWarehouse(id, "车间流转位置"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("车间直送");
+    }
+
+    @Test
+    void technicalChildDoesNotRemoveStandaloneOrdinaryStorageFromOperations() {
+        Warehouse ordinary = wh(MAIN, null);
+        Warehouse technical = wh(TRACK, MAIN);
+        technical.setLineSide(true);
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(ordinary, technical));
+        UUID id = UUID.fromString(MAIN);
+        assertThatCode(() -> service.requireLeafWarehouse(id, "原存放仓")).doesNotThrowAnyException();
+        assertThatCode(() -> service.requireActiveLeafWarehouse(id, "原存放仓")).doesNotThrowAnyException();
+        assertThat(service.operationalLeafIds(id)).contains(id);
+        technical.setLineSide(false);
+        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "主仓"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("具体子仓库");
+    }
 }

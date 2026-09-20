@@ -21,7 +21,6 @@ import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,7 +40,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /** Actual PostgreSQL/Hibernate repository queries and current organization scope.
- * The isolated entity schema tests notices, not the full production movement guards. */
+ * The isolated entity schema tests audience queries. Actual stage/delivery SQL runs
+ * against the migrated domain in WorkshopNoticeDeliveryEndToEndTest. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class WorkshopNoticeScopePostgresTest {
     private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -101,9 +101,9 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,name text)");
         jdbc.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,bill_no text,warehouse_id uuid,doc_type text,is_deleted boolean,status int,created_at timestamptz)");
         jdbc.execute("CREATE TABLE production_planning_package_documents(document_id uuid,execution_segment_id uuid,document_type text)");
-        jdbc.execute("CREATE TABLE production_execution_segment_events(action text,draw_document_ids uuid[],draw_item_quantities jsonb)");
+        jdbc.execute("CREATE TABLE production_execution_segment_events(action text,draw_document_ids uuid[],draw_item_quantities jsonb, counter_event_id uuid, receiving_confirmation_id uuid, receiving_direction smallint)");
         jdbc.execute("CREATE TABLE stock_document_items(id uuid,doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false)");
-        jdbc.execute("CREATE TABLE production_material_stock_postings(stock_document_item_id uuid,posting_type text)");
+        jdbc.execute("CREATE TABLE production_material_stock_postings(stock_document_item_id uuid,posting_type text, recorded_tx_id xid8)");
         jdbc.execute("ALTER TABLE production_execution_segments ADD COLUMN notice_fixture_issued boolean NOT NULL DEFAULT TRUE");
         // This fixture has no execution splits. Full split guards and borrowed
         // material prerequisites are covered by ProductionExecutionBatchEndToEndTest.
@@ -156,23 +156,6 @@ class WorkshopNoticeScopePostgresTest {
     }
     @AfterEach void close() { if(em!=null)em.close(); }
     @AfterAll static void stop() { if(factory!=null)factory.close(); DB.stop(); }
-
-    @Test
-    void delayedReadyEventCannotRecreateWorkshopCardAfterRequestWasSubmitted() {
-        jdbc.update("UPDATE production_execution_segments SET notice_fixture_issued=FALSE WHERE id=?",TASK_A);
-        jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[?,?]::uuid[])",id(301),id(302));
-        NoticeService notice=mock(NoticeService.class);
-        UserAccountRepository users=mock(UserAccountRepository.class);
-
-        chain(notice,users,mock(PermissionResolver.class)).deliverOutboxEvent(
-                ChainNoticeService.EVENT_SEGMENT_READY,TASK_A,
-                new ObjectMapper().createObjectNode()
-                        .put("triggeringReceiptId",id(401).toString()).put("sourceType","PURCHASE"));
-
-        verify(notice).resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT",TASK_A,"STATE_CHANGED");
-        verifyNoMoreInteractions(notice);
-        verifyNoInteractions(users);
-    }
 
     @Test
     void pendingDrawNoticesUseTheRequestGateBeforeListCountAndPopupPagination() {
@@ -305,26 +288,6 @@ class WorkshopNoticeScopePostgresTest {
                 .satisfies(dto -> assertThat(dto.id()).isEqualTo(progress.getId().toString()));
         assertThat(service.pendingReviewStatus(List.of(progress.getId()))).singleElement()
                 .satisfies(status -> assertThat(status.resolved()).isFalse());
-    }
-
-    @Test
-    void issuedTaskMessageSummarizesEveryActualDrawOnceAndOnlyOffersStart() {
-        UserAccountRepository users=mock(UserAccountRepository.class);
-        PermissionResolver permissions=mock(PermissionResolver.class);
-        for(Actor actor:ACTORS) {
-            UserAccount account=mock(UserAccount.class);
-            when(account.getStatus()).thenReturn("active");
-            when(users.findById(actor.user())).thenReturn(Optional.of(account));
-            when(permissions.permsOf(account)).thenReturn(actor.permissions());
-        }
-        NoticeService notice=mock(NoticeService.class);
-        chain(notice,users,permissions).deliverOutboxEvent(ChainNoticeService.EVENT_SEGMENT_WORKSHOP_ASSIGNED,TASK_A,new ObjectMapper().createObjectNode());
-        ArgumentCaptor<String> content=ArgumentCaptor.forClass(String.class);
-        verify(notice,times(4)).publishForUser(any(),startsWith("物料已领齐·可以开工"),content.capture(),
-                eq("task"),anyString(),eq("/production/workshop-tasks"),eq(EVENT),eq("important"),eq(TASK_A));
-        assertThat(content.getAllValues()).allSatisfy(message -> assertThat(message)
-                .contains("物料已领齐，可以开工","DRAW-1（主仓甲 - 子仓一）","DRAW-2（主仓乙 - 子仓二）")
-                .doesNotContain("DRAW-3","可直接报工","DRAW-1（主仓甲 - 子仓一）；DRAW-1"));
     }
 
     private Notice persist(UUID user,UUID segment,String priority) {

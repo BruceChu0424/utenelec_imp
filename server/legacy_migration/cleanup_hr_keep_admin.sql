@@ -16,7 +16,6 @@
 --     会让整个事务回滚——清理失败而不是静默丢引用。
 -- =====================================================================
 
-BEGIN;
 
 -- 工资条引用员工（RESTRICT）：先删非 admin 员工的工资条，并按剩余工资条重算批次合计。
 -- （当前仅 2026-08 测试批次，ADMIN 全流程经手；若将来有正式工资数据，请先人工评估再清理。）
@@ -42,7 +41,6 @@ DELETE FROM positions WHERE code LIKE 'LEG-P-%';
 
 UPDATE departments SET headcount = 0;
 
-COMMIT;
 
 -- ---------------- 校验 ----------------
 SELECT '✔ 剩余员工（应只有 ADMIN）: ' || string_agg(code || '(' || full_name || ')', ', ') AS r

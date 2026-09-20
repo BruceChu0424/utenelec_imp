@@ -519,10 +519,11 @@ class _CustomerPrepaymentApplyPanelState
         onChanged: (_) => _selectSource(item),
         title: Text(item.billNo ?? item.ledgerId),
         subtitle: Text(
+          '${item.legacyImported ? '历史资金记录，仅供查询\n' : ''}'
           '${item.billDate ?? '—'} · $currency\n'
           '到账 ${financeExactMoneyDisplay(item.receivedOriginal)} · '
           '已抵 ${financeExactMoneyDisplay(item.appliedOriginal)} · '
-          '可用 ${financeExactMoneyDisplay(item.availableOriginal)}',
+          '${item.legacyImported ? '账面余量' : '可用'} ${financeExactMoneyDisplay(item.availableOriginal)}',
         ),
         controlAffinity: ListTileControlAffinity.leading,
       ),

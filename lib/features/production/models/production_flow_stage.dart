@@ -169,6 +169,9 @@ class ProductionFlowStage {
     bool continuousSupply = false,
     bool pendingLineSideOnly = false,
     String? startRoute,
+    bool routeConfirmationRequired = false,
+    bool? canStartNow,
+    bool canRequestDraw = false,
     double? reportedQty,
     double? plannedQty,
     double? remainingReportQty,
@@ -186,6 +189,25 @@ class ProductionFlowStage {
     // V595：只剩线边仓直送料没出库的段不用去领料，开工时就地自动出库——按「可开工」呈现。
     materialIssued = materialIssued || pendingLineSideOnly;
     final status = segmentStatus.trim().toUpperCase();
+    if (routeConfirmationRequired &&
+        const ['WAITING', 'READY', 'DISPATCHED'].contains(status)) {
+      return _make(2, '待确认生产路线', ProductionFlowTone.waiting);
+    }
+    if (continuousSupply &&
+        const ['READY', 'DISPATCHED'].contains(status) &&
+        canStartNow != null) {
+      return _make(
+        3,
+        canStartNow
+            ? '已支持部分产量 · 可开工'
+            : canRequestDraw
+            ? '物料已到 · 去领料'
+            : drawRequested
+            ? '已提交领料 · 待仓库发料'
+            : '等待物料支持开工',
+        canStartNow ? ProductionFlowTone.ready : ProductionFlowTone.waiting,
+      );
+    }
     if (status == 'IN_PROGRESS' &&
         remainingReportQty != null &&
         remainingReportQty <= 0.000001) {
@@ -208,7 +230,7 @@ class ProductionFlowStage {
       'WAITING' => _make(2, switch (startRoute?.trim().toUpperCase()) {
         'FULL_KIT' => '等待物料到齐 · 齐套生产',
         'BATCH' => '等待到货 · 分批生产',
-        'CONTINUOUS' => '等待直送料 · 持续生产',
+        'CONTINUOUS' => '等待部分物料 · 持续生产',
         _ => '车间已收到 · 等待物料',
       }, ProductionFlowTone.waiting),
       'READY' =>
@@ -246,7 +268,7 @@ class ProductionFlowStage {
       'IN_PROGRESS' => _make(
         4,
         // V595 持续生产：同车间直送子件到一批投一批，工单一直开着直到最后一次报工。
-        continuousSupply ? '持续生产中 · 可报工' : '生产中 · 可报工',
+        continuousSupply ? '持续生产中 · 按实际投料报工' : '生产中 · 可报工',
         ProductionFlowTone.active,
         progress: _ratio(reportedQty, plannedQty),
       ),

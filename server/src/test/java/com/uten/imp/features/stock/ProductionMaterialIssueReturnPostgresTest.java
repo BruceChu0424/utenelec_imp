@@ -60,7 +60,7 @@ class ProductionMaterialIssueReturnPostgresTest {
     }
 
     @Test
-    void issueReverseReturnAndSettlementRoundTripKeepsAvailabilityStable()
+    void issueReverseAndSettlementRoundTripKeepsAvailabilityStable()
             throws Exception {
         try (Connection connection = connection()) {
             Fixture f = fixture(connection, "100", "40");
@@ -113,34 +113,25 @@ class ProductionMaterialIssueReturnPostgresTest {
                     where warehouse_id = ? and goods_id = ?
                     """, f.warehouseId(), f.goodsId(), "60");
 
-            UUID returnDoc = stockDocument(
-                    connection, f.warehouseId(), "WDRAW");
-            UUID returnItem = stockItem(
-                    connection, returnDoc, f.goodsId(), f.unitId(),
-                    f.drawItemId(), "5", "WDRAW");
-            UUID returned = event(
-                    connection, returnDoc, "GOOD_RETURN",
-                    "return-key-0001");
-            // Good return order is also physical stock first.
-            updateAmount(connection, """
-                    update stock_balances set qty = qty + ? where id = ?
-                    """, "5", f.balanceId());
-            update(connection, """
-                    update stock_reservations
-                    set consumed_qty = consumed_qty - 5
-                    where id = ?
-                    """, f.reservationId());
-            stockPosting(
-                    connection, returned, returnItem, f.demandId(),
-                    f.reservationId(), issuePosting, "GOOD_RETURN", "5");
-            assertDecimal(connection, """
-                    select available_qty from v_stock_available
-                    where warehouse_id = ? and goods_id = ?
-                    """, f.warehouseId(), f.goodsId(), "60");
+            // Direct SQL cannot resurrect the removed generic WDRAW write path.
+            // The entire attempted physical/reservation/event mutation must roll back.
+            UUID unrequestedReturn=stockDocument(connection,f.warehouseId(),"WDRAW");
+            UUID unrequestedItem=stockItem(connection,unrequestedReturn,f.goodsId(),f.unitId(),f.drawItemId(),"5","WDRAW");
+            UUID unrequestedEvent=event(connection,unrequestedReturn,"GOOD_RETURN","unrequested-return-rejected");
+            updateAmount(connection,"update stock_balances set qty=qty+? where id=?","5",f.balanceId());
+            update(connection,"update stock_reservations set consumed_qty=consumed_qty-5 where id=?",f.reservationId());
+            PSQLException noncanonical=assertThrows(PSQLException.class,()->stockPosting(connection,unrequestedEvent,
+                    unrequestedItem,f.demandId(),f.reservationId(),issuePosting,"GOOD_RETURN","5"));
+            assertEquals("23514",noncanonical.getSQLState());
+            assertTrue(noncanonical.getMessage().contains("confirmed ordinary receiving warehouse"));
+            assertDecimal(connection,"select qty from stock_balances where id=?",f.balanceId(),"85");
+            assertDecimal(connection,"select consumed_qty from stock_reservations where id=?",f.reservationId(),"15");
+            assertDecimal(connection,"select count(*) from production_material_stock_events where id=?",unrequestedEvent,"0");
+
             assertDecimal(connection, """
                     select uncleared_qty from v_production_material_clearance
                     where demand_id = ?
-                    """, f.demandId(), "10");
+                    """, f.demandId(), "15");
 
             UUID settlementEvent = UUID.randomUUID();
             insert(connection, """
@@ -151,7 +142,7 @@ class ProductionMaterialIssueReturnPostgresTest {
             insert(connection, """
                     insert into production_material_settlement_postings(
                         id, event_id, demand_id, settlement_type, qty_base,issue_posting_id
-                    ) values (?, ?, ?, 'CONSUMED', 10,?)
+                    ) values (?, ?, ?, 'CONSUMED', 15,?)
                     """, UUID.randomUUID(), settlementEvent, f.demandId(),issuePosting);
             assertDecimal(connection,"""
                     SELECT COUNT(*) FROM production_material_settlement_postings settlement
@@ -168,13 +159,6 @@ class ProductionMaterialIssueReturnPostgresTest {
                     where demand_id = ?
                     """, f.demandId()));
 
-            PSQLException returnAfterSettlement = assertThrows(
-                    PSQLException.class,
-                    () -> stockPosting(
-                            connection, returned, returnItem, f.demandId(),
-                            f.reservationId(), issuePosting,
-                            "GOOD_RETURN", "1"));
-            assertEquals("23514", returnAfterSettlement.getSQLState());
             assertDecimal(connection, """
                     select greatest(uncleared_qty, 0)
                     from v_production_material_clearance where demand_id = ?
@@ -264,6 +248,17 @@ class ProductionMaterialIssueReturnPostgresTest {
                                     """, f.reservationId());
                             firstUpdated.countDown();
                             assertTrue(releaseFirst.await(5, TimeUnit.SECONDS));
+                            UUID issued=UUID.randomUUID();
+                            insert(c,"""
+                                    INSERT INTO production_material_stock_events(id,stock_document_id,event_type,idempotency_key,request_hash)
+                                    VALUES(?,?,'ISSUE','concurrent-first-issue',?)
+                                    """,issued,f.drawId(),"c".repeat(64));
+                            updateAmount(c,"UPDATE stock_balances SET qty=qty-? WHERE id=?","30",f.balanceId());
+                            insert(c,"""
+                                    INSERT INTO production_material_stock_postings(id,event_id,stock_document_item_id,demand_id,
+                                      reservation_id,posting_type,qty_base) VALUES(?,?,?,?,?,'ISSUE',30)
+                                    """,UUID.randomUUID(),issued,f.drawItemId(),f.demandId(),f.reservationId());
+                            com.uten.imp.support.ProductionMaterialMovementTestSupport.bindInCurrentTransaction(c,issued,f.drawItemId());
                             c.commit();
                             return changed;
                         } catch (Throwable error) {

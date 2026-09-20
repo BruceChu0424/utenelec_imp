@@ -84,8 +84,11 @@ class ShelfLabelQueryPostgresTest {
                 Map<String, Object> a30 = rowOf(rows, f.parsedA30);
                 assertEquals(Boolean.TRUE, a30.get("parsed"));
                 assertEquals("A30-1-2", a30.get("place"));
-                assertEquals(0, ((java.math.BigDecimal) a30.get("qty")).compareTo(new java.math.BigDecimal("12")),
-                        "未选仓 = 全部核算仓余额汇总（5 + 7，非核算仓 3 不计）");
+                List<Map<String,Object>> a30Dimensions = rows.stream().filter(r -> f.parsedA30.equals(r.get("goods_id"))).toList();
+                assertEquals(2, a30Dimensions.size(), "实际子仓与其他仓分别列示，不合并物理身份");
+                assertEquals(0, a30Dimensions.stream().map(r -> (java.math.BigDecimal) r.get("qty"))
+                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add).compareTo(new java.math.BigDecimal("12")));
+                assertTrue(a30Dimensions.stream().allMatch(r -> r.get("warehouse_id") != null));
                 assertEquals("个", a30.get("unit_name"));
                 assertEquals(Boolean.FALSE, a30.get("disabled"));
 
@@ -157,10 +160,15 @@ class ShelfLabelQueryPostgresTest {
                 Map<String, Object> a30 = rowOf(rows, f.parsedA30);
                 assertEquals(0, ((java.math.BigDecimal) a30.get("qty")).compareTo(new java.math.BigDecimal("5")),
                         "选父仓 = 该仓及子仓余额（子仓 5），其他仓 7 不计");
-                Map<String, Object> a31 = rowOf(rows, f.parsedA31);
-                assertEquals("B01-3-4", a31.get("place"), "选仓时子仓学习到的偏好库位优先于主档 A31-1-1");
+                Map<String, Object> a31 = rows.stream().filter(r -> f.parsedA31.equals(r.get("goods_id"))
+                        && f.childWh.equals(r.get("warehouse_id"))).findFirst().orElseThrow();
+                assertEquals("B01-3-4", a31.get("place"), "子仓主档关系不挪到父仓库存上");
                 assertEquals(Boolean.TRUE, a31.get("parsed"));
-                assertEquals(0, ((java.math.BigDecimal) a31.get("qty")).compareTo(new java.math.BigDecimal("1")));
+                assertEquals(0, ((java.math.BigDecimal) a31.get("qty")).signum());
+                Map<String, Object> parentBalance = rows.stream().filter(r -> f.parsedA31.equals(r.get("goods_id"))
+                        && f.parentWh.equals(r.get("warehouse_id"))).findFirst().orElseThrow();
+                assertEquals("A31-1-1", parentBalance.get("place"));
+                assertEquals(0, ((java.math.BigDecimal) parentBalance.get("qty")).compareTo(new java.math.BigDecimal("1")));
                 assertTrue(rows.stream().anyMatch(r -> f.prefOnly.equals(r.get("goods_id"))),
                         "主档无库位但本仓有偏好的货品，选仓时应出现");
                 assertFalse(rows.stream().anyMatch(r -> f.prefOnly.equals(r.get("goods_id"))
@@ -207,6 +215,107 @@ class ShelfLabelQueryPostgresTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    @Test
+    void owningWarehouseMasterChangesApplyImmediatelyAndInvalidMastersNeverFallBackToOldStockWarehouses() throws Exception {
+        try (Connection connection = connection()) {
+            Fixture fixture = Fixture.create(connection);
+            setOwningWarehouse(connection, fixture.parsedA30, fixture.childWh);
+            assertEquals(fixture.childWh, masterWarehouse(connection, fixture.parsedA30, fixture.parentWh));
+            try (PreparedStatement statement = connection.prepareStatement("UPDATE warehouses SET status='禁用' WHERE id=?")) {
+                statement.setObject(1, fixture.parentWh); statement.executeUpdate();
+            }
+            assertNull(masterWarehouse(connection, fixture.parsedA30, null), "主仓禁用时仍在使用的子仓也不能自动带入");
+            try (PreparedStatement statement = connection.prepareStatement("UPDATE warehouses SET status='使用' WHERE id=?")) {
+                statement.setObject(1, fixture.parentWh); statement.executeUpdate();
+            }
+            // This good already has real balances in both warehouses; those facts do not select a default.
+            setOwningWarehouse(connection, fixture.parsedA30, fixture.otherWh);
+            assertEquals(fixture.otherWh, masterWarehouse(connection, fixture.parsedA30, null));
+            assertNull(masterWarehouse(connection, fixture.parsedA30, fixture.parentWh), "主档不在来源主仓范围时不回退旧仓");
+            try (PreparedStatement statement = connection.prepareStatement("UPDATE warehouses SET status='禁用' WHERE id=?")) {
+                statement.setObject(1, fixture.otherWh); statement.executeUpdate();
+            }
+            assertNull(masterWarehouse(connection, fixture.parsedA30, null));
+            setOwningWarehouse(connection, fixture.parsedA30, fixture.parentWh);
+            assertNull(masterWarehouse(connection, fixture.parsedA30, null), "有正常子仓的逻辑主仓不是实际落仓");
+            setOwningWarehouse(connection, fixture.parsedA30, fixture.nonAccountableWh);
+            assertNull(masterWarehouse(connection, fixture.parsedA30, null));
+            setOwningWarehouse(connection, fixture.parsedA30, null);
+            assertNull(masterWarehouse(connection, fixture.parsedA30, null));
+        }
+    }
+
+    private static UUID masterWarehouse(Connection connection, UUID goods, UUID scope) throws Exception {
+        String sql = "SELECT destination.id FROM goods g "
+                + com.uten.imp.features.warehouse.WarehouseMasterDefaultsSql.owningWarehouseJoin("g", "destination")
+                + " AND (CAST(? AS uuid) IS NULL OR fn_warehouse_same_main(destination.id,CAST(? AS uuid))) WHERE g.id=?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, scope); statement.setObject(2, scope); statement.setObject(3, goods);
+            try (ResultSet result = statement.executeQuery()) { assertTrue(result.next()); return result.getObject(1, UUID.class); }
+        }
+    }
+
+    private static void setOwningWarehouse(Connection connection, UUID goods, UUID warehouse) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement("UPDATE goods SET owning_warehouse_id=? WHERE id=?")) {
+            statement.setObject(1, warehouse); statement.setObject(2, goods); statement.executeUpdate();
+        }
+    }
+
+    @Test
+    void sameGoodsNeverMergeWarehousesOrColorsOrPretendUncoloredStockIsItsPrimaryColor() throws Exception {
+        try (Connection c = connection()) {
+            Fixture f = Fixture.create(c);
+            UUID red = UUID.randomUUID(), blue = UUID.randomUUID();
+            try (PreparedStatement statement = c.prepareStatement("INSERT INTO colors(id,code,name,status) VALUES (?,?,?,'使用')")) {
+                for (var color : Map.of(red, "red", blue, "blue").entrySet()) {
+                    statement.setObject(1, color.getKey()); statement.setString(2, "SC-" + color.getKey());
+                    statement.setString(3, color.getValue()); statement.executeUpdate();
+                }
+            }
+            try (PreparedStatement statement = c.prepareStatement("UPDATE goods SET color_id=? WHERE id=?")) {
+                statement.setObject(1, red); statement.setObject(2, f.parsedA30); statement.executeUpdate();
+            }
+            try (PreparedStatement statement = c.prepareStatement(
+                    "INSERT INTO stock_balances(warehouse_id,goods_id,color_id,qty) VALUES (?,?,?,?)")) {
+                for (Object[] row : List.<Object[]>of(new Object[]{f.childWh, red, 3},
+                        new Object[]{f.childWh, blue, 11}, new Object[]{f.otherWh, red, 13})) {
+                    statement.setObject(1, row[0]); statement.setObject(2, f.parsedA30);
+                    statement.setObject(3, row[1]); statement.setObject(4, row[2]); statement.executeUpdate();
+                }
+            }
+            try (PreparedStatement statement = c.prepareStatement("""
+                    INSERT INTO warehouse_goods_place_preferences(warehouse_id,goods_id,color_id,place,source_kind,
+                        source_iqc_batch_id,source_registered_at,last_selected_by,created_by,updated_by)
+                    SELECT ?,?,?,?,'IQC_STOCK_IN',source_iqc_batch_id,source_registered_at,
+                           last_selected_by,created_by,updated_by
+                    FROM warehouse_goods_place_preferences WHERE goods_id=? LIMIT 1
+                    """)) {
+                for (var color : Map.of(red, "RED-1-1", blue, "BLUE-2-2").entrySet()) {
+                    statement.setObject(1, f.childWh); statement.setObject(2, f.parsedA30);
+                    statement.setObject(3, color.getKey()); statement.setString(4, color.getValue());
+                    statement.setObject(5, f.prefOnly); statement.executeUpdate();
+                }
+            }
+            List<Map<String, Object>> scoped = query(c, ShelfLabelSql.rows(true, false, false, false),
+                    Map.of("warehouseId", f.parentWh)).stream().filter(row -> f.parsedA30.equals(row.get("goods_id"))).toList();
+            assertEquals(3, scoped.size());
+            for (Map<String,Object> row : scoped) assertEquals(f.childWh, row.get("warehouse_id"));
+            Map<String,Object> nullColor = scoped.stream().filter(row -> row.get("color_id") == null).findFirst().orElseThrow();
+            assertEquals("", nullColor.get("color_name"));
+            assertEquals(0, ((java.math.BigDecimal) nullColor.get("qty")).compareTo(new java.math.BigDecimal("5")));
+            Map<String,Object> blueRow = scoped.stream().filter(row -> blue.equals(row.get("color_id"))).findFirst().orElseThrow();
+            assertEquals("blue", blueRow.get("color_name"));
+            assertEquals("BLUE-2-2", blueRow.get("place"));
+            assertEquals("A30-1-2", nullColor.get("place"), "NULL色不得套用任意有色关系");
+            assertEquals(0, ((java.math.BigDecimal) blueRow.get("qty")).compareTo(new java.math.BigDecimal("11")));
+            List<Map<String,Object>> all = query(c, ShelfLabelSql.rows(false, false, false, false), Map.of())
+                    .stream().filter(row -> f.parsedA30.equals(row.get("goods_id"))).toList();
+            assertEquals(5, all.size());
+            assertEquals(0, all.stream().map(row -> (java.math.BigDecimal) row.get("qty"))
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add).compareTo(new java.math.BigDecimal("39")));
+        }
+    }
 
     /** 每个用例独立造一套数据（唯一编码后缀），互不干扰。 */
     private record Fixture(UUID parentWh, UUID childWh, UUID otherWh, UUID nonAccountableWh,

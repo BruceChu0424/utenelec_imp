@@ -1,0 +1,196 @@
+{
+  "applicationOrder": [
+    "rows.json",
+    "variants/historical-references.json",
+    "variants/orphan-bom.json"
+  ],
+  "mergeRule": "Deep-copy base; append each variant array to the matching CSV. Never replace a base row or master identity.",
+  "masterCounts": {
+    "goods": {
+      "source": 3,
+      "target": 4,
+      "anchors": [
+        910101
+      ]
+    },
+    "units": {
+      "source": 1,
+      "target": 2,
+      "anchors": [
+        910301
+      ]
+    },
+    "colors": {
+      "source": 1,
+      "target": 2,
+      "anchors": [
+        910401
+      ]
+    },
+    "warehouses": {
+      "source": 1,
+      "target": 2,
+      "anchors": [
+        910201
+      ]
+    },
+    "clients": {
+      "source": 1,
+      "target": 2,
+      "anchors": [
+        910501
+      ]
+    },
+    "suppliers": {
+      "source": 1,
+      "target": 2,
+      "anchors": [
+        910601
+      ]
+    }
+  },
+  "anchorEvidence": [
+    {
+      "target": "goods",
+      "legacyId": 910101,
+      "source": "stock_goods.csv",
+      "field": "goods_legacy",
+      "csvLine": 5,
+      "sourceRowId": "{\"color_legacy\":\"910401\",\"goods_legacy\":\"910101\",\"stock_legacy\":\"910201\",\"year\":\"2025\"}",
+      "referenceCount": 2
+    },
+    {
+      "target": "units",
+      "legacyId": 910301,
+      "source": "stock_other_in_i.csv",
+      "sourceLegacyId": 902102,
+      "field": "unit_legacy_id",
+      "csvLine": 3
+    },
+    {
+      "target": "colors",
+      "legacyId": 910401,
+      "source": "stock_goods.csv",
+      "field": "color_legacy",
+      "csvLine": 5,
+      "sourceRowId": "{\"color_legacy\":\"910401\",\"goods_legacy\":\"910101\",\"stock_legacy\":\"910201\",\"year\":\"2025\"}",
+      "referenceCount": 2
+    },
+    {
+      "target": "warehouses",
+      "legacyId": 910201,
+      "source": "stock_goods.csv",
+      "field": "stock_legacy",
+      "csvLine": 5,
+      "sourceRowId": "{\"color_legacy\":\"910401\",\"goods_legacy\":\"910101\",\"stock_legacy\":\"910201\",\"year\":\"2025\"}",
+      "referenceCount": 2
+    },
+    {
+      "target": "clients",
+      "legacyId": 910501,
+      "source": "m_in.csv",
+      "sourceLegacyId": 906101,
+      "field": "client_legacy_id",
+      "csvLine": 3
+    },
+    {
+      "target": "suppliers",
+      "legacyId": 910601,
+      "source": "m_out.csv",
+      "sourceLegacyId": 906102,
+      "field": "supplier_legacy_id",
+      "csvLine": 4
+    }
+  ],
+  "historicalRestrictions": {
+    "goods910101": {
+      "auto_created": true,
+      "operationalBomCount": 0
+    },
+    "warehouse910201": {
+      "auto_created": true,
+      "is_accountable": false
+    },
+    "client910501": {
+      "status": "禁用",
+      "sales_payment_type": null
+    },
+    "supplier910601": {
+      "status": "禁用"
+    }
+  },
+  "stockBalances": {
+    "count": 4,
+    "qtySum": "15.0000",
+    "amountLocalSum": "53.00",
+    "historicalTuple": {
+      "warehouse": 910201,
+      "goods": 910101,
+      "color": 910401,
+      "qty": "2.0000",
+      "amountLocal": "14.00"
+    }
+  },
+  "finance": {
+    "AR": {
+      "rows": 2,
+      "original": "35.0000",
+      "settled": "8.0000",
+      "balance": "27.0000"
+    },
+    "AP": {
+      "rows": 3,
+      "original": "46.0000",
+      "settled": "0.0000",
+      "balance": "46.0000"
+    },
+    "newFinanceGateApprovals": 0,
+    "inferredCrossModuleDocumentUuids": 0,
+    "accountStyle": {
+      "accountLegacyId": 906001,
+      "styleLegacyId": 906010,
+      "category": "ACCOUNT",
+      "isReceipt": true,
+      "isPayment": true,
+      "accountStyleIdEqualsStyleId": true,
+      "styleLinkedAccountIdEqualsAccountId": true
+    },
+    "accountFlow": {
+      "legacyId": 906020,
+      "sourceBStyle": 20,
+      "sourceReceiptLegacyId": 906002,
+      "accountLegacyId": 906001,
+      "inAmount": "8.0000",
+      "outAmount": "0.0000",
+      "accountBalanceRemains": "8.0000",
+      "newGlEntries": 0,
+      "newWriteOffs": 0
+    }
+  },
+  "goodsStockPlace": {
+    "legacyGoodsId": 900101,
+    "sourceText": "18",
+    "targetStockPlace": null
+  },
+  "bom": {
+    "sourceRows": 4,
+    "activeRows": 1,
+    "excludedRows": 3,
+    "retainedLegacyIds": [
+      900901
+    ],
+    "excludedLegacyIds": [
+      900902,
+      900903,
+      900904
+    ],
+    "reason": "EXCLUDED_NON_OPERATIONAL_MASTER",
+    "requiredExclusionEvidence": [
+      "sourceFile",
+      "sourceLegacyId",
+      "parentLegacyId",
+      "componentLegacyId",
+      "reason"
+    ]
+  }
+}

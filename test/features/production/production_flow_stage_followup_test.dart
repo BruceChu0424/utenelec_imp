@@ -4,6 +4,45 @@ import 'package:uten_imp/features/production/models/production_flow_stage.dart';
 import 'package:uten_imp/features/production/widgets/production_flow_stage_cell.dart';
 
 void main() {
+  test('unconfirmed route and partial material do not claim complete kit', () {
+    final unconfirmed = ProductionFlowStage.forSegment(
+      segmentStatus: 'READY',
+      zeroMaterial: true,
+      routeConfirmationRequired: true,
+    );
+    expect(unconfirmed.label, '待确认生产路线');
+    final partial = ProductionFlowStage.forSegment(
+      segmentStatus: 'READY',
+      zeroMaterial: false,
+      continuousSupply: true,
+      canStartNow: false,
+      canRequestDraw: true,
+    );
+    expect(partial.label, '物料已到 · 去领料');
+    final available = ProductionFlowStage.forSegment(
+      segmentStatus: 'READY',
+      zeroMaterial: false,
+      continuousSupply: true,
+      materialIssued: false,
+      canStartNow: true,
+    );
+    expect(available.label, '已支持部分产量 · 可开工');
+  });
+  test(
+    'continuous task does not label planned remainder as material capacity',
+    () {
+      final stage = ProductionFlowStage.forSegment(
+        segmentStatus: 'IN_PROGRESS',
+        zeroMaterial: false,
+        continuousSupply: true,
+        plannedQty: 1000,
+        reportedQty: 100,
+        remainingReportQty: 900,
+      );
+      expect(stage.label, '持续生产中 · 按实际投料报工');
+      expect(stage.progressPercent, 10);
+    },
+  );
   test(
     'material fully awaiting return receipt does not ask for consumption again',
     () {

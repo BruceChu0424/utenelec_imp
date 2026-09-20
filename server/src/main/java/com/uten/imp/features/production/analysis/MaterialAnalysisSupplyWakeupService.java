@@ -88,7 +88,8 @@ public class MaterialAnalysisSupplyWakeupService {
         notifyWaitingSegmentsAboutArrival(
                 "IQC:" + triggerFingerprint(batches == null ? List.of() : batches.stream()
                         .map(ReceiptStockIn::batchId).toList()),
-                iqcArrivalDimensions(batches));
+                iqcArrivalDimensions(batches), "IQC_STOCK_IN", batches == null ? List.of() :
+                        batches.stream().map(ReceiptStockIn::batchId).filter(java.util.Objects::nonNull).distinct().toList());
     }
 
     private List<AnalysisTarget> inspectionStockInTargets(List<ReceiptStockIn> batches) {
@@ -166,12 +167,14 @@ public class MaterialAnalysisSupplyWakeupService {
         refreshTargets(finishedInboundTargets(stockDocumentIds, 1));
         notifyWaitingSegmentsAboutArrival(
                 "FIN:" + triggerFingerprint(stockDocumentIds),
-                finishedInboundArrivalDimensions(stockDocumentIds));
+                finishedInboundArrivalDimensions(stockDocumentIds), "FINISHED_IN", stockDocumentIds);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundReversed(UUID stockDocumentId) {
         refreshTargets(finishedInboundTargets(stockDocumentId, -1));
+        notifyWaitingSegmentsAboutArrival("FIN-REVERSE:" + stockDocumentId,
+                finishedInboundSourceDimensions(List.of(stockDocumentId), -1), "CURRENT_STATE", List.of());
     }
 
     private void refreshReceipt(
@@ -182,6 +185,10 @@ public class MaterialAnalysisSupplyWakeupService {
                 ? purchaseTargets(receiptId, includeLegacyFallback)
                 : subcontractTargets(receiptId, includeLegacyFallback);
         refreshTargets(targets);
+        if (includeLegacyFallback) {
+            notifyWaitingSegmentsAboutArrival(sourceType + "-REVERSE:" + receiptId,
+                    reversedReceiptDimensions(sourceType, receiptId), "CURRENT_STATE", List.of());
+        }
     }
 
     private void refreshTargets(List<AnalysisTarget> targets) {
@@ -404,8 +411,27 @@ public class MaterialAnalysisSupplyWakeupService {
                 """).setParameter("batchIds", batchIds));
     }
 
+    /** Reversal keeps original physical dimensions even though the source is no longer available. */
+    private List<Object[]> reversedReceiptDimensions(String sourceType, UUID receiptId) {
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT stock.warehouse_id, stock.goods_id, stock.color_id,
+                       SUM(stock.base_qty), goods.name, goods.code, COALESCE(color.name, '')
+                FROM procurement_iqc_stock_in_batch_items stock
+                JOIN procurement_inspection_items inspection ON inspection.id=stock.inspection_item_id
+                JOIN goods ON goods.id=stock.goods_id
+                LEFT JOIN colors color ON color.id=stock.color_id
+                WHERE inspection.receipt_type=:sourceType AND inspection.receipt_id=:receiptId
+                GROUP BY stock.warehouse_id,stock.goods_id,stock.color_id,goods.name,goods.code,color.name
+                ORDER BY goods.name,goods.code
+                """).setParameter("sourceType", sourceType).setParameter("receiptId", receiptId));
+    }
+
     /** 自制产成品入库的到货维度(V599)：线边仓(车间直送)不进公共可用量，不算到货进展。 */
     private List<Object[]> finishedInboundArrivalDimensions(Collection<UUID> stockDocumentIds) {
+        return finishedInboundSourceDimensions(stockDocumentIds, 1);
+    }
+
+    private List<Object[]> finishedInboundSourceDimensions(Collection<UUID> stockDocumentIds, int status) {
         if (stockDocumentIds == null || stockDocumentIds.isEmpty()) {
             return List.of();
         }
@@ -424,7 +450,7 @@ public class MaterialAnalysisSupplyWakeupService {
                  AND source_warehouse.is_line_side = FALSE
                 WHERE document.id IN (:documentIds)
                   AND document.doc_type = 'FINISHED_IN'
-                  AND document.status = 1
+                  AND document.status = :status
                   AND document.is_deleted = FALSE
                   AND document.warehouse_id IS NOT NULL
                   AND item.goods_id IS NOT NULL
@@ -432,79 +458,79 @@ public class MaterialAnalysisSupplyWakeupService {
                          goods.name, goods.code, color.name
                 ORDER BY goods.name, goods.code
                 """).setParameter("documentIds",
-                stockDocumentIds.stream().distinct().sorted().toList()));
+                stockDocumentIds.stream().distinct().sorted().toList()).setParameter("status", status));
     }
 
-    /**
-     * 到货进展通知(V599 / ADR-091)：按「仓×货品×颜色」命中仍在等待的车间工单——含未确认
-     * 路线的(提示先确认路线)。同一仓的到货汇成一张卡的到货行；单仓最多 30 段防通知风暴。
-     * 卡片本体在 {@code ChainNoticeService} 投递时按当时事实重组，段已齐套/开工则不发。
-     */
+    /** Match exact goods/color and main-warehouse scope; page every affected task. */
     private void notifyWaitingSegmentsAboutArrival(
-            String triggerKey, List<Object[]> dimensions) {
-        if (dimensions == null || dimensions.isEmpty()) {
-            return;
-        }
-        Map<UUID, List<Object[]>> byWarehouse = new TreeMap<>();
+            String triggerKey, List<Object[]> dimensions, String evidenceType, Collection<UUID> evidenceIds) {
+        if (dimensions == null || dimensions.isEmpty()) return;
+        List<Map<String,Object>> arrivals = new ArrayList<>();
         for (Object[] dimension : dimensions) {
-            byWarehouse.computeIfAbsent((UUID) dimension[0], ignored -> new ArrayList<>())
-                    .add(dimension);
+            Map<String,Object> value = new java.util.LinkedHashMap<>();
+            value.put("warehouse_id", dimension[0]);
+            value.put("goods_id", dimension[1]);
+            value.put("color_id", dimension[2]);
+            value.put("quantity", dimension[3]);
+            value.put("goods_name", dimension[4]);
+            value.put("goods_code", dimension[5]);
+            value.put("color_name", dimension[6]);
+            arrivals.add(value);
         }
-        for (Map.Entry<UUID, List<Object[]>> entry : byWarehouse.entrySet()) {
-            UUID warehouseId = entry.getKey();
-            List<Object[]> warehouseDimensions = entry.getValue();
-            StringBuilder arrivalLine = new StringBuilder("本次入库：");
-            int shown = 0;
-            for (Object[] dimension : warehouseDimensions) {
-                if (shown == 6) {
-                    arrivalLine.append("；等 ").append(warehouseDimensions.size()).append(" 种");
-                    break;
-                }
-                if (shown > 0) {
-                    arrivalLine.append("、");
-                }
-                arrivalLine.append(dimension[4]).append(' ').append(dimension[5])
-                        .append(dimension[6] == null || String.valueOf(dimension[6]).isBlank()
-                                ? "" : "(" + dimension[6] + ")")
-                        .append(' ')
-                        .append(new java.math.BigDecimal(
-                                dimension[3].toString()).stripTrailingZeros().toPlainString());
-                shown++;
+        String payload = new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(arrivals).toString();
+        UUID after = new UUID(0,0);
+        while (true) {
+            List<Object[]> targets = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    WITH arrivals AS (
+                        SELECT * FROM jsonb_to_recordset(CAST(:arrivals AS jsonb))
+                        AS a(warehouse_id uuid, goods_id uuid, color_id uuid, quantity numeric,
+                             goods_name text, goods_code text, color_name text)
+                    ), matches AS (
+                        SELECT DISTINCT segment.id, a.goods_id, a.color_id, a.warehouse_id,
+                               a.goods_name, a.goods_code, a.color_name, a.quantity
+                        FROM arrivals a
+                        JOIN production_material_demands demand
+                          ON demand.goods_id=a.goods_id
+                         AND demand.color_id IS NOT DISTINCT FROM a.color_id
+                         AND NOT demand.is_deleted AND demand.status NOT IN ('RELEASED','REVERSED')
+                         AND (:reversed OR demand.status <> 'FULFILLED')
+                         AND fn_warehouse_same_main(demand.warehouse_id,a.warehouse_id)
+                        JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
+                         AND NOT segment.is_deleted AND segment.workshop_department_id IS NOT NULL
+                         AND segment.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
+                         AND (:reversed OR segment.status='WAITING' OR segment.continuous_supply)
+                        JOIN production_planning_packages package ON package.id=segment.package_id
+                         AND package.status='CONFIRMED' AND NOT package.is_deleted
+                        WHERE segment.id>CAST(:after AS uuid)
+                    ), page AS (
+                        SELECT id FROM matches GROUP BY id ORDER BY id LIMIT 200
+                    ), ranked AS (
+                        SELECT matches.*, row_number() OVER (PARTITION BY matches.id
+                            ORDER BY goods_name,goods_id,color_id,warehouse_id) AS position
+                        FROM matches JOIN page USING(id)
+                    )
+                    SELECT id, '本次合格入库：' || string_agg(
+                        goods_name || ' ' || goods_code ||
+                        CASE WHEN COALESCE(color_name,'')='' THEN '' ELSE '(' || color_name || ')' END
+                        || ' ' || trim_scale(quantity)::text || '（基本单位）', '、' ORDER BY position) FILTER(WHERE position<=6)
+                        || CASE WHEN count(*)>6 THEN '；共 ' || count(*) || ' 项' ELSE '' END
+                        || '（仓库本次实收量，本单可领量以领料核对为准）'
+                    FROM ranked GROUP BY id ORDER BY id
+                    """).setParameter("arrivals",payload).setParameter("after",after)
+                    .setParameter("reversed", "CURRENT_STATE".equals(evidenceType)));
+            if ("CURRENT_STATE".equals(evidenceType)) {
+                chainNotices.resolveProductionWorkshopTasks(targets.stream().map(row -> (UUID) row[0]).toList(),
+                        "SOURCE_REVERSED");
             }
-            List<UUID> goodsIds = warehouseDimensions.stream()
-                    .map(dimension -> (UUID) dimension[1])
-                    .distinct()
-                    .toList();
-            List<UUID> segmentIds = NativeQueryResults.typedRows(
-                    em.createNativeQuery("""
-                            SELECT DISTINCT segment.id
-                            FROM production_execution_segments segment
-                            JOIN production_planning_packages package
-                              ON package.id = segment.package_id
-                             AND package.status = 'CONFIRMED'
-                             AND package.is_deleted = FALSE
-                            JOIN production_material_demands demand
-                              ON demand.execution_segment_id = segment.id
-                             AND demand.is_deleted = FALSE
-                             AND demand.status NOT IN ('RELEASED', 'REVERSED')
-                             AND demand.goods_id IN (:goodsIds)
-                            WHERE segment.status = 'WAITING'
-                              AND segment.is_deleted = FALSE
-                              AND segment.workshop_department_id IS NOT NULL
-                              AND fn_warehouse_same_main(demand.warehouse_id, :warehouseId)
-                            ORDER BY segment.id
-                            LIMIT 30
-                            """)
-                            .setParameter("goodsIds", goodsIds)
-                            .setParameter("warehouseId", warehouseId),
-                    UUID.class);
-            for (UUID segmentId : segmentIds) {
-                chainNotices.notifyWorkshopMaterialArrival(
-                        segmentId, triggerKey, arrivalLine.toString());
+            for (Object[] target : targets) {
+                chainNotices.notifyWorkshopMaterialArrival((UUID)target[0], triggerKey,
+                        "CURRENT_STATE".equals(evidenceType) ? "物料来源已撤回，请核对当前任务" : (String)target[1],
+                        evidenceType, evidenceIds);
             }
+            if (targets.size()<200) return;
+            after=(UUID)targets.getLast()[0];
         }
     }
-
     record AnalysisTarget(UUID analysisId, UUID makerEmployeeId) {
     }
 }

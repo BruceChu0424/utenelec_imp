@@ -78,8 +78,7 @@ public class ProductionDrawRequestService {
         lockRows("production_execution_segments", items.stream().map(Item::segmentId).toList());
         List<Segment> locked = segments(items);
         requireAccess(locked); // Assignment or plan state may have changed while acquiring locks.
-        // 开工路线门控(V599/V606)：分批生产路线走分批领料，不在这里整单领。
-        // V606 路线自动识别后不再有 NULL（历史脏数据按齐套放行，不阻塞车间）。
+        // Explicit route confirmation gates picking; independent batches use their own request.
         for (Segment segment : locked) {
             String route = (String) em.createNativeQuery("""
                     SELECT start_route FROM production_execution_segments
@@ -87,6 +86,7 @@ public class ProductionDrawRequestService {
                     """)
                     .setParameter("id", segment.id())
                     .getSingleResult();
+            if (route == null) throw conflict("请先确认生产路线");
             if ("BATCH".equals(route)) {
                 throw conflict("工单 " + segment.code()
                         + " 已确认为「分批生产」路线，请用「分批领料」按批办理");
@@ -107,7 +107,8 @@ public class ProductionDrawRequestService {
             int changed = em.createNativeQuery("""
                     UPDATE production_execution_segments SET lock_version=lock_version+1,
                         updated_at=now(), updated_by=:actor
-                    WHERE id=:id AND lock_version=:version AND status IN ('READY','DISPATCHED')
+                    WHERE id=:id AND lock_version=:version
+                      AND status IN ('READY','DISPATCHED','IN_PROGRESS')
                       AND is_deleted=FALSE
                     """).setParameter("actor", currentUser.requireId())
                     .setParameter("id", task.segmentId()).setParameter("version", task.expectedVersion())
@@ -162,7 +163,7 @@ public class ProductionDrawRequestService {
                        package.status, plan.status, plan.is_closed, plan.is_canceled, plan.is_stopped,
                        segment.material_requirement_mode,
                        plan.bill_no, segment.segment_code, department.name,
-                       goods.code, goods.name, segment.planned_qty
+                       goods.code, goods.name, segment.planned_qty, segment.start_route
                 FROM production_execution_segments segment
                 JOIN production_plans plan ON plan.id=segment.plan_id AND NOT plan.is_deleted
                 JOIN production_planning_packages package ON package.id=segment.package_id AND NOT package.is_deleted
@@ -176,10 +177,12 @@ public class ProductionDrawRequestService {
                 str(row[3]), ((Number) row[4]).longValue(), uuid(row[5]), uuid(row[6]), uuid(row[7]),
                 str(row[8]), ((Number) row[9]).intValue(), Boolean.TRUE.equals(row[10]),
                 Boolean.TRUE.equals(row[11]), Boolean.TRUE.equals(row[12]), str(row[13]),
-                str(row[14]), str(row[15]), str(row[16]), str(row[17]), str(row[18]), decimal(row[19]))).toList();
+                str(row[14]), str(row[15]), str(row[16]), str(row[17]), str(row[18]), decimal(row[19]),
+                str(row[20]))).toList();
     }
 
     private void requireAccess(List<Segment> segments) {
+        membership.requireActiveOperator();
         if (!access.hasAuthority("production_execution:view") || !access.hasAuthority("production_execution:start")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少车间领料权限");
         }
@@ -201,10 +204,12 @@ public class ProductionDrawRequestService {
             }
             Long version = requested.get(segment.id()).expectedVersion();
             if (version != null && version != segment.version()) throw conflict("车间任务已变化，请刷新后重新选择");
-            if (!List.of("READY", "DISPATCHED").contains(segment.status())
+            if (segment.route() == null) throw conflict("请先确认生产路线");
+            if ("BATCH".equals(segment.route())) throw conflict("请在分批领料页办理本批物料");
+            if (!List.of("READY", "DISPATCHED", "IN_PROGRESS").contains(segment.status())
                     || !"DEMANDED".equals(segment.materialMode()) || !"CONFIRMED".equals(segment.packageStatus())
                     || segment.planStatus() != 1 || segment.closed() || segment.canceled() || segment.stopped()) {
-                throw conflict("仅物料齐套、尚未开工的有效车间任务可以提交领料");
+                throw conflict("仅已备料或生产中的有效任务可以提交领料");
             }
         }
         List<UUID> segmentIds = items.stream().map(Item::segmentId).toList();
@@ -212,7 +217,7 @@ public class ProductionDrawRequestService {
                 SELECT mapping.execution_segment_id, document.id, document.bill_no, item.id,
                        document.warehouse_id, warehouse.name, item.goods_id,
                        item.goods_code_snapshot, item.goods_name_snapshot, item.color_id, color.name,
-                       item.unit_id, unit.name, item.qty, document.status,
+                       item.unit_id, unit.name, fn_production_draw_item_effective_qty(item.id), document.status,
                        fn_production_draw_item_requested_qty(item.id),
                        COALESCE(warehouse.is_line_side, FALSE)
                 FROM production_planning_package_documents mapping
@@ -245,7 +250,7 @@ public class ProductionDrawRequestService {
                     uuid(row[9]), str(row[10]), uuid(row[11]), str(row[12]), qty));
         }
         if (segmentsWithDraws.size() != items.size()) {
-            throw conflict("所选任务缺少有效领料明细，请刷新后重试");
+            throw conflict("所选任务目前没有需要仓库发料的未申请明细，请刷新任务；车间直送料会自动投入");
         }
         // 线边仓行已被上面跳过：只剩线边仓的工单没有任何要仓库发的料，从前会以「零行」
         // 静默提交成功(车间以为领到了、仓库什么也没收到)。持续生产工单最容易撞上这一条。
@@ -378,5 +383,5 @@ public class ProductionDrawRequestService {
                            UUID workshopId, UUID responsibleId, UUID makerId, String packageStatus,
                            int planStatus, boolean closed, boolean canceled, boolean stopped, String materialMode,
                            String planNo, String code, String workshopName, String productCode,
-                           String productName, BigDecimal qty) {}
+                           String productName, BigDecimal qty, String route) {}
 }

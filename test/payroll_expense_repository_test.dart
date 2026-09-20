@@ -6,6 +6,8 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/account_node.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
+import 'package:uten_imp/features/expense/models/expense_claim_event.dart';
+import 'package:uten_imp/features/expense/models/expense_invoice.dart';
 import 'package:uten_imp/features/expense/models/expense_item.dart';
 import 'package:uten_imp/features/expense/models/expense_payment.dart';
 import 'package:uten_imp/features/expense/providers/expense_providers.dart';
@@ -185,6 +187,58 @@ void main() {
   });
 
   group('expense JSON and repository contract', () {
+    test(
+      'single mutations and manual verification carry the reviewed version',
+      () async {
+        final requests = <RequestOptions>[];
+        final repository = DioExpenseRepository(
+          _api((request) {
+            requests.add(request);
+            return {
+              ..._claimJson(),
+              'version': 8,
+              'approvedBy': 'reviewer-1',
+              'paymentProofs': [
+                {
+                  'id': 'proof-1',
+                  'ownerType': 'EXPENSE_PAYMENT_PROOF',
+                  'ownerId': 'claim-1',
+                  'storageKey': 'proof-private',
+                  'originalName': '银行回单.pdf',
+                  'sizeBytes': 100,
+                },
+              ],
+            };
+          }),
+        );
+        final result = await repository.submit('claim-1', expectedVersion: 7);
+        expect(result!.version, 8);
+        expect(result.approvedBy, 'reviewer-1');
+        expect(result.paymentProofs.single.ownerType, 'EXPENSE_PAYMENT_PROOF');
+        expect(requests.last.data, {'expectedVersion': 7});
+        await repository.withdraw('claim-1', expectedVersion: 8);
+        expect(requests.last.data, {'expectedVersion': 8});
+        await repository.approve('claim-1', expectedVersion: 9);
+        expect(requests.last.data, {'expectedVersion': 9});
+        await repository.verifyInvoice(
+          'claim-1',
+          'invoice-1',
+          expectedVersion: 10,
+          verified: true,
+          remark: '已在官方平台核实',
+        );
+        expect(
+          requests.last.path,
+          '/expense-claims/claim-1/invoices/invoice-1/verify',
+        );
+        expect(requests.last.data, {
+          'expectedVersion': 10,
+          'result': 'VERIFIED_MANUAL',
+          'remark': '已在官方平台核实',
+        });
+      },
+    );
+
     test('maps enums and emits exact create body without client total/id', () {
       final claim = ExpenseClaim.fromJson(_claimJson());
       expect(claim.status, ExpenseClaimStatus.submitted);
@@ -326,10 +380,14 @@ void main() {
         isFalse,
       );
 
-      final rejected = await repository.reject('claim-1', '票据不完整');
+      final rejected = await repository.reject(
+        'claim-1',
+        '票据不完整',
+        expectedVersion: 7,
+      );
       expect(rejected?.status, ExpenseClaimStatus.rejected);
       expect(requests.last.path, '/expense-claims/claim-1/reject');
-      expect(requests.last.data, {'reason': '票据不完整'});
+      expect(requests.last.data, {'reason': '票据不完整', 'expectedVersion': 7});
 
       final paid = await repository.pay(
         'claim-1',
@@ -338,6 +396,7 @@ void main() {
           expenseStyleId: 'style-active',
           paymentDate: DateTime(2026, 7, 30),
         ),
+        expectedVersion: 8,
       );
       expect(paid?.status, ExpenseClaimStatus.paid);
       expect(requests.last.path, '/expense-claims/claim-1/pay');
@@ -345,10 +404,192 @@ void main() {
         'accountId': 'account-active',
         'expenseStyleId': 'style-active',
         'paymentDate': '2026-07-30',
+        'expectedVersion': 8,
       });
+    });
+
+    test('V608 edit/batch/summary/invoice endpoints and DTO mapping', () async {
+      final requests = <RequestOptions>[];
+      final repository = DioExpenseRepository(
+        _api((request) {
+          requests.add(request);
+          if (request.path == '/expense-claims/claim-1') {
+            return request.method == 'PUT'
+                ? {
+                    ..._claimJson(),
+                    'status': 'DRAFT',
+                    'claimNo': 'BX20260730000001',
+                  }
+                : _claimJson();
+          }
+          if (request.path == '/expense-claims/summary') {
+            return {
+              'pendingCount': 2,
+              'pendingAmount': 257.0,
+              'payableCount': 1,
+              'payableAmount': 88.8,
+              'monthSubmittedCount': 3,
+              'monthSubmittedAmount': 300.0,
+              'monthPaidCount': 1,
+              'monthPaidAmount': 88.8,
+            };
+          }
+          if (request.path == '/expense-claims/approve-batch') {
+            return {'processed': 2};
+          }
+          if (request.path == '/expense-claims/reject-batch') {
+            return {'processed': 2};
+          }
+          if (request.path == '/expense-claims/invoices/check') {
+            return {
+              'duplicated': true,
+              'heldByClaimNo': 'BX20260729000009',
+              'heldByStatus': 'PAID',
+              'heldByApplicantName': '李四',
+            };
+          }
+          if (request.path == '/expense-claims/invoices/recognize') {
+            expect(request.receiveTimeout, const Duration(seconds: 140));
+            return {
+              'invoiceType': 'DIGITAL',
+              'invoiceCode': '',
+              'invoiceNo': '24312000000012345678',
+              'issueDate': '2026-09-18',
+              'sellerName': '某酒店',
+              'totalAmount': 84.8,
+            };
+          }
+          if (request.path.startsWith(
+            '/expense-claims/claim-1/invoices/invoice-9',
+          )) {
+            return _invoiceClaimJson();
+          }
+          if (request.path == '/expense-claims/claim-1/invoices') {
+            return _invoiceClaimJson();
+          }
+          throw StateError('unexpected request: ${request.path}');
+        }),
+      );
+
+      final edited = await repository.update(
+        'claim-1',
+        const ExpenseClaimCreateInput(title: '改后', items: []),
+      );
+      expect(edited.claimNo, 'BX20260730000001');
+      expect(requests.last.method, 'PUT');
+      expect(requests.last.path, '/expense-claims/claim-1');
+
+      final summary = await repository.summary();
+      expect(summary.pendingCount, 2);
+      expect(summary.payableAmount, 88.8);
+
+      final approved = await repository.approveBatch(
+        const ['a', 'b'],
+        expectedVersions: {'a': 3, 'b': 5},
+      );
+      expect(approved, 2);
+      expect(requests.last.data, {
+        'ids': ['a', 'b'],
+        'expectedVersions': {'a': 3, 'b': 5},
+      });
+
+      final rejected = await repository.rejectBatch(
+        const ['a', 'b'],
+        '票据不全',
+        expectedVersions: {'a': 3, 'b': 5},
+      );
+      expect(rejected, 2);
+      expect(requests.last.data, {
+        'ids': ['a', 'b'],
+        'expectedVersions': {'a': 3, 'b': 5},
+        'reason': '票据不全',
+      });
+
+      final check = await repository.checkInvoice(
+        '24312000000012345678',
+        excludeClaimId: 'claim-1',
+      );
+      expect(check.duplicated, isTrue);
+      expect(check.heldByClaimNo, 'BX20260729000009');
+
+      final recognized = await repository.recognizeInvoice(
+        Uint8List.fromList([1, 2, 3]),
+        'invoice.jpg',
+        'image/jpeg',
+      );
+      expect(recognized.invoiceNo, '24312000000012345678');
+      expect(recognized.type, ExpenseInvoiceType.digital);
+      expect(recognized.invoiceCode, isNull);
+      expect(
+        (requests.last.data as FormData)
+            .files
+            .single
+            .value
+            .contentType!
+            .mimeType,
+        'image/jpeg',
+      );
+
+      final saved = await repository.updateInvoice(
+        'claim-1',
+        'invoice-9',
+        const ExpenseClaimInvoiceInput(
+          type: ExpenseInvoiceType.digital,
+          invoiceNo: '24312000000012345678',
+          totalAmount: 84.8,
+        ),
+      );
+      expect(saved.invoices.single.invoiceNo, '24312000000012345678');
+      expect(saved.events.last.type, ExpenseClaimEventType.submitted);
+
+      await repository.deleteInvoice(
+        'claim-1',
+        'invoice-9',
+        expectedVersion: 6,
+      );
+      expect(requests.last.uri.queryParameters['expectedVersion'], '6');
+      expect(requests.last.method, 'DELETE');
     });
   });
 }
+
+Map<String, dynamic> _invoiceClaimJson() => {
+  ..._claimJson(),
+  'status': 'DRAFT',
+  'invoices': [
+    {
+      'id': 'invoice-9',
+      'lineNo': 1,
+      'invoiceType': 'DIGITAL',
+      'invoiceCode': null,
+      'invoiceNo': '24312000000012345678',
+      'issueDate': '2026-09-18',
+      'sellerName': '某酒店',
+      'sellerTaxNo': '91310000MA1FL8XX00',
+      'buyerName': '上海优腾',
+      'amountExclTax': 80.0,
+      'taxAmount': 4.8,
+      'totalAmount': 84.8,
+      'checkState': 'VERIFIED_MANUAL',
+      'attachmentId': null,
+      'remark': null,
+    },
+  ],
+  'events': [
+    {
+      'eventType': 'CREATED',
+      'actorName': '张三',
+      'remark': null,
+      'occurredAt': '2026-07-30T08:00:00Z',
+    },
+    {
+      'eventType': 'SUBMITTED',
+      'actorName': '张三',
+      'remark': null,
+      'occurredAt': '2026-07-30T09:00:00Z',
+    },
+  ],
+};
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));

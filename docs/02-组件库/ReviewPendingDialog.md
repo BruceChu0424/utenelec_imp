@@ -35,6 +35,12 @@ resetReviewPendingDialogForTest();
 
 ## 三、交互契约
 
+报销补正接力(2026-09-19)：`EXPENSE_CLAIM_SUBMITTED` 与 `EXPENSE_CLAIM_PENDING_PAYMENT`
+分别提示审核、付款岗位，工作台落点为 `/expense/approval`；`EXPENSE_CLAIM_REJECTED` 提醒申请人补正，
+落点为 `/expense`。付款收件人同时排除申请人和本单审核人。服务端先办结旧审核卡，再创建付款或补正卡；
+重提时办结上一轮补正卡再创建新审核卡，防止新卡被同聚合办结。通知中心可跳具体单据，仍校验最新权限与状态。
+付款回执表示财务已登记付款，并提示核对实际收款，不宣称银企直连到账。消息已读不清报销业务红徽章。
+
 - **单条=大卡 / 多条=紧凑列表**：域图标（按 source_event 映射）+标题+摘要+相对信息。
 - **认领状态 chip（「对应的人是否操作」）**：他人认领 →「XX 正在审核」（tertiary 容器色）；
   无人处理 →「待处理」+schedule 图标（primary 容器色）。30s 心跳刷新。

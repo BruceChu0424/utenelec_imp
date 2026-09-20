@@ -9,37 +9,18 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/currency_display.dart';
+import '../../models/finance_decimal.dart';
 import '../models/finance_payable.dart';
 import '../repositories/finance_payables_repository.dart';
-
-BigInt? _scaledDecimal(String? raw, {int scale = 4}) {
-  final value = raw?.trim();
-  if (value == null || value.isEmpty) return null;
-  final match = RegExp(r'^([+-]?)(\d+)(?:\.(\d+))?$').firstMatch(value);
-  if (match == null) return null;
-  final negative = match.group(1) == '-';
-  var fraction = match.group(3) ?? '';
-  if (fraction.length > scale) {
-    if (fraction.substring(scale).contains(RegExp('[1-9]'))) return null;
-    fraction = fraction.substring(0, scale);
-  }
-  fraction = fraction.padRight(scale, '0');
-  final factor = BigInt.from(10).pow(scale);
-  final units =
-      BigInt.parse(match.group(2)!) * factor +
-      (fraction.isEmpty ? BigInt.zero : BigInt.parse(fraction));
-  return negative ? -units : units;
-}
 
 bool supplierOffsetTargetCompatible(
   FinancePayableItem source,
   FinancePayableItem target,
 ) {
-  if (source.openItemKind != 'CREDIT' &&
-      source.openItemKind != 'CLAIM_CREDIT') {
+  if (!source.canApplyCredit) {
     return false;
   }
-  if (target.openItemKind != 'PAYABLE' || target.status == 'SETTLED') {
+  if (!target.canCreatePayment || target.status == 'SETTLED') {
     return false;
   }
   if (source.supplierId == null || source.supplierId != target.supplierId) {
@@ -48,12 +29,12 @@ bool supplierOffsetTargetCompatible(
   if (source.currencyId == null || source.currencyId != target.currencyId) {
     return false;
   }
-  final sourceRate = _scaledDecimal(source.bookingRate, scale: 6);
-  final targetRate = _scaledDecimal(target.bookingRate, scale: 6);
+  final sourceRate = financeRateUnits(source.bookingRate);
+  final targetRate = financeRateUnits(target.bookingRate);
   if (sourceRate == null || targetRate == null || sourceRate != targetRate) {
     return false;
   }
-  final outstanding = _scaledDecimal(target.outstandingOriginal);
+  final outstanding = financeAmountUnits(target.outstandingOriginal);
   return outstanding != null && outstanding > BigInt.zero;
 }
 
@@ -98,7 +79,9 @@ class _SupplierCreditApplyPanelState
   final Set<String> _selected = {};
   List<FinancePayableItem> _targets = const [];
   DateTime _effectiveDate = DateTime.now();
-  bool _loading = true;
+  bool _loading = false;
+  int _page = 0;
+  int _totalPages = 1;
   String? _error;
 
   @override
@@ -120,7 +103,8 @@ class _SupplierCreditApplyPanelState
       '${value.year}-${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
-  Future<void> _load() async {
+  Future<void> _load({bool more = false}) async {
+    if (_loading || (more && _page >= _totalPages)) return;
     final supplierId = widget.source.supplierId;
     if (supplierId == null) {
       setState(() {
@@ -129,20 +113,32 @@ class _SupplierCreditApplyPanelState
       });
       return;
     }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final result = await ref
           .read(financePayablesRepositoryProvider)
           .list(
+            page: more ? _page + 1 : 1,
             size: 200,
-            filter: FinancePayablesFilter(supplierId: supplierId),
+            filter: FinancePayablesFilter(
+              supplierId: supplierId,
+              currencyId: widget.source.currencyId,
+            ),
           );
       if (!mounted) return;
       setState(() {
-        _targets = result.items
-            .where(
-              (target) => supplierOffsetTargetCompatible(widget.source, target),
-            )
-            .toList(growable: false);
+        _targets = {
+          if (more)
+            for (final target in _targets) target.id: target,
+          for (final target in result.items)
+            if (supplierOffsetTargetCompatible(widget.source, target))
+              target.id: target,
+        }.values.toList(growable: false);
+        _page = result.page;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -171,12 +167,16 @@ class _SupplierCreditApplyPanelState
   }
 
   void _confirm() {
+    if (!widget.source.canApplyCredit) {
+      context.appError('历史资金不能作为贷项来源');
+      return;
+    }
     final reason = _reason.text.trim();
     if (reason.isEmpty) {
       context.appError('请填写贷项应用原因');
       return;
     }
-    final sourceCapacity = _scaledDecimal(
+    final sourceCapacity = financeAmountUnits(
       widget.source.outstandingOriginal,
     )?.abs();
     if (sourceCapacity == null || sourceCapacity == BigInt.zero) {
@@ -189,8 +189,8 @@ class _SupplierCreditApplyPanelState
       (item) => _selected.contains(item.id),
     )) {
       final raw = _amounts[target.id]?.text.trim() ?? '';
-      final units = _scaledDecimal(raw);
-      final capacity = _scaledDecimal(target.outstandingOriginal);
+      final units = financeAmountUnits(raw);
+      final capacity = financeAmountUnits(target.outstandingOriginal);
       if (units == null || units <= BigInt.zero) {
         context.appError('每笔目标原币金额必须大于 0');
         return;
@@ -295,18 +295,41 @@ class _SupplierCreditApplyPanelState
   }
 
   Widget _buildTargets() {
-    if (_loading) {
+    if (_loading && _page == 0) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (_error != null) return Center(child: Text(_error!));
-    if (_targets.isEmpty) {
-      return const UtenEmpty(message: '暂无同供应商、同币种、同立账汇率的正应付');
     }
     return ListView.separated(
       padding: const EdgeInsets.all(UtenSpacing.s12),
-      itemCount: _targets.length,
+      itemCount: _targets.length + 1,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
+        if (index == _targets.length) {
+          return Column(
+            children: [
+              if (_targets.isEmpty && _error == null)
+                UtenEmpty(
+                  message: _page < _totalPages
+                      ? '当前页暂无符合条件的正应付，可继续加载'
+                      : '暂无同供应商、同币种、同立账汇率的正应付',
+                ),
+              if (_error != null) Text(_error!),
+              if (_page < _totalPages)
+                TextButton.icon(
+                  key: const ValueKey('supplier-offset-load-more'),
+                  onPressed: _loading ? null : () => _load(more: true),
+                  icon: const Icon(Icons.expand_more_rounded),
+                  label: Text(
+                    _loading
+                        ? '加载中'
+                        : _error != null
+                        ? '重试'
+                        : '加载更多',
+                  ),
+                ),
+              const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
+            ],
+          );
+        }
         final target = _targets[index];
         final selected = _selected.contains(target.id);
         final controller = _amounts.putIfAbsent(
@@ -314,6 +337,7 @@ class _SupplierCreditApplyPanelState
           () => TextEditingController(),
         );
         return CheckboxListTile(
+          key: ValueKey('supplier-offset-target-${target.id}'),
           value: selected,
           onChanged: (value) => setState(() {
             if (value == true) {
@@ -335,6 +359,7 @@ class _SupplierCreditApplyPanelState
           secondary: SizedBox(
             width: 150,
             child: TextField(
+              key: ValueKey('supplier-offset-amount-${target.id}'),
               controller: controller,
               enabled: selected,
               textAlign: TextAlign.right,

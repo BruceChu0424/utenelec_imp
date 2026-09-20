@@ -51,13 +51,17 @@ public class ClientDefaultTermsSyncService {
                     default_shipment_policy =
                         COALESCE(CAST(? AS text), c.default_shipment_policy),
                     default_currency_id =
-                        COALESCE(CAST(? AS uuid), c.default_currency_id)
+                        COALESCE(CAST(? AS uuid), c.default_currency_id),
+                    version = c.version + 1,
+                    updated_at = now(),
+                    updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
                 FROM (SELECT CAST(? AS uuid) AS wanted) w
                 LEFT JOIN settlement_methods sm
                   ON sm.id = w.wanted
                  AND sm.status = '使用'
                  AND COALESCE(sm.is_deleted, FALSE) = FALSE
                 WHERE c.id = CAST(? AS uuid)
+                  AND c.is_deleted = FALSE
                   AND (
                         c.default_settlement_method_id IS DISTINCT FROM
                             CASE WHEN sm.id IS NOT NULL

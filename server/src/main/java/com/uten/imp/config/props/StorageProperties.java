@@ -51,7 +51,7 @@ public class StorageProperties {
             "image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp",
             "image/tiff", "image/heic", "image/heif", "image/svg+xml",
             // PDF
-            "application/pdf",
+            "application/pdf", "application/ofd",
             // 文字处理
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

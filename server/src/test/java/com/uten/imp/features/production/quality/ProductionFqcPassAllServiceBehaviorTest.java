@@ -6,11 +6,13 @@ import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
+import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -142,8 +144,13 @@ class ProductionFqcPassAllServiceBehaviorTest {
                 org.mockito.Mockito.mock(com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                 org.mockito.Mockito.mock(com.uten.imp.common.docnumber.DocNumberService.class),
                 // V597 先入库后质检的自动点收通道；这些纯单元测试不走那条路。
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                stockDocServiceProvider());
         return new Fixture(service, recovery, finishedInbound, outbox,em);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<StockDocService> stockDocServiceProvider() {
+        return mock(ObjectProvider.class);
     }
 
     private static Query query(List<?> rows) {

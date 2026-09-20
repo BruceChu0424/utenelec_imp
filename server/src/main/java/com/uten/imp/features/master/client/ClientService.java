@@ -443,9 +443,8 @@ public class ClientService {
     @Transactional
     public ClientDetail create(ClientSaveRequest req) {
         tx.bind();
-        if (req.getSalesPaymentType() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户货款类型必须选择月结、现金或定金");
-        }
+        // 货款类型 V607 起可不填（未分类客户财务放行前有专门闸门要求补选）；
+        // 编号 readOnly 不上送 → allocate(null) 按分类前缀自动发号。
         prepareOwnerForCreate(req);
         if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");

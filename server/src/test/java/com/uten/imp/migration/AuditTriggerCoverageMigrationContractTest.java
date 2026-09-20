@@ -241,6 +241,26 @@ class AuditTriggerCoverageMigrationContractTest {
                     Map.entry("production_workshop_direct_transfers", 584),
                     Map.entry("production_workshop_direct_transfer_items", 584),
                     Map.entry("production_workshop_direct_transfer_reversals", 584),
+                    Map.entry("expense_claim_events", 608),
+                    Map.entry("expense_claim_invoices", 608),
+                    Map.entry("expense_claim_settings", 617),
+                    Map.entry("legacy_subcontract_order_import_sources", 624),
+                    Map.entry("legacy_finance_import_sources", 626),
+                    Map.entry("legacy_procurement_receipt_import_sources", 627),
+                    Map.entry("production_daily_report_target_events", 614),
+                    Map.entry("production_daily_report_material_release_events", 614),
+                    Map.entry("production_workshop_direct_source_allocations", 615),
+                    Map.entry("production_workshop_direct_source_events", 615),
+                    Map.entry("production_workshop_direct_legacy_anomalies", 615),
+                    Map.entry("production_material_return_receiving_confirmations", 618),
+                    Map.entry("production_workshop_material_return_slices", 619),
+                    Map.entry("production_workshop_material_custody_preparations", 619),
+                    Map.entry("production_workshop_material_custody_moves", 619),
+                    Map.entry("production_workshop_material_custody_reversals", 619),
+                    Map.entry("production_workshop_material_custody_handoffs", 619),
+                    Map.entry("production_workshop_custody_handoff_reversals", 619),
+                    Map.entry("production_workshop_custody_reverse_preparations", 619),
+                    Map.entry("production_workshop_return_preplan_events", 619),
                     Map.entry("permission_surfaces", 328),
                     Map.entry("permission_surface_permissions", 328),
                     Map.entry("employee_offboarding_events", 398),
@@ -473,7 +493,7 @@ class AuditTriggerCoverageMigrationContractTest {
         Map<String, Integer> createdAt = createdTableVersions();
         for (Map.Entry<String, Integer> entry :
                 POST_SWEEP_EXPLICIT_AUDIT_TABLES.entrySet()) {
-            String sql = migrationSql(entry.getValue());
+            String sql = migrationSql(entry.getValue()).replace("public.", "");
             assertEquals(entry.getValue(), createdAt.get(entry.getKey()),
                     entry.getKey() + " must remain owned by its reviewed migration");
             assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(entry.getKey()),
@@ -483,7 +503,9 @@ class AuditTriggerCoverageMigrationContractTest {
                             && sql.contains(
                             "after insert or update or delete on " + entry.getKey())
                             && sql.contains(
-                            "for each row execute function fn_audit()"),
+                            "for each row execute function " +
+                                    (entry.getKey().equals("legacy_finance_import_sources")
+                                            ? "fn_audit_redacted()" : "fn_audit()")),
                     entry.getKey() + " must own a full row-level audit trigger");
         }
     }

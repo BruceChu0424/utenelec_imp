@@ -112,7 +112,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
 
   bool get _selectedOnlyPositivePayables =>
       _selectedItems.isNotEmpty &&
-      _selectedItems.every((item) => item.openItemKind == 'PAYABLE');
+      _selectedItems.every((item) => item.canCreatePayment);
 
   @override
   void initState() {
@@ -284,10 +284,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
 
   Future<void> _applySelectedCredit() async {
     final source = _selectedSingle;
-    if (source == null ||
-        _applyingOffset ||
-        (source.openItemKind != 'CREDIT' &&
-            source.openItemKind != 'CLAIM_CREDIT')) {
+    if (source == null || _applyingOffset || !source.canApplyCredit) {
       return;
     }
     final draft = await showSupplierCreditApplyPanel(
@@ -476,10 +473,15 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       return '供应商预付款需走专用预付款资产/总账链';
     }
     if (_selectedOnlyPositivePayables) return null;
-    if (single != null &&
-        (single.openItemKind == 'CREDIT' ||
-            single.openItemKind == 'CLAIM_CREDIT')) {
+    for (final item in _selectedItems) {
+      final reason = item.legacyPaymentBlockReason;
+      if (reason != null) return reason;
+    }
+    if (single?.canApplyCredit == true) {
       return null;
+    }
+    if (_selectedItems.any((item) => item.legacyImported)) {
+      return '历史资金不能作为贷项或预付款来源；历史应付需有完整来源证明才能结算';
     }
     return '不能混选正应付、贷项和预付款';
   }
@@ -504,7 +506,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         const SizedBox(width: UtenSpacing.s8),
         Expanded(
           child: Text(
-            '采购与委外应付',
+            '供应商应付',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleSmall?.copyWith(
@@ -662,10 +664,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     required bool canApplyOffset,
   }) {
     final selected = _selectedSingle;
-    final selectedCredit =
-        selected != null &&
-        (selected.openItemKind == 'CREDIT' ||
-            selected.openItemKind == 'CLAIM_CREDIT');
+    final selectedCredit = selected?.canApplyCredit == true;
     final useCreditAction = canApplyOffset && selectedCredit;
     final usePaymentAction = !useCreditAction && canCreatePayment;
     final enabled = useCreditAction

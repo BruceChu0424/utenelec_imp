@@ -21,6 +21,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
+import '../models/finance_legacy_balance.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
 
@@ -382,6 +383,15 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
 
   String? _baseBlockReason(ArApLedgerItem item) {
     final bill = item.billNo ?? '该$_ledgerNoun';
+    if (item.openItemKind == 'LEGACY_UNVERIFIED') {
+      final reason = financeLegacyBalanceBlockReason(
+        originalBalance:
+            item.amountBalanceOriginalText ??
+            item.amountBalanceOriginal?.toString(),
+        currencyId: item.currencyId,
+      );
+      return reason == null ? null : '$bill：$reason';
+    }
     if (item.openItemKind == 'CUSTOMER_PREPAYMENT' ||
         item.sourceDocType == 'DIRECT_RECEIPT') {
       return '$bill：客户预收必须使用“应用预收”，不能作为普通收款明细';

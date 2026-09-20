@@ -3771,4 +3771,303 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get myVisitorsStatusColInfo =>
       'Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected (pushed to the backend).';
+
+  @override
+  String get expenseFlowNew => 'New expense claim';
+
+  @override
+  String get expenseFlowEdit => 'Edit expense claim';
+
+  @override
+  String get expenseFlowSaveAndContinue => 'Save and add evidence';
+
+  @override
+  String get expenseFlowSaveDraft => 'Save draft';
+
+  @override
+  String get expenseFlowSave => 'Save';
+
+  @override
+  String get expenseFlowFlowGuide =>
+      'Enter expenses → save draft → attach originals and register evidence → submit → finance records payment';
+
+  @override
+  String get expenseFlowInvoiceGuide =>
+      'Save a draft, then attach invoice or other lawful evidence originals. Keep electronic evidence in its original format. Image recognition only suggests fields; it does not verify or archive evidence.';
+
+  @override
+  String get expenseFlowNoInvoiceGuide =>
+      'Without an invoice, explain the circumstances and attach lawful evidence of the transaction for finance review.';
+
+  @override
+  String get expenseFlowApplicant => 'Applicant';
+
+  @override
+  String get expenseFlowDepartment => 'Department';
+
+  @override
+  String get expenseFlowDate => 'Created date';
+
+  @override
+  String get expenseFlowTitle => 'Claim title *';
+
+  @override
+  String get expenseFlowTitleHint => 'For example: client visit in Shanghai';
+
+  @override
+  String get expenseFlowTitleInfo =>
+      'Summarize the purpose. This appears on the printed claim.';
+
+  @override
+  String get expenseFlowRemark => 'Purpose and explanation';
+
+  @override
+  String get expenseFlowRemarkHint =>
+      'Travel, project, attendees, or explanation for missing invoices';
+
+  @override
+  String get expenseFlowMissingTitle => 'Enter a claim title';
+
+  @override
+  String get expenseFlowTitleLength =>
+      'The claim title must be 200 characters or fewer';
+
+  @override
+  String get expenseFlowMissingItems => 'Add at least one expense item';
+
+  @override
+  String get expenseFlowItems => 'Expense items';
+
+  @override
+  String get expenseFlowAdd => 'Add';
+
+  @override
+  String get expenseFlowEmptyItems =>
+      'Add an item with its category, actual amount and transaction date.';
+
+  @override
+  String get expenseFlowTotal => 'Claim total';
+
+  @override
+  String get expenseFlowCapital => 'Amount in Chinese capitals';
+
+  @override
+  String get expenseFlowDeleteItem => 'Remove item';
+
+  @override
+  String get expenseFlowDraftSaved =>
+      'Draft saved. Add evidence before submitting for approval.';
+
+  @override
+  String get expenseFlowSaved => 'Saved';
+
+  @override
+  String get expenseFlowRejectedGuide =>
+      'Returned for correction. Update the claim, save it and submit again.';
+
+  @override
+  String get expenseFlowLoadFailed => 'Unable to load. Try again.';
+
+  @override
+  String get expenseFlowNotEditable =>
+      'Only the applicant can edit a draft or returned claim.';
+
+  @override
+  String get expenseFlowAmountInvalid =>
+      'Enter a positive amount with at most two decimals, up to CNY 9999999999.99';
+
+  @override
+  String get expenseFlowInvoiceAmountInvalid =>
+      'Use at most two decimals. Total must be positive; net and tax must be nonnegative.';
+
+  @override
+  String get expenseFlowOcrGuide =>
+      'Choose an image to suggest fields, then check each field against the original. Recognition does not verify authenticity or save the original.';
+
+  @override
+  String get expenseFlowOcrConfirm =>
+      'I checked the suggested fields against the original';
+
+  @override
+  String get expenseFlowOcrConfirmRequired =>
+      'Check the suggested fields and confirm before saving';
+
+  @override
+  String get expenseFlowOriginalRequired =>
+      'Upload the original on the detail page, then select the matching file here';
+
+  @override
+  String get expenseFlowInvoiceDateRequired => 'Select the evidence date';
+
+  @override
+  String get expenseFlowOtherNumberInvalid =>
+      'Other evidence numbers allow letters, digits, slashes and hyphens, up to 60 characters. Enter the issuer.';
+
+  @override
+  String get expenseFlowVerify => 'Record verification';
+
+  @override
+  String get expenseFlowVerifyTitle => 'Manual evidence verification';
+
+  @override
+  String get expenseFlowVerifyGuide =>
+      'Check the business transaction and original attachment. Verify tax invoices through the STA invoice verification platform or e-Tax service; verify other evidence through its applicable channel. Arithmetic checks and image recognition are not tax verification.';
+
+  @override
+  String get expenseFlowVerifyOfficial => 'Open the STA verification platform';
+
+  @override
+  String get expenseFlowVerifyRemark =>
+      'Verification record (channel, result and notes) *';
+
+  @override
+  String get expenseFlowVerifyPassed => 'Verified';
+
+  @override
+  String get expenseFlowVerifyMismatch => 'Mismatch';
+
+  @override
+  String get expenseFlowVerifyRequired =>
+      'Enter the verification channel and result';
+
+  @override
+  String get expenseFlowVerifyBeforeApprove =>
+      'Record a successful manual verification for every invoice before approval';
+
+  @override
+  String get expenseFlowPaymentRecord => 'Record payment';
+
+  @override
+  String get expenseFlowPaymentConfirm => 'Confirm payment was made';
+
+  @override
+  String get expenseFlowPaymentGuide =>
+      'Complete the actual payment first. This records that payment, updates the system account balance and creates accounting entries. It does not send a bank transfer.';
+
+  @override
+  String get expenseFlowPaymentDone =>
+      'Payment recorded and accounting entries created';
+
+  @override
+  String get expenseFlowPrintDisclaimer =>
+      'Internal claim display form. It does not replace original evidence, tax verification or statutory electronic archives.';
+
+  @override
+  String get expenseFlowSettingsTitle => 'Expense settings';
+
+  @override
+  String get expenseFlowSettingsDescription =>
+      'Finance maintains company details and evidence requirements shown automatically to applicants.';
+
+  @override
+  String get expenseFlowCompanyName => 'Company name';
+
+  @override
+  String get expenseFlowCompanyTaxNo => 'Taxpayer identification number';
+
+  @override
+  String get expenseFlowSubmissionGuide => 'Claim and evidence instructions';
+
+  @override
+  String get expenseFlowRequireInvoice =>
+      'Require registered invoices for submission';
+
+  @override
+  String get expenseFlowRequireInvoiceHint =>
+      'When disabled, lawful original evidence and an explanation for missing invoices are still required.';
+
+  @override
+  String get expenseFlowSettingsSaved => 'Expense settings saved';
+
+  @override
+  String get expenseFlowSettingsSave => 'Save settings';
+
+  @override
+  String get expenseFlowSettingsLoadFailed => 'Unable to load expense settings';
+
+  @override
+  String get expenseFlowRetry => 'Retry';
+
+  @override
+  String get expenseFlowCompanyNameRequired => 'Enter the company name';
+
+  @override
+  String get expenseFlowSettingsEntryDescription =>
+      'Company name, tax ID and evidence requirements';
+
+  @override
+  String get expenseFlowApprovalEntryDescription =>
+      'Verify evidence, review claims and record payment';
+
+  @override
+  String get expenseFlowApprovalTitle => 'Expense approval';
+
+  @override
+  String get expenseFlowInvoiceRequiredGuide =>
+      'Finance requires a registered invoice linked to its original file before submission.';
+
+  @override
+  String get expenseFlowReadEvidenceRequired =>
+      'Approval requires evidence preview and download permission. Contact an authorizer.';
+
+  @override
+  String get expenseFlowHistory => 'Processed';
+
+  @override
+  String get expenseFlowPendingCorrection => 'Needs correction';
+
+  @override
+  String get expenseFlowPaymentProofs =>
+      'Payment proof (bank receipt or signed cash receipt)';
+
+  @override
+  String get expenseFlowPaymentProofGuide =>
+      'Complete the actual payment and upload its receipt before recording payment.';
+
+  @override
+  String get expenseFlowPaymentProofRequired =>
+      'Upload payment proof before confirming that payment was made.';
+
+  @override
+  String get expenseFlowItemPurpose => 'Expense purpose *';
+
+  @override
+  String get expenseFlowItemPurposeHint =>
+      'Describe the actual business purpose, such as the client, project or trip.';
+
+  @override
+  String get expenseFlowItemPurposeRequired => 'Enter the expense purpose';
+
+  @override
+  String get goodsLearnedPriceUnconfirmed =>
+      'Verify the price unit and currency';
+
+  @override
+  String get goodsLearnedPriceTaxRate => 'Tax rate';
+
+  @override
+  String get shelfLocationQuantityHint =>
+      'Locations are storage suggestions. Quantities are totals for the actual warehouse and color, not counts at a specific shelf location.';
+
+  @override
+  String get shelfActualWarehouse => 'Actual warehouse';
+
+  @override
+  String get shelfMasterOnly => 'Master suggestion (no warehouse)';
+
+  @override
+  String get shelfChooseWarehouseForRack =>
+      'Select one physical warehouse to view its rack diagram. The table lists each warehouse separately.';
+
+  @override
+  String get warehouseGoodsMasterDefaultHint =>
+      'The goods master default warehouse was filled in. Verify the actual destination for this receipt.';
+
+  @override
+  String get warehouseSuggestedDestinationHint =>
+      'A suggested warehouse was filled in. Verify the actual destination.';
+
+  @override
+  String get warehouseBatchRegistrationHelp =>
+      'Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.';
 }

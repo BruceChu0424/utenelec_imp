@@ -72,6 +72,37 @@ public class ProductionExecutionPackageCommandService {
             preplanAnalysisPeg;
     private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService mutationFootprint;
 
+    private void freezeConsumptionRules(List<SegmentDraft> segments,
+                                        List<ProductionMaterialDemand> demands) {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        Map<UUID, SegmentDraft> byId = segments.stream().collect(Collectors.toMap(
+                segment -> segment.segment().getId(), segment -> segment));
+        Map<UUID, Map<CompleteKitAllocator.MaterialKey,CompleteKitAllocator.MaterialUsage>> rulesBySegment =
+                segments.stream().collect(Collectors.toMap(segment -> segment.segment().getId(),
+                        segment -> segment.proposal().line().materials().stream().collect(Collectors.toMap(
+                                CompleteKitAllocator.MaterialUsage::materialKey, usage -> usage))));
+        List<Map<String,Object>> frozen = new ArrayList<>(demands.size());
+        for (ProductionMaterialDemand demand : demands) {
+            SegmentDraft segment = byId.get(demand.getExecutionSegmentId());
+            CompleteKitAllocator.MaterialUsage usage = rulesBySegment.get(demand.getExecutionSegmentId())
+                    .get(new CompleteKitAllocator.MaterialKey(demand.getGoodsId(),demand.getColorId()));
+            if (usage == null) throw conflict("冻结物料缺少耗用规则");
+            boolean exact = usage.requiresExactSnapshot();
+            var rules = exact ? usage.consumptionRules() : List.of(
+                    new CompleteKitAllocator.ConsumptionRule("PER_UNIT", usage.perProductQty(),
+                            BigDecimal.ONE, true));
+            frozen.add(Map.of("id", demand.getId(), "snapshot", Map.of("rules", rules, "productUnitRate",
+                    exact ? segment.proposal().line().productUnitRate() : BigDecimal.ONE)));
+        }
+        if (frozen.isEmpty()) return;
+        int updated = em.createNativeQuery("""
+                UPDATE production_material_demands demand SET consumption_snapshot=frozen.snapshot
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS frozen(id uuid,snapshot jsonb)
+                WHERE demand.id=frozen.id AND demand.consumption_snapshot IS NULL
+                """).setParameter("rows",json.valueToTree(frozen).toString()).executeUpdate();
+        if (updated != frozen.size()) throw conflict("冻结物料耗用规则数量不一致，当前下达已回滚");
+    }
+
     /**
      * 确认排产预览为正式执行计划包：冻结执行分段与销售分摊、写入物料需求，
      * 为齐套段分配库存并生成领料单。旧/手工计划仍按缺口生成采购、委外申请与
@@ -160,6 +191,7 @@ public class ProductionExecutionPackageCommandService {
         CompleteKitAllocator.Allocation allocation = requestValidator
                 .validateAgainstSnapshot(request, locked)
                 .allocation();
+        allocation = awaitWorkshopRoute(allocation);
         List<SegmentDraft> segmentDrafts = persistSegments(
                 plan, begin.planningPackage(), allocation);
         persistSalesAllocations(segmentDrafts);
@@ -210,24 +242,9 @@ public class ProductionExecutionPackageCommandService {
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
                 ? List.of()
                 : ledger.createDemands(begin.planningPackage(), demandDrafts);
-        // 开工路线自动识别(V606，取代 V599 手工确认门)：需求落库后按事实定路线——
-        // WAITING 且有可由本车间直送供给的子件 → CONTINUOUS(保住持续生产入口不被
-        // 齐套自动提升顶掉)；否则 FULL_KIT(零料段 / 下达即齐套 / 纯仓库供料)。
-        // 分批路线不由创建时识别：点「分批领料」即选择分批。
-        if (!segmentDrafts.isEmpty()) {
-            em.flush();
-            em.createNativeQuery("""
-                            UPDATE production_execution_segments segment
-                            SET start_route = fn_auto_execution_start_route(segment.id),
-                                route_confirmed_at = now()
-                            WHERE segment.start_route IS NULL
-                              AND NOT segment.is_deleted
-                              AND segment.id IN (:ids)
-                            """)
-                    .setParameter("ids", segmentDrafts.stream()
-                            .map(draft -> draft.segment().getId()).toList())
-                    .executeUpdate();
-        }
+        // Persist the frozen curve before reservations. New tasks retain an
+        // unconfirmed route; warehouse/source facts do not choose the workflow.
+        freezeConsumptionRules(segmentDrafts, demands);
         Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
                 demands.stream().collect(Collectors.groupingBy(
                         ProductionMaterialDemand::getExecutionSegmentId,
@@ -424,6 +441,21 @@ public class ProductionExecutionPackageCommandService {
     /** Legacy/manual plans let the package own supply generation. */
     static boolean packageOwnsSupply(UUID materialAnalysisId) {
         return materialAnalysisId == null;
+    }
+
+    /** Planning freezes demand and assignment; only workshop route confirmation reserves material. */
+    static CompleteKitAllocator.Allocation awaitWorkshopRoute(CompleteKitAllocator.Allocation allocation) {
+        return new CompleteKitAllocator.Allocation(allocation.segments().stream().map(segment -> {
+            if (segment.materials().isEmpty()) return segment;
+            var materials = segment.materials().stream().map(material ->
+                    new CompleteKitAllocator.MaterialAllocation(material.goodsId(), material.colorId(),
+                            material.unitId(), material.perProductQty(), material.requiredQty(),
+                            material.availableBeforeQty(), BigDecimal.ZERO, material.shortageQty(),
+                            material.supplyRoute(), material.requirementMode())).toList();
+            return new CompleteKitAllocator.SegmentAllocation(segment.clientSegmentKey(), segment.line(),
+                    ProductionExecutionSegment.STATUS_WAITING, segment.plannedQty(), materials,
+                    segment.autoPromoteWhenReady());
+        }).toList(), allocation.remainingAvailability());
     }
 
     private List<SegmentDraft> persistSegments(

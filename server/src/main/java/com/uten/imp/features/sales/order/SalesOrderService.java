@@ -923,7 +923,7 @@ public class SalesOrderService {
             if (revisions.record(id, before)) {
                 o.setFinanceReviewRevision(o.getFinanceReviewRevision() + 1);
                 orderRepo.save(o);
-        clientDefaultTermsSync.syncOnOrderTerms(o.getClientId(), o.getSettlementMethodId(), o.getShipmentPolicy(), o.getCurrencyId());
+                clientDefaultTermsSync.syncOnOrderTerms(o.getClientId(), o.getSettlementMethodId(), o.getShipmentPolicy(), o.getCurrencyId());
                 orderRepo.flush();
             }
             // 已审核订单修改后自动重新送财务；驳回修订继续由销售检查草稿后自行审核。

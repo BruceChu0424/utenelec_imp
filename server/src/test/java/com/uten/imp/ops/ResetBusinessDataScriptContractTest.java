@@ -68,12 +68,20 @@ class ResetBusinessDataScriptContractTest {
         // V586 把 V583 报工实耗表与 V584 车间直送三张表补登记进清库策略
         // (375→379，CLEAR 276→280)；四张都是纯业务事实，随系统测试清空。
         // V590 废弃车间偏好表（搬进货品表）：379→378、PRESERVE 99→98。
-        assertThat(policy).hasSize(378);
+        // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送来源/历史隔离，V617 +1 保留设置：V618 +1 收仓确认，V619 +8 保管溯源：395表，CLEAR296/PRESERVE99。
+        // V624/V626/V627 retain original import-source evidence across business resets.
+        assertThat(policy).hasSize(398);
+        assertThat(policy).containsEntry("legacy_subcontract_order_import_sources", "PRESERVE");
+        assertThat(policy).containsEntry("legacy_finance_import_sources", "PRESERVE");
+        assertThat(policy).containsEntry("legacy_procurement_receipt_import_sources", "PRESERVE");
+        assertThat(policy).containsEntry("expense_claim_settings", "PRESERVE");
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(280);
+                .isEqualTo(296);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_items", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_cancellations", "CLEAR");
+        assertThat(policy).containsEntry("expense_claim_invoices", "CLEAR");
+        assertThat(policy).containsEntry("expense_claim_events", "CLEAR");
         assertThat(policy).containsEntry("production_execution_segment_splits", "CLEAR");
         assertThat(policy).containsEntry("preplan_reallocation_make_supplements", "CLEAR");
         assertThat(policy).containsEntry("preplan_future_supply_transfers", "CLEAR");
@@ -96,7 +104,7 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("party_addresses", "PRESERVE");
         assertThat(policy).containsEntry("party_activity_records", "PRESERVE");
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(98);
+                .isEqualTo(102);
 
         // V463：订货行多来源锚定的两张分配表随业务数据清空。
         assertThat(policy).containsEntry(
@@ -355,7 +363,9 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(603, 560)")
                 .contains("(605, 561)")
                 .contains("(606, 562)")
-                .contains("V507/469、V508/470及V511至V606完整目录")
+                .contains("(607, 563)")
+                .contains("(608, 564)")
+                .contains("V507/469、V508/470及V511至V627完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

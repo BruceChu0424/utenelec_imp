@@ -192,9 +192,19 @@ class ShelfLabelRow {
     this.level,
     this.slot,
     this.parsed = false,
+    this.warehouseId,
+    this.warehouseName,
+    this.colorId,
+    this.placeSource,
   });
 
   final String goodsId;
+  final String? warehouseId;
+  final String? warehouseName;
+  final String? colorId;
+  final String? placeSource;
+  String get rowKey =>
+      '${warehouseId ?? 'master'}|$goodsId|${colorId ?? 'none'}';
 
   /// 库行（如 A31）；未分层行为空串。
   final String rack;
@@ -209,7 +219,7 @@ class ShelfLabelRow {
   /// 单位名称（无则空串/null）。
   final String? unitName;
 
-  /// 即时库存参考量（未选仓=全部核算仓汇总；选仓=该仓及子仓汇总）。
+  /// 本行实际仓库×货品×颜色库存参考量，不是库位层盘点数。
   final double qty;
 
   /// 货品已禁用（仅 includeDisabled=true 时会出现）。
@@ -224,6 +234,10 @@ class ShelfLabelRow {
 
   factory ShelfLabelRow.fromJson(Map<String, dynamic> json) => ShelfLabelRow(
     goodsId: json['goodsId'] as String? ?? '',
+    warehouseId: json['warehouseId'] as String?,
+    warehouseName: json['warehouseName'] as String?,
+    colorId: json['colorId'] as String?,
+    placeSource: json['placeSource'] as String?,
     rack: json['rack'] as String? ?? '',
     place: json['place'] as String?,
     goodsCode: json['goodsCode'] as String?,

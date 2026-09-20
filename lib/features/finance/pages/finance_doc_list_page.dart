@@ -163,7 +163,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
           key: 'receiptKind',
           label: '收款类型',
           width: 130,
-          value: (it) => financeReceiptKindLabel(it.receiptKind),
+          value: (it) => financeReceiptKindLabel(
+            it.receiptKind,
+            historical: it.legacyImported,
+          ),
         ),
       if (_cfg.hasParty)
         MasterColumnDef(
@@ -187,6 +190,12 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
         type: 'money',
         sortable: true,
         value: (it) => it.amountLocal?.toStringAsFixed(2),
+      ),
+      MasterColumnDef(
+        key: 'recordOrigin',
+        label: '来源',
+        width: 130,
+        value: (it) => it.legacyImported ? '历史记录（只读）' : '当前单据',
       ),
       MasterColumnDef(
         key: 'status',

@@ -13,9 +13,9 @@ import java.util.UUID;
  * 三段解析（{@link com.uten.imp.features.stock.ShelfPlaceParser}），前端据此画货架图；
  * 不符合三段格式的库位号 {@code parsed=false}，归「未分层」桶。
  *
- * <p>数据来源：货品主档 goods.stock_place（库位号）；选仓查询时本仓偏好
- * （warehouse_goods_place_preferences）优先。即时库存 {@code qty} 仅作参考列
- * （未选仓=全部核算仓汇总；选仓=该仓及子仓汇总），货架摆放以库位号为准。
+ * <p>每行保留真实仓库×货品×颜色。库位来自精确主档关系或货品一般建议；
+ * {@code qty} 是该仓货色库存参考量，不是该库位的实物盘点数。
+ * 无实际维度的主档建议行仓库为空、数量为0。
  */
 @Getter
 @AllArgsConstructor
@@ -31,7 +31,7 @@ public class ShelfLabelRow {
     private String series;
     /** 物料名称（goods.name）。 */
     private String goodsName;
-    /** 颜色（goods.color_id → colors.name；主档未填色时为空串）。 */
+    /** 颜色(实际行 color_id → colors.name；NULL色为空串，不继承货品主颜色)。 */
     private String colorName;
     /** 单位名称（goods.unit_id / unit_legacy_id → units.name；无则空串）。 */
     private String unitName;
@@ -45,4 +45,10 @@ public class ShelfLabelRow {
     private Integer slot;
     /** 库位号是否符合「库行-层-位」三段格式。 */
     private boolean parsed;
+    /** Actual warehouse; null means a master-only suggestion with zero quantity. */
+    private UUID warehouseId;
+    private String warehouseName;
+    /** Exact stock/relation color; NULL is not replaced by the goods primary color. */
+    private UUID colorId;
+    private String placeSource;
 }

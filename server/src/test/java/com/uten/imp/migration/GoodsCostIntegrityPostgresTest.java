@@ -61,7 +61,7 @@ class GoodsCostIntegrityPostgresTest {
                         c_total NUMERIC(18,4),
                         g_total NUMERIC(18,4),
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                    );
+                    , default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid);
                     CREATE TABLE audit_log (
                         id BIGSERIAL PRIMARY KEY,
                         actor_account TEXT,

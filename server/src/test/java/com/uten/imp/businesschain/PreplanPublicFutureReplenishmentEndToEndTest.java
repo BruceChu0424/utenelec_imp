@@ -156,6 +156,8 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         UUID ownOrder=approveOrder(w,(UUID)ownSource.get("external_item_id"),goods,"100",BusinessTime.today().plusDays(5));
         fixture.loginAs(w.superAdminUserId());b=analyses.detail(receiver);
         qty("0",material(b,goods).additionalSupplyRecommendedQty());qty("900",material(b,goods).sharedFuturePendingQty());
+        qty("1000", material(b, goods).externalFutureCoverageQty());
+        qty("0", material(b, goods).internalCommittedOutputQty());
         var issued=commands.issueWorkshopPlans(receiver,new IssueWorkshopPlansRequest(b.version(),b.fingerprint(),"public-waiting-plan-"+receiver,
                 main,BusinessTime.today(),need,true,List.of(new IssueWorkshopPlansRequest.IssuePlanLine(b.products().getFirst().analysisLineId(),new BigDecimal("1000")))));
         UUID plan=issued.plans().getFirst().planId();

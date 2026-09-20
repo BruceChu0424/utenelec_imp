@@ -115,6 +115,9 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "EXPENSE_CLAIM_PENDING_PAYMENT",
                     new Entry("EXPENSE_CLAIM", null)),
+            Map.entry(
+                    "EXPENSE_CLAIM_REJECTED",
+                    new Entry("EXPENSE_CLAIM", null)),
             // 工资批次提交 → 审核人（批次级；审毕时撤卡）
             Map.entry(
                     "PAYROLL_BATCH_SUBMITTED",

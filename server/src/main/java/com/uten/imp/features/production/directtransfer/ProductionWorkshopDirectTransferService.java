@@ -10,6 +10,7 @@ import com.uten.imp.features.production.fulfillment.ProductionExecutionReadiness
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
 import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,6 +65,7 @@ public class ProductionWorkshopDirectTransferService {
     private final StockDocService stockDocs;
     /** 线边仓自动配置走应用端口(ADR-017：跨 feature 只经 application.port)。 */
     private final LineSideWarehousePort lineSideWarehouses;
+    private final ChainNoticeService chainNotices;
 
     /** 报工页「转下一道工序」下拉的候选：同车间、同货品同颜色、还缺料的上层工单。 */
     public record Candidate(
@@ -106,36 +109,23 @@ public class ProductionWorkshopDirectTransferService {
      *
      * <p>只列同车间的段：跨车间必须走仓库(数据库守卫也会拒)。等待/齐套/已派工的上层工单，
      * 以及**持续生产中**(V595)的上层工单都可以收；普通已开工的段不列——它的料已经领齐，
-     * 投过去挂不上，只会变成线边仓的呆料。「还差多少」= 需求量 − max(已预留/已领, 已直送)，
+     * 投过去挂不上，只会变成线边仓的呆料。「还差多少」按基础数量计算，普通仓供给与直送相加，
+     * 直送已形成的线边预留只计一次，并扣除同一拆批谱系中其他工单已占用的直送料。
      * 父件从仓库领过的部分不再重复直送。线边仓缺失不再是空候选的原因(V595 起自动配置)。
      */
-    @Transactional(readOnly = true)
-    public CandidateListing candidates(UUID executionSegmentId, UUID goodsId, UUID colorId) {
-        if (executionSegmentId == null || goodsId == null) {
-            throw validation("请先选择报工来源工单与货品");
-        }
-        requireWorkshopMember(executionSegmentId);
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT demand.id, receiving.id, receiving.segment_code,
+    private static final String CANDIDATE_SQL = """
+                        WITH candidate_scope AS MATERIALIZED (
+                        SELECT demand.id AS demand_id, receiving.id AS receiving_id, receiving.segment_code,
                                receiving.status, receiving.continuous_supply,
                                receiving.plan_id, plan.bill_no,
-                               demand.goods_id, goods.code, goods.name,
-                               color.name, unit.name,
+                               demand.goods_id, goods.code AS goods_code, goods.name AS goods_name,
+                               color.name AS color_name, unit.name AS unit_name,
                                demand.required_qty,
-                               GREATEST(
-                                   COALESCE((
-                                       SELECT SUM(covered.qty)
-                                       FROM production_workshop_direct_transfer_items covered
-                                       WHERE covered.to_demand_id = demand.id
-                                         AND covered.reversal_id IS NULL), 0),
-                                   COALESCE((
-                                       SELECT SUM(reservation.qty - reservation.released_qty)
-                                       FROM stock_reservations reservation
-                                       WHERE reservation.demand_id = demand.id
-                                         AND reservation.is_deleted = FALSE), 0)),
                                receiving.product_goods_id,
-                               receiving_product.code, receiving_product.name
+                               receiving_product.code AS product_code, receiving_product.name AS product_name,
+                               producing.id AS producing_id
                         FROM production_execution_segments producing
+                        JOIN production_plans producing_plan ON producing_plan.id=producing.plan_id AND NOT producing_plan.is_deleted
                         JOIN production_execution_segments receiving
                           ON receiving.workshop_department_id = producing.workshop_department_id
                          AND receiving.is_deleted = FALSE
@@ -151,7 +141,11 @@ public class ProductionWorkshopDirectTransferService {
                          AND demand.color_id IS NOT DISTINCT FROM CAST(:colorId AS UUID)
                         JOIN production_plans plan
                           ON plan.id = receiving.plan_id AND plan.is_deleted = FALSE
+                         AND plan.status = 1 AND plan.is_closed = FALSE
                          AND plan.is_canceled = FALSE AND plan.is_stopped = FALSE
+                        JOIN production_planning_packages package
+                          ON package.id = receiving.package_id AND package.plan_id = plan.id
+                         AND package.status = 'CONFIRMED' AND package.is_deleted = FALSE
                         LEFT JOIN goods ON goods.id = demand.goods_id
                         LEFT JOIN goods receiving_product
                           ON receiving_product.id = receiving.product_goods_id
@@ -160,8 +154,33 @@ public class ProductionWorkshopDirectTransferService {
                         WHERE producing.id = :segmentId
                           AND producing.is_deleted = FALSE
                           AND producing.workshop_department_id IS NOT NULL
-                        ORDER BY plan.bill_no, receiving.segment_code, demand.id
-                        """)
+                          AND ((producing_plan.material_analysis_id IS NOT NULL
+                                AND plan.material_analysis_id=producing_plan.material_analysis_id)
+                            OR (producing_plan.material_analysis_id IS NULL AND plan.material_analysis_id IS NULL
+                                AND (EXISTS(SELECT 1 FROM subplan_links link WHERE link.plan_id=plan.id
+                                        AND link.subplan_id=producing_plan.id AND NOT link.is_deleted)
+                                  OR EXISTS(SELECT 1 FROM production_material_supply_pegs peg
+                                        WHERE peg.demand_id IN(demand.id,demand.split_root_demand_id)
+                                          AND peg.supply_type='PRODUCTION_PLAN_ITEM'
+                                          AND peg.supply_item_id=producing.source_plan_item_id
+                                          AND peg.status<>'REVERSED' AND peg.allocated_qty>peg.released_qty))))
+                        )
+                        SELECT demand_id,receiving_id,segment_code,status,continuous_supply,plan_id,bill_no,
+                               goods_id,goods_code,goods_name,color_name,unit_name,required_qty,
+                               fn_workshop_direct_covered_base_qty(demand_id),product_goods_id,product_code,product_name,
+                               fn_workshop_direct_remaining_for_source(producing_id,demand_id)
+                        FROM candidate_scope
+                        WHERE fn_workshop_direct_relationship_allows(producing_id,demand_id)
+                        ORDER BY bill_no,segment_code,demand_id
+                            """;
+
+    @Transactional(readOnly = true)
+    public CandidateListing candidates(UUID executionSegmentId, UUID goodsId, UUID colorId) {
+        if (executionSegmentId == null || goodsId == null) {
+            throw validation("请先选择报工来源工单与货品");
+        }
+        requireWorkshopMember(executionSegmentId);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(CANDIDATE_SQL)
                 .setParameter("segmentId", executionSegmentId)
                 .setParameter("goodsId", goodsId)
                 .setParameter("colorId", colorId));
@@ -169,7 +188,7 @@ public class ProductionWorkshopDirectTransferService {
         for (Object[] row : rows) {
             BigDecimal required = decimal(row[12]);
             BigDecimal covered = decimal(row[13]);
-            BigDecimal remaining = required.subtract(covered);
+            BigDecimal remaining = decimal(row[17]);
             if (remaining.signum() <= 0) continue;
             out.add(new Candidate(
                     (UUID) row[0], (UUID) row[1], (String) row[2],
@@ -239,16 +258,21 @@ public class ProductionWorkshopDirectTransferService {
         if (direct.isEmpty()) return;
         requireAuthority();
 
-        // 一张报工可能有多行直送，但它们必然同车间(守卫保证)，按车间归集成一张直送单。
-        Map<UUID, UUID> transferByWorkshop = new LinkedHashMap<>();
+        // 一张报工可送至多个收料主仓；每个线边位置分别保留真实仓库身份。
+        Map<UUID, UUID> transferByLocation = new LinkedHashMap<>();
         for (ProductionDailyReportItem item : direct) {
             Resolved resolved = resolve(item);
-            UUID transferId = transferByWorkshop.computeIfAbsent(
-                    resolved.workshopDepartmentId(),
-                    workshop -> insertTransfer(report, workshop, resolved.lineSideWarehouseId()));
+            UUID transferId = transferByLocation.computeIfAbsent(
+                    resolved.lineSideWarehouseId(),
+                    location -> insertTransfer(report, resolved.workshopDepartmentId(), location));
             insertTransferItem(transferId, item, resolved);
             releaseBySelfInspection(report, item, resolved);
             handOverToReceivingSegment(item, resolved);
+            chainNotices.notifyWorkshopMaterialArrival(resolved.receivingSegmentId(),
+                    "DT-" + item.getId(), "本次车间直送到料："
+                            + resolved.goodsName() + " "
+                            + baseQuantity(item).stripTrailingZeros().toPlainString() + "（基本单位数量）",
+                    "DIRECT_REPORT", List.of(report.getId()));
         }
     }
 
@@ -263,6 +287,19 @@ public class ProductionWorkshopDirectTransferService {
                         WHERE transfer.source_report_id = :reportId
                         ORDER BY 1
                         """).setParameter("reportId", reportId), UUID.class);
+        if (transfers.isEmpty()) return;
+        List<UUID> receivingSegments = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT DISTINCT demand.execution_segment_id
+                        FROM production_workshop_direct_transfer_items transfer_item
+                        JOIN production_material_demands demand
+                          ON demand.id = transfer_item.to_demand_id
+                          OR demand.split_root_demand_id = transfer_item.to_demand_id
+                        WHERE transfer_item.transfer_id IN (:transferIds)
+                          AND transfer_item.reversal_id IS NULL
+                          AND NOT demand.is_deleted
+                          AND demand.execution_segment_id IS NOT NULL
+                        ORDER BY 1
+                        """).setParameter("transferIds", transfers), UUID.class);
         for (UUID transferId : transfers) {
             UUID reversalId = UUID.randomUUID();
             em.createNativeQuery("""
@@ -284,6 +321,12 @@ public class ProductionWorkshopDirectTransferService {
                     .setParameter("transferId", transferId)
                     .executeUpdate();
         }
+        chainNotices.resolveProductionWorkshopTasks(receivingSegments, "DIRECT_TRANSFER_REVERSED");
+        for (UUID receivingSegment : receivingSegments) {
+            chainNotices.notifyWorkshopMaterialArrival(receivingSegment,
+                    "DT-REVERSE-" + reportId, "车间直送已撤回，已重新核对当前物料",
+                    "CURRENT_STATE", List.of());
+        }
     }
 
     // ===================== 内部 =====================
@@ -296,7 +339,8 @@ public class ProductionWorkshopDirectTransferService {
             boolean receivingContinuous,
             UUID workshopDepartmentId,
             UUID lineSideWarehouseId,
-            UUID packageWarehouseId) {
+            UUID packageWarehouseId,
+            String goodsName) {
     }
 
     /**
@@ -310,26 +354,37 @@ public class ProductionWorkshopDirectTransferService {
                                receiving.workshop_department_id,
                                demand.warehouse_id,
                                package.warehouse_id,
-                               receiving.status, receiving.continuous_supply
+                               receiving.status, receiving.continuous_supply,
+                               COALESCE(goods.name, goods.code, '物料'),
+                               fn_workshop_direct_remaining_for_source(producing.id,demand.id)
                         FROM production_daily_report_items report_item
                         JOIN production_execution_segments producing
                           ON producing.id = report_item.execution_segment_id
                          AND producing.is_deleted = FALSE
+                        JOIN goods ON goods.id = report_item.goods_id
                         JOIN production_material_demands demand
                           ON demand.id = report_item.direct_transfer_demand_id
                          AND demand.is_deleted = FALSE
-                         AND demand.status NOT IN ('RELEASED', 'REVERSED')
+                         AND demand.status NOT IN ('RELEASED', 'REVERSED', 'FULFILLED')
                         JOIN production_execution_segments receiving
                           ON receiving.id = demand.execution_segment_id
                          AND receiving.is_deleted = FALSE
+                         AND (receiving.status IN ('WAITING', 'READY', 'DISPATCHED')
+                              OR (receiving.status = 'IN_PROGRESS' AND receiving.continuous_supply))
+                        JOIN production_plans receiving_plan
+                          ON receiving_plan.id = receiving.plan_id
+                         AND receiving_plan.status = 1 AND receiving_plan.is_deleted = FALSE
+                         AND receiving_plan.is_closed = FALSE AND receiving_plan.is_canceled = FALSE
+                         AND receiving_plan.is_stopped = FALSE
                         JOIN production_planning_packages package
-                          ON package.id = receiving.package_id
-                         AND package.is_deleted = FALSE
+                          ON package.id = receiving.package_id AND package.plan_id = receiving_plan.id
+                         AND package.status = 'CONFIRMED' AND package.is_deleted = FALSE
                         WHERE report_item.id = :itemId
-                        FOR UPDATE OF producing, receiving, demand
+                          AND fn_workshop_direct_relationship_allows(producing.id,demand.id)
+                        FOR UPDATE OF receiving_plan, package, producing, receiving, demand
                         """).setParameter("itemId", item.getId()));
         if (rows.size() != 1) {
-            throw conflict("直送的接收工单已变化或已失效，请刷新报工后重新选择");
+            throw conflict("直送须有同车间的真实上下层供给责任；接收任务可能无对应来源关系、已暂停或结束，请刷新后选择。跨来源任务请先办理正常仓库或正式让料流程");
         }
         Object[] row = rows.getFirst();
         UUID producingWorkshop = (UUID) row[3];
@@ -340,11 +395,16 @@ public class ProductionWorkshopDirectTransferService {
                             + "由仓库送检登记、品质部检验后入库再发料");
         }
         requireWorkshopMember(item.getExecutionSegmentId());
+        BigDecimal remaining=decimal(row[10]);
+        if (baseQuantity(item).compareTo(remaining)>0) {
+            throw conflict("本生产来源剩余可直送数量为 " + remaining.stripTrailingZeros().toPlainString()
+                    + "（基本单位）；同一计划行拆出的执行段共用供给额度，请刷新后调整数量");
+        }
         UUID lineSide = lineSideWarehouses.ensure(producingWorkshop, (UUID) row[5]);
         return new Resolved(
                 (UUID) row[0], (UUID) row[1], (UUID) row[2],
                 (String) row[7], Boolean.TRUE.equals(row[8]),
-                producingWorkshop, lineSide, (UUID) row[6]);
+                producingWorkshop, lineSide, (UUID) row[6], (String) row[9]);
     }
 
     private UUID insertTransfer(
@@ -361,7 +421,7 @@ public class ProductionWorkshopDirectTransferService {
                 .setParameter("reportId", report.getId())
                 .setParameter("warehouseId", lineSideWarehouseId)
                 .setParameter("workshopId", workshopDepartmentId)
-                .setParameter("key", "DT-" + report.getId() + "-" + workshopDepartmentId)
+                .setParameter("key", "DT-" + report.getId() + "-" + lineSideWarehouseId)
                 .setParameter("reason",
                         "车间内部直送 · 报工 " + (report.getBillNo() == null ? "" : report.getBillNo()))
                 .setParameter("actorId", currentUser.requireId())
@@ -424,7 +484,7 @@ public class ProductionWorkshopDirectTransferService {
         if (resolved.receivingContinuous()) {
             readiness.topUpDirectSupply(
                     resolved.receivingSegmentId(), resolved.demandId(),
-                    resolved.lineSideWarehouseId(), item.getQty(),
+                    resolved.lineSideWarehouseId(), baseQuantity(item),
                     "DT-TOPUP-" + item.getId());
             return;
         }
@@ -467,6 +527,14 @@ public class ProductionWorkshopDirectTransferService {
 
     private static BigDecimal decimal(Object value) {
         return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+    }
+
+    static BigDecimal baseQuantity(ProductionDailyReportItem item) {
+        BigDecimal rate = item.getUnitRate() == null ? BigDecimal.ONE : item.getUnitRate();
+        if (item.getQty() == null || item.getQty().signum() <= 0 || rate.signum() <= 0) {
+            throw validation("车间直送数量与单位换算率必须大于零");
+        }
+        return item.getQty().multiply(rate).setScale(4, RoundingMode.HALF_UP);
     }
 
     private static ApiException validation(String message) {

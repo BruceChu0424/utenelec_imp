@@ -9,158 +9,96 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 /**
- * 采购/委外链「主档默认值」下单写回（V593 单一事实源，与货品归属仓/客户条款同一模式）：
- * 每次保存采购/委外订货单，把本次选择写回主档——
- *
- * <ul>
- *   <li>货品：默认供应商（复用 goods.default_supplier_id）+ 采购单价/委外加工单价
- *       （本次单上该货品最后一个有效行价；空价保值）；</li>
- *   <li>供应商：默认条款 币种/税率/结账方式（结账方式复用 V452 既有列）。</li>
- * </ul>
- *
- * <p>结账方式必须过 {@code fn_sync_supplier_default_settlement_method_reference()}
- * 触发器（V452，与客户侧 V285 同款契约）：① 只写「使用中且未软删」的字典值
- * （订单可能记着停用值，直接写会被触发器整单打回——V592 客户侧生产事故同款）；
- * ② UUID 与 price_style 旧快照按字典 legacy_id 成对写入。空项保值、值没变不落盘
- * （幂等守卫）。调用方在单据保存的同一事务内、orderRepo.save 之后按订单 id 调用
- * （按 id 查库取事实，不依赖调用方内存态）。
+ * 保存订货单后在同一事务学习主档默认值。单价与供应商、颜色、单位、币种、税率成组保存，
+ * 不能把箱价、外币价或另一供应商的价格解释成当前行价。查询只读主档，不扫描历史订单。
+ * 调用方必须先 flush 单头和明细；业务权限与审计上下文由单据命令绑定。
  */
 @Service
 @RequiredArgsConstructor
 public class ProcurementMasterDefaultsSyncService {
-
     private final JdbcTemplate jdbc;
 
-    /** 保存采购单后写回：行货品 → 默认供应商 + 采购单价；单头 → 供应商默认条款。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void syncFromPurchaseOrder(UUID orderId) {
-        if (orderId == null) return;
-
-        jdbc.update(
-                """
-                UPDATE goods g
-                SET default_supplier_id = o.supplier_id,
-                    default_purchase_price =
-                        COALESCE(line.price, g.default_purchase_price)
-                FROM (
-                    SELECT DISTINCT ON (i.goods_id)
-                           i.order_id, i.goods_id, i.price
-                    FROM purchase_order_items i
-                    WHERE i.order_id = ? AND i.is_deleted = false
-                      AND i.goods_id IS NOT NULL
-                    ORDER BY i.goods_id, i.id DESC
-                ) line
-                JOIN purchase_orders o ON o.id = line.order_id
-                WHERE o.supplier_id IS NOT NULL
-                  AND g.id = line.goods_id
-                  AND (g.default_supplier_id IS DISTINCT FROM o.supplier_id
-                       OR g.default_purchase_price IS DISTINCT FROM
-                            COALESCE(line.price, g.default_purchase_price))
-                """,
-                orderId);
-
-        syncSupplierTermsPurchase(orderId);
+        sync(orderId, "purchase");
     }
 
-    /** 保存委外单后写回：行货品 → 默认供应商 + 委外加工单价；单头 → 供应商默认条款。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void syncFromSubcontractOrder(UUID orderId) {
-        if (orderId == null) return;
+        sync(orderId, "subcontract");
+    }
 
-        jdbc.update(
-                """
+    // Identifiers come only from the two fixed callers above, never from request input.
+    private void sync(UUID orderId, String kind) {
+        if (orderId == null) return;
+        // 同批货品按 UUID 锁定，避免用户在两个订单里以相反行序保存时交叉持锁。
+        jdbc.queryForList("""
+                SELECT g.id FROM goods g
+                WHERE NOT g.is_deleted AND EXISTS (
+                    SELECT 1 FROM %1$s_order_items i JOIN %1$s_orders o ON o.id=i.order_id
+                    WHERE i.order_id=? AND NOT i.is_deleted AND NOT o.is_deleted
+                      AND o.status IN (0,1) AND i.goods_id=g.id)
+                ORDER BY g.id FOR UPDATE
+                """.formatted(kind), UUID.class, orderId);
+        jdbc.update("""
                 UPDATE goods g
                 SET default_supplier_id = o.supplier_id,
-                    default_subcontract_price =
-                        COALESCE(line.price, g.default_subcontract_price)
+                    default_%1$s_price = COALESCE(line.price, g.default_%1$s_price),
+                    default_%1$s_price_supplier_id = CASE WHEN line.price IS NOT NULL
+                        THEN o.supplier_id ELSE g.default_%1$s_price_supplier_id END,
+                    default_%1$s_price_color_id = CASE WHEN line.price IS NOT NULL
+                        THEN line.color_id ELSE g.default_%1$s_price_color_id END,
+                    default_%1$s_price_unit_id = CASE WHEN line.price IS NOT NULL
+                        THEN line.unit_id ELSE g.default_%1$s_price_unit_id END,
+                    default_%1$s_price_currency_id = CASE WHEN line.price IS NOT NULL
+                        THEN o.currency_id ELSE g.default_%1$s_price_currency_id END,
+                    default_%1$s_price_tax_rate = CASE WHEN line.price IS NOT NULL
+                        THEN o.tax_rate ELSE g.default_%1$s_price_tax_rate END,
+                    version = g.version + 1,
+                    updated_at = now(),
+                    updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
                 FROM (
-                    SELECT DISTINCT ON (i.goods_id)
-                           i.order_id, i.goods_id, i.price
-                    FROM subcontract_order_items i
-                    WHERE i.order_id = ? AND i.is_deleted = false
-                      AND i.goods_id IS NOT NULL
-                    ORDER BY i.goods_id, i.id DESC
+                    SELECT DISTINCT ON (i.goods_id) i.order_id, i.goods_id, i.price,
+                           i.color_id, i.unit_id
+                    FROM %1$s_order_items i
+                    WHERE i.order_id = ? AND NOT i.is_deleted AND i.goods_id IS NOT NULL
+                    ORDER BY i.goods_id, i.line_no DESC NULLS LAST, i.created_at DESC, i.id DESC
                 ) line
-                JOIN subcontract_orders o ON o.id = line.order_id
-                WHERE o.supplier_id IS NOT NULL
-                  AND g.id = line.goods_id
+                JOIN %1$s_orders o ON o.id = line.order_id
+                WHERE o.supplier_id IS NOT NULL AND NOT o.is_deleted AND o.status IN (0,1)
+                  AND g.id = line.goods_id AND NOT g.is_deleted
                   AND (g.default_supplier_id IS DISTINCT FROM o.supplier_id
-                       OR g.default_subcontract_price IS DISTINCT FROM
-                            COALESCE(line.price, g.default_subcontract_price))
-                """,
-                orderId);
-
-        syncSupplierTermsSubcontract(orderId);
+                       OR (line.price IS NOT NULL AND
+                           (g.default_%1$s_price, g.default_%1$s_price_supplier_id,
+                            g.default_%1$s_price_color_id, g.default_%1$s_price_unit_id,
+                            g.default_%1$s_price_currency_id, g.default_%1$s_price_tax_rate)
+                           IS DISTINCT FROM
+                           (line.price, o.supplier_id, line.color_id, line.unit_id,
+                            o.currency_id, o.tax_rate)))
+                """.formatted(kind), orderId);
+        jdbc.update("""
+                UPDATE suppliers s
+                SET default_settlement_method_id = CASE WHEN active.id IS NOT NULL
+                        THEN active.id ELSE s.default_settlement_method_id END,
+                    price_style = CASE WHEN active.id IS NOT NULL
+                        THEN active.legacy_id ELSE s.price_style END,
+                    default_currency_id = COALESCE(o.currency_id, s.default_currency_id),
+                    default_tax_rate = COALESCE(o.tax_rate, s.default_tax_rate),
+                    version = s.version + 1,
+                    updated_at = now(),
+                    updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
+                FROM %1$s_orders o
+                LEFT JOIN settlement_methods active ON active.id = o.settlement_method_id
+                    AND active.status = '使用' AND NOT active.is_deleted
+                WHERE o.id = ? AND NOT o.is_deleted AND o.status IN (0,1)
+                  AND s.id = o.supplier_id AND NOT s.is_deleted
+                  AND (s.default_settlement_method_id IS DISTINCT FROM
+                            CASE WHEN active.id IS NOT NULL
+                                 THEN active.id ELSE s.default_settlement_method_id END
+                       OR s.price_style IS DISTINCT FROM
+                            CASE WHEN active.id IS NOT NULL THEN active.legacy_id ELSE s.price_style END
+                       OR s.default_currency_id IS DISTINCT FROM COALESCE(o.currency_id, s.default_currency_id)
+                       OR s.default_tax_rate IS DISTINCT FROM COALESCE(o.tax_rate, s.default_tax_rate))
+                """.formatted(kind), orderId);
     }
-
-
-    /** 供应商默认条款写回（采购单头条款；结账方式成对过 V452 触发器）。 */
-    private void syncSupplierTermsPurchase(UUID orderId) {
-        jdbc.update(SUPPLIER_TERMS_PURCHASE_SQL, orderId);
-    }
-
-    /** 供应商默认条款写回（委外单头条款；同上）。 */
-    private void syncSupplierTermsSubcontract(UUID orderId) {
-        jdbc.update(SUPPLIER_TERMS_SUBCONTRACT_SQL, orderId);
-    }
-
-    private static final String SUPPLIER_TERMS_PURCHASE_SQL = """
-            UPDATE suppliers s
-            SET default_settlement_method_id =
-                    CASE WHEN active.id IS NOT NULL
-                         THEN active.id ELSE s.default_settlement_method_id END,
-                price_style =
-                    CASE WHEN active.id IS NOT NULL
-                         THEN active.legacy_id ELSE s.price_style END,
-                default_currency_id = COALESCE(o.currency_id, s.default_currency_id),
-                default_tax_rate = COALESCE(o.tax_rate, s.default_tax_rate)
-            FROM purchase_orders o
-            LEFT JOIN settlement_methods active
-              ON active.id = o.settlement_method_id
-             AND active.status = '使用'
-             AND COALESCE(active.is_deleted, FALSE) = FALSE
-            WHERE o.id = ?
-              AND o.supplier_id IS NOT NULL
-              AND s.id = o.supplier_id
-              AND (s.default_settlement_method_id IS DISTINCT FROM
-                        CASE WHEN active.id IS NOT NULL
-                             THEN active.id ELSE s.default_settlement_method_id END
-                   OR s.price_style IS DISTINCT FROM
-                        CASE WHEN active.id IS NOT NULL
-                             THEN active.legacy_id ELSE s.price_style END
-                   OR s.default_currency_id IS DISTINCT FROM
-                        COALESCE(o.currency_id, s.default_currency_id)
-                   OR s.default_tax_rate IS DISTINCT FROM
-                        COALESCE(o.tax_rate, s.default_tax_rate))
-            """;
-
-    private static final String SUPPLIER_TERMS_SUBCONTRACT_SQL = """
-            UPDATE suppliers s
-            SET default_settlement_method_id =
-                    CASE WHEN active.id IS NOT NULL
-                         THEN active.id ELSE s.default_settlement_method_id END,
-                price_style =
-                    CASE WHEN active.id IS NOT NULL
-                         THEN active.legacy_id ELSE s.price_style END,
-                default_currency_id = COALESCE(o.currency_id, s.default_currency_id),
-                default_tax_rate = COALESCE(o.tax_rate, s.default_tax_rate)
-            FROM subcontract_orders o
-            LEFT JOIN settlement_methods active
-              ON active.id = o.settlement_method_id
-             AND active.status = '使用'
-             AND COALESCE(active.is_deleted, FALSE) = FALSE
-            WHERE o.id = ?
-              AND o.supplier_id IS NOT NULL
-              AND s.id = o.supplier_id
-              AND (s.default_settlement_method_id IS DISTINCT FROM
-                        CASE WHEN active.id IS NOT NULL
-                             THEN active.id ELSE s.default_settlement_method_id END
-                   OR s.price_style IS DISTINCT FROM
-                        CASE WHEN active.id IS NOT NULL
-                             THEN active.legacy_id ELSE s.price_style END
-                   OR s.default_currency_id IS DISTINCT FROM
-                        COALESCE(o.currency_id, s.default_currency_id)
-                   OR s.default_tax_rate IS DISTINCT FROM
-                        COALESCE(o.tax_rate, s.default_tax_rate))
-            """;
 }

@@ -22,7 +22,6 @@
 --   GET /api/stock/shelf-labels）+ 7 类仓库明细报表「库位号」列 + 即时库存「库位号」列。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 CREATE TEMP TABLE shelf_stage (
@@ -105,7 +104,6 @@ FROM shelf_resolved;
 SELECT goods_legacy_id, goods_code, place AS 未匹配库位
 FROM shelf_resolved WHERE goods_id IS NULL ORDER BY place;
 
-COMMIT;
 
 -- 全库库位分布（迁移后货架目视化清单页/挂牌打印可见的库行一览）：
 SELECT split_part(stock_place, '-', 1) AS 库行, count(*) AS 库位数

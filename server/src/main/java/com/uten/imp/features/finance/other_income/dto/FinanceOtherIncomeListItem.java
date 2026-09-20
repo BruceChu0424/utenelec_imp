@@ -21,4 +21,6 @@ public class FinanceOtherIncomeListItem {
 
     // Additive exact text never passes through a binary floating-point value.
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    /** The source identity is immutable; ordinary save requests cannot set it. */
+    public boolean isLegacyImported() { return legacyId != null; }
 }

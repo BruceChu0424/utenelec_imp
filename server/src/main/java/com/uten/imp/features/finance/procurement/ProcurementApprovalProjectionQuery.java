@@ -81,6 +81,25 @@ public class ProcurementApprovalProjectionQuery {
     }
 
     /**
+     * 当前处于财务审核中（PENDING case）的订货单 id 集合（按订货类型）。
+     * 供列表过滤使用：采购/委外订货单在财务通过前 status 保持 0，草稿段
+     * （status=0）需要按此集合排除在审单，「等待财务审核」段则按此圈定。
+     * 待审队列本身很小（财务工作队列），整集预取比逐行子查询廉价。
+     */
+    @Transactional(readOnly = true)
+    public Set<UUID> pendingOrderIds(String orderType) {
+        return Set.copyOf(jdbc.queryForList("""
+                SELECT order_id
+                FROM procurement_order_approval_cases
+                WHERE order_type = :orderType
+                  AND status = 'PENDING'
+                """,
+                new MapSqlParameterSource()
+                        .addValue("orderType", requireOrderType(orderType)),
+                UUID.class));
+    }
+
+    /**
      * A finance reviewer may open an otherwise owner-hidden order only while
      * that exact order has an actionable approval task. This deliberately does
      * not widen the purchase/subcontract list scope.

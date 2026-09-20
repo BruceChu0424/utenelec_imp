@@ -468,8 +468,7 @@ public class ProductionPlanningPackageService {
                                   AND warehouse.is_accountable = TRUE
                                   AND warehouse.is_defective = FALSE
                                   AND warehouse.is_line_side = FALSE
-                                  AND NOT EXISTS (SELECT 1 FROM warehouses child
-                                      WHERE child.parent_id = warehouse.id AND child.is_deleted = FALSE)
+                                  AND fn_warehouse_is_operational_leaf(warehouse.id)
                                 WHERE fn_warehouse_same_main(a.warehouse_id, :warehouseId)
                                   AND a.goods_id IN (:goodsIds)
                                 GROUP BY a.goods_id, a.color_id

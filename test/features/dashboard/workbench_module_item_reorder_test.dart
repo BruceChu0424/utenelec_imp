@@ -3,7 +3,7 @@
 // 链路：长按卡片 → 拖到另一张卡片上悬停 → DragTarget.onMove/onAccept →
 // layoutNotifier.reorderItem → 状态更新（防抖持久化由基类负责，这里只断言状态）。
 //
-// 夹具口径：普通用户只授予财税部 4 张卡的权限 → 页面只渲染财税部一组
+// 夹具口径：普通用户只授予财税部 3 张卡的权限 → 页面只渲染财税部一组
 // （common 组的我的访客卡带 60s 轮询角标，不授予 visitorHostConfirm 即不挂载）；
 // 财务徽标的 4 个计数源全部 stub 成 0，不触网、不产生轮询 Timer。
 import 'package:flutter/gestures.dart';
@@ -15,6 +15,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/dashboard/providers/workbench_layout_provider.dart';
 import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
+import 'package:uten_imp/features/expense/providers/expense_counts_provider.dart';
 import 'package:uten_imp/features/finance/providers/finance_procurement_approval_count_provider.dart';
 import 'package:uten_imp/features/finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -37,7 +38,7 @@ void main() {
         sessionProvider.overrideWith(() => _StubSession()),
         sharedPreferencesProvider.overrideWithValue(preferences),
         currentPermissionsProvider.overrideWithValue(const <String>{
-          // 只放行财税部 4 张卡（/finance hub、报销审批、工资条生成、工资条审核）
+          // 报销审批归入钱流 hub；组内还有工资条生成与审核。
           Perm.financeReportView,
           Perm.expenseApprove,
           Perm.payrollGenerate,
@@ -51,6 +52,9 @@ void main() {
         ),
         salesShipmentFinanceCountProvider.overrideWith((ref) async => 0),
         financeArrivalExceptionCountProvider.overrideWith((ref) async => 0),
+        expenseCountsProvider.overrideWith(
+          (ref) async => const ExpenseCounts(),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -70,8 +74,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 只渲染财税部一组，默认顺序：钱流管理 / 报销审批 / 工资条生成 / 工资条审核
+    // 只渲染财税部一组，默认顺序：钱流管理 / 工资条生成 / 工资条审核。
     expect(find.text('财税部'), findsOneWidget);
+    expect(find.text('报销审批'), findsNothing);
     expect(find.text('常用功能'), findsNothing);
     expect(
       container.read(workbenchLayoutProvider).itemOrders,
@@ -91,12 +96,7 @@ void main() {
 
     expect(
       container.read(workbenchLayoutProvider).itemOrders['fin'],
-      [
-        '/expense/approval',
-        '/payroll/generate',
-        '/payroll/review',
-        RouteName.finance,
-      ],
+      ['/payroll/generate', '/payroll/review', RouteName.finance],
       reason: '拖到组内最后一张上：被拖卡片落到目标之后（末位），其余顺移',
     );
 

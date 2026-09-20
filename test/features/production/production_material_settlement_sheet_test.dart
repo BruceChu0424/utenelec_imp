@@ -8,6 +8,28 @@ import 'package:uten_imp/features/production/widgets/production_material_settlem
 
 void main() {
   testWidgets(
+    'a task with issued stock can return without enabling usage registration',
+    (tester) async {
+      final fixture = _Fixture(returnEnabled: true);
+      await _open(tester, fixture, canSettle: false, canRequestReturn: true);
+      expect(find.text('提交用料登记'), findsNothing);
+      await tester.ensureVisible(find.text('余料退库'));
+      expect(find.text('余料退库'), findsOneWidget);
+      expect(fixture.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('return control still requires the server capability', (
+    tester,
+  ) async {
+    final fixture = _Fixture();
+    await _open(tester, fixture, canSettle: false, canRequestReturn: true);
+    expect(find.text('余料退库'), findsNothing);
+    expect(fixture.writes, isEmpty);
+  });
+
+  testWidgets(
     'mixed units stay per demand and settled rows leave the primary input grid',
     (tester) async {
       final fixture = _Fixture(mixedUnits: true);
@@ -158,6 +180,8 @@ Future<void> _open(
   WidgetTester tester,
   _Fixture fixture, {
   double width = 1100,
+  bool canSettle = true,
+  bool? canRequestReturn,
 }) async {
   await tester.binding.setSurfaceSize(Size(width, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -177,7 +201,8 @@ Future<void> _open(
                 ref,
                 planId: 'plan',
                 executionSegmentId: 'task',
-                canSettle: true,
+                canSettle: canSettle,
+                canRequestReturn: canRequestReturn,
                 canReverse: true,
                 canClose: false,
               ),
@@ -193,7 +218,11 @@ Future<void> _open(
 }
 
 class _Fixture {
-  _Fixture({this.mixedUnits = false, this.historyOnly = false}) {
+  _Fixture({
+    this.mixedUnits = false,
+    this.historyOnly = false,
+    this.returnEnabled = false,
+  }) {
     final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'));
     dio.interceptors.add(
       InterceptorsWrapper(
@@ -203,7 +232,12 @@ class _Fixture {
             writes.add(request);
             data = <Object>[];
           } else if (request.path.endsWith('/capabilities')) {
-            data = {'canSettle': true, 'canReverse': true, 'canClose': false};
+            data = {
+              'canSettle': true,
+              'canReverse': true,
+              'canClose': false,
+              'canRequestReturn': returnEnabled,
+            };
           } else if (request.path.endsWith('/return-requests')) {
             data = <Object>[];
           } else if (request.path.endsWith('/clearance')) {
@@ -251,6 +285,7 @@ class _Fixture {
   }
   final bool mixedUnits;
   final bool historyOnly;
+  final bool returnEnabled;
   final writes = <RequestOptions>[];
   late final ProductionMaterialRepository repository;
   Map<String, dynamic> _row(

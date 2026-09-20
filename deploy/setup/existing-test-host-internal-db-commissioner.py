@@ -2644,6 +2644,16 @@ def commit_postgres_boot_contract(evidence: Path) -> None:
     validate_postgres_boot_commit(evidence)
 
 
+ROLE_POSTCONDITION_SQL = """SELECT datdba::regrole::text,
+    (SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname='public'),
+    has_database_privilege('uten','uten_imp','CREATE'),
+    has_schema_privilege('uten','public','CREATE'),
+    pg_has_role('uten_migrator','uten_owner','MEMBER'),
+    pg_has_role('uten','uten_owner','MEMBER'),
+    pg_has_role('uten','uten_migrator','MEMBER')
+FROM pg_database WHERE datname='uten_imp'"""
+
+
 def configure_roles(evidence: Path) -> None:
     marker = evidence / "roles-created.json"
     app_password = secret_value(APP_PASSWORD)
@@ -2737,10 +2747,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE uten_owner IN SCHEMA public GRANT USAGE ON TYP
     query = run(
         [
             "/usr/sbin/runuser", "-u", "postgres", "--", "/usr/bin/psql", "-X", "-At", "-v", "ON_ERROR_STOP=1", "-d", "uten_imp", "-c",
-            "SELECT datdba::regrole::text,(SELECT nspowner::regrole::text FROM pg_namespace WHERE nspname='public'),has_database_privilege('uten','uten_imp','CREATE'),has_schema_privilege('uten','public','CREATE'),pg_has_role('uten_migrator','uten_owner','MEMBER'); FROM pg_database WHERE datname='uten_imp'",
+            ROLE_POSTCONDITION_SQL,
         ]
     ).stdout.decode("utf-8", errors="strict").strip()
-    if query != "uten_owner|uten_owner|f|f|t":
+    if query != "uten_owner|uten_owner|f|f|t|f|f":
         fail("database role/ownership contract differs")
     if not marker.exists():
         atomic_json(

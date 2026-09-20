@@ -23,6 +23,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
@@ -53,6 +54,7 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_cascade_quantity.dart';
 import '../models/material_future_transfer.dart';
 import '../models/material_future_transfer_progress.dart';
 import '../models/production_flow_stage.dart';
@@ -79,7 +81,9 @@ part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
 part 'material_analysis_bucket_detail.dart';
 part 'material_analysis_candidates.dart';
+part 'material_analysis_cascade_models.dart';
 part 'material_analysis_child_cascade.dart';
+part 'material_analysis_child_cascade_page.dart';
 part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
@@ -1213,6 +1217,9 @@ abstract class _MaterialAnalysisPageBase
         >{};
     final groups = <_MaterialGroup>[];
     final groupsByLine = <String, _MaterialGroup>{};
+    final groupsByKey = <String, _MaterialGroup>{};
+    final materialsByAnchorProduct =
+        <String, ProductionMaterialAnalysisMaterial>{};
     for (final material in analysis.materials) {
       materialsByProduct
           .putIfAbsent(material.analysisLineId, () => [])
@@ -1234,12 +1241,19 @@ abstract class _MaterialAnalysisPageBase
       );
       groups.add(group);
       groupsByLine[material.materialLineId] = group;
+      groupsByKey[group.key] = group;
+      final anchor = material.planAnchorAnalysisLineId;
+      if (anchor != null) {
+        materialsByAnchorProduct.putIfAbsent(anchor, () => material);
+      }
     }
     final indexes = _MaterialAnalysisIndexes(
       productsById: productsById,
       materialsByProduct: materialsByProduct,
       groups: groups,
       groupsByLine: groupsByLine,
+      groupsByKey: groupsByKey,
+      materialsByAnchorProduct: materialsByAnchorProduct,
       childrenByParentNodeKey: childrenByParentNodeKey,
     );
     _indexCacheAnalysis = analysis;

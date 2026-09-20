@@ -37,6 +37,9 @@ public class StockValuationCoordinator {
         PoolKey pool=new PoolKey(request.warehouseId(),request.goodsId(),request.colorId());
         EventContext context=support.context(request.sourceDocType(),movement,request.sourceDocId(),request.sourceItemId(),null,at);
         support.ensureActive(pool,context);
+        if(request.costReference() instanceof InventoryMovementCostReference.WorkshopReturn ref){
+            return material.workshopReturn(request,movement,pool,before,context,ref,values);
+        }
         if(request.costReference() instanceof InventoryMovementCostReference.SalesReturnQuality ref){
             return salesReturns.movement(ref,movement,pool,request.qty(),before,context,request.direction());
         }

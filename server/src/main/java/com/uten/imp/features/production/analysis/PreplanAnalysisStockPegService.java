@@ -949,8 +949,17 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         : entitlement.listAvailableBeneficiaryLotsForProduction(
                                 analysisId, materialId, warehouseId,
                                 demand.goodsId(), demand.colorId(), write);
+                Set<UUID> allowedSources=lots.isEmpty()?Set.of():new java.util.HashSet<>(NativeQueryResults.typedRows(
+                        em.createNativeQuery("""
+                                SELECT source.id FROM stock_reservations source
+                                JOIN warehouses warehouse ON warehouse.id=source.warehouse_id
+                                WHERE source.id IN (:sources)
+                                  AND (NOT warehouse.is_line_side OR fn_workshop_entitlement_source_allows(source.id,:demand))
+                                """,UUID.class).setParameter("sources",lots.stream().map(PreplanStockEntitlementService.AvailableLot::stockReservationId).distinct().toList())
+                                .setParameter("demand",demand.demandId()),UUID.class));
                 for (PreplanStockEntitlementService.AvailableLot lot : lots) {
                     if (remaining.signum() <= 0) break;
+                    if (!allowedSources.contains(lot.stockReservationId())) continue;
                     BigDecimal alreadyPrepared = preparedByEntitlementLot
                             .getOrDefault(lot.entitlementEventId(), BigDecimal.ZERO);
                     BigDecimal available = lot.remainingQty()
@@ -1063,7 +1072,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                      AND fn_warehouse_same_main(warehouse.id,:plannedWarehouseId)) AS local_normal
                     FROM goods JOIN warehouses warehouse ON warehouse.id=:warehouseId
                       AND NOT warehouse.is_deleted AND warehouse.is_accountable
-                      AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                      AND fn_warehouse_is_operational_leaf(warehouse.id)
                     LEFT JOIN stock_balances stock ON stock.goods_id=goods.id
                       AND stock.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid) AND stock.warehouse_id=warehouse.id
                     WHERE goods.id=:goodsId AND NOT goods.is_deleted
@@ -1139,6 +1148,18 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "分批转正缺少命令键");
         }
         formalizePlanDemandTransfers(packageId, prepared, formalReservations, null, false, commandKey);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void formalizePlanDemandTransfersForCommand(UUID packageId,
+            List<PreparedPlanTransfer> prepared, List<FormalReservationSlice> formalReservations,
+            String commandKey, UUID actorId) {
+        if (commandKey == null || commandKey.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "持续补料转正缺少命令键");
+        }
+        entitlement.requireFormalizationActor(actorId);
+        formalizePlanDemandTransfers(packageId, prepared, formalReservations, actorId, true, commandKey);
     }
 
     private void formalizePlanDemandTransfers(

@@ -26,4 +26,30 @@ class FinanceReceiptSourceAllocationExactTest {
         assertEquals(0,BigDecimal.TEN.compareTo(service.plannedBookAmount(ledger,new BigDecimal("3"))));
         assertThrows(com.uten.imp.common.web.ApiException.class,()->service.plannedBookAmount(ledger,new BigDecimal("3.0001")));
     }
+    @Test void provenHistoricalBalanceUsesRemainingBookWithoutInventingOrderAllocations() {
+        EntityManager em=mock(EntityManager.class); Query query=mock(Query.class);
+        when(em.createNativeQuery(contains("fn_is_verified_legacy_opening_ar"))).thenReturn(query);
+        when(query.setParameter(anyString(),any())).thenReturn(query);
+        when(query.getSingleResult()).thenReturn(1L);
+        var ledger=new ArApLedger();
+        ledger.setLegacySourceResolution(java.util.Map.of("status","EXACT_SOURCE"));
+        ledger.setAmountBalanceOriginal(new BigDecimal("12")); ledger.setAmountBalance(new BigDecimal("12"));
+        var service=new FinanceReceiptSourceAllocationService(em,mock(SecurityContextCurrentUser.class));
+        assertEquals(0,new BigDecimal("3").compareTo(service.plannedBookAmount(ledger,new BigDecimal("3"))));
+        verify(query,never()).getResultList();
+        verify(query,never()).executeUpdate();
+    }
+
+    @Test void resolutionJsonAloneCannotAuthorizeAnUnprovenHistoricalBalance() {
+        EntityManager em=mock(EntityManager.class); Query query=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(),any())).thenReturn(query);
+        when(query.getSingleResult()).thenReturn(0L); when(query.getResultList()).thenReturn(List.of());
+        var ledger=new ArApLedger();
+        ledger.setLegacySourceResolution(java.util.Map.of("status","EXACT_SOURCE"));
+        ledger.setAmountBalanceOriginal(new BigDecimal("12")); ledger.setAmountBalance(new BigDecimal("12"));
+        var service=new FinanceReceiptSourceAllocationService(em,mock(SecurityContextCurrentUser.class));
+        assertThrows(com.uten.imp.common.web.ApiException.class,
+                ()->service.plannedBookAmount(ledger,new BigDecimal("3")));
+    }
 }

@@ -63,10 +63,18 @@ class ProductionExecutionSegmentServiceTest {
         assignmentValidator = mock(ProductionAssignmentValidator.class);
         chainNotice = mock(ChainNoticeService.class);
         access = mock(ProductionDocumentAccessPolicy.class);
+        when(access.hasAuthority(anyString())).thenReturn(true);
+        Query noPendingDraws = query();
+        when(noPendingDraws.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString(),org.mockito.ArgumentMatchers.eq(UUID.class))).thenReturn(noPendingDraws);
         // 车间归属判定（2026-09-11 抽出）：本测试覆盖的是版本/状态/幂等分支，
         // 成员判定按「非本车间」桩住，写侧仍回落到计划归属口径。
         workshopMembership = mock(
                 com.uten.imp.features.production.ProductionWorkshopMembership.class);
+        var footprint = mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class);
+        var footprintGuard = mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard.class);
+        when(footprint.beginPlan(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any()))
+                .thenReturn(footprintGuard);
         service = new ProductionExecutionSegmentService(
                 em,
                 workshopPreferences,
@@ -77,7 +85,7 @@ class ProductionExecutionSegmentServiceTest {
                 chainNotice,
                 access,
                 workshopMembership,
-                mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class));
+                footprint);
     }
 
     @Test
@@ -221,7 +229,7 @@ class ProductionExecutionSegmentServiceTest {
         ordered.verify(chainNotice).resolveProductionWorkshopTasks(
                 List.of(segmentId), "ROUTE_CONFIRMED");
         ordered.verify(readiness).promoteAfterRouteConfirmation(
-                segmentId, warehouseId);
+                segmentId, warehouseId,true);
         verify(event).setParameter("action", "ROUTE_CONFIRMED");
         verify(event).setParameter("resultingVersion", 6L);
     }
@@ -232,9 +240,8 @@ class ProductionExecutionSegmentServiceTest {
         Query lock = routeLocked(null, "WAITING", 4L, true);
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());
-        // validateRouteChoice：非默认路线先过 fn_can_change_execution_route。
-        Query canChange = query();
-        when(canChange.getSingleResult()).thenReturn(true);
+        Query canSplit = query();
+        when(canSplit.getSingleResult()).thenReturn(true);
         Query update = query();
         when(update.executeUpdate()).thenReturn(1);
         Query view = query();
@@ -243,7 +250,7 @@ class ProductionExecutionSegmentServiceTest {
         Query event = query();
         when(event.executeUpdate()).thenReturn(1);
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, canChange, update, view, event);
+                lock, replay, canSplit, update, view, event);
 
         service.confirmRoute(planId, segmentId, new SegmentRouteConfirmRequest(
                 4L, "route-confirm-batch", "BATCH"));
@@ -252,8 +259,26 @@ class ProductionExecutionSegmentServiceTest {
                 List.of(segmentId), "ROUTE_CONFIRMED");
         verify(readiness, never()).promoteAfterRouteConfirmation(
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+                org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyBoolean());
         verify(event).setParameter("action", "ROUTE_CONFIRMED");
+    }
+
+    @Test
+    void nonSplittableSourceCannotBeConfirmedAsIndependentBatch() {
+        Query lock = routeLocked(null, "WAITING", 4L, true);
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query canSplit = query();
+        when(canSplit.getSingleResult()).thenReturn(false);
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, canSplit);
+
+        ApiException error = assertThrows(ApiException.class, () -> service.confirmRoute(
+                planId, segmentId, new SegmentRouteConfirmRequest(4L, "route-batch-ineligible", "BATCH")));
+
+        assertThat(error).hasMessageContaining("不满足独立分批条件");
+        verify(em).createNativeQuery("SELECT fn_can_split_execution_batch(:id)");
+        verify(canSplit, never()).executeUpdate();
+        verifyNoInteractions(chainNotice, readiness);
     }
 
     @Test
@@ -295,8 +320,13 @@ class ProductionExecutionSegmentServiceTest {
         Query view = query();
         when(view.getResultList()).thenReturn(
                 Collections.singletonList(viewRow(workshopId, 2L)));
+        Query movable = query();
+        when(movable.getSingleResult()).thenReturn(true);
+        Query pendingDraws = query();
+        when(pendingDraws.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString(),org.mockito.ArgumentMatchers.eq(UUID.class))).thenReturn(pendingDraws);
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, update, event, view);
+                lock, replay, movable, update, event, view);
 
         service.assign(planId, segmentId, new SegmentAssignmentRequest(
                 1L, "assign-key-0001", workshopId, null, null, null, null));
@@ -366,7 +396,8 @@ class ProductionExecutionSegmentServiceTest {
         when(demands.getResultList()).thenReturn(List.of(
                 new Object[]{UUID.randomUUID(), "ALLOCATED"},
                 new Object[]{UUID.randomUUID(), "ALLOCATED"}));
-        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, demands);
+        Query before = assignedView(3L);
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, before, demands);
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -389,7 +420,8 @@ class ProductionExecutionSegmentServiceTest {
         when(demands.getResultList()).thenReturn(List.of(
                 new Object[]{UUID.randomUUID(), "FULFILLED"},
                 new Object[]{UUID.randomUUID(), "ALLOCATED"}));
-        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, demands);
+        Query before = assignedView(4L);
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, before, demands);
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -420,8 +452,9 @@ class ProductionExecutionSegmentServiceTest {
         Query view = query();
         when(view.getResultList()).thenReturn(Collections.singletonList(
                 viewRow("IN_PROGRESS", null, 6L, 2, 2, true)));
+        Query before = assignedView(5L);
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, demands, update, event, view);
+                lock, replay, before, demands, update, event, view);
 
         assertDoesNotThrow(() -> service.start(
                 planId,
@@ -496,7 +529,7 @@ class ProductionExecutionSegmentServiceTest {
 
     @Test
     void waitingSegmentCannotStartDirectly() {
-        // 等料段（WAITING）不在开工白名单内：状态已变化 fail-closed。
+        // Waiting is a real material state; explain the next step without claiming a version conflict.
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         Query lock = locked("WAITING", 2L, "CONFIRMED");
         Query replay = query();
@@ -505,7 +538,7 @@ class ProductionExecutionSegmentServiceTest {
 
         ApiException error = assertThrows(ApiException.class, () -> service.start(
                 planId, segmentId, new SegmentTransitionRequest(2L, "start-key-waiting")));
-        assertThat(error.getMessage()).contains("执行段状态已经变化");
+        assertThat(error.getMessage()).contains("等待物料");
     }
 
     @Test
@@ -522,8 +555,9 @@ class ProductionExecutionSegmentServiceTest {
         Query view = query();
         when(view.getResultList()).thenReturn(Collections.singletonList(
                 viewRow("IN_PROGRESS", null, 9L, 0, 0, true)));
+        Query before = assignedView(8L);
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, update, event, view);
+                lock, replay, before, update, event, view);
 
         assertDoesNotThrow(() -> service.start(
                 planId,
@@ -571,10 +605,11 @@ class ProductionExecutionSegmentServiceTest {
         Query secondView = query();
         when(secondView.getResultList()).thenReturn(Collections.singletonList(
                 viewRow(secondId, "IN_PROGRESS", null, 8L, 1, 1, true)));
+        Query firstBefore = assignedView(3L), secondBefore = assignedView(7L);
         when(em.createNativeQuery(anyString())).thenReturn(
                 firstLock, secondLock,
-                firstReplay, firstDemands,
-                secondReplay, secondDemands,
+                firstReplay, firstBefore, firstDemands,
+                secondReplay, secondBefore, secondDemands,
                 firstUpdate, firstEvent, firstView,
                 secondUpdate, secondEvent, secondView);
 
@@ -592,7 +627,7 @@ class ProductionExecutionSegmentServiceTest {
         lockOrder.verify(firstLock).setParameter("segmentId", firstId);
         lockOrder.verify(secondLock).setParameter("segmentId", secondId);
         lockOrder.verify(firstUpdate).executeUpdate();
-        verify(em, times(12)).createNativeQuery(anyString());
+        verify(em, times(14)).createNativeQuery(anyString());
         verify(chainNotice).notifyExecutionSegmentTransition(firstId, true);
         verify(chainNotice).notifyExecutionSegmentTransition(secondId, true);
         verify(chainNotice).resolveProductionWorkshopTasks(
@@ -622,10 +657,11 @@ class ProductionExecutionSegmentServiceTest {
         Query secondDemands = query();
         when(secondDemands.getResultList()).thenReturn(Collections.singletonList(
                 new Object[]{UUID.randomUUID(), "ALLOCATED"}));
+        Query firstBefore = assignedView(2L), secondBefore = assignedView(4L);
         when(em.createNativeQuery(anyString())).thenReturn(
                 firstLock, secondLock,
-                firstReplay, firstDemands,
-                secondReplay, secondDemands);
+                firstReplay, firstBefore, firstDemands,
+                secondReplay, secondBefore, secondDemands);
 
         ApiException error = assertThrows(ApiException.class, () ->
                 service.batchStart(planId, new BatchStartRequest(List.of(
@@ -635,7 +671,7 @@ class ProductionExecutionSegmentServiceTest {
                                 firstId, 2L, "batch-preflight-first")))));
 
         assertTrue(error.getMessage().contains("待发料 1 项"));
-        verify(em, times(6)).createNativeQuery(anyString());
+        verify(em, times(8)).createNativeQuery(anyString());
         verifyNoInteractions(chainNotice);
 
         Method method = ProductionExecutionSegmentService.class
@@ -853,10 +889,10 @@ class ProductionExecutionSegmentServiceTest {
                 // V487：zero_material（零料直制段展示「无需领料 · 可开工」）。
                 false,
                 false, false, false, null, false, null,
-                // V595：continuous_supply / fn_can_start_continuous_supply。
-                false, false,
-                // V599：start_route（rows 投影末列）。
-                null
+                // Continuous route state; START has one canonical capability.
+                false,
+                // V599 route plus V611 explicit-start capability.
+                null, false
         };
     }
     private void stubLockAndReplay(
@@ -893,6 +929,14 @@ class ProductionExecutionSegmentServiceTest {
     private static String startHash(long expectedVersion) {
         return PlanningPackageFingerprint.sha256(List.of(
                 "ACTION|START", "VERSION|" + expectedVersion));
+    }
+
+    private Query assignedView(long version) {
+        Query result = query();
+        Object[] row = viewRow("DISPATCHED", UUID.randomUUID(), version, 1, 1, true);
+        row[19] = UUID.randomUUID();
+        when(result.getResultList()).thenReturn(Collections.singletonList(row));
+        return result;
     }
 
     private static Query query() {

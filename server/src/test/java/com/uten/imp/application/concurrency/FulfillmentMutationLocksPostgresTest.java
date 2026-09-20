@@ -70,11 +70,14 @@ class FulfillmentMutationLocksPostgresTest {
         jdbc.execute("CREATE TRIGGER test_analysis_insert AFTER INSERT ON production_material_analyses FOR EACH ROW EXECUTE FUNCTION test_insert_audit()");
         var bean = new LocalContainerEntityManagerFactoryBean();
         bean.setDataSource(ds); bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        bean.setJpaDialect(new com.uten.imp.support.NativeSavepointJpaDialect());
         bean.setPackagesToScan("com.uten.imp.features.sales.order");
         var props = new Properties(); props.setProperty("hibernate.hbm2ddl.auto","none");
         bean.setJpaProperties(props); bean.afterPropertiesSet(); factory = bean.getObject();
         em = SharedEntityManagerCreator.createSharedEntityManager(factory);
-        transactions = new TransactionTemplate(new JpaTransactionManager(factory));
+        var manager = new JpaTransactionManager(factory);
+        manager.setNestedTransactionAllowed(true);
+        transactions = new TransactionTemplate(manager);
         inventory = new InventoryMutationLock(em);
         locks = new FulfillmentMutationLocks(em,new FulfillmentInventoryMutationAdapter(inventory));
         sales = new SalesMutationFootprintService(em,locks);
@@ -182,6 +185,55 @@ class FulfillmentMutationLocksPostgresTest {
             locks.acquire(()->plan(f)).verifyUnchanged();
             assertThrows(ApiException.class,()->inventory.lockAll(List.of(new InventoryKey(UUID.randomUUID(),null))));
         });
+    }
+
+    @Test void savepointRetainsTheEarlierPrefixButDropsRolledBackNewSourceExpectations() {
+        var original = fixture();
+        var newSource = new CommercialSource(CommercialType.SALES_ORDER, UUID.randomUUID());
+        transactions.executeWithoutResult(tx -> {
+            locks.acquire(() -> plan(original)).verifyUnchanged();
+            Object savepoint = tx.createSavepoint();
+            locks.expectCreatedSource(newSource);
+            em.createNativeQuery("INSERT INTO sales_orders(id) VALUES (:id)").setParameter("id", newSource.id()).executeUpdate();
+            assertTrue(FulfillmentLockState.current(false).expectedNewSources.contains(newSource));
+            var added = new FulfillmentMutationLockPlan(Set.of(newSource), Set.of(), Set.of(), Set.of(), "added");
+            assertThrows(ApiException.class, () -> locks.requireCovered(added), "Expectation alone is never ownership");
+            tx.rollbackToSavepoint(savepoint);
+            locks.requireCovered(plan(original));
+            inventory.requireHeld(new InventoryKey(original.goods, null));
+            assertOrderLocked(original.order, true);
+            assertThrows(ApiException.class, () -> locks.requireCovered(added));
+            assertFalse(FulfillmentLockState.current(false).expectedNewSources.contains(newSource));
+            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM sales_orders WHERE id=?", Integer.class, newSource.id()));
+        });
+    }
+
+    @Test void prefixCreatedAfterSavepointCannotProveOwnershipUntilTheWholePrefixIsReacquired() {
+        var source = fixture();
+        transactions.executeWithoutResult(tx -> {
+            Object savepoint = tx.createSavepoint();
+            var old = locks.acquire(() -> plan(source)); old.verifyUnchanged();
+            assertOrderLocked(source.order, true);
+            tx.rollbackToSavepoint(savepoint);
+            assertOrderLocked(source.order, false);
+            assertThrows(ApiException.class, () -> locks.requireCovered(plan(source)));
+            assertThrows(ApiException.class, old::verifyUnchanged);
+            assertThrows(IllegalStateException.class, () -> inventory.requireHeld(new InventoryKey(source.goods, null)));
+            locks.acquire(() -> plan(source)).verifyUnchanged();
+            inventory.requireHeld(new InventoryKey(source.goods, null));
+            assertOrderLocked(source.order, true);
+        });
+    }
+
+    private static void assertOrderLocked(UUID id, boolean expected) {
+        try (var connection = jdbc.getDataSource().getConnection()) {
+            connection.setAutoCommit(false);
+            try (var statement = connection.prepareStatement("SELECT id FROM sales_orders WHERE id=? FOR UPDATE NOWAIT")) {
+                statement.setObject(1, id);
+                try { statement.executeQuery().close(); assertFalse(expected); }
+                catch (java.sql.SQLException failure) { assertEquals("55P03", failure.getSQLState()); assertTrue(expected); }
+            } finally { connection.rollback(); }
+        } catch (java.sql.SQLException failure) { throw new AssertionError(failure); }
     }
 
     @Test void uuidOrderMatchesPostgresAcrossSignedBoundaryAndAllItemsAreLocked() {

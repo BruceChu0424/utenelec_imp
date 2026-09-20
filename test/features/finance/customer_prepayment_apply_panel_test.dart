@@ -148,6 +148,62 @@ void main() {
     expect(api.posts.last.body?['expectedVersion'], 2);
     expect(find.text('本次抵销已反转'), findsOneWidget);
   });
+
+  testWidgets(
+    'legacy source balance cannot be selected or applied from a cached response',
+    (tester) async {
+      final api = _ApplyPanelApi(legacy: true);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.financeViewAll,
+              Perm.customerPrepaymentView,
+              Perm.customerPrepaymentApply,
+              Perm.customerPrepaymentReverse,
+            }),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: FilledButton(
+                  onPressed: () => showCustomerPrepaymentApplyPanel(
+                    context,
+                    clientId: 'client-1',
+                  ),
+                  child: const Text('打开预收'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开预收'));
+      await tester.pumpAndSettle();
+      final row = tester.widget<CheckboxListTile>(
+        find.byKey(const ValueKey('customer-prepayment-prepayment-ledger-1')),
+      );
+      expect(row.enabled, isFalse);
+      expect(row.value, isFalse);
+      expect(find.textContaining('历史资金记录，仅供查询'), findsWidgets);
+      // Even an already captured callback must check the source provenance again.
+      row.onChanged?.call(true);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.byKey(
+                const ValueKey('customer-prepayment-prepayment-ledger-1'),
+              ),
+            )
+            .value,
+        isFalse,
+      );
+      expect(api.posts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _PostCall {
@@ -158,16 +214,28 @@ class _PostCall {
 }
 
 class _ApplyPanelApi extends ApiClient {
-  _ApplyPanelApi() : super(Dio());
+  _ApplyPanelApi({this.legacy = false}) : super(Dio());
 
   final posts = <_PostCall>[];
+  final bool legacy;
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/finance/customer-prepayments') return _prepayments;
+    if (path == '/finance/customer-prepayments') {
+      return {
+        ..._prepayments,
+        'items': [
+          for (final item in _prepayments['items'] as List)
+            {
+              ...(item as Map<String, dynamic>),
+              if (legacy) 'legacyImported': true,
+            },
+        ],
+      };
+    }
     if (path == '/finance/ar-ap') return _openReceivables;
     return const <String, dynamic>{};
   }

@@ -91,6 +91,10 @@ public class GoodsMasterRelationshipResolver {
         if (target.isDeleted()) {
             throw new ApiException(ErrorCode.CONFLICT, "仓库已删除");
         }
+        if (target.isLineSide()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "所属仓库必须是正常存放仓，车间流转位置不能作为货品默认仓库");
+        }
         return target;
     }
 

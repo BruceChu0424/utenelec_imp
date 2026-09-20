@@ -1,0 +1,201 @@
+{
+  "m_acc.csv": [
+    {
+      "legacy_id": 907001,
+      "code": "SYN-FIN-SECOND",
+      "name": "合成第二现金账户",
+      "init_balance": 0,
+      "receipts_total": 20,
+      "payments_total": 5,
+      "balance_current": 15,
+      "parent_legacy_id": 0,
+      "status": "使用",
+      "style_legacy_id": 907010,
+      "a_style": 0
+    }
+  ],
+  "m_style.csv": [
+    {
+      "legacy_id": 907010,
+      "style_class_id": 1,
+      "code": "SYN-FIN-ACCOUNT",
+      "name": "合成账户叶科目",
+      "parent_legacy": 0,
+      "status": 1,
+      "dept_status": false,
+      "init_total": 0,
+      "q_status": false,
+      "orient_status1": true,
+      "orient_status2": true,
+      "item_id": 907001
+    },
+    {
+      "legacy_id": 907011,
+      "style_class_id": 4,
+      "code": "SYN-FIN-EXPENSE",
+      "name": "合成费用叶科目",
+      "parent_legacy": 0,
+      "status": 1,
+      "dept_status": false,
+      "init_total": 0,
+      "q_status": false,
+      "orient_status1": true,
+      "orient_status2": true,
+      "item_id": 0
+    },
+    {
+      "legacy_id": 907012,
+      "style_class_id": 5,
+      "code": "SYN-FIN-INCOME",
+      "name": "合成收入叶科目",
+      "parent_legacy": 0,
+      "status": 1,
+      "dept_status": false,
+      "init_total": 0,
+      "q_status": false,
+      "orient_status1": true,
+      "orient_status2": true,
+      "item_id": 0
+    }
+  ],
+  "m_paid.csv": [
+    {
+      "bill_date": "2025-01-02",
+      "work_id": 900701,
+      "make_id": 900801,
+      "approver_id": 900801,
+      "status": 1,
+      "status2": 0,
+      "cur_id": 1,
+      "crate": 1,
+      "cancel": false,
+      "maker_name": "合成操作员",
+      "approver_name": "合成操作员",
+      "work_name": "合成员工",
+      "dfzh": 0,
+      "legacy_id": 907002,
+      "bill_no": "CF-SYN-SECOND",
+      "supplier_legacy_id": 900601,
+      "paid_style": 1,
+      "paid_acc": 907001,
+      "total": 5,
+      "mtotal": 5,
+      "step_id": 0
+    }
+  ],
+  "m_dpaid.csv": [
+    {
+      "bill_date": "2025-01-02",
+      "work_id": 900701,
+      "make_id": 900801,
+      "approver_id": 900801,
+      "status": 1,
+      "status2": 0,
+      "cur_id": 1,
+      "crate": 0,
+      "cancel": false,
+      "maker_name": "合成操作员",
+      "approver_name": "合成操作员",
+      "work_name": "合成员工",
+      "dfzh": 0,
+      "legacy_id": 907003,
+      "bill_no": "FY-SYN-ZERO-LOCAL",
+      "paid_style": 1,
+      "paid_acc": 907001,
+      "total": 0,
+      "mtotal": 2
+    }
+  ],
+  "m_dpaid_item.csv": [
+    {
+      "legacy_id": 907004,
+      "bill_legacy_id": 907003,
+      "style_legacy_id": 907011,
+      "total": 0,
+      "ctotal": 1,
+      "qty": 1,
+      "price": 1,
+      "dept_legacy_id": 0,
+      "acc_id": 0
+    },
+    {
+      "legacy_id": 907005,
+      "bill_legacy_id": 907003,
+      "style_legacy_id": 907011,
+      "total": 0,
+      "ctotal": 1,
+      "qty": 1,
+      "price": 1,
+      "dept_legacy_id": 0,
+      "acc_id": 0
+    }
+  ],
+  "m_oget.csv": [
+    {
+      "bill_date": "2025-01-02",
+      "work_id": 900701,
+      "make_id": 900801,
+      "approver_id": 900801,
+      "status": 1,
+      "status2": 0,
+      "cur_id": 1,
+      "crate": 1,
+      "cancel": false,
+      "maker_name": "合成操作员",
+      "approver_name": "合成操作员",
+      "work_name": "合成员工",
+      "dfzh": 0,
+      "legacy_id": 907006,
+      "bill_no": "QS-SYN-SECOND",
+      "rec_style": 1,
+      "rec_acc": 907001,
+      "total": 20,
+      "mtotal": 20
+    }
+  ],
+  "m_oget_item.csv": [
+    {
+      "legacy_id": 907007,
+      "bill_legacy_id": 907006,
+      "style_legacy_id": 907012,
+      "total": 20,
+      "ctotal": 20,
+      "dept_legacy_id": 0
+    }
+  ],
+  "m_allcheck.csv": [
+    {
+      "legacy_id": 907020,
+      "b_style": 21,
+      "bill_id": 907002,
+      "acc_id": 907001,
+      "in_total": 0,
+      "out_total": 5,
+      "bill_no": "CF-SYN-SECOND",
+      "bill_date": "2025-01-02T00:00:00Z",
+      "source": "SYNTHETIC ORIGINAL SNAPSHOT"
+    },
+    {
+      "legacy_id": 907021,
+      "b_style": 23,
+      "bill_id": 907003,
+      "acc_id": 907001,
+      "in_total": 0,
+      "out_total": 0,
+      "bill_no": "FY-SYN-ZERO-LOCAL",
+      "bill_date": "2025-01-02T00:00:00Z",
+      "source": "SYNTHETIC ORIGINAL SNAPSHOT"
+    },
+    {
+      "legacy_id": 907022,
+      "b_style": 22,
+      "bill_id": 907006,
+      "acc_id": 907001,
+      "in_total": 20,
+      "out_total": 0,
+      "bill_no": "QS-SYN-SECOND",
+      "bill_date": "2025-01-02T00:00:00Z",
+      "source": "SYNTHETIC ORIGINAL SNAPSHOT"
+    }
+  ]
+}

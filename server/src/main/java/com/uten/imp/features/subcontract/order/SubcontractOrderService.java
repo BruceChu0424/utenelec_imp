@@ -125,6 +125,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
+        // 财务审批态切片（financeApproval）：与采购订货单同构——财务通过前 status
+        // 保持 0，草稿段与「等待财务审核」段同为 status=0，按 PENDING case 集合区分。
+        String financeApproval = normalizeFinanceApprovalSlice(f.financeApproval());
+        java.util.Set<UUID> pendingFinanceIds = financeApproval == null
+                ? null
+                : approvalProjection.pendingOrderIds(orderType());
         Specification<SubcontractOrder> spec = (Root<SubcontractOrder> root,
                                                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                 CriteriaBuilder cb) -> {
@@ -141,6 +147,19 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
+            if (financeApproval != null) {
+                if ("PENDING".equals(financeApproval)) {
+                    // 空集时 in() 会生成非法 SQL：无在审单 → 恒假。
+                    if (pendingFinanceIds.isEmpty()) {
+                        ps.add(cb.disjunction());
+                    } else {
+                        ps.add(root.get("id").in(pendingFinanceIds));
+                    }
+                } else if (!pendingFinanceIds.isEmpty()) {
+                    // NONE：排除在审单；没有在审单时无需谓词。
+                    ps.add(cb.not(root.get("id").in(pendingFinanceIds)));
+                }
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
@@ -384,6 +403,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         if (goodsIds == null || goodsIds.isEmpty()) {
             return Map.of();
         }
+        boolean priceMasked = subcontractPriceMasked();
         Map<UUID, MasterDefaultTermsPerGoods> result = new LinkedHashMap<>();
         for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery(
@@ -393,7 +413,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                        sup.default_currency_id,
                        cur.exchange_rate,
                        sup.default_tax_rate,
-                       g.default_subcontract_price
+                       g.default_subcontract_price,
+                       g.default_subcontract_price_supplier_id,
+                       g.default_subcontract_price_color_id,
+                       g.default_subcontract_price_unit_id,
+                       g.default_subcontract_price_currency_id,
+                       g.default_subcontract_price_tax_rate
                 FROM goods g
                 LEFT JOIN suppliers sup
                   ON sup.id = g.default_supplier_id
@@ -406,8 +431,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                        OR g.default_subcontract_price IS NOT NULL)
                 """).setParameter("ids", goodsIds))) {
             result.put((UUID) row[0], new MasterDefaultTermsPerGoods(
-                    (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    (BigDecimal) row[4], (BigDecimal) row[5], (BigDecimal) row[6]));
+                    (UUID) row[1], priceMasked ? null : (UUID) row[2],
+                    priceMasked ? null : (UUID) row[3], priceMasked ? null : (BigDecimal) row[4],
+                    priceMasked ? null : (BigDecimal) row[5], priceMasked ? null : (BigDecimal) row[6],
+                    priceMasked ? null : new com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext(
+                            (UUID) row[7], (UUID) row[8], (UUID) row[9],
+                            (UUID) row[10], (BigDecimal) row[11])));
         }
         return result;
     }
@@ -422,7 +451,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             UUID currencyId,
             BigDecimal exchangeRate,
             BigDecimal taxRate,
-            BigDecimal subcontractPrice) {}
+            BigDecimal subcontractPrice,
+            com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext) {}
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
@@ -486,6 +516,19 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Override
     public String orderType() {
         return "SUBCONTRACT";
+    }
+
+    /**
+     * 财务审批态切片参数：null/空 = 不切片（legacy 口径，status=0 含在审单）；
+     * NONE = 未提交的真草稿；PENDING = 已提交在审。非法值 fail-closed。
+     */
+    private static String normalizeFinanceApprovalSlice(String raw) {
+        String value = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+        return switch (value) {
+            case "", "NONE", "PENDING" -> value.isEmpty() ? null : value;
+            default -> throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "财务审批态筛选无效");
+        };
     }
 
     private com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockOrderRequest(UUID id,OrderSaveRequest req) {

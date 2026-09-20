@@ -352,10 +352,13 @@ class ProductionDailyReportCommandTest {
         Query command = query(false);
         Query materialUsages = query(false);
         when(materialUsages.getResultList()).thenReturn(List.of());
+        Query workers = query(false);
+        when(workers.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
             if (sql.contains("FROM production_daily_report_commands")) return command;
+            if (sql.contains("production_daily_report_workers")) return workers;
             // V583：重放路径最后走 detail()，会读一次本单已登记的实际用料。
             if (sql.contains("production_daily_report_material_usages")) {
                 return materialUsages;
@@ -386,17 +389,19 @@ class ProductionDailyReportCommandTest {
     }
 
     @Test
-    void preV427SingleWorkerHashStillReplaysWithoutRevalidatingTheSnapshot() {
+    void outdatedSingleWorkerFingerprintIsRejectedWithoutRewritingItsStoredCommand() {
         UUID actorId = UUID.randomUUID();
-        UUID employeeId = UUID.randomUUID();
-        UUID workerId = UUID.randomUUID();
+        UUID workerId = UUID.fromString("00000000-0000-0000-0000-000000000003");
         UUID reportId = UUID.randomUUID();
         DailyReportSaveRequest request = request(
-                "legacy-worker-key", null, UUID.randomUUID(), UUID.randomUUID(),
+                "retired-worker-key", null,
+                UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                UUID.fromString("00000000-0000-0000-0000-000000000002"),
                 null, null, BigDecimal.ONE);
         request.setWorkerId(workerId);
-        String legacyHash =
-                ProductionDailyReportService.legacyCreateRequestHash(request);
+        // Frozen V1 hash of this exact input; the retired hashing algorithm is
+        // deliberately absent from production code and from this test.
+        String legacyHash = "23f9beb069ec0dfc6cbb443ab5346862cfd4e8c0a52bd10ad590a2a7ea9e39c9";
         assertNotEquals(
                 legacyHash,
                 ProductionDailyReportService.createRequestHash(request));
@@ -405,44 +410,40 @@ class ProductionDailyReportCommandTest {
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
                         new Object[]{legacyHash, reportId}));
-        Query workerRead = query(false);
-        when(workerRead.getResultList()).thenReturn(List.of(workerId));
-        Query materialUsages = query(false);
-        when(materialUsages.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
             if (sql.contains("FROM production_daily_report_commands")) {
                 return command;
             }
-            if (sql.contains("SELECT employee_id")
-                    && sql.contains("production_daily_report_workers")) {
-                return workerRead;
-            }
-            // V583：重放路径最后走 detail()，会读一次本单已登记的实际用料。
-            if (sql.contains("production_daily_report_material_usages")) {
-                return materialUsages;
-            }
             throw new AssertionError("unexpected SQL: " + sql);
         });
         when(currentUser.requireId()).thenReturn(actorId);
-        ProductionDailyReport existing = new ProductionDailyReport();
-        existing.setId(reportId);
-        existing.setBillNo("SR20260828000002");
-        existing.setBillDate(LocalDate.of(2026, 8, 28));
-        existing.setWorkerId(workerId);
-        existing.setMakerId(employeeId);
-        existing.setStatus((short) 0);
-        when(reportRepo.findById(reportId)).thenReturn(Optional.of(existing));
-        when(itemRepo.findByReportIdOrderByLineNoAsc(reportId)).thenReturn(List.of());
-        when(nameResolver.nameOf(employeeId)).thenReturn("Planner");
-
-        DailyReportDetail replay = service.create(request);
-
-        assertEquals(List.of(workerId), replay.getWorkerIds());
+        ApiException failure=assertThrows(ApiException.class,()->service.create(request));
+        assertEquals(ErrorCode.CONFLICT,failure.getCode());
+        verify(reportRepo, never()).findById(any());
         verify(reportRepo, never()).saveAndFlush(any());
         verify(em, never()).createNativeQuery(argThat(
                 sql -> sql.contains("production_department_tree")));
+    }
+
+    @Test
+    void canonicalWorkerRelationIsReadEvenWhenNoSingleWorkerMirrorExists() {
+        UUID report=UUID.randomUUID(),first=UUID.randomUUID(),second=UUID.randomUUID();
+        Query workers=query(false);when(workers.getResultList()).thenReturn(List.of(first,second));
+        when(em.createNativeQuery(anyString())).thenReturn(workers);
+        List<UUID> actual=org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,"reportWorkerIds",report,null);
+        assertEquals(List.of(first,second),actual);
+    }
+
+    @Test
+    void missingWorkerRelationIsAnExplicitDataErrorInsteadOfRuntimeHeaderFallback() {
+        Query workers=query(false);when(workers.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(workers);
+        ApiException failure=assertThrows(ApiException.class,()->org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service,"reportWorkerIds",UUID.randomUUID(),UUID.randomUUID()));
+        assertEquals(ErrorCode.CONFLICT,failure.getCode());
+        org.junit.jupiter.api.Assertions.assertTrue(failure.getMessage().contains("参与人员记录不完整"));
     }
 
     @Test

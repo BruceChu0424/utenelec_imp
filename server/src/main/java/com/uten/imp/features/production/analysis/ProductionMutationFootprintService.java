@@ -369,13 +369,21 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                     "PURCHASE_REQUEST".equals(row[1]) ? CommercialType.PURCHASE_REQUEST : CommercialType.SUBCONTRACT_APPLICATION,
                     (UUID)row[2]));
         }
+        // Header facts are live on every discovery, but identical across its
+        // source rows. Compute them once per analysis before the one-to-many join.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT analysis.id,fn_warehouse_main_id(analysis.warehouse_id),md5(to_jsonb(analysis)::text),
+                WITH analysis_headers AS MATERIALIZED (
+                    SELECT analysis.id,fn_warehouse_main_id(analysis.warehouse_id) AS main_warehouse_id,
+                           md5(to_jsonb(analysis)::text) AS snapshot
+                    FROM production_material_analyses analysis
+                    WHERE analysis.id IN (:ids) AND analysis.is_deleted=FALSE
+                )
+                SELECT analysis.id,analysis.main_warehouse_id,analysis.snapshot,
                        item.id,sale.order_id,item.goods_id,item.color_id,md5(to_jsonb(item)::text)
-                FROM production_material_analyses analysis
+                FROM analysis_headers analysis
                 LEFT JOIN production_material_analysis_items item ON item.analysis_id=analysis.id AND item.is_deleted=FALSE
                 LEFT JOIN sales_order_items sale ON sale.id=item.sales_order_item_id AND item.source_type='SALES_ORDER_ITEM'
-                WHERE analysis.id IN (:ids) AND analysis.is_deleted=FALSE ORDER BY analysis.id,item.id
+                ORDER BY analysis.id,item.id
                 """).setParameter("ids", analyses))) {
             result.row("analysis", row); if (row[1]!=null) result.warehouses.add((UUID) row[1]);
             result.sales((UUID) row[4]); result.inventory((UUID) row[5], (UUID) row[6]);

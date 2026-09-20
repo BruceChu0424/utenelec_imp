@@ -63,12 +63,12 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
     @BeforeAll static void database() throws Exception {
         source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());jdbc=new JdbcTemplate(source);
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,code text,name text,is_deleted boolean,is_accountable boolean,is_defective boolean,is_line_side boolean DEFAULT FALSE)");
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY,min_qty double precision)");
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY,min_qty double precision, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)");
         jdbc.execute("CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,goods_id uuid,color_id uuid,unit_id uuid,active boolean)");
         jdbc.execute("CREATE INDEX ON production_material_analysis_materials(analysis_id,goods_id)");
         jdbc.execute("CREATE TABLE stock_facts(warehouse_id uuid,goods_id uuid,color_id uuid,on_hand_qty numeric,reserved_qty numeric,available_qty numeric)");
         jdbc.execute("CREATE VIEW v_stock_available AS SELECT * FROM stock_facts");
-        jdbc.execute("CREATE TABLE stock_reservations(id uuid PRIMARY KEY,warehouse_id uuid,goods_id uuid,color_id uuid,is_deleted boolean,status integer,owner_type text,owner_id uuid,qty numeric,consumed_qty numeric,released_qty numeric)");
+        jdbc.execute("CREATE TABLE stock_reservations(id uuid PRIMARY KEY,warehouse_id uuid,goods_id uuid,color_id uuid,is_deleted boolean,status integer,owner_type text,owner_id uuid,qty numeric,consumed_qty numeric,released_qty numeric, material_projection_initial_consumed_qty numeric(18,4), material_projection_tx_id xid8)");
         jdbc.execute("CREATE INDEX ON stock_reservations(warehouse_id,goods_id,color_id)");
         jdbc.execute("CREATE TABLE preplan_stock_entitlement_events(stock_reservation_id uuid)");
         jdbc.execute("CREATE TABLE entitlement_facts(stock_reservation_id uuid,beneficiary_analysis_id uuid,beneficiary_analysis_material_id uuid,effective_qty numeric)");
@@ -81,8 +81,8 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute("CREATE TABLE purchase_request_items(id uuid PRIMARY KEY,request_id uuid,qty numeric,ordered_qty numeric,unit_rate numeric,is_deleted boolean)");
         jdbc.execute("CREATE TABLE purchase_orders(id uuid PRIMARY KEY,status integer,is_deleted boolean)");
         jdbc.execute("CREATE TABLE purchase_order_items(id uuid PRIMARY KEY,order_id uuid,qty numeric,received_qty numeric,returned_qty numeric,unit_rate numeric,is_deleted boolean)");
-        jdbc.execute("CREATE TABLE purchase_receipts(id uuid PRIMARY KEY,status integer,is_deleted boolean)");
-        jdbc.execute("CREATE TABLE purchase_receipt_items(id uuid PRIMARY KEY,order_item_id uuid,receipt_id uuid,qty numeric,unit_rate numeric,is_deleted boolean)");
+        jdbc.execute("CREATE TABLE purchase_receipts(id uuid PRIMARY KEY,status integer,is_deleted boolean,legacy_import_run_id uuid)");
+        jdbc.execute("CREATE TABLE purchase_receipt_items(id uuid PRIMARY KEY,order_item_id uuid,receipt_id uuid,qty numeric,unit_rate numeric,is_deleted boolean,legacy_import_run_id uuid)");
         jdbc.execute("CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY,receipt_item_id uuid,receipt_type text,status text,warehouse_stocked_base_qty numeric,failed_base_qty numeric,received_base_qty numeric)");
         jdbc.execute("CREATE TABLE procurement_iqc_rejection_cases(order_item_id uuid,receipt_type text,failed_base_qty numeric,is_deleted boolean,return_recorded_at timestamptz,status text)");
         jdbc.execute("CREATE TABLE purchase_order_item_sources(id uuid PRIMARY KEY,order_item_id uuid,request_item_id uuid,alloc_qty numeric,line_no integer)");
@@ -91,6 +91,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute(function(migration,"fn_procurement_bounded_interval_qty"));
         jdbc.execute(migration.substring(migration.indexOf("CREATE OR REPLACE VIEW v_preplan_buy_action_slice_progress")));
         jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V489__same_main_warehouse_material_fulfillment.sql")),"fn_warehouse_main_id"));
+        jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V613__operational_warehouse_leaf_identity.sql")),"fn_warehouse_is_operational_leaf"));
         original=Files.readString(Path.of("src/test/resources/fixtures/material-analysis/warehouse-breakdown-v557-before.sql"));
     }
 
@@ -142,6 +143,18 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(
                 new BigDecimal(String.valueOf(row(after,G2,null,UNIT,LEAF).get(10)))));
         assertEquals(before,rows(captureCurrentService()),"The query actually called by the service must retain this contract");
+    }
+
+    @Test void standaloneNormalStockRemainsPublicWhenATechnicalLocationIsAdded() throws Exception {
+        UUID technical=id("technical-only-child");
+        warehouse(technical,OTHER,"B-LS",false,true,false);
+        jdbc.update("UPDATE warehouses SET is_line_side=TRUE WHERE id=?",technical);
+        jdbc.update("INSERT INTO stock_facts VALUES (?,?,NULL,30,0,30),(?,?,NULL,100,0,100)",OTHER,G,technical,G);
+        var actual=rows(MaterialAnalysisWarehouseBreakdownReader.SQL);
+        assertEquals(Boolean.TRUE,row(actual,G,null,UNIT,OTHER).get(12));
+        assertEquals(Boolean.FALSE,row(actual,G,null,UNIT,technical).get(12));
+        assertEquals(bd("30"),row(actual,G,null,UNIT,OTHER).get(6));
+        assertEquals(bd("100"),row(actual,G,null,UNIT,technical).get(6));
     }
 
     @Test void mergedSafetySourcesKeepTheirOriginalFifoReturnIntervals() throws Exception {

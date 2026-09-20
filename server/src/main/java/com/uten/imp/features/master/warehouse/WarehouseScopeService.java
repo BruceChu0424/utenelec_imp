@@ -44,7 +44,7 @@ public class WarehouseScopeService {
         Set<UUID> parents = new HashSet<>();
         for (Warehouse warehouse : all) {
             byId.put(warehouse.getId(), warehouse);
-            if (warehouse.getParentId() != null) parents.add(warehouse.getParentId());
+            if (warehouse.getParentId() != null && !warehouse.isLineSide()) parents.add(warehouse.getParentId());
         }
         UUID mainId = mainWarehouseId(warehouseId, byId);
         if (mainId == null) return Set.of(warehouseId);
@@ -141,14 +141,18 @@ public class WarehouseScopeService {
         if (warehouseId == null) return;
         String parentName = null;
         boolean isParent = false;
+        boolean hasAnyChild = false;
+        boolean isLineSide = false;
         for (Warehouse w : activeWarehouses()) {
-            if (warehouseId.equals(w.getParentId())) {
+            if (warehouseId.equals(w.getParentId())) hasAnyChild = true;
+            if (warehouseId.equals(w.getParentId()) && !w.isLineSide()) {
                 isParent = true;
             } else if (warehouseId.equals(w.getId())) {
                 parentName = w.getName();
+                isLineSide = w.isLineSide();
             }
         }
-        if (isParent) {
+        if (isParent || (isLineSide && hasAnyChild)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     label + "必须选择具体子仓库，主仓库「"
                             + (parentName == null ? warehouseId : parentName)
@@ -170,13 +174,25 @@ public class WarehouseScopeService {
      * Existing proven stock issues deliberately continue using their original location. */
     @Transactional
     public void requireActiveLeafWarehouse(UUID warehouseId, String label) {
+        requireActiveLeafWarehouse(warehouseId, label, false);
+    }
+
+    /** Only the verified workshop direct-transfer lane may post to this location. */
+    @Transactional
+    public void requireActiveLineSideWarehouse(UUID warehouseId, String label) {
+        requireActiveLeafWarehouse(warehouseId, label, true);
+    }
+
+    private void requireActiveLeafWarehouse(UUID warehouseId, String label, boolean lineSide) {
         if (warehouseId == null) return;
         Map<UUID, Warehouse> byId = new HashMap<>();
         Set<UUID> parents = new HashSet<>();
+        Set<UUID> allParents = new HashSet<>();
         for (Warehouse warehouse : activeWarehouses()) {
             if (warehouse.isDeleted()) continue;
             byId.put(warehouse.getId(), warehouse);
-            if (warehouse.getParentId() != null) parents.add(warehouse.getParentId());
+            if (warehouse.getParentId() != null) allParents.add(warehouse.getParentId());
+            if (warehouse.getParentId() != null && !warehouse.isLineSide()) parents.add(warehouse.getParentId());
         }
         Set<UUID> path = new HashSet<>();
         UUID ancestorId = warehouseId;
@@ -195,7 +211,12 @@ public class WarehouseScopeService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     label + "不存在、已删除或不参与库存记账，请重新选择");
         }
-        if (parents.contains(warehouseId)) {
+        if (selected.isLineSide() != lineSide) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, lineSide
+                    ? label + "必须是本次车间直送的流转位置"
+                    : label + "必须选择正常仓库，车间流转位置仅用于同车间直送");
+        }
+        if (parents.contains(warehouseId) || (selected.isLineSide() && allParents.contains(warehouseId))) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     label + "必须选择具体子仓库，主仓库只用于汇总查询");
         }

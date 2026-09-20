@@ -85,4 +85,6 @@ public class FinanceReceiptDetail {
     public String getBankFeeAccountAmountExact() { return com.uten.imp.common.util.DecimalText.of(bankFeeAccountAmount); }
     public String getOtherFeeAccountAmountExact() { return com.uten.imp.common.util.DecimalText.of(otherFeeAccountAmount); }
     public String getFeeAccountExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(feeAccountExchangeRate); }
+    /** The source identity is immutable; ordinary save requests cannot set it. */
+    public boolean isLegacyImported() { return legacyId != null; }
 }

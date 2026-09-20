@@ -20,6 +20,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -455,7 +456,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     if (!mounted) return null;
     return showUtenWarehousePickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy,
+      hierarchy: names.warehouseHierarchy
+          .where((warehouse) => !warehouse.isLineSide)
+          .toList(),
       initialWarehouseId: currentWarehouseId,
       title: '选择所属仓库', // TODO(l10n): 补 arb
       allowParent: true,
@@ -943,6 +946,25 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
+    final canViewLearnedPrice =
+        !d.costMasked &&
+        (ref.watch(isSuperAdminProvider) ||
+            ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView));
+    String? learnedPrice(GoodsLearnedPriceInfo? info, double? oldValue) {
+      final price = info?.price ?? oldValue;
+      if (price == null) return null;
+      final l10n = AppLocalizations.of(context);
+      if (info == null || !info.contextComplete) {
+        return '$price (${l10n.goodsLearnedPriceUnconfirmed})';
+      }
+      return [
+        '$price ${info.currencyName}/${info.unitName}',
+        if (info.supplierName != null) info.supplierName!,
+        if (info.colorName != null) info.colorName!,
+        '${l10n.goodsLearnedPriceTaxRate} ${info.taxRate}%',
+      ].join(' · ');
+    }
+
     String s(Object? v) => v == null ? '' : '$v';
     String withUnit(Object? v, String? unitId, int? unitLegacyId) {
       if (v == null) return '';
@@ -1000,8 +1022,19 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           withUnit(goodsQtyText(d.orderMultipleQty), d.unitId, d.unitLegacyId),
         ),
         // V593 单一事实源两价：订货行价预填；每次保存采购/委外单自动写回最新价。
-        MasterDetailRow('采购单价', d.defaultPurchasePrice?.toString()),
-        MasterDetailRow('委外单价', d.defaultSubcontractPrice?.toString()),
+        if (canViewLearnedPrice)
+          MasterDetailRow(
+            '采购单价',
+            learnedPrice(d.defaultPurchasePriceInfo, d.defaultPurchasePrice),
+          ),
+        if (canViewLearnedPrice)
+          MasterDetailRow(
+            '委外单价',
+            learnedPrice(
+              d.defaultSubcontractPriceInfo,
+              d.defaultSubcontractPrice,
+            ),
+          ),
       ]),
       _DetailSection('库存', [
         // 所属仓库 (V587)：货品平时归哪个仓管，不是下面那几行的单据落点仓。

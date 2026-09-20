@@ -22,6 +22,7 @@ class SubcontractDocFilter {
     this.dateFrom,
     this.dateTo,
     this.closed,
+    this.financeApproval,
   });
   final String? keyword;
   final String? supplierId;
@@ -33,6 +34,10 @@ class SubcontractDocFilter {
   /// 结案筛选（仅委外订货单）：false=未完成（部分入库）/ true=已结案
   final bool? closed;
 
+  /// 财务审批态切片（仅订货单端点支持）：财务通过前 status=0，
+  /// 「草稿」段传 'NONE'（排除在审单）、「等待财务审核」段传 'PENDING'。
+  final String? financeApproval;
+
   Map<String, dynamic> toQuery() => <String, dynamic>{
     if (keyword != null && keyword!.trim().isNotEmpty)
       'keyword': keyword!.trim(),
@@ -42,6 +47,7 @@ class SubcontractDocFilter {
     if (dateFrom != null) 'dateFrom': dateFrom,
     if (dateTo != null) 'dateTo': dateTo,
     if (closed != null) 'closed': closed,
+    if (financeApproval != null) 'financeApproval': financeApproval,
   };
 }
 

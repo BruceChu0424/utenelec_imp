@@ -17,6 +17,7 @@ enum StockDocType {
   const StockDocType(this.code, this.label);
   final String code;
   final String label;
+  bool get supportsManualDraft => this != StockDocType.wdraw;
 
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
@@ -171,67 +172,6 @@ class StockDocItem {
   );
 }
 
-class ReturnableMaterialSource {
-  const ReturnableMaterialSource({
-    required this.planId,
-    required this.packageId,
-    required this.drawId,
-    required this.drawNo,
-    required this.drawItemId,
-    required this.warehouseId,
-    required this.goodsId,
-    required this.goodsCode,
-    required this.goodsName,
-    required this.unitId,
-    required this.unitRate,
-    required this.issuedQty,
-    required this.returnedQty,
-    required this.maxReturnQty,
-    this.colorId,
-    this.colorName,
-    this.unitName,
-  });
-
-  final String planId;
-  final String packageId;
-  final String drawId;
-  final String drawNo;
-  final String drawItemId;
-  final String warehouseId;
-  final String goodsId;
-  final String goodsCode;
-  final String goodsName;
-  final String? colorId;
-  final String? colorName;
-  final String unitId;
-  final String? unitName;
-  final double unitRate;
-  final double issuedQty;
-  final double returnedQty;
-  final double maxReturnQty;
-
-  factory ReturnableMaterialSource.fromJson(Map<String, dynamic> json) =>
-      ReturnableMaterialSource(
-        planId: json['planId'] as String,
-        packageId: json['packageId'] as String,
-        drawId: json['drawId'] as String,
-        drawNo: json['drawNo'] as String,
-        drawItemId: json['drawItemId'] as String,
-        warehouseId: json['warehouseId'] as String,
-        goodsId: json['goodsId'] as String,
-        goodsCode: json['goodsCode']?.toString() ?? '',
-        goodsName: json['goodsName']?.toString() ?? '',
-        colorId: json['colorId'] as String?,
-        colorName: json['colorName'] as String?,
-        unitId: json['unitId'] as String,
-        unitName: json['unitName'] as String?,
-        unitRate: (json['unitRate'] as num?)?.toDouble() ?? 1,
-        issuedQty: (json['issuedQty'] as num?)?.toDouble() ?? 0,
-        returnedQty: (json['returnedQty'] as num?)?.toDouble() ?? 0,
-        maxReturnQty: (json['maxReturnQty'] as num?)?.toDouble() ?? 0,
-      );
-}
-
 class StockDocDetail {
   const StockDocDetail({
     required this.id,
@@ -257,6 +197,9 @@ class StockDocDetail {
     this.createdAt,
     this.items = const [],
     this.productionLinked = false,
+    this.productionMaterialReturn = false,
+    this.materialReturnSourceWarehouseId,
+    this.materialReturnMainWarehouseId,
     this.canEdit = false,
     this.canDelete = false,
     this.restrictionReason,
@@ -300,6 +243,9 @@ class StockDocDetail {
   final String? createdAt;
   final List<StockDocItem> items;
   final bool productionLinked;
+  final bool productionMaterialReturn;
+  final String? materialReturnSourceWarehouseId;
+  final String? materialReturnMainWarehouseId;
   final bool canEdit;
   final bool canDelete;
   final String? restrictionReason;
@@ -333,6 +279,11 @@ class StockDocDetail {
     makerName: json['makerName'] as String?,
     createdAt: json['createdAt'] as String?,
     productionLinked: (json['productionLinked'] as bool?) ?? false,
+    productionMaterialReturn: json['productionMaterialReturn'] == true,
+    materialReturnSourceWarehouseId:
+        json['materialReturnSourceWarehouseId'] as String?,
+    materialReturnMainWarehouseId:
+        json['materialReturnMainWarehouseId'] as String?,
     canEdit: (json['canEdit'] as bool?) ?? false,
     canDelete: (json['canDelete'] as bool?) ?? false,
     restrictionReason: json['restrictionReason'] as String?,

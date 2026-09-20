@@ -34,35 +34,35 @@ import static org.mockito.Mockito.when;
 class FinanceReportPartyStatementTest {
 
     @Test
-    void dateRangeCarriesPriorFactsIntoOpeningBalanceButOnlyReturnsInRangeRows() {
-        EntityManager em = mock(EntityManager.class);
-        Query query = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(query);
-        when(query.setParameter(anyString(), any())).thenReturn(query);
-        when(query.getResultList()).thenReturn(List.<Object[]>of(
-                row(LocalDate.of(2026, 1, 5), "AR-OLD", "100", "700", "0", "0", "USD"),
-                row(LocalDate.of(2026, 2, 10), "SK-NEW", "0", "0", "30", "210", "USD")));
-
-        FinanceReportService service = new FinanceReportService(
-                em,
-                unrestrictedAccess(),
-                mock(SystemSettingsService.class),
-                mock(FinanceStatementService.class),
-                mock(FinanceCostService.class),
-                mock(GlReportService.class),
-                mock(FixedAssetService.class));
-
-        ReportTableResponse result = service.partyStatementFlow(
-                UUID.randomUUID(), "AR",
-                LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28),
-                1, 50);
-
+    void pageUsesDatabaseBalancesAfterApplyingTheCompleteHistoryWindow() {
+        EntityManager em=mock(EntityManager.class);
+        Query data=mock(Query.class),guard=mock(Query.class),count=mock(Query.class),totals=mock(Query.class);
+        for(Query query:List.of(data,guard,count,totals))when(query.setParameter(anyString(),any())).thenReturn(query);
+        when(guard.getSingleResult()).thenReturn(0L); when(count.getSingleResult()).thenReturn(1L);
+        when(totals.getResultList()).thenReturn(List.of());
+        when(data.getResultList()).thenReturn(List.<Object[]>of(new Object[]{Date.valueOf("2026-02-10"),"SK-NEW","USD",
+                BigDecimal.ZERO,null,BigDecimal.ZERO,new BigDecimal("30"),new BigDecimal("7"),new BigDecimal("210"),
+                new BigDecimal("70"),new BigDecimal("7"),new BigDecimal("490"),"已核验"}));
+        List<String> sql=new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(call->{
+            String value=call.getArgument(0);sql.add(value);
+            if(value.startsWith("SELECT count(*) FROM ar_ap_ledger ledger")
+                    ||value.startsWith("SELECT count(*) FROM finance_"))return guard;
+            if(value.startsWith("SELECT count(*) FROM ("))return count;
+            if(value.startsWith("SELECT \"billDate\""))return data;
+            return totals;
+        });
+        ReportTableResponse result=service(em).partyStatementFlow(UUID.randomUUID(),"AR",
+                LocalDate.of(2026,2,1),LocalDate.of(2026,2,28),1,50);
         assertThat(result.rows()).hasSize(1);
-        Map<String, Object> row = result.rows().getFirst();
-        assertThat(row.get("refNo")).isEqualTo("SK-NEW");
-        assertThat((BigDecimal) row.get("balanceOriginal")).isEqualByComparingTo("70");
-        assertThat((BigDecimal) row.get("balanceLocal")).isEqualByComparingTo("490");
-        verify(query, never()).setParameter("from", LocalDate.of(2026, 2, 1));
+        assertThat(result.rows().getFirst().get("refNo")).isEqualTo("SK-NEW");
+        assertThat((BigDecimal)result.rows().getFirst().get("balanceOriginal")).isEqualByComparingTo("70");
+        assertThat((BigDecimal)result.rows().getFirst().get("balanceLocal")).isEqualByComparingTo("490");
+        verify(data).setParameter("from",LocalDate.of(2026,2,1));
+        verify(data).setParameter("__limit",50);
+        assertThat(sql).anySatisfy(value->assertThat(value).contains("ROWS UNBOUNDED PRECEDING",
+                "FROM windowed WHERE CAST(:from AS date) IS NULL OR event_date>=:from",
+                "LIMIT :__limit OFFSET :__offset"));
     }
 
     @Test
@@ -72,6 +72,7 @@ class FinanceReportPartyStatementTest {
         List<String> sqlStatements = new ArrayList<>();
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
+        when(query.getSingleResult()).thenReturn(0L);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             sqlStatements.add(invocation.getArgument(0));
             return query;
@@ -80,10 +81,10 @@ class FinanceReportPartyStatementTest {
         service(em).partyStatementFlow(
                 UUID.randomUUID(), "AP", null, null, 1, 50);
 
-        assertThat(sqlStatements).singleElement().satisfies(sql -> {
+        assertThat(sqlStatements.stream().filter(sql -> sql.contains("WITH cash_facts AS")).toList()).isNotEmpty().allSatisfy(sql -> {
             String compact = sql.replaceAll("\\s+", " ").trim();
             assertThat(compact)
-                    .contains("AND payment.supplier_id IS NOT NULL AND 1=1")
+                    .contains("AND t.supplier_id=:pid AND 1=1")
                     .doesNotContain("AND1=1");
         });
     }
@@ -225,7 +226,7 @@ class FinanceReportPartyStatementTest {
                 .contains("COALESCE(c.credit_floor,0) AS \"creditFloor\"")
                 .contains("- COALESCE(c.credit_floor,0) AS \"overFloor\"")
                 .contains("WHEN 'DEPOSIT' THEN '定金'")
-                .contains("AND open_item_kind='RECEIVABLE'")
+                .contains("AND (open_item_kind='RECEIVABLE' OR legacy_import_run_id IS NOT NULL)")
                 .contains("FROM customer_open_item_offsets allocation")
                 .doesNotContain("open_item_kind='CUSTOMER_PREPAYMENT'")
                 .doesNotContain("GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) - COALESCE(c.credit_floor,0), 0)");

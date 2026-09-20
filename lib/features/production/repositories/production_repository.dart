@@ -35,6 +35,7 @@ import '../models/analysis_linked_sales_order.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_analysis_projection.dart';
 import '../models/material_priority_replenishment.dart';
 import '../models/material_future_transfer.dart';
 import '../models/production_plan.dart';
@@ -87,7 +88,7 @@ class ProductionPlanRepository {
 
   static const _materialAnalysesBase = '/production/material-analyses';
   static const _materialAnalysisProjection = {
-    'projection': 'shared-warehouses-v1',
+    'projection': materialAnalysisProjectionVersion,
   };
 
   Future<PagedResult<ProductionPlanListItem>> list({
@@ -464,9 +465,7 @@ class ProductionPlanRepository {
     return ProductionExecutionSegmentView.fromJson(json);
   }
 
-  /// 单段开工（2026-09-06 车间任务页改版）：READY（物料齐套）或 DISPATCHED
-  /// 均可直接开工——与报工自动开工（AUTO_START_ON_REPORT）同口径；服务端会
-  /// 校验齐套、完整分配与领料全部完成。
+  /// 统一开工入口：按已确认路线核对真实投料；报工只接受已开工任务。
   Future<ProductionExecutionSegmentView> startExecutionSegment(
     String planId,
     String segmentId, {
@@ -478,26 +477,6 @@ class ProductionPlanRepository {
       body: {
         'expectedVersion': expectedVersion,
         'idempotencyKey': idempotencyKey,
-      },
-    ); // ENDPOINT
-    return ProductionExecutionSegmentView.fromJson(json);
-  }
-
-  /// 「部分开工 · 持续生产」(V595)：同车间直送子件分次到料、到一批投一批，
-  /// 同一张工单只开一次工；仓库物料仍须一次领齐(服务端缺料时直接报出缺什么)。
-  Future<ProductionExecutionSegmentView> startContinuousExecutionSegment(
-    String planId,
-    String segmentId, {
-    required int expectedVersion,
-  }) async {
-    final json = await api.post(
-      '/production/plans/$planId/execution-segments/$segmentId/start-continuous',
-      body: {
-        'expectedVersion': expectedVersion,
-        'idempotencyKey': businessIdempotencyKey(
-          'execution-segment-start-continuous',
-          '$planId|$segmentId|$expectedVersion',
-        ),
       },
     ); // ENDPOINT
     return ProductionExecutionSegmentView.fromJson(json);

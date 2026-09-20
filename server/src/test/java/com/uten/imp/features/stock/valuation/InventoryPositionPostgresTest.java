@@ -179,7 +179,8 @@ class InventoryPositionPostgresTest {
                 .isInstanceOf(ApiException.class).hasMessageContaining("唯一成本归属");
         assertThatThrownBy(()->locked(suggested,()->positions.reverseStore(
                 new ReverseStore(context(),UUID.randomUUID(),suggested,bd("0"),stored.movementId()))))
-                .isInstanceOf(ApiException.class).hasMessageContaining("已有出库");
+                .isInstanceOf(ApiException.class).hasMessage("原入库与当前库存池不一致，不能猜测撤回来源")
+                .extracting(failure -> ((ApiException) failure).getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT);
         issue(actual,"1");
         assertThatThrownBy(()->locked(actual,()->positions.reverseStore(
                 new ReverseStore(context(),UUID.randomUUID(),actual,bd("9"),stored.movementId()))))

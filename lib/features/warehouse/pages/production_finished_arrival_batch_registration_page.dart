@@ -12,6 +12,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../widgets/arrival_registration_reversal_dialog.dart';
@@ -212,8 +213,19 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         _validationError = null;
         _suggestionError = null;
       });
-      if (warehouseId?.isNotEmpty == true && _editableRows.isNotEmpty) {
-        _applyWarehouseToRows(_editableRows, warehouseId!, autofilled: true);
+      final selectableWarehouses = WarehouseSelection(
+        ref.read(masterNameServiceProvider).warehouseHierarchy,
+      ).selectableIds;
+      for (final row in _editableRows) {
+        final masterWarehouse = row.item.lastWarehouseId;
+        final selected = selectableWarehouses.contains(masterWarehouse)
+            ? masterWarehouse
+            : warehouseId;
+        if (selected != null && selected.isNotEmpty) {
+          row.setWarehouse(selected, autofilled: true);
+        }
+      }
+      if (_editableRows.any((row) => row.warehouseId.value != null)) {
         await _reloadSuggestions();
       }
     } on ApiException catch (error) {
@@ -1048,9 +1060,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                 ),
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
-                  '成品仓、库位号逐行必填；上次登记仓自动预填（黄框待核对）。'
-                  '勾选多行后在任意一行改仓/写库位即批量落值，也可右键批量设置。'
-                  '提交后每张报工单各生成一份品质送检；品质放行后再进行最终点收。',
+                  AppLocalizations.of(context).warehouseBatchRegistrationHelp,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onTertiaryContainer,
                   ),
@@ -1353,7 +1363,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                   ? requiredEmptyBorder(theme)
                   : null,
             ),
-            info: row.warehouseAutofilled ? '已带入上次登记成品仓，请核对本次实际存放仓库' : null,
+            info: row.warehouseAutofilled
+                ? AppLocalizations.of(context).warehouseSuggestedDestinationHint
+                : null,
           ),
           theme,
           autofilled:

@@ -489,6 +489,9 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                     reservation=rows.getObject(4,UUID.class);qty=rows.getBigDecimal(5);assertTrue(!rows.next());
                 }
             }
+            // Assignment and explicit route/request belong before physical custody.
+            // Keep the real guards active so this fixture cannot reassign issued material.
+            prepareDraw(connection, segment, draw, item, qty, department, employee, actor);
             update(connection,"UPDATE stock_documents SET status=1 WHERE id=?",draw);
             UUID event=com.uten.imp.support.ProductionMaterialMovementTestSupport.beginEvent(connection,draw,"ISSUE","issue-"+segment);
             try {
@@ -506,17 +509,8 @@ class ExecutionSegmentSalesAllocationPostgresTest {
             }catch(Exception failure){com.uten.imp.support.ProductionMaterialMovementTestSupport.abort(connection);throw failure;}
             connection.setAutoCommit(false);
             try {
-                long beforeAssignment=segmentVersion(connection,segment);
-                update(connection,"""
-                        UPDATE production_execution_segments SET workshop_department_id=?,responsible_employee_id=?,
-                            plan_begin_date=DATE '2026-07-31',plan_end_date=DATE '2026-08-02' WHERE id=? AND lock_version=?
-                        """,department,employee,segment,beforeAssignment);
                 long beforeStart=segmentVersion(connection,segment);
-                assertEquals(beforeAssignment+1,beforeStart);
-                insert(connection,"""
-                        INSERT INTO production_execution_segment_events(id,execution_segment_id,action,idempotency_key,request_hash,expected_version,resulting_version,created_by)
-                        VALUES(?,?,'ASSIGNMENT',?,?,?,?,?)
-                        """,UUID.randomUUID(),segment,"assignment-"+segment,"e".repeat(64),beforeAssignment,beforeStart,actor);
+                assertQuantity(connection,"SELECT CASE WHEN fn_execution_start_material_ready(?) THEN 1 ELSE 0 END",segment,"1");
                 try(var statement=connection.prepareStatement("""
                         SELECT set_config('app.production_execution_start_segment_id',?,true),
                             set_config('app.production_execution_start_expected_version',?,true)
@@ -535,6 +529,58 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                     WHERE segment.id=? AND event.action='START' AND event.resulting_version=segment.lock_version
                         AND event.resulting_version=event.expected_version+1 AND segment.status='IN_PROGRESS'
                     """,segment,"1");
+        }
+    }
+
+    private static void prepareDraw(Connection connection, UUID segment, UUID draw, UUID item, BigDecimal qty,
+            UUID department, UUID employee, UUID actor) throws Exception {
+        connection.setAutoCommit(false);
+        try {
+            long beforeAssignment = segmentVersion(connection, segment);
+            update(connection, """
+                    UPDATE production_execution_segments SET workshop_department_id=?,responsible_employee_id=?,
+                        plan_begin_date=DATE '2026-07-31',plan_end_date=DATE '2026-08-02' WHERE id=? AND lock_version=?
+                    """, department, employee, segment, beforeAssignment);
+            long beforeRoute = segmentVersion(connection, segment);
+            assertEquals(beforeAssignment + 1, beforeRoute);
+            insert(connection, """
+                    INSERT INTO production_execution_segment_events(id,execution_segment_id,action,idempotency_key,request_hash,expected_version,resulting_version,created_by)
+                    VALUES(?,?,'ASSIGNMENT',?,?,?,?,?)
+                    """, UUID.randomUUID(), segment, "assignment-" + segment, "e".repeat(64), beforeAssignment, beforeRoute, actor);
+            try (var statement = connection.prepareStatement("SELECT set_config('app.actor_id',?,true)")) {
+                statement.setString(1, actor.toString());
+                statement.executeQuery().close();
+            }
+            // The original receiving identity is frozen on the actual DRAW before ISSUE.
+            update(connection, "UPDATE stock_documents SET department_id=?,worker_id=? WHERE id=?", department, employee, draw);
+            update(connection, """
+                    UPDATE production_execution_segments SET start_route='FULL_KIT',route_confirmed_at=now()
+                    WHERE id=? AND lock_version=?
+                    """, segment, beforeRoute);
+            long beforeRequest = segmentVersion(connection, segment);
+            assertEquals(beforeRoute + 1, beforeRequest);
+            insert(connection, """
+                    INSERT INTO production_execution_segment_events(id,execution_segment_id,action,idempotency_key,request_hash,expected_version,resulting_version,created_by)
+                    VALUES(?,?,'ROUTE_CONFIRMED',?,?,?,?,?)
+                    """, UUID.randomUUID(), segment, "route-" + segment, "f".repeat(64), beforeRoute, beforeRequest, actor);
+            update(connection, "UPDATE production_execution_segments SET lock_version=lock_version+1 WHERE id=? AND lock_version=?",
+                    segment, beforeRequest);
+            long afterRequest = segmentVersion(connection, segment);
+            assertEquals(beforeRequest + 1, afterRequest);
+            insert(connection, """
+                    INSERT INTO production_execution_segment_events(id,execution_segment_id,action,idempotency_key,request_hash,
+                        expected_version,resulting_version,created_by,draw_document_ids,draw_item_quantities)
+                    VALUES(?,?,'DRAW_REQUEST',?,?,?,?,?,ARRAY[?]::uuid[],jsonb_build_object(CAST(? AS text),CAST(? AS numeric)))
+                    """, UUID.randomUUID(), segment, "request-" + segment, "a".repeat(64), beforeRequest, afterRequest,
+                    actor, draw, item.toString(), qty);
+            assertQuantity(connection, "SELECT CASE WHEN fn_production_draw_fully_requested(?) THEN 1 ELSE 0 END", draw, "1");
+            assertQuantity(connection, "SELECT CASE WHEN fn_execution_start_material_ready(?) THEN 1 ELSE 0 END", segment, "0");
+            connection.commit();
+        } catch (Exception failure) {
+            connection.rollback();
+            throw failure;
+        } finally {
+            connection.setAutoCommit(true);
         }
     }
 

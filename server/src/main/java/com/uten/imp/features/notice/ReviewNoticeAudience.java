@@ -136,6 +136,7 @@ public class ReviewNoticeAudience {
             case "VISITOR_HOST_CONFIRM_REQUIRED" -> permissions.contains("visitor:host-confirm");
             case "EXPENSE_CLAIM_SUBMITTED" -> permissions.contains("expense:approve");
             case "EXPENSE_CLAIM_PENDING_PAYMENT" -> permissions.contains("expense:pay");
+            case "EXPENSE_CLAIM_REJECTED" -> permissions.contains("expense:apply");
             case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");
             case "PAYROLL_BATCH_PENDING_PUBLISH" -> permissions.contains("payroll:publish");
             case "SUGGESTION_SUBMITTED" -> permissions.contains("suggestion:reply");

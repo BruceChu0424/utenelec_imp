@@ -133,12 +133,12 @@ void main() {
     expect(_table(tester).items.single.place, 'Y12');
   });
 
-  testWidgets('切换抬头仓库（侧滑面板）：清单/库行/布局三个查询都带 warehouseId 重查', (tester) async {
+  testWidgets('切换仓库后清单与库行重查，货架布局只从本次精确行集推导', (tester) async {
     final repo = _FakeStockQueryRepository();
     await _pumpPage(tester, repo);
     expect(repo.warehouseCalls, [null]);
     expect(repo.racksWarehouseCalls, [null]);
-    expect(repo.layoutWarehouseCalls, [null]);
+    expect(repo.layoutWarehouseCalls, isEmpty);
 
     // 仓库筛选 = 侧滑面板（2026-09-11 全站统一）：点字段拉面板，点仓行即选即关。
     await tester.tap(find.byKey(const Key('shelf-label-warehouse')));
@@ -149,7 +149,7 @@ void main() {
 
     expect(repo.warehouseCalls, [null, 'w1']);
     expect(repo.racksWarehouseCalls, [null, 'w1']);
-    expect(repo.layoutWarehouseCalls, [null, 'w1']);
+    expect(repo.layoutWarehouseCalls, isEmpty);
   });
 
   testWidgets('无已维护库位号的货品时显示引导空态', (tester) async {

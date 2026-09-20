@@ -135,6 +135,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         }
         FinanceExpense e = lockActive(id);
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -153,6 +154,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         tx.bind();
         FinanceExpense e = lockActive(id);
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() == null || e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
@@ -170,6 +172,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         FinanceExpense e = lockActiveForProjection(id);
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:approve");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         UUID approver = currentUser.requireEmployeeId();
         if (e.getMakerId() != null && e.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同(职责分离)");
@@ -195,6 +198,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销记账参数不完整");
         }
         PaymentStyleHierarchyLock.lock(em);
+        // Match ordinary finance approve/reverse lock order: GL period before account balance.
+        glPosting.lockAutoProjectionPeriod(posting.paymentDate());
 
         @SuppressWarnings("unchecked")
         List<Object[]> accountRows = em.createNativeQuery("""
@@ -278,9 +283,14 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         FinanceExpense e = lockActiveForProjection(id);
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        Number linked=(Number)em.createNativeQuery("SELECT count(*) FROM expense_claims WHERE finance_expense_id=:id")
+                .setParameter("id",id).getSingleResult();
+        if(linked.longValue()>0) throw new ApiException(ErrorCode.CONFLICT,
+                "员工报销付款已绑定报销单，不能通过一般费用红冲破坏付款与报销状态的一致性");
         if (e.getGlStatus() != null && e.getGlStatus() == 2) {
             throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认(gl_status=2)，须先撤销确认再红冲");
         }
@@ -308,6 +318,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         FinanceExpense e = lockActiveForProjection(id);
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:gl_confirm");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可财务确认");
         }

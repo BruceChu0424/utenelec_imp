@@ -14,7 +14,6 @@
 -- V275 起系统“历史孤儿”分类 UUID 固化在 system_master_category_registry。
 -- 只允许在没有下游业务引用的 bootstrap 库重载；DELETE 会让 FK
 -- RESTRICT 在已使用库上 fail-closed，禁止 TRUNCATE/CASCADE 绕过保护。
-BEGIN;
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 DO $$
@@ -108,7 +107,6 @@ WHERE s.parent_legacy <> 0
   AND NOT EXISTS (SELECT 1 FROM mc_stage p WHERE p.legacy_id = s.parent_legacy)
   AND NOT EXISTS (SELECT 1 FROM mc_nodes   n WHERE n.legacy_id = s.legacy_id);
 
-COMMIT;
 
 SELECT '✔ 分类 总 ' || count(*) ||
        '，根 ' || count(*) FILTER (WHERE parent_id IS NULL) ||

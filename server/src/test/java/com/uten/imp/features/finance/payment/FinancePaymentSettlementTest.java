@@ -513,6 +513,29 @@ class FinancePaymentSettlementTest {
         return ledger;
     }
 
+    @Test
+    void positiveHistoricalDirectPaymentUsesProvenKindRatherThanInventingAPrepaymentAsset() {
+        ArApLedger ledger=payable("20","20","1");
+        ledger.setLegacySource("M_out");ledger.setLegacyId(906100);
+        ledger.setSourceDocType("DIRECT_PAYMENT");ledger.setOpenItemKind("LEGACY_UNVERIFIED");
+        ledger.setAmountReceivedOriginal(new BigDecimal("8"));ledger.setAmountReceivedLocal(new BigDecimal("8"));
+        ledger.setAmountSettled(new BigDecimal("8"));ledger.setAmountBalanceOriginal(new BigDecimal("12"));ledger.setAmountBalance(new BigDecimal("12"));
+        FinancePaymentDetail draft=service.create(request(ledger,CURRENCY_ID,"1","3","9999","9999"));
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);postingCounts.add(0L);service.approve(draft.getId());
+        assertMoney(ledger.getAmountReceivedOriginal(),"11");assertMoney(ledger.getAmountBalanceOriginal(),"9");assertMoney(ledger.getAmountBalance(),"9");
+    }
+
+    @Test
+    void nativeSupplierPrepaymentAssetCannotBeUsedAsOrdinaryPayable() {
+        ArApLedger ledger=payable("0","0","1");
+        ledger.setSourceDocType("DIRECT_PAYMENT");ledger.setOpenItemKind("PREPAYMENT");
+        ledger.setAmountReceivedOriginal(new BigDecimal("8"));ledger.setAmountReceivedLocal(new BigDecimal("8"));
+        ledger.setAmountSettled(new BigDecimal("8"));ledger.setAmountBalanceOriginal(new BigDecimal("-8"));ledger.setAmountBalance(new BigDecimal("-8"));
+        assertThatThrownBy(()->service.create(request(ledger,CURRENCY_ID,"1","3","9999","9999")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("供应商预付款不能作为普通应付引用");
+        verify(accountUpdate,never()).executeUpdate();
+    }
+
     private FinancePaymentSaveRequest request(
             ArApLedger ledger,
             UUID currencyId,

@@ -120,7 +120,7 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> rows = lockRows(
                 lines, QuantityLinkedLine::sourceItemId, """
                         SELECT ri.id, ri.goods_id, ri.color_id, ri.unit_id,
-                               COALESCE(ri.unit_rate, 1),
+                               ri.unit_rate,
                                ri.qty, COALESCE(ri.ordered_qty, 0), r.status,
                                COALESCE(r.is_stopped, FALSE)
                         FROM purchase_request_items ri
@@ -177,7 +177,7 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> receiptRows = lockRows(
                 lines, LinkedLine::sourceItemId, """
                         SELECT ri.id, r.supplier_id, ri.goods_id, ri.color_id,
-                               ri.unit_id, COALESCE(ri.unit_rate, 1),
+                               ri.unit_id, ri.unit_rate,
                                ri.order_item_id, r.status
                         FROM purchase_receipt_items ri
                         JOIN purchase_receipts r ON r.id = ri.receipt_id
@@ -217,7 +217,7 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> receiptRows = lockRows(
                 lines, LinkedLine::sourceItemId, """
                         SELECT ri.id, r.supplier_id, ri.goods_id, ri.color_id,
-                               ri.unit_id, COALESCE(ri.unit_rate, 1),
+                               ri.unit_id, ri.unit_rate,
                                ri.order_item_id, r.status
                         FROM subcontract_receipt_items ri
                         JOIN subcontract_receipts r ON r.id = ri.receipt_id
@@ -270,7 +270,7 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> issueRows = lockRows(
                 lines, LinkedLine::sourceItemId, """
                         SELECT ii.id, i.supplier_id, ii.goods_id, ii.color_id,
-                               ii.unit_id, COALESCE(ii.unit_rate, 1),
+                               ii.unit_id, ii.unit_rate,
                                ii.order_item_id, ii.parent_goods_id,
                                ii.parent_color_id, i.status
                         FROM subcontract_material_issue_items ii
@@ -334,7 +334,7 @@ public class LinkedDocumentIntegrityService {
             Function<LinkedLine, UUID> sourceId) {
         Map<UUID, Object[]> rows = lockRows(lines, sourceId, """
                 SELECT oi.id, o.supplier_id, oi.goods_id, oi.color_id,
-                       oi.unit_id, COALESCE(oi.unit_rate, 1),
+                       oi.unit_id, oi.unit_rate,
                        o.status, COALESCE(o.is_stopped, FALSE)
                 FROM purchase_order_items oi
                 JOIN purchase_orders o ON o.id = oi.order_id
@@ -387,7 +387,7 @@ public class LinkedDocumentIntegrityService {
             boolean compareUnit) {
         Map<UUID, Object[]> rows = lockRows(lines, sourceId, """
                 SELECT oi.id, o.supplier_id, oi.goods_id, oi.color_id,
-                       oi.unit_id, COALESCE(oi.unit_rate, 1), o.status
+                       oi.unit_id, oi.unit_rate, o.status
                 FROM subcontract_order_items oi
                 JOIN subcontract_orders o ON o.id = oi.order_id
                 WHERE oi.id IN (:ids)
@@ -405,6 +405,9 @@ public class LinkedDocumentIntegrityService {
                     rows, id, "委外来源订货明细不存在或已删除");
             requireApproved(source[6], "委外业务只能关联已审核订货单");
             requireSame(supplierId, uuid(source[1]), "委外商与来源订货单不一致");
+            // Material returns compare the actual issue's unit above; the parent
+            // product order is only an ownership link when compareUnit is false.
+            if(compareUnit) SourceQuantityBasis.requireKnown(uuid(source[4]),(BigDecimal)source[5]);
             if (!Objects.equals(line.goodsId(), uuid(source[2]))
                     || !Objects.equals(line.colorId(), uuid(source[3]))
                     || (compareUnit
@@ -475,6 +478,7 @@ public class LinkedDocumentIntegrityService {
 
     private static void requireDimensions(
             LinkedLine line, Object[] source, int firstDimension, String message) {
+        SourceQuantityBasis.requireKnown(uuid(source[firstDimension+2]),(BigDecimal)source[firstDimension+3]);
         if (!Objects.equals(line.goodsId(), uuid(source[firstDimension]))
                 || !Objects.equals(line.colorId(), uuid(source[firstDimension + 1]))
                 || !Objects.equals(line.unitId(), uuid(source[firstDimension + 2]))
@@ -488,6 +492,7 @@ public class LinkedDocumentIntegrityService {
             Object[] source,
             int firstDimension,
             String message) {
+        SourceQuantityBasis.requireKnown(uuid(source[firstDimension+2]),(BigDecimal)source[firstDimension+3]);
         if (!Objects.equals(line.goodsId(), uuid(source[firstDimension]))
                 || !Objects.equals(line.colorId(), uuid(source[firstDimension + 1]))
                 || !Objects.equals(line.unitId(), uuid(source[firstDimension + 2]))
@@ -520,9 +525,8 @@ public class LinkedDocumentIntegrityService {
 
     private static boolean sameRate(BigDecimal actual, Object rawExpected) {
         BigDecimal normalizedActual = actual == null ? BigDecimal.ONE : actual;
-        BigDecimal normalizedExpected =
-                rawExpected == null ? BigDecimal.ONE : (BigDecimal) rawExpected;
-        return normalizedActual.compareTo(normalizedExpected) == 0;
+        return rawExpected instanceof BigDecimal expected && expected.signum()>0
+                && normalizedActual.signum()>0 && normalizedActual.compareTo(expected)==0;
     }
 
     private static ApiException business(String message) {

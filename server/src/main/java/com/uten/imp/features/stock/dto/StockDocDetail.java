@@ -63,4 +63,7 @@ public class StockDocDetail {
     private String finishedInboundVarianceReason;
     /** 当前用户无 goods:cost:view 时主表合计及明细单价/金额已由服务端置空。 */
     private boolean costMasked;
+    private boolean productionMaterialReturn;
+    private UUID materialReturnSourceWarehouseId;
+    private UUID materialReturnMainWarehouseId;
 }

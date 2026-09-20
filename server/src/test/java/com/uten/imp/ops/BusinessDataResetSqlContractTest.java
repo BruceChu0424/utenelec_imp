@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -92,7 +93,23 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_daily_report_material_usages", 586),
             Map.entry("production_workshop_direct_transfer_items", 586),
             Map.entry("production_workshop_direct_transfer_reversals", 586),
-            Map.entry("production_workshop_direct_transfers", 586));
+            Map.entry("production_workshop_direct_transfers", 586),
+            Map.entry("expense_claim_events", 608),
+            Map.entry("expense_claim_invoices", 608),
+            Map.entry("production_daily_report_target_events", 614),
+            Map.entry("production_daily_report_material_release_events", 614),
+            Map.entry("production_workshop_direct_source_allocations", 615),
+            Map.entry("production_workshop_direct_source_events", 615),
+            Map.entry("production_workshop_direct_legacy_anomalies", 615),
+            Map.entry("production_material_return_receiving_confirmations", 618),
+            Map.entry("production_workshop_material_return_slices", 619),
+            Map.entry("production_workshop_material_custody_preparations", 619),
+            Map.entry("production_workshop_material_custody_moves", 619),
+            Map.entry("production_workshop_material_custody_reversals", 619),
+            Map.entry("production_workshop_material_custody_handoffs", 619),
+            Map.entry("production_workshop_custody_handoff_reversals", 619),
+            Map.entry("production_workshop_custody_reverse_preparations", 619),
+            Map.entry("production_workshop_return_preplan_events", 619));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -100,6 +117,10 @@ class BusinessDataResetSqlContractTest {
      * ops 脚本与 V579 补丁锚点保持一致。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.of(
+            "legacy_subcontract_order_import_sources", 624,
+            "legacy_finance_import_sources", 626,
+            "legacy_procurement_receipt_import_sources", 627,
+            "expense_claim_settings", 617,
             "party_activity_records", 579,
             "party_addresses", 579,
             "party_contact_methods", 579);
@@ -216,6 +237,18 @@ class BusinessDataResetSqlContractTest {
                         "V590__goods_owning_workshop_consolidation.sql"),
                 Path.of("server", "src", "main", "resources", "db", "migration",
                         "V590__goods_owning_workshop_consolidation.sql"));
+        for (String migration : List.of("V608__expense_claim_fullchain.sql",
+                "V614__daily_report_finalization_provenance.sql",
+                "V615__workshop_direct_source_allocation.sql",
+                "V617__expense_claim_evidence_and_settings.sql",
+                "V618__production_material_return_receiving_warehouse.sql",
+                "V619__workshop_material_normal_warehouse_custody.sql",
+                "V624__legacy_subcontract_settlement_provenance.sql",
+                "V626__legacy_finance_source_provenance.sql",
+                "V627__legacy_receipt_consideration_provenance.sql")) {
+            extensionSql += read(Path.of("src/main/resources/db/migration",migration),
+                    Path.of("server/src/main/resources/db/migration",migration));
+        }
     }
 
     @Test
@@ -378,7 +411,7 @@ class BusinessDataResetSqlContractTest {
                 // V605 直送资格收紧 / V606 路线自动识别：只换函数+回填，不加表（560→562）。
                 .contains("(605, 561)")
                 .contains("(606, 562)")
-                .contains("V507/469、V508/470及V511至V606完整目录");
+                .contains("V507/469、V508/470及V511至V627完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

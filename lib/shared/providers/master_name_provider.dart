@@ -66,6 +66,7 @@ class WarehouseDictEntry {
     this.parentName,
     this.status,
     this.isAccountable = true,
+    this.isLineSide = false,
   });
 
   final String id;
@@ -75,6 +76,7 @@ class WarehouseDictEntry {
   final String? parentName;
   final String? status;
   final bool isAccountable;
+  final bool isLineSide;
 
   factory WarehouseDictEntry.fromJson(Map<String, dynamic> json) =>
       WarehouseDictEntry(
@@ -86,6 +88,7 @@ class WarehouseDictEntry {
         status: json['status'] as String?,
         isAccountable:
             (json['accountable'] ?? json['isAccountable']) as bool? ?? true,
+        isLineSide: (json['lineSide'] ?? json['isLineSide']) as bool? ?? false,
       );
 }
 

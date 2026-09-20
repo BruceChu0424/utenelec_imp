@@ -100,7 +100,7 @@ class _ProductionDrawRequestPageState
             ..sort();
       if (ids.isEmpty ||
           ids.length > ProductionDrawRequestRepository.batchLimit) {
-        throw const FormatException('请返回我的车间任务，选择 1 至 50 个齐套任务');
+        throw const FormatException('请返回我的车间任务，选择 1 至 50 个可领料任务');
       }
       final preview = await ref
           .read(productionDrawRequestRepositoryProvider)
@@ -228,7 +228,7 @@ class _ProductionDrawRequestPageState
         context.appInfo('本批 ${result.taskCount} 个任务已提交领料，请等待仓库出库');
       } else {
         context.appSuccess(
-          '已提交 ${result.taskCount} 个任务领料，仓库新增 ${result.documentCount} 张待出库单',
+          '已提交 ${result.taskCount} 个任务本次领料，共 ${result.documentCount} 张待出库单；后续到料可在原任务继续领取',
         );
       }
       if (context.canPop()) {
@@ -313,7 +313,7 @@ class _ProductionDrawRequestPageState
                           preview.tasks.isEmpty
                     ? UtenEmpty(
                         message: '暂无可领物料',
-                        description: '请返回我的车间任务，刷新后重新选择齐套任务。',
+                        description: '请返回我的车间任务，刷新后查看到料情况。',
                         actionLabel: '返回我的车间任务',
                         onAction: _back,
                       )
@@ -387,7 +387,7 @@ class _ProductionDrawRequestPageState
         ),
         const SizedBox(height: UtenSpacing.s8),
         Text(
-          '只提交勾选的本次数量，其余保留待领。按部分成品数量先生产，请从任务详情进入“分批领料”，配齐本批后再开工。',
+          '只提交勾选的本次数量，其余保留待领。持续生产可在原任务继续领料；齐套生产须领齐后开工。车间直送料按实际交接投入，不在此重复领料。',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         if (_submitError != null) ...[

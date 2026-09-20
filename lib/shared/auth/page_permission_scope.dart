@@ -30,7 +30,9 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/payroll/generate' || path == '/payroll/review') {
     return _payrollScope;
   }
-  if (path == '/expense/approval' || _isDescendant(path, '/expense/approval')) {
+  if (path == '/expense/settings' ||
+      path == '/expense/approval' ||
+      _isDescendant(path, '/expense/approval')) {
     return _expenseApprovalScope;
   }
   if (path == '/hr/tasks' || _isDescendant(path, '/hr/tasks')) {

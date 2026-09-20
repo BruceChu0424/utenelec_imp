@@ -70,10 +70,37 @@ public class ExpenseApplicantQuery {
     }
 
     /**
+     * 员工 id → 姓名快照（V608：审批/打款操作人回显与事件落库；已删除员工仍返回姓名，
+     * 历史单据的操作人要能显示）。一次查齐，避免逐单查询。
+     */
+    public Map<UUID, String> employeeNames(Collection<UUID> employeeIds) {
+        Set<UUID> ids = new LinkedHashSet<>();
+        if (employeeIds != null) {
+            employeeIds.stream().filter(java.util.Objects::nonNull).forEach(ids::add);
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery("""
+                        SELECT e.id, e.full_name
+                        FROM employees e
+                        WHERE e.id IN (:ids)
+                        """)
+                .setParameter("ids", ids)
+                .getResultList();
+        Map<UUID, String> names = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            names.put((UUID) row[0], (String) row[1]);
+        }
+        return names;
+    }
+
+    /**
      * 某状态集合下报销单按申请人部门聚合（表头「部门」筛选桶）。
      * 返回 [department_id, department_name, count]，按部门名排序；无部门快照的单据不进桶。
      */
-    public List<FacetRow> departmentFacets(Collection<String> statuses) {
+    public List<FacetRow> departmentFacets(Collection<String> statuses, UUID actor, boolean payment) {
         if (statuses == null || statuses.isEmpty()) {
             return List.of();
         }
@@ -83,10 +110,13 @@ public class ExpenseApplicantQuery {
                         FROM expense_claims c
                         JOIN departments d ON d.id = c.applicant_department_id
                         WHERE c.status IN (:statuses)
+                          AND c.applicant_id<>:actor
+                          AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                         GROUP BY c.applicant_department_id, d.name
                         ORDER BY d.name, c.applicant_department_id
                         """)
                 .setParameter("statuses", statuses)
+                .setParameter("actor", actor).setParameter("payment", payment)
                 .getResultList();
         return rows.stream()
                 .map(row -> new FacetRow(
@@ -100,7 +130,7 @@ public class ExpenseApplicantQuery {
      * 某状态集合下报销单按创建年月（业务时区 Asia/Shanghai，与列表 year/month 筛选口径一致）聚合
      * （表头「年月」筛选桶）。返回 [yyyy-MM, yyyy-MM, count]，最近月份在前。
      */
-    public List<FacetRow> monthFacets(Collection<String> statuses) {
+    public List<FacetRow> monthFacets(Collection<String> statuses, UUID actor, boolean payment) {
         if (statuses == null || statuses.isEmpty()) {
             return List.of();
         }
@@ -110,10 +140,13 @@ public class ExpenseApplicantQuery {
                                COUNT(*)
                         FROM expense_claims c
                         WHERE c.status IN (:statuses)
+                          AND c.applicant_id<>:actor
+                          AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                         GROUP BY ym
                         ORDER BY ym DESC
                         """)
                 .setParameter("statuses", statuses)
+                .setParameter("actor", actor).setParameter("payment", payment)
                 .getResultList();
         return rows.stream()
                 .map(row -> new FacetRow(
@@ -128,7 +161,7 @@ public class ExpenseApplicantQuery {
      * 类别挂在明细项上：count=含该类别明细的单数（一单多类别会在多桶各计一次）。
      * 返回 [category, category, count]，按类别码稳定序。
      */
-    public List<FacetRow> categoryFacets(Collection<String> statuses) {
+    public List<FacetRow> categoryFacets(Collection<String> statuses, UUID actor, boolean payment) {
         if (statuses == null || statuses.isEmpty()) {
             return List.of();
         }
@@ -138,10 +171,13 @@ public class ExpenseApplicantQuery {
                         FROM expense_claim_items i
                         JOIN expense_claims c ON c.id = i.claim_id
                         WHERE c.status IN (:statuses)
+                          AND c.applicant_id<>:actor
+                          AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                         GROUP BY i.category
                         ORDER BY i.category
                         """)
                 .setParameter("statuses", statuses)
+                .setParameter("actor", actor).setParameter("payment", payment)
                 .getResultList();
         return rows.stream()
                 .map(row -> new FacetRow(
@@ -149,6 +185,24 @@ public class ExpenseApplicantQuery {
                         (String) row[0],
                         ((Number) row[1]).longValue()))
                 .toList();
+    }
+
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto historyFacets(UUID actor,boolean approve,boolean pay) {
+        String scope="""
+                WHERE c.status IN ('APPROVED','REJECTED','PAID')
+                  AND ((:approve=true AND (c.approved_by=:actor OR c.rejected_by=:actor)) OR (:pay=true AND c.status='PAID'))
+                """;
+        return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(
+            historyBuckets("SELECT d.id::text,d.name,count(*) FROM expense_claims c JOIN departments d ON d.id=c.applicant_department_id "+scope+" GROUP BY d.id,d.name ORDER BY d.name",actor,approve,pay),
+            historyBuckets("SELECT to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM') ym,to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),count(*) FROM expense_claims c "+scope+" GROUP BY ym ORDER BY ym DESC",actor,approve,pay),
+            historyBuckets("SELECT i.category,i.category,count(DISTINCT c.id) FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id "+scope+" GROUP BY i.category ORDER BY i.category",actor,approve,pay));
+    }
+    @SuppressWarnings("unchecked")
+    private List<com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket> historyBuckets(String sql,UUID actor,boolean approve,boolean pay) {
+        List<Object[]> rows=entityManager.createNativeQuery(sql).setParameter("actor",actor).setParameter("approve",approve)
+                .setParameter("pay",pay).getResultList();
+        return rows.stream().map(row->new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket(
+                (String)row[0],(String)row[1],((Number)row[2]).longValue())).toList();
     }
 
     public record ApplicantSnapshot(String name, UUID departmentId) {

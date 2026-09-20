@@ -263,12 +263,14 @@ void main() {
         permissions: const <String>{
           Perm.stockDocView,
           Perm.stockDocReverseIssue,
+          Perm.stockDocCreate,
         },
       );
 
       expect(_action('取消出库'), findsOneWidget);
       expect(tester.widget<UtenButton>(_action('取消出库')).onPressed, isNotNull);
       expect(_action('审核'), findsNothing);
+      expect(_action('余料退库'), findsNothing);
 
       await tester.tap(_action('取消出库'));
       await tester.pumpAndSettle();

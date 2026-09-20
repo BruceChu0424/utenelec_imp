@@ -95,6 +95,20 @@ class ReportablePlanLine {
 
   bool get isFqcRecovery => fqcRecoveryAuthorizationId?.isNotEmpty == true;
 
+  /// Drafts reserve reportable quota, but cannot make a task's last batch complete.
+  double? get remainingCompletionQty {
+    final planned = plannedQty;
+    final produced = producedQty;
+    if (planned == null ||
+        produced == null ||
+        !planned.isFinite ||
+        !produced.isFinite) {
+      return null;
+    }
+    final remaining = planned - produced;
+    return remaining > 0 ? remaining : 0;
+  }
+
   bool get canReport => maxReportQty > 0.000001 && !fqcRecoveryRequiresMaterial;
 
   String? get fqcRecoveryLabel {

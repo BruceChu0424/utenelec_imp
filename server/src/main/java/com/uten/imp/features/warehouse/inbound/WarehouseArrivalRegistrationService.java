@@ -296,7 +296,7 @@ public class WarehouseArrivalRegistrationService {
         List<UUID> ids=receiptIds.stream().distinct().sorted(java.util.Comparator.comparing(UUID::toString)).toList();
         String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));
         List<Object> parameters=new ArrayList<>(ids); parameters.addAll(ids);
-        var rows=jdbc.query("SELECT 'PURCHASE' AS kind,id FROM purchase_receipts WHERE id IN ("+placeholders+") AND is_deleted=FALSE UNION ALL SELECT 'SUBCONTRACT' AS kind,id FROM subcontract_receipts WHERE id IN ("+placeholders+") AND is_deleted=FALSE ORDER BY kind,id",
+        var rows=jdbc.query("SELECT 'PURCHASE' AS kind,id FROM purchase_receipts WHERE id IN ("+placeholders+") AND is_deleted=FALSE AND legacy_id IS NULL UNION ALL SELECT 'SUBCONTRACT' AS kind,id FROM subcontract_receipts WHERE id IN ("+placeholders+") AND is_deleted=FALSE AND legacy_id IS NULL ORDER BY kind,id",
                 (rs,n) -> new com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef(rs.getString("kind"),rs.getObject("id",UUID.class)),parameters.toArray());
         if (rows.size()!=ids.size()) throw new ApiException(ErrorCode.NOT_FOUND,"部分收货单不存在或来源不唯一，请刷新后重新选择");
         return rows;
@@ -322,7 +322,7 @@ public class WarehouseArrivalRegistrationService {
             String receiptTable = PURCHASE.equals(orderType)
                     ? "purchase_receipts" : "subcontract_receipts";
             List<String> billNos = jdbc.queryForList(
-                    "SELECT bill_no FROM %s WHERE id = ? AND is_deleted = FALSE"
+                    "SELECT bill_no FROM %s WHERE id = ? AND is_deleted = FALSE AND legacy_id IS NULL"
                             .formatted(receiptTable),
                     String.class, receiptId);
             if (billNos.isEmpty()) continue;
@@ -367,7 +367,7 @@ public class WarehouseArrivalRegistrationService {
             String receiptItemTable = PURCHASE.equals(orderType)
                     ? "purchase_receipt_items" : "subcontract_receipt_items";
             List<String> billNos = jdbc.queryForList(
-                    "SELECT bill_no FROM %s WHERE id = ? AND status = 0 AND is_deleted = FALSE"
+                    "SELECT bill_no FROM %s WHERE id = ? AND status = 0 AND is_deleted = FALSE AND legacy_id IS NULL"
                             .formatted(receiptTable),
                     String.class, receiptId);
             if (billNos.isEmpty()) continue;
@@ -400,7 +400,7 @@ public class WarehouseArrivalRegistrationService {
                 UPDATE %s
                 SET supplier_id = ?, currency_id = ?, exchange_rate = ?, tax_rate = ?,
                     settlement_method_id = ?
-                WHERE id = ? AND status = 0 AND is_deleted = FALSE
+                WHERE id = ? AND status = 0 AND is_deleted = FALSE AND legacy_id IS NULL
                 """.formatted(receiptTable),
                 header.supplierId(), header.currencyId(), header.exchangeRate(),
                 header.taxRate(), header.settlementMethodId(), draft.receiptId());

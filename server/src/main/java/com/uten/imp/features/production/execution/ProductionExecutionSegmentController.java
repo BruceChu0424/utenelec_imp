@@ -56,22 +56,12 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/{segmentId}/start")
-    @PreAuthorize("hasAuthority('production_execution:start')")
+    @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:start')")
     public ExecutionSegmentView start(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,
             @Valid @RequestBody SegmentTransitionRequest request) {
         return service.start(planId, segmentId, request);
-    }
-
-    /** 「部分开工 · 持续生产」(V595)：同车间直送子件分次到料、到一批投一批，同一张工单只开一次工。 */
-    @PostMapping("/{segmentId}/start-continuous")
-    @PreAuthorize("hasAuthority('production_execution:start')")
-    public ExecutionSegmentView startContinuous(
-            @PathVariable UUID planId,
-            @PathVariable UUID segmentId,
-            @Valid @RequestBody SegmentTransitionRequest request) {
-        return service.startContinuousSupply(planId, segmentId, request);
     }
 
     /** 「确认生产路线」(V599 / ADR-091)：开工前显式选定齐套生产 / 分批生产 / 持续生产。
@@ -86,7 +76,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/{segmentId}/recheck-material")
-    @PreAuthorize("hasAuthority('production_execution:start')")
+    @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:start')")
     public ExecutionSegmentView recheckMaterial(
             @PathVariable UUID planId, @PathVariable UUID segmentId,
             @Valid @RequestBody SegmentTransitionRequest request) {
@@ -94,7 +84,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/batch-start")
-    @PreAuthorize("hasAuthority('production_execution:start')")
+    @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:start')")
     public List<ExecutionSegmentView> batchStart(
             @PathVariable UUID planId,
             @Valid @RequestBody BatchStartRequest request) {

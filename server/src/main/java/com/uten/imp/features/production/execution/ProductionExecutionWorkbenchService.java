@@ -36,6 +36,7 @@ public class ProductionExecutionWorkbenchService {
     private final SubcontractDocumentReadAccessPort subcontractAccess;
     private final SecurityContextCurrentUser currentUser;
     private final ProductionMaterialUsageReadPort materialUsage;
+    private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
 
@@ -145,10 +146,8 @@ public class ProductionExecutionWorkbenchService {
             int requestedPage, int requestedSize, String keyword, String rawStatus,
             UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter) {
         UUID employeeId = currentUser.employeeId().orElse(null);
-        // V477 读侧放行：超管在本页看全部车间任务（前端徽章本就放行超管，
-        // 两端口径必须一致）；写侧（报工）仍要求车间归属——FullChainEndToEndTest
-        // 锁定的「超管不豁免车间范围」是写侧口径，不受影响。2026-09-06 起支持
-        // 按车间筛选（超管看多车间时收敛视角；普通员工仍受本人范围约束）。
+        // 超管可查看并代办全部车间任务；普通员工仍按有效车间归属收敛。
+        // 车间筛选只进一步缩小范围，不扩大普通员工的可见性。
         boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         if (employeeId == null && !seeAll) {
             int size = boundedSize(requestedSize);
@@ -332,12 +331,13 @@ public class ProductionExecutionWorkbenchService {
         Query data = em.createNativeQuery(segmentSelect() + from + "\n" + orderBy
                 + "\n LIMIT :limit OFFSET :offset");
         binder.accept(data);
-        boolean allowReport = reportAllowed(
+        boolean activeOperator = workshopMembership.isActiveOperator();
+        boolean allowReport = activeOperator && reportAllowed(
                 productionAccess.hasAuthority("production_daily_report:view"),
                 productionAccess.hasAuthority("production_daily_report:create"),
                 productionAccess.hasAuthority("production_execution:view"));
         data.setParameter("allowReport", allowReport);
-        data.setParameter("allowRequestDraw", productionAccess.hasAuthority("production_execution:start")
+        data.setParameter("allowRequestDraw", activeOperator && productionAccess.hasAuthority("production_execution:start")
                 && productionAccess.hasAuthority("production_execution:view"));
         data.setParameter("limit", size);
         data.setParameter("offset", (long) (page - 1) * size);
@@ -576,7 +576,16 @@ public class ProductionExecutionWorkbenchService {
                        (task.material_status = 'KIT_READY' OR fn_split_batch_empty_issued(task.segment_id)) AS material_ready,
                        task.warehouse_ready, %s,
                        FALSE,
-                       FALSE,
+                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
+                         AND EXISTS (SELECT 1 FROM production_execution_segments start_segment
+                           JOIN production_plans start_plan ON start_plan.id=start_segment.plan_id
+                           WHERE start_segment.id=task.segment_id
+                             AND start_segment.start_route IN ('FULL_KIT','CONTINUOUS')
+                             AND start_segment.workshop_department_id IS NOT NULL
+                             AND start_segment.responsible_employee_id IS NOT NULL
+                             AND start_plan.status=1 AND NOT start_plan.is_closed
+                             AND NOT start_plan.is_canceled AND NOT start_plan.is_stopped
+                             AND fn_execution_start_material_ready(task.segment_id))),
                        (:allowReport AND task.reportable AND task.segment_status = 'IN_PROGRESS'),
                        (:allowReport AND task.reportable AND task.segment_status = 'IN_PROGRESS'
                         AND task.report_source_count = 1),
@@ -591,21 +600,25 @@ public class ProductionExecutionWorkbenchService {
                        task.plan_begin_date, task.plan_end_date,
                        task.lock_version,
                        task.zero_material,
-                       EXISTS (SELECT 1 FROM production_execution_segments current_segment
+                       (:allowRequestDraw AND EXISTS (SELECT 1 FROM production_execution_segments current_segment
                            WHERE current_segment.id = task.segment_id
-                             AND current_segment.status = 'WAITING'
+                             AND current_segment.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
+                             AND current_segment.start_route IN ('FULL_KIT','CONTINUOUS')
                              AND current_segment.auto_promote_when_ready = TRUE
-                             AND current_segment.is_deleted = FALSE),
+                             AND current_segment.is_deleted = FALSE)),
                        %s,
-                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
-                         AND NOT task.zero_material AND NOT %s AND NOT (%s)),
+                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED','IN_PROGRESS')
+                         AND NOT task.zero_material AND NOT (%s)
+                         AND EXISTS(SELECT 1 FROM production_execution_segments route_segment
+                           WHERE route_segment.id=task.segment_id AND route_segment.start_route IN ('FULL_KIT','CONTINUOUS'))
+                         AND EXISTS (%s AND NOT pending_warehouse.is_line_side
+                           AND fn_production_draw_item_requested_qty(pending_item.id)<fn_production_draw_item_effective_qty(pending_item.id))),
                        (:allowRequestDraw AND fn_can_split_execution_batch(task.segment_id)),
                        (SELECT source_segment_id FROM production_execution_segments WHERE id=task.segment_id),
                        EXISTS(SELECT 1 FROM production_execution_segment_splits WHERE source_segment_id=task.segment_id),
                        EXISTS(SELECT 1 FROM fn_production_material_usage_source_segments(task.segment_id) source
                               WHERE source.segment_id<>task.segment_id),
                        COALESCE((SELECT continuous_supply FROM production_execution_segments WHERE id=task.segment_id), FALSE),
-                       (:allowRequestDraw AND fn_can_start_continuous_supply(task.segment_id)),
                        (task.segment_status IN ('READY','DISPATCHED') AND NOT task.zero_material
                         AND NOT %s
                         AND EXISTS (%s AND pending_warehouse.is_line_side)
@@ -616,21 +629,21 @@ public class ProductionExecutionWorkbenchService {
                          AND NOT EXISTS (SELECT 1 FROM production_execution_segments route_segment
                               WHERE route_segment.id = task.segment_id
                                 AND route_segment.start_route IS NOT NULL)),
-                       (:allowRequestDraw AND task.segment_status = 'WAITING'
+                       (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
                          AND fn_can_change_execution_route(task.segment_id)),
                        EXISTS (SELECT 1 FROM production_material_demands route_demand
                            WHERE route_demand.execution_segment_id = task.segment_id
                              AND route_demand.is_deleted = FALSE
-                             AND route_demand.status NOT IN ('RELEASED', 'REVERSED')
-                             AND fn_demand_direct_supply_eligible(route_demand.id)),
-                       (SELECT memory.start_route
-                          FROM production_execution_segments memory
-                         WHERE memory.product_goods_id = task.product_goods_id
-                           AND memory.is_deleted = FALSE
-                           AND memory.start_route IS NOT NULL
-                         ORDER BY memory.route_confirmed_at DESC NULLS LAST
-                         LIMIT 1)
-                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), effectiveIssuedPredicate(), drawRequestedPredicate(),
+                             AND route_demand.status NOT IN ('RELEASED', 'REVERSED')),
+                       EXISTS(SELECT 1 FROM production_execution_segments command_segment
+                         JOIN production_plans command_plan ON command_plan.id=command_segment.plan_id
+                         JOIN production_planning_packages command_package ON command_package.id=command_segment.package_id
+                         WHERE command_segment.id=task.segment_id AND NOT command_segment.is_deleted
+                           AND command_plan.status=1 AND NOT command_plan.is_deleted
+                           AND NOT command_plan.is_closed AND NOT command_plan.is_canceled AND NOT command_plan.is_stopped
+                           AND command_package.status='CONFIRMED' AND NOT command_package.is_deleted),
+                       fn_execution_material_custody_valid(task.segment_id)
+                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql(),
                         effectiveIssuedPredicate(), pendingDrawItemSql(), pendingDrawItemSql());
     }
 
@@ -648,7 +661,7 @@ public class ProductionExecutionWorkbenchService {
                     WHERE pending_mapping.execution_segment_id=task.segment_id
                       AND pending_mapping.document_type='DRAW'
                       AND NOT pending_document.is_deleted AND pending_document.status IN (0,1)
-                      AND COALESCE(pending_item.issued_qty,0) < pending_item.qty""";
+                      AND COALESCE(pending_item.issued_qty,0) < fn_production_draw_item_effective_qty(pending_item.id)""";
     }
 
     static String drawRequestedPredicate() {
@@ -816,6 +829,10 @@ public class ProductionExecutionWorkbenchService {
     }
 
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage) {
+        // The same current plan/package facts gate every command capability. Compute once
+        // per projected task, so historical or paused rows do not advertise rejected actions.
+        boolean executable = bool(row[48]);
+        boolean custodyValid = bool(row[49]);
         return new ProductionExecutionWorkbenchSegment(
                 uuid(row[0]), uuid(row[1]), text(row[2]), text(row[3]),
                 text(row[4]), uuid(row[5]), text(row[6]), text(row[7]),
@@ -824,15 +841,14 @@ public class ProductionExecutionWorkbenchService {
                 decimal(row[15]), decimal(row[16]), decimal(row[17]),
                 decimal(row[18]), decimal(row[19]), text(row[20]),
                 text(row[21]), text(row[22]), bool(row[23]), bool(row[24]),
-                bool(row[25]), bool(row[26]), bool(row[27]), bool(row[28]),
-                bool(row[29]), text(row[30]), date(row[31]), date(row[32]),
-                ((Number) row[33]).longValue(), bool(row[34]), bool(row[35]),
-                usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), bool(row[37]),
-                bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
+                bool(row[25]), executable && bool(row[26]), executable && custodyValid && bool(row[27]), executable && custodyValid && bool(row[28]),
+                executable && custodyValid && bool(row[29]), custodyValid ? text(row[30]) : "实领或直送物料与当前车间不一致，请先核对原领料并按来源退回或反向处理", date(row[31]), date(row[32]),
+                ((Number) row[33]).longValue(), bool(row[34]), executable && bool(row[35]),
+                usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), executable && bool(row[37]),
+                executable && bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
                 usage.hasPendingReturn(), usage.hasAvailableMaterial(),
-                bool(row[42]), bool(row[43]), bool(row[44]),
-                text(row[45]), bool(row[46]), bool(row[47]), bool(row[48]),
-                text(row[49]));
+                bool(row[42]), bool(row[43]),
+                text(row[44]), executable && bool(row[45]), executable && bool(row[46]), bool(row[47]));
     }
 
     private static int boundedSize(int requested) {

@@ -158,9 +158,16 @@ erDiagram
 ```mermaid
 erDiagram
     ExpenseClaim ||--|{ ExpenseItem : "明细"
-    ExpenseClaim ||--o{ ExpenseApproval : "审批流"
-    ExpenseItem }o--|| ExpenseCategory : "归类"
+    ExpenseClaim ||--o{ ExpenseClaimInvoice : "票据登记"
+    ExpenseClaim ||--o{ ExpenseClaimEvent : "真实流转"
+    ExpenseClaimInvoice }o--o| Attachment : "关联原件"
+    ExpenseClaimInvoice }o--o| Employee : "人工核验人"
+    ExpenseClaim }o--o| FinanceExpense : "已付款唯一关联"
+    ExpenseClaim }o--|| Employee : "申请人"
 ```
+
+费用类别是受约束枚举，不是独立表。V617 `ExpenseClaimSettings` 为全局单行配置，
+当前未冻结到单据公司资料快照。报销固定为一次审核和独立付款，不存在当前运行的 `ExpenseApproval` 多级表。
 
 ### 2.4 通知与建议
 
@@ -325,7 +332,7 @@ erDiagram
 ### 2.11 审批流（未来目标，不是当前 ER）
 
 > 当前 V133 没有 `ApprovalNode` 或 `ApprovalRecord` 表：报销与工资分别把固定流程的状态、
-> 操作人和时间戳保存在 `expense_claims`、`payroll_batches`。下图仅是业务决定采用可配置多级
+> 操作人和时间戳保存在 `expense_claims`、`payroll_batches`；V608报销另有专属事件表。下图仅是业务决定采用可配置多级
 > 审批后才考虑的目标模型，不能用于当前数据库建表或迁移对账。详见 [实体字典](实体字典.md) 与
 > [全局机制 §三](../05-架构/全局机制.md#三审批流建模可配置多级)。
 
@@ -358,7 +365,7 @@ erDiagram
 
 - [ ] User 和 Employee 是否真的一对一？（兼职/外协人员怎么算？）
 - [ ] 一个员工能否同时属于多个部门？（兼任）
-- [ ] 报销审批是单级还是多级？多级的话审批流实体怎么建模？
+- [x] 报销按ADR-094保持单级审核与独立付款，专属事件表留痕；多级不是当前待交付项。
 - [ ] 工资条是按月一条还是按批次？
 - [ ] 老系统数据迁移时，缺失的关联关系如何补？
 - [ ] 多厂区场景下，Building 和 Department 怎么关联？

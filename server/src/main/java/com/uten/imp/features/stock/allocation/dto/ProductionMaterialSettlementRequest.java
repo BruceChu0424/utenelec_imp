@@ -39,6 +39,12 @@ public class ProductionMaterialSettlementRequest {
         @NotNull
         private UUID demandId;
 
+        /**
+         * CONSUMED: actual process consumption, including normal waste already in the BOM.
+         * APPROVED_LOSS: separately approved unusable/scrapped material, not that normal waste.
+         * LEGAL_WIP: material transferred/retained as other WIP rather than this task's output.
+         * Incorrect historical classifications are reversed and reposted; never rewritten.
+         */
         @NotBlank
         private String settlementType;
 

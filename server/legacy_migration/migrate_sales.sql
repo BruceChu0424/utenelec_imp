@@ -24,7 +24,6 @@
 -- 迁末刷新 sales_monthly_mv（汇总报表数据源，否则汇总报表空）。
 -- =====================================================================
 
-BEGIN;
 SELECT set_config('uten.legacy_reference_import', 'legacy-sales-v273', true);
 -- FK-ordered cleanup; production/finance/warehouse references make a reload
 -- fail before any replacement row is inserted.
@@ -220,7 +219,7 @@ WITH candidates AS (
 )
 INSERT INTO clients (legacy_id, category_id, code, name, status, code_managed, code_sequence)
 SELECT lid, (SELECT id FROM client_categories WHERE legacy_id = -1),
-       'LEGACY-CL-' || lid, '（迁移自动补录）', '使用', FALSE,
+       'LEGACY-CL-' || lid, '（迁移自动补录）', '禁用', FALSE,
        reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
 FROM numbered CROSS JOIN reserved
 ON CONFLICT (legacy_id) DO UPDATE
@@ -499,11 +498,9 @@ FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
 UPDATE sales_returns d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
 
-COMMIT;
 
--- ---------------- 刷新销售月度物化视图（CONCURRENTLY 不能在事务内，置 COMMIT 后） ----------------
--- 修汇总报表空数据根因：V52 sales_monthly_mv 迁完必须刷新才有数据。
-SELECT refresh_sales_monthly_mv();
+-- 首导目标未放行业务读取；报表与当前导入在同一事务内刷新。
+REFRESH MATERIALIZED VIEW sales_monthly_mv;
 
 -- ---------------- 校验 ----------------
 SELECT '报价 '         || (SELECT count(*) FROM sales_quotes)            || ' / ' || (SELECT count(*) FROM sales_quote_items) AS r

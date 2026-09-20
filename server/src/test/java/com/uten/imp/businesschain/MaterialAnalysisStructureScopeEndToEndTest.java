@@ -385,6 +385,59 @@ class MaterialAnalysisStructureScopeEndToEndTest {
         });
     }
 
+    @Test void headerProjectionKeepsEveryDynamicSourceValueAndReadsHeaderChangesAgain() throws Exception {
+        var scenario=factory.sharedTree("scope-header-"+suffix(),3);
+        var first=previewAndRoute(scenario);
+        var second=previewAndRoute(factory.anotherSalesOrder(scenario));
+        var ids=List.of(first.analysisId(),second.analysisId(),UUID.randomUUID());
+        new TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            var before=assertHeaderRowsMatchLegacy(ids);
+            assertTrue(before.size()>=4,"Multiple headers and source rows must reach the oracle");
+            assertTrue(before.stream().anyMatch(row->row.get(6)==null),"The fixture contains real nullable color values");
+            jdbc.update("UPDATE production_material_analyses SET version=version+1 WHERE id=?",first.analysisId());
+            var after=assertHeaderRowsMatchLegacy(ids);
+            assertNotEquals(before,after,"A later discovery must observe the new header hash");
+            jdbc.update("UPDATE production_material_analysis_items SET is_deleted=TRUE WHERE analysis_id=?",second.analysisId());
+            var emptyHeader=assertHeaderRowsMatchLegacy(ids);
+            assertTrue(emptyHeader.stream().anyMatch(row->second.analysisId().equals(row.getFirst())&&row.get(3)==null),
+                    "An analysis with no live source retains its LEFT JOIN row");
+            status.setRollbackOnly();
+        });
+    }
+
+    private List<List<Object>> assertHeaderRowsMatchLegacy(List<UUID> ids) {
+        var sample=ProductionJdbcMeasurement.begin();
+        try { footprints.forAnalyses(ids); } finally { ProductionJdbcMeasurement.end(); }
+        var captured=sample.explainCandidates.values().stream()
+                .filter(query->query.sql().stripLeading().startsWith("WITH analysis_headers AS MATERIALIZED"))
+                .findFirst().orElseThrow();
+        List<List<Object>> actual=jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<List<List<Object>>>)connection->{
+            try(var statement=connection.prepareStatement(captured.sql())) {
+                try { captured.bind(statement); } catch(Exception failure) { throw new java.sql.SQLException(failure); }
+                try(var rows=statement.executeQuery()) {
+                    var values=new java.util.ArrayList<List<Object>>();
+                    while(rows.next()) {
+                        var row=new java.util.ArrayList<Object>();
+                        for(int column=1;column<=8;column++)row.add(rows.getObject(column));
+                        values.add(row);
+                    }
+                    return values;
+                }
+            }
+        });
+        var old=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT analysis.id,fn_warehouse_main_id(analysis.warehouse_id),md5(to_jsonb(analysis)::text),
+                       item.id,sale.order_id,item.goods_id,item.color_id,md5(to_jsonb(item)::text)
+                FROM production_material_analyses analysis
+                LEFT JOIN production_material_analysis_items item ON item.analysis_id=analysis.id AND item.is_deleted=FALSE
+                LEFT JOIN sales_order_items sale ON sale.id=item.sales_order_item_id AND item.source_type='SALES_ORDER_ITEM'
+                WHERE analysis.id IN (:ids) AND analysis.is_deleted=FALSE ORDER BY analysis.id,item.id
+                """).setParameter("ids",ids));
+        var expected=old.stream().map(java.util.Arrays::asList).toList();
+        assertEquals(expected,actual,"All IDs, nulls, hashes, rows and ordering must stay exactly equal");
+        return actual;
+    }
+
     private static long staticMaterialReads(ProductionJdbcMeasurement.Sample sample) {
         return sample.explainCandidates.values().stream()
                 .filter(query -> query.sql().contains("SELECT material.id,material.goods_id,material.color_id,md5("))

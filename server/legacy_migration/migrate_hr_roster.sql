@@ -15,15 +15,14 @@
 --   · 岗位按 (岗位名称 × 部门) 建档：同名同部门已存在则复用（并补 level），否则按 ZW 序列新建。
 --   · 工龄：不入库，系统按 hire_date 动态计算（员工列表/详情页显示「X 年 Y 个月」）。
 --   · 敏感信息：身份证/手机 pgcrypto 加密 + HMAC 查重哈希，与服务端同口径
---     （密钥经 /tmp/_uten_keys.sql 注入，migrate.sh 用后即时删除）。
+--     （密钥经 :legacy_key_file 注入，migrate.sh 用后即时删除）。
 --   · 入职事件：名册为权威来源，按 hire_date 写 onboard 轨迹（重跑按 (员工,onboard,日期) 去重）。
 -- 安全闸：若现有 UT 工号员工与名册姓名冲突且非本迁移所建，立即中止（提示先 --hr-cleanup）。
 -- =====================================================================
 
 -- 注入密钥变量（:pgp_key / :pgp_ver / :hmac_key），文件由 migrate.sh 生成、用后删除
-\i /tmp/_uten_keys.sql
+\i :legacy_key_file
 
-BEGIN;
 -- Serialize with the V282 JVM backfill.  The capability is transaction-local
 -- and dedicated to this reviewed legacy import; the runner must encrypt and
 -- clear these temporary plaintext columns before traffic is released.
@@ -219,7 +218,6 @@ FROM (SELECT department_id, count(*) AS cnt
       GROUP BY department_id) sub
 WHERE d.id = sub.department_id;
 
-COMMIT;
 
 -- ---------------- 校验 ----------------
 SELECT '✔ 名册 staging: ' || count(*) FROM hr_roster

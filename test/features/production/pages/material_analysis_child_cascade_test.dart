@@ -138,7 +138,25 @@ void main() {
   });
 
   testWidgets('已下单子件：申请未分解并入原申请调量，已分解问过后按追加另立', (tester) async {
-    final harness = await _pump(tester, childrenAlreadyOrdered: true);
+    final harness = await _pump(
+      tester,
+      childrenAlreadyOrdered: true,
+      customizeAnalysis: (analysis) {
+        final rows = (analysis['flatMaterials'] as List)
+            .cast<Map<String, dynamic>>();
+        // C is a frozen workshop commitment, not ten finished units on a shelf.
+        rows[2].addAll({
+          'availableQty': 0,
+          'allocatedAvailableQty': 0,
+          'internalCommittedOutputQty': 10,
+        });
+        rows[3].addAll({
+          'availableQty': 0,
+          'allocatedAvailableQty': 0,
+          'externalFutureCoverageQty': 30,
+        });
+      },
+    );
 
     await _openWorkshopBucket(tester);
 
@@ -833,6 +851,311 @@ void main() {
     expect(cascaded['qty'], 30.0);
   });
 
+  testWidgets('父子多选保留默认跟量，父件改小后采购子层和孙层也减少', (tester) async {
+    final harness = await _pump(tester);
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '5');
+    await _tapRowCheckbox(tester, '成品A');
+    await _tapRowCheckbox(tester, '半成品C');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-c'), '5');
+    expect(_qtyOf(tester, 'm-b'), '10');
+    expect(_qtyOf(tester, 'm-d'), '15');
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '2',
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-c'), '2');
+    expect(_qtyOf(tester, 'm-b'), '4');
+    expect(_qtyOf(tester, 'm-d'), '6');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+    final issues = harness.writes
+        .where((r) => r.path.endsWith('/issue-plans'))
+        .toList();
+    expect(issues, hasLength(2));
+    expect(
+      (((issues.last.data as Map)['lines'] as List).single
+          as Map<String, dynamic>)['qty'],
+      2.0,
+    );
+  });
+
+  testWidgets('采购起订策略只抬本批需要量，且超产后仍按整包装抬量', (tester) async {
+    await _pump(
+      tester,
+      customizeAnalysis: (analysis) {
+        final material = (analysis['flatMaterials'] as List)[1] as Map;
+        material['minOrderQty'] = 12;
+        material['orderMultipleQty'] = 5;
+      },
+    );
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '5');
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '15');
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '12',
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '25');
+  });
+
+  testWidgets('父件非基本单位按换算率与逐边包装固定批次算量', (tester) async {
+    await _pump(
+      tester,
+      customizeAnalysis: (analysis) {
+        (analysis['products'] as List)
+                .cast<Map<String, dynamic>>()
+                .first['unitRate'] =
+            2;
+        final rows = (analysis['flatMaterials'] as List)
+            .cast<Map<String, dynamic>>();
+        rows[0]['perProductQty'] = 2;
+        rows[1].addAll({
+          'bomQty': 3,
+          'consumptionBasis': 'PER_PACKAGE',
+          'basisOutputQty': 4,
+          'allowPartialPackage': false,
+        });
+        rows[2].addAll({'bomQty': 0.2, 'consumptionBasis': 'PER_UNIT'});
+        rows[3].addAll({
+          'bomQty': 0.3,
+          'consumptionBasis': 'FIXED_BATCH',
+          'basisOutputQty': 1,
+        });
+      },
+    );
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '3');
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '6');
+    expect(_qtyOf(tester, 'm-c'), '1.2');
+    expect(_qtyOf(tester, 'm-d'), '0.6');
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '2.5',
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '6');
+    expect(_qtyOf(tester, 'm-c'), '1');
+    expect(_qtyOf(tester, 'm-d'), '0.3');
+  });
+
+  for (final externalSupply in [false, true]) {
+    testWidgets('父件部分批先用${externalSupply ? '外部在途' : '已有库存'}，已覆盖半成品不重复备孙层', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        customizeAnalysis: (analysis) {
+          final rows = (analysis['flatMaterials'] as List)
+              .cast<Map<String, dynamic>>();
+          rows[1]['additionalSupplyRecommendedQty'] = 4;
+          rows[1]['allocatedAvailableQty'] = 16;
+          rows[2]['additionalSupplyRecommendedQty'] = 2;
+          rows[2]['allocatedAvailableQty'] = externalSupply ? 0 : 8;
+          rows[2]['externalFutureCoverageQty'] = externalSupply ? 8 : 0;
+        },
+      );
+      await _openWorkshopBucket(tester);
+      await tester.enterText(_bucketQty('p1'), '9');
+      await _tapRowCheckbox(tester, '成品A');
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      );
+      await tester.pumpAndSettle();
+      expect(_qtyOf(tester, 'm-b'), '2');
+      expect(_qtyOf(tester, 'm-c'), '1');
+      expect(_qtyOf(tester, 'm-d'), '3');
+      await tester.enterText(
+        find.byKey(
+          const ValueKey('material-analysis-child-cascade-qty-root-1'),
+        ),
+        '5',
+      );
+      await tester.pumpAndSettle();
+      for (final id in ['m-b', 'm-c', 'm-d']) {
+        expect(
+          find.byKey(ValueKey('material-analysis-child-cascade-qty-$id')),
+          findsNothing,
+        );
+      }
+      expect(find.text('已勾选 0 行'), findsOneWidget);
+    });
+  }
+
+  testWidgets('千节点分析限制级联页窗，输入全量联动且跨页校验提交', (tester) async {
+    final harness = await _pump(
+      tester,
+      customizeAnalysis: (analysis) {
+        final rows = (analysis['flatMaterials'] as List)
+            .cast<Map<String, dynamic>>();
+        analysis['flatMaterials'] = [
+          rows.first,
+          for (var i = 0; i < 1000; i++)
+            {
+              ...rows[1],
+              'materialLineId': 'large-$i',
+              'nodeKey': 'large-$i',
+              'actionGroupKey': 'large-action-$i',
+              'goodsCode': 'large-${i.toString().padLeft(4, '0')}',
+            },
+        ];
+      },
+    );
+    await _openWorkshopBucket(tester);
+    await _tapRowCheckbox(tester, '成品A');
+    final watch = Stopwatch()..start();
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    final openMs = watch.elapsedMilliseconds;
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-truncated')),
+      findsOneWidget,
+    );
+    watch.reset();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '5',
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'large-0'), '10');
+    expect(harness.writes, isEmpty);
+    final inputMs = watch.elapsedMilliseconds;
+    expect(find.text('1 / 6 · 共 300 条'), findsOneWidget);
+    expect(find.text('一键下单(299)'), findsOneWidget);
+    await tester.tap(find.text('下一页').last);
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'large-49'), '10');
+    await tester.enterText(
+      find.byKey(
+        const ValueKey('material-analysis-child-cascade-qty-large-49'),
+      ),
+      '1',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('上一页').last);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('2 / 6 · 共 300 条'),
+      findsOneWidget,
+      reason: 'The invalid selected row on another page must be revealed.',
+    );
+    expect(harness.writes, isEmpty);
+    await tester.enterText(
+      find.byKey(
+        const ValueKey('material-analysis-child-cascade-qty-large-49'),
+      ),
+      '10',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('将按各自路线依次下达 299 行'), findsOneWidget);
+    await tester.tap(find.text('一键下单').last);
+    await tester.pumpAndSettle();
+    final purchases = harness.writes.where(
+      (write) => write.path.endsWith('/notify'),
+    );
+    expect(purchases, hasLength(1));
+    expect((purchases.single.data as Map)['quantities'], hasLength(299));
+    // Diagnostic measurements have no environment-dependent timing assertion.
+    debugPrint(
+      'cascade 1000-node snapshot / 50-row page: open ${openMs}ms, input ${inputMs}ms',
+    );
+  });
+
+  for (final legacy in [false, true]) {
+    testWidgets('已排产锚点保留已安排覆盖，${legacy ? '历史转交' : '原位需求'}只补剩余量', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        anchoredMakeChild: true,
+        customizeAnalysis: (analysis) {
+          final anchor = (analysis['products'] as List).last as Map;
+          anchor['remainingQty'] = 4;
+          final child =
+              (analysis['flatMaterials'] as List)[2] as Map<String, dynamic>;
+          if (!legacy) {
+            child.addAll({'requiredQty': 10, 'requirementState': null});
+          }
+          child['internalCommittedOutputQty'] = 6;
+        },
+      );
+      await _openWorkshopBucket(tester);
+      await _tapRowCheckbox(tester, '成品A');
+      await tester.tap(
+        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      );
+      await tester.pumpAndSettle();
+      expect(_qtyOf(tester, 'm-c'), '4');
+      expect(
+        _qtyOf(tester, 'm-d'),
+        '30',
+        reason: 'The existing internal work still needs its material.',
+      );
+    });
+  }
+
+  testWidgets('锚点保留原位需求时先用现货，不再增产已覆盖半成品', (tester) async {
+    await _pump(
+      tester,
+      anchoredMakeChild: true,
+      customizeAnalysis: (analysis) {
+        ((analysis['products'] as List).last as Map)['remainingQty'] = 2;
+        ((analysis['flatMaterials'] as List)[2] as Map<String, dynamic>)
+            .addAll({
+              'requiredQty': 10,
+              'requirementState': null,
+              'allocatedAvailableQty': 8,
+              'additionalSupplyRecommendedQty': 2,
+            });
+      },
+    );
+    await _openWorkshopBucket(tester);
+    await tester.enterText(_bucketQty('p1'), '5');
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-c')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-d')),
+      findsNothing,
+    );
+  });
+
   // 2026-09-16 用户口径：「已经下达了的(委外/其他自制件/采购)，再次点最顶层
   // 下达车间时里面的数值计算对不对、是不是减去可用、顶层数值再增加怎么处理」。
   // 已建过自制子件任务的行原来一律「本页不下达」，现在按锚点产品行追加。
@@ -963,6 +1286,7 @@ Future<_Harness> _pump(
   bool makeFirstSubcontract = false,
   bool nestedMakeFirstSubcontract = false,
   bool anchoredMakeChild = false,
+  void Function(Map<String, dynamic> analysis)? customizeAnalysis,
   Future<void> Function(RequestOptions request)? writeGate,
 }) async {
   tester.view.physicalSize = const Size(1800, 1400);
@@ -999,6 +1323,7 @@ Future<_Harness> _pump(
             : soleComponentSubcontract
             ? _soleComponentSubcontractAnalysis()
             : _analysis(childrenAlreadyOrdered: childrenAlreadyOrdered);
+        customizeAnalysis?.call(analysis);
         final data = switch (request.path) {
           '/master/warehouses/dict' => [
             {'id': 'warehouse-1', 'name': '主仓'},

@@ -1,0 +1,67 @@
+{
+  "applicationOrder": [
+    "rows.json",
+    "variants/stock-only.json"
+  ],
+  "noSyntheticMovements": true,
+  "masterCounts": {
+    "goods": {
+      "source": 3,
+      "target": 4,
+      "anchors": [
+        920101
+      ]
+    },
+    "colors": {
+      "source": 1,
+      "target": 2,
+      "anchors": [
+        920401
+      ]
+    }
+  },
+  "newIdentities": {
+    "goods920101": {
+      "auto_created": true,
+      "referenceCount": 2,
+      "operationalBomCount": 0
+    },
+    "color920401": {
+      "referenceCount": 1
+    }
+  },
+  "stockBalances": {
+    "count": 5,
+    "qtySum": "21.0000",
+    "amountLocalSum": "65.50",
+    "weightSum": "3.7000",
+    "newTuples": [
+      {
+        "warehouse": 900201,
+        "goods": 920101,
+        "color": 920401,
+        "qty": "5.0000",
+        "amountLocal": "17.50",
+        "weight": "2.5000"
+      },
+      {
+        "warehouse": 900201,
+        "goods": 920101,
+        "color": null,
+        "qty": "3.0000",
+        "amountLocal": "9.00",
+        "weight": "1.2000"
+      }
+    ]
+  },
+  "combinedWithHistoricalReferencesAndOrphanBom": {
+    "goodsSource": 3,
+    "goodsTarget": 5,
+    "colorSource": 1,
+    "colorTarget": 3,
+    "stockBalanceCount": 6,
+    "qtySum": "23.0000",
+    "amountLocalSum": "79.50",
+    "weightSum": "3.7000"
+  }
+}

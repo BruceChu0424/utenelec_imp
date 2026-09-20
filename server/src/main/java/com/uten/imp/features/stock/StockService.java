@@ -204,6 +204,11 @@ public class StockService {
         // Re-entrant when the top-level document already batch-locked its keys;
         // mandatory as a safe fallback for future single-movement callers.
         inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
+        if (req.direction() == DIR_IN) {
+            // The prefix has already frozen all inventory keys for multi-document commands.
+            // Lock their goods rows once in PostgreSQL order, independently of display/line order.
+            owningWarehouseSync.lockForPosting(inventoryLock);
+        }
         var physicalRows=balanceRepo.readPhysicalSnapshot(req.warehouseId(),req.goodsId(),req.colorId());
         if(physicalRows.size()>1)throw new ApiException(ErrorCode.CONFLICT,"库存维度存在重复余额，请先核对");
         var physical=physicalRows.isEmpty()?null:physicalRows.getFirst();
@@ -235,6 +240,12 @@ public class StockService {
             if (req.movementType() != TYPE_CHECK_LOSS
                     && !REVERSAL_RETURN_TYPES.contains(req.movementType())) {
                 boolean allocatedProductionIssue = false;
+                if (req.costReference() instanceof InventoryMovementCostReference.WorkshopReturn returned) {
+                    if (!Boolean.TRUE.equals(balanceRepo.workshopReturnOutboundAuthorized(returned.requestItemId(),req.sourceDocId(),
+                            req.sourceItemId(),req.warehouseId(),req.qty(),returned.kind().name())))
+                        throw new ApiException(ErrorCode.CONFLICT,"退仓库存缺少本次原来源移交或反向准备，不能使用其他任务的物料");
+                    allocatedProductionIssue = true;
+                }
                 if (req.costReference() instanceof InventoryMovementCostReference.ProductionMaterialEvent event) {
                     if (req.movementType() != 5 || !"STOCK_DOC".equals(req.sourceDocType()) || event.eventId() == null) {
                         throw new ApiException(ErrorCode.CONFLICT, "生产领料流水与领料记录不匹配");

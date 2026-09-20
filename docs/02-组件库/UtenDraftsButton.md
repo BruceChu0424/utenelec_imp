@@ -1,10 +1,10 @@
-# UtenDraftsButton / UtenDraftCountSuffix（草稿入口与草稿计数）
+# UtenDraftsButton / UtenDraftBadge（草稿入口与草稿计数）
 
 > 源码：[`lib/components/buttons/uten_drafts_button.dart`](../../lib/components/buttons/uten_drafts_button.dart)、
-> [`lib/components/feedback/uten_draft_count.dart`](../../lib/components/feedback/uten_draft_count.dart)、
+> [`lib/components/feedback/uten_draft_badge.dart`](../../lib/components/feedback/uten_draft_badge.dart)、
 > 数据源 [`lib/shared/providers/draft_counts_provider.dart`](../../lib/shared/providers/draft_counts_provider.dart)。
-> 建立日期：2026-09-11（同日改版：hub 卡上的草稿数由红色徽章改为中性括号数字，
-> 见 [徽章与计数口径](../00-项目准则/14-徽章与计数口径.md)）。
+> 草稿是本人待完成的工作，入口与卡片均使用红色待办徽章，
+> 见 [徽章与计数口径](../00-项目准则/14-徽章与计数口径.md)。
 
 ---
 
@@ -18,7 +18,7 @@
 2. 保存成草稿的单据**没有任何入口**——用户不知道自己还有几张没提交的单。
 
 `UtenDraftsButton` 补上这条路：新建页右上角显示「草稿(N)」，点进去就是该单据列表的草稿段。
-`UtenDraftCountSuffix` 在 hub 单据卡标题后显示同一个 N，让用户在进页面之前就看见。
+`UtenDraftBadge` 在 hub 单据卡标题后显示同一个 N，让用户在进页面之前就看见。
 
 ---
 
@@ -45,7 +45,7 @@ UtenDraftsButton(
 
 行为契约：
 
-- **文案**：n > 0 显示「草稿(n)」，n = 0 只显示「草稿」（不显示 `(0)`）。
+- **文案**：固定显示「草稿」；n > 0 时在右侧显示红色数字徽章，n = 0 时不显示数字。
 - **权限**：没有该单据 `*:view` 权限（且非超管）时**整个按钮隐藏**——跳过去也是空列表。
 - **降级**：计数加载中/失败按 0，按钮照常可点，只是暂不显示数字（不放大成异常态）。
 - **导航**：`goFrom(context, '$listLocation?status=draft')`。
@@ -66,28 +66,18 @@ UtenDraftsButton(
 
 ---
 
-## 三、UtenDraftCountSuffix
+## 三、UtenDraftBadge
 
 ```dart
 UtenHubCard(
   ...,
-  labelSuffix: const UtenDraftCountSuffix(kind: DraftDocKind.purchaseOrder),
+  badge: const UtenDraftBadge(kind: DraftDocKind.purchaseOrder),
 )
 ```
 
-渲染成**中性括号数字**（`采购订货 (3)`，内部是 `UtenCountSuffix`），挂在
-`UtenHubCard.labelSuffix` 槽位；`count <= 0` 或无该类型 `*:view` 权限时不渲染、不占位。
+渲染为 `UtenNotificationBadge` 红色待办数字，挂在 `UtenHubCard.badge`；`count <= 0` 或无该类型 `*:view` 权限时不渲染、不占位。
 
-接入的 hub 卡：销售（报价/订货/出货/退货）、采购（订货/收货/退货）、
-委外（订货/成品退回/余料退回/损耗与责任）、钱流（收款/付款/费用/其它收入/银行转账）、
-生产（生产计划/生产日报）、仓库（调拨/盘点）。
-
-> **草稿不是「别人给我的待办」**，是本人未完成的工作，不处理也不会卡住任何人。
-> 按[徽章与计数口径](../00-项目准则/14-徽章与计数口径.md)它属于「有多少条、供我掂量」的
-> 浏览型计数：**必须用中性括号数字，不用红色 `UtenNotificationBadge`**，并且
-> **永不进** hub 卡 / 工作台模块卡 / 导航 Tab 的待办累加
->（`lib/shared/badges/todo_badge_registry.dart` 里根本没有登记草稿源）——
-> 否则会把个人草稿混进「有多少事等着我处理」的口径里，把数字放大。
+销售、采购、委外、财务、生产和仓库的草稿分别在 `todo_badge_registry.dart` 登记一次，按模块累加到工作台与导航总数。历史和报表仍使用中性计数。销售财审驳回单已有独立待办来源，不重复计入草稿。
 
 ---
 

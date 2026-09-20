@@ -54,10 +54,33 @@ public final class FulfillmentLockState {
         final Set<UUID> analyses = new HashSet<>();
         final Set<CommercialSource> expectedNewSources = new HashSet<>();
         final Set<UUID> expectedNewAnalyses = new HashSet<>();
+        final com.uten.imp.common.concurrency.SavepointSnapshots<Snapshot> savepoints =
+                new com.uten.imp.common.concurrency.SavepointSnapshots<>();
         boolean prepared;
         boolean inventoryEntered;
         boolean closed;
+        private record Snapshot(Set<CommercialSource> sources, Set<InventoryDimension> inventory,
+                Set<UUID> warehouses, Set<UUID> analyses, Set<CommercialSource> expectedNewSources,
+                Set<UUID> expectedNewAnalyses, boolean prepared, boolean inventoryEntered) {}
         @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
+        @Override public void savepoint(Object savepoint) {
+            savepoints.record(savepoint, new Snapshot(Set.copyOf(sources), Set.copyOf(inventory),
+                    Set.copyOf(warehouses), Set.copyOf(analyses), Set.copyOf(expectedNewSources),
+                    Set.copyOf(expectedNewAnalyses), prepared, inventoryEntered));
+        }
+        @Override public void savepointRollback(Object savepoint) {
+            Snapshot retained = savepoints.rollback(savepoint);
+            sources.clear(); inventory.clear(); warehouses.clear(); analyses.clear();
+            expectedNewSources.clear(); expectedNewAnalyses.clear();
+            prepared = retained != null && retained.prepared();
+            inventoryEntered = retained != null && retained.inventoryEntered();
+            if (retained != null) {
+                sources.addAll(retained.sources()); inventory.addAll(retained.inventory());
+                warehouses.addAll(retained.warehouses()); analyses.addAll(retained.analyses());
+                expectedNewSources.addAll(retained.expectedNewSources());
+                expectedNewAnalyses.addAll(retained.expectedNewAnalyses());
+            }
+        }
         @Override public void suspend() {
             if (TransactionSynchronizationManager.getResource(RESOURCE) == this) {
                 TransactionSynchronizationManager.unbindResource(RESOURCE);
@@ -77,6 +100,7 @@ public final class FulfillmentLockState {
             closed = true;
             sources.clear(); inventory.clear(); warehouses.clear(); analyses.clear();
             expectedNewSources.clear(); expectedNewAnalyses.clear();
+            savepoints.clear();
         }
     }
 }

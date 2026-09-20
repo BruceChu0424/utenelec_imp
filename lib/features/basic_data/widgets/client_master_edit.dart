@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/sales_shipment_policy.dart';
 import '../models/client_access_models.dart';
 import '../models/client_node.dart';
 import '../models/reference_method_option.dart';
@@ -97,11 +98,14 @@ List<MasterFieldDef> buildClientFields(
   ],
   ...const <MasterFieldDef>[
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+    // 2026-09-19 口径：编号全自动——readOnly 字段不上送，新建由服务端按分类
+    // 前缀发号、编辑保留原号；「留空自动生成/手工编号」双轨入口退役。
     MasterFieldDef(
       key: 'code',
       label: '编号',
       group: '基础',
-      hint: '留空按分类前缀自动生成；手工编号也必须唯一',
+      readOnly: true,
+      hint: '保存后按分类前缀自动生成',
     ),
     MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
     MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
@@ -113,9 +117,9 @@ List<MasterFieldDef> buildClientFields(
       required: true,
       group: '基础',
     ),
-    // 2026-09-14 口径：联系人必填（单据/物流找得到人）；手机不再必填——
-    // 多联系方式在客户详情页按「手机/电话/邮箱…」逐条登记，这里只留快捷字段。
-    MasterFieldDef(key: 'linkman', label: '联系人', required: true, group: '联系'),
+    // 2026-09-19 口径：除「基础」组（名称/状态）外全部选填——联系人不再必填
+    //（多联系方式在客户详情页按「手机/电话/邮箱…」逐条登记，这里只留快捷字段）。
+    MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
     MasterFieldDef(key: 'mobile', label: '手机', group: '联系'),
     MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
     MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
@@ -139,14 +143,13 @@ List<MasterFieldDef> buildClientFields(
     key: 'salesPaymentType',
     label: '销售货款类型',
     type: MasterFieldType.select,
-    required: true,
     options: [
       MasterSelectOption(value: ClientSalesPaymentType.monthly, label: '月结'),
       MasterSelectOption(value: ClientSalesPaymentType.cash, label: '现金'),
       MasterSelectOption(value: ClientSalesPaymentType.deposit, label: '定金'),
     ],
     group: '财务',
-    hint: '用于发货财务审核分类；不代表定金已到账',
+    hint: '用于发货财务审核分类，不代表定金已到账；未分类客户财务放行时会被拦截',
   ),
   MasterFieldDef(
     key: 'defaultSettlementMethodId',
@@ -165,10 +168,28 @@ List<MasterFieldDef> buildClientFields(
     hint: '订单未指定时使用；关联以系统 UUID 保存',
   ),
   // V592 默认销售条款（单一事实源）：新建销售订货单选客户后预填这三项；
-  // 每次下单自动写回最新选择，这里可手工预置。
-  const MasterFieldDef(
+  // 每次下单自动记住最新选择，这里可手工预置。货运策略选项词表对齐销售
+  // 订货单（新单只提供两档）；存量历史值(如 CUSTOMER_CONFIRM)按当前值追加
+  // 成选项，防止 select 初值不在选项里被 initState 静默置空、保存时清掉。
+  MasterFieldDef(
     key: 'defaultShipmentPolicy',
     label: '默认货运策略',
+    type: MasterFieldType.select,
+    options: [
+      for (final policy in SalesShipmentPolicy.selectable)
+        MasterSelectOption(
+          value: policy,
+          label: salesShipmentPolicyLabel(policy),
+        ),
+      if (iv['defaultShipmentPolicy'] != null &&
+          iv['defaultShipmentPolicy']!.isNotEmpty &&
+          !SalesShipmentPolicy.selectable.contains(iv['defaultShipmentPolicy']))
+        MasterSelectOption(
+          value: iv['defaultShipmentPolicy']!,
+          label:
+              '${salesShipmentPolicyLabel(iv['defaultShipmentPolicy'])}（历史值）',
+        ),
+    ],
     group: '财务',
     hint: '新建销售订货单预填；每次下单自动记住最新选择',
   ),

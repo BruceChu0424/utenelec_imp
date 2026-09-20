@@ -1005,14 +1005,14 @@ class _MaterialSettlementSheetState
       'consume',
       '本次实耗',
       (row) => row.consumed,
-      hint: '填写本次实际用掉的材料。黄色建议量为待登记量减本次损耗、在制，请核对；提交后才记账。',
+      hint: '填写实际工艺耗用，包含 BOM 已计入的正常损耗。黄色值为待登记量扣除另行报损及其他在制后的建议，须核对后提交。',
     ),
     if (_showLossAndWip) ...[
       _inputColumn(
         'loss',
-        '本次损耗',
+        '本次另行报损',
         (row) => row.loss,
-        hint: '填写实际损耗的基本数量，并说明原因。系统不会按理论用量自动认定损耗。',
+        hint: '填写另行报损或报废数量，不含 BOM 已计入的正常工艺耗用；这部分不再支持后续生产，必须说明原因。',
       ),
       _inputColumn(
         'wip',
@@ -1223,7 +1223,7 @@ String _number(double value) => value == value.roundToDouble()
     : value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
 
 String _settlementLabel(String type) => switch (type) {
-  'APPROVED_LOSS' => '批准损耗',
+  'APPROVED_LOSS' => '另行确认损耗',
   'LEGAL_WIP' => '在制占用',
   _ => '实际消耗',
 };

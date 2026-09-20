@@ -151,6 +151,10 @@ public class ProductionExecutionBatchService {
 
     private Context context(UUID id,Long expectedVersion,boolean locked) {
         Source source=source(id); requireAccess(source);
+        String route=(String)em.createNativeQuery("SELECT start_route FROM production_execution_segments WHERE id=:id")
+                .setParameter("id",id).getSingleResult();
+        if(route==null)throw conflict("请先确认生产路线");
+        if(!"BATCH".equals(route))throw conflict("请先确认为分批生产路线，再核对本批数量");
         if (expectedVersion!=null && expectedVersion!=source.version()) throw conflict("车间任务已变化，请刷新后重新选择");
         if(!source.autoPromote())throw conflict("该任务已人工暂缓，请先解除暂缓后再分批领料");
         if (!"WAITING".equals(source.status()) || source.analysisId()==null || source.closed()
@@ -399,6 +403,7 @@ public class ProductionExecutionBatchService {
                 Boolean.TRUE.equals(r[19]),Boolean.TRUE.equals(r[20]),uuid(r[21]),decimal(r[22]),decimal(r[23]),Boolean.TRUE.equals(r[24]));
     }
     private void requireAccess(Source source) {
+        membership.requireActiveOperator();
         if(!access.hasAuthority("production_execution:view")||!access.hasAuthority("production_execution:start"))throw new ApiException(ErrorCode.FORBIDDEN,"缺少车间分批领料权限");
         if(!membership.isWorkshopMember(source.workshopId(),source.responsibleId(),currentUser.employeeId().orElse(null)))
             access.requireScopedOperationWritable(source.makerId(),"无权为此车间任务分批领料","production_execution:start");

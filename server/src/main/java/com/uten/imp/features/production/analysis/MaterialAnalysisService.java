@@ -529,6 +529,8 @@ public class MaterialAnalysisService {
      * 主档回写后下一次刷新算出的建议 = 刚确认的值，与旧建议不同，会被
      * {@code NODE_FACT_CHANGED_CONDITION} 当成「主档事实变更」把确认清掉(反馈环)。
      * 主档回写必须先于 {@link #refreshLocked}，刷新按新主档算建议才与本行对齐。
+     * 同批同货品的节点选用了不同路线时，各节点决定独立保存，保留原主档默认与建议，
+     * 不以请求顺序挑选主档路线，也不在刷新时清掉合法的混合路线决定。
      */
     @Transactional
     public AnalysisView saveRoutes(UUID analysisId, RouteRequest request) {
@@ -549,9 +551,7 @@ public class MaterialAnalysisService {
         List<SourceLine> routeSources = loadSourceLines(analysisId, false);
         Map<UUID, String> planningBlocks = planningBlockedReasons(routeSources);
         Set<UUID> knownSources = routeSources.stream().map(SourceLine::analysisItemId).collect(Collectors.toSet());
-        // 本次确认涉及的货品 → 路线：同一货品出现多行时按 goods 去重，以本次确认值为准
-        // (后出现的决策覆盖先出现的)，主档回写一货品一条。
-        Map<UUID, String> goodsRoutes = new LinkedHashMap<>();
+        List<MaterialAnalysisRouteBatchWriter.Change> changes = new ArrayList<>();
         for (RouteDecision decision : decisions) {
             MaterialGroup resolved = materialGroups.resolve(decision);
             List<MaterialRow> group = resolved.materials();
@@ -564,87 +564,17 @@ public class MaterialAnalysisService {
             if (!seen.add(groupKey)) throw validation("物料路线操作组重复");
             String route = normalizeRoute(decision.route());
             String reason = normalizeRouteReason(decision.reason());
-            List<UUID> groupMaterialIds = group.stream().map(MaterialRow::id).toList();
-            Number downstream = (Number) em.createNativeQuery("""
-                    SELECT COUNT(*)
-                    FROM preplan_supply_actions action
-                    WHERE action.analysis_id = :analysisId
-                      AND action.status <> 'CANCELLED'
-                      AND action.route IS DISTINCT FROM :route
-                      AND (
-                          action.action_group_key = :groupKey
-                          OR EXISTS (
-                              SELECT 1
-                              FROM preplan_supply_action_allocations allocation
-                              WHERE allocation.action_id = action.id
-                                AND allocation.analysis_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[])))
-                          )
-                      )
-                    """)
-                    .setParameter("analysisId", analysisId)
-                    .setParameter("groupKey", groupKey)
-                    .setParameter("materialIds", uuidArrayText(groupMaterialIds))
-                    .setParameter("route", route)
-                    .getSingleResult();
-            if (downstream.longValue() > 0) {
-                throw conflict("物料操作组已有不同路线的下游任务，请先撤回后再改路线");
-            }
             for (MaterialRow material : group) {
-                em.createNativeQuery("""
-                        UPDATE production_material_analysis_materials
-                        SET confirmed_route = :route,
-                            source_suggestion = :route,
-                            route_reason = :reason,
-                            route_confirmed_by = :actorId,
-                            route_confirmed_at = now(),
-                            updated_at = now(), updated_by = :actorId
-                        WHERE id = :materialId AND analysis_id = :analysisId
-                          AND active = TRUE
-                        """)
-                        .setParameter("route", route)
-                        .setParameter("reason", reason)
-                        .setParameter("actorId", currentUser.requireId())
-                        .setParameter("materialId", material.id())
-                        .setParameter("analysisId", analysisId)
-                        .executeUpdate();
-                if (material.goodsId() != null) goodsRoutes.put(material.goodsId(), route);
+                changes.add(new MaterialAnalysisRouteBatchWriter.Change(material.id(), groupKey,
+                        material.goodsId(), route, reason));
             }
         }
-        writeBackGoodsSourceType(goodsRoutes);
+        // All request/source validation precedes writes. Mixed per-node routes
+        // remain legitimate, but cannot choose a last-wins default for the goods.
+        new MaterialAnalysisRouteBatchWriter(em).apply(analysisId, currentUser.requireId(), changes);
         refreshLocked(analysisId);
         recordSimpleCommand(analysisId, "ROUTE", request.idempotencyKey(), requestHash);
         return detailInternal(analysisId, false);
-    }
-
-    /**
-     * 确认路线回写货品主档 goods.source_type (与 V587 所属仓库人工回写
-     * {@link GoodsOwningWarehouseWriteService} 同口径)：这是人工决定，所以抬 version；
-     * 值没变不落盘 (IS DISTINCT FROM)，已软删货品跳过。走原生 SQL 而不是 master 的
-     * JPA 仓储——production 包直接 import master 仓储会踩 ArchitectureBoundaryTest
-     * 的跨 feature 边界。goods 带行级审计触发器，saveRoutes 开头已 tx.bind() 绑定
-     * app.actor_id。返回实际改写的货品数。
-     */
-    private int writeBackGoodsSourceType(Map<UUID, String> routesByGoods) {
-        if (routesByGoods.isEmpty()) return 0;
-        UUID actorId = currentUser.requireId();
-        int updated = 0;
-        for (Map.Entry<UUID, String> entry : routesByGoods.entrySet()) {
-            String sourceType = sourceTypeForRoute(entry.getValue());
-            updated += em.createNativeQuery("""
-                    UPDATE goods
-                    SET source_type = :sourceType,
-                        version = version + 1,
-                        updated_at = now(),
-                        updated_by = :actorId
-                    WHERE id = :goodsId AND is_deleted = FALSE
-                      AND source_type IS DISTINCT FROM :sourceType
-                    """)
-                    .setParameter("sourceType", sourceType)
-                    .setParameter("actorId", actorId)
-                    .setParameter("goodsId", entry.getKey())
-                    .executeUpdate();
-        }
-        return updated;
     }
 
     /**
@@ -1492,7 +1422,8 @@ public class MaterialAnalysisService {
         // 以单个明确字段类型的行数组分块提交；SQL和绑定数量不随节点数膨胀。
         // 冲突键、完整字段和「BOM 事实变更即清人工确认」条件保持原语义。
         // 写入前后各取一次已确认节点键，统计本次被清空的人工确认数（返回给刷新响应）。
-        Set<String> confirmedBefore = confirmedRouteNodeKeys(analysisId);
+        MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS);
+        Set<String> confirmedBefore = baseline.confirmedNodes();
         List<NodeSnapshotRow> snapshotRows = new ArrayList<>(nodes.size());
         for (BomNode node : nodes) {
             MaterialDimension key = node.dimension();
@@ -1515,9 +1446,9 @@ public class MaterialAnalysisService {
                     stock.reserved(), inbound.qty(), shortage, inbound.expectedDate(),
                     lowerPending));
         }
-        upsertNodeSnapshots(analysisId, snapshotRows);
+        boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline);
         int routeResets = 0;
-        if (!confirmedBefore.isEmpty()) {
+        if (structureChanged && !confirmedBefore.isEmpty()) {
             Set<String> confirmedAfter = confirmedRouteNodeKeys(analysisId);
             for (BomNode node : nodes) {
                 String nodeRef = nodeRef(node.analysisItemId(), node.nodeKey());
@@ -1528,7 +1459,7 @@ public class MaterialAnalysisService {
         }
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
         persistAllocationSnapshot(
-                analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows);
+                analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows, baseline);
         if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId));
         bumpFingerprint(analysisId);
         return routeResets;
@@ -1685,18 +1616,26 @@ public class MaterialAnalysisService {
     }
 
     /** Deduplicate the same source/path key before one statement; retain the original encounter order. */
-    private void upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows) {
+    private boolean upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows, MaterialAnalysisSnapshotBaseline baseline) {
         Map<String, NodeSnapshotRow> distinct = new LinkedHashMap<>();
         for (NodeSnapshotRow row : rows) {
             distinct.put(nodeRef(row.node().analysisItemId(), row.node().nodeKey()), row);
         }
-        List<NodeSnapshotRow> ordered = List.copyOf(distinct.values());
+        List<NodeSnapshotRow> ordered = distinct.values().stream().filter(row -> {
+            BomNode node = row.node();
+            return !baseline.unchangedStructure(node.analysisItemId(), node.nodeKey(), new Object[] {
+                    node.parentNodeKey(), node.bomItemId(), node.goodsId(), node.colorId(), node.unitId(), node.depth(), node.path(),
+                    node.perProductQty(), node.controlStage(), node.consumptionBasis(), node.basisOutputQty(),
+                    node.allowPartialPackage(), node.hardGate(), node.bomQty(), node.parentPerProductQty(),
+                    "EDGE_RULE", node.suggestion(), true});
+        }).toList();
         UUID actorId = currentUser.requireId();
         for (int from = 0; from < ordered.size(); from += NODE_WRITE_CHUNK) {
             List<NodeSnapshotRow> chunk = ordered.subList(from, Math.min(ordered.size(), from + NODE_WRITE_CHUNK));
             String snapshots = NODE_INPUT.json(chunk, row -> nodeSnapshotValues(analysisId, actorId, row));
             em.createNativeQuery(NODE_UPSERT_SQL).setParameter("snapshots", snapshots).executeUpdate();
         }
+        return !ordered.isEmpty();
     }
 
     /** Reconcile actionable coverage from authoritative downstream lifecycle facts. */
@@ -2396,7 +2335,8 @@ public class MaterialAnalysisService {
             List<SourceLine> sources,
             List<BomNode> nodes,
             AvailabilitySnapshot availability,
-            List<NodeSnapshotRow> inputs) {
+            List<NodeSnapshotRow> inputs,
+            MaterialAnalysisSnapshotBaseline storedSnapshot) {
         Map<String, NodeSnapshotRow> inputsByNode = inputs.stream().collect(Collectors.toMap(
                 row -> nodeAllocationKey(row.node()), row -> row));
         Map<UUID, List<BomNode>> directBySource = nodes.stream()
@@ -2538,7 +2478,7 @@ public class MaterialAnalysisService {
                     allocation.shortageQty(), lowerPending, input.available(), input.reserved(),
                     node.safetyStock(), input.inbound(), input.expectedReadyDate()));
         }
-        updateNodeAllocations(analysisId, allocationRows);
+        updateNodeAllocations(analysisId, allocationRows, storedSnapshot);
     }
 
     /** 权威分配快照写回的一行（按 analysis_item_id + node_key 定位活动节点）。 */
@@ -2633,7 +2573,10 @@ public class MaterialAnalysisService {
                    snapshot.inbound_qty, snapshot.expected_ready_date)
             """;
 
-    private void updateNodeAllocations(UUID analysisId, List<NodeAllocationRow> rows) {
+    private void updateNodeAllocations(UUID analysisId, List<NodeAllocationRow> rows, MaterialAnalysisSnapshotBaseline baseline) {
+        rows = rows.stream().filter(row -> !baseline.unchangedAllocation(row.analysisItemId(), row.nodeKey(), new Object[] {
+                row.required(), row.allocated(), row.allocatedStart(), row.allocatedFinish(), row.allocatedShip(), row.shortage(),
+                row.lowerPending(), row.available(), row.reserved(), row.safety(), row.inbound(), row.expectedReadyDate()})).toList();
         UUID actorId = currentUser.requireId();
         for (int from = 0; from < rows.size(); from += NODE_WRITE_CHUNK) {
             List<NodeAllocationRow> chunk = rows.subList(from, Math.min(rows.size(), from + NODE_WRITE_CHUNK));
@@ -4249,7 +4192,7 @@ public class MaterialAnalysisService {
         SharedFutureIndex sharedFuture = sharedFutureSupply(
                 analysisId, header.warehouseId(), materialRows);
         Map<UUID, ClaimedFutureState> claimedFuture = sharedFutureClaimedByMaterial(analysisId);
-        Map<UUID, BigDecimal> activeFuture = activeFutureCoverageByMaterial(analysisId);
+        Map<UUID, FutureCoverage> activeFuture = activeFutureCoverage(analysisId);
         Map<UUID, SourceLine> sourcesById = sources.stream().collect(
                 Collectors.toMap(SourceLine::analysisItemId, source -> source));
         Map<MaterialNodeIdentity, MaterialRow> materialRowsByNode =
@@ -4381,6 +4324,11 @@ public class MaterialAnalysisService {
                     MainWarehouseSafetySummary mainSafety = mainWarehouseSafetySummary(
                             breakdown.getOrDefault(row.dimension(), List.of()), operationalWarehouseIds, row.safetyStockQty(),
                             mainOpenSafety.getOrDefault(new StockIdentity(row.goodsId(), row.colorId()), BigDecimal.ZERO));
+                    FutureCoverage future = activeFuture.getOrDefault(row.id(), FutureCoverage.NONE);
+                    UUID anchorId = anchorChildByParentLine.get(row.id());
+                    SourceLine anchor = anchorId == null ? null : sourcesById.get(anchorId);
+                    BigDecimal internalCommitment = future.totalQty().subtract(future.externalQty())
+                            .max(anchor == null ? BigDecimal.ZERO : anchor.requestedQty());
                     return row.toView(
                             breakdown.getOrDefault(row.dimension(), List.of()),
                             references.getOrDefault(row.id(), List.of()),
@@ -4392,7 +4340,7 @@ public class MaterialAnalysisService {
                             borrowedIn, borrowedOut, rowBorrows, cross, requirement,
                             shared,
                             claimedFuture.getOrDefault(row.id(), ClaimedFutureState.NONE).claimedQty(),
-                            activeFuture.getOrDefault(row.id(), BigDecimal.ZERO),
+                            future.totalQty(), future.externalQty(), internalCommitment,
                             selectedWarehouses.totalAvailableQty(),
                             selectedWarehouses.otherTransferableQty(),
                             lineFlowStages.get(row.id()),
@@ -5226,8 +5174,7 @@ public class MaterialAnalysisService {
                  AND material.analysis_id=balance.beneficiary_analysis_id
                 JOIN warehouses warehouse ON warehouse.id=reservation.warehouse_id
                   AND warehouse.is_deleted=FALSE AND warehouse.is_accountable=TRUE
-                  AND NOT EXISTS(SELECT 1 FROM warehouses child
-                      WHERE child.parent_id=warehouse.id AND child.is_deleted=FALSE)
+                  AND fn_warehouse_is_operational_leaf(warehouse.id)
                 WHERE balance.beneficiary_analysis_id=:analysisId AND balance.effective_qty>0
                   -- Admission follows this authoritative BOM's composite UUID/path
                   -- identities even before structural reconciliation is persisted.
@@ -5261,8 +5208,7 @@ public class MaterialAnalysisService {
                        COALESCE(own.own_qty,0),
                        (NOT w.is_defective
                         AND NOT w.is_line_side
-                        AND NOT EXISTS(SELECT 1 FROM warehouses child
-                            WHERE child.parent_id=w.id AND child.is_deleted=FALSE)
+                        AND fn_warehouse_is_operational_leaf(w.id)
                         AND (CAST(:warehouseId AS uuid) IS NULL
                              OR fn_warehouse_same_main(v.warehouse_id,CAST(:warehouseId AS uuid)))) AS public_allowed
                 FROM v_stock_available v
@@ -6125,13 +6071,24 @@ public class MaterialAnalysisService {
 
     private Map<UUID, BigDecimal> activeFutureCoverageByMaterial(UUID analysisId) {
         Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        activeFutureCoverage(analysisId).forEach((id, coverage) -> result.put(id, coverage.totalQty()));
+        return Map.copyOf(result);
+    }
+
+    private record FutureCoverage(BigDecimal totalQty, BigDecimal externalQty) {
+        static final FutureCoverage NONE = new FutureCoverage(BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    private Map<UUID, FutureCoverage> activeFutureCoverage(UUID analysisId) {
+        Map<UUID, FutureCoverage> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
                 ACTIVE_FUTURE_COVERAGE_SQL + """
-                SELECT analysis_material_id, SUM(qty)::numeric
+                SELECT analysis_material_id, SUM(qty)::numeric,
+                       COALESCE(SUM(qty) FILTER (WHERE supply_kind = 'EXTERNAL'), 0)::numeric
                 FROM coverage
                 GROUP BY analysis_material_id
                 """).setParameter("analysisId", analysisId))) {
-            result.put(uuid(row[0]), decimal(row[1]));
+            result.put(uuid(row[0]), new FutureCoverage(decimal(row[1]), decimal(row[2])));
         }
         return Map.copyOf(result);
     }
@@ -7033,8 +6990,7 @@ public class MaterialAnalysisService {
                   AND is_deleted = FALSE
                   AND COALESCE(status, '') <> '禁用'
                   AND (parent_id IS NULL OR (is_accountable = TRUE
-                    AND NOT EXISTS (SELECT 1 FROM warehouses c
-                                    WHERE c.parent_id = warehouses.id AND c.is_deleted = FALSE)))
+                    AND fn_warehouse_is_operational_leaf(warehouses.id)))
                 """).setParameter("warehouseIds", requested).getSingleResult();
         if (valid.longValue() != requested.size()) {
             throw notFound("所选主仓库或历史仓库范围不存在、已禁用或不能用于物料分析");
@@ -7933,6 +7889,8 @@ public class MaterialAnalysisService {
                             SharedFutureAggregate sharedFuture,
                             BigDecimal sharedFutureClaimedQty,
                             BigDecimal activeFutureCoverageQty,
+                            BigDecimal externalFutureCoverageQty,
+                            BigDecimal internalCommittedOutputQty,
                             BigDecimal selectedWarehousesAvailableQty,
                             BigDecimal selectedOtherWarehouseTransferableQty,
                             String flowStage,
@@ -7982,7 +7940,8 @@ public class MaterialAnalysisService {
                     sharedFuturePendingQty,sharedFuture.lateAvailableQty(),
                     subcontractOutboundForm,
                     owningWarehouseId, owningWarehouseName,
-                    owningWorkshopId, owningWorkshopName);
+                    owningWorkshopId, owningWorkshopName,
+                    externalFutureCoverageQty, internalCommittedOutputQty);
         }
 
         String actionGroupKey() {

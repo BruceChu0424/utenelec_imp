@@ -11,7 +11,6 @@
 -- 幂等：先全量清零再按子树灌入，重跑安全；HR 真员工替换 stub 后 legacy_id 不变，归属不断链。
 -- =====================================================================
 
-BEGIN;
 
 -- ① 全量清零（重跑幂等；新手工设置的归属会被覆盖——正式上线重迁后请复查本表注释）
 UPDATE goods SET owner_employee_id = NULL WHERE owner_employee_id IS NOT NULL;
@@ -42,7 +41,6 @@ FROM sub
 JOIN employees e ON e.legacy_id = sub.worker_legacy_id
 WHERE g.category_id = sub.category_id;
 
-COMMIT;
 
 -- ---------------- 校验 ----------------
 SELECT r FROM (

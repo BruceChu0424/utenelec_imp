@@ -13,6 +13,7 @@
 //    costAmount 出/退；parcel/carton 出货类；solution/responsible 退货专属）。
 import 'package:flutter/material.dart';
 import '../../../shared/models/decimal_text.dart';
+export '../../../shared/models/sales_shipment_policy.dart';
 
 /// 销售单据类型。pathSegment 对齐后端 /api/sales/{quotes|orders|shipments|other-shipments|returns}。
 enum SalesDocType {
@@ -135,26 +136,6 @@ Color chainStatusColor(int? code, ThemeData theme) {
       return theme.colorScheme.onSurfaceVariant;
   }
 }
-
-/// 订单发运策略。历史值只用于保留旧单，不允许在新单中选择。
-abstract final class SalesShipmentPolicy {
-  static const legacyUnspecified = 'LEGACY_UNSPECIFIED';
-  static const allowPartial = 'ALLOW_PARTIAL';
-  static const requireComplete = 'REQUIRE_COMPLETE';
-  static const customerConfirm = 'CUSTOMER_CONFIRM';
-
-  /// 新单可选的发运策略。`customerConfirm` 不再提供给新单（仅历史单只读保留）。
-  static const selectable = <String>[allowPartial, requireComplete];
-}
-
-String salesShipmentPolicyLabel(String? code) => switch (code) {
-  SalesShipmentPolicy.allowPartial => '允许分批发货',
-  SalesShipmentPolicy.requireComplete => '整单齐套后发货',
-  SalesShipmentPolicy.customerConfirm => '客户确认后分批',
-  SalesShipmentPolicy.legacyUnspecified => '历史订单(未指定)',
-  null || '' => '未返回',
-  _ => '未知策略($code)',
-};
 
 /// 仓库出货作业状态。
 /// V582 起仓库只有一步：财务放行后 PENDING_PICK 直接确认出库到 SHIPPED。

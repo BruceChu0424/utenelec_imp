@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ReportablePlanLineQuerySecurityContractTest {
 
     @Test
-    void pickerExposesOnlyAssignedAndMaterialReadySegmentsInsideObjectScope()
+    void pickerExposesOnlyAssignedStartedSegmentsWithNetCapacityInsideObjectScope()
             throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/production/dailyreport/"
@@ -21,7 +21,8 @@ class ReportablePlanLineQuerySecurityContractTest {
                 .contains("segment.workshop_department_id IS NOT NULL")
                 .contains("segment.responsible_employee_id IS NOT NULL")
                 .contains("demand.status NOT IN (")
-                .contains("'FULFILLED', 'RELEASED', 'REVERSED'")
+                .contains("'RELEASED', 'REVERSED'")
+                .contains("fn_execution_material_output_capacity(segment.id, TRUE)")
                 .contains("execution_segment_id IN (")
                 .contains("var readScope = access.scope()")
                 .contains("p.maker_id IS NULL")

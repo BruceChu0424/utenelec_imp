@@ -263,6 +263,41 @@ psql_admin() {
     -d "$DATABASE" -At -v ON_ERROR_STOP=1 -c "$1"
 }
 
+verify_runtime_role_contract() {
+  local phase="$1" ddl_flags flyway_access import_acl
+  ddl_flags="$(psql_admin "SELECT
+    has_database_privilege('uten', 'uten_imp', 'CREATE')::int || ':' ||
+    has_schema_privilege('uten', 'public', 'CREATE')::int || ':' ||
+    pg_has_role('uten', 'uten_owner', 'MEMBER')::int || ':' ||
+    pg_has_role('uten', 'uten_migrator', 'MEMBER')::int;")"
+  [[ "$ddl_flags" == '0:0:0:0' ]] || die "$phase app DDL/membership verification failed: $ddl_flags"
+  flyway_access="$(psql_admin "SELECT has_table_privilege('uten', 'flyway_schema_history', 'INSERT,UPDATE,DELETE')::int;")"
+  [[ "$flyway_access" == 0 ]] || die "$phase runtime app role can mutate flyway_schema_history"
+  import_acl="$(psql_admin "SELECT (
+    CASE WHEN to_regclass('public.legacy_subcontract_order_import_sources') IS NULL THEN TRUE ELSE
+      has_table_privilege('uten', 'public.legacy_subcontract_order_import_sources', 'SELECT')
+      AND NOT has_table_privilege('uten', 'public.legacy_subcontract_order_import_sources',
+        'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') END
+    AND CASE WHEN to_regprocedure('public.fn_register_legacy_subcontract_order_source(uuid,jsonb)') IS NULL THEN TRUE ELSE
+      NOT has_function_privilege('uten', 'public.fn_register_legacy_subcontract_order_source(uuid,jsonb)', 'EXECUTE') END
+    AND CASE WHEN to_regclass('public.legacy_finance_import_sources') IS NULL THEN TRUE ELSE
+      has_table_privilege('uten', 'public.legacy_finance_import_sources', 'SELECT')
+      AND NOT has_table_privilege('uten', 'public.legacy_finance_import_sources',
+        'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') END
+    AND CASE WHEN to_regprocedure('public.fn_import_legacy_finance_source(uuid,text,jsonb,integer)') IS NULL THEN TRUE ELSE
+      NOT has_function_privilege('uten', 'public.fn_import_legacy_finance_source(uuid,text,jsonb,integer)', 'EXECUTE') END
+    AND CASE WHEN to_regclass('public.legacy_procurement_receipt_import_sources') IS NULL THEN TRUE ELSE
+      has_table_privilege('uten', 'public.legacy_procurement_receipt_import_sources', 'SELECT')
+      AND NOT has_table_privilege('uten', 'public.legacy_procurement_receipt_import_sources',
+        'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') END
+    AND CASE WHEN to_regprocedure('public.fn_register_legacy_receipt_import_source(uuid,text,jsonb)') IS NULL THEN TRUE ELSE
+      NOT has_function_privilege('uten', 'public.fn_register_legacy_receipt_import_source(uuid,text,jsonb)', 'EXECUTE') END
+    AND CASE WHEN to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NULL THEN TRUE ELSE
+      NOT has_function_privilege('uten', 'public.fn_require_runtime_maintenance(boolean)', 'EXECUTE') END
+    )::int;")"
+  [[ "$import_acl" == 1 ]] || die "$phase runtime role can mutate or issue restricted legacy import evidence"
+}
+
 server_version_num="$(psql_admin 'SHOW server_version_num;')"
 (( server_version_num >= 160006 && server_version_num < 170000 )) \
   || die "server_version_num must be PostgreSQL 16.6 or newer (found $server_version_num)"
@@ -430,13 +465,7 @@ if [[ -e "$HARDENING_COMPLETE" || -L "$HARDENING_COMPLETE" ]]; then
   require_root_state_file "$HARDENING_COMPLETE"
   [[ "$(<"$HARDENING_COMPLETE")" == "$hardening_state_payload" ]] \
     || die 'a different role-hardening completion is already recorded; use a separately reviewed drift procedure'
-  ddl_flags="$(psql_admin "SELECT
-    has_database_privilege('uten', 'uten_imp', 'CREATE')::int || ':' ||
-    has_schema_privilege('uten', 'public', 'CREATE')::int || ':' ||
-    pg_has_role('uten', 'uten_owner', 'MEMBER')::int;")"
-  [[ "$ddl_flags" == '0:0:0' ]] || die "completed-state app DDL verification failed: $ddl_flags"
-  [[ "$(psql_admin "SELECT has_table_privilege('uten', 'flyway_schema_history', 'INSERT,UPDATE,DELETE')::int;")" == 0 ]] \
-    || die 'completed-state runtime app role can mutate flyway_schema_history'
+  verify_runtime_role_contract 'completed-state'
   psql_admin 'ALTER ROLE uten LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;' >/dev/null
   [[ "$(psql_admin "SELECT rolcanlogin::int FROM pg_roles WHERE rolname='uten';")" == 1 ]] \
     || die 'completed hardening could not restore the runtime role login state'
@@ -532,7 +561,35 @@ ALTER ROLE uten_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION 
 SELECT format(
   'ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L',
   'uten_migrator', :'migrator_password') \gexec
-REVOKE uten_owner FROM uten;
+-- Cut only the runtime role's own membership edges that reach a maintenance
+-- identity. Keep unrelated roles, their members, and migrator->owner intact.
+-- Explicit grantors cover PostgreSQL 16's independently recorded role grants.
+-- RESTRICT refuses delegated dependencies instead of cascading into other users.
+DO $runtime_membership_cleanup$
+DECLARE membership record;
+BEGIN
+  FOR membership IN
+    WITH RECURSIVE maintenance_members(role_id) AS (
+      SELECT oid FROM pg_roles WHERE rolname IN ('uten_owner', 'uten_migrator')
+      UNION
+      SELECT link.member FROM pg_auth_members link
+      JOIN maintenance_members inherited ON inherited.role_id = link.roleid
+    )
+    SELECT parent.rolname AS parent_name, grantor.rolname AS grantor_name
+    FROM pg_auth_members link
+    JOIN pg_roles runtime ON runtime.oid = link.member AND runtime.rolname = 'uten'
+    JOIN maintenance_members maintenance ON maintenance.role_id = link.roleid
+    JOIN pg_roles parent ON parent.oid = link.roleid
+    JOIN pg_roles grantor ON grantor.oid = link.grantor
+    ORDER BY parent.oid, grantor.oid
+  LOOP
+    EXECUTE format('REVOKE %I FROM uten GRANTED BY %I RESTRICT', membership.parent_name, membership.grantor_name);
+  END LOOP;
+  IF pg_has_role('uten', 'uten_owner', 'MEMBER') OR pg_has_role('uten', 'uten_migrator', 'MEMBER') THEN
+    RAISE EXCEPTION 'runtime role retains a maintenance membership after targeted cleanup';
+  END IF;
+END;
+$runtime_membership_cleanup$;
 GRANT uten_owner TO uten_migrator;
 REASSIGN OWNED BY uten TO uten_owner;
 REASSIGN OWNED BY uten_migrator TO uten_owner;
@@ -561,6 +618,38 @@ ALTER DEFAULT PRIVILEGES FOR ROLE uten_owner IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE uten_owner IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO uten;
 REVOKE ALL ON TABLE flyway_schema_history FROM uten;
+-- Preserve V624/V626/V627 source authority boundaries after the general business grants.
+-- These objects may be absent on an older, independently approved release head.
+DO $restricted_import_acl$
+BEGIN
+  IF to_regclass('public.legacy_subcontract_order_import_sources') IS NOT NULL THEN
+    REVOKE ALL ON TABLE public.legacy_subcontract_order_import_sources FROM PUBLIC;
+    REVOKE ALL ON TABLE public.legacy_subcontract_order_import_sources FROM uten;
+    GRANT SELECT ON TABLE public.legacy_subcontract_order_import_sources TO uten;
+  END IF;
+  IF to_regprocedure('public.fn_register_legacy_subcontract_order_source(uuid,jsonb)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.fn_register_legacy_subcontract_order_source(uuid,jsonb) FROM PUBLIC, uten;
+  END IF;
+  IF to_regclass('public.legacy_finance_import_sources') IS NOT NULL THEN
+    REVOKE ALL ON TABLE public.legacy_finance_import_sources FROM PUBLIC, uten;
+    GRANT SELECT ON TABLE public.legacy_finance_import_sources TO uten;
+  END IF;
+  IF to_regprocedure('public.fn_import_legacy_finance_source(uuid,text,jsonb,integer)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.fn_import_legacy_finance_source(uuid,text,jsonb,integer) FROM PUBLIC, uten;
+  END IF;
+  IF to_regclass('public.legacy_procurement_receipt_import_sources') IS NOT NULL THEN
+    REVOKE ALL ON TABLE public.legacy_procurement_receipt_import_sources FROM PUBLIC, uten;
+    GRANT SELECT ON TABLE public.legacy_procurement_receipt_import_sources TO uten;
+  END IF;
+  IF to_regprocedure('public.fn_register_legacy_receipt_import_source(uuid,text,jsonb)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.fn_register_legacy_receipt_import_source(uuid,text,jsonb) FROM PUBLIC, uten;
+  END IF;
+  -- V625 calls this private invoker-only guard through seven fixed definers.
+  IF to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.fn_require_runtime_maintenance(boolean) FROM PUBLIC, uten;
+  END IF;
+END;
+$restricted_import_acl$;
 COMMIT;
 SQL
 } >"$role_sql_file"
@@ -572,13 +661,7 @@ role_sql_file=''
 trap - EXIT
 unset migrator_password
 
-ddl_flags="$(psql_admin "SELECT
-  has_database_privilege('uten', 'uten_imp', 'CREATE')::int || ':' ||
-  has_schema_privilege('uten', 'public', 'CREATE')::int || ':' ||
-  pg_has_role('uten', 'uten_owner', 'MEMBER')::int;")"
-[[ "$ddl_flags" == '0:0:0' ]] || die "post-change app DDL verification failed: $ddl_flags"
-flyway_access="$(psql_admin "SELECT has_table_privilege('uten', 'flyway_schema_history', 'INSERT,UPDATE,DELETE')::int;")"
-[[ "$flyway_access" == 0 ]] || die 'runtime app role can still mutate flyway_schema_history'
+verify_runtime_role_contract 'post-change'
 
 # Persist successful postconditions before restoring login. A crash before this
 # point leaves the application role NOLOGIN; a crash after it is safely

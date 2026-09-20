@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
@@ -29,6 +30,35 @@ class _TestBatchPermissions extends Notifier<Set<String>> {
 }
 
 void main() {
+  testWidgets(
+    'each goods master warehouse takes precedence over personal last selection',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _BatchArrivalApi(
+        goodsWarehouseDefaults: {_itemA: 'warehouse-2', _itemB: 'warehouse-1'},
+      );
+      await _openBatchPage(tester, api: api);
+      expect(api.suggestionRequests.toSet(), {'warehouse-1', 'warehouse-2'});
+      expect(find.text('备用成品仓'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'an unavailable master warehouse is not restored from an old per-goods history',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _BatchArrivalApi(
+        withLastWarehouse: false,
+        goodsWarehouseDefaults: {_itemA: 'disabled-or-removed'},
+      );
+      await _openBatchPage(tester, api: api);
+      expect(api.suggestionRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'batch place suggestions remain yellow on focus and become manual only after text changes',
     (tester) async {
@@ -81,6 +111,8 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ProductionFinishedArrivalBatchRegistrationPage(
             reportIds: [_reportA, _reportB],
           ),
@@ -370,6 +402,8 @@ Future<void> _openBatchPage(
     ProviderScope(
       overrides: [apiClientProvider.overrideWithValue(api)],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(
@@ -400,10 +434,12 @@ class _BatchArrivalApi extends ApiClient {
   _BatchArrivalApi({
     this.twoItemsInFirstReport = false,
     this.withLastWarehouse = true,
+    this.goodsWarehouseDefaults = const {},
   }) : super(Dio());
 
   final bool twoItemsInFirstReport;
   final bool withLastWarehouse;
+  final Map<String, String> goodsWarehouseDefaults;
 
   String? lastPostPath;
   Map<String, dynamic>? lastPostBody;
@@ -554,6 +590,7 @@ class _BatchArrivalApi extends ApiClient {
       for (var index = 0; index < itemIds.length; index++)
         {
           'reportItemId': itemIds[index],
+          'lastWarehouseId': goodsWarehouseDefaults[itemIds[index]],
           'lineNo': 1,
           // 同报工多行时给不同货品：避免「同时记住」歧义拦截先于本用例断言。
           'goodsId': index == 0

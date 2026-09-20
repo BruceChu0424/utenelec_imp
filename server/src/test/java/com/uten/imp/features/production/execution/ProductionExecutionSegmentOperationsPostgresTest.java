@@ -92,6 +92,11 @@ class ProductionExecutionSegmentOperationsPostgresTest {
                     ) values(?,?,?,?,?,'ISSUE',10)
                     """, issuePostingId, stockEvent, f.drawItemId(),
                     f.demandId(), f.reservationId());
+            assertEquals(1, update(connection, """
+                    UPDATE stock_reservations
+                    SET consumed_qty=10, status=1, lock_version=lock_version+1
+                    WHERE id=? AND consumed_qty=0 AND released_qty=0 AND qty=10
+                    """, f.reservationId()));
             com.uten.imp.support.ProductionMaterialMovementTestSupport.bindAndCommit(connection,stockEvent,f.drawItemId());
             assertStatus(connection, f.segmentId(), "IN_PROGRESS");
 
@@ -239,8 +244,8 @@ class ProductionExecutionSegmentOperationsPostgresTest {
                         id,package_id,plan_id,source_plan_item_id,
                         segment_no,segment_code,client_segment_key,
                         product_goods_id,product_unit_id,product_unit_rate,
-                        planned_qty,status,bom_fingerprint,idempotency_key
-                    ) values(?,?,?,?,1,?,?,?, ?,1,10,'READY',?,?)
+                        planned_qty,status,bom_fingerprint,idempotency_key,start_route,route_confirmed_at
+                    ) values(?,?,?,?,1,?,?,?, ?,1,10,'READY',?,?,'FULL_KIT',now())
                     """, segment, pkg, plan, planItem,
                     canonicalSegmentCode(segment), "client-" + segment, product, unit,
                     "e".repeat(64), "segment-" + segment);

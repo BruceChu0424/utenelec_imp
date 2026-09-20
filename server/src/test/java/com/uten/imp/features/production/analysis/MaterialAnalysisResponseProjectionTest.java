@@ -98,6 +98,94 @@ class MaterialAnalysisResponseProjectionTest {
                 "Expanding the shared wire form must preserve all node and warehouse fields");
     }
 
+    @Test
+    void sparseRowsExpandToEveryOriginalFieldIncludingExplicitNullZeroFalseAndEmptyArrays() throws Exception {
+        ObjectNode unusual = (ObjectNode) wireTree(material("prototype", stock("0.0000")));
+        unusual.remove("nodeRole");
+        unusual.put("spec", "prototype specification");
+        unusual.put("requiredQty", new BigDecimal("12345678901234.5678"));
+        unusual.put("routeConfirmed", true);
+        unusual.set("notifiedTargets", json.valueToTree(List.of("BUY")));
+        MaterialView prototype = json.treeToValue(unusual, MaterialView.class);
+        ObjectNode other = unusual.deepCopy();
+        other.put("materialLineId", UUID.randomUUID().toString());
+        other.putNull("spec");
+        other.put("requiredQty", new BigDecimal("0.0000"));
+        other.put("routeConfirmed", false);
+        other.set("notifiedTargets", json.createArrayNode());
+        AnalysisView view = view(List.of(prototype, json.treeToValue(other, MaterialView.class)));
+        JsonNode compact = wireTree(MaterialAnalysisSparseProjection.project(view));
+        assertEquals(MaterialAnalysisResponseProjection.VERSION_V2, compact.path("projection").asText());
+        assertTrue(compact.path("flatMaterials").get(0).isEmpty(), "The prototype can be represented by an empty sparse row");
+        JsonNode overrides = compact.path("flatMaterials").get(1);
+        assertTrue(overrides.has("spec") && overrides.get("spec").isNull());
+        assertTrue(overrides.has("requiredQty") && overrides.get("requiredQty").decimalValue().signum() == 0);
+        assertTrue(overrides.has("routeConfirmed") && !overrides.get("routeConfirmed").asBoolean());
+        assertTrue(overrides.has("notifiedTargets") && overrides.get("notifiedTargets").isEmpty());
+        assertEquals(wireTree(view), expand(compact));
+        assertEquals(new BigDecimal("12345678901234.5678"), compact.path("materialDefaults").path("requiredQty").decimalValue());
+    }
+
+    @Test
+    void sparseEmptyAndLargeSnapshotsReuseSourceListWithoutConstructingASecondMaterialTree() throws Exception {
+        AnalysisView empty = view(List.of());
+        JsonNode emptyWire = wireTree(MaterialAnalysisSparseProjection.project(empty));
+        assertTrue(emptyWire.path("materialDefaults").isEmpty());
+        assertTrue(emptyWire.path("flatMaterials").isEmpty());
+        assertEquals(wireTree(empty), expand(emptyWire));
+        List<MaterialView> nodes = java.util.stream.IntStream.range(0, 1000)
+                .mapToObj(i -> material("sparse-" + i, stock("0.0000"))).toList();
+        AnalysisView view = view(nodes);
+        var projected = MaterialAnalysisSparseProjection.project(view);
+        assertSame(view.flatMaterials(), projected.flatMaterials().source());
+        byte[] legacy = json.writeValueAsBytes(view);
+        byte[] compact = json.writeValueAsBytes(projected);
+        assertTrue(compact.length < legacy.length / 3, "Repeated fields belong to one explicit default object");
+        assertEquals(wireTree(view), expand(json.readTree(compact)));
+        assertEquals(wireTree(view), expand(wireTree(MaterialAnalysisResponseProjection.project(view))), "v1 remains unchanged");
+    }
+
+    @Test
+    void sparseProjectionNegotiatesByQueryOrHeaderAndQueryHasPrecedence() throws Exception {
+        AnalysisView view = view(List.of(material("1", stock("0.0000")), material("2", stock("0.0000"))));
+        MaterialAnalysisService service = mock(MaterialAnalysisService.class);
+        when(service.detail(analysisId)).thenReturn(view);
+        MockMvc mvc = controller(service, mock(MaterialAnalysisCommandService.class));
+        for (boolean query : List.of(false, true)) {
+            var request = get("/api/production/material-analyses/" + analysisId);
+            if (query) request.queryParam("projection", MaterialAnalysisResponseProjection.VERSION_V2);
+            else request.header("X-Material-Analysis-Projection", MaterialAnalysisResponseProjection.VERSION_V2);
+            var response = mvc.perform(request).andExpect(status().isOk()).andReturn().getResponse();
+            assertTrue(response.getHeaders("Vary").contains("X-Material-Analysis-Projection"));
+            assertEquals(wireTree(view), expand(json.readTree(response.getContentAsByteArray())));
+        }
+        var legacy = mvc.perform(get("/api/production/material-analyses/" + analysisId)
+                        .queryParam("projection", "unknown-future-version")
+                        .header("X-Material-Analysis-Projection", MaterialAnalysisResponseProjection.VERSION_V2))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertEquals(wireTree(view), json.readTree(legacy.getContentAsByteArray()));
+        var generated = new GenerateResult(view, true, List.of());
+        var sparseGenerated = new MaterialAnalysisSparseProjection.SparseGenerateResult(
+                MaterialAnalysisSparseProjection.project(view), generated.replayed(), generated.plans());
+        var wire = wireTree(sparseGenerated);
+        assertEquals(wireTree(view), expand(wire.path("analysis")));
+        assertTrue(wire.path("replayed").asBoolean());
+    }
+
+    @Test
+    void sparseProjectionDoesNotReplaceEqualDecimalsWithADifferentScale() throws Exception {
+        MaterialView original = material("decimal-scale", stock("0"));
+        ObjectNode input = (ObjectNode) wireTree(original);
+        input.remove("nodeRole");
+        MaterialView morePrecise = json.readValue(json.writeValueAsString(input)
+                .replace("\"requiredQty\":10.0001", "\"requiredQty\":10.000100"), MaterialView.class);
+        assertEquals(4, original.requiredQty().scale());
+        assertEquals(6, morePrecise.requiredQty().scale());
+        byte[] compact = json.writeValueAsBytes(MaterialAnalysisSparseProjection.project(view(List.of(original, morePrecise))));
+        assertTrue(json.readTree(compact).path("flatMaterials").get(1).has("requiredQty"));
+        assertTrue(new String(compact, java.nio.charset.StandardCharsets.UTF_8).contains("\"requiredQty\":10.000100"));
+    }
+
     private MockMvc controller(MaterialAnalysisService service, MaterialAnalysisCommandService commands) {
         return MockMvcBuilders.standaloneSetup(new MaterialAnalysisController(service, commands,
                         mock(MaterialStockReallocationService.class), mock(ProductionGoodsWorkshopPreferenceService.class),
@@ -134,8 +222,15 @@ class MaterialAnalysisResponseProjectionTest {
     private ObjectNode expand(JsonNode projected) {
         ObjectNode result = projected.deepCopy();
         JsonNode stocks = result.remove("warehouseBreakdownsByMaterialKey");
+        JsonNode defaults = result.remove("materialDefaults");
         result.remove("projection");
         for (JsonNode node : result.get("flatMaterials")) {
+            if (defaults != null) {
+                ObjectNode hydrated = defaults.deepCopy();
+                hydrated.setAll((ObjectNode) node);
+                ((ObjectNode) node).removeAll();
+                ((ObjectNode) node).setAll(hydrated);
+            }
             ((ObjectNode) node).set("warehouseBreakdown", stocks.get(node.get("materialKey").asText()));
         }
         return result;

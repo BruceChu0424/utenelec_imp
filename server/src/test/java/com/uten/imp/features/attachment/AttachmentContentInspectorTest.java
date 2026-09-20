@@ -134,6 +134,14 @@ class AttachmentContentInspectorTest {
     }
 
     @Test
+    void ofdOriginalRequiresMatchingExtensionAndZipContainer() {
+        accepts(zip(), "电子发票.ofd", "application/ofd");
+        rejects("<html>not an ofd</html>".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "电子发票.ofd", "application/ofd");
+        rejects(zip(), "电子发票.exe", "application/ofd");
+    }
+
+    @Test
     void svgMustBeRealXmlAndNotAnyOtherTextFile() {
         accepts("<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"/>"
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8), "图标.svg", "image/svg+xml");

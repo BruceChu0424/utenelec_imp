@@ -271,7 +271,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('自制').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
+    await tester.tap(find.text('确认并换桶'));
     await tester.pumpAndSettle();
     final request = harness.requests.singleWhere(
       (request) => request.method == 'PUT',

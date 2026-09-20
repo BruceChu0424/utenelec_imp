@@ -5,9 +5,16 @@ import '../providers/master_name_provider.dart';
 class WarehouseSelection {
   WarehouseSelection(List<WarehouseDictEntry> hierarchy) {
     final byId = {for (final entry in hierarchy) entry.id: entry};
-    final parents = hierarchy.map((entry) => entry.parentId).toSet();
+    final parents = hierarchy
+        .where((entry) => !entry.isLineSide)
+        .map((entry) => entry.parentId)
+        .toSet();
     for (final entry in hierarchy) {
-      if (!entry.isAccountable || parents.contains(entry.id)) continue;
+      if (!entry.isAccountable ||
+          entry.isLineSide ||
+          parents.contains(entry.id)) {
+        continue;
+      }
       final path = <String>{};
       WarehouseDictEntry? current = entry;
       var valid = false;

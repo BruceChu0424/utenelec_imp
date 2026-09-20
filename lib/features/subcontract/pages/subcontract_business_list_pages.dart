@@ -12,8 +12,11 @@
 // 2026-09-03 起统一「分类分段」范式（原 ChoiceChip 状态行退役）：
 // UtenFilterToolbar 阶段分段（草稿/已审/红冲，无「全部」段）+ 末尾「历史记录」
 // 段——默认不选不发请求；徽章只挂待处理段（其余=草稿；历史兼容页不挂）；
-// 订货页结案状态转小类行（执行中/已结案，无「全部结案状态」，选中阶段后出现）；
-// 历史记录段时间门控（UtenHistoryTimeFilter，未选时间不发请求）。
+// 订货页另设「等待财务审核」段（2026-09-19）：财务通过前 status 保持 0，
+// 在审单不再混进「草稿」段（草稿段传 financeApproval=NONE，在审段=PENDING），
+// 计数为普通数字；订货页结案状态转小类行（执行中/已结案，无「全部结案状态」，
+// 选中阶段后出现，「等待财务审核」段下不显示）；历史记录段时间门控
+// （UtenHistoryTimeFilter，未选时间不发请求）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -245,18 +248,30 @@ class _SubcontractBusinessListPage extends ConsumerStatefulWidget {
 }
 
 /// 状态分段值：真实单据状态（status 非空）或历史记录哨兵。
+///
+/// 订货单在财务通过前 status 保持 0，「草稿」与「等待财务审核」两段同为
+/// status=0，靠 [financeApproval] 切片区分（NONE=未提交 / PENDING=在审）。
 class _BizSeg {
-  const _BizSeg.stage(int this.status) : history = false;
-  const _BizSeg.history() : status = null, history = true;
+  const _BizSeg.stage(int this.status, [this.financeApproval])
+    : history = false;
+  const _BizSeg.history()
+    : status = null,
+      financeApproval = null,
+      history = true;
 
   final int? status;
+  final String? financeApproval;
   final bool history;
-  @override
-  bool operator ==(Object other) =>
-      other is _BizSeg && other.status == status && other.history == history;
 
   @override
-  int get hashCode => Object.hash(status, history);
+  bool operator ==(Object other) =>
+      other is _BizSeg &&
+      other.status == status &&
+      other.financeApproval == financeApproval &&
+      other.history == history;
+
+  @override
+  int get hashCode => Object.hash(status, financeApproval, history);
 }
 
 class _SubcontractBusinessListPageState
@@ -275,6 +290,9 @@ class _SubcontractBusinessListPageState
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染）。
   int? _actionableCount;
 
+  /// 「等待财务审核」段计数（仅订货单；中性数字，不挂红徽章）。
+  int? _awaitingFinanceCount;
+
   /// 表头列筛选：委外商/执行仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
@@ -283,6 +301,12 @@ class _SubcontractBusinessListPageState
 
   _ListPresentation get _p => widget.presentation;
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(_p.type);
+
+  /// 订货单（走财务审批流）专属口径。
+  bool get _isOrder => _p.type == SubcontractDocType.order;
+
+  /// 「草稿」段：订货单额外带 NONE 切片（在审单归「等待财务审核」段，不算草稿）。
+  _BizSeg get _draftSeg => _BizSeg.stage(0, _isOrder ? 'NONE' : null);
 
   /// 待处理段：其余=草稿（待提交/待审）。历史兼容页（历史发料/询价）无待办
   /// 语义，不挂徽章。
@@ -303,7 +327,7 @@ class _SubcontractBusinessListPageState
     super.initState();
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
-      _seg = const _BizSeg.stage(0);
+      _seg = _draftSeg;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
@@ -330,6 +354,7 @@ class _SubcontractBusinessListPageState
             supplierId: _supplierIdFilter,
             warehouseId: _warehouseIdFilter,
             status: seg.history ? null : seg.status,
+            financeApproval: seg.history ? null : seg.financeApproval,
             closed: seg.history ? null : _closed,
             dateFrom: range == null
                 ? null
@@ -377,15 +402,45 @@ class _SubcontractBusinessListPageState
   }
 
   /// 待处理段计数（list size=1 取 total；失败保持 null 不渲染括号数字）。
+  ///
+  /// 订货单有两个计数段：「草稿」=status=0 且未提交（NONE），
+  /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
+  /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
   Future<void> _loadBadge() async {
     final status = _actionableStatus;
-    if (status == null) return;
+    if (status == null && !_isOrder) return;
     try {
-      final docs = await ref
-          .read(subcontractRepositoryProvider(_p.type))
-          .list(size: 1, filter: SubcontractDocFilter(status: status));
-      if (!mounted) return;
-      setState(() => _actionableCount = docs.total);
+      final repo = ref.read(subcontractRepositoryProvider(_p.type));
+      if (_isOrder) {
+        final results = await Future.wait([
+          repo.list(
+            size: 1,
+            filter: const SubcontractDocFilter(
+              status: 0,
+              financeApproval: 'NONE',
+            ),
+          ),
+          repo.list(
+            size: 1,
+            filter: const SubcontractDocFilter(
+              status: 0,
+              financeApproval: 'PENDING',
+            ),
+          ),
+        ]);
+        if (!mounted) return;
+        setState(() {
+          _actionableCount = results[0].total;
+          _awaitingFinanceCount = results[1].total;
+        });
+      } else {
+        final docs = await repo.list(
+          size: 1,
+          filter: SubcontractDocFilter(status: status),
+        );
+        if (!mounted) return;
+        setState(() => _actionableCount = docs.total);
+      }
     } catch (_) {
       // 计数失败静默：徽章不显示，不影响列表。
     }
@@ -455,13 +510,22 @@ class _SubcontractBusinessListPageState
                 UtenFilterToolbar<_BizSeg>(
                   segmentsKey: Key('subcontract-biz-segments-${_p.type.name}'),
                   // 计数形态：草稿是「我自己没写完的东西」，没人在等它
-                  // → 中性括号 `(N)`（组件默认）；其余段不传 count。
+                  // → 中性括号 `(N)`（组件默认）；「等待财务审核」已在财务手上，
+                  // 同样是普通数字不挂红徽章；其余段不传 count。
                   segments: [
                     UtenFilterSegment(
-                      value: const _BizSeg.stage(0),
+                      value: _draftSeg,
                       label: '草稿',
                       count: _actionableStatus == 0 ? _actionableCount : null,
                     ),
+                    // 订货单专属段：已提交财务审核的在审单（status 仍=0），
+                    // 与「草稿」段互斥，不再混在草稿里。
+                    if (_isOrder)
+                      UtenFilterSegment(
+                        value: const _BizSeg.stage(0, 'PENDING'),
+                        label: '等待财务审核',
+                        count: _awaitingFinanceCount,
+                      ),
                     const UtenFilterSegment(
                       value: _BizSeg.stage(1),
                       label: '已审',
@@ -495,7 +559,11 @@ class _SubcontractBusinessListPageState
                       : null,
                 ),
                 // 订货页结案状态小类行：选中阶段后出现（无「全部结案状态」，默认不选）。
-                if (_p.showClosedFilter && seg != null && !seg.history) ...[
+                // 「等待财务审核」段下的单尚未生效，不存在结案语义，不显示本行。
+                if (_p.showClosedFilter &&
+                    seg != null &&
+                    !seg.history &&
+                    seg.financeApproval == null) ...[
                   const SizedBox(height: UtenSpacing.s8),
                   UtenFilterToolbar<bool>(
                     segmentsKey: Key('subcontract-biz-closed-${_p.type.name}'),

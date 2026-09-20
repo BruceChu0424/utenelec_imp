@@ -195,13 +195,11 @@ class ProductionExecutionWorkbenchSegment {
     this.hasMaterialActivity = false,
     this.hasUnregisteredMaterial = false,
     this.continuousSupply = false,
-    this.canStartContinuous = false,
     this.pendingLineSideOnly = false,
     this.startRoute,
     this.canConfirmRoute = false,
     this.routeChangeable = false,
     this.routeContinuousEligible = false,
-    this.suggestedStartRoute,
     this.salesOrderNos,
     this.workshopDepartmentId,
     this.workshopName,
@@ -267,11 +265,8 @@ class ProductionExecutionWorkbenchSegment {
   /// This is independent of kit readiness and whether all material is issued.
   final bool hasUnregisteredMaterial;
 
-  /// 持续生产(V595)：同车间直送子件分次到料、到一批投一批，同一张工单只开一次工。
+  /// 持续生产：仓库分次领料和车间直送可混合，同一张工单只开一次工。
   final bool continuousSupply;
-
-  /// 可按「部分开工 · 持续生产」开工(V595)：未被动过的等待物料工单且至少一个子件可直送。
-  final bool canStartContinuous;
 
   /// 只剩线边仓直送料没出库(V595)：不用去领料，开工时就地自动出库，按「可开工」呈现。
   final bool pendingLineSideOnly;
@@ -285,12 +280,8 @@ class ProductionExecutionWorkbenchSegment {
   /// 可重新确认生产路线(V599)：等待物料且未动过(无领料单/报工/预留)。
   final bool routeChangeable;
 
-  /// 存在可由本车间直送供给的子件(V599)：持续生产路线的候选项。
+  /// 旧直送资格投影。持续生产选择不再依赖是否存在直送子件。
   final bool routeContinuousEligible;
-
-  /// 路线记忆(2026-09-18 用户口径「下次默认选择上次选择的」)：同产品最近一次
-  /// 确认的开工路线；未确认工单的下拉预填默认（不在当前收窄选项里时回落齐套）。
-  final String? suggestedStartRoute;
 
   /// 路线的中文短名(V599)：齐套生产 / 分批生产 / 持续生产；未确认为空。
   String get startRouteLabel => switch (startRoute) {
@@ -378,13 +369,11 @@ class ProductionExecutionWorkbenchSegment {
     hasMaterialActivity: json['hasMaterialActivity'] == true,
     hasUnregisteredMaterial: json['hasUnregisteredMaterial'] == true,
     continuousSupply: json['continuousSupply'] == true,
-    canStartContinuous: json['canStartContinuous'] == true,
     pendingLineSideOnly: json['pendingLineSideOnly'] == true,
     startRoute: json['startRoute'] as String?,
     canConfirmRoute: json['canConfirmRoute'] == true,
     routeChangeable: json['routeChangeable'] == true,
     routeContinuousEligible: json['routeContinuousEligible'] == true,
-    suggestedStartRoute: json['suggestedStartRoute'] as String?,
   );
 }
 

@@ -206,7 +206,7 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
 
             assertDeferredConstraint(
                     connection,
-                    "production_receipt_allocation_provenance_guard",
+                    "production_material_consumed_projection_guard",
                     null,
                     () -> execute(
                             connection,

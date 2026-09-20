@@ -90,7 +90,9 @@ class ProductionMakeReceiptLifecycleContractTest {
                 .contains("AND auto_promote_when_ready = TRUE")
                 .contains("packageId + \":REKIT:\" + demand.id()")
                 .contains("+ \":\" + triggeringReceiptId")
-                .contains("+ reservationId)");
+                .contains("PlanningPackageFingerprint.sha256(List.of(")
+                .contains("contribution.receiptItemId().toString(),contribution.pegId().toString(),")
+                .contains("reservationId.toString(),drawItemId.toString())");
 
         int approve = stock.indexOf("public StockDocDetail approve(");
         int approvePrelock = stock.indexOf(

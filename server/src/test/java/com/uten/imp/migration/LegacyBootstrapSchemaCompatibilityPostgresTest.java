@@ -32,7 +32,7 @@ import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERS
 import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT;
 
 /**
- * Executes the destructive bootstrap SQL against the current Flyway schema with empty staging
+ * Executes the reviewed bootstrap SQL against the current Flyway schema with empty staging
  * tables. This is deliberately a schema-compatibility proof, not a real-data reconciliation.
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -99,7 +99,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                     repeat('a1', 32), repeat('b2', 32),
                     repeat('c3', 32), 'legacy-schema-compat-approval',
                     'legacy-schema-compat-commit', repeat('d4', 32),
-                    'bootstrap-v10-v426')
+                    'bootstrap-schema-compatibility-test')
                 RETURNING run_id
                 """);
 
@@ -336,10 +336,10 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
             }
             jdbcSql.append(line).append('\n');
         }
-        String sql = jdbcSql.toString()
+        String sql = "BEGIN;\n" + jdbcSql.toString()
                 .replace(":'pgp_key'", "'legacy-schema-test-key'")
                 .replace(":'pgp_ver'", "'test-v1'")
-                .replace(":'hmac_key'", "'legacy-schema-test-hmac-key'");
+                .replace(":'hmac_key'", "'legacy-schema-test-hmac-key'") + "\nCOMMIT;\n";
         String remote = "/tmp/uten-legacy-schema-test-" + filename;
         POSTGRES.copyFileToContainer(
                 Transferable.of(sql.getBytes(StandardCharsets.UTF_8), 0600), remote);
@@ -396,8 +396,16 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
             String runId, Map<String, String> expectations) throws Exception {
         Path path = LEGACY_ROOT.resolve("migrate_reconciliation.sql");
         String remote = "/tmp/uten-legacy-reconciliation-" + runId + ".sql";
+        // This test owns synthetic source identities; the coordinator test derives
+        // them from real CSV bytes through prepare_source_authority.py instead.
+        StringBuilder sourceIds = new StringBuilder("CREATE TEMP TABLE bootstrap_source_master_ids(target_table text, legacy_id integer);\n");
+        for (String table : List.of("material_categories", "mould_categories", "client_categories", "supplier_categories",
+                "colors", "units", "currencies", "warehouses", "moulds", "clients", "suppliers", "goods")) {
+            sourceIds.append("INSERT INTO bootstrap_source_master_ids SELECT '").append(table)
+                    .append("', legacy_id FROM ").append(table).append(" WHERE legacy_id IS NOT NULL AND legacy_id <> -1;\n");
+        }
         POSTGRES.copyFileToContainer(
-                Transferable.of(Files.readAllBytes(path), 0600), remote);
+                Transferable.of((sourceIds + Files.readString(path)).getBytes(StandardCharsets.UTF_8), 0600), remote);
 
         List<String> command = new ArrayList<>(List.of(
                 "psql", "-v", "ON_ERROR_STOP=1",

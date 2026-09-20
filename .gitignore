@@ -101,6 +101,8 @@ server/legacy_migration/users_names.txt
 
 # 临时会话/调试目录（含 DB dump 等，不入库）
 .codex-tmp/
+# Local-only diagnostic exports may contain business data or recovery material.
+.local-tmp/
 # Local investigation scripts and transient validation receipts.
 /.tmp/
 # Flutter 构建产物（误生成于源码目录的 .last_build_id，可随时重建）

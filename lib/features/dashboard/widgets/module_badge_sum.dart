@@ -7,6 +7,7 @@ import 'quality_inspection_pending_badge.dart';
 
 /// 工作台卡片通过枚举声明数据源，由共享组件统一取数和渲染。
 enum WorkbenchBadgeKind {
+  expenseMine,
   visitorHost, // 我的访客（被访人待确认）
   visitorApproval, // 访客审批（HR 待审批）
   hrReview, // 信息变更审核
@@ -33,7 +34,7 @@ enum WorkbenchBadgeKind {
 final workbenchTotalTodoCountProvider = Provider<int>(
   // 2026-09-11：Tab 总数与各模块卡走同一张待办注册表（lib/shared/badges/
   // todo_badge_registry.dart），杜绝「外层写 1、内层合计 5」。浏览型计数
-  //（草稿/历史/报表）按口径不进累加。
+  //（历史/报表）按口径不进累加，待提交草稿沿注册表计入待办。
   (ref) => ref.watch(todoTotalCountProvider),
 );
 
@@ -102,6 +103,8 @@ int _resolveCount(
   // 计数源与累加口径统一登记在 todo_badge_registry；本函数只做
   // WorkbenchBadgeKind → 注册表入口/模块的映射。
   switch (kind) {
+    case WorkbenchBadgeKind.expenseMine:
+      return todoEntryCount(TodoEntry.expenseMine, watch);
     case WorkbenchBadgeKind.visitorHost:
       return todoEntryCount(TodoEntry.visitorHostConfirm, watch);
     case WorkbenchBadgeKind.visitorApproval:

@@ -62,6 +62,23 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                 if(!Set.of("ISSUE","GOOD_RETURN_REVERSE").contains(kind))continue;
                 UUID posting=(UUID)p.get("id");
                 if(has("PRODUCTION_ISSUE_VALUE",posting))continue;
+                if("GOOD_RETURN_REVERSE".equals(kind)){
+                    var restored=db.queryForList("""
+                            SELECT value.id FROM stock_value_events value
+                            WHERE value.movement_id=:movement AND value.operation='POSITION_STORE_REVERSE'
+                            """,Map.of("movement",movement.getValue()),UUID.class);
+                    if(!restored.isEmpty()){
+                        UUID originalIssue=db.queryForObject("SELECT source_posting_id FROM production_material_stock_postings WHERE id=:id",
+                                Map.of("id",p.get("source_posting_id")),UUID.class);
+                        BigDecimal qty=db.queryForObject("""
+                                SELECT COALESCE(SUM(transfer.qty_base),0) FROM stock_value_position_transfers transfer
+                                JOIN stock_value_nodes restored ON restored.id=transfer.target_node_id
+                                WHERE transfer.event_id=:event AND restored.owner_kind='WIP' AND restored.owner_id=:issue
+                                """,Map.of("event",restored.getFirst(),"issue",originalIssue),BigDecimal.class);
+                        if(qty.compareTo((BigDecimal)p.get("qty_base"))!=0)throw conflict("退料红冲价值未精确恢复原领料来源");
+                        continue;
+                    }
+                }
                 var nodes=db.queryForList("SELECT result_node_id FROM stock_value_events WHERE movement_id=:id AND operation='ISSUE'",Map.of("id",movement.getValue()),UUID.class);
                 if(nodes.size()!=1)throw conflict("实际领料流水尚无唯一成本来源");
                 var source=positions.position(nodes.getFirst());
@@ -77,17 +94,93 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                 "SELECT upstream_item_id FROM stock_document_items WHERE id=:id",Map.of("id",request.sourceItemId()),UUID.class);
         if(originalItem==null)throw conflict("生产退料缺少原领料明细");
         BigDecimal left=request.qty();List<Slice> sources=new ArrayList<>();
+        var requested=db.queryForList("SELECT issue_posting_id FROM production_material_return_request_items WHERE stock_document_item_id=:item AND issue_posting_id IS NOT NULL",
+                Map.of("item",request.sourceItemId()),UUID.class);
+        Map<String,Object> sourceArgs=new HashMap<>();sourceArgs.put("item",originalItem);sourceArgs.put("exactIssue",requested.isEmpty()?null:requested.getFirst());
         for(var issue:db.queryForList("""
                 SELECT id,fn_material_issue_unsettled(id) qty FROM production_material_stock_postings
                 WHERE stock_document_item_id=:item AND posting_type='ISSUE' AND fn_material_issue_unsettled(id)>0
+                  AND (CAST(:exactIssue AS uuid) IS NULL OR id=CAST(:exactIssue AS uuid))
                 ORDER BY created_at,id
-                """,Map.of("item",originalItem))){
+                """,sourceArgs)){
             if(left.signum()==0)break;
             BigDecimal qty=left.min((BigDecimal)issue.get("qty"));
             sources.addAll(takeIssue((UUID)issue.get("id"),qty));left=left.subtract(qty);
         }
         if(left.signum()!=0)throw conflict("本次退料超过原领料未耗用数量");
         return positions.store(new Store(context,movement,pool,before,sources));
+    }
+
+    public MovementValue workshopReturn(MovementRequest request,UUID movement,PoolKey pool,BigDecimal before,
+            EventContext context,InventoryMovementCostReference.WorkshopReturn ref,InventoryValuationPort values){
+        var rows=db.queryForList("""
+                SELECT item.issue_posting_id,item.direct_transfer_item_id,item.qty_base,
+                       request.warehouse_id AS source_warehouse,document.warehouse_id AS received_warehouse,
+                       line.goods_id,line.color_id
+                FROM production_material_return_request_items item
+                JOIN production_material_return_requests request ON request.id=item.request_id
+                JOIN stock_document_items line ON line.id=item.stock_document_item_id
+                JOIN stock_documents document ON document.id=item.request_id AND document.doc_type='WDRAW'
+                WHERE item.id=:requestItem AND item.stock_document_item_id=:item AND item.request_id=:doc
+                """,Map.of("requestItem",ref.requestItemId(),"item",request.sourceItemId(),"doc",request.sourceDocId()));
+        if(rows.size()!=1||ref.kind()==null)throw conflict("车间退仓价值缺少唯一真实申请明细");
+        var row=rows.getFirst();boolean direct=row.get("direct_transfer_item_id")!=null;
+        boolean directKind=ref.kind().name().startsWith("DIRECT_");
+        boolean sourceLeg=ref.kind()==InventoryMovementCostReference.WorkshopReturnKind.DIRECT_OUT
+                ||ref.kind()==InventoryMovementCostReference.WorkshopReturnKind.DIRECT_OUT_REVERSE;
+        short expectedType=switch(ref.kind()) {
+            case RETURN_IN,RETURN_REVERSE -> 6;
+            case DIRECT_OUT,DIRECT_OUT_REVERSE -> 8;
+            case DIRECT_IN,DIRECT_IN_REVERSE -> 7;
+        };
+        short expectedDirection=switch(ref.kind()) {
+            case RETURN_IN,DIRECT_IN,DIRECT_OUT_REVERSE -> 1;
+            case DIRECT_OUT,RETURN_REVERSE,DIRECT_IN_REVERSE -> -1;
+        };
+        if(direct!=directKind||request.qty().compareTo((BigDecimal)row.get("qty_base"))!=0
+                ||request.movementType()!=expectedType||request.direction()!=expectedDirection
+                ||!"STOCK_DOC".equals(request.sourceDocType())
+                ||!Objects.equals(pool.goodsId(),row.get("goods_id"))||!Objects.equals(pool.colorId(),row.get("color_id"))
+                ||!Objects.equals(pool.warehouseId(),row.get(sourceLeg?"source_warehouse":"received_warehouse")))
+            throw conflict("退仓价值的原来源、实际仓与基本量不一致");
+        return switch(ref.kind()){
+            case RETURN_IN -> returned(request,movement,pool,before,context);
+            case DIRECT_OUT -> values.issue(new Issue(context,movement,pool,request.qty(),before,Destination.IN_TRANSIT,request.sourceItemId()));
+            case DIRECT_IN -> {
+                var roots=db.queryForList("""
+                        SELECT result_node_id FROM stock_value_events WHERE movement_id=:movement AND operation='ISSUE'
+                          AND source_doc_type='STOCK_DOC' AND source_doc_id=:doc AND source_item_id=:item
+                        """,Map.of("movement",Objects.requireNonNull(ref.linkedMovementId()),"doc",request.sourceDocId(),"item",request.sourceItemId()),UUID.class);
+                if(roots.size()!=1)throw conflict("移入正常仓必须保留本次真实技术位移出价值UUID");
+                var original=positions.position(roots.getFirst());
+                if(original.owner()!=Owner.IN_TRANSIT||!Objects.equals(original.ownerId(),request.sourceItemId()))
+                    throw conflict("技术位移出价值不属于本次退仓");
+                yield positions.store(new Store(context,movement,pool,before,List.of(new Slice(roots.getFirst(),request.qty(),ref.requestItemId()))));
+            }
+            case RETURN_REVERSE,DIRECT_IN_REVERSE -> {
+                Integer count=db.queryForObject("""
+                        SELECT count(*) FROM stock_value_events WHERE movement_id=:movement AND operation='POSITION_STORE'
+                          AND source_doc_type='STOCK_DOC' AND source_doc_id=:doc AND source_item_id=:item
+                        """,Map.of("movement",Objects.requireNonNull(ref.linkedMovementId()),"doc",request.sourceDocId(),"item",request.sourceItemId()),Integer.class);
+                if(count==null||count!=1)throw conflict("退仓撤回缺少原正常仓实收的精确成本来源");
+                yield positions.reverseMaterialStore(new ReverseStore(context,movement,pool,before,ref.linkedMovementId()));
+            }
+            case DIRECT_OUT_REVERSE -> {
+                var parts=db.queryForList("""
+                        SELECT transfer.target_node_id,transfer.qty_base,transfer.source_slice_id
+                        FROM stock_value_events reversed JOIN stock_value_position_transfers transfer ON transfer.event_id=reversed.id
+                        JOIN stock_value_nodes restored ON restored.id=transfer.target_node_id
+                        WHERE reversed.movement_id=:movement AND reversed.operation='POSITION_STORE_REVERSE'
+                          AND reversed.source_doc_type='STOCK_DOC' AND reversed.source_doc_id=:doc AND reversed.source_item_id=:item
+                          AND restored.owner_kind='IN_TRANSIT' AND restored.owner_id=:item
+                        ORDER BY transfer.id
+                        """,Map.of("movement",Objects.requireNonNull(ref.linkedMovementId()),"doc",request.sourceDocId(),"item",request.sourceItemId()));
+                List<Slice> slices=parts.stream().map(part->new Slice((UUID)part.get("target_node_id"),(BigDecimal)part.get("qty_base"),(UUID)part.get("source_slice_id"))).toList();
+                if(slices.stream().map(Slice::qtyBase).reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(request.qty())!=0)
+                    throw conflict("正常仓反向价值未完整恢复到原移出切片");
+                yield positions.store(new Store(context,movement,pool,before,slices));
+            }
+        };
     }
     public void settled(UUID event,UUID actor){
         var postings=db.queryForList("""

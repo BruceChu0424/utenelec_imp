@@ -14,6 +14,132 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'later target pages remain reachable and preserve exact selected input',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _PagedOffsetApi();
+      SupplierCreditApplyDraft? draft;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            financePayablesRepositoryProvider.overrideWithValue(
+              FinancePayablesRepository(api),
+            ),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: FilledButton(
+                  onPressed: () async {
+                    draft = await showSupplierCreditApplyPanel(
+                      context: context,
+                      source: FinancePayableItem.fromJson(_creditItem),
+                    );
+                  },
+                  child: const Text('打开贷项'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开贷项'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('当前页暂无符合条件'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('supplier-offset-load-more')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('supplier-offset-target-payable-1')),
+      );
+      await tester.pump();
+      const exact = '1.000000000000000000000001';
+      final amount = find.byKey(
+        const ValueKey('supplier-offset-amount-payable-1'),
+      );
+      await tester.enterText(amount, exact);
+      await tester.tap(find.byKey(const ValueKey('supplier-offset-load-more')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(amount).controller!.text, exact);
+      expect(api.pages, [1, 2, 3]);
+      expect(api.currencies, everyElement('currency-usd'));
+      await tester.enterText(
+        find.widgetWithText(TextField, '应用原因(必填)'),
+        '新贷项冲抵已核验余额',
+      );
+      await tester.tap(find.text('确认应用 (1)'));
+      await tester.pumpAndSettle();
+      expect(draft!.targets.single.payableId, 'payable-1');
+      expect(draft!.targets.single.amountOriginal, exact);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'proved positive historical target keeps exact amounts without becoming a funding source',
+    () {
+      final source = FinancePayableItem.fromJson(_creditItem);
+      final historical = {
+        ..._payableItem,
+        'legacyImported': true,
+        'openItemKind': 'LEGACY_UNVERIFIED',
+        'sourceDocType': 'LEGACY_OPENING',
+        'outstandingOriginal': '0.000000000000000000000001',
+        'bookingRate': '7.200000000',
+      };
+      expect(
+        supplierOffsetTargetCompatible(
+          source,
+          FinancePayableItem.fromJson(historical),
+        ),
+        isTrue,
+      );
+      for (final value in ['0', '-0.0001', null]) {
+        expect(
+          supplierOffsetTargetCompatible(
+            source,
+            FinancePayableItem.fromJson({
+              ...historical,
+              'outstandingOriginal': value,
+            }),
+          ),
+          isFalse,
+        );
+      }
+      expect(
+        supplierOffsetTargetCompatible(
+          source,
+          FinancePayableItem.fromJson({...historical, 'currencyId': null}),
+        ),
+        isFalse,
+      );
+      expect(
+        supplierOffsetTargetCompatible(
+          source,
+          FinancePayableItem.fromJson({
+            ...historical,
+            'openItemKind': 'PAYABLE',
+          }),
+        ),
+        isFalse,
+        reason: 'old unproved PAYABLE is not a proved opening',
+      );
+      final oldCredit = FinancePayableItem.fromJson({
+        ..._creditItem,
+        'legacyImported': true,
+      });
+      expect(oldCredit.canApplyCredit, isFalse);
+      expect(
+        supplierOffsetTargetCompatible(
+          oldCredit,
+          FinancePayableItem.fromJson(_payableItem),
+        ),
+        isFalse,
+      );
+    },
+  );
+
   test(
     'offset target requires same supplier currency rate and positive AP',
     () {
@@ -139,6 +265,13 @@ void main() {
       find.byKey(const ValueKey('finance-payables-apply-credit')),
       findsNothing,
     );
+    table.onSelectedIdsChanged?.call({'legacy-credit-1'});
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('finance-payables-apply-credit')),
+      findsNothing,
+    );
+    expect(find.textContaining('历史资金不能作为贷项'), findsOneWidget);
   });
 }
 
@@ -197,6 +330,40 @@ class _OffsetApi extends ApiClient {
   }
 }
 
+class _PagedOffsetApi extends ApiClient {
+  _PagedOffsetApi() : super(Dio());
+  final pages = <int>[];
+  final currencies = <String>[];
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final page = query!['page'] as int;
+    pages.add(page);
+    currencies.add(query['currencyId'] as String);
+    return {
+      'summary': <String, dynamic>{},
+      'page': page,
+      'size': 200,
+      'total': 401,
+      'totalPages': 3,
+      'items': [
+        if (page == 1)
+          {..._payableItem, 'status': 'SETTLED', 'outstandingOriginal': '0'},
+        if (page == 2)
+          {
+            ..._payableItem,
+            'legacyImported': true,
+            'openItemKind': 'LEGACY_UNVERIFIED',
+            'sourceDocType': 'LEGACY_OPENING',
+          },
+        if (page == 3) {..._payableItem, 'id': 'payable-2'},
+      ],
+    };
+  }
+}
+
 class _PageApi extends ApiClient {
   _PageApi() : super(Dio());
 
@@ -220,6 +387,7 @@ class _PageApi extends ApiClient {
     },
     'items': [
       _creditItem,
+      {..._creditItem, 'id': 'legacy-credit-1', 'legacyImported': true},
       {
         ..._creditItem,
         'id': 'prepayment-1',
@@ -230,7 +398,7 @@ class _PageApi extends ApiClient {
     ],
     'page': 1,
     'size': 30,
-    'total': 3,
+    'total': 4,
     'totalPages': 1,
   };
 }

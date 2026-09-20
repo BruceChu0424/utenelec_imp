@@ -42,4 +42,11 @@ public class ReceiptItemDto {
     private BigDecimal returnAmount;
     private String returnNo;
     private String orderNo;
+
+    // Exact text preserves recorded decimals and explicit unknown values.
+    public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    public String getPriceExact() { return com.uten.imp.common.util.DecimalText.of(price); }
+    public String getUnitRateExact() { return com.uten.imp.common.util.DecimalText.of(unitRate); }
+    public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
+    public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
 }

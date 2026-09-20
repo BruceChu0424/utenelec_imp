@@ -151,10 +151,12 @@ class _BucketPlanRow extends EditableGridRow {
     if (onQtyChanged != null) {
       qty.addListener(() => onQtyChanged(qty.text));
     }
+    qty.addListener(() => quantityExplicit = true);
   }
 
   final _BucketRow origin;
   final TextEditingController qty = TextEditingController();
+  bool quantityExplicit = false;
 
   /// 行标识（产品/候选的稳定 id，与 [_BucketRow.id] 同源）。
   String get id => origin.id;
@@ -182,6 +184,7 @@ class _BucketPlanRow extends EditableGridRow {
 
 typedef _BucketPlanInputDraft = ({
   String qty,
+  bool quantityExplicit,
   String? departmentId,
   String? departmentName,
   String? workerId,
@@ -341,6 +344,7 @@ class _MaterialAnalysisBucketPageState
     for (final row in grid.rows) {
       _planInputDrafts[row.id] = (
         qty: row.qty.text,
+        quantityExplicit: row.quantityExplicit,
         departmentId: row.departmentId.value,
         departmentName: row.departmentName,
         workerId: row.workerId.value,
@@ -429,6 +433,7 @@ class _MaterialAnalysisBucketPageState
           : seedWorkerName ?? workshop?.workerName ?? manager?.name,
     );
     if (saved != null) {
+      row.quantityExplicit = saved.quantityExplicit;
       row.workshopAutofilled = saved.workshopAutofilled;
       row.workerAutofilled = saved.workerAutofilled;
     }
@@ -759,6 +764,13 @@ class _MaterialAnalysisBucketPageState
       label: material.goodsName ?? material.goodsCode ?? group.key,
       channel: channel,
       maxQty: residual,
+      quantityExplicit:
+          _seedQtyOf(
+            group,
+            MaterialSupplyRoute.subcontract,
+            qtyByActionGroupKey,
+          ) !=
+          residual,
       batchQty: locked
           ? residual
           : _seedQtyOf(
@@ -1561,8 +1573,8 @@ class _MaterialAnalysisBucketPageState
           '以下 ${over.length} 行填写的本批数量超出当前需求：\n'
           '${over.join('\n')}\n\n'
           '超出部分按公共备货产出记账：完工入库后进公共库存，其他计划可以直接用，'
-          '不占本次需求的精确账；销售订单来源的行会自动拆成「订单内的量 + 一张公共'
-          '备货计划」两单下达，订单侧数量不受影响。\n'
+          '不占本次需求的精确账；同一张计划分别记录需求份与公共备货份，'
+          '订单侧数量不受影响。\n'
           '注意：超出部分的下层物料需求不会自动变大，可在下一步「跟父件一起下单」'
           '里把多做的料一并下单。',
         ),
@@ -1622,6 +1634,17 @@ class _MaterialAnalysisBucketPageState
                     )
                   : null),
           batchQty: double.parse(row.qty.text.trim()),
+          quantityExplicit:
+              row.quantityExplicit &&
+              row.qty.text.trim() != _planRowDefaultQty(row),
+          outputUnitRate:
+              row.origin.product?.unitRate ??
+              (row.origin.product == null
+                  ? 1
+                  : _host
+                            ._rootSupplyMaterialOf(row.origin.product!)
+                            ?.perProductQty ??
+                        1),
           analysisLineId: row.isProduct ? row.id : null,
           materialLineId: row.isProduct
               ? null

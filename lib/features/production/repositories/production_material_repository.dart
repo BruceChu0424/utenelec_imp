@@ -51,6 +51,7 @@ class ProductionMaterialClearanceRow {
     this.perProductQty,
     this.requiredForProductQty,
     this.directSupply = false,
+    this.requirementMode = 'LINEAR',
     double? availableToSettleQty,
   }) : availableToSettleQty =
            availableToSettleQty ??
@@ -90,6 +91,7 @@ class ProductionMaterialClearanceRow {
 
   /// 同车间直送供给(V595)：持续生产工单上允许分次到料的需求。
   final bool directSupply;
+  final String requirementMode;
 
   factory ProductionMaterialClearanceRow.fromJson(Map<String, dynamic> json) {
     double number(String key) => (json[key] as num?)?.toDouble() ?? 0;
@@ -98,6 +100,7 @@ class ProductionMaterialClearanceRow {
       requiredForProductQty: (json['requiredForProductQty'] as num?)
           ?.toDouble(),
       directSupply: json['directSupply'] == true,
+      requirementMode: json['requirementMode'] as String? ?? 'UNKNOWN',
       planId: json['planId'] as String,
       demandId: json['demandId'] as String,
       goodsId: json['goodsId'] as String,

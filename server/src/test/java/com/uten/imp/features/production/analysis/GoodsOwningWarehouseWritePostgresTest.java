@@ -36,6 +36,20 @@ import static org.mockito.Mockito.when;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class GoodsOwningWarehouseWritePostgresTest {
 
+    @Test
+    void sharedUuidComparatorMatchesRealPostgresForBothUnsignedHalves() {
+        List<UUID> ids = new ArrayList<>(List.of(
+                UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff"),
+                UUID.fromString("80000000-0000-0000-0000-000000000000"),
+                UUID.fromString("00000000-0000-0000-7fff-ffffffffffff"),
+                UUID.fromString("00000000-0000-0000-8000-000000000000")));
+        for (int index = 0; index < 128; index++) ids.add(UUID.randomUUID());
+        String literal = "{" + ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",")) + "}";
+        List<UUID> databaseOrder = jdbc.queryForList(
+                "SELECT id FROM unnest(CAST(? AS uuid[])) AS id ORDER BY id", UUID.class, literal);
+        assertEquals(databaseOrder, ids.stream().sorted(com.uten.imp.common.util.PostgresUuidOrder.INSTANCE).toList());
+    }
+
     @Container
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine");
@@ -60,6 +74,7 @@ class GoodsOwningWarehouseWritePostgresTest {
                 CREATE TABLE warehouses(
                     id uuid PRIMARY KEY,
                     name text,
+                    is_line_side boolean NOT NULL DEFAULT false,
                     is_deleted boolean NOT NULL DEFAULT false)
                 """);
         jdbc.execute("""
@@ -70,7 +85,7 @@ class GoodsOwningWarehouseWritePostgresTest {
                     version bigint NOT NULL DEFAULT 0,
                     updated_at timestamptz NOT NULL DEFAULT now(),
                     updated_by uuid,
-                    is_deleted boolean NOT NULL DEFAULT false)
+                    is_deleted boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)
                 """);
     }
 
@@ -146,6 +161,16 @@ class GoodsOwningWarehouseWritePostgresTest {
                     new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_PLAIN, bad))));
             assertNull(owningWarehouseOf(GOODS_PLAIN), "fail-closed：整批拒绝时不许落一半");
         }
+    }
+
+    @Test
+    void rejectsLineSideWarehouseBeforeAnyGoodsAreChanged() {
+        jdbc.update("UPDATE warehouses SET is_line_side = true WHERE id = ?", WAREHOUSE_B);
+        assertThrows(ApiException.class, () -> service.applyOwningWarehouses(List.of(
+                new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_PLAIN, WAREHOUSE_A),
+                new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_ALREADY_A, WAREHOUSE_B))));
+        assertNull(owningWarehouseOf(GOODS_PLAIN));
+        assertEquals(WAREHOUSE_A, owningWarehouseOf(GOODS_ALREADY_A));
     }
 
     @Test

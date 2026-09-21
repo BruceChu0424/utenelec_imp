@@ -84,7 +84,7 @@ public class FulfillmentMutationLocks {
                 || !state.inventory.containsAll(needed.inventoryDimensions())
                 || !state.warehouses.containsAll(needed.mainWarehouseIds())
                 || !state.analyses.containsAll(needed.analysisIds())) {
-            throw FulfillmentLockState.conflict("回调来源超出本次完整预锁集合，禁止持锁补拿上游目标，请刷新后重试");
+            throw FulfillmentLockState.retryableConflict("回调来源超出本次完整预锁集合，禁止持锁补拿上游目标，请刷新后重试");
         }
     }
 
@@ -174,8 +174,14 @@ public class FulfillmentMutationLocks {
         public FulfillmentMutationLockPlan plan() { return plan; }
         /** Invoke after locking the mutable execution/root rows, before this command's first write. */
         public void verifyUnchanged() {
-            if (transaction != state() || !plan.equals(discovery.get())) {
-                throw FulfillmentLockState.conflict("来源集合在预读后变化，请刷新并重新提交；本次未补拿新锁");
+            if (transaction != state()) {
+                throw FulfillmentLockState.conflict("守卫与当前事务不匹配，请刷新并重新提交");
+            }
+            // 等锁期间别的事务先提交(同一订货单的另一张收货单、同一分析的另一条供给),
+            // 本事务预读的来源集合已经过期: 这里还没写任何东西, 拒绝后由最外层事务边界
+            // 用同一请求自动重跑(重新预读 + 重新按序拿锁), 客户端不必手工重试。
+            if (!plan.equals(discovery.get())) {
+                throw FulfillmentLockState.retryableConflict("来源集合在预读后变化，请刷新并重新提交；本次未补拿新锁");
             }
             requireCovered(plan);
         }

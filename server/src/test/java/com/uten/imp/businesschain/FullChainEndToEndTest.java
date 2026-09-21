@@ -6628,6 +6628,88 @@ class FullChainEndToEndTest {
     }
 
     @Test
+    // 2026-09-21 用户实测: 同一张订货单先入库后质检登记了两张收货单, 品质「批量审批」4 条并行
+    // 通道同时提交, 第二张在提交前被 FulfillmentMutationLocks.verifyUnchanged 以「来源集合在
+    // 预读后变化」拒绝(第一张已经改了同一订货明细/待检行), 页面只能人工「重试原报告」。
+    // FulfillmentSourceConflictRetryInterceptor 在最外层事务边界用同一请求自动重跑瞬时冲突:
+    // 三张收货单并行判定合格必须一次全部成功, 已上架的货同事务转正入库, 库存 = 20。
+    void concurrentInspectionDecisionsOnTheSameOrderSucceedWithoutManualRetry() throws Exception {
+        World w = seedWorld("iqcRace");
+        UUID g = UUID.randomUUID(), h = UUID.randomUUID();
+        insertGoods(g, "G-iqcrace-" + w.goodsA(), "成品G-iqcrace", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(h, "H-iqcrace-" + w.goodsA(), "原料H-iqcrace", "采购", w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?", w.supplierId(), h);
+        insertBom(g, h, "2");
+        UUID orderItemId = procureDirectBuy(w, g, h, "10"); // approved PO for H(20)
+        loginAs(w.superAdminUserId());
+        assertEquals(0, stockBalance(w.warehouseId(), h).signum(), "收货前 H 库存为 0");
+
+        java.util.List<String> quantities = List.of("5", "5", "10");
+        java.util.List<UUID> receipts = new java.util.ArrayList<>();
+        java.util.List<UUID> inspections = new java.util.ArrayList<>();
+        for (int index = 0; index < quantities.size(); index++) {
+            var registered = arrivalRegistration.register(
+                    new com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts
+                            .WarehouseArrivalRegisterRequest(
+                            "iqc-race-arrival-" + orderItemId + "-" + index, "PURCHASE",
+                            com.uten.imp.common.time.BusinessTime.today(),
+                            w.supplierId(), w.warehouseId(), w.employeeId(), w.employeeId(), "先入库后质检并行审批夹具",
+                            List.of(new com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts
+                                    .WarehouseArrivalRegisterRequest.ArrivalLine(
+                                    h, new BigDecimal(quantities.get(index)), orderItemId,
+                                    null, w.unitId(), BigDecimal.ONE, null, "PO-iqcrace", null, "R-0" + index)),
+                            true));
+            assertEquals("STOCKED_PENDING_INSPECTION", registered.outcome(),
+                    "第 " + (index + 1) + " 张收货单登记即按库位上架, 待品质部到库位检验");
+            receipts.add(registered.receiptId());
+            inspections.add(jdbc.queryForObject("""
+                    select id from procurement_inspection_items
+                    where receipt_type = 'PURCHASE' and receipt_id = ? and goods_id = ? and status = 'PENDING'
+                    """, UUID.class, registered.receiptId(), h));
+        }
+        assertEquals(0, stockBalance(w.warehouseId(), h).signum(), "先入库后质检: 上架但未合格前不进正式库存");
+
+        var barrier = new java.util.concurrent.CyclicBarrier(receipts.size());
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(receipts.size())) {
+            java.util.List<java.util.concurrent.Future<?>> outcomes = new java.util.ArrayList<>();
+            for (int index = 0; index < receipts.size(); index++) {
+                UUID receiptId = receipts.get(index);
+                UUID inspectionId = inspections.get(index);
+                BigDecimal quantity = new BigDecimal(quantities.get(index));
+                outcomes.add(workers.submit(() -> {
+                    loginAs(w.superAdminUserId());
+                    try {
+                        barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                        inspectionService.decideBatch("PURCHASE", receiptId,
+                                new com.uten.imp.features.warehouse.inbound.dto.BatchInspectionDecideRequest(
+                                        List.of(new com.uten.imp.features.warehouse.inbound.dto
+                                                .BatchInspectionDecideRequest.Item(
+                                                inspectionId, quantity, quantity, BigDecimal.ZERO,
+                                                "iqc-race-decide-" + inspectionId)),
+                                        "并行批量审批"));
+                        return null;
+                    } finally {
+                        SecurityContextHolder.clearContext();
+                    }
+                }));
+            }
+            for (var outcome : outcomes) {
+                outcome.get(90, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+        for (UUID inspectionId : inspections) {
+            assertEquals("RESOLVED", strFor(
+                    "select status from procurement_inspection_items where id = ?", inspectionId),
+                    "并行判定的每张收货单都必须一次成功, 不再要人工重试原报告");
+        }
+        assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(new BigDecimal("20")),
+                "三张收货单合格后按上架位置自动转正, 库存 5 + 5 + 10 = 20");
+        assertEquals(0, jdbc.queryForObject(
+                "select received_qty from purchase_order_items where id = ?", BigDecimal.class, orderItemId)
+                .compareTo(new BigDecimal("20")));
+    }
+
+    @Test
     // V458/ADR-064 后「有子层级委外=先自制」由两条入口承担：分析链（SUBCONTRACT_MAKE
     // 任务，见 preplanPegging_subcontractWarehouseStockInRefreshesOnlyOriginAnalysis）与
     // 直下单缺口行。按ADR-072/V529，草稿保存即交计划，未完成前置生产不能送审。

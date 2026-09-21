@@ -24,8 +24,15 @@ import org.springframework.transaction.annotation.Transactional;
  * 落在方法安全拦截(100..600)之后、事务拦截(LOWEST_PRECEDENCE)之前: 重跑不再重复鉴权,
  * 但每次都重新开启事务。拦截器本身只在「进入时线程无事务」时才会重跑, 所以嵌套的
  * MANDATORY/REQUIRED 服务调用不会被重复执行。</p>
+ *
+ * <p>配置类与 Advisor 都标 {@link BeanDefinition#ROLE_INFRASTRUCTURE}(与 Spring 自己的
+ * ProxyTransactionManagementConfiguration 一致): 自动代理创建器是个 BeanPostProcessor, 取 Advisor 时
+ * 会把本配置类一并提前实例化, 那时业务后置处理器还没注册完。基础设施 bean 本来就不该被业务后置
+ * 处理器加工, 标了角色启动日志里就不会再报 BeanPostProcessorChecker 的 "not eligible for getting
+ * processed by all BeanPostProcessors" 警告。</p>
  */
 @Configuration(proxyBeanMethods = false)
+@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
 public class FulfillmentSourceConflictRetryConfig {
 
     static final int ORDER = 1000;

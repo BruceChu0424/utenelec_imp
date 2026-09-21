@@ -300,7 +300,7 @@ class _MaterialPriorityReplenishmentDialogState
           safetyReplenishmentQty: preview.safetyReplenishmentQty,
           allowPublicExtra: _canExtra,
         );
-        final split = entry.toInput(total, allowOverDemand: _allowExtra);
+        final input = entry.toInput(total);
         source = await repository.notifyMaterialAnalysis(
           analysis: preview.sourceAnalysis,
           idempotencyKey: _key,
@@ -309,9 +309,8 @@ class _MaterialPriorityReplenishmentDialogState
           quantities: [
             MaterialSupplyQuantityInput(
               materialLineId: preview.sourceMaterialLineId,
-              qty: _round(split.qty),
-              safetyReplenishmentQty: _round(split.safetyReplenishmentQty),
-              publicExtraQty: _round(split.publicExtraQty),
+              qty: _round(input.qty),
+              safetyReplenishmentQty: _round(input.safetyReplenishmentQty),
             ),
           ],
         );

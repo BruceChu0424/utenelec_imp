@@ -140,7 +140,8 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         var source=preview.sourceAnalysis();
         var supply=new NotifyRequest(source.version(),source.fingerprint(),"yield-buy-seven-"+a.analysisId(),"BUY",
                 List.of(preview.sourceMaterialLineId()),List.of(),List.of(new SupplyQuantityInput(null,preview.sourceMaterialLineId(),
-                    new BigDecimal("4"),BigDecimal.ZERO,new BigDecimal("3"))));
+                    // ADR-099 数量单一口径：填总量 7，服务端按还需安排 4 分账(需求 4 + 公共 3)。
+                    new BigDecimal("7"),BigDecimal.ZERO)));
         commands.notifySupply(a.analysisId(),supply);commands.notifySupply(a.analysisId(),supply);
         var action=db.queryForMap("SELECT id,requested_qty,public_surplus_qty,external_document_id FROM preplan_supply_actions WHERE analysis_id=? AND route='BUY' ORDER BY generation DESC LIMIT 1",a.analysisId());
         qty("4",(BigDecimal)action.get("requested_qty"));qty("3",(BigDecimal)action.get("public_surplus_qty"));

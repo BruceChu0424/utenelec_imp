@@ -54,7 +54,6 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_material_analysis.dart';
-import '../models/material_cascade_quantity.dart';
 import '../models/material_future_transfer.dart';
 import '../models/material_future_transfer_progress.dart';
 import '../models/production_flow_stage.dart';
@@ -63,8 +62,6 @@ import '../providers/material_analysis_warehouse_prefs_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
-import '../../purchase/models/purchase_doc.dart';
-import '../../purchase/repositories/purchase_repository.dart';
 import '../widgets/material_reallocation_dialog.dart';
 import '../widgets/material_transfer_launcher.dart';
 import '../widgets/material_priority_replenishment_dialog.dart';
@@ -576,15 +573,14 @@ abstract class _MaterialAnalysisPageBase
   Future<void> _showTransferLauncher(_MaterialGroup group);
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view);
 
-  /// 父件 + 下层一起下单（ADR-081，2026-09-14 修订为**整页前置**：提交父件
-  /// 之前先进页面核对，一键下单里按序提交父件与下层）；实现见
-  /// material_analysis_child_cascade.dart。
+  /// 父件 + 下层一起下单（ADR-081 整页前置；2026-09-21 ADR-099 改为服务端
+  /// 算量）；实现见 material_analysis_child_cascade.dart。
   ///
-  /// [_pendingChildCascadeRows] = 预构建下层行。返回值里的 [rows] 为空表示
-  /// 不需要进级联页（调用方走原路直接提交），[note] 非空时调用方要把这句
-  /// 如实告诉用户——「下层都已下过单」和「下层全被权限/路线挡住」都不能静默
-  /// 跳过，否则父件落库了用户还以为下层也办妥了。
-  ({List<_ChildCascadeRow> rows, String? note}) _pendingChildCascadeRows(
+  /// [_pendingChildCascadeRows] = 预构建下层行（车间通道先向服务端要一份
+  /// 「下达之后」的预览快照）。返回值里的 [rows] 为空表示不需要进级联页
+  /// （调用方走原路直接提交），[note] 非空时调用方要把这句如实告诉用户——
+  /// 「下层都已下过单」和「下层全被权限/路线挡住」都不能静默跳过。
+  Future<_CascadePending> _pendingChildCascadeRows(
     List<_ChildCascadeSeed> seeds, {
     bool keepUnselectable = false,
   });
@@ -592,6 +588,7 @@ abstract class _MaterialAnalysisPageBase
   Future<bool> _showChildCascadeDialog({
     required List<_ChildCascadeSeed> seeds,
     required List<_ChildCascadeRow> initialRows,
+    required ProductionMaterialAnalysisView? previewView,
     Future<bool> Function()? parentAction,
   });
   Widget _nodeBorrowSection(
@@ -1318,21 +1315,24 @@ abstract class _MaterialAnalysisPageBase
             '${date.month.toString().padLeft(2, '0')}-'
             '${date.day.toString().padLeft(2, '0')}';
 
-  bool _canSelectProduct(ProductionMaterialAnalysisProduct product) {
+  bool _canSelectProduct(ProductionMaterialAnalysisProduct product) =>
+      _productRouteConfirmedForWorkshop(product) &&
+      !_productFullyTransferred(product) &&
+      product.canSchedule;
+
+  /// 顶层与子层同口径：根供给行必须显式确认为自制（历史计划只影响草稿预填，
+  /// 见 _draftRoute 的根分支，不再绕过确认门）；无根供给行的旧分析沿用旧合同。
+  bool _productRouteConfirmedForWorkshop(
+    ProductionMaterialAnalysisProduct product,
+  ) {
     final root = _rootSupplyMaterialOf(product);
-    if (root != null) {
-      // 顶层与子层同口径：路线必须显式确认为自制（历史计划只影响草稿预填，
-      // 见 _draftRoute 的根分支，不再绕过确认门）。
-      final group = _analysisIndexes(
-        _analysis!,
-      ).groupsByLine[root.materialLineId];
-      if (root.confirmedRoute != MaterialSupplyRoute.make ||
-          group == null ||
-          _dirtyRouteGroups.contains(group.key)) {
-        return false;
-      }
-    }
-    return !_productFullyTransferred(product) && product.canSchedule;
+    if (root == null) return true;
+    final group = _analysisIndexes(
+      _analysis!,
+    ).groupsByLine[root.materialLineId];
+    return root.confirmedRoute == MaterialSupplyRoute.make &&
+        group != null &&
+        !_dirtyRouteGroups.contains(group.key);
   }
 
   bool _productFullyTransferred(ProductionMaterialAnalysisProduct product) =>
@@ -2181,8 +2181,9 @@ class _ProductionMaterialAnalysisPageState
           material.sharedFutureClaimedQty,
           material.sharedFuturePendingQty,
           material.lateSharedFutureAvailableQty,
-          material.additionalSupplyRecommendationKnown,
           material.additionalSupplyRecommendedQty,
+          material.sharedFutureClaimableQty,
+          material.plannedOutputQty,
           for (final target in material.notifiedTargets)
             '${target.target?.wireName}:${target.documentType}:'
                 '${target.documentId}:${target.status}:${target.allocatedQty}',

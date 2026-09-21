@@ -58,11 +58,12 @@ void main() {
       expect(repo.notifications.single['analysisId'], 'source-A');
       expect(repo.notifications.single['materialLineIds'], ['source-material']);
       expect(repo.notifications.single['quantities'], [
+        // ADR-099 数量单一口径：补原计划 4 + 公共余量 3 = 总量 7 原样送服务端，
+        // 由它按权威余量分账。
         {
           'materialLineId': 'source-material',
-          'qty': 4.0,
+          'qty': 7.0,
           'safetyReplenishmentQty': 0.0,
-          'publicExtraQty': 3.0,
         },
       ]);
       expect(find.text('新计划已满足，调料已完成'), findsOneWidget);
@@ -107,7 +108,7 @@ void main() {
       expect(repo.notifications.single['target'], 'SUBCONTRACT');
       expect(
         (repo.notifications.single['quantities'] as List).single,
-        containsPair('publicExtraQty', 0.0),
+        isNot(contains('publicExtraQty')),
       );
       expect(tester.takeException(), isNull);
     },

@@ -12,6 +12,7 @@ import 'package:uten_imp/features/production/providers/material_analysis_warehou
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 
 void main() {
   for (final route in ['BUY', 'SUBCONTRACT']) {
@@ -30,11 +31,13 @@ void main() {
           permissions: {
             Perm.productionMaterialAnalysisView,
             Perm.productionMaterialAnalysisNotify,
+            Perm.productionMaterialAnalysisOverSupply,
           },
         );
         await _open(tester, route == 'BUY' ? 'buy' : 'subcontract');
         await _filter(tester, '已下达 (2)');
-        expect(find.byType(Checkbox), findsNothing);
+        // ADR-099：已下达行仍可勾选追加（有下达 + 超量权限时），勾选框照常渲染。
+        expect(find.byType(Checkbox), findsWidgets);
         Finder row(String label) => find
             .ancestor(of: find.text(label), matching: find.byType(Row))
             .first;
@@ -42,7 +45,11 @@ void main() {
         // 2026-09-15 已下达段对齐「下达车间」：缺口列退役，行的数量事实只剩
         // 需求量(10)与下达数量(4，无行动快照=分摊合计兜底)。
         final demand = find.descendant(of: first, matching: find.text('10'));
-        final issued = find.descendant(of: first, matching: find.text('4'));
+        // ADR-099：有下达权限时已下达行给「追加量」输入框，已下的量改成旁注。
+        final issued = find.descendant(
+          of: first,
+          matching: find.textContaining('已下 4'),
+        );
         final demandBefore = tester.widget<Text>(demand).style?.color;
         final issuedBefore = tester.widget<Text>(issued).style?.color;
 
@@ -79,7 +86,9 @@ void main() {
           expect(
             text.style?.color ?? DefaultTextStyle.of(element).style.color,
             isNot(Colors.white),
-            reason: 'The newly selected row must also keep normal colors',
+            reason:
+                'The newly selected row must also keep normal colors '
+                '(text: ${text.data})',
           );
         }
         expect(tester.takeException(), isNull);
@@ -164,14 +173,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('issued state is read only even for a supply operator', (
+  testWidgets('issued segment lets a supply operator append extra quantity', (
     tester,
   ) async {
+    // 追加量属公共备货：要有超量下达权限才给勾（没有的账号已下达行照旧只读）。
     final requests = await _pump(
       tester,
       permissions: {
         Perm.productionMaterialAnalysisView,
         Perm.productionMaterialAnalysisNotify,
+        Perm.productionMaterialAnalysisOverSupply,
       },
     );
     await _open(tester, 'buy');
@@ -197,12 +208,37 @@ void main() {
       findsOneWidget,
     );
     await _filter(tester, '已下达 (2)');
-    expect(find.byType(Checkbox), findsNothing);
-    expect(
-      find.byKey(const Key('material-analysis-bucket-action-buy')),
-      findsNothing,
+    // ADR-099 父层级追加：已下达行仍可勾选；下达数量格改为「追加量」输入框，
+    // 默认空、旁注已下的量；按钮改叫「追加采购」。
+    expect(find.byType(Checkbox), findsWidgets);
+    expect(find.text('追加采购(0)'), findsOneWidget);
+    final append = find.byKey(
+      const ValueKey('material-analysis-bucket-submit-qty-action-complete'),
     );
+    expect(tester.widget<TextField>(append).controller!.text, '');
+    expect(find.text('已下 10'), findsOneWidget);
     expect(requests.where((request) => request.method != 'GET'), isEmpty);
+    await tester.enterText(append, '5');
+    await _tapRowCheckbox(tester, '已完成采购物料');
+    await tester.tap(find.text('追加采购(1)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('supply-submit-confirm')));
+    await tester.pumpAndSettle();
+    // 追加量原样送 notify（服务端按超量分账为公共备货：未处理的申请就地改大、
+    // 已处理的另立新单）。
+    final notify = requests
+        .where((request) => request.path.endsWith('/notify'))
+        .toList();
+    expect(notify, hasLength(1));
+    final body = notify.single.data as Map<String, dynamic>;
+    expect(body['target'], 'BUY');
+    expect(body['quantities'], [
+      {
+        'actionGroupKey': 'action-complete',
+        'qty': 5.0,
+        'safetyReplenishmentQty': 0.0,
+      },
+    ]);
   });
 
   testWidgets(
@@ -240,6 +276,26 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+/// 按行内文本定位整行（行首勾选格在冻结包裹层里）并点它的勾选框。
+Future<void> _tapRowCheckbox(WidgetTester tester, String text) async {
+  final frozen = find.ancestor(
+    of: find.text(text).first,
+    matching: find.byType(UtenFrozenLeadingColumn),
+  );
+  final row = frozen.evaluate().isNotEmpty
+      ? frozen.first
+      : find
+            .ancestor(of: find.text(text).first, matching: find.byType(Row))
+            .first;
+  final checkbox = find
+      .descendant(of: row, matching: find.byType(Checkbox))
+      .first;
+  await tester.ensureVisible(checkbox);
+  await tester.pumpAndSettle();
+  await tester.tap(checkbox);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _open(WidgetTester tester, String route) async {
@@ -280,6 +336,8 @@ Future<List<RequestOptions>> _pump(
             {'id': 'warehouse-1', 'name': '主仓'},
           ],
           '/production/material-analyses/analysis-1' => analysis ?? _analysis(),
+          '/production/material-analyses/analysis-1/notify' =>
+            analysis ?? _analysis(),
           '/production/material-analyses/sales-candidates' => {
             'items': <Object>[],
             'page': 1,
@@ -357,7 +415,13 @@ Map<String, dynamic> _analysis() => {
   'fingerprint': 'a' * 64,
   'warehouseId': 'warehouse-1',
   'warehouseIds': ['warehouse-1'],
-  'allowedActions': ['VIEW', 'NOTIFY_SUPPLY', 'PLAN_PREVIEW', 'GENERATE_PLAN'],
+  'allowedActions': [
+    'VIEW',
+    'NOTIFY_SUPPLY',
+    'OVER_SUPPLY',
+    'PLAN_PREVIEW',
+    'GENERATE_PLAN',
+  ],
   'products': [
     _product('ready', '缺料但可排产产品', canSchedule: true),
     _product('blocked', '结构待修复产品', canSchedule: false),
@@ -416,6 +480,12 @@ Map<String, dynamic> _material(
   'requiredQty': 10,
   'shortageQty': gap,
   'demandSupplyGapQty': gap,
+  // 服务端「还可下达」= max(0, 缺口 − 有效在途覆盖)：未撤销/未完成的下游
+  // 引用按分摊量扣掉(ADR-099 起界面不再自己估这个数)。
+  'additionalSupplyRecommendedQty':
+      status == null || status == 'DONE' || status == 'CANCELLED'
+      ? gap
+      : (gap - issued > 0 ? gap - issued : 0.0),
   'sourceSuggestion': route,
   'sourceConfirmed': route,
   'routeConfirmed': true,

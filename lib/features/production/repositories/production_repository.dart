@@ -1202,20 +1202,34 @@ class ProductionPlanRepository {
     return ProductionMaterialGenerateResult.fromJson(json);
   }
 
-  /// 物料行 → 下游采购 / 委外申请联动（ADR-081 下层办齐「已下单子件」）：
-  /// 基础需求已下过单的行，超产追加量按申请进度分两路——ADJUSTABLE 直接
-  /// 并入同一张申请（明细数量改大，V477 口径），ORDERED 走 notify 超量通道
-  /// 另立追加申请。只查传入的行，一次拉回。
-  Future<List<MaterialAnalysisSupplyLink>> materialAnalysisSupplyLinks(
-    String analysisId,
-    Set<String> materialLineIds,
-  ) async {
-    if (materialLineIds.isEmpty) return const [];
-    final rows = await api.getList(
-      '$_materialAnalysesBase/$analysisId/supply-links', // ENDPOINT
-      query: {'materialLineIds': materialLineIds.join(',')},
-    );
-    return [for (final item in rows) MaterialAnalysisSupplyLink.fromJson(item)];
+  /// 下达车间预览（ADR-099）：服务端按同一套代码真实跑一遍 issue-plans 拿到
+  /// 「下达之后」的分析快照（下层需求 / 还需安排 / 锚点剩余按计划产出量重算），
+  /// 然后整体回滚，库里不留痕迹。「父件 + 下层一起下单」页面用它展示服务端算好
+  /// 的下层数量。幂等键必须是预览专用的新键。
+  Future<ProductionMaterialAnalysisView> previewIssueWorkshopPlans({
+    required ProductionMaterialAnalysisView analysis,
+    required String warehouseId,
+    required String idempotencyKey,
+    required String billDate,
+    required List<MaterialAnalysisIssueLine> lines,
+    String? deliveryDate,
+    bool approveNow = false,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/issue-plans/preview',
+      query: _materialAnalysisProjection,
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'warehouseId': warehouseId,
+        'idempotencyKey': idempotencyKey,
+        'billDate': billDate,
+        'deliveryDate': ?deliveryDate,
+        'approveNow': approveNow,
+        'lines': [for (final line in lines) line.toJson()],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
   }
 
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────

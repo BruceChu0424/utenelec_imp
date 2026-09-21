@@ -3548,10 +3548,11 @@ class FullChainEndToEndTest {
                 new NotifyRequest(aRouted.version(), aRouted.fingerprint(),
                         "notify-sma72-a", "BUY",
                         List.of(aMaterial.materialLineId()), List.of(),
+                        // ADR-099 数量单一口径：填总量 2000，服务端按还需安排 500 分账
+                        // (需求 500 + 公共备货 1500)。
                         List.of(new SupplyQuantityInput(
                                 aMaterial.actionGroupKey(), null,
-                                new BigDecimal("500"), BigDecimal.ZERO,
-                                new BigDecimal("1500")))));
+                                new BigDecimal("2000"), BigDecimal.ZERO))));
 
         Object[] source = jdbc.queryForObject("""
                 select action.id, allocation.external_item_id,
@@ -3741,8 +3742,7 @@ class FullChainEndToEndTest {
                         List.of(aMaterial.materialLineId()), List.of(),
                         List.of(new SupplyQuantityInput(
                                 aMaterial.actionGroupKey(), null,
-                                new BigDecimal("500"), BigDecimal.ZERO,
-                                BigDecimal.ZERO))));
+                                new BigDecimal("500"), BigDecimal.ZERO))));
         Object[] source = jdbc.queryForObject("""
                 select action.id, allocation.external_item_id
                 from preplan_supply_actions action

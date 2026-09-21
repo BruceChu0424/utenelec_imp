@@ -145,6 +145,40 @@ public class ProductionSubcontractRequestFacade
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public void increaseProductionDraftLine(
+            UUID applicationId, UUID applicationItemId, BigDecimal addedQty) {
+        if (addedQty == null || addedQty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "追加数量必须大于 0");
+        }
+        SubcontractApplication application = em.find(
+                SubcontractApplication.class, applicationId, LockModeType.PESSIMISTIC_WRITE);
+        if (application == null || application.isDeleted()
+                || application.getStatus() == null
+                || (application.getStatus() != STATUS_DRAFT && application.getStatus() != STATUS_APPROVED)
+                || application.isClosed()) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外申请已结案、红冲或删除，不能就地追加数量");
+        }
+        SubcontractApplicationItem item = em.find(
+                SubcontractApplicationItem.class, applicationItemId, LockModeType.PESSIMISTIC_WRITE);
+        Number live = item == null ? 0 : (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM subcontract_application_items
+                WHERE id = :itemId AND application_id = :applicationId AND is_deleted = FALSE
+                """).setParameter("itemId", applicationItemId)
+                .setParameter("applicationId", applicationId).getSingleResult();
+        if (item == null || live.longValue() == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外申请明细不存在或不属于该申请");
+        }
+        if (item.getOrderedQty() != null && item.getOrderedQty().signum() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外申请明细已订货，不能就地追加数量，请另立申请");
+        }
+        item.setQty(item.getQty().add(addedQty));
+        itemRepo.save(item);
+        itemRepo.flush();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void closeGeneratedDraft(
             UUID applicationId, LifecycleAction action) {
         SubcontractApplication application = em.find(

@@ -923,6 +923,7 @@ Map<String, dynamic> _issuedPlanAnchors({bool partialSecondPath = false}) {
     'requiredQty': 10000,
     'shortageQty': 10000,
     'demandSupplyGapQty': 10000,
+    'additionalSupplyRecommendedQty': 10000,
   });
   for (var index = 1; index <= 6; index++) {
     final subcontract = index == 6;
@@ -990,6 +991,7 @@ Map<String, dynamic> _issuedPlanAnchors({bool partialSecondPath = false}) {
       'requiredQty': 10000,
       'shortageQty': 10000,
       'demandSupplyGapQty': 10000,
+      'additionalSupplyRecommendedQty': 10000,
       'actionable': true,
       'sourceConfirmed': 'BUY',
       'sourceSuggestion': 'BUY',
@@ -1067,6 +1069,7 @@ Map<String, dynamic> _analysis({
         'requiredQty': 10 * unitRate,
         'shortageQty': 10 * unitRate,
         'demandSupplyGapQty': 10 * unitRate,
+        'additionalSupplyRecommendedQty': 10 * unitRate,
         'availableQty': 0,
         'allocatedAvailableQty': 0,
         'actionable': true,
@@ -1093,6 +1096,7 @@ Map<String, dynamic> _analysis({
             'requiredQty': 20,
             'shortageQty': 20,
             'demandSupplyGapQty': 20,
+            'additionalSupplyRecommendedQty': 20,
             'actionable': true,
             'sourceSuggestion': 'BUY',
             'sourceConfirmed': null,

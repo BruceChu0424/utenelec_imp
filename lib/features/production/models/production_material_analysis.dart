@@ -26,55 +26,6 @@ enum MaterialSupplyRoute {
   }
 }
 
-/// 一条物料行与它下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单
-/// 子件」分支）。基础需求已下过单的行，超产多出来的量按申请进度分两路：
-/// [adjustable] = 申请仍停在申请态（已审核、未分解出订货单），追加量直接
-/// 并入同一张申请（把明细数量改大，V477 sanctioned 入口）；否则已分解出
-/// 订货单 / 委外申请，追加量走 notify 超量通道另立追加申请。
-class MaterialAnalysisSupplyLink {
-  const MaterialAnalysisSupplyLink({
-    required this.materialLineId,
-    required this.route,
-    required this.mode,
-    required this.documentType,
-    required this.documentId,
-    required this.documentNo,
-    this.documentItemId,
-    this.itemQty = 0,
-    this.orderedQty = 0,
-  });
-
-  final String materialLineId;
-  final MaterialSupplyRoute? route;
-
-  /// ADJUSTABLE = 可并入申请调量；ORDERED = 已分解，按追加另立。
-  final String mode;
-  final String documentType;
-  final String documentId;
-  final String documentNo;
-  final String? documentItemId;
-
-  /// 该申请明细当前数量（并入模式的展示口径：原量 → 原量 + 追加量）。
-  final double itemQty;
-  final double orderedQty;
-
-  bool get adjustable => mode == 'ADJUSTABLE' && documentItemId != null;
-
-  static MaterialAnalysisSupplyLink fromJson(Map<String, dynamic> json) {
-    return MaterialAnalysisSupplyLink(
-      materialLineId: (json['materialLineId'] as String).trim(),
-      route: MaterialSupplyRoute.fromWire(json['route']),
-      mode: json['mode'] as String? ?? 'ORDERED',
-      documentType: json['documentType'] as String? ?? '',
-      documentId: json['documentId'] as String? ?? '',
-      documentNo: json['documentNo'] as String? ?? '',
-      documentItemId: json['documentItemId'] as String?,
-      itemQty: (json['itemQty'] as num?)?.toDouble() ?? 0,
-      orderedQty: (json['orderedQty'] as num?)?.toDouble() ?? 0,
-    );
-  }
-}
-
 /// 服务端权威的逐 BOM 路径需求激活状态。
 ///
 /// `requiredQty == 0` 不能再被客户端统一解释成“无需补货”：它可能是上级
@@ -803,6 +754,8 @@ class ProductionMaterialAnalysisProduct {
     this.submittedQty = 0,
     this.approvedQty = 0,
     this.remainingQty = 0,
+    this.issuedPlanQty = 0,
+    this.canIssueSurplus = false,
     this.serverCanSchedule,
     this.serverMaxSchedulableQty,
     this.scheduleBlockedReason,
@@ -873,6 +826,12 @@ class ProductionMaterialAnalysisProduct {
   final double submittedQty;
   final double approvedQty;
   final double remainingQty;
+
+  /// ADR-099：已下达且仍有效的计划总量（归需求份 + 公共备货产出份）。
+  final double issuedPlanQty;
+
+  /// ADR-099：剩余需求已为 0 但仍可再下一批纯公共备货产出（追加 = 公共）。
+  final bool canIssueSurplus;
   final bool? serverCanSchedule;
   final double? serverMaxSchedulableQty;
   final String? scheduleBlockedReason;
@@ -952,6 +911,8 @@ class ProductionMaterialAnalysisProduct {
     submittedQty: _double(json['submittedQty']) ?? 0,
     approvedQty: _double(json['approvedQty']) ?? 0,
     remainingQty: _double(json['remainingQty']) ?? 0,
+    issuedPlanQty: _double(json['issuedPlanQty']) ?? 0,
+    canIssueSurplus: json['canIssueSurplus'] == true,
     serverCanSchedule: json.containsKey('canSchedule')
         ? json['canSchedule'] == true
         : null,
@@ -1118,9 +1079,10 @@ class ProductionMaterialAnalysisMaterial {
     this.sharedFuturePendingQty,
     this.lateSharedFutureAvailableQty = 0,
     this.additionalSupplyRecommendedQty = 0,
+    this.sharedFutureClaimableQty = 0,
+    this.plannedOutputQty = 0,
     this.minOrderQty,
     this.orderMultipleQty,
-    this.additionalSupplyRecommendationKnown = false,
     this.selectedWarehousesAvailableQty = 0,
     this.selectedOtherWarehouseTransferableQty = 0,
     this.publicSurplusExpectedDate,
@@ -1253,7 +1215,14 @@ class ProductionMaterialAnalysisMaterial {
   final double? sharedFuturePendingQty;
   final double lateSharedFutureAvailableQty;
   final double additionalSupplyRecommendedQty;
-  final bool additionalSupplyRecommendationKnown;
+
+  /// 此刻可自动认领的同主仓公共在途（按期 + 晚到，不含本分析自己的）。
+  /// 下达采购 / 委外时服务端先认领它，只为余下部分新下单（ADR-099）。
+  final double sharedFutureClaimableQty;
+
+  /// 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位；已建
+  /// 自制 / 前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量。
+  final double plannedOutputQty;
 
   /// 货品主档的最小起订量与订货倍数（整箱/整包）。只用于把采购桶的
   /// 「下达数量」默认值向上抬，是软约束：计划员可以改小，服务端不硬拦。
@@ -1398,8 +1367,8 @@ class ProductionMaterialAnalysisMaterial {
         _double(json['lateSharedFutureAvailableQty']) ?? 0,
     additionalSupplyRecommendedQty:
         _double(json['additionalSupplyRecommendedQty']) ?? 0,
-    additionalSupplyRecommendationKnown:
-        json['additionalSupplyRecommendedQty'] != null,
+    sharedFutureClaimableQty: _double(json['sharedFutureClaimableQty']) ?? 0,
+    plannedOutputQty: _double(json['plannedOutputQty']) ?? 0,
     minOrderQty: _double(json['minOrderQty']),
     orderMultipleQty: _double(json['orderMultipleQty']),
     selectedWarehousesAvailableQty:
@@ -1908,6 +1877,7 @@ class MaterialAnalysisNotificationTarget {
     this.status,
     this.allocatedQty,
     this.notificationReversalPending = false,
+    this.growableLineQty,
   });
 
   final MaterialSupplyRoute? target;
@@ -1921,6 +1891,10 @@ class MaterialAnalysisNotificationTarget {
   /// 用于估算「已提交在途量」，服务端仍以实时缺口−在途复核为准。
   final double? allocatedQty;
   final bool notificationReversalPending;
+
+  /// ADR-099：该下游申请明细仍未订货（采购 / 委外部门还没动过，追加会就地
+  /// 改大）时 = 明细当前数量；已订货 / 已处理为 null。
+  final double? growableLineQty;
 
   bool get isRootOutput =>
       documentType == 'ROOT_STOCK_ALLOCATION' ||
@@ -1938,6 +1912,7 @@ class MaterialAnalysisNotificationTarget {
     status: _string(json['status']),
     allocatedQty: _double(json['allocatedQty']),
     notificationReversalPending: json['notificationReversalPending'] == true,
+    growableLineQty: _double(json['growableLineQty']),
   );
 }
 
@@ -2162,21 +2137,18 @@ class MaterialSupplyQuantityInput {
     this.materialLineId,
     required this.qty,
     required this.safetyReplenishmentQty,
-    this.publicExtraQty = 0,
   }) : assert(actionGroupKey != null || materialLineId != null);
 
   final String? actionGroupKey;
   final String? materialLineId;
   final double qty;
   final double safetyReplenishmentQty;
-  final double publicExtraQty;
 
   Map<String, dynamic> toJson() => {
     if (actionGroupKey != null) 'actionGroupKey': actionGroupKey,
     if (materialLineId != null) 'materialLineId': materialLineId,
     'qty': qty,
     'safetyReplenishmentQty': safetyReplenishmentQty,
-    'publicExtraQty': publicExtraQty,
   };
 }
 
@@ -2206,6 +2178,7 @@ class MaterialAnalysisIssueLine {
     this.departmentId,
     this.workshopName,
     this.workerId,
+    this.publicSurplusOnly = false,
   });
 
   final String? materialLineId;
@@ -2215,6 +2188,10 @@ class MaterialAnalysisIssueLine {
   final String? workshopName;
   final String? workerId;
 
+  /// ADR-099：明确声明本行是对「剩余需求已为 0」的锚点再追加一批纯公共备货
+  /// 产出（不声明时服务端照旧拒绝，重复点击不会悄悄多建计划）。
+  final bool publicSurplusOnly;
+
   Map<String, dynamic> toJson() => {
     if (materialLineId != null) 'materialLineId': materialLineId,
     if (analysisLineId != null) 'analysisLineId': analysisLineId,
@@ -2223,6 +2200,7 @@ class MaterialAnalysisIssueLine {
     if (workshopName?.trim().isNotEmpty == true)
       'workshopName': workshopName!.trim(),
     if (workerId != null) 'workerId': workerId,
+    if (publicSurplusOnly) 'publicSurplusOnly': true,
   };
 }
 

@@ -252,10 +252,7 @@ public class MaterialAnalysisService {
                     .executeUpdate();
         }
         validateSourceCapacity(loadSourceLines(analysisId, false));
-        int routeResets = refreshLocked(analysisId);
-        if (growMakeAnchorQuotasAfterSourcePreview(analysisId, previousMakeAnchorRequirements)) {
-            routeResets += refreshLocked(analysisId);
-        }
+        int routeResets = refreshWithAnchorGrowth(analysisId, previousMakeAnchorRequirements);
         recordSimpleCommand(analysisId, "PREVIEW", request.idempotencyKey(), requestHash);
         return detailInternal(analysisId, false).withRouteResetCount(routeResets);
     }
@@ -293,96 +290,6 @@ public class MaterialAnalysisService {
     public AnalysisView detail(UUID analysisId) {
         return detailInternal(analysisId, true);
     }
-
-    /**
-     * 物料行 → 下游采购 / 委外申请的联动状态（ADR-081 下层办齐「已下单子件」
-     * 分支）：基础需求已下过单的行，超产多出来的量怎么办取决于申请走到哪一步——
-     *
-     * <ul>
-     *   <li>ADJUSTABLE：采购申请仍停在申请态（已审核、明细既无已订货量也无待
-     *       财务审核占用，与 V477 adjustItemQty 的守卫同口径），可以直接把申请
-     *       明细数量改大，把追加量并入同一张申请；</li>
-     *   <li>ORDERED：申请已分解出订货单（或委外申请——委外侧没有 sanctioned
-     *       的改量入口），追加量走 notify 超量通道生成追加申请；</li>
-     *   <li>NONE：没有仍有效的下游申请（或从未下过单），按普通行处理。</li>
-     * </ul>
-     *
-     * <p>每行取最近一条未撤销 action（DISTINCT ON + created_at DESC）；申请
-     * 被删除的链路视为不存在。只读。</p>
-     */
-    @Transactional(readOnly = true)
-    public java.util.List<SupplyLinkView> supplyLinks(
-            UUID analysisId, java.util.Set<UUID> materialLineIds) {
-        if (materialLineIds.isEmpty()) {
-            return java.util.List.of();
-        }
-        var query = em.createNativeQuery("""
-                SELECT DISTINCT ON (allocation.analysis_material_id)
-                       allocation.analysis_material_id, action.route,
-                       action.external_document_type, action.external_document_id,
-                       action.external_document_no, allocation.external_item_id,
-                       request.status, COALESCE(item.qty, 0), COALESCE(item.ordered_qty, 0),
-                       (SELECT COALESCE(SUM(oi.qty), 0)
-                          FROM procurement_order_approval_cases approval
-                          JOIN purchase_orders po
-                            ON approval.order_type = 'PURCHASE'
-                           AND approval.order_id = po.id AND approval.status = 'PENDING'
-                          JOIN purchase_order_items oi ON oi.order_id = po.id
-                         WHERE po.status = 0 AND po.is_deleted = FALSE
-                           AND oi.is_deleted = FALSE
-                           AND oi.request_item_id = allocation.external_item_id)
-                FROM preplan_supply_action_allocations allocation
-                JOIN preplan_supply_actions action ON action.id = allocation.action_id
-                LEFT JOIN purchase_requests request
-                  ON request.id = action.external_document_id
-                 AND action.external_document_type = 'PURCHASE_REQUEST'
-                 AND request.is_deleted = FALSE
-                LEFT JOIN purchase_request_items item ON item.id = allocation.external_item_id
-                LEFT JOIN subcontract_applications application
-                  ON application.id = action.external_document_id
-                 AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
-                 AND application.is_deleted = FALSE
-                WHERE action.analysis_id = :analysisId
-                  AND allocation.analysis_material_id IN (SELECT unnest(CAST(string_to_array(:lineIds, ',') AS uuid[])))
-                  AND action.route IN ('BUY', 'SUBCONTRACT')
-                  AND action.external_document_type IN ('PURCHASE_REQUEST', 'SUBCONTRACT_APPLICATION')
-                  AND action.status <> 'CANCELLED'
-                  AND (request.id IS NOT NULL OR application.id IS NOT NULL)
-                ORDER BY allocation.analysis_material_id, action.created_at DESC, action.id DESC
-                """);
-        query.setParameter("analysisId", analysisId);
-        query.setParameter("lineIds", uuidArrayText(materialLineIds));
-        java.util.List<SupplyLinkView> result = new java.util.ArrayList<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
-            UUID lineId = (UUID) row[0];
-            String route = (String) row[1];
-            String documentType = (String) row[2];
-            UUID documentId = (UUID) row[3];
-            String documentNo = (String) row[4];
-            UUID itemId = (UUID) row[5];
-            Short requestStatus = row[6] == null ? null : Short.valueOf(((Number) row[6]).shortValue());
-            java.math.BigDecimal itemQty = decimal(row[7]);
-            java.math.BigDecimal orderedQty = decimal(row[8]);
-            java.math.BigDecimal pendingQty = decimal(row[9]);
-            boolean purchaseAdjustable = "BUY".equals(route)
-                    && "PURCHASE_REQUEST".equals(documentType)
-                    && requestStatus != null && requestStatus == 1
-                    && itemId != null
-                    && itemQty.signum() > 0
-                    && orderedQty.signum() == 0
-                    && pendingQty.signum() == 0;
-            String mode = purchaseAdjustable ? "ADJUSTABLE" : "ORDERED";
-            result.add(new SupplyLinkView(lineId, route, mode, documentType,
-                    documentId, documentNo, itemId, itemQty, orderedQty));
-        }
-        return result;
-    }
-
-    /** 一条物料行与它下游申请的联动状态（mode ∈ ADJUSTABLE/ORDERED，见 {@link #supplyLinks}）。 */
-    public record SupplyLinkView(
-            UUID materialLineId, String route, String mode, String documentType,
-            UUID documentId, String documentNo, UUID documentItemId,
-            java.math.BigDecimal itemQty, java.math.BigDecimal orderedQty) {}
 
     /**
      * 物料分析分页列表：按关键字/状态/来源筛选，结果按 maker_id 行级隔离，仅返回当前用户有权可见的分析。
@@ -1395,8 +1302,9 @@ public class MaterialAnalysisService {
         nodes = nodes.stream().map(node -> {
             BomNode batched = node.withOutputBatches(plannedBatches.getOrDefault(
                     node.analysisItemId()+"|"+Objects.toString(node.parentNodeKey(),""),List.of()));
+            // 第 1 层按来源「计划产出量」展开（需求与已下达计划取大，ADR-099）。
             return node.depth()==1 ? batched.withSnapshotRequiredQty(batched.requiredForOutput(
-                    sourcesById.get(node.analysisItemId()).materialRequirementQty())) : batched;
+                    sourcesById.get(node.analysisItemId()).plannedOutputQty())) : batched;
         }).toList();
         validateExactPegRefreshCompatibility(analysisId, nodes);
         // Reconcile identity membership, not every row's active flag. Existing
@@ -3718,15 +3626,18 @@ public class MaterialAnalysisService {
     /**
      * 父节点的计划产出量：在物理缺口里扣掉已被外部最终件在途覆盖的部分，
      * 再以「已承诺由我方制造的量」托底（托底值本身不超过物理缺口，避免
-     * 历史累加的锚点数量把下层需求抬高到缺口以上）。
+     * 历史累加的锚点数量把下层需求抬高到缺口以上）；最后与「已下达且仍有效
+     * 的计划总量」取大（ADR-099）——已下达的计划是冻结承诺，本批数量超过需求
+     * 的部分同样要备料，这一项不受物理缺口封顶。
      */
-    private static BigDecimal parentPlannedOutput(
+    static BigDecimal parentPlannedOutput(
             NodeAllocation parent, ParentSupplyCommitment supply) {
         BigDecimal shortage = parent.shortageQty();
         if (supply == null) return shortage;
         BigDecimal netted = shortage.subtract(supply.externalFutureQty())
                 .max(BigDecimal.ZERO);
-        return netted.max(supply.internalCommittedQty().min(shortage));
+        return netted.max(supply.internalCommittedQty().min(shortage))
+                .max(supply.plannedOutputQty());
     }
 
     private static int diagnosticAllocationPriority(BomNode node) {
@@ -4327,8 +4238,20 @@ public class MaterialAnalysisService {
                     FutureCoverage future = activeFuture.getOrDefault(row.id(), FutureCoverage.NONE);
                     UUID anchorId = anchorChildByParentLine.get(row.id());
                     SourceLine anchor = anchorId == null ? null : sourcesById.get(anchorId);
+                    // ADR-099：锚点已下达且仍有效的计划总量（含公共备货产出）也是
+                    // 内部制造承诺；顶层供给行的计划产出按来源单位换成基本单位。
+                    BigDecimal anchorPlanned = anchor == null
+                            ? BigDecimal.ZERO : anchor.issuedPlanQty();
                     BigDecimal internalCommitment = future.totalQty().subtract(future.externalQty())
-                            .max(anchor == null ? BigDecimal.ZERO : anchor.requestedQty());
+                            .max(anchor == null ? BigDecimal.ZERO : anchor.requestedQty())
+                            .max(anchorPlanned);
+                    // 本节点的计划产出量 = max(需求量, 本节点已下达的计划量)：顶层供给行
+                    // 按来源行的计划产出(含公共备货产出, 换成基本单位)，其余行按自家锚点。
+                    BigDecimal plannedOutput = row.requiredQty().max(anchorPlanned);
+                    if (row.depth() == 0 && materialSource != null) {
+                        plannedOutput = plannedOutput.max(materialSource.plannedOutputQty()
+                                .multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));
+                    }
                     return row.toView(
                             breakdown.getOrDefault(row.dimension(), List.of()),
                             references.getOrDefault(row.id(), List.of()),
@@ -4350,7 +4273,8 @@ public class MaterialAnalysisService {
                                     .add(makeSupplementCoverage.replacement(row.actionGroupKey(),row.confirmedRoute())),
                             claimedFuture.getOrDefault(row.id(),ClaimedFutureState.NONE).pendingQty(),
                             soleComponentSubcontractGoods.contains(row.goodsId())
-                                    ? "COMPONENT_OUTBOUND" : null);
+                                    ? "COMPONENT_OUTBOUND" : null,
+                            plannedOutput);
                 })
                 .toList();
         Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
@@ -4771,6 +4695,28 @@ public class MaterialAnalysisService {
         return result;
     }
 
+    /**
+     * 刷新并让既有自制锚点的配额跟上需求增长（ADR-099）。
+     *
+     * <p>来源数量增加（刷新预览）或父件按超过需求的本批数量下达车间（下层需求
+     * 按计划产出量放大）都会让已有自制锚点的物料行需求变大；锚点行的
+     * requested_qty 只在这里按「新增需求」增长，车间桶的剩余可排量随之变大。
+     * [previousRequirements] 为空表示调用方没有提前取基线，这里自行取一次。</p>
+     */
+    int refreshWithAnchorGrowth(UUID analysisId, Map<UUID, BigDecimal> previousRequirements) {
+        Map<UUID, BigDecimal> previous = previousRequirements == null || previousRequirements.isEmpty()
+                ? makeAnchorParentRequirements(analysisId) : previousRequirements;
+        int routeResets = refreshLocked(analysisId);
+        if (growMakeAnchorQuotasAfterSourcePreview(analysisId, previous)) {
+            routeResets += refreshLocked(analysisId);
+        }
+        return routeResets;
+    }
+
+    int refreshWithAnchorGrowth(UUID analysisId) {
+        return refreshWithAnchorGrowth(analysisId, Map.of());
+    }
+
     /** Admit only new source demand into an existing MAKE quota; old physical shortage cannot enlarge it. */
     private boolean growMakeAnchorQuotasAfterSourcePreview(
             UUID analysisId, Map<UUID, BigDecimal> previousRequirements) {
@@ -4984,10 +4930,21 @@ public class MaterialAnalysisService {
                        COALESCE(so.finance_confirmed, FALSE),
                        ai.root_material_id, ai.root_fulfilled_qty, root_material.confirmed_route,
                        g.owning_warehouse_id, owning_warehouse.name,
-                       g.owning_workshop_department_id, owning_workshop.name
+                       g.owning_workshop_department_id, owning_workshop.name,
+                       COALESCE(planned_surplus.qty, 0)
                 FROM production_material_analysis_items ai
                 JOIN goods g ON g.id = ai.goods_id
                 JOIN units u ON u.id = ai.unit_id
+                LEFT JOIN LATERAL (
+                    -- 计划量单一入口(ADR-099)：本来源行已下达且仍有效的计划里
+                    -- 超出需求的公共备货产出合计。它与 submitted/approved 一起
+                    -- 构成「计划产出量」，下层物料按计划产出量展开。
+                    SELECT SUM(link.public_surplus_qty) AS qty
+                    FROM production_material_analysis_plan_links link
+                    WHERE link.analysis_id = ai.analysis_id
+                      AND link.analysis_item_id = ai.id
+                      AND link.allocation_status IN ('SUBMITTED','APPROVED')
+                ) planned_surplus ON TRUE
                 LEFT JOIN warehouses owning_warehouse
                   ON owning_warehouse.id = g.owning_warehouse_id
                 LEFT JOIN departments owning_workshop
@@ -5118,7 +5075,7 @@ public class MaterialAnalysisService {
             String parentNodeKey = string(row[7]);
             BigDecimal parentOutputQty;
             if (depth == 1) {
-                parentOutputQty = source.materialRequirementQty().multiply(source.unitRate());
+                parentOutputQty = source.plannedOutputQty().multiply(source.unitRate());
             } else {
                 BomNode parent = byNodeKey.get(parentNodeKey);
                 if (parent == null) {
@@ -6136,14 +6093,39 @@ public class MaterialAnalysisService {
                 """).setParameter("analysisId", analysisId))) {
             internal.put(string(row[0]), decimal(row[1]));
         }
-        if (external.isEmpty() && internal.isEmpty()) return Map.of();
-        Map<String, ParentSupplyCommitment> result = new LinkedHashMap<>();
-        for (String key : new LinkedHashSet<>(external.keySet())) {
-            result.put(key, new ParentSupplyCommitment(external.get(key),
-                    internal.getOrDefault(key, BigDecimal.ZERO)));
+        // ADR-099：锚点行已下达且仍有效的计划总量（归需求量 + 公共备货产出）。
+        // 车间桶填的本批数量超过需求时，下层按它展开，不再被物理缺口封顶。
+        Map<String, BigDecimal> planned = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT parent.analysis_item_id || '|' || parent.node_key,
+                       SUM(link.submitted_qty + link.public_surplus_qty)::numeric
+                FROM production_material_analysis_plan_links link
+                JOIN production_material_analysis_items child
+                  ON child.id = link.analysis_item_id
+                 AND child.analysis_id = link.analysis_id
+                 AND child.is_deleted = FALSE
+                 AND child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+                JOIN production_material_analysis_materials parent
+                  ON parent.id = child.parent_analysis_material_id
+                 AND parent.analysis_id = child.analysis_id
+                 AND parent.active = TRUE
+                WHERE link.analysis_id = :analysisId
+                  AND link.allocation_status IN ('SUBMITTED','APPROVED')
+                GROUP BY 1
+                """).setParameter("analysisId", analysisId))) {
+            planned.put(string(row[0]), decimal(row[1]));
         }
-        internal.forEach((key, qty) -> result.computeIfAbsent(key,
-                ignored -> new ParentSupplyCommitment(BigDecimal.ZERO, qty)));
+        if (external.isEmpty() && internal.isEmpty() && planned.isEmpty()) return Map.of();
+        Map<String, ParentSupplyCommitment> result = new LinkedHashMap<>();
+        Set<String> keys = new LinkedHashSet<>(external.keySet());
+        keys.addAll(internal.keySet());
+        keys.addAll(planned.keySet());
+        for (String key : keys) {
+            result.put(key, new ParentSupplyCommitment(
+                    external.getOrDefault(key, BigDecimal.ZERO),
+                    internal.getOrDefault(key, BigDecimal.ZERO),
+                    planned.getOrDefault(key, BigDecimal.ZERO)));
+        }
         return Map.copyOf(result);
     }
 
@@ -6778,7 +6760,10 @@ public class MaterialAnalysisService {
                          AND EXISTS (SELECT 1 FROM preplan_subcontract_make_task_batches batch
                            WHERE batch.allocation_id=allocation.id
                              AND NOT EXISTS (SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal
-                                             WHERE reversal.batch_id=batch.id))
+                                             WHERE reversal.batch_id=batch.id)),
+                       -- ADR-099：申请明细仍未订货(可就地改大)时给出明细当前数量。
+                       CASE WHEN fn_preplan_supply_action_growable(action.id)
+                            THEN action.requested_qty + action.public_surplus_qty END
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id = allocation.action_id
                 JOIN production_material_analysis_materials target_material
@@ -6790,7 +6775,8 @@ public class MaterialAnalysisService {
             result.computeIfAbsent(uuid(row[0]), ignored -> new ArrayList<>()).add(
                     new DownstreamReference(uuid(row[1]), string(row[2]), string(row[3]),
                             string(row[4]), uuid(row[5]), string(row[6]), decimal(row[7]),
-                            row.length>8 && Boolean.TRUE.equals(row[8])));
+                            row.length>8 && Boolean.TRUE.equals(row[8]),
+                            row.length>9 && row[9]!=null ? decimal(row[9]) : null));
         }
         return result;
     }
@@ -7292,11 +7278,20 @@ public class MaterialAnalysisService {
      * @param internalCommittedQty 已承诺由我方制造的量（已下达车间的自制锚点、
      *                            委外件的前置自制任务）。这部分的物理来源就是
      *                            下层原料，已下达即冻结，绝不能被在途挤掉。
+     * @param plannedOutputQty    锚点行已下达且仍有效的计划总量（归需求量 +
+     *                            公共备货产出，ADR-099）。计划员在车间桶填的
+     *                            本批数量超过需求时，下层按这个量展开，不再被
+     *                            物理缺口封顶。
      */
     record ParentSupplyCommitment(
-            BigDecimal externalFutureQty, BigDecimal internalCommittedQty) {
+            BigDecimal externalFutureQty, BigDecimal internalCommittedQty,
+            BigDecimal plannedOutputQty) {
         static final ParentSupplyCommitment NONE = new ParentSupplyCommitment(
-                BigDecimal.ZERO, BigDecimal.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+
+        ParentSupplyCommitment(BigDecimal externalFutureQty, BigDecimal internalCommittedQty) {
+            this(externalFutureQty, internalCommittedQty, BigDecimal.ZERO);
+        }
     }
 
     record NodeAllocation(BigDecimal allocatedQty, BigDecimal shortageQty) {
@@ -7491,7 +7486,9 @@ public class MaterialAnalysisService {
             /** V587 货品主档「所属仓库」，与落点仓/分析范围仓无关；未登记为 null。 */
             UUID owningWarehouseId, String owningWarehouseName,
             /** V590 货品主档「归属生产车间」（最近一次排产确认/改派学习回写）。 */
-            UUID owningWorkshopId, String owningWorkshopName) {
+            UUID owningWorkshopId, String owningWorkshopName,
+            /** 已下达且仍有效的计划里超出需求的公共备货产出合计（ADR-099）。 */
+            BigDecimal plannedSurplusQty) {
         SourceLine(
             UUID analysisItemId, String sourceType, UUID salesOrderItemId,
             UUID salesOrderId, String salesOrderNo, LocalDate orderDate,
@@ -7510,7 +7507,7 @@ public class MaterialAnalysisService {
             BigDecimal readyStartQty, BigDecimal readyFinishQty,
             BigDecimal readyShipQty, UUID parentAnalysisLineId,
             String parentGoodsName, boolean orderFinanceConfirmed) {
-            this(analysisItemId, sourceType, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, salesQty, shippedQty, returnedQty, flagQty, reservedQty, plannedQty, producedQty, activeDraftQty, orderStatus, orderStopped, orderClosed, orderDeleted, orderItemDeleted, sourceRef, sourceReason, allocationPriority, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, parentAnalysisLineId, parentGoodsName, orderFinanceConfirmed, null, BigDecimal.ZERO, null, null, null, null, null);
+            this(analysisItemId, sourceType, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, salesQty, shippedQty, returnedQty, flagQty, reservedQty, plannedQty, producedQty, activeDraftQty, orderStatus, orderStopped, orderClosed, orderDeleted, orderItemDeleted, sourceRef, sourceReason, allocationPriority, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, parentAnalysisLineId, parentGoodsName, orderFinanceConfirmed, null, BigDecimal.ZERO, null, null, null, null, null, BigDecimal.ZERO);
         }
 
 
@@ -7536,7 +7533,8 @@ public class MaterialAnalysisService {
                     row.length > 47 ? uuid(row[47]) : null,
                     row.length > 48 ? string(row[48]) : null,
                     row.length > 49 ? uuid(row[49]) : null,
-                    row.length > 50 ? string(row[50]) : null);
+                    row.length > 50 ? string(row[50]) : null,
+                    row.length > 51 ? decimal(row[51]) : BigDecimal.ZERO);
         }
 
         BigDecimal remainingAnalysisQty() {
@@ -7575,6 +7573,21 @@ public class MaterialAnalysisService {
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
         }
 
+        /** 已下达且仍有效的计划总量（归需求量 + 公共备货产出）。 */
+        BigDecimal issuedPlanQty() {
+            return submittedQty.add(approvedQty).add(plannedSurplusQty)
+                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+        }
+
+        /**
+         * 计划产出量（ADR-099 数量单一入口）：来源净需求与已下达计划总量取大。
+         * 直接子件的毛需求按它展开——计划员在下达车间填的本批数量超过需求时，
+         * 超出部分同样要备料；未下达的余量仍按需求备料。
+         */
+        BigDecimal plannedOutputQty() {
+            return materialRequirementQty().max(issuedPlanQty());
+        }
+
         BigDecimal unplannedReadyQty(BigDecimal batchReadyQty) {
             return batchReadyQty.subtract(submittedQty).subtract(approvedQty)
                     .max(BigDecimal.ZERO).min(remainingAnalysisQty())
@@ -7599,6 +7612,10 @@ public class MaterialAnalysisService {
             boolean rootRoutePending = rootMaterialLineId != null && rootRoute == null;
             boolean canSchedule = planningBlockedReason == null
                     && remaining.signum() > 0 && !externalRoot && !rootRoutePending;
+            // ADR-099：需求已全部转入计划的自制行仍可再下一批纯公共备货产出
+            // (V577 合法形态)——用户口径「父层级那里还是可以追加下单, 多下的属于公共的」。
+            boolean canIssueSurplus = planningBlockedReason == null
+                    && remaining.signum() == 0 && !externalRoot && !rootRoutePending;
             return new ProductView(analysisItemId, sourceType, sourceRef, sourceReason,
                     salesOrderItemId,
                     salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName,
@@ -7623,7 +7640,8 @@ public class MaterialAnalysisService {
                     planState.zeroMaterial(), planState.workshopName(),
                     planState.responsibleName(), rootMaterialLineId,
                     owningWarehouseId, owningWarehouseName,
-                    owningWorkshopId, owningWorkshopName);
+                    owningWorkshopId, owningWorkshopName,
+                    issuedPlanQty(), canIssueSurplus);
         }
     }
 
@@ -7898,7 +7916,8 @@ public class MaterialAnalysisService {
                             MainWarehouseSafetySummary mainSafety,
                             PreplanReallocationMakeSupplement.Allowance makeSupplement,
                             BigDecimal makeSupplementOpenSupply, BigDecimal sharedFuturePendingQty,
-                            String subcontractOutboundForm) {
+                            String subcontractOutboundForm,
+                            BigDecimal plannedOutputQty) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             BigDecimal demandGap = unboundDemandSupplyGap(
@@ -7941,7 +7960,11 @@ public class MaterialAnalysisService {
                     subcontractOutboundForm,
                     owningWarehouseId, owningWarehouseName,
                     owningWorkshopId, owningWorkshopName,
-                    externalFutureCoverageQty, internalCommittedOutputQty);
+                    externalFutureCoverageQty, internalCommittedOutputQty,
+                    // 可认领的公共在途 = 按期 + 晚到（下达采购/委外时自动认领，ADR-099）。
+                    sharedFuture.availableQty().add(sharedFuture.lateAvailableQty())
+                            .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN),
+                    plannedOutputQty == null ? BigDecimal.ZERO : plannedOutputQty);
         }
 
         String actionGroupKey() {

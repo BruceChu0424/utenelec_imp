@@ -97,6 +97,7 @@ class _BucketPlanDraft {
     required this.departmentId,
     required this.workshopName,
     required this.workerId,
+    this.publicSurplusOnly = false,
   });
 
   final String analysisLineId;
@@ -104,6 +105,9 @@ class _BucketPlanDraft {
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
+
+  /// ADR-099：锚点剩余需求已为 0，本行是明确的「再追加一批公共备货产出」。
+  final bool publicSurplusOnly;
 }
 
 /// 详情页表格的一行：产品 / 自制候选 / 物料操作组 三种形态共用一张表。
@@ -234,24 +238,39 @@ class _MaterialAnalysisBucketPageState
 
   /// 该行是否可编辑下达数量（仅支持 actionGroupKey 提交单元；旧响应按
   /// 逐行 LINE 提交、组级编辑无法对应，退化为只读展示默认量）。
+  /// 已下达段（ADR-099 追加）：可追加的行同样给输入框，填的是追加量。
   bool _rowQtyEditable(_BucketRow row) =>
       _canAct &&
-      _taskFilter == _PreparationTaskFilter.pending &&
-      (row.group?.representative.actionGroupKey?.isNotEmpty ?? false);
+      (row.group?.representative.actionGroupKey?.isNotEmpty ?? false) &&
+      (_taskFilter == _PreparationTaskFilter.pending ||
+          (_taskFilter == _PreparationTaskFilter.issued &&
+              _host._bucketRowCanAppend(row, _bucket)));
+
+  /// 已下达段的输入框是「追加量」：默认空，填了才追加。
+  bool get _appendMode => _taskFilter == _PreparationTaskFilter.issued;
 
   TextEditingController _submitQtyControllerOf(_MaterialGroup group) {
     final key = group.representative.actionGroupKey!;
     var controller = _submitQtyControllers[key];
     if (controller == null) {
       controller = TextEditingController(
-        text: _bucketQtyText(
-          _host._defaultSubmitQty(group, _bucket.supplyRoute!),
-        ),
+        text: _appendMode
+            ? ''
+            : _bucketQtyText(
+                _host._defaultSubmitQty(group, _bucket.supplyRoute!),
+              ),
       );
       _submitQtyControllers[key] = controller;
     }
     return controller;
   }
+
+  /// 下达车间已下达段产品行的「追加量」输入框（键 = 产品行 id）。
+  TextEditingController _appendQtyControllerOf(String id) =>
+      _submitQtyControllers.putIfAbsent(
+        'APPEND|$id',
+        () => TextEditingController(),
+      );
 
   void _disposeSubmitQtyControllers() {
     for (final controller in _submitQtyControllers.values) {
@@ -284,9 +303,12 @@ class _MaterialAnalysisBucketPageState
       })
       .toList(growable: false);
 
-  bool _canSelectTask(_BucketRow row) =>
-      _taskFilter == _PreparationTaskFilter.pending &&
-      _host._bucketRowCanAct(row, _bucket);
+  bool _canSelectTask(_BucketRow row) => switch (_taskFilter) {
+    _PreparationTaskFilter.pending => _host._bucketRowCanAct(row, _bucket),
+    // ADR-099：已下达段里仍可追加的行也能勾（填追加量，属公共备货）。
+    _PreparationTaskFilter.issued => _host._bucketRowCanAppend(row, _bucket),
+    _PreparationTaskFilter.blocked => false,
+  };
 
   /// 只读桶（MasterDataTableView）的分页：每页 [_pageSize] 行，只构建当页。
   /// 几百上千产品的分析里 waiting/buy 桶动辄数千行——一次性构建在网页端
@@ -682,10 +704,26 @@ class _MaterialAnalysisBucketPageState
         seeds.any(
           (seed) => seed.needsWorkshop && (seed.departmentId?.isEmpty ?? true),
         );
-    final pending = _host._pendingChildCascadeRows(
-      seeds,
-      keepUnselectable: keepUnselectable,
-    );
+    // ADR-099：下层数字由服务端算——车间通道先请求「下达预览」（服务端真实
+    // 跑一遍 issue-plans 再整体回滚），期间挂加载遮罩；预览失败如实报错、
+    // 不提交父件。
+    _CascadePending pending;
+    _host.bucketActionBusyMessage.value = '正在按本批数量计算下层需求';
+    try {
+      pending = await _host._pendingChildCascadeRows(
+        seeds,
+        keepUnselectable: keepUnselectable,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      context.appError(
+        productionErrorMessage(error, fallback: '下层需求计算失败，请稍后重试'),
+      );
+      return;
+    } finally {
+      _host.bucketActionBusyMessage.value = null;
+    }
+    if (!mounted) return;
     if (pending.rows.isEmpty) {
       // 不进级联页也要把「为什么不进」说清：下层都下过单 / 下层被挡住 /
       // 结构过大都不是「没有下层」，静默跳过会让人以为系统没检查。
@@ -710,6 +748,7 @@ class _MaterialAnalysisBucketPageState
     final finished = await _host._showChildCascadeDialog(
       seeds: seeds,
       initialRows: pending.rows,
+      previewView: pending.view,
       // 父件段提交时按种子**当前**内容重打请求——用户可能在「跟父件一起办」
       // 页面里改过树顶的本批数量 / 车间 / 负责人（改完既驱动下层重算，也改
       // 这里提交的量）；被祖先吸收的勾选行从父件请求里剔除，由级联页的车间段
@@ -759,52 +798,38 @@ class _MaterialAnalysisBucketPageState
       group,
       MaterialSupplyRoute.subcontract,
     );
-    final locked = channel == _CascadeParentChannel.subcontractMakeFirst;
     return _ChildCascadeSeed(
       label: material.goodsName ?? material.goodsCode ?? group.key,
       channel: channel,
       maxQty: residual,
-      quantityExplicit:
-          _seedQtyOf(
-            group,
-            MaterialSupplyRoute.subcontract,
-            qtyByActionGroupKey,
-          ) !=
-          residual,
-      batchQty: locked
-          ? residual
-          : _seedQtyOf(
-              group,
-              MaterialSupplyRoute.subcontract,
-              qtyByActionGroupKey,
-            ),
+      batchQty: _seedQtyOf(
+        group,
+        MaterialSupplyRoute.subcontract,
+        qtyByActionGroupKey,
+      ),
       materialLineId: material.materialLineId,
       actionGroupKey: material.actionGroupKey,
       groupKey: group.key,
       unitName: material.unitName,
-      // 直接外发的 notify 通道自己会问超量 (allowOverDemand)；改走 issue-plans
-      // 的行分桶页没问过，交给级联页提交前补问。
+      // 直接外发的 notify 通道自己会问超量；改走 issue-plans 的行分桶页没问过，
+      // 交给级联页提交前补问。
       overQtyConfirmed: channel != _CascadeParentChannel.workshop,
     );
   }
 
-  /// 委外桶一行的父件段通道。拿不到快照时保守按「要先自制」处理——宁可多问
-  /// 一步，也不要放开一个服务端会 422 的可编辑数量框。
-  ///
-  /// **顶层供给行只能 notify**：服务端 `candidateRoutesByMaterialLine` 明确排除
-  /// `ROOT_SUPPLY`，根件当 issue-plans 候选会被「候选物料节点不存在或路线未确认」
-  /// 拒掉；它走 notify 建台账，随后由级联页的「前置自制任务下达车间」段按锚点
-  /// 产品行排产（数量在那一步才可超量）。
+  /// 委外桶一行的父件段通道（ADR-099 起只有两条）：要先自制目标件的（有生产性
+  /// 子层且不是 V581 单一子件件）走 issue-plans 的 ARRANGE 段——含顶层供给行，
+  /// 服务端接受确认为委外的根行当候选，台账 + 锚点 + 计划同一事务建好；其余
+  /// 直接外发走 notify。拿不到快照时保守按「要先自制」处理。
   _CascadeParentChannel _subcontractChannelOf(_MaterialGroup group) {
     final analysis = _host._analysis;
     final material = group.representative;
     final needsPreparation =
         analysis == null ||
         _host._subcontractNeedsPreparation(material, analysis);
-    if (!needsPreparation) return _CascadeParentChannel.subcontractDirect;
-    return _host._canGenerate && !material.isRootSupply
+    return needsPreparation
         ? _CascadeParentChannel.workshop
-        : _CascadeParentChannel.subcontractMakeFirst;
+        : _CascadeParentChannel.subcontractDirect;
   }
 
   /// 本次真正会提交给服务端的数量：表格里填了就用填的，没填/填不出数才回落
@@ -822,41 +847,20 @@ class _MaterialAnalysisBucketPageState
     return _host._defaultSubmitQty(group, route);
   }
 
-  /// 把父件请求按种子的**当前**内容重打一遍：数量、生产车间、负责人。
-  ///
-  /// 2026-09-14 只补了数量；2026-09-15 起车间/负责人也在级联页可改，必须一起
-  /// 回写，否则界面显示 A 车间、提交的还是上一页那个 B 车间。
-  /// 委外入口只回写数量（`NotifyRequest` 没有车间字段，委外件本身也不需要
-  /// 车间——需要车间的是它随后建出来的前置自制任务，由编排单独下达）。
-  ///
-  /// 被祖先吸收的勾选行 (`seed.isTop == false`) 从请求里剔除：它们在级联页
-  /// 里就是祖先树的普通下层行，由车间段按算好的数量提交。剔完一行不剩时
-  /// 返回 null（这条请求没有父件要单独提交）。
+  /// 把父件请求按种子的**当前**内容重打一遍：数量、生产车间、负责人——
+  /// 级联页树顶可以改这三样，必须一起回写，否则界面显示 A 车间、提交的还是
+  /// 上一页那个 B 车间。委外直接外发入口只回写数量（`NotifyRequest` 没有车间
+  /// 字段，整件发给委外商不需要我方车间）。
   _BucketActionRequest? _patchRequestWithSeedInputs(
     _BucketActionRequest request,
     List<_ChildCascadeSeed> seeds,
   ) {
     if (request.type == _BucketActionType.subcontractOnly) {
-      final absorbedKeys = {
-        for (final seed in seeds)
-          if (!seed.isTop && seed.groupKey != null) seed.groupKey!,
-      };
-      final keys = request.groupKeys == null
-          ? null
-          : ({...request.groupKeys!}..removeAll(absorbedKeys));
-      if (keys != null && keys.isEmpty) return null;
+      final keys = request.groupKeys;
       final patched = <String, String>{...?request.qtyByActionGroupKey};
       for (final seed in seeds) {
         final key = seed.actionGroupKey;
-        // 无权限整量接管的委外行不写数量：服务端强制整量接管，写进去只会与
-        // 它算出来的 delta 不等而 422 整批回滚。
-        if (!seed.isTop ||
-            key == null ||
-            key.isEmpty ||
-            seed.batchQty <= 0 ||
-            !seed.quantityEditable) {
-          continue;
-        }
+        if (key == null || key.isEmpty || seed.batchQty <= 0) continue;
         patched[key] = _bucketQtyText(seed.batchQty);
       }
       return _BucketActionRequest.subcontract(
@@ -875,31 +879,31 @@ class _MaterialAnalysisBucketPageState
     final candidateInputs = <_BucketCandidatePlanInput>[
       for (final input
           in request.candidateInputs ?? const <_BucketCandidatePlanInput>[])
-        if (byMaterialLine[input.materialLineId]?.isTop != false)
-          () {
-            final seed = byMaterialLine[input.materialLineId];
-            return _BucketCandidatePlanInput(
-              materialLineId: input.materialLineId,
-              qty: seed?.batchQty ?? input.qty,
-              departmentId: seed?.departmentId ?? input.departmentId,
-              workshopName: seed?.departmentName ?? input.workshopName,
-              workerId: seed?.workerId ?? input.workerId,
-            );
-          }(),
+        () {
+          final seed = byMaterialLine[input.materialLineId];
+          return _BucketCandidatePlanInput(
+            materialLineId: input.materialLineId,
+            qty: seed?.batchQty ?? input.qty,
+            departmentId: seed?.departmentId ?? input.departmentId,
+            workshopName: seed?.departmentName ?? input.workshopName,
+            workerId: seed?.workerId ?? input.workerId,
+          );
+        }(),
     ];
     final planDrafts = <_BucketPlanDraft>[
       for (final draft in request.planDrafts ?? const <_BucketPlanDraft>[])
-        if (byAnalysisLine[draft.analysisLineId]?.isTop != false)
-          () {
-            final seed = byAnalysisLine[draft.analysisLineId];
-            return _BucketPlanDraft(
-              analysisLineId: draft.analysisLineId,
-              qty: seed?.batchQty ?? draft.qty,
-              departmentId: seed?.departmentId ?? draft.departmentId,
-              workshopName: seed?.departmentName ?? draft.workshopName,
-              workerId: seed?.workerId ?? draft.workerId,
-            );
-          }(),
+        () {
+          final seed = byAnalysisLine[draft.analysisLineId];
+          return _BucketPlanDraft(
+            analysisLineId: draft.analysisLineId,
+            qty: seed?.batchQty ?? draft.qty,
+            departmentId: seed?.departmentId ?? draft.departmentId,
+            workshopName: seed?.departmentName ?? draft.workshopName,
+            workerId: seed?.workerId ?? draft.workerId,
+            publicSurplusOnly:
+                draft.publicSurplusOnly || (seed?.publicSurplusOnly ?? false),
+          );
+        }(),
     ];
     if (candidateInputs.isEmpty && planDrafts.isEmpty) return null;
     return _BucketActionRequest.createProductionPlans(
@@ -1364,7 +1368,8 @@ class _MaterialAnalysisBucketPageState
   bool get _actionsLocked => _host._busy || _running;
 
   bool get _canAct =>
-      _taskFilter == _PreparationTaskFilter.pending &&
+      (_taskFilter == _PreparationTaskFilter.pending ||
+          _taskFilter == _PreparationTaskFilter.issued) &&
       switch (_bucket) {
         _AnalysisBucket.workshop => _host._canGenerate || _host._canNotify,
         _AnalysisBucket.buy || _AnalysisBucket.subcontract => _host._canNotify,
@@ -1433,6 +1438,12 @@ class _MaterialAnalysisBucketPageState
             notifyIds.add(row.id);
           }
         }
+        // 要先自制目标件的委外件走 issue-plans：没有生成生产计划权限就下不了，
+        // 当面说清，不让请求跑到服务端再被 403。
+        if (makeFirstRows.isNotEmpty && !_host._canGenerate) {
+          context.appWarning('所选委外件要先自制目标件再发外，需要生成生产计划权限才能下达');
+          return;
+        }
         unawaited(
           _submitWithCascade([
             if (notifyIds.isNotEmpty)
@@ -1462,8 +1473,64 @@ class _MaterialAnalysisBucketPageState
           ], seeds),
         );
       case _AnalysisBucket.workshop:
-        return;
+        _submitAppendPlans(allowedRows);
     }
+  }
+
+  /// 下达车间已下达段的追加（ADR-099）：需求已全部转入计划的产品行按填写的
+  /// 追加量再下一批**纯公共备货产出**——带着 `publicSurplusOnly` 进「父件 +
+  /// 下层一起下单」整页（树顶填车间/负责人、下层按放大后的需求一起办），
+  /// 服务端只对显式声明的行放行。
+  void _submitAppendPlans(List<_BucketRow> rows) {
+    final products = [
+      for (final row in rows)
+        if (row.product != null) row,
+    ];
+    if (products.isEmpty) return;
+    final bad = <String>[];
+    final drafts = <_BucketPlanDraft>[];
+    final seeds = <_ChildCascadeSeed>[];
+    for (final row in products) {
+      final product = row.product!;
+      final name = product.goodsName ?? product.goodsCode ?? row.id;
+      final qty = double.tryParse(_appendQtyControllerOf(row.id).text.trim());
+      if (qty == null || !qty.isFinite || qty <= 0) {
+        bad.add('「$name」');
+        continue;
+      }
+      drafts.add(
+        _BucketPlanDraft(
+          analysisLineId: row.id,
+          qty: qty,
+          departmentId: null,
+          workshopName: null,
+          workerId: null,
+          publicSurplusOnly: true,
+        ),
+      );
+      seeds.add(
+        _ChildCascadeSeed(
+          label: name,
+          channel: _CascadeParentChannel.workshop,
+          // 需求已全部转入计划：上限 0，本批全是追加的公共备货产出，级联页
+          // 提交前照常过一次超量确认。
+          maxQty: 0,
+          batchQty: qty,
+          analysisLineId: row.id,
+          unitName: product.unitName,
+          publicSurplusOnly: true,
+        ),
+      );
+    }
+    if (bad.isNotEmpty) {
+      context.appError(_planRowIssue(bad, '追加数量必须大于 0'));
+      return;
+    }
+    unawaited(
+      _submitWithCascade([
+        _BucketActionRequest.createProductionPlans(planDrafts: drafts),
+      ], seeds),
+    );
   }
 
   // ===== 可安排桶：计划行校验与两类批量动作 =====
@@ -1634,17 +1701,6 @@ class _MaterialAnalysisBucketPageState
                     )
                   : null),
           batchQty: double.parse(row.qty.text.trim()),
-          quantityExplicit:
-              row.quantityExplicit &&
-              row.qty.text.trim() != _planRowDefaultQty(row),
-          outputUnitRate:
-              row.origin.product?.unitRate ??
-              (row.origin.product == null
-                  ? 1
-                  : _host
-                            ._rootSupplyMaterialOf(row.origin.product!)
-                            ?.perProductQty ??
-                        1),
           analysisLineId: row.isProduct ? row.id : null,
           materialLineId: row.isProduct
               ? null
@@ -2271,6 +2327,8 @@ class _MaterialAnalysisBucketPageState
                     _selectedIds.clear();
                     _tableFilters.clear();
                     _planGrid?.clearSelection();
+                    // 未下达段默认全量、已下达段默认空（追加量）：换段重建。
+                    _disposeSubmitQtyControllers();
                   });
                 },
               ),
@@ -2443,7 +2501,8 @@ class _MaterialAnalysisBucketPageState
         _tableFilters[key] = value;
         _pageNo = 1;
       }),
-      selectable: _canAct,
+      // 已下达段只在真有可追加的行时才出勾选列与动作组（ADR-099）。
+      selectable: _canAct && (!_appendMode || rows.any(_canSelectTask)),
       idOf: (row) => _canSelectTask(row) ? row.id : null,
       rowKeyOf: (row) => row.id,
       selectedIds: _selectedIds,
@@ -2452,7 +2511,9 @@ class _MaterialAnalysisBucketPageState
           ..clear()
           ..addAll(next);
       }),
-      batchActionsBuilder: _canAct ? _readOnlyBatchActions : null,
+      batchActionsBuilder: _canAct && (!_appendMode || rows.any(_canSelectTask))
+          ? _readOnlyBatchActions
+          : null,
       // 行右键/长按 = 对当前选择集整组恢复默认下达数量（2026-09-11 用户要求）。
       rowMenuBuilder: _readOnlyRowMenu,
       // 勿传 virtualized（它强制表体撑满剩余高度 → 横滚条恒钉屏底）：保持默认
@@ -2500,13 +2561,18 @@ class _MaterialAnalysisBucketPageState
     // 那行还在未下达）。
     final opensCascade =
         _bucket == _AnalysisBucket.subcontract && _selectionOpensCascade();
+    // 已下达段（ADR-099）：这一下是「追加」——采购 / 委外按追加量再下单，
+    // 下达车间按纯公共备货产出进「父件 + 下层一起下单」整页。
+    final append = _appendMode;
     final label = switch (_bucket) {
-      _AnalysisBucket.buy => '提交采购需求($count)',
+      _AnalysisBucket.buy => append ? '追加采购($count)' : '提交采购需求($count)',
       // 省略号 = 「还要再过一页才真正提交」的通用约定。文案不能更长：悬浮动作
       // 组在窄屏下会直接 RenderFlex 溢出。
       _AnalysisBucket.subcontract =>
-        opensCascade ? '下达委外($count)…' : '下达委外($count)',
-      _ => '',
+        append
+            ? (opensCascade ? '追加委外($count)…' : '追加委外($count)')
+            : (opensCascade ? '下达委外($count)…' : '下达委外($count)'),
+      _AnalysisBucket.workshop => '追加生产计划($count)…',
     };
     final canAct = _canAct && !_actionsLocked && count > 0;
     // 跨页全选放悬浮区（与已选胶囊/提交按钮同框）；表头复选框只选当页。
@@ -2594,9 +2660,9 @@ class _MaterialAnalysisBucketPageState
   void _resetSubmitQty(_BucketRow row) {
     final group = row.group;
     if (group == null) return;
-    _submitQtyControllerOf(group).text = _bucketQtyText(
-      _host._defaultSubmitQty(group, _bucket.supplyRoute!),
-    );
+    _submitQtyControllerOf(group).text = _appendMode
+        ? ''
+        : _bucketQtyText(_host._defaultSubmitQty(group, _bucket.supplyRoute!));
   }
 
   /// 一次输入下达数量写进所有选中的可编辑行；留空 = 各行恢复默认全量。
@@ -3295,7 +3361,9 @@ class _MaterialAnalysisBucketPageState
             '未下达行：本次要下达的数量（默认 = 缺口 − 已在途，可改小分批）；'
             '采购行若货品维护了最小起订量或订货倍数，默认值会按它向上抬，'
             '富余部分归公共备货（需超量下达权限，可改小）；'
-            '已下达行：已下达单据的真实下单总量（含公共备货与安全补库）。',
+            '已下达行：可追加的行给「追加量」输入框（默认空；填的量属公共备货，'
+            '原申请还没被采购 / 委外处理的直接改到那张申请上，已处理的另立新单），'
+            '旁注已下达单据的真实下单总量（含公共备货与安全补库）。',
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) => _submitQtyCell(context, row, route),
       ),
@@ -3437,10 +3505,18 @@ class _MaterialAnalysisBucketPageState
       );
     }
     final unit = group.representative.unitName?.trim();
+    // 已下达段（ADR-099 追加）：输入框是追加量，默认空；旁注已下的总量。
+    final append = _appendMode;
+    final issuedTotal = append
+        ? (_issuedOrderTotal(group, route)?.total ??
+              _issuedSubmitQty(group, route))
+        : null;
     final field = Semantics(
-      label:
-          '下达数量${unit == null ? '' : '（$unit）'}，默认 ${_host._qty(defaultValue)}'
-          '${orderPolicyHint == null ? '' : '，$orderPolicyHint'}',
+      label: append
+          ? '追加数量${unit == null ? '' : '（$unit）'}，已下 ${_host._qty(issuedTotal)}，'
+                '填的量属公共备货'
+          : '下达数量${unit == null ? '' : '（$unit）'}，默认 ${_host._qty(defaultValue)}'
+                '${orderPolicyHint == null ? '' : '，$orderPolicyHint'}',
       textField: true,
       child: TextField(
         key: ValueKey(
@@ -3455,13 +3531,32 @@ class _MaterialAnalysisBucketPageState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            hintText: '默认 ${_host._qty(defaultValue)}',
+            hintText: append ? '追加量（属公共备货）' : '默认 ${_host._qty(defaultValue)}',
             suffixText: unit?.isEmpty == true ? null : unit,
           ),
           // 说明挂列头 ⓘ（submitQty 列的 info），格内不再逐行渲染重复 ⓘ。
         ),
       ),
     );
+    if (append) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          field,
+          Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s2),
+            child: Text(
+              '已下 ${_host._qty(issuedTotal)}',
+              textAlign: TextAlign.right,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     if (orderPolicyHint == null) return field;
     // 起订量抬量说明贴在输入框下方一行，不另开浮层：计划员一眼看到
     // 「抬到多少、富余多少归公共备货」，不必去猜默认值为什么变大。
@@ -3516,7 +3611,7 @@ class _MaterialAnalysisBucketPageState
       MasterColumnDef<_BucketRow>(
         key: 'issuedQty',
         label: '下达数量',
-        width: 100,
+        width: 130,
         type: 'number',
         // 已下达=生产计划量（planExecutionPlannedQty）；未下达显示「—」。
         value: (row) => issued
@@ -3524,6 +3619,67 @@ class _MaterialAnalysisBucketPageState
                   ? null
                   : host._qty(row.product!.planExecutionPlannedQty))
             : null,
+        info:
+            '已下达行显示生产计划量。需求已全部转入计划但仍可追加的行（ADR-099）'
+            '在这里填追加量：本批全部按公共备货产出记账，下一步进「父件 + 下层一起下单」'
+            '填车间 / 负责人并一并下单下层。',
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, row) {
+          final product = row.product;
+          final theme = Theme.of(context);
+          final plannedText =
+              !issued || product?.planExecutionPlannedQty == null
+              ? '—'
+              : host._qty(product!.planExecutionPlannedQty);
+          if (!issued ||
+              product == null ||
+              !host._bucketRowCanAppend(row, _bucket)) {
+            return Align(
+              alignment: Alignment.centerRight,
+              child: Text(plannedText),
+            );
+          }
+          final unit = product.unitName?.trim();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                label: '追加数量，已下达 $plannedText，填的量按公共备货产出记账',
+                textField: true,
+                child: TextField(
+                  key: ValueKey(
+                    'material-analysis-bucket-append-qty-${row.id}',
+                  ),
+                  controller: _appendQtyControllerOf(row.id),
+                  enabled: !_actionsLocked,
+                  textAlign: TextAlign.right,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: theme.textTheme.bodySmall,
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      hintText: '追加量（公共备货产出）',
+                      suffixText: unit == null || unit.isEmpty ? null : unit,
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s2),
+                child: Text(
+                  '已下达 $plannedText',
+                  textAlign: TextAlign.right,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       MasterColumnDef<_BucketRow>(
         key: 'completedQty',

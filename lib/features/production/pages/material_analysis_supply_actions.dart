@@ -321,16 +321,10 @@ abstract class _MaterialAnalysisSupplyActionsState
                 : 0),
       );
     }
-    if (group.paths.every((path) => path.additionalSupplyRecommendationKnown)) {
-      return group.paths.fold(
-        0.0,
-        (sum, path) => sum + path.additionalSupplyRecommendedQty,
-      );
-    }
-    // 旧载荷回退（服务端没给该字段）：按分摊在途估算，只作兜底。
-    final residual =
-        _groupDemandSupplyGapQty(group) - _openSubmittedQty(group, route);
-    return residual > 0 ? residual : 0;
+    return group.paths.fold(
+      0.0,
+      (sum, path) => sum + path.additionalSupplyRecommendedQty,
+    );
   }
 
   /// 下达数量的默认值。采购桶在「还需安排量」之上，按货品主档的最小起订量
@@ -361,22 +355,33 @@ abstract class _MaterialAnalysisSupplyActionsState
     );
   }
 
-  /// 起订量抬量提示：默认值被抬高时告诉计划员抬到了多少、富余多少。
-  /// 没有超量下达权限时提示「低于起订量」，不静默降级。
+  /// 下达数量格的提示：起订量抬量（默认值被抬高时告诉计划员抬到了多少、富余
+  /// 多少；没有超量下达权限时提示「低于起订量」，不静默降级）+ 公共在途自动
+  /// 认领（ADR-099：下达时服务端先认领同主仓公共在途，只为余下部分新下单）。
   String? _orderPolicyHint(_MaterialGroup group, MaterialSupplyRoute route) {
-    if (route != MaterialSupplyRoute.buy) return null;
     final residual = _residualSubmitQty(group, route);
     if (residual <= 0) return null;
+    final claimable = route == MaterialSupplyRoute.make
+        ? 0.0
+        : group.representative.sharedFutureClaimableQty;
+    final claimNote = claimable > 0.0001
+        ? '其中 ${_qty(claimable > residual ? residual : claimable)} 可从公共在途自动认领：'
+              '下达时服务端先认领、只为余下部分新下单'
+        : null;
+    if (route != MaterialSupplyRoute.buy) return claimNote;
     final minOrderQty = group.representative.minOrderQty;
     final multiple = group.representative.orderMultipleQty;
     final raised = _raiseToOrderPolicy(residual, minOrderQty, multiple);
-    if (raised <= residual + 0.0001) return null;
-    if (!_canOverSupply) {
-      return '本次 ${_qty(residual)} 低于起订量 ${_qty(minOrderQty ?? 0)}，'
-          '需由有超量下达权限的人抬量';
+    String? policyNote;
+    if (raised > residual + 0.0001) {
+      policyNote = !_canOverSupply
+          ? '本次 ${_qty(residual)} 低于起订量 ${_qty(minOrderQty ?? 0)}，'
+                '需由有超量下达权限的人抬量'
+          : '已按起订量与整包装抬至 ${_qty(raised)}，'
+                '富余 ${_qty(raised - residual)} 归公共备货';
     }
-    return '已按起订量与整包装抬至 ${_qty(raised)}，'
-        '富余 ${_qty(raised - residual)} 归公共备货';
+    final notes = [?policyNote, ?claimNote];
+    return notes.isEmpty ? null : notes.join('；');
   }
 
   /// 起订量与整包装的取整规则，单独抽出以便复用与单测。
@@ -483,10 +488,13 @@ abstract class _MaterialAnalysisSupplyActionsState
         material.shortageQty <= 0;
   }
 
+  /// [allowExtra]：还需安排为 0 的组也算可执行（ADR-099 父层级追加：填的量
+  /// 就是追加量，服务端按超量分账为公共备货）。
   bool _isExecutableSupplyGroup(
     _MaterialGroup group,
-    MaterialSupplyRoute route,
-  ) =>
+    MaterialSupplyRoute route, {
+    bool allowExtra = false,
+  }) =>
       (group.actionable ||
           group.paths.any((path) => path.hasPriorityMakeSupplement) ||
           _hasRootStockToAllocate(group, route)) &&
@@ -506,14 +514,20 @@ abstract class _MaterialAnalysisSupplyActionsState
       _draftRoute(group) == route &&
       !_dirtyRouteGroups.contains(group.key) &&
       !_routeBlockedBySafetyGap(group, route) &&
-      _hasSupplySubmitQty(group, route);
+      (allowExtra || _hasSupplySubmitQty(group, route));
 
   /// 当前路线下仍可执行（路线已确认、有真实余量、未被通知闭合）的操作组。
-  List<_MaterialGroup> _executableSupplyGroups(MaterialSupplyRoute route) {
+  List<_MaterialGroup> _executableSupplyGroups(
+    MaterialSupplyRoute route, {
+    bool allowExtra = false,
+  }) {
     final analysis = _analysis;
     if (analysis == null) return const [];
     return _materialGroups(analysis)
-        .where((group) => _isExecutableSupplyGroup(group, route))
+        .where(
+          (group) =>
+              _isExecutableSupplyGroup(group, route, allowExtra: allowExtra),
+        )
         .toList(growable: false);
   }
 
@@ -648,13 +662,17 @@ abstract class _MaterialAnalysisSupplyActionsState
     Set<String>? onlyGroupKeys,
     Map<String, String>? qtyByActionGroupKey,
     bool silent = false,
+    bool allowExtra = false,
   }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) {
       return false;
     }
     final groups = onlyGroupKeys != null
-        ? _executableSupplyGroups(MaterialSupplyRoute.subcontract)
+        ? _executableSupplyGroups(
+                MaterialSupplyRoute.subcontract,
+                allowExtra: allowExtra,
+              )
               .where((group) => onlyGroupKeys.contains(group.key))
               .toList(growable: false)
         : const <_MaterialGroup>[];
@@ -667,6 +685,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       onlyGroupKeys: {for (final group in groups) group.key},
       qtyByActionGroupKey: qtyByActionGroupKey,
       silent: silent,
+      allowExtra: allowExtra,
     );
     if (!mounted || view == null) return false;
     if (silent) return true;
@@ -794,12 +813,13 @@ abstract class _MaterialAnalysisSupplyActionsState
     Set<String>? onlyGroupKeys,
     Map<String, String>? qtyByActionGroupKey,
     bool silent = false,
+    bool allowExtra = false,
   }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) {
       return null;
     }
-    final groups = _executableSupplyGroups(route)
+    final groups = _executableSupplyGroups(route, allowExtra: allowExtra)
         .where(
           (group) => onlyGroupKeys == null || onlyGroupKeys.contains(group.key),
         )
@@ -889,8 +909,7 @@ abstract class _MaterialAnalysisSupplyActionsState
             ...materialLineIds,
             for (final input in batchQuantities)
               '${input.actionGroupKey ?? input.materialLineId}:'
-                  '${input.qty}:${input.safetyReplenishmentQty}:'
-                  '${input.publicExtraQty}',
+                  '${input.qty}:${input.safetyReplenishmentQty}',
           ].join('|'),
         );
         current = await ref
@@ -1011,10 +1030,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       context.appWarning('当前自制任务已无可安排余量，请刷新后重试');
       return null;
     }
-    return [
-      for (final entry in entries)
-        entry.toInput(entry.maxQty, allowOverDemand: false),
-    ];
+    return [for (final entry in entries) entry.toInput(entry.maxQty)];
   }
 
   /// 委外「下达委外」的数量裁决 + 总结确认（2026-09-06 对齐采购口径）：
@@ -1083,13 +1099,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       for (var i = 0; i < entries.length; i++)
         // 前 childEntries.length 个是「要先自制」的行——恒不许超量；其后是
         // 直接外发段（无子层 + V581 单一子件），按行内裁决结果决定。
-        entries[i].toInput(
-          quantities[i],
-          allowOverDemand:
-              i >= childEntries.length &&
-              leaf.allowOverDemand &&
-              entries[i].allowPublicExtra,
-        ),
+        entries[i].toInput(quantities[i]),
     ];
   }
 
@@ -1129,12 +1139,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     if (!confirmed) return null;
     return [
       for (var i = 0; i < adjudicated.entries.length; i++)
-        adjudicated.entries[i].toInput(
-          adjudicated.quantities[i],
-          allowOverDemand:
-              adjudicated.allowOverDemand &&
-              adjudicated.entries[i].allowPublicExtra,
-        ),
+        adjudicated.entries[i].toInput(adjudicated.quantities[i]),
     ];
   }
 
@@ -1206,8 +1211,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       final canOverThis = allowOverDemand && entry.allowPublicExtra;
       if (!canOverThis && qty > entry.maxQty + 0.0001) {
         context.appError(
-          '「${entry.label}」最多下达 ${_qty(entry.maxQty)}'
-          '（本批缺口 − 已在途需求），请在表格中修改后重试',
+          entry.maxQty <= 0.0001
+              ? '「${entry.label}」还需安排 0，填的 ${_qty(qty)} 全是追加的公共备货，'
+                    '需要超量下达权限'
+              : '「${entry.label}」最多下达 ${_qty(entry.maxQty)}'
+                    '（本批缺口 − 已在途需求），超出部分属公共备货、需要超量下达权限，'
+                    '请在表格中修改后重试',
         );
         return null;
       }

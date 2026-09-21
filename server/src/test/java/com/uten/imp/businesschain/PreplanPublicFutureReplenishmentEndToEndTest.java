@@ -168,9 +168,15 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         var partly=analyses.detail(receiver);qty("200",material(partly,goods).shortageQty());
         qty("100",material(partly,goods).sharedFuturePendingQty());qty("900",material(partly,goods).sharedFutureClaimedQty());
         qty("0",material(partly,goods).additionalSupplyRecommendedQty());
+        // ADR-099「填多少下多少」：B 的需求已被 900 认领 + 100 自购全覆盖，A 先到的
+        // 100 也不能替 B 完成认领——此时再填 100 一分都不会再绑到需求上(需求侧
+        // 仍是自购的 100)，整个 100 走公共备货通道(超量下达权限由服务端自裁)。
         var duplicate=new NotifyRequest(partly.version(),partly.fingerprint(),"must-not-buy-shared-pending-"+receiver,"BUY",List.of(bm.materialLineId()),List.of(),
                 List.of(new SupplyQuantityInput(null,bm.materialLineId(),new BigDecimal("100"),BigDecimal.ZERO)));
-        assertThrows(ApiException.class,()->commands.notifySupply(receiver,duplicate),"A's first 100 in gross 900 must not complete B's 900 claim or create duplicate supply");
+        var stocked=commands.notifySupply(receiver,duplicate);
+        qty("0",material(stocked,goods).additionalSupplyRecommendedQty());qty("100",material(stocked,goods).sharedFuturePendingQty());
+        qty("100",db.queryForObject("SELECT COALESCE(SUM(requested_qty),0) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY' AND status<>'CANCELLED'",BigDecimal.class,receiver));
+        qty("100",db.queryForObject("SELECT COALESCE(SUM(public_surplus_qty),0) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY' AND status<>'CANCELLED'",BigDecimal.class,receiver));
         if(pending==null) receive(w,sourceOrder,goods,"100");else stockReceipt(w,pending,"100");
         fixture.loginAs(w.superAdminUserId());
         partly=analyses.detail(receiver);qty("100",material(partly,goods).shortageQty());

@@ -71,23 +71,15 @@ final class MaterialSupplyQuantityEntry {
     allowPublicExtra: allowPublicExtra,
   );
 
-  MaterialSupplyQuantityInput toInput(
-    double totalQty, {
-    required bool allowOverDemand,
-  }) {
-    final canAddPublic = allowOverDemand && allowPublicExtra;
-    final demandQty = totalQty > maxQty ? maxQty : totalQty;
-    final publicExtraQty = canAddPublic && totalQty > maxQty
-        ? totalQty - maxQty
-        : 0.0;
-    return MaterialSupplyQuantityInput(
-      actionGroupKey: actionGroupKey,
-      materialLineId: materialLineId,
-      qty: demandQty,
-      safetyReplenishmentQty: safetyReplenishmentQty,
-      publicExtraQty: publicExtraQty,
-    );
-  }
+  /// ADR-099 数量单一口径：把本次下达总量原样交给服务端，由它按权威余量分账
+  /// （不超过还需安排的归本需求，超出的记公共备货并校验超量下达权限）。
+  MaterialSupplyQuantityInput toInput(double totalQty) =>
+      MaterialSupplyQuantityInput(
+        actionGroupKey: actionGroupKey,
+        materialLineId: materialLineId,
+        qty: totalQty,
+        safetyReplenishmentQty: safetyReplenishmentQty,
+      );
 }
 
 /// 「下达采购 / 下达委外」的总结确认弹窗：品种数 + 合计数量 + 明细清单，

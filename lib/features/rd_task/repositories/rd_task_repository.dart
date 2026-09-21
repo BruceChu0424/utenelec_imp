@@ -38,6 +38,16 @@ class RdTaskRepository {
     return (json['count'] as num?)?.toInt() ?? 0;
   }
 
+  /// 已认领、正在做的任务数(黄色进行中徽章，ADR-100)。
+  ///
+  /// 与 [count] 同一端点：服务端一次就把 count(待处理+进行中) / open / inProgress
+  /// 都带回来。红黄两支徽章各自常驻轮询、各读各的字段，没有合成一支——合并要改动
+  /// 红色那条已被会话重建用例钉住的取数路径，收益不抵风险。
+  Future<int> inProgressCount() async {
+    final json = await _api.get(ApiEndpoints.rdTaskCount);
+    return (json['inProgress'] as num?)?.toInt() ?? 0;
+  }
+
   Future<RdTaskRow> resolve(
     String id,
     int expectedVersion,

@@ -198,6 +198,9 @@ class _SubcontractShortDeliveryPageState
     if (mounted) context.appSuccess(decided);
     ref.invalidate(subcontractShortDeliveryCountProvider);
     ref.invalidate(subcontractTaskCountProvider);
+    // 判定会把订货单挪出/挪进任务中心的「进行中」(结案即离场), 黄数字跟着一起重拉,
+    // 否则要等 60s 才跟上红数字(ADR-100)。
+    ref.read(subcontractTaskInProgressCountProvider.notifier).refresh();
     await _load();
   }
 
@@ -299,16 +302,20 @@ class _SubcontractShortDeliveryPageState
               count: _counts.pending,
               countForm: UtenSegmentCountForm.actionable,
             ),
-            // 容差内待结案 / 分批等待中是监控数：中性括号（默认 browsing）。
+            // 容差内待结案 / 分批等待中: 案子已经在跑(等下一批到货、等损耗单走完),
+            // 还没结但现在不用本人动手 → 黄色在办徽章(ADR-100, 2026-09-21 由中性
+            // 括号改)。真要判定的「待判定」段仍是红徽章。
             UtenFilterSegment(
               value: SubcontractShortDeliverySegment.tolerant,
               label: SubcontractShortDeliverySegment.tolerant.label,
               count: _counts.tolerant,
+              countForm: UtenSegmentCountForm.inProgress,
             ),
             UtenFilterSegment(
               value: SubcontractShortDeliverySegment.waiting,
               label: SubcontractShortDeliverySegment.waiting.label,
               count: _counts.waiting,
+              countForm: UtenSegmentCountForm.inProgress,
             ),
             UtenFilterSegment(
               value: SubcontractShortDeliverySegment.history,

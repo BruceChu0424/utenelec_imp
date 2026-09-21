@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_count_suffix.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -17,9 +18,10 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 // 2026-09-05 生产调度与进度简化：
 //  ① 待排产段交货日期范围筛选与「建议联合分析」下线，不发 dateFrom/dateTo；
 //     刷新按钮在表格右上角（toolbarActions）。
-//  ② 大类行两种计数形态（2026-09-11 收敛，docs/00-项目准则/14-徽章与计数口径.md）：
-//     「待排产」= 调度员必须清空的队列 → 红色通知徽章（0 不渲染）；
-//     「进行中」= 计划部统筹的监控数 → 中性括号 `(N)`（0 显示 `(0)` 保持队形）。
+//  ② 大类行的计数形态(2026-09-21 ADR-100 扩成三形态, 见 docs/00-项目准则/14-徽章与计数口径.md):
+//     「待排产」= 调度员必须清空的队列 -> 红色通知徽章(0 不渲染);
+//     「进行中」= 已经排下去在跑、此刻不用调度员动手但也没结束的批次 -> 黄色进行中
+//     徽章(0 与未知同样不渲染, 不留黄色的 0)。
 //     计数与各自列表同源（size=1 只取分页 total）；无对应权限时不发计数请求、
 //     不显示数字（待排产=production_plan:view、进行中=production_execution:overview）。
 void main() {
@@ -135,7 +137,7 @@ void main() {
     expect(find.text('待排产'), findsOneWidget);
   });
 
-  testWidgets('ongoing segment shows the neutral bracket count', (
+  testWidgets('ongoing segment shows the amber in-progress badge', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -165,21 +167,27 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 浏览型监控数（批次数）：中性括号 `(7)`，不是红色通知徽章，也不再拼
-    // 进 label 文本。
+    // 在办批次数: 黄色进行中徽章。既不是红色(没人在等调度员动手), 也不是中性
+    // 括号(括号留给已结束/历史的集合); 数字在徽章里, 不拼进 label 文本。
     expect(find.text('进行中'), findsOneWidget);
     expect(find.text('进行中 7'), findsNothing);
-    expect(find.text('(7)'), findsOneWidget);
+    expect(find.text('(7)'), findsNothing);
     final ongoing = find.byWidgetPredicate(
       (widget) => widget is UtenSegmentBadgeLabel && widget.label == '进行中',
     );
     expect(
       tester.widget<UtenSegmentBadgeLabel>(ongoing).countForm,
-      UtenSegmentCountForm.browsing,
+      UtenSegmentCountForm.inProgress,
     );
+    final ongoingBadge = find.descendant(
+      of: ongoing,
+      matching: find.byType(UtenInProgressBadge),
+    );
+    expect(ongoingBadge, findsOneWidget);
+    expect(tester.widget<UtenInProgressBadge>(ongoingBadge).count, 7);
     expect(
       find.descendant(of: ongoing, matching: find.byType(UtenCountSuffix)),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.descendant(
@@ -188,10 +196,11 @@ void main() {
       ),
       findsNothing,
     );
-    final countRequest = requests.firstWhere(
-      (request) => request.path == '/production/execution-workbench',
+    // 计数走专用端点, 不再是「拉一页 size=1 读 total」那种凑数法。
+    expect(
+      requests.map((request) => request.path),
+      contains('/production/execution-workbench/count'),
     );
-    expect(countRequest.queryParameters['size'], 1);
   });
 
   testWidgets('ongoing count stays hidden without overview permission', (
@@ -226,9 +235,11 @@ void main() {
 
     expect(find.text('进行中'), findsOneWidget);
     expect(find.textContaining('进行中 7'), findsNothing);
-    // 无权限 = 计数为 null（未知），中性括号同样不渲染——不把未知伪装成 `(0)`。
+    // 无权限 = 计数为 null(未知), 黄色徽章同样不渲染 —— 不把未知伪装成 0,
+    // 也不退回中性括号凑队形。
     expect(find.text('(7)'), findsNothing);
     expect(find.text('(0)'), findsNothing);
+    expect(find.byType(UtenInProgressBadge), findsNothing);
     expect(
       requests.where(
         (request) => request.path == '/production/execution-workbench',
@@ -353,17 +364,22 @@ ProductionExecutionWorkbenchRepository _workbenchRepository(
     InterceptorsWrapper(
       onRequest: (request, handler) {
         requests.add(request);
+        // 「进行中」批次数走专用轻量端点(ADR-100 / 准则 §四之七: 不再拿
+        // list(size:1) 的 total 凑数), 与列表分页是两个不同的返回形状。
+        final isCount = request.path.endsWith('/execution-workbench/count');
         handler.resolve(
           Response<dynamic>(
             requestOptions: request,
             statusCode: 200,
-            data: {
-              'items': <Map<String, dynamic>>[],
-              'page': 1,
-              'size': 1,
-              'total': 7,
-              'totalPages': 7,
-            },
+            data: isCount
+                ? {'count': 7}
+                : {
+                    'items': <Map<String, dynamic>>[],
+                    'page': 1,
+                    'size': 1,
+                    'total': 7,
+                    'totalPages': 7,
+                  },
           ),
         );
       },

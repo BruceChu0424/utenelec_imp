@@ -6,11 +6,19 @@
 // 无「全部异常」）——两行默认都不选，内容区显示引导占位不发请求；
 // 阶段/异常分段挂后端全量计数徽章（进页面仅拉一次 size=1 概览）。
 // 表格多选 + 右下悬浮「生成采购订货单」批量链路保持不变。
+//
+// ADR-100(2026-09-21 用户口径)：采购侧照抄委外任务中心已落地的范式
+// (subcontract_decomposition_page.dart)——「等待财务审核 / 财务已通过 / 财务驳回」
+// 三段合并成一段「进行中」(黄色在办徽章)，三档降级为进行中表格里可排序、可表头筛选的
+// 「状态」列，颜色刻意拉开。合并不能让要本人动手的单消失：「财务驳回」继续在异常小类行
+// 挂红徽章，也继续计入采购任务中心卡面红数(后端 countPending 的 FINANCE_REJECTED)。
+// 仓库部门两段(待备料/待领取、部分领取)不在合并范围，原样保留。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -87,20 +95,25 @@ class _OperationsWorkbenchPageState
   /// 表头列筛选（服务端 facet key → 值）；repository 以 `f.{key}` 前缀回传。
   final Map<String, String?> _columnFilters = {};
 
+  /// 表头排序(本页列 key; 发请求时换成服务端 key); null = 用服务端默认序。
+  String? _sortColumn;
+  bool _sortAscending = true;
+
   final Set<String> _selectedIds = {};
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
 
   /// 阶段行分段（不含终态——已完成/已领取归入历史记录）。
+  ///
+  /// 采购/委外两段(ADR-100): 申请待分解 + 进行中。进行中 = 等待财务审核 +
+  /// 财务已通过 + 财务驳回, 三档只在状态列里分辨, 不再各占一段。
   List<({String code, String label})> get _stages {
     return switch (widget.department) {
       OperationsWorkbenchDepartment.purchase ||
       OperationsWorkbenchDepartment.subcontract => const [
         (code: 'WAITING_ORDER', label: '申请待分解'),
-        (code: 'ORDER_PENDING_APPROVAL', label: '等待财务审核'),
-        (code: 'FINANCE_APPROVED', label: '财务已通过'),
-        (code: 'FINANCE_REJECTED', label: '财务驳回'),
+        (code: 'IN_PROGRESS', label: '进行中'),
       ],
       OperationsWorkbenchDepartment.warehouse => const [
         (code: 'READY_TO_PICK', label: '待备料 / 待领取'),
@@ -109,18 +122,46 @@ class _OperationsWorkbenchPageState
     };
   }
 
-  /// 阶段计数的呈现形态（docs/00-项目准则/14-徽章与计数口径.md）。
+  /// 阶段计数的呈现形态(docs/00-项目准则/14-徽章与计数口径.md)；三形态见 ADR-100。
   ///
   /// 红徽章只给「等本部门动手」的阶段：申请待分解（采购/委外任务中心角标同源）、
-  /// 财务驳回（要改单重报）、仓库的待备料/部分领取（要去出库）。
-  /// 等待财务审核 / 财务已通过下一步是别人在办，是监控数 → 中性括号。
+  /// 仓库的待备料/部分领取(要去出库)。
+  /// 进行中的单已经在财务/供应商手上滚着、没结束又不用本部门动手 -> 黄色在办徽章;
+  /// 其中真要动手的「财务驳回」由异常小类行的红徽章负责喊人。
   UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
     'WAITING_ORDER' ||
-    'FINANCE_REJECTED' ||
     'READY_TO_PICK' ||
     'PARTIAL' => UtenSegmentCountForm.actionable,
+    'IN_PROGRESS' => UtenSegmentCountForm.inProgress,
     _ => UtenSegmentCountForm.browsing,
   };
+
+  /// 状态列文案(采购「进行中」段合并掉的三档, 用户原话就是这三个名字);
+  /// 未知码回落通用阶段标签, 免得后端加档时界面显示成裸代码。
+  String _stageLabelOf(OperationsWorkbenchTask task) =>
+      _purchaseStageLabel(task.progressStatus) ?? task.statusLabel;
+
+  static String? _purchaseStageLabel(String code) => switch (code) {
+    'ORDER_PENDING_APPROVAL' => '等待财务审核',
+    'FINANCE_APPROVED' => '财务已通过',
+    'FINANCE_REJECTED' => '财务驳回',
+    _ => null,
+  };
+
+  /// 状态列配色(与委外任务中心同构, ADR-098/100: 刻意拉开, 不用相近色):
+  /// 蓝=球在财务、青=财务已放行正在执行、红=被驳回要本人改单重报。
+  static UtenStatusBadgeType _stageBadgeType(String code) => switch (code) {
+    'ORDER_PENDING_APPROVAL' => UtenStatusBadgeType.info,
+    'FINANCE_APPROVED' => UtenStatusBadgeType.accent,
+    'FINANCE_REJECTED' => UtenStatusBadgeType.danger,
+    'WAITING_ORDER' => UtenStatusBadgeType.warning,
+    'COMPLETED' => UtenStatusBadgeType.success,
+    _ => UtenStatusBadgeType.neutral,
+  };
+
+  /// 状态列是否按「合并掉的三档」呈现：只有采购把四段并成两段，仓库沿用纯文本。
+  bool get _mergedStageColumn =>
+      widget.department != OperationsWorkbenchDepartment.warehouse;
 
   bool get _shouldLoad {
     final seg = _seg;
@@ -156,6 +197,9 @@ class _OperationsWorkbenchPageState
         exception: seg == null || seg.history ? null : _exception,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+        // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
+        sort: _sortColumn == null ? null : _serverKeyByColumn[_sortColumn],
+        order: _sortAscending ? 'asc' : 'desc',
         columnFilters: _columnFilters,
       );
       if (!mounted || requestId != _requestId) return;
@@ -184,7 +228,10 @@ class _OperationsWorkbenchPageState
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
       _selectedIds.clear();
       // 各阶段的 facet 集合不同（与委外任务中心同口径）：切段时清表头筛选。
+      // 排序键同理——「状态」列只在进行中段有意义，换段后按服务端默认序重来。
       _columnFilters.clear();
+      _sortColumn = null;
+      _sortAscending = true;
     });
     if (!seg.history || !_historyTime.isNone) {
       _load(page: 1);
@@ -247,12 +294,26 @@ class _OperationsWorkbenchPageState
   }
 
   /// 服务端 facets/nullCounts → 按本页列 key 提供给 MasterDataTableView。
+  ///
+  /// 状态桶的 value 与 label 都是服务端阶段码(display_stage 原值), 直接挂到表头
+  /// 筛选里用户看到的是裸代码; 这里按状态列同一套文案翻一遍(筛选仍回传原码)。
   Map<String, List<MasterFacetBucket>> _facetsByColumn(
     OperationsWorkbenchData data,
   ) => {
     for (final entry in _serverKeyByColumn.entries)
       if (data.facets.containsKey(entry.value))
-        entry.key: data.facets[entry.value]!,
+        entry.key: entry.key == 'status'
+            ? [
+                for (final bucket in data.facets[entry.value]!)
+                  MasterFacetBucket(
+                    value: bucket.value,
+                    count: bucket.count,
+                    label:
+                        _purchaseStageLabel(bucket.value) ??
+                        operationsWorkbenchStatusLabel(bucket.value),
+                  ),
+              ]
+            : data.facets[entry.value]!,
   };
 
   Map<String, int> _nullCountsByColumn(OperationsWorkbenchData data) => {
@@ -575,6 +636,18 @@ class _OperationsWorkbenchPageState
                       nullCounts: _nullCountsByColumn(data),
                       filters: _columnFilterValues(),
                       onColumnFilterChanged: _onColumnFilterChanged,
+                      mergedStageColumn: _mergedStageColumn,
+                      stageLabelOf: _stageLabelOf,
+                      sortColumn: _sortColumn,
+                      sortAscending: _sortAscending,
+                      onSortChange: (column, ascending) {
+                        setState(() {
+                          _sortColumn = column;
+                          _sortAscending = ascending;
+                          _selectedIds.clear();
+                        });
+                        _load(page: 1);
+                      },
                       batchActions: selectionAction == null
                           ? null
                           : (_, _) => [
@@ -733,6 +806,11 @@ class _DesktopTaskTable extends StatelessWidget {
     this.nullCounts = const {},
     this.filters = const {},
     this.onColumnFilterChanged,
+    this.mergedStageColumn = false,
+    required this.stageLabelOf,
+    this.sortColumn,
+    this.sortAscending = true,
+    this.onSortChange,
     this.batchActions,
   });
 
@@ -748,6 +826,14 @@ class _DesktopTaskTable extends StatelessWidget {
   final Map<String, int> nullCounts;
   final Map<String, String?> filters;
   final void Function(String column, String? value)? onColumnFilterChanged;
+
+  /// 采购: 状态列承载「进行中」合并掉的三档, 用拉开颜色的状态药丸呈现(ADR-100);
+  /// 仓库沿用纯文本(它的两段没有被合并, 状态列只是复述所在段)。
+  final bool mergedStageColumn;
+  final String Function(OperationsWorkbenchTask task) stageLabelOf;
+  final String? sortColumn;
+  final bool sortAscending;
+  final void Function(String? column, bool ascending)? onSortChange;
   final List<Widget> Function(BuildContext, Set<String>)? batchActions;
 
   @override
@@ -855,8 +941,21 @@ class _DesktopTaskTable extends StatelessWidget {
         MasterColumnDef(
           key: 'status',
           label: '状态',
-          width: 120,
-          value: (item) => item.statusLabel,
+          // 合并段下这列是唯一能分辨「在财务手上 / 已放行 / 被驳回」的地方,
+          // 所以给足宽度并允许排序(服务端按 display_stage 排, 见 orderSql)。
+          width: mergedStageColumn ? 150 : 120,
+          sortable: mergedStageColumn,
+          value: (item) =>
+              mergedStageColumn ? stageLabelOf(item) : item.statusLabel,
+          cellBuilder: !mergedStageColumn
+              ? null
+              : (context, item) => UtenStatusBadge(
+                  label: stageLabelOf(item),
+                  type: _OperationsWorkbenchPageState._stageBadgeType(
+                    item.progressStatus,
+                  ),
+                  size: UtenStatusBadgeSize.small,
+                ),
         ),
         MasterColumnDef(
           key: 'exception',
@@ -898,6 +997,9 @@ class _DesktopTaskTable extends StatelessWidget {
       nullCounts: nullCounts,
       filters: filters,
       onFilterChanged: onColumnFilterChanged ?? (_, _) {},
+      sortColumn: sortColumn,
+      sortAscending: sortAscending,
+      onSortChange: onSortChange,
       batchActionsBuilder: batchActions,
       onRowTap: onOpenTask,
       canOpenRow: (item) => item.actionDocument?.canView ?? false,
@@ -1192,9 +1294,9 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
 String _departmentSubtitle(OperationsWorkbenchDepartment department) {
   return switch (department) {
     OperationsWorkbenchDepartment.purchase =>
-      '采购任务：申请待分解 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
+      '采购任务：申请待分解 / 进行中(等待财务审核·财务已通过·财务驳回, 见状态列) / 已完成',
     OperationsWorkbenchDepartment.subcontract =>
-      '委外任务：待处理 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
+      '委外任务：待处理 / 进行中(等待财务审核·财务已通过·财务驳回, 见状态列) / 已完成',
     OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
   };
 }

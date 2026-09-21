@@ -91,6 +91,23 @@ public class ProductionExecutionWorkbenchService {
         return new PageResponse<>(items, page, size, total, totalPages);
     }
 
+    /**
+     * 「进行中」批次数(ADR-100 黄色进行中徽章)：与 {@link #list} 同一视图、同一可见范围、
+     * 同一 WHERE——列表默认不带任何筛选，所以这个数就等于列表行数，卡面与页内对得上。
+     * 此前客户端取 {@code ?size=1} 的分页 total 凑数，准则 §四之七 已禁这种取数法：
+     * 那条请求要付一遍 ORDER BY 与整行投影的钱，只为读一个 total。
+     */
+    @Transactional(readOnly = true)
+    public long inProgressRootCount() {
+        NativeReadScope scope = productionAccess.nativeReadScope(
+                "root.owner_employee_id", "rootOwners");
+        Query count = em.createNativeQuery(
+                "SELECT COUNT(*) FROM v_production_execution_workbench_roots root"
+                        + " WHERE (" + rootVisibility(scope.predicate()) + ")");
+        scope.bind(count);
+        return ((Number) count.getSingleResult()).longValue();
+    }
+
     @Transactional(readOnly = true)
     public ProductionExecutionWorkbenchGroup group(
             String rawRootType, UUID rootId) {

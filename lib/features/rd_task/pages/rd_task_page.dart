@@ -1,8 +1,13 @@
-// 工程研发部任务中心（双 Tab：待完成 / 已完成）。
+// 工程研发部任务中心(三分段: 待处理 / 进行中 / 已完成)。
 //
-//  Tab1 待完成：OPEN/IN_PROGRESS 任务（行/卡片可"标记完成"——需 rd_task:resolve 权限
-//               且 allowedActions 含 RESOLVE）。
-//  Tab2 已完成：DONE/CANCELED 任务（只读）。
+//  待处理 OPEN        —— 还没人开工, 红徽章: 轮到研发动手。
+//  进行中 IN_PROGRESS —— 已经在做、还没交, 黄徽章(ADR-100): 在办但此刻不用催。
+//  已完成 DONE/CANCELED —— 终态只读, 不挂数。
+//
+// 2026-09-21 把裸 TabBar「待完成 / 已完成」换成 UtenFilterToolbar 三分段: 原来
+// OPEN 与 IN_PROGRESS 混在「待完成」一段里, 黄色数字点进去没有落脚的地方, 用户
+// 也分不清「没人接」和「有人在做」。分段拆开后两个数字各自可点开核对。
+// 行/卡片可「标记完成」——需 rd_task:resolve 权限且 allowedActions 含 RESOLVE。
 //
 // 2026-09-09 表格化收尾：宽屏 MasterDataTableView 的「状态」「类别」两列接入
 // 真实 autofilter——bucket 从当前页行前端聚合（参照 material_analysis_material_table），
@@ -13,9 +18,6 @@
 //  - operations_workbench_page.dart —— race-guard _load / LayoutBuilder 宽窄分栏
 //    （expanded → MasterDataTableView，否则卡片列表）/ connectionRecovery 重载 /
 //    _Overview 指标卡（即便为 0 也展示）/ _Filters（关键词 + 类别）/ _MobilePager。
-//  - production_board_page.dart —— 双 Tab（SingleTickerProviderStateMixin +
-//    TabController(length:2)）+ 懒激活（active + _loadWhenActive + didUpdateWidget），
-//    未激活的 Tab 不发请求。
 //
 // 路由：/rd/tasks → RouteName.rdTaskCenter。
 import 'package:flutter/material.dart';
@@ -26,10 +28,12 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -45,48 +49,58 @@ import '../models/rd_task.dart';
 import '../providers/rd_task_count_provider.dart';
 import '../repositories/rd_task_repository.dart';
 
+/// 任务中心的三个分段 —— 值同时是列表接口的 `status` 过滤参数。
+///
+/// 后端 `RdTaskService.scopeStatuses` 的白名单: `pending` = 只 OPEN,
+/// `in_progress` = 只 IN_PROGRESS, `done` = DONE/CANCELED; 默认值 `open` 是
+/// 两档合集, 留给老调用点, 本页三段都不用它。**改了这里就要同步后端白名单**,
+/// 这三个字符串是本页与服务端之间唯一的契约。
+enum _RdTaskSeg {
+  pending('pending', '待处理'),
+  inProgress('in_progress', '进行中'),
+  done('done', '已完成');
+
+  const _RdTaskSeg(this.apiStatus, this.label);
+
+  /// 列表接口 `status` 查询参数。
+  final String apiStatus;
+  final String label;
+
+  /// 终态段: 只读浏览, 不挂任何计数。
+  bool get isClosed => this == _RdTaskSeg.done;
+}
+
 class RdTaskPage extends ConsumerStatefulWidget {
   const RdTaskPage({super.key, this.initialTab = 0});
 
+  /// 旧入口的 Tab 序号(0 = 未完成, 1 = 已完成); 未完成落在「待处理」段。
   final int initialTab;
 
   @override
   ConsumerState<RdTaskPage> createState() => _RdTaskPageState();
 }
 
-class _RdTaskPageState extends ConsumerState<RdTaskPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-  late int _activeTab;
+class _RdTaskPageState extends ConsumerState<RdTaskPage> {
+  late _RdTaskSeg _seg;
 
   @override
   void initState() {
     super.initState();
-    _activeTab = widget.initialTab.clamp(0, 1);
-    _tabController = TabController(
-      length: 2,
-      initialIndex: _activeTab,
-      vsync: this,
-    )..addListener(_handleTabChange);
-  }
-
-  void _handleTabChange() {
-    final next = _tabController.index;
-    if (next != _activeTab && mounted) {
-      setState(() => _activeTab = next);
-    }
-  }
-
-  @override
-  void dispose() {
-    _tabController
-      ..removeListener(_handleTabChange)
-      ..dispose();
-    super.dispose();
+    _seg = widget.initialTab == 1 ? _RdTaskSeg.done : _RdTaskSeg.pending;
   }
 
   @override
   Widget build(BuildContext context) {
+    // 红 = 待处理(OPEN): 没人开工, 轮到研发动手。
+    // 黄 = 进行中(IN_PROGRESS): 已认领在做, 此刻不用催。
+    //
+    // 后端一次返回 {count, open, inProgress} 且 count 保持旧含义 = open +
+    // inProgress(工作台红徽章的老调用点还在读它), 注册表对外只暴露了 count 与
+    // inProgress 两个 provider, 所以这里按同一份口径相减还原 open。两个计数同
+    // 周期轮询, 错拍时可能瞬时对不齐, 负数按 0 兜底(宁可少显示也不显示负数)。
+    final openAndInProgress = ref.watch(rdTaskCountProvider);
+    final inProgressCount = ref.watch(rdTaskInProgressCountProvider);
+    final pendingCount = openAndInProgress - inProgressCount;
     return Scaffold(
       appBar: UtenAppBar(
         title: '工程研发部 · 任务中心',
@@ -95,20 +109,41 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage>
           // 本页由工作台卡片 push 进入；无 returnTo 时回到工作台。
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: '待完成'),
-            Tab(text: '已完成'),
-          ],
-        ),
       ),
       body: SafeArea(
-        child: TabBarView(
-          controller: _tabController,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _RdTaskListPanel(closed: false, active: _activeTab == 0),
-            _RdTaskListPanel(closed: true, active: _activeTab == 1),
+            // 全平台统一筛选工具条替代裸 TabBar(纯分类形态, 搜索框在下方筛选行)。
+            UtenContentContainer.wide(
+              selectable: false,
+              padding: const EdgeInsets.only(top: UtenSpacing.s12),
+              child: UtenFilterToolbar<_RdTaskSeg>(
+                segmentsKey: const Key('rd-task-segments'),
+                segments: [
+                  UtenFilterSegment(
+                    value: _RdTaskSeg.pending,
+                    label: _RdTaskSeg.pending.label,
+                    count: pendingCount < 0 ? 0 : pendingCount,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                  UtenFilterSegment(
+                    value: _RdTaskSeg.inProgress,
+                    label: _RdTaskSeg.inProgress.label,
+                    count: inProgressCount,
+                    countForm: UtenSegmentCountForm.inProgress,
+                  ),
+                  // 终态只读, 不挂数(准则 §二: 历史集合不喊人)。
+                  UtenFilterSegment(
+                    value: _RdTaskSeg.done,
+                    label: _RdTaskSeg.done.label,
+                  ),
+                ],
+                selected: {_seg},
+                onSelectionChanged: (value) => setState(() => _seg = value),
+              ),
+            ),
+            Expanded(child: _RdTaskListPanel(seg: _seg)),
           ],
         ),
       ),
@@ -116,16 +151,13 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage>
   }
 }
 
-// ═══════════════════════ 单 Tab 列表面板（待完成 / 已完成） ═══════════════════════
+// ═══════════════════════ 单分段列表面板(待处理 / 进行中 / 已完成) ═══════════════════════
 
 class _RdTaskListPanel extends ConsumerStatefulWidget {
-  const _RdTaskListPanel({required this.closed, required this.active});
+  const _RdTaskListPanel({required this.seg});
 
-  /// true = 已完成 Tab（DONE/CANCELED）；false = 待完成 Tab（OPEN/IN_PROGRESS）。
-  final bool closed;
-
-  /// 当前是否处于激活 Tab —— 仅激活后才首次加载（懒激活，避免未访问 Tab 也发请求）。
-  final bool active;
+  /// 当前分段 —— 决定列表的 `status` 过滤与「标记完成」入口是否出现。
+  final _RdTaskSeg seg;
 
   @override
   ConsumerState<_RdTaskListPanel> createState() => _RdTaskListPanelState();
@@ -194,17 +226,24 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   @override
   void initState() {
     super.initState();
-    _loadWhenActive();
+    _scheduleFirstLoad();
   }
 
   @override
   void didUpdateWidget(covariant _RdTaskListPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active) _loadWhenActive();
+    // 换分段 = 换服务端口径: 回到第一页, 并清掉按旧行集聚合的表头筛选。
+    // 关键词与类别刻意保留 —— 用户常常拿同一个条件在三段之间来回看。
+    if (widget.seg != oldWidget.seg) {
+      _page = 1;
+      _tableFilters.clear();
+      _selectedTaskId = null;
+      _load();
+    }
   }
 
-  void _loadWhenActive() {
-    if (!widget.active || _hasLoaded) return;
+  void _scheduleFirstLoad() {
+    if (_hasLoaded) return;
     _hasLoaded = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _load();
@@ -222,7 +261,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       final next = await ref
           .read(rdTaskRepositoryProvider)
           .load(
-            status: widget.closed ? 'done' : 'open',
+            status: widget.seg.apiStatus,
             category: _category.isEmpty ? null : _category,
             keyword: _keyword.isEmpty ? null : _keyword,
             page: _page,
@@ -310,7 +349,8 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
         Future<void>.microtask(_load);
       },
     );
-    // 兄弟 Tab 完成/转发后，本 Tab 若已加载过则重拉（已完成 Tab 收新完成任务）。
+    // 本人或他人完成/转发任务后重拉: 完成的单会离开「待处理」「进行中」而落进
+    // 「已完成」, 三段谁也别停在旧快照上。
     ref.listen<int>(rdTaskRefreshTickProvider, (previous, next) {
       if (next > (previous ?? 0) && _hasLoaded) _load();
     });
@@ -332,7 +372,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     }
     if (_error != null) {
       return UtenEmpty.error(
-        message: widget.closed ? '无法加载已完成任务' : '无法加载待完成任务',
+        message: '无法加载${widget.seg.label}任务',
         description: _error,
         actionLabel: '重试',
         onAction: _load,
@@ -350,8 +390,14 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
         final top = <Widget>[
           _Overview(
             total: data.total,
-            label: widget.closed ? '已完成任务' : '待完成任务',
-            tone: widget.closed ? 'success' : 'primary',
+            label: '${widget.seg.label}任务',
+            // 指标卡配色跟着分段语义走: 待处理沿用主色, 进行中用琥珀(与黄徽章
+            // 同一族), 已完成绿色。
+            tone: switch (widget.seg) {
+              _RdTaskSeg.done => 'success',
+              _RdTaskSeg.inProgress => 'warning',
+              _RdTaskSeg.pending => 'primary',
+            },
           ),
           const SizedBox(height: UtenSpacing.s16),
           _Filters(
@@ -376,7 +422,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
             children: [
               ...top,
               // 选中可完成任务时，显示「标记完成」上下文条（行点击=开 BOM；完成走这里）。
-              if (sel != null && !widget.closed && _resolveEligible(sel))
+              if (sel != null && !widget.seg.isClosed && _resolveEligible(sel))
                 _ResolveBar(
                   task: sel,
                   resolving: _resolving,

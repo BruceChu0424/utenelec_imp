@@ -284,10 +284,11 @@ void main() {
                 widget is UtenSegmentBadgeLabel && widget.label == '已驳回',
           ),
         );
-        // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数——已驳回段挂中性括号数
-        // (下一步在销售手上, 不进任何累加), 数字取自 rejected=true 的全量 total。
+        // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数; ADR-100 起已驳回段
+        // 挂黄色进行中徽章(单子退回销售手上、还会再回到本页, 既非终态也不用财务
+        // 现在动手), 数字取自 rejected=true 的全量 total, 不进任何累加。
         expect(rejected.count, 1);
-        expect(rejected.countForm, UtenSegmentCountForm.browsing);
+        expect(rejected.countForm, UtenSegmentCountForm.inProgress);
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );

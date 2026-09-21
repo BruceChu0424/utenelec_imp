@@ -8,12 +8,21 @@
 // 「必须由我处理」的待办，一律挂红色徽章并逐级累加（见
 // shared/badges/todo_badge_registry.dart，草稿于 2026-09-11 由中性括号改为徽章）；
 // 报表与历史兼容卡无计数。
+//
+// ADR-100(2026-09-21): 右上角再并一枚黄色「进行中」徽章(黄左红右), 回答「我手上还有
+// 多少在跑」。委外只有「委外任务中心」一张卡登记黄色(= 任务中心「进行中」段);
+// 「回厂短交判定」卡**刻意不挂黄** —— 短交案件只挂在已回厂/在途的 FINANCE_APPROVED
+// 订货单上, 那些单已经全在任务中心的 IN_PROGRESS 里, 再数一遍就是同一条黄链内的
+// 双计(见 shared/badges/in_progress_badge_registry.dart 末尾的「已知重叠」);
+// 其余单据卡与报表区同样不挂。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
+import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -29,6 +38,7 @@ import '../../warehouse/pages/procurement_return_task_pages.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
+import '../../../shared/badges/in_progress_badge_registry.dart';
 import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/subcontract_doc_config.dart';
@@ -63,9 +73,20 @@ class SubcontractHubPage extends ConsumerWidget {
           description: l10n.subcontractHubTaskCenterSub,
           location: RouteName.operationsSubcontractWorkbench,
           badge: const SubcontractTaskBadge(showLabel: true),
+          // 黄=任务中心「进行中」段(已下单、发料在外加工、等财务/等回厂);
+          // 红=待处理与要本部门动手的两类异常。同一张单两枚都算得上不是双计。
+          progressBadge: UtenInProgressBadge(
+            count: inProgressEntryCount(
+              InProgressEntry.subcontractTaskCenter,
+              ref.watch,
+            ),
+            showLabel: true,
+          ),
         ),
       // ADR-098 回厂短交判定：徽章与任务中心 /count 里的「回厂短交待判定」同数展示，
       // 不登记进 todo_badge_registry（同一件事只数一次）。
+      // 同理不挂黄：容差内待结案 / 分批等待中的案子挂的都是已在任务中心
+      // IN_PROGRESS 里的订货单，页内分段照常显示黄数，卡面不再数第二遍。
       if (can(Perm.subcontractOrderView))
         _Entry(
           icon: Icons.rule_folder_outlined,
@@ -171,12 +192,17 @@ class SubcontractHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 本模块累计：任务中心 + 待退回供应商 + 本模块四类草稿。数字由
-          // todo_badge_registry 按 TodoModule.subcontract 求和得出（唯一实现），
+          // 顶栏两枚药丸, 黄左红右(ADR-100)。
+          // 「进行中 N」= 本模块登记的在办入口之和(当前只有任务中心一处)。
+          // 「待办 N」= 任务中心 + 待退回供应商 + 本模块四类草稿。两个数字各由
+          // 自己的注册表按 BadgeModule.subcontract 求和得出(唯一实现),
           // 页面里不要再手写加法。AppBar 的 actions 行是 stretch 对齐，
           // 故包一层 Center 让徽章垂直居中；0 时组件自身不渲染。
+          UtenModuleProgressChip(
+            count: inProgressModuleCount(BadgeModule.subcontract, ref.watch),
+          ),
           UtenModuleTodoChip(
-            count: todoModuleCount(TodoModule.subcontract, ref.watch),
+            count: todoModuleCount(BadgeModule.subcontract, ref.watch),
           ),
         ],
       ),
@@ -259,6 +285,7 @@ class _Entry {
     required this.description,
     required this.location,
     this.badge,
+    this.progressBadge,
   });
 
   final IconData icon;
@@ -270,6 +297,9 @@ class _Entry {
   /// 若某卡将来同时有待办与草稿，再把草稿挪到 [UtenHubCard.labelSuffix]
   /// 行内显示——一个 badge 槽塞两个红圆点读不懂。
   final Widget? badge;
+
+  /// 右上角黄色「进行中」徽章，排在红徽章左边；走另一张注册表，与红数互不相干。
+  final Widget? progressBadge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -284,6 +314,7 @@ class _EntryTile extends StatelessWidget {
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
       badge: entry.badge,
+      progressBadge: entry.progressBadge,
     );
   }
 }

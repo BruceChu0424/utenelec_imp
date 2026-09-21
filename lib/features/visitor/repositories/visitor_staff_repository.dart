@@ -147,6 +147,21 @@ class VisitorStaffRepository {
     return (r['count'] as num?)?.toInt() ?? 0;
   }
 
+  /// HR 访客在办数(已批准、访客还没来核验)——黄色进行中徽章，ADR-100。
+  ///
+  /// 与 [pendingCount] 同一端点：服务端一次就把两档都带回来。红黄两支徽章各自
+  /// 常驻轮询、各读各的字段，没有合成一支——合并要改动红色那条已被会话重建用例
+  /// 钉住的取数路径，收益不抵风险。
+  Future<int> approvalOngoingCount() async {
+    final r = await _api.get(ApiEndpoints.visitorApprovalPendingCount);
+    return (r['ongoing'] as num?)?.toInt() ?? 0;
+  }
+
+  // 「我作为接待人的在办数」没有取数方法: 服务端 host-counts 确实带回了 ongoing,
+  // 但「我的访客」整页没有分段栏承接这个数(筛状态走表头下拉且不带计数), 卡上挂了
+  // 用户点进去也找不到对应的那批申请。等那一页做了分段栏再补, 见
+  // lib/shared/badges/in_progress_badge_registry.dart 末尾的说明。
+
   Future<VisitorApplicationDetail> approvalDetail(String id) async {
     final r = await _api.get(ApiEndpoints.visitorApprovalById(id));
     final app = VisitorApplication.fromJson(r);

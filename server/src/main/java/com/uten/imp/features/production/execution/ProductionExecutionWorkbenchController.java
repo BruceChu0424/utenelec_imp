@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 /** Planning-facing workbench grouped and paginated by the outer analysis root. */
@@ -31,6 +32,16 @@ public class ProductionExecutionWorkbenchController {
             @RequestParam(required = false) String order) {
         return service.list(
                 page, size, keyword, workshopDepartmentId, mine, sort, order);
+    }
+
+    /**
+     * 「进行中」批次数(ADR-100)：调度与进度页的大类行、生产管理卡与工作台的黄色徽章同取本端点。
+     * 与 {@link #list} 同一读取范围，不再靠 {@code ?size=1} 的分页 total 凑数。
+     */
+    @GetMapping("/count")
+    @PreAuthorize("hasAuthority('production_execution:overview')")
+    public Map<String, Long> count() {
+        return Map.of("count", service.inProgressRootCount());
     }
 
     @GetMapping("/{rootType}/{rootId}")

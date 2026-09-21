@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
 import '../models/warehouse_iqc_stock_in.dart';
+import '../models/warehouse_quality_result.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 
 /// 品质部检查结果合并页角标（口径 = 轮到仓库动手：待入库 + 需退回；
@@ -28,6 +29,30 @@ final warehouseQualityResultPendingCountProvider = FutureProvider<int>((
   final timer = Timer(const Duration(seconds: 60), ref.invalidateSelf);
   ref.onDispose(timer.cancel);
   return ref.watch(warehouseQualityResultRepositoryProvider).pendingCount();
+});
+
+/// 品质部检查结果「等待检查结果」数(黄色进行中徽章，ADR-100)。
+///
+/// 货已收、等品质部出结论：还在流程里没结束，但仓库此刻办不了事，所以既不进
+/// 红徽章(那是上面那支 pendingCount 的口径)也不是中性括号。与页内「等待结果」
+/// 状态分段同源(同一份 status-counts)，卡面数字 = 页内那一段的数。
+/// 同样常驻 + 60s 自刷，无查看权限时固定 0 且不发请求。
+final warehouseQualityResultWaitingCountProvider = FutureProvider<int>((
+  ref,
+) async {
+  final permissions = ref.watch(currentPermissionsProvider);
+  final superAdmin = ref.watch(isSuperAdminProvider);
+  final canView =
+      superAdmin ||
+      permissions.contains(Perm.warehouseIqcStockInView) ||
+      permissions.contains(Perm.warehouseIqcReturnView);
+  if (!canView) return 0;
+  final timer = Timer(const Duration(seconds: 60), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  final counts = await ref
+      .watch(warehouseQualityResultRepositoryProvider)
+      .statusCounts();
+  return counts[WarehouseQualityWorkStatus.waitingInspection] ?? 0;
 });
 
 /// 父分类（来源类型）分段计数：各来源未完结任务数（页内大类徽章用；

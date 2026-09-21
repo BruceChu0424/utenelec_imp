@@ -1,7 +1,6 @@
 // 销售订单进度看板行（订单进度查询卡）。镜像后端 OrderProgressRow：
 // 每张已审订单聚合 订货/已排/已产/已发/可发 + 派生生产进度百分比与链路阶段。
-import 'package:flutter/material.dart';
-
+import '../../../components/data_display/uten_status_badge.dart';
 import 'sales_doc.dart' show salesQtyText;
 
 class SalesOrderProgressRow {
@@ -183,13 +182,27 @@ String? salesProgressShipmentInFlightText(SalesOrderProgressRow row) {
   return parts.isEmpty ? null : parts.join(' · ');
 }
 
-/// 进度阶段色（绿=可发/已发/已结案，橙=生产中，红=驳回/中止，灰=未上链）。
-Color salesProgressStageColor(String stage, ThemeData theme) => switch (stage) {
-  'REJECTED' || 'CANCELED' => theme.colorScheme.error,
-  'SHIPPABLE' || 'SHIPPED' || 'CLOSED' => Colors.green,
-  'SHIPMENT_PENDING' => theme.colorScheme.tertiary,
-  'WAREHOUSE_PENDING' => Colors.teal,
-  'PRODUCING' => Colors.orange,
-  'PENDING' => theme.colorScheme.error,
-  _ => theme.colorScheme.onSurfaceVariant,
-};
+/// 进度阶段的状态徽章配色（2026-09-21 用户口径「不同状态不同颜色表示，色差要大，
+/// 不要相近颜色」，ADR-100）。
+///
+/// 改之前六个在途阶段挤在三种颜色里：可分批发货/已发货/已结案同绿、
+/// 财务驳回/待排产/已中止同红、出货待财审(tertiary)与等仓库出货(teal)还是相邻色相
+/// ——一眼分不出单子卡在哪一环，正是用户要改的毛病。
+///
+/// 现在六个在途阶段各占一个色相，刻意拉到最开：
+/// 红=要销售动手改单 · 琥珀=等计划排产 · 青=在机台上 · 紫=可以开发货单了 ·
+/// 蓝=球在财务 · 品红=球在仓库。终态不抢色：已发/已结案绿，已中止中性灰。
+/// 「等待财务审核」(订单级财务闸门，不是 stage)与「出货待财审」同为蓝——
+/// 同样是球在财务手上，共用一色是有意的，不是撞色。
+UtenStatusBadgeType salesProgressStageBadgeType(String stage) =>
+    switch (stage) {
+      'REJECTED' => UtenStatusBadgeType.danger,
+      'PENDING' => UtenStatusBadgeType.warning,
+      'PRODUCING' => UtenStatusBadgeType.accent,
+      'SHIPPABLE' => UtenStatusBadgeType.violet,
+      'SHIPMENT_PENDING' => UtenStatusBadgeType.info,
+      'WAREHOUSE_PENDING' => UtenStatusBadgeType.fuchsia,
+      'SHIPPED' || 'CLOSED' => UtenStatusBadgeType.success,
+      'CANCELED' => UtenStatusBadgeType.neutral,
+      _ => UtenStatusBadgeType.neutral,
+    };

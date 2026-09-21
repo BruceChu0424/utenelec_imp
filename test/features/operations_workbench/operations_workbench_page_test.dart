@@ -299,7 +299,8 @@ void main() {
                     overdueTasks: 0,
                     openTasks: 1,
                     openQty: 0,
-                    statusCounts: {'FINANCE_APPROVED': 1},
+                    // ADR-100: 财务已通过并入「进行中」段, 段计数取 IN_PROGRESS。
+                    statusCounts: {'IN_PROGRESS': 1, 'FINANCE_APPROVED': 1},
                   ),
                   items: [orderStageTask],
                   page: 1,
@@ -317,7 +318,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await _selectSegment(tester, '财务已通过');
+      await _selectSegment(tester, '进行中');
       await tester.pumpAndSettle();
 
       expect(find.text('8 种物料 · 8 行'), findsOneWidget);
@@ -780,9 +781,10 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // 切换到另一阶段段：阶段单选切换，且异常小类重置（不沿用上一个异常）。
-    await _selectSegment(tester, '等待财务审核');
+    // ADR-100 起采购只有两段, 第二段是合并后的「进行中」(status=IN_PROGRESS)。
+    await _selectSegment(tester, '进行中');
     await tester.pumpAndSettle();
-    expect(gateway.statuses.last, 'ORDER_PENDING_APPROVAL');
+    expect(gateway.statuses.last, 'IN_PROGRESS');
     expect(gateway.exceptions.last, isNull);
     final exceptionRow = tester.widget<SegmentedButton<dynamic>>(
       find.byKey(const Key('operations-workbench-exceptions-purchase')),
@@ -837,9 +839,9 @@ void main() {
       expect(find.text('在上方选择阶段后开始办理'), findsNothing);
 
       // 阶段段在「选项缺失」的刷新后仍可继续切换。
-      await _selectSegment(tester, '等待财务审核');
+      await _selectSegment(tester, '进行中');
       await tester.pumpAndSettle();
-      expect(gateway.statuses.last, 'ORDER_PENDING_APPROVAL');
+      expect(gateway.statuses.last, 'IN_PROGRESS');
     },
   );
 }

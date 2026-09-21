@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -149,12 +150,14 @@ void main() {
     },
   );
 
-  // 分段计数两形态（docs/00-项目准则/14-徽章与计数口径.md）：红徽章只给仓库
-  // 要动手的状态（全部合格/部分合格/不合格退回 = WarehouseQualityWorkStatus
-  // .actionable）；「等待结果」由品质部推进、仓库只是预判工作量 → 中性括号，
-  // 且 0 也保留 `(0)` 保持整行队形。
+  // 分段计数三形态(docs/00-项目准则/14-徽章与计数口径.md, ADR-100)：红徽章只给仓库
+  // 要动手的状态(全部合格/部分合格/不合格退回 = WarehouseQualityWorkStatus
+  // .actionable)；「等待结果」是**黄色在办徽章** —— 货已收、单子还在品质部手上滚着,
+  // 没结束又不用仓库动手。2026-09-21 之前它是中性括号, 与「已完结」混成一种形态,
+  // 看不出「还在走」和「已经走完」的区别。
+  // 黄徽章与红徽章同规矩: 0 不渲染(没有在跑的活就不该有黄色), 所以不再有 `(0)` 占位。
   testWidgets(
-    'waiting-for-result segment browses in brackets, actionable keeps the badge',
+    'waiting-for-result segment shows the in-progress badge, actionable keeps the red one',
     (tester) async {
       _viewport(tester, const Size(1200, 900));
       final gateway = _QualityGateway([
@@ -174,14 +177,22 @@ void main() {
         (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
       );
 
-      // 等待结果：计数 0 → 中性 `(0)`，没有红徽章。
+      // 等待结果：黄色在办形态；本例计数为 0 → 整枚不渲染(既没有黄徽章也没有
+      // `(0)` 占位), 更不可能是红徽章 —— 仓库这会儿没活要干。
       expect(
         tester.widget<UtenSegmentBadgeLabel>(segment('等待结果')).countForm,
-        UtenSegmentCountForm.browsing,
+        UtenSegmentCountForm.inProgress,
       );
       expect(
         find.descendant(of: segment('等待结果'), matching: find.text('(0)')),
-        findsOneWidget,
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: segment('等待结果'),
+          matching: find.byType(UtenInProgressBadge),
+        ),
+        findsNothing,
       );
       expect(
         find.descendant(

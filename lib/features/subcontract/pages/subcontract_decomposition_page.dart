@@ -101,17 +101,21 @@ class _SubcontractDecompositionPageState
   /// 「进行中」；订货单在其中的执行状态由状态列（表头可筛、颜色拉开）表达：
   /// 等待财务审核 / 财务已退回 / 待发料出仓 / 委外加工中 / 部分回厂 / 分批等待中 /
   /// 回厂短交待判定。要本部门动手的（财务已退回、回厂短交待判定）在异常小类行挂红徽章。
+  /// ADR-100(2026-09-21): 「进行中」的数字改挂黄色在办徽章, 见 _stageCountForm。
   static const _stages = <({String code, String label})>[
     (code: 'WAITING_ORDER', label: '待处理'),
     (code: 'IN_PROGRESS', label: '进行中'),
   ];
 
-  /// 阶段计数的呈现形态（docs/00-项目准则/14-徽章与计数口径.md）。
+  /// 阶段计数的呈现形态(docs/00-项目准则/14-徽章与计数口径.md)；三形态见 ADR-100。
   ///
   /// 红徽章只给「等委外部门动手」的阶段：待处理（= 委外任务中心角标同源）；
-  /// 进行中是监控数 → 中性括号，其中要动手的两类走异常小类行的红徽章。
+  /// 进行中的单已发料在外加工 / 在等财务 / 在等回厂 —— 还在跑、没完, 但现在不用
+  /// 委外动手, 2026-09-21 起由中性括号改成黄色在办徽章; 其中真要动手的两类
+  /// (财务已退回、回厂短交待判定)仍走异常小类行的红徽章。
   static UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
     'WAITING_ORDER' => UtenSegmentCountForm.actionable,
+    'IN_PROGRESS' => UtenSegmentCountForm.inProgress,
     _ => UtenSegmentCountForm.browsing,
   };
 

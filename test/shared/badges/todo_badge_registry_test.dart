@@ -31,8 +31,12 @@ Object _stubValue<T>(int count) {
   if (T == bool) return true;
   if (T == AsyncValue<int>) return AsyncValue<int>.data(count);
   if (T == ProductionPendingCount) return ProductionPendingCount(count, 0);
+  // 车间任务快照: **只有 preparing 桩成 count**。2026-09-21(ADR-100)起红链只数
+  // 「等待物料」那半, 「生产中」归黄链。这里刻意把 count 与 inProgress 留成 0 ——
+  // 哪天有人把红链改回读 count(= preparing + inProgress 的总和)或误读 inProgress,
+  // 本用例立刻红, 而不是悄悄把「已经在做、不用催」的段又喊成待办。
   if (T == WorkshopTaskCountBreakdown) {
-    return WorkshopTaskCountBreakdown(count: count);
+    return WorkshopTaskCountBreakdown(preparing: count);
   }
   if (T == Set<String>) return <String>{};
   // 草稿入口读的是整份快照：每一类都桩成 count，好让「切了几类」显形。
@@ -84,7 +88,7 @@ int _expected(TodoEntry entry, int count) => count * (_draftKinds[entry] ?? 1);
 void main() {
   test('每个入口都归属且仅归属一个容器', () {
     final byModule = <TodoEntry>[
-      for (final module in TodoModule.values) ...entriesOfModule(module),
+      for (final module in BadgeModule.values) ...entriesOfModule(module),
     ];
     expect(
       byModule.toSet().length,
@@ -134,7 +138,7 @@ void main() {
     final watch = _watchReturning(1);
 
     var moduleTotal = 0;
-    for (final module in TodoModule.values) {
+    for (final module in BadgeModule.values) {
       final expected = entriesOfModule(
         module,
       ).fold<int>(0, (sum, entry) => sum + todoEntryCount(entry, watch));
@@ -164,12 +168,12 @@ void main() {
 
   test('采购/委外容器各含两个入口——修复「外层 1、内层 5」的历史口径', () {
     // 历史上工作台「采购管理」卡只数任务中心，hub 里的「待退回供应商」被漏掉。
-    expect(entriesOfModule(TodoModule.purchase), <TodoEntry>[
+    expect(entriesOfModule(BadgeModule.purchase), <TodoEntry>[
       TodoEntry.purchaseTaskCenter,
       TodoEntry.purchaseSupplierReturn,
       TodoEntry.purchaseDrafts,
     ]);
-    expect(entriesOfModule(TodoModule.subcontract), <TodoEntry>[
+    expect(entriesOfModule(BadgeModule.subcontract), <TodoEntry>[
       TodoEntry.subcontractTaskCenter,
       TodoEntry.subcontractSupplierReturn,
       TodoEntry.subcontractDrafts,
@@ -177,23 +181,23 @@ void main() {
 
     final watch = _watchReturning(3);
     // 任务中心 3 + 待退回 3 + 草稿 3×3 类 = 15；委外草稿 4 类 → 3+3+12 = 18。
-    expect(todoModuleCount(TodoModule.purchase, watch), 15);
-    expect(todoModuleCount(TodoModule.subcontract, watch), 18);
+    expect(todoModuleCount(BadgeModule.purchase, watch), 15);
+    expect(todoModuleCount(BadgeModule.subcontract, watch), 18);
   });
 
   test('仓库容器包含独立待收退料，和待发领料各计一次', () {
-    expect(entriesOfModule(TodoModule.warehouse), hasLength(9));
+    expect(entriesOfModule(BadgeModule.warehouse), hasLength(9));
     expect(
-      entriesOfModule(TodoModule.warehouse),
+      entriesOfModule(BadgeModule.warehouse),
       contains(TodoEntry.warehouseProductionReturn),
     );
     // 8 个分段各 2 + 普通草稿（只取 stockDocument 一类）2 = 18。
-    expect(todoModuleCount(TodoModule.warehouse, _watchReturning(2)), 18);
+    expect(todoModuleCount(BadgeModule.warehouse, _watchReturning(2)), 18);
   });
 
   test('钱流容器含 IQC 驳回入口（此前只在 hub 上有徽章、没进工作台累加）', () {
     expect(
-      entriesOfModule(TodoModule.finance),
+      entriesOfModule(BadgeModule.finance),
       contains(TodoEntry.financeIqcRejection),
     );
   });
@@ -231,7 +235,7 @@ void main() {
 
   test('全部计数源为 0 时，容器与总数都为 0（徽章整个不渲染）', () {
     final watch = _watchReturning(0);
-    for (final module in TodoModule.values) {
+    for (final module in BadgeModule.values) {
       expect(todoModuleCount(module, watch), 0);
     }
     expect(sumTodoEntries(TodoEntry.values, watch), 0);

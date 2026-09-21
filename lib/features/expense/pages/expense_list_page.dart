@@ -41,6 +41,9 @@ class ExpenseListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(expenseListProvider);
     final counts = ref.watch(expenseCountsProvider).valueOrNull;
+    // 「处理中」= 本人已交出去、正在审批或等出纳付款的单(球不在我手上但也没完)。
+    // 走注册表同一个入口 provider, 免得这里和工作台各算各的。
+    final processingCount = ref.watch(expenseMineProcessingCountProvider);
     final canApply = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.expenseApply);
@@ -68,8 +71,10 @@ class ExpenseListPage extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: UtenCollapsingHeaderScrollView(
-              // 分段（进页面默认「全部」：我的报销是个人列表，落地即见数据；
-              // 计数段都是中性括号：草稿是「我自己没写完的」，处理中已在审批人手上）。
+              // 分段(进页面默认「全部」: 我的报销是个人列表, 落地即见数据)。
+              // 三形态各就各位(ADR-100): 草稿 / 待修订是本人要动手的活 -> 红;
+              // 「处理中」已经交出去、在审批人或出纳手上滚着 -> 黄;
+              // 「全部」「已完成」是浏览型 -> 不挂 / 括号。
               collapsingHeader: UtenFilterToolbar<ExpenseFilter>(
                 segmentsKey: const Key('expense-list-segments'),
                 segments: [
@@ -89,9 +94,11 @@ class ExpenseListPage extends ConsumerWidget {
                     count: counts?.rejectedCount,
                     countForm: UtenSegmentCountForm.actionable,
                   ),
-                  const UtenFilterSegment(
+                  UtenFilterSegment(
                     value: ExpenseFilter.processing,
                     label: '处理中',
+                    count: processingCount,
+                    countForm: UtenSegmentCountForm.inProgress,
                   ),
                   const UtenFilterSegment(
                     value: ExpenseFilter.finished,

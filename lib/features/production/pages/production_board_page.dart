@@ -3,9 +3,10 @@
 //  待排产：已审订单行缺口列表（交货升序 ≤3天标红）→ 勾选/全选 → 合并排产（原调度页能力）。
 //  2026-09-05 起简化：交货日期范围筛选与「建议联合分析」下线（排序/状态筛选仍在表头），
 //  刷新按钮统一放表格右上角（toolbarActions；窄屏卡片列表顶部右上角兜底）。
-//  大类行计数（2026-09-11 起两形态口径）：「待排产」挂红色通知徽章
-//  （调度员必须清空的队列，计数与列表同源的分页 total）；「进行中」是计划部
-//  统筹视角的监控数（按最外层分析/根计划聚合），不是待办，走中性括号 `(N)`。2026-09-05 起本页不再提供报工入口
+//  大类行计数(2026-09-21 ADR-100 起三形态口径): 「待排产」挂红色通知徽章
+//  (调度员必须清空的队列, 计数与列表同源的分页 total); 「进行中」挂黄色进行中
+//  徽章 —— 按最外层分析/根计划聚合的在办批次, 已经在跑、此刻没人等调度员动手,
+//  所以既不能混进红色警报, 也不是已经结束的浏览型集合。2026-09-05 起本页不再提供报工入口
 //  （车间报工统一在 /production/workshop-tasks），双击批次直达物料分析页
 //  （ANALYSIS 根）或生产计划详情（PLAN 根），不再弹滑窗。
 //  历史记录：已结案计划（原「已完成」Tab，2026-09-03 起并入历史）——时间门控
@@ -109,9 +110,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   Widget build(BuildContext context) {
     final segment = _segment;
     final historyReady = _historyTime.range != null || _historyTime.all;
-    // 大类行计数：待排产=红色通知徽章（调度员待办）；进行中=中性括号（监控口径，
-    // 不挂徽章）。无权限或请求失败时不显示；provider 内部做了权限门控，
-    // 未授权不会发请求。
+    // 大类行计数: 待排产=红色通知徽章(调度员待办); 进行中=黄色进行中徽章
+    // (在办批次, 不用调度员动手但也没结束)。无权限或请求失败时保持 null,
+    // 两种徽章形态对 null/0 一律不渲染; provider 内部做了权限门控, 未授权不发请求。
     final pendingCount = ref
         .watch(productionBoardPendingCountProvider)
         .valueOrNull;
@@ -155,9 +156,10 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     UtenFilterToolbar<String>(
                       segmentsKey: const Key('production-board-segments'),
                       segments: [
-                        // 待排产挂红徽章（调度员必须清空的队列）；进行中是计划部
-                        // 统筹的监控数，走中性括号 `(N)`（2026-09-11 前是拼进
-                        // label 的裸数字，现统一用 UtenCountSuffix 的括号形态）。
+                        // 待排产挂红徽章(调度员必须清空的队列); 进行中挂黄徽章
+                        // (ADR-100): 这些批次已经排下去在跑了, 调度员只是看着,
+                        // 但它们也没结束, 所以中性括号同样不对 —— 括号留给
+                        // 历史/已完成。历史记录段不挂数字。
                         UtenFilterSegment(
                           value: 'pending',
                           label: '待排产',
@@ -168,6 +170,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                           value: 'progress',
                           label: '进行中',
                           count: ongoingCount,
+                          countForm: UtenSegmentCountForm.inProgress,
                         ),
                         const UtenFilterSegment(
                           value: 'history',

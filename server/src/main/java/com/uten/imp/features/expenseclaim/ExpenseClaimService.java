@@ -388,16 +388,23 @@ public class ExpenseClaimService {
                 count(submitted),amount(submitted),count(paid),amount(paid));
     }
 
+    /**
+     * 报销计数：一次往返取齐五档(准则 §五)。ADR-100 补上本人「处理中」后若继续逐档 count
+     * 就是第 5 次往返，故合并进 {@link ExpenseApplicantQuery#queueCounts} 的单条 SELECT，
+     * 没有权限的档在 SQL 里就短路成 0。
+     */
     @Transactional(readOnly=true)
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto counts() {
         AuthUser user=requireStaff();
         boolean apply=has(user,"expense:apply");
-        if(!apply && !has(user,"expense:approve") && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
+        boolean approve=has(user,"expense:approve");
+        boolean pay=has(user,"expense:pay");
+        if(!apply && !approve && !pay) throw new ApiException(ErrorCode.FORBIDDEN);
+        ExpenseApplicantQuery.QueueCounts counts=
+                applicantQuery.queueCounts(user.getEmployeeId(),apply,approve,pay);
         return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto(
-                apply?claimRepository.countMine(user.getEmployeeId(),"DRAFT"):0,
-                apply?claimRepository.countMine(user.getEmployeeId(),"REJECTED"):0,
-                has(user,"expense:approve")?count(actionable(user,false)):0,
-                has(user,"expense:pay")?count(actionable(user,true)):0);
+                counts.draft(),counts.rejected(),counts.pendingApproval(),
+                counts.pendingPayment(),counts.processing());
     }
 
     private Object[] actionable(AuthUser user,boolean payment) {

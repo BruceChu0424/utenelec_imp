@@ -336,10 +336,10 @@ class _ProcurementIqcRejectionListPageState
     );
   }
 
-  /// 状态分段工具条：徽章只挂在「待退回」（本页用户——采购/委外要登记退回
-  /// 的动作）；「已退回待财务」「财务异常」下一步是财务在操作、「终态」无动作，
-  /// 均不挂徽章（计数为零也不显）。原「点击已选 Chip 取消筛选」由显式「全部」
-  /// 分段承担。
+  /// 状态分段工具条：红徽章只挂在「待退回」(本页用户——采购/委外要登记退回
+  /// 的动作)；「已退回待财务」「财务异常」球已经在财务手上、案子还没结,
+  /// 2026-09-21 起改挂黄色在办徽章(ADR-100); 「终态」已结束, 中性括号。
+  /// 原「点击已选 Chip 取消筛选」由显式「全部」分段承担。
   Widget _buildCounts(ProcurementIqcRejectionCounts counts) {
     return UtenFilterToolbar<String?>(
       segmentsKey: const Key('iqc-rejection-status-segments'),
@@ -351,17 +351,20 @@ class _ProcurementIqcRejectionListPageState
           count: counts.pendingReturn,
           countForm: UtenSegmentCountForm.actionable,
         ),
-        // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数——下一步在财务手上
-        // 或已完结的三段挂中性括号数(供掂量, 不进任何累加)。
+        // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数。退回登记完、贷项
+        // 还没落地的两段是「已经在办、球在财务手上、还没完」→ 黄色在办徽章
+        // (ADR-100); 分段计数一律不进任何累加注册表。
         UtenFilterSegment(
           value: 'RETURN_RECORDED',
           label: '已退回待财务',
           count: counts.returnRecorded,
+          countForm: UtenSegmentCountForm.inProgress,
         ),
         UtenFilterSegment(
           value: 'FINANCE_EXCEPTION',
           label: '财务异常',
           count: counts.financeException,
+          countForm: UtenSegmentCountForm.inProgress,
         ),
         UtenFilterSegment(
           value: 'TERMINAL',

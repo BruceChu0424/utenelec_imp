@@ -396,7 +396,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                     ),
                     // 计数形态(2026-09-21 用户口径: 父分类 hub 卡有红徽章, 子分类也要有数):
                     // 草稿 / 财务已退回 = 等本人动手 → 红徽章(与 hub 卡「草稿 + 财务已退回」
-                    // 同源同数); 等待财务审核 / 已审 / 红冲 = 中性括号数; 申请页「计划已下达」
+                    // 同源同数); 等待财务审核 = 单已交出去、球在财务手上还没完 → 黄色在办
+                    // 徽章(ADR-100); 已审 / 红冲 = 已结束 → 中性括号数; 申请页「计划已下达」
                     // 的待处理量已由采购任务中心「待分解」徽章承担, 仍是中性数
                     // (docs/00-项目准则/14-徽章与计数口径.md)。
                     segments: [
@@ -424,6 +425,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                           count:
                               statusCounts?[DocumentStatusBucket
                                   .pendingFinance],
+                          countForm: UtenSegmentCountForm.inProgress,
                         ),
                         UtenFilterSegment(
                           value: const _PurchaseDocSeg.stage(

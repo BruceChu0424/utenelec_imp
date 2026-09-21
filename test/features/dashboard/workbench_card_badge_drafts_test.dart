@@ -9,12 +9,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+late SharedPreferences _preferences;
 
 void main() {
+  // 卡片角标现在是「黄(进行中) + 红(待办)」两枚(ADR-100), 黄色那条链里有几支
+  // 常驻 provider 按会话身份隔离 -> 间接依赖启动时注入的 sharedPreferencesProvider。
+  // 不装配它, 整个 WorkbenchCardBadge 会在 build 期抛异常, 连红徽章都找不到。
+  // (准则 14 §仓库生产退料与测试装配: 宿主测试新增徽章后必须同步装配该依赖,
+  //  不许把徽章移出注册表、屏蔽会话隔离或吞掉 provider 异常来糊弄过去。)
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
+
   Future<int> badgeCount(
     WidgetTester tester,
     WorkbenchBadgeKind kind, {
@@ -24,6 +38,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(permissions),
           isSuperAdminProvider.overrideWithValue(false),
           draftCountsProvider.overrideWith((ref) async => counts),

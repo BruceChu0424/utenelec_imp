@@ -4,17 +4,22 @@
 // _WarehouseTaskCenterTile，统一：40×40 图标盒、卡片描边/圆角/内边距，
 // 以及右上角徽章浮层（UtenNotificationBadge 系）。
 //
-// 两个计数槽位（docs/00-项目准则/14-徽章与计数口径.md）：
-//   · [badge]（右上角 Stack Positioned）= 红色通知徽章，给「需要我处理」的待办数
-//     （**2026-09-11 起草稿也算**，见该文档 §草稿），恒在卡片右上角、不随标题文字
-//     或图标行漂移——这正是各 hub 之前不一致的根因；并且会被上层容器
+// 三个计数槽位(docs/00-项目准则/14-徽章与计数口径.md)：
+//   · [badge](右上角 Stack Positioned，**靠右那枚**)= 红色通知徽章，给「轮到我
+//     动手」的待办数(**2026-09-11 起草稿也算**，见该文档 §草稿)，恒在卡片右上角、
+//     不随标题文字或图标行漂移——这正是各 hub 之前不一致的根因；并且会被上层容器
 //     （工作台模块卡 / 导航 Tab）逐级累加。
+//   · [progressBadge](右上角，**红徽章左边那枚**)= 黄色进行中徽章，给「已经在办、
+//     还没完、现在不用我动手」的数(生产中 / 加工中 / 在途 / 等待财务审核 …)。
+//     2026-09-21 用户口径：「黄色数量徽章也放在右上角，在红色徽章的左边」。
+//     同样逐级累加，但走另一张注册表(in_progress_badge_registry)，与红色互不相干。
 //   · [labelSuffix]（标题文字右侧行内）= 次要计数位。一张卡同时有「别人给我的待办」
 //     和「我自己的草稿」时，待办占 [badge]，草稿退到这里（仍是红色 UtenDraftBadge）
 //     ——一个 badge 槽塞两个红圆点读不懂。浏览型计数（历史/记录）也走这里，
 //     用中性 [UtenCountSuffix]。
 //
-// 未启用单据（enabled=false）：图标与标题置灰，右上角显「未启用」chip（占用徽章位）。
+// 未启用单据(enabled=false)：图标与标题置灰，右上角显「未启用」chip(占用徽章位，
+// 此时两枚计数徽章都不渲染——没启用的单据谈不上待办或在办)。
 
 import 'package:flutter/material.dart';
 
@@ -30,6 +35,7 @@ class UtenHubCard extends StatelessWidget {
     this.description,
     this.color,
     this.badge,
+    this.progressBadge,
     this.labelSuffix,
     this.enabled = true,
     this.onDisabledTap,
@@ -47,10 +53,18 @@ class UtenHubCard extends StatelessWidget {
   /// 图标底色与图标色；默认 theme.colorScheme.primary（基础资料按条目传绿/青）。
   final Color? color;
 
-  /// 右上角浮层「待办」徽章（如 PurchaseTaskBadge / UtenNotificationBadge）。
+  /// 右上角浮层「待办」徽章(如 PurchaseTaskBadge / UtenNotificationBadge)，
+  /// 并排两枚时在**右**。
   ///
-  /// 只放「需要我处理」的数字（含本人草稿）；次要计数请用 [labelSuffix]。
+  /// 只放「轮到我动手」的数字(含本人草稿)；「在办中」的数字请用 [progressBadge]，
+  /// 其余次要计数请用 [labelSuffix]。
   final Widget? badge;
+
+  /// 右上角浮层「进行中」黄色徽章([UtenInProgressBadge] 系)，并排两枚时在**左**。
+  ///
+  /// 放「已经在办、还没完、现在不用我动手」的数字。两枚都有时的顺序是
+  /// 「黄 红」——2026-09-21 用户口径，黄色在红色左边。
+  final Widget? progressBadge;
 
   /// 标题右侧的次要计数位：卡片已用 [badge] 放待办时，草稿徽章
   /// （`UtenDraftBadge`）退到这里；浏览型计数用 `UtenCountSuffix`。
@@ -147,11 +161,20 @@ class UtenHubCard extends StatelessWidget {
             Positioned(
               top: UtenSpacing.s8,
               right: UtenSpacing.s8,
-              child:
-                  badge ??
-                  (enabled
-                      ? const SizedBox.shrink()
-                      : _DisabledChip(theme: theme)),
+              // 黄(进行中) 在左、红(待办) 在右; 两枚都是 count<=0 自己返回
+              // SizedBox.shrink, 所以只有一枚有数时另一枚不占宽, 中间那个 s4
+              // 间距也跟着塌掉——不会在单徽章的卡上把它顶偏。
+              child: enabled
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ?progressBadge,
+                        if (progressBadge != null && badge != null)
+                          const SizedBox(width: UtenSpacing.s4),
+                        ?badge,
+                      ],
+                    )
+                  : _DisabledChip(theme: theme),
             ),
           ],
         ),

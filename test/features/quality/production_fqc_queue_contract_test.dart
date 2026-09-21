@@ -13,7 +13,7 @@ void main() {
     final permissionRoutes = File(
       'lib/core/router/permission_by_path.dart',
     ).readAsStringSync();
-    // 2026-09-11：品质计数源登记在待办徽章注册表，工作台模块卡按 TodoModule 委托求和，
+    // 2026-09-11：品质计数源登记在待办徽章注册表，工作台模块卡按 BadgeModule 委托求和，
     // 不再直接 watch 各 provider（见 docs/00-项目准则/14-徽章与计数口径.md）。
     final badge = File(
       'lib/shared/badges/todo_badge_registry.dart',

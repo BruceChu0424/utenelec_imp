@@ -34,6 +34,15 @@ class ProductionExecutionWorkbenchRepository {
   // 它们只服务于「进行中」滑窗详情与外层直报（已下线——双击直达物料分析/计划
   // 详情，报工统一在 /production/workshop-tasks）。服务端端点保留兼容。
 
+  /// 「进行中」批次数(最外层分析/根计划), 与 [groups] 同一读取范围。
+  ///
+  /// 走专用 count 端点而不是 `groups(size: 1).total`: 常驻黄色徽章每 60s 就要问一次,
+  /// 让服务端为了一个数字再把首页行拼出来不划算(ADR-100)。
+  Future<int> groupCount() async {
+    final json = await _api.get('/production/execution-workbench/count');
+    return (json['count'] as num?)?.toInt() ?? 0;
+  }
+
   /// 本批次关联单据（采购/委外申请与订货单、本批次计划树）——
   /// 计划详情页「本批次关联单据」卡片消费。
   Future<List<ProductionExecutionWorkbenchRelatedDocument>> relatedDocuments({

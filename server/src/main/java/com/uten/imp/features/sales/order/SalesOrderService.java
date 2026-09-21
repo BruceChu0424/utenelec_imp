@@ -525,22 +525,38 @@ public class SalesOrderService {
     }
 
     /**
+     * 「进行中」大类（ADR-100，2026-09-21 用户口径「就分三种」）：单子还没走到能发货那一步。
+     * 财务驳回也在这里——它是销售要改单重报的活，但订单本身仍是一张没走完的在途单，
+     * 不给它单开一个大类（进去以后由小类行与状态列区分）。
+     */
+    private static final String IN_PROGRESS_STAGES = "('REJECTED','PENDING','PRODUCING')";
+
+    /** 「可发货」大类：已经可以开单发货、或出货单已经在财务/仓库手上走着的。 */
+    private static final String READY_TO_SHIP_STAGES =
+            "('SHIPPABLE','SHIPMENT_PENDING','WAREHOUSE_PENDING')";
+
+    /**
      * stage 筛选谓词：'' = 全部（历史记录口径，含驳回/进行中/已发货/已中止/已结案）；
-     * 'OPEN' = 待完成（活跃在途，即非 SHIPPED/CANCELED/CLOSED 三个终态）；其余按阶段精确匹配。
+     * 'OPEN' = 待完成（活跃在途，即非 SHIPPED/CANCELED/CLOSED 三个终态）；
+     * 'IN_PROGRESS' / 'READY_TO_SHIP' = 两个大类（各自展开成一组阶段，ADR-100）；
+     * 其余按阶段精确匹配。
      */
     static String progressStagePredicate() {
         String expr = progressStageExpr();
         return "(:stage = '' OR (:stage = 'OPEN' AND (" + expr + ") NOT IN"
                 + " ('SHIPPED','CANCELED','CLOSED'))"
-                + " OR (:stage <> 'OPEN' AND (" + expr + ") = :stage))";
+                + " OR (:stage = 'IN_PROGRESS' AND (" + expr + ") IN " + IN_PROGRESS_STAGES + ")"
+                + " OR (:stage = 'READY_TO_SHIP' AND (" + expr + ") IN " + READY_TO_SHIP_STAGES + ")"
+                + " OR (:stage NOT IN ('OPEN','IN_PROGRESS','READY_TO_SHIP')"
+                + " AND (" + expr + ") = :stage))";
     }
 
     static String normalizeProgressStage(String stage) {
         String normalized = stage == null ? "" : stage.strip().toUpperCase();
         return switch (normalized) {
-            case "", "OPEN", "REJECTED", "PENDING", "PRODUCING", "SHIPPABLE",
-                    "SHIPMENT_PENDING", "WAREHOUSE_PENDING", "SHIPPED",
-                    "CANCELED", "CLOSED" -> normalized;
+            case "", "OPEN", "IN_PROGRESS", "READY_TO_SHIP", "REJECTED", "PENDING",
+                    "PRODUCING", "SHIPPABLE", "SHIPMENT_PENDING", "WAREHOUSE_PENDING",
+                    "SHIPPED", "CANCELED", "CLOSED" -> normalized;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段无效");
         };
     }

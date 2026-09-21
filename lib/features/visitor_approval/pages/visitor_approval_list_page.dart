@@ -1,8 +1,8 @@
 // 访客审批列表(HR)：待审批 / 已批准 / 已拒绝。
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
-// 列：访客姓名/公司/事由/接待人/接待人部门/计划到访/状态。顶部 UtenSegmentedFilter
-// 分段保留。
+// 列：访客姓名/公司/事由/接待人/接待人部门/计划到访/状态。顶部分段用
+// UtenFilterToolbar(2026-09-21 从 UtenSegmentedFilter 迁过来, 为了挂三形态计数)。
 // 2026-09-10 表头筛选 + 批量拒绝/转接待人（审计 A2-visitor-approval）：
 //   * 「状态」「接待人部门」两列筛选桶来自 GET /visitor-approval/facets（按分段状态集
 //     全量聚合），选中后下推 status / hostDepartmentId 参数并回第 1 页（非页内裁剪）；
@@ -23,10 +23,11 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -344,19 +345,33 @@ class _VisitorApprovalListPageState
             top: UtenSpacing.s12,
             bottom: UtenSpacing.s8,
           ),
-          child: UtenSegmentedFilter<ApprovalTab>(
-            selected: _tab,
-            onChanged: _onTabChanged,
+          // 全平台统一筛选工具条(2026-09-21 由 UtenSegmentedFilter 换过来: 旧组件
+          // 把计数拼成 `标签 (N)` 字符串, 没有形态之分, 挂不了三形态计数)。
+          //
+          // 待审批 = 等 HR 动手 -> 红; 已批准 = 人已放行、访客还没来核验, 事情在跑
+          // 但不用 HR 动手 -> 黄(ADR-100); 已拒绝是终态 -> 不挂数。
+          //
+          // 注意黄数字的口径: 取的是「已批准且还没来核验」的在办数(与工作台访客卡
+          // 同源同数), 列表本身仍列出全部已批准记录(含已经来过的), 所以徽章数会
+          // 小于行数 —— 这是刻意的, 黄色回答的是「还有几拨人没来」。
+          child: UtenFilterToolbar<ApprovalTab>(
+            segmentsKey: const Key('visitor-approval-segments'),
+            selected: {_tab},
+            onSelectionChanged: _onTabChanged,
             segments: [
-              UtenSegment(
+              UtenFilterSegment(
                 value: ApprovalTab.pending,
                 label: l10n.visitorApprovalPending,
+                count: ref.watch(visitorPendingCountProvider),
+                countForm: UtenSegmentCountForm.actionable,
               ),
-              UtenSegment(
+              UtenFilterSegment(
                 value: ApprovalTab.approved,
                 label: l10n.visitorFilterApproved,
+                count: ref.watch(visitorApprovalOngoingCountProvider),
+                countForm: UtenSegmentCountForm.inProgress,
               ),
-              UtenSegment(
+              UtenFilterSegment(
                 value: ApprovalTab.rejected,
                 label: l10n.visitorFilterRejected,
               ),

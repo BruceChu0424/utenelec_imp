@@ -34,7 +34,7 @@ public class FulfillmentWorkbenchController {
     @GetMapping("/warehouse/count")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseCount() {
-        return Map.of("count", queryService.countPending("WAREHOUSE"));
+        return counts("WAREHOUSE");
     }
 
     /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
@@ -53,14 +53,22 @@ public class FulfillmentWorkbenchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return queryService.query("PURCHASE", status, keyword, exception, dateFrom, dateTo, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "needDate") String sort,
+            @RequestParam(defaultValue = "asc") String order,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedTo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
+            @RequestParam Map<String, String> params) {
+        return queryService.query("PURCHASE", status, keyword, exception, dateFrom, dateTo, page, size,
+                FulfillmentWorkbenchTableQuery.from(sort, order, params, issuedFrom, issuedTo, needFrom, needTo));
     }
 
     @GetMapping("/purchase/count")
     @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
     public Map<String, Long> purchaseCount() {
-        return Map.of("count", queryService.countPending("PURCHASE"));
+        return counts("PURCHASE");
     }
 
     @GetMapping("/subcontract")
@@ -87,6 +95,21 @@ public class FulfillmentWorkbenchController {
     @GetMapping("/subcontract/count")
     @PreAuthorize("hasAnyAuthority('subcontract_application:view','subcontract_order:view')")
     public Map<String, Long> subcontractCount() {
-        return Map.of("count", queryService.countPending("SUBCONTRACT"));
+        return counts("SUBCONTRACT");
+    }
+
+    /**
+     * 任务中心角标：pending = 等本部门动手的单据数(红)，inProgress = 已经在办、
+     * 现在不用本部门动手的单据数(黄，ADR-100)。仓库备料没有在办态，inProgress 恒 0。
+     *
+     * <p>count 是 pending 的旧键名：仓库任务中心的角标仍按这个键读，
+     * 两个键同值，不是两个口径。
+     */
+    private Map<String, Long> counts(String department) {
+        long pending = queryService.countPending(department);
+        return Map.of(
+                "count", pending,
+                "pending", pending,
+                "inProgress", queryService.countInProgress(department));
     }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -45,10 +46,26 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 分类分段范式（ADR-066）：阶段行默认不选（内容区是引导占位，不发
-      // progress 请求），先点「财务驳回」段才按 stage=REJECTED 加载。
-      await tester.tap(find.text('财务驳回'));
+      // 分类分段范式(ADR-066) + 两层分类(ADR-100)：大类行默认不选(内容区是引导
+      // 占位，不发 progress 请求)。先点大类「进行中」按组加载，再点小类「财务驳回」
+      // 收窄到 stage=REJECTED —— 小类行必须等大类选中后才出现。
+      await tester.tap(find.text('进行中'));
       await tester.pumpAndSettle();
+      expect(
+        api.progressQueries.single['stage'],
+        'IN_PROGRESS',
+        reason: '大类直接按组拉，不该退化成前端多拼几次单阶段请求',
+      );
+
+      // 大类拉回来的行里已经有一张「财务驳回」状态药丸, 裸 find.text 会同时命中
+      // 分段标签和表格单元格 —— 按分段标签控件定位才唯一。
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) => w is UtenSegmentBadgeLabel && w.label == '财务驳回',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.last['stage'], 'REJECTED');
 
       // 2026-09-05 起列表为 MasterDataTableView：阶段列为语义底色单元格
       //（驳回人/时间在进度详情页展示，不再进表格行）。
@@ -63,77 +80,140 @@ void main() {
     },
   );
 
-  // 分段计数两形态（docs/00-项目准则/14-徽章与计数口径.md）：本页只有「财务驳回」
-  // 是销售自己要改单重报的待办（与 salesAttentionCountProvider 同源）→ 红徽章；
-  // 待排产/生产中/可分批发货下一步在生产与仓库手里，是进度监控数 → 中性括号。
-  testWidgets('rejected and shippable stages are sales action queues', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final api = _ProgressApi();
+  // 两层分类 + 三形态计数(ADR-100 / docs/00-项目准则/14-徽章与计数口径.md)。
+  //
+  // 大类行只有三段(进行中 / 可发货 / 历史记录)，每个大类同时挂两枚徽章：
+  // 黄 = 本类里还在别人手上跑的单，红 = 本类里等销售动手的单，两枚都是各小类之和。
+  // 小类行要等大类选中后才出现；里面「财务驳回」「可分批发货」红(销售要改单/要开单)，
+  // 其余四档黄(球在生产/财务/仓库手上)。
+  // 黄徽章与红徽章同规矩：归零整枚不渲染，不留 `(0)` 占位。
+  testWidgets(
+    'top row is three groups with paired badges; sub-row splits red and yellow',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ProgressApi();
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          apiClientProvider.overrideWithValue(api),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.salesOrderView,
-          }),
-        ],
-        child: _host(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    Finder segment(String label) => find.byWidgetPredicate(
-      (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
-    );
-
-    // 财务驳回：待办 → 红徽章 1（不带括号）。
-    expect(
-      tester.widget<UtenSegmentBadgeLabel>(segment('财务驳回')).countForm,
-      UtenSegmentCountForm.actionable,
-    );
-    expect(
-      find.descendant(
-        of: segment('财务驳回'),
-        matching: find.byType(UtenNotificationBadge),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: segment('财务驳回'), matching: find.text('(1)')),
-      findsNothing,
-    );
-
-    // 其余阶段：监控数 → 中性括号，0 也显示 `(0)` 保持队形，且没有红徽章。
-    expect(
-      tester.widget<UtenSegmentBadgeLabel>(segment('可分批发货')).countForm,
-      UtenSegmentCountForm.actionable,
-    );
-    for (final label in ['待排产', '生产中']) {
-      expect(
-        tester.widget<UtenSegmentBadgeLabel>(segment(label)).countForm,
-        UtenSegmentCountForm.browsing,
-        reason: label,
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.salesOrderView,
+            }),
+          ],
+          child: _host(),
+        ),
       );
+      await tester.pumpAndSettle();
+
+      Finder segment(String label) => find.byWidgetPredicate(
+        (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
+      );
+
+      // 大类行就三段，六个阶段不再一字排开。
+      expect(segment('进行中'), findsOneWidget);
+      expect(segment('可发货'), findsOneWidget);
+      expect(segment('历史记录'), findsOneWidget);
+      // 小类要等大类选中后才出现。
+      expect(segment('财务驳回'), findsNothing);
+      expect(segment('生产中'), findsNothing);
+
+      // 「进行中」大类 = 红 1(财务驳回) + 黄 3(生产中; 待排产 0 不计)。
+      final inProgressGroup = tester.widget<UtenSegmentBadgeLabel>(
+        segment('进行中'),
+      );
+      expect(inProgressGroup.count, 1, reason: '红 = 本类里等销售动手的单');
+      expect(inProgressGroup.countForm, UtenSegmentCountForm.actionable);
+      expect(inProgressGroup.inProgressCount, 3, reason: '黄 = 本类里还在跑的单');
       expect(
-        find.descendant(of: segment(label), matching: find.text('(0)')),
+        find.descendant(
+          of: segment('进行中'),
+          matching: find.byType(UtenNotificationBadge),
+        ),
         findsOneWidget,
-        reason: label,
       );
       expect(
         find.descendant(
-          of: segment(label),
+          of: segment('进行中'),
+          matching: find.byType(UtenInProgressBadge),
+        ),
+        findsOneWidget,
+      );
+
+      // 「可发货」整类都是 0：两枚徽章都缩回，不留 `(0)` 占位。
+      expect(tester.widget<UtenSegmentBadgeLabel>(segment('可发货')).count, 0);
+      expect(
+        find.descendant(
+          of: segment('可发货'),
           matching: find.byType(UtenNotificationBadge),
         ),
         findsNothing,
-        reason: label,
       );
-    }
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.descendant(of: segment('可发货'), matching: find.text('(0)')),
+        findsNothing,
+      );
+
+      // 点开大类后小类行出现，红黄按「轮到谁动手」分。
+      await tester.tap(find.text('进行中'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<UtenSegmentBadgeLabel>(segment('财务驳回')).countForm,
+        UtenSegmentCountForm.actionable,
+      );
+      for (final label in ['待排产', '生产中']) {
+        expect(
+          tester.widget<UtenSegmentBadgeLabel>(segment(label)).countForm,
+          UtenSegmentCountForm.inProgress,
+          reason: label,
+        );
+        expect(
+          find.descendant(
+            of: segment(label),
+            matching: find.byType(UtenNotificationBadge),
+          ),
+          findsNothing,
+          reason: label,
+        );
+      }
+      // 有数的在途小类亮黄徽章并带数字；归零的那档整枚缩回。
+      expect(
+        find.descendant(of: segment('生产中'), matching: find.text('3')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: segment('待排产'),
+          matching: find.byType(UtenInProgressBadge),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: segment('待排产'), matching: find.text('(0)')),
+        findsNothing,
+      );
+
+      // 切到另一个大类时，小类行换成那一类的三档。
+      await tester.tap(find.text('可发货'));
+      await tester.pumpAndSettle();
+      expect(segment('可分批发货'), findsOneWidget);
+      expect(segment('财务驳回'), findsNothing);
+      expect(
+        tester.widget<UtenSegmentBadgeLabel>(segment('可分批发货')).countForm,
+        UtenSegmentCountForm.actionable,
+      );
+      for (final label in ['出货待财审', '等仓库出货']) {
+        expect(
+          tester.widget<UtenSegmentBadgeLabel>(segment(label)).countForm,
+          UtenSegmentCountForm.inProgress,
+          reason: label,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'history segment loads ALL orders (stage empty) across every stage',
@@ -246,10 +326,22 @@ class _ProgressApi extends ApiClient {
         ),
         _row('order-closed', 'SO-CLOSED', stage: 'CLOSED', closed: true),
       ];
-      // stage 非空 = 活跃阶段段精确匹配；'' = 历史记录全量（含终态）。
+      // 大类码展开成一组阶段(与后端 progressStagePredicate 同口径)；
+      // stage 非空且非大类 = 单阶段精确匹配；'' = 历史记录全量(含终态)。
+      const groups = <String, List<String>>{
+        'IN_PROGRESS': ['REJECTED', 'PENDING', 'PRODUCING'],
+        'READY_TO_SHIP': ['SHIPPABLE', 'SHIPMENT_PENDING', 'WAREHOUSE_PENDING'],
+      };
+      final wanted = groups[stage];
       final rows = stage.isEmpty
           ? allRows
-          : allRows.where((r) => r['stage'] == stage).toList();
+          : allRows
+                .where(
+                  (r) => wanted == null
+                      ? r['stage'] == stage
+                      : wanted.contains(r['stage']),
+                )
+                .toList();
       return {
         'items': rows,
         'page': 1,
@@ -259,11 +351,15 @@ class _ProgressApi extends ApiClient {
       };
     }
     if (path == '/sales/orders/progress/stage-counts') {
+      // PRODUCING 特意非零、PENDING 特意为零: 同一条分段行里同时钉住
+      // 「有数亮黄徽章」与「归零整枚缩回」两半口径。
       return const {
         'REJECTED': 1,
         'PENDING': 0,
-        'PRODUCING': 0,
+        'PRODUCING': 3,
         'SHIPPABLE': 0,
+        'SHIPMENT_PENDING': 0,
+        'WAREHOUSE_PENDING': 0,
         'SHIPPED': 0,
       };
     }

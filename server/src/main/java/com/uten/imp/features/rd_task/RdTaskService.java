@@ -22,6 +22,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -79,8 +80,7 @@ public class RdTaskService {
                                         UUID assigneeId, int page, int size) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 200);
-        boolean done = "done".equalsIgnoreCase(statusScope);
-        List<String> statuses = done ? List.of("DONE", "CANCELED") : List.of("OPEN", "IN_PROGRESS");
+        List<String> statuses = scopeStatuses(statusScope);
 
         List<String> where = new ArrayList<>();
         where.add("t.is_deleted = false");
@@ -122,13 +122,42 @@ public class RdTaskService {
         return new PageResponse<>(items, p, sz, t, totalPages);
     }
 
-    /** 待完成任务数（徽标）。 */
+    /**
+     * 列表分段的状态集。「待完成」自 ADR-100 起在页内拆成「待处理」与「进行中」两段，
+     * 各自要能点进去，所以在旧的 open/done 两档之外再认两个单档；
+     * {@code open} 仍是两档合集，默认值与老调用点一个字不用改。
+     */
+    private static List<String> scopeStatuses(String statusScope) {
+        String scope = statusScope == null ? "" : statusScope.strip().toLowerCase(Locale.ROOT);
+        return switch (scope) {
+            case "done" -> List.of("DONE", "CANCELED");
+            case "pending" -> List.of("OPEN");
+            // 客户端可能写 in_progress 或 inProgress，小写化后两种都落在这里。
+            case "in_progress", "inprogress" -> List.of("IN_PROGRESS");
+            default -> List.of("OPEN", "IN_PROGRESS");
+        };
+    }
+
+    /**
+     * 任务中心两档计数(ADR-100)：open = 还没人接手(红：轮到研发动手)，
+     * inProgress = 已接手在办(黄：在跑、现在不用我动手)。一条 SQL 分桶。
+     */
     @Transactional(readOnly = true)
-    public long countOpen() {
-        Long c = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM rd_tasks WHERE is_deleted = false AND status IN ('OPEN','IN_PROGRESS')",
-                Long.class);
-        return c == null ? 0 : c;
+    public RdTaskCounts counts() {
+        RdTaskCounts counts = jdbc.queryForObject("""
+                SELECT COUNT(*) FILTER (WHERE status = 'OPEN'),
+                       COUNT(*) FILTER (WHERE status = 'IN_PROGRESS')
+                FROM rd_tasks
+                WHERE is_deleted = false AND status IN ('OPEN','IN_PROGRESS')
+                """, (rs, rowNum) -> new RdTaskCounts(rs.getLong(1), rs.getLong(2)));
+        return counts == null ? new RdTaskCounts(0, 0) : counts;
+    }
+
+    /** 研发任务中心计数：待处理 + 进行中；total 是旧「待完成」口径，两者之和。 */
+    public record RdTaskCounts(long open, long inProgress) {
+        public long total() {
+            return open + inProgress;
+        }
     }
 
     @Transactional(readOnly = true)

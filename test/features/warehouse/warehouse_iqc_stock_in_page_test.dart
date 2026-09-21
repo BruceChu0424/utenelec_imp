@@ -74,9 +74,9 @@ void main() {
       contains('warehouseQualityResultPendingCountProvider'),
     );
     expect(countRefresh, contains('warehouseQualityResultTypeCountsProvider'));
-    // 2026-09-11：同上，工作台模块卡按 TodoModule 委托求和；品质结果计数源
+    // 2026-09-11：同上，工作台模块卡按 BadgeModule 委托求和；品质结果计数源
     // 在注册表里（下一条断言）。
-    expect(moduleBadge, contains('TodoModule.warehouse'));
+    expect(moduleBadge, contains('BadgeModule.warehouse'));
     expect(
       globalRefresh,
       contains('warehouseQualityResultPendingCountProvider'),

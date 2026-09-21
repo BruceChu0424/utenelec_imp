@@ -888,15 +888,23 @@ class _FinanceSalesOrderConfirmationPageState
       searchKey: const Key('sales-order-finance-search'),
       compactBreakpoint: UtenBreakpoints.mediumStart,
       segments: [
-        // 「待确认」= 等我放行的队列 → 红徽章；「已驳回」下一步在销售手上 → 中性括号数
-        // (2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数)。
+        // 「待确认」= 等我放行的队列 → 红徽章。
+        // 「已驳回」= 我退回去了、销售还没改回来: 既不是终态(单子还会再回到本页),
+        // 也不用财务现在动手 -> 黄色进行中徽章(ADR-100 判定顺序第二问)。
+        // 注意与销售自己的出货/订货列表页相反: 在那边这批单是「本人要改单重报」的活,
+        // 必须红; 同一批单在两条链上各答各的问题, 不是双计。
         UtenFilterSegment(
           value: false,
           label: '待确认',
           count: pendingCount,
           countForm: UtenSegmentCountForm.actionable,
         ),
-        UtenFilterSegment(value: true, label: '已驳回', count: _rejectedCount),
+        UtenFilterSegment(
+          value: true,
+          label: '已驳回',
+          count: _rejectedCount,
+          countForm: UtenSegmentCountForm.inProgress,
+        ),
       ],
       selected: {_showRejected},
       onSelectionChanged: (value) {

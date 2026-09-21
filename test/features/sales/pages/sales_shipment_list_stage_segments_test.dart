@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
@@ -67,15 +68,19 @@ void main() {
     // 默认不选不发请求。
     expect(api.listQueries, isEmpty);
     // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要有数——分段计数一次取自
-    // /documents/status-counts?kind=salesShipment: 草稿 4 / 财务已退回 2 红徽章,
-    // 等待财务审核 3 / 已审 1 / 已出库 9 / 红冲 0 中性括号(0 也显示保持队形), 历史记录不挂。
+    // /documents/status-counts?kind=salesShipment。三形态(ADR-100):
+    //   · 草稿 4 / 财务已退回 2 = 红徽章(销售自己要提交、要改单重报);
+    //   · 等待财务审核 3 / 已审 1 = 黄色进行中徽章(球在财务、仓库手上, 单子还在跑;
+    //     「已审」在状态列的全称就是「已审 · 待出库」, 不是终态);
+    //   · 已出库 9 / 红冲 0 = 中性括号(已经结束; 0 也显示保持队形), 历史记录不挂数。
     expect(api.statusCountQueries.single['kind'], 'salesShipment');
     expect(api.statusCountQueries.single.containsKey('shipmentKind'), isFalse);
     expect(find.byType(UtenNotificationBadge), findsNWidgets(2));
     expect(find.text('4'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
-    expect(find.text('(3)'), findsOneWidget);
-    expect(find.text('(1)'), findsOneWidget);
+    expect(find.byType(UtenInProgressBadge), findsNWidgets(2));
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
     expect(find.text('(9)'), findsOneWidget);
     expect(find.text('(0)'), findsOneWidget);
 

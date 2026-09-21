@@ -226,6 +226,9 @@ class _WarehouseQualityResultsPageState
       });
       ref.invalidate(warehouseQualityResultPendingCountProvider);
       ref.invalidate(warehouseQualityResultTypeCountsProvider);
+      // 「等待结果」是 hub 卡的黄色数字(ADR-100), 与红色两支同批失效, 否则办完
+      // 一单回到仓库 hub 还得等 60s 轮询才看到黄数字变。
+      ref.invalidate(warehouseQualityResultWaitingCountProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -518,8 +521,8 @@ class _WarehouseQualityResultsPageState
         // 无「全部」段，末尾是「历史记录」段；进页面不预选。
         // 计数形态：红徽章只挂需要仓库下一步操作的状态（全部合格/部分合格/
         // 不合格退回，见 WarehouseQualityWorkStatus.actionable）；「等待结果」
-        // 由品质部推进、仓库只是预判工作量 → 中性括号；
-        // 「已完结」「历史记录」不传 count。
+        // 货已经收进来了、结论在品质部手上, 仓库这一档还没完结但也不用动手
+        // -> 黄色进行中徽章(ADR-100); 「已完结」「历史记录」不传 count。
         UtenFilterToolbar<_QStatusSeg>(
           segmentsKey: const Key('warehouse-quality-result-status'),
           enabled: _receiptType != null,
@@ -529,9 +532,14 @@ class _WarehouseQualityResultsPageState
                 value: _QStatusSeg.stage(status),
                 label: status.shortLabel,
                 count: status.isCompleted ? null : _statusCount(status),
-                countForm: status.actionable
-                    ? UtenSegmentCountForm.actionable
-                    : UtenSegmentCountForm.browsing,
+                countForm: switch (status) {
+                  WarehouseQualityWorkStatus.waitingInspection =>
+                    UtenSegmentCountForm.inProgress,
+                  // 已完结不带数, 形态只是占位。
+                  WarehouseQualityWorkStatus.completed =>
+                    UtenSegmentCountForm.browsing,
+                  _ => UtenSegmentCountForm.actionable,
+                },
               ),
             const UtenFilterSegment(
               value: _QStatusSeg.history(),

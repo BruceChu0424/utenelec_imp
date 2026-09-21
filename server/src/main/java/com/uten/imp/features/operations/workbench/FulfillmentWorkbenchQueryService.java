@@ -35,9 +35,20 @@ public class FulfillmentWorkbenchQueryService {
             Set.of("WAREHOUSE", "PURCHASE", "SUBCONTRACT");
     private static final String PENDING_MAKE =
             "task.status = 'ACTIVE' AND task.notified_qty < task.required_qty";
-    /** ADR-098：委外任务中心「进行中」= 订货单提交财务到结案之间的三档。 */
+    /**
+     * 「进行中」= 订货单提交财务到结案之间的三档：ADR-098 先在委外任务中心落地，
+     * ADR-100 把同一范式铺到采购任务工作台——分段栏只留「申请待分解」(红) 与
+     * 「进行中」(黄) 两段，三档降级为表格里可筛的状态列。
+     */
     static final List<String> IN_PROGRESS_STATUSES =
             List.of("ORDER_PENDING_APPROVAL", "FINANCE_APPROVED", "FINANCE_REJECTED");
+    /**
+     * 上面三档的 SQL 字面量。列表筛选、分段合计、黄徽章计数三处都从这一个常量展开，
+     * 免得有人只在其中一处加档，让黄数与列表行数对不上。
+     */
+    private static final String IN_PROGRESS_STATUS_SQL = IN_PROGRESS_STATUSES.stream()
+            .map(code -> "'" + code + "'")
+            .collect(java.util.stream.Collectors.joining(", "));
     /**
      * 低于允许下限待判定(含分批等待逾期)的回厂短交案件 → 该订货单在任务中心标红、计入红徽章。
      * 容差内 / 未设允许损耗的中性案件不在此列(状态列另显「容差内待结案」, 不计红)。
@@ -246,8 +257,7 @@ public class FulfillmentWorkbenchQueryService {
                 department = :department
                   AND (:status = ''
                        OR (:status = 'OPEN_ANY' AND open_line_count > 0)
-                       OR (:status = 'IN_PROGRESS' AND task_status IN (
-                               'ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED'))
+                       OR (:status = 'IN_PROGRESS' AND task_status IN (%s))
                        OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status))
                   AND (:exception = ''
                        OR (:exception = 'OVERDUE_ANY' AND exception_code LIKE 'OVERDUE%%')
@@ -265,7 +275,7 @@ public class FulfillmentWorkbenchQueryService {
                        OR updated_at >= CAST(:date_from AS date))
                   AND (CAST(:date_to AS date) IS NULL
                        OR updated_at < CAST(:date_to AS date) + INTERVAL '1 day')
-                """;
+                """.formatted(IN_PROGRESS_STATUS_SQL);
         String tableFilters = table == null ? "" : table.rangeSql() + table.filterSql(null);
         String priority = "CASE WHEN can_create_order THEN 0 WHEN open_line_count > 0 THEN 1 ELSE 2 END, ";
         String orderBy = priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql());
@@ -324,9 +334,10 @@ public class FulfillmentWorkbenchQueryService {
         for (Object[] row : NativeQueryResults.objectArrayRows(statusQuery)) {
             statusCounts.put((String) row[0], ((Number) row[1]).longValue());
         }
-        if ("SUBCONTRACT".equals(department)) {
-            // ADR-098：委外任务中心把等待财务审核 / 财务已通过 / 财务已退回合并成「进行中」一段
-            // (中性数字); 三档各自的计数保留给状态列与异常小类行。
+        if (usesDecompositionProjection(department)) {
+            // 采购与委外的任务中心都把等待财务审核 / 财务已通过 / 财务已退回合并成「进行中」
+            // 一段(ADR-100 的黄色在办数); 三档各自的计数保留给可筛的状态列与异常小类行。
+            // 合并只发生在分段栏这一层, 逐档明细一个都没丢。
             statusCounts.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
                     .mapToLong(code -> statusCounts.getOrDefault(code, 0L)).sum());
         }
@@ -434,8 +445,7 @@ public class FulfillmentWorkbenchQueryService {
                 && !accessPolicy.canAccessWarehouseTasks()) {
             return 0;
         }
-        boolean decomposition = "PURCHASE".equals(department)
-                || "SUBCONTRACT".equals(department);
+        boolean decomposition = usesDecompositionProjection(department);
         // 与列表同口径：采购/委外按单据归组计数（一张申请/订货单=一个待办）；
         // 仓库按单张领料单计数（一张 DRAW=一个待办，未挂单的行退回行级）。
         boolean includePreparation = "SUBCONTRACT".equals(department)
@@ -469,6 +479,49 @@ public class FulfillmentWorkbenchQueryService {
                     """);
         query.setParameter("department", department);
         return ((Number) query.getSingleResult()).longValue();
+    }
+
+    /**
+     * 任务中心黄徽章数 (ADR-100「我手上还有多少在跑」)：采购/委外的「进行中」合计，
+     * 与分段栏 {@code summary.statusCounts.IN_PROGRESS} 同一口径——等待财务审核 /
+     * 财务已通过 / 财务已退回三档，球都不在本部门手上，但单子还在流程里没结束。
+     *
+     * <p>分组键与列表的归组完全一致 (action_doc_type + action_doc_id + task_status)，
+     * 所以黄数与「进行中」列表的行数逐条相等；这与红数 {@link #countPending} 的
+     * {@code DISTINCT action_doc_id} 是两个量纲，ADR-100 §2.6 已写明不要拿两个数对账。
+     *
+     * <p>刻意不套 {@code open_qty > 0}：回厂净量已到齐、订货单还没关闭的单子仍在
+     * 进行中列表里看得见，黄数漏掉它就会与列表行数对不上。
+     *
+     * <p>仓库备料只有「待备料 / 部分领取」两档，都是等本部门动手的红色待办，没有在办态，
+     * 故恒为 0 且不查库。
+     */
+    @Transactional(readOnly = true)
+    public long countInProgress(String department) {
+        if (!DEPARTMENTS.contains(department)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
+        }
+        if (!usesDecompositionProjection(department)) {
+            return 0;
+        }
+        Query query = em.createNativeQuery("""
+                SELECT COUNT(*) FROM (
+                    SELECT decomposition.action_doc_type, decomposition.action_doc_id,
+                           decomposition.task_status
+                    FROM v_procurement_decomposition_tasks decomposition
+                    WHERE decomposition.department = :department
+                      AND decomposition.task_status IN (%s)
+                    GROUP BY decomposition.action_doc_type, decomposition.action_doc_id,
+                             decomposition.task_status
+                ) documents
+                """.formatted(IN_PROGRESS_STATUS_SQL));
+        query.setParameter("department", department);
+        return ((Number) query.getSingleResult()).longValue();
+    }
+
+    /** 采购/委外读订货分解投影，仓库读领料投影——两边的归组键与状态集合都不通用。 */
+    private static boolean usesDecompositionProjection(String department) {
+        return "PURCHASE".equals(department) || "SUBCONTRACT".equals(department);
     }
 
     /**
@@ -508,8 +561,9 @@ public class FulfillmentWorkbenchQueryService {
     /** Pending preparation is a server-paged read-only task, never a client-side extra row. */
     private String enrichTableRows(String source, String department) {
         boolean subcontract = "SUBCONTRACT".equals(department);
+        boolean purchase = "PURCHASE".equals(department);
         boolean canCreate = subcontract ? accessPolicy.canCreateSubcontractOrder()
-                : "PURCHASE".equals(department) && accessPolicy.canCreatePurchaseOrder();
+                : purchase && accessPolicy.canCreatePurchaseOrder();
         String requestType = subcontract ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST";
         List<String> types = "WAREHOUSE".equals(department) ? List.of("DRAW")
                 : subcontract ? List.of("SUBCONTRACT_APPLICATION", "SUBCONTRACT_ORDER", "SUBCONTRACT_MAKE_TASK")
@@ -586,6 +640,9 @@ public class FulfillmentWorkbenchQueryService {
                 ) progress ON TRUE
                 """.formatted(SHORT_DELIVERY_PENDING_EXISTS.formatted("base.action_doc_id"),
                         SHORT_DELIVERY_TOLERANT_EXISTS.formatted("base.action_doc_id")) : "";
+        // ADR-100：采购侧的执行状态就是 task_status 本身(等待财务审核 / 财务已通过 /
+        // 财务已退回三档), 下面的 ELSE 分支已经把它落进 display_stage —— 采购与委外因此
+        // 共用同一列做状态列、表头筛选与排序, 采购不另算一遍。
         String stageExpression = subcontract ? """
                 CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
                      WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND base.task_status='FINANCE_APPROVED' THEN
@@ -599,9 +656,15 @@ public class FulfillmentWorkbenchQueryService {
                      ELSE base.task_status END""" : """
                 CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
                      ELSE base.task_status END""";
+        // 采购的财务已退回也写进 exception_code(与委外同构)：分段栏虽把它并进了「进行中」,
+        // 但改单重报是本部门要动手的活, 必须继续以异常小类行挂红徽章;
+        // countPending 走的是 task_status, 不受这里改写影响, 红数一个不少。
         String exceptionExpression = subcontract ? """
                 CASE WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND progress.short_pending THEN 'SHORT_DELIVERY'
                      WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND base.task_status='FINANCE_REJECTED'
+                          THEN 'FINANCE_REJECTED'
+                     ELSE base.exception_code END""" : purchase ? """
+                CASE WHEN base.action_doc_type='PURCHASE_ORDER' AND base.task_status='FINANCE_REJECTED'
                           THEN 'FINANCE_REJECTED'
                      ELSE base.exception_code END""" : "base.exception_code";
         // A grouped order can contain several real source issues. Its earliest source issue

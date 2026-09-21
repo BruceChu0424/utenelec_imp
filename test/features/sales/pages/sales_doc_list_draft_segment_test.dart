@@ -99,7 +99,8 @@ void main() {
       find.descendant(of: draftSegment, matching: find.text('7')),
       findsOneWidget,
     );
-    // 四个链路大类仍是中性括号：整条工具条只有「草稿」一枚红徽章。
+    // 整条工具条只有「草稿」一枚红徽章: 待生产 / 生产中 走黄色进行中徽章(ADR-100,
+    // 球在生产手上), 待发货 / 本月完成 走中性括号, 都不许染红。
     expect(find.byType(UtenNotificationBadge), findsOneWidget);
   });
 

@@ -1,12 +1,14 @@
 package com.uten.imp.features.visitor;
 
 import com.uten.imp.application.port.HrNoticePort;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
+import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorQueueCounts;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
@@ -52,20 +54,21 @@ public class VisitorHostConfirmService {
         return appService.toPageResponse(result, pageable);
     }
 
-    /** 我作为接待人的待确认数（工作台/导航徽章）：与 myAsHost 同一条件。 */
+    /**
+     * 被访人两档计数(ADR-100)：pending 仍与 {@link #myAsHost} 默认段同一条件(待我确认)，
+     * ongoing 是我已确认、这趟来访还没走完的(HR 审批中 + 已通过待来访)——球不在我手上，走黄色。
+     */
     @Transactional(readOnly = true)
-    public long myAsHostPendingCount() {
+    public VisitorQueueCounts myAsHostCounts() {
         UUID employeeId = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getEmployeeId();
         if (employeeId == null) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
-        final UUID eid = employeeId;
-        Specification<VisitorApplication> spec = (root, q, cb) -> cb.and(
-                cb.equal(root.get("deleted"), false),
-                cb.equal(root.get("hostEmployeeId"), eid),
-                cb.equal(root.get("status"), "hostReviewing"));
-        return appRepo.count(spec);
+        Object[] row = appRepo.countHostQueues(
+                employeeId, BusinessTime.startOfDay(BusinessTime.today())).getFirst();
+        return new VisitorQueueCounts(
+                ((Number) row[0]).longValue(), ((Number) row[1]).longValue());
     }
 
     @Transactional

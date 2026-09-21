@@ -1,9 +1,12 @@
 // 采购订货单列表「等待财务审核 / 财务已退回」分段契约（2026-09-19 建, 2026-09-21 改）：
 // 财务通过前订货单 status 保持 0，在审单与财务退回件都不再混进「草稿」段——
 //  - 「草稿」段请求带 financeApproval=NONE（真草稿，排除在审单与退回件）；
-//  - 「等待财务审核」段请求带 financeApproval=PENDING，计数为中性括号 (N)；
+//  - 「等待财务审核」段请求带 financeApproval=PENDING，计数为黄色在办徽章
+//    (ADR-100: 单已经交出去、球在财务手上、还没完, 现在不用本人动手);
 //  - 「财务已退回」段请求带 financeApproval=REJECTED，计数为红色通知徽章
-//    (用户口径: 父分类有红徽章, 子分类也要有数; 财务退回不能放在草稿里);
+//    (用户口径: 父分类有红徽章, 子分类也要有数; 财务退回不能放在草稿里,
+//     更不能被当成「进行中」吞掉——它要本人改单重报);
+//  - 已审 / 红冲已经结束，仍是中性括号 (N)；
 //  - 分段计数一次取自 GET /documents/status-counts?kind=purchaseOrder，
 //    不再用 list(size:1) 逐段凑数。
 import 'package:dio/dio.dart';
@@ -12,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -84,7 +88,7 @@ void main() {
         expect(segment(label), findsOneWidget, reason: '分段「$label」');
       }
 
-      // 草稿 5 / 财务已退回 2 = 等本人动手 → 红徽章；其余中性括号。
+      // 草稿 5 / 财务已退回 2 = 等本人动手 → 红徽章，整条工具条只此两枚。
       final badges = find.descendant(
         of: toolbar,
         matching: find.byType(UtenNotificationBadge),
@@ -98,7 +102,18 @@ void main() {
         find.descendant(of: toolbar, matching: find.text('2')),
         findsOneWidget,
       );
-      expect(find.text('(3)'), findsOneWidget);
+      // 等待财务审核 3 = 在办 → 黄徽章一枚, 不再是中性括号 (3), 见 ADR-100。
+      final progressBadges = find.descendant(
+        of: toolbar,
+        matching: find.byType(UtenInProgressBadge),
+      );
+      expect(progressBadges, findsOneWidget);
+      expect(
+        find.descendant(of: progressBadges, matching: find.text('3')),
+        findsOneWidget,
+      );
+      expect(find.text('(3)'), findsNothing);
+      // 已审 7 / 红冲 1 已经结束，仍是中性括号。
       expect(find.text('(7)'), findsOneWidget);
       expect(find.text('(1)'), findsOneWidget);
 

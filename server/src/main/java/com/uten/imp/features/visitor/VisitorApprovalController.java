@@ -7,6 +7,7 @@ import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApprovalFacets;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
+import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorQueueCounts;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,8 +27,8 @@ import java.util.UUID;
  * GET  /api/visitor-approval            待审批列表（HR，status/hostDepartmentId 可选）
  * GET  /api/visitor-approval/facets     审批列表表头筛选桶（状态/接待人部门）
  * GET  /api/visitor-approval/as-host    我作为接待人的待确认列表（被访人）
- * GET  /api/visitor-approval/pending-count        HR 待办数（徽章）
- * GET  /api/visitor-approval/host-pending-count   被访人待确认数（徽章）
+ * GET  /api/visitor-approval/pending-count        HR 待办数 + 在途数(红/黄徽章)
+ * GET  /api/visitor-approval/host-pending-count   被访人待确认数 + 在途数(红/黄徽章)
  * GET  /api/visitor-approval/{id}       详情
  * POST /api/visitor-approval/{id}/action      approve/reject/forward
  * POST /api/visitor-approval/{id}/host-confirm 被访人确认
@@ -68,16 +69,32 @@ public class VisitorApprovalController {
         return hostConfirmService.myAsHost(status, page, size);
     }
 
+    /**
+     * count 保持旧含义(待我审批)，老调用点零改动；ADR-100 另给出 pending(同 count，红徽章)
+     * 与 ongoing(已批准、访客还没来核验，黄徽章)。
+     */
     @GetMapping("/pending-count")
     @PreAuthorize("hasAuthority('visitor:approve')")
     public Map<String, Long> pendingCount() {
-        return Map.of("count", hrApprovalService.pendingCount());
+        VisitorQueueCounts counts = hrApprovalService.counts();
+        return Map.of(
+                "count", counts.pending(),
+                "pending", counts.pending(),
+                "ongoing", counts.ongoing());
     }
 
+    /**
+     * count 保持旧含义(待我确认接待)，老调用点零改动；ADR-100 另给出 pending(同 count，红徽章)
+     * 与 ongoing(我已确认、这趟来访还没走完，黄徽章)。
+     */
     @GetMapping("/host-pending-count")
     @PreAuthorize("hasAuthority('visitor:host-confirm')")
     public Map<String, Long> hostPendingCount() {
-        return Map.of("count", hostConfirmService.myAsHostPendingCount());
+        VisitorQueueCounts counts = hostConfirmService.myAsHostCounts();
+        return Map.of(
+                "count", counts.pending(),
+                "pending", counts.pending(),
+                "ongoing", counts.ongoing());
     }
 
     @GetMapping("/{id}")

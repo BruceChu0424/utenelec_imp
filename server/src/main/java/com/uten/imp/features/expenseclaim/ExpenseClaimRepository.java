@@ -41,9 +41,6 @@ public interface ExpenseClaimRepository
             """)
     Object[] aggregatePaidBetween(@Param("from") Instant from, @Param("to") Instant to);
 
-    @Query("SELECT count(c) FROM ExpenseClaim c WHERE c.applicantId=:actor AND c.status=:status")
-    long countMine(@Param("actor") UUID actor,@Param("status") String status);
-
     @Query("""
             SELECT count(c), sum(c.totalAmount) FROM ExpenseClaim c
             WHERE c.status IN :statuses AND c.applicantId<>:actor

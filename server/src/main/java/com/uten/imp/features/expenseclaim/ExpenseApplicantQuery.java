@@ -205,6 +205,53 @@ public class ExpenseApplicantQuery {
                 (String)row[0],(String)row[1],((Number)row[2]).longValue())).toList();
     }
 
+    /**
+     * 报销五档计数一次取齐(准则 §五：一个模块一个 /counts，不加往返)。ADR-100 补「处理中」
+     * 后本来要变成 5 条 count，这里合并成一条多标量子查询的 SELECT。
+     *
+     * <p>每个子查询自带权限开关且写在 WHERE 第一位：没有对应权限时 Postgres 按 one-time filter
+     * 直接短路，既不扫表也不返回数字——「无权限返回 0 且不查库」在 SQL 这一层就成立。
+     *
+     * <p>本人三档按申请人自己算：draft/rejected 是要本人动手的，processing 是已交出去、
+     * 还在审批链上跑的中间态(PAID 是终态，不计)。审批/打款两档沿用队列列表口径，
+     * 排除自审，打款再排除本单审核人。
+     */
+    public QueueCounts queueCounts(UUID actor, boolean apply, boolean approve, boolean pay) {
+        Object[] row = (Object[]) entityManager.createNativeQuery("""
+                        SELECT
+                          (SELECT COUNT(*) FROM expense_claims c
+                            WHERE :apply = true AND c.applicant_id = :actor AND c.status = 'DRAFT'),
+                          (SELECT COUNT(*) FROM expense_claims c
+                            WHERE :apply = true AND c.applicant_id = :actor AND c.status = 'REJECTED'),
+                          (SELECT COUNT(*) FROM expense_claims c
+                            WHERE :apply = true AND c.applicant_id = :actor
+                              AND c.status IN ('SUBMITTED','REVIEWING','APPROVED')),
+                          (SELECT COUNT(*) FROM expense_claims c
+                            WHERE :approve = true AND c.status IN ('SUBMITTED','REVIEWING')
+                              AND c.applicant_id <> :actor),
+                          (SELECT COUNT(*) FROM expense_claims c
+                            WHERE :pay = true AND c.status = 'APPROVED'
+                              AND c.applicant_id <> :actor
+                              AND (c.approved_by IS NULL OR c.approved_by <> :actor))
+                        """)
+                .setParameter("actor", actor)
+                .setParameter("apply", apply)
+                .setParameter("approve", approve)
+                .setParameter("pay", pay)
+                .getSingleResult();
+        return new QueueCounts(count(row[0]), count(row[1]), count(row[2]),
+                count(row[3]), count(row[4]));
+    }
+
+    private static long count(Object value) {
+        return value == null ? 0 : ((Number) value).longValue();
+    }
+
+    /** 报销计数五档：本人草稿 / 本人驳回待修订 / 本人处理中 / 待我审核 / 待我打款。 */
+    public record QueueCounts(long draft, long rejected, long processing,
+                              long pendingApproval, long pendingPayment) {
+    }
+
     public record ApplicantSnapshot(String name, UUID departmentId) {
     }
 

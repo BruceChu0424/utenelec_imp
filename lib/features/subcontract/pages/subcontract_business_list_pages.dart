@@ -507,7 +507,8 @@ class _SubcontractBusinessListPageState
                   segmentsKey: Key('subcontract-biz-segments-${_p.type.name}'),
                   // 计数形态(2026-09-21 用户口径: 父分类 hub 卡有红徽章, 子分类也要有数):
                   // 草稿 / 财务已退回 = 等本人动手 → 红徽章(与 hub 卡「草稿 + 财务已退回」
-                  // 同源同数); 等待财务审核 / 已审 / 红冲 = 中性括号数; 没有 hub 徽章的
+                  // 同源同数); 等待财务审核 = 单已交出去、球在财务手上还没完 → 黄色在办
+                  // 徽章(ADR-100); 已审 / 红冲 = 已结束 → 中性括号数; 没有 hub 徽章的
                   // 单据草稿仍是中性数。
                   segments: [
                     UtenFilterSegment(
@@ -528,6 +529,7 @@ class _SubcontractBusinessListPageState
                         label: '等待财务审核',
                         count:
                             statusCounts?[DocumentStatusBucket.pendingFinance],
+                        countForm: UtenSegmentCountForm.inProgress,
                       ),
                       UtenFilterSegment(
                         value: const _BizSeg.stage(0, 'REJECTED'),

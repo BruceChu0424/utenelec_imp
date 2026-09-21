@@ -12,6 +12,13 @@
 //     改红底白字并逐级累加，不再是中性括号）。
 //   · 报表区 10 张卡是浏览型入口，不挂任何计数。
 //   · 顶栏右上角挂本模块累计（上面两类之和）。
+//   · **本 hub 刻意一枚黄色「进行中」徽章都不挂, 顶栏也没有黄药丸**(ADR-100 §2.4):
+//     财务的活清一色是审批队列, 一张单要么还在等财务动手(红, 已经数了), 要么财务
+//     已经放行 / 已经退回 —— 球落到采购、仓库、销售那几张卡上, 由它们的在办数报出来。
+//     在钱流再数一遍就是跨卡双计。想给这里补黄色之前, 先回答「这批单在别的模块的
+//     黄数里出现过吗」; 答案是会, 所以不补。
+//     页**内**分段是另一回事: 分段计数永不进注册表, 销售订单确认页的「已驳回」段
+//     就挂黄色, 那是本页自己的进度指示, 不上卷。
 // 支票管理 = 账户 account_type=CHECK/FOREIGN_CHECK 的过滤视图（不单独模块），
 // 入口指向 /finance/checks（由用户在 app_router 接到 AccountPage(initialAccountTypeFilter:'CHECK')）。
 import 'package:flutter/material.dart';
@@ -85,11 +92,11 @@ class FinanceHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 本模块累计：数字由 todo_badge_registry 对 TodoModule.finance 下全部
+          // 本模块累计：数字由 todo_badge_registry 对 BadgeModule.finance 下全部
           // 登记入口求和得出（含本模块 5 类草稿），页面里不要手写加法——
           // 新增入口只改注册表，否则外层与内层又会对不上。0 时组件自身不渲染。
           UtenModuleTodoChip(
-            count: todoModuleCount(TodoModule.finance, ref.watch),
+            count: todoModuleCount(BadgeModule.finance, ref.watch),
           ),
         ],
       ),

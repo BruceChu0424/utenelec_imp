@@ -13,6 +13,10 @@
 // 卡片统一 UtenHubCard；显隐仍走 permission_by_path 同一份 any/all 契约（canOpen），
 // 与路由守卫一致。计数口径（准则 14-徽章与计数口径）：
 //   · 四张任务中心卡挂右上角红色待办徽章（卡面数字 = 卡内各分段之和）。
+//   · 黄色「进行中」徽章(ADR-100)只给「品质部检查结果」一张: 等待检查结果的收货单
+//     货已收进来、结论在品质部手上, 仓库这一档还没完结但也不用动手。三张方向任务中心
+//     与调拨/盘点没有这种在办态 —— 它们每一段要么等仓库动手(红), 要么已经结束(括号),
+//     所以刻意不挂, 免得为了凑颜色造出一个没人看得懂的数。
 //   · 出入库单据区的调拨 / 盘点挂本人草稿红徽章（2026-09-11 口径反转：草稿是
 //     必须由本人处理完的活，改红徽章并逐级累加）；委外成品退货单 / 委外损耗单
 //     是历史只读专页，不挂任何计数。
@@ -22,10 +26,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
+import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -37,6 +43,7 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/in_progress_badge_registry.dart';
 import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/warehouse_report_config.dart';
@@ -78,6 +85,7 @@ class WarehouseHubPage extends ConsumerWidget {
                 String description,
                 String location,
                 Widget? badge,
+                Widget? progressBadge,
               })
             >[
               if (canOpen(RouteName.warehouseOutboundTasks))
@@ -87,6 +95,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   description: '销售出库（确认出库/历史）· 委外出仓 · 其它/产成品出库（新建+历史）',
                   location: RouteName.warehouseOutboundTasks,
                   badge: const WarehouseOutboundTaskBadge(showLabel: true),
+                  progressBadge: null,
                 ),
               if (canOpen(RouteName.warehouseInboundTasks))
                 (
@@ -95,6 +104,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   description: '采购/委外到货与异常 · 产成品点收 · 其它入库（新建+历史）',
                   location: RouteName.warehouseInboundTasks,
                   badge: const WarehouseInboundTaskBadge(showLabel: true),
+                  progressBadge: null,
                 ),
               if (canOpen(RouteName.warehouseDrawTasks))
                 (
@@ -103,6 +113,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   description: '待领任务 · 领料单（新建/历史/出库进度）· 生产退料',
                   location: RouteName.warehouseDrawTasks,
                   badge: const WarehouseDrawTaskBadge(showLabel: true),
+                  progressBadge: null,
                 ),
               if (can(Perm.warehouseIqcStockInView) ||
                   can(Perm.warehouseIqcReturnView))
@@ -112,6 +123,15 @@ class WarehouseHubPage extends ConsumerWidget {
                   description: '跟踪等待检查、全部/部分合格待入库与不合格退回；可批量确认入库',
                   location: RouteName.warehouseQualityResults,
                   badge: const WarehouseQualityResultBadge(showLabel: true),
+                  // 等待检查结果: 货已收、结论在品质部手上, 仓库这一档还在跑但
+                  // 不用动手(注册表入口 warehouseQualityWaiting, 页内同名分段同数)。
+                  progressBadge: UtenInProgressBadge(
+                    count: inProgressEntryCount(
+                      InProgressEntry.warehouseQualityWaiting,
+                      ref.watch,
+                    ),
+                    showLabel: true,
+                  ),
                 ),
             ]
             .toList();
@@ -154,10 +174,15 @@ class WarehouseHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 本模块累计：数字由注册表对 TodoModule.warehouse 名下入口求和得出
+          // 黄药丸排在红药丸左边(与卡片右上角「黄左红右」同序): 本模块还在跑、
+          // 暂不用仓库动手的合计, 求和同样只在 in_progress_badge_registry 里做一次。
+          UtenModuleProgressChip(
+            count: inProgressModuleCount(BadgeModule.warehouse, ref.watch),
+          ),
+          // 本模块累计：数字由注册表对 BadgeModule.warehouse 名下入口求和得出
           //（四张任务中心 + 仓库草稿），页面里不要再手写加法；0 由徽章自己不渲染。
           UtenModuleTodoChip(
-            count: todoModuleCount(TodoModule.warehouse, ref.watch),
+            count: todoModuleCount(BadgeModule.warehouse, ref.watch),
           ),
         ],
       ),
@@ -190,6 +215,7 @@ class WarehouseHubPage extends ConsumerWidget {
                       label: e.label,
                       description: e.description,
                       badge: e.badge,
+                      progressBadge: e.progressBadge,
                       onTap: () => goFrom(context, e.location),
                     );
                   },

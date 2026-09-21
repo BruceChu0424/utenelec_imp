@@ -8,7 +8,11 @@
 //   · 任务中心卡：SalesProgressBadge（财务驳回 + 完工提醒，TodoEntry.salesAttention）。
 //   · 报价/订货/出货/退货单据卡：UtenDraftBadge（本人待自审草稿数）——2026-09-11 起
 //     草稿由中性括号改红徽章并逐级累加（TodoEntry.salesDrafts）。
-// 顶栏右上角另有一枚红徽章 = 本模块累计（全部登记入口之和）。
+// 2026-09-21(ADR-100) 起右上角还可能有第二枚徽章: 黄色「进行中」数, 排在红徽章左边,
+// 回答「我手上还有多少在跑」(红徽章回答「我还欠多少活」)。销售只有「订单进度查询」
+// 一张卡登记黄数, 四张单据卡刻意不挂, 理由见下方 _Entry.fromCfg 注释。
+// 顶栏右上角另有一枚红徽章 = 本模块累计(全部登记入口之和), 其左边是同口径的黄色
+// 「进行中 N」药丸。
 // 「客户零星发货」故意不显草稿数——与「销售出货」同属 sales_shipments，
 // /sales/shipments 列表本就含这批单，两处各显一次会双计（见 todo_badge_registry 末注）。
 // 权限来自 currentPermissionsProvider；路由用 SalesRoutePath 字面量。
@@ -19,6 +23,8 @@ import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
+import '../../../components/feedback/uten_in_progress_badge.dart';
+import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -28,6 +34,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/in_progress_badge_registry.dart';
 import '../../../shared/badges/todo_badge_registry.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
@@ -43,6 +50,8 @@ class SalesHubPage extends ConsumerWidget {
     final perms = ref.watch(currentPermissionsProvider);
 
     // 任务中心：订单进度查询（财务驳回待修正 + 未读完工提醒同源徽章）。
+    // 黄徽章 = 在途订单数(待排产 + 生产中 + 出货待财审 + 等仓库出货): 这批单还在
+    // 生产/财务/仓库手上跑着, 销售现在不用动手, 与红徽章各答一个问题(ADR-100)。
     final taskEntries = <_Entry>[
       _Entry(
         icon: Icons.timeline_outlined,
@@ -51,6 +60,13 @@ class SalesHubPage extends ConsumerWidget {
         location: RouteName.salesOrderProgress,
         listPerm: Perm.salesOrderView,
         badge: const SalesProgressBadge(),
+        progressBadge: UtenInProgressBadge(
+          count: inProgressEntryCount(
+            InProgressEntry.salesOrderInFlight,
+            ref.watch,
+          ),
+          showLabel: true,
+        ),
       ),
     ].where((e) => perms.contains(e.listPerm)).toList();
 
@@ -98,10 +114,15 @@ class SalesHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 本模块累计：数字由 todo_badge_registry 对 TodoModule.sales 下全部登记入口
+          // 本模块「进行中」累计(黄, 在红药丸左边): 由 in_progress_badge_registry 对
+          // BadgeModule.sales 下登记的在办入口求和, 同样不在页面里手写加法。
+          UtenModuleProgressChip(
+            count: inProgressModuleCount(BadgeModule.sales, ref.watch),
+          ),
+          // 本模块累计：数字由 todo_badge_registry 对 BadgeModule.sales 下全部登记入口
           // 求和得出（已含各单据卡草稿），**页面里不要手写加法**——新增入口只改注册表。
           UtenModuleTodoChip(
-            count: todoModuleCount(TodoModule.sales, ref.watch),
+            count: todoModuleCount(BadgeModule.sales, ref.watch),
           ),
         ],
       ),
@@ -200,6 +221,7 @@ class _Entry {
     required this.location,
     required this.listPerm,
     this.badge,
+    this.progressBadge,
   });
 
   /// 单据卡；有草稿计数口径的类型挂草稿红徽章（本人待自审草稿数）。
@@ -221,7 +243,13 @@ class _Entry {
           : UtenDraftBadge(
               kind: cfg.draftKind!,
               withFinanceRejected: cfg.type == SalesDocType.shipment,
-            );
+            ),
+      // 单据卡一律不挂黄色「进行中」数(ADR-100 §2.4 的去重结论, 别来补):
+      // 订单进度那张卡的黄数已经含「出货待财审 + 等仓库出货」两段, 而这两段本就是
+      // 从出货单派生的(服务端 progressStageExpr 看的是 shipment_*_qty), 在出货/订货/
+      // 报价/退货卡再按单据数一遍, 就是同一批出货在销售模块里翻倍。黄链与红链一样,
+      // 链内同一件活只能计一次。
+      progressBadge = null;
 
   final IconData icon;
   final String label;
@@ -231,6 +259,10 @@ class _Entry {
 
   /// 右上角红色徽章（订单进度关注数 / 单据草稿数；null=无）。只放「需要我处理」的数。
   final Widget? badge;
+
+  /// 右上角黄色「进行中」徽章(排在红徽章左边; null=该入口没有在办数)。
+  /// 只放「已经在办、还没完、现在不用我动手」的数。
+  final Widget? progressBadge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -245,6 +277,7 @@ class _EntryTile extends StatelessWidget {
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
       badge: entry.badge,
+      progressBadge: entry.progressBadge,
     );
   }
 }

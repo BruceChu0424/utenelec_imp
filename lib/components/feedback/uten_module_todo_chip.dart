@@ -7,6 +7,10 @@
 // 现在给它一个自解释的形态：红底白字的「待办 N」小药丸 + 悬停说明，
 // 数字仍由 todo_badge_registry 按模块求和得出（页面里不手写加法），
 // 0 时整个不渲染（与红徽章口径一致：没有待办就不该有红色）。
+//
+// 2026-09-21 起它有一枚黄色姊妹 [UtenModuleProgressChip](「进行中 N」，
+// 见 uten_module_progress_chip.dart)。两枚并排时**黄在左、红在右**，
+// 与 hub 卡右上角的两枚徽章同序。
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';

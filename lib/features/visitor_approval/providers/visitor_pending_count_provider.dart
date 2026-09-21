@@ -111,3 +111,54 @@ class VisitorHostPendingCountNotifier extends StateNotifier<int> {
   /// 立即刷新（确认 / 拒绝动作完成后调用）。
   Future<void> refresh() => _tick();
 }
+
+/// HR 访客在办数(visitor:approve)：已批准、访客还没来核验，球在访客手上，
+/// HR 现在不用动手——黄色进行中徽章(ADR-100)。60s 轮询；无权限返回 0，0 不渲染。
+final visitorApprovalOngoingCountProvider =
+    StateNotifierProvider<VisitorApprovalOngoingCountNotifier, int>((ref) {
+      // 新登录会话从零重建并立即重拉(见 shared/auth/session_epoch_provider.dart)。
+      ref.watch(sessionEpochProvider);
+      final notifier = VisitorApprovalOngoingCountNotifier(ref);
+      notifier.start();
+      ref.onDispose(notifier.stop);
+      return notifier;
+    });
+
+class VisitorApprovalOngoingCountNotifier extends StateNotifier<int> {
+  VisitorApprovalOngoingCountNotifier(this.ref) : super(0);
+
+  final Ref ref;
+  Timer? _timer;
+
+  void start() {
+    _tick();
+    _timer = Timer.periodic(_kPendingPollInterval, (_) => _tick());
+  }
+
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  Future<void> _tick() async {
+    // 与红色那支同一道权限闸：没有 HR 审批权限就不拉取，静默返回 0。
+    final perms = ref.read(currentPermissionsProvider);
+    final allowed =
+        perms.contains(Perm.visitorApprove) || ref.read(isSuperAdminProvider);
+    if (!allowed) {
+      state = 0;
+      return;
+    }
+    try {
+      final count = await ref
+          .read(visitorStaffRepositoryProvider)
+          .approvalOngoingCount();
+      if (mounted) state = count; // 会话重建后旧实例已释放，丢弃迟到结果
+    } catch (_) {
+      // 网络/服务异常时保留旧值，避免徽章闪烁
+    }
+  }
+
+  /// 立即刷新(审批动作完成后调用)。
+  Future<void> refresh() => _tick();
+}

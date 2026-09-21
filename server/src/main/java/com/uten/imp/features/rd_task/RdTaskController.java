@@ -30,6 +30,11 @@ public class RdTaskController {
 
     private final RdTaskService service;
 
+    /**
+     * @param status 分段范围：open(待处理+进行中，默认，老调用点口径不变) /
+     *               pending(仅待处理) / in_progress(仅进行中) / done(已完成+已取消)。
+     *               ADR-100 把「待完成」拆成红黄两段后，两段各要能点进来。
+     */
     @GetMapping
     @PreAuthorize("hasAuthority('rd_task:view')")
     public PageResponse<RdTaskRow> list(
@@ -42,10 +47,18 @@ public class RdTaskController {
         return service.list(status, category, keyword, assignee, page, size);
     }
 
+    /**
+     * 任务中心计数。count 保持旧含义(待处理 + 进行中)，老调用点零改动；
+     * ADR-100 另给出两档：open 走红徽章(还没人接手)，inProgress 走黄徽章(已接手在办)。
+     */
     @PreAuthorize("hasAuthority('rd_task:view')")
     @GetMapping("/count")
     public Map<String, Long> count() {
-        return Map.of("count", service.countOpen());
+        RdTaskService.RdTaskCounts counts = service.counts();
+        return Map.of(
+                "count", counts.total(),
+                "open", counts.open(),
+                "inProgress", counts.inProgress());
     }
 
     @PostMapping

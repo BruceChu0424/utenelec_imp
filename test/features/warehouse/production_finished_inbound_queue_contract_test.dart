@@ -32,9 +32,9 @@ void main() {
         globalRefresh,
         contains('warehouseProductionFinishedInboundPendingCountProvider'),
       );
-      // 2026-09-11：计数源登记在待办徽章注册表，工作台模块卡按 TodoModule 委托求和，
+      // 2026-09-11：计数源登记在待办徽章注册表，工作台模块卡按 BadgeModule 委托求和，
       // 不再逐个 watch provider（docs/00-项目准则/14-徽章与计数口径.md）。
-      expect(moduleBadge, contains('TodoModule.warehouse'));
+      expect(moduleBadge, contains('BadgeModule.warehouse'));
       // 2026-09-01 重组：hub 卡角标由 WarehouseInboundTaskBadge（入库任务中心）
       // 汇总渲染；独立任务页路由保留（深链），入口改为 /warehouse/tasks/inbound。
       expect(warehouseHub, contains('WarehouseInboundTaskBadge'));

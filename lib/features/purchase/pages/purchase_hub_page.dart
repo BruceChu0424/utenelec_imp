@@ -1,19 +1,28 @@
 // 采购管理入口页（hub）—— 两个分组卡片：
 //  ① 采购管理：4 单据卡片（申请/订货/收货/退货）
 //  ② 采购报表：报表卡片（明细/汇总/待交货）
-// 点卡片进对应列表/报表页。卡片统一用 UtenHubCard；计数一律红色徽章
+// 点卡片进对应列表/报表页。卡片统一用 UtenHubCard；红色徽章
 //（准则 14-徽章与计数口径）：任务中心 / 待退回供应商 / 订货·收货·退货草稿
 // 都是「必须我处理完的活」，全部登记进本模块累加
 //（见 shared/badges/todo_badge_registry.dart，2026-09-11 起草稿也算待办）；
 // 「采购申请」不挂徽章——它的待处理量已由任务中心「待分解」计入，重复挂会双计。
+//
+// ADR-100(2026-09-21): 右上角再并一枚黄色「进行中」徽章(黄左红右), 回答另一个问题
+// 「我手上还有多少在跑」。采购只有「采购任务中心」一张卡登记黄色(= 任务中心
+// 「进行中」段, 等待财务审核 + 财务已通过 + 财务驳回); 订货/收货/退货三张单据卡
+// **刻意不挂黄** —— 那些在途单据已经全在任务中心的 IN_PROGRESS 里, 再按单据数一遍
+// 就是同一条黄链内的双计(见 shared/badges/in_progress_badge_registry.dart 末尾的
+// 「已知重叠」)。「采购申请」与报表区两种颜色都不挂。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -25,6 +34,7 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/in_progress_badge_registry.dart';
 import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
@@ -72,6 +82,15 @@ class PurchaseHubPage extends ConsumerWidget {
         description: l10n.purchaseHubTaskCenterSub,
         location: RouteName.operationsPurchaseWorkbench,
         badge: const PurchaseTaskBadge(showLabel: true),
+        // 黄=任务中心「进行中」段(已下单、球在财务/供应商手上); 红=申请待分解与
+        // 财务驳回。同一张被驳回的单两枚都算得上, 那是两条链对两个问题的答案。
+        progressBadge: UtenInProgressBadge(
+          count: inProgressEntryCount(
+            InProgressEntry.purchaseTaskCenter,
+            ref.watch,
+          ),
+          showLabel: true,
+        ),
       ),
       _Entry(
         icon: Icons.assignment_return_outlined,
@@ -108,11 +127,16 @@ class PurchaseHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 顶栏「本模块累计」：数字由注册表对采购下全部登记入口求和得出
-          //（任务中心 + 待退回供应商 + 三张单据草稿），页面里不要手写加法，
+          // 顶栏两枚药丸, 黄左红右(ADR-100, 与卡片右上角同序):
+          // 「进行中 N」= 采购下登记的在办入口之和(当前只有任务中心一处);
+          // 「待办 N」= 采购下全部待办入口之和(任务中心 + 待退回供应商 +
+          // 三张单据草稿)。两个数字都由各自注册表求和得出, 页面里不要手写加法,
           // 否则与工作台「采购管理」卡的口径会各算各的。0 时组件自身不渲染。
+          UtenModuleProgressChip(
+            count: inProgressModuleCount(BadgeModule.purchase, ref.watch),
+          ),
           UtenModuleTodoChip(
-            count: todoModuleCount(TodoModule.purchase, ref.watch),
+            count: todoModuleCount(BadgeModule.purchase, ref.watch),
           ),
         ],
       ),
@@ -214,6 +238,7 @@ class _Entry {
     required this.description,
     required this.location,
     this.badge,
+    this.progressBadge,
   });
 
   /// 单据卡；有草稿计数口径的类型在右上角挂红色草稿徽章（本人未提交的活）。
@@ -234,7 +259,10 @@ class _Entry {
           : UtenDraftBadge(
               kind: cfg.draftKind!,
               withFinanceRejected: cfg.type == PurchaseDocType.order,
-            );
+            ),
+      // 单据卡不挂黄: 订货/收货/退货的在途单据已经全在采购任务中心「进行中」里,
+      // 这里再按单据数一遍就是同一条黄链内的双计(ADR-100 §2.4)。
+      progressBadge = null;
 
   final IconData icon;
   final String label;
@@ -243,6 +271,9 @@ class _Entry {
 
   /// 右上角红色徽章；待办数与草稿数都放这里，都会进上层累加。
   final Widget? badge;
+
+  /// 右上角黄色「进行中」徽章，排在红徽章左边；走另一张注册表，与红数互不相干。
+  final Widget? progressBadge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -257,6 +288,7 @@ class _EntryTile extends StatelessWidget {
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
       badge: entry.badge,
+      progressBadge: entry.progressBadge,
     );
   }
 }

@@ -10,6 +10,10 @@
 //   已审/已出库/红冲，服务端 stage 参数；2026-09-20）+ 末尾历史记录 + 搜索——出货单的
 //   status 只在仓库确认出库时才变 1，按 status 分段会把等待财审的单全归到草稿。
 // - 退货/报价：草稿/已审/红冲 + 末尾历史记录 + 搜索，默认不选不发请求。
+// 分段计数形态(ADR-100 三形态): 本人要动手的段(草稿 / 财务已退回)红徽章, 还在流程里
+// 跑着、销售不用动手的段(待生产 / 生产中 / 等待财务审核 / 已审待出库)黄色进行中徽章,
+// 终态(本月完成 / 已出库 / 红冲)中性括号; 「待发货」的红色出口在「订单进度查询」页,
+// 本页不重复告警, 见下方分段处注释。
 // 大类未选（订货单）/状态未选（其他单据）时内容区显示引导占位，不发请求。
 // 名称解析（客户/仓库）通过 SalesMasterNameService；编辑按 edit 权限显隐「新建」。
 import 'package:flutter/material.dart';
@@ -226,11 +230,21 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     return DocumentStatusScope(kind);
   }
 
-  /// 出货阶段里「等销售动手」的两档: 草稿(没提交)与财务已退回(改了重提) → 红徽章;
-  /// 等待财务审核 / 已审 / 已出库 / 红冲是中性括号数。
-  static bool _salesActionableStage(String stage) =>
-      stage == SalesShipmentStage.draft ||
-      stage == SalesShipmentStage.financeRejected;
+  /// 出货阶段的分段计数形态(三形态口径 ADR-100, 逐段问两句)。
+  ///
+  /// · 草稿(本人开了头没交出去)与财务已退回(要本人改单重报) → 红: 轮到我动手。
+  /// · 等待财务审核(球在财务手上)与已审(即状态列的「已审 · 待出库」, 财务已放行、
+  ///   等仓库出仓) → 黄: 单子还在流程里跑着, 销售现在不用动手。2026-09-21 之前
+  ///   这两档是中性括号, 与终态混成一种形态。
+  /// · 已出库 / 红冲 → 中性括号: 已经结束, 只供掂量。
+  static UtenSegmentCountForm _shipmentStageCountForm(String stage) =>
+      switch (stage) {
+        SalesShipmentStage.draft ||
+        SalesShipmentStage.financeRejected => UtenSegmentCountForm.actionable,
+        SalesShipmentStage.pendingFinance ||
+        SalesShipmentStage.financeApproved => UtenSegmentCountForm.inProgress,
+        _ => UtenSegmentCountForm.browsing,
+      };
 
   /// 报价/退货的状态分段 → 分桶键。
   static String _bucketOfStatus(int status) => switch (status) {
@@ -663,11 +677,15 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                         if (_isOrder) ...[
                           // 大类行（仅订货单）：待生产/生产中/待发货/本月完成 + 搜索。
                           // 原统计卡钻取口径不变（chain/closed/本月月初）。
-                          // 计数形态：四个链路大类是订单进度的监控数（下一步在
-                          // 生产/仓库手里）→ 中性括号 `(N)`；「草稿」是本人没提交的活,
-                          // 与 hub 卡草稿红徽章同源同形(2026-09-21 父有红徽章子也要红)；
-                          // 销售真正的待办（财务驳回/未读完工）由「订单进度查询」
-                          // 的红徽章承担，本页不重复告警。
+                          // 计数形态(三形态口径 ADR-100)：待生产/生产中的球在生产手上,
+                          // 单子还在流程里跑着、销售不用动手 → 黄色进行中徽章;
+                          // 「待发货」= 有可发量等销售去开出货单, 是销售自己的活 → 红徽章。
+                          // 它和「订单进度查询」的「可分批发货」是同一批订单, 两处都红
+                          // 是**对的**: 准则 §一 要求「同一语义的入口全平台必须用同一种
+                          // 形态」, 而分段计数从不进累加, 红两处也不会把总数数两遍;
+                          // 反过来在本页压成中性括号, 才会让人在订货单列表里漏掉要开的单。
+                          // 「本月完成」是终态, 中性括号; 「草稿」是本人没提交的活,
+                          // 与 hub 卡草稿红徽章同源同形(2026-09-21 父有红徽章子也要红)。
                           UtenFilterToolbar<String>(
                             segmentsKey: const Key('sales-doc-order-stages'),
                             segments: [
@@ -675,16 +693,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                 value: 'pending',
                                 label: '待生产',
                                 count: _stats?.pendingProduction,
+                                countForm: UtenSegmentCountForm.inProgress,
                               ),
                               UtenFilterSegment(
                                 value: 'production',
                                 label: '生产中',
                                 count: _stats?.inProduction,
+                                countForm: UtenSegmentCountForm.inProgress,
                               ),
                               UtenFilterSegment(
                                 value: 'shippable',
                                 label: '待发货',
                                 count: _stats?.shippable,
+                                countForm: UtenSegmentCountForm.actionable,
                               ),
                               UtenFilterSegment(
                                 value: 'monthDone',
@@ -725,17 +746,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                             segments: [
                               // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要
                               // 有数——出货六阶段全部带数, 草稿 / 财务已退回红徽章
-                              // (财务退回件不再混在草稿里), 其余中性括号; 报价/退货
-                              // 三状态同理(草稿红, 已审/红冲括号)。
+                              // (财务退回件不再混在草稿里), 等待财务审核 / 已审待出库
+                              // 黄色进行中徽章(ADR-100), 已出库 / 红冲中性括号;
+                              // 报价/退货三状态只有草稿是活(红), 已审/红冲是终态(括号)。
                               if (_shipmentStaged)
                                 for (final stage in SalesShipmentStage.segments)
                                   UtenFilterSegment(
                                     value: _SalesDocSeg.shipment(stage),
                                     label: salesShipmentStageLabel(stage),
                                     count: statusCounts?[stage],
-                                    countForm: _salesActionableStage(stage)
-                                        ? UtenSegmentCountForm.actionable
-                                        : UtenSegmentCountForm.browsing,
+                                    countForm: _shipmentStageCountForm(stage),
                                   )
                               else
                                 for (final status in [

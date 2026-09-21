@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
@@ -88,6 +89,11 @@ class _ArrivalExceptionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    // 「待处理」分段徽章的全量 count(ADR-100)走同一前缀但不是列表请求 ——
+    // 必须先挡掉, 否则它会把 lastQuery 覆盖成一个没有表头筛选的空 query。
+    if (path == ApiEndpoints.warehouseArrivalExceptionCount) {
+      return const {'count': 1};
+    }
     if (path.contains('arrival-exceptions')) {
       lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       return const {

@@ -1,12 +1,14 @@
 package com.uten.imp.features.visitor;
 
 import com.uten.imp.application.port.HrNoticePort;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
+import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorQueueCounts;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
@@ -70,14 +72,26 @@ public class VisitorHrApprovalService {
         return appService.toPageResponse(result, pageable);
     }
 
-    /** HR 待办数（工作台/导航徽章）：与待审列表默认 tab 同一状态集（pending + hostReviewing）。 */
+    /**
+     * HR 两档计数(ADR-100)：pending 仍是待审列表默认 tab 的状态集(pending + hostReviewing)，
+     * ongoing 是已批准、访客还没来核验的在途来访——球在访客手上，HR 现在不用动手，走黄色。
+     *
+     * <p>两档都按 HR 这条共享队列算，不按「是我批的」收敛：pendingCount 本来就是全队列口径，
+     * 两个数字各按各的范围会对不上账。
+     */
+    @Transactional(readOnly = true)
+    public VisitorQueueCounts counts() {
+        guard.requireStaff();
+        Object[] row = appRepo.countApprovalQueues(
+                BusinessTime.startOfDay(BusinessTime.today())).getFirst();
+        return new VisitorQueueCounts(
+                ((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+    }
+
+    /** HR 待办数(工作台今日概览按单个数字消费，不关心在途那一档)。 */
     @Transactional(readOnly = true)
     public long pendingCount() {
-        guard.requireStaff();
-        Specification<VisitorApplication> spec = (root, q, cb) -> cb.and(
-                cb.equal(root.get("deleted"), false),
-                root.get("status").in("pending", "hostReviewing"));
-        return appRepo.count(spec);
+        return counts().pending();
     }
 
     @Transactional(readOnly = true)

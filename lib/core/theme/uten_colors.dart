@@ -130,6 +130,15 @@ abstract final class UtenColors {
   static const Color infoText = Color(0xFF1D4ED8);
   static const Color errorText = Color(0xFFB91C1C);
 
+  /// 黄色「进行中」数量徽章的**实底色**(amber-700)。
+  ///
+  /// 2026-09-21 用户口径「数字加粗变白, 黄色再深点」。要让白字读得清, 底色必须
+  /// 压到这一档: 白字压 [warning](amber-500)只有 2.1:1、压 amber-600 也才 3.0:1,
+  /// 压本色是 4.5:1(WCAG AA 正文档)。明暗两档共用同一个实底 —— 深色模式那枚
+  /// [warningOnDark] 是给**文字/图标**用的亮琥珀, 拿来做底再压白字会彻底糊掉。
+  /// 见 docs/00-项目准则/14-徽章与计数口径.md。
+  static const Color warningStrong = Color(0xFFB45309);
+
   // ===== 生产单据纸面色板（A4 工卡 / 计划单等"纸质复刻"视图专用）=====
   // 这组颜色模拟纸张与墨色，不随 app 明暗主题切换（纸永远是白底墨字）。
   // 只允许生产单据复刻视图使用；普通业务 UI 仍走 colorScheme / 上述语义色。

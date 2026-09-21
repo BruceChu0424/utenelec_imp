@@ -24,7 +24,9 @@ import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../hr_task/providers/hr_task_count_provider.dart';
+import '../../../shared/badges/in_progress_badge_registry.dart';
 import '../../../shared/badges/todo_badge_registry.dart';
+import '../../production/providers/production_execution_group_count_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
@@ -50,6 +52,14 @@ void refreshGlobalBadges(WidgetRef ref) {
   ref.read(unreadNoticeCountProvider.notifier).refresh();
   // HR 任务中心角标（工作台徽章聚合 module_badge_sum 在用；此前漏在清单外）
   ref.read(hrTaskCountProvider.notifier).refresh();
+  // 黄色「进行中」那条链的 60s 轮询 Notifier(ADR-100)。与红色同样逐个点名：
+  // 它们是常驻 provider，只有 refresh() 能让数字立刻跟上，invalidate 对
+  // StateNotifierProvider 是重建而不是重拉。
+  ref.read(productionExecutionInProgressCountProvider.notifier).refresh();
+  ref.read(purchaseTaskInProgressCountProvider.notifier).refresh();
+  ref.read(subcontractTaskInProgressCountProvider.notifier).refresh();
+  ref.read(rdTaskInProgressCountProvider.notifier).refresh();
+  ref.read(visitorApprovalOngoingCountProvider.notifier).refresh();
   invalidateWorkbenchBadgeCaches(ref);
 }
 
@@ -64,6 +74,9 @@ void invalidateWorkbenchBadgeCaches(WidgetRef ref) {
   // 全部待办计数源：登记在 lib/shared/badges/todo_badge_registry.dart，
   // 与模块卡/Tab 总数同一张表——新增入口只改注册表，这里不再逐个点名。
   invalidateTodoBadgeCaches(ref);
+  // 全部「进行中」计数源：登记在 lib/shared/badges/in_progress_badge_registry.dart，
+  // 与黄色模块卡同一张表——新增入口只改注册表，这里不再逐个点名(ADR-100)。
+  invalidateInProgressBadgeCaches(ref);
   // 仅用于 hub 内分型展示、未登记进待办累加的切片计数。
   ref.invalidate(warehouseInboundExpectationTypeCountsProvider);
   ref.invalidate(warehouseQualityResultTypeCountsProvider);

@@ -12,15 +12,19 @@
 //   只能靠「全部」段回到全量视图；
 // - 视图切换例外：切换内容区的工具条（如应付工作区/报表变体）必须始终有
 //   选中项，不适用「默认不选」；
-// - 计数口径：分段计数有两种形态，**默认中性括号数字 `(N)`**，红徽章要显式挑
+// - 计数口径：分段计数有三种形态，**默认中性括号数字 `(N)`**，两种徽章都要显式挑
 //   （[UtenFilterSegment.countForm]，见 docs/00-项目准则/14-徽章与计数口径.md）：
-//   · 浏览型（阶段/状态监控、草稿、历史、来源细分）→ `(N)`，0 显示 `(0)` 保持队形；
-//   · 待办型（待审/待确认/待收货/待出库/待检/被驳回/超期/异常，且**这段确实在等
-//     本页用户动手**）→ 红徽章，0/null 不显示，>99 显 99+；
+//   · 待办型(待审/待确认/待收货/待出库/待检/被驳回/超期/异常/等待物料/本人草稿，
+//     且**这段确实在等本页用户动手**)→ `actionable` 红徽章，0/null 不显示，>99 显 99+；
+//   · 在办型(生产中/加工中/在途/等待财务审核/财务已通过待执行/等待检查结果，
+//     即「已经在办、还没完、现在不用我动手」)→ `inProgress` 黄徽章，同样 0/null 不显示
+//     (2026-09-21 ADR-100 新增；此前这一类被判成中性括号)；
+//   · 浏览型(已完成/已审/已出库/红冲/历史/全部)→ `(N)`，0 显示 `(0)` 保持队形；
 //   · 同一条工具条里已有一段红徽章覆盖了这批活的总量时，细分切片走括号
 //     （同一批活不在一行里红两遍）；
-//   · 「全部」、终态（已完结/终态/已决定）与「下一步是别人操作」的状态一律不传 count；
-//   · 分段计数**永不**登记进 lib/shared/badges/todo_badge_registry.dart（累加只认入口）。
+//   · 「全部」与终态(已完结/已决定)一律不传 count；
+//   · 分段计数**永不**登记进两张注册表(todo_badge_registry / in_progress_badge_registry)
+//     ——累加只认入口，分段是页面内的切片。
 // - 搜索框：全平台唯一组件 UtenSearchBar（胶囊圆角 + 清除 + 300ms 防抖）；
 // - 响应式：宽屏一行（分段 | 搜索 | 行尾有界右对齐，超宽自动换行），窄屏
 //   （< [compactBreakpoint]）分段放得下照常显示、放不下自动收成一颗「分类」
@@ -35,6 +39,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_tokens.dart';
+import '../feedback/uten_in_progress_badge.dart';
 import '../feedback/uten_notification_badge.dart';
 import '../feedback/uten_segment_badge_label.dart';
 import '../inputs/uten_search_bar.dart';
@@ -46,10 +51,16 @@ class UtenFilterSegment<T> {
     required this.label,
     this.count,
     this.countForm = UtenSegmentCountForm.browsing,
+    this.inProgressCount,
   });
 
   final T value;
   final String label;
+
+  /// 大类分段专用的第二枚计数：黄色在办数，画在 [count] 那枚**左边**。
+  /// 只在一个大类里同时装着「等我动手」和「在办中」两批活时才传，
+  /// 见 [UtenSegmentBadgeLabel.inProgressCount]。
+  final int? inProgressCount;
 
   /// 该分段的计数；null = 加载中/未知（不渲染，不把未知伪装成 0）。
   /// 应取该分段的「全量」计数（非当前页推算），与后端 counts 类接口同源。
@@ -150,6 +161,7 @@ class UtenFilterToolbar<T> extends StatelessWidget {
                     label: segment.label,
                     count: segment.count,
                     countForm: segment.countForm,
+                    inProgressCount: segment.inProgressCount,
                   ),
                 ),
             ],
@@ -265,9 +277,13 @@ class UtenFilterToolbar<T> extends StatelessWidget {
           )..layout();
           width += digits.width;
         } else if (count > 0) {
-          width += 34; // 红徽章 + 与文字的间距
+          width += 34; // 红/黄徽章 + 与文字的间距
         }
       }
+      // 大类分段可能再挂一枚黄徽章(黄左红右), 估宽要把它算上, 否则小屏该收下拉
+      // 却没收, 分段条顶出黄黑溢出条。
+      final inProgress = segment.inProgressCount;
+      if (inProgress != null && inProgress > 0) width += 34;
       total += width;
     }
     return total <= maxWidth;
@@ -301,11 +317,16 @@ class _CompactCategoryField<T> extends StatelessWidget {
     final label = selectedSegments.length == 1
         ? selectedSegments.single.label
         : '分类';
-    final actionableTotal = segments
-        .where(
-          (segment) => segment.countForm == UtenSegmentCountForm.actionable,
-        )
+    int totalOf(UtenSegmentCountForm form) => segments
+        .where((segment) => segment.countForm == form)
         .fold<int>(0, (sum, segment) => sum + (segment.count ?? 0));
+    final actionableTotal = totalOf(UtenSegmentCountForm.actionable);
+    // 小屏收起后分段各自的数字看不见了，两种徽章都要在按钮上留个总量，
+    // 否则「进行中」那批在小屏直接消失(2026-09-21 ADR-100)。
+    // 大类分段挂的第二枚黄数(inProgressCount)也要并进来, 它同样是在办量。
+    final inProgressTotal =
+        totalOf(UtenSegmentCountForm.inProgress) +
+        segments.fold<int>(0, (sum, s) => sum + (s.inProgressCount ?? 0));
     return PopupMenuButton<T>(
       enabled: enabled && onSelected != null,
       initialValue: selectedSegments.length == 1
@@ -335,6 +356,7 @@ class _CompactCategoryField<T> extends StatelessWidget {
                     label: segment.label,
                     count: segment.count,
                     countForm: segment.countForm,
+                    inProgressCount: segment.inProgressCount,
                   ),
                 ),
               ],
@@ -368,6 +390,11 @@ class _CompactCategoryField<T> extends StatelessWidget {
                   ),
                 ),
               ),
+              // 黄在左、红在右，与 hub 卡 / 工作台模块卡同序。
+              if (inProgressTotal > 0) ...[
+                UtenInProgressBadge(count: inProgressTotal),
+                const SizedBox(width: UtenSpacing.s8),
+              ],
               if (actionableTotal > 0) ...[
                 UtenNotificationBadge(count: actionableTotal),
                 const SizedBox(width: UtenSpacing.s8),

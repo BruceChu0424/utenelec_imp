@@ -13,6 +13,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -513,16 +514,29 @@ class _WarehouseArrivalExceptionsViewState
           header: true,
           label: _history
               ? '共有 ${result.total} 条历史到货异常'
-              : '共有 ${result.total} 条进行中到货异常',
+              : '共有 ${result.total} 条待处理到货异常',
           // 全平台统一筛选工具条：分段 + 胶囊搜索框（尾挂总数文案）。
           child: UtenFilterToolbar<bool>(
             segmentsKey: const Key('warehouse-arrival-exception-mode'),
             searchKey: widget.embedded
                 ? null
                 : const Key('warehouse-arrival-exception-search'),
-            segments: const [
-              UtenFilterSegment(value: false, label: '进行中'),
-              UtenFilterSegment(value: true, label: '历史'),
+            // 2026-09-21(ADR-100): 这一段原本叫「进行中」且不带任何数字, 两处都不对。
+            //  · 它装的是**未结案的到货异常**, 正是仓库要去处理的那批
+            //    (与 hub 卡「到货异常」红徽章、TodoEntry.warehouseArrivalException
+            //    同一个 provider), 按三形态口径是红色待办, 不是黄色在办;
+            //    留着「进行中」这个名字会和全平台新立的「黄=进行中=不用你动手」
+            //    撞语义, 所以改叫「待处理」, 名字与颜色对上。
+            //  · 父分类(入库任务中心「到货异常」)有红徽章, 子分段必须有数
+            //    (2026-09-21 用户口径), 这里补上同源计数, 两处数字天然一致。
+            segments: [
+              UtenFilterSegment(
+                value: false,
+                label: '待处理',
+                count: ref.watch(warehouseArrivalExceptionCountProvider).value,
+                countForm: UtenSegmentCountForm.actionable,
+              ),
+              const UtenFilterSegment(value: true, label: '历史'),
             ],
             selected: {_history},
             onSelectionChanged: _switchHistory,

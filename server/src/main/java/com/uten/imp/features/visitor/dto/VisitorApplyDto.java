@@ -76,6 +76,12 @@ public final class VisitorApplyDto {
 
     public record VisitorFacetBucket(String value, String label, long count) {}
 
+    /**
+     * 访客计数两档(ADR-100)：pending = 轮到本人动手(红徽章)，
+     * ongoing = 已办出去、来访还在跑(黄徽章)。HR 与被访人两条队列共用这个形状。
+     */
+    public record VisitorQueueCounts(long pending, long ongoing) {}
+
     public record VisitorDetail(
             UUID id, String visitorName, String phone, String idCardLast4,
             String company, String visitPurpose, boolean hasVehicle, String plateNo,

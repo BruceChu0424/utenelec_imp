@@ -21,7 +21,7 @@
 // ## 层级
 //
 //   TodoEntry（入口，如「采购任务中心」）
-//     → TodoModule（hub / 工作台模块卡，如「采购管理」= 该模块全部入口之和）
+//     → BadgeModule(hub / 工作台模块卡，如「采购管理」= 该模块全部入口之和)
 //       → [todoTotalCountProvider]（导航「工作台」Tab 总数 = 全部模块之和）
 //
 // 加载中 / 失败一律按 0 计（与既有降级口径一致：不把「未知」放大成异常态）。
@@ -55,44 +55,16 @@ import '../../features/warehouse/repositories/warehouse_subcontract_outbound_rep
     show warehouseSubcontractOutboundCountProvider;
 import '../auth/pending_review_provider.dart';
 import '../auth/permissions.dart';
+import 'badge_module.dart';
+
+// 容器划分两张注册表共用, 住在 badge_module.dart; 这里转出去, 老调用点
+// (各 hub 页 / 工作台) 只 import 本文件就能拿到 [BadgeModule], 不必两行 import。
+export 'badge_module.dart';
 import '../models/procurement_inbound.dart';
 import '../providers/production_fqc_pending_count_provider.dart';
 import '../providers/draft_counts_provider.dart';
 import '../providers/document_status_counts_provider.dart';
 import '../providers/sales_shipment_finance_count_provider.dart';
-
-/// 待办容器：一个 [TodoModule] 对应工作台上的一张模块卡 / 一个 hub。
-enum TodoModule {
-  /// 人事与访客（我的访客 / 访客审批 / 信息变更审核 / HR 任务中心）。
-  people,
-
-  /// 钱流管理 hub。
-  finance,
-
-  /// 生产管理（生产调度 + 我的车间任务）。
-  production,
-
-  /// 工程研发部任务中心。
-  rd,
-
-  /// 仓库管理 hub（三张方向任务中心 + 品质部检查结果）。
-  warehouse,
-
-  /// 采购管理 hub。
-  purchase,
-
-  /// 委外管理 hub。
-  subcontract,
-
-  /// 品质任务中心。
-  quality,
-
-  /// 销售管理 hub。
-  sales,
-
-  /// 系统管理（服务器状态告警）。
-  system,
-}
 
 /// 一个「待办入口」——用户能点进去干活的一个页面/分段集合。
 ///
@@ -100,132 +72,133 @@ enum TodoModule {
 enum TodoEntry {
   // —— 人事与访客 ——
   /// 我的访客：被访人待确认。
-  visitorHostConfirm(TodoModule.people),
+  visitorHostConfirm(BadgeModule.people),
 
   /// 访客审批：HR 待审批。
-  visitorApproval(TodoModule.people),
+  visitorApproval(BadgeModule.people),
 
   /// 信息变更审核：员工资料变更待审。
-  hrProfileReview(TodoModule.people),
+  hrProfileReview(BadgeModule.people),
 
   /// HR 任务中心：今日转正/逾期转正/今日生日/今日周年。
-  hrTaskCenter(TodoModule.people),
+  hrTaskCenter(BadgeModule.people),
 
   /// 本人的报销草稿与驳回待修订单。
-  expenseMine(TodoModule.people),
+  expenseMine(BadgeModule.people),
 
   // —— 钱流 ——
   /// 销售订单财务确认（含「销售订单修改」队列，见「已知切片」）。
-  financeSalesOrderConfirmation(TodoModule.finance),
+  financeSalesOrderConfirmation(BadgeModule.finance),
 
   /// 出货财务审核。
-  financeShipmentAudit(TodoModule.finance),
+  financeShipmentAudit(BadgeModule.finance),
 
   /// 订货审批任务中心。
-  financeProcurementApproval(TodoModule.finance),
+  financeProcurementApproval(BadgeModule.finance),
 
   /// 超量到货财务审批。
-  financeArrivalException(TodoModule.finance),
+  financeArrivalException(BadgeModule.finance),
 
   /// IQC 不合格退回与贷项（财务确认贷项/结案）。
-  financeIqcRejection(TodoModule.finance),
+  financeIqcRejection(BadgeModule.finance),
 
   /// 财务报销待审批与待付款(每张单仅处于一个队列)。
-  expenseFinance(TodoModule.finance),
+  expenseFinance(BadgeModule.finance),
 
   // —— 生产 ——
   /// 生产调度：待排产行。
-  productionSchedule(TodoModule.production),
+  productionSchedule(BadgeModule.production),
 
-  /// 我的车间任务：当前可行动执行段。
-  productionWorkshop(TodoModule.production),
+  /// 我的车间任务 · **等待物料**的执行段(车间工要去领料，轮到他动手)。
+  /// 「生产中」那半不在这里，走黄色链(in_progress_badge_registry)。
+  productionWorkshop(BadgeModule.production),
 
   // —— 研发 ——
   /// 工程研发部任务中心。
-  rdTaskCenter(TodoModule.rd),
+  rdTaskCenter(BadgeModule.rd),
 
   // —— 仓库（四张任务中心卡，各自已是其内部分段之和）——
   /// 出库任务中心 · 销售待出库。
-  warehouseSalesOutbound(TodoModule.warehouse),
+  warehouseSalesOutbound(BadgeModule.warehouse),
 
   /// 出库任务中心 · 委外出仓。
-  warehouseSubcontractOutbound(TodoModule.warehouse),
+  warehouseSubcontractOutbound(BadgeModule.warehouse),
 
   /// 入库任务中心 · 预计到货。
-  warehouseInboundExpectation(TodoModule.warehouse),
+  warehouseInboundExpectation(BadgeModule.warehouse),
 
   /// 入库任务中心 · 到货异常（仓库侧）。
-  warehouseArrivalException(TodoModule.warehouse),
+  warehouseArrivalException(BadgeModule.warehouse),
 
   /// 生产领料任务中心 · 待领任务。
-  warehouseProductionDraw(TodoModule.warehouse),
+  warehouseProductionDraw(BadgeModule.warehouse),
 
   /// 生产退料：车间已提交，仓库尚未确认实收。
-  warehouseProductionReturn(TodoModule.warehouse),
+  warehouseProductionReturn(BadgeModule.warehouse),
 
   /// 入库任务中心 · 产成品待点收。
-  warehouseFinishedInbound(TodoModule.warehouse),
+  warehouseFinishedInbound(BadgeModule.warehouse),
 
   /// 品质部检查结果 · 未完结任务。
-  warehouseQualityResult(TodoModule.warehouse),
+  warehouseQualityResult(BadgeModule.warehouse),
 
   // —— 采购 ——
   /// 采购任务中心：待分解 + 待采购完成。
-  purchaseTaskCenter(TodoModule.purchase),
+  purchaseTaskCenter(BadgeModule.purchase),
 
   /// 采购「待退回供应商」任务。
-  purchaseSupplierReturn(TodoModule.purchase),
+  purchaseSupplierReturn(BadgeModule.purchase),
 
   // —— 委外 ——
   /// 委外任务中心。
-  subcontractTaskCenter(TodoModule.subcontract),
+  subcontractTaskCenter(BadgeModule.subcontract),
 
   /// 委外「待退回供应商」任务。
-  subcontractSupplierReturn(TodoModule.subcontract),
+  subcontractSupplierReturn(BadgeModule.subcontract),
 
   // —— 品质 ——
   /// 待检处置 · IQC 待检收货单。
-  qualityIqcPending(TodoModule.quality),
+  qualityIqcPending(BadgeModule.quality),
 
   /// 待检处置 · FQC 自制产成品待检。
-  qualityFqcPending(TodoModule.quality),
+  qualityFqcPending(BadgeModule.quality),
 
   // —— 销售 ——
   /// 订单进度查询：财务驳回待修正 + 可分批发货待开单，阅读通知不清除业务待办。
-  salesAttention(TodoModule.sales),
+  salesAttention(BadgeModule.sales),
 
   /// 销售出货「财务已退回」: 财务退回给销售修改后重提的出货单(2026-09-21 起不再混在草稿里;
   /// 采购/委外订货的退回件已由各自任务中心的 FINANCE_REJECTED 计入, 不另登记)。
-  salesShipmentFinanceRejected(TodoModule.sales),
+  salesShipmentFinanceRejected(BadgeModule.sales),
 
   // —— 草稿（2026-09-11 起计入累加；每个模块一条，数字来自 draftCountsProvider）——
   /// 销售模块草稿（订货/发货/退货/报价）。
-  salesDrafts(TodoModule.sales),
+  salesDrafts(BadgeModule.sales),
 
   /// 采购模块草稿（订货/收货/退货）。
-  purchaseDrafts(TodoModule.purchase),
+  purchaseDrafts(BadgeModule.purchase),
 
   /// 委外模块草稿（订货/退货/退料/废品）。
-  subcontractDrafts(TodoModule.subcontract),
+  subcontractDrafts(BadgeModule.subcontract),
 
   /// 钱流模块草稿（收款/付款/费用/其它收入/银行转账）。
-  financeDrafts(TodoModule.finance),
+  financeDrafts(BadgeModule.finance),
 
   /// 仓库模块草稿（stock_documents 全类型合计，不用切片以免双计）。
-  warehouseDrafts(TodoModule.warehouse),
+  warehouseDrafts(BadgeModule.warehouse),
 
   /// 生产模块草稿（生产计划 / 生产日报）。
-  productionDrafts(TodoModule.production),
+  productionDrafts(BadgeModule.production),
 
   // —— 系统管理 ——
   /// 服务器状态告警（磁盘/内存/数据库/备份越过警告或危急阈值的条数）。
   /// 2026-09-11 补：此前这些告警只活在状态页里，不点开就无人知晓。
-  serverStatusAlert(TodoModule.system);
+  serverStatusAlert(BadgeModule.system);
 
   const TodoEntry(this.module);
 
   /// 该入口归属的容器（hub / 工作台模块卡）。
-  final TodoModule module;
+  final BadgeModule module;
 }
 
 /// `ref.watch` 的最小签名；provider 与 ConsumerWidget 都能传进来。
@@ -262,9 +235,14 @@ int todoEntryCount(TodoEntry entry, TodoWatch watch) => switch (entry) {
         ? _async(watch, procurementIqcRejectionOpenCountProvider)
         : 0,
   TodoEntry.productionSchedule => watch(productionPendingCountProvider).count,
+  // 2026-09-21(ADR-100)修口径: 此前取 `.count`, 而后端该字段 = preparing + inProgress
+  // (等待物料 + 生产中的总和), 于是红徽章把「已经在做、不用催」的段也喊成了待办。
+  // 用户原话「车间生产任务右上角红色是等待物料的」——红只数 preparing;
+  // 生产中那半改挂黄色, 见 in_progress_badge_registry 的 productionWorkshop。
+  // **红色数字会因此变小, 这是预期结果, 不是回归。**
   TodoEntry.productionWorkshop => watch(
     productionWorkshopTaskCountProvider,
-  ).count,
+  ).preparing,
   TodoEntry.rdTaskCenter => watch(rdTaskCountProvider),
   TodoEntry.warehouseSalesOutbound => _async(
     watch,
@@ -366,7 +344,7 @@ int _drafts(TodoWatch watch, List<DraftDocKind> kinds) =>
     watch(draftCountsProvider).valueOrNull?.sumOf(kinds) ?? 0;
 
 /// 某容器（hub / 工作台模块卡）的待办数 = 其登记入口之和。
-int todoModuleCount(TodoModule module, TodoWatch watch) =>
+int todoModuleCount(BadgeModule module, TodoWatch watch) =>
     sumTodoEntries(entriesOfModule(module), watch);
 
 /// 若干入口之和（工作台分组徽章、自定义组合用）。
@@ -379,7 +357,7 @@ int sumTodoEntries(Iterable<TodoEntry> entries, TodoWatch watch) {
 }
 
 /// 某容器下登记的全部入口（声明顺序即展示顺序）。
-List<TodoEntry> entriesOfModule(TodoModule module) => TodoEntry.values
+List<TodoEntry> entriesOfModule(BadgeModule module) => TodoEntry.values
     .where((entry) => entry.module == module)
     .toList(growable: false);
 
@@ -389,7 +367,7 @@ final todoEntryCountProvider = Provider.family<int, TodoEntry>(
 );
 
 /// 容器（hub / 工作台模块卡）待办数 = 其内部入口徽章之和。
-final todoModuleCountProvider = Provider.family<int, TodoModule>(
+final todoModuleCountProvider = Provider.family<int, BadgeModule>(
   (ref, module) => todoModuleCount(module, ref.watch),
 );
 

@@ -188,6 +188,8 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.purchase.ret.PurchaseReturnService supplierPurchaseReturnService;
     @Autowired private com.uten.imp.features.warehouse.inbound.ProcurementInspectionService inspectionService;
     @Autowired private com.uten.imp.features.warehouse.inbound.ProcurementArrivalControlService arrivalControl;
+    @Autowired private com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationService
+            arrivalRegistration;
     @Autowired private com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInService
             iqcStockInService;
     @Autowired private ProductionDailyReportService reportService;
@@ -6315,6 +6317,314 @@ class FullChainEndToEndTest {
                 "分析B不得分配分析A的委外合格入库");
         assertEquals(0, otherAnalysisMaterial.shortageQty().compareTo(new BigDecimal("10")),
                 "分析B的同物料缺口仍为 10");
+    }
+
+    @Test
+    // V589 前置自制跟量 + V634 谱系守卫跟台账(2026-09-21 用户实测): 下达车间时对委外前置
+    // 自制候选行超量下达(归需求量 10 + 公共备货 20 = 台账 30), 两次报工的两张成品入库
+    // 草稿一次批量点收, 满批自动整批通知委外 30; 委外部把这一条申请明细拆成两张订货单
+    // (20 + 10)并在订货审批任务中心一次批量通过, 各自出仓发料后按单登记回厂, IQC 合格后
+    // 两张收货单一次批量入库。V634 之前批量通过在提交时被 DEFERRED 守卫
+    // subcontract_prepared_outbound_lineage_guard 整批拒绝(分析行 requested_qty=10 < 订货行 20),
+    // 页面只看到「数据已被其他操作更新」。
+    void subcontractOverQuantityMakeTask_splitOrdersBatchApproveIssueArriveAndBatchStockIn() {
+        World w = seedWorld("scOverQty");
+        UUID finished = UUID.randomUUID();
+        UUID subcontracted = UUID.randomUUID();
+        UUID suppliedMaterial = UUID.randomUUID();
+        UUID secondSuppliedMaterial = UUID.randomUUID();
+        insertGoods(finished, "F-scoq-" + w.goodsA(), "成品F-scoq", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(subcontracted, "S-scoq-" + w.goodsA(), "委外件S-scoq", "委外", w.unitId(), w.unitLegacy());
+        insertGoods(suppliedMaterial, "R-scoq-" + w.goodsA(), "委外发料R-scoq", "采购", w.unitId(), w.unitLegacy());
+        insertGoods(secondSuppliedMaterial, "R2-scoq-" + w.goodsA(), "委外第二颗料-scoq", "采购",
+                w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id in (?,?)",
+                w.supplierId(), subcontracted, secondSuppliedMaterial);
+        insertBom(finished, subcontracted, "1");
+        insertBom(subcontracted, suppliedMaterial, "2");
+        insertBom(subcontracted, secondSuppliedMaterial, "1");
+        // 超量做 30 个委外件要领 60 + 30 颗原料, 现货给足。
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), suppliedMaterial, new BigDecimal("100"));
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), secondSuppliedMaterial, new BigDecimal("100"));
+
+        UUID planner = createUserWithPerms(w, "planner-scoq-" + w.goodsA(),
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:route", "production_material_analysis:notify");
+        UUID orderA = createApprovedOrder(w, finished, "10", "100");
+        loginAs(planner);
+        AnalysisView initial = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "idem-scoq-" + orderA,
+                List.of(new PreviewItem("SALES_ORDER_ITEM", orderItemId(orderA),
+                        null, null, null, null, null,
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisId = initial.analysisId();
+        MaterialView subcontractRow = initial.flatMaterials().stream()
+                .filter(material -> material.goodsId().equals(subcontracted) && material.actionable())
+                .findFirst().orElseThrow();
+        AnalysisView routed = analysisService.saveRoutes(analysisId, new RouteRequest(
+                initial.version(), initial.fingerprint(), "route-scoq-" + analysisId,
+                List.of(new RouteDecision(subcontractRow.materialLineId(),
+                        subcontractRow.actionGroupKey(), "SUBCONTRACT", null))));
+        analysisCommandService.notifySupply(analysisId, new NotifyRequest(
+                routed.version(), routed.fingerprint(), "notify-scoq-" + analysisId,
+                "SUBCONTRACT", List.of(subcontractRow.materialLineId()), List.of(), null));
+        UUID taskId = jdbc.queryForObject("""
+                select id from preplan_subcontract_make_tasks
+                where analysis_id = ? and goods_id = ? and status = 'ACTIVE'
+                """, UUID.class, analysisId, subcontracted);
+        assertEquals(0, bigDecimalFor(
+                "select required_qty from preplan_subcontract_make_tasks where id = ?", taskId)
+                .compareTo(new BigDecimal("10")), "通知后台账先按归需求量 10 建立");
+
+        // 下达车间: 对前置自制候选行超量下达 30(V589: 归需求量 10 + 公共备货 20)。
+        AnalysisView afterTask = analysisService.detail(analysisId);
+        ProductView makeProduct = afterTask.products().stream()
+                .filter(product -> "SUBCONTRACT_MAKE".equals(product.sourceType()))
+                .findFirst().orElseThrow();
+        loginAs(w.superAdminUserId());
+        GeneratedPlan makeGenerated = analysisCommandService.issueWorkshopPlans(
+                analysisId,
+                new IssueWorkshopPlansRequest(
+                        afterTask.version(), afterTask.fingerprint(),
+                        "gen-scoq-make-" + analysisId,
+                        w.warehouseId(), LocalDate.of(2026, 9, 16), null, true,
+                        List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
+                                null, makeProduct.analysisLineId(),
+                                new BigDecimal("30"),
+                                null, null, null, null, null, null, null))))
+                .plans().getFirst();
+        assertEquals(0, bigDecimalFor(
+                "select required_qty from preplan_subcontract_make_tasks where id = ?", taskId)
+                .compareTo(new BigDecimal("30")), "超量下达后台账 required_qty = 归需求量 10 + 公共备货 20");
+        assertEquals(0, bigDecimalFor(
+                "select requested_qty from production_material_analysis_items where id = ?",
+                makeProduct.analysisLineId()).compareTo(new BigDecimal("10")),
+                "分析 SUBCONTRACT_MAKE 行仍只记归需求量 10——V634 前守卫拿它卡订货行");
+
+        confirmAllUnconfirmedFullKitRoutes();
+        for (UUID drawId : currentPlanDrawIds(makeGenerated.planId())) {
+            var drawLines = jdbc.queryForList(
+                    "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
+                    drawId);
+            var issueReq = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+            issueReq.setIdempotencyKey("scoq-draw-issue-" + drawId);
+            issueReq.setLines(drawLines.stream().map(row -> {
+                var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+                line.setItemId((UUID) row.get("id"));
+                line.setQty((BigDecimal) row.get("qty"));
+                return line;
+            }).toList());
+            requestWorkshopDraws("scoq-" + drawId, List.of(drawId));
+            stockDocService.approveAndIssue(drawId, issueReq);
+        }
+        UUID makePlanItem = planItemOfPlan(makeGenerated.planId());
+        StartedSegment makeSegment = startedSegmentFor(w, makeGenerated.planId(), makePlanItem, null);
+        UUID makeWorkshopId = jdbc.queryForObject("""
+                select workshop_department_id
+                from production_execution_segments
+                where id = ? and is_deleted = false
+                """, UUID.class, makeSegment.segmentId());
+        UUID superAdminEmployeeId = employeeIdOf(w.superAdminUserId());
+        jdbc.update("""
+                insert into employee_secondary_departments(
+                    employee_id, department_id, note, created_by, updated_by)
+                select ?, ?, 'scoq production report fixture', ?, ?
+                where (select department_id from employees where id = ?)
+                      is distinct from ?
+                on conflict (employee_id, department_id) do nothing
+                """, superAdminEmployeeId, makeWorkshopId,
+                w.superAdminUserId(), w.superAdminUserId(),
+                superAdminEmployeeId, makeWorkshopId);
+
+        // 两次报工各 15 -> 两张成品入库草稿, 一次批量点收(「批量全量点收入库」页同一通道)。
+        UUID firstReport = reportAndApproveExecutionSegment(
+                w, makePlanItem, null, subcontracted,
+                makeSegment.segmentId(), makeSegment.salesAllocationId(), "15");
+        UUID secondReport = reportAndApproveExecutionSegment(
+                w, makePlanItem, null, subcontracted,
+                makeSegment.segmentId(), makeSegment.salesAllocationId(), "15", true);
+        UUID firstInbound = finishedInDocForReport(firstReport);
+        UUID secondInbound = finishedInDocForReport(secondReport);
+        assertTrue(!firstInbound.equals(secondInbound), "两次报工各自生成成品入库草稿");
+        var finishedBatch = new com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest();
+        finishedBatch.setIdempotencyKey("scoq-finished-batch-" + analysisId);
+        finishedBatch.setDocumentIds(List.of(firstInbound, secondInbound));
+        var finishedResult = stockDocService.confirmFinishedInboundBatch(finishedBatch);
+        assertEquals(2, finishedResult.confirmedCount(), "两张成品入库草稿一次批量点收");
+        assertEquals(0, stockBalance(w.warehouseId(), subcontracted).compareTo(new BigDecimal("30")),
+                "批量点收后 30 个委外件先落本仓(专属预留扣住公共可用量)");
+        assertEquals(0, bigDecimalFor(
+                "select produced_qty from preplan_subcontract_make_tasks where id = ?", taskId)
+                .compareTo(new BigDecimal("30")), "台账产出 30");
+        assertEquals(0, bigDecimalFor(
+                "select notified_qty from preplan_subcontract_make_tasks where id = ?", taskId)
+                .compareTo(new BigDecimal("30")), "满批(产出 30 >= 台账 30)自动整批通知委外 30");
+        Map<String, Object> notified = jdbc.queryForMap("""
+                select item.id as application_item_id, item.qty as qty, batch.notify_qty as notify_qty
+                from preplan_subcontract_make_task_batches batch
+                join subcontract_application_items item on item.id = batch.application_item_id
+                where batch.task_id = ?
+                """, taskId);
+        UUID applicationItemId = (UUID) notified.get("application_item_id");
+        assertEquals(0, ((BigDecimal) notified.get("qty")).compareTo(new BigDecimal("30")),
+                "通知批的申请明细整批一条 30(需求 10 + 公共 20)");
+        assertEquals(0, ((BigDecimal) notified.get("notify_qty")).compareTo(new BigDecimal("30")));
+
+        // 委外部把同一条申请明细拆成两张订货单(20 + 10), 提交财务后一次批量通过。
+        UUID reviewer = createApprover(w);
+        loginAs(w.superAdminUserId());
+        UUID orderOne = createSubcontractOrderFromApplication(w, subcontracted, applicationItemId, "20");
+        UUID orderTwo = createSubcontractOrderFromApplication(w, subcontracted, applicationItemId, "10");
+        financeApproval.submit("SUBCONTRACT", orderOne);
+        financeApproval.submit("SUBCONTRACT", orderTwo);
+        loginAs(reviewer);
+        var approved = financeApproval.approveBatch(List.of(
+                claimFinanceDecision(pendingFinanceDecision("SUBCONTRACT", orderOne)),
+                claimFinanceDecision(pendingFinanceDecision("SUBCONTRACT", orderTwo))), null);
+        assertEquals(2, approved.processed(), "两张拆单在订货审批任务中心一次批量通过");
+        assertEquals(2, count("""
+                select count(*) from procurement_order_approval_cases
+                where order_type = 'SUBCONTRACT' and order_id in (?, ?) and status = 'APPROVED'
+                """, orderOne, orderTwo));
+        assertEquals(0, bigDecimalFor("""
+                select coalesce(sum(plan_item.prepared_qty), 0)
+                from subcontract_material_plan_items plan_item
+                join subcontract_material_plans plan on plan.id = plan_item.plan_id
+                where plan.order_id in (?, ?)
+                  and plan_item.flow_mode = 'PREPARED_OUTBOUND'
+                  and plan_item.preparation_status = 'READY_OUTBOUND'
+                  and plan_item.is_deleted = false
+                """, orderOne, orderTwo).compareTo(new BigDecimal("30")),
+                "两张拆单批准后各自 PREPARED_OUTBOUND 待出仓, 合计 30 = 台账 30 而非分析行 10");
+
+        // 各自出仓发料 -> 目标件库存归零 -> 按订货单逐张登记回厂(批量登记页同一条 register 链路)。
+        loginAs(w.superAdminUserId());
+        UUID orderOneItem = soleSubcontractOrderItemOf(orderOne);
+        UUID orderTwoItem = soleSubcontractOrderItemOf(orderTwo);
+        approveDraftMaterialIssueFor(w, orderOneItem);
+        approveDraftMaterialIssueFor(w, orderTwoItem);
+        assertEquals(0, stockBalance(w.warehouseId(), subcontracted).signum(),
+                "两张拆单各自出仓发料后 30 个目标件全部发给委外商");
+        java.util.List<UUID> receipts = new java.util.ArrayList<>();
+        java.util.List<UUID> inspections = new java.util.ArrayList<>();
+        java.util.List<BigDecimal> quantities = List.of(new BigDecimal("20"), new BigDecimal("10"));
+        java.util.List<UUID> orderItems = List.of(orderOneItem, orderTwoItem);
+        for (int index = 0; index < orderItems.size(); index++) {
+            UUID orderItem = orderItems.get(index);
+            var registered = arrivalRegistration.register(
+                    new com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts
+                            .WarehouseArrivalRegisterRequest(
+                            "scoq-arrival-" + orderItem, "SUBCONTRACT",
+                            com.uten.imp.common.time.BusinessTime.today(),
+                            w.supplierId(), w.warehouseId(), null, w.employeeId(), "委外拆单回厂",
+                            List.of(new com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts
+                                    .WarehouseArrivalRegisterRequest.ArrivalLine(
+                                    subcontracted, quantities.get(index), orderItem,
+                                    null, w.unitId(), BigDecimal.ONE, "EO-scoq"))));
+            assertEquals("SUBMITTED_FOR_INSPECTION", registered.outcome(),
+                    "拆单 " + (index + 1) + " 登记回厂后直送品质部待检");
+            receipts.add(registered.receiptId());
+            inspections.add(jdbc.queryForObject("""
+                    select id from procurement_inspection_items
+                    where receipt_type = 'SUBCONTRACT' and receipt_id = ? and goods_id = ?
+                    """, UUID.class, registered.receiptId(), subcontracted));
+        }
+        for (int index = 0; index < receipts.size(); index++) {
+            inspectionService.dispose("SUBCONTRACT", receipts.get(index), inspections.get(index),
+                    new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                            "PASS", null, "委外拆单合格验收", "scoq-iqc-" + inspections.get(index)));
+        }
+        assertEquals(0, stockBalance(w.warehouseId(), subcontracted).signum(),
+                "IQC PASS 只形成仓库待入库, 库存仍为 0");
+
+        // 品质检查结果「批量入库」: 两张拆单的收货单一次批量确认入库。
+        loginAs(createIqcWarehouseConfirmer(w, "iqc-stock-scoq-" + w.goodsA()));
+        java.util.List<com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmEntry>
+                entries = new java.util.ArrayList<>();
+        for (int index = 0; index < receipts.size(); index++) {
+            var single = latestIqcStockInRequest("SUBCONTRACT", receipts.get(index), inspections.get(index),
+                    quantities.get(index), "scoq-stock-" + receipts.get(index), "SCOQ-A01");
+            entries.add(new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts
+                    .BatchConfirmEntry("SUBCONTRACT", receipts.get(index), single.idempotencyKey(), single.items()));
+        }
+        var stockedIn = iqcStockInService.batchConfirm(
+                new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmRequest(entries));
+        assertEquals(2, stockedIn.results().size(), "两张拆单收货单一次批量入库");
+        assertTrue(stockedIn.results().stream().noneMatch(result -> result.replayed()));
+        assertEquals(0, stockBalance(w.warehouseId(), subcontracted).compareTo(new BigDecimal("30")),
+                "批量入库后 30 个委外件(需求 10 + 公共备货 20)全部回到库存");
+    }
+
+    private UUID createSubcontractOrderFromApplication(
+            World w, UUID goodsId, UUID applicationItemId, String qty) {
+        var orderRequest = new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
+        orderRequest.setSettlementMethodId(activeSettlementMethodId());
+        orderRequest.setBillDate(LocalDate.of(2026, 9, 17));
+        orderRequest.setSupplierId(w.supplierId());
+        orderRequest.setWarehouseId(w.warehouseId());
+        orderRequest.setCurrencyId(w.currencyId());
+        orderRequest.setExchangeRate(BigDecimal.ONE);
+        orderRequest.setTaxRate(BigDecimal.ZERO);
+        var orderLine = new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
+        BigDecimal quantity = new BigDecimal(qty);
+        orderLine.setGoodsId(goodsId);
+        orderLine.setApplicationItemId(applicationItemId);
+        orderLine.setUnitId(w.unitId());
+        orderLine.setUnitRate(BigDecimal.ONE);
+        orderLine.setQty(quantity);
+        orderLine.setPrice(new BigDecimal("30"));
+        orderLine.setAmountOriginal(quantity.multiply(new BigDecimal("30")));
+        orderLine.setAmountLocal(quantity.multiply(new BigDecimal("30")));
+        orderRequest.setItems(List.of(orderLine));
+        return subcontractOrderService.create(orderRequest).getId();
+    }
+
+    private UUID soleSubcontractOrderItemOf(UUID orderId) {
+        return jdbc.queryForObject(
+                "select id from subcontract_order_items where order_id = ? and is_deleted = false",
+                UUID.class, orderId);
+    }
+
+    /** 财务批准后系统为每张订货单生成的目标件出仓草稿, 按草稿原样保存并审核(仓库发料给委外商)。 */
+    private void approveDraftMaterialIssueFor(World w, UUID orderItemId) {
+        UUID materialIssueId = jdbc.queryForObject("""
+                select issue.id
+                from subcontract_material_issues issue
+                join subcontract_material_issue_items item on item.issue_id = issue.id
+                where item.order_item_id = ?
+                  and issue.status = 0
+                  and issue.is_deleted = false
+                  and item.is_deleted = false
+                """, UUID.class, orderItemId);
+        var issueDraft = subcontractMaterialIssueService.detail(materialIssueId);
+        var issueRequest = new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest();
+        issueRequest.setBillDate(issueDraft.getBillDate());
+        issueRequest.setSupplierId(issueDraft.getSupplierId());
+        issueRequest.setWarehouseId(w.warehouseId());
+        issueRequest.setWorkerId(issueDraft.getWorkerId());
+        issueRequest.setDeliverDate(issueDraft.getDeliverDate());
+        issueRequest.setRemark(issueDraft.getRemark());
+        issueRequest.setItems(issueDraft.getItems().stream().map(item -> {
+            var line = new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine();
+            line.setLineNo(item.getLineNo());
+            line.setGoodsId(item.getGoodsId());
+            line.setColorId(item.getColorId());
+            line.setUnitId(item.getUnitId());
+            line.setUnitRate(item.getUnitRate());
+            line.setQty(item.getQty());
+            line.setOrderItemId(item.getOrderItemId());
+            line.setPlanItemId(item.getPlanItemId());
+            line.setParentGoodsId(item.getParentGoodsId());
+            line.setParentColorId(item.getParentColorId());
+            line.setWeight(item.getWeight());
+            line.setSourceDocNo(item.getSourceDocNo());
+            line.setRemark(item.getRemark());
+            return line;
+        }).toList());
+        subcontractMaterialIssueService.update(materialIssueId, issueRequest);
+        subcontractMaterialIssueService.approve(materialIssueId);
     }
 
     @Test

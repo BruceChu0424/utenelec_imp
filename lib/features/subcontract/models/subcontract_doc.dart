@@ -157,6 +157,7 @@ class SubcontractDocItem {
     this.supplierEnding,
     this.remark,
     this.sourceApplications = const [],
+    this.allowedLossPct,
   });
 
   final String? id;
@@ -224,8 +225,12 @@ class SubcontractDocItem {
   /// 稳定顺序与 sources.line_no 一致；单来源行一条、手工行为空。
   final List<SubcontractSourceApplicationRef> sourceApplications;
 
+  /// 订货明细允许损耗百分比（ADR-098）：保存即冻结到本行；空 = 未设。
+  final double? allowedLossPct;
+
   factory SubcontractDocItem.fromJson(Map<String, dynamic> json) =>
       SubcontractDocItem(
+        allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
         id: json['id'] as String?,
         lineNo: (json['lineNo'] as num?)?.toInt(),
         goodsId: json['goodsId'] as String?,

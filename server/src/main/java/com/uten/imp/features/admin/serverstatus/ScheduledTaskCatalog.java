@@ -49,6 +49,8 @@ public final class ScheduledTaskCatalog {
                     "每天 08:37 提醒交货期加宽限期已过仍占着库存的预留。")),
             Map.entry("SubcontractReturnDueScheduler.scan", new Entry("委外回厂到期提醒",
                     "每天 08:49 提醒 3 天内应回厂却还没回厂的委外单。")),
+            Map.entry("SubcontractShortDeliveryOverdueScheduler.scan", new Entry("委外短交逾期提醒",
+                    "每天 08:53 提醒判定为分批到货、过了预计到齐日却还没到齐的委外回厂短交。")),
             Map.entry("StockReconciliationScheduler.scan", new Entry("库存余额对账",
                     "每天 08:51 核对库存余额与出入库流水是否一致, 只告警不改账。")),
             Map.entry("AuditRetentionScheduler.runScheduled", new Entry("审计日志归档",

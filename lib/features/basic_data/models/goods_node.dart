@@ -198,6 +198,7 @@ class GoodsDetail {
     this.makeE,
     this.cTotal,
     this.gTotal,
+    this.subcontractAllowedLossPct,
     this.sourceType,
     this.costMasked = false,
     this.discountMasked = false,
@@ -283,6 +284,9 @@ class GoodsDetail {
   final double? makeE; // 生产利润
   final double? cTotal; // 成本价
   final double? gTotal; // 出厂价
+
+  /// 委外允许损耗默认值(%)（ADR-098）：委外订货明细预填记忆；不是成本字段，不随成本脱敏。
+  final double? subcontractAllowedLossPct;
 
   final String? sourceType; // 来源（自制/采购/委外）
 
@@ -387,6 +391,8 @@ class GoodsDetail {
     // 后端 @JsonProperty 已锁定 cTotal/gTotal；兼容小写兜底（同 mWeight quirk）。
     cTotal: ((json['cTotal'] ?? json['ctotal']) as num?)?.toDouble(),
     gTotal: ((json['gTotal'] ?? json['gtotal']) as num?)?.toDouble(),
+    subcontractAllowedLossPct: (json['subcontractAllowedLossPct'] as num?)
+        ?.toDouble(),
     sourceType: json['sourceType'] as String?,
     costMasked: json['costMasked'] as bool? ?? false,
     discountMasked: json['discountMasked'] as bool? ?? false,

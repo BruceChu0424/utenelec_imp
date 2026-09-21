@@ -162,6 +162,7 @@ import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_decomposition_page.dart';
 import '../../features/subcontract/pages/subcontract_hub_page.dart';
 import '../../features/subcontract/pages/subcontract_page_factory.dart';
+import '../../features/subcontract/pages/subcontract_short_delivery_page.dart';
 import '../../features/subcontract/config/subcontract_report_config.dart';
 import '../../features/subcontract/pages/subcontract_report_table_page.dart';
 import '../../features/security/pages/security_blacklist_page.dart';
@@ -1351,6 +1352,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.subcontractReport,
             name: 'subcontract-report',
             builder: (_, _) => const SubcontractHubPage(),
+          ),
+          // ADR-098 委外回厂短交判定（静态段，须在 /subcontract/:seg 参数路由之前）。
+          GoRoute(
+            path: RouteName.subcontractShortDeliveries,
+            name: 'subcontract-short-deliveries',
+            builder: (_, s) => SubcontractShortDeliveryPage(
+              initialCaseId: s.uri.queryParameters['caseId'],
+              initialOrderId: s.uri.queryParameters['orderId'],
+              initialSupplierId: s.uri.queryParameters['supplierId'],
+            ),
           ),
           // 委外准备中心已退役（2026-09-05 后端 API 下线）：旧深链一律重定向到
           // 委外管理 hub，避免收藏/通知里的 /subcontract/preparations 404。

@@ -16,6 +16,7 @@ public enum ErrorCode {
     NOT_FOUND(404, "资源不存在"),
     CONFLICT(409, "数据冲突"),
     ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待财务审核组处理"),
+    SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED(409, "到货数量明显少于订货量，需仓库确认后登记并通知委外判定"),
     VALIDATION_FAILED(422, "参数校验失败"),
     PASSWORD_TOO_WEAK(422, "密码强度不足"),
     PASSWORD_REUSE(422, "不能与最近用过的密码相同"),

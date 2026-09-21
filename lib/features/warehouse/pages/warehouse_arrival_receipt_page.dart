@@ -58,6 +58,7 @@ import '../../purchase/config/purchase_doc_config.dart';
 import '../../purchase/models/purchase_doc.dart';
 import '../../subcontract/config/subcontract_doc_config.dart';
 import '../../subcontract/models/subcontract_doc.dart';
+import '../widgets/subcontract_short_delivery_confirm_dialog.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/models/inbound_allocation.dart';
@@ -568,12 +569,27 @@ class _WarehouseArrivalReceiptPageState
           ],
         };
         try {
-          registrations.add(
-            await repo.registerArrival(
+          if (!mounted) return;
+          // ADR-098：委外回厂累计低于允许损耗下限时服务端先 409，弹窗确认后带确认重发。
+          final registration = await registerArrivalConfirmingShortDelivery(
+            context: context,
+            body: body,
+            register: (payload) => repo.registerArrival(
               orderType: prefill.orderType,
-              body: body,
+              body: payload,
             ),
           );
+          if (registration == null) {
+            // 仓库选择「返回修改」：原地停下；已成功仓不回滚（同键重放安全）。
+            if (!mounted) return;
+            if (registrations.isNotEmpty) {
+              context.appWarning(
+                '已按 ${registrations.length} 个仓库登记送检；其余已取消，修改数量后可直接重试',
+              );
+            }
+            return;
+          }
+          registrations.add(registration);
         } on ApiException catch (e) {
           if (!mounted) return;
           // 部分失败：停在原页保住已选内容；已成功仓同键重放，直接重试即可。

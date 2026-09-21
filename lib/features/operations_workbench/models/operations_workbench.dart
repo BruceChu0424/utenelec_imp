@@ -292,6 +292,7 @@ class OperationsWorkbenchTask {
     this.preparationStatus,
     this.issuedAt,
     this.canCreateOrder,
+    this.displayStage,
   });
 
   final String taskId;
@@ -332,6 +333,14 @@ class OperationsWorkbenchTask {
 
   /// Server-authored ordering readiness; independent from account capability.
   final bool? canCreateOrder;
+
+  /// 展示阶段（服务端 display_stage，与状态列表头筛选同源）：委外订货单在财务已通过
+  /// 之后细分为 待发料出仓 / 委外加工中 / 部分回厂 / 分批等待中 / 回厂短交待判定
+  /// （ADR-098）；其余等于 [taskStatus]。
+  final String? displayStage;
+
+  /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
+  String get progressStatus => displayStage ?? taskStatus;
 
   String get id => taskId;
   String get taskNo => taskId;
@@ -402,6 +411,7 @@ class OperationsWorkbenchTask {
       canCreateOrder: json['canCreateOrder'] is bool
           ? json['canCreateOrder'] as bool
           : null,
+      displayStage: _optionalString(json, 'displayStage'),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,
@@ -590,6 +600,9 @@ String operationsWorkbenchExceptionLabel(String code) =>
       'LATE_SUPPLY' => '供给延期',
       'SUPPLY_PEG_REQUIRED' => '待生成采购 / 委外单',
       'UNLINKED' => '待挂接',
+      // ADR-098：委外任务中心「进行中」下的两类要本部门动手的异常。
+      'SHORT_DELIVERY' => '回厂短交待判定',
+      'FINANCE_REJECTED' => '财务已退回',
       _ => code,
     };
 

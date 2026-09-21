@@ -186,6 +186,110 @@ public class SubcontractWasteService {
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_waste:approve')")
     public WasteDetail approve(UUID id) {
+        return approveInternal(id);
+    }
+
+    /**
+     * ADR-098 委外回厂短交「接受损耗结案」自动登记并审核一张损耗单：按该订货行在供应商处仍未清的
+     * 发料(发出 + 补料 − 已消费 − 已退 − 已损耗)为短交量折算材料损耗——发子件的流向按冻结单耗,
+     * 发目标件的流向按订货换算率; 允许量 = 允许损耗对应的那一份, 其余是超耗(审核后走 ADR-047 责任判定)。
+     * 权限点是 subcontract_short_delivery:decide(判定服务校验), 不再要求 subcontract_waste:create/approve;
+     * 守恒 CAS、期间、来源一致等业务守卫与手工损耗单完全一致。供应商处没有剩料时不生成, 返回 null。
+     *
+     * @param orderUnitRate      订货行换算率(发目标件流向的折算因子)
+     * @param shortfallQty       短交量(订货单位)
+     * @param allowedShortfallQty 短交量里落在允许损耗范围内的份额(订货单位)
+     * @param allowedLossPct     允许损耗百分比(写进损耗率列, 只作说明)
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public UUID recordShortDeliveryLoss(UUID orderItemId, BigDecimal orderUnitRate, BigDecimal shortfallQty,
+                                        BigDecimal allowedShortfallQty, BigDecimal allowedLossPct,
+                                        String cause, java.time.LocalDate billDate) {
+        if (orderItemId == null || shortfallQty == null || shortfallQty.signum() <= 0) return null;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT issue_item.id, issue_item.goods_id, issue_item.color_id, issue_item.unit_id,
+                       COALESCE(issue_item.unit_rate, 1), COALESCE(issue_item.frozen_unit_qty, 0),
+                       issue.warehouse_id, issue.supplier_id,
+                       GREATEST(COALESCE(issue_item.at_supplier_qty, 0) + COALESCE(issue_item.compensated_qty, 0)
+                                - COALESCE(issue_item.consumed_qty, 0) - COALESCE(issue_item.returned_qty, 0)
+                                - COALESCE(issue_item.wasted_qty, 0), 0) AS remaining,
+                       CASE WHEN plan_item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
+                            THEN 'TARGET' ELSE 'COMPONENT' END AS kind
+                FROM subcontract_material_issue_items issue_item
+                JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
+                 AND issue.status = 1 AND issue.is_deleted = FALSE
+                LEFT JOIN subcontract_material_plan_items plan_item ON plan_item.id = issue_item.plan_item_id
+                WHERE issue_item.order_item_id = :orderItemId AND issue_item.is_deleted = FALSE
+                ORDER BY issue_item.goods_id, issue_item.color_id NULLS FIRST, issue_item.created_at, issue_item.id
+                FOR UPDATE OF issue_item
+                """).setParameter("orderItemId", orderItemId).getResultList();
+        BigDecimal rate = orderUnitRate == null || orderUnitRate.signum() <= 0 ? BigDecimal.ONE : orderUnitRate;
+        BigDecimal allowed = allowedShortfallQty == null ? BigDecimal.ZERO : allowedShortfallQty.max(BigDecimal.ZERO);
+        // 按子件(货品+颜色+流向)分组: 每组需要核销的量 = 短交量 × 折算因子, 允许份额同样折算。
+        Map<String, List<Object[]>> groups = new java.util.LinkedHashMap<>();
+        for (Object[] row : rows) {
+            if (((BigDecimal) row[8]).signum() <= 0) continue;
+            groups.computeIfAbsent(row[9] + ":" + row[1] + ":" + row[2], ignored -> new ArrayList<>()).add(row);
+        }
+        List<WasteItemLine> lines = new ArrayList<>();
+        UUID warehouseId = null;
+        UUID supplierId = null;
+        for (List<Object[]> group : groups.values()) {
+            Object[] first = group.getFirst();
+            boolean target = "TARGET".equals(first[9]);
+            BigDecimal issueRate = (BigDecimal) first[4];
+            BigDecimal frozen = (BigDecimal) first[5];
+            BigDecimal factor = target
+                    ? rate.divide(issueRate.signum() <= 0 ? BigDecimal.ONE : issueRate, 6, java.math.RoundingMode.HALF_UP)
+                    : frozen;
+            if (factor.signum() <= 0) continue;
+            BigDecimal needed = shortfallQty.multiply(factor).setScale(4, java.math.RoundingMode.HALF_UP);
+            BigDecimal allowedRemaining = allowed.multiply(factor).setScale(4, java.math.RoundingMode.HALF_UP);
+            for (Object[] row : group) {
+                if (needed.signum() <= 0) break;
+                BigDecimal take = needed.min((BigDecimal) row[8]);
+                if (take.signum() <= 0) continue;
+                BigDecimal standard = take.min(allowedRemaining);
+                allowedRemaining = allowedRemaining.subtract(standard);
+                needed = needed.subtract(take);
+                WasteItemLine line = new WasteItemLine();
+                line.setMaterialIssueItemId((UUID) row[0]);
+                line.setGoodsId((UUID) row[1]);
+                line.setColorId((UUID) row[2]);
+                line.setUnitId((UUID) row[3]);
+                line.setUnitRate(issueRate);
+                line.setQty(take);
+                line.setStandardQty(standard);
+                line.setWasteRate(allowedLossPct);
+                line.setCause(cause);
+                lines.add(line);
+                if (warehouseId == null) warehouseId = (UUID) row[6];
+                if (supplierId == null) supplierId = (UUID) row[7];
+            }
+        }
+        if (lines.isEmpty() || warehouseId == null) return null;
+        tx.bind();
+        WasteSaveRequest req = new WasteSaveRequest();
+        req.setBillDate(billDate == null ? com.uten.imp.common.time.BusinessTime.today() : billDate);
+        req.setSupplierId(supplierId);
+        req.setWarehouseId(warehouseId);
+        req.setRemark(cause);
+        req.setItems(lines);
+        SubcontractWaste r = new SubcontractWaste();
+        applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId());
+        r.setStatus(STATUS_DRAFT);
+        wasteRepo.save(r);
+        List<WasteItemDto> items = saveItems(r, req.getItems());
+        applyTotals(r, items);
+        wasteRepo.flush();
+        itemRepo.flush();
+        approveInternal(r.getId());
+        return r.getId();
+    }
+
+    private WasteDetail approveInternal(UUID id) {
         tx.bind();
         var mutationGuard=mutationLocks.materialWaste(id);
         SubcontractWaste r = requireWasteForUpdate(id);

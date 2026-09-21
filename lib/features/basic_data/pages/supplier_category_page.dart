@@ -1010,8 +1010,11 @@ class _DetailPaneState extends State<_DetailPane> {
       key: 'lossRate',
       label: '损耗率(%)',
       width: 90,
-      value: (_) => '—',
-    ), // 无对应物理列，恒显示"—"
+      type: 'number',
+      // ADR-098：已结清委外订货行的加权损耗率（服务端汇总视图）；没有结清行显示「—」。
+      // 仍不可筛（不是 suppliers 物理列，不进 facets）。
+      value: (s) => s.lossRate?.toStringAsFixed(2),
+    ),
     MasterColumnDef(
       key: 'place',
       label: '所属地区',

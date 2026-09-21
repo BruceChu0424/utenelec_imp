@@ -150,6 +150,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             "PROCUREMENT_SUPPLIER_RETURN_COMPLETED";
     static final String EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED =
             "PROCUREMENT_ARRIVAL_RECEIPT_POSTED";
+    /** ADR-098 委外回厂短交：发现(紧急) / 分批等待逾期(重要) / 已处理(只撤卡)。 */
+    static final String EVENT_SUBCONTRACT_SHORT_DELIVERY_DETECTED =
+            "SUBCONTRACT_SHORT_DELIVERY_DETECTED";
+    static final String EVENT_SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE =
+            "SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE";
+    static final String EVENT_SUBCONTRACT_SHORT_DELIVERY_RESOLVED =
+            "SUBCONTRACT_SHORT_DELIVERY_RESOLVED";
+    static final String SUBCONTRACT_SHORT_DELIVERY_AGGREGATE = "SUBCONTRACT_SHORT_DELIVERY_CASE";
+    static final String SUBCONTRACT_SHORT_DELIVERY_DECIDE_AUTHORITY = "subcontract_short_delivery:decide";
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
     static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
@@ -411,6 +420,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                      EVENT_PROCUREMENT_RETURN_COMPLETED,
                      EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED ->
                         notifyProcurementArrivalEvent(eventType, aggregateId);
+                case EVENT_SUBCONTRACT_SHORT_DELIVERY_DETECTED,
+                     EVENT_SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE,
+                     EVENT_SUBCONTRACT_SHORT_DELIVERY_RESOLVED ->
+                        notifySubcontractShortDeliveryEvent(eventType, aggregateId, payload);
                 case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
                 case EVENT_IQC_PENDING ->
                         notifyIqcPendingForQuality(
@@ -4203,6 +4216,102 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 }
             }
         });
+    }
+
+    /**
+     * ADR-098 委外回厂短交通知：发现(低于允许下限)给订货单制单人紧急卡、业务员与其他持判定权限的人
+     * 知会; 分批等待逾期给制单人重要卡; 判定/自然到齐/作废只撤卡。同一案件只留最新一张卡。
+     * 文案只用大白话数字, 不带代号(准则 14 §五之三)。
+     */
+    private void notifySubcontractShortDeliveryEvent(String eventType, UUID caseId, JsonNode payload) {
+        deliverAtomically(() -> {
+            if (EVENT_SUBCONTRACT_SHORT_DELIVERY_RESOLVED.equals(eventType)) {
+                resolveReviewNotices(SUBCONTRACT_SHORT_DELIVERY_AGGREGATE, caseId,
+                        payload == null ? "RESOLVED" : payload.path("reason").asText("RESOLVED"));
+                return;
+            }
+            Map<String, Object> shortCase = one("""
+                    SELECT c.status, c.severity, c.order_bill_no_snapshot, c.receipt_bill_no_snapshot,
+                           c.ordered_qty, c.allowed_loss_pct, c.floor_qty, c.delivered_qty, c.shortfall_qty,
+                           c.shortfall_pct, c.expected_complete_by, c.owner_user_id,
+                           COALESCE(c.goods_name_snapshot, goods.name) AS goods_name,
+                           COALESCE(c.goods_code_snapshot, goods.code) AS goods_code,
+                           color.name AS color_name, unit.name AS unit_name, supplier.name AS supplier_name,
+                           order_doc.purchaser_id
+                    FROM subcontract_short_delivery_cases c
+                    JOIN goods ON goods.id = c.goods_id
+                    JOIN subcontract_orders order_doc ON order_doc.id = c.order_id
+                    LEFT JOIN colors color ON color.id = c.color_id
+                    LEFT JOIN units unit ON unit.id = c.unit_id
+                    LEFT JOIN suppliers supplier ON supplier.id = c.supplier_id
+                    WHERE c.id = ?
+                    """, caseId);
+            if (shortCase == null) return;
+            String status = str(shortCase.get("status"));
+            boolean overdueEvent = EVENT_SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE.equals(eventType);
+            if (overdueEvent ? !"WAITING_MORE".equals(status)
+                    : !"PENDING_OWNER".equals(status) && !"WAITING_MORE".equals(status)) {
+                return;
+            }
+            String orderNo = str(shortCase.get("order_bill_no_snapshot"));
+            String goods = java.util.stream.Stream.of(
+                            str(shortCase.get("goods_name")), str(shortCase.get("goods_code")),
+                            str(shortCase.get("color_name")))
+                    .filter(part -> part != null && !part.isBlank())
+                    .collect(java.util.stream.Collectors.joining(" "));
+            String unit = str(shortCase.get("unit_name"));
+            unit = unit == null || unit.isBlank() ? "" : " " + unit;
+            String supplier = str(shortCase.get("supplier_name"));
+            supplier = supplier == null || supplier.isBlank() ? "委外商" : "委外商 " + supplier;
+            String route = "/subcontract/short-deliveries?caseId=" + caseId;
+            String title;
+            String content;
+            String type;
+            if (overdueEvent) {
+                title = "委外分批到货已过预计到齐日仍未到齐：" + orderNo;
+                content = supplier + " 的货品「" + goods + "」订 " + plainQty(shortCase.get("ordered_qty")) + unit
+                        + "，累计回厂 " + plainQty(shortCase.get("delivered_qty")) + unit
+                        + "，还少 " + plainQty(shortCase.get("shortfall_qty")) + unit
+                        + "(" + plainQty(shortCase.get("shortfall_pct")) + "%)，预计到齐日 "
+                        + str(shortCase.get("expected_complete_by"))
+                        + " 已过。请催货后重新填预计到齐日，或接受损耗结案。";
+                type = TYPE_TASK;
+            } else {
+                String severe = "SEVERE".equals(str(shortCase.get("severity"))) ? "，属严重短交" : "";
+                title = "委外回厂数量明显少于订货量：" + orderNo;
+                content = supplier + " 的货品「" + goods + "」订 " + plainQty(shortCase.get("ordered_qty")) + unit
+                        + "，允许损耗 " + plainQty(shortCase.get("allowed_loss_pct")) + "%(最少应到 "
+                        + plainQty(shortCase.get("floor_qty")) + unit + ")，收货单 "
+                        + str(shortCase.get("receipt_bill_no_snapshot")) + " 登记后累计回厂 "
+                        + plainQty(shortCase.get("delivered_qty")) + unit + "，少 "
+                        + plainQty(shortCase.get("shortfall_qty")) + unit + "("
+                        + plainQty(shortCase.get("shortfall_pct")) + "%)" + severe
+                        + "。请判定：分批到货继续等，还是接受损耗结案(自动登记损耗单并把订货量改为已回厂量)。";
+                type = TYPE_URGENT;
+            }
+            resolveReviewNotices(SUBCONTRACT_SHORT_DELIVERY_AGGREGATE, caseId, "SUPERSEDED");
+            Set<UUID> notified = new LinkedHashSet<>();
+            UUID owner = (UUID) shortCase.get("owner_user_id");
+            if (owner != null) {
+                sendToUser(owner, type, title, content, route, eventType, null, caseId);
+                notified.add(owner);
+            }
+            UUID purchaser = userIdOfEmployee((UUID) shortCase.get("purchaser_id"));
+            if (purchaser != null && notified.add(purchaser)) {
+                sendToUser(purchaser, type, title, content, route, eventType, "normal", caseId);
+            }
+            for (UUID follower : userIdsWithPermissions(
+                    SUBCONTRACT_SHORT_DELIVERY_DECIDE_AUTHORITY, NOTICE_READ_AUTHORITY)) {
+                if (notified.add(follower)) {
+                    sendToUser(follower, TYPE_TASK, title, content, route, eventType, "normal", caseId);
+                }
+            }
+        });
+    }
+
+    private static String plainQty(Object value) {
+        BigDecimal number = bd(value);
+        return number == null ? "0" : number.stripTrailingZeros().toPlainString();
     }
 
     private void notifyProcurementArrivalEvent(String eventType, UUID exceptionId) {

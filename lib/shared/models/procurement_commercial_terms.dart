@@ -16,6 +16,9 @@ class ProcurementLastTerms {
     this.purchasePrice,
     this.subcontractPrice,
     this.priceContext,
+    // ADR-098：货品主档「委外允许损耗」默认值（记忆），委外订货行允许损耗列预填用。
+    this.allowedLossPct,
+    this.allowedLossPctSource,
   });
 
   factory ProcurementLastTerms.fromJson(Map<String, dynamic> json) =>
@@ -32,6 +35,8 @@ class ProcurementLastTerms {
                 json['priceContext'] as Map<String, dynamic>,
               )
             : null,
+        allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
+        allowedLossPctSource: json['allowedLossPctSource'] as String?,
       );
 
   final String? supplierId;
@@ -42,6 +47,10 @@ class ProcurementLastTerms {
   final double? purchasePrice;
   final double? subcontractPrice;
   final ProcurementPriceContext? priceContext;
+
+  /// 委外允许损耗默认值(%)；来源目前只有 GOODS_MASTER（货品主档记忆）。
+  final double? allowedLossPct;
+  final String? allowedLossPctSource;
 }
 
 /// 单价必须在原供应商、颜色、单位、币种和税率下使用；缺证据的旧值不猜测。

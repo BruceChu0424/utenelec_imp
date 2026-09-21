@@ -13,6 +13,8 @@
 //    跳回出错的那张表单所在 Tab。供应商沿用 showSupplierMasterEdit 弹窗。
 //  - 联系方式/地址为多值子表（party_contact_methods / party_addresses），跟进记录
 //    （party_activity_records）客户行为/投诉/违约扣信誉分等；信誉分首条按 100±delta 起算。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,6 +31,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -48,6 +51,11 @@ import '../models/currency_node.dart';
 import '../models/reference_method_option.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/supplier_master_edit.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/models/subcontract_short_delivery.dart';
+import '../../../shared/repositories/subcontract_loss_summary_loader.dart';
 
 class PartyDetailPage extends ConsumerStatefulWidget {
   const PartyDetailPage({super.key, required this.partyType, required this.id});
@@ -66,6 +74,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
 
   ClientDetail? _client;
   SupplierDetail? _supplier;
+
+  /// ADR-098 供应商「委外损耗」汇总（有委外订货查看权限才拉；失败静默不影响主档）。
+  SubcontractSupplierLossSummary? _lossSummary;
   List<PartyContactMethod> _contacts = const [];
   List<PartyAddress> _addresses = const [];
   List<PartyActivityRecord> _activities = const [];
@@ -141,6 +152,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
             .detail(widget.id);
         if (!mounted) return;
         setState(() => _supplier = detail);
+        unawaited(_loadSubcontractLossSummary());
       }
       final results = await Future.wait([
         _directoryRepo.contactMethods(widget.id),
@@ -171,6 +183,25 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         _error = '详情加载失败，请检查网络或权限后重试';
         _loading = false;
       });
+    }
+  }
+
+  /// ADR-098：供应商「委外损耗」段——已结清委外订货行的加权损耗率与最近几次短交结案。
+  Future<void> _loadSubcontractLossSummary() async {
+    final perms = ref.read(currentPermissionsProvider);
+    final allowed =
+        ref.read(isSuperAdminProvider) ||
+        perms.contains(Perm.subcontractOrderView);
+    if (!allowed) return;
+    try {
+      final summary = await loadSubcontractSupplierLossSummary(
+        ref.read(apiClientProvider),
+        widget.id,
+      );
+      if (!mounted) return;
+      setState(() => _lossSummary = summary);
+    } catch (_) {
+      // 汇总失败静默：主档详情本身不受影响。
     }
   }
 
@@ -731,6 +762,25 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         ),
       ),
       const SizedBox(height: UtenSpacing.s16),
+      if (_lossSummary != null) ...[
+        _section(
+          theme,
+          title: '委外损耗',
+          icon: Icons.rule_folder_outlined,
+          description: '已结清的委外订货行（自然到齐或接受损耗结案）的损耗统计；每一次短交的判定记录见右侧。',
+          trailing: TextButton.icon(
+            key: const Key('supplier-subcontract-loss-open'),
+            onPressed: () => goFrom(
+              context,
+              RouteName.subcontractShortDeliveriesWith(supplierId: widget.id),
+            ),
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text('短交记录'),
+          ),
+          child: _subcontractLossBody(theme, _lossSummary!),
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+      ],
       _section(
         theme,
         title: '备注',
@@ -738,6 +788,115 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         child: _remarkBody(theme, d.remark),
       ),
     ]);
+  }
+
+  Widget _subcontractLossBody(
+    ThemeData theme,
+    SubcontractSupplierLossSummary s,
+  ) {
+    if (s.isEmpty) {
+      return Text(
+        '还没有结清的委外订货行，暂无损耗统计。',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    final lossColor = s.lossPct > 0 ? theme.colorScheme.error : null;
+    final stats = <({String label, String value, Color? color, String? tip})>[
+      (
+        label: '加权损耗率',
+        value: formatSubcontractPct(s.lossPct),
+        color: lossColor,
+        tip: '累计损耗 / 累计订货，接受损耗结案的行按改量前的原订货量算',
+      ),
+      (
+        label: '累计损耗 / 订货',
+        value:
+            '${formatSubcontractQty(s.lossQty)} / ${formatSubcontractQty(s.orderedQty)}',
+        color: null,
+        tip: null,
+      ),
+      (
+        label: '结清行数',
+        value: s.settledLineCount.toString(),
+        color: null,
+        tip: '自然到齐 + 接受损耗结案的订货行',
+      ),
+      (
+        label: '接受损耗次数 / 最高一次',
+        value: '${s.acceptedLossCount} / ${formatSubcontractPct(s.maxLossPct)}',
+        color: null,
+        tip: null,
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < stats.length; i++) ...[
+              if (i > 0)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s16,
+                  ),
+                  child: Container(
+                    width: 1,
+                    height: 44,
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.5,
+                    ),
+                  ),
+                ),
+              Expanded(child: _statBlock(theme, stats[i])),
+            ],
+          ],
+        ),
+        if (s.byGoods.isNotEmpty) ...[
+          const SizedBox(height: UtenSpacing.s16),
+          Text(
+            '按货品',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          for (final g in s.byGoods.take(8))
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+              child: Text(
+                '${g.goodsName ?? ''} ${g.goodsCode ?? ''}：'
+                '结清 ${g.settledLineCount} 行，订 ${formatSubcontractQty(g.orderedQty)}，'
+                '损耗 ${formatSubcontractQty(g.lossQty)}(${formatSubcontractPct(g.lossPct)})，'
+                '最高一次 ${formatSubcontractPct(g.maxLossPct)}',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+        ],
+        if (s.recentCases.isNotEmpty) ...[
+          const SizedBox(height: UtenSpacing.s16),
+          Text(
+            '最近接受损耗的记录',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          for (final c in s.recentCases)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+              child: Text(
+                '${ChinaDateTime.formatIsoInstant(c.closedAt, fallback: '—')} · '
+                '${c.orderBillNo} · ${c.goodsLabel}：订 ${formatSubcontractQty(c.orderedQty, c.unitName)}，'
+                '损耗 ${formatSubcontractQty(c.lossQty ?? 0, c.unitName)}(${formatSubcontractPct(c.lossPct)})',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+        ],
+      ],
+    );
   }
 
   // ======================= Tab 2（客户）：销售条款与财务 =======================

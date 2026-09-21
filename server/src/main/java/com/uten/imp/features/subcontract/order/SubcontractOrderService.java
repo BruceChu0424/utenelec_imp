@@ -115,6 +115,16 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final com.uten.imp.application.port.ProcurementOrderSourceRevisionPort sourceRevision;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
     private final com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService masterDefaultsSync;
+    /** ADR-098 短交案件回调(懒取：短交服务依赖本服务做改量, 构造注入会成环)。 */
+    @Autowired
+    private org.springframework.beans.factory.ObjectProvider<
+            com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryOrderHooks> shortDeliveryHooks;
+
+    /** ADR-098 短交回调是可选协作方：纯单测手工 new 本服务时字段为 null，同样静默跳过。 */
+    private void shortDeliveryHook(
+            java.util.function.Consumer<com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryOrderHooks> action) {
+        if (shortDeliveryHooks != null) shortDeliveryHooks.ifAvailable(action);
+    }
     @Autowired
     private com.uten.imp.application.port.SubcontractOrderPreparationPort orderPreparation;
 
@@ -434,7 +444,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                        g.default_subcontract_price_color_id,
                        g.default_subcontract_price_unit_id,
                        g.default_subcontract_price_currency_id,
-                       g.default_subcontract_price_tax_rate
+                       g.default_subcontract_price_tax_rate,
+                       g.subcontract_allowed_loss_pct
                 FROM goods g
                 LEFT JOIN suppliers sup
                   ON sup.id = g.default_supplier_id
@@ -444,15 +455,18 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 WHERE g.id IN (:ids)
                   AND g.is_deleted = false
                   AND (g.default_supplier_id IS NOT NULL
-                       OR g.default_subcontract_price IS NOT NULL)
+                       OR g.default_subcontract_price IS NOT NULL
+                       OR g.subcontract_allowed_loss_pct IS NOT NULL)
                 """).setParameter("ids", goodsIds))) {
+            BigDecimal allowedLossPct = (BigDecimal) row[12];
             result.put((UUID) row[0], new MasterDefaultTermsPerGoods(
                     (UUID) row[1], priceMasked ? null : (UUID) row[2],
                     priceMasked ? null : (UUID) row[3], priceMasked ? null : (BigDecimal) row[4],
                     priceMasked ? null : (BigDecimal) row[5], priceMasked ? null : (BigDecimal) row[6],
                     priceMasked ? null : new com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext(
                             (UUID) row[7], (UUID) row[8], (UUID) row[9],
-                            (UUID) row[10], (BigDecimal) row[11])));
+                            (UUID) row[10], (BigDecimal) row[11]),
+                    allowedLossPct, allowedLossPct == null ? null : "GOODS_MASTER"));
         }
         return result;
     }
@@ -460,6 +474,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     /**
      * 主档默认条款视图 (/last-terms 返回体; 字段口径见 goods / suppliers 主档列)。
      * subcontractPrice=goods.default_subcontract_price (行价预填)。
+     * allowedLossPct=goods.subcontract_allowed_loss_pct (ADR-098 允许损耗记忆, 来源 GOODS_MASTER;
+     * 不随加工费脱敏, 它不是价格)。
      */
     public record MasterDefaultTermsPerGoods(
             UUID supplierId,
@@ -468,7 +484,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             BigDecimal exchangeRate,
             BigDecimal taxRate,
             BigDecimal subcontractPrice,
-            com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext) {}
+            com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext,
+            BigDecimal allowedLossPct,
+            String allowedLossPctSource) {}
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
@@ -624,6 +642,21 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @PreAuthorize("hasAuthority('subcontract_order:change_qty')")
     public OrderDetail changeQty(
             UUID id, OrderQtyChangeRequest request) {
+        return changeQtyInternal(id, request);
+    }
+
+    /**
+     * ADR-098 委外回厂短交「接受损耗结案」专用入口：权限点是 subcontract_short_delivery:decide
+     * (由判定服务校验), 不再要求 change_qty; 业务守卫(本人订货单、财务批准后、无在办复核、
+     * 下限=已回厂净量+供应商处剩料)与普通改量完全一致。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public OrderDetail changeQtyForShortDelivery(UUID id, OrderQtyChangeRequest request) {
+        return changeQtyInternal(id, request);
+    }
+
+    private OrderDetail changeQtyInternal(
+            UUID id, OrderQtyChangeRequest request) {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder order = requireOrderForUpdate(id);
@@ -736,6 +769,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         orderRepo.flush();
         itemRepo.flush();
+        // ADR-098：改量后重评开放的短交案件(新订货量不高于累计回厂 → 自然完成)。
+        shortDeliveryHook(hooks -> hooks.reevaluateAfterOrderQuantityChange(id));
         return detail(id);
     }
 
@@ -883,6 +918,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         // V304：软删未审出仓草稿 + 发料计划置 CANCELED（已审出仓由上方守卫先行拦截）。
         materialPlanService.cancelForOrderReversal(id);
+        // ADR-098：红冲守卫全部通过后, 开放的短交案件作废并撤回通知卡(同事务)。
+        shortDeliveryHook(hooks -> hooks.cancelOpenCasesForOrder(id, "ORDER_REVERSED"));
         r.setStatus(STATUS_REVERSED);
         orderRepo.save(r);
         orderRepo.flush();
@@ -1338,6 +1375,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
+            // ADR-098 允许损耗：保存即冻结到本行; 主档记忆由 masterDefaultsSync 回写。
+            it.setAllowedLossPct(l.getAllowedLossPct());
             itemRepo.save(it);
             itemRepo.flush();
             int sourceLine = 1;
@@ -1610,7 +1649,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getIssuedQty(),
                 it.getMaterialReturnedQty(), it.getApplicationItemId(), it.getDeliverDate(),
                 it.getWeight(), it.getSourceDocNo(), it.getRemark(),
-                sourceApplications);
+                sourceApplications, it.getAllowedLossPct());
     }
 
     private OrderCostItemDto toCostItemDto(SubcontractOrderCostItem c) {
@@ -1677,7 +1716,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
                 it.getIssuedQty(), it.getMaterialReturnedQty(), it.getApplicationItemId(),
                 it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
-                it.getSourceApplications());
+                it.getSourceApplications(), it.getAllowedLossPct());
     }
 
     /** 全部明细（含 V463 合并行全部来源）同属一张委外申请时返回该申请 (id, billNo)；否则 null。 */

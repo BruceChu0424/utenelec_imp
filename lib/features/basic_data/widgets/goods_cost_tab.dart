@@ -58,9 +58,12 @@ const _costFields = [
   _CostField('makeE', '生产利润', derived: true),
   _CostField('cTotal', '成本价', derived: true),
   _CostField('gTotal', '出厂价', derived: true),
+  // ADR-098：委外允许损耗默认值（记忆）。不是成本构成，不参与下面的派生计算；
+  // 放在这里是因为它和「损耗比率」同为货品档百分比，用户在一处维护。
+  _CostField('subcontractAllowedLossPct', '委外允许损耗', percent: true),
 ];
 
-/// 手填（可编辑）字段：6 项加工费 + 4 项比率。
+/// 手填（可编辑）字段：6 项加工费 + 4 项比率 + 委外允许损耗。
 const _inputKeys = {
   'machiningE',
   'incidentalE',
@@ -72,6 +75,7 @@ const _inputKeys = {
   'lostRate',
   'rentRate',
   'makeRate',
+  'subcontractAllowedLossPct',
 };
 
 final _costNumberPattern = RegExp(r'^\d{0,14}(?:\.\d{0,4})?$');
@@ -140,6 +144,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       'makeE': d.makeE,
       'cTotal': d.cTotal,
       'gTotal': d.gTotal,
+      'subcontractAllowedLossPct': d.subcontractAllowedLossPct,
     };
     _controllers = {
       for (final f in _costFields)

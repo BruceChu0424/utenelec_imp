@@ -216,7 +216,8 @@ class BusinessDataResetServicePostgresTest {
         // 这一步，清库函数 fail-closed 会整体拒跑）：276→280。
         // V590 废弃车间偏好表（数据搬进货品表随 goods 保留）：PRESERVE 99→98。
         // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送分配/流水/历史隔离：V618 +1 收仓确认，V619 +8 保管溯源：280→296。
-        assertThat(result.clearedTableCount()).isEqualTo(296);
+        // V636 +2（委外回厂短交案件头/事件）：296→298。
+        assertThat(result.clearedTableCount()).isEqualTo(298);
         // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
         assertThat(result.preservedTableCount()).isEqualTo(102);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。

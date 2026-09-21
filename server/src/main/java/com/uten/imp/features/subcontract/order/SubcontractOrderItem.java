@@ -107,4 +107,11 @@ public class SubcontractOrderItem extends BaseEntity {
     private String sourceDocNo;
 
     private String remark;
+
+    /**
+     * 本行允许损耗百分比(ADR-098, V636)：保存即冻结; 回厂累计低于 qty*(1-pct/100) 即低于下限,
+     * 到货登记须仓库确认并通知委外判定。空 = 未设(短交只开中性案件)。
+     */
+    @Column(name = "allowed_loss_pct", precision = 5, scale = 2)
+    private BigDecimal allowedLossPct;
 }

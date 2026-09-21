@@ -33,6 +33,7 @@ import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
+import '../widgets/subcontract_short_delivery_badge.dart';
 import '../widgets/subcontract_task_badge.dart';
 
 class SubcontractHubPage extends ConsumerWidget {
@@ -62,6 +63,16 @@ class SubcontractHubPage extends ConsumerWidget {
           description: l10n.subcontractHubTaskCenterSub,
           location: RouteName.operationsSubcontractWorkbench,
           badge: const SubcontractTaskBadge(showLabel: true),
+        ),
+      // ADR-098 回厂短交判定：徽章与任务中心 /count 里的「回厂短交待判定」同数展示，
+      // 不登记进 todo_badge_registry（同一件事只数一次）。
+      if (can(Perm.subcontractOrderView))
+        _Entry(
+          icon: Icons.rule_folder_outlined,
+          label: '回厂短交判定',
+          description: '回厂数量少于订货量：判定分批到货继续等，还是接受损耗结案',
+          location: RouteName.subcontractShortDeliveries,
+          badge: const SubcontractShortDeliveryBadge(showLabel: true),
         ),
       if (can(Perm.supplierReturnTaskView))
         _Entry(

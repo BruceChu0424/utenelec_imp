@@ -102,7 +102,7 @@ void main() {
       ),
     );
 
-    expect(find.byType(TextFormField), findsNWidgets(18));
+    expect(find.byType(TextFormField), findsNWidgets(19));
     expect(tester.takeException(), isNull);
   });
 }

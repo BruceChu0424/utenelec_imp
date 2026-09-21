@@ -274,6 +274,9 @@ abstract final class Perm {
   static const subcontractOrderPriceView = 'subcontract_order:price:view';
   static const subcontractOrderSubmitFinance =
       'subcontract_order:submit_finance';
+  /// ADR-098：委外回厂短交案件判定(分批到货 / 接受损耗结案)。
+  static const subcontractShortDeliveryDecide =
+      'subcontract_short_delivery:decide';
   static const subcontractReceiptView = 'subcontract_receipt:view';
   static const subcontractReceiptEdit = 'subcontract_receipt:edit';
   static const subcontractReceiptPriceView = 'subcontract_receipt:price:view';
@@ -1053,6 +1056,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractOrderView, Perm.subcontractOrderEdit,
       Perm.subcontractOrderPriceView,
       Perm.subcontractOrderSubmitFinance,
+      Perm.subcontractShortDeliveryDecide,
       Perm.subcontractReceiptView, Perm.subcontractReceiptEdit,
       Perm.subcontractReceiptPriceView,
       Perm.subcontractMaterialIssueView, Perm.subcontractMaterialIssueEdit,

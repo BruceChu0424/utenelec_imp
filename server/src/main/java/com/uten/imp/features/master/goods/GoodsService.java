@@ -1086,6 +1086,10 @@ public class GoodsService {
         // 采购批量口径（V575）：最小起订量原样落库（0 是「已确认无起订量」的有效登记）；
         // 订货倍数 0 视同未设——它要参与「向上取整到倍数」的除法，0 无意义且会除零，
         // 这里归一成 null，DB 的 goods_order_policy_qty_chk 只做兜底。
+        // ADR-098 委外允许损耗默认值：请求体带了键才改(带 null = 清空记忆), 老客户端不带键不动。
+        if (req.hasSubcontractAllowedLossPct()) {
+            g.setSubcontractAllowedLossPct(req.getSubcontractAllowedLossPct());
+        }
         g.setMinOrderQty(req.getMinOrderQty());
         g.setOrderMultipleQty(
                 req.getOrderMultipleQty() == null
@@ -1236,7 +1240,9 @@ public class GoodsService {
                 g.isQuantityUnitLocked(), canWrite(g),
                 g.getMinOrderQty(), g.getOrderMultipleQty(),
                 owningWarehouseId, owningWarehouseName,
-                owningWorkshopId, owningWorkshopName, null, null);
+                owningWorkshopId, owningWorkshopName, null, null,
+                // ADR-098 委外允许损耗默认值：不是成本字段, 不随成本脱敏。
+                g.getSubcontractAllowedLossPct());
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());

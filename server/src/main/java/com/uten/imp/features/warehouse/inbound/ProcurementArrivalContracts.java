@@ -60,7 +60,13 @@ public final class ProcurementArrivalContracts {
              * 上架到本张收货单的入库仓，品质部到库位检验；null/false = 原流程(等品质放行后仓库确认入库)。
              * 需要 warehouse_iqc_stock_in:before_inspection 权限。
              */
-            Boolean stockInBeforeInspection) {
+            Boolean stockInBeforeInspection,
+            /**
+             * 委外回厂短交确认(ADR-098)：委外订货行累计回厂低于允许损耗下限时, 服务端先以 409
+             * SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED 逐行列出短交明细; 仓库看过弹窗后带 true 原样重发,
+             * 登记成功即开立短交案件并通知委外判定。采购登记忽略。
+             */
+            Boolean shortDeliveryAcknowledged) {
 
         /** Compatibility for callers that predate the stock-in-before-inspection option. */
         public WarehouseArrivalRegisterRequest(
@@ -68,11 +74,24 @@ public final class ProcurementArrivalContracts {
                 UUID warehouseId, UUID purchaserId, UUID receiverEmployeeId, String remark,
                 List<ArrivalLine> items) {
             this(idempotencyKey, orderType, billDate, supplierId, warehouseId, purchaserId,
-                    receiverEmployeeId, remark, items, null);
+                    receiverEmployeeId, remark, items, null, null);
+        }
+
+        /** Compatibility for callers that predate the short-delivery acknowledgement (ADR-098). */
+        public WarehouseArrivalRegisterRequest(
+                String idempotencyKey, String orderType, LocalDate billDate, UUID supplierId,
+                UUID warehouseId, UUID purchaserId, UUID receiverEmployeeId, String remark,
+                List<ArrivalLine> items, Boolean stockInBeforeInspection) {
+            this(idempotencyKey, orderType, billDate, supplierId, warehouseId, purchaserId,
+                    receiverEmployeeId, remark, items, stockInBeforeInspection, null);
         }
 
         public boolean stockInBeforeInspectionRequested() {
             return Boolean.TRUE.equals(stockInBeforeInspection);
+        }
+
+        public boolean shortDeliveryAcknowledgedRequested() {
+            return Boolean.TRUE.equals(shortDeliveryAcknowledged);
         }
 
         public record ArrivalLine(

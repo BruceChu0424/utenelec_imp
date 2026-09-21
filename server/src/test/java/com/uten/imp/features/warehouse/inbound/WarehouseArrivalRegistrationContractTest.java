@@ -100,9 +100,11 @@ class WarehouseArrivalRegistrationContractTest {
                 .map(RecordComponent::getName)
                 .toList();
         // V596 先入库后质检：只多一个布尔开关，仍然没有价格/币族字段。
+        // V636 / ADR-098 委外回厂短交确认：再多一个布尔确认位(仓库看过 409 弹窗后原样重发)，同样不是金额。
         assertThat(components).containsExactlyInAnyOrder(
                 "idempotencyKey", "orderType", "billDate", "supplierId", "warehouseId",
-                "purchaserId", "receiverEmployeeId", "remark", "items", "stockInBeforeInspection");
+                "purchaserId", "receiverEmployeeId", "remark", "items", "stockInBeforeInspection",
+                "shortDeliveryAcknowledged");
         var lineComponents = Arrays.stream(
                         WarehouseArrivalRegisterRequest.ArrivalLine.class
                                 .getRecordComponents())

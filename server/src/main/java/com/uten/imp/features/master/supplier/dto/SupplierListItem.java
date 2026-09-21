@@ -56,4 +56,11 @@ public class SupplierListItem {
 
     /** 业务员姓名（按 owner_employee_id 解析；老库未匹配行为空，前端显示"—"）。 */
     private String ownerEmployeeName;
+
+    /**
+     * 委外损耗率(%)(ADR-098)：v_subcontract_supplier_loss_summary 的加权损耗率 = 累计损耗 / 累计订货,
+     * 只算已结清的委外订货行(接受损耗结案或自然到齐); 没有结清行的供应商为空, 前端显示"—"。
+     */
+    @lombok.Setter
+    private java.math.BigDecimal lossRate;
 }

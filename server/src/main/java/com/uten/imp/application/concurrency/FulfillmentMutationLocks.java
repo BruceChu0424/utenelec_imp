@@ -172,7 +172,16 @@ public class FulfillmentMutationLocks {
             this.plan = plan; this.discovery = discovery; this.transaction = transaction;
         }
         public FulfillmentMutationLockPlan plan() { return plan; }
-        /** Invoke after locking the mutable execution/root rows, before this command's first write. */
+        /**
+         * Invoke after locking the mutable execution/root rows, before this command's first write.
+         *
+         * <p>嵌套命令(acquire 时前缀已取齐)同样重跑一遍只读发现做锁后复核——这是刻意保留的
+         * 设计(MaterialAnalysisPreviewPrelockPostgresTest「refreshLocked retains its own discovery
+         * and post-lock revalidation」、MaterialAnalysisStructureScopeEndToEndTest「keep both
+         * original acquire/verify pairs」)。2026-09-20 量测日报直送审核一次链路发现跑 8 遍
+         * (外层 2 + 4 个嵌套命令各 2)，占 393 条语句里约 40 条；若要省掉嵌套那一遍须先改上述
+         * 两条契约，不在这里偷改。
+         */
         public void verifyUnchanged() {
             if (transaction != state()) {
                 throw FulfillmentLockState.conflict("守卫与当前事务不匹配，请刷新并重新提交");

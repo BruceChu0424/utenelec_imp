@@ -67,6 +67,7 @@ public class WarehouseArrivalRegistrationService {
     private final SubcontractReceiptService subcontractReceiptService;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
     private final ProcurementIqcPreStockInService preStockIn;
+    private final com.uten.imp.application.port.SubcontractShortDeliveryPort shortDelivery;
 
     public WarehouseArrivalRegistrationService(
             JdbcTemplate jdbc,
@@ -75,7 +76,8 @@ public class WarehouseArrivalRegistrationService {
             PurchaseReceiptService purchaseReceiptService,
             SubcontractReceiptService subcontractReceiptService,
             com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks,
-            ProcurementIqcPreStockInService preStockIn) {
+            ProcurementIqcPreStockInService preStockIn,
+            com.uten.imp.application.port.SubcontractShortDeliveryPort shortDelivery) {
         this.jdbc = jdbc;
         this.tx = tx;
         this.currentUser = currentUser;
@@ -83,6 +85,7 @@ public class WarehouseArrivalRegistrationService {
         this.subcontractReceiptService = subcontractReceiptService;
         this.mutationLocks = mutationLocks;
         this.preStockIn = preStockIn;
+        this.shortDelivery = shortDelivery;
     }
 
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
@@ -116,9 +119,15 @@ public class WarehouseArrivalRegistrationService {
                 request.items().stream()
                         .map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList(),
                 request.supplierId());
+        boolean shortAcknowledged = request.shortDeliveryAcknowledgedRequested();
         if (SUBCONTRACT.equals(orderType)) {
             requireSubcontractOutboundReleased(request.items().stream()
                     .map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList());
+            // ADR-098：登记前只读评估回厂短交; 低于允许损耗下限的行要仓库看过弹窗再登记(409 逐行明细)。
+            // 此时还没插幂等命令、没建收货单, 重试没有副作用。
+            requireShortDeliveryAcknowledged(shortDelivery.evaluateArrival(request.items().stream()
+                    .map(item -> new com.uten.imp.application.port.SubcontractShortDeliveryPort.ArrivalQuantity(
+                            item.orderItemId(), item.qty())).toList()), shortAcknowledged);
         }
         mutationGuard.verifyUnchanged();
         UUID commandId = insertPendingCommand(makerId,idempotencyKey,requestHash,orderType);
@@ -147,8 +156,60 @@ public class WarehouseArrivalRegistrationService {
             result = new WarehouseArrivalRegisterResult(
                     OUTCOME_PRE_STOCKED, result.receiptId(), result.receiptBillNo(), null);
         }
+        recordSubcontractShortDelivery(orderType, receiptId, billNo, result, shortAcknowledged);
         finalizeCommand(commandId, makerId, orderType, result);
         return result;
+    }
+
+    /**
+     * ADR-098：收货单已审核送检(非超量隔离)后, 同事务按库里最新累计回厂开立/刷新短交案件、
+     * 完成自然到齐的案件并发通知。超量隔离的单没审核、received_qty 未变, 不评估。
+     */
+    private void recordSubcontractShortDelivery(String orderType, UUID receiptId, String billNo,
+                                                WarehouseArrivalRegisterResult result, boolean acknowledged) {
+        if (!SUBCONTRACT.equals(orderType) || result == null
+                || OUTCOME_QUARANTINED.equals(result.outcome())) {
+            return;
+        }
+        shortDelivery.recordArrival(receiptId, billNo, acknowledged);
+    }
+
+    /** 低于允许损耗下限且仓库尚未确认 → 409 逐行说明(field=订货明细 id, message=大白话数字)。 */
+    static void requireShortDeliveryAcknowledged(
+            List<com.uten.imp.application.port.SubcontractShortDeliveryPort.ShortDeliveryFinding> findings,
+            boolean acknowledged) {
+        if (acknowledged || findings == null) return;
+        List<com.uten.imp.common.web.ApiError.FieldError> lines = new ArrayList<>();
+        for (var finding : findings) {
+            if (!finding.requiresAcknowledgement()) continue;
+            String unit = finding.unitName() == null ? "" : " " + finding.unitName();
+            StringBuilder text = new StringBuilder();
+            text.append("「").append(finding.goodsLabel()).append("」订 ")
+                    .append(plainQty(finding.orderedQty())).append(unit)
+                    .append("，允许损耗 ").append(plainQty(finding.allowedLossPct())).append("%(最少应到 ")
+                    .append(plainQty(finding.floorQty())).append(unit).append(")，此前已到 ")
+                    .append(plainQty(finding.deliveredBefore())).append(unit).append("，本次 ")
+                    .append(plainQty(finding.declaredNow())).append(unit).append("，累计 ")
+                    .append(plainQty(finding.deliveredAfter())).append(unit).append("，少 ")
+                    .append(plainQty(finding.shortfallQty())).append(unit).append("(")
+                    .append(plainQty(finding.shortfallPct())).append("%)");
+            if ("SEVERE".equals(finding.severity())) text.append("，属严重短交");
+            if (finding.waitingMoreActive()) {
+                text.append("；委外已判定分批到货，预计 ")
+                        .append(finding.expectedCompleteBy()).append(" 到齐，本批登记后仍低于下限");
+            }
+            lines.add(new com.uten.imp.common.web.ApiError.FieldError(
+                    finding.orderItemId().toString(), text.toString()));
+        }
+        if (lines.isEmpty()) return;
+        throw new ApiException(ErrorCode.SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED,
+                "有 " + lines.size() + " 行到货数量明显少于订货量。登记后系统会通知委外跟单员判定是分批到货继续等，"
+                        + "还是接受损耗结案；仓库照实登记即可。",
+                lines);
+    }
+
+    private static String plainQty(java.math.BigDecimal value) {
+        return value == null ? "0" : value.stripTrailingZeros().toPlainString();
     }
 
     /** 先入库后质检必须持有独立权限；服务端兜底，不信任前端显隐。 */
@@ -289,7 +350,11 @@ public class WarehouseArrivalRegistrationService {
             requireSubcontractOutboundReleased(draft.orderItemIds());
         }
         alignDraftHeader(draft, header);
-        return approveAsArrival(draft.orderType(), draft.receiptId(), draft.billNo());
+        WarehouseArrivalRegisterResult completed =
+                approveAsArrival(draft.orderType(), draft.receiptId(), draft.billNo());
+        // 断点恢复的草稿没有登记弹窗可确认：按已知情记录短交案件, 通知照发。
+        recordSubcontractShortDelivery(draft.orderType(), draft.receiptId(), draft.billNo(), completed, true);
+        return completed;
     }
 
     private List<com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef> receiptSources(java.util.Collection<UUID> receiptIds) {
@@ -729,6 +794,10 @@ public class WarehouseArrivalRegistrationService {
                 appendHash(canonical, item == null || item.preStockPlace() == null
                         ? null : item.preStockPlace().strip());
             }
+        }
+        // 委外回厂短交确认(ADR-098)：只在确认时进入指纹; 首次 409 未落命令, 带确认重发是新命令。
+        if (request.shortDeliveryAcknowledgedRequested()) {
+            appendHash(canonical, "shortDeliveryAcknowledged");
         }
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

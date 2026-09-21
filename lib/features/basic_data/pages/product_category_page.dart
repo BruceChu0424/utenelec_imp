@@ -879,6 +879,8 @@ class _DetailPaneState extends State<_DetailPane> {
       'rentE': d.rentE,
       'makeRate': d.makeRate,
       'makeE': d.makeE,
+      // ADR-098 委外允许损耗记忆：整体覆盖式回传原样带回，粘贴/启停不清空。
+      'subcontractAllowedLossPct': d.subcontractAllowedLossPct,
       'cTotal': d.cTotal,
       'gTotal': d.gTotal,
     };

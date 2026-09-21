@@ -62,6 +62,8 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_material_return_requests", 560),
             Map.entry("production_material_return_request_items", 560),
             Map.entry("production_material_return_request_cancellations", 560),
+            Map.entry("subcontract_short_delivery_cases", 636),
+            Map.entry("subcontract_short_delivery_case_events", 636),
             Map.entry("production_execution_segment_splits", 561),
             Map.entry("preplan_reallocation_make_supplements", 568),
             Map.entry("preplan_future_supply_transfers", 569),
@@ -245,7 +247,8 @@ class BusinessDataResetSqlContractTest {
                 "V619__workshop_material_normal_warehouse_custody.sql",
                 "V624__legacy_subcontract_settlement_provenance.sql",
                 "V626__legacy_finance_source_provenance.sql",
-                "V627__legacy_receipt_consideration_provenance.sql")) {
+                "V627__legacy_receipt_consideration_provenance.sql",
+                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }

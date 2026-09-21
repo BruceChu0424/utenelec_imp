@@ -238,6 +238,23 @@ public class GoodsSaveRequest {
     private BigDecimal workE;        // WorkE 人工费
     @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
     private BigDecimal lostRate;     // LostRate 损耗比率(%)
+    /**
+     * 委外允许损耗默认值(%)(ADR-098): 0 到 100, 最多 2 位小数。请求体带了这个键才改
+     * (带 null = 清空记忆), 没带 = 保持, 老客户端保存货品不会误清。
+     */
+    @DecimalMin("0.00") @DecimalMax("100.00") @Digits(integer = 3, fraction = 2)
+    private BigDecimal subcontractAllowedLossPct;
+    private boolean subcontractAllowedLossPctPresent;
+
+    @JsonSetter("subcontractAllowedLossPct")
+    public void setSubcontractAllowedLossPct(BigDecimal value) {
+        subcontractAllowedLossPct = value;
+        subcontractAllowedLossPctPresent = true;
+    }
+
+    public boolean hasSubcontractAllowedLossPct() {
+        return subcontractAllowedLossPctPresent;
+    }
     @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal lostE;        // LostE 损耗费
     @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)

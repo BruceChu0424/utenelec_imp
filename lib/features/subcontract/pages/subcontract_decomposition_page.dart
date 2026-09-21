@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -39,6 +40,8 @@ import '../../operations_workbench/models/operations_workbench.dart';
 import '../../operations_workbench/repositories/operations_workbench_repository.dart';
 import '../../production/models/production_material_analysis.dart';
 import '../../production/repositories/production_repository.dart';
+import '../../../shared/models/subcontract_short_delivery.dart'
+    show subcontractProgressStatusLabel;
 import '../widgets/subcontract_application_progress_dialog.dart';
 
 /// 阶段分段值：真实任务阶段（code 非空）或历史记录哨兵。
@@ -93,22 +96,63 @@ class _SubcontractDecompositionPageState
   String? _openingPreparationTask;
 
   /// 阶段行分段（不含终态——已完成归入历史记录）。
+  ///
+  /// ADR-098（2026-09-20 用户口径）：「等待财务审核 / 财务已通过 / 财务驳回」三段合并成
+  /// 「进行中」；订货单在其中的执行状态由状态列（表头可筛、颜色拉开）表达：
+  /// 等待财务审核 / 财务已退回 / 待发料出仓 / 委外加工中 / 部分回厂 / 分批等待中 /
+  /// 回厂短交待判定。要本部门动手的（财务已退回、回厂短交待判定）在异常小类行挂红徽章。
   static const _stages = <({String code, String label})>[
     (code: 'WAITING_ORDER', label: '待处理'),
-    (code: 'ORDER_PENDING_APPROVAL', label: '等待财务审核'),
-    (code: 'FINANCE_APPROVED', label: '财务已通过'),
-    (code: 'FINANCE_REJECTED', label: '财务驳回'),
+    (code: 'IN_PROGRESS', label: '进行中'),
   ];
 
   /// 阶段计数的呈现形态（docs/00-项目准则/14-徽章与计数口径.md）。
   ///
-  /// 红徽章只给「等委外部门动手」的阶段：待处理（= 委外任务中心角标同源）与
-  /// 财务驳回（要改单重报）；等待财务审核 / 财务已通过下一步是别人在办，
-  /// 是监控数 → 中性括号。
+  /// 红徽章只给「等委外部门动手」的阶段：待处理（= 委外任务中心角标同源）；
+  /// 进行中是监控数 → 中性括号，其中要动手的两类走异常小类行的红徽章。
   static UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
-    'WAITING_ORDER' || 'FINANCE_REJECTED' => UtenSegmentCountForm.actionable,
+    'WAITING_ORDER' => UtenSegmentCountForm.actionable,
     _ => UtenSegmentCountForm.browsing,
   };
+
+  /// 状态列颜色（ADR-098：刻意拉开，不用相近色）：蓝=等财务、红=退回/短交、
+  /// 紫=待发料出仓、青=加工中、橙=部分回厂、品红=分批等待、
+  /// 绿=已回厂待入库(回厂量到齐只差质检入库, 与历史段的已完成同色但不同段)。
+  static UtenStatusBadgeType _progressType(String code) => switch (code) {
+    'ORDER_PENDING_APPROVAL' => UtenStatusBadgeType.info,
+    'FINANCE_REJECTED' || 'SHORT_DELIVERY' => UtenStatusBadgeType.danger,
+    'AWAITING_OUTBOUND' => UtenStatusBadgeType.violet,
+    'AT_SUPPLIER' => UtenStatusBadgeType.accent,
+    'PARTIAL_RECEIVED' => UtenStatusBadgeType.warning,
+    'RECEIVED_PENDING_STOCK' => UtenStatusBadgeType.success,
+    'WAITING_MORE_BATCH' => UtenStatusBadgeType.fuchsia,
+    // 容差内待结案：不急，灰色中性；点状态同样可去判定页。
+    'TOLERANT_SHORT' => UtenStatusBadgeType.neutral,
+    'COMPLETED' => UtenStatusBadgeType.success,
+    _ => UtenStatusBadgeType.neutral,
+  };
+
+  bool _shortDelivery(OperationsWorkbenchTask task) =>
+      task.progressStatus == 'SHORT_DELIVERY';
+
+  /// 状态列文案：委外订货单按展示阶段翻译，未知码回落既有阶段文案。
+  String _progressLabelOf(OperationsWorkbenchTask task) {
+    final code = task.progressStatus;
+    final label = subcontractProgressStatusLabel(code);
+    return label == code ? task.statusLabel : label;
+  }
+
+  /// 回厂短交待判定 / 分批等待中的订货单：点状态直达判定页（只看这张单）。
+  void _openShortDeliveries(OperationsWorkbenchTask task) {
+    final orderId = task.actionDocument?.id;
+    if (orderId == null || orderId.isEmpty) return;
+    goFrom(context, RouteName.subcontractShortDeliveriesWith(orderId: orderId));
+  }
+
+  bool _linksToShortDeliveries(OperationsWorkbenchTask task) =>
+      const {'SHORT_DELIVERY', 'WAITING_MORE_BATCH', 'TOLERANT_SHORT'}
+          .contains(task.progressStatus) &&
+      task.actionDocument?.id.isNotEmpty == true;
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
@@ -379,14 +423,16 @@ class _SubcontractDecompositionPageState
                   'FULLY_NOTIFIED',
                 }.contains(bucket.value)
                 ? SubcontractMakeTask.workshopStatusLabelFor(bucket.value)
-                : operationsWorkbenchStatusLabel(bucket.value),
+                : subcontractProgressStatusLabel(bucket.value) == bucket.value
+                ? operationsWorkbenchStatusLabel(bucket.value)
+                : subcontractProgressStatusLabel(bucket.value),
           ),
       ],
   };
 
   String _stageLabelOf(OperationsWorkbenchTask task) =>
       task.preparationTaskId == null
-      ? task.statusLabel
+      ? _progressLabelOf(task)
       : SubcontractMakeTask.workshopStatusLabelFor(task.preparationStatus);
 
   Widget _createOrderButton() {
@@ -620,8 +666,17 @@ class _SubcontractDecompositionPageState
                   _SubcontractDemandCard(
                     task: task,
                     stageLabel: _stageLabelOf(task),
+                    stageType: _progressType(
+                      task.preparationTaskId == null
+                          ? task.progressStatus
+                          : (task.preparationStatus ?? ''),
+                    ),
+                    urgent: _shortDelivery(task),
+                    onOpenShortDelivery: _linksToShortDeliveries(task)
+                        ? () => _openShortDeliveries(task)
+                        : null,
                     synthetic: _isSynthetic(task),
-                    blocked: _orderBlocked(task),
+                    blocked: _orderBlocked(task) || _shortDelivery(task),
                     selected: _selectedIds.contains(task.id),
                     selectable:
                         _canOrderTask(task) &&
@@ -745,9 +800,22 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'status',
           sortable: true,
-          label: '阶段',
-          width: 170,
+          label: '状态',
+          width: 190,
           value: (t) => _stageLabelOf(t),
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (context, t) => _ProgressStatusCell(
+            label: _stageLabelOf(t),
+            type: _progressType(
+              t.preparationTaskId == null
+                  ? t.progressStatus
+                  : (t.preparationStatus ?? ''),
+            ),
+            urgent: _shortDelivery(t),
+            onTap: _linksToShortDeliveries(t)
+                ? () => _openShortDeliveries(t)
+                : null,
+          ),
         ),
         MasterColumnDef(
           key: 'source',
@@ -788,7 +856,8 @@ class _SubcontractDecompositionPageState
         _load(page: 1);
       },
       onRowTap: _openTask,
-      rowColor: (task) => _orderBlocked(task)
+      // 待处理段下不能下单的行、进行中段下回厂短交待判定的订货单：整行标红（ADR-098）。
+      rowColor: (task) => _orderBlocked(task) || _shortDelivery(task)
           ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.42)
           : null,
       // 合成行双击=产品进度弹窗（视为可打开）；真实行=关联申请/订货详情。
@@ -838,6 +907,9 @@ class _SubcontractDemandCard extends StatelessWidget {
   const _SubcontractDemandCard({
     required this.task,
     required this.stageLabel,
+    required this.stageType,
+    required this.urgent,
+    required this.onOpenShortDelivery,
     required this.synthetic,
     required this.blocked,
     required this.selected,
@@ -849,6 +921,9 @@ class _SubcontractDemandCard extends StatelessWidget {
 
   final OperationsWorkbenchTask task;
   final String stageLabel;
+  final UtenStatusBadgeType stageType;
+  final bool urgent;
+  final VoidCallback? onOpenShortDelivery;
   final bool synthetic;
   final bool blocked;
   final bool selected;
@@ -924,7 +999,14 @@ class _SubcontractDemandCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: UtenSpacing.s8),
-                  _StatusPill(label: stageLabel, danger: task.hasException),
+                  _ProgressStatusCell(
+                    label: stageLabel,
+                    type: task.hasException && !urgent
+                        ? UtenStatusBadgeType.danger
+                        : stageType,
+                    urgent: urgent,
+                    onTap: onOpenShortDelivery,
+                  ),
                 ],
               ),
               const SizedBox(height: UtenSpacing.s8),
@@ -961,6 +1043,12 @@ class _SubcontractDemandCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onOpenShortDelivery != null)
+                    TextButton.icon(
+                      onPressed: onOpenShortDelivery,
+                      icon: const Icon(Icons.rule_folder_outlined, size: 18),
+                      label: const Text('去判定短交'),
+                    ),
                   if (onOpenSource != null)
                     TextButton.icon(
                       onPressed: onOpenSource,
@@ -977,32 +1065,50 @@ class _SubcontractDemandCard extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.danger});
+/// 状态药丸（ADR-098）：颜色按状态拉开；回厂短交待判定加「紧急」标签；
+/// 有判定页可去时整个药丸可点（工具提示「点击去判定」）。
+class _ProgressStatusCell extends StatelessWidget {
+  const _ProgressStatusCell({
+    required this.label,
+    required this.type,
+    required this.urgent,
+    this.onTap,
+  });
 
   final String label;
-  final bool danger;
+  final UtenStatusBadgeType type;
+  final bool urgent;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final background = danger
-        ? theme.colorScheme.errorContainer
-        : theme.colorScheme.secondaryContainer;
-    final foreground = danger
-        ? theme.colorScheme.onErrorContainer
-        : theme.colorScheme.onSecondaryContainer;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: UtenRadius.pillAll,
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: foreground,
-          fontWeight: FontWeight.w700,
+    final badge = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (urgent) ...[
+          const UtenStatusBadge(
+            label: '紧急',
+            type: UtenStatusBadgeType.danger,
+            icon: Icons.priority_high_rounded,
+            size: UtenStatusBadgeSize.small,
+          ),
+          const SizedBox(width: UtenSpacing.s4),
+        ],
+        UtenStatusBadge(label: label, type: type, size: UtenStatusBadgeSize.small),
+      ],
+    );
+    if (onTap == null) {
+      return Semantics(label: label, child: badge);
+    }
+    return Tooltip(
+      message: '点击去判定',
+      child: Semantics(
+        button: true,
+        label: '$label，点击去判定',
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: UtenRadius.pillAll,
+          child: badge,
         ),
       ),
     );

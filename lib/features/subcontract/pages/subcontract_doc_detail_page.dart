@@ -953,6 +953,17 @@ class _SubcontractDocDetailPageState
                   type: 'number',
                   value: (it) => it.receivedQty?.toStringAsFixed(2),
                 ),
+              // ADR-098：订货行允许损耗%（回厂累计低于 数量×(1−允许损耗) 即短交待判定）。
+              if (_cfg.itemHasAllowedLossPct)
+                MasterColumnDef(
+                  key: 'allowedLossPct',
+                  label: '允许损耗%',
+                  width: 100,
+                  type: 'number',
+                  value: (it) => it.allowedLossPct == null
+                      ? '未设'
+                      : it.allowedLossPct!.toStringAsFixed(2),
+                ),
               if (_cfg.showReturned)
                 MasterColumnDef(
                   key: 'returned',

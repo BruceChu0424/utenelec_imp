@@ -38,6 +38,7 @@ class SupplierListItem {
     this.shipAddress,
     this.categoryId,
     this.ownerEmployeeName,
+    this.lossRate,
   });
 
   final String id;
@@ -66,8 +67,12 @@ class SupplierListItem {
   final String? categoryId; // 所属分类 id（供应商资料页"搜供应商定位分类"用）
   final String? ownerEmployeeName; // 业务员姓名（V578：按 owner_employee_id 解析）
 
+  /// 委外损耗率(%)（ADR-098）：已结清委外订货行的加权损耗率；没有结清行为空，显示「—」。
+  final double? lossRate;
+
   factory SupplierListItem.fromJson(Map<String, dynamic> json) =>
       SupplierListItem(
+        lossRate: (json['lossRate'] as num?)?.toDouble(),
         id: json['id'] as String,
         legacyId: (json['legacyId'] as num?)?.toInt(),
         name: json['name'] as String?,

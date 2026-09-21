@@ -76,12 +76,14 @@ public class NoticeService {
             "PRODUCTION_FINISHED_INBOUND_REJECTED",
             "PRODUCTION_FINISHED_INBOUND_REVERSED",
             "PRODUCTION_DRAW_ISSUE_REVERSED",
-            "PROCUREMENT_ARRIVAL_EXCEPTION_DETECTED");
+            "PROCUREMENT_ARRIVAL_EXCEPTION_DETECTED",
+            "SUBCONTRACT_SHORT_DELIVERY_DETECTED");
     private static final Set<String> IMPORTANT_SYSTEM_EVENTS = Set.of(
             "PROCUREMENT_SUPPLIER_RETURN_REQUIRED",
             "PROCUREMENT_ARRIVAL_RECEIPT_POSTED",
             "SALES_RESERVATION_HOLD_OVERDUE",
-            "SALES_RESERVATION_YIELDED");
+            "SALES_RESERVATION_YIELDED",
+            "SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE");
     /** 互动模式=祝福的类型。 */
     public static final Set<String> BLESS_TYPES =
             Set.of("birthday", "anniversary", "wedding", "newborn");

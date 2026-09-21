@@ -35,6 +35,25 @@ public class FulfillmentWorkbenchQueryService {
             Set.of("WAREHOUSE", "PURCHASE", "SUBCONTRACT");
     private static final String PENDING_MAKE =
             "task.status = 'ACTIVE' AND task.notified_qty < task.required_qty";
+    /** ADR-098：委外任务中心「进行中」= 订货单提交财务到结案之间的三档。 */
+    static final List<String> IN_PROGRESS_STATUSES =
+            List.of("ORDER_PENDING_APPROVAL", "FINANCE_APPROVED", "FINANCE_REJECTED");
+    /**
+     * 低于允许下限待判定(含分批等待逾期)的回厂短交案件 → 该订货单在任务中心标红、计入红徽章。
+     * 容差内 / 未设允许损耗的中性案件不在此列(状态列另显「容差内待结案」, 不计红)。
+     */
+    static final String SHORT_DELIVERY_PENDING_EXISTS = """
+            EXISTS (SELECT 1 FROM subcontract_short_delivery_cases short_case
+                    WHERE short_case.order_id = %s
+                      AND ((short_case.status = 'PENDING_OWNER'
+                            AND short_case.severity IN ('SEVERE', 'BELOW_FLOOR'))
+                           OR (short_case.status = 'WAITING_MORE'
+                               AND short_case.expected_complete_by < CURRENT_DATE)))""";
+    static final String SHORT_DELIVERY_TOLERANT_EXISTS = """
+            EXISTS (SELECT 1 FROM subcontract_short_delivery_cases tolerant_case
+                    WHERE tolerant_case.order_id = %s
+                      AND tolerant_case.status = 'PENDING_OWNER'
+                      AND tolerant_case.severity IN ('WITHIN_TOLERANCE', 'UNSET_TOLERANCE'))""";
 
     /**
      * 仓库待领任务的单据归组行（一行=一张 DRAW 领料单；未挂单的行退回行级）。
@@ -227,7 +246,9 @@ public class FulfillmentWorkbenchQueryService {
                 department = :department
                   AND (:status = ''
                        OR (:status = 'OPEN_ANY' AND open_line_count > 0)
-                       OR (:status <> 'OPEN_ANY' AND task_status = :status))
+                       OR (:status = 'IN_PROGRESS' AND task_status IN (
+                               'ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED'))
+                       OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status))
                   AND (:exception = ''
                        OR (:exception = 'OVERDUE_ANY' AND exception_code LIKE 'OVERDUE%%')
                        OR (:exception <> 'OVERDUE_ANY' AND exception_code = :exception))
@@ -257,7 +278,8 @@ public class FulfillmentWorkbenchQueryService {
                        supply_pegged_qty, open_qty, task_status, need_date,
                        expected_date, exception_code, updated_at,
                        action_doc_type, action_doc_id, action_doc_no, action_item_id, action_doc_status,
-                       goods_count, open_line_count, action_item_ids, issued_at, can_create_order
+                       goods_count, open_line_count, action_item_ids, issued_at, can_create_order,
+                       display_stage
                 FROM %s
                 WHERE %s
                 ORDER BY %s
@@ -301,6 +323,12 @@ public class FulfillmentWorkbenchQueryService {
         Map<String, Long> statusCounts = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(statusQuery)) {
             statusCounts.put((String) row[0], ((Number) row[1]).longValue());
+        }
+        if ("SUBCONTRACT".equals(department)) {
+            // ADR-098：委外任务中心把等待财务审核 / 财务已通过 / 财务已退回合并成「进行中」一段
+            // (中性数字); 三档各自的计数保留给状态列与异常小类行。
+            statusCounts.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
+                    .mapToLong(code -> statusCounts.getOrDefault(code, 0L)).sum());
         }
 
         Query exceptionQuery = em.createNativeQuery("""
@@ -415,16 +443,22 @@ public class FulfillmentWorkbenchQueryService {
         String preparation = includePreparation
                 ? " UNION ALL SELECT task.id FROM preplan_subcontract_make_tasks task WHERE " + PENDING_MAKE
                 : "";
+        // ADR-098：委外还要数「回厂短交待判定」的订货单(财务已通过但有待判定案件), 与列表异常行同源。
+        String shortDelivery = "SUBCONTRACT".equals(department)
+                ? " OR (decomposition.task_status = 'FINANCE_APPROVED'"
+                        + " AND decomposition.action_doc_type = 'SUBCONTRACT_ORDER' AND "
+                        + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id") + ")"
+                : "";
         Query query = em.createNativeQuery(decomposition
                 ? """
                     SELECT COUNT(*) FROM (
-                        SELECT DISTINCT action_doc_id
-                        FROM v_procurement_decomposition_tasks
-                        WHERE department = :department AND open_qty > 0
-                          AND task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')
+                        SELECT DISTINCT decomposition.action_doc_id
+                        FROM v_procurement_decomposition_tasks decomposition
+                        WHERE decomposition.department = :department AND decomposition.open_qty > 0
+                          AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)
                         %s
                     ) documents
-                    """.formatted(preparation)
+                    """.formatted(shortDelivery, preparation)
                 : """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT COALESCE(action_doc_id, task_id)
@@ -518,18 +552,78 @@ public class FulfillmentWorkbenchQueryService {
                     FROM origin_actions origin JOIN preplan_supply_actions action ON action.id=origin.id
                 ) issue ON TRUE
                 """ : "";
+        // ADR-098：委外订货单在「进行中」里的执行状态(状态列/表头筛选/排序都走 display_stage)：
+        // 回厂短交待判定 > 分批等待中 > 容差内待结案 > 已回厂待入库(回厂净量已到齐, 只差质检入库)
+        // > 部分回厂 > 委外加工中(已发料/已出仓) > 待发料出仓；
+        // 财务已退回与短交待判定同时写进 exception_code, 让异常小类行挂红徽章。
+        String progressJoin = subcontract ? """
+                LEFT JOIN LATERAL (
+                    SELECT %s AS short_pending,
+                           %s AS tolerant_pending,
+                           EXISTS (SELECT 1 FROM subcontract_short_delivery_cases waiting_case
+                                   WHERE waiting_case.order_id = base.action_doc_id
+                                     AND waiting_case.status = 'WAITING_MORE'
+                                     AND waiting_case.expected_complete_by >= CURRENT_DATE) AS waiting_more,
+                           EXISTS (SELECT 1 FROM subcontract_order_items received_item
+                                   WHERE received_item.order_id = base.action_doc_id
+                                     AND NOT received_item.is_deleted
+                                     AND COALESCE(received_item.received_qty, 0) > 0) AS any_received,
+                           NOT EXISTS (SELECT 1 FROM subcontract_order_items pending_item
+                                       WHERE pending_item.order_id = base.action_doc_id
+                                         AND NOT pending_item.is_deleted
+                                         AND COALESCE(pending_item.received_qty, 0)
+                                             - COALESCE(pending_item.returned_qty, 0)
+                                             < COALESCE(pending_item.qty, 0)) AS all_received,
+                           EXISTS (SELECT 1 FROM subcontract_material_issue_items issued_item
+                                   JOIN subcontract_material_issues issued_doc
+                                     ON issued_doc.id = issued_item.issue_id
+                                    AND issued_doc.status = 1 AND NOT issued_doc.is_deleted
+                                   JOIN subcontract_order_items issued_order_item
+                                     ON issued_order_item.id = issued_item.order_item_id
+                                   WHERE issued_order_item.order_id = base.action_doc_id
+                                     AND NOT issued_item.is_deleted) AS any_issued
+                    WHERE base.action_doc_type = 'SUBCONTRACT_ORDER'
+                ) progress ON TRUE
+                """.formatted(SHORT_DELIVERY_PENDING_EXISTS.formatted("base.action_doc_id"),
+                        SHORT_DELIVERY_TOLERANT_EXISTS.formatted("base.action_doc_id")) : "";
+        String stageExpression = subcontract ? """
+                CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
+                     WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND base.task_status='FINANCE_APPROVED' THEN
+                          CASE WHEN progress.short_pending THEN 'SHORT_DELIVERY'
+                               WHEN progress.waiting_more THEN 'WAITING_MORE_BATCH'
+                               WHEN progress.tolerant_pending THEN 'TOLERANT_SHORT'
+                               WHEN progress.any_received AND progress.all_received THEN 'RECEIVED_PENDING_STOCK'
+                               WHEN progress.any_received THEN 'PARTIAL_RECEIVED'
+                               WHEN progress.any_issued THEN 'AT_SUPPLIER'
+                               ELSE 'AWAITING_OUTBOUND' END
+                     ELSE base.task_status END""" : """
+                CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
+                     ELSE base.task_status END""";
+        String exceptionExpression = subcontract ? """
+                CASE WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND progress.short_pending THEN 'SHORT_DELIVERY'
+                     WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND base.task_status='FINANCE_REJECTED'
+                          THEN 'FINANCE_REJECTED'
+                     ELSE base.exception_code END""" : "base.exception_code";
         // A grouped order can contain several real source issues. Its earliest source issue
         // remains the displayed date; later preparation/app creation never substitutes for it.
         return """
-                (SELECT base.*, %s AS issued_at,
+                (SELECT base.department, base.task_id, base.package_id, base.plan_id, base.plan_no,
+                        base.warehouse_id, base.warehouse_name, base.goods_id, base.goods_code,
+                        base.goods_name, base.spec, base.color_id, base.color_name, base.unit_id, base.unit_name,
+                        base.supply_route, base.required_qty, base.allocated_qty, base.fulfilled_qty,
+                        base.supply_pegged_qty, base.open_qty, base.task_status, base.need_date,
+                        base.expected_date, %s AS exception_code, base.updated_at,
+                        base.action_doc_type, base.action_doc_id, base.action_doc_no, base.action_item_id,
+                        base.action_doc_status, base.goods_count, base.open_line_count, base.action_item_ids,
+                        %s AS issued_at,
                         (%s AND base.task_status='WAITING_ORDER' AND base.action_doc_type='%s'
                             AND base.open_line_count > 0) AS can_create_order,
                         %s AS visible_doc_no,
-                        CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
-                             ELSE base.task_status END AS display_stage
-                 FROM %s base %s)
-                """.formatted(subcontract ? "issue.issued_at" : "NULL::timestamptz",
-                        canCreate ? "TRUE" : "FALSE", requestType, visibleDoc, source, issueJoin);
+                        %s AS display_stage
+                 FROM %s base %s %s)
+                """.formatted(exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
+                        canCreate ? "TRUE" : "FALSE", requestType, visibleDoc, stageExpression,
+                        source, issueJoin, progressJoin);
     }
 
     private static String subcontractPreparationRows() {
@@ -634,7 +728,8 @@ public class FulfillmentWorkbenchQueryService {
                 row[31] == null ? 0 : ((Number) row[31]).longValue(),
                 row[32] == null ? 0 : ((Number) row[32]).longValue(),
                 stringArray(row[33]), row.length > 34 ? offsetDateTime(row[34]) : null,
-                row.length > 35 && Boolean.TRUE.equals(row[35]));
+                row.length > 35 && Boolean.TRUE.equals(row[35]),
+                row.length > 36 ? (String) row[36] : null);
     }
 
     /** text[] 聚合列（归组行的明细 id 集合）→ 不可变字符串列表；空值回空表。 */
@@ -712,7 +807,7 @@ public class FulfillmentWorkbenchQueryService {
                 canView, canEdit, restricted,
                 row.goodsCount(), row.openLineCount(),
                 restricted ? List.of() : row.actionItemIds(), row.issuedAt(),
-                !restricted && row.canCreateOrder());
+                !restricted && row.canCreateOrder(), row.displayStage());
     }
 
     private static BigDecimal decimal(Object value) {

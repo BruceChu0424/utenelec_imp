@@ -12,6 +12,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/inputs/required_field_decoration.dart'
+    show applyAutofillHint;
 import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
@@ -55,6 +57,29 @@ class SubcontractGridRow extends EditableGridRow
   final TextEditingController standardQty = TextEditingController();
   final TextEditingController wasteRate = TextEditingController();
   final TextEditingController cause = TextEditingController();
+
+  /// 订货明细允许损耗%（ADR-098）：货品主档记忆预填带黄标；用户改成别的值即清黄标。
+  final TextEditingController allowedLossPct = TextEditingController();
+  String? _allowedLossAutofillValue;
+
+  /// 标记允许损耗为主档记忆带入值（黄框提醒核对）；改动≠带入值时自动清除。
+  void markAllowedLossAutofilled(String value) {
+    _allowedLossAutofillValue = value;
+    markTermsAutofilled('allowedLoss', value);
+    if (!_allowedLossWatchAttached) {
+      _allowedLossWatchAttached = true;
+      allowedLossPct.addListener(_checkAllowedLossAutofill);
+    }
+  }
+
+  bool _allowedLossWatchAttached = false;
+
+  void _checkAllowedLossAutofill() {
+    if (termsAutofilled.contains('allowedLoss') &&
+        allowedLossPct.text != _allowedLossAutofillValue) {
+      clearTermsAutofilled('allowedLoss');
+    }
+  }
 
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// applicationItemId/orderItemId/receiptItemId/materialIssueItemId）。
@@ -126,6 +151,7 @@ class SubcontractGridRow extends EditableGridRow
     c.standardQty.text = standardQty.text;
     c.wasteRate.text = wasteRate.text;
     c.cause.text = cause.text;
+    c.allowedLossPct.text = allowedLossPct.text;
     c.copyCommercialFrom(this);
     c.copyDefaultPriceFrom(
       this,
@@ -152,6 +178,7 @@ class SubcontractGridRow extends EditableGridRow
     standardQty.dispose();
     wasteRate.dispose();
     cause.dispose();
+    allowedLossPct.dispose();
     supplierIdNotifier.dispose();
     super.dispose();
   }
@@ -458,6 +485,37 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ],
+    // ADR-098 允许损耗%（订货单）：货品主档记忆预填（黄标提醒核对，改值即清）；
+    // 回厂累计低于 数量×(1−允许损耗) 时仓库登记要确认并通知委外判定。空 = 未设。
+    if (cfg.itemHasAllowedLossPct)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'allowedLossPct',
+        label: '允许损耗%',
+        width: 120,
+        numeric: true,
+        headerInfo: '委外回厂允许少到的比例。例如填 5，订 100 件最少应到 95 件；'
+            '少于下限仓库登记时会确认并通知委外判定。留空 = 不设下限。'
+            '按货品主档记忆预填，保存后记住本次填写值。',
+        chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
+        textOf: (r) => r.allowedLossPct.text,
+        listenableOf: (r) => r.allowedLossPct,
+        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+          valueListenable: row.termsAutofilledNotifier,
+          builder: (context, marks, _) => TextField(
+            key: ValueKey('subcontract-allowed-loss-${row.hashCode}'),
+            controller: row.allowedLossPct,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: applyAutofillHint(
+              const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '未设'),
+              ),
+              Theme.of(context),
+              autofilled: marks.contains('allowedLoss'),
+            ),
+          ),
+        ),
+      ),
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
     if (showCommercial)
       ...procurementCommercialColumns<SubcontractGridRow>(

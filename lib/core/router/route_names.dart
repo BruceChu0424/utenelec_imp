@@ -368,6 +368,28 @@ abstract final class RouteName {
   static const String subcontract = '/subcontract';
   static const String subcontractReport = '/subcontract/report';
 
+  /// 委外回厂短交判定页（ADR-098）：?caseId= 定位案件、?orderId= / ?supplierId= 过滤。
+  static const String subcontractShortDeliveries =
+      '/subcontract/short-deliveries';
+
+  /// 判定页深链：只看某张订货单 / 某个委外商的案件（任务中心状态列、供应商详情用）。
+  static String subcontractShortDeliveriesWith({
+    String? orderId,
+    String? supplierId,
+    String? caseId,
+  }) {
+    final params = <String, String>{
+      if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
+      if (supplierId != null && supplierId.isNotEmpty) 'supplierId': supplierId,
+      if (caseId != null && caseId.isNotEmpty) 'caseId': caseId,
+    };
+    if (params.isEmpty) return subcontractShortDeliveries;
+    return Uri(
+      path: subcontractShortDeliveries,
+      queryParameters: params,
+    ).toString();
+  }
+
   /// 委外准备中心旧路径（2026-09-05 退役）：路由仅保留兼容重定向到
   /// [subcontract]，不再有页面。
   static const String subcontractPreparations = '/subcontract/preparations';

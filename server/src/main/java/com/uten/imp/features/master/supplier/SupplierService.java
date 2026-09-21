@@ -166,8 +166,9 @@ public class SupplierService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Supplier> p = repo.findAll(spec, pageable);
-        return new PageResponse<>(
-                p.map(this::toList).getContent(), p);
+        List<SupplierListItem> items = new ArrayList<>(p.map(this::toList).getContent());
+        applySubcontractLossRates(items);
+        return new PageResponse<>(items, p);
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Supplier> root,
@@ -550,7 +551,29 @@ public class SupplierService {
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getWebsite(),
                 m.getShipVia(), m.getShipAddress(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
-                employeeNameResolver.nameOf(m.getOwnerEmployeeId()));
+                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                null);
+    }
+
+    /**
+     * ADR-098 供应商列表「损耗率(%)」列：一次点查页内供应商的委外加权损耗率(视图
+     * v_subcontract_supplier_loss_summary 是共享库读模型, 不引委外 Java 代码)。没有结清行的供应商保持空。
+     */
+    private void applySubcontractLossRates(List<SupplierListItem> items) {
+        List<UUID> ids = items.stream().map(SupplierListItem::getId).filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) return;
+        Map<UUID, java.math.BigDecimal> rates = new LinkedHashMap<>();
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT supplier_id, loss_pct
+                        FROM v_subcontract_supplier_loss_summary
+                        WHERE supplier_id IN (:ids)
+                        """).setParameter("ids", ids))) {
+            rates.put((UUID) row[0], (java.math.BigDecimal) row[1]);
+        }
+        for (SupplierListItem item : items) {
+            item.setLossRate(rates.get(item.getId()));
+        }
     }
 
     private SupplierCategory requireCategory(UUID id) {

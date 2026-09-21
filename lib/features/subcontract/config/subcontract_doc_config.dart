@@ -68,6 +68,7 @@ class SubcontractDocConfig {
     this.itemHasGirth = false, // 围数（进仓/退货/材料退明细）
     this.itemHasStep = false, // 工序（进仓/退货明细；B_Step 未迁→暂空白）
     this.itemHasBoxQty = false, // 胶箱数量（材料出明细；老库无源→留空）
+    this.itemHasAllowedLossPct = false, // 允许损耗%（订货明细；ADR-098）
     // 明细链路
     this.linkToApplicationItem = false,
     this.linkToOrderItem = false,
@@ -165,6 +166,7 @@ class SubcontractDocConfig {
   final bool itemHasGirth; // 围数（进仓/退货/材料退）
   final bool itemHasStep; // 工序（进仓/退货）
   final bool itemHasBoxQty; // 胶箱数量（材料出）
+  final bool itemHasAllowedLossPct; // 允许损耗%（订货；主档记忆预填，回厂短交判定的下限）
 
   // 明细链路差异（编辑页"从上游引入"按钮 + 回写 *ItemId）
   final bool linkToApplicationItem; // 订货 → 申请
@@ -258,6 +260,8 @@ class SubcontractDocConfig {
     // 订货不选仓库：委外成品入库仓库在进仓（到货登记）时填写。
     hasWarehouse: false,
     itemHasWeight: true,
+    // ADR-098：每行允许损耗%（货品主档记忆预填），回厂累计低于下限时仓库确认并通知委外判定。
+    itemHasAllowedLossPct: true,
     linkToApplicationItem: true,
     showReceived: true,
     approveEffect:

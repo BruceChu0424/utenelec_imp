@@ -75,6 +75,15 @@ public class OrderItemLine {
     private String remark;
 
     /**
+     * 本行允许损耗百分比(ADR-098)：0 到 100, 最多 2 位小数; 空 = 未设。保存时回写货品主档
+     * subcontract_allowed_loss_pct 作为下次预填的记忆。
+     */
+    @jakarta.validation.constraints.DecimalMin("0.00")
+    @jakarta.validation.constraints.DecimalMax("100.00")
+    @jakarta.validation.constraints.Digits(integer = 3, fraction = 2)
+    private BigDecimal allowedLossPct;
+
+    /**
      * 本行全部来源申请明细（稳定顺序）：applicationItemIds 非空取其与
      * applicationItemId 的并集，否则单来源；手工行为空列表。
      */

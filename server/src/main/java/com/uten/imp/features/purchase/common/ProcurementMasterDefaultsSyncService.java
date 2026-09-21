@@ -26,6 +26,31 @@ public class ProcurementMasterDefaultsSyncService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void syncFromSubcontractOrder(UUID orderId) {
         sync(orderId, "subcontract");
+        syncSubcontractAllowedLoss(orderId);
+    }
+
+    /**
+     * ADR-098 允许损耗记忆：委外订货明细填了允许损耗的行, 把该货品主档默认值改成最近一次填写值
+     * (同货品多行取行号最大的一行; 值相同不写)。空行不清主档——用户没填就沿用上次记忆。
+     */
+    private void syncSubcontractAllowedLoss(UUID orderId) {
+        jdbc.update("""
+                UPDATE goods g
+                SET subcontract_allowed_loss_pct = line.allowed_loss_pct,
+                    version = g.version + 1,
+                    updated_at = now(),
+                    updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
+                FROM (
+                    SELECT DISTINCT ON (i.goods_id) i.goods_id, i.allowed_loss_pct
+                    FROM subcontract_order_items i
+                    JOIN subcontract_orders o ON o.id = i.order_id
+                    WHERE i.order_id = ? AND NOT i.is_deleted AND NOT o.is_deleted
+                      AND o.status IN (0,1) AND i.allowed_loss_pct IS NOT NULL
+                    ORDER BY i.goods_id, i.line_no DESC NULLS LAST, i.created_at DESC, i.id DESC
+                ) line
+                WHERE g.id = line.goods_id AND NOT g.is_deleted
+                  AND g.subcontract_allowed_loss_pct IS DISTINCT FROM line.allowed_loss_pct
+                """, orderId);
     }
 
     // Identifiers come only from the two fixed callers above, never from request input.

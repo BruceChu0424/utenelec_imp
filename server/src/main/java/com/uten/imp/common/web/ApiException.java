@@ -22,4 +22,11 @@ public class ApiException extends RuntimeException {
         this.code = code;
         this.fieldErrors = null;
     }
+
+    /** 带逐项说明的业务异常(如到货登记逐行短交明细), fieldErrors 原样进 ApiError。 */
+    public ApiException(ErrorCode code, String message, List<ApiError.FieldError> fieldErrors) {
+        super(message);
+        this.code = code;
+        this.fieldErrors = fieldErrors == null || fieldErrors.isEmpty() ? null : List.copyOf(fieldErrors);
+    }
 }

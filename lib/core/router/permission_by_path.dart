@@ -539,6 +539,10 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.subcontractWasteView,
     ];
   }
+  // ADR-098 委外回厂短交判定：案件是订货单事实，看页面 = 看委外订货；判定另有权限点。
+  if (location == RouteName.subcontractShortDeliveries) {
+    return const [Perm.subcontractOrderView];
+  }
   if (location == RouteName.subcontractReport ||
       location.startsWith('${RouteName.subcontractReport}/')) {
     return const [Perm.subcontractReportView];

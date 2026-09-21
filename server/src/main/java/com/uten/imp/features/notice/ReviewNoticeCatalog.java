@@ -18,6 +18,11 @@ public final class ReviewNoticeCatalog {
 
     /** sourceEvent → 注册项。 */
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            // ADR-098 委外回厂短交：案件级弹卡(判定/自然到齐/作废时撤卡; 逾期提醒同聚合)
+            Map.entry("SUBCONTRACT_SHORT_DELIVERY_DETECTED",
+                    new Entry("SUBCONTRACT_SHORT_DELIVERY_CASE", null)),
+            Map.entry("SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE",
+                    new Entry("SUBCONTRACT_SHORT_DELIVERY_CASE", null)),
             Map.entry("SALES_SHIPMENT_PENDING_FINANCE_AUDIT",new Entry("SALES_SHIPMENT","SALES_SHIPMENT_FINANCE_AUDIT")),
             Map.entry("SALES_SHIPMENT_PENDING_PICK",new Entry("SALES_SHIPMENT",null)),
             Map.entry("SALES_SHIPMENT_FINANCE_REJECTED",new Entry("SALES_SHIPMENT",null)),

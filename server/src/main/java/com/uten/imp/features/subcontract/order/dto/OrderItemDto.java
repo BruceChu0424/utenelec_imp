@@ -46,6 +46,8 @@ public class OrderItemDto {
      * 手工行（无申请来源）为空。
      */
     private List<SourceApplicationDoc> sourceApplications;
+    /** 本行允许损耗百分比(ADR-098); 空 = 未设。 */
+    private BigDecimal allowedLossPct;
 
     /** 订货行的来源委外申请引用（合并行多来源展示/编辑回显/跳转）。 */
     public record SourceApplicationDoc(

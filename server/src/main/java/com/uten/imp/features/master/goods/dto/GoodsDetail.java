@@ -129,6 +129,9 @@ public class GoodsDetail {
     private GoodsLearnedPriceView defaultPurchasePriceInfo;
     private GoodsLearnedPriceView defaultSubcontractPriceInfo;
 
+    /** 委外允许损耗默认值(%)(ADR-098): 委外订货明细预填记忆; 不是成本字段, 不随成本脱敏。 */
+    private BigDecimal subcontractAllowedLossPct;
+
     public BigDecimal getDefaultPurchasePrice() {
         return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();
     }

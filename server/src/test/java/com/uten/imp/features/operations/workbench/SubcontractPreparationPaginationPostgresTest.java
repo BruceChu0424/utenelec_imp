@@ -67,6 +67,11 @@ class SubcontractPreparationPaginationPostgresTest {
         jdbc.execute("CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, external_item_id uuid, action_id uuid)");
         jdbc.execute("CREATE TABLE preplan_subcontract_make_task_batches(id uuid PRIMARY KEY, application_item_id uuid, task_id uuid)");
         jdbc.execute("CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric)");
+        // ADR-098：委外「进行中」display_stage 的 LATERAL progress 子查询要读这四张表(最小列集)。
+        jdbc.execute("CREATE TABLE subcontract_short_delivery_cases(id uuid PRIMARY KEY, order_id uuid, order_item_id uuid, status text, severity text, expected_complete_by date)");
+        jdbc.execute("CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, qty numeric, received_qty numeric, returned_qty numeric, is_deleted boolean DEFAULT false)");
+        jdbc.execute("CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status smallint, is_deleted boolean DEFAULT false)");
+        jdbc.execute("CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY, issue_id uuid, order_item_id uuid, is_deleted boolean DEFAULT false)");
         jdbc.execute("""
                 CREATE TABLE workbench_documents(department text, action_doc_id uuid, plan_no text,
                     warehouse_id uuid, warehouse_name text, goods_id uuid, goods_code text, goods_name text,

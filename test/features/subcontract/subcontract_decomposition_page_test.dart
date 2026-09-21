@@ -99,7 +99,8 @@ void main() {
       final action = find.byKey(
         const Key('subcontract-decomposition-create-order'),
       );
-      for (final category in ['待处理', '等待财务审核', '财务已通过', '财务驳回', '历史记录']) {
+      // ADR-098：等待财务审核 / 财务已通过 / 财务驳回三段合并为「进行中」。
+      for (final category in ['待处理', '进行中', '历史记录']) {
         await tester.tap(find.text(category));
         await tester.pumpAndSettle();
         if (category == '历史记录') {
@@ -211,9 +212,13 @@ void main() {
       expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
       expect(find.byType(DropdownButtonFormField<String>), findsNothing);
       // 2026-09-06 委外不再有「分解」行为用语：首段改名「待处理」。
-      // 375px 分类栏放不下收成「分类」下拉（2026-09-14）：段名在菜单里断言与点选。
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
-      await tester.pumpAndSettle();
+      // 375px 分类栏放不下时收成「分类」下拉（2026-09-14）：段名在菜单里断言与点选；
+      // ADR-098 三段合并后窄屏也放得下，此时段名直接是芯片。两种形态都要能过。
+      final segmentMenu = find.byIcon(Icons.keyboard_arrow_down_rounded);
+      if (segmentMenu.evaluate().isNotEmpty) {
+        await tester.tap(segmentMenu);
+        await tester.pumpAndSettle();
+      }
       expect(find.text('待处理'), findsOneWidget);
       var button = tester.widget<UtenButton>(
         find.byKey(const Key('subcontract-decomposition-create-order')),

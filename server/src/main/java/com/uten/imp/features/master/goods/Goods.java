@@ -182,6 +182,13 @@ public class Goods extends SoftDeletableEntity {
     private BigDecimal lostRate;        // LostRate
     private Double cap;                 // CAP (DOUBLE PRECISION)
 
+    /**
+     * 委外允许损耗百分比默认值(ADR-098, V636)：委外订货明细新增行的预填记忆, 保存委外订货单时
+     * 按明细最近一次填写值回写。与 lostRate(BOM 成本预算损耗比率)是两个口径, 不互相代替。
+     */
+    @Column(name = "subcontract_allowed_loss_pct", precision = 5, scale = 2)
+    private BigDecimal subcontractAllowedLossPct;
+
     // ===== 采购批量口径（V575；软约束，只影响下达采购的默认数量，服务端不硬拦） =====
     /** 最小起订量（供应商 MOQ，基本单位）。NULL=未登记；0=已确认无起订量。 */
     @Column(name = "min_order_qty", precision = 18, scale = 4)

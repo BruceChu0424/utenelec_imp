@@ -48,6 +48,9 @@ Future<EmployeeOnboardingResult?> showProvisionSelectedEmployeeAccountFlow(
     ),
   );
   if (result == null || !context.mounted) return null;
+  // 等开户弹窗那一帧重建完(遮罩随之从 root Overlay 摘掉)再推凭据弹窗。
+  await WidgetsBinding.instance.endOfFrame;
+  if (!context.mounted) return null;
   await showEmployeeCredentialDialog(context, result);
   return context.mounted ? result : null;
 }
@@ -88,6 +91,9 @@ class _SelectedEmployeeProvisionDialogState
       );
       if (!mounted) return;
       succeeded = true;
+      // 先清忙标志再 pop：遮罩的 OverlayEntry 只在宿主 dispose 时才移除, 而本弹窗要走完
+      // 退场动画才 dispose; 不清的话外层紧接着推的一次性凭据弹窗会被它盖住、点不动。
+      setState(() => _submitting = false);
       Navigator.of(context).pop(result);
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -132,7 +138,7 @@ class _SelectedEmployeeProvisionDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 开户网络段的全屏加载遮罩（root Overlay 传送门，不占布局；
-              // 一次性凭据弹窗展示前已撤下）。
+              // 成功后在 pop 之前就清掉标志，保证一次性凭据弹窗不被它盖住）。
               if (_submitting)
                 UtenBusyOverlay(
                   title: l10n.accountProvisionConfirmTitle,

@@ -346,6 +346,12 @@ class _ProductionPlanDetailPageState
       context.appSuccess(ok);
       await _load();
       if (afterSuccess != null) {
+        // 结果弹层前先撤遮罩（与下方 _openLatestPlanningResult 同口径）：遮罩是 root
+        // Overlay 的裸图层, Navigator 每次重排都把它抬到最顶, 「生产下达结果」弹窗会被
+        // 整片盖住且点不动, 而遮罩又要等 afterSuccess 返回才撤 —— 互相等待会卡死整页。
+        setState(() => _busy = false);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
         await afterSuccess(ref.read(productionPlanRepositoryProvider));
       }
     } on ApiException catch (e) {
@@ -1152,8 +1158,8 @@ class _ProductionPlanDetailPageState
                         ..._referenceSections(theme),
                       ],
                     ),
-              // 审核/下达/红冲等计划操作网络段的全屏加载遮罩；回查执行单据
-              //（_executionBusy）同样只有纯网络段，结果弹层前已清位。
+              // 审核/下达/红冲等计划操作网络段的全屏加载遮罩；两个标志都只盖纯网络段，
+              // 结果弹层（下达结果/打印预览/跳单据）之前一律先清位，否则弹层被盖住点不动。
               if (_busy || _executionBusy)
                 UtenBusyOverlay(
                   title: _busy ? '正在执行计划操作' : '正在加载已生成单据',

@@ -215,6 +215,13 @@ class _EmployeeOnboardingPageState
             ),
           );
       if (!mounted) return;
+      // 一次性凭据弹窗前必须先撤遮罩：遮罩是 root Overlay 的裸图层, Navigator 每次重排
+      // 都把它重新抬到最顶, 而这个弹窗 barrierDismissible=false 且 PopScope 挡掉返回键,
+      // 唯一出口「我已安全保存」被遮罩吃掉点击; 遮罩又要等这行 await 返回才撤 —— 互相
+      // 等待会把页面彻底卡死, 临时密码再也拿不出来(员工却已经建好了)。
+      setState(() => _submitting = false);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
       await showEmployeeCredentialDialog(context, onboardingResult);
       if (!mounted) return;
       context.appSuccess(l10n.employeeOnboardSuccess);
@@ -516,7 +523,7 @@ class _EmployeeOnboardingPageState
                       ],
                     ),
                   ),
-                  // 提交建档网络段的全屏加载遮罩（一次性凭据弹窗展示前已撤下）。
+                  // 提交建档网络段的全屏加载遮罩（一次性凭据弹窗展示前已在 _submit 里撤下）。
                   if (_submitting)
                     UtenBusyOverlay(
                       title: l10n.employeeOnboardTitle,

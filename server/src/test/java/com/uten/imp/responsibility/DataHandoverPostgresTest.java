@@ -790,8 +790,8 @@ class DataHandoverPostgresTest {
         UUID id = UUID.randomUUID();
         int sequence = SEQUENCE.incrementAndGet();
         jdbc.update("""
-                insert into clients(id,code,name,status,owner_employee_id,code_sequence,sales_payment_type)
-                values (?,?,?,'使用',?,?,'MONTHLY')
+                insert into clients(id,code,name,status,owner_employee_id,code_sequence)
+                values (?,?,?,'使用',?,?)
                 """, id, "KH" + String.format("%08d", sequence),
                 "客户-" + tag + "-" + sequence, ownerId, sequence);
         return id;

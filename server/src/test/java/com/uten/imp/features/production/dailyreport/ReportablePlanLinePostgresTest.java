@@ -107,8 +107,8 @@ class ReportablePlanLinePostgresTest {
                         + "VALUES (?, 'HP900001', '成品灯', '300mm', 900001,?)",
                 GOODS_ID,UNIT_ID);
         jdbc.update(
-                "INSERT INTO clients(id, code, name, status, code_sequence, sales_payment_type) "
-                        + "VALUES (?, 'KH900001', '测试客户', '使用', 900001, 'MONTHLY')",
+                "INSERT INTO clients(id, code, name, status, code_sequence) "
+                        + "VALUES (?, 'KH900001', '测试客户', '使用', 900001)",
                 CLIENT_ID);
         jdbc.update(
                 "INSERT INTO warehouses(id, code, name, status) "

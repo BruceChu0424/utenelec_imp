@@ -4,8 +4,6 @@ import com.uten.imp.common.domain.SoftDeletableEntity;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -126,10 +124,6 @@ public class Client extends SoftDeletableEntity {
     /** 默认币种（V592 单一事实源）：新建销售订货单预填；每次下单自动写回最新选择。 */
     @Column(name = "default_currency_id")
     private UUID defaultCurrencyId;
-    /** 月结/现金/定金客户标签；只作人工审核分类，不代表真实到账。 */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "sales_payment_type", length = 20)
-    private ClientSalesPaymentType salesPaymentType;
     @Column(name = "price_style")
     private Integer priceStyle;         // PStyle（结账方式 legacy shadow）
     @Column(name = "zj_id")

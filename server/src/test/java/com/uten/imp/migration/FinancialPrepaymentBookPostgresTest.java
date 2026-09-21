@@ -87,6 +87,7 @@ class FinancialPrepaymentBookPostgresTest {
         UUID unit=UUID.randomUUID(),goods=UUID.randomUUID(),warehouse=UUID.randomUUID();
         c.setAutoCommit(false);
         try {
+            // 彩排目标停在 V607 之前：那时 clients.sales_payment_type 仍在且在线客户必填(V443 CHECK)，V630 才整列退役。
             execute(c,"INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type) VALUES(?,'PREPAY-BOOK-CLIENT','prepayment book client','使用',100400,'CASH')",client);
             execute(c,"INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,'PREPAY-BOOK-CURRENCY','prepayment book currency',3.333333,'使用')",currency);
             execute(c,"INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,'PREPAY-BOOK-APPROVER','prepayment book approver',id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE id=?",approver,maker);

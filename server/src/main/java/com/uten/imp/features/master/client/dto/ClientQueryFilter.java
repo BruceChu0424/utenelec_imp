@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.client.dto;
 
-import com.uten.imp.features.master.client.ClientSalesPaymentType;
 import java.math.BigDecimal;
 import java.util.Set;
 import java.util.UUID;
@@ -19,7 +18,6 @@ public record ClientQueryFilter(
         String code,
         String name,
         String fullName,
-        ClientSalesPaymentType salesPaymentType,
         String clientXz,
         Integer tday,
         String region,

@@ -112,8 +112,7 @@
       "is_accountable": false
     },
     "client910501": {
-      "status": "禁用",
-      "sales_payment_type": null
+      "status": "禁用"
     },
     "supplier910601": {
       "status": "禁用"

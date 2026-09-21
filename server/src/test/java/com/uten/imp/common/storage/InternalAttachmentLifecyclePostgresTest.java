@@ -198,8 +198,8 @@ class InternalAttachmentLifecyclePostgresTest {
         Upload human=upload("human-preserved.txt","text/plain",humanBytes);
         UUID client=UUID.randomUUID(),order=UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type)
-                VALUES(?,'RESET-FILES-CLIENT','reset evidence client','使用',100900,'MONTHLY')
+                INSERT INTO clients(id,code,name,status,code_sequence)
+                VALUES(?,'RESET-FILES-CLIENT','reset evidence client','使用',100900)
                 """,client);
         jdbc.update("""
                 INSERT INTO sales_orders(id,bill_no,bill_date,client_id,owner_employee_id,maker_id,status)

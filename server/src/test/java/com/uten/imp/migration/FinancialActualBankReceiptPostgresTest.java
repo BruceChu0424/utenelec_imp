@@ -21,6 +21,7 @@ class FinancialActualBankReceiptPostgresTest {
                 UUID client=UUID.randomUUID(),foreign=UUID.randomUUID(),approver=UUID.randomUUID();
                 UUID base=UUID.fromString(value(c,"SELECT id::text FROM currencies WHERE is_base_currency AND NOT is_deleted"));
                 UUID maker=UUID.fromString(value(c,"SELECT id::text FROM employees WHERE code='ADMIN'"));
+                // 彩排目标停在 V607 之前：那时 clients.sales_payment_type 仍在且在线客户必填(V443 CHECK)，V630 才整列退役。
                 execute(c,"INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type) VALUES(?,'BANK-ACTUAL-C','实际银行测试','使用',100100,'CASH')",client);
                 execute(c,"INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,'BANK-ACTUAL-FX','实际银行外币',7.123456,'使用')",foreign);
                 execute(c,"INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,'BANK-ACTUAL-APPROVER','实际银行审核',id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE id=?",approver,maker);

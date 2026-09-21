@@ -411,7 +411,7 @@ class BusinessDataResetSqlContractTest {
                 // V605 直送资格收紧 / V606 路线自动识别：只换函数+回填，不加表（560→562）。
                 .contains("(605, 561)")
                 .contains("(606, 562)")
-                .contains("V507/469、V508/470及V511至V629完整目录");
+                .contains("V507/469、V508/470及V511至V630完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

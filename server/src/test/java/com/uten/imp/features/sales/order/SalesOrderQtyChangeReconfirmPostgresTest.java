@@ -314,9 +314,9 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
     private UUID client() {
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO clients (id, code, name, status, code_sequence, sales_payment_type)
+                INSERT INTO clients (id, code, name, status, code_sequence)
                 VALUES (?, ?, '改量复核测试客户', '使用',
-                        (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM clients), 'MONTHLY')
+                        (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM clients))
                 """, id, "CLI-QRC-" + id.toString().substring(0, 8));
         return id;
     }

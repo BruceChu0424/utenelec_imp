@@ -127,10 +127,187 @@ class MasterFieldDef {
 
 typedef MasterSubmit = Future<bool> Function(Map<String, dynamic> body);
 
+/// 主档编辑表单的值容器：文本控制器 / 下拉值 / 自定义值 / 字段错误 / 整表错误。
+///
+/// [MasterEditForm] 不传 controller 时自建一个(弹窗、单页嵌入场景，生命周期随表单
+/// State)；页面也可以先建好再共享给多张分区表单——客户详情页就地编辑把同一套字段按
+/// group 拆到两个 Tab 各渲染一部分，保存时读的是同一份值：Tab 切换把表单 widget
+/// 释放/重建不会丢输入，也不会因为某张表单当时没挂在树上而漏掉它(2026-09-20 修：
+/// 此前两张表单各持 State，只改财务 Tab 再保存会静默失败、改动丢失)。
+class MasterEditFormController extends ChangeNotifier {
+  MasterEditFormController({
+    required this.fields,
+    Map<String, String> initialValues = const <String, String>{},
+    this.fixedValues = const <String, dynamic>{},
+  }) : initialValues = Map<String, String>.unmodifiable(initialValues) {
+    for (final f in fields) {
+      switch (f.type) {
+        case MasterFieldType.select:
+          // 初始值不在选项里（如对应记录已删）→ 视为未选，避免 Dropdown 断言。
+          final init = initialValues[f.key];
+          final values = {
+            for (final o in f.options ?? const <MasterSelectOption>[]) o.value,
+          };
+          selectValues[f.key] =
+              (init != null && init.isNotEmpty && values.contains(init))
+              ? init
+              : null;
+        case MasterFieldType.custom:
+          // custom 字段初值（字符串：日期/picker id）；空串统一记 null。
+          final init = initialValues[f.key];
+          customValues[f.key] = (init == null || init.isEmpty) ? null : init;
+        case MasterFieldType.text:
+        case MasterFieldType.integer:
+        case MasterFieldType.money:
+          final controller = TextEditingController(
+            text: initialValues[f.key] ?? '',
+          );
+          // 字段错误（如后端编号查重）随用户开始编辑自动清除。
+          controller.addListener(() {
+            if (fieldErrors.remove(f.key) != null) notifyListeners();
+          });
+          controllers[f.key] = controller;
+      }
+    }
+  }
+
+  /// 整套字段（可能跨多张分区表单）。
+  final List<MasterFieldDef> fields;
+
+  /// 初始值（字符串形式），供 custom 字段的 widget 取初值。
+  final Map<String, String> initialValues;
+
+  /// 固定随提交带上、不渲染输入框的值（如 categoryId / version）。
+  final Map<String, dynamic> fixedValues;
+
+  /// text / integer / money 字段的控制器。
+  final Map<String, TextEditingController> controllers = {};
+
+  /// select 字段当前选中值（未选为 null）。
+  final Map<String, String?> selectValues = {};
+
+  /// custom 字段当前提交值（未填为 null）。
+  final Map<String, dynamic> customValues = {};
+
+  /// 外部字段错误（key → 文案），如后端编号查重 409 回填「编号已存在」。
+  final Map<String, String> fieldErrors = {};
+
+  /// 最近一次 [buildBody] 的整表错误文案与出错字段；成功后清空。
+  String? error;
+  String? errorFieldKey;
+
+  MasterFieldDef? fieldOf(String key) {
+    for (final f in fields) {
+      if (f.key == key) return f;
+    }
+    return null;
+  }
+
+  void setSelect(String key, String? value) {
+    selectValues[key] = value;
+    notifyListeners();
+  }
+
+  void setCustom(String key, dynamic value) {
+    customValues[key] = value;
+    notifyListeners();
+  }
+
+  /// 外部设置某字段错误（如编号查重 409）→ 字段描红边 + 字段下显错文案。
+  void setFieldError(String key, String message) {
+    fieldErrors[key] = message;
+    notifyListeners();
+  }
+
+  /// 校验全部字段并构造提交 body（含 [fixedValues]）；
+  /// 校验失败返 null 并置 [error] / [errorFieldKey]。
+  Map<String, dynamic>? buildBody() {
+    final body = Map<String, dynamic>.from(fixedValues);
+    for (final f in fields) {
+      if (f.readOnly) continue; // 只读字段（编号）不上送：新建服务端生成、编辑保留
+      switch (f.type) {
+        case MasterFieldType.select:
+          final sv = selectValues[f.key];
+          if (f.required && (sv == null || sv.isEmpty)) {
+            return _fail(f, '请选择「${f.label}」'); // TODO(l10n): 补 arb
+          }
+          if (sv == null || sv.isEmpty) {
+            body[f.key] = null;
+          } else if (f.selectInteger) {
+            final v = int.tryParse(sv);
+            if (v == null) {
+              return _fail(f, '「${f.label}」值非法'); // TODO(l10n): 补 arb
+            }
+            body[f.key] = v;
+          } else {
+            body[f.key] = sv;
+          }
+        case MasterFieldType.custom:
+          final v = customValues[f.key];
+          if (f.required && (v == null || (v is String && v.isEmpty))) {
+            return _fail(f, '请选择「${f.label}」'); // TODO(l10n): 补 arb
+          }
+          // 复合字段（如数字+单位）回写 {key1: v1, key2: v2} 直接展开到 body，
+          // 而非塞进单个 f.key（一个可视字段格位对应多个提交字段）。
+          if (v is Map<String, dynamic>) {
+            body.addAll(v);
+          } else {
+            body[f.key] = v;
+          }
+        case MasterFieldType.text:
+        case MasterFieldType.integer:
+        case MasterFieldType.money:
+          final raw = controllers[f.key]!.text.trim();
+          if (f.required && raw.isEmpty) {
+            return _fail(f, '请填写「${f.label}」'); // TODO(l10n): 补 arb
+          }
+          if (raw.isEmpty) {
+            body[f.key] = null; // 空串统一存 null，保持与老库 nullable 一致
+          } else if (f.type == MasterFieldType.integer) {
+            final v = int.tryParse(raw);
+            if (v == null) {
+              return _fail(f, '「${f.label}」需为整数'); // TODO(l10n): 补 arb
+            }
+            body[f.key] = v;
+          } else if (f.type == MasterFieldType.money) {
+            final v = double.tryParse(raw);
+            if (v == null) {
+              return _fail(f, '「${f.label}」需为数字'); // TODO(l10n): 补 arb
+            }
+            body[f.key] = v;
+          } else {
+            body[f.key] = raw;
+          }
+      }
+    }
+    error = null;
+    errorFieldKey = null;
+    fieldErrors.clear(); // 重新提交：清掉旧字段错误（如编号查重），按本次结果重判
+    notifyListeners();
+    return body;
+  }
+
+  Map<String, dynamic>? _fail(MasterFieldDef f, String message) {
+    error = message;
+    errorFieldKey = f.key;
+    notifyListeners();
+    return null;
+  }
+
+  @override
+  void dispose() {
+    for (final c in controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+}
+
 /// 主档编辑表单本体（字段网格 + 校验）。无 header / 无 actions——由调用方包裹。
 ///
 /// 调用方持 `GlobalKey<MasterEditFormState>`，保存时调 [buildBody] 取校验后的 body
-/// （校验失败返 null、内部已置错文案）。
+/// （校验失败返 null、内部已置错文案）；多张分区表单共享一个
+/// [MasterEditFormController] 时直接调它的 buildBody，不依赖表单是否挂在树上。
 class MasterEditForm extends StatefulWidget {
   const MasterEditForm({
     super.key,
@@ -138,9 +315,13 @@ class MasterEditForm extends StatefulWidget {
     this.initialValues = const <String, String>{},
     this.fixedValues = const <String, dynamic>{},
     this.readOnlyKeys,
+    this.controller,
   });
 
+  /// 本表单渲染的字段；给了 [controller] 时须是它 fields 的子集。
   final List<MasterFieldDef> fields;
+
+  /// 自建控制器时的初始值 / 固定值；给了 [controller] 时忽略，以它为准。
   final Map<String, String> initialValues;
   final Map<String, dynamic> fixedValues;
 
@@ -149,151 +330,74 @@ class MasterEditForm extends StatefulWidget {
   /// 后者整段跳过不上送，用于编号等系统生成字段）。故锁定字段以原值回传，后端判定「未改」放行。
   final Set<String>? readOnlyKeys;
 
+  /// 外部共享的值容器（页面持有、跨 Tab 存活）；不传则表单自建并随 State 释放。
+  final MasterEditFormController? controller;
+
   @override
   State<MasterEditForm> createState() => MasterEditFormState();
 }
 
 class MasterEditFormState extends State<MasterEditForm> {
-  late final Map<String, TextEditingController> _controllers;
+  late MasterEditFormController _controller;
+  bool _ownsController = false;
 
-  /// select 字段的当前选中值（key → 选项 value，未选为 null）。其他类型用 [_controllers]。
-  final Map<String, String?> _selectValues = {};
+  /// 锁定的下拉/自定义字段没有文本控制器，只读展示按字段缓存一个（随 State 释放）。
+  final Map<String, TextEditingController> _readOnlyDisplay = {};
 
-  /// custom 字段的当前值（key → 提交值，未填为 null）。date/picker 等经 customBuilder 回写。
-  final Map<String, dynamic> _customValues = {};
-
-  /// 外部字段错误（key → 错误文案），如后端编号查重 409 回填「编号已存在」。
-  /// 由 [setFieldError] 设置；用户开始编辑该字段或 [buildBody] 成功时清除。
-  final Map<String, String> _fieldErrors = {};
-  String? _error;
+  MasterEditFormController get controller => _controller;
 
   @override
   void initState() {
     super.initState();
-    _controllers = {
-      for (final f in widget.fields)
-        if (f.type != MasterFieldType.select &&
-            f.type != MasterFieldType.custom)
-          f.key: TextEditingController(text: widget.initialValues[f.key] ?? ''),
-    };
-    for (final f in widget.fields) {
-      if (f.type == MasterFieldType.select) {
-        // 初始值不在选项里（如对应记录已删）→ 视为未选，避免 Dropdown 断言。
-        final init = widget.initialValues[f.key];
-        final vals = {
-          for (final o in (f.options ?? const <MasterSelectOption>[])) o.value,
-        };
-        _selectValues[f.key] =
-            (init != null && init.isNotEmpty && vals.contains(init))
-            ? init
-            : null;
-      } else if (f.type == MasterFieldType.custom) {
-        // custom 字段初值（字符串：日期/picker id）；空串统一记 null。
-        final init = widget.initialValues[f.key];
-        _customValues[f.key] = (init == null || init.isEmpty) ? null : init;
-      }
-    }
-    // 字段错误（如后端编号查重）随用户开始编辑自动清除。
-    for (final entry in _controllers.entries) {
-      entry.value.addListener(() {
-        if (_fieldErrors.containsKey(entry.key)) {
-          setState(() => _fieldErrors.remove(entry.key));
-        }
-      });
-    }
-  }
-
-  /// 外部设置某字段错误（如编号查重 409）→ 字段描红边 + 字段下显错文案；不关弹窗。
-  void setFieldError(String key, String message) {
-    setState(() => _fieldErrors[key] = message);
+    _attach();
   }
 
   @override
+  void didUpdateWidget(MasterEditForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _detach();
+      _attach();
+    }
+  }
+
+  void _attach() {
+    final shared = widget.controller;
+    _ownsController = shared == null;
+    _controller =
+        shared ??
+        MasterEditFormController(
+          fields: widget.fields,
+          initialValues: widget.initialValues,
+          fixedValues: widget.fixedValues,
+        );
+    _controller.addListener(_onControllerChanged);
+  }
+
+  void _detach() {
+    _controller.removeListener(_onControllerChanged);
+    if (_ownsController) _controller.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// 外部设置某字段错误（如编号查重 409）→ 字段描红边 + 字段下显错文案；不关弹窗。
+  void setFieldError(String key, String message) =>
+      _controller.setFieldError(key, message);
+
+  @override
   void dispose() {
-    for (final c in _controllers.values) {
+    _detach();
+    for (final c in _readOnlyDisplay.values) {
       c.dispose();
     }
     super.dispose();
   }
 
-  /// 校验并构造提交 body（含 fixedValues）；校验失败返 null 并置 [_error]。
-  Map<String, dynamic>? buildBody() {
-    final body = Map<String, dynamic>.from(widget.fixedValues);
-    for (final f in widget.fields) {
-      if (f.readOnly) continue; // 只读字段（编号）不上送：新建服务端生成、编辑保留
-      if (f.type == MasterFieldType.select) {
-        final sv = _selectValues[f.key];
-        if (f.required && (sv == null || sv.isEmpty)) {
-          setState(() => _error = '请选择「${f.label}」'); // TODO(l10n): 补 arb
-          return null;
-        }
-        if (sv == null || sv.isEmpty) {
-          body[f.key] = null;
-        } else if (f.selectInteger) {
-          final v = int.tryParse(sv);
-          if (v == null) {
-            setState(() => _error = '「${f.label}」值非法'); // TODO(l10n): 补 arb
-            return null;
-          }
-          body[f.key] = v;
-        } else {
-          body[f.key] = sv;
-        }
-        continue;
-      }
-      if (f.type == MasterFieldType.custom) {
-        final v = _customValues[f.key];
-        if (f.required && (v == null || (v is String && v.isEmpty))) {
-          setState(() => _error = '请选择「${f.label}」'); // TODO(l10n): 补 arb
-          return null;
-        }
-        // 复合字段（如数字+单位）回写 {key1: v1, key2: v2} 直接展开到 body，
-        // 而非塞进单个 f.key（一个可视字段格位对应多个提交字段）。
-        if (v is Map<String, dynamic>) {
-          body.addAll(v);
-        } else {
-          body[f.key] = v;
-        }
-        continue;
-      }
-      final raw = _controllers[f.key]!.text.trim();
-      if (f.required && raw.isEmpty) {
-        setState(() => _error = '请填写「${f.label}」'); // TODO(l10n): 补 arb
-        return null;
-      }
-      if (raw.isEmpty) {
-        body[f.key] = null; // 空串统一存 null，保持与老库 nullable 一致
-        continue;
-      }
-      switch (f.type) {
-        case MasterFieldType.integer:
-          final v = int.tryParse(raw);
-          if (v == null) {
-            setState(() => _error = '「${f.label}」需为整数'); // TODO(l10n): 补 arb
-            return null;
-          }
-          body[f.key] = v;
-        case MasterFieldType.money:
-          final v = double.tryParse(raw);
-          if (v == null) {
-            setState(() => _error = '「${f.label}」需为数字'); // TODO(l10n): 补 arb
-            return null;
-          }
-          body[f.key] = v;
-        case MasterFieldType.text:
-          body[f.key] = raw;
-        case MasterFieldType.select:
-          break; // 不可达（上方已处理）
-        case MasterFieldType.custom:
-          break; // 不可达（上方已处理）
-      }
-    }
-    setState(() {
-      _error = null;
-      _fieldErrors.clear(); // 重新提交：清掉旧字段错误（如编号查重），按本次结果重判
-    });
-    return body;
-  }
+  /// 校验并构造提交 body（含 fixedValues）；校验失败返 null 并在表单内显错文案。
+  Map<String, dynamic>? buildBody() => _controller.buildBody();
 
   @override
   Widget build(BuildContext context) {
@@ -307,6 +411,12 @@ class MasterEditFormState extends State<MasterEditForm> {
       (groups[g] ??= <MasterFieldDef>[]).add(f);
       if (!groupOrder.contains(g)) groupOrder.add(g);
     }
+    // 整表错误只在出错字段所在的那张表单里显示（共享控制器时另一张表单不重复报）。
+    final error = _controller.error;
+    final errorKey = _controller.errorFieldKey;
+    final showError =
+        error != null &&
+        (errorKey == null || widget.fields.any((f) => f.key == errorKey));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -319,9 +429,9 @@ class MasterEditFormState extends State<MasterEditForm> {
             const SizedBox(height: UtenSpacing.s12),
             _fieldGrid(groups[groupOrder[i]]!, twoColumn),
           ],
-          if (_error != null) ...[
+          if (showError) ...[
             const SizedBox(height: UtenSpacing.s4),
-            UtenFieldMessage.error(_error!),
+            UtenFieldMessage.error(error),
           ],
         ],
       ),
@@ -389,8 +499,8 @@ class MasterEditFormState extends State<MasterEditForm> {
     if (f.type == MasterFieldType.custom) {
       return f.customBuilder!(
         MasterFieldContext(
-          initialValue: widget.initialValues[f.key],
-          onChanged: (v) => setState(() => _customValues[f.key] = v),
+          initialValue: _controller.initialValues[f.key],
+          onChanged: (v) => _controller.setCustom(f.key, v),
           required: f.required,
         ),
       );
@@ -398,12 +508,12 @@ class MasterEditFormState extends State<MasterEditForm> {
     // text / integer / money：听控制器，必填且为空时描红边 + 红 *，填好即恢复；
     // 外部字段错误(如后端编号查重 409)通过红边和框内图标提示，用户开始编辑即清除。
     final theme = Theme.of(context);
-    final controller = _controllers[f.key]!;
+    final controller = _controller.controllers[f.key]!;
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
         final requiredEmpty = f.required && controller.text.trim().isEmpty;
-        final fieldError = _fieldErrors[f.key];
+        final fieldError = _controller.fieldErrors[f.key];
         final showRed = requiredEmpty || fieldError != null;
         return TextField(
           controller: controller,
@@ -431,16 +541,41 @@ class MasterEditFormState extends State<MasterEditForm> {
     );
   }
 
-  /// 只读字段（编号）：禁用展示。编辑时显既有值；新建时空值显 [MasterFieldDef.hint]。
+  /// 只读字段：禁用展示。文本类显控制器现值；下拉类显当前选项文案(此前锁定的
+  /// 下拉字段会显成空)；新建时空值显 [MasterFieldDef.hint]。
   Widget _readOnlyField(MasterFieldDef f) {
-    final ctl = _controllers[f.key];
-    final empty = ctl == null || ctl.text.isEmpty;
+    final ctl = _controller.controllers[f.key];
+    if (ctl != null) {
+      return TextField(
+        controller: ctl,
+        enabled: false,
+        decoration: InputDecoration(
+          labelText: f.label,
+          hintText: ctl.text.isEmpty ? (f.hint ?? '') : null,
+        ),
+      );
+    }
+    String display = '';
+    if (f.type == MasterFieldType.select) {
+      final value = _controller.selectValues[f.key];
+      display = value ?? '';
+      for (final o in f.options ?? const <MasterSelectOption>[]) {
+        if (o.value == value) display = o.label;
+      }
+    } else {
+      display = _controller.customValues[f.key]?.toString() ?? '';
+    }
+    final displayController = _readOnlyDisplay.putIfAbsent(
+      f.key,
+      () => TextEditingController(text: display),
+    );
+    if (displayController.text != display) displayController.text = display;
     return TextField(
-      controller: ctl,
+      controller: displayController,
       enabled: false,
       decoration: InputDecoration(
         labelText: f.label,
-        hintText: empty ? (f.hint ?? '') : null,
+        hintText: display.isEmpty ? (f.hint ?? '') : null,
       ),
     );
   }
@@ -453,7 +588,7 @@ class MasterEditFormState extends State<MasterEditForm> {
     return UtenDropdownField(
       label: f.label,
       required: f.required,
-      value: _selectValues[f.key],
+      value: _controller.selectValues[f.key],
       allowClear: !f.required,
       hintText: f.hint,
       info: f.info,
@@ -462,12 +597,12 @@ class MasterEditFormState extends State<MasterEditForm> {
         for (final o in options)
           UtenDropdownItem(value: o.value, label: o.label),
       ],
-      onChanged: (v) => setState(() => _selectValues[f.key] = v),
+      onChanged: (v) => _controller.setSelect(f.key, v),
       onAddNew: f.onAddNew == null
           ? null
           : () async {
               final v = await f.onAddNew!();
-              if (v != null) setState(() => _selectValues[f.key] = v);
+              if (v != null) _controller.setSelect(f.key, v);
             },
     );
   }

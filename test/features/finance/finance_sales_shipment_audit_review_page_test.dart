@@ -42,7 +42,6 @@ void main() {
         'contentHash': 'current-content',
         'financeAudit': 0,
         'clientName': '测试客户',
-        'salesPaymentType': 'DEPOSIT',
         'settlementMethodName': '合同定金',
         'outstanding': '100.00',
         'creditFloor': '30.00',
@@ -60,7 +59,6 @@ void main() {
     );
     expect(find.textContaining('XS-20260912-001'), findsWidgets);
     expect(find.textContaining('待财务审核'), findsOneWidget);
-    expect(find.text('定金'), findsOneWidget);
     expect(find.text('合同定金'), findsOneWidget);
     expect(find.text('正式应收未收(本币)'), findsOneWidget);
     expect(find.text('铺底额(本币)'), findsOneWidget);
@@ -71,7 +69,7 @@ void main() {
     expect(find.text('25.00'), findsOneWidget);
     expect(find.text('180.00'), findsOneWidget);
     expect(find.textContaining('真实已审核到账'), findsOneWidget);
-    expect(find.textContaining('绝不代表已经到账'), findsOneWidget);
+    expect(find.textContaining('结账方式来自本单'), findsOneWidget);
     expect(
       api.postPaths.where((path) => path.endsWith('/finance-audit')),
       isEmpty,
@@ -113,7 +111,6 @@ void main() {
         'shipmentId': 'shipment-retry',
         'reviewRevision': 1,
         'contentHash': 'retry-content',
-        'salesPaymentType': 'CASH',
       },
     );
     // 认领失败：不放行/退回按钮（只有返回），提示重新认领。
@@ -161,7 +158,6 @@ void main() {
         'shipmentId': 'shipment-lost',
         'reviewRevision': 1,
         'contentHash': 'lost-content',
-        'salesPaymentType': 'CASH',
       },
     );
     api.failHeartbeat = true;
@@ -178,69 +174,59 @@ void main() {
     );
   });
 
-  testWidgets(
-    'unclassified customer blocks finance release with recovery path',
-    (tester) async {
-      final api = await _pumpReviewPage(
-        tester,
-        detail: const {
-          'id': 'shipment-unclassified',
-          'financeReviewPending': true,
-          'salesConfirmed': true,
-          'status': 0,
-          'financeAudit': 0,
-          'warehouseWorkStatus': 'PENDING_PICK',
-          'items': <Map<String, dynamic>>[
-            {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 100},
-          ],
-        },
-        // 无 client:edit → 不出现「去客户资料」，只提示联系有权限人员。
-        permissions: const {Perm.financeShipmentAudit, Perm.clientView},
-        claimSucceeds: true,
-        financeAuditInfo: const {
-          'shipmentId': 'shipment-unclassified',
-          'reviewRevision': 0,
-          'contentHash': 'unclassified-content',
-          'financeAudit': 0,
-          'clientName': '待分类客户',
-          'salesPaymentType': '',
-          'outstanding': '100.00',
-          'creditFloor': '0',
-          'overFloor': '100.00',
-          'availablePrepaymentOriginal': '0',
-          'availablePrepaymentLocal': '0',
-        },
-      );
+  // V630：客户货款类别标签退役——放行只看本单结账方式/应收/铺底/预收，不再被
+  // 「客户未分类」阻断，快照卡也不再出现阻断条与「去客户资料」入口。
+  testWidgets('finance release is not gated by any customer label', (
+    tester,
+  ) async {
+    final api = await _pumpReviewPage(
+      tester,
+      detail: const {
+        'id': 'shipment-no-label',
+        'financeReviewPending': true,
+        'salesConfirmed': true,
+        'status': 0,
+        'financeAudit': 0,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[
+          {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 100},
+        ],
+      },
+      claimSucceeds: true,
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-no-label',
+        'reviewRevision': 0,
+        'contentHash': 'no-label-content',
+        'financeAudit': 0,
+        'clientName': '汇款客户',
+        'settlementMethodName': '汇款',
+        'outstanding': '100.00',
+        'creditFloor': '0',
+        'overFloor': '100.00',
+        'availablePrepaymentOriginal': '0',
+        'availablePrepaymentLocal': '0',
+      },
+    );
 
-      expect(
-        find.byKey(const Key('finance-audit-classification-block')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('联系有客户资料维护权限的人员'), findsOneWidget);
-      expect(
-        find.byKey(const Key('finance-audit-open-client-master')),
-        findsNothing,
-      );
-      // 放行按钮禁用（点不出 POST）；退回销售不受分类阻断。
-      final approve = find.byKey(const Key('finance-shipment-audit-approve'));
-      expect(approve, findsOneWidget);
-      await tester.ensureVisible(approve);
-      await tester.tap(approve);
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('finance-shipment-audit-confirm')),
-        findsNothing,
-      );
-      expect(
-        api.postPaths.where((path) => path.endsWith('/finance-audit')),
-        isEmpty,
-      );
-      expect(
-        find.byKey(const Key('finance-shipment-audit-reject')),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(find.text('结账方式'), findsOneWidget);
+    expect(find.text('汇款'), findsOneWidget);
+    expect(find.textContaining('货款类别'), findsNothing);
+    expect(find.textContaining('尚未完成销售货款分类'), findsNothing);
+    expect(
+      find.byKey(const Key('finance-audit-classification-block')),
+      findsNothing,
+    );
+    final approve = find.byKey(const Key('finance-shipment-audit-approve'));
+    await tester.ensureVisible(approve);
+    await tester.tap(approve);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('finance-shipment-audit-confirm')));
+    await tester.pumpAndSettle();
+    expect(
+      api.postPaths,
+      contains('/sales/shipments/shipment-no-label/finance-audit'),
+    );
+  });
 
   testWidgets('reject requires reason and posts finance-audit-reject', (
     tester,
@@ -262,7 +248,6 @@ void main() {
         'shipmentId': 'shipment-reject-flow',
         'reviewRevision': 3,
         'contentHash': 'reject-content',
-        'salesPaymentType': 'MONTHLY',
       },
     );
     final reject = find.byKey(const Key('finance-shipment-audit-reject'));
@@ -300,7 +285,7 @@ void main() {
   });
 
   // V578：被退回的单据在财务侧有显式出口——「撤回退回」恢复待审，
-  // 退回原因与出货内容无关（如客户货款分类未维护）时无需销售改单来回。
+  // 退回原因与出货内容无关（如客户结账方式待核对）时无需销售改单来回。
   testWidgets('rejected shipment offers reject reversal back to pending', (
     tester,
   ) async {
@@ -313,7 +298,7 @@ void main() {
         'status': 0,
         'financeAudit': 0,
         'financeRejected': true,
-        'financeRejectionReason': '客户货款分类未维护',
+        'financeRejectionReason': '客户结账方式待核对',
         'warehouseWorkStatus': 'PENDING_PICK',
         'items': <Map<String, dynamic>>[
           {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 10},
@@ -325,11 +310,10 @@ void main() {
         'contentHash': 'hash-1',
         'financeAudit': 0,
         'clientName': '测试客户',
-        'salesPaymentType': '',
       },
     );
     expect(find.textContaining('已退回销售'), findsOneWidget);
-    expect(find.textContaining('客户货款分类未维护'), findsWidgets);
+    expect(find.textContaining('客户结账方式待核对'), findsWidgets);
     final reverse = find.byKey(
       const Key('finance-shipment-audit-reject-reverse-btn'),
     );

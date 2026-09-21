@@ -28,7 +28,6 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
-import '../../basic_data/models/client_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
@@ -289,15 +288,6 @@ class _SalesShipmentTaskWorkbenchState
     return items.length > 5 ? '$visible 等 ${items.length} 笔' : visible;
   }
 
-  static bool _paymentTypeClassified(ShipmentFinanceAuditInfo info) {
-    if (info.billingMode == 'FREE') return true;
-    return const {
-      ClientSalesPaymentType.monthly,
-      ClientSalesPaymentType.cash,
-      ClientSalesPaymentType.deposit,
-    }.contains(info.salesPaymentType?.trim());
-  }
-
   static bool _readableSnapshot(ShipmentFinanceAuditInfo info) =>
       info.reviewRevision != null &&
       info.contentHash != null &&
@@ -306,7 +296,7 @@ class _SalesShipmentTaskWorkbenchState
           readableShipmentReviewSnapshot(info.previousCommercialSnapshot));
 
   /// 整批认领 + 逐笔拉审核快照核对（对齐订货审批 _claimSelection）：
-  /// 任一笔认领失败/内容失效/客户未分类（放行）→ 整批不提交。
+  /// 任一笔认领失败/内容失效 → 整批不提交。
   Future<TaskClaimSession?> _claimSelection({required bool forApprove}) async {
     final claim = financeReviewClaim(
       ProviderScope.containerOf(context, listen: false),
@@ -331,17 +321,6 @@ class _SalesShipmentTaskWorkbenchState
         if (!mounted || !claim.isReady || !_readableSnapshot(info)) {
           if (mounted) {
             context.appWarning('部分出货内容或占用已变化，请刷新后重新核对');
-          }
-          await _releaseBatchClaim(claim);
-          return null;
-        }
-        if (forApprove && !_paymentTypeClassified(info)) {
-          if (mounted) {
-            final item = _selectedById[id];
-            context.appWarning(
-              '出货单 ${item?.billNo ?? ''} 的客户尚未完成销售货款分类（月结/现金/定金），'
-              '不能放行；请先在审核详情处理或从选择中移除。',
-            );
           }
           await _releaseBatchClaim(claim);
           return null;
@@ -781,7 +760,7 @@ class _SalesShipmentTaskWorkbenchState
   Widget _summary(int total) {
     final theme = Theme.of(context);
     final description = _isFinance
-        ? '默认只看待审核。双击进入审核详情逐张核对客户货款类型、应收、铺底和可用预收(真实已审到账)后再人工放行；也可多选后批量放行/退回（整批原子提交）。'
+        ? '默认只看待审核。双击进入审核详情逐张核对本单结账方式、应收、铺底和可用预收(真实已审到账)后再人工放行；也可多选后批量放行/退回（整批原子提交）。'
         : '固定只看财务已放行的出货。仓库核对后一步确认出库，届时才正式扣库存并形成应收。';
     return Semantics(
       container: true,

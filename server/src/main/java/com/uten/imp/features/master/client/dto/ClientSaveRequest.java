@@ -2,7 +2,6 @@ package com.uten.imp.features.master.client.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSetter;
-import com.uten.imp.features.master.client.ClientSalesPaymentType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -75,12 +74,6 @@ public class ClientSaveRequest {
     private BigDecimal initTotal;// InitTotal（期初应收）
     private Integer tday;        // TDay（结算天数）
     private UUID defaultSettlementMethodId;
-    /**
-     * 月结/现金/定金人工分类；不能作为到账证明或放行规则。
-     * V607 起创建可不填（未分类），财务放行时由
-     * {@code SalesShipmentService.requireClassifiedSalesPaymentType} 拦截补选。
-     */
-    private ClientSalesPaymentType salesPaymentType;
     @JsonIgnore
     private boolean defaultSettlementMethodReferencePresent;
 

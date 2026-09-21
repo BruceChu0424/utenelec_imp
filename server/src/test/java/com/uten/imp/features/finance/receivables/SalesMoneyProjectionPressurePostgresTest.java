@@ -222,7 +222,7 @@ class SalesMoneyProjectionPressurePostgresTest {
             return;
         }
         jdbc.update("INSERT INTO audit_pressure.fixtures(fixture_id,order_count,salt,client_id,currency_id,goods_id,warehouse_id,actor_id) VALUES('sales-money-v3',:count,:salt,:client,:currency,:goods,:warehouse,:actor)",p);
-        jdbc.update("INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type) VALUES(:client,'CLIENT-'||:salt,'Pressure customer','使用',100000,'MONTHLY')",p);
+        jdbc.update("INSERT INTO clients(id,code,name,status,code_sequence) VALUES(:client,'CLIENT-'||:salt,'Pressure customer','使用',100000)",p);
         jdbc.update("INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(:currency,'PRESSURE-CNY','Pressure currency',1,'使用')",p);
         jdbc.update("INSERT INTO goods(id,code,name,status,code_sequence) VALUES(:goods,'GOODS-'||:salt,'Pressure goods','使用',100000)",p);
         jdbc.update("INSERT INTO warehouses(id,code,name) VALUES(:warehouse,'PRESSURE-WH','Pressure warehouse')",p);
@@ -277,11 +277,11 @@ class SalesMoneyProjectionPressurePostgresTest {
                 """+series,"""
                 INSERT INTO sales_shipment_finance_release_events(
                     id,shipment_id,event_type,actor_user_id,occurred_at,client_id,client_name,currency_id,
-                    sales_payment_type,shipment_total_original,formal_ar_outstanding_local,credit_floor_local,
+                    shipment_total_original,formal_ar_outstanding_local,credit_floor_local,
                     over_floor_local,available_prepayment_original,available_prepayment_local,
                     review_revision,claim_id,content_hash,commercial_snapshot,billing_mode)
                 SELECT md5(:salt||'-finance-release-'||n)::uuid,shipment.id,'RELEASED',:actorUser,now(),
-                    shipment.client_id,client.name,shipment.currency_id,client.sales_payment_type,
+                    shipment.client_id,client.name,shipment.currency_id,
                     shipment.total_original,0,0,0,0,0,shipment.review_revision,
                     md5(:salt||'-finance-claim-'||n)::uuid,submitted.content_hash,submitted.commercial_snapshot,shipment.billing_mode
                 FROM generate_series(:first,:last) sample(n)

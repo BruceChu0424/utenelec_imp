@@ -239,8 +239,8 @@ class SalesReturnAmountAuthorityPostgresTest {
         jdbc.update("INSERT INTO units(id, code, name, status) VALUES (?, ?, '个', '使用')", unit, "RET-U-" + suffix);
         jdbc.update("INSERT INTO warehouses(id, code, name) VALUES (?, ?, 'Return authority warehouse')", warehouse, "RET-W-" + suffix);
         jdbc.update("""
-                INSERT INTO clients(id, code, name, status, code_sequence, sales_payment_type)
-                VALUES (?, ?, 'Return authority client', '使用', (SELECT COALESCE(MAX(code_sequence), 0)+1 FROM clients), 'MONTHLY')
+                INSERT INTO clients(id, code, name, status, code_sequence)
+                VALUES (?, ?, 'Return authority client', '使用', (SELECT COALESCE(MAX(code_sequence), 0)+1 FROM clients))
                 """, client, "RET-C-" + suffix);
         jdbc.update("""
                 INSERT INTO goods(id, code, name, unit_id, status, code_sequence)

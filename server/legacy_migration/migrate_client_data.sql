@@ -80,8 +80,7 @@ WITH unique_employees AS (
     HAVING count(*) = 1
 ), settlement_matches AS (
     SELECT legacy_id,
-           (array_agg(id ORDER BY id))[1] AS method_id,
-           (array_agg(system_role ORDER BY id))[1] AS system_role
+           (array_agg(id ORDER BY id))[1] AS method_id
     FROM settlement_methods
     WHERE legacy_id IS NOT NULL
       AND status = '使用'
@@ -105,7 +104,7 @@ INSERT INTO clients (
     place_id, emp_id, owner_employee_id, legal_person, linkman, mobile, phone, phone2, fax, postcode, address,
     email, website, ship_via, ship_address, bank, bank_account, tax_id,
     credit, credit_floor, init_total, init_total2, exchange_rate, tday,
-    default_settlement_method_id, sales_payment_type, price_style, zj_id,
+    default_settlement_method_id, price_style, zj_id,
     region, client_xz, status, remark, code_managed, code_sequence
 )
 SELECT
@@ -122,11 +121,6 @@ SELECT
     cs.bank, cs.bank_account, cs.tax_id,
     cs.credit, COALESCE(cs.credit, 0), cs.init_total, cs.init_total2,
     cs.exchange_rate, cs.tday, settlement_match.method_id,
-    CASE settlement_match.system_role
-        WHEN 'CASH' THEN 'CASH'
-        WHEN 'MONTHLY' THEN 'MONTHLY'
-        ELSE NULL
-    END,
     cs.price_style,
     cs.zj_id, cs.region, cs.client_xz,
     cs.status, cs.remark, FALSE,
@@ -170,6 +164,3 @@ SELECT '✔ 客户 ' || count(*) ||
        '，使用 ' || count(*) FILTER (WHERE status = N'使用') ||
        '，禁用 ' || count(*) FILTER (WHERE status = N'禁用') AS 结果
 FROM clients;
-
-SELECT '待人工分类客户 ' || count(*) AS 货款类型迁移结果
-FROM v_client_sales_payment_type_migration_issues;

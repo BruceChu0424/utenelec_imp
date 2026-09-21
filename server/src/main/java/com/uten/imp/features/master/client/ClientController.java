@@ -68,7 +68,6 @@ public class ClientController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String name,
             @RequestParam(name = "fullName", required = false) String fullName,
-            @RequestParam(required = false) ClientSalesPaymentType salesPaymentType,
             @RequestParam(name = "clientXz", required = false) String clientXz,
             @RequestParam(required = false) Integer tday,
             @RequestParam(required = false) String region,
@@ -96,7 +95,7 @@ public class ClientController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(new ClientQueryFilter(categoryId, keyword, nullFields,
-                code, name, fullName, salesPaymentType, clientXz, tday, region, placeId, empId,
+                code, name, fullName, clientXz, tday, region, placeId, empId,
                 ownerEmployeeId, legalPerson, linkman, mobile, phone, phone2, fax, postcode,
                 address, bank, bankAccount, taxId, credit, creditFloor, website,
                 excludeLegacyFinanceStub, selectableOnly), page, size, sort, order);
@@ -139,7 +138,6 @@ public class ClientController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String name,
             @RequestParam(name = "fullName", required = false) String fullName,
-            @RequestParam(required = false) ClientSalesPaymentType salesPaymentType,
             @RequestParam(name = "clientXz", required = false) String clientXz,
             @RequestParam(required = false) Integer tday,
             @RequestParam(required = false) String region,
@@ -165,7 +163,7 @@ public class ClientController {
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new ClientQueryFilter(categoryId, keyword, nullFields,
-                code, name, fullName, salesPaymentType, clientXz, tday, region, placeId, empId,
+                code, name, fullName, clientXz, tday, region, placeId, empId,
                 ownerEmployeeId, legalPerson, linkman, mobile, phone, phone2, fax, postcode,
                 address, bank, bankAccount, taxId, credit, creditFloor, website,
                 excludeLegacyFinanceStub, false), sort, order);

@@ -139,18 +139,6 @@ List<MasterFieldDef> buildClientFields(
     MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
     MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
   ],
-  const MasterFieldDef(
-    key: 'salesPaymentType',
-    label: '销售货款类型',
-    type: MasterFieldType.select,
-    options: [
-      MasterSelectOption(value: ClientSalesPaymentType.monthly, label: '月结'),
-      MasterSelectOption(value: ClientSalesPaymentType.cash, label: '现金'),
-      MasterSelectOption(value: ClientSalesPaymentType.deposit, label: '定金'),
-    ],
-    group: '财务',
-    hint: '用于发货财务审核分类，不代表定金已到账；未分类客户财务放行时会被拦截',
-  ),
   MasterFieldDef(
     key: 'defaultSettlementMethodId',
     label: '默认结账方式',
@@ -306,7 +294,6 @@ Future<void> showClientMasterEdit(
     'initTotal': d.initTotal?.toString() ?? '',
     'creditFloor': d.creditFloor?.toString() ?? '',
     'tday': d.tday?.toString() ?? '',
-    'salesPaymentType': d.salesPaymentType ?? '',
     'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
     'defaultShipmentPolicy': d.defaultShipmentPolicy ?? '',
     'defaultCurrencyId': d.defaultCurrencyId ?? '',

@@ -140,7 +140,6 @@ void main() {
         return {
           'shipmentId': 'shipment-1',
           'financeAudit': request.method == 'POST' ? 1 : 0,
-          'salesPaymentType': 'CASH',
           'settlementMethodName': '现金',
           'outstanding': '100.00',
           'creditFloor': '20.00',

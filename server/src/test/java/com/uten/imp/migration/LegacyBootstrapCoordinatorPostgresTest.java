@@ -203,7 +203,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
         assertThat(scalar("SELECT status || '|' || reconciliation_status FROM legacy_migration_runs WHERE status='SUCCESS' AND target='--bootstrap-all'"))
                 .isEqualTo("SUCCESS|PASSED");
         assertThat(scalar("SELECT count(*) || '|' || count(*) FILTER (WHERE NOT item.passed) FROM legacy_migration_reconciliation_items item JOIN legacy_migration_runs run USING(run_id) WHERE run.target='--bootstrap-all'"))
-                .isEqualTo("24|0");
+                .isEqualTo("23|0");
         assertThat(scalar("SELECT reconciliation_summary->>'moduleRowChecksPassed' FROM legacy_migration_runs WHERE status='SUCCESS' AND target='--bootstrap-all'")).isEqualTo("true");
         for (String table : List.of("goods", "purchase_order_items", "stock_document_items", "stock_balances",
                 "sales_order_items", "subcontract_order_items", "production_plan_items", "finance_receipts")) {
@@ -321,7 +321,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 JOIN warehouses warehouse ON warehouse.id=balance.warehouse_id JOIN colors color ON color.id=balance.color_id
                 WHERE goods.legacy_id=910101 AND warehouse.legacy_id=910201 AND color.legacy_id=910401
                 """)).isEqualTo("true");
-        assertThat(scalar("SELECT count(*) FROM clients WHERE legacy_id=910501 AND status='禁用' AND sales_payment_type IS NULL"))
+        assertThat(scalar("SELECT count(*) FROM clients WHERE legacy_id=910501 AND status='禁用'"))
                 .isEqualTo("1");
         assertThat(scalar("SELECT count(*) FROM suppliers WHERE legacy_id=910601 AND status='禁用'"))
                 .isEqualTo("1");

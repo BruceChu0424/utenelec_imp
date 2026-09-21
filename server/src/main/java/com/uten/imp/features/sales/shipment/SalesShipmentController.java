@@ -142,7 +142,7 @@ public class SalesShipmentController {
         return service.transitionWarehouseWork(id, req);
     }
 
-    /** 财务审核前只读核对：客户货款类型、结算方式、应收、铺底和超出铺底额。 */
+    /** 财务审核前只读核对：本单结账方式、应收、铺底和超出铺底额。 */
     @GetMapping("/{id}/finance-audit-info")
     @PreAuthorize("hasAuthority('finance_shipment_audit')")
     public java.util.Map<String, Object> financeAuditInfo(@PathVariable UUID id) {

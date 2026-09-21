@@ -27,6 +27,7 @@ class ArApDualCurrencySettlementPostgresTest {
             for(String kind:List.of("AR","AP","CREDIT","ZERO","LEGACY","LOCAL")) rows.put(kind,UUID.randomUUID());
             Map<UUID,String> before=new LinkedHashMap<>();
             try(var connection=connect(database)) {
+                // 彩排目标停在 V607 之前：那时 clients.sales_payment_type 仍在且在线客户必填(V443 CHECK)，V630 才整列退役。
                 execute(connection,"INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type) VALUES(?,'SETTLE-C','结清测试客户','使用',100000,'MONTHLY')",client);
                 execute(connection,"INSERT INTO suppliers(id,code,name,status,code_sequence) VALUES(?,'SETTLE-S','结清测试供应商','使用',100000)",supplier);
                 execute(connection,"INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,'SETTLE-FX','结清测试币种',0.0001,'使用')",currency);

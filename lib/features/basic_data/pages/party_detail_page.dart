@@ -71,12 +71,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   List<PartyActivityRecord> _activities = const [];
   int? _creditScore;
 
-  // ===== 就地编辑（2026-09-15 起：详情页原地变输入；2026-09-17 按分区拆两张表单） =====
+  // ===== 就地编辑（2026-09-15 起：详情页原地变输入；2026-09-17 按分区拆到两个 Tab；
+  // 2026-09-20 起两张分区表单共用一个页面持有的值容器，不随 Tab 页释放） =====
   bool _editing = false;
-  final GlobalKey<MasterEditFormState> _overviewFormKey =
-      GlobalKey<MasterEditFormState>();
-  final GlobalKey<MasterEditFormState> _financeFormKey =
-      GlobalKey<MasterEditFormState>();
+  MasterEditFormController? _editController;
   List<ReferenceMethodOption> _editSettlements = const [];
   List<CurrencyListItem> _editCurrencies = const [];
   bool _scoreLoaded = false;
@@ -120,6 +118,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   @override
   void dispose() {
     _tab.dispose();
+    _editController?.dispose();
     super.dispose();
   }
 
@@ -757,7 +756,6 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         description: '新建销售订货单选客户后按默认结账方式/货运策略/币种预填；每次下单自动记住最新选择，点「编辑」也可直接改。',
         child: UtenFormGrid(
           children: [
-            _kv(theme, '销售货款类型', salesPaymentTypeLabelOf(d.salesPaymentType)),
             _kv(theme, '默认结账方式', d.defaultSettlementMethodName),
             _kv(
               theme,
@@ -828,7 +826,6 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     'initTotal': d.initTotal?.toString() ?? '',
     'creditFloor': d.creditFloor?.toString() ?? '',
     'tday': d.tday?.toString() ?? '',
-    'salesPaymentType': d.salesPaymentType ?? '',
     'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
     'defaultShipmentPolicy': d.defaultShipmentPolicy ?? '',
     'defaultCurrencyId': d.defaultCurrencyId ?? '',
@@ -836,12 +833,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     'remark': d.remark ?? '',
   };
 
-  /// 就地编辑的分组表单：finance=false 取概览分组（基础/联系/地址/资质/其他），
-  /// finance=true 取财务分组——各 Tab 原地渲染，保存时合并。
-  List<MasterFieldDef> _clientEditFields(
-    ClientDetail d, {
-    required bool finance,
-  }) {
+  /// 就地编辑的整套字段（概览分组 + 财务分组）：点「编辑」时建一次交给
+  /// [MasterEditFormController]，两个 Tab 各按 group 取子集渲染。
+  List<MasterFieldDef> _clientEditFields(ClientDetail d) {
     // 当前默认结账方式/币种已停用：追加带「已停用」标注的选项保住原值，
     // 用户可顺手改掉（2026-09-15 之前这里直接报错拦死编辑）。
     final settlementOptions = [..._editSettlements];
@@ -866,19 +860,19 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         ),
       ];
     }
-    final all = buildClientFields(
+    return buildClientFields(
       _clientInitialValues(d),
       settlementOptions,
       currencies: currencyOptions,
       legacyCreditSnapshot: d.legacyId != null,
     );
-    return finance
-        ? all.where((f) => f.group == '财务').toList()
-        : all.where((f) => f.group != '财务').toList();
   }
 
+  /// finance=true 渲染财务分组，否则渲染其余分组；两张表单共用 [_editController]，
+  /// 所以任一 Tab 被 TabBarView 释放/重建都不丢值。
   Widget _editFormCard(ThemeData theme, {required bool finance}) {
     final d = _client!;
+    final controller = _editController!;
     final permissions = ref.read(currentPermissionsProvider);
     final readOnlyKeys = <String>{
       if (!permissions.contains(Perm.clientStatus)) 'status',
@@ -886,35 +880,58 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     };
     return UtenCard(
       child: MasterEditForm(
-        key: finance ? _financeFormKey : _overviewFormKey,
-        fields: _clientEditFields(d, finance: finance),
-        initialValues: _clientInitialValues(d),
-        fixedValues: finance
-            ? const {}
-            : {
-                'categoryId': d.categoryId,
-                if (d.version != null) 'version': d.version,
-              },
+        controller: controller,
+        fields: [
+          for (final f in controller.fields)
+            if ((f.group == '财务') == finance) f,
+        ],
         readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
       ),
     );
   }
 
+  /// 进入编辑态：整套字段 + 初值 + 固定值（分类/乐观锁版本）装进一个值容器。
+  void _startInlineEdit(ClientDetail d) {
+    _editController?.dispose();
+    _editController = MasterEditFormController(
+      fields: _clientEditFields(d),
+      initialValues: _clientInitialValues(d),
+      fixedValues: {
+        'categoryId': d.categoryId,
+        if (d.version != null) 'version': d.version,
+      },
+    );
+  }
+
+  /// 退出编辑态（取消/保存成功）：表单 widget 本帧还挂在树上并监听着值容器，
+  /// 延后到帧末再释放。
+  void _stopInlineEdit() {
+    final controller = _editController;
+    _editController = null;
+    _editing = false;
+    if (controller != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+    }
+  }
+
+  /// 出错字段所在的 Tab：财务分组在「销售条款与财务」(1)，其余在概览(0)。
+  int _editTabOf(String? fieldKey) {
+    final field = fieldKey == null ? null : _editController?.fieldOf(fieldKey);
+    return field?.group == '财务' ? 1 : 0;
+  }
+
   Future<void> _saveInlineEdit() async {
     final d = _client;
-    if (d == null) return;
-    // 两张分区表单分别校验，合并成一次提交；哪张失败就跳回哪张所在 Tab。
-    final overview = _overviewFormKey.currentState?.buildBody();
-    if (overview == null) {
-      _tab.animateTo(0);
+    final controller = _editController;
+    if (d == null || controller == null) return;
+    // 一次校验整套字段（跨两个 Tab）；失败就跳到出错字段所在 Tab 并明确提示，绝不静默。
+    final body = controller.buildBody();
+    if (body == null) {
+      _tab.animateTo(_editTabOf(controller.errorFieldKey));
+      final message = controller.error;
+      if (message != null && mounted) context.appError(message);
       return;
     }
-    final finance = _financeFormKey.currentState?.buildBody();
-    if (finance == null) {
-      _tab.animateTo(1);
-      return;
-    }
-    final body = {...overview, ...finance};
     late final bool ok;
     try {
       ok = await context.guardRun(
@@ -928,7 +945,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       // 编号查重 409：编号字段描红 + 显文案，保持编辑态让用户改（编号在概览表单）。
       if (e.message.contains('编号已存在')) {
         _tab.animateTo(0);
-        _overviewFormKey.currentState?.setFieldError('code', e.message);
+        controller.setFieldError('code', e.message);
         return;
       }
       if (mounted) context.appApiError(e);
@@ -938,7 +955,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       return;
     }
     if (!ok || !mounted) return;
-    setState(() => _editing = false);
+    setState(_stopInlineEdit);
     await _load();
   }
 
@@ -1524,7 +1541,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
           type: UtenButtonType.secondary,
           size: UtenButtonSize.large,
           icon: Icons.close_rounded,
-          onPressed: _busy ? null : () => setState(() => _editing = false),
+          onPressed: _busy ? null : () => setState(_stopInlineEdit),
           child: const Text('取消'),
         ),
         UtenButton(
@@ -1602,6 +1619,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       setState(() {
         _editSettlements = settlements;
         _editCurrencies = currencies;
+        _startInlineEdit(_client!);
         _editing = true;
       });
       _tab.animateTo(0);
@@ -1731,14 +1749,6 @@ String _fmtMoney(double? v) {
   if (v == v.truncateToDouble()) return v.truncate().toString();
   return v.toStringAsFixed(2);
 }
-
-/// 销售货款类型显示标签（月结/现金/定金/待分类）。
-String salesPaymentTypeLabelOf(String? value) => switch (value?.trim()) {
-  ClientSalesPaymentType.monthly => '月结',
-  ClientSalesPaymentType.cash => '现金',
-  ClientSalesPaymentType.deposit => '定金',
-  _ => '待人工分类',
-};
 
 /// 默认货运策略显示标签：词表复用销售侧 [salesShipmentPolicyLabel]；
 /// 空值返回 null 交 [_kv] 显示「—」。

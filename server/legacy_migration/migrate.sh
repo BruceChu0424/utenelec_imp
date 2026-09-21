@@ -796,9 +796,9 @@ PY
     python3 -I "$HERE/reconcile_modules.py" "$HERE/data/export_manifest.json" "$RUN_ID" >> "$BOOTSTRAP_SQL"
     cat >> "$BOOTSTRAP_SQL" <<'SQL'
 DO $$ BEGIN
-    IF (SELECT count(*) FROM legacy_migration_reconciliation_items WHERE run_id = current_setting('uten.bootstrap_run_id')::uuid) <> 24
+    IF (SELECT count(*) FROM legacy_migration_reconciliation_items WHERE run_id = current_setting('uten.bootstrap_run_id')::uuid) <> 23
        OR EXISTS (SELECT 1 FROM legacy_migration_reconciliation_items WHERE run_id = current_setting('uten.bootstrap_run_id')::uuid AND NOT passed) THEN
-    RAISE EXCEPTION USING ERRCODE='UT702', MESSAGE='24-item bootstrap structural reconciliation failed';
+    RAISE EXCEPTION USING ERRCODE='UT702', MESSAGE='23-item bootstrap structural reconciliation failed';
     END IF;
 END; $$;
 SQL
@@ -808,7 +808,7 @@ SQL
 UPDATE legacy_migration_runs SET status='SUCCESS', reconciliation_status='PASSED',
     finished_at=CURRENT_TIMESTAMP, exit_code=0,
     reconciliation_summary=reconciliation_summary || jsonb_build_object(
-    'automatedCheckCount',24,'failedAutomatedCheckCount',0,
+    'automatedCheckCount',23,'failedAutomatedCheckCount',0,
     'structuralChecksOnly',true,'sourceTargetBusinessReconciliationRequired',true,'productionAcceptance',false)
 WHERE run_id=:'run_id'::uuid;
 COMMIT;

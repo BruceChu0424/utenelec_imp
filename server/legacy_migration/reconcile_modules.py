@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Persist source/target row reconciliation for every implemented document loader.
 
-Core master/UUID checks remain the separate 24-item SQL contract. These checks
+Core master/UUID checks remain the separate 23-item SQL contract. These checks
 make a dropped document or line fatal; amount/quantity/source sign-off remains
 an additional acceptance requirement, not something a row count can prove.
 """

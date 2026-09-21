@@ -203,7 +203,7 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 财务审核前预览：所有客户都先核对货款类型、结账方式、未收与铺底。
+  /// 财务审核前预览：核对本单结账方式、正式未收、铺底与可用预收。
   Future<ShipmentFinanceAuditInfo> financeAuditInfo(String id) async {
     final json = await api.get('${_doc(id)}/finance-audit-info');
     return ShipmentFinanceAuditInfo.fromJson(json);

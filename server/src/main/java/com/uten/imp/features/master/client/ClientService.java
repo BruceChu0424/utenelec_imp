@@ -65,7 +65,7 @@ public class ClientService {
 
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径；UUID 关联名称不走旧字段 facet。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
-            "code", "name", "fullName", "salesPaymentType", "clientXz", "tday", "region", "placeId",
+            "code", "name", "fullName", "clientXz", "tday", "region", "placeId",
             "empId", "ownerEmployeeId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
             "postcode", "address", "bank", "bankAccount", "taxId", "credit", "creditFloor", "website");
 
@@ -86,7 +86,6 @@ public class ClientService {
         FACET_COLUMNS.put("code", "code");
         FACET_COLUMNS.put("name", "name");
         FACET_COLUMNS.put("fullName", "full_name");
-        FACET_COLUMNS.put("salesPaymentType", "sales_payment_type");
         FACET_COLUMNS.put("clientXz", "client_xz");
         FACET_COLUMNS.put("tday", "tday");
         FACET_COLUMNS.put("region", "region");
@@ -150,9 +149,6 @@ public class ClientService {
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "fullName", f.fullName());
-            if (f.salesPaymentType() != null) {
-                ps.add(cb.equal(root.get("salesPaymentType"), f.salesPaymentType()));
-            }
             addEq(ps, cb, root, "clientXz", f.clientXz());
             addEq(ps, cb, root, "region", f.region());
             addEq(ps, cb, root, "placeId", f.placeId());
@@ -250,7 +246,6 @@ public class ClientService {
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
                 new ExportColumn("name", "客户简称", ExportColumn.TEXT),
                 new ExportColumn("fullName", "客户全称", ExportColumn.TEXT),
-                new ExportColumn("salesPaymentType", "货款类型", ExportColumn.TEXT),
                 new ExportColumn("defaultSettlementMethodName", "主结账方式", ExportColumn.TEXT),
                 new ExportColumn("clientXz", "客户性质", ExportColumn.TEXT),
                 new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
@@ -284,7 +279,6 @@ public class ClientService {
                 row.put("code", m.getCode());
                 row.put("name", m.getName());
                 row.put("fullName", m.getFullName());
-                row.put("salesPaymentType", paymentTypeLabel(m.getSalesPaymentType()));
                 row.put("defaultSettlementMethodName", m.getDefaultSettlementMethodName());
                 row.put("clientXz", m.getClientXz());
                 row.put("tday", m.getTday());
@@ -537,9 +531,6 @@ public class ClientService {
         applyDefaultSettlementMethod(req, m);
         applyDefaultShipmentPolicy(req, m);
         applyDefaultCurrency(req, m);
-        if (req.getSalesPaymentType() != null) {
-            m.setSalesPaymentType(req.getSalesPaymentType());
-        }
         if (req.getCreditFloor() != null || m.getCreditFloor() == null) {
             m.setCreditFloor(normalizeCreditFloor(req.getCreditFloor()));
         }
@@ -583,7 +574,6 @@ public class ClientService {
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
                 m.getDefaultSettlementMethodId(),
                 settlementMethodName,
-                m.getSalesPaymentType(),
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope),
                 clientAccessPolicy.accessReason(m, scope),
@@ -606,7 +596,6 @@ public class ClientService {
                 m.getOwnerEmployeeId(),
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
                 m.getDefaultSettlementMethodId(), settlementMethodName,
-                m.getSalesPaymentType(),
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope));
     }
@@ -778,15 +767,6 @@ public class ClientService {
                     ErrorCode.CONFLICT,
                     "旧库 Credit 是铺底来源的只读快照，不能作为信用额度修改；真实信用额度需使用后续显式核准模型");
         }
-    }
-
-    private static String paymentTypeLabel(ClientSalesPaymentType value) {
-        if (value == null) return "待人工分类";
-        return switch (value) {
-            case MONTHLY -> "月结";
-            case CASH -> "现金";
-            case DEPOSIT -> "定金";
-        };
     }
 
     private Client requireClient(UUID id) {

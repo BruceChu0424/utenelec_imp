@@ -72,8 +72,8 @@ class CustomerPrepaymentSummaryPostgresTest {
         // fn_reserve_business_document_identifier 要求 XD+YYYYMMDD+6位流水
         String orderBillNo = "XD20260827000001";
         jdbc.update("""
-                INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type)
-                VALUES(?,?,?,'使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients),'MONTHLY')
+                INSERT INTO clients(id,code,name,status,code_sequence)
+                VALUES(?,?,?,'使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients))
                 """, clientId, "CP-SUM-" + suffix, "Customer prepayment summary");
         jdbc.update("""
                 INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,?,?,1,'使用')
@@ -183,8 +183,8 @@ class CustomerPrepaymentSummaryPostgresTest {
         String returnNo="XT20260907%06d".formatted(sequence);
         UUID goods=seedGoods(suffix);
         jdbc.update("""
-                INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type)
-                VALUES(?,?,'Summary client','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients),'MONTHLY')
+                INSERT INTO clients(id,code,name,status,code_sequence)
+                VALUES(?,?,'Summary client','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients))
                 """,client,"SUM-C-"+suffix);
         jdbc.update("INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,?,?,1,'使用')",currency,"SC-"+sequence,"Summary currency");
         jdbc.update("""
@@ -251,11 +251,11 @@ class CustomerPrepaymentSummaryPostgresTest {
         jdbc.update("""
                 INSERT INTO sales_shipment_finance_release_events(
                     id,shipment_id,event_type,actor_user_id,occurred_at,client_id,client_name,currency_id,
-                    sales_payment_type,shipment_total_original,formal_ar_outstanding_local,credit_floor_local,
+                    shipment_total_original,formal_ar_outstanding_local,credit_floor_local,
                     over_floor_local,available_prepayment_original,available_prepayment_local,
                     review_revision,claim_id,content_hash,commercial_snapshot,billing_mode)
                 SELECT ?,s.id,'RELEASED',?,now(),s.client_id,c.name,s.currency_id,
-                    c.sales_payment_type,s.total_original,0,0,0,0,0,
+                    s.total_original,0,0,0,0,0,
                     s.review_revision,?,submitted.content_hash,submitted.commercial_snapshot,s.billing_mode
                 FROM sales_shipments s JOIN clients c ON c.id=s.client_id
                 JOIN sales_shipment_submission_events submitted

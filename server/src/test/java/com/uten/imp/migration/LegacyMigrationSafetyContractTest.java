@@ -112,7 +112,7 @@ class LegacyMigrationSafetyContractTest {
         assertThat(legacyReadme)
                 .contains("mapping-version.txt")
                 .contains("verify_candidate.py")
-                .contains("24 项")
+                .contains("23 项")
                 .contains("不会自动授权目标库");
 
         String migrationReadme = compact(Files.readString(
@@ -172,7 +172,7 @@ class LegacyMigrationSafetyContractTest {
                 .contains("record_run_file ()")
                 .contains("migrate_reconciliation.sql")
                 .contains("reconcile_full_bootstrap")
-                .contains("24-item bootstrap structural reconciliation failed")
+                .contains("23-item bootstrap structural reconciliation failed")
                 .contains("errcode='ut702'")
                 .contains("sourcetargetbusinessreconciliationrequired")
                 .contains("reconciliation_status=not_run")
@@ -186,7 +186,6 @@ class LegacyMigrationSafetyContractTest {
                 .contains("unresolved_current_uuid_relations")
                 .contains("unresolved_default_settlement_methods")
                 .contains("invalid_credit_floor")
-                .contains("unresolved_sales_payment_types")
                 .contains("unresolved_sales_shipment_finance_gate_exceptions")
                 .contains("v_sales_shipment_finance_gate_migration_exceptions")
                 .contains("including legacy_pending")
@@ -195,7 +194,7 @@ class LegacyMigrationSafetyContractTest {
                 .contains("unresolved_reject_rows")
                 .contains("retained_fk_anchor_goods");
         assertThat(occurrences(reconciliation,
-                "select :'run_id'::uuid")).isEqualTo(24);
+                "select :'run_id'::uuid")).isEqualTo(23);
     }
 
     @Test

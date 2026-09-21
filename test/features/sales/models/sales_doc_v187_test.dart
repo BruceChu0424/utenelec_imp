@@ -67,7 +67,6 @@ void main() {
         'shipmentId': 'shipment-1',
         'financeAudit': 0,
         'clientName': '月结客户',
-        'salesPaymentType': 'MONTHLY',
         'settlementMethodName': '月结30天',
         'outstanding': '1865812.8900',
         'creditFloor': 50000,
@@ -77,7 +76,6 @@ void main() {
       });
 
       expect(info.shipmentId, 'shipment-1');
-      expect(info.salesPaymentType, 'MONTHLY');
       expect(info.outstanding, '1865812.8900');
       expect(info.creditFloor, '50000');
       expect(info.overFloor, '-0.2900');

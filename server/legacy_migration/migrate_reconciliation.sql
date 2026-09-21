@@ -178,12 +178,6 @@ FROM clients client
 WHERE client.legacy_id IS NOT NULL
   AND (client.credit_floor IS NULL OR client.credit_floor < 0)
 UNION ALL
-SELECT :'run_id'::uuid, 'B_Client.PStyle/manual review', 'clients.sales_payment_type',
-       'unresolved_sales_payment_types', 0, count(*), count(*) = 0,
-       'Every non-deleted client must be classified as MONTHLY, CASH, or DEPOSIT before cutover; disabled clients may still own historical AR/receipts.'
-FROM v_client_sales_payment_type_migration_issues
-WHERE legacy_id IN (SELECT legacy_id FROM bootstrap_source_master_ids WHERE target_table='clients')
-UNION ALL
 SELECT :'run_id'::uuid, 'S_Out active legacy drafts',
        'v_sales_shipment_finance_gate_migration_exceptions',
        'unresolved_sales_shipment_finance_gate_exceptions',

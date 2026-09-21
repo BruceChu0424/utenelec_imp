@@ -218,14 +218,12 @@ class FinanceReportPartyStatementTest {
         ReportTableResponse result = service(em).receivableSummary(
                 null, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), 1, 50);
 
-        assertThat(labelFor(result, "salesPaymentType")).isEqualTo("货款类型");
         assertThat(labelFor(result, "creditFloor")).isEqualTo("铺底额");
         assertThat(labelFor(result, "overFloor")).isEqualTo("超出铺底额");
         String sql = String.join("\n", sqlStatements).replaceAll("\\s+", " ");
         assertThat(sql)
                 .contains("COALESCE(c.credit_floor,0) AS \"creditFloor\"")
                 .contains("- COALESCE(c.credit_floor,0) AS \"overFloor\"")
-                .contains("WHEN 'DEPOSIT' THEN '定金'")
                 .contains("AND (open_item_kind='RECEIVABLE' OR legacy_import_run_id IS NOT NULL)")
                 .contains("FROM customer_open_item_offsets allocation")
                 .doesNotContain("open_item_kind='CUSTOMER_PREPAYMENT'")

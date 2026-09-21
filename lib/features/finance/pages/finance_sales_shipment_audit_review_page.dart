@@ -2,8 +2,8 @@
 //
 // 对齐销售订单财务审核页 V300 / 订货审批审核详情页（ADR-027 §五）范式：
 //  - 状态条：单据号 + 待审核 / 已放行 / 已退回；
-//  - 客户财务快照卡：货款类型、结账方式、正式应收未收、铺底额、超出铺底额（红字）、
-//    可用预收（原币/本币）；客户未完成销售货款分类时阻断放行并给恢复路径；
+//  - 客户财务快照卡：本单结账方式、正式应收未收、铺底额、超出铺底额（红字）、
+//    可用预收（原币/本币）；V630 起客户不再有货款分类标签，放行不被分类阻断；
 //  - 商业快照变化卡（上次审核 → 本次修改）：ShipmentFinanceChangeSummary；
 //  - 出货信息卡 + 只读明细（MasterDataTableView 嵌入模式）+ 只读附件；
 //  - 底部右下悬浮双决策：退回销售（必填原因，红）/ 确认放行；认领机制
@@ -26,7 +26,6 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
-import '../../basic_data/models/client_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -81,17 +80,6 @@ class _FinanceSalesShipmentAuditReviewPageState
     if (!salesShipmentAllowsFinanceAudit(d.warehouseWorkStatus)) return false;
     if (!d.shipmentWorkflow.salesConfirmed) return false;
     return info.reviewRevision != null && info.contentHash != null;
-  }
-
-  bool get _paymentTypeClassified {
-    final info = _info;
-    if (info == null) return false;
-    if (info.billingMode == 'FREE') return true;
-    return const {
-      ClientSalesPaymentType.monthly,
-      ClientSalesPaymentType.cash,
-      ClientSalesPaymentType.deposit,
-    }.contains(info.salesPaymentType?.trim());
   }
 
   @override
@@ -335,7 +323,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                       border: const OutlineInputBorder(),
                       error: utenFieldError(errorText),
                     ),
-                    info: '写明需要销售修改的内容，如结账方式、货款类型或明细数量。',
+                    info: '写明需要销售修改的内容，如结账方式或明细数量。',
                   ),
                 ),
               ],
@@ -597,10 +585,8 @@ class _FinanceSalesShipmentAuditReviewPageState
   }
 
   /// 右下悬浮操作组：待审=退回销售(红)+确认放行；已退回=撤回退回；其余状态只留返回。
-  /// 客户未完成销售货款分类时放行禁用（服务端同样拒绝；快照卡内有恢复路径）。
   Widget _floatingActions(ThemeData theme) {
     final claimReady = _claim?.isReady == true;
-    final classified = _paymentTypeClassified;
     final canDecide = _canDecide && _decisionReady && claimReady && !_busy;
     if (_canRejectReverse) {
       return UtenFloatingActionGroup(
@@ -659,10 +645,7 @@ class _FinanceSalesShipmentAuditReviewPageState
           size: UtenButtonSize.large,
           isLoading: _busy,
           icon: Icons.fact_check_outlined,
-          onPressed: _busy || !classified ? null : _approve,
-          onDisabledTap: classified
-              ? null
-              : () => context.appWarning('客户尚未完成销售货款分类（月结/现金/定金），不能放行'),
+          onPressed: _busy ? null : _approve,
           child: const Text('确认放行'),
         ),
       ],
@@ -759,16 +742,11 @@ class _FinanceSalesShipmentAuditReviewPageState
     );
   }
 
-  /// 客户财务快照卡：审核必看的货款分类、应收、铺底与可用预收。
+  /// 客户财务快照卡：审核必看的本单结账方式、应收、铺底与可用预收。
   Widget _clientFinanceCard(ThemeData theme, ShipmentFinanceAuditInfo info) {
     final names = ref.watch(salesMasterNameServiceProvider);
     final overFloor = double.tryParse(info.overFloor ?? '');
     final overFloorDanger = overFloor != null && overFloor > 0;
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canEditClientMaster =
-        ref.watch(isSuperAdminProvider) ||
-        (permissions.contains(Perm.clientView) &&
-            permissions.contains(Perm.clientEdit));
 
     Widget metric(String label, String? value, {bool danger = false}) =>
         SizedBox(
@@ -837,7 +815,6 @@ class _FinanceSalesShipmentAuditReviewPageState
                     _ => '其它客户发货',
                   }),
                 if (info.freeReason != null) metric('不收费原因', info.freeReason),
-                metric('客户货款类别', salesPaymentTypeLabel(info.salesPaymentType)),
                 metric('结账方式', info.settlementMethodName ?? '未设置'),
                 metric('正式应收未收(本币)', info.outstanding),
                 metric('铺底额(本币)', info.creditFloor),
@@ -848,54 +825,11 @@ class _FinanceSalesShipmentAuditReviewPageState
             ),
             const SizedBox(height: UtenSpacing.s8),
             Text(
-              '货款类别来自客户资料（月结/现金/定金），不是本单填写；“定金”只是客户标签，绝不代表已经到账；可用预收只统计同客户同币种的真实已审核到账，不能自动抵扣其它订单。',
+              '结账方式来自本单（销售订单选定后随出货单头，客户资料只记住最近一次作为下次默认）；可用预收只统计同客户同币种的真实已审核到账，不能自动抵扣其它订单。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            if (!_paymentTypeClassified) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Container(
-                key: const Key('finance-audit-classification-block'),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer,
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.block_rounded,
-                      color: theme.colorScheme.onErrorContainer,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        canEditClientMaster
-                            ? '客户尚未完成销售货款分类，当前不能放行。请先到“客户资料”选择月结、现金或定金并保存，再返回刷新。'
-                            : '客户尚未完成销售货款分类，当前不能放行。请联系有客户资料维护权限的人员选择月结、现金或定金，保存后再刷新。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onErrorContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (canEditClientMaster)
-                      TextButton(
-                        key: const Key('finance-audit-open-client-master'),
-                        onPressed: () async {
-                          // 客户资料页被 push 进来，返回即回本单；分类可能已改，
-                          // 回来必须重拉（2026-09-10 口径）。
-                          await context.push(RouteName.financeCustomers);
-                          if (mounted) await _load();
-                        },
-                        child: const Text('去客户资料'),
-                      ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),

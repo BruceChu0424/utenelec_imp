@@ -26,7 +26,7 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 
 `--bootstrap-all` 只允许由正式 Flyway 建好的空业务新库或可丢弃演练库。入口核对目标库名、集群身份和首导批准，并用当前业务表分类逐表检查无业务事实；不会调用业务清空函数。不得在已经切流、含新业务写入或无法完整恢复的数据库运行。
 
-所有导入模块、24 项结构对账、逐单据模块源/目标行数对账与成功回执在一个 PostgreSQL 事务提交。loader SQL 自身不提交，事务由协调器唯一拥有（单模块也由调用器包事务）。`compose_bootstrap.py` 用词法守卫拒绝额外顶层事务或跨连接命令，不改写 SQL 字符串/注释/dollar body，模块间清理本连接临时表；FK、审计和业务触发器一直启用。后段失败会回滚整个业务导入，独立保留 FAILED run 和输入摘要；确认是本单事务协议失败且业务仍空后可以重试。旧协议、未知数据或已存在业务的目标拒绝重建，须恢复到受审空库，不会自动删库。
+所有导入模块、23 项结构对账、逐单据模块源/目标行数对账与成功回执在一个 PostgreSQL 事务提交。loader SQL 自身不提交，事务由协调器唯一拥有（单模块也由调用器包事务）。`compose_bootstrap.py` 用词法守卫拒绝额外顶层事务或跨连接命令，不改写 SQL 字符串/注释/dollar body，模块间清理本连接临时表；FK、审计和业务触发器一直启用。后段失败会回滚整个业务导入，独立保留 FAILED run 和输入摘要；确认是本单事务协议失败且业务仍空后可以重试。旧协议、未知数据或已存在业务的目标拒绝重建，须恢复到受审空库，不会自动删库。
 
 相同 manifest、受审提交、mapping 和目标身份已成功时，返回原 SUCCESS 回执，不再次删除或导入，也不把原回执说成新的业务验收。钱流及采购/委外收货依赖同批真实来源证明，只允许完整 `--bootstrap-all`；旧 `--finance`、`--purchase`、`--subcontract` 单模块入口在写库前拒绝。其余单模块目标仍限隔离诊断，其 `reconciliation_status=NOT_RUN` 不构成完整切换证据。同一数据库的 claim 与业务执行均由数据库 advisory 锁保护；新事务持锁重验自己的 RUNNING 身份和空业务状态，跨 helper 容器也不能竞争重建。并发拒绝只清理本进程拥有的锁和随机密钥暂存文件。
 
@@ -50,13 +50,13 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 
 导出器、协调器、校验/装配/对账 Python、`mapping-version.txt`、全部 `migrate_*.sql` 和 Flyway 目录必须属于同一个无 scoped dirty 的受审 Git 提交。formatVersion 4 manifest 不保存 server、database、连接串或凭据，只保存源 authority、备份摘要、批准引用、UTC 时间、提交、导出器/sidecar 摘要以及每个 CSV 的行数、字节数和 SHA-256。导入时提交或任一字节漂移都会在数据库连接和写入前失败。
 
-全量导入完成后，`migrate_reconciliation.sql` 固定写入 24 项自动结构对账，包括核心 CSV 行数、完整消费清单、四个系统分类根、货品 UUID 关系、客户默认结算 UUID、客户铺底合法性、客户货款类型未决数、销售订单财务兼容事实、显式仓库/车间映射、活动 BOM、reject 和历史 FK anchor 统计。全部判定在提交前执行；失败则事务回滚并使 run 失败，诊断日志保留失败原因，成功运行保留 24 项结构记录和 `reconciliation_summary.moduleRowChecks`。自动结构对账通过仍不代表可切流；金额、数量、来源谱系、编号冲突、审计覆盖、恢复演练和业务/财务签字必须另行完成。
+全量导入完成后，`migrate_reconciliation.sql` 固定写入 23 项自动结构对账，包括核心 CSV 行数、完整消费清单、四个系统分类根、货品 UUID 关系、客户默认结算 UUID、客户铺底合法性、销售订单财务兼容事实、显式仓库/车间映射、活动 BOM、reject 和历史 FK anchor 统计。全部判定在提交前执行；失败则事务回滚并使 run 失败，诊断日志保留失败原因，成功运行保留 23 项结构记录和 `reconciliation_summary.moduleRowChecks`。自动结构对账通过仍不代表可切流；金额、数量、来源谱系、编号冲突、审计覆盖、恢复演练和业务/财务签字必须另行完成。
 
-V443 客户迁移只接受可证明映射：本机只读聚合为 260 个非删除客户，`B_PStyle` 仅现金 28、月结 16 可用不可变 `system_role` 自动分类，其余 216 不从提货/汇款/代收/空值猜成定金；其中使用中 236（现金 28、月结 15、未决 193），禁用 24（月结 1、未决 23）。禁用客户仍可能保有历史 AR/收款，不从全量标签对账中豁免。10,653 张历史销售订单的 `Deposit` 非零数为 0，也不能证明定金客户。`B_Client.Credit` 保留 legacy 快照，并在铺底尚未人工维护时精确写入 `credit_floor`；未设置按 0。全部 216 个未决标签须人工签收，标签为空不得完成新流出货财审。
+V630(2026-09-20)退役了 V443 的客户货款类别标签：首导不再按 `B_PStyle` 的 `system_role` 回填 `sales_payment_type`，结构对账也没有「未决标签」项(导入映射协议随之升为 `bootstrap-v12`)；客户条款只剩 `default_settlement_method_id`(由 `B_PStyle` 经 `settlement_matches` 唯一匹配，缺失/歧义仍进 `client_default_settlement_migration_issues`)。`B_Client.Credit` 保留 legacy 快照，并在铺底尚未人工维护时精确写入 `credit_floor`；未设置按 0。10,653 张历史销售订单的 `Deposit` 非零数为 0，定金仍以已审预收事实为准。
 
 历史出货不得批量伪造财审或风险事件。已进入 `PICKING/PICKED/SHIPPED` 的历史事实保留 `finance_gate_version=0`；仍处于活动 `PENDING_PICK` 且能证明尚未开始作业的旧草稿必须升级为版本 1、保持未审，再由财务人工放行。`LEGACY_PENDING` 是只读迁移异常，不得再走旧审核、财审、仓库推进或原位升级；须保留原草稿，并从当前已财务确认订单来源逐行重建版本 1 两审任务。无法证明的行进入异常清单并阻断切换。新流放行/撤回同事务追加 `sales_shipment_finance_release_events` 风险快照；历史不回填。财审只通知仓库，不立 AR；仓库最终确认 `SHIPPED` 的上海业务日才建立完整正式 AR 并起算到期日。
 
-销售 AR 对账必须把正式应收与客户预收分层：未转销 `CUSTOMER_PREPAYMENT` 负余额不得净掉正式 AR 未收；只有已审预收转销才冲减目标 AR。铺底只在客户汇总展示，`超出铺底额=正式 AR 未收-铺底额` 保留负数，不参与核销。这 24 项结构对账不能替代这组金额/来源人工对账或后续自动守卫。
+销售 AR 对账必须把正式应收与客户预收分层：未转销 `CUSTOMER_PREPAYMENT` 负余额不得净掉正式 AR 未收；只有已审预收转销才冲减目标 AR。铺底只在客户汇总展示，`超出铺底额=正式 AR 未收-铺底额` 保留负数，不参与核销。这 23 项结构对账不能替代这组金额/来源人工对账或后续自动守卫。
 
 V442 候选在采购、仓库、销售、委外和生产物理单据导入后运行
 migrate_measurement_profiles.sql。它只消费已审核目标 UUID 事实：正重量模式形成

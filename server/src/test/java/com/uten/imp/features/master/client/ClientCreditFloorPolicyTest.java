@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class ClientSalesPaymentTypePolicyTest {
+class ClientCreditFloorPolicyTest {
 
     @Test
     void unsetCreditFloorDefaultsToZeroAndValidPrecisionIsPreserved() {

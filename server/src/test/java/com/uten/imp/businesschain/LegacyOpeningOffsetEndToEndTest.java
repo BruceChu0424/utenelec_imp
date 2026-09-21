@@ -94,7 +94,7 @@ class LegacyOpeningOffsetEndToEndTest {
         int sequence=SEQUENCE.incrementAndGet();supplierLegacy=sequence;clientLegacy=sequence;
         supplierCode="SYN-OFF-S-"+sequence;
         supplier=jdbc.queryForObject("INSERT INTO suppliers(legacy_id,code,name,status,code_sequence) VALUES(?,?,?,'使用',?) RETURNING id",UUID.class,supplierLegacy,supplierCode,supplierCode,sequence);
-        client=jdbc.queryForObject("INSERT INTO clients(legacy_id,code,name,status,code_sequence,sales_payment_type) VALUES(?,?,?,'使用',?,'MONTHLY') RETURNING id",UUID.class,clientLegacy,"SYN-OFF-C-"+sequence,"SYN-OFF-C-"+sequence,sequence);
+        client=jdbc.queryForObject("INSERT INTO clients(legacy_id,code,name,status,code_sequence) VALUES(?,?,?,'使用',?) RETURNING id",UUID.class,clientLegacy,"SYN-OFF-C-"+sequence,"SYN-OFF-C-"+sequence,sequence);
         currency=jdbc.queryForObject("SELECT id FROM currencies WHERE legacy_id=1",UUID.class);
         UUID style=jdbc.queryForObject("INSERT INTO payment_styles(code,name,category,level,status) VALUES(?,?,'ACCOUNT',0,'使用') RETURNING id",UUID.class,"SYN-OFF-B-"+sequence,"Synthetic offset account");
         account=jdbc.queryForObject("INSERT INTO accounts(code,name,account_type,status,currency_id,style_id,init_balance,balance_current) VALUES(?,?,'CASH','使用',?,?,100,100) RETURNING id",UUID.class,"SYN-OFF-A-"+sequence,"Synthetic offset account",currency,style);

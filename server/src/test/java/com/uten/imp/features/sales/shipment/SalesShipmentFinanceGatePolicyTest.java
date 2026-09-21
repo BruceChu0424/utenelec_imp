@@ -31,25 +31,6 @@ class SalesShipmentFinanceGatePolicyTest {
                 .hasMessageContaining("所有客户出货均须先完成财务审核");
     }
 
-    @Test
-    void financeReleaseRequiresAValidManualCustomerClassification() {
-        assertDoesNotThrow(() ->
-                SalesShipmentService.requireClassifiedSalesPaymentType("MONTHLY"));
-        assertDoesNotThrow(() ->
-                SalesShipmentService.requireClassifiedSalesPaymentType("CASH"));
-        assertDoesNotThrow(() ->
-                SalesShipmentService.requireClassifiedSalesPaymentType("DEPOSIT"));
-
-        assertThatThrownBy(() ->
-                SalesShipmentService.requireClassifiedSalesPaymentType(null))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("客户货款类型尚未分类");
-        assertThatThrownBy(() ->
-                SalesShipmentService.requireClassifiedSalesPaymentType("UNKNOWN"))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("客户货款类型无效");
-    }
-
     private static SalesShipment shipment(short gateVersion, short financeAudit) {
         SalesShipment shipment = new SalesShipment();
         shipment.setFinanceGateVersion(gateVersion);

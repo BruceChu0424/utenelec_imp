@@ -61,7 +61,7 @@ class FinanceLegacyOpeningSummaryPostgresTest {
     @BeforeEach void clear() {
         jdbc.execute("TRUNCATE clients,suppliers,ar_ap_ledger,legacy_finance_import_sources,finance_receipts,finance_receipt_lines,finance_payments,finance_payment_lines");
         party=UUID.randomUUID();ledger=UUID.randomUUID();run=UUID.randomUUID();currency=UUID.randomUUID();
-        jdbc.update("INSERT INTO clients(id,code,name,sales_payment_type) VALUES (?,'SYN-PARTY','known party','MONTHLY')",party);
+        jdbc.update("INSERT INTO clients(id,code,name) VALUES (?,'SYN-PARTY','known party')",party);
         jdbc.update("INSERT INTO suppliers(id,code,name) VALUES (?,'SYN-PARTY','known party')",party);
     }
 

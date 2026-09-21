@@ -248,9 +248,9 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
         Map<String, String> expectations = currentReconciliationExpectations();
         String passedRun = newReconciliationRun();
         executeReconciliation(passedRun, expectations);
-        // migrate_reconciliation.sql 的指标集已扩到 24 项（与安全合同测试钉扎的
+        // migrate_reconciliation.sql 的指标集是 23 项(V630 退役客户货款类别后与安全合同测试钉扎的
         // `select :'run_id'::uuid` 出现次数一致）。
-        assertEquals("24|0", scalar("""
+        assertEquals("23|0", scalar("""
                 SELECT count(*) || '|' || count(*) FILTER (WHERE passed = FALSE)
                 FROM legacy_migration_reconciliation_items
                 WHERE run_id = '%s'::uuid
@@ -266,7 +266,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
 
         String failedRun = newReconciliationRun();
         executeReconciliation(failedRun, expectations);
-        assertEquals("24|1", scalar("""
+        assertEquals("23|1", scalar("""
                 SELECT count(*) || '|' || count(*) FILTER (WHERE passed = FALSE)
                 FROM legacy_migration_reconciliation_items
                 WHERE run_id = '%s'::uuid

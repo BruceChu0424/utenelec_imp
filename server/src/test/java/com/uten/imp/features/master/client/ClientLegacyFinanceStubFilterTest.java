@@ -64,7 +64,6 @@ class ClientLegacyFinanceStubFilterTest {
                 null, // code
                 null, // name
                 null, // fullName
-                null, // salesPaymentType
                 null, // clientXz
                 null, // tday
                 null, // region

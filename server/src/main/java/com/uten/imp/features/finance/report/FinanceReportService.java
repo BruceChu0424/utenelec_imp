@@ -609,7 +609,6 @@ public class FinanceReportService {
                 ReportColumn.text("director", "总监", 110),
                 ReportColumn.text("region", "区域", 100),
                 ReportColumn.text("district", "所属地区", 110),
-                ReportColumn.text("salesPaymentType", "货款类型", 100),
                 ReportColumn.text("settlement", "结算期限", 130),
                 // 铺底额是客户主档上的授信上限（政策属性，非本期发生额/余额），跨客户求和不是账上的任何一个数，
                 // 不声明合计。
@@ -687,12 +686,6 @@ public class FinanceReportService {
                 SELECT c.code AS "partyCode", c.name AS "partyName", c.full_name AS "partyFull",
                     COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director",
                     COALESCE(c.region,'') AS "region", COALESCE(c.place_id,'') AS "district",
-                    CASE c.sales_payment_type
-                        WHEN 'MONTHLY' THEN '月结'
-                        WHEN 'CASH' THEN '现金'
-                        WHEN 'DEPOSIT' THEN '定金'
-                        ELSE '待人工分类'
-                    END AS "salesPaymentType",
                     CASE c.price_style
                         WHEN 6 THEN '月结' || COALESCE(NULLIF(c.tday, 0), 30) || '天'
                         WHEN 1 THEN '现金'

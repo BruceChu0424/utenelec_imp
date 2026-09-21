@@ -214,7 +214,6 @@ class ShipmentFinanceAuditInfo {
     this.shipmentId,
     this.financeAudit,
     this.clientName,
-    this.salesPaymentType,
     this.settlementMethodId,
     this.settlementMethodCode,
     this.settlementMethodName,
@@ -243,7 +242,6 @@ class ShipmentFinanceAuditInfo {
   final String? shipmentId;
   final int? financeAudit;
   final String? clientName;
-  final String? salesPaymentType;
   final String? settlementMethodId;
   final String? settlementMethodCode;
   final String? settlementMethodName;
@@ -267,7 +265,6 @@ class ShipmentFinanceAuditInfo {
         previousCommercialSnapshot: _text(json['previousCommercialSnapshot']),
         financeAudit: (json['financeAudit'] as num?)?.toInt(),
         clientName: _text(json['clientName']),
-        salesPaymentType: _text(json['salesPaymentType']),
         settlementMethodId: _text(json['settlementMethodId']),
         settlementMethodCode: _text(json['settlementMethodCode']),
         settlementMethodName: _text(json['settlementMethodName']),

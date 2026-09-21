@@ -443,6 +443,7 @@ class RootSupplyMigrationPostgresTest {
                 "SELECT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai', 'YYYYMMDD')", String.class)
                 + "%06d".formatted(ORDER_SEQUENCE.incrementAndGet());
         jdbc.update("""
+                -- 彩排停在 V479：clients.sales_payment_type 仍在且在线客户必填(V443 CHECK)，V630 才整列退役。
                 INSERT INTO clients(id, code, name, code_sequence, sales_payment_type)
                 VALUES (?, ?, 'Root supply client',
                     (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM clients), 'MONTHLY')

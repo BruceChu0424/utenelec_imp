@@ -629,9 +629,9 @@ public class SalesShipmentService {
         if (s.getFinanceAudit() != null && s.getFinanceAudit() == 1) {
             throw new ApiException(ErrorCode.BUSINESS, "已财务审核，请勿重复操作");
         }
-        ClientSettlementDefaults clientDefaults = loadClientSettlementDefaults(
-                s.getClientId(), true);
-        if (!CustomerShipmentPolicy.free(s)) requireClassifiedSalesPaymentType(clientDefaults.salesPaymentType());
+        // 放行同事务 FOR SHARE 锁住客户主档行(须启用、未删)，让风险快照与客户条款在同一读一致性下形成；
+        // 结账方式来自本单头/客户默认(resolveEffectiveSettlementMethod)，V630 起不再有客户级货款分类闸门。
+        loadClientSettlementDefaults(s.getClientId(), true);
         List<SalesShipmentItem> items =
                 itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
@@ -808,7 +808,6 @@ public class SalesShipmentService {
                           AND l.is_deleted=false
                           AND l.status=1),
                        COALESCE(c.credit_floor, 0),
-                       c.sales_payment_type,
                        (SELECT COALESCE(SUM(ABS(l.amount_balance_original)), 0)
                         FROM ar_ap_ledger l
                         JOIN finance_receipts receipt ON receipt.id=l.source_doc_id
@@ -844,11 +843,10 @@ public class SalesShipmentService {
                 ? BigDecimal.ZERO : (BigDecimal) c[1];
         BigDecimal creditFloor = c[2] == null
                 ? BigDecimal.ZERO : (BigDecimal) c[2];
-        String paymentType = c[3] == null ? "" : c[3].toString();
-        BigDecimal availablePrepaymentOriginal = c[4] == null
+        BigDecimal availablePrepaymentOriginal = c[3] == null
+                ? BigDecimal.ZERO : (BigDecimal) c[3];
+        BigDecimal availablePrepaymentLocal = c[4] == null
                 ? BigDecimal.ZERO : (BigDecimal) c[4];
-        BigDecimal availablePrepaymentLocal = c[5] == null
-                ? BigDecimal.ZERO : (BigDecimal) c[5];
         return Map.ofEntries(
                 Map.entry("shipmentId", s.getId()),
                 Map.entry("shipmentKind",s.getShipmentKind()),
@@ -873,8 +871,6 @@ public class SalesShipmentService {
                 Map.entry("settlementMethodName", method == null || method.name() == null
                         ? "" : method.name()),
                 Map.entry("cashClient", isCashSettlement(method)),
-                Map.entry("salesPaymentType", paymentType),
-                Map.entry("salesPaymentTypeLabel", salesPaymentTypeLabel(paymentType)),
                 Map.entry("outstanding", outstanding),
                 Map.entry("outstandingExact",outstanding.toPlainString()),
                 Map.entry("creditFloor", creditFloor),
@@ -887,15 +883,6 @@ public class SalesShipmentService {
                 Map.entry("availablePrepaymentLocal", availablePrepaymentLocal));
     }
 
-    private static String salesPaymentTypeLabel(String value) {
-        return switch (value) {
-            case "MONTHLY" -> "月结";
-            case "CASH" -> "现金";
-            case "DEPOSIT" -> "定金";
-            default -> "待人工分类";
-        };
-    }
-
     private UUID appendFinanceReleaseEvent(
             SalesShipment shipment,
             String eventType,
@@ -904,15 +891,13 @@ public class SalesShipmentService {
             Map<String, Object> info,UUID claimId,String reason) {
         UUID eventId=UUID.randomUUID();
         var snapshot=reviewSnapshots.snapshot(shipment.getId());
-        String paymentType = Objects.toString(
-                info.get("salesPaymentType"), "").trim();
         String settlementMethod = Objects.toString(
                 info.get("settlementMethodId"), "").trim();
         em.createNativeQuery("""
                 INSERT INTO sales_shipment_finance_release_events (
                     id,review_revision,claim_id,content_hash,commercial_snapshot,billing_mode,reverses_event_id,decision_reason,
                     shipment_id, event_type, actor_user_id, occurred_at,
-                    client_id, client_name, currency_id, sales_payment_type,
+                    client_id, client_name, currency_id,
                     settlement_method_id, shipment_total_original,
                     formal_ar_outstanding_local,
                     credit_floor_local, over_floor_local,
@@ -921,7 +906,7 @@ public class SalesShipmentService {
                 VALUES (
                     :eventId,:revision,:claimId,:hash,CAST(:snapshot AS jsonb),:billingMode,:reversesEventId,:reason,
                     :shipmentId, :eventType, :actorUserId, :occurredAt,
-                    :clientId, :clientName, :currencyId, :salesPaymentType,
+                    :clientId, :clientName, :currencyId,
                     :settlementMethodId, :shipmentTotalOriginal,
                     :formalOutstanding,
                     :creditFloor, :overFloor,
@@ -944,8 +929,6 @@ public class SalesShipmentService {
                 .setParameter("clientName", Objects.toString(
                         info.get("clientName"), ""))
                 .setParameter("currencyId", shipment.getCurrencyId())
-                .setParameter("salesPaymentType",
-                        paymentType.isEmpty() ? null : paymentType)
                 .setParameter("settlementMethodId",
                         settlementMethod.isEmpty()
                                 ? null : UUID.fromString(settlementMethod))
@@ -1532,8 +1515,7 @@ public class SalesShipmentService {
         String sql = """
                 SELECT client.default_settlement_method_id,
                        client.price_style,
-                       client.tday,
-                       client.sales_payment_type
+                       client.tday
                 FROM clients client
                 WHERE client.id = :clientId
                   AND COALESCE(client.is_deleted, false) = false
@@ -1549,21 +1531,7 @@ public class SalesShipmentService {
         return new ClientSettlementDefaults(
                 row[0] == null ? null : (UUID) row[0],
                 row[1] == null ? null : ((Number) row[1]).intValue(),
-                row[2] == null ? null : ((Number) row[2]).intValue(),
-                row[3] == null ? null : row[3].toString());
-    }
-
-    static void requireClassifiedSalesPaymentType(String salesPaymentType) {
-        if (salesPaymentType == null || salesPaymentType.isBlank()) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "客户货款类型尚未分类，请先在客户资料选择月结、现金或定金");
-        }
-        if (!Set.of("MONTHLY", "CASH", "DEPOSIT").contains(salesPaymentType)) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "客户货款类型无效，请先修复客户主档后再财务放行");
-        }
+                row[2] == null ? null : ((Number) row[2]).intValue());
     }
 
     private SettlementMethodReferenceResolver.SettlementMethodReference
@@ -1635,8 +1603,7 @@ public class SalesShipmentService {
     record ClientSettlementDefaults(
             UUID defaultSettlementMethodId,
             Integer legacyShadow,
-            Integer settlementDays,
-            String salesPaymentType) {
+            Integer settlementDays) {
     }
 
     static void applyPostingRateSnapshot(

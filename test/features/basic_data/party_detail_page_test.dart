@@ -164,6 +164,113 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('基本信息'), findsOneWidget);
   });
+
+  // 2026-09-20 回归：只改「销售条款与财务」Tab、不碰概览就保存。此前两张分区表单各持
+  // State，概览页没有聚焦输入框时被 TabBarView 释放，保存静默跳回概览且丢掉改动。
+  testWidgets('客户详情页就地编辑：只改财务 Tab 再保存也能提交整套字段', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repo = _FakeClientRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          apiClientProvider.overrideWithValue(_EmptyApi()),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.clientView,
+            Perm.clientEdit,
+            Perm.clientStatus,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          clientRepositoryProvider.overrideWithValue(repo),
+          clientDirectoryRepositoryProvider.overrideWithValue(
+            _FakePartyDirectoryRepository(),
+          ),
+          referenceMethodRepositoryProvider.overrideWithValue(
+            _FakeReferenceMethodRepository(),
+          ),
+          currencyRepositoryProvider.overrideWithValue(
+            _FakeCurrencyRepository(),
+          ),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PartyDetailPage(partyType: 'client', id: 'client-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('party-detail-edit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('销售条款与财务'));
+    await tester.pumpAndSettle();
+    await tester.enterText(_labeledField('开户行'), '工商银行中山分行');
+    await tester.tap(find.byKey(const Key('party-detail-save')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastUpdateId, 'client-1');
+    expect(repo.lastUpdateBody?['bank'], '工商银行中山分行');
+    // 概览 Tab 未打开过也照常带上它的字段与固定值。
+    expect(repo.lastUpdateBody?['name'], '中山测试客户');
+    expect(repo.lastUpdateBody?['linkman'], '张三');
+    expect(repo.lastUpdateBody?.containsKey('categoryId'), isTrue);
+  });
+
+  // 校验失败也不能静默：概览 Tab 的必填「名称」被清空后到财务 Tab 保存，
+  // 要跳回概览并把错误说出来，且不提交。
+  testWidgets('客户详情页就地编辑：另一 Tab 的校验失败会跳回并提示', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repo = _FakeClientRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          apiClientProvider.overrideWithValue(_EmptyApi()),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.clientView,
+            Perm.clientEdit,
+            Perm.clientStatus,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          clientRepositoryProvider.overrideWithValue(repo),
+          clientDirectoryRepositoryProvider.overrideWithValue(
+            _FakePartyDirectoryRepository(),
+          ),
+          referenceMethodRepositoryProvider.overrideWithValue(
+            _FakeReferenceMethodRepository(),
+          ),
+          currencyRepositoryProvider.overrideWithValue(
+            _FakeCurrencyRepository(),
+          ),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PartyDetailPage(partyType: 'client', id: 'client-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('party-detail-edit')));
+    await tester.pumpAndSettle();
+    await tester.enterText(_labeledField('名称'), '');
+    await tester.tap(find.text('销售条款与财务'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('party-detail-save')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastUpdateId, isNull);
+    expect(find.textContaining('请填写「名称」'), findsWidgets);
+    expect(_labeledField('名称'), findsOneWidget);
+  });
 }
 
 class _FakeClientRepository implements ClientRepository {
@@ -182,7 +289,6 @@ class _FakeClientRepository implements ClientRepository {
     linkman: '张三',
     mobile: '13800000000',
     ownerEmployeeName: '李销售',
-    salesPaymentType: ClientSalesPaymentType.monthly,
     defaultShipmentPolicy: 'ALLOW_PARTIAL',
     writable: true,
   );

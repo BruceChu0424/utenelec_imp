@@ -283,9 +283,9 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                 VALUES(?, ?, 'V157 test warehouse')
                 """, warehouse, "V157-W-" + warehouse);
         insert(connection,"""
-                INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type)
+                INSERT INTO clients(id,code,name,status,code_sequence)
                 VALUES(?,?,'Execution allocation customer','使用',
-                    (SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients),'MONTHLY')
+                    (SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients))
                 """,client,"V157-C-"+client);
         insert(connection,"""
                 INSERT INTO goods(id,code,name,min_qty,code_sequence)

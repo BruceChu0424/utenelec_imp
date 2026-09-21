@@ -82,7 +82,7 @@ class SalesShipmentFinanceRateSqlContractTest {
     }
 
     @Test
-    void financeReleaseLocksAClassifiedClientAndSeparatesFormalArFromPrepayment()
+    void financeReleaseLocksTheClientRowAndSeparatesFormalArFromPrepayment()
             throws Exception {
         String source = Files.readString(SOURCE, StandardCharsets.UTF_8)
                 .replaceAll("\\s+", " ")
@@ -94,10 +94,10 @@ class SalesShipmentFinanceRateSqlContractTest {
 
         assertThat(financePath).contains(
                 "loadclientsettlementdefaults(",
-                "s.getclientid(), true)",
-                "requireclassifiedsalespaymenttype(clientdefaults.salespaymenttype())");
+                "s.getclientid(), true)");
+        // V630: 客户货款类别标签退役，放行路径与快照 SQL 都不得再引用它。
+        assertThat(source).doesNotContain("salespaymenttype", "sales_payment_type");
         assertThat(source).contains(
-                "client.sales_payment_type",
                 "l.open_item_kind='receivable'",
                 "l.source_doc_type<>'direct_receipt'",
                 "l.open_item_kind='customer_prepayment'",

@@ -12836,8 +12836,18 @@ class FullChainEndToEndTest {
                 colorId, "CLR-" + tag, "默认色");
         jdbc.update("insert into warehouses(id, code, name, status) values (?, ?, ?, '使用')",
                 warehouseId, "WH-" + tag, "测试仓库-" + tag);
-        jdbc.update("insert into clients(id, code, name, status, code_sequence, sales_payment_type) "
-                        + "values (?, ?, ?, '使用', (select coalesce(max(code_sequence), 0) + 1 from clients), 'CASH')",
+        // V443-V606 的目录仍有 clients.sales_payment_type 且在线客户必须先分类，V630 起整列退役。
+        // 前向升级彩排(PreplanFutureTransferForwardMigrationPostgresTest 从 V569 起播种)会在旧目录上
+        // 跑到这里，所以按当前 schema 决定要不要带那一列。
+        boolean legacyPaymentLabel = Boolean.TRUE.equals(jdbc.queryForObject(
+                "select exists(select 1 from information_schema.columns "
+                        + "where table_name='clients' and column_name='sales_payment_type')",
+                Boolean.class));
+        jdbc.update(legacyPaymentLabel
+                        ? "insert into clients(id, code, name, status, code_sequence, sales_payment_type) "
+                        + "values (?, ?, ?, '使用', (select coalesce(max(code_sequence), 0) + 1 from clients), 'CASH')"
+                        : "insert into clients(id, code, name, status, code_sequence) "
+                        + "values (?, ?, ?, '使用', (select coalesce(max(code_sequence), 0) + 1 from clients))",
                 clientId, "CLI-" + tag, "测试客户-" + tag);
         jdbc.update("insert into suppliers(id, code, name, status, code_sequence) "
                         + "values (?, ?, ?, '使用', (select coalesce(max(code_sequence), 0) + 1 from suppliers))",
@@ -12877,9 +12887,9 @@ class FullChainEndToEndTest {
         jdbc.update("""
                 insert into clients(
                     id,category_id,code,name,status,code_sequence,owner_employee_id,
-                    is_deleted,sales_payment_type)
+                    is_deleted)
                 values (?,?,?,?,'使用',
-                    (select coalesce(max(code_sequence),0)+1 from clients),?,?,'CASH')
+                    (select coalesce(max(code_sequence),0)+1 from clients),?,?)
                 """, id, categoryId, code, "客户-" + code, ownerEmployeeId, deleted);
         return id;
     }
@@ -12888,7 +12898,7 @@ class FullChainEndToEndTest {
             UUID categoryId, boolean excludeLegacyFinanceStub) {
         return new com.uten.imp.features.master.client.dto.ClientQueryFilter(
                 categoryId, null, java.util.Set.of(),
-                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null,
                 excludeLegacyFinanceStub,

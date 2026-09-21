@@ -1,6 +1,6 @@
 # 老库数据迁移 · 总索引
 
-> **当前正式目录：V629/585 (2026-09-20)**。V629 让无需物料的任务同样可选三条路线、给路线记忆加操作者档索引，并把物料缺口按「自制子件」而非「直送」归桶(ADR-096)。V628 让车间路线在开工前随时可换并把逐种物料事实做成列表/详情的唯一来源(ADR-095)。V609–V613 重构车间执行：冻结准确耗用曲线、普通仓与内部流转位置分离、先确认路线、同任务持续补料，以及直送基础单位和混合供给去重。新任务不再按 V606 自动选择路线；已发生的历史库存/报工/成本事实保留。V607/V608 为共享工作区的客户选填与报销迁移；V617前向补齐报销人工核验、其他凭证与财务设置。V618/V619记录当前车间余料的实际正常收仓、来源保管与正反向。目录头仅表示源码集合，不代表目标服务已升级。各版本变更、存量影响与验证边界见下表。
+> **当前正式目录：V630/586 (2026-09-20)**。V630 退役客户「月结/现金/定金」货款类别标签(删 clients 与放行事件表两列、约束、索引、V443 异常视图)，出货财审改看本单结账方式，旧系统首导结构对账 24 项收为 23 项。V629 让无需物料的任务同样可选三条路线、给路线记忆加操作者档索引，并把物料缺口按「自制子件」而非「直送」归桶(ADR-096)。V628 让车间路线在开工前随时可换并把逐种物料事实做成列表/详情的唯一来源(ADR-095)。V609–V613 重构车间执行：冻结准确耗用曲线、普通仓与内部流转位置分离、先确认路线、同任务持续补料，以及直送基础单位和混合供给去重。新任务不再按 V606 自动选择路线；已发生的历史库存/报工/成本事实保留。V607/V608 为共享工作区的客户选填与报销迁移；V617前向补齐报销人工核验、其他凭证与财务设置。V618/V619记录当前车间余料的实际正常收仓、来源保管与正反向。目录头仅表示源码集合，不代表目标服务已升级。各版本变更、存量影响与验证边界见下表。
 >
 > 本页的版本表示源码目录，不表示公司数据库已安装。最新候选验证与目标安装事实见[全站性能与稳定性验收](../99-项目治理/2026-09-12-全站性能与稳定性验收.md)；前轮业务链与旧库恢复证据见[2026-09-07统一验收](../99-项目治理/2026-09-07-全平台本地审计与整改验收.md)。
 >
@@ -17,6 +17,7 @@
 
 | 说明 | 迁移 | 本次变化 |
 | --- | --- | --- |
+| [220](220-V630退役客户货款类别标签.md) | V630 | 删 `clients.sales_payment_type`(+值域 CHECK/部分索引/V443 异常视图)与 `sales_shipment_finance_release_events.sales_payment_type`(+两条 CHECK)；不加表、不加列、不改保留列数据；财审分类闸门、客户 DTO/facet/导出、前端表单/列表/财审页、首导脚本与结构对账(24→23)同步退役 |
 | [219](219-V629零料任务三路线与路线记忆.md) | V629 | 零料 READY 任务可拆批(两处守卫锚点放宽、子任务快照允许空数组只限零料)；操作者路线记忆部分索引；物料事实 `short_direct_count`/`SHORT_DIRECT` 改为 `short_make_count`/`SHORT_MAKE`(按自制子件供应归桶，不再承诺直送)；不加表、不改行 |
 | [218](218-V628车间路线随时可换与逐种物料事实.md) | V628 | 路线冻结尺改为「开工或已有报工」，实际领料/直送投入不再冻结；开工门按路线(持续=共同支持正产出，其它=整套实领)，`continuous_supply` 只表示按增量备料；新增逐种物料事实汇总/明细函数供车间任务列表与详情；只换函数与视图，不加表、不改行 |
 | [217](217-V627历史收货对价来源证明.md) | V627 | 按完整首导原始头行证明保留采购、委外历史收货口径，不补造现代对价、库存或应付；未知币种金额与单位比率不猜补 |
@@ -195,7 +196,7 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 
 离线 bootstrap 当前通过 `verify_candidate.py` 逐文件核对正式资源的 Flyway checksum 与受审 manifest，并核对目标全部版本、脚本名、校验值；head/count 从已核验集合导出，不再冻结另一份版本常量。`mapping-version.txt` 记录独立导入协议版本，历史 `bootstrap-v10-v426` 仅用于旧运行溯源。入口另核对目标库名、集群身份和首导批准，以及外部提供的源 identity/备份摘要/导出批准与 manifest 等值。任何尚未独立获准的破坏性 schema 迁移（包括 V425）仍不得执行。
 
-完整导入的各模块、24 项结构检查、逐模块源/目标行数检查和 SUCCESS 回执在一个事务提交。失败回滚业务数据，另留 FAILED 运行及输入摘要；仅本原子协议失败且目标仍无业务事实时允许重试。相同成功请求返回原回执，不重建已有 UUID。并发失败不会清理别人的锁或密钥文件。详细要求见 [执行契约](../../server/legacy_migration/README.md)。真实 Shell 合成演练不能替代真实旧库金额、数量、来源和业务签收；现役 ERP 的前向升级不调用 bootstrap。
+完整导入的各模块、23 项结构检查、逐模块源/目标行数检查和 SUCCESS 回执在一个事务提交。失败回滚业务数据，另留 FAILED 运行及输入摘要；仅本原子协议失败且目标仍无业务事实时允许重试。相同成功请求返回原回执，不重建已有 UUID。并发失败不会清理别人的锁或密钥文件。详细要求见 [执行契约](../../server/legacy_migration/README.md)。真实 Shell 合成演练不能替代真实旧库金额、数量、来源和业务签收；现役 ERP 的前向升级不调用 bootstrap。
 
 ## 📦 首次旧库导入的模块清单
 
@@ -283,7 +284,7 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 - 将 run 的两个 manifest 指纹、迁移脚本指纹、代码 commit 和映射版本写入
   `legacy_migration_runs`；
 - 将本次实际消费的 manifest、CSV、Shell、SQL、Flyway 清单及其 SHA-256/字节数写入 `legacy_migration_run_files`；
-- 对全量 bootstrap 固定写入 24 项核心行数、CSV 消费、系统根、UUID 关系、结算方式、仓库映射、活动 BOM、reject 与历史 anchor 结构化证据；任一强制项失败则 run 失败。
+- 对全量 bootstrap 固定写入 23 项核心行数、CSV 消费、系统根、UUID 关系、结算方式、仓库映射、活动 BOM、reject 与历史 anchor 结构化证据；任一强制项失败则 run 失败。
 
 Manifest 证明受审导出器在一个串行化事务中捕获了绑定到离线备份的文件集合，但不证明恢复可用或业务口径正确。最终迁移包还必须保存停写时间、恢复演练、目标 Flyway 版本、执行人、run_id、金额/数量/来源谱系报告和业务/财务签字。
 
@@ -294,7 +295,7 @@ Manifest 证明受审导出器在一个串行化事务中捕获了绑定到离�
 | 能力 | 当前状态 | 上线要求 |
 |---|---|---|
 | 四棵分类树 Java upsert | 已有 | 补源水位、删除语义、冲突与回滚测试 |
-| Shell 首次引导 | 已有破坏性脚本；输入、提交、实际消费文件和 24 项自动结构对账可追溯 | 仅在可清空库执行；必须用同一离线备份、manifest 和 run_id |
+| Shell 首次引导 | 已有破坏性脚本；输入、提交、实际消费文件和 23 项自动结构对账可追溯 | 仅在可清空库执行；必须用同一离线备份、manifest 和 run_id |
 | 全模块增量追平 | **未实现** | 按稳定业务键/watermark/CDC 实现，不得 TRUNCATE |
 | dry-run / reject / quarantine | V134 已有结构化 reject 表，但各模块尚未统一写入 | 所有丢弃/修复/存根均可追踪、可复核、可重放 |
 | checkpoint / resume / rollback | V134 已有未来 checkpoint 表；当前 bootstrap 不推进，增量 loader 未实现 | 中断可继续，切换失败可回退且不丢新写 |
@@ -336,7 +337,7 @@ server/src/main/java/com/uten/imp/legacy/       ← 仅 dev profile 的分类样
 
 server/legacy_migration/                        ← shell 离线破坏性引导（不依赖 server）
 ├─ migrate.sh                                   （一次一个目标；--bootstrap-all 才执行全量依赖链；强制破坏性确认）
-├─ migrate_reconciliation.sql                   （全量导入 24 项结构化对账；失败阻断候选）
+├─ migrate_reconciliation.sql                   （全量导入 23 项结构化对账；失败阻断候选）
 ├─ verify_candidate.py / mapping-version.txt    （受审资源exact-set与独立映射协议）
 ├─ compose_bootstrap.py                        （完整首导单事务装配）
 ├─ reconcile_modules.py                        （逐单据模块源/目标行数对账）
@@ -379,9 +380,9 @@ server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classp
 关键金额/数量/状态汇总、外键/孤儿、抽样字段与业务单据。被跳过的数据必须进入 reject/quarantine
 并由业务批准处置；“脚本成功”或“源数−跳过数=目标数”不等于迁移验收通过。
 
-首次 `--bootstrap-all` 会写入 24 项固定结构对账，覆盖核心分类/主档行数、CSV inventory、系统根
+首次 `--bootstrap-all` 会写入 23 项固定结构对账，覆盖核心分类/主档行数、CSV inventory、系统根
 authority、当前 UUID 关系、客户默认结算方式、仓库/车间映射、活动 BOM 端点和 rejects。必须得到
-24 项 mandatory、0 项 failed 且 `legacy_migration_runs.reconciliation_status = PASSED`；单模块执行保持
+23 项 mandatory、0 项 failed 且 `legacy_migration_runs.reconciliation_status = PASSED`；单模块执行保持
 `NOT_RUN`。这些只是结构证据，仍须完成金额、数量、状态、来源谱系、抽样单据和岗位签收，才能形成
 目标环境迁移验收。
 

@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.client.dto;
 
-import com.uten.imp.features.master.client.ClientSalesPaymentType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -54,7 +53,6 @@ public class ClientDetail {
     private String ownerEmployeeName;
     private UUID defaultSettlementMethodId;
     private String defaultSettlementMethodName;
-    private ClientSalesPaymentType salesPaymentType;
     private boolean writable;
     private boolean accessManageable;
     private String accessReason;

@@ -1124,12 +1124,6 @@ class _DetailPaneState extends State<_DetailPane> {
       value: (m) => m.fullName,
     ),
     MasterColumnDef(
-      key: 'salesPaymentType',
-      label: '销售货款类型',
-      width: 110,
-      value: (m) => salesPaymentTypeLabel(m.salesPaymentType),
-    ),
-    MasterColumnDef(
       key: 'defaultSettlementMethodName',
       label: '主结账方式',
       width: 110,

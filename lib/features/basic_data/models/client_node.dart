@@ -10,20 +10,6 @@
 
 import 'master_facet.dart';
 
-abstract final class ClientSalesPaymentType {
-  static const monthly = 'MONTHLY';
-  static const cash = 'CASH';
-  static const deposit = 'DEPOSIT';
-}
-
-String salesPaymentTypeLabel(String? value) => switch (value?.trim()) {
-  ClientSalesPaymentType.monthly => '月结',
-  ClientSalesPaymentType.cash => '现金',
-  ClientSalesPaymentType.deposit => '定金',
-  null || '' => '待人工分类',
-  final unknown => '未知类型($unknown)',
-};
-
 /// 客户列表项（覆盖表格 23 列中 21 个有 DB 列的字段）。
 class ClientListItem {
   const ClientListItem({
@@ -60,7 +46,6 @@ class ClientListItem {
     this.defaultShipmentPolicy,
     this.defaultCurrencyId,
     this.defaultCurrencyName,
-    this.salesPaymentType,
     this.writable = false,
     this.accessManageable = false,
   });
@@ -100,7 +85,6 @@ class ClientListItem {
   final String? defaultShipmentPolicy;
   final String? defaultCurrencyId;
   final String? defaultCurrencyName;
-  final String? salesPaymentType; // MONTHLY / CASH / DEPOSIT；旧数据可空
   final bool writable; // 对象范围允许维护；额外查看/单客户共享为 false
   final bool accessManageable; // 服务端已合并 client:assign 与对象范围判断
 
@@ -139,7 +123,6 @@ class ClientListItem {
     defaultShipmentPolicy: json['defaultShipmentPolicy'] as String?,
     defaultCurrencyId: json['defaultCurrencyId'] as String?,
     defaultCurrencyName: json['defaultCurrencyName'] as String?,
-    salesPaymentType: json['salesPaymentType'] as String?,
     writable: json['writable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
   );
@@ -198,7 +181,6 @@ class ClientDetail {
     this.defaultShipmentPolicy,
     this.defaultCurrencyId,
     this.defaultCurrencyName,
-    this.salesPaymentType,
     this.writable = false,
     this.accessManageable = false,
     this.accessReason = ClientAccessReason.unknown,
@@ -246,7 +228,6 @@ class ClientDetail {
   final String? defaultShipmentPolicy;
   final String? defaultCurrencyId;
   final String? defaultCurrencyName;
-  final String? salesPaymentType; // MONTHLY / CASH / DEPOSIT；旧数据可空
   final bool writable;
   final bool accessManageable;
   final String accessReason;
@@ -318,7 +299,6 @@ class ClientDetail {
     defaultShipmentPolicy: json['defaultShipmentPolicy'] as String?,
     defaultCurrencyId: json['defaultCurrencyId'] as String?,
     defaultCurrencyName: json['defaultCurrencyName'] as String?,
-    salesPaymentType: json['salesPaymentType'] as String?,
     writable: json['writable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
     accessReason: json['accessReason'] as String? ?? ClientAccessReason.unknown,
@@ -358,7 +338,6 @@ class ClientFacets {
     'taxId',
     'credit',
     'creditFloor',
-    'salesPaymentType',
     'website',
   ];
 

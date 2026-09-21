@@ -412,8 +412,11 @@ abstract class _MaterialAnalysisChildCascadeState
       final ordered = kind == _CascadeKind.workshop || submitGroup == null
           ? null
           : _openSupplyLineOf(submitGroup, route);
+      // 超出「还需安排」的部分属主动公共备货：采购 / 直接外发委外要
+      // over_supply 权限，没有的账号不给填（免得填完在提交时才被服务端拒）；
+      // 车间侧的公共备货产出按 V577 不要这道权限。
       final allowsExtra = switch (kind) {
-        _CascadeKind.buy || _CascadeKind.subcontractLeaf => true,
+        _CascadeKind.buy || _CascadeKind.subcontractLeaf => _canOverSupply,
         _CascadeKind.workshop =>
           anchor != null && (anchor.canIssueSurplus || anchor.canSchedule),
       };

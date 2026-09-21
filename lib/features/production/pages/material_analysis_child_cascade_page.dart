@@ -1849,7 +1849,13 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       );
     }
     if (row.residual <= 0.0001) {
-      parts.add(row.allowsExtra ? '本批需求已覆盖，填的数量即额外追加（属公共备货）' : '已下达 / 无需再下单');
+      parts.add(
+        row.allowsExtra
+            ? '本批需求已覆盖，填的数量即额外追加（属公共备货）'
+            : row.kind == _CascadeKind.workshop
+            ? '已下达 / 无需再下单'
+            : '本批需求已覆盖；要再追加需要超量下达权限（追加量属公共备货）',
+      );
     } else {
       parts.add(row.kind.pendingStage);
       if (row.claimableQty > 0.0001) {

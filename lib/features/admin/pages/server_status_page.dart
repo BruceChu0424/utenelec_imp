@@ -261,7 +261,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
                         if (jobs.isNotEmpty) ...[
                           const SizedBox(height: UtenSpacing.s24),
                           // TODO(l10n): 补 arb
-                          _sectionTitle('定时任务'),
+                          _sectionTitle('后台自动任务'),
                           const SizedBox(height: UtenSpacing.s12),
                           _jobs(jobs),
                         ],
@@ -724,7 +724,8 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
-      // 超过 2 个周期未执行由后端判定为 WARNING，这里按状态染底色。
+      // 连续失败 / 疑似卡住 / 长时间没轮到执行由后端判定为 WARNING 或 CRITICAL,
+      // 名称与说明也由后端用人话给出 (ScheduledTaskCatalog); 这里只按状态染底色。
       rowColor: (job) {
         final status = _effective(job.status);
         return status == ServerHealthStatus.warning ||
@@ -733,7 +734,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
             : null;
       },
       // TODO(l10n): 补 arb
-      emptyMessage: '本次启动后尚未记录到定时任务',
+      emptyMessage: '本次启动后尚未记录到后台自动任务',
     ),
   );
 

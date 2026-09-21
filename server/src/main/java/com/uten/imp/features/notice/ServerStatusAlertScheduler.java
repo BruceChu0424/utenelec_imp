@@ -40,6 +40,11 @@ import java.util.UUID;
  * 重启前正处于 CRITICAL、重启后恰好恢复的那一次不会发「已恢复」（告警本身仍会按
  * 数据库节流正确发出）。为此不新增一张表：这条信息的价值不值一次迁移 + 审计触发器覆盖。
  *
+ * <p><b>文案 (2026-09-20)</b>: 标题 = 告警自带的一句话现状 (如「后台任务「库存金额结算」已 30 分钟
+ * 没有执行」), 正文 = 告警的解释 (是什么、现状、建议), <b>不再把标题抄进正文</b>: 工作台卡片只预览
+ * 正文头两行, 抄标题等于什么都没说。恢复通知用告警的人话名称, 不发 disk-1 / job:Xxx.yyy 这类程序标识。
+ * 用户原话: 「不要用代号, 用实际的文字明确表达」「我没有设置过定时任务啊」。
+ *
  * <p>整条链路旁路：任何异常只记日志，绝不影响业务或状态页本身。
  *
  * <p><b>为什么住在 features.notice 而不是 features.admin.serverstatus</b>：架构边界
@@ -77,8 +82,8 @@ public class ServerStatusAlertScheduler {
     private final NoticeService notices;
     private final JdbcTemplate jdbc;
 
-    /** 上一轮每个指标的严重档（仅用于「恢复」判定，见类注释的已知边界）。 */
-    private final Map<String, String> lastSeverity = new HashMap<>();
+    /** 上一轮每个指标的告警 (仅用于「恢复」判定与其人话名称, 见类注释的已知边界)。 */
+    private final Map<String, ServerStatusView.Alert> lastAlerts = new HashMap<>();
 
     public ServerStatusAlertScheduler(ServerStatusService service,
                                       NoticeService notices,
@@ -102,10 +107,10 @@ public class ServerStatusAlertScheduler {
 
             // 本轮各指标的严重档；采样本身失败时（alerts 里只有 sampling/UNKNOWN）
             // 不清空上一轮状态，免得把「探测挂了」误判成「一切恢复」。
-            Map<String, String> current = new LinkedHashMap<>();
+            Map<String, ServerStatusView.Alert> current = new LinkedHashMap<>();
             for (ServerStatusView.Alert alert : alerts) {
                 if (alert == null || alert.key() == null) continue;
-                current.put(alert.key(), alert.status());
+                current.put(alert.key(), alert);
             }
             boolean samplingBroken = current.containsKey("sampling");
 
@@ -122,33 +127,40 @@ public class ServerStatusAlertScheduler {
                         audience,
                         sourceEvent(alert.key(), alert.status()),
                         (critical ? "【危急】" : "【警告】") + alert.message(),
+                        // 标题已经是现状, 正文只放解释; 没有解释时才退回现状本身。
                         alert.suggestion() == null || alert.suggestion().isBlank()
                                 ? alert.message()
-                                : alert.message() + "\n\n" + alert.suggestion(),
+                                : alert.suggestion(),
                         critical ? TYPE_CRITICAL : TYPE_WARNING,
                         critical ? PRIORITY_CRITICAL : PRIORITY_WARNING);
             }
 
             if (!samplingBroken) {
-                for (Map.Entry<String, String> previous : lastSeverity.entrySet()) {
-                    if (!"CRITICAL".equals(previous.getValue())) continue;
-                    String now = current.get(previous.getKey());
-                    if ("CRITICAL".equals(now)) continue;
+                for (ServerStatusView.Alert previous : lastAlerts.values()) {
+                    if (!"CRITICAL".equals(previous.status())) continue;
+                    ServerStatusView.Alert now = current.get(previous.key());
+                    if (now != null && "CRITICAL".equals(now.status())) continue;
                     if (audience == null) audience = receivers();
                     if (audience.isEmpty()) break;
+                    String label = displayLabel(previous);
                     publishThrottled(
                             audience,
-                            sourceEvent(previous.getKey(), "RECOVERED"),
-                            "【已恢复】" + previous.getKey(),
-                            "此前处于危急状态的指标 " + previous.getKey() + " 已回到正常范围。",
+                            sourceEvent(previous.key(), "RECOVERED"),
+                            "【已恢复】" + label + "已回到正常范围",
+                            "此前处于危急状态的「" + label + "」已回到正常范围, 无需处理。",
                             TYPE_RECOVERED, PRIORITY_RECOVERED);
                 }
-                lastSeverity.clear();
-                lastSeverity.putAll(current);
+                lastAlerts.clear();
+                lastAlerts.putAll(current);
             }
         } catch (Exception unavailable) {
             log.warn("服务器状态告警扫描失败(不影响业务): {}", unavailable.toString());
         }
+    }
+
+    /** 告警的人话名称; 旧快照没带名称时才退回 key (仅测试桩会这样)。 */
+    private static String displayLabel(ServerStatusView.Alert alert) {
+        return alert.label() == null || alert.label().isBlank() ? alert.key() : alert.label();
     }
 
     /** {@code SERVER_STATUS_ALERT:<指标>:<档>}；换档即换事件，因此升级不受旧档节流压制。 */

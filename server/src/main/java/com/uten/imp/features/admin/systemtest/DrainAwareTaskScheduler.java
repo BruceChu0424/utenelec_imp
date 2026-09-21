@@ -49,6 +49,8 @@ public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
         this.drainGate = drainGate;
         this.runRegistry = runRegistry;
         this.delegate = new ThreadPoolTaskScheduler();
+        // 单线程: 任一任务在跑, 其余任务只能排队。ServerStatusProbe.jobReports 据此把
+        // 「有任务占线时的没执行」记为排队而不是故障; 改池大小须同步改那边的判定。
         this.delegate.setPoolSize(1);
         this.delegate.setThreadNamePrefix("scheduling-");
         this.delegate.setRemoveOnCancelPolicy(true);

@@ -220,7 +220,7 @@ class ServerStatusProbeTest {
     @Test void jobStatusCoversNeverRanRunningFailedStaleAndHealthy() {
         var never=new ScheduledTaskRunRegistry.Run("A.run",null,null,null,null,null,0,0);
         assertThat(ServerStatusProbe.job(never,now).status()).isEqualTo("UNKNOWN");
-        assertThat(ServerStatusProbe.job(never,now).detail()).contains("尚未执行").contains("按日程触发");
+        assertThat(ServerStatusProbe.job(never,now).detail()).contains("尚未执行").contains("按固定日程触发");
         var running=new ScheduledTaskRunRegistry.Run("A.run",Duration.ofSeconds(60),now.minusSeconds(30),null,null,null,0,0);
         assertThat(ServerStatusProbe.job(running,now).status()).isEqualTo("NORMAL");
         assertThat(ServerStatusProbe.job(running,now).lastDurationMs()).isNull();
@@ -233,9 +233,15 @@ class ServerStatusProbeTest {
         assertThat(critical.status()).isEqualTo("CRITICAL");
         assertThat(critical.lastErrorType()).isEqualTo("IllegalStateException");
         assertThat(critical.periodSeconds()).isEqualTo(60L);
+        // 「没执行」的判据是 max(2 个周期, 10 分钟): 1 分钟任务错过 2 分钟不算故障。
         var stale=new ScheduledTaskRunRegistry.Run("A.run",Duration.ofSeconds(60),now.minusSeconds(130),now.minusSeconds(125),5000L,null,0,9);
-        assertThat(ServerStatusProbe.job(stale,now).status()).isEqualTo("WARNING");
-        assertThat(ServerStatusProbe.job(stale,now).detail()).contains("超过 2 个周期未执行");
+        assertThat(ServerStatusProbe.job(stale,now).status()).isEqualTo("NORMAL");
+        var staleBeyondFloor=new ScheduledTaskRunRegistry.Run("A.run",Duration.ofSeconds(60),now.minusSeconds(700),now.minusSeconds(695),5000L,null,0,9);
+        assertThat(ServerStatusProbe.job(staleBeyondFloor,now).status()).isEqualTo("WARNING");
+        assertThat(ServerStatusProbe.job(staleBeyondFloor,now).detail()).contains("已 11 分钟, 一直没有再轮到执行");
+        // 周期本身超过 5 分钟时仍按 2 个周期算: 10 分钟任务要 20 分钟没执行才算。
+        var slowCadence=new ScheduledTaskRunRegistry.Run("A.run",Duration.ofSeconds(600),now.minusSeconds(1100),now.minusSeconds(1000),5000L,null,0,9);
+        assertThat(ServerStatusProbe.job(slowCadence,now).status()).isEqualTo("NORMAL");
         var cronStale=new ScheduledTaskRunRegistry.Run("A.run",null,now.minusSeconds(100_000),now.minusSeconds(99_000),5000L,null,0,9);
         assertThat(ServerStatusProbe.job(cronStale,now).status()).isEqualTo("NORMAL");
         var healthy=new ScheduledTaskRunRegistry.Run("A.run",Duration.ofSeconds(60),now.minusSeconds(70),now.minusSeconds(65),5000L,null,0,9);
@@ -257,6 +263,59 @@ class ServerStatusProbeTest {
         assertThat(jobs.get(0).status()).isEqualTo("WARNING");
         assertThat(jobs.get(1).status()).isEqualTo("UNKNOWN");
         assertThat(jobs.toString()).doesNotContain("boom");
+    }
+
+    /** 2026-09-20 事故回归: 每 2 秒的轮询任务只是 7 秒没轮到, 不是故障, 不得推通知; 名称用人话。 */
+    @Test void twoSecondPollerLateBySevenSecondsIsStillNormalAndNamedInPlainWords() {
+        var poller=new ScheduledTaskRunRegistry.Run("InventoryValueWorkScheduler.scheduled",Duration.ofSeconds(2),
+                now.minusSeconds(8),now.minusSeconds(7),120L,null,0,300);
+        var report=ServerStatusProbe.report(poller,now,null);
+        assertThat(report.job().status()).isEqualTo("NORMAL");
+        assertThat(report.headline()).isNull();
+        assertThat(report.job().key()).isEqualTo("InventoryValueWorkScheduler.scheduled");
+        assertThat(report.job().label()).isEqualTo("库存金额结算");
+        assertThat(report.job().detail()).contains("正常每 2 秒运行一次").doesNotContain("InventoryValueWorkScheduler");
+    }
+
+    /** 单根调度线程被一个任务占着时, 其余任务的「没执行」是排队而不是故障: 只有占线的那个告警。 */
+    @Test void tasksQueuedBehindAStuckOneAreNormalAndOnlyTheStuckOneAlerts() throws Exception {
+        var probe=probe();
+        registry.register(named("x.MaterializedViewRefreshScheduler.refreshAll"),Duration.ofSeconds(300));
+        registry.register(named("x.BusinessOutboxScheduler.drain"),Duration.ofSeconds(2));
+        registry.started("BusinessOutboxScheduler.drain",now.minusSeconds(1300));
+        registry.finished("BusinessOutboxScheduler.drain",now.minusSeconds(1299),null);
+        registry.started("MaterializedViewRefreshScheduler.refreshAll",now.minusSeconds(1200));
+        var reports=probe.jobReports(now);
+        var queued=reports.stream().filter(r->r.job().key().equals("BusinessOutboxScheduler.drain")).findFirst().orElseThrow();
+        assertThat(queued.job().status()).isEqualTo("NORMAL");
+        assertThat(queued.job().detail()).contains("已排队 21 分钟").contains("后台任务「报表数据刷新」");
+        assertThat(queued.headline()).isNull();
+        var stuck=reports.stream().filter(r->r.job().key().equals("MaterializedViewRefreshScheduler.refreshAll")).findFirst().orElseThrow();
+        assertThat(stuck.job().status()).isEqualTo("WARNING");
+        assertThat(stuck.headline()).isEqualTo("后台任务「报表数据刷新」本次执行已持续 20 分钟, 疑似卡住");
+        assertThat(ServerStatusProbe.jobExplanation(stuck))
+                .startsWith("这是平台内置、随服务自动运行的后台任务, 不需要任何人设置。用途: 每 5 分钟刷新")
+                .contains("\n现状: 本次执行已持续 20 分钟").contains("\n建议: ")
+                .doesNotContain("MaterializedViewRefreshScheduler").doesNotContain("\uFF08").doesNotContain("\uFF09");
+    }
+
+    /** 没人占线时长时间没轮到执行才是真的调度停摆: 标题说人话, 正文解释用途、现状、建议。 */
+    @Test void staleTaskAlertNamesTheTaskInPlainWordsAndExplainsItself() {
+        var stale=new ScheduledTaskRunRegistry.Run("BusinessOutboxScheduler.drain",Duration.ofSeconds(2),
+                now.minusSeconds(1801),now.minusSeconds(1800),50L,null,0,900);
+        var report=ServerStatusProbe.report(stale,now,null);
+        assertThat(report.job().status()).isEqualTo("WARNING");
+        assertThat(report.headline()).isEqualTo("后台任务「业务事件派发」已 30 分钟没有执行");
+        String explanation=ServerStatusProbe.jobExplanation(report);
+        assertThat(explanation).startsWith("这是平台内置").contains("站内通知").contains("正常每 2 秒运行一次")
+                .contains("建议: 后台调度可能停摆").doesNotContain("BusinessOutboxScheduler");
+        var failing=new ScheduledTaskRunRegistry.Run("BusinessOutboxScheduler.drain",Duration.ofSeconds(2),
+                now.minusSeconds(3),now.minusSeconds(2),50L,"DataAccessResourceFailureException",3,900);
+        var critical=ServerStatusProbe.report(failing,now,null);
+        assertThat(critical.job().status()).isEqualTo("CRITICAL");
+        assertThat(critical.headline()).isEqualTo("后台任务「业务事件派发」连续 3 次执行失败");
+        assertThat(ServerStatusProbe.jobExplanation(critical)).contains("错误类型 DataAccessResourceFailureException")
+                .contains("建议: 已连续失败 3 次以上");
     }
 
     private static Runnable named(String name) {

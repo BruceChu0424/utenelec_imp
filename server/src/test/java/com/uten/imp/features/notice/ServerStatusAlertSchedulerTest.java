@@ -65,7 +65,7 @@ class ServerStatusAlertSchedulerTest {
      */
     @Test
     void publishesWithWhitelistedTypeAndPriority() {
-        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储 使用率危急", "清理或扩容"));
+        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储", "附件存储 使用率危急", "清理或扩容"));
 
         scheduler.scan();
 
@@ -81,8 +81,8 @@ class ServerStatusAlertSchedulerTest {
     /** NORMAL / UNKNOWN 不该催人：拿不到数不等于有事要办。 */
     @Test
     void ignoresNormalAndUnknownMetrics() {
-        snapshot(new ServerStatusView.Alert("disk-1", "NORMAL", "正常", ""),
-                new ServerStatusView.Alert("backup", "UNKNOWN", "读不到", ""));
+        snapshot(new ServerStatusView.Alert("disk-1", "NORMAL", "附件存储", "正常", ""),
+                new ServerStatusView.Alert("backup", "UNKNOWN", "备份", "读不到", ""));
 
         scheduler.scan();
 
@@ -104,7 +104,7 @@ class ServerStatusAlertSchedulerTest {
     void skipsWhenAlreadySentWithinWindow() {
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any()))
                 .thenReturn(1);
-        snapshot(new ServerStatusView.Alert("disk-1", "WARNING", "附件存储 使用率偏高", ""));
+        snapshot(new ServerStatusView.Alert("disk-1", "WARNING", "附件存储", "附件存储 使用率偏高", ""));
 
         scheduler.scan();
 
@@ -119,10 +119,10 @@ class ServerStatusAlertSchedulerTest {
     /** 探测本身挂掉（sampling）时不得把上一轮的 CRITICAL 误判成「已恢复」。 */
     @Test
     void brokenSamplingDoesNotFakeRecovery() {
-        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储 使用率危急", ""));
+        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储", "附件存储 使用率危急", ""));
         scheduler.scan(); // 记住 disk-1 = CRITICAL
 
-        snapshot(new ServerStatusView.Alert("sampling", "UNKNOWN", "采样不可用", ""));
+        snapshot(new ServerStatusView.Alert("sampling", "UNKNOWN", "状态采样", "采样不可用", ""));
         scheduler.scan();
 
         // 第二轮不该出现任何「已恢复」。
@@ -137,10 +137,10 @@ class ServerStatusAlertSchedulerTest {
     /** 危急消失后补一条「已恢复」，免得人一直悬着。 */
     @Test
     void sendsRecoveryAfterCriticalClears() {
-        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储 使用率危急", ""));
+        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储", "附件存储 使用率危急", ""));
         scheduler.scan();
 
-        snapshot(new ServerStatusView.Alert("disk-1", "NORMAL", "正常", ""));
+        snapshot(new ServerStatusView.Alert("disk-1", "NORMAL", "附件存储", "正常", ""));
         scheduler.scan();
 
         verify(notices).publishForUser(eq(receiver),
@@ -155,7 +155,7 @@ class ServerStatusAlertSchedulerTest {
     void staysSilentWithoutReceivers() {
         when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<UUID>>notNull(), any(), any()))
                 .thenReturn(List.of());
-        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "危急", ""));
+        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储", "危急", ""));
 
         scheduler.scan();
 
@@ -176,5 +176,44 @@ class ServerStatusAlertSchedulerTest {
     void throttleWindowIsSixHours() {
         assertThat(ServerStatusAlertScheduler.THROTTLE_HOURS).isEqualTo(6);
         assertThat(Instant.now()).isNotNull();
+    }
+
+    /**
+     * 2026-09-20: 工作台卡片只预览正文头两行, 正文再抄一遍标题等于什么都没说。
+     * 标题 = 告警自带的一句话现状, 正文 = 解释 (是什么、现状、建议)。
+     */
+    @Test
+    void contentIsTheExplanationNotARepeatOfTheTitle() {
+        snapshot(new ServerStatusView.Alert("job:BusinessOutboxScheduler.drain", "WARNING",
+                "后台任务「业务事件派发」", "后台任务「业务事件派发」已 30 分钟没有执行",
+                "这是平台内置、随服务自动运行的后台任务, 不需要任何人设置。"));
+
+        scheduler.scan();
+
+        verify(notices).publishForUser(eq(receiver),
+                eq("【警告】后台任务「业务事件派发」已 30 分钟没有执行"),
+                eq("这是平台内置、随服务自动运行的后台任务, 不需要任何人设置。"),
+                eq("system"), anyString(), anyString(),
+                eq(ServerStatusAlertScheduler.sourceEvent("job:BusinessOutboxScheduler.drain", "WARNING")),
+                eq("important"));
+    }
+
+    /** 恢复通知用人话名称, 不再把 disk-1 / job:Xxx.yyy 这种程序标识发给人看。 */
+    @Test
+    void recoveryUsesTheHumanLabelNotTheKey() {
+        snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储", "附件存储需要尽快处理", ""));
+        scheduler.scan();
+
+        snapshot();
+        scheduler.scan();
+
+        verify(notices).publishForUser(eq(receiver), eq("【已恢复】附件存储已回到正常范围"),
+                org.mockito.ArgumentMatchers.contains("「附件存储」"), eq("system"), anyString(), anyString(),
+                eq(ServerStatusAlertScheduler.sourceEvent("disk-1", "RECOVERED")), eq("normal"));
+        verify(notices, never()).publishForUser(any(), org.mockito.ArgumentMatchers.contains("disk-1"),
+                anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
+        verify(notices, never()).publishForUser(any(), anyString(),
+                org.mockito.ArgumentMatchers.contains("disk-1"), anyString(), anyString(), anyString(),
+                anyString(), anyString());
     }
 }

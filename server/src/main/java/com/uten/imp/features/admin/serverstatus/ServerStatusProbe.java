@@ -46,6 +46,16 @@ public class ServerStatusProbe {
     static final double ERRORS_WARNING = 10, ERRORS_CRITICAL = 100;
     static final int OUTBOX_WARNING_COUNT = 50, OUTBOX_CRITICAL_COUNT = 500;
     static final int OUTBOX_WARNING_MINUTES = 5, OUTBOX_CRITICAL_MINUTES = 30;
+    /**
+     * 后台任务「多久没执行才算异常」的下限 (秒); 判据是 max(2 个周期, 本下限)。
+     * 2026-09-20 事故: 四个每 2 秒的轮询任务因为单根调度线程被别的任务占了 7 秒, 一起被判
+     * 「超过 2 个周期未执行」, 恰好被 15 秒采样抓到, 启动后第一轮扫描就推了四条通知。
+     */
+    static final long JOB_STALE_FLOOR_SECONDS = 600;
+    /** 单次执行多久算「疑似卡住」的下限 (秒); 判据同样是 max(2 个周期, 本下限)。 */
+    static final long JOB_RUNNING_FLOOR_SECONDS = 600;
+    /** 用户没有「设置」过任何定时任务, 面向人的文案一律叫后台任务。 */
+    static final String JOB_PREFIX = "后台任务";
 
     private final DataSource dataSource;
     private final StorageProperties storage;
@@ -134,22 +144,26 @@ public class ServerStatusProbe {
         Database database=database();
         Backup backup=backup(now);
         List<Metric> extras=extras(now);
-        List<Job> jobs=jobs(now);
+        List<JobReport> jobReports=jobReports(now);
+        List<Job> jobs=jobReports.stream().map(JobReport::job).toList();
         List<Alert> alerts=new ArrayList<>();
         for (Metric metric:metrics) if (!"NORMAL".equals(metric.status()))
-            alerts.add(new Alert(metric.key(),metric.status(),metric.label()+statusText(metric.status()),metric.detail()));
+            alerts.add(new Alert(metric.key(),metric.status(),metric.label(),metric.label()+statusText(metric.status()),metric.detail()));
         for (Disk disk:disks) if (!"NORMAL".equals(disk.status()))
-            alerts.add(new Alert(disk.key(),disk.status(),disk.label()+statusText(disk.status()),
+            alerts.add(new Alert(disk.key(),disk.status(),disk.label(),disk.label()+statusText(disk.status()),
                     "查看文件和备份的保留情况；不要直接删除数据库目录。"));
-        if (!"NORMAL".equals(database.status())) alerts.add(new Alert("database",database.status(),
+        if (!"NORMAL".equals(database.status())) alerts.add(new Alert("database",database.status(),"数据库",
                 "数据库"+statusText(database.status()),database.detail()));
-        if (!"NORMAL".equals(backup.status())) alerts.add(new Alert("backup",backup.status(),
+        if (!"NORMAL".equals(backup.status())) alerts.add(new Alert("backup",backup.status(),"备份",
                 "备份"+statusText(backup.status()),backup.detail()));
         for (Metric metric:extras) if (!"NORMAL".equals(metric.status()))
-            alerts.add(new Alert(metric.key(),metric.status(),metric.label()+statusText(metric.status()),metric.detail()));
-        // A task that has simply not run yet (daily cron after a restart) is grey, not an alert.
-        for (Job job:jobs) if ("WARNING".equals(job.status())||"CRITICAL".equals(job.status()))
-            alerts.add(new Alert("job:"+job.key(),job.status(),"定时任务 "+job.label()+statusText(job.status()),job.detail()));
+            alerts.add(new Alert(metric.key(),metric.status(),metric.label(),metric.label()+statusText(metric.status()),metric.detail()));
+        // A task that has simply not run yet (daily cron after a restart) is grey, not an alert;
+        // one queued behind the single scheduler thread is NORMAL (see jobReports). Only reports
+        // that carry a headline alert, and the headline already says what is wrong in plain words.
+        for (JobReport report:jobReports) if (report.headline()!=null)
+            alerts.add(new Alert("job:"+report.job().key(),report.job().status(),
+                    JOB_PREFIX+"「"+report.job().label()+"」",report.headline(),jobExplanation(report)));
         String overall=alerts.stream().map(Alert::status).reduce("NORMAL",ServerStatusProbe::moreSevere);
         return new ServerStatusView(now,15,overall,
                 os.getName()+" · "+os.getAvailableProcessors()+" 个逻辑处理器",applicationVersion,
@@ -381,37 +395,81 @@ public class ServerStatusProbe {
         }
     }
 
-    List<Job> jobs(Instant now) {
-        List<Job> result=new ArrayList<>();
-        for (var run:taskRuns.snapshot()) result.add(job(run,now));
+    /**
+     * 全部 {@code @Scheduled} 任务共用 DrainAwareTaskScheduler 的单根调度线程: 有任务在跑时,
+     * 其余任务的「没执行」是排队而不是故障, 只把占线的那个任务当嫌疑 (它自己会按「疑似卡住」告警)。
+     */
+    List<JobReport> jobReports(Instant now) {
+        List<ScheduledTaskRunRegistry.Run> runs=taskRuns.snapshot();
+        ScheduledTaskRunRegistry.Run occupying=runs.stream().filter(ScheduledTaskRunRegistry.Run::running).findFirst().orElse(null);
+        List<JobReport> result=new ArrayList<>();
+        for (var run:runs) result.add(report(run,now,
+                occupying==null||occupying.name().equals(run.name())?null:occupying));
         return List.copyOf(result);
     }
 
-    static Job job(ScheduledTaskRunRegistry.Run run,Instant now) {
+    List<Job> jobs(Instant now) {
+        return jobReports(now).stream().map(JobReport::job).toList();
+    }
+
+    /** 一个任务的页面行 + (仅异常时) 通知标题与建议; {@code headline} 为 null 即不告警。 */
+    record JobReport(Job job,String headline,String advice) {}
+
+    static Job job(ScheduledTaskRunRegistry.Run run,Instant now) { return report(run,now,null).job(); }
+
+    /** 通知正文: 先讲清这是内置任务和它管什么, 再讲现状与该找谁; 不出现类名.方法名。 */
+    static String jobExplanation(JobReport report) {
+        Job job=report.job();
+        String purpose=ScheduledTaskCatalog.describe(job.key()).map(ScheduledTaskCatalog.Entry::purpose)
+                .orElse("(此任务尚未登记用途说明, 程序标识 "+job.key()+")");
+        return "这是平台内置、随服务自动运行的后台任务, 不需要任何人设置。用途: "+purpose
+                +"\n现状: "+job.detail()
+                +"\n建议: "+report.advice();
+    }
+
+    static JobReport report(ScheduledTaskRunRegistry.Run run,Instant now,ScheduledTaskRunRegistry.Run blockedBy) {
+        String name=run.name(), label=ScheduledTaskCatalog.labelOf(name);
+        String who=JOB_PREFIX+"「"+label+"」";
         Long period=run.period()==null?null:run.period().getSeconds();
-        String cadence=period==null?"按日程触发":"每 "+humanDuration(run.period());
-        if(run.lastStart()==null) return new Job(run.name(),run.name(),null,null,null,period,null,"UNKNOWN",
-                "启动后尚未执行；"+cadence+"。");
+        String cadence=period==null?"按固定日程触发":"正常每 "+humanDuration(run.period())+"运行一次";
+        if(run.lastStart()==null) return quiet(new Job(name,label,null,null,null,period,null,"UNKNOWN",
+                "本次启动后尚未执行; "+cadence+"。"));
         if(run.running()) {
             long runningSeconds=Math.max(0,Duration.between(run.lastStart(),now).getSeconds());
-            long limit=Math.max(600,period==null?600:period*2);
-            String status=runningSeconds>limit?"WARNING":"NORMAL";
-            return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),null,period,null,status,
-                    (status.equals("WARNING")?"本次执行已超过 ":"正在执行，已用 ")+humanDuration(Duration.ofSeconds(runningSeconds))+"；"+cadence+"。");
+            long limit=Math.max(JOB_RUNNING_FLOOR_SECONDS,period==null?0:period*2);
+            String elapsed=humanDuration(Duration.ofSeconds(runningSeconds));
+            if(runningSeconds<=limit) return quiet(new Job(name,label,run.lastStart(),run.lastEnd(),null,period,null,"NORMAL",
+                    "正在执行, 已用 "+elapsed+"; "+cadence+"。"));
+            return new JobReport(new Job(name,label,run.lastStart(),run.lastEnd(),null,period,null,"WARNING",
+                    "本次执行已持续 "+elapsed+", 远超正常耗时, 疑似卡住; "+cadence+"。"),
+                    who+"本次执行已持续 "+elapsed+", 疑似卡住",
+                    "它不结束, 其余后台任务都会排队等它。请联系维护人员查看服务日志, 必要时重启服务。");
         }
-        String took=run.lastDurationMs()==null?"":"，耗时 "+humanDuration(Duration.ofMillis(run.lastDurationMs()));
+        String took=run.lastDurationMs()==null?"":", 耗时 "+humanDuration(Duration.ofMillis(run.lastDurationMs()));
         if(run.lastErrorType()!=null) {
-            String status=run.consecutiveFailures()>=3?"CRITICAL":"WARNING";
-            return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,run.lastErrorType(),status,
-                    "最近连续 "+run.consecutiveFailures()+" 次执行失败（"+run.lastErrorType()+"）"+took+"；"+cadence+"。");
+            boolean critical=run.consecutiveFailures()>=3;
+            return new JobReport(new Job(name,label,run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,run.lastErrorType(),
+                    critical?"CRITICAL":"WARNING",
+                    "最近连续 "+run.consecutiveFailures()+" 次执行失败 (错误类型 "+run.lastErrorType()+")"+took+"; "+cadence+"。"),
+                    who+"连续 "+run.consecutiveFailures()+" 次执行失败",
+                    critical?"已连续失败 3 次以上, 它负责的工作正在停摆。请尽快联系维护人员查看服务日志里的错误原因。"
+                            :"下一轮会自动重试, 连续失败 3 次会升级为危急。持续失败时请联系维护人员查看服务日志。");
         }
-        if(period!=null&&Duration.between(run.lastEnd(),now).getSeconds()>period*2) {
-            return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,null,"WARNING",
-                    "已超过 2 个周期未执行，上次结束于 "+humanDuration(Duration.between(run.lastEnd(),now))+" 前；"+cadence+"。");
+        long sinceEnd=Math.max(0,Duration.between(run.lastEnd(),now).getSeconds());
+        if(period!=null&&sinceEnd>Math.max(JOB_STALE_FLOOR_SECONDS,period*2)) {
+            String waited=humanDuration(Duration.ofSeconds(sinceEnd));
+            if(blockedBy!=null) return quiet(new Job(name,label,run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,null,"NORMAL",
+                    "已排队 "+waited+", 在等"+JOB_PREFIX+"「"+ScheduledTaskCatalog.labelOf(blockedBy.name())+"」执行完; "+cadence+"。"));
+            return new JobReport(new Job(name,label,run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,null,"WARNING",
+                    "距上次执行结束已 "+waited+", 一直没有再轮到执行; "+cadence+"。"),
+                    who+"已 "+waited+"没有执行",
+                    "后台调度可能停摆。若 30 分钟内仍未恢复, 请联系维护人员检查服务是否卡住或需要重启。");
         }
-        return new Job(run.name(),run.name(),run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,null,"NORMAL",
-                "上次执行正常"+took+"；"+cadence+"。");
+        return quiet(new Job(name,label,run.lastStart(),run.lastEnd(),run.lastDurationMs(),period,null,"NORMAL",
+                "上次执行正常"+took+"; "+cadence+"。"));
     }
+
+    private static JobReport quiet(Job job) { return new JobReport(job,null,null); }
 
     static String humanDuration(Duration duration) {
         long seconds=Math.max(0,duration.getSeconds());

@@ -21,7 +21,13 @@ public record ServerStatusView(
                            Integer maxConnections, String detail) {}
     public record Backup(String status, Instant lastSuccessAt, Double ageHours,
                          int warningAfterHours, int criticalAfterHours, String detail) {}
-    public record Alert(String key, String status, String message, String suggestion) {}
+    /**
+     * One thing that needs attention. {@code label} is the plain-language name of the metric
+     * or task (reused by the "recovered" notice), {@code message} the one-sentence situation
+     * (notice title) and {@code suggestion} the explanation shown as the notice body; none
+     * of them may carry class names, method names or keys.
+     */
+    public record Alert(String key, String status, String label, String message, String suggestion) {}
     /**
      * Last run of one {@code @Scheduled} method. {@code periodSeconds} is null for cron
      * triggers, {@code lastDurationMs} is null while a run is still in progress. Only the

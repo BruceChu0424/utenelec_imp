@@ -46,7 +46,20 @@ class SalesShipmentFinanceReleaseRateEndToEndTest {
     @Autowired TaskClaimService reviewClaims;
     FullChainEndToEndTest fixture;
     @BeforeEach void setup(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
-    @AfterEach void logout(){org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+
+    /**
+     * 本位币是全库唯一一行(V403 按 legacy_id=1 钉死)，不是 per-world 数据；本类里
+     * baseCurrencyReleaseIsAlwaysOneAndRejectsAnyOtherRate 会把它的参考汇率改成 0 来验证
+     * 「本位币不需要维护汇率」。而本类与另外 28 个用例类共用同一个 Testcontainers 库
+     * (都走 FullChainEndToEndTest.registerDataSource)，改完不还原就会污染整个 JVM 的后续用例：
+     * 任何再取记账汇率的出货用例都会炸「财务维护的币种汇率必须大于 0，禁止发运立账」
+     * (2026-09-21 本机全链两次复现 SalesShipmentWarehouseAssignmentEndToEndTest 的免费出货用例；
+     * CI 因执行顺序不同侥幸没中)。这里逐个用例还原，谁也别想再踩。
+     */
+    @AfterEach void logout(){
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        db.update("UPDATE currencies SET exchange_rate=1 WHERE is_base_currency AND exchange_rate<>1");
+    }
 
     @Test void financeFillsTheRecognitionRateAtReleaseAndTheWarehousePostsReceivablesWithIt() {
         var w=fixture.seedWorld("fin-release-rate");fixture.loginAs(w.superAdminUserId());

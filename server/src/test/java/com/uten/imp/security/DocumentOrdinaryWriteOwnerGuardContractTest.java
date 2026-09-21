@@ -133,6 +133,13 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
                 assertThat(body).contains("approveReceipt(id)");
                 body = method(source, " approveReceipt(");
             }
+            // V636/ADR-098：委外回厂短交「接受损耗结案」要在不要求 subcontract_waste:approve
+            // 的前提下走同一条审核流程，approve( 因此退成薄壳，属主写守卫落在 approveInternal(。
+            if (" approve(".equals(signature)
+                    && relative.equals("features/subcontract/waste/SubcontractWasteService.java")) {
+                assertThat(body).contains("approveInternal(id)");
+                body = method(source, " approveInternal(");
+            }
             assertThat(body)
                     .as("%s in %s", signature.trim(), relative)
                     .containsAnyOf(

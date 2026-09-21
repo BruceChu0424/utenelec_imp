@@ -115,6 +115,7 @@ public class AuditEventInterpreter {
             Map.entry("view_subcontract_material_issue_detail", "查看委外发料详情"),
             Map.entry("view_subcontract_material_return_detail", "查看委外退料详情"),
             Map.entry("view_subcontract_waste_detail", "查看委外废料详情"),
+            Map.entry("view_subcontract_short_delivery_detail", "查看委外回厂短交案件详情"),
             Map.entry("view_production_plan_detail", "查看生产计划详情"),
             Map.entry("view_production_daily_report_detail", "查看生产日报详情"),
             Map.entry("view_procurement_inspection_record_detail", "查看IQC检测决定记录"),
@@ -1111,6 +1112,8 @@ public class AuditEventInterpreter {
         values.put("subcontract_material_return_items", "委外退料明细");
         values.put("subcontract_wastes", "委外报废单");
         values.put("subcontract_waste_items", "委外报废明细");
+        values.put("subcontract_short_delivery_cases", "委外回厂短交案件");
+        values.put("subcontract_short_delivery_case_events", "委外回厂短交案件事件");
         values.put("subcontract_loss_cases", "委外损失案件");
         values.put("subcontract_loss_case_lines", "委外损失明细");
         values.put("subcontract_loss_events", "委外损失事件");

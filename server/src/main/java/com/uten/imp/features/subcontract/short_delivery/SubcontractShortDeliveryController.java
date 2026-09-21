@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.short_delivery;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.CaseDetail;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.CaseRow;
@@ -38,6 +39,7 @@ import java.util.UUID;
 public class SubcontractShortDeliveryController {
 
     private final SubcontractShortDeliveryService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_order:view')")
@@ -62,7 +64,15 @@ public class SubcontractShortDeliveryController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_order:view')")
     public CaseDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        CaseDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_short_delivery_detail",
+                "subcontract_short_delivery_cases",
+                id,
+                result.row() == null ? null : result.row().orderBillNo(),
+                null,
+                "委外回厂短交案件");
+        return result;
     }
 
     @PostMapping("/{id}/decide")

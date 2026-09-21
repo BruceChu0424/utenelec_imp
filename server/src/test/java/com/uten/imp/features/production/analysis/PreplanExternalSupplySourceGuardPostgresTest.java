@@ -255,19 +255,22 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                         WHERE id=?
                         """,
                         source.actionId());
+                // V640/ADR-099：申请明细仍未订货时，分摊量与明细数量允许「只增不减」地
+                // 就地追加，所以这里不能再拿 +1 当篡改来断言。身份守卫对减量一字未改，
+                // 用减量验证它仍在；订货之后连增量也照旧被拒，由下方取消后的同款断言覆盖。
                 assertConstraint(
                         connection,
                         "preplan_external_supply_allocation_identity_guard",
                         """
                         UPDATE preplan_supply_action_allocations
-                        SET allocated_qty=allocated_qty + 1 WHERE id=?
+                        SET allocated_qty=allocated_qty - 1 WHERE id=?
                         """,
                         source.allocationId());
                 assertConstraint(
                         connection,
                         route.directItemConstraint,
                         "UPDATE " + route.sourceItemTable
-                                + " SET qty=qty + 1 WHERE id=?",
+                                + " SET qty=qty - 1 WHERE id=?",
                         source.sourceItemId());
                 assertConstraint(
                         connection,

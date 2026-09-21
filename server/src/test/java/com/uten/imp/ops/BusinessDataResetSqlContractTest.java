@@ -414,7 +414,10 @@ class BusinessDataResetSqlContractTest {
                 // V634 委外前置自制超量后的订货批准谱系守卫: 只替换一个断言函数, 不加表
                 // (V632 出货放行记账汇率 587→588, V633 跳号, V634 588→589)。
                 .contains("(634, 589)")
-                .contains("V507/469、V508/470及V511至V634完整目录");
+                // V638 委外回厂守卫计入前置自制出仓行: 只锚点补丁一个断言函数, 不加表
+                // (V635-V637 留给并行会话, V638 589→590)。
+                .contains("(638, 590)")
+                .contains("V507/469、V508/470及V511至V638完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

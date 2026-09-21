@@ -85,7 +85,22 @@ public class SubcontractMaterialPlanService
     /** 先算后插的计算结果（createPlanOnApproval 与草稿期共用同一口径）。 */
     record ApprovalComputation(
             String orderBillNo, UUID supplierId, LocalDate deliverDate,
-            List<PendingLine> lines) {
+            List<PendingLine> lines,
+            List<OverQuantityShortage> overQuantityShortages) {
+    }
+
+    /**
+     * 前置自制订货超过「任务锁定 + 公共可用」的缺口(基本单位, 2026-09-21): 送审/批准时
+     * 给出可读拒绝; 不进 MAKE_THEN 缺口行, 不自动交计划再做一批。
+     */
+    record OverQuantityShortage(UUID orderItemId, Integer lineNo,
+                                String goodsCode, String goodsName,
+                                BigDecimal orderedBase, BigDecimal lockedBase,
+                                BigDecimal publicBase, BigDecimal missingBase) {
+    }
+
+    /** 超出锁定量的份额建议从哪个仓发、该仓当前合格可动用量(基本单位)。 */
+    private record PublicSupply(UUID warehouseId, BigDecimal availableQty) {
     }
 
     /**
@@ -136,6 +151,7 @@ public class SubcontractMaterialPlanService
     public void createPlanOnApproval(UUID orderId) {
         lockOrderInventoryDimensions(orderId);
         ApprovalComputation computation = computeApprovalLines(orderId);
+        requireNoOverQuantityShortage(computation);
         if (computation == null || computation.lines().isEmpty()) {
             return;
         }
@@ -253,6 +269,7 @@ public class SubcontractMaterialPlanService
         if (computation == null) {
             return;
         }
+        requireNoOverQuantityShortage(computation);
         List<PendingLine> shortage = computation.lines().stream()
                 .filter(line -> "MAKE_THEN_OUTBOUND".equals(line.flowMode()))
                 .toList();
@@ -330,6 +347,7 @@ public class SubcontractMaterialPlanService
         // 直下单销售式供货：同单同货多行共享一个递减的可用量池，防止重复占用
         // （与销售 reserveOnApprove 同款口径）。
         Map<String, BigDecimal> stockPool = new HashMap<>();
+        List<OverQuantityShortage> overQuantityShortages = new ArrayList<>();
         for (Object[] item : items) {
             UUID orderItemId = (UUID) item[0];
             UUID goodsId = (UUID) item[1];
@@ -359,6 +377,57 @@ public class SubcontractMaterialPlanService
                     planned=planned.subtract(own);
                     if(planned.signum()==0)continue;
                 }
+            }
+            if (prepared != null) {
+                // 2026-09-21 用户口径: 委外前置自制的订货可以超过通知量(超委外备货), 上限 =
+                // 「任务锁定给本申请的量」+「同货色公共可用量」。锁定量 = 任务持有的专属预留
+                // 未消费余量, 再以台账 required_qty 与本申请批次 notify_qty 封顶(与 V458/V634
+                // 谱系守卫同口径); 锁定份落 PREPARED_OUTBOUND(专属预留等量转换), 超出份落
+                // DIRECT_OUTBOUND 吃公共库存(建议仓优先台账仓, 否则可用量最多的仓), 再超出
+                // 即为缺口——送审/批准时可读拒绝, 不自动交计划再做一批。
+                BigDecimal locked = preparedTaskLockedBase(prepared.taskId(), orderItemId)
+                        .max(BigDecimal.ZERO).setScale(4, RoundingMode.HALF_UP);
+                BigDecimal own = planned.min(locked);
+                if (own.signum() > 0) {
+                    pendingLines.add(new PendingLine(
+                            UUID.randomUUID(), orderItemId, goodsId, colorId,
+                            baseUnitId, orderUnitRate, own,
+                            "PREPARED_OUTBOUND", "READY_OUTBOUND", own,
+                            prepared.warehouseId(), true, bom.fingerprint(),
+                            prepared.analysisId(), prepared.analysisItemId(),
+                            prepared.taskId()));
+                }
+                BigDecimal excess = planned.subtract(own);
+                if (excess.signum() <= 0) {
+                    continue;
+                }
+                String poolKey = goodsId + "|" + Objects.toString(colorId, "");
+                BigDecimal avail = stockPool.computeIfAbsent(poolKey,
+                        k -> globalAvailableBase(goodsId, colorId));
+                PublicSupply supply = preferredPublicWarehouse(
+                        goodsId, colorId, prepared.warehouseId());
+                BigDecimal publicTake = excess.min(avail.max(BigDecimal.ZERO))
+                        .min(supply.availableQty().max(BigDecimal.ZERO))
+                        .setScale(4, RoundingMode.HALF_UP);
+                if (publicTake.signum() > 0) {
+                    stockPool.put(poolKey, avail.subtract(publicTake));
+                    pendingLines.add(new PendingLine(
+                            UUID.randomUUID(), orderItemId, goodsId, colorId,
+                            baseUnitId, orderUnitRate, publicTake,
+                            "DIRECT_OUTBOUND", "READY_OUTBOUND", publicTake,
+                            supply.warehouseId(), bom.hasChildren(), bom.fingerprint(),
+                            null, null, null));
+                }
+                BigDecimal missing = excess.subtract(publicTake);
+                if (missing.signum() > 0) {
+                    overQuantityShortages.add(new OverQuantityShortage(
+                            orderItemId,
+                            item[4] instanceof Number lineNo ? lineNo.intValue() : null,
+                            master == null ? null : Objects.toString(master[1], null),
+                            master == null ? null : Objects.toString(master[2], null),
+                            planned, own, publicTake, missing));
+                }
+                continue;
             }
             // V581：目标件只有一个叶子子件时不先自制，直接把那个子件发给委外商，
             // 委外商加工后交回目标件。整条订货明细只出一条 COMPONENT 行——不做
@@ -395,8 +464,8 @@ public class SubcontractMaterialPlanService
                 // 单耗小到 round6 归零：不能用 0 冻结单耗发料（回厂永远倒扣不出量），
                 // 按既有口径回落前置自制。
             }
-            boolean makeFirst = bom.hasChildren() && prepared == null;
-            boolean preparedOutbound = prepared != null;
+            // 走到这里 prepared 必为 null(前置自制谱系已在上面整段处理完)。
+            boolean makeFirst = bom.hasChildren();
             if (makeFirst) {
                 String poolKey = goodsId + "|" + Objects.toString(colorId, "");
                 BigDecimal avail = stockPool.computeIfAbsent(poolKey,
@@ -429,16 +498,99 @@ public class SubcontractMaterialPlanService
             pendingLines.add(new PendingLine(
                     UUID.randomUUID(), orderItemId, goodsId, colorId,
                     baseUnitId, orderUnitRate, planned,
-                    preparedOutbound ? "PREPARED_OUTBOUND" : "DIRECT_OUTBOUND",
-                    "READY_OUTBOUND", planned,
-                    preparedOutbound ? prepared.warehouseId() : (UUID) item[7],
-                    preparedOutbound, bom.fingerprint(),
-                    preparedOutbound ? prepared.analysisId() : null,
-                    preparedOutbound ? prepared.analysisItemId() : null,
-                    preparedOutbound ? prepared.taskId() : null));
+                    "DIRECT_OUTBOUND", "READY_OUTBOUND", planned,
+                    (UUID) item[7], bom.hasChildren(), bom.fingerprint(),
+                    null, null, null));
         }
         return new ApprovalComputation(
-                orderBillNo, supplierId, deliverDate, List.copyOf(pendingLines));
+                orderBillNo, supplierId, deliverDate, List.copyOf(pendingLines),
+                List.copyOf(overQuantityShortages));
+    }
+
+    /**
+     * 前置自制订货超过「任务锁定 + 公共可用」: 送审(requireNoMakeThenShortage)与批准
+     * (createPlanOnApproval)同口径拒绝, 文案逐行给出订货量/锁定量/公共可用量/超出量。
+     */
+    private static void requireNoOverQuantityShortage(ApprovalComputation computation) {
+        if (computation == null || computation.overQuantityShortages().isEmpty()) {
+            return;
+        }
+        StringBuilder detail = new StringBuilder();
+        for (OverQuantityShortage shortage : computation.overQuantityShortages()) {
+            if (detail.length() > 0) {
+                detail.append("；");
+            }
+            detail.append("第 ")
+                    .append(shortage.lineNo() == null ? "?" : shortage.lineNo())
+                    .append(" 行 ")
+                    .append(shortage.goodsName() == null ? "" : shortage.goodsName())
+                    .append(shortage.goodsCode() == null ? "" : "(" + shortage.goodsCode() + ")")
+                    .append(" 订货 ").append(plain(shortage.orderedBase()))
+                    .append("，前置自制锁定 ").append(plain(shortage.lockedBase()))
+                    .append(" + 公共可用 ").append(plain(shortage.publicBase()))
+                    .append("，超出 ").append(plain(shortage.missingBase()));
+        }
+        throw new ApiException(ErrorCode.CONFLICT,
+                "委外订货量超过仓库可发出量(基本单位): " + detail
+                        + "；请调小订货量，或等该件入库形成公共库存后再提交财务审核");
+    }
+
+    private static String plain(BigDecimal value) {
+        return value == null ? "0" : value.stripTrailingZeros().toPlainString();
+    }
+
+    /**
+     * 前置自制任务锁定给本订货行的量(基本单位): 任务持有的 SUBCONTRACT_PREPARE_TASK 专属预留
+     * 未消费余量(与 convertPreparationReservations 可转换的口径一致), 再以台账 required_qty
+     * 和本行主锚点申请明细所属通知批 notify_qty 封顶——这两条正是数据库谱系守卫
+     * (fn_assert_subcontract_preparation_source_before_v535, V634 口径)对 PREPARED_OUTBOUND
+     * 行数量的上限, 这里先按同口径切片, 超出的份额才去吃公共库存。
+     */
+    private BigDecimal preparedTaskLockedBase(UUID taskId, UUID orderItemId) {
+        BigDecimal value = jdbc.queryForObject("""
+                SELECT LEAST(
+                    (SELECT COALESCE(SUM(reservation.qty - reservation.consumed_qty
+                                        - reservation.released_qty), 0)
+                       FROM stock_reservations reservation
+                      WHERE reservation.owner_type = 'SUBCONTRACT_PREPARE_TASK'
+                        AND reservation.owner_id = task.id
+                        AND reservation.status = 0 AND reservation.is_deleted = FALSE
+                        AND reservation.consumed_qty = 0),
+                    task.required_qty,
+                    COALESCE((SELECT MAX(batch.notify_qty)
+                                FROM preplan_subcontract_make_task_batches batch
+                                JOIN subcontract_order_items order_item
+                                  ON order_item.id = ?
+                               WHERE batch.task_id = task.id
+                                 AND batch.application_item_id = order_item.application_item_id), 0))
+                FROM preplan_subcontract_make_tasks task
+                WHERE task.id = ?
+                """, BigDecimal.class, orderItemId, taskId);
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    /**
+     * 超出锁定量的份额从哪个仓发: 优先台账仓(前置自制入库的仓, 同货色公共库存多半也在
+     * 那里), 其次合格可动用量最多的仓; 都没有可动用量时回落台账仓、可动用量记 0。
+     * 批准同事务会按建议仓立即生成出仓草稿并占专属预留, 所以这里必须选一个真有货的仓。
+     */
+    private PublicSupply preferredPublicWarehouse(UUID goodsId, UUID colorId, UUID preferredWarehouseId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT available.warehouse_id, available.available_qty
+                FROM v_stock_available available
+                WHERE available.goods_id = :goodsId
+                  AND available.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
+                  AND available.available_qty > 0
+                ORDER BY CASE WHEN available.warehouse_id = CAST(:preferred AS uuid) THEN 0 ELSE 1 END,
+                         available.available_qty DESC, available.warehouse_id
+                """).setParameter("goodsId", goodsId)
+                .setParameter("colorId", colorId)
+                .setParameter("preferred", preferredWarehouseId));
+        if (rows.isEmpty()) {
+            return new PublicSupply(preferredWarehouseId, BigDecimal.ZERO);
+        }
+        Object[] best = rows.getFirst();
+        return new PublicSupply((UUID) best[0], decimal(best[1]));
     }
 
     /**

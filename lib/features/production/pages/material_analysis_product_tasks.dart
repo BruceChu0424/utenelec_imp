@@ -975,6 +975,7 @@ abstract class _MaterialAnalysisProductTasksState
           departmentId: input.departmentId,
           workshopName: input.workshopName,
           workerId: input.workerId,
+          publicSurplusOnly: input.publicSurplusOnly,
         ),
       for (final draft in products)
         MaterialAnalysisIssueLine(

@@ -399,6 +399,14 @@ abstract class _MaterialAnalysisChildCascadeState
               material.planAnchorAnalysisLineId != null
           ? indexes.productsById[material.planAnchorAnalysisLineId]
           : null;
+      // 有自制子层的委外件：已建前置自制任务时按它的锚点判断还能不能再追加。
+      // 只做判定与声明，提交通道不变（仍走候选行 ARRANGE，台账才跟得上量）。
+      final preparationAnchor =
+          kind == _CascadeKind.workshop &&
+              route == MaterialSupplyRoute.subcontract &&
+              material.planAnchorAnalysisLineId != null
+          ? indexes.productsById[material.planAnchorAnalysisLineId]
+          : null;
       final residual = anchor != null
           ? (anchor.canSchedule ? anchor.remainingQty : 0.0)
           : submitGroup == null
@@ -415,10 +423,12 @@ abstract class _MaterialAnalysisChildCascadeState
       // 超出「还需安排」的部分属主动公共备货：采购 / 直接外发委外要
       // over_supply 权限，没有的账号不给填（免得填完在提交时才被服务端拒）；
       // 车间侧的公共备货产出按 V577 不要这道权限。
+      final workshopAnchor = anchor ?? preparationAnchor;
       final allowsExtra = switch (kind) {
         _CascadeKind.buy || _CascadeKind.subcontractLeaf => _canOverSupply,
         _CascadeKind.workshop =>
-          anchor != null && (anchor.canIssueSurplus || anchor.canSchedule),
+          workshopAnchor != null &&
+              (workshopAnchor.canIssueSurplus || workshopAnchor.canSchedule),
       };
       // 采购行的预填值要和采购桶逐字同源：按最小起订量 / 订货倍数向上抬
       // （软约束，不进下限）。
@@ -457,6 +467,7 @@ abstract class _MaterialAnalysisChildCascadeState
         isSeed: node.isSeed,
         seed: node.seed,
         anchorAnalysisLineId: anchor?.analysisLineId,
+        preparationAnchorAnalysisLineId: preparationAnchor?.analysisLineId,
       )..seedUnitName = node.seed?.unitName;
       rows.add(row);
     }
@@ -915,8 +926,11 @@ abstract class _MaterialAnalysisChildCascadeState
           }
           continue;
         }
+        // allowExtra：余量为 0 的委外件按「再追加一批公共备货产出」提交——
+        // 服务端只对显式声明 publicSurplusOnly 的行放行。
         final group = _analysisGroupOf(row.groupKey);
-        if (group != null && _isExecutableSupplyGroup(group, row.route)) {
+        if (group != null &&
+            _isExecutableSupplyGroup(group, row.route, allowExtra: true)) {
           submittable.add(row);
         } else {
           dropped.add(row);
@@ -943,6 +957,14 @@ abstract class _MaterialAnalysisChildCascadeState
                 departmentId: row.departmentId.value,
                 workshopName: row.departmentName,
                 workerId: row.workerId.value,
+                // 前置自制锚点已没有剩余需求：本次全是追加的公共备货产出，
+                // 必须显式声明，服务端才放行（不声明照旧 409）。
+                publicSurplusOnly: () {
+                  final anchor = _cascadeAnchorProductOf(row);
+                  return anchor != null &&
+                      !anchor.canSchedule &&
+                      anchor.canIssueSurplus;
+                }(),
               ),
         ],
         planDrafts: [
@@ -987,7 +1009,11 @@ abstract class _MaterialAnalysisChildCascadeState
     _ChildCascadeRow row,
   ) {
     final analysis = _analysis;
-    if (analysis == null || row.anchorAnalysisLineId == null) return null;
+    if (analysis == null ||
+        (row.anchorAnalysisLineId == null &&
+            row.preparationAnchorAnalysisLineId == null)) {
+      return null;
+    }
     final material = _analysisIndexes(
       analysis,
     ).groupsByLine[row.id]?.representative;

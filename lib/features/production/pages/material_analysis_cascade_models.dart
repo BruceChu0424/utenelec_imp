@@ -178,6 +178,7 @@ class _ChildCascadeRow extends EditableGridRow {
     this.isSeed = false,
     this.seed,
     this.anchorAnalysisLineId,
+    this.preparationAnchorAnalysisLineId,
   }) {
     if (ownsInput && suggested > 0) {
       qty.text = _bucketQtyText(suggested);
@@ -227,6 +228,14 @@ class _ChildCascadeRow extends EditableGridRow {
   /// （planDrafts）。需先自制的委外件不走锚点——按候选行提交，服务端的
   /// ARRANGE 段自己给既有台账增量。
   final String? anchorAnalysisLineId;
+
+  /// 有自制子层的委外件已经建过「前置自制任务」时那条锚点产品行的 id。
+  ///
+  /// **只用于两件事**：① 判定这一行还能不能再追加（锚点的 canSchedule /
+  /// canIssueSurplus）；② 提交时声明 `publicSurplusOnly`。它**不**改变提交通道
+  /// ——追加仍按候选行走 issue-plans 的 ARRANGE 段，委外台账才会跟着量走
+  /// （V589）；改走 planDrafts 会绕开台账。
+  final String? preparationAnchorAnalysisLineId;
 
   /// 快照里的物料行；「顶层产品且无 ROOT_SUPPLY 行」的树顶行为 null。
   final ProductionMaterialAnalysisMaterial? material;

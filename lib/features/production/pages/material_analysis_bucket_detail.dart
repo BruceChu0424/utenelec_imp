@@ -80,6 +80,7 @@ class _BucketCandidatePlanInput {
     required this.departmentId,
     required this.workshopName,
     required this.workerId,
+    this.publicSurplusOnly = false,
   });
 
   final String materialLineId;
@@ -87,6 +88,9 @@ class _BucketCandidatePlanInput {
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
+
+  /// ADR-099：该候选的前置自制锚点已无剩余需求，本次全是追加的公共备货产出。
+  final bool publicSurplusOnly;
 }
 
 /// 生成计划的已有产品行输入（可安排详情页收集，宿主页校验后单次下达）。
@@ -888,6 +892,8 @@ class _MaterialAnalysisBucketPageState
             departmentId: seed?.departmentId ?? input.departmentId,
             workshopName: seed?.departmentName ?? input.workshopName,
             workerId: seed?.workerId ?? input.workerId,
+            publicSurplusOnly:
+                input.publicSurplusOnly || (seed?.publicSurplusOnly ?? false),
           );
         }(),
     ];

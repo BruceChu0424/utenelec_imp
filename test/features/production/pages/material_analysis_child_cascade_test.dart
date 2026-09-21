@@ -24,7 +24,9 @@
 // 10. 已下过单的子件行仍可追加：追加量默认就写 0，勾着留 0 的本次不下也不报错，
 //     填了正数的才下（用户口径 2026-09-21 第二、四轮）；
 // 11. 下达车间已下达段：需求已全部转入计划的顶层仍可追加一批公共备货产出
-//     （publicSurplusOnly 显式声明，进整页填车间后提交）。
+//     （publicSurplusOnly 显式声明，进整页填车间后提交）；
+// 12. 有自制子层的委外件已下达后，父层级这页仍能给它追加——按候选行走 ARRANGE
+//     （委外台账才跟得上量），并声明 publicSurplusOnly。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -501,6 +503,49 @@ void main() {
     expect(harness.writes.where((r) => r.path.endsWith('/notify')), isEmpty);
   });
 
+  testWidgets('有自制子层的委外件已下达后仍可在父层级追加：走候选行 ARRANGE 并声明公共备货产出', (tester) async {
+    final harness = await _pump(
+      tester,
+      childrenAlreadyOrdered: true,
+      subcontractChildIssued: true,
+    );
+    await _openWorkshopBucket(tester);
+    await _tapRowCheckbox(tester, '成品A');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-bucket-action-ready')),
+    );
+    await tester.pumpAndSettle();
+    // 委外行不再是「—」：前置自制锚点还能再下一批公共备货产出，所以给输入框，
+    // 默认 0。
+    expect(_qtyOf(tester, 'm-s'), '0');
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-s')),
+      '3',
+    );
+    await tester.pumpAndSettle();
+    await _tapDialogRowCheckbox(tester, '委外件S');
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+    final issue = harness.writes
+        .where((r) => r.path.endsWith('/issue-plans'))
+        .toList();
+    expect(issue, hasLength(2));
+    // 下层那一张按**候选行**提交（materialLineId，走 ARRANGE 让委外台账跟量），
+    // 并显式声明本次全是追加的公共备货产出。
+    final line =
+        ((issue.last.data as Map<String, dynamic>)['lines'] as List).single
+            as Map<String, dynamic>;
+    expect(line['materialLineId'], 'm-s');
+    expect(line['analysisLineId'], isNull);
+    expect(line['qty'], 3.0);
+    expect(line['publicSurplusOnly'], true);
+    expect(line['departmentId'], 'dept-1');
+  });
+
   testWidgets('父件尚未提交时退出必须确认，确认后一个写请求都不发', (tester) async {
     final harness = await _pump(tester);
     await _openWorkshopBucket(tester);
@@ -677,6 +722,7 @@ Future<_Harness> _pump(
   bool childrenAlreadyOrdered = false,
   bool previousOrders = false,
   bool topLevelIssued = false,
+  bool subcontractChildIssued = false,
   bool soleComponentSubcontract = false,
   bool makeFirstSubcontract = false,
 }) async {
@@ -698,6 +744,7 @@ Future<_Harness> _pump(
                 childrenAlreadyOrdered: childrenAlreadyOrdered,
                 previousOrders: previousOrders,
                 topLevelIssued: topLevelIssued,
+                subcontractChildIssued: subcontractChildIssued,
               );
         final data = switch (request.path) {
           '/master/warehouses/dict' => [
@@ -907,10 +954,13 @@ Map<String, dynamic> _makeFirstSubcontractAnalysis() {
 /// growableLineQty）、D 已下 PR-0002 且已在处理（无 growableLineQty）。
 /// [topLevelIssued]：成品A 的需求已全部转入计划（剩余 0、不可再按需求排产），
 /// 但服务端允许再追加一批纯公共备货产出（canIssueSurplus）。
+/// [subcontractChildIssued]：再挂一个「有自制子层的委外件 S」，它已经建过前置
+/// 自制任务（锚点 sub-anchor 剩余 0、仍可再下一批公共备货产出）。
 Map<String, dynamic> _analysis({
   required bool childrenAlreadyOrdered,
   bool previousOrders = false,
   bool topLevelIssued = false,
+  bool subcontractChildIssued = false,
 }) => {
   'analysisId': 'analysis-1',
   'status': 'ACTIVE',
@@ -941,6 +991,7 @@ Map<String, dynamic> _analysis({
       'readyNowQty': 0,
       'canSchedule': !topLevelIssued,
       'maxSchedulableQty': topLevelIssued ? 0 : 10,
+      'hasProductionMaterialChildren': true,
       if (topLevelIssued) ...{
         'submittedQty': 10,
         'approvedQty': 10,
@@ -954,6 +1005,29 @@ Map<String, dynamic> _analysis({
         'planExecutionInboundQty': 0,
       },
     },
+    if (subcontractChildIssued)
+      {
+        'analysisLineId': 'sub-anchor',
+        'sourceType': 'SUBCONTRACT_MAKE',
+        'parentAnalysisLineId': 'p1',
+        'goodsId': 'g-s',
+        'goodsCode': 'g-s-code',
+        'goodsName': '委外件S',
+        'unitName': '个',
+        'requestedQty': 10,
+        'submittedQty': 10,
+        'approvedQty': 10,
+        'remainingQty': 0,
+        'issuedPlanQty': 10,
+        'canIssueSurplus': true,
+        'canSchedule': false,
+        'maxSchedulableQty': 0,
+        'scheduleBlockedReason': '当前分析需求已全部转入生产计划',
+        'readyNowQty': 0,
+        'planExecutionStatus': 'WAITING',
+        'latestPlanId': 'plan-s',
+        'planExecutionPlannedQty': 10,
+      },
   ],
   'flatMaterials': [
     _material(
@@ -1011,6 +1085,35 @@ Map<String, dynamic> _analysis({
           ? (documentNo: 'PR-0002', qty: 30.0, growable: false)
           : null,
     ),
+    if (subcontractChildIssued) ...[
+      _material(
+        id: 'm-s',
+        name: '委外件S',
+        goodsId: 'g-s',
+        level: 1,
+        nodeKey: 'ns',
+        perProductQty: 1,
+        requiredQty: 10,
+        route: 'SUBCONTRACT',
+        actionGroupKey: 'ag-s',
+        covered: true,
+        planAnchorAnalysisLineId: 'sub-anchor',
+      ),
+      // S 的子层：有它 S 才算「要先自制目标件再发外」。
+      _material(
+        id: 'm-s-child',
+        name: '委外子件SC',
+        goodsId: 'g-sc',
+        level: 2,
+        nodeKey: 'ns/nsc',
+        parentNodeKey: 'ns',
+        perProductQty: 1,
+        requiredQty: 10,
+        route: 'BUY',
+        actionGroupKey: 'ag-sc',
+        covered: true,
+      ),
+    ],
   ],
   'warehouses': [
     {'warehouseId': 'warehouse-1', 'warehouseName': '主仓'},
@@ -1033,8 +1136,10 @@ Map<String, dynamic> _material({
   String? subcontractOutboundForm,
   bool? actionable,
   ({String documentNo, double qty, bool growable})? previousOrder,
+  String? planAnchorAnalysisLineId,
 }) => {
   'subcontractOutboundForm': subcontractOutboundForm,
+  'planAnchorAnalysisLineId': ?planAnchorAnalysisLineId,
   if (previousOrder != null)
     'notifiedTargets': [
       {

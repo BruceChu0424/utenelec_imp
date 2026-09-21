@@ -261,6 +261,58 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         assertNull(ordered.growableLineQty());
     }
 
+    /** 根(自制) -> S(委外, 有自制子层) -> {C(自制), D(采购)}。 */
+    private record SubTree(FullChainEndToEndTest.World world,UUID analysis,UUID subLine) {}
+
+    private SubTree seedSubcontract(String tag) {
+        var w=fixture.seedWorld("planned-sub-"+tag);fixture.loginAs(w.superAdminUserId());
+        UUID root=UUID.randomUUID(),sub=UUID.randomUUID();
+        fixture.insertGoods(root,"PQS-ROOT-"+root,"委外追加成品","自制",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(sub,"PQS-S-"+sub,"有自制子层的委外件","委外",w.unitId(),w.unitLegacy());
+        fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");fixture.insertBom(sub,w.goodsD(),"1");
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),w.goodsD());
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"planned-sub-preview-"+tag+"-"+root,
+                List.of(new PreviewItem("OTHER",null,root,null,w.unitId(),"planned-sub-source-"+tag+"-"+root,"委外追加",BusinessTime.today().plusDays(10),new BigDecimal("1000")))));
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"planned-sub-routes-"+view.analysisId(),
+                view.flatMaterials().stream().filter(MaterialView::actionable)
+                        .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
+                                m.goodsId().equals(sub)?"SUBCONTRACT":m.goodsId().equals(w.goodsD())?"BUY":"MAKE",null)).toList()));
+        return new SubTree(w,view.analysisId(),line(view,sub));
+    }
+
+    @Test void subcontractWithMakeChildrenCanAppendAPurePublicSurplusBatchThroughArrange() {
+        SubTree t=seedSubcontract("append");
+        AnalysisView view=analyses.detail(t.analysis());
+        qty("1000",material(view,t.subLine()).additionalSupplyRecommendedQty());
+        // 第一次按需求 1000 下达车间：ARRANGE 建前置自制台账 + 锚点 + 计划。
+        commands.issueWorkshopPlans(t.analysis(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),
+                "planned-sub-issue-"+t.analysis()+"-first",t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(candidate(t.subLine(),"1000"))));
+        AnalysisView issued=analyses.detail(t.analysis());
+        UUID anchor=material(issued,t.subLine()).planAnchorAnalysisLineId();
+        assertNotNull(anchor);
+        qty("0",material(issued,t.subLine()).additionalSupplyRecommendedQty());
+        assertFalse(product(issued,anchor).canSchedule());assertTrue(product(issued,anchor).canIssueSurplus());
+        qty("1000",db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",BigDecimal.class,t.analysis()));
+        // 不声明 publicSurplusOnly 照旧 409；声明后按纯公共备货产出追加 200。
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->commands.issueWorkshopPlans(t.analysis(),
+                new IssueWorkshopPlansRequest(issued.version(),issued.fingerprint(),"planned-sub-issue-"+t.analysis()+"-implicit",
+                        t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                        List.of(candidate(t.subLine(),"200")))));
+        AnalysisView before=analyses.detail(t.analysis());
+        commands.issueWorkshopPlans(t.analysis(),new IssueWorkshopPlansRequest(before.version(),before.fingerprint(),
+                "planned-sub-issue-"+t.analysis()+"-append",t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(t.subLine(),null,new BigDecimal("200"),null,null,null,null,null,null,null,Boolean.TRUE))));
+        AnalysisView after=analyses.detail(t.analysis());
+        // 台账跟量到 1200；追加那笔全记公共备货，需求侧一分不多占。
+        qty("1200",db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",BigDecimal.class,t.analysis()));
+        qty("0",material(after,t.subLine()).additionalSupplyRecommendedQty());
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=? ORDER BY created_at DESC LIMIT 1",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},t.analysis(),anchor);
+        qty("0",(BigDecimal)link[0]);qty("200",(BigDecimal)link[1]);
+    }
+
     private static IssueWorkshopPlansRequest.IssuePlanLine candidate(UUID material,String qty) {
         return new IssueWorkshopPlansRequest.IssuePlanLine(material,null,new BigDecimal(qty),null,null,null,null,null,null,null);
     }

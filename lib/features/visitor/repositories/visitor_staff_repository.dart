@@ -157,10 +157,21 @@ class VisitorStaffRepository {
     return (r['ongoing'] as num?)?.toInt() ?? 0;
   }
 
-  // 「我作为接待人的在办数」没有取数方法: 服务端 host-counts 确实带回了 ongoing,
-  // 但「我的访客」整页没有分段栏承接这个数(筛状态走表头下拉且不带计数), 卡上挂了
-  // 用户点进去也找不到对应的那批申请。等那一页做了分段栏再补, 见
-  // lib/shared/badges/in_progress_badge_registry.dart 末尾的说明。
+  /// 我作为接待人的四档计数(ADR-100): 待我确认(红) + 在办合计(黄, 卡面用) +
+  /// 在办的两半 HR 审批中 / 已通过待来访(黄, 「我的访客」页两个分段各挂一个)。
+  ///
+  /// 恒等式 ongoing = hrReviewing + awaitingVisit 由服务端同一次扫描保证, 不会漂;
+  /// 页面两个黄分段之和因此天然等于卡面那枚黄徽章。
+  Future<VisitorHostCounts> hostCounts() async {
+    final r = await _api.get(ApiEndpoints.visitorApprovalHostPendingCount);
+    int at(String key) => (r[key] as num?)?.toInt() ?? 0;
+    return VisitorHostCounts(
+      pending: at('pending'),
+      ongoing: at('ongoing'),
+      hrReviewing: at('hrReviewing'),
+      awaitingVisit: at('awaitingVisit'),
+    );
+  }
 
   Future<VisitorApplicationDetail> approvalDetail(String id) async {
     final r = await _api.get(ApiEndpoints.visitorApprovalById(id));
@@ -265,3 +276,38 @@ class VisitorStaffRepository {
 final visitorStaffRepositoryProvider = Provider<VisitorStaffRepository>((ref) {
   return VisitorStaffRepository(ref.watch(apiClientProvider));
 });
+
+/// 被访人四档计数快照(ADR-100)。值相等: 60s 轮询每轮都 new 一个快照,
+/// 没有 == 时 StateNotifier 会把整页重建一遍(计数没变也重建)。
+class VisitorHostCounts {
+  const VisitorHostCounts({
+    this.pending = 0,
+    this.ongoing = 0,
+    this.hrReviewing = 0,
+    this.awaitingVisit = 0,
+  });
+
+  /// 待我确认接待(红徽章)。
+  final int pending;
+
+  /// 我已确认、这趟来访还没走完(黄徽章, 卡面与顶栏用)。
+  final int ongoing;
+
+  /// [ongoing] 的一半: 我已确认、HR 还在审批(列表 status=pending 段)。
+  final int hrReviewing;
+
+  /// [ongoing] 的另一半: 已通过、访客还没来核验(列表 status=approved 段)。
+  final int awaitingVisit;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VisitorHostCounts &&
+          other.pending == pending &&
+          other.ongoing == ongoing &&
+          other.hrReviewing == hrReviewing &&
+          other.awaitingVisit == awaitingVisit;
+
+  @override
+  int get hashCode => Object.hash(pending, ongoing, hrReviewing, awaitingVisit);
+}

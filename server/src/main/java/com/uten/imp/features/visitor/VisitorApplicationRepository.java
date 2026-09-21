@@ -35,17 +35,29 @@ public interface VisitorApplicationRepository
     List<Object[]> countApprovalQueues(@Param("notBefore") OffsetDateTime notBefore);
 
     /**
-     * 被访人两档计数(ADR-100)，一次扫描出两个数：
+     * 被访人四档计数(ADR-100)，一次扫描出四个数：
      * [0] pending = 待我确认接待，与「我作为接待人」列表默认段同一条件；
-     * [1] ongoing = 我已确认、这趟来访还没走完(HR 审批中 + 已通过待来访)。
+     * [1] ongoing = 我已确认、这趟来访还没走完(HR 审批中 + 已通过待来访)；
+     * [2] hrReviewing = ongoing 里「HR 审批中」那半(列表 status=pending 段)；
+     * [3] awaitingVisit = ongoing 里「已通过待来访」那半(列表 status=approved 段)。
      *
      * <p>ongoing 只认 host_confirmed = true：HR 越过接待人直接批的单子，接待人从没动过手，
      * 不算「我手上在跑的活」。同样按计划来访日收口，过期的不再计入。
+     *
+     * <p>后两档不是冗余：「我的访客」页的分段按**单个 status** 过滤(服务端是 status 等值，
+     * 没有分组过滤)，两个黄色分段各自要有自己的数，卡面黄数才等于页内黄色分段之和。
+     * 恒等式 ongoing = hrReviewing + awaitingVisit 由同一次扫描保证，不会漂。
      */
     @Query(nativeQuery = true, value = """
             SELECT COUNT(*) FILTER (WHERE v.status = 'hostReviewing'),
                    COUNT(*) FILTER (WHERE v.host_confirmed = true
                                       AND v.status IN ('pending', 'approved')
+                                      AND v.planned_visit_at >= :notBefore),
+                   COUNT(*) FILTER (WHERE v.host_confirmed = true
+                                      AND v.status = 'pending'
+                                      AND v.planned_visit_at >= :notBefore),
+                   COUNT(*) FILTER (WHERE v.host_confirmed = true
+                                      AND v.status = 'approved'
                                       AND v.planned_visit_at >= :notBefore)
             FROM visitor_applications v
             WHERE v.is_deleted = false

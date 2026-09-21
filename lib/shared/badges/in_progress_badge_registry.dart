@@ -46,6 +46,10 @@ export 'badge_module.dart';
 /// 每个枚举值就是全站对该入口黄色计数口径的唯一声明: 归属哪个容器、数字从哪来。
 enum InProgressEntry {
   // —— 人事与访客 ——
+  /// 我的访客: 我已确认、这趟来访还没走完(HR 审批中 + 已通过待来访)。
+  /// 页内两个黄分段之和 = 本数(服务端同一次扫描保证)。
+  visitorHostOngoing(BadgeModule.people),
+
   /// 访客审批: 我已批准、访客还没来核验的申请(页内「已通过」分段同数)。
   visitorApprovalOngoing(BadgeModule.people),
 
@@ -94,6 +98,9 @@ typedef InProgressWatch = T Function<T>(ProviderListenable<T> listenable);
 /// 单个入口的在办数。加载中/失败保留上一次的数。
 int inProgressEntryCount(InProgressEntry entry, InProgressWatch watch) =>
     switch (entry) {
+      InProgressEntry.visitorHostOngoing => watch(
+        visitorHostOngoingCountProvider,
+      ),
       InProgressEntry.visitorApprovalOngoing => watch(
         visitorApprovalOngoingCountProvider,
       ),
@@ -200,11 +207,5 @@ int _async(
 // · 品质任务中心不登记黄色: IQC/FQC 只有「待检(红)」与「已出结论(终态)」两档,
 //   没有中间的在办态。仓库侧的「等待检查结果」由
 //   [InProgressEntry.warehouseQualityWaiting] 计一次(那是仓库在等品质部)。
-//
-// · 「我的访客」卡不登记黄色: 语义上确实有在办态(我已确认、还在等 HR 批或等访客来),
-//   但 my_visitors_page 整页没有分段栏, 筛状态走的是表头下拉且不带计数 ——
-//   卡上挂个黄数字, 用户点进去找不到对应的那批申请, 「卡面数 = 页内同色分段之和」
-//   这条自检当场破。要补, 先给那一页做分段栏(照 visitor_approval_list_page 的样子),
-//   再回来登记 —— 而不是反过来。
 //
 // · 基础资料 / 报表 / 主档 / 历史只读页一律不挂: 准则 §二 的结论对黄色同样成立。

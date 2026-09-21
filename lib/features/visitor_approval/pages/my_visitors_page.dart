@@ -27,6 +27,9 @@ import '../../../core/ui/app_notification.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../visitor/models/visitor_application.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
@@ -238,6 +241,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
         ),
         data: (page) {
           final isCompact = context.breakpoint.isCompact;
+          final counts = ref.watch(visitorHostCountsProvider);
           Widget body = RefreshIndicator(
             onRefresh: () async => ref.invalidate(myAsHostProvider(_query)),
             child: MasterDataTableView<VisitorApplication>(
@@ -278,6 +282,68 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               totalPages: page.totalPages,
               onPageChange: (p) => setState(() => _page = p),
             ),
+          );
+          // 分段栏(ADR-100)：本页此前只有表头下拉筛状态、且不带任何计数，于是
+          // 工作台「我的访客」卡上的黄数字点进来无处落地。现在四段各挂各的数：
+          //   待我确认 = 红(轮到我动手) · HR 审批中 / 已通过待来访 = 黄(我已确认、
+          //   球在 HR 或访客手上) · 已拒绝 = 终态不挂。
+          // 两个黄段之和恒等于卡面那枚黄徽章——服务端同一次扫描给出
+          // ongoing = hrReviewing + awaitingVisit，不会漂。
+          body = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s12,
+                  UtenSpacing.s12,
+                  UtenSpacing.s12,
+                  UtenSpacing.s8,
+                ),
+                child: UtenFilterToolbar<String>(
+                  segmentsKey: const Key('my-visitors-status-segments'),
+                  segments: [
+                    UtenFilterSegment(
+                      value: 'hostReviewing',
+                      label: visitorStatusLabel(
+                        VisitorApplicationStatus.hostReviewing,
+                        l10n,
+                      ),
+                      count: counts.pending,
+                      countForm: UtenSegmentCountForm.actionable,
+                    ),
+                    UtenFilterSegment(
+                      value: 'pending',
+                      label: visitorStatusLabel(
+                        VisitorApplicationStatus.pending,
+                        l10n,
+                      ),
+                      count: counts.hrReviewing,
+                      countForm: UtenSegmentCountForm.inProgress,
+                    ),
+                    UtenFilterSegment(
+                      value: 'approved',
+                      label: visitorStatusLabel(
+                        VisitorApplicationStatus.approved,
+                        l10n,
+                      ),
+                      count: counts.awaitingVisit,
+                      countForm: UtenSegmentCountForm.inProgress,
+                    ),
+                    UtenFilterSegment(
+                      value: 'rejected',
+                      label: visitorStatusLabel(
+                        VisitorApplicationStatus.rejected,
+                        l10n,
+                      ),
+                    ),
+                  ],
+                  selected: {_status ?? 'hostReviewing'},
+                  onSelectionChanged: (value) =>
+                      _onFilterChanged('status', value),
+                ),
+              ),
+              Expanded(child: body),
+            ],
           );
           // compact 自套收敛；selectable:false——访客待办计数轮询（结构性闪现）
           // 与拖选并发有 CME 风险（准则 §3.4，用户口径：轮询页不包）。

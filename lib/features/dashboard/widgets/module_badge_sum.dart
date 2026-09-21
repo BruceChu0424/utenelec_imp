@@ -171,6 +171,8 @@ int _resolveInProgressCount(
   switch (kind) {
     case WorkbenchBadgeKind.expenseMine:
       return inProgressEntryCount(InProgressEntry.expenseMineProcessing, watch);
+    case WorkbenchBadgeKind.visitorHost:
+      return inProgressEntryCount(InProgressEntry.visitorHostOngoing, watch);
     case WorkbenchBadgeKind.visitorApproval:
       return inProgressEntryCount(
         InProgressEntry.visitorApprovalOngoing,
@@ -197,9 +199,7 @@ int _resolveInProgressCount(
     //  · 钱流：球一旦离开财务就落在采购/仓库/销售那几张卡上，这里再数是跨卡双计；
     //  · 品质任务中心：IQC/FQC 只有待检与已出结论两档，没有在办态；
     //  · HR 任务中心/信息变更审核：今日到期事项与纯审批队列，同样没有在办态；
-    //  · 我的访客：语义上有在办态，但那一页没有分段栏承接，卡上挂了点进去看不到；
     //  · 服务器状态：告警只有「还在报」与「已恢复」，不是流程。
-    case WorkbenchBadgeKind.visitorHost:
     case WorkbenchBadgeKind.finance:
     case WorkbenchBadgeKind.qualityInspection:
     case WorkbenchBadgeKind.hrReview:

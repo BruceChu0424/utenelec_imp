@@ -82,6 +82,14 @@ public final class VisitorApplyDto {
      */
     public record VisitorQueueCounts(long pending, long ongoing) {}
 
+    /**
+     * 被访人侧四档(ADR-100)：在 {@link VisitorQueueCounts} 两档之外再给出 ongoing 的两半。
+     * 「我的访客」页的分段按单个 status 过滤，两个黄色分段各自要有数，
+     * 卡面黄数才等于页内黄色分段之和；恒等式 ongoing = hrReviewing + awaitingVisit。
+     */
+    public record VisitorHostQueueCounts(long pending, long ongoing,
+                                         long hrReviewing, long awaitingVisit) {}
+
     public record VisitorDetail(
             UUID id, String visitorName, String phone, String idCardLast4,
             String company, String visitPurpose, boolean hasVehicle, String plateNo,

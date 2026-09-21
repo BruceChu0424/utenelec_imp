@@ -59,6 +59,7 @@ void refreshGlobalBadges(WidgetRef ref) {
   ref.read(purchaseTaskInProgressCountProvider.notifier).refresh();
   ref.read(subcontractTaskInProgressCountProvider.notifier).refresh();
   ref.read(rdTaskInProgressCountProvider.notifier).refresh();
+  ref.read(visitorHostCountsProvider.notifier).refresh();
   ref.read(visitorApprovalOngoingCountProvider.notifier).refresh();
   invalidateWorkbenchBadgeCaches(ref);
 }

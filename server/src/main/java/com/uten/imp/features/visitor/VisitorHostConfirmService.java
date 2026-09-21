@@ -8,7 +8,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
-import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorQueueCounts;
+import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorHostQueueCounts;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +59,7 @@ public class VisitorHostConfirmService {
      * ongoing 是我已确认、这趟来访还没走完的(HR 审批中 + 已通过待来访)——球不在我手上，走黄色。
      */
     @Transactional(readOnly = true)
-    public VisitorQueueCounts myAsHostCounts() {
+    public VisitorHostQueueCounts myAsHostCounts() {
         UUID employeeId = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getEmployeeId();
         if (employeeId == null) {
@@ -67,8 +67,9 @@ public class VisitorHostConfirmService {
         }
         Object[] row = appRepo.countHostQueues(
                 employeeId, BusinessTime.startOfDay(BusinessTime.today())).getFirst();
-        return new VisitorQueueCounts(
-                ((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        return new VisitorHostQueueCounts(
+                ((Number) row[0]).longValue(), ((Number) row[1]).longValue(),
+                ((Number) row[2]).longValue(), ((Number) row[3]).longValue());
     }
 
     @Transactional

@@ -31,10 +31,13 @@ class QualityBatchSubmission {
        fqcInspectionIds = List.unmodifiable(fqcInspectionIds.toSet()),
        fqcIdempotencyKey = 'fqc-batch-approval-${const Uuid().v4()}';
 
-  /// 2026-09-18 用户口径「批量提交超级慢」：收货单走最多 4 条并行通道提交，
-  /// 每张单仍是服务端一个独立原子事务（冻结命令 + 幂等键不变）。服务端的
-  /// 行锁/库存锁/来源预锁全部按稳定顺序获取，多用户同时提交本就是既有场景。
-  static const int _sendLanes = 4;
+  /// 2026-09-21 起收货单按报告顺序逐单提交(此前 2026-09-18 为最多 4 条并行通道)。
+  /// 实测(QualityBatchApprovalPerfProbeTest)：同一主仓/同一订货单的收货单在服务端本就
+  /// 按同一把物料分析仓级锁与订单行锁串行执行，4 条通道并不比逐单快，反而互相等锁、
+  /// 撞「来源集合在预读后变化」后整笔回滚重跑；真正的提速在服务端(一次结论一个自动
+  /// 转正批次、只刷一遍物料分析)。每张单仍是服务端一个独立原子事务(冻结命令 + 幂等键
+  /// 不变)，失败不连坐、重试只补未确认的单。
+  static const int _sendLanes = 1;
 
   final List<QualityReceiptSubmission> receipts;
   final List<String> fqcInspectionIds;

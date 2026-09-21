@@ -25,7 +25,23 @@ class ProductionInspectionStockInServiceTest {
         var order = inOrder(purchase, subcontract, wakeup);
         order.verify(purchase).advanceInspectionStockInState(first.receiptId(), first.batchId());
         order.verify(subcontract).advanceInspectionStockInState(second.receiptId());
-        order.verify(wakeup).afterInspectionStockInConfirmed(batches);
+        order.verify(wakeup).afterInspectionStockInConfirmed(batches, true);
+        verifyNoMoreInteractions(purchase, subcontract, wakeup);
+    }
+
+    @Test
+    void resolvingQualityCommandStillAdvancesSupplyButLeavesTheRefreshToTheReceiptWake() {
+        var purchase = mock(ProductionPurchaseSupplyTransitionService.class);
+        var subcontract = mock(ProductionSubcontractSupplyTransitionService.class);
+        var wakeup = mock(MaterialAnalysisSupplyWakeupService.class);
+        var service = new ProductionInspectionStockInService(purchase, subcontract, wakeup);
+        var batch = new ReceiptStockIn("PURCHASE", UUID.randomUUID(), UUID.randomUUID(), List.of(UUID.randomUUID()));
+
+        service.afterInspectionStockInConfirmed(List.of(batch), false);
+
+        var order = inOrder(purchase, wakeup);
+        order.verify(purchase).advanceInspectionStockInState(batch.receiptId(), batch.batchId());
+        order.verify(wakeup).afterInspectionStockInConfirmed(List.of(batch), false);
         verifyNoMoreInteractions(purchase, subcontract, wakeup);
     }
 }

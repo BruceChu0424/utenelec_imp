@@ -6,7 +6,6 @@ import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
-import com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -207,18 +206,17 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 }
             }
         }
-        List<ReceiptStockIn> autoStockIns = new ArrayList<>();
+        List<ProcurementIqcStockInService.PreStockedRelease> preStocked = new ArrayList<>();
         for (var event : command.events()) {
             if (replay) {
                 notifyDispositionReplay(receiptType, receiptId, event.inspectionItemId(), event.id(),
                         event.action(), (Boolean) history.get(event.id())[5]);
             } else {
                 applyDisposition(receiptType, receiptId, rows.get(event.inspectionItemId()), event.id(),
-                        event.action(), event.quantity(), event.reason(), command.requestHash(), autoStockIns);
+                        event.action(), event.quantity(), event.reason(), command.requestHash(), preStocked);
             }
         }
-        advanceProductionAfterAutoStockIn(autoStockIns);
-        completeReceiptDisposition(receiptType, receiptId);
+        completeReceiptDisposition(receiptType, receiptId, preStocked);
     }
 
     private static ApiException batchReplayConflict() {
@@ -261,23 +259,13 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         UUID eventId = dispositionEventId(inspectionItemId, idempotencyKey);
         Boolean replayRequiresWarehouseStockIn = replayRequiresWarehouseStockIn(
                 eventId, inspectionItemId, action, requested, reason);
-        List<ReceiptStockIn> autoStockIns = new ArrayList<>();
+        List<ProcurementIqcStockInService.PreStockedRelease> preStocked = new ArrayList<>();
         if (replayRequiresWarehouseStockIn != null) {
             notifyDispositionReplay(receiptType, receiptId, inspectionItemId, eventId, action, replayRequiresWarehouseStockIn);
         } else {
-            applyDisposition(receiptType, receiptId, row, eventId, action, requested, reason, null, autoStockIns);
+            applyDisposition(receiptType, receiptId, row, eventId, action, requested, reason, null, preStocked);
         }
-        advanceProductionAfterAutoStockIn(autoStockIns);
-        completeReceiptDisposition(receiptType, receiptId);
-    }
-
-    /**
-     * 先入库后检(V596)：本次命令里合格并按上架位置自动转正入库的批次，在结案回调前
-     * 一次性推进生产联动(与仓库手工确认入库同一入口，重放不会再次推进)。
-     */
-    private void advanceProductionAfterAutoStockIn(List<ReceiptStockIn> autoStockIns) {
-        if (autoStockIns.isEmpty()) return;
-        stockInProduction.afterInspectionStockInConfirmed(List.copyOf(autoStockIns));
+        completeReceiptDisposition(receiptType, receiptId, preStocked);
     }
 
     /** The complete receipt remains locked until every event and final reconciliation commits. */
@@ -325,7 +313,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
 
     private void applyDisposition(String receiptType, UUID receiptId, Object[] row, UUID eventId,
                                   String action, BigDecimal requested, String reason, String batchRequestHash,
-                                  List<ReceiptStockIn> autoStockIns) {
+                                  List<ProcurementIqcStockInService.PreStockedRelease> preStocked) {
         UUID inspectionItemId = (UUID) row[0];
         String currentStatus = (String) row[10];
         if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
@@ -387,20 +375,19 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 eventId, inspectionItemId, action, requested, reason, actor, now,
                 releasedAmount, releasedWeight, releasedWeightUnitId, batchRequestHash);
         UUID preStockedWarehouseId = (UUID) row[14];
-        ReceiptStockIn autoStockIn = null;
-        if ("PASS".equals(action) && preStockedWarehouseId != null) {
-            // 先入库后检(V596)：实物早已在上架仓/库位，合格即按记录的位置自动完成正式入库
-            // (V446 同一套批次/流水/价值守卫)，不再给仓库发「待确认入库」任务。
-            // 上架仓已不可用(极少数运维情形)时返回 null，退回「待仓库确认入库」原流程。
-            autoStockIn = iqcStockIn.confirmPreStockedRelease(
-                    receiptType, receiptId, eventId, inspectionItemId,
-                    preStockedWarehouseId, (String) row[15]);
-            if (autoStockIn != null) autoStockIns.add(autoStockIn);
-        }
-        if ("PASS".equals(action) && autoStockIn == null) {
-            publishIqcStockInPending(
-                    receiptType, receiptId, inspectionItemId, eventId);
-        } else if (!"PASS".equals(action)) {
+        if ("PASS".equals(action)) {
+            if (preStockedWarehouseId != null) {
+                // 先入库后检(V596)：实物早已在上架仓/库位，合格即按记录的位置自动完成正式入库
+                // (V446 同一套批次/流水/价值守卫)，不再给仓库发「待确认入库」任务。本次结论的所有
+                // 已上架合格行在收尾合成一个自动批次(completeReceiptDisposition)，上架仓已不可用
+                // (极少数运维情形)的行在那里退回「待仓库确认入库」原流程。
+                preStocked.add(new ProcurementIqcStockInService.PreStockedRelease(
+                        eventId, inspectionItemId, preStockedWarehouseId, (String) row[15]));
+            } else {
+                publishIqcStockInPending(
+                        receiptType, receiptId, inspectionItemId, eventId);
+            }
+        } else {
             publishIqcRejectionDetected(
                     receiptType, receiptId, inspectionItemId, eventId);
         }
@@ -412,15 +399,41 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         row[10] = nextStatus;
     }
 
-    private void completeReceiptDisposition(String receiptType, UUID receiptId) {
+    /**
+     * 本次结论的收尾(单张与批量同一条路)：先入库后检的合格行合成一个自动转正批次(2026-09-21 起不再逐行)，
+     * 上架仓已不可用的行改投「待仓库确认入库」；随后按收货单重算订单结案，整单结案时唤醒生产。
+     * 整单在本次结论里结案时，结案回调本来就会按整单 RESOLVED 维度刷新同一批物料分析，自动转正那一步
+     * 只推进供给状态与到货通知、不再先刷一遍(同一事务里两遍算的是同一份事实，此前每张单白刷一次)。
+     */
+    private void completeReceiptDisposition(String receiptType, UUID receiptId,
+                                            List<ProcurementIqcStockInService.PreStockedRelease> preStocked) {
+        var autoStockIn = iqcStockIn.confirmPreStockedReleases(receiptType, receiptId, preStocked);
+        Map<UUID, UUID> inspectionByPassEvent = new java.util.HashMap<>();
+        for (var release : preStocked) inspectionByPassEvent.put(release.passEventId(), release.inspectionItemId());
+        for (UUID passEventId : autoStockIn.fallbackPassEventIds()) {
+            publishIqcStockInPending(receiptType, receiptId, inspectionByPassEvent.get(passEventId), passEventId);
+        }
         boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
+        boolean wakeProduction = productionWakePending(receiptType, receiptId, wholeReceiptResolved);
+        if (!autoStockIn.batches().isEmpty()) {
+            stockInProduction.afterInspectionStockInConfirmed(autoStockIn.batches(), !wakeProduction);
+        }
         // Closure reads warehouse-stocked/returned quantities, not PASS/FAIL.
         // No intermediate event changes those inputs; reconcile each order once.
         recalculateOrderClosure(receiptType, receiptId);
-        wakeIfWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now(), wholeReceiptResolved);
+        if (wakeProduction) {
+            wakeWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now());
+        }
         if (wholeReceiptResolved) {
             chainNotice.resolveReviewNotices("IQC_INSPECTION", receiptId, "INSPECTED");
         }
+    }
+
+    private boolean productionWakePending(String receiptType, UUID receiptId, boolean wholeReceiptResolved) {
+        if (!wholeReceiptResolved || alreadyReceiptResolved(receiptType, receiptId)) {
+            return false;
+        }
+        return true;
     }
 
     private void publishIqcStockInPending(
@@ -660,23 +673,16 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     private boolean allResolved(String receiptType, UUID receiptId) {
-        Integer unfinished = ((Number) em.createNativeQuery("""
-                        SELECT COUNT(*) FROM procurement_inspection_items
-                        WHERE receipt_type = :rt AND receipt_id = :rid
-                          AND status <> 'RESOLVED'
-                        """)
-                .setParameter("rt", receiptType)
-                .setParameter("rid", receiptId)
-                .getSingleResult()).intValue();
-        // 有冻结行且全部 RESOLVED 才算结案。
-        Integer total = ((Number) em.createNativeQuery("""
-                        SELECT COUNT(*) FROM procurement_inspection_items
+        // 有冻结行且全部 RESOLVED 才算结案(一条语句同时数总行与未结案行)。
+        Object[] counts = (Object[]) em.createNativeQuery("""
+                        SELECT COUNT(*), COUNT(*) FILTER (WHERE status <> 'RESOLVED')
+                        FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
                         """)
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
-                .getSingleResult()).intValue();
-        return total > 0 && unfinished == 0;
+                .getSingleResult();
+        return ((Number) counts[0]).intValue() > 0 && ((Number) counts[1]).intValue() == 0;
     }
 
     private boolean alreadyReceiptResolved(String receiptType, UUID receiptId) {
@@ -692,14 +698,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         return resolved > 0;
     }
 
-    private void wakeIfWholeReceiptResolved(
-            String receiptType,
-            UUID receiptId,
-            OffsetDateTime now,
-            boolean wholeReceiptResolved) {
-        if (!wholeReceiptResolved || alreadyReceiptResolved(receiptType, receiptId)) {
-            return;
-        }
+    private void wakeWholeReceiptResolved(String receiptType, UUID receiptId, OffsetDateTime now) {
         // Reconcile quality-terminal shortage/replacement projections once.
         // The transition services now read warehouse_stocked_base_qty, so this
         // callback cannot turn an unstocked PASS quantity into READY inventory.

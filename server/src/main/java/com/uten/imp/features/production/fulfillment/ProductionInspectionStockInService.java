@@ -22,6 +22,12 @@ public class ProductionInspectionStockInService implements ProductionInspectionS
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches) {
+        afterInspectionStockInConfirmed(batches, true);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches, boolean refreshAnalyses) {
         if (batches.isEmpty()) return;
         for (ReceiptStockIn batch : batches) {
             switch (batch.receiptType()) {
@@ -34,6 +40,6 @@ public class ProductionInspectionStockInService implements ProductionInspectionS
         }
         // Run after every source has advanced, so mixed purchase/subcontract receipts
         // cannot repeatedly rebuild the same analysis from intermediate batch states.
-        materialAnalysisWakeup.afterInspectionStockInConfirmed(batches);
+        materialAnalysisWakeup.afterInspectionStockInConfirmed(batches, refreshAnalyses);
     }
 }

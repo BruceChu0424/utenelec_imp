@@ -59,8 +59,9 @@ class WarehouseSalesPickingDraft {
     if (choice != null) return choice.warehouseName;
     final line = lineOf(lineId);
     if (line?.warehouseId == selected) return line?.warehouseName;
-    if (detail.header.warehouseId == selected)
+    if (detail.header.warehouseId == selected) {
       return detail.header.warehouseName;
+    }
     return null;
   }
 

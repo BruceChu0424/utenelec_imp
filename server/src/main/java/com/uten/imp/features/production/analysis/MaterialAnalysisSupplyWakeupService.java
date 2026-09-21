@@ -76,14 +76,26 @@ public class MaterialAnalysisSupplyWakeupService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches) {
-        Map<UUID, UUID> makers = new TreeMap<>();
-        for (AnalysisTarget target : inspectionStockInTargets(batches)) {
-            makers.put(target.analysisId(), target.makerEmployeeId());
+        afterInspectionStockInConfirmed(batches, true);
+    }
+
+    /**
+     * {@code refreshAnalyses=false}：只发到货进展通知，不刷分析。仅供「整单在同一次品质结论里结案」的
+     * 自动转正调用——结案回调随后按整单 RESOLVED 维度(是本批维度的超集)刷新同一批分析，
+     * 同一事务里先刷一遍是白算(2026-09-21 品质批量审批提速)。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches, boolean refreshAnalyses) {
+        if (refreshAnalyses) {
+            Map<UUID, UUID> makers = new TreeMap<>();
+            for (AnalysisTarget target : inspectionStockInTargets(batches)) {
+                makers.put(target.analysisId(), target.makerEmployeeId());
+            }
+            List<AnalysisTarget> targets = new ArrayList<>(makers.size());
+            makers.forEach((analysisId, makerEmployeeId) ->
+                    targets.add(new AnalysisTarget(analysisId, makerEmployeeId)));
+            refreshTargets(targets);
         }
-        List<AnalysisTarget> targets = new ArrayList<>(makers.size());
-        makers.forEach((analysisId, makerEmployeeId) ->
-                targets.add(new AnalysisTarget(analysisId, makerEmployeeId)));
-        refreshTargets(targets);
         // 到货进展通知(V599)：这次真的写进库存的量，按维度命中还在等待的车间工单发聚合卡。
         notifyWaitingSegmentsAboutArrival(
                 "IQC:" + triggerFingerprint(batches == null ? List.of() : batches.stream()

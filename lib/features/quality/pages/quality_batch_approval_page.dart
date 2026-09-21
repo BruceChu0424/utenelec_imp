@@ -3,8 +3,9 @@
 // 用户口径：多选的内容都汇总到一个页面，可多选/单选，填合格/不合格数量后
 // 「提交报告」一次办结：
 //   - IQC 收货单区：按单分组，逐行勾选 + 行内编辑合格数量/不合格数量
-//     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-batch（每单一事务，
-//     2026-09-18 起 4 通道并行，失败不连坐、重试只补未确认的单）；
+//     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-batch(每单一事务，
+//     按报告顺序逐单发送，失败不连坐、重试只补未确认的单；2026-09-21 起不再 4 通道
+//     并行，见 QualityBatchSubmission 的实测说明)；
 //   - FQC 自制产成品区：V547 按品质检查单分组（组头三态复选，镜像 IQC 收货单组），
 //     无检查单的历史任务单列；勾选任务 = 全部合格（既有 pass-all 语义）；
 //   - 右下角 UtenFloatingActionGroup：UtenSelectionSummaryPill（已选计数唯一出处，✕ 一键清空）
@@ -410,17 +411,17 @@ class _QualityBatchApprovalPageState
     await _sendSubmission();
   }
 
-  /// 提交期间忙碌浮层的进度文案：并行通道逐单确认，已确认的单不重发。
+  /// 提交期间忙碌浮层的进度文案：逐单确认，已确认的单不重发。
   String _submitOverlayDescription() {
     final submission = _submission;
     if (submission == null || submission.receipts.isEmpty) {
       return submission != null && submission.fqcInspectionIds.isNotEmpty
           ? '自制产成品整批提交中，响应丢失重试不会重复判定。'
-          : '并行提交中，已确认部分不会重复发送。';
+          : '逐单提交中，已确认部分不会重复发送。';
     }
     final buffer = StringBuffer(
       '已确认 ${submission.completedReceiptCount}/${submission.receipts.length} 单'
-      '（多单并行，每单一事务）',
+      '(按报告顺序逐单提交，每单一事务)',
     );
     if (submission.fqcInspectionIds.isNotEmpty) {
       buffer.write('，另含自制产成品 ${submission.fqcInspectionIds.length} 项');

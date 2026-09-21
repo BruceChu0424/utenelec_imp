@@ -199,11 +199,14 @@ class ProcurementIqcPreStockInEndToEndTest {
             assertEquals(0, RECEIPT_QTY.compareTo(balance(leaf, row.goodsId())), "委外回厂合格量按上架仓进库存");
             assertEquals(0, RECEIPT_QTY.compareTo(jdbc.queryForObject("SELECT warehouse_stocked_base_qty FROM procurement_inspection_items WHERE id=?", BigDecimal.class, row.inspectionId())));
         }
-        assertEquals(c.rows().size(), jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=? AND origin='PRE_STOCKED_AUTO'", Integer.class, c.receipt()));
+        // 2026-09-21：一次结论里所有已上架合格行合成一个自动批次(此前每行一个批次)，行数仍逐行守恒。
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=? AND origin='PRE_STOCKED_AUTO'", Integer.class, c.receipt()));
+        assertEquals(c.rows().size(), jdbc.queryForObject("SELECT confirmed_count FROM procurement_iqc_stock_in_batches WHERE receipt_id=? AND origin='PRE_STOCKED_AUTO'", Integer.class, c.receipt()));
+        assertEquals(c.rows().size(), jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batch_items item JOIN procurement_iqc_stock_in_batches batch ON batch.id=item.batch_id WHERE batch.receipt_id=?", Integer.class, c.receipt()));
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM business_outbox WHERE event_type='PROCUREMENT_IQC_STOCK_IN_PENDING' AND payload::text LIKE '%' || ? || '%'", Integer.class, c.receipt().toString()));
         // 同一批次重放：不再产生新批次、库存不翻倍。
         inspections.passBatch("SUBCONTRACT", c.receipt(), request);
-        assertEquals(c.rows().size(), jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", Integer.class, c.receipt()));
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", Integer.class, c.receipt()));
         for (var row : c.rows()) assertEquals(0, RECEIPT_QTY.compareTo(balance(leaf, row.goodsId())));
         drainOutbox();
     }

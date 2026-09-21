@@ -20,4 +20,11 @@ public interface ProductionInspectionStockInPort {
 
     /** Only newly posted batches; replayed commands must not advance production again. */
     void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches);
+
+    /**
+     * Same follow-up; {@code refreshAnalyses=false} only advances supply state and arrival notices.
+     * A caller may pass false only when this very transaction still refreshes every affected analysis
+     * afterwards (the whole receipt resolves in the same quality command), never to skip a refresh outright.
+     */
+    void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches, boolean refreshAnalyses);
 }

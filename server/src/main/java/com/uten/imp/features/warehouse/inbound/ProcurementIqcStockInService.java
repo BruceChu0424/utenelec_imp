@@ -285,58 +285,144 @@ public class ProcurementIqcStockInService {
         return result;
     }
 
+    /** One shelved line the quality decision just released: its PASS event and the recorded position. */
+    record PreStockedRelease(UUID passEventId, UUID inspectionItemId, UUID warehouseId, String place) {
+    }
+
+    /** Auto stock-in outcome: batches that entered stock, plus PASS events that fall back to the warehouse queue. */
+    record PreStockedAutoStockIn(List<ReceiptStockIn> batches, List<UUID> fallbackPassEventIds) {
+        static final PreStockedAutoStockIn NONE = new PreStockedAutoStockIn(List.of(), List.of());
+    }
+
+    /** One batch holds at most this many rows (procurement_iqc_stock_in_item_position_chk / batch_count_chk). */
+    private static final int MAX_BATCH_ROWS = 100;
+
     /**
-     * 先入库后检(V596)：品质 PASS 事件刚落账、实物早已在上架仓/库位，按记录的位置在同一事务
-     * 完成正式入库——与仓库手工确认走同一条 {@link #confirmOne} 路径(批次/流水/价值守卫、
-     * 库位学习、待办撤回全部一致)，只是批次 origin=PRE_STOCKED_AUTO、幂等键由 PASS 事件派生、
-     * 操作人为出结论的品质账号。调用方(ProcurementInspectionService)已持有本收货单的待检行锁
-     * 与来源预锁(上架仓在首次预锁时即已纳入)；这里只做覆盖校验，不补拿新锁。
-     * 生产联动由调用方在整批结论后统一推进，本方法返回本批用于该联动。
+     * 先入库后检(V596)：本次品质结论里所有已上架且合格的行，同一事务按记录的位置一次完成正式入库——
+     * 与仓库手工确认走同一条 {@link #confirmOne} 路径(批次/流水/价值守卫、库位学习、待办撤回全部一致)，
+     * 只是批次 origin=PRE_STOCKED_AUTO、幂等键由 PASS 事件派生、操作人为出结论的品质账号。
+     *
+     * <p>2026-09-21 起一次结论 = 一个自动批次。此前每个 PASS 事件各起一个批次：每行都重跑一遍来源预锁发现、
+     * 放行切片加锁、订单结案重算、库位学习与仓库待办撤回，5 行的收货单一次结论要 1200 多条 SQL，
+     * 品质部「批量审批」因此特别慢。委外回厂按原材料批次拆行后超过一个批次的上限(100 行)时，按放行
+     * 事件对半拆成多个自动批次。调用方(ProcurementInspectionService)已持有本收货单的待检行锁与来源预锁
+     * (上架仓在首次预锁时即已纳入)；这里只做覆盖校验，不补拿新锁。上架仓已不可用(极少数运维情形)的行
+     * 不挡结论：作为回退事件返回，由调用方改投「待仓库确认入库」。生产联动由调用方在整批结论后统一推进。
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    ReceiptStockIn confirmPreStockedRelease(
-            String receiptType, UUID receiptId, UUID passEventId, UUID inspectionItemId,
-            UUID preStockedWarehouseId, String preStockedPlace) {
+    PreStockedAutoStockIn confirmPreStockedReleases(
+            String receiptType, UUID receiptId, List<PreStockedRelease> releases) {
+        if (releases == null || releases.isEmpty()) return PreStockedAutoStockIn.NONE;
         String type = normalizeReceiptType(receiptType);
-        if (passEventId == null || inspectionItemId == null || preStockedWarehouseId == null
-                || preStockedPlace == null || preStockedPlace.isBlank()) {
-            throw conflict("先入库后检的自动转正缺少上架位置或放行事件，请刷新后重试");
+        Set<UUID> seen = new HashSet<>();
+        for (PreStockedRelease release : releases) {
+            if (release == null || release.passEventId() == null || release.inspectionItemId() == null
+                    || release.warehouseId() == null || release.place() == null || release.place().isBlank()) {
+                throw conflict("先入库后检的自动转正缺少上架位置或放行事件，请刷新后重试");
+            }
+            if (!seen.add(release.passEventId())) throw conflict("同一品质放行事件在一次结论里只能自动转正一次");
         }
-        // 上架后仓库被停用/改成非叶仓是极少数运维动作：不能因此挡住品质结论，退回原流程
-        // (放行进仓库待确认队列，由仓库另选实际仓)；调用方据 null 改投「待仓库入库」事件。
-        try {
-            warehouseScopes.requireActiveLeafWarehouse(preStockedWarehouseId, "上架仓库");
-        } catch (ApiException shelfUnavailable) {
-            return null;
+        // 上架后仓库被停用/改成非叶仓是极少数运维动作：不能因此挡住品质结论，这些行退回原流程
+        // (放行进仓库待确认队列，由仓库另选实际仓)；每个上架仓只校验一次。
+        Map<UUID, Boolean> usableShelves = new LinkedHashMap<>();
+        List<PreStockedRelease> confirmable = new ArrayList<>();
+        List<UUID> fallback = new ArrayList<>();
+        for (PreStockedRelease release : releases) {
+            boolean usable = usableShelves.computeIfAbsent(release.warehouseId(), warehouse -> {
+                try {
+                    warehouseScopes.requireActiveLeafWarehouse(warehouse, "上架仓库");
+                    return true;
+                } catch (ApiException shelfUnavailable) {
+                    return false;
+                }
+            });
+            if (usable) confirmable.add(release);
+            else fallback.add(release.passEventId());
         }
-        List<?> released = em.createNativeQuery("""
-                        SELECT base_qty FROM procurement_inspection_events
-                        WHERE id = :id AND inspection_item_id = :item AND action = 'PASS'
-                          AND requires_warehouse_stock_in = TRUE
-                        """)
-                .setParameter("id", passEventId)
-                .setParameter("item", inspectionItemId)
-                .getResultList();
-        if (released.size() != 1) throw conflict("品质放行事件不存在，不能自动转正入库");
-        BigDecimal quantity = decimal(released.getFirst());
-        NormalizedCommand command = normalize(type, receiptId, new ConfirmRequest(
-                "prestock:" + passEventId,
-                List.of(new ConfirmItem(passEventId, quantity, quantity, preStockedPlace, preStockedWarehouseId))));
+        if (confirmable.isEmpty()) return new PreStockedAutoStockIn(List.of(), List.copyOf(fallback));
+        Map<UUID, BigDecimal> released = releasedQuantities(type, receiptId, confirmable);
+        List<ConfirmItem> items = confirmable.stream()
+                .sorted(Comparator.comparing(release -> release.passEventId().toString()))
+                .map(release -> new ConfirmItem(release.passEventId(), released.get(release.passEventId()),
+                        released.get(release.passEventId()), release.place(), release.warehouseId()))
+                .toList();
         UUID actorUserId = currentUser.requireId();
-        var mutationGuard = mutationLocks.stockIn(List.of(lockRef(type, receiptId, command)));
+        NormalizedCommand whole = normalize(type, receiptId, new ConfirmRequest(preStockedKey(items), items));
+        var mutationGuard = mutationLocks.stockIn(List.of(lockRef(type, receiptId, whole)));
+        List<PreparedConfirmation> prepared = preparePreStocked(type, receiptId, items, actorUserId);
+        ProcurementReceiptOriginPolicy.requireNative(em, type, List.of(receiptId));
+        mutationGuard.verifyUnchanged();
+        List<ReceiptStockIn> batches = new ArrayList<>();
+        for (PreparedConfirmation item : prepared) {
+            NormalizedCommand command = item.batch().command();
+            ConfirmResult result = confirmOne(type, receiptId, command, item.locked(), ORIGIN_PRE_STOCKED_AUTO);
+            batches.add(new ReceiptStockIn(type, receiptId, result.batchId(), command.items().stream()
+                    .map(line -> item.locked().get(line.passEventId()).inspectionItemId()).distinct().toList()));
+        }
+        return new PreStockedAutoStockIn(List.copyOf(batches), List.copyOf(fallback));
+    }
+
+    /** Every release must be a fresh PASS event of this receipt that still awaits warehouse stock-in. */
+    private Map<UUID, BigDecimal> releasedQuantities(String type, UUID receiptId, List<PreStockedRelease> releases) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT event.id, event.inspection_item_id, event.base_qty
+                        FROM procurement_inspection_events event
+                        JOIN procurement_inspection_items inspection ON inspection.id = event.inspection_item_id
+                        WHERE event.id IN (:ids) AND event.action = 'PASS'
+                          AND event.requires_warehouse_stock_in = TRUE
+                          AND inspection.receipt_type = :type AND inspection.receipt_id = :receiptId
+                        """)
+                .setParameter("ids", releases.stream().map(PreStockedRelease::passEventId).toList())
+                .setParameter("type", type)
+                .setParameter("receiptId", receiptId)
+                .getResultList();
+        Map<UUID, Object[]> byEvent = new LinkedHashMap<>();
+        for (Object[] row : rows) byEvent.put(uuid(row[0]), row);
+        Map<UUID, BigDecimal> released = new LinkedHashMap<>();
+        for (PreStockedRelease release : releases) {
+            Object[] row = byEvent.get(release.passEventId());
+            if (row == null || !release.inspectionItemId().equals(uuid(row[1]))) {
+                throw conflict("品质放行事件不存在，不能自动转正入库");
+            }
+            released.put(release.passEventId(), decimal(row[2]));
+        }
+        return released;
+    }
+
+    /** Bisects by PASS event only when a subcontract receipt splits into more original material batches than one batch holds. */
+    private List<PreparedConfirmation> preparePreStocked(
+            String type, UUID receiptId, List<ConfirmItem> items, UUID actorUserId) {
+        NormalizedCommand command = normalize(type, receiptId, new ConfirmRequest(preStockedKey(items), items));
         lockCommand(actorUserId, command.idempotencyKey());
-        PreparedConfirmation prepared = prepareConfirmation(new NormalizedBatch(type, receiptId, command), actorUserId);
+        PreparedConfirmation prepared = prepareConfirmation(
+                new NormalizedBatch(type, receiptId, command), actorUserId, false);
         if (prepared.existing() != null) {
             throw conflict("该品质放行已自动转正入库过，请刷新后重试");
         }
-        ProcurementReceiptOriginPolicy.requireNative(em,type,List.of(receiptId));
-        mutationGuard.verifyUnchanged();
-        ConfirmResult result = confirmOne(
-                type, receiptId, prepared.batch().command(), prepared.locked(), ORIGIN_PRE_STOCKED_AUTO);
-        return new ReceiptStockIn(type, receiptId, result.batchId(), List.of(inspectionItemId));
+        if (prepared.batch().command().items().size() <= MAX_BATCH_ROWS) return List.of(prepared);
+        if (items.size() == 1) {
+            throw conflict("该行委外回厂合格量涉及超过 " + MAX_BATCH_ROWS + " 个原材料批次，不能自动转正入库，请分次出结论");
+        }
+        int half = items.size() / 2;
+        List<PreparedConfirmation> result = new ArrayList<>(
+                preparePreStocked(type, receiptId, items.subList(0, half), actorUserId));
+        result.addAll(preparePreStocked(type, receiptId, items.subList(half, items.size()), actorUserId));
+        return result;
+    }
+
+    /** prestock:<PASS event> for one line (V596 shape); several lines share one key derived from all their events. */
+    private static String preStockedKey(List<ConfirmItem> items) {
+        if (items.size() == 1) return "prestock:" + items.getFirst().passEventId();
+        return "prestock:" + CanonicalFingerprint.sha256(items.stream()
+                .map(item -> item.passEventId().toString()).sorted().toList());
     }
 
     private PreparedConfirmation prepareConfirmation(NormalizedBatch batch, UUID actorUserId) {
+        return prepareConfirmation(batch, actorUserId, true);
+    }
+
+    private PreparedConfirmation prepareConfirmation(NormalizedBatch batch, UUID actorUserId, boolean enforceRowLimit) {
         String type = batch.type();
         UUID receiptId = batch.receiptId();
         NormalizedCommand command = batch.command();
@@ -375,7 +461,7 @@ public class ProcurementIqcStockInService {
         }
         return new PreparedConfirmation(new NormalizedBatch(type, receiptId,
                 splitSubcontractMaterialBatches(type, new NormalizedCommand(command.idempotencyKey(),command.requestHash(),
-                        List.copyOf(resolvedItems)))), null, locked);
+                        List.copyOf(resolvedItems)), enforceRowLimit)), null, locked);
     }
 
     private ConfirmResult confirmOne(
@@ -461,7 +547,7 @@ public class ProcurementIqcStockInService {
     }
 
     /** One warehouse confirmation may contain several original company-material batches. */
-    private NormalizedCommand splitSubcontractMaterialBatches(String type,NormalizedCommand command){
+    private NormalizedCommand splitSubcontractMaterialBatches(String type,NormalizedCommand command,boolean enforceRowLimit){
         if(!"SUBCONTRACT".equals(type))return command;
         List<NormalizedItem> result=new ArrayList<>();
         for(var item:command.items()){
@@ -492,7 +578,7 @@ public class ProcurementIqcStockInService {
             if(left.signum()!=0)throw conflict("合格入库的原回厂材料份额不足，请刷新后重试");
             if(groupQty.signum()>0)result.add(new NormalizedItem(item.passEventId(),groupQty,remaining,item.place(),item.warehouseId()));
         }
-        if(result.size()>100)throw conflict("本次委外入库涉及超过100个原材料批次，请减少本次选择的任务后分批确认");
+        if(enforceRowLimit&&result.size()>MAX_BATCH_ROWS)throw conflict("本次委外入库涉及超过100个原材料批次，请减少本次选择的任务后分批确认");
         return new NormalizedCommand(command.idempotencyKey(),command.requestHash(),List.copyOf(result));
     }
 

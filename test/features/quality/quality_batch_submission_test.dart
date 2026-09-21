@@ -160,7 +160,7 @@ void main() {
         );
       }
       expect(report.completedReceiptCount, 0);
-      // 2026-09-18 并行通道：失败不再连坐取消其它单，两张单各重试一次；
+      // 2026-09-18 起失败不再连坐取消其它单，两张单各重试一次；
       // 收货单未全部确认前 FQC 一张都不发。
       expect(api.requests.length, 4);
       for (final id in ['receipt-1', 'receipt-2']) {
@@ -174,54 +174,49 @@ void main() {
     },
   );
 
-  test(
-    'receipts submit on at most four concurrent lanes in one pass',
-    () async {
-      var active = 0;
-      var peak = 0;
-      var held = 0;
-      final gates = <Completer<Map<String, dynamic>>>[];
-      final api = _Api((path, body) {
-        active++;
-        if (active > peak) peak = active;
-        void release() => active--;
-        if (held < 4) {
-          held++;
-          final gate = Completer<Map<String, dynamic>>();
-          gates.add(gate);
-          return gate.future.whenComplete(release);
-        }
-        return Future<Map<String, dynamic>>.value({
-          'processedCount': 1,
-        }).whenComplete(release);
-      });
-      final report = QualityBatchSubmission(
-        receipts: [
-          for (var i = 1; i <= 6; i++)
-            QualityReceiptSubmission(
-              receiptType: 'PURCHASE',
-              receiptId: 'receipt-$i',
-              label: 'R$i',
-              items: [_item('inspection-$i')],
-            ),
-        ],
-        fqcInspectionIds: const [],
-        reason: null,
-      );
-      final iqc = DioProcurementInspectionRepository(api);
-      final fqc = ProductionFqcRepository(api);
-      final running = report.send(iqc: iqc, fqc: fqc);
+  test('receipts submit one at a time in report order', () async {
+    // 2026-09-21：同一主仓/同一订货单的收货单在服务端本就串行加锁，并行通道只会互相等锁并
+    // 撞「来源集合变化」重跑，所以改为逐单提交；进度仍逐单推进、已确认的单不重发。
+    var active = 0;
+    var peak = 0;
+    final gates = <Completer<Map<String, dynamic>>>[];
+    final order = <String>[];
+    final api = _Api((path, body) {
+      active++;
+      if (active > peak) peak = active;
+      order.add(path);
+      final gate = Completer<Map<String, dynamic>>();
+      gates.add(gate);
+      return gate.future.whenComplete(() => active--);
+    });
+    final report = QualityBatchSubmission(
+      receipts: [
+        for (var i = 1; i <= 4; i++)
+          QualityReceiptSubmission(
+            receiptType: 'PURCHASE',
+            receiptId: 'receipt-$i',
+            label: 'R$i',
+            items: [_item('inspection-$i')],
+          ),
+      ],
+      fqcInspectionIds: const [],
+      reason: null,
+    );
+    final iqc = DioProcurementInspectionRepository(api);
+    final fqc = ProductionFqcRepository(api);
+    final running = report.send(iqc: iqc, fqc: fqc);
+    for (var i = 0; i < 4; i++) {
       await Future<void>.delayed(Duration.zero);
-      expect(gates.length, 4, reason: '首波在飞的只有 4 条通道');
-      expect(peak, 4);
-      for (final gate in gates) {
-        gate.complete({'processedCount': 1});
-      }
-      await running;
-      expect(report.completedReceiptCount, 6);
-      expect(report.complete, isTrue);
-    },
-  );
+      expect(gates.length, i + 1, reason: '同一时刻只有一张单在飞');
+      expect(peak, 1);
+      expect(order[i], contains('receipt-${i + 1}'));
+      expect(report.completedReceiptCount, i);
+      gates[i].complete({'processedCount': 1});
+    }
+    await running;
+    expect(report.completedReceiptCount, 4);
+    expect(report.complete, isTrue);
+  });
 }
 
 ProcurementInspectionDecideItem _item(String id) =>

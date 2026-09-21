@@ -431,7 +431,6 @@ abstract class _MaterialAnalysisProductTasksState
       final existingChild = _taskChildProductOf(material);
       final futureRemainder =
           (material.sharedFuturePendingQty ?? 0) > 0 &&
-          material.additionalSupplyRecommendationKnown &&
           material.additionalSupplyRecommendedQty > 0 &&
           !_hasIssuedMakeOwnership(material);
       if (!supplement &&
@@ -821,6 +820,40 @@ abstract class _MaterialAnalysisProductTasksState
     return row.product != null ? _canGenerate : _canNotify;
   }
 
+  /// ADR-099 父层级追加（用户口径 2026-09-21「即使采购、委外已下达甚至已处理，
+  /// 还是可以追加下单；多下的属于公共的」）：已下达段里仍可再下的行。
+  ///
+  /// 采购 / 直接外发委外 = 路线已确认且未被挡住（不看余量：填的就是追加量，
+  /// 服务端按超量分账为公共备货，未处理的申请就地改大、已处理的另立）；
+  /// 下达车间 = 需求已全部转入计划、服务端允许再下一批纯公共备货产出的产品行
+  /// （`canIssueSurplus`；委外前置自制锚点不放开，它的追加走委外超量通道）；
+  /// 自制候选不放开（服务端对已覆盖候选拒绝建锚）。
+  bool _bucketRowCanAppend(_BucketRow row, _AnalysisBucket bucket) {
+    final analysis = _analysis;
+    if (analysis == null || !_bucketRowHasIssued(row, bucket)) return false;
+    final product = row.product;
+    if (product != null) {
+      return bucket == _AnalysisBucket.workshop &&
+          _canGenerate &&
+          product.canIssueSurplus &&
+          !product.canSchedule &&
+          product.sourceType != 'SUBCONTRACT_MAKE' &&
+          _productRouteConfirmedForWorkshop(product);
+    }
+    final group = row.group;
+    final route = bucket.supplyRoute;
+    if (group == null || route == null || !_canNotify) return false;
+    if (route == MaterialSupplyRoute.subcontract &&
+        _subcontractNeedsPreparation(group.representative, analysis)) {
+      return false;
+    }
+    // 余量为 0 时填的全是公共备货，服务端要超量下达权限——没有的账号这里就
+    // 不给勾，不让人填完再被拒。
+    return group.representative.confirmedRoute == route &&
+        _isExecutableSupplyGroup(group, route, allowExtra: true) &&
+        (_canOverSupply || _residualSubmitQty(group, route) > 0.0001);
+  }
+
   /// 未完工且未全部转生产的产品（按排产优先序，物料齐套优先）。
   List<ProductionMaterialAnalysisProduct> _operationalProducts(
     ProductionMaterialAnalysisView analysis,
@@ -887,12 +920,15 @@ abstract class _MaterialAnalysisProductTasksState
     // 编排却永远报「父件未提交成功，下层未动」，下层一行都下不出去。
     // 「要不要关页」改由调用方 [_run] 按 request.type 自己决定。
     switch (request.type) {
+      // allowExtra：分桶页明确勾选的行即使余量为 0 也能提交——已下达段的追加
+      //（ADR-099），服务端按超量分账为公共备货。
       case _BucketActionType.buy:
         return await _notifyRoute(
               MaterialSupplyRoute.buy,
               onlyGroupKeys: request.groupKeys,
               qtyByActionGroupKey: request.qtyByActionGroupKey,
               silent: silent,
+              allowExtra: true,
             ) !=
             null;
       case _BucketActionType.subcontractOnly:
@@ -900,6 +936,7 @@ abstract class _MaterialAnalysisProductTasksState
           onlyGroupKeys: request.groupKeys,
           qtyByActionGroupKey: request.qtyByActionGroupKey,
           silent: silent,
+          allowExtra: true,
         );
       case _BucketActionType.createProductionPlans:
         // 2026-09-05 ADR-071：车间桶单按钮「创建生产计划」——所有自制行
@@ -946,6 +983,7 @@ abstract class _MaterialAnalysisProductTasksState
           departmentId: draft.departmentId,
           workshopName: draft.workshopName,
           workerId: draft.workerId,
+          publicSurplusOnly: draft.publicSurplusOnly,
         ),
     ];
     final key = businessIdempotencyKey(

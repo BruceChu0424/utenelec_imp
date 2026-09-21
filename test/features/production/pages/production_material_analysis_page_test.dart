@@ -2426,33 +2426,11 @@ void main() {
   );
 
   testWidgets(
-    'SUBCONTRACT priority supplement keeps existing residual notification when MAKE allowance is absent',
+    'SUBCONTRACT make-first row without generate permission is blocked before any request',
     (tester) async {
-      final initial = _priorityMakeSupplementAnalysisJson(
-        net: null,
-        subcontract: true,
-      );
-      final after = _priorityMakeSupplementAnalysisJson(
-        net: null,
-        subcontract: true,
-      );
-      final parent = (after['flatMaterials'] as List)
-          .cast<Map<String, dynamic>>()
-          .first;
-      parent['notifiedTargets'] = [
-        ...(parent['notifiedTargets'] as List),
-        {
-          'target': 'SUBCONTRACT',
-          'documentType': 'SUBCONTRACT_MAKE_TASK',
-          'documentId': 'pending-make-child-1',
-          'status': 'CREATED',
-          'allocatedQty': 4,
-        },
-      ];
-      // 前置自制台账建起来后，服务端的有效在途覆盖把这 4 全吃掉，
-      // 「还可下达」随之归零（ACTIVE_FUTURE_COVERAGE_SQL 里
-      // preplan_subcontract_make_tasks 的 required_qty − notified_qty 那一支）。
-      parent['additionalSupplyRecommendedQty'] = 0;
+      // ADR-099：要先自制目标件的委外行只走「下达车间」通道(issue-plans 的
+      // ARRANGE 段 + 级联页)，不再有 notify 整量接管的第二条路；没有生成生产
+      // 计划权限的账号在分桶页当面被拦下，预览/通知一个请求都不发。
       final harness = await _pumpPage(
         tester,
         size: const Size(1600, 1000),
@@ -2461,9 +2439,10 @@ void main() {
           Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
-        analysisJson: initial,
-        responseOverride: (request) =>
-            request.path.endsWith('/notify') ? after : null,
+        analysisJson: _priorityMakeSupplementAnalysisJson(
+          net: null,
+          subcontract: true,
+        ),
       );
       await _openBucketDetail(tester, 'subcontract');
       await _tapBucketRowCheckbox(tester, '待自制壳体');
@@ -2471,20 +2450,17 @@ void main() {
         find.byKey(const Key('material-analysis-bucket-action-subcontract')),
       );
       await tester.pumpAndSettle();
-      await _confirmSupplyQuantityDialog(tester);
-      final request = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/notify'),
-      );
-      final body = request.data as Map<String, dynamic>;
-      expect(body['target'], 'SUBCONTRACT');
-      final quantities = (body['quantities'] as List)
-          .cast<Map<String, dynamic>>();
-      expect(quantities.single['qty'], 4.0);
       expect(
-        find.text('待自制壳体'),
-        findsNothing,
-        reason: 'active successor supply covers the remaining priority demand',
+        harness.requests.where(
+          (request) =>
+              request.path.endsWith('/notify') ||
+              request.path.endsWith('/issue-plans/preview') ||
+              request.path.endsWith('/issue-plans'),
+        ),
+        isEmpty,
       );
+      expect(find.byKey(const Key('supply-submit-confirm')), findsNothing);
+      expect(find.text('待自制壳体'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -3720,7 +3696,6 @@ void main() {
           'actionGroupKey': 'buy-action-2',
           'qty': 8.0,
           'safetyReplenishmentQty': 0.0,
-          'publicExtraQty': 0.0,
         },
       ],
     });
@@ -3793,13 +3768,11 @@ void main() {
           'actionGroupKey': 'buy-action-1',
           'qty': 8.0,
           'safetyReplenishmentQty': 6.0,
-          'publicExtraQty': 0.0,
         },
         {
           'actionGroupKey': 'buy-action-2',
           'qty': 8.0,
           'safetyReplenishmentQty': 0.0,
-          'publicExtraQty': 0.0,
         },
       ]);
     },
@@ -4638,7 +4611,6 @@ void main() {
           'actionGroupKey': 'buy-action-1',
           'qty': 5.0,
           'safetyReplenishmentQty': 0.0,
-          'publicExtraQty': 0.0,
         },
       ]);
       // 2026-09-04：批量动作完成后留在桶内——回到宿主页核对行内文案。
@@ -4682,7 +4654,6 @@ void main() {
           'actionGroupKey': 'buy-action-1',
           'qty': 3.0,
           'safetyReplenishmentQty': 0.0,
-          'publicExtraQty': 0.0,
         },
       ]);
       expect(notifyCalls, 2);
@@ -7286,9 +7257,8 @@ void main() {
     expect((notify.data! as Map<String, dynamic>)['quantities'], [
       {
         'actionGroupKey': 'buy-action-1',
-        'qty': 100.0,
+        'qty': 150.0,
         'safetyReplenishmentQty': 0.0,
-        'publicExtraQty': 50.0,
       },
     ]);
   });
@@ -7416,9 +7386,8 @@ void main() {
     expect((notify.data! as Map<String, dynamic>)['quantities'], [
       {
         'actionGroupKey': 'buy-action-1',
-        'qty': 500.0,
+        'qty': 2000.0,
         'safetyReplenishmentQty': 0.0,
-        'publicExtraQty': 1500.0,
       },
     ]);
   });
@@ -8366,6 +8335,7 @@ Map<String, dynamic> _bigWaitingAnalysisJson({int productCount = 1500}) {
       'availableQty': 0,
       'allocatedAvailableQty': 0,
       'shortageQty': 10,
+      'additionalSupplyRecommendedQty': 10,
       'sourceSuggestion': 'MAKE',
       'sourceConfirmed': 'MAKE',
       'routeConfirmed': true,
@@ -8391,6 +8361,7 @@ Map<String, dynamic> _bigWaitingAnalysisJson({int productCount = 1500}) {
       'availableQty': 0,
       'allocatedAvailableQty': 0,
       'shortageQty': 20,
+      'additionalSupplyRecommendedQty': 20,
       'sourceSuggestion': 'BUY',
       'routeConfirmed': false,
       'controlStage': 'FINISH',
@@ -8627,6 +8598,8 @@ Map<String, dynamic> _bulkRouteAnalysisJson({
         'allocatedAvailableQty': 2,
         'availableQty': 2,
         'shortageQty': 8,
+        // 已下达的行其在途把缺口全盖住：服务端「还可下达」归零。
+        'additionalSupplyRecommendedQty': index <= notifiedCount ? 0 : 8,
         'sourceSuggestion': route,
         'sourceConfirmed': index <= confirmedCount ? route : null,
         'routeConfirmed': index <= confirmedCount,
@@ -9459,6 +9432,7 @@ Map<String, dynamic> _aggregateAnalysisJson() {
       'allocatedAvailableQty': 4,
       'availableQty': 4,
       'shortageQty': 6,
+      'additionalSupplyRecommendedQty': 6,
       'sourceSuggestion': 'BUY',
       'sourceConfirmed': 'BUY',
       'routeConfirmed': true,
@@ -9482,6 +9456,7 @@ Map<String, dynamic> _aggregateAnalysisJson() {
       'allocatedAvailableQty': 0,
       'availableQty': 4,
       'shortageQty': 5,
+      'additionalSupplyRecommendedQty': 5,
       'sourceSuggestion': 'BUY',
       'sourceConfirmed': 'BUY',
       'routeConfirmed': true,
@@ -9506,6 +9481,7 @@ Map<String, dynamic> _aggregateAnalysisJson() {
       'allocatedAvailableQty': 5,
       'availableQty': 5,
       'shortageQty': 3,
+      'additionalSupplyRecommendedQty': 3,
       'sourceSuggestion': 'BUY',
       'routeConfirmed': false,
       'controlStage': 'FINISH',

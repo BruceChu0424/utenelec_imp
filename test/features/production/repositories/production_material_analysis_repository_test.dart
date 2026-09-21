@@ -702,7 +702,6 @@ void main() {
             'actionGroupKey': 'action-group-1',
             'qty': 0.0,
             'safetyReplenishmentQty': 6.0,
-            'publicExtraQty': 0.0,
           },
         ],
       });

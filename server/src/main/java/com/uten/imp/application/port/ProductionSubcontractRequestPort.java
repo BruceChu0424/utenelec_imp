@@ -31,6 +31,12 @@ public interface ProductionSubcontractRequestPort {
 
     void closeGeneratedDraft(UUID applicationId, LifecycleAction action);
 
+    /**
+     * 就地追加（ADR-099）：把生产下达的委外申请明细数量改大。只允许申请仍开着、
+     * 明细尚未订货的情形；其余情形拒绝，由生产侧另立新申请。
+     */
+    void increaseProductionDraftLine(UUID applicationId, UUID applicationItemId, BigDecimal addedQty);
+
     enum LifecycleAction {
         CANCEL,
         REVERSE

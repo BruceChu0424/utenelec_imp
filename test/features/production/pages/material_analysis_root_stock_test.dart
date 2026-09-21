@@ -70,7 +70,6 @@ void main() {
             'actionGroupKey': 'root-action',
             'qty': 0.0,
             'safetyReplenishmentQty': 0.0,
-            'publicExtraQty': 0.0,
           },
         ],
       });
@@ -114,7 +113,6 @@ void main() {
             'actionGroupKey': 'root-action',
             'qty': 7.0,
             'safetyReplenishmentQty': 0.0,
-            'publicExtraQty': 0.0,
           },
         ]);
       },
@@ -361,6 +359,7 @@ Future<_Harness> _pump(
           root['requiredQty'] = 10;
           root['demandSupplyGapQty'] = 10;
           root['shortageQty'] = 10;
+          root['additionalSupplyRecommendedQty'] = 10;
           root['actionable'] = true;
           harness.data['version'] = 4;
           harness.data['fingerprint'] = 'b' * 64;
@@ -538,6 +537,7 @@ Map<String, dynamic> _analysis({
       'allocatedAvailableQty': allocated,
       'shortageQty': requiredQty - allocated,
       'demandSupplyGapQty': requiredQty - allocated,
+      'additionalSupplyRecommendedQty': requiredQty - allocated,
       'sourceSuggestion': 'BUY',
       'sourceConfirmed': 'BUY',
       'routeConfirmed': true,
@@ -571,6 +571,7 @@ Map<String, dynamic> _analysis({
         'allocatedAvailableQty': 5,
         'shortageQty': 5,
         'demandSupplyGapQty': 5,
+        'additionalSupplyRecommendedQty': 5,
         'sourceSuggestion': 'BUY',
         'sourceConfirmed': 'BUY',
         'routeConfirmed': true,

@@ -246,8 +246,11 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // 服务端按操作组解析并以实时未绑定需求复核；安全量必须 echo 最新快照。
         assertThat(commands).contains("quantityInputs(view, request, groups)");
         assertThat(commands).contains("quantityInputs.get(group.groupKey())");
-        assertThat(commands).contains("requested.compareTo(delta) > 0");
-        assertThat(commands).contains("真实未绑定需求扣除在途后的余量");
+        // ADR-099 数量单一口径：填多少下多少——不超过还需安排的部分归本需求，
+        // 超出的部分由服务端记公共备货（需超量下达权限），不再要求客户端拆两个数。
+        assertThat(commands).contains("demandQty = requested.min(delta)");
+        assertThat(commands).contains("publicExtraQty = requested.subtract(demandQty)");
+        assertThat(commands).contains("超出部分属主动公共备货，需要独立的超量下达权限");
         assertThat(commands).contains("公共安全库存补库已变化");
         // demand allocation 只用复核后的 exact 数量；安全量写独立采购明细。
         assertThat(commands).contains(
@@ -267,8 +270,8 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 "MAKE 在显式 delegated_qty 落地前必须等于全部实时余量");
         assertThat(commands).contains("boolean createsChildOwnership");
         assertThat(commands).contains("activeBomParentIds");
-        assertThat(commands).contains(
-                "createsChildOwnership && requested.compareTo(delta) != 0");
+        assertThat(commands).contains("if (createsChildOwnership) {");
+        assertThat(commands).contains("if (requested.compareTo(delta) != 0) {");
         assertThat(commands).contains("子件任务当前必须按全部剩余需求");
         assertThat(commands).contains("本批生产数量请在子件任务创建后的计划向导中填写");
     }
@@ -442,7 +445,7 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         String source = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
         assertThat(source)
-                .contains("if (requested.compareTo(delta) > 0) {")
+                .contains("demandQty = requested.min(delta)")
                 .contains("publicExtraQty")
                 .contains("production_material_analysis:over_supply")
                 .contains("主动公共备货(不绑定来源物料分析)")

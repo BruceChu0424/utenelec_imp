@@ -193,6 +193,54 @@ public class ProductionPurchaseRequestFacade {
     }
 
     /**
+     * 就地追加（ADR-099）：把生产下达的采购申请明细数量改大。只允许申请仍开着、
+     * 明细尚未订货（没有任何订货单引用它）的情形；其余情形拒绝，由生产侧另立新申请。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void increaseProductionDraftLine(UUID requestId, UUID requestItemId, BigDecimal addedQty) {
+        if (addedQty == null || addedQty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "追加数量必须大于 0");
+        }
+        PurchaseRequest request = em.find(
+                PurchaseRequest.class, requestId, LockModeType.PESSIMISTIC_WRITE);
+        if (request == null || request.isDeleted() || request.getStatus() == null
+                || (request.getStatus() != STATUS_DRAFT && request.getStatus() != STATUS_APPROVED)
+                || request.isClosed() || Boolean.TRUE.equals(request.getIsStopped())) {
+            throw new ApiException(ErrorCode.CONFLICT, "采购申请已结案、中止、红冲或删除，不能就地追加数量");
+        }
+        PurchaseRequestItem item = em.find(
+                PurchaseRequestItem.class, requestItemId, LockModeType.PESSIMISTIC_WRITE);
+        Number live = item == null ? 0 : (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM purchase_request_items
+                WHERE id = :itemId AND request_id = :requestId AND is_deleted = FALSE
+                """).setParameter("itemId", requestItemId)
+                .setParameter("requestId", requestId).getSingleResult();
+        if (item == null || live.longValue() == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "采购申请明细不存在或不属于该申请");
+        }
+        if (item.getOrderedQty() != null && item.getOrderedQty().signum() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "采购申请明细已订货，不能就地追加数量，请另立申请");
+        }
+        Number referenced = (Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM purchase_order_item_sources source
+                JOIN purchase_order_items order_item
+                  ON order_item.id = source.order_item_id AND order_item.is_deleted = FALSE
+                JOIN purchase_orders header
+                  ON header.id = order_item.order_id AND header.is_deleted = FALSE
+                WHERE source.request_item_id = :itemId
+                """).setParameter("itemId", requestItemId).getSingleResult();
+        if (referenced.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "采购申请明细已被订货单引用，不能就地追加数量，请另立申请");
+        }
+        item.setQty(item.getQty().add(addedQty));
+        itemRepo.save(item);
+        itemRepo.flush();
+    }
+
+    /**
      * Closes one generated request without erasing approved history.
      * CANCEL is a draft-only soft delete; approved sources require REVERSE.
      */

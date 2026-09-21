@@ -2372,6 +2372,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 null, List.of(), null, null,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                // ADR-099：可认领公共在途、计划产出量
                 BigDecimal.ZERO, BigDecimal.ZERO);
     }
 

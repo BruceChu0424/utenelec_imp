@@ -128,22 +128,18 @@ public final class MaterialAnalysisContracts {
      * MAKE 在显式 delegated_qty 落地前必须等于全部实时余量，正式计划批量
      * 由 child 创建后的 PlanQuantity 单独确认。
      */
+    /**
+     * 本次下达数量（ADR-099 数量单一口径）：{@code qty} 是这一次要下达的总量——
+     * 不超过「还需安排」的部分归本需求，超出的部分由服务端记为公共备货（需超量
+     * 下达权限）；服务端还会先自动认领同主仓公共在途，只为余下部分新下单。
+     */
     public record SupplyQuantityInput(
             @Size(max = 64) String actionGroupKey,
             UUID materialLineId,
             @NotNull @DecimalMin(value = "0")
             @Digits(integer = 14, fraction = 4) BigDecimal qty,
             @DecimalMin(value = "0") @Digits(integer = 14, fraction = 4)
-            BigDecimal safetyReplenishmentQty,
-            @DecimalMin(value = "0") @Digits(integer = 14, fraction = 4)
-            BigDecimal publicExtraQty) {
-
-        public SupplyQuantityInput(
-                String actionGroupKey, UUID materialLineId, BigDecimal qty,
-                BigDecimal safetyReplenishmentQty) {
-            this(actionGroupKey, materialLineId, qty,
-                    safetyReplenishmentQty, BigDecimal.ZERO);
-        }
+            BigDecimal safetyReplenishmentQty) {
     }
 
     public record ClaimSharedFutureRequest(
@@ -199,10 +195,23 @@ public final class MaterialAnalysisContracts {
                 @Size(max = 250) String workshopName,
                 UUID workerId,
                 UUID teamDepartmentId,
-                @Size(max = 200) String productNo) {
+                @Size(max = 200) String productNo,
+                /**
+                 * ADR-099：明确声明「本行是对剩余需求已为 0 的锚点再追加一批纯公共备货
+                 * 产出」。不声明时需求已全部转入计划的行照旧 409——重复点击、过期候选
+                 * 不能悄悄多建一张计划。
+                 */
+                Boolean publicSurplusOnly) {
+
+            public IssuePlanLine(UUID materialLineId, UUID analysisLineId, BigDecimal qty,
+                    LocalDate billDate, LocalDate deliveryDate, UUID departmentId,
+                    String workshopName, UUID workerId, UUID teamDepartmentId, String productNo) {
+                this(materialLineId, analysisLineId, qty, billDate, deliveryDate, departmentId,
+                        workshopName, workerId, teamDepartmentId, productNo, null);
+            }
 
             public IssuePlanLine(UUID analysisLineId, BigDecimal qty) {
-                this(null, analysisLineId, qty, null, null, null, null, null, null, null);
+                this(null, analysisLineId, qty, null, null, null, null, null, null, null, null);
             }
         }
     }
@@ -491,7 +500,14 @@ public final class MaterialAnalysisContracts {
              * V590 货品主档的「归属生产车间」：最近一次排产确认/车间改派学习回写。
              */
             UUID owningWorkshopId,
-            String owningWorkshopName) {
+            String owningWorkshopName,
+            /** ADR-099：已下达且仍有效的计划总量(归需求份 + 公共备货产出份)。 */
+            BigDecimal issuedPlanQty,
+            /**
+             * ADR-099：剩余需求已为 0 但仍可再下一批纯公共备货产出(V577 合法形态)——
+             * 用户口径「父层级那里还是可以追加下单, 多下的属于公共的」。
+             */
+            boolean canIssueSurplus) {
         public ProductView(
             UUID analysisLineId,
             String sourceType,
@@ -535,7 +551,7 @@ public final class MaterialAnalysisContracts {
             BigDecimal planExecutionPlannedQty,
             BigDecimal planExecutionInboundQty,
             BigDecimal planExecutionProgressRatio) {
-            this(analysisLineId, sourceType, sourceRef, sourceReason, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, remainingQty, allocationPriority, canSchedule, maxSchedulableQty, scheduleBlockedReason, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, readinessRatio, hasProductionMaterialChildren, parentAnalysisLineId, parentGoodsName, planExecutionStatus, latestPlanId, latestPlanNo, planExecutionPlannedQty, planExecutionInboundQty, planExecutionProgressRatio, BigDecimal.ZERO, false, null, null, null, null, null, null, null);
+            this(analysisLineId, sourceType, sourceRef, sourceReason, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, remainingQty, allocationPriority, canSchedule, maxSchedulableQty, scheduleBlockedReason, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, readinessRatio, hasProductionMaterialChildren, parentAnalysisLineId, parentGoodsName, planExecutionStatus, latestPlanId, latestPlanNo, planExecutionPlannedQty, planExecutionInboundQty, planExecutionProgressRatio, BigDecimal.ZERO, false, null, null, null, null, null, null, null, BigDecimal.ZERO, false);
         }
     }
 
@@ -668,7 +684,18 @@ public final class MaterialAnalysisContracts {
             /** External final output that can satisfy this node without consuming its children. */
             BigDecimal externalFutureCoverageQty,
             /** Existing internal output commitment; never subtract it as external finished supply. */
-            BigDecimal internalCommittedOutputQty) {
+            BigDecimal internalCommittedOutputQty,
+            /**
+             * 本节点此刻可认领的同主仓公共在途合计（按期 + 晚到，不含本分析自己的）。
+             * 下达采购/委外时服务端先自动认领它，再为余下部分新下单（ADR-099）。
+             */
+            BigDecimal sharedFutureClaimableQty,
+            /**
+             * 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位；
+             * 已建自制/前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量
+             * （归需求量 + 公共备货产出）；其余行为 0。下层物料按它展开。
+             */
+            BigDecimal plannedOutputQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";
@@ -719,10 +746,21 @@ public final class MaterialAnalysisContracts {
             UUID documentId,
             String documentNo,
             BigDecimal allocatedQty,
-            boolean notificationReversalPending) {
+            boolean notificationReversalPending,
+            /**
+             * ADR-099：该行动锚定的申请明细仍未订货(采购/委外部门还没动过, 追加会
+             * 就地改大)时 = 明细当前数量(需求份 + 公共份)；已订货/已处理为 null。
+             */
+            BigDecimal growableLineQty) {
         public DownstreamReference(UUID actionId, String route, String status,
                 String documentType, UUID documentId, String documentNo, BigDecimal allocatedQty) {
-            this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,false);
+            this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,false,null);
+        }
+        public DownstreamReference(UUID actionId, String route, String status,
+                String documentType, UUID documentId, String documentNo, BigDecimal allocatedQty,
+                boolean notificationReversalPending) {
+            this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,
+                    notificationReversalPending,null);
         }
     }
 

@@ -348,9 +348,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                 payload.hasNonNull("reviewRevision")?payload.path("reviewRevision").asLong():null);
                 case EVENT_PREPLAN_SUPPLY_ACTION_CREATED ->
                         notifyPreplanSupplyActionCreated(aggregateId);
-                case EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED ->
+                case EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED -> {
+                    if (payload.hasNonNull("addedQty")) {
+                        notifyPreplanSupplyDocumentIncreased(
+                                aggregateId, payload.path("documentType").asText(""),
+                                new java.math.BigDecimal(payload.path("addedQty").asText("0")));
+                    } else {
                         notifyPreplanSupplyDocumentCreated(
                                 aggregateId, payload.path("documentType").asText(""));
+                    }
+                }
                 case EVENT_SUBCONTRACT_PREPARATION_REQUIRED ->
                         notifySubcontractPreparationRequired(aggregateId);
                 case EVENT_SUBCONTRACT_PREPARE_SHORTAGE ->
@@ -2019,6 +2026,51 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      * 直达详情），不再逐 action 重复发条。旧 action 级事件保留，仅用于
      * 已入箱历史事件的投递兼容。
      */
+    /**
+     * ADR-099 就地追加：计划部把一张仍未订货的采购/委外申请的明细数量改大后，
+     * 给同一批接收人再提醒一次（单号 + 追加量 + 直达详情）。每次追加各提醒一次。
+     */
+    public void notifyPreplanSupplyDocumentIncreased(
+            UUID documentId, String documentType, java.math.BigDecimal addedQty) {
+        boolean purchase = "PURCHASE_REQUEST".equals(documentType);
+        boolean subcontract = "SUBCONTRACT_APPLICATION".equals(documentType);
+        if (!purchase && !subcontract || addedQty == null || addedQty.signum() <= 0) return;
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED,
+                    "PREPLAN_SUPPLY_DOCUMENT",
+                    documentId,
+                    Map.of("documentType", documentType,
+                            "addedQty", addedQty.stripTrailingZeros().toPlainString()),
+                    EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED + ":INCREASED:" + documentType
+                            + ':' + documentId + ':' + UUID.randomUUID());
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> document = one(purchase ? """
+                    SELECT request.bill_no
+                    FROM purchase_requests request
+                    WHERE request.id = ? AND request.is_deleted = FALSE
+                    """ : """
+                    SELECT application.bill_no
+                    FROM subcontract_applications application
+                    WHERE application.id = ? AND application.is_deleted = FALSE
+                    """, documentId);
+            if (document == null) return;
+            String billNo = str(document.get("bill_no"));
+            String noun = purchase ? "采购" : "委外";
+            String title = noun + "需求追加：" + billNo + "（追加 " + qty(addedQty) + "）";
+            String content = "计划部在" + noun + "申请 " + billNo + " 上追加了 " + qty(addedQty)
+                    + "，该申请尚未订货，明细数量已直接改大。请到" + noun
+                    + "申请详情核对，并从" + noun + "任务中心按新数量分解订货。";
+            String actionRoute = (purchase ? "/purchase/requests/"
+                    : "/subcontract/applications/") + documentId;
+            notifyPreplanSupplyRecipients(
+                    TYPE_TASK, title, content, actionRoute,
+                    purchase ? PURCHASE_REQUEST_VIEW_AUTHORITY : SUBCONTRACT_APPLICATION_VIEW_AUTHORITY);
+        });
+    }
+
     public void notifyPreplanSupplyDocumentCreated(UUID documentId, String documentType) {
         boolean purchase = "PURCHASE_REQUEST".equals(documentType);
         boolean subcontract = "SUBCONTRACT_APPLICATION".equals(documentType);

@@ -47,13 +47,15 @@ const _waitFrame = '没有等遮罩那一帧画完（OverlayEntry 要等宿主 d
 const _rules = <_Rule>[
   // ① 委外到货登记：短交确认框。遮罩不撤则两个按钮都点不动。
   _Rule(
-    file: 'lib/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart',
+    file:
+        'lib/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart',
     anchor: 'await showSubcontractShortDeliveryConfirmDialog(',
     needle: 'setBusy(false);',
     why: '委外到货登记短交确认框：$_busyFlagOff，「继续登记并通知委外」「返回修改」都会点不动',
   ),
   _Rule(
-    file: 'lib/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart',
+    file:
+        'lib/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart',
     anchor: 'await showSubcontractShortDeliveryConfirmDialog(',
     needle: 'await WidgetsBinding.instance.endOfFrame;',
     why: '委外到货登记短交确认框：$_waitFrame',
@@ -121,7 +123,9 @@ void main() {
       final anchorAt = source.indexOf(rule.anchor);
       final needleAt = source.lastIndexOf(rule.needle, anchorAt);
       if (needleAt < 0) {
-        problems.add('${rule.file}: 「${rule.anchor}」之前缺少「${rule.needle}」——${rule.why}');
+        problems.add(
+          '${rule.file}: 「${rule.anchor}」之前缺少「${rule.needle}」——${rule.why}',
+        );
         continue;
       }
       if (anchorAt - needleAt > rule.maxDistance) {

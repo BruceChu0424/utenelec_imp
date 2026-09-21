@@ -149,7 +149,10 @@ class _WarehouseSalesOutboundBatchPageState
         .every((value) => value);
     if (!valid) {
       setState(() {});
-      context.appWarning('请逐单核对实际发货仓库');
+      final firstError = _picking.values
+          .map((draft) => draft.error)
+          .firstWhere((message) => message != null, orElse: () => null);
+      context.appWarning(firstError ?? '请逐行核对实际发出仓');
       return;
     }
     // Busy before the dialog also prevents two confirmations from rapid taps.
@@ -213,10 +216,8 @@ class _WarehouseSalesOutboundBatchPageState
             reviewed.header.id,
             targetStatus: widget.action.targetStatus,
             reason: _reason.text.trim(),
-            warehouseId: reviewed.canSelectWarehouse
-                ? _picking[reviewed.header.id]?.warehouseId
-                : null,
             stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
+            lineWarehouses: _picking[reviewed.header.id]?.lineWarehouses,
           );
           if (updated.header.id != reviewed.header.id ||
               updated.header.warehouseWorkStatus !=
@@ -390,9 +391,10 @@ class _WarehouseSalesOutboundBatchPageState
                                     columns: warehouseSalesOutboundTableColumns(
                                       l10n: l10n,
                                       rows: rows,
-                                      warehouseNameOf: (row) =>
-                                          _picking[row.detail.header.id]
-                                              ?.warehouseName,
+                                      // V631：发出仓按行在表格里选，批量核对不再逐单选仓。
+                                      draftOf: (row) =>
+                                          _picking[row.detail.header.id],
+                                      onDraftChanged: () => setState(() {}),
                                       stockPlaceControllerOf: (row) =>
                                           _picking[row.detail.header.id]
                                               ?.places[row.line.id],
@@ -497,14 +499,6 @@ class _WarehouseSalesOutboundBatchPageState
                 style: theme.textTheme.bodyMedium,
               ),
             ),
-          if (_picking[detail.header.id] != null) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            WarehouseSalesPickingFields(
-              draft: _picking[detail.header.id]!,
-              enabled: !_attempted && !_saving && !_confirming,
-              onChanged: () => setState(() {}),
-            ),
-          ],
         ],
       ),
     );

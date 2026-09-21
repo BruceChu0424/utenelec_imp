@@ -6,8 +6,10 @@
 //   （无「全部」段，默认不选=全部效果）+ 末尾「历史记录」（时间门控：时间段/
 //   全部，未选时间不发请求；选定后按 dateFrom/dateTo 不限阶段状态加载）。
 //   可发货置顶小开关保留。
-// - 出货/退货/报价：单行范式——草稿/已审/红冲 + 末尾历史记录 + 搜索，
-//   默认不选不发请求。
+// - 出货/客户零星发货：单行范式，但按真实阶段分段（草稿/等待财务审核/财务已退回/
+//   已审/已出库/红冲，服务端 stage 参数；2026-09-20）+ 末尾历史记录 + 搜索——出货单的
+//   status 只在仓库确认出库时才变 1，按 status 分段会把等待财审的单全归到草稿。
+// - 退货/报价：草稿/已审/红冲 + 末尾历史记录 + 搜索，默认不选不发请求。
 // 大类未选（订货单）/状态未选（其他单据）时内容区显示引导占位，不发请求。
 // 名称解析（客户/仓库）通过 SalesMasterNameService；编辑按 edit 权限显隐「新建」。
 import 'package:flutter/material.dart';
@@ -45,22 +47,35 @@ import '../widgets/sales_batch_ship_panel.dart';
 /// 订货单大类的「草稿」段值（链路阶段之外的第 5 段）。
 const String _kDraftStage = 'draft';
 
-/// 小类分段值：真实单据状态（status 非空）或历史记录哨兵。
+/// 小类分段值：真实单据状态（status 非空）、出货真实阶段（shipmentStage 非空）
+/// 或历史记录哨兵。
 class _SalesDocSeg {
-  const _SalesDocSeg.stage(int this.status) : history = false;
-  const _SalesDocSeg.history() : status = null, history = true;
+  const _SalesDocSeg.stage(int this.status)
+    : shipmentStage = null,
+      history = false;
+  const _SalesDocSeg.shipment(String this.shipmentStage)
+    : status = null,
+      history = false;
+  const _SalesDocSeg.history()
+    : status = null,
+      shipmentStage = null,
+      history = true;
 
   final int? status;
+
+  /// 出货/客户零星发货的真实阶段（[SalesShipmentStage]）；status 分段对它们没有意义。
+  final String? shipmentStage;
   final bool history;
 
   @override
   bool operator ==(Object other) =>
       other is _SalesDocSeg &&
       other.status == status &&
+      other.shipmentStage == shipmentStage &&
       other.history == history;
 
   @override
-  int get hashCode => Object.hash(status, history);
+  int get hashCode => Object.hash(status, shipmentStage, history);
 }
 
 class SalesDocListPage extends ConsumerStatefulWidget {
@@ -119,6 +134,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   /// 出货单（表头 dict/枚举桶只在出货段开放，与后端参数对齐）。
   bool get _isShipment => widget.docType == SalesDocType.shipment;
 
+  /// 出货/客户零星发货共用 shipments 端点，按真实阶段分段（[SalesShipmentStage]）。
+  bool get _shipmentStaged =>
+      widget.docType == SalesDocType.shipment ||
+      widget.docType == SalesDocType.customerShipment;
+
   /// 币种筛选走 orders / shipments 端点的 currencyId 参数（客户零星发货共用
   /// shipments 端点）；其它单据端点（报价/其它出货/退货）暂无该参数。
   bool get _currencyFilterable =>
@@ -148,6 +168,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     if (isDraftStatusQuery(widget.initialStatus)) {
       if (_isOrder) {
         _stage = _kDraftStage;
+      } else if (_shipmentStaged) {
+        _statusSeg = const _SalesDocSeg.shipment(SalesShipmentStage.draft);
       } else {
         _statusSeg = const _SalesDocSeg.stage(kSalesStatusDraft);
       }
@@ -303,6 +325,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
             status: _isDraftStage
                 ? kSalesStatusDraft
                 : (_isHistory ? null : _statusSeg?.status),
+            // 出货真实阶段（草稿/等待财务审核/…）走 stage，历史记录不限阶段。
+            stage: _isHistory ? null : _statusSeg?.shipmentStage,
             chain: _isOrder && !_isHistory ? _cardChain() : null,
             chainGroup: _isOrder && !_isHistory ? _cardChainGroup() : null,
             closed: _isOrder && _stage == 'monthDone' && !_isHistory
@@ -386,6 +410,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
       !it.stopped;
 
   String _statusText(SalesDocListItem it) {
+    if (_shipmentStaged) {
+      final text = salesShipmentStatusText(it);
+      return it.writable ? text : '$text · 只读';
+    }
     final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
     final gated = _financeGated(it);
     final financeRejected = gated && it.financeRejected;
@@ -401,6 +429,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   /// 待财务确认=警告黄，其余按单据 0/1/-1（草稿中性/已审绿/红冲红）。
   UtenStatusBadgeType _statusBadgeType(SalesDocListItem it) {
     if (it.rejected) return UtenStatusBadgeType.danger;
+    if (_shipmentStaged) {
+      return switch (salesShipmentStageOf(it)) {
+        SalesShipmentStage.financeRejected ||
+        SalesShipmentStage.reversed => UtenStatusBadgeType.danger,
+        SalesShipmentStage.pendingFinance => UtenStatusBadgeType.warning,
+        SalesShipmentStage.financeApproved => UtenStatusBadgeType.info,
+        SalesShipmentStage.shipped => UtenStatusBadgeType.success,
+        _ => UtenStatusBadgeType.neutral,
+      };
+    }
     final gated = _financeGated(it);
     if (gated && it.financeRejected) return UtenStatusBadgeType.danger;
     if (gated) return UtenStatusBadgeType.warning;
@@ -643,15 +681,22 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                               'sales-doc-status-${_cfg.type.pathSegment}',
                             ),
                             segments: [
-                              for (final status in [
-                                kSalesStatusDraft,
-                                kSalesStatusApproved,
-                                kSalesStatusReversed,
-                              ])
-                                UtenFilterSegment(
-                                  value: _SalesDocSeg.stage(status),
-                                  label: salesStatusLabel(status),
-                                ),
+                              if (_shipmentStaged)
+                                for (final stage in SalesShipmentStage.segments)
+                                  UtenFilterSegment(
+                                    value: _SalesDocSeg.shipment(stage),
+                                    label: salesShipmentStageLabel(stage),
+                                  )
+                              else
+                                for (final status in [
+                                  kSalesStatusDraft,
+                                  kSalesStatusApproved,
+                                  kSalesStatusReversed,
+                                ])
+                                  UtenFilterSegment(
+                                    value: _SalesDocSeg.stage(status),
+                                    label: salesStatusLabel(status),
+                                  ),
                               const UtenFilterSegment(
                                 value: _SalesDocSeg.history(),
                                 label: '历史记录',
@@ -863,7 +908,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
       return <String, String?>{'status': '$kSalesStatusDraft', ...extra};
     }
     final seg = _statusSeg;
-    if (seg == null || seg.history) return extra;
+    if (seg == null || seg.history || seg.status == null) return extra;
     return <String, String?>{'status': '${seg.status}', ...extra};
   }
 
@@ -874,11 +919,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   Map<String, List<MasterFacetBucket>> _statusFacets(
     SalesMasterNameService names,
   ) => {
-    'status': const [
-      MasterFacetBucket(value: '0', count: 0, label: '草稿'),
-      MasterFacetBucket(value: '1', count: 0, label: '已审'),
-      MasterFacetBucket(value: '-1', count: 0, label: '红冲'),
-    ],
+    // 出货类状态列显示真实阶段，0/1/-1 桶对它没有意义（阶段在分段行）。
+    if (!_shipmentStaged)
+      'status': const [
+        MasterFacetBucket(value: '0', count: 0, label: '草稿'),
+        MasterFacetBucket(value: '1', count: 0, label: '已审'),
+        MasterFacetBucket(value: '-1', count: 0, label: '红冲'),
+      ],
     if (_isShipment) ...{
       'client': masterDictionaryFacets(names.clientEntries),
       'financeAudit': const [

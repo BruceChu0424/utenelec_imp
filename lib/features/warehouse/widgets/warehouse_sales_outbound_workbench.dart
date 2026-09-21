@@ -7,11 +7,16 @@
 // 2026-09-03 统一范式：状态小类行默认不选（未选不发请求，显示引导占位）；
 // 末尾新增「历史单据」段——时间门控（时间段/全部，选定后才按日期加载，
 // 不限作业状态）。
+//
+// 2026-09-20 小类行计数: 待出库挂红徽章(与父分类「销售出库」同源同数)、已出库挂中性
+// 括号数、历史单据不挂(已出库本身就是历史, 不数两遍); 计数来自
+// GET /warehouse/sales-outbound/counts 一次请求(warehouse_sales_outbound_count_provider.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -164,8 +169,9 @@ class _WarehouseSalesOutboundWorkbenchState
         _result = result;
         _loading = false;
       });
-      // 列表口径变化后同步角标（确认出库会减少待办数）。
-      ref.invalidate(warehouseSalesOutboundPendingCountProvider);
+      // 列表口径变化后同步角标与小类行计数(确认出库会减少待办数、增加已出库数);
+      // 待办数 provider 由分组计数派生, 只失效源头这一份.
+      ref.invalidate(warehouseSalesOutboundCountsProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -395,20 +401,37 @@ class _WarehouseSalesOutboundWorkbenchState
     // 全平台统一筛选工具条：仓库作业状态分段 + 末尾「历史单据」时间门控段。
     // 分段键沿用 warehouse-sales-outbound-status（独立页既有测试锚点不变）；
     // 默认不选（未选=引导占位，不发请求）。
+    // 小类行计数(2026-09-20 用户口径: 父分类有红徽章, 小类也要有数):
+    // 待出库 = 红徽章(等仓库动手, 与父分类「销售出库」/hub 卡同源同数);
+    // 已出库 = 中性括号数(已完结, 供掂量); 历史单据不挂——已出库本身就是历史,
+    // 再挂一次是同一批单在一行里数两遍. valueOrNull: 刷新期间带住旧值,
+    // 首载/失败为 null 时两种形态都不渲染数字(不把未知伪装成 0).
+    final counts = ref.watch(warehouseSalesOutboundCountsProvider).valueOrNull;
     return UtenFilterToolbar<_SalesOutboundSeg>(
       segmentsKey: const Key('warehouse-sales-outbound-status'),
       searchKey: widget.embedded
           ? null
           : const Key('warehouse-sales-outbound-search'),
       segments: [
-        for (final status in [
-          WarehouseSalesOutboundStatus.pendingPick,
-          WarehouseSalesOutboundStatus.shipped,
-        ])
-          UtenFilterSegment(
-            value: _SalesOutboundSeg.stage(status),
-            label: WarehouseSalesOutboundStatus.label(status),
+        UtenFilterSegment(
+          value: const _SalesOutboundSeg.stage(
+            WarehouseSalesOutboundStatus.pendingPick,
           ),
+          label: WarehouseSalesOutboundStatus.label(
+            WarehouseSalesOutboundStatus.pendingPick,
+          ),
+          count: counts?.pendingPick,
+          countForm: UtenSegmentCountForm.actionable,
+        ),
+        UtenFilterSegment(
+          value: const _SalesOutboundSeg.stage(
+            WarehouseSalesOutboundStatus.shipped,
+          ),
+          label: WarehouseSalesOutboundStatus.label(
+            WarehouseSalesOutboundStatus.shipped,
+          ),
+          count: counts?.shipped,
+        ),
         const UtenFilterSegment(
           value: _SalesOutboundSeg.history(),
           label: '历史单据',

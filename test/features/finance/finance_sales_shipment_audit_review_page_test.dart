@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_review_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -227,6 +228,63 @@ void main() {
       contains('/sales/shipments/shipment-no-label/finance-audit'),
     );
   });
+
+  testWidgets(
+    'missing currency finance rate blocks release at finance, not at the warehouse',
+    (tester) async {
+      // V631 用户口径：仓库只管仓库的，币种汇率没维护要在财务放行前提示。
+      final api = await _pumpReviewPage(
+        tester,
+        detail: const {
+          'id': 'shipment-no-rate',
+          'billNo': 'XS-NO-RATE',
+          'financeReviewPending': true,
+          'salesConfirmed': true,
+          'status': 0,
+          'financeAudit': 0,
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': <Map<String, dynamic>>[
+            {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 100},
+          ],
+        },
+        claimSucceeds: true,
+        financeAuditInfo: const {
+          'shipmentId': 'shipment-no-rate',
+          'reviewRevision': 0,
+          'contentHash': 'no-rate-content',
+          'financeAudit': 0,
+          'clientName': '美金客户',
+          'settlementMethodName': '汇款',
+          'currencyName': '美金',
+          'financeRate': '0.000000',
+          'financeRateReady': false,
+          'outstanding': '0',
+          'creditFloor': '0',
+          'overFloor': '0',
+          'availablePrepaymentOriginal': '0',
+          'availablePrepaymentLocal': '0',
+        },
+      );
+
+      expect(find.text('财务汇率(美金)'), findsOneWidget);
+      expect(find.text('未维护'), findsOneWidget);
+      expect(find.byKey(const Key('finance-audit-rate-block')), findsOneWidget);
+      expect(find.textContaining('基础资料→币种'), findsWidgets);
+      final approve = tester.widget<UtenButton>(
+        find.byKey(const Key('finance-shipment-audit-approve')),
+      );
+      expect(approve.onPressed, isNull, reason: '汇率未维护不能放行');
+      // 退回销售不受汇率影响，按钮仍可用。
+      final reject = tester.widget<UtenButton>(
+        find.byKey(const Key('finance-shipment-audit-reject')),
+      );
+      expect(reject.onPressed, isNotNull);
+      expect(
+        api.postPaths.where((path) => path.endsWith('/finance-audit')),
+        isEmpty,
+      );
+    },
+  );
 
   testWidgets('reject requires reason and posts finance-audit-reject', (
     tester,

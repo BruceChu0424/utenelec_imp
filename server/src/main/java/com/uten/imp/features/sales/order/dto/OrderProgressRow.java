@@ -13,7 +13,10 @@ import java.time.OffsetDateTime;
  *   <li>CLOSED 已结案：正常履约完结；终态，同上只在历史记录可见</li>
  *   <li>PENDING 待排产：存在剩余未排量（V545：部分排产的单仍是待排产，plannedQty 表示已排部分）</li>
  *   <li>PRODUCING 生产中：未排量归零后含已排产/待物料/生产中/部分完工（produced>0 且未齐套）</li>
- *   <li>SHIPPABLE 可分批发货：存在大于零的成品销售预留，不要求整单全部完工</li>
+ *   <li>SHIPPABLE 可分批发货：剩余预留（预留 − 在途出货）大于零，不要求整单全部完工</li>
+ *   <li>WAREHOUSE_PENDING 等仓库出货：有财务已放行、仓库尚未确认出库的出货单（V631）</li>
+ *   <li>SHIPMENT_PENDING 出货待财审：有出货草稿/等待财务审核/被财务退回的出货单（V631）；
+ *       这两段只在剩余预留已被在途出货占满时出现，仍有可发余量时优先 SHIPPABLE</li>
  *   <li>SHIPPED 已发货：已发数量已达订货量</li>
  * </ul>
  * productionPct = 已产/订货（clamp ≤1），即「外层总进度环」口径（用户决策：生产进度为主）。
@@ -41,5 +44,9 @@ public record OrderProgressRow(
         String financeRejectedByName,
         OffsetDateTime financeRejectedAt,
         boolean stopped,
-        boolean closed) {
+        boolean closed,
+        double shipmentDraftQty,
+        double shipmentPendingFinanceQty,
+        double shipmentFinanceRejectedQty,
+        double shipmentApprovedQty) {
 }

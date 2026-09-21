@@ -51,6 +51,12 @@ public class WarehouseSalesOutboundController {
         return Map.of("count", service.pendingCount());
     }
 
+    /** 仓库作业状态分组计数(出库任务中心「销售出库」小类行: 待出库红徽章 / 已出库中性计数), 键为 warehouse_work_status. */
+    @GetMapping("/counts")
+    public Map<String, Long> counts() {
+        return service.counts();
+    }
+
     @GetMapping("/{id}")
     public WarehouseSalesOutboundDetail detail(@PathVariable UUID id) {
         WarehouseSalesOutboundDetail result = service.detail(id);

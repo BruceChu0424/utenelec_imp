@@ -154,7 +154,8 @@ Future<void> _pump(
 
 class _OutboundGateway implements WarehouseSalesOutboundGateway {
   @override
-  Future<int> pendingCount() async => 0;
+  Future<WarehouseSalesOutboundCounts> counts() async =>
+      const WarehouseSalesOutboundCounts();
 
   final List<String?> workStatuses = <String?>[];
 
@@ -195,8 +196,8 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
-    String? warehouseId,
     Map<String, String>? stockPlaces,
+    Map<String, String?>? lineWarehouses,
   }) => throw UnimplementedError();
 }
 

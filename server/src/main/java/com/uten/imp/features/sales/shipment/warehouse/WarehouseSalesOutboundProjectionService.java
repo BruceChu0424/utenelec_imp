@@ -53,12 +53,15 @@ public class WarehouseSalesOutboundProjectionService {
             LocalDate dateTo,
             int page,
             int size) {
+        // 2026-09-20: 单据 status 传 null——一步式确认出库(approveLocked)把 status 翻成 1,
+        // 若仍按 status=0 过滤, 「已出库」与「历史单据」段永远列不出已出库单; 仓库投影只认
+        // finance_audit=1 + warehouse_work_status 分段(与 countWarehouseWorkByStatus 同谓词).
         PageResponse<ShipmentListItem> source = shipments.list(
                 new ShipmentQueryFilter(
                         keyword,
                         null,
                         null,
-                        (short) 0,
+                        null,
                         null,
                         (short) 1,
                         normalize(warehouseWorkStatus),
@@ -89,6 +92,20 @@ public class WarehouseSalesOutboundProjectionService {
     @Transactional(readOnly = true)
     public long pendingCount() {
         return shipments.countPendingWarehouseWork();
+    }
+
+    /**
+     * 仓库作业状态分组计数(出库任务中心「销售出库」小类行徽章): 键为 warehouse_work_status,
+     * 五个可筛选状态都给键(缺省 0), 与列表同一读范围; PENDING_PICK 键与 {@link #pendingCount()} 同数.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Long> counts() {
+        Map<String, Long> raw = shipments.countWarehouseWorkByStatus();
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String status : COUNTED_WORK_STATUSES) {
+            counts.put(status, raw.getOrDefault(status, 0L));
+        }
+        return counts;
     }
 
     @Transactional
@@ -129,9 +146,6 @@ public class WarehouseSalesOutboundProjectionService {
 
     private WarehouseSalesOutboundDetail toDetail(ShipmentDetail source) {
         NameDirectory names = new NameDirectory(entityManager);
-        List<?> modes=entityManager.createNativeQuery("SELECT warehouse_chosen_at_pick FROM sales_shipments WHERE id=:id")
-                .setParameter("id",source.getId()).getResultList();
-        boolean chosenAtPick=!modes.isEmpty() && Boolean.TRUE.equals(modes.getFirst());
         Map<UUID,String> stockPlaces=new HashMap<>();
         for(Object[] row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(entityManager.createNativeQuery("""
                 SELECT entry.key::uuid,entry.value FROM sales_shipment_warehouse_events event
@@ -140,12 +154,21 @@ public class WarehouseSalesOutboundProjectionService {
                     WHERE latest.shipment_id=:id AND latest.line_stock_places<>'{}'::jsonb
                     ORDER BY latest.occurred_at DESC,latest.id DESC LIMIT 1)
                 """).setParameter("id",source.getId())))stockPlaces.put((UUID)row[0],(String)row[1]);
+        // V631：行上已落定的实际发出仓（已出库行 / 确认过的行）。
+        Map<UUID,UUID> lineWarehouses=new HashMap<>();
+        for(Object[] row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(entityManager.createNativeQuery("""
+                SELECT id,warehouse_id FROM sales_shipment_items
+                WHERE shipment_id=:id AND NOT is_deleted AND warehouse_id IS NOT NULL
+                """).setParameter("id",source.getId())))lineWarehouses.put((UUID)row[0],(UUID)row[1]);
         List<String> allowedTargets = source.isCanManageWarehouseWork()
                 ? SalesShipmentService.allowedWarehouseTransitionTargets(
                         source.getWarehouseWorkStatus())
                 : List.of();
+        Map<UUID,List<WarehouseSalesOutboundWarehouseChoice>> choices=
+                allowedTargets.contains(SalesShipment.WORK_SHIPPED)?lineWarehouseChoices(source):Map.of();
         List<WarehouseSalesOutboundLine> lines = source.getItems().stream()
-                .map(item -> toLine(item, names,stockPlaces.get(item.getId())))
+                .map(item -> toLine(item, names, stockPlaces.get(item.getId()), lineWarehouses.get(item.getId()),
+                        choices.getOrDefault(item.getId(),List.of()), source.getWarehouseId()))
                 .toList();
         return new WarehouseSalesOutboundDetail(
                 source.getId(),
@@ -166,14 +189,13 @@ public class WarehouseSalesOutboundProjectionService {
                 source.getHandedOverAt(),
                 source.getWarehouseExceptionReason(),
                 allowedTargets,
-                lines,
-                chosenAtPick && allowedTargets.contains(SalesShipment.WORK_SHIPPED),
-                allowedTargets.contains(SalesShipment.WORK_SHIPPED)?warehouseOptions(source,chosenAtPick):List.of());
+                lines);
     }
 
     private WarehouseSalesOutboundLine toLine(
             ShipmentItemDto source,
-            NameDirectory names,String actualStockPlace) {
+            NameDirectory names,String actualStockPlace,UUID actualWarehouse,
+            List<WarehouseSalesOutboundWarehouseChoice> choices,UUID headerWarehouse) {
         GoodsIdentity goods = names.goods(source.getGoodsId());
         return new WarehouseSalesOutboundLine(
                 source.getId(),
@@ -192,13 +214,32 @@ public class WarehouseSalesOutboundProjectionService {
                 source.getCartonCount(),
                 source.getClientNo(),
                 source.getClientModel(),
-                source.getSourceDocNo(),actualStockPlace);
+                source.getSourceDocNo(),actualStockPlace,
+                actualWarehouse,names.warehouse(actualWarehouse),
+                suggestedWarehouse(actualWarehouse,headerWarehouse,choices),choices);
     }
 
-    private List<WarehouseSalesOutboundWarehouseOption> warehouseOptions(ShipmentDetail source,boolean chosenAtPick) {
-        // Sales detail intentionally hides order lineage from warehouse-only
-        // actors. Inventory eligibility must still use the persisted source;
-        // only quantities, never the hidden order identities, are returned.
+    /**
+     * 行的预填发出仓（V631）：已落定的行仓 > 表头仓(能发出本行) > 首个能发出本行的仓 >
+     * 表头仓(即使不够，也让操作员看到差多少) > 空（由仓库人员自己选）。
+     */
+    static UUID suggestedWarehouse(UUID actualWarehouse,UUID headerWarehouse,
+                                   List<WarehouseSalesOutboundWarehouseChoice> choices) {
+        if(actualWarehouse!=null)return actualWarehouse;
+        if(headerWarehouse!=null&&choices.stream().anyMatch(choice->choice.warehouseId().equals(headerWarehouse)&&choice.canFulfill()))
+            return headerWarehouse;
+        return choices.stream().filter(WarehouseSalesOutboundWarehouseChoice::canFulfill)
+                .map(WarehouseSalesOutboundWarehouseChoice::warehouseId).findFirst()
+                .orElse(headerWarehouse!=null&&choices.stream().anyMatch(choice->choice.warehouseId().equals(headerWarehouse))
+                        ?headerWarehouse:null);
+    }
+
+    /**
+     * 每行可选的发出仓及可发量（V631）：候选是所有持有本单任一货品库存的启用核算叶仓；
+     * 可发量 = 本仓余额 − 安全库存 − 其它硬预留，再受全局预算与本订单行自身预留封顶，
+     * 同仓同货多行按行序递减。销售详情对仓库隐藏订单谱系，这里只回数量不回订单身份。
+     */
+    private Map<UUID,List<WarehouseSalesOutboundWarehouseChoice>> lineWarehouseChoices(ShipmentDetail source) {
         List<UUID> ownIds=com.uten.imp.common.util.NativeQueryResults.typedRows(entityManager.createNativeQuery("""
                 SELECT DISTINCT order_item_id FROM sales_shipment_items
                 WHERE shipment_id=:id AND NOT is_deleted AND order_item_id IS NOT NULL ORDER BY order_item_id
@@ -241,17 +282,14 @@ public class WarehouseSalesOutboundProjectionService {
                 ) global_budget ON TRUE
                 WHERE physical.is_accountable AND NOT physical.is_line_side
                   AND fn_warehouse_is_operational_leaf(warehouse.id)
-                  AND (:choose OR warehouse.id=CAST(:warehouse AS uuid))
                   AND EXISTS(SELECT 1 FROM stock_balances present WHERE present.warehouse_id=warehouse.id AND present.qty>0
                     AND present.goods_id IN(SELECT goods_id FROM sales_shipment_items WHERE shipment_id=:shipment AND NOT is_deleted))
                 ORDER BY warehouse.name,warehouse.id,item.line_no,item.id
-                """).setParameter("shipment",source.getId()).setParameter("ownIds",ownIds)
-                .setParameter("choose",chosenAtPick).setParameter("warehouse",source.getWarehouseId()));
-        Map<UUID,List<WarehouseSalesOutboundWarehouseOption.Line>> lines=new LinkedHashMap<>();
-        Map<UUID,String> names=new HashMap<>();
+                """).setParameter("shipment",source.getId()).setParameter("ownIds",ownIds));
+        Map<UUID,List<WarehouseSalesOutboundWarehouseChoice>> choices=new LinkedHashMap<>();
         Map<String,BigDecimal> physicalRemaining=new HashMap<>(),orderRemaining=new HashMap<>();
         for(Object[] row:rows) {
-            UUID warehouse=(UUID)row[0],orderItem=(UUID)row[3];
+            UUID warehouse=(UUID)row[0],orderItem=(UUID)row[3],item=(UUID)row[2];
             String physicalKey=warehouse+"|"+row[4]+"|"+row[5],orderKey=warehouse+"|"+orderItem;
             BigDecimal rate=(BigDecimal)row[6],required=(BigDecimal)row[7];
             BigDecimal available=physicalRemaining.computeIfAbsent(physicalKey,key->(BigDecimal)row[8]);
@@ -259,12 +297,11 @@ public class WarehouseSalesOutboundProjectionService {
             BigDecimal taken=required.multiply(rate).min(available);
             physicalRemaining.computeIfPresent(physicalKey,(key,remaining)->remaining.subtract(taken));
             if(orderItem!=null)orderRemaining.computeIfPresent(orderKey,(key,remaining)->remaining.subtract(taken));
-            lines.computeIfAbsent(warehouse,key->new ArrayList<>()).add(new WarehouseSalesOutboundWarehouseOption.Line(
-                    (UUID)row[2],available.divide(rate,4,RoundingMode.DOWN),required));
-            names.put(warehouse,(String)row[1]);
+            BigDecimal availableQty=available.divide(rate,4,RoundingMode.DOWN);
+            choices.computeIfAbsent(item,key->new ArrayList<>()).add(new WarehouseSalesOutboundWarehouseChoice(
+                    warehouse,(String)row[1],availableQty,required,availableQty.compareTo(required)>=0));
         }
-        return lines.entrySet().stream().map(entry->new WarehouseSalesOutboundWarehouseOption(entry.getKey(),names.get(entry.getKey()),
-                entry.getValue().stream().allMatch(line->line.availableQty().compareTo(line.requiredQty())>=0),List.copyOf(entry.getValue()))).toList();
+        return choices;
     }
 
     /**
@@ -285,6 +322,14 @@ public class WarehouseSalesOutboundProjectionService {
     private static final java.util.Set<String> ALLOWED_WORK_STATUS_FILTERS = java.util.Set.of(
             SalesShipment.WORK_LEGACY_PENDING,
             SalesShipment.WORK_PENDING_PICK,
+            SalesShipment.WORK_SHIPPED,
+            SalesShipment.WORK_CANCELLED,
+            SalesShipment.WORK_REVERSED);
+
+    /** counts() 固定给键的状态(顺序即输出顺序), 与可筛选状态同集. */
+    private static final List<String> COUNTED_WORK_STATUSES = List.of(
+            SalesShipment.WORK_PENDING_PICK,
+            SalesShipment.WORK_LEGACY_PENDING,
             SalesShipment.WORK_SHIPPED,
             SalesShipment.WORK_CANCELLED,
             SalesShipment.WORK_REVERSED);

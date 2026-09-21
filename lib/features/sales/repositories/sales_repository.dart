@@ -31,6 +31,7 @@ class SalesDocFilter {
     this.financeAudit,
     this.financeRejected,
     this.warehouseWorkStatus,
+    this.stage,
   });
   final String? keyword;
   final String? clientId;
@@ -46,6 +47,8 @@ class SalesDocFilter {
   final int? financeAudit; // 出货财务审核：0 待审 / 1 已审
   final bool? financeRejected; // 出货被财务退回待销售处理（V578 专段筛选）
   final String? warehouseWorkStatus; // 出货仓库作业状态
+  /// 出货单真实阶段分段（shipments 端点 stage 参数，见 [SalesShipmentStage]，2026-09-20）。
+  final String? stage;
 }
 
 class SalesRepository {
@@ -85,6 +88,8 @@ class SalesRepository {
       if (filter.warehouseWorkStatus != null &&
           filter.warehouseWorkStatus!.trim().isNotEmpty)
         'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
+      if (filter.stage != null && filter.stage!.trim().isNotEmpty)
+        'stage': filter.stage!.trim(),
       if (filter.chain != null && filter.chain!.isNotEmpty)
         'chain': filter.chain!.join(','),
       if (filter.chainGroup != null) 'chainGroup': filter.chainGroup,

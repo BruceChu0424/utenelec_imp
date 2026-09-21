@@ -28,7 +28,8 @@ class WarehouseSalesOutboundContractTest {
         for (Class<?> projection : Set.of(
                 WarehouseSalesOutboundListItem.class,
                 WarehouseSalesOutboundDetail.class,
-                WarehouseSalesOutboundLine.class)) {
+                WarehouseSalesOutboundLine.class,
+                WarehouseSalesOutboundWarehouseChoice.class)) {
             assertThat(projection.isRecord()).isTrue();
             for (RecordComponent component : projection.getRecordComponents()) {
                 String field = component.getName().toLowerCase(Locale.ROOT);
@@ -59,5 +60,10 @@ class WarehouseSalesOutboundContractTest {
         assertThat(detail.getAnnotation(GetMapping.class).value()).containsExactly("/{id}");
         assertThat(command.getAnnotation(PostMapping.class).value())
                 .containsExactly("/{id}/warehouse-work");
+        // 角标计数两个只读端点: /count = 待出库张数(hub 卡/父分类), /counts = 按仓库作业状态分组(小类行).
+        Method pendingCount = WarehouseSalesOutboundController.class.getDeclaredMethod("pendingCount");
+        Method counts = WarehouseSalesOutboundController.class.getDeclaredMethod("counts");
+        assertThat(pendingCount.getAnnotation(GetMapping.class).value()).containsExactly("/count");
+        assertThat(counts.getAnnotation(GetMapping.class).value()).containsExactly("/counts");
     }
 }

@@ -61,6 +61,40 @@ class SalesOrderProgressStageTest {
     }
 
     @Test
+    void inFlightShipmentsMoveTheOrderIntoShipmentStagesUntilTheWarehouseConfirms() {
+        // 参数尾部四项：出货草稿 / 等待财审 / 财务退回 / 财务已放行待出库 的在途数量（V631）。
+        // 预留 10 全部开了出货单待财审：不再算「可分批发货」，而是出货待财审。
+        assertEquals("SHIPMENT_PENDING",
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 10, 0, 0));
+        // 财务已放行、仓库未出库：等仓库出货。
+        assertEquals("WAREHOUSE_PENDING",
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 0, 0, 10));
+        // 部分在途、剩余仍有预留：可分批发货优先——剩余量才是销售的待办。
+        assertEquals("SHIPPABLE",
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 4, 0, 0));
+        // 出货草稿、财务退回同样是出货在途。
+        assertEquals("SHIPMENT_PENDING",
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 10, 0, 0, 0));
+        assertEquals("SHIPMENT_PENDING",
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 0, 10, 0));
+        // 已出库达订货量仍是终态。
+        assertEquals("SHIPPED",
+                SalesOrderService.progressStageOf(10, 10, 10, 0, 10, 0, false, false, false, 0, 0, 0, 0));
+        String expression = SalesOrderService.progressStageExpr();
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("'SHIPPED'") < expression.indexOf("'SHIPPABLE'"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("'SHIPPABLE'") < expression.indexOf("'WAREHOUSE_PENDING'"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("'WAREHOUSE_PENDING'") < expression.indexOf("'SHIPMENT_PENDING'"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                SalesOrderService.progressGroupedSql(
+                        new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope(
+                                "1=1", null, java.util.Set.of()))
+                        .contains("AS shipment_approved_qty"));
+    }
+
+    @Test
     void fullyPlannedIsProducing() {
         assertEquals(
                 "PRODUCING",

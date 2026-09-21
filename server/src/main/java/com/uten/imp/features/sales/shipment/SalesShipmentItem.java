@@ -62,6 +62,13 @@ public class SalesShipmentItem extends BaseEntity {
     @Column(name = "goods_snapshot_locked_at")
     private java.time.OffsetDateTime goodsSnapshotLockedAt;
 
+    /**
+     * 实际发出仓（V631）：仓库确认出库时按行落定，可与表头 warehouse_id 不同——一张出货单的货
+     * 可以分别从几个叶仓发出；SHIPPED 前为空表示尚未确认。历史已出库行已回填为表头仓。
+     */
+    @Column(name = "warehouse_id")
+    private UUID warehouseId;
+
     @Column(name = "color_id")
     private UUID colorId;
 

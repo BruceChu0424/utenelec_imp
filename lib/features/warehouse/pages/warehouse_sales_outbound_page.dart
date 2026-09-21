@@ -46,7 +46,7 @@ class _WarehouseSalesOutboundPageState
         return;
       }
       setState(() => _refreshTick++);
-      ref.invalidate(warehouseSalesOutboundPendingCountProvider);
+      ref.invalidate(warehouseSalesOutboundCountsProvider);
     });
     return Scaffold(
       appBar: UtenAppBar(

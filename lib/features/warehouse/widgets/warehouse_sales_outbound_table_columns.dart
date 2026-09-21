@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_sales_outbound.dart';
+import 'warehouse_sales_picking_fields.dart';
 
 /// One physical line, retaining its document and actual warehouse identity.
 class WarehouseSalesOutboundTableRow {
@@ -45,17 +47,18 @@ String warehouseSalesOutboundReviewSnapshot(WarehouseSalesOutboundDetail d) =>
       d.contactPhone,
       d.logisticsNo,
       d.parcelCount,
-      d.canSelectWarehouse,
-      for (final option in d.warehouseOptions)
-        [
-          option.warehouseId,
-          option.canFulfill,
-          for (final line in option.lines)
-            [line.shipmentItemId, line.availableQty, line.requiredQty],
-        ],
       for (final line in d.lines)
         [
           line.id,
+          line.warehouseId,
+          line.suggestedWarehouseId,
+          for (final choice in line.warehouseChoices)
+            [
+              choice.warehouseId,
+              choice.availableQty,
+              choice.requiredQty,
+              choice.canFulfill,
+            ],
           line.lineNumber,
           line.goodsId,
           line.goodsCode,
@@ -83,9 +86,21 @@ warehouseSalesOutboundTableColumns({
   String Function(WarehouseSalesOutboundTableRow)? resultOf,
   TextEditingController? Function(WarehouseSalesOutboundTableRow)?
   stockPlaceControllerOf,
-  String? Function(WarehouseSalesOutboundTableRow)? warehouseNameOf,
+
+  /// V631：给出本行所属单据的核对草稿时，「发出仓」列变成逐行下拉(预填建议仓，
+  /// 选项带可发量，不足的禁选)；不给时只读显示已落定的行仓或表头仓。
+  WarehouseSalesPickingDraft? Function(WarehouseSalesOutboundTableRow)? draftOf,
+  VoidCallback? onDraftChanged,
   bool editingEnabled = true,
 }) {
+  String? warehouseText(WarehouseSalesOutboundTableRow row) {
+    final draft = draftOf?.call(row);
+    if (draft != null && draft.selectable) {
+      return draft.warehouseNameOf(row.line.id);
+    }
+    return row.line.warehouseName ?? row.detail.header.warehouseName;
+  }
+
   bool has(String? Function(WarehouseSalesOutboundLine) value) =>
       rows.any((row) => value(row.line)?.trim().isNotEmpty == true);
   MasterColumnDef<WarehouseSalesOutboundTableRow> column(
@@ -156,14 +171,58 @@ warehouseSalesOutboundTableColumns({
       type: 'number',
     ),
     column('unitName', l10n.warehouseOutboundUnit, 80, (r) => r.line.unitName),
-    column(
-      'warehouse',
-      l10n.warehouseSubcontractOutboundWarehouse,
-      150,
-      (r) => warehouseNameOf != null
-          ? warehouseNameOf(r)
-          : r.detail.header.warehouseName,
-    ),
+    if (draftOf != null)
+      MasterColumnDef(
+        key: 'warehouse',
+        label: l10n.warehouseSubcontractOutboundWarehouse,
+        width: 240,
+        info: '已预填建议发出仓(表头仓能发则表头仓，否则首个能发出本行的仓)；各行可分别从不同仓发出，可发量已扣安全库存与其它预留。',
+        value: (row) => warehouseText(row) ?? '—',
+        cellBuilder: (context, row) {
+          final draft = draftOf(row);
+          if (draft == null || !draft.selectable) {
+            return Text(warehouseText(row) ?? '—');
+          }
+          final selected = draft.warehouses[row.line.id];
+          final choices = row.line.warehouseChoices;
+          return UtenDropdownField(
+            key: ValueKey('sales-picking-warehouse-line-${row.line.id}'),
+            dense: true,
+            value: selected,
+            allowClear: false,
+            enabled: editingEnabled,
+            hintText: choices.isEmpty ? '暂无可供货仓库' : '选择发出仓',
+            errorMessage: draft.lineErrors[row.line.id],
+            items: [
+              for (final choice in choices)
+                UtenDropdownItem(
+                  value: choice.warehouseId,
+                  label: choice.label,
+                  enabled: choice.canFulfill,
+                ),
+              if (selected != null &&
+                  !choices.any((choice) => choice.warehouseId == selected))
+                UtenDropdownItem(
+                  value: selected,
+                  label:
+                      '${draft.warehouseNameOf(row.line.id) ?? '当前仓'} · 无本行可发库存',
+                  enabled: false,
+                ),
+            ],
+            onChanged: (value) {
+              draft.changeWarehouse(row.line.id, value);
+              onDraftChanged?.call();
+            },
+          );
+        },
+      )
+    else
+      column(
+        'warehouse',
+        l10n.warehouseSubcontractOutboundWarehouse,
+        150,
+        warehouseText,
+      ),
     column(
       'currentStockPlaceHint',
       l10n.warehouseOutboundPlaceHint,
@@ -194,7 +253,7 @@ warehouseSalesOutboundTableColumns({
                 hintText: '按本次实际填写',
                 counterText: '',
               ),
-              info: '主档建议库位仅供参考；请按本次实际位置填写，无固定库位可留空。',
+              info: '已按主档建议库位预填；请按本次实际位置修改，无固定库位可清空。',
             ),
           );
         },

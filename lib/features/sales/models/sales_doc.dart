@@ -178,6 +178,65 @@ String salesShipmentFinanceAuditLabel(int? value) => switch (value) {
   final unknown => '异常状态($unknown)',
 };
 
+/// 出货单生命周期阶段（列表分段与状态列，2026-09-20）。出货单的 status 只在仓库确认出库
+/// 时才变 1，财审前后的全部中间态都是 status=0——按「草稿/已审」分段会把等待财审、
+/// 财务已放行待出库全归到草稿。列表改按真实阶段过滤（服务端 stage 参数同名）。
+abstract final class SalesShipmentStage {
+  static const draft = 'DRAFT';
+  static const pendingFinance = 'PENDING_FINANCE';
+  static const financeRejected = 'FINANCE_REJECTED';
+  static const financeApproved = 'FINANCE_APPROVED';
+  static const shipped = 'SHIPPED';
+  static const reversed = 'REVERSED';
+
+  /// 列表分段顺序（末尾另有「历史记录」）。
+  static const segments = [
+    draft,
+    pendingFinance,
+    financeRejected,
+    financeApproved,
+    shipped,
+    reversed,
+  ];
+}
+
+String salesShipmentStageLabel(String stage) => switch (stage) {
+  SalesShipmentStage.draft => '草稿',
+  SalesShipmentStage.pendingFinance => '等待财务审核',
+  SalesShipmentStage.financeRejected => '财务已退回',
+  SalesShipmentStage.financeApproved => '已审',
+  SalesShipmentStage.shipped => '已出库',
+  SalesShipmentStage.reversed => '红冲',
+  _ => '—',
+};
+
+/// 由列表行字段推出阶段；历史来源不完整（LEGACY）或仓库驳回的终态行返回 null。
+String? salesShipmentStageOf(SalesDocListItem it) {
+  if (it.status == kSalesStatusReversed) return SalesShipmentStage.reversed;
+  if (it.status == kSalesStatusApproved) return SalesShipmentStage.shipped;
+  if (it.rejected || it.shipmentWorkflow.kind == 'LEGACY') return null;
+  if (it.shipmentWorkflow.financeRejected) {
+    return SalesShipmentStage.financeRejected;
+  }
+  if (it.financeAudit == 1) return SalesShipmentStage.financeApproved;
+  if (it.shipmentWorkflow.financeReviewPending) {
+    return SalesShipmentStage.pendingFinance;
+  }
+  return SalesShipmentStage.draft;
+}
+
+/// 状态列文案：比分段再具体一档（草稿·待销售确认 / 已审·待出库）。
+String salesShipmentStatusText(SalesDocListItem it) {
+  if (it.shipmentWorkflow.kind == 'LEGACY') return '历史迁移待重建';
+  if (it.rejected) return '已驳回';
+  return switch (salesShipmentStageOf(it)) {
+    SalesShipmentStage.draft => '草稿 · 待销售确认',
+    SalesShipmentStage.financeApproved => '已审 · 待出库',
+    final String stage => salesShipmentStageLabel(stage),
+    null => salesStatusLabel(it.status),
+  };
+}
+
 bool salesShipmentRequiresOrderLinks({
   required bool isNew,
   required String? warehouseWorkStatus,
@@ -229,7 +288,16 @@ class ShipmentFinanceAuditInfo {
     this.freeReason,
     this.commercialSnapshot,
     this.previousCommercialSnapshot,
+    this.currencyName,
+    this.financeRate,
+    this.financeRateReady,
   });
+
+  /// V631：本单币种的财务汇率状态——仓库确认出库要按它立账，未维护时财审页先拦住
+  /// 并指向基础资料→币种，不让仓库那步才报错。旧载荷没有该键时 [financeRateReady] 为 null。
+  final String? currencyName;
+  final String? financeRate;
+  final bool? financeRateReady;
 
   final int? reviewRevision;
   final String? contentHash;
@@ -263,6 +331,11 @@ class ShipmentFinanceAuditInfo {
         freeReason: _text(json['freeReason']),
         commercialSnapshot: _text(json['commercialSnapshot']),
         previousCommercialSnapshot: _text(json['previousCommercialSnapshot']),
+        currencyName: _text(json['currencyName']),
+        financeRate: _text(json['financeRate']),
+        financeRateReady: json['financeRateReady'] is bool
+            ? json['financeRateReady'] as bool
+            : null,
         financeAudit: (json['financeAudit'] as num?)?.toInt(),
         clientName: _text(json['clientName']),
         settlementMethodId: _text(json['settlementMethodId']),

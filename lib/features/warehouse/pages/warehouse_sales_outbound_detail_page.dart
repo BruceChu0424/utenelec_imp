@@ -18,6 +18,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
@@ -145,10 +146,8 @@ class _WarehouseSalesOutboundDetailPageState
             widget.id,
             targetStatus: action.targetStatus,
             reason: reason,
-            warehouseId: reviewed.canSelectWarehouse
-                ? _picking?.warehouseId
-                : null,
             stockPlaces: _picking?.stockPlaces,
+            lineWarehouses: _picking?.lineWarehouses,
           );
       if (!mounted) return;
       if (updated.header.id != widget.id ||
@@ -317,19 +316,6 @@ class _WarehouseSalesOutboundDetailPageState
                               ],
                               const SizedBox(height: UtenSpacing.s12),
                               _factsCard(detail),
-                              if (detail.header.allows(
-                                    WarehouseSalesOutboundAction
-                                        .confirmShipment,
-                                  ) &&
-                                  _picking != null) ...[
-                                const SizedBox(height: UtenSpacing.s12),
-                                WarehouseSalesPickingFields(
-                                  draft: _picking!,
-                                  enabled:
-                                      !_acting && !_confirming && !_needsReview,
-                                  onChanged: () => setState(() {}),
-                                ),
-                              ],
                               const SizedBox(height: UtenSpacing.s16),
                             ],
                           ),
@@ -363,8 +349,9 @@ class _WarehouseSalesOutboundDetailPageState
                                           ) ??
                                           AppLocalizationsZh(),
                                       rows: rows,
-                                      warehouseNameOf: (_) =>
-                                          _picking?.warehouseName,
+                                      // V631：发出仓按行在表格里选，预填建议仓。
+                                      draftOf: (_) => _picking,
+                                      onDraftChanged: () => setState(() {}),
                                       stockPlaceControllerOf:
                                           detail.header.allows(
                                             WarehouseSalesOutboundAction
@@ -436,14 +423,20 @@ class _WarehouseSalesOutboundDetailPageState
       ('出货单号', detail.header.billNo),
       ('业务日期', detail.header.billDate),
       ('客户', detail.header.clientName),
-      ('仓库', detail.header.warehouseName),
+      // V631：表头仓只是默认/主发出仓，实际发出仓按行在表格里选。
+      (
+        detail.header.allows(WarehouseSalesOutboundAction.confirmShipment)
+            ? '默认发出仓'
+            : '仓库',
+        detail.header.warehouseName,
+      ),
       ('收货地址', detail.shipAddress),
       ('联系电话', detail.contactPhone),
       ('物流单号', detail.logisticsNo),
       ('件数', detail.parcelCount?.toString()),
       ('作业状态', detail.header.statusLabel),
-      ('出库时间', detail.handedOverAt),
-      ('作业更新', detail.warehouseWorkUpdatedAt),
+      ('出库时间', _wallTime(detail.handedOverAt)),
+      ('作业更新', _wallTime(detail.warehouseWorkUpdatedAt)),
     ].where((fact) => _present(fact.$2)).toList(growable: false);
     final theme = Theme.of(context);
     return Card(
@@ -588,3 +581,9 @@ IconData _actionIcon(WarehouseSalesOutboundAction action) => switch (action) {
 };
 
 bool _present(String? value) => value?.trim().isNotEmpty == true;
+
+/// 服务端给的是 ISO 瞬时(如 2026-09-20T22:19:29.862649Z)，页面按北京时间显示；
+/// 解析不了时原样回显而不是隐藏。
+String? _wallTime(String? value) => value == null
+    ? null
+    : ChinaDateTime.formatIsoInstant(value, fallback: value);

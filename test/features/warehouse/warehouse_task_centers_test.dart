@@ -8,6 +8,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center_page.dart';
@@ -61,6 +62,11 @@ void main() {
         isSuperAdminProvider.overrideWithValue(false),
         warehouseSalesOutboundPendingCountProvider.overrideWith(
           (ref) async => 5,
+        ),
+        // 销售出库小类行计数: 待出库红徽章与父分类同数(5), 已出库中性括号(12).
+        warehouseSalesOutboundCountsProvider.overrideWith(
+          (ref) async =>
+              const WarehouseSalesOutboundCounts(pendingPick: 5, shipped: 12),
         ),
         warehouseProductionDrawPendingCountProvider.overrideWith(
           (ref) async => 3,
@@ -152,6 +158,35 @@ void main() {
     await tester.pump();
     expect(find.text('共 0 条 · 双击办理'), findsOneWidget);
     // 分段切换会触达 60s 轮询计数的重建，推进时钟排空再卸载页面。
+    await tester.pump(const Duration(seconds: 61));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('outbound sales sub-segments carry counts like the parent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(const WarehouseOutboundTaskCenterPage(), const {
+        Perm.salesShipmentWarehouseWork,
+      }),
+    );
+    await tester.pump();
+    // 父分类「销售出库」红徽章 = 5(待出库张数).
+    expect(find.text('5'), findsOneWidget);
+
+    await tester.tap(find.text('销售出库'));
+    await tester.pump();
+    await tester.pump();
+    // 2026-09-20 用户口径: 父分类有红徽章, 小类也要有数——待出库红徽章与父分类同源
+    // 同数(第二个「5」), 已出库中性括号数, 历史单据不挂(已出库本身就是历史).
+    expect(find.text('待出库'), findsOneWidget);
+    expect(find.text('5'), findsNWidgets(2));
+    expect(find.text('(12)'), findsOneWidget);
+    expect(find.text('历史单据'), findsOneWidget);
+    expect(find.text('(0)'), findsNothing);
+    // 小类默认不选: 仍是引导占位, 不发列表请求.
+    expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

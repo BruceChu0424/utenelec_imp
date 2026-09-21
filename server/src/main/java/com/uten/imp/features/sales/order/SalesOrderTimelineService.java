@@ -399,10 +399,20 @@ public class SalesOrderTimelineService {
 
     // ============================ 发货 ============================
 
+    /**
+     * 发货链（V631 起按出货单真实阶段拆成多环）：销售开出货单 → 等待财务审核出货 / 财务放行出货
+     * → 等仓库出货 → 仓库已发货；财务退回、仓库驳回、红冲各是一条 REJECTED 环。
+     * 一张订单可能有多张出货单，每张各自一串，单号可点跳出货详情。
+     */
     private void addShipmentEvents(UUID orderId, List<OrderProgressTimelineEvent> events) {
         List<Object[]> rows = objectRows(em.createNativeQuery("""
                 SELECT s.id, s.bill_no, s.status, s.created_at, s.maker_id, s.approver_id,
-                       s.logistics_no, s.handed_over_at
+                       s.logistics_no, s.handed_over_at, s.finance_audit, s.finance_rejected,
+                       s.finance_rejection_reason, s.finance_auditor_id, s.finance_audited_at,
+                       s.handed_over_by, s.rejected,
+                       (COALESCE(s.finance_gate_version, 0) < 2
+                        OR (s.sales_confirmed_at IS NOT NULL
+                            AND s.sales_confirmed_revision = s.review_revision)) AS sales_confirmed
                 FROM sales_shipments s
                 WHERE s.source_order_id = :oid
                   AND COALESCE(s.is_deleted, FALSE) = FALSE
@@ -410,34 +420,74 @@ public class SalesOrderTimelineService {
                 """).setParameter("oid", orderId));
         for (Object[] row : rows) {
             UUID shipmentId = (UUID) row[0];
+            String billNo = (String) row[1];
             int status = ((Number) row[2]).intValue();
-            String state;
-            String detail;
-            OffsetDateTime at = toTime(row[3]);
-            if (status == -1) {
-                state = REJECTED;
-                detail = "出货单已红冲";
-            } else if (status == 1) {
-                state = DONE;
-                String approver = employeeDisplayName((UUID) row[5]);
-                OffsetDateTime approvedAt =
-                        auditTransitionAt("sales_shipments", shipmentId, "status", "1");
-                if (approvedAt != null) at = approvedAt;
-                else if (row[7] != null) at = toTime(row[7]);
-                detail = approver == null ? null : "发货审核人：" + approver;
-            } else {
-                state = CURRENT;
-                detail = "出货草稿待审核/拣货";
-            }
+            OffsetDateTime createdAt = toTime(row[3]);
+            String maker = employeeDisplayName((UUID) row[4]);
+            String approver = employeeDisplayName((UUID) row[5]);
             String logistics = (String) row[6];
-            if (logistics != null && !logistics.isBlank()) {
-                detail = (detail == null ? "" : detail + " · ") + "物流单号 " + logistics;
+            boolean financeAudited = row[8] != null && ((Number) row[8]).intValue() == 1;
+            boolean financeRejected = Boolean.TRUE.equals(row[9]);
+            String rejectionReason = (String) row[10];
+            String auditor = employeeDisplayName((UUID) row[11]);
+            OffsetDateTime auditedAt = toTime(row[12]);
+            String handedOverBy = employeeDisplayName((UUID) row[13]);
+            boolean warehouseRejected = Boolean.TRUE.equals(row[14]);
+            boolean salesConfirmed = Boolean.TRUE.equals(row[15]);
+
+            events.add(shipmentEvent(80, "SHIPMENT_CREATED", "销售开出货单", "发货人", maker,
+                    createdAt, DONE, "出货单 " + billNo + " 已开出", shipmentId, billNo));
+            if (status == -1) {
+                events.add(shipmentEvent(86, "SHIPMENT_REVERSED", "出货单红冲", "操作人", approver,
+                        auditTransitionAt("sales_shipments", shipmentId, "status", "-1"), REJECTED,
+                        "出货单已红冲，库存与应收已冲回", shipmentId, billNo));
+                continue;
             }
-            events.add(new OrderProgressTimelineEvent(
-                    80, "SHIPMENT", "销售发货", "发货人",
-                    employeeDisplayName((UUID) row[4]), at, state, detail,
-                    "SALES_SHIPMENT", shipmentId, (String) row[1]));
+            if (status == 1) {
+                if (financeAudited) {
+                    events.add(shipmentEvent(82, "SHIPMENT_FINANCE_RELEASED", "财务放行出货", "审核人",
+                            auditor, auditedAt, DONE, null, shipmentId, billNo));
+                }
+                OffsetDateTime shippedAt =
+                        auditTransitionAt("sales_shipments", shipmentId, "status", "1");
+                if (shippedAt == null) shippedAt = row[7] != null ? toTime(row[7]) : createdAt;
+                String detail = "库存、已发数量与应收已过账";
+                if (logistics != null && !logistics.isBlank()) detail += " · 物流单号 " + logistics;
+                events.add(shipmentEvent(84, "SHIPMENT_SHIPPED", "仓库已发货", "出库人",
+                        handedOverBy != null ? handedOverBy : approver, shippedAt, DONE, detail,
+                        shipmentId, billNo));
+                continue;
+            }
+            if (warehouseRejected) {
+                events.add(shipmentEvent(82, "SHIPMENT_WAREHOUSE_REJECTED", "出货单已驳回", null, null,
+                        null, REJECTED, "仓库驳回：预留已释放，请重新开单", shipmentId, billNo));
+            } else if (financeRejected) {
+                events.add(shipmentEvent(82, "SHIPMENT_FINANCE_REJECTED", "财务退回出货单", null, null,
+                        null, REJECTED,
+                        rejectionReason == null || rejectionReason.isBlank()
+                                ? "请销售修改后重新提交财务审核"
+                                : "退回原因：" + rejectionReason,
+                        shipmentId, billNo));
+            } else if (financeAudited) {
+                events.add(shipmentEvent(82, "SHIPMENT_FINANCE_RELEASED", "财务放行出货", "审核人",
+                        auditor, auditedAt, DONE, null, shipmentId, billNo));
+                events.add(shipmentEvent(84, "SHIPMENT_WAREHOUSE_PENDING", "等仓库出货", null, null,
+                        null, CURRENT, "仓库确认出库后才扣库存、立应收", shipmentId, billNo));
+            } else if (salesConfirmed) {
+                events.add(shipmentEvent(82, "SHIPMENT_FINANCE_PENDING", "等待财务审核出货", null, null,
+                        null, CURRENT, "出货单已提交财务，放行后仓库才能出库", shipmentId, billNo));
+            } else {
+                events.add(shipmentEvent(82, "SHIPMENT_DRAFT", "出货草稿待销售确认", null, null,
+                        null, CURRENT, "销售确认并提交财务后进入财审", shipmentId, billNo));
+            }
         }
+    }
+
+    private static OrderProgressTimelineEvent shipmentEvent(
+            int seq, String code, String title, String operatorLabel, String operatorName,
+            OffsetDateTime at, String state, String detail, UUID shipmentId, String billNo) {
+        return new OrderProgressTimelineEvent(seq, code, title, operatorLabel, operatorName, at,
+                state, detail, "SALES_SHIPMENT", shipmentId, billNo);
     }
 
     // ============================ 结案 / 中止 ============================

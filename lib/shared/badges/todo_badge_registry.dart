@@ -408,7 +408,8 @@ void invalidateTodoBadgeCaches(WidgetRef ref) {
   ref.invalidate(financeProcurementApprovalCountProvider);
   ref.invalidate(financeArrivalExceptionCountProvider);
   ref.invalidate(procurementIqcRejectionOpenCountProvider);
-  ref.invalidate(warehouseSalesOutboundPendingCountProvider);
+  // 销售待出库数由分组计数派生, 失效打在源头(单独失效派生 provider 不会重拉).
+  ref.invalidate(warehouseSalesOutboundCountsProvider);
   ref.invalidate(warehouseSubcontractOutboundCountProvider);
   ref.invalidate(warehouseInboundExpectationCountProvider);
   ref.invalidate(warehouseArrivalExceptionCountProvider);

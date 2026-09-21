@@ -240,7 +240,8 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
   final WarehouseSalesOutboundDetail value;
 
   @override
-  Future<int> pendingCount() async => 0;
+  Future<WarehouseSalesOutboundCounts> counts() async =>
+      const WarehouseSalesOutboundCounts();
 
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
@@ -266,8 +267,8 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
-    String? warehouseId,
     Map<String, String>? stockPlaces,
+    Map<String, String?>? lineWarehouses,
   }) async => value;
 }
 

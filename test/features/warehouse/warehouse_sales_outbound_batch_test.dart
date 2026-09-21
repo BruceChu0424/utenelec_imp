@@ -64,13 +64,25 @@ void main() {
         action: WarehouseSalesOutboundAction.confirmShipment,
       ),
     );
+    // V631：发出仓按行在表格里选，预填服务端建议仓；不再有整单「实际发货仓库」。
+    expect(find.text('实际发货仓库'), findsNothing);
     expect(
-      find.byKey(const ValueKey('sales-picking-warehouse-1')),
+      find.byKey(const ValueKey('sales-picking-warehouse-line-line-1')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('sales-picking-warehouse-2')),
+      find.byKey(const ValueKey('sales-picking-warehouse-line-line-2')),
       findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('sales-picking-place-line-1')),
+          )
+          .controller
+          ?.text,
+      'A01',
+      reason: '实际库位先按主档建议库位预填',
     );
     await tester.enterText(
       find.byKey(const ValueKey('sales-picking-place-line-1')),
@@ -81,7 +93,10 @@ void main() {
       'B-22',
     );
     await _confirm(tester);
-    expect(gateway.warehouses, {'1': 'leaf-1', '2': 'leaf-2'});
+    expect(gateway.warehouses, {
+      '1': {'line-1': 'leaf-1'},
+      '2': {'line-2': 'leaf-2'},
+    });
     expect(gateway.places, {
       '1': {'line-1': 'A-11'},
       '2': {'line-2': 'B-22'},
@@ -424,23 +439,6 @@ WarehouseSalesOutboundDetail _detail(
   'warehouseWorkUpdatedAt': '2026-09-12T01:30:00Z',
   'clientName': '客户$id',
   'warehouseId': warehouseSelectable ? null : 'leaf-warehouse',
-  'canSelectWarehouse': warehouseSelectable,
-  'warehouseOptions': warehouseSelectable
-      ? [
-          {
-            'warehouseId': 'leaf-$id',
-            'warehouseName': '成品$id仓',
-            'canFulfill': true,
-            'lines': [
-              {
-                'shipmentItemId': 'line-$id',
-                'availableQty': quantity,
-                'requiredQty': quantity,
-              },
-            ],
-          },
-        ]
-      : <Map<String, dynamic>>[],
   'warehouseName': '一号分仓',
   'warehouseWorkStatus': status,
   'allowedWarehouseTargets':
@@ -459,6 +457,24 @@ WarehouseSalesOutboundDetail _detail(
       'currentStockPlaceHint': 'A01',
       'unitName': '件',
       'quantity': quantity,
+      // V631：逐行候选发出仓与建议仓(推迟选仓的单据表头仓为空，建议仓来自库存所在叶仓)。
+      if (status == 'PENDING_PICK') ...{
+        'suggestedWarehouseId': warehouseSelectable
+            ? 'leaf-$id'
+            : 'leaf-warehouse',
+        'warehouseChoices': [
+          {
+            'warehouseId': warehouseSelectable ? 'leaf-$id' : 'leaf-warehouse',
+            'warehouseName': warehouseSelectable ? '成品$id仓' : '一号分仓',
+            'availableQty': quantity,
+            'requiredQty': quantity,
+            'canFulfill': true,
+          },
+        ],
+      } else ...{
+        'warehouseId': 'leaf-warehouse',
+        'warehouseName': '一号分仓',
+      },
     },
   ],
 });
@@ -469,7 +485,7 @@ class _Gateway implements WarehouseSalesOutboundGateway {
   final Map<String, WarehouseSalesOutboundDetail> values;
   final List<String> commands = [];
   final List<String?> reasons = [];
-  final Map<String, String?> warehouses = {};
+  final Map<String, Map<String, String?>?> warehouses = {};
   final Map<String, Map<String, String>?> places = {};
   String? failId;
   int listReads = 0;
@@ -477,7 +493,8 @@ class _Gateway implements WarehouseSalesOutboundGateway {
   final List<int> listPages = [];
 
   @override
-  Future<int> pendingCount() async => values.length;
+  Future<WarehouseSalesOutboundCounts> counts() async =>
+      WarehouseSalesOutboundCounts(pendingPick: values.length);
 
   @override
   Future<WarehouseSalesOutboundDetail> detail(String id) async => values[id]!;
@@ -516,12 +533,12 @@ class _Gateway implements WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
-    String? warehouseId,
     Map<String, String>? stockPlaces,
+    Map<String, String?>? lineWarehouses,
   }) async {
     commands.add('$id:$targetStatus');
     reasons.add(reason);
-    warehouses[id] = warehouseId;
+    warehouses[id] = lineWarehouses;
     places[id] = stockPlaces;
     if (id == failId) {
       throw ApiException('CONFLICT', '库存数量已变化');

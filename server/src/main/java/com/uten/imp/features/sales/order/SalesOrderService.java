@@ -325,6 +325,10 @@ public class SalesOrderService {
             double reservedQty = pgNum(row, 8);
             double plannedQty = pgNum(row, 9);
             double unplannedQty = pgNum(row, 17);
+            double shipmentDraftQty = pgNum(row, 18);
+            double shipmentPendingFinanceQty = pgNum(row, 19);
+            double shipmentFinanceRejectedQty = pgNum(row, 20);
+            double shipmentApprovedQty = pgNum(row, 21);
             boolean financeConfirmed = Boolean.TRUE.equals(row[10]);
             boolean financeRejected = Boolean.TRUE.equals(row[11]);
             boolean stopped = Boolean.TRUE.equals(row[15]);
@@ -336,14 +340,20 @@ public class SalesOrderService {
                     pct, progressStageOf(
                             orderQty, producedQty, shippedQty,
                             reservedQty, plannedQty, unplannedQty,
-                            financeRejected, stopped, closed),
+                            financeRejected, stopped, closed,
+                            shipmentDraftQty, shipmentPendingFinanceQty,
+                            shipmentFinanceRejectedQty, shipmentApprovedQty),
                     financeConfirmed,
                     financeRejected,
                     pgStr(row, 12),
                     pgStr(row, 13),
                     offsetDateTime(row[14]),
                     stopped,
-                    closed);
+                    closed,
+                    shipmentDraftQty,
+                    shipmentPendingFinanceQty,
+                    shipmentFinanceRejectedQty,
+                    shipmentApprovedQty);
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -433,6 +443,25 @@ public class SalesOrderService {
                 LEFT JOIN employees finance_reviewer
                   ON finance_reviewer.id = o.finance_rejected_by
                 LEFT JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = false
+                LEFT JOIN LATERAL (
+                    SELECT COALESCE(SUM(si.qty) FILTER (WHERE s.finance_audit = 0 AND s.finance_rejected = false
+                               AND COALESCE(s.finance_gate_version, 0) >= 2
+                               AND NOT (s.sales_confirmed_at IS NOT NULL
+                                        AND s.sales_confirmed_revision = s.review_revision)), 0) AS draft_qty,
+                           COALESCE(SUM(si.qty) FILTER (WHERE s.finance_audit = 0 AND s.finance_rejected = false
+                               AND (COALESCE(s.finance_gate_version, 0) < 2
+                                    OR (s.sales_confirmed_at IS NOT NULL
+                                        AND s.sales_confirmed_revision = s.review_revision))), 0) AS pending_finance_qty,
+                           COALESCE(SUM(si.qty) FILTER (WHERE s.finance_rejected), 0) AS finance_rejected_qty,
+                           COALESCE(SUM(si.qty) FILTER (WHERE s.finance_audit = 1 AND s.finance_rejected = false), 0) AS approved_qty
+                    FROM sales_shipment_items si
+                    JOIN sales_shipments s ON s.id = si.shipment_id
+                    WHERE si.order_item_id IN (SELECT oi.id FROM sales_order_items oi
+                                               WHERE oi.order_id = o.id AND oi.is_deleted = false)
+                      AND COALESCE(si.is_deleted, false) = false
+                      AND COALESCE(s.is_deleted, false) = false
+                      AND s.status = 0 AND s.rejected = false AND s.shipment_kind <> 'LEGACY'
+                ) ship ON TRUE
                 WHERE o.is_deleted = false
                   AND (
                     o.status = 1
@@ -453,12 +482,18 @@ public class SalesOrderService {
                        COALESCE(finance_reviewer.full_name, ''),
                        o.finance_rejected_at,
                        o.is_stopped, o.is_closed,
-                       COALESCE(SUM(%s),0) AS unplanned_qty
+                       COALESCE(SUM(%s),0) AS unplanned_qty,
+                       ship.draft_qty AS shipment_draft_qty,
+                       ship.pending_finance_qty AS shipment_pending_finance_qty,
+                       ship.finance_rejected_qty AS shipment_finance_rejected_qty,
+                       ship.approved_qty AS shipment_approved_qty
                 """.formatted(SalesOrderChainSql.unplannedQtySql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,
-                         o.finance_rejected_at, o.is_stopped, o.is_closed
+                         o.finance_rejected_at, o.is_stopped, o.is_closed,
+                         ship.draft_qty, ship.pending_finance_qty,
+                         ship.finance_rejected_qty, ship.approved_qty
                 """;
     }
 
@@ -477,7 +512,11 @@ public class SalesOrderService {
                   WHEN t.is_closed THEN 'CLOSED'
                   WHEN t.order_qty <= 0 THEN 'PENDING'
                   WHEN t.shipped_qty >= t.order_qty - 0.000001 THEN 'SHIPPED'
-                  WHEN t.reserved_qty > 0.000001 THEN 'SHIPPABLE'
+                  WHEN t.reserved_qty - (t.shipment_draft_qty + t.shipment_pending_finance_qty
+                       + t.shipment_finance_rejected_qty + t.shipment_approved_qty) > 0.000001 THEN 'SHIPPABLE'
+                  WHEN t.shipment_approved_qty > 0.000001 THEN 'WAREHOUSE_PENDING'
+                  WHEN t.shipment_draft_qty + t.shipment_pending_finance_qty
+                       + t.shipment_finance_rejected_qty > 0.000001 THEN 'SHIPMENT_PENDING'
                   WHEN t.unplanned_qty > 0.000001 THEN 'PENDING'
                   WHEN t.produced_qty > 0 OR t.planned_qty > 0 THEN 'PRODUCING'
                   ELSE 'PENDING'
@@ -499,7 +538,8 @@ public class SalesOrderService {
     static String normalizeProgressStage(String stage) {
         String normalized = stage == null ? "" : stage.strip().toUpperCase();
         return switch (normalized) {
-            case "", "OPEN", "REJECTED", "PENDING", "PRODUCING", "SHIPPABLE", "SHIPPED",
+            case "", "OPEN", "REJECTED", "PENDING", "PRODUCING", "SHIPPABLE",
+                    "SHIPMENT_PENDING", "WAREHOUSE_PENDING", "SHIPPED",
                     "CANCELED", "CLOSED" -> normalized;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段无效");
         };
@@ -537,7 +577,6 @@ public class SalesOrderService {
                 financeRejected, false, false);
     }
 
-    /** Java 镜像：unplannedQty = Σ行剩余未排量（与 {@link #progressStageExpr} 同序）。 */
     static String progressStageOf(
             double orderQty,
             double producedQty,
@@ -548,12 +587,42 @@ public class SalesOrderService {
             boolean financeRejected,
             boolean stopped,
             boolean closed) {
+        return progressStageOf(
+                orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
+                financeRejected, stopped, closed, 0, 0, 0, 0);
+    }
+
+    /**
+     * Java 镜像：unplannedQty = Σ行剩余未排量；四个 shipment*Qty 是本单在途出货（status=0）
+     * 按阶段的数量（与 {@link #progressStageExpr} 同序，V631）。剩余预留 = 预留 − 在途出货，
+     * 仍大于零就还是可分批发货；在途出货占满预留后，才按仓库待出库 / 出货待财审展示。
+     */
+    static String progressStageOf(
+            double orderQty,
+            double producedQty,
+            double shippedQty,
+            double reservedQty,
+            double plannedQty,
+            double unplannedQty,
+            boolean financeRejected,
+            boolean stopped,
+            boolean closed,
+            double shipmentDraftQty,
+            double shipmentPendingFinanceQty,
+            double shipmentFinanceRejectedQty,
+            double shipmentApprovedQty) {
         if (financeRejected) return "REJECTED";
         if (stopped) return "CANCELED";
         if (closed) return "CLOSED";
         if (orderQty <= 0) return "PENDING";
         if (shippedQty + 1e-6 >= orderQty) return "SHIPPED";
-        if (reservedQty > 1e-6) return "SHIPPABLE";
+        double inFlight = shipmentDraftQty + shipmentPendingFinanceQty
+                + shipmentFinanceRejectedQty + shipmentApprovedQty;
+        if (reservedQty - inFlight > 1e-6) return "SHIPPABLE";
+        if (shipmentApprovedQty > 1e-6) return "WAREHOUSE_PENDING";
+        if (shipmentDraftQty + shipmentPendingFinanceQty + shipmentFinanceRejectedQty > 1e-6) {
+            return "SHIPMENT_PENDING";
+        }
         if (unplannedQty > 1e-6) return "PENDING";
         if (producedQty > 0 || plannedQty > 0) return "PRODUCING";
         return "PENDING";

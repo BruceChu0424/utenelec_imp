@@ -30,12 +30,16 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
     private final InventoryMutationLock inventory;
     private final SecurityContextCurrentUser currentUser;
 
-    @Override public void reservePicking(UUID shipmentId,UUID warehouseId,long revision,Collection<Line> requested) {
-        List<Line> lines=validated(shipmentId,warehouseId,requested);
+    @Override public void reservePicking(UUID shipmentId,long revision,Collection<Line> requested) {
+        List<Line> lines=validated(shipmentId,requested);
         requireNoUnreleased(shipmentId);
-        Map<InventoryKey,BigDecimal> needed=new java.util.TreeMap<>();
-        lines.forEach(line->needed.merge(new InventoryKey(line.goodsId(),line.colorId()),base(line.baseQty()),BigDecimal::add));
-        for(var demand:needed.entrySet()) {
+        // V631：按行发出仓分组校验——每个仓只对落在它上面的行负责。
+        Map<UUID,Map<InventoryKey,BigDecimal>> neededByWarehouse=new java.util.TreeMap<>();
+        lines.forEach(line->neededByWarehouse.computeIfAbsent(line.warehouseId(),ignored->new java.util.TreeMap<>())
+                .merge(new InventoryKey(line.goodsId(),line.colorId()),base(line.baseQty()),BigDecimal::add));
+        for(var group:neededByWarehouse.entrySet()) {
+        UUID warehouseId=group.getKey();
+        for(var demand:group.getValue().entrySet()) {
             // 全局臂与本仓臂都只减安全库存与硬预留：V582 起销售出货没有
             // "已开拣未出账"的中间态，原来减去 PICKING/PICKED/EXCEPTION 在途量的子查询已删除。
             Object[] capacity=(Object[])em.createNativeQuery("""
@@ -59,8 +63,10 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
             if(demand.getValue().compareTo(decimal(capacity[0]).min(decimal(capacity[1])))>0)
                 throw conflict("可用库存不足，不能占用其他订单、生产或委外已预留的货品");
         }
+        }
         String attempt="CUSTOMER-SHIP-PICK:"+shipmentId+":"+revision+":"+UUID.randomUUID();
-        int inserted=em.createNativeQuery("""
+        int inserted=0;
+        for(Line line:lines) inserted+=em.createNativeQuery("""
                 INSERT INTO stock_reservations(id,owner_type,owner_id,purpose,goods_id,color_id,warehouse_id,
                     qty,consumed_qty,released_qty,status,source,source_doc_type,source_doc_id,supply_type,supply_id,
                     idempotency_key,created_by,updated_by)
@@ -69,14 +75,14 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                     'STOCK_BALANCE',balance.id,:attempt||':'||item.id::text,:actor,:actor
                 FROM sales_shipment_items item JOIN stock_balances balance
                   ON balance.warehouse_id=:warehouse AND balance.goods_id=item.goods_id AND balance.color_id IS NOT DISTINCT FROM item.color_id
-                WHERE item.shipment_id=:shipment AND NOT item.is_deleted ORDER BY item.id
-                """).setParameter("shipment",shipmentId).setParameter("warehouse",warehouseId)
+                WHERE item.id=:item AND item.shipment_id=:shipment AND NOT item.is_deleted
+                """).setParameter("shipment",shipmentId).setParameter("item",line.itemId()).setParameter("warehouse",line.warehouseId())
                 .setParameter("attempt",attempt).setParameter("actor",currentUser.requireId()).executeUpdate();
         if(inserted!=lines.size())throw conflict("发货明细与库存来源已变化，请刷新后重试");
     }
 
-    @Override public void consumeShipment(UUID shipmentId,UUID warehouseId,Collection<Line> requested) {
-        List<Line> lines=validated(shipmentId,warehouseId,requested);
+    @Override public void consumeShipment(UUID shipmentId,Collection<Line> requested) {
+        List<Line> lines=validated(shipmentId,requested);
         Map<UUID,Object[]> reservations=new HashMap<>();
         for(var row:lockedReservations(shipmentId)) {
             if(reservations.put((UUID)row[1],row)!=null)throw conflict("发货存在重复库存占用，请先核对");
@@ -84,7 +90,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
         if(reservations.size()!=lines.size())throw conflict("发货库存占用缺失，请重新核对拣货任务");
         for(Line line:lines) {
             Object[] row=reservations.get(line.itemId());
-            if(row==null||!Objects.equals(row[4],warehouseId)||decimal(row[5]).subtract(decimal(row[6])).subtract(decimal(row[7])).compareTo(base(line.baseQty()))!=0)
+            if(row==null||!Objects.equals(row[4],line.warehouseId())||decimal(row[5]).subtract(decimal(row[6])).subtract(decimal(row[7])).compareTo(base(line.baseQty()))!=0)
                 throw conflict("发货数量与实际拣货占用不一致");
             int updated=em.createNativeQuery("""
                     UPDATE stock_reservations SET consumed_qty=qty-released_qty,status=1,updated_at=now(),updated_by=:actor
@@ -111,18 +117,19 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
         if(count.longValue()!=0)throw conflict("仓库仍有拣货占用，请先完成退拣再修改或取消");
     }
 
-    private List<Line> validated(UUID shipmentId,UUID warehouseId,Collection<Line> requested) {
+    private List<Line> validated(UUID shipmentId,Collection<Line> requested) {
         List<Line> lines=requested==null?List.of():List.copyOf(requested);
         if(lines.isEmpty()||lines.stream().map(Line::itemId).distinct().count()!=lines.size())throw conflict("发货明细为空或重复");
+        if(lines.stream().anyMatch(line->line.warehouseId()==null))throw conflict("发货明细缺少实际发出仓");
         lines.forEach(line->inventory.requireHeld(new InventoryKey(line.goodsId(),line.colorId())));
         List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,item.goods_id,item.color_id,ROUND(item.qty*COALESCE(NULLIF(item.unit_rate,0),1),4)
                 FROM sales_shipments document JOIN sales_shipment_items item ON item.shipment_id=document.id AND NOT item.is_deleted
-                WHERE document.id=:id AND document.shipment_kind='DIRECT_CUSTOMER' AND document.warehouse_id=:warehouse
+                WHERE document.id=:id AND document.shipment_kind='DIRECT_CUSTOMER'
                   AND document.status=0 AND NOT document.is_deleted AND NOT document.rejected AND document.finance_audit=1
                   AND document.sales_confirmed_revision=document.review_revision AND document.sales_confirmed_at IS NOT NULL
                 ORDER BY item.id FOR UPDATE OF document,item
-                """).setParameter("id",shipmentId).setParameter("warehouse",warehouseId));
+                """).setParameter("id",shipmentId));
         if(rows.size()!=lines.size())throw conflict("客户发货状态或明细已变化");
         Map<UUID,Line> expected=new HashMap<>();lines.forEach(line->expected.put(line.itemId(),line));
         for(var row:rows) {

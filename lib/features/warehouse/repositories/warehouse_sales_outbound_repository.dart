@@ -14,17 +14,20 @@ abstract interface class WarehouseSalesOutboundGateway {
     String? dateTo,
   });
 
-  /// 待出库任务计数（出库任务中心/工作台角标：尚未确认出库的放行单）。
-  Future<int> pendingCount();
+  /// 仓库作业状态分组计数(出库任务中心「销售出库」父分类红徽章 + 小类行:
+  /// 待出库红徽章 / 已出库中性括号数), 与列表同一读范围, 一次请求.
+  Future<WarehouseSalesOutboundCounts> counts();
 
   Future<WarehouseSalesOutboundDetail> detail(String id);
 
+  /// 一步确认出库：逐行实际库位 [stockPlaces] 与逐行实际发出仓 [lineWarehouses]
+  /// (行 id → 仓 id，V631)；服务端按行解析发出仓，缺一行即拒绝。
   Future<WarehouseSalesOutboundDetail> transition(
     String id, {
     required String targetStatus,
     String? reason,
-    String? warehouseId,
     Map<String, String>? stockPlaces,
+    Map<String, String?>? lineWarehouses,
   });
 }
 
@@ -59,11 +62,9 @@ class WarehouseSalesOutboundRepository
   }
 
   @override
-  Future<int> pendingCount() async {
-    final json = await api.get('$_base/count');
-    final count = json['count'] ?? json['total'] ?? json['pendingCount'];
-    if (count is num) return count.toInt();
-    throw const FormatException('销售出库待办计数响应格式不正确');
+  Future<WarehouseSalesOutboundCounts> counts() async {
+    final json = await api.get('$_base/counts');
+    return WarehouseSalesOutboundCounts.fromJson(json);
   }
 
   @override
@@ -77,16 +78,20 @@ class WarehouseSalesOutboundRepository
     String id, {
     required String targetStatus,
     String? reason,
-    String? warehouseId,
     Map<String, String>? stockPlaces,
+    Map<String, String?>? lineWarehouses,
   }) async {
+    final lineIds = <String>{...?stockPlaces?.keys, ...?lineWarehouses?.keys};
     final body = <String, dynamic>{
       'targetStatus': targetStatus.trim().toUpperCase(),
-      'warehouseId': ?_trimmed(warehouseId),
-      if (stockPlaces != null)
+      if (stockPlaces != null || lineWarehouses != null)
         'stockPlaces': [
-          for (final entry in stockPlaces.entries)
-            {'shipmentItemId': entry.key, 'stockPlace': entry.value.trim()},
+          for (final lineId in lineIds)
+            {
+              'shipmentItemId': lineId,
+              'stockPlace': stockPlaces?[lineId]?.trim() ?? '',
+              'warehouseId': ?_trimmed(lineWarehouses?[lineId]),
+            },
         ],
     };
     final safeReason = _trimmed(reason);

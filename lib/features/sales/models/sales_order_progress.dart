@@ -26,6 +26,10 @@ class SalesOrderProgressRow {
     this.financeRejectedByName,
     this.stopped = false,
     this.closed = false,
+    this.shipmentDraftQty = 0,
+    this.shipmentPendingFinanceQty = 0,
+    this.shipmentFinanceRejectedQty = 0,
+    this.shipmentApprovedQty = 0,
   });
 
   final String orderId;
@@ -67,6 +71,26 @@ class SalesOrderProgressRow {
   /// 已结案（正常履约完结）；历史记录里以「已结案」阶段呈现。
   final bool closed;
 
+  // ===== 出货在途（V631）：本单 status=0 的出货单按阶段汇总的数量 =====
+  /// 出货草稿（销售尚未确认提交财务）。
+  final double shipmentDraftQty;
+
+  /// 已提交、等待财务审核。
+  final double shipmentPendingFinanceQty;
+
+  /// 被财务退回、待销售处理。
+  final double shipmentFinanceRejectedQty;
+
+  /// 财务已放行、等仓库确认出库。
+  final double shipmentApprovedQty;
+
+  /// 在途出货合计（含退回件，它仍占着预留）。
+  double get shipmentInFlightQty =>
+      shipmentDraftQty +
+      shipmentPendingFinanceQty +
+      shipmentFinanceRejectedQty +
+      shipmentApprovedQty;
+
   /// 是否有可发货量（reserved_qty>0）。
   bool get shippable => reservedQty > 0.0001;
 
@@ -96,6 +120,13 @@ class SalesOrderProgressRow {
         financeRejectedByName: json['financeRejectedByName'] as String?,
         stopped: (json['stopped'] as bool?) ?? false,
         closed: (json['closed'] as bool?) ?? false,
+        shipmentDraftQty: (json['shipmentDraftQty'] as num?)?.toDouble() ?? 0,
+        shipmentPendingFinanceQty:
+            (json['shipmentPendingFinanceQty'] as num?)?.toDouble() ?? 0,
+        shipmentFinanceRejectedQty:
+            (json['shipmentFinanceRejectedQty'] as num?)?.toDouble() ?? 0,
+        shipmentApprovedQty:
+            (json['shipmentApprovedQty'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -105,7 +136,9 @@ String salesProgressStageLabel(String stage) => switch (stage) {
   'PENDING' => '待排产',
   'PRODUCING' => '生产中',
   'SHIPPABLE' => '可分批发货',
-  'SHIPPED' => '已发货',
+  'SHIPMENT_PENDING' => '出货待财审',
+  'WAREHOUSE_PENDING' => '等仓库出货',
+  'SHIPPED' => '仓库已发货',
   'CANCELED' => '已中止',
   'CLOSED' => '已结案',
   _ => '—',
@@ -119,13 +152,43 @@ String salesProgressStageText(SalesOrderProgressRow row) {
     return '待排产·部分已排 '
         '${salesQtyText(row.plannedQty)}/${salesQtyText(row.orderQty)}';
   }
+  // 出货在途（V631）：阶段文案直接带数量，退回件优先提示——它要销售处理。
+  if (row.stage == 'SHIPMENT_PENDING') {
+    if (row.shipmentFinanceRejectedQty > 0.0001) {
+      return '出货被财务退回 ${salesQtyText(row.shipmentFinanceRejectedQty)}';
+    }
+    if (row.shipmentPendingFinanceQty > 0.0001) {
+      return '出货待财审 ${salesQtyText(row.shipmentPendingFinanceQty)}';
+    }
+    return '出货草稿待确认 ${salesQtyText(row.shipmentDraftQty)}';
+  }
+  if (row.stage == 'WAREHOUSE_PENDING') {
+    return '等仓库出货 ${salesQtyText(row.shipmentApprovedQty)}';
+  }
   return salesProgressStageLabel(row.stage);
+}
+
+/// 「出货在途」列：按阶段列出本单未出库的出货数量；没有在途出货返回 null。
+String? salesProgressShipmentInFlightText(SalesOrderProgressRow row) {
+  final parts = <String>[
+    if (row.shipmentDraftQty > 0.0001)
+      '草稿 ${salesQtyText(row.shipmentDraftQty)}',
+    if (row.shipmentPendingFinanceQty > 0.0001)
+      '待财审 ${salesQtyText(row.shipmentPendingFinanceQty)}',
+    if (row.shipmentFinanceRejectedQty > 0.0001)
+      '财务退回 ${salesQtyText(row.shipmentFinanceRejectedQty)}',
+    if (row.shipmentApprovedQty > 0.0001)
+      '待出库 ${salesQtyText(row.shipmentApprovedQty)}',
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
 }
 
 /// 进度阶段色（绿=可发/已发/已结案，橙=生产中，红=驳回/中止，灰=未上链）。
 Color salesProgressStageColor(String stage, ThemeData theme) => switch (stage) {
   'REJECTED' || 'CANCELED' => theme.colorScheme.error,
   'SHIPPABLE' || 'SHIPPED' || 'CLOSED' => Colors.green,
+  'SHIPMENT_PENDING' => theme.colorScheme.tertiary,
+  'WAREHOUSE_PENDING' => Colors.teal,
   'PRODUCING' => Colors.orange,
   'PENDING' => theme.colorScheme.error,
   _ => theme.colorScheme.onSurfaceVariant,

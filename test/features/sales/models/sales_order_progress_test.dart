@@ -2,6 +2,48 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 
 void main() {
+  test('in-flight shipments surface as their own stages with quantities', () {
+    // V631：开了出货单但仓库还没出库——阶段带数量，「出货在途」列按阶段拆分。
+    final pendingFinance = SalesOrderProgressRow.fromJson(const {
+      'orderId': 'order-ship-1',
+      'billNo': 'SO-SHIP-1',
+      'orderQty': 10,
+      'producedQty': 10,
+      'shippedQty': 0,
+      'reservedQty': 10,
+      'plannedQty': 10,
+      'productionPct': 1,
+      'stage': 'SHIPMENT_PENDING',
+      'shipmentPendingFinanceQty': 10,
+    });
+    expect(salesProgressStageLabel(pendingFinance.stage), '出货待财审');
+    expect(salesProgressStageText(pendingFinance), '出货待财审 10');
+    expect(salesProgressShipmentInFlightText(pendingFinance), '待财审 10');
+    expect(pendingFinance.shipmentInFlightQty, 10);
+
+    final warehousePending = SalesOrderProgressRow.fromJson(const {
+      'orderId': 'order-ship-2',
+      'billNo': 'SO-SHIP-2',
+      'orderQty': 10,
+      'producedQty': 10,
+      'shippedQty': 0,
+      'reservedQty': 10,
+      'plannedQty': 10,
+      'productionPct': 1,
+      'stage': 'WAREHOUSE_PENDING',
+      'shipmentApprovedQty': 6,
+      'shipmentFinanceRejectedQty': 4,
+    });
+    expect(salesProgressStageLabel(warehousePending.stage), '等仓库出货');
+    expect(salesProgressStageText(warehousePending), '等仓库出货 6');
+    expect(
+      salesProgressShipmentInFlightText(warehousePending),
+      '财务退回 4 · 待出库 6',
+    );
+    expect(salesProgressStageLabel('SHIPPED'), '仓库已发货');
+    expect(salesProgressShipmentInFlightText(warehousePending), isNotNull);
+  });
+
   test('partial finished-goods reservation remains visibly unfulfilled', () {
     final row = SalesOrderProgressRow.fromJson(const {
       'orderId': 'order-1',

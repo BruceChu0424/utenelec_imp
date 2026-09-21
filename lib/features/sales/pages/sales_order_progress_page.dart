@@ -341,11 +341,16 @@ class _SalesOrderProgressPageState
                   UtenFilterToolbar<_ProgressSeg>(
                     segmentsKey: const Key('sales-order-progress-stages'),
                     segments: [
+                      // 出货待财审 / 等仓库出货（V631）：开了出货单但仓库还没出库的
+                      // 订单不再消失在「可分批发货」之外——下一步在财务/仓库手里，
+                      // 中性括号计数。
                       for (final stage in [
                         'REJECTED',
                         'PENDING',
                         'PRODUCING',
                         'SHIPPABLE',
+                        'SHIPMENT_PENDING',
+                        'WAREHOUSE_PENDING',
                       ])
                         UtenFilterSegment(
                           value: _ProgressSeg.stage(stage),
@@ -481,6 +486,12 @@ class _SalesOrderProgressPageState
         width: 90,
         type: 'number',
         value: (r) => _fmt(r.producedQty),
+      ),
+      MasterColumnDef(
+        key: 'shipmentInFlight',
+        label: '出货在途',
+        width: 200,
+        value: (r) => salesProgressShipmentInFlightText(r) ?? '—',
       ),
       MasterColumnDef(
         key: 'shippedQty',

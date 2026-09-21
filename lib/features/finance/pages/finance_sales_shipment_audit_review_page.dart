@@ -70,6 +70,9 @@ class _FinanceSalesShipmentAuditReviewPageState
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).contains(Perm.financeShipmentAudit);
 
+  /// V631：币种财务汇率未维护(≤0)时不能放行——仓库确认出库要按它立账；退回不受影响。
+  bool get _rateReady => _info?.financeRateReady != false;
+
   /// 决策可用：待审 + 已销售确认 + 未退回 + 快照完整 + 认领就绪。
   bool get _decisionReady {
     final d = _detail;
@@ -205,6 +208,12 @@ class _FinanceSalesShipmentAuditReviewPageState
         !claim.isReady ||
         _busy) {
       context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
+      return;
+    }
+    if (!_rateReady) {
+      context.appWarning(
+        '币种「${info.currencyName ?? ''}」的财务汇率未维护，请先到 基础资料→币种 维护汇率再放行',
+      );
       return;
     }
     final generation = _loadGeneration;
@@ -645,7 +654,7 @@ class _FinanceSalesShipmentAuditReviewPageState
           size: UtenButtonSize.large,
           isLoading: _busy,
           icon: Icons.fact_check_outlined,
-          onPressed: _busy ? null : _approve,
+          onPressed: _busy || !_rateReady ? null : _approve,
           child: const Text('确认放行'),
         ),
       ],
@@ -816,6 +825,13 @@ class _FinanceSalesShipmentAuditReviewPageState
                   }),
                 if (info.freeReason != null) metric('不收费原因', info.freeReason),
                 metric('结账方式', info.settlementMethodName ?? '未设置'),
+                metric(
+                  '财务汇率${info.currencyName == null ? '' : '(${info.currencyName})'}',
+                  info.financeRateReady == false
+                      ? '未维护'
+                      : (info.financeRate ?? '—'),
+                  danger: info.financeRateReady == false,
+                ),
                 metric('正式应收未收(本币)', info.outstanding),
                 metric('铺底额(本币)', info.creditFloor),
                 metric('超出铺底额(本币)', info.overFloor, danger: overFloorDanger),
@@ -823,6 +839,27 @@ class _FinanceSalesShipmentAuditReviewPageState
                 metric('可用预收(本币)', info.availablePrepaymentLocal),
               ],
             ),
+            if (info.financeRateReady == false) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Container(
+                key: const Key('finance-audit-rate-block'),
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(
+                    alpha: 0.6,
+                  ),
+                  borderRadius: UtenRadius.mdAll,
+                ),
+                child: Text(
+                  '币种「${info.currencyName ?? '未知'}」的财务汇率未维护(当前 ${info.financeRate ?? '空'})，'
+                  '仓库确认出库要按它立账。请先到 基础资料→币种 维护汇率，再回来放行；仓库端不再为此报错。',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: UtenSpacing.s8),
             Text(
               '结账方式来自本单（销售订单选定后随出货单头，客户资料只记住最近一次作为下次默认）；可用预收只统计同客户同币种的真实已审核到账，不能自动抵扣其它订单。',

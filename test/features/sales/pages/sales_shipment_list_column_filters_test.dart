@@ -54,15 +54,15 @@ void main() {
       ),
     );
     final table = tableWidget();
+    // 出货列表按真实阶段分段（2026-09-20）：深链 ?status=draft 落在「草稿」段，
+    // 请求带 stage=DRAFT 而不是 status=0；状态列不再有 0/1/-1 表头桶。
+    expect(api.lastQuery?['stage'], 'DRAFT');
+    expect(api.lastQuery?.containsKey('status'), isFalse);
     expect(
       table.facets.keys,
-      containsAll(<String>[
-        'status',
-        'client',
-        'financeAudit',
-        'warehouseWorkStatus',
-      ]),
+      containsAll(<String>['client', 'financeAudit', 'warehouseWorkStatus']),
     );
+    expect(table.facets.containsKey('status'), isFalse);
     expect(table.facets['client']?.single.value, 'client-1');
     expect(
       table.facets['financeAudit']?.map((bucket) => bucket.value),

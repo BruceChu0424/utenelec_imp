@@ -165,7 +165,8 @@ void _viewport(WidgetTester tester) {
 
 class _SalesGateway implements WarehouseSalesOutboundGateway {
   @override
-  Future<int> pendingCount() async => 0;
+  Future<WarehouseSalesOutboundCounts> counts() async =>
+      const WarehouseSalesOutboundCounts();
 
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
@@ -191,8 +192,8 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String id, {
     required String targetStatus,
     String? reason,
-    String? warehouseId,
     Map<String, String>? stockPlaces,
+    Map<String, String?>? lineWarehouses,
   }) async => _salesDetail;
 }
 

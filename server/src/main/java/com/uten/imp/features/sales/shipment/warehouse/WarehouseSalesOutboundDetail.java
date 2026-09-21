@@ -5,7 +5,11 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** Commercial-free warehouse sales outbound detail. */
+/**
+ * 仓库作业视图的销售出库详情：只有实物执行所需字段，不含商业与财务信息。
+ * V631 起没有整单级「可选实际发货仓」——发出仓在各行上选（见 {@link WarehouseSalesOutboundLine}），
+ * 表头 warehouseId 只是默认/主发出仓。
+ */
 public record WarehouseSalesOutboundDetail(
         UUID id,
         String billNo,
@@ -25,14 +29,10 @@ public record WarehouseSalesOutboundDetail(
         OffsetDateTime handedOverAt,
         String warehouseExceptionReason,
         List<String> allowedWarehouseTargets,
-        List<WarehouseSalesOutboundLine> lines,
-        boolean canSelectWarehouse,
-        List<WarehouseSalesOutboundWarehouseOption> warehouseOptions) {
-
+        List<WarehouseSalesOutboundLine> lines) {
     public WarehouseSalesOutboundDetail {
         allowedWarehouseTargets = allowedWarehouseTargets == null
                 ? List.of() : List.copyOf(allowedWarehouseTargets);
         lines = lines == null ? List.of() : List.copyOf(lines);
-        warehouseOptions=warehouseOptions==null?List.of():List.copyOf(warehouseOptions);
     }
 }

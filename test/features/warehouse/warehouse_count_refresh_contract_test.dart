@@ -16,7 +16,7 @@ void main() {
       'lib/features/warehouse/providers/warehouse_count_refresh.dart',
     );
     for (final provider in [
-      'warehouseSalesOutboundPendingCountProvider',
+      'warehouseSalesOutboundCountsProvider',
       'warehouseSubcontractOutboundCountProvider',
       'warehouseInboundExpectationCountProvider',
       'warehouseInboundExpectationTypeCountsProvider',
@@ -32,6 +32,26 @@ void main() {
         reason: '统一失效入口漏了 $provider',
       );
     }
+
+    // 2026-09-20: 销售待办数 provider 由分组计数 warehouseSalesOutboundCountsProvider
+    // 派生(同一次请求), 单独失效派生 provider 拿到的仍是缓存、不会重拉——全库只能失效源头.
+    final derivedInvalidations = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .where(
+          (file) => file.readAsStringSync().contains(
+            'ref.invalidate(warehouseSalesOutboundPendingCountProvider)',
+          ),
+        )
+        .map((file) => file.path)
+        .toList();
+    expect(
+      derivedInvalidations,
+      isEmpty,
+      reason:
+          '派生的销售待办数 provider 不能单独失效, 请改失效 warehouseSalesOutboundCountsProvider',
+    );
 
     // 2026-09-01 口径：所有草稿不计入数量徽章——草稿计数 provider 已删除，
     // 任何徽章聚合/刷新链路不得再引用。

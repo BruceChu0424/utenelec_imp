@@ -36,15 +36,24 @@ public final class FulfillmentLockState {
         if (state == null) return; // Direct non-Spring test construction has no transaction scope.
         if (state.closed) throw conflict("事务已完成，不能复用原库存锁");
         if (state.prepared && !state.inventory.containsAll(dimensions)) {
-            throw conflict("库存来源维度在预锁后变化，禁止持锁补拿新库存维度，请刷新后重试");
+            throw retryableConflict("库存来源维度在预锁后变化，禁止持锁补拿新库存维度，请刷新后重试");
         }
         state.inventoryEntered = true;
     }
 
+    /** 结构性违反(预锁顺序/归属错误): 重跑也不会变好。 */
     static ApiException conflict(String internalReason) {
         LOG.debug("Fulfillment mutation source conflict: {}", internalReason);
-        return new ApiException(ErrorCode.CONFLICT,
-                "相关订单、库存或任务信息已变化，请刷新后重新提交；本次操作未生效");
+        return new FulfillmentSourceConflictException(internalReason, false);
+    }
+
+    /**
+     * 瞬时冲突(等锁期间别的事务先提交, 预读集合过期): 本命令还没写任何东西, 事务整体回滚,
+     * 最外层事务边界会用同一请求自动重跑(见 FulfillmentSourceConflictRetryInterceptor)。
+     */
+    static ApiException retryableConflict(String internalReason) {
+        LOG.debug("Fulfillment mutation source conflict (retryable): {}", internalReason);
+        return new FulfillmentSourceConflictException(internalReason, true);
     }
 
     static final class State implements TransactionSynchronization {

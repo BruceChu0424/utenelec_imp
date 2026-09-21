@@ -172,6 +172,13 @@ public class GlobalExceptionHandler {
             if (detail != null && detail.contains("Original material receipt has later actual stock consumption")) {
                 return "本次收仓之后已有依赖其成本的出库，请先处理对应后续出库，再撤回收仓";
             }
+            // V458/V634 委外前置自制谱系守卫(DEFERRED, 在 COMMIT 时抛): 订货行数量超过前置自制
+            // 台账 required_qty 或通知批次 notify_qty。2026-09-21 实测这类 409 只显示通用文案,
+            // 财务/委外部无法判断该改哪张单。
+            if (detail != null && detail.contains("subcontract prepared-outbound lineage is inconsistent")) {
+                return "委外订货明细数量超过前置自制台账或通知批次可下单量(或订货行来源与前置自制批次对不上)，"
+                        + "请核对委外前置自制台账与通知批次后重新提交";
+            }
         }
         String message = root == null ? null : root.getMessage();
         if (message != null
@@ -182,8 +189,12 @@ public class GlobalExceptionHandler {
                 && message.contains("received_qty exceeds finance-approved arrival capacity")) {
             return "该订货明细的可收数量已用尽(可能已被其他收货单审核入库)，无法重复入库";
         }
-        log.warn("Database integrity conflict: {}",
-                root == null ? "unknown" : root.getClass().getSimpleName());
+        // 只记类名时排查要翻数据库日志才知道是哪条约束(2026-09-21 委外批量批准实测):
+        // 这里把根因首行一并记下(仅服务端日志, 客户端仍只收通用文案)。
+        String firstLine = message == null ? "" : message.strip().split("\\r?\\n", 2)[0];
+        log.warn("Database integrity conflict: {} {}",
+                root == null ? "unknown" : root.getClass().getSimpleName(),
+                firstLine.length() > 300 ? firstLine.substring(0, 300) : firstLine);
         return "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
     }
 

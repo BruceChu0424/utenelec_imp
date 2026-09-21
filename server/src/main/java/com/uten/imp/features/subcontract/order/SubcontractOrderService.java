@@ -1294,6 +1294,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         lines.stream().map(OrderItemLine::getGoodsId).toList(),
                         SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         UUID actorId = currentUser.requireId();
+        // 行金额由服务端按「数量×单价」「原币金额×表头汇率」精确重算(2026-09-21), 与采购同口径:
+        // 客户端浮点乘积(3×0.10 = 0.30000000000000004)不采信; 单价缺省时才保留客户端金额。
+        BigDecimal headerRate = r.getExchangeRate() == null ? BigDecimal.ONE : r.getExchangeRate();
         int autoLine = 1;
         for (OrderItemLine l : lines) {
             List<SourceSplit> lineSplits = splits.getOrDefault(l, List.of());
@@ -1321,9 +1324,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             // 哈希失配导致 approve/reject 双 409（单据永久卡死）。
             it.setUnitRate(l.getUnitRate() == null ? BigDecimal.ONE : l.getUnitRate());
             it.setQty(l.getQty());
-            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外加工单价"));
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外加工单价");
+            it.setPrice(price);
+            BigDecimal amountOriginal = price == null
+                    ? l.getAmountOriginal()
+                    : money(l.getQty().multiply(price));
+            it.setAmountOriginal(amountOriginal);
+            it.setAmountLocal(price == null
+                    ? (l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal())
+                    : money(amountOriginal.multiply(headerRate)));
             it.setApplicationItemId(primarySource);
             it.setDeliverDate(l.getDeliverDate());
             it.setWeight(l.getWeight());

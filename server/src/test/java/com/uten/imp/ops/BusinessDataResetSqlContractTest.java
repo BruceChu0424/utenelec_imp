@@ -411,7 +411,17 @@ class BusinessDataResetSqlContractTest {
                 // V605 直送资格收紧 / V606 路线自动识别：只换函数+回填，不加表（560→562）。
                 .contains("(605, 561)")
                 .contains("(606, 562)")
-                .contains("V507/469、V508/470及V511至V632完整目录");
+                // V632 出货放行记账汇率只加列与种子, 不加表 (587→588)。
+                .contains("(632, 588)")
+                // V634 委外前置自制超量后的订货批准谱系守卫: 只替换一个断言函数, 不加表
+                // (V633 跳号, V634 588→589)。
+                .contains("(634, 589)")
+                // V636 委外允许损耗与回厂短交案件: 新增案件头/事件两张表 (V635 跳号, 589→590)。
+                .contains("(636, 590)")
+                // V638 委外回厂守卫计入前置自制出仓行: 只锚点补丁一个断言函数, 不加表
+                // (V637 跳号, V638 590→591)。
+                .contains("(638, 591)")
+                .contains("V507/469、V508/470及V511至V638完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

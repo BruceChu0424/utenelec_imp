@@ -1087,6 +1087,11 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         lines.stream().map(OrderItemLine::getGoodsId).toList(),
                         PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         UUID actorId = currentUser.requireId();
+        // 行金额由服务端按「数量×单价」「原币金额×表头汇率」精确重算(2026-09-21): 客户端
+        // 用浮点相乘再序列化(3×0.10 送来的是 0.30000000000000004), 原样落库后送审时的
+        // 精确比对(requireFinanceCommercialAuthority)必然不一致; 客户端金额只在单价缺省
+        // 时原样保留(草稿不丢值, 送审本就要求单价完整)。
+        BigDecimal headerRate = o.getExchangeRate() == null ? BigDecimal.ONE : o.getExchangeRate();
         int auto = 1;
         for (OrderItemLine l : lines) {
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
@@ -1114,9 +1119,15 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
-            it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购单价"));
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购单价");
+            it.setPrice(price);
+            BigDecimal amountOriginal = price == null
+                    ? l.getAmountOriginal()
+                    : money(l.getQty().multiply(price));
+            it.setAmountOriginal(amountOriginal);
+            it.setAmountLocal(price == null
+                    ? (l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal())
+                    : money(amountOriginal.multiply(headerRate)));
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
             it.setRequestItemId(primarySource);
             it.setDeliverDate(l.getDeliverDate());

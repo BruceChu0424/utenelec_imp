@@ -162,7 +162,7 @@ jobs:
           set -euo pipefail
           pip install --quiet oss2==2.19.1
           python3 - "$VERSION" <<'PY'
-          import os, sys
+          import base64, hashlib, os, sys
           import oss2
 
           version = sys.argv[1]
@@ -170,7 +170,11 @@ jobs:
           endpoint = os.environ["OSS_ENDPOINT"]
           auth = oss2.Auth(os.environ["OSS_ACCESS_KEY_ID"],
                            os.environ["OSS_ACCESS_KEY_SECRET"])
-          bucket = oss2.Bucket(auth, f"https://{endpoint}", bucket_name)
+          # 2026-09-21 v1.3.0 教训：不设超时时单次 PUT 大 JAR 会在跨境链路上
+          # 静默挂死（该次两小时零字节落地，最后被 job 的 120 分钟超时杀掉）。
+          # connect_timeout 同时作用于连接与读写，卡住就报错走重试，不再空转。
+          bucket = oss2.Bucket(auth, f"https://{endpoint}", bucket_name,
+                               connect_timeout=60)
 
           prefix = f"releases/{version}"
           files = []
@@ -180,15 +184,31 @@ jobs:
                   key = prefix + path.removeprefix("dist")
                   files.append((path, key))
 
-          def md5(b): import hashlib; return hashlib.md5(b).hexdigest()
-          import hashlib
-          for path, key in files:
-              data = open(path, "rb").read()
-              bucket.put_object(key, data)
-              got = bucket.get_object(key).read()
-              if hashlib.md5(got).hexdigest() != hashlib.md5(data).hexdigest():
-                  raise SystemExit(f"readback mismatch: {key}")
-              print(f"put+readback ok: {key} ({len(data)} bytes)")
+          # 超过这个大小走分片续传：每片独立重试，断链只重传该片，不从头再来。
+          MULTIPART_THRESHOLD = 8 * 1024 * 1024
+          PART_SIZE = 4 * 1024 * 1024
+
+          for path, key in sorted(files):
+              size = os.path.getsize(path)
+              if size <= MULTIPART_THRESHOLD:
+                  data = open(path, "rb").read()
+                  # Content-MD5 让 OSS 在收件时就拒掉损坏的体，回读再整体比对一次。
+                  bucket.put_object(key, data, headers={
+                      "Content-MD5": base64.b64encode(hashlib.md5(data).digest()).decode()})
+                  got = bucket.get_object(key).read()
+                  if hashlib.md5(got).hexdigest() != hashlib.md5(data).hexdigest():
+                      raise SystemExit(f"readback mismatch: {key}")
+                  print(f"put+readback ok: {key} ({size} bytes)", flush=True)
+              else:
+                  # 大文件逐片上传，OSS 按片校验 MD5；整体内容另有已签名的
+                  # SHA256SUMS 兜底——更新器下载时逐文件核对，那才是权威闸门。
+                  oss2.resumable_upload(bucket, key, path,
+                                        multipart_threshold=MULTIPART_THRESHOLD,
+                                        part_size=PART_SIZE, num_threads=4)
+                  remote = bucket.head_object(key).content_length
+                  if remote != size:
+                      raise SystemExit(f"size mismatch: {key} {remote} != {size}")
+                  print(f"multipart+size ok: {key} ({size} bytes)", flush=True)
 
           bucket.put_object("LATEST.txt", (version + "\n").encode())
           got = bucket.get_object("LATEST.txt").read().decode().strip()

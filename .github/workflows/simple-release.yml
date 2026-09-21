@@ -38,7 +38,9 @@ jobs:
   release:
     name: Build, sign, publish to OSS
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # 2026-09-21：跨境传 OSS 的速度一天之内能差一个量级(v1.2.0 全程 10 分钟，
+    # v1.3.0 当天上传一小时还没传完一个 JAR)。留足余量，让慢链路跑完而不是被砍。
+    timeout-minutes: 330
     steps:
       - name: Resolve and validate version
         shell: bash
@@ -163,6 +165,7 @@ jobs:
           pip install --quiet oss2==2.19.1
           python3 - "$VERSION" <<'PY'
           import base64, hashlib, os, sys
+          from concurrent.futures import ThreadPoolExecutor
           import oss2
 
           version = sys.argv[1]
@@ -188,27 +191,39 @@ jobs:
           MULTIPART_THRESHOLD = 8 * 1024 * 1024
           PART_SIZE = 4 * 1024 * 1024
 
-          for path, key in sorted(files):
+          # 完整性口径(2026-09-21 改)：上传带 Content-MD5，OSS 在收件时就拒掉损坏的体；
+          # 整体内容另有 Ed25519 已签名的 SHA256SUMS 兜底——更新器下载后逐文件核对，
+          # 那才是权威闸门。因此这里不再把每个对象整体回读一遍(Flutter Web 有近两千个
+          # 小文件，逐个回读等于把流量和往返翻倍，跨境链路慢的那天会把 job 拖到超时)。
+          def upload_one(item):
+              path, key = item
               size = os.path.getsize(path)
               if size <= MULTIPART_THRESHOLD:
                   data = open(path, "rb").read()
-                  # Content-MD5 让 OSS 在收件时就拒掉损坏的体，回读再整体比对一次。
                   bucket.put_object(key, data, headers={
                       "Content-MD5": base64.b64encode(hashlib.md5(data).digest()).decode()})
-                  got = bucket.get_object(key).read()
-                  if hashlib.md5(got).hexdigest() != hashlib.md5(data).hexdigest():
-                      raise SystemExit(f"readback mismatch: {key}")
-                  print(f"put+readback ok: {key} ({size} bytes)", flush=True)
+                  kind = "put"
               else:
-                  # 大文件逐片上传，OSS 按片校验 MD5；整体内容另有已签名的
-                  # SHA256SUMS 兜底——更新器下载时逐文件核对，那才是权威闸门。
                   oss2.resumable_upload(bucket, key, path,
                                         multipart_threshold=MULTIPART_THRESHOLD,
                                         part_size=PART_SIZE, num_threads=4)
-                  remote = bucket.head_object(key).content_length
-                  if remote != size:
-                      raise SystemExit(f"size mismatch: {key} {remote} != {size}")
-                  print(f"multipart+size ok: {key} ({size} bytes)", flush=True)
+                  kind = "multipart"
+              remote = bucket.head_object(key).content_length
+              if remote != size:
+                  raise SystemExit(f"size mismatch: {key} {remote} != {size}")
+              return f"{kind} ok: {key} ({size} bytes)"
+
+          small = sorted(p for p in files if os.path.getsize(p[0]) <= MULTIPART_THRESHOLD)
+          large = sorted(p for p in files if os.path.getsize(p[0]) > MULTIPART_THRESHOLD)
+          for item in large:  # 大文件自己已经多线程分片，串行做，别抢带宽。
+              print(upload_one(item), flush=True)
+          done = 0
+          with ThreadPoolExecutor(max_workers=16) as pool:
+              for line in pool.map(upload_one, small):
+                  done += 1
+                  if done % 100 == 0 or done == len(small):
+                      print(f"  小文件进度 {done}/{len(small)}", flush=True)
+          print(f"已上传 {len(large)} 个大文件 + {len(small)} 个小文件", flush=True)
 
           bucket.put_object("LATEST.txt", (version + "\n").encode())
           got = bucket.get_object("LATEST.txt").read().decode().strip()

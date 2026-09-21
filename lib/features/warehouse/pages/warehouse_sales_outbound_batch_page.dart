@@ -337,7 +337,12 @@ class _WarehouseSalesOutboundBatchPageState
                                 const SizedBox(height: UtenSpacing.s8),
                                 UtenCollapsibleSection(
                                   title: l10n.warehouseOutboundBatchDocuments,
+                                  // 列数既按容器宽度算，也不超过单据张数：只有一张单
+                                  // 据时卡片横铺满屏，不再固定占三分之一屏。
                                   child: UtenFormGrid(
+                                    maxColumns: _details!.isEmpty
+                                        ? 1
+                                        : _details!.length,
                                     children: [
                                       for (final detail in _details!)
                                         _documentCard(detail),
@@ -361,15 +366,11 @@ class _WarehouseSalesOutboundBatchPageState
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
                             ),
+                            // 明细区直接从处理说明开始：不再写「出库明细」标题，
+                            // 页面标题与表头已说明这里是什么。
                             body: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text(
-                                  '${l10n.warehouseOutboundBatchLines} (${rows.length})',
-                                  style: Theme.of(context).textTheme.titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: UtenSpacing.s12),
                                 TextField(
                                   controller: _reason,
                                   readOnly: _attempted,

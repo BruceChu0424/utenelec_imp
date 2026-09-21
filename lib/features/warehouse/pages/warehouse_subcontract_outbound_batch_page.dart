@@ -217,7 +217,7 @@ class _WarehouseSubcontractOutboundBatchPageState
                 subcontractOutboundQuantity(
                   existing?.qty ?? line.readyOutboundQty,
                 ),
-                existing?.weight?.toString() ?? '',
+                weight: existing?.weight,
                 remark: existing?.remark,
                 unitRate: existing?.unitRate,
               ),
@@ -257,8 +257,8 @@ class _WarehouseSubcontractOutboundBatchPageState
             for (final line in draft.lines) {
               final oldLine = byItem[line.draftItemId];
               if (oldLine != null) {
+                // 重量不再由页面录入, 重读后直接用原单值, 不需要从旧草稿搬回。
                 line.qty.text = oldLine.qty.text;
-                line.weight.text = oldLine.weight.text;
                 line.remarkController.text = oldLine.remarkController.text;
                 line.selected = oldLine.selected;
               }
@@ -671,11 +671,9 @@ class _WarehouseSubcontractOutboundBatchPageState
                                       ),
                                     ),
                                   ),
+                              // 明细表紧接单据卡，不再写「出库明细」标题:
+                              // 页面本身就叫批量出库详情，表头已说明每列是什么。
                               const SizedBox(height: UtenSpacing.s16),
-                              Text(
-                                l10n.warehouseSubcontractOutboundLines,
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
                               SubcontractOutboundDetailTable(
                                 rows: [
                                   for (final draft in _drafts)
@@ -782,16 +780,18 @@ class _WarehouseSubcontractOutboundBatchPageState
     key: const Key('subcontract-outbound-document-cards'),
     title: l10n.warehouseSubcontractOutboundDocuments,
     titleTrailing: Text('(${_drafts.length})'),
+    // 列数既按容器宽度算，也不超过卡片张数：只有一张单据时整张卡横铺满屏，
+    // 不再固定占半屏、右半边空着。
     child: UtenResponsiveGrid(
       columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
+      maxColumns: _drafts.isEmpty ? 1 : _drafts.length,
       spacing: UtenSpacing.s12,
       itemCount: _drafts.length,
-      itemBuilder: (context, index, width) =>
-          _documentCard(_drafts[index], width),
+      itemBuilder: (context, index, _) => _documentCard(_drafts[index]),
     ),
   );
 
-  Widget _documentCard(_BatchDraft draft, double width) {
+  Widget _documentCard(_BatchDraft draft) {
     final theme = Theme.of(context);
     final editable = draft.pending && _canExecute;
     return UtenCard(
@@ -826,8 +826,9 @@ class _WarehouseSubcontractOutboundBatchPageState
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: UtenSpacing.s12),
+          // 卡片铺满屏后字段列数跟着容器宽度走, 不再硬编 2 列 ——
+          // 否则出仓日期/经办人会被拉成近千像素的长条。
           UtenFormGrid(
-            columns: width >= 500 ? 2 : 1,
             children: [
               AbsorbPointer(
                 absorbing: !editable,

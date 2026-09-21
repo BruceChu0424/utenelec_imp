@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -41,6 +42,9 @@ class _Repository extends ProductionDrawRequestRepository {
   Object? previewError;
   Object? submitError;
   Completer<ProductionDrawRequestResult>? pendingSubmit;
+
+  /// 挂起首屏汇总查询(加载卡片测试用): 非空时 preview 停在这个 future 上。
+  Completer<void>? previewGate;
   Map<String, dynamic> previewJson = productionDrawRequestFixture();
 
   @override
@@ -48,6 +52,8 @@ class _Repository extends ProductionDrawRequestRepository {
     List<ProductionDrawRequestItem> items,
   ) async {
     previews.add(items);
+    final gate = previewGate;
+    if (gate != null) await gate.future;
     if (previewError != null) throw previewError!;
     return ProductionDrawRequestPreview.fromJson(previewJson);
   }
@@ -84,6 +90,8 @@ Future<ProviderContainer> _pump(
   bool dark = false,
   double textScale = 1,
   GlobalKey? captureKey,
+  // 首屏加载卡片里的转圈是无限动画: 要观察加载态就不能 pumpAndSettle。
+  bool settle = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -157,7 +165,13 @@ Future<ProviderContainer> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
   expect(tester.takeException(), isNull);
   return ProviderScope.containerOf(
     tester.element(find.byType(ProductionDrawRequestPage)),
@@ -165,6 +179,32 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  // 2026-09-21 用户口径「批量领料也要和别的页面一样有中间的加载弹窗」: 车间任务页
+  // 点「批量领料」是跳到本页, 遮罩挂着跳会把本页整片盖住(root Overlay 裸 entry),
+  // 所以加载反馈落在本页首屏——用全站同款的居中加载卡片替掉原来的裸转圈。这里
+  // 用卡片本体而不是 UtenBusyOverlay: 遮罩带不可关闭的 ModalBarrier, 首屏还在
+  // 加载时会把返回按钮一起吃掉。
+  testWidgets('first paint shows the shared centered loading card', (
+    tester,
+  ) async {
+    final repository = _Repository()..previewGate = Completer<void>();
+    await _pump(tester, repository, settle: false);
+    expect(
+      find.byKey(const Key('production-draw-request-loading')),
+      findsOneWidget,
+    );
+    expect(find.text('正在加载领料汇总'), findsOneWidget);
+    // 返回按钮不能被蒙版吃掉: 首屏加载用的是卡片本体, 不是带不可关闭蒙版的遮罩。
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    repository.previewGate!.complete();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('production-draw-request-loading')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'selected material quantity is allocated to exact reviewed sources',
     (tester) async {

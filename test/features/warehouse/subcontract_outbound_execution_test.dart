@@ -28,7 +28,6 @@ void main() {
       line(),
       'own-issue-item',
       '3000',
-      '',
     );
     addTearDown(draft.dispose);
     expect(draft.maxEditableQty, 3000);
@@ -42,30 +41,27 @@ void main() {
       line(flow: 'UNKNOWN_NEXT'),
       'issue-item',
       '10000',
-      '',
     );
     addTearDown(draft.dispose);
     expect(draft.maxEditableQty, 0);
     expect(draft.validate(l10n), isNotNull);
   });
 
-  test('精确数量和重量校验保留计划 UUID 与货品颜色单位链', () {
+  test('精确数量校验保留计划 UUID 与货品颜色单位链, 原单重量原样回传', () {
     final draft = SubcontractOutboundLineDraft(
       line(),
       'issue-item',
       '10000',
-      '2.75',
+      weight: 2.75,
     );
     addTearDown(draft.dispose);
     expect(draft.validate(l10n), isNull);
     expect(draft.toPayload(), containsPair('planItemId', 'plan-item'));
     expect(draft.toPayload(), containsPair('orderItemId', 'order-item'));
     expect(draft.toPayload(), containsPair('qty', 10000));
+    // 实际重量列已下线(单位已表达重量), 但原单已记的重量不能被这次保存抹掉。
     expect(draft.toPayload(), containsPair('weight', 2.75));
     draft.qty.text = 'NaN';
-    expect(draft.validate(l10n), isNotNull);
-    draft.qty.text = '10000';
-    draft.weight.text = 'Infinity';
     expect(draft.validate(l10n), isNotNull);
     draft.selected = false;
     expect(draft.validate(l10n), isNull);

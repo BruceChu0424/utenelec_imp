@@ -301,7 +301,19 @@ class _ProductionDrawRequestPageState
                         message: '当前账号没有查看并提交车间领料的权限',
                       )
                     : _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    // 首屏汇总查询(2026-09-21 用户口径「点批量领料也要有中间的
+                    // 加载弹窗」)：用全站同款的居中加载卡片替掉裸转圈。这里用
+                    // 卡片本体而不是 UtenBusyOverlay——遮罩带不可关闭的
+                    // ModalBarrier, 首屏还在加载时会把返回按钮一起吃掉。
+                    ? const Center(
+                        child: UtenBusyOverlayCard(
+                          semanticsKey: Key('production-draw-request-loading'),
+                          title: '正在加载领料汇总',
+                          description: '正在按所选工单汇总本次可领的物料与数量。',
+                          // 首屏没有可重复点的按钮, 返回按钮也是故意留着能点的。
+                          showDoNotLeaveHint: false,
+                        ),
+                      )
                     : _loadError != null
                     ? UtenEmpty.error(
                         message: _loadError,

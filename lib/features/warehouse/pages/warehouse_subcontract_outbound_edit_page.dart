@@ -205,7 +205,7 @@ class _WarehouseSubcontractOutboundEditPageState
               line,
               draftLine.id,
               _fmtQty(initial),
-              draftLine.weight?.toString() ?? '',
+              weight: draftLine.weight,
               remark: draftLine.remark,
               unitRate: draftLine.unitRate,
             ),
@@ -229,7 +229,6 @@ class _WarehouseSubcontractOutboundEditPageState
               line,
               null,
               _fmtQty(line.readyOutboundQty),
-              '',
             ),
           );
         }
@@ -326,7 +325,6 @@ class _WarehouseSubcontractOutboundEditPageState
     final items = <Map<String, dynamic>>[];
     final badQty = <String>[];
     final overMaxQty = <String>[];
-    final badWeight = <String>[];
     for (var index = 0; index < _lines.length; index++) {
       final e = _lines[index];
       final qty = double.tryParse(e.qty.text.trim()) ?? -1;
@@ -341,13 +339,6 @@ class _WarehouseSubcontractOutboundEditPageState
         overMaxQty.add(label);
         continue;
       }
-      final weightText = e.weight.text.trim();
-      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
-      if (weightText.isNotEmpty &&
-          (weight == null || !weight.isFinite || weight <= 0)) {
-        badWeight.add(label);
-        continue;
-      }
       items.add(e.toPayload());
     }
     final rowIssues = <String>[
@@ -360,8 +351,6 @@ class _WarehouseSubcontractOutboundEditPageState
           _l10n.warehouseSubcontractOutboundQuantityInvalid,
           action: '请改小后再提交',
         ),
-      if (badWeight.isNotEmpty)
-        _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
     ];
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。

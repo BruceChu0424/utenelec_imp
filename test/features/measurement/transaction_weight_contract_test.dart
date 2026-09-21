@@ -33,6 +33,9 @@ void main() {
     final dailyEdit = source(
       'lib/features/production/pages/production_daily_report_edit_page.dart',
     );
+    final subcontractOutbound = source(
+      'lib/features/warehouse/widgets/subcontract_outbound_detail_table.dart',
+    );
 
     // 2026-09-04 口径：采购/销售单据编辑网格下线「实际重量」列（单位已表达重量）；
     // 行模型 weight 字段保留，编辑既有单回填并随保存透传。仓库/生产等实物单据
@@ -59,6 +62,16 @@ void main() {
     }
     expect(arrival, isNot(contains("'weight': ?weight")));
     expect(arrival, isNot(contains('实际重量必须大于 0')));
+    // 2026-09-21 委外出仓明细表(单张拣货出仓页与批量出库详情共用)同样撤出实际重量
+    // 录入列；原单 weight 降为只读透传字段，保存仍原样回传，不能被静默清零。
+    expect(subcontractOutbound, isNot(contains("key: 'weight'")));
+    // 该表的列名走 l10n 而不是字面量, 所以钉的是文案 key 已随列一起退役。
+    expect(
+      subcontractOutbound,
+      isNot(contains('warehouseSubcontractOutboundWeight')),
+    );
+    expect(subcontractOutbound, contains('final double? weight;'));
+    expect(subcontractOutbound, contains('weight: weight,'));
   });
 
   test('business quantity keeps unit rate and never derives parcel count', () {

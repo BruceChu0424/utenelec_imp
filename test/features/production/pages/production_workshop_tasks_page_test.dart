@@ -12,8 +12,11 @@ import '../../../support/filter_segment_tap.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
@@ -26,6 +29,7 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 void main() {
   materialUsageEntryTests();
   routeConfirmationTests();
+  batchBusyOverlayTests();
   testWidgets(
     'shared batch material usage writes the real original issue task',
     (tester) async {
@@ -829,6 +833,186 @@ void main() {
 /// **选中即提交**——没有草稿、没有确认按钮、没有任何弹窗。底部确认面板、
 /// 「批量确认路线」按钮、详情弹窗里的路线按钮均已物理删除。
 /// 未确认路线时开工侧入口全部隐藏；「生产中」不显示「下一步」列。
+/// 2026-09-21 用户口径「批量开工 / 批量领料 / 批量设路线要和别的页面一样, 有中间
+/// 的加载弹窗」。批量开工是本页唯一的纯网络批量动作(批量领料是跳页面, 遮罩挂着
+/// 跳会把目标页盖住, 它的加载卡片在领料汇总页自己那边), 这里锁两条:
+///   1. 遮罩盖住提交**与提交后的整页重拉**两段——表格在已有数据时刷新是零画面的,
+///      撤早了就是「成功提示已经弹出、表格还是旧行」的裸奔窗口;
+///   2. 「返回即刷新」能把卡住的遮罩兜底清掉——遮罩带不可关闭的 ModalBarrier,
+///      漏清一次就是整屏点不动, 比卡住一个灰按钮严重得多。
+void batchBusyOverlayTests() {
+  Future<_FakePlanRepository> mountReady(
+    WidgetTester tester, {
+    _WorkshopLoadGate? loadGate,
+    ProductionExecutionWorkbenchRepository? repository,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    final plans = _FakePlanRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+            Perm.productionExecutionStart,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            repository ?? _repository(withWaitingRow: true, loadGate: loadGate),
+          ),
+          productionPlanRepositoryProvider.overrideWithValue(plans),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('等待物料'));
+    await tester.pumpAndSettle();
+    await _selectRow(tester, '产品 A');
+    return plans;
+  }
+
+  /// 遮罩里的转圈是无限动画: 只要它在屏上, pumpAndSettle 永不收敛, 只能定量推帧。
+  Future<void> pumpFrames(WidgetTester tester, [int frames = 4]) async {
+    for (var i = 0; i < frames; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
+  testWidgets('batch start keeps the busy overlay up through the refresh', (
+    tester,
+  ) async {
+    final loadGate = _WorkshopLoadGate();
+    final plans = await mountReady(tester, loadGate: loadGate);
+    plans.startGate = Completer<void>();
+    expect(find.text('批量开工(1)'), findsOneWidget);
+    await tester.tap(find.text('批量开工(1)'));
+    await pumpFrames(tester);
+    expect(find.byKey(const Key('workshop-batch-start-busy')), findsOneWidget);
+    expect(find.text('正在开工'), findsOneWidget);
+
+    // 提交已回来但列表还在重拉: 遮罩不撤, 只换文案。文案不许说「已提交」——
+    // 这一段在整批全失败时照样跑。
+    loadGate.pending = Completer<void>();
+    plans.startGate!.complete();
+    await pumpFrames(tester);
+    expect(find.byKey(const Key('workshop-batch-start-busy')), findsOneWidget);
+    expect(find.text('正在刷新任务列表'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionWorkshopTasksPage)),
+    );
+    expect(
+      container.read(appNotificationProvider),
+      isEmpty,
+      reason: '结果提示必须等遮罩撤下之后才发, 否则提示被盖在遮罩底下',
+    );
+
+    loadGate.pending!.complete();
+    loadGate.pending = null;
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
+    expect(plans.startedPlanIds, ['plan-segment-a']);
+    expect(
+      container.read(appNotificationProvider).last.message,
+      contains('已开工 1 个工单'),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  // 「批量设路线」走同一条通道, 刷新段同样盖着。
+  testWidgets('batch route setting keeps the overlay through the refresh', (
+    tester,
+  ) async {
+    final loadGate = _WorkshopLoadGate();
+    final plans = await mountReady(
+      tester,
+      // 产品 A 已确认齐套但未开工: 服务端说仍可改路线。
+      repository: _repository(
+        withWaitingRow: true,
+        aRouteChangeable: true,
+        loadGate: loadGate,
+      ),
+    );
+    plans.confirmGate = Completer<void>();
+    await tester.tap(find.byKey(const Key('workshop-batch-route')));
+    await tester.pumpAndSettle();
+    await tester.tap(_menuEntry('持续生产(1)'));
+    await pumpFrames(tester);
+    expect(
+      find.byKey(const Key('workshop-route-confirm-busy')),
+      findsOneWidget,
+    );
+    expect(find.text('正在确认生产路线'), findsOneWidget);
+
+    loadGate.pending = Completer<void>();
+    plans.confirmGate!.complete();
+    await pumpFrames(tester);
+    expect(
+      find.byKey(const Key('workshop-route-confirm-busy')),
+      findsOneWidget,
+    );
+    expect(find.text('正在刷新任务列表'), findsOneWidget);
+
+    loadGate.pending!.complete();
+    loadGate.pending = null;
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workshop-route-confirm-busy')), findsNothing);
+    expect(plans.confirmedRoutes, [('segment-a', 'CONTINUOUS')]);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 反向断言(核心纪律): 跳页的「批量领料」一路不许出现遮罩——遮罩是 root
+  // Overlay 裸 entry, Navigator 每推一次路由都把它抬到最顶, 挂着跳页会把目标页
+  // 整片盖住且一个按钮都点不动。目标页自己给加载卡片。
+  testWidgets('batch draw never raises the busy overlay on the way out', (
+    tester,
+  ) async {
+    await mountReady(
+      tester,
+      // 齐套但仓库还没实发: 这一行能进「批量领料」。
+      repository: _repository(withWaitingRow: true, readyIssued: false),
+    );
+    expect(find.text('批量领料(1)'), findsOneWidget);
+    await tester.tap(find.text('批量领料(1)'));
+    await pumpFrames(tester);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(find.text('领料汇总 segment-a 1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('returning to the page clears a stuck busy overlay', (
+    tester,
+  ) async {
+    final plans = await mountReady(tester);
+    plans.startGate = Completer<void>();
+    await tester.tap(find.text('批量开工(1)'));
+    await pumpFrames(tester);
+    expect(find.byKey(const Key('workshop-batch-start-busy')), findsOneWidget);
+
+    // 日报页 replace 吃掉 push completer 那一类路径会让 finally 走不到。
+    final notifier = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionWorkshopTasksPage)),
+    ).read(pageResumeProvider.notifier);
+    bumpPageResumeState(notifier, '/production/daily-reports/new');
+    bumpPageResumeState(notifier, RouteName.productionWorkshopTasks);
+    await pumpFrames(tester);
+    expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
+
+    plans.startGate!.complete();
+    await pumpFrames(tester, 8);
+    expect(find.byKey(const Key('workshop-batch-start-busy')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+}
+
 void routeConfirmationTests() {
   Future<void> mount(
     WidgetTester tester, {
@@ -1687,7 +1871,14 @@ GoRouter _router() => GoRouter(
   ],
 );
 
+/// 列表重拉的闸门(跑批遮罩测试用): [pending] 非空时 `/production/workshop-tasks`
+/// 停在它上面, 由测试自行放行——用来观察「提交完成后的整页刷新期间遮罩还在」。
+class _WorkshopLoadGate {
+  Completer<void>? pending;
+}
+
 ProductionExecutionWorkbenchRepository _repository({
+  _WorkshopLoadGate? loadGate,
   bool mixedWorkshops = false,
   bool withWaitingRow = false,
   bool readyIssued = true,
@@ -1720,8 +1911,12 @@ ProductionExecutionWorkbenchRepository _repository({
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
         onRequest?.call(request);
+        final gate = loadGate?.pending;
+        if (gate != null && request.path == '/production/workshop-tasks') {
+          await gate.future;
+        }
         // 逐种物料明细（ADR-095）：只对 segment-c 返回夹具行，其它任务无物料。
         if (request.path.endsWith('/materials')) {
           handler.resolve(
@@ -1963,6 +2158,9 @@ class _FakePlanRepository extends ProductionPlanRepository {
   /// 由测试自行 complete 放行。
   Completer<void>? confirmGate;
 
+  /// 同上, 挂起批量开工提交(批量开工的跑批遮罩测试用)。
+  Completer<void>? startGate;
+
   @override
   Future<ProductionExecutionSegmentView> confirmExecutionSegmentRoute(
     String planId,
@@ -2015,6 +2213,8 @@ class _FakePlanRepository extends ProductionPlanRepository {
     String planId, {
     required List<({String segmentId, int expectedVersion})> items,
   }) async {
+    final gate = startGate;
+    if (gate != null) await gate.future;
     startedPlanIds.add(planId);
   }
 }

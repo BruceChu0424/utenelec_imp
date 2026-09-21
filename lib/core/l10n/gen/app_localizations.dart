@@ -5632,7 +5632,7 @@ abstract class AppLocalizations {
   /// No description provided for @warehouseStockOutboundPlace.
   ///
   /// In zh, this message translates to:
-  /// **'实际库位'**
+  /// **'实际库位号'**
   String get warehouseStockOutboundPlace;
 
   /// No description provided for @warehouseStockOutboundQuantity.
@@ -5668,7 +5668,7 @@ abstract class AppLocalizations {
   /// No description provided for @warehouseSubcontractOutboundReviewHint.
   ///
   /// In zh, this message translates to:
-  /// **'请逐行核对本次出库数量、重量和实际仓库，再确认出库。'**
+  /// **'请逐行核对本次出库数量和实际仓库，再确认出库。'**
   String get warehouseSubcontractOutboundReviewHint;
 
   /// No description provided for @warehouseSubcontractOutboundBatchHint.
@@ -5682,12 +5682,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'单据信息'**
   String get warehouseSubcontractOutboundDocuments;
-
-  /// No description provided for @warehouseSubcontractOutboundLines.
-  ///
-  /// In zh, this message translates to:
-  /// **'出库明细'**
-  String get warehouseSubcontractOutboundLines;
 
   /// No description provided for @warehouseSubcontractOutboundOrder.
   ///
@@ -5791,16 +5785,10 @@ abstract class AppLocalizations {
   /// **'本次出库'**
   String get warehouseSubcontractOutboundQuantity;
 
-  /// No description provided for @warehouseSubcontractOutboundWeight.
-  ///
-  /// In zh, this message translates to:
-  /// **'实际重量'**
-  String get warehouseSubcontractOutboundWeight;
-
   /// No description provided for @warehouseSubcontractOutboundPlace.
   ///
   /// In zh, this message translates to:
-  /// **'库位'**
+  /// **'库位号'**
   String get warehouseSubcontractOutboundPlace;
 
   /// No description provided for @warehouseSubcontractOutboundStatus.
@@ -5862,12 +5850,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'本次出库数量必须大于 0 且不能超过本次最多数量。'**
   String get warehouseSubcontractOutboundQuantityInvalid;
-
-  /// No description provided for @warehouseSubcontractOutboundWeightInvalid.
-  ///
-  /// In zh, this message translates to:
-  /// **'实际重量须为空或大于 0 的数字。'**
-  String get warehouseSubcontractOutboundWeightInvalid;
 
   /// No description provided for @warehouseSubcontractOutboundLoadFailed.
   ///
@@ -5946,12 +5928,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'单据信息'**
   String get warehouseOutboundBatchDocuments;
-
-  /// No description provided for @warehouseOutboundBatchLines.
-  ///
-  /// In zh, this message translates to:
-  /// **'出库明细'**
-  String get warehouseOutboundBatchLines;
 
   /// No description provided for @warehouseOutboundBatchBillDate.
   ///

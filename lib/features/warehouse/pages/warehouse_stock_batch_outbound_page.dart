@@ -291,7 +291,12 @@ class _WarehouseStockBatchOutboundPageState
                               children: [
                                 UtenCollapsibleSection(
                                   title: l10n.warehouseOutboundBatchDocuments,
+                                  // 列数既按容器宽度算，也不超过单据张数：只有一张单
+                                  // 据时卡片横铺满屏，不再固定占三分之一屏。
                                   child: UtenFormGrid(
+                                    maxColumns: _documents.isEmpty
+                                        ? 1
+                                        : _documents.length,
                                     children: [
                                       for (final document in _documents)
                                         _documentCard(document, names),
@@ -315,15 +320,11 @@ class _WarehouseStockBatchOutboundPageState
                                 const SizedBox(height: UtenSpacing.s8),
                               ],
                             ),
+                            // 明细表直接占满 body：不再写「出库明细」标题，
+                            // 页面本身就叫批量出库详情，表头已说明每列是什么。
                             body: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text(
-                                  '${l10n.warehouseOutboundBatchLines} (${_documents.fold<int>(0, (count, d) => count + d.items.length)})',
-                                  style: Theme.of(context).textTheme.titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: UtenSpacing.s8),
                                 Expanded(
                                   child: WarehouseStockOutboundDetailTable(
                                     primary: true,

@@ -36,6 +36,7 @@ class UtenFormGrid extends StatelessWidget {
     super.key,
     required this.children,
     this.columns,
+    this.maxColumns = 6,
     this.spacing = UtenSpacing.s12,
     this.runSpacing = UtenSpacing.s12,
     this.lastRowFill = false,
@@ -46,6 +47,11 @@ class UtenFormGrid extends StatelessWidget {
 
   /// 强制列数（覆盖默认按宽度算的列数）。null 时按容器宽度自动算。
   final int? columns;
+
+  /// 列数上限(默认 6，即不额外限制)。按宽度自动算出的列数仍会被它压低，
+  /// 用于「子项少于列数时让子项铺满可用宽度」的场景：传子项张数即可，
+  /// 窄屏仍按宽度回退到更少的列。
+  final int maxColumns;
 
   /// 主轴（横向）间距，默认 12（对齐 [UtenSpacing.s12]）。
   final double spacing;
@@ -68,7 +74,10 @@ class UtenFormGrid extends StatelessWidget {
         final width = constraints.hasBoundedWidth
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final cols = (columns ?? defaultColumnsForWidth(width)).clamp(1, 6);
+        final cols = (columns ?? defaultColumnsForWidth(width)).clamp(
+          1,
+          maxColumns.clamp(1, 6),
+        );
         final itemWidth = (width - spacing * (cols - 1)) / cols;
 
         final wrapped = <Widget>[];

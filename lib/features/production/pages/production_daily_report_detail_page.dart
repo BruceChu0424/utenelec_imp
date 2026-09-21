@@ -7,6 +7,8 @@
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/表头卡/附件），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -87,7 +89,6 @@ class _ProductionDailyReportDetailPageState
       _error = null;
     });
     try {
-      await ref.read(masterNameServiceProvider).ensureLoaded();
       final d = await ref
           .read(productionDailyReportRepositoryProvider)
           .detail(widget.id);
@@ -107,22 +108,44 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  /// 把一份详情落到页面：补齐货品/员工名称缓存后换数据。审核/红冲接口本身就返回
-  /// 最新详情，走这里直接用，不再多发一次详情请求(2026-09-20 用户反馈审核后等太久)。
+  /// 首次加载用：页面此刻还是转圈，先把名称备齐再一次性出画面，不会闪「—」。
   Future<void> _hydrate(ProductionDailyReportDetail d) async {
-    final goodsIds = d.items.map((e) => e.goodsId).whereType<String>().toSet();
-    final names = ref.read(masterNameServiceProvider);
-    await names.loadGoodsNames(goodsIds);
-    // 货品列要显示编号，名称若早已被搜索缓存则 loadGoodsNames 会跳过详情，
-    // 这里补一次详情(编号)确保身份三属性齐全。
-    await names.loadGoodsDetails(goodsIds);
-    await names.loadEmployeeNames(d.workerIds);
+    await _loadNames(d);
     if (!mounted) return;
+    _applyDetail(d);
+  }
+
+  /// 写操作(审核/红冲)回来后用：权威状态**先**落地，按钮立刻与服务端一致，名称随后补。
+  /// 名称只是展示，绝不能挡在状态翻转前面——中间任何一次等待都可能让页面停在旧状态，
+  /// 而旧状态上还画着「审核」按钮，等于邀请用户重复提交。
+  /// 审核/红冲接口本身就返回最新详情，走这里直接用，不再多发一次详情请求
+  /// (2026-09-20 用户反馈审核后等太久)。
+  Future<void> _applyFreshDetail(ProductionDailyReportDetail d) async {
+    _applyDetail(d);
+    await _loadNames(d);
+    if (mounted) setState(() {});
+  }
+
+  void _applyDetail(ProductionDailyReportDetail d) {
     setState(() {
       _detail = d;
       _loading = false;
       _error = null;
     });
+  }
+
+  /// 补齐本页要用的名称缓存。MasterNameService 的缓存都是实例字段，连接恢复或权限快照
+  /// 变化会让 provider 整体重建、缓存清零，所以每次都要把字典一起 ensure 一遍，
+  /// 否则货品/颜色/单位/车间会集体变成「—」且永不自愈(2026-09-21 审核超时事故的次生现象)。
+  Future<void> _loadNames(ProductionDailyReportDetail d) async {
+    final names = ref.read(masterNameServiceProvider);
+    await names.ensureLoaded();
+    final goodsIds = d.items.map((e) => e.goodsId).whereType<String>().toSet();
+    await names.loadGoodsNames(goodsIds);
+    // 货品列要显示编号，名称若早已被搜索缓存则 loadGoodsNames 会跳过详情，
+    // 这里补一次详情(编号)确保身份三属性齐全。
+    await names.loadGoodsDetails(goodsIds);
+    await names.loadEmployeeNames(d.workerIds);
   }
 
   Future<void> _approve() => _doAction(
@@ -182,11 +205,11 @@ class _ProductionDailyReportDetailPageState
       ref.invalidate(
         documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
       );
-      await _hydrate(updated);
+      await _applyFreshDetail(updated);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      await _settleFailedAction(e.message, ok);
     } catch (_) {
-      if (mounted) context.appError('操作失败，请稍后重试');
+      await _settleFailedAction('操作失败，请稍后重试', ok);
     } finally {
       if (mounted) {
         setState(() {
@@ -195,6 +218,40 @@ class _ProductionDailyReportDetailPageState
         });
       }
     }
+  }
+
+  /// 写请求没拿到结果时的收尾：先按服务端权威状态刷新本页，再决定说什么。
+  ///
+  /// 超时或断连不代表服务端没做——审核事务可能已经提交(2026-09-21 实测：服务端 15.094 秒
+  /// 返回 200，浏览器 15 秒就掐了连接)。这时继续拿旧详情画「审核」按钮，用户必然再点一次，
+  /// 第二次必然撞上「仅草稿单据可审核」。服务端明确拒绝时同理：本地状态多半已经陈旧。
+  /// 所以两条失败路径都先重读一次，状态真变了就据实告诉用户它其实成功了。
+  Future<void> _settleFailedAction(
+    String failureMessage,
+    String successMessage,
+  ) async {
+    final before = _detail?.status;
+    ProductionDailyReportDetail? fresh;
+    try {
+      fresh = await ref
+          .read(productionDailyReportRepositoryProvider)
+          .detail(widget.id);
+    } catch (_) {
+      fresh = null; // 连重读都失败：只能报原始错误，页面保持原样。
+    }
+    if (!mounted) return;
+    if (fresh != null) {
+      ref.invalidate(
+        documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+      );
+      await _applyFreshDetail(fresh);
+      if (!mounted) return;
+      if (fresh.status != before) {
+        context.appSuccess('$successMessage(本次提交服务端已完成，页面已刷新)');
+        return;
+      }
+    }
+    context.appError(failureMessage);
   }
 
   Future<void> _delete() async {
@@ -245,6 +302,18 @@ class _ProductionDailyReportDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    // 连接恢复或权限快照变化会整体重建 MasterNameService，新实例的名称缓存是空的，
+    // 本页所有客户端解析的名称(货品/编号/颜色/单位/车间)会集体变成「—」。
+    // 监听到换实例就补一次，别让用户盯着一屏破折号(2026-09-21 审核超时事故的次生现象)。
+    ref.listen(masterNameServiceProvider, (previous, next) {
+      if (previous == null || identical(previous, next)) return;
+      final detail = _detail;
+      if (detail == null) return;
+      unawaited(() async {
+        await _loadNames(detail);
+        if (mounted) setState(() {});
+      }());
+    });
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
     );

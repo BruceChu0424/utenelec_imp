@@ -17,6 +17,7 @@ import 'api_exception.dart';
 import 'interceptors/auth_interceptor.dart';
 import 'interceptors/device_audit_interceptor.dart';
 import 'interceptors/safe_request_retry_interceptor.dart';
+import 'interceptors/write_deadline_interceptor.dart';
 import 'network_policy.dart';
 
 class ApiClient {
@@ -419,6 +420,8 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   }
 
   final dio = Dio(buildApiBaseOptions(baseUrl));
+  // 最先挂：后面的重试/刷新都复用同一份 RequestOptions，截止时间要先矫正好。
+  dio.interceptors.add(const WriteDeadlineInterceptor());
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
   dio.interceptors.add(
     AuthInterceptor(

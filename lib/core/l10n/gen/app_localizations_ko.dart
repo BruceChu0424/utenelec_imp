@@ -2998,7 +2998,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseStockOutboundBillNo => 'Outbound document';
 
   @override
-  String get warehouseStockOutboundPlace => 'Actual location';
+  String get warehouseStockOutboundPlace => 'Actual location code';
 
   @override
   String get warehouseStockOutboundQuantity => 'Outbound quantity';
@@ -3018,7 +3018,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundReviewHint =>
-      'Check each quantity, weight and actual warehouse before confirming outbound.';
+      'Check each quantity and actual warehouse before confirming outbound.';
 
   @override
   String get warehouseSubcontractOutboundBatchHint =>
@@ -3026,9 +3026,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundDocuments => 'Document details';
-
-  @override
-  String get warehouseSubcontractOutboundLines => 'Outbound lines';
 
   @override
   String get warehouseSubcontractOutboundOrder => 'Source order';
@@ -3084,10 +3081,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseSubcontractOutboundQuantity => 'Issue quantity';
 
   @override
-  String get warehouseSubcontractOutboundWeight => 'Actual weight';
-
-  @override
-  String get warehouseSubcontractOutboundPlace => 'Location';
+  String get warehouseSubcontractOutboundPlace => 'Location code';
 
   @override
   String get warehouseSubcontractOutboundStatus => 'Result';
@@ -3124,10 +3118,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundQuantityInvalid =>
       'Issue quantity must be greater than zero and cannot exceed the maximum this issue.';
-
-  @override
-  String get warehouseSubcontractOutboundWeightInvalid =>
-      'Actual weight must be empty or a number greater than zero.';
 
   @override
   String get warehouseSubcontractOutboundLoadFailed =>
@@ -3176,9 +3166,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseOutboundBatchDocuments => '문서 정보';
-
-  @override
-  String get warehouseOutboundBatchLines => '출고 상세';
 
   @override
   String get warehouseOutboundBatchBillDate => '업무 일자';

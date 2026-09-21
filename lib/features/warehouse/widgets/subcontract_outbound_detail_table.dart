@@ -20,19 +20,20 @@ class SubcontractOutboundLineDraft {
   SubcontractOutboundLineDraft(
     this.line,
     this.draftItemId,
-    String initialQty,
-    String initialWeight, {
+    String initialQty, {
+    this.weight,
     String? remark,
     this.unitRate,
   }) : qty = TextEditingController(text: initialQty),
-       weight = TextEditingController(text: initialWeight),
        remarkController = TextEditingController(text: remark ?? ''),
        ownDraftQty = draftItemId == null ? 0 : double.tryParse(initialQty) ?? 0;
 
   final OutboundPlanLine line;
   final String? draftItemId;
   final TextEditingController qty;
-  final TextEditingController weight;
+
+  /// 原单已记的重量，仅原样回传，页面不再录入(单位已表达重量，全站实际重量列已下线)。
+  final double? weight;
   final double ownDraftQty;
   final TextEditingController remarkController;
   String? get remark => remarkController.text.trim().isEmpty
@@ -58,19 +59,13 @@ class SubcontractOutboundLineDraft {
         quantity - maxEditableQty > 0.0000001) {
       return l10n.warehouseSubcontractOutboundQuantityInvalid;
     }
-    final weightText = weight.text.trim();
-    final actualWeight = double.tryParse(weightText);
-    if (weightText.isNotEmpty &&
-        (actualWeight == null || !actualWeight.isFinite || actualWeight <= 0)) {
-      return l10n.warehouseSubcontractOutboundWeightInvalid;
-    }
     return null;
   }
 
   Map<String, dynamic> toPayload() => {
     ...line.toMaterialIssueItemPayload(
       qty: double.parse(qty.text.trim()),
-      weight: double.tryParse(weight.text.trim()),
+      weight: weight,
     ),
     'remark': remark,
     if (unitRate != null) 'unitRate': unitRate,
@@ -78,7 +73,6 @@ class SubcontractOutboundLineDraft {
 
   void dispose() {
     qty.dispose();
-    weight.dispose();
     remarkController.dispose();
   }
 }
@@ -212,7 +206,6 @@ class _SubcontractOutboundDetailTableState
         'quantity',
         'unit',
         'maximum',
-        'weight',
         'place',
         'lineRemark',
         'documentRemark',
@@ -352,20 +345,6 @@ class _SubcontractOutboundDetailTableState
               l10n.warehouseSubcontractOutboundQuantity,
               'quantity',
             ),
-          ),
-        ),
-        EditableGridColumn(
-          key: 'weight',
-          label: l10n.warehouseSubcontractOutboundWeight,
-          width: 150,
-          numeric: true,
-          textOf: (row) => row.draft.weight.text,
-          listenableOf: (row) => row.draft.weight,
-          cellBuilder: (context, row) => _field(
-            row,
-            row.draft.weight,
-            l10n.warehouseSubcontractOutboundWeight,
-            'weight',
           ),
         ),
         EditableGridColumn(

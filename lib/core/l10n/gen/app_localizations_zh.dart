@@ -2952,7 +2952,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseStockOutboundBillNo => '出库单号';
 
   @override
-  String get warehouseStockOutboundPlace => '实际库位';
+  String get warehouseStockOutboundPlace => '实际库位号';
 
   @override
   String get warehouseStockOutboundQuantity => '出库数量';
@@ -2971,7 +2971,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundReviewHint =>
-      '请逐行核对本次出库数量、重量和实际仓库，再确认出库。';
+      '请逐行核对本次出库数量和实际仓库，再确认出库。';
 
   @override
   String get warehouseSubcontractOutboundBatchHint =>
@@ -2979,9 +2979,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundDocuments => '单据信息';
-
-  @override
-  String get warehouseSubcontractOutboundLines => '出库明细';
 
   @override
   String get warehouseSubcontractOutboundOrder => '来源订单';
@@ -3035,10 +3032,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundQuantity => '本次出库';
 
   @override
-  String get warehouseSubcontractOutboundWeight => '实际重量';
-
-  @override
-  String get warehouseSubcontractOutboundPlace => '库位';
+  String get warehouseSubcontractOutboundPlace => '库位号';
 
   @override
   String get warehouseSubcontractOutboundStatus => '处理结果';
@@ -3070,9 +3064,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundQuantityInvalid =>
       '本次出库数量必须大于 0 且不能超过本次最多数量。';
-
-  @override
-  String get warehouseSubcontractOutboundWeightInvalid => '实际重量须为空或大于 0 的数字。';
 
   @override
   String get warehouseSubcontractOutboundLoadFailed => '出库详情加载失败，请重试。';
@@ -3117,9 +3108,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseOutboundBatchDocuments => '单据信息';
-
-  @override
-  String get warehouseOutboundBatchLines => '出库明细';
 
   @override
   String get warehouseOutboundBatchBillDate => '业务日期';

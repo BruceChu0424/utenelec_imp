@@ -132,11 +132,17 @@ class UtenBusyOverlayCard extends StatelessWidget {
     required this.title,
     this.description,
     this.semanticsKey,
+    this.showDoNotLeaveHint = true,
   });
 
   final Key? semanticsKey;
   final String title;
   final String? description;
+
+  /// 是否附带「请勿重复点击或关闭页面」那句尾巴。跑批遮罩恒为真；单独拿卡片
+  /// 画**首屏加载**时要关掉——那种场景没有可重复点的按钮，返回按钮也是故意
+  /// 留着能点的，再劝人别关页面就是自相矛盾(领料汇总页首屏，2026-09-21)。
+  final bool showDoNotLeaveHint;
 
   @override
   Widget build(BuildContext context) {
@@ -148,9 +154,11 @@ class UtenBusyOverlayCard extends StatelessWidget {
           key: semanticsKey,
           container: true,
           liveRegion: true,
-          label: description == null
-              ? '$title。请勿重复提交或关闭页面。'
-              : '$title。$description。请勿重复提交或关闭页面。',
+          label: [
+            title,
+            ?description,
+            if (showDoNotLeaveHint) '请勿重复提交或关闭页面',
+          ].map((line) => '$line。').join(),
           child: ExcludeSemantics(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
@@ -193,13 +201,15 @@ class UtenBusyOverlayCard extends StatelessWidget {
                                     ),
                                   ),
                                 ],
-                                const SizedBox(height: UtenSpacing.s4),
-                                Text(
-                                  '请勿重复点击或关闭页面，完成后自动继续。',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
+                                if (showDoNotLeaveHint) ...[
+                                  const SizedBox(height: UtenSpacing.s4),
+                                  Text(
+                                    '请勿重复点击或关闭页面，完成后自动继续。',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),

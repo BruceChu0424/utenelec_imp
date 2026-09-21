@@ -121,6 +121,13 @@ class _WarehouseArrivalReceiptPageState
   String? _receiverId;
   bool _loading = false;
   bool _saving = false;
+
+  /// 短交确认弹窗要先撤「正在登记」全屏遮罩才点得动(遮罩是 root Overlay 的裸图层, 每次路由
+  /// 重排都被重新抬到最顶, 一定压住后推的弹窗)。
+  void _setSaving(bool saving) {
+    if (mounted) setState(() => _saving = saving);
+  }
+
   final String _registrationId = const Uuid().v4();
   int _removedLineCount = 0;
 
@@ -578,6 +585,7 @@ class _WarehouseArrivalReceiptPageState
               orderType: prefill.orderType,
               body: payload,
             ),
+            setBusy: _setSaving,
           );
           if (registration == null) {
             // 仓库选择「返回修改」：原地停下；已成功仓不回滚（同键重放安全）。

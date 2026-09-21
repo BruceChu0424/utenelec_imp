@@ -59,6 +59,12 @@ Future<bool> showSubcontractShortDeliveryConfirmDialog(
 
 /// 登记并在需要时确认短交：返回 null 表示仓库选择「返回修改」，调用方原地停下不报错。
 /// 其余异常原样抛出，由页面按既有方式提示。
+///
+/// [setBusy] 是登记页的「正在登记」全屏遮罩开关，必填：UtenBusyOverlay 把遮罩直接插进
+/// root Overlay，而 Navigator 每次路由历史变动都会 rearrange 一次，把这条不属于任何路由的
+/// 裸图层**重新抬到最顶**——后推的弹窗一定被它盖住、两个按钮都点不动(2026-09-21 批量登记
+/// 页实测)，靠调整先后顺序绕不开。唯一可靠的做法是弹窗前 setBusy(false) 把遮罩整个撤掉并
+/// 等这一帧画完，确认后再 setBusy(true) 接着重发。
 Future<WarehouseArrivalRegistration?> registerArrivalConfirmingShortDelivery({
   required BuildContext context,
   required Map<String, dynamic> body,
@@ -66,17 +72,24 @@ Future<WarehouseArrivalRegistration?> registerArrivalConfirmingShortDelivery({
     Map<String, dynamic> body,
   )
   register,
+  required void Function(bool busy) setBusy,
 }) async {
   try {
     return await register(body);
   } on ApiException catch (error) {
     if (!isSubcontractShortDeliveryUnacknowledged(error)) rethrow;
     if (!context.mounted) return null;
+    // 先撤遮罩再弹窗：endOfFrame 等的是遮罩那帧真的画完(OverlayEntry 在 dispose 时才移除)。
+    setBusy(false);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!context.mounted) return null;
     final confirmed = await showSubcontractShortDeliveryConfirmDialog(
       context,
       error,
     );
+    // 「返回修改」不恢复遮罩：调用方收到 null 后原地停下，自己会收尾。
     if (!confirmed) return null;
+    setBusy(true);
     return register({...body, 'shortDeliveryAcknowledged': true});
   }
 }

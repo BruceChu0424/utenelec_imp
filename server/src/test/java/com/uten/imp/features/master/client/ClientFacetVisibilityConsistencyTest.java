@@ -51,9 +51,9 @@ class ClientFacetVisibilityConsistencyTest {
         service.facets(categoryId, true);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        // 22 个白名单 facet 字段（empId 走专用 JOIN 聚合）各发一条桶查询 + 一条空值计数，
-        // 加上负责人（empId）的 JOIN 桶查询与空值计数，共 46 条。
-        org.mockito.Mockito.verify(em, org.mockito.Mockito.times(46))
+        // 21 个白名单 facet 字段(V630 起不含 salesPaymentType；empId 走专用 JOIN 聚合)各发一条桶查询 + 一条空值计数，
+        // 加上负责人(empId)的 JOIN 桶查询与空值计数，共 44 条。
+        org.mockito.Mockito.verify(em, org.mockito.Mockito.times(44))
                 .createNativeQuery(sql.capture());
         assertThat(sql.getAllValues()).allSatisfy(statement -> assertThat(statement)
                 .contains("legacy-fin-cl-%")

@@ -151,6 +151,35 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         qty("0",material(view,t.buyLine()).additionalSupplyRecommendedQty());
     }
 
+    @Test void appendingOnAFullyCoveredLineGrowsTheUnorderedRequestAsPurePublicSurplus() {
+        Tree t=seed("append-public");
+        AnalysisView view=analyses.detail(t.analysis());
+        // 需求 1000 一次下满：还需安排归零。
+        view=commands.notifySupply(t.analysis(),notify(view,t,"full-1000","1000"));
+        UUID action=db.queryForObject("SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND route='BUY' AND operation_type='SUPPLY'",UUID.class,t.analysis());
+        UUID item=db.queryForObject("SELECT external_item_id FROM preplan_supply_action_allocations WHERE action_id=?",UUID.class,action);
+        qty("0",material(view,t.buyLine()).additionalSupplyRecommendedQty());
+        qty("1000",db.queryForObject("SELECT qty FROM purchase_request_items WHERE id=?",BigDecimal.class,item));
+        // 采购还没处理这张申请：再追加 200 全是公共备货，直接改大同一条明细，不另立新单。
+        view=commands.notifySupply(t.analysis(),notify(view,t,"append-200","200"));
+        qty("1200",db.queryForObject("SELECT qty FROM purchase_request_items WHERE id=?",BigDecimal.class,item));
+        Object[] split=db.queryForObject("SELECT requested_qty,public_surplus_qty FROM preplan_supply_actions WHERE id=?",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},action);
+        qty("1000",(BigDecimal)split[0]);qty("200",(BigDecimal)split[1]);
+        // 公共份锚到同一条明细(V588 合并明细形态)；需求侧分摊一分不动。
+        assertEquals(item,db.queryForObject("SELECT public_surplus_external_item_id FROM preplan_supply_actions WHERE id=?",UUID.class,action));
+        qty("1000",db.queryForObject("SELECT SUM(allocated_qty) FROM preplan_supply_action_allocations WHERE action_id=?",BigDecimal.class,action));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",Integer.class,t.analysis()));
+        qty("0",material(analyses.detail(t.analysis()),t.buyLine()).additionalSupplyRecommendedQty());
+        // 采购一旦分解出订货单，同样的追加只能另立新申请。
+        approveOrder(t.world(),item,t.world().goodsD(),"1200",BusinessTime.today().plusDays(5));
+        fixture.loginAs(t.world().superAdminUserId());
+        view=analyses.detail(t.analysis());
+        commands.notifySupply(t.analysis(),notify(view,t,"append-after-order-50","50"));
+        qty("1200",db.queryForObject("SELECT qty FROM purchase_request_items WHERE id=?",BigDecimal.class,item));
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",Integer.class,t.analysis()));
+    }
+
     @Test void notifyTakesTheTypedTotalAndSplitsDemandFromPublicExtraOnTheServer() {
         Tree t=seed("split");
         AnalysisView view=analyses.detail(t.analysis());

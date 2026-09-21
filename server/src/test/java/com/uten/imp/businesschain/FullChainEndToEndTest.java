@@ -7209,9 +7209,12 @@ class FullChainEndToEndTest {
     void directCustomerShipment_unrepresentableLocalMoneyDoesNotShipOrCreateAr() {
         World w=seedWorld("direct-money-exact-v511");receiveOpeningInputsForA(w,"1");loginAs(w.superAdminUserId());
         var request=directCustomerShipmentRequest(w,"CHARGED","1");request.getItems().getFirst().setPrice(new BigDecimal("0.0001"));
-        UUID id=shipmentService.create(request).getId();shipmentService.confirmSales(id,0L);confirmShipmentFinance(id);
+        UUID id=shipmentService.create(request).getId();shipmentService.confirmSales(id,0L);
         // V582 一步式：把毒化汇率放在确认出库之前，整笔 SHIPPED 原子失败（无任何实物/会计事实）。
+        // V632 起记账汇率在财务放行那一刻冻结到本单、仓库确认出库按冻结值折算，所以毒化必须早于
+        // 放行（放行不带汇率即取币种主档）；放行之后再改主档已经影响不到本单，那正是冻结的本意。
         jdbc.update("UPDATE currencies SET exchange_rate=0.0001 WHERE id=?",w.currencyId());
+        confirmShipmentFinance(id);
         var work=new WarehouseWorkTransitionRequest();work.setTargetStatus("SHIPPED");
         assertEquals(ErrorCode.VALIDATION_FAILED,assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(id,work)).getCode());
         assertEquals("PENDING_PICK",shipmentWorkStatus(id));assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("2")));

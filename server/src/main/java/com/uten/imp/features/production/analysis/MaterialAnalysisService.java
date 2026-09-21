@@ -6095,10 +6095,18 @@ public class MaterialAnalysisService {
         }
         // ADR-099：锚点行已下达且仍有效的计划总量（归需求量 + 公共备货产出）。
         // 车间桶填的本批数量超过需求时，下层按它展开，不再被物理缺口封顶。
+        //
+        // 2026-09-21 用户口径：已经做出来的那部分不再需要下层原料——它的料早就领走用掉了。
+        // 所以每条计划链接按「本批计划量 − 本计划已完工入库量」计，单条不为负再求和。
+        // 例：某件计划做 10、做完 10、其中 4 件报废要重做使锚点涨到 14 时，
+        // 下层原料的「还需安排」是 4 份而不是 14 份（旧算法会让人多买 10 份料）。
+        // 已完工入库量沿用 productPlanStates 的同一口径：按计划明细的 iqty 封顶到 qty。
         Map<String, BigDecimal> planned = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT parent.analysis_item_id || '|' || parent.node_key,
-                       SUM(link.submitted_qty + link.public_surplus_qty)::numeric
+                       SUM(GREATEST(
+                           link.submitted_qty + link.public_surplus_qty
+                           - COALESCE(done.inbound_qty, 0), 0))::numeric
                 FROM production_material_analysis_plan_links link
                 JOIN production_material_analysis_items child
                   ON child.id = link.analysis_item_id
@@ -6109,6 +6117,14 @@ public class MaterialAnalysisService {
                   ON parent.id = child.parent_analysis_material_id
                  AND parent.analysis_id = child.analysis_id
                  AND parent.active = TRUE
+                LEFT JOIN LATERAL (
+                    SELECT COALESCE(SUM(GREATEST(LEAST(
+                               COALESCE(plan_item.iqty, 0),
+                               GREATEST(COALESCE(plan_item.qty, 0), 0)), 0)), 0)
+                             AS inbound_qty
+                    FROM production_plan_items plan_item
+                    WHERE plan_item.plan_id = link.plan_id
+                ) done ON TRUE
                 WHERE link.analysis_id = :analysisId
                   AND link.allocation_status IN ('SUBMITTED','APPROVED')
                 GROUP BY 1
@@ -7278,10 +7294,12 @@ public class MaterialAnalysisService {
      * @param internalCommittedQty 已承诺由我方制造的量（已下达车间的自制锚点、
      *                            委外件的前置自制任务）。这部分的物理来源就是
      *                            下层原料，已下达即冻结，绝不能被在途挤掉。
-     * @param plannedOutputQty    锚点行已下达且仍有效的计划总量（归需求量 +
-     *                            公共备货产出，ADR-099）。计划员在车间桶填的
-     *                            本批数量超过需求时，下层按这个量展开，不再被
-     *                            物理缺口封顶。
+     * @param plannedOutputQty    锚点行已下达且仍有效、且**尚未完工**的计划总量
+     *                            （归需求量 + 公共备货产出 − 已完工入库量，
+     *                            ADR-099）。计划员在车间桶填的本批数量超过需求
+     *                            时，下层按这个量展开，不再被物理缺口封顶；
+     *                            已经做出来的那部分不计入——它的下层原料早已领走
+     *                            用掉，再算一遍会让补做场景多备一整批料。
      */
     record ParentSupplyCommitment(
             BigDecimal externalFutureQty, BigDecimal internalCommittedQty,

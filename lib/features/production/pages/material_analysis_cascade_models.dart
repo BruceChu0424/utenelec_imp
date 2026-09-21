@@ -179,7 +179,13 @@ class _ChildCascadeRow extends EditableGridRow {
     this.seed,
     this.anchorAnalysisLineId,
   }) {
-    if (ownsInput && suggested > 0) qty.text = _bucketQtyText(suggested);
+    if (ownsInput && suggested > 0) {
+      qty.text = _bucketQtyText(suggested);
+    } else if (ownsInput && allowsExtra) {
+      // 已下达行的「追加量」默认就写 0（用户口径 2026-09-21）：勾着不动 = 这一行
+      // 本次不下，要追加才改成正数。0 是合法值，不再当成「没填」。
+      qty.text = '0';
+    }
   }
 
   /// 还需安排为 0 时还能不能填「追加量」（用户口径 2026-09-21：即使采购 /
@@ -204,6 +210,12 @@ class _ChildCascadeRow extends EditableGridRow {
     final extra = enteredQty - residual;
     return extra > 0.0001 ? extra : 0;
   }
+
+  /// 本行没有「还需安排」的下限，格里那个数纯粹是追加量（0 = 本次不下它）。
+  bool get isAppendOnly => !isSeed && ownsInput && minRequiredQty <= 0.0001;
+
+  /// 本次真的要为这一行下单吗（填 0 的追加行不进提交集合）。
+  bool get willSubmit => !isAppendOnly || enteredQty > 0.0001;
 
   /// 树顶那行 = 本次要下达的件本身（数量可直接改，改完重新预览）。
   final bool isSeed;

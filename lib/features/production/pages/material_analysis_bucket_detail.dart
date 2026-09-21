@@ -254,8 +254,9 @@ class _MaterialAnalysisBucketPageState
     var controller = _submitQtyControllers[key];
     if (controller == null) {
       controller = TextEditingController(
+        // 已下达段的「追加量」默认就写 0（用户口径 2026-09-21）：0 = 本次不追加。
         text: _appendMode
-            ? ''
+            ? '0'
             : _bucketQtyText(
                 _host._defaultSubmitQty(group, _bucket.supplyRoute!),
               ),
@@ -269,7 +270,7 @@ class _MaterialAnalysisBucketPageState
   TextEditingController _appendQtyControllerOf(String id) =>
       _submitQtyControllers.putIfAbsent(
         'APPEND|$id',
-        () => TextEditingController(),
+        () => TextEditingController(text: '0'),
       );
 
   void _disposeSubmitQtyControllers() {
@@ -1493,11 +1494,14 @@ class _MaterialAnalysisBucketPageState
     for (final row in products) {
       final product = row.product!;
       final name = product.goodsName ?? product.goodsCode ?? row.id;
-      final qty = double.tryParse(_appendQtyControllerOf(row.id).text.trim());
-      if (qty == null || !qty.isFinite || qty <= 0) {
+      final raw = _appendQtyControllerOf(row.id).text.trim();
+      final qty = double.tryParse(raw);
+      if (raw.isEmpty || qty == null || !qty.isFinite || qty < 0) {
         bad.add('「$name」');
         continue;
       }
+      // 填 0 = 本次不追加这一行（用户口径 2026-09-21）。
+      if (qty == 0) continue;
       drafts.add(
         _BucketPlanDraft(
           analysisLineId: row.id,
@@ -1523,7 +1527,11 @@ class _MaterialAnalysisBucketPageState
       );
     }
     if (bad.isNotEmpty) {
-      context.appError(_planRowIssue(bad, '追加数量必须大于 0'));
+      context.appError(_planRowIssue(bad, '追加数量要填一个数字（0 = 本次不追加）'));
+      return;
+    }
+    if (drafts.isEmpty) {
+      context.appInfo('勾选的行追加数量都是 0，本次没有要追加的内容');
       return;
     }
     unawaited(
@@ -2661,7 +2669,7 @@ class _MaterialAnalysisBucketPageState
     final group = row.group;
     if (group == null) return;
     _submitQtyControllerOf(group).text = _appendMode
-        ? ''
+        ? '0'
         : _bucketQtyText(_host._defaultSubmitQty(group, _bucket.supplyRoute!));
   }
 
@@ -3361,7 +3369,7 @@ class _MaterialAnalysisBucketPageState
             '未下达行：本次要下达的数量（默认 = 缺口 − 已在途，可改小分批）；'
             '采购行若货品维护了最小起订量或订货倍数，默认值会按它向上抬，'
             '富余部分归公共备货（需超量下达权限，可改小）；'
-            '已下达行：可追加的行给「追加量」输入框（默认空；填的量属公共备货，'
+            '已下达行：可追加的行给「追加量」输入框（默认 0 = 本次不追加；填的量属公共备货，'
             '原申请还没被采购 / 委外处理的直接改到那张申请上，已处理的另立新单），'
             '旁注已下达单据的真实下单总量（含公共备货与安全补库）。',
         cellBuilderHandlesSemantics: true,
@@ -3531,7 +3539,9 @@ class _MaterialAnalysisBucketPageState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            hintText: append ? '追加量（属公共备货）' : '默认 ${_host._qty(defaultValue)}',
+            hintText: append
+                ? '追加量（0 = 本次不追加）'
+                : '默认 ${_host._qty(defaultValue)}',
             suffixText: unit?.isEmpty == true ? null : unit,
           ),
           // 说明挂列头 ⓘ（submitQty 列的 info），格内不再逐行渲染重复 ⓘ。

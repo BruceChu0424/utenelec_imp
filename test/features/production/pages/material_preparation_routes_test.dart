@@ -215,7 +215,8 @@ void main() {
     final append = find.byKey(
       const ValueKey('material-analysis-bucket-submit-qty-action-complete'),
     );
-    expect(tester.widget<TextField>(append).controller!.text, '');
+    // 追加量默认就写 0（0 = 本次不追加）。
+    expect(tester.widget<TextField>(append).controller!.text, '0');
     expect(find.text('已下 10'), findsOneWidget);
     expect(requests.where((request) => request.method != 'GET'), isEmpty);
     await tester.enterText(append, '5');

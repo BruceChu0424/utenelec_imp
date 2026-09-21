@@ -665,8 +665,15 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     final belowMin = <String>[];
     for (final row in rows) {
       final name = _rowName(row);
-      final qty = double.tryParse(row.qty.text.trim());
-      if (qty == null || !qty.isFinite || qty <= 0) {
+      final raw = row.qty.text.trim();
+      final qty = double.tryParse(raw);
+      if (raw.isEmpty || qty == null || !qty.isFinite || qty < 0) {
+        badQty.add('「$name」');
+        continue;
+      }
+      // 追加行填 0 = 本次不下它（用户口径 2026-09-21）：合法，直接跳过后面的校验。
+      if (qty == 0 && row.isAppendOnly) continue;
+      if (qty == 0) {
         badQty.add('「$name」');
         continue;
       }
@@ -698,7 +705,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       if (row.workerId.value?.isNotEmpty != true) noWorker.add('「$name」');
     }
     final problems = <String>[
-      if (badQty.isNotEmpty) _issueLine(badQty, '下单数量必须填一个大于 0 的数字'),
+      if (badQty.isNotEmpty) _issueLine(badQty, '下单数量要填一个数字（本批还有缺口的行必须大于 0）'),
       if (stale.isNotEmpty) _issueLine(stale, '在最新快照里已不可下达'),
       if (belowMin.isNotEmpty)
         _issueLine(belowMin, '低于服务端按父件本批数量算出的还需安排量，父件会缺料——可以多下，不能少下'),
@@ -791,12 +798,21 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       final parentOk = await _validateAndConfirmSeeds();
       if (!parentOk || !mounted) return;
     }
-    final selected = _selectedRows
+    final checked = _selectedRows
         .where((row) => row.selectable)
         .toList(growable: false);
+    // 填 0 的追加行本次不下：勾选保留，只是不进这次提交（用户口径 2026-09-21）。
+    final selected = checked
+        .where((row) => row.willSubmit)
+        .toList(growable: false);
+    final zeroSkipped = checked.length - selected.length;
     if (selected.isEmpty) {
       if (widget.parentAction == null || _parentSubmitted) {
-        context.appInfo('请先勾选要下单的下层物料');
+        context.appInfo(
+          zeroSkipped > 0
+              ? '勾选的行追加数量都是 0，本次没有要提交的内容——要下就填一个大于 0 的数量'
+              : '请先勾选要下单的下层物料',
+        );
         return;
       }
       // 下层都已下过单（没有一行还有缺口）：不用再问，直接只下达父件。
@@ -872,6 +888,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
               '将按各自路线依次下达 ${selected.length} 行：',
               for (final entry in byKind.entries)
                 '· ${entry.key.label}：${entry.value} 行',
+              if (zeroSkipped > 0) '另有 $zeroSkipped 行追加量填的是 0，本次不下它们。',
               if (claiming.isNotEmpty)
                 '其中 ${claiming.length} 行有可认领的同主仓公共在途，下达时服务端先自动认领、只为余下部分新下单：'
                     '${_names(claiming.map((row) => '${_rowName(row)} ${_host._qty(row.claimableQty)}'))}',
@@ -1518,8 +1535,9 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
             '默认 = 服务端算出的还需安排量（采购行再按起订量 / 整包装上抬）。可以填得比它大：'
             '车间超出部分记公共备货产出（有下达车间权限即可）；'
             '采购 / 直接外发委外超出部分需要超量下达权限。不能填得比还需安排量小。'
-            '已下过单的行（还需安排 0）也能填：填的就是追加量，属公共备货——'
-            '原申请还没被采购 / 委外处理的直接改到那张申请上，已处理的另立新单。',
+            '已下过单的行（还需安排 0）默认填 0 = 本次不下它；改成正数就是追加量，'
+            '属公共备货——原申请还没被采购 / 委外处理的直接改到那张申请上，'
+            '已处理的另立新单。',
         textOf: (row) => row.qty.text,
         listenableOf: (row) => row.qty,
         chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
@@ -1570,7 +1588,10 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           }
           return RequiredCellFrame(
             listenable: row.qty,
-            isEmpty: () => row.enteredQty <= 0 || row.belowMinimum,
+            // 追加行的 0 是合法值（本次不下它），只有真空着才算没填。
+            isEmpty: () => row.isAppendOnly
+                ? row.qty.text.trim().isEmpty
+                : (row.enteredQty <= 0 || row.belowMinimum),
             child: ListenableBuilder(
               listenable: row.qty,
               builder: (context, _) {
@@ -1590,7 +1611,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                       isDense: true,
                       hintText: row.minRequiredQty > 0.0001
                           ? '不能少于 ${_host._qty(row.minRequiredQty)}'
-                          : '追加量（属公共备货）',
+                          : '追加量（0 = 本次不下）',
                       suffixIcon: below
                           ? Tooltip(
                               key: ValueKey(

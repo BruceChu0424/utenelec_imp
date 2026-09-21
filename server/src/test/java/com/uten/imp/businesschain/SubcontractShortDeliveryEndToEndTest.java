@@ -291,12 +291,34 @@ class SubcontractShortDeliveryEndToEndTest {
                 .filter(r->orderId.equals(r.actionDocId())).findFirst().orElse(null);
     }
 
+    /**
+     * 把短交事件投递干净。
+     *
+     * <p>2026-09-21 修:原先"立刻连打 60 次 processNext"会偶发红(CI 与本机都复现过)。
+     * 真因是 Spring 上下文里的后台 outbox 线程与本用例并发投递:它撞上履约来源冲突
+     * (等锁期间来源集合变了,属设计内的瞬时冲突)后,失败记录器按 power(2, attempts) 秒
+     * 把 available_at 推到将来,而 processNext 只取 available_at &lt;= now() 的事件——
+     * 于是那 60 次一条也取不到,断言必红。这里改成:每轮先抹平退避再投递,按时间兜底等待;
+     * 本线程投递时抛出的瞬时冲突不记 attempts,下一轮直接重投。
+     */
     private void drainOutbox(){
-        for(int i=0;i<60;i++){
-            outbox.processNext();
+        String pending="SELECT COUNT(*) FROM business_outbox "
+                +"WHERE status<>1 AND event_type LIKE 'SUBCONTRACT_SHORT_DELIVERY_%'";
+        long deadline=System.currentTimeMillis()+60_000;
+        while(true){
+            db.update("UPDATE business_outbox SET available_at=now() "
+                    +"WHERE status=0 AND available_at>now()");
+            try{
+                for(int i=0;i<200&&outbox.processNext();i++){ /* 投到取不出为止 */ }
+            }catch(RuntimeException transientDeliveryFailure){
+                // 瞬时冲突:本线程没走失败记录器,attempts 未加,下一轮抹平退避后重投。
+            }
+            if(count(pending)==0) return;
+            if(System.currentTimeMillis()>deadline) break;
+            try{ Thread.sleep(50); }
+            catch(InterruptedException interrupted){ Thread.currentThread().interrupt(); break; }
         }
-        assertFalse(count("SELECT COUNT(*) FROM business_outbox WHERE status<>1 AND event_type LIKE 'SUBCONTRACT_SHORT_DELIVERY_%'")>0,
-                "短交事件必须全部投递完成");
+        assertFalse(count(pending)>0,"短交事件必须全部投递完成");
     }
 
     private int count(String sql,Object... args){

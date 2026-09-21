@@ -862,7 +862,16 @@ abstract class _MaterialAnalysisSupplyActionsState
                 : 'LINE|${input.materialLineId}':
             input,
     };
-    final batches = _chunked(targets);
+    // 填 0 被剔掉的行必须同时从目标集合里拿掉：带着 actionGroupKey 却不给数量时，
+    // 服务端会按「未指定 = 全量剩余」下达，等于把用户明确填的 0 翻成全量。
+    final submitTargets = targets
+        .where((target) => quantityByIdentity.containsKey(target.identity))
+        .toList(growable: false);
+    if (submitTargets.isEmpty) {
+      if (!silent) context.appInfo('本次没有要下达的内容');
+      return null;
+    }
+    final batches = _chunked(submitTargets);
     var current = analysis;
     var completed = 0;
     // 2026-09-12 用户口径「点了没反应像卡住」：采购/委外分块提交期间屏幕中间
@@ -881,7 +890,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         MaterialSupplyRoute.make => '正在创建自制备料任务',
       };
       _bulkOperationCompleted = 0;
-      _bulkOperationTotal = targets.length;
+      _bulkOperationTotal = submitTargets.length;
     });
     try {
       for (final batch in batches) {
@@ -1197,6 +1206,9 @@ abstract class _MaterialAnalysisSupplyActionsState
         (route == MaterialSupplyRoute.buy ||
             route == MaterialSupplyRoute.subcontract);
     final quantities = <double>[];
+    // 填 0 的行不进提交集合（[kept] 与 [quantities] 逐位对齐）。
+    final kept = <MaterialSupplyQuantityEntry>[];
+    final skipped = <MaterialSupplyQuantityEntry>[];
     for (final entry in entries) {
       final edited = entry.actionGroupKey == null
           ? null
@@ -1223,13 +1235,31 @@ abstract class _MaterialAnalysisSupplyActionsState
       if (qty <= 0 &&
           entry.safetyReplenishmentQty <= 0 &&
           entry.rootAllocatedStockQty <= 0) {
-        context.appError('「${entry.label}」下达数量为 0 且无安全补库/现货可交接，请填正数');
-        return null;
+        // 填 0 = 本次不下这一行（用户口径 2026-09-21，已下达行的追加量默认就是 0）。
+        // 剔出提交集合而不是报错；调用方据此同步剔掉通知目标。
+        skipped.add(entry);
+        continue;
       }
+      kept.add(entry);
       quantities.add(qty);
     }
+    if (skipped.isNotEmpty && kept.isNotEmpty) {
+      context.appInfo(
+        '${skipped.length} 行下达数量填的是 0，本次没有下它们'
+        '（${skipped.take(5).map((entry) => entry.label).join('、')}'
+        '${skipped.length > 5 ? ' 等' : ''}）',
+      );
+    }
+    if (kept.isEmpty) {
+      context.appInfo(
+        skipped.isEmpty
+            ? '本次没有要下达的内容'
+            : '勾选的行下达数量都是 0，本次没有要下达的内容——要下就填一个大于 0 的数量',
+      );
+      return null;
+    }
     return (
-      entries: entries,
+      entries: kept,
       quantities: quantities,
       allowOverDemand: allowOverDemand,
     );

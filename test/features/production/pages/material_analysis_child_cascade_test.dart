@@ -21,8 +21,8 @@
 //  7. 有自制子层的顶层委外件：从委外桶进来走 issue-plans，车间由学习默认补上；
 //  8. 父件尚未提交时退出必须确认，确认后一个写请求都不发；
 //  9. 下层都已下过单时仍进页（父层级可追加），一行不勾直接只下达父件；
-// 10. 已下过单的子件行仍可追加：未处理的申请就地改大、已处理的另立新单，多下
-//     的属公共备货（用户口径 2026-09-21 第二轮）；
+// 10. 已下过单的子件行仍可追加：追加量默认就写 0，勾着留 0 的本次不下也不报错，
+//     填了正数的才下（用户口径 2026-09-21 第二、四轮）；
 // 11. 下达车间已下达段：需求已全部转入计划的顶层仍可追加一批公共备货产出
 //     （publicSurplusOnly 显式声明，进整页填车间后提交）。
 import 'package:dio/dio.dart';
@@ -280,8 +280,9 @@ void main() {
       find.byKey(const Key('material-analysis-child-cascade-dialog')),
       findsOneWidget,
     );
-    // 已覆盖的采购行仍有输入框（追加用），但默认不勾、不预填。
-    expect(_qtyOf(tester, 'm-b'), '');
+    // 已覆盖的采购行仍有输入框（追加用），默认写 0：
+    // 勾着不动 = 本次不下它。
+    expect(_qtyOf(tester, 'm-b'), '0');
     expect(find.textContaining('本批需求已覆盖，填的数量即额外追加'), findsWidgets);
     await tester.tap(
       find.byKey(const Key('material-analysis-child-cascade-submit')),
@@ -299,7 +300,7 @@ void main() {
     );
   });
 
-  testWidgets('已下过单的子件行仍可追加：未处理的就地改大、已处理的另立新单，多下的属公共备货', (tester) async {
+  testWidgets('已下过单的子件行仍可追加：填正数的才下，勾着留 0 的本次不下也不报错', (tester) async {
     final harness = await _pump(
       tester,
       childrenAlreadyOrdered: true,
@@ -323,11 +324,9 @@ void main() {
       find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-b')),
       '10',
     );
-    await tester.enterText(
-      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-d')),
-      '5',
-    );
     await tester.pumpAndSettle();
+    // D 保持默认的 0：两行都勾上也不该报错，0 那行本次直接不下。
+    expect(_qtyOf(tester, 'm-d'), '0');
     await _tapDialogRowCheckbox(tester, '外购件B');
     await _tapDialogRowCheckbox(tester, '外购件D');
     await tester.tap(
@@ -335,9 +334,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('超出部分属主动追加'), findsOneWidget);
+    expect(find.textContaining('另有 1 行追加量填的是 0'), findsOneWidget);
     await tester.tap(find.text('一键下单'));
     await tester.pumpAndSettle();
-    // 父件 issue-plans 之后，两行追加量原样送采购通知（服务端按超量分账）。
+    // 父件 issue-plans 之后，只有填了正数的那行送采购通知（服务端按超量分账）。
     expect(
       harness.writes.where((r) => r.path.endsWith('/issue-plans')).length,
       1,
@@ -351,7 +351,7 @@ void main() {
             .cast<Map<String, dynamic>>();
     expect(
       quantities.map((row) => '${row['actionGroupKey']}=${row['qty']}').toSet(),
-      {'ag-b=10.0', 'ag-d=5.0'},
+      {'ag-b=10.0'},
     );
   });
 

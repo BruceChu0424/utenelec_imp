@@ -15,8 +15,10 @@ class _NoopApi extends ApiClient {
   _NoopApi() : super(Dio());
 
   @override
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async =>
-      <String, dynamic>{};
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => <String, dynamic>{};
 }
 
 class _FakeRepo extends SubcontractShortDeliveryRepository {
@@ -49,19 +51,30 @@ class _FakeRepo extends SubcontractShortDeliveryRepository {
         _ => !pending && !tolerant && !waiting,
       };
     }).toList();
-    return PagedResult(items: items, page: 1, size: 50, total: items.length, totalPages: 1);
+    return PagedResult(
+      items: items,
+      page: 1,
+      size: 50,
+      total: items.length,
+      totalPages: 1,
+    );
   }
 
   @override
-  Future<SubcontractShortDeliveryCounts> counts() async => SubcontractShortDeliveryCounts(
-    pending: rows
-        .where((r) => r.effectiveStatus == 'PENDING_OWNER' && r.isBelowFloor)
-        .length,
-    tolerant: rows
-        .where((r) => r.effectiveStatus == 'PENDING_OWNER' && !r.isBelowFloor)
-        .length,
-    waiting: rows.where((r) => r.effectiveStatus == 'WAITING_MORE').length,
-  );
+  Future<SubcontractShortDeliveryCounts> counts() async =>
+      SubcontractShortDeliveryCounts(
+        pending: rows
+            .where(
+              (r) => r.effectiveStatus == 'PENDING_OWNER' && r.isBelowFloor,
+            )
+            .length,
+        tolerant: rows
+            .where(
+              (r) => r.effectiveStatus == 'PENDING_OWNER' && !r.isBelowFloor,
+            )
+            .length,
+        waiting: rows.where((r) => r.effectiveStatus == 'WAITING_MORE').length,
+      );
 
   @override
   Future<SubcontractShortDeliveryDetail> detail(String id) async =>
@@ -105,7 +118,9 @@ class _FakeRepo extends SubcontractShortDeliveryRepository {
         shortfallPct: row.shortfallPct,
         severity: row.severity,
         status: decision == 'WAIT_MORE' ? 'WAITING_MORE' : 'ACCEPTED_LOSS',
-        effectiveStatus: decision == 'WAIT_MORE' ? 'WAITING_MORE' : 'ACCEPTED_LOSS',
+        effectiveStatus: decision == 'WAIT_MORE'
+            ? 'WAITING_MORE'
+            : 'ACCEPTED_LOSS',
         expectedCompleteBy: expectedCompleteBy,
         wasteBillNo: decision == 'WAIT_MORE' ? null : 'SW-1',
         version: row.version + 1,
@@ -190,13 +205,19 @@ Future<_FakeRepo> _pump(
 
 void main() {
   testWidgets('待判定段：严重短交带标签与操作按钮，接受损耗必须填说明后才提交', (tester) async {
-    final repo = await _pump(tester, rows: [_case(id: 'a', severity: 'SEVERE')]);
+    final repo = await _pump(
+      tester,
+      rows: [_case(id: 'a', severity: 'SEVERE')],
+    );
     expect(repo.segments.first, 'PENDING');
     expect(find.text('EO-a'), findsOneWidget);
     expect(find.text('精工委外厂'), findsOneWidget);
     expect(find.text('严重短交'), findsOneWidget);
     expect(find.text('40%'), findsWidgets);
-    expect(find.byKey(const ValueKey('short-delivery-accept-a')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('short-delivery-accept-a')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('short-delivery-accept-a')));
     await tester.pumpAndSettle();

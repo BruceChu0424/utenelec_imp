@@ -14,7 +14,8 @@ void main() {
     fieldErrors: const [
       ApiFieldError(
         field: 'item-1',
-        message: '「委外件A FG-1」订 100 件，允许损耗 5%(最少应到 95 件)，此前已到 0 件，本次 60 件，累计 60 件，少 40 件(40%)，属严重短交',
+        message:
+            '「委外件A FG-1」订 100 件，允许损耗 5%(最少应到 95 件)，此前已到 0 件，本次 60 件，累计 60 件，少 40 件(40%)，属严重短交',
       ),
     ],
     httpStatus: 409,
@@ -31,14 +32,18 @@ void main() {
         final context = tester.element(find.byType(Scaffold));
         return registerArrivalConfirmingShortDelivery(
           context: context,
-          body: const {'idempotencyKey': 'k', 'items': <Map<String, dynamic>>[]},
+          body: const {
+            'idempotencyKey': 'k',
+            'items': <Map<String, dynamic>>[],
+          },
           register: (payload) async {
             calls.add(payload);
             if (failFirst && payload['shortDeliveryAcknowledged'] != true) {
               throw blocked();
             }
             return const WarehouseArrivalRegistration(
-              outcome: WarehouseArrivalRegistrationOutcome.submittedForInspection,
+              outcome:
+                  WarehouseArrivalRegistrationOutcome.submittedForInspection,
               receiptId: 'r-1',
               receiptBillNo: 'SR-1',
             );
@@ -49,9 +54,7 @@ void main() {
     };
   }
 
-  testWidgets('409 短交说明弹出，确认后带 shortDeliveryAcknowledged 原样重发', (
-    tester,
-  ) async {
+  testWidgets('409 短交说明弹出，确认后带 shortDeliveryAcknowledged 原样重发', (tester) async {
     final calls = <Map<String, dynamic>>[];
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: SizedBox.expand())),

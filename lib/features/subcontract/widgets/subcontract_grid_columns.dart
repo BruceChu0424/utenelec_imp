@@ -493,7 +493,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '允许损耗%',
         width: 120,
         numeric: true,
-        headerInfo: '委外回厂允许少到的比例。例如填 5，订 100 件最少应到 95 件；'
+        headerInfo:
+            '委外回厂允许少到的比例。例如填 5，订 100 件最少应到 95 件；'
             '少于下限仓库登记时会确认并通知委外判定。留空 = 不设下限。'
             '按货品主档记忆预填，保存后记住本次填写值。',
         chromeWidth: UtenEditableGridCellSpec.hintIconWidth,

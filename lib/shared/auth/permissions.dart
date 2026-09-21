@@ -274,6 +274,7 @@ abstract final class Perm {
   static const subcontractOrderPriceView = 'subcontract_order:price:view';
   static const subcontractOrderSubmitFinance =
       'subcontract_order:submit_finance';
+
   /// ADR-098：委外回厂短交案件判定(分批到货 / 接受损耗结案)。
   static const subcontractShortDeliveryDecide =
       'subcontract_short_delivery:decide';

@@ -30,7 +30,8 @@ class SubcontractShortDeliveryRepository {
         'segment': segment,
         if (keyword != null && keyword.trim().isNotEmpty)
           'keyword': keyword.trim(),
-        if (supplierId != null && supplierId.isNotEmpty) 'supplierId': supplierId,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplierId': supplierId,
         if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,

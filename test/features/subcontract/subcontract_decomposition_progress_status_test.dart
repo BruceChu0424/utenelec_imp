@@ -15,8 +15,10 @@ class _Api extends ApiClient {
   _Api() : super(Dio());
 
   @override
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async =>
-      <String, dynamic>{};
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => <String, dynamic>{};
 }
 
 class _Gateway implements OperationsWorkbenchGateway {
@@ -43,10 +45,25 @@ class _Gateway implements OperationsWorkbenchGateway {
     statuses.add(status);
     final items = status == 'IN_PROGRESS'
         ? [
-            _order('o-short', 'FINANCE_APPROVED', 'SHORT_DELIVERY', 'SHORT_DELIVERY'),
+            _order(
+              'o-short',
+              'FINANCE_APPROVED',
+              'SHORT_DELIVERY',
+              'SHORT_DELIVERY',
+            ),
             _order('o-supplier', 'FINANCE_APPROVED', 'AT_SUPPLIER', null),
-            _order('o-received', 'FINANCE_APPROVED', 'RECEIVED_PENDING_STOCK', null),
-            _order('o-rejected', 'FINANCE_REJECTED', 'FINANCE_REJECTED', 'FINANCE_REJECTED'),
+            _order(
+              'o-received',
+              'FINANCE_APPROVED',
+              'RECEIVED_PENDING_STOCK',
+              null,
+            ),
+            _order(
+              'o-rejected',
+              'FINANCE_REJECTED',
+              'FINANCE_REJECTED',
+              'FINANCE_REJECTED',
+            ),
           ]
         : <OperationsWorkbenchTask>[];
     return OperationsWorkbenchData(
@@ -75,8 +92,16 @@ class _Gateway implements OperationsWorkbenchGateway {
       ),
       facets: const {
         'status': [
-          MasterFacetBucket(value: 'SHORT_DELIVERY', label: 'SHORT_DELIVERY', count: 1),
-          MasterFacetBucket(value: 'AT_SUPPLIER', label: 'AT_SUPPLIER', count: 1),
+          MasterFacetBucket(
+            value: 'SHORT_DELIVERY',
+            label: 'SHORT_DELIVERY',
+            count: 1,
+          ),
+          MasterFacetBucket(
+            value: 'AT_SUPPLIER',
+            label: 'AT_SUPPLIER',
+            count: 1,
+          ),
         ],
       },
     );
@@ -147,7 +172,10 @@ void main() {
     expect(find.text('已回厂待入库'), findsWidgets);
     expect(find.text('财务已退回'), findsWidgets);
     // 异常小类行：短交与退回都在（红徽章形态由 UtenFilterSegment 决定）。
-    expect(find.byKey(const Key('subcontract-decomposition-exceptions')), findsOneWidget);
+    expect(
+      find.byKey(const Key('subcontract-decomposition-exceptions')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

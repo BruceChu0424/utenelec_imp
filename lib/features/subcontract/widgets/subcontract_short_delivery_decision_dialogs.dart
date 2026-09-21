@@ -18,7 +18,8 @@ typedef SubcontractShortDeliveryDecision = ({
 });
 
 /// 「分批到货·继续等」：预计到齐日必填且不早于今天，说明选填。
-Future<SubcontractShortDeliveryDecision?> showSubcontractShortDeliveryWaitDialog(
+Future<SubcontractShortDeliveryDecision?>
+showSubcontractShortDeliveryWaitDialog(
   BuildContext context, {
   required SubcontractShortDeliveryCase row,
 }) {
@@ -26,7 +27,8 @@ Future<SubcontractShortDeliveryDecision?> showSubcontractShortDeliveryWaitDialog
   DateTime? expected = row.expectedCompleteBy == null
       ? null
       : ChinaDateTime.tryParse(row.expectedCompleteBy);
-  if (expected != null && expected.isBefore(DateTime(today.year, today.month, today.day))) {
+  if (expected != null &&
+      expected.isBefore(DateTime(today.year, today.month, today.day))) {
     expected = null;
   }
   final note = TextEditingController(text: row.decisionNote ?? '');
@@ -85,9 +87,9 @@ Future<SubcontractShortDeliveryDecision?> showSubcontractShortDeliveryWaitDialog
                     expectedCompleteBy: expected,
                     note: note.text.trim().isEmpty ? null : note.text.trim(),
                   )),
-            onDisabledTap: () => ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
-              const SnackBar(content: Text('请先填写预计到齐日期')),
-            ),
+            onDisabledTap: () => ScaffoldMessenger.maybeOf(
+              ctx,
+            )?.showSnackBar(const SnackBar(content: Text('请先填写预计到齐日期'))),
             child: const Text('确认继续等'),
           ),
         ],
@@ -131,8 +133,10 @@ showSubcontractShortDeliveryAcceptDialog(
                     ),
                   ),
                   const SizedBox(height: UtenSpacing.s8),
-                  const _Bullet('按发料时冻结的用量，把短交对应的材料登记成委外损耗单；'
-                      '超出允许损耗的部分转财务判定责任。'),
+                  const _Bullet(
+                    '按发料时冻结的用量，把短交对应的材料登记成委外损耗单；'
+                    '超出允许损耗的部分转财务判定责任。',
+                  ),
                   const _Bullet('订货量改为累计回厂量，来源申请的剩余需求回到「待处理」，可以另行下单。'),
                   const _Bullet('财务会收到一张改量复核；本案件记下这次的损耗率，计入委外商汇总。'),
                   const SizedBox(height: UtenSpacing.s12),

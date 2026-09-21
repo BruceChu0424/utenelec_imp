@@ -4,7 +4,6 @@
 // SubcontractShortDeliveryContracts.CaseRow 一致。文案函数集中在本文件，
 // 判定页、任务中心状态列、供应商详情「委外损耗」段共用，避免三处各起一个名字。
 
-
 class SubcontractShortDeliveryCase {
   const SubcontractShortDeliveryCase({
     required this.id,
@@ -303,28 +302,26 @@ class SubcontractSupplierLossSummary {
 
   bool get isEmpty => settledLineCount == 0;
 
-  factory SubcontractSupplierLossSummary.fromJson(Map<String, dynamic> json) =>
-      SubcontractSupplierLossSummary(
-        supplierId: json['supplierId'] as String? ?? '',
-        settledLineCount: (json['settledLineCount'] as num?)?.toInt() ?? 0,
-        acceptedLossCount: (json['acceptedLossCount'] as num?)?.toInt() ?? 0,
-        orderedQty: (json['orderedQty'] as num?)?.toDouble() ?? 0,
-        lossQty: (json['lossQty'] as num?)?.toDouble() ?? 0,
-        lossPct: (json['lossPct'] as num?)?.toDouble() ?? 0,
-        maxLossPct: (json['maxLossPct'] as num?)?.toDouble() ?? 0,
-        lastLossAt: json['lastLossAt'] as String?,
-        byGoods: [
-          for (final entry in (json['byGoods'] as List<dynamic>? ?? const []))
-            SubcontractGoodsLossRow.fromJson(entry as Map<String, dynamic>),
-        ],
-        recentCases: [
-          for (final entry
-              in (json['recentCases'] as List<dynamic>? ?? const []))
-            SubcontractShortDeliveryCase.fromJson(
-              entry as Map<String, dynamic>,
-            ),
-        ],
-      );
+  factory SubcontractSupplierLossSummary.fromJson(
+    Map<String, dynamic> json,
+  ) => SubcontractSupplierLossSummary(
+    supplierId: json['supplierId'] as String? ?? '',
+    settledLineCount: (json['settledLineCount'] as num?)?.toInt() ?? 0,
+    acceptedLossCount: (json['acceptedLossCount'] as num?)?.toInt() ?? 0,
+    orderedQty: (json['orderedQty'] as num?)?.toDouble() ?? 0,
+    lossQty: (json['lossQty'] as num?)?.toDouble() ?? 0,
+    lossPct: (json['lossPct'] as num?)?.toDouble() ?? 0,
+    maxLossPct: (json['maxLossPct'] as num?)?.toDouble() ?? 0,
+    lastLossAt: json['lastLossAt'] as String?,
+    byGoods: [
+      for (final entry in (json['byGoods'] as List<dynamic>? ?? const []))
+        SubcontractGoodsLossRow.fromJson(entry as Map<String, dynamic>),
+    ],
+    recentCases: [
+      for (final entry in (json['recentCases'] as List<dynamic>? ?? const []))
+        SubcontractShortDeliveryCase.fromJson(entry as Map<String, dynamic>),
+    ],
+  );
 }
 
 /// 数量显示：整数不带小数点，其余去尾零，可带单位（判定页/弹窗/供应商详情共用）。

@@ -150,8 +150,11 @@ class _SubcontractDecompositionPageState
   }
 
   bool _linksToShortDeliveries(OperationsWorkbenchTask task) =>
-      const {'SHORT_DELIVERY', 'WAITING_MORE_BATCH', 'TOLERANT_SHORT'}
-          .contains(task.progressStatus) &&
+      const {
+        'SHORT_DELIVERY',
+        'WAITING_MORE_BATCH',
+        'TOLERANT_SHORT',
+      }.contains(task.progressStatus) &&
       task.actionDocument?.id.isNotEmpty == true;
 
   OperationsWorkbenchGateway get _repository =>
@@ -1094,7 +1097,11 @@ class _ProgressStatusCell extends StatelessWidget {
           ),
           const SizedBox(width: UtenSpacing.s4),
         ],
-        UtenStatusBadge(label: label, type: type, size: UtenStatusBadgeSize.small),
+        UtenStatusBadge(
+          label: label,
+          type: type,
+          size: UtenStatusBadgeSize.small,
+        ),
       ],
     );
     if (onTap == null) {

@@ -72,7 +72,8 @@ class SubcontractShortDeliveryPage extends ConsumerStatefulWidget {
 class _SubcontractShortDeliveryPageState
     extends ConsumerState<SubcontractShortDeliveryPage> {
   PagedResult<SubcontractShortDeliveryCase>? _result;
-  SubcontractShortDeliveryCounts _counts = const SubcontractShortDeliveryCounts();
+  SubcontractShortDeliveryCounts _counts =
+      const SubcontractShortDeliveryCounts();
   bool _loading = true;
   String? _error;
   int _requestId = 0;
@@ -83,7 +84,8 @@ class _SubcontractShortDeliveryPageState
   String? _decidingId;
 
   /// 任务型页面默认落在「待判定」段（通知点进来就是要办这件事）；历史段仍时间门控。
-  SubcontractShortDeliverySegment _seg = SubcontractShortDeliverySegment.pending;
+  SubcontractShortDeliverySegment _seg =
+      SubcontractShortDeliverySegment.pending;
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
 
   SubcontractShortDeliveryRepository get _repo =>
@@ -124,7 +126,9 @@ class _SubcontractShortDeliveryPageState
           keyword: _keyword,
           supplierId: _supplierId,
           orderId: _orderId,
-          dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
+          dateFrom: range == null
+              ? null
+              : ChinaDateTime.formatDate(range.start),
           dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           page: page ?? _page,
         );
@@ -373,7 +377,8 @@ class _SubcontractShortDeliveryPageState
     final result = _result;
     final pendingSeg = _seg == SubcontractShortDeliverySegment.pending;
     final historySeg = _seg == SubcontractShortDeliverySegment.history;
-    final openSeg = pendingSeg || _seg == SubcontractShortDeliverySegment.tolerant;
+    final openSeg =
+        pendingSeg || _seg == SubcontractShortDeliverySegment.tolerant;
     return MasterDataTableView<SubcontractShortDeliveryCase>(
       key: const Key('subcontract-short-delivery-table'),
       columns: [
@@ -428,8 +433,9 @@ class _SubcontractShortDeliveryPageState
           label: '最少应到',
           width: 100,
           type: 'number',
-          value: (c) =>
-              c.floorQty == null ? '—' : formatSubcontractQty(c.floorQty!, c.unitName),
+          value: (c) => c.floorQty == null
+              ? '—'
+              : formatSubcontractQty(c.floorQty!, c.unitName),
         ),
         MasterColumnDef(
           key: 'deliveredQty',
@@ -484,7 +490,8 @@ class _SubcontractShortDeliveryPageState
           label: '发现时间',
           width: 150,
           type: 'date',
-          value: (c) => ChinaDateTime.formatIsoInstant(c.detectedAt, fallback: '—'),
+          value: (c) =>
+              ChinaDateTime.formatIsoInstant(c.detectedAt, fallback: '—'),
         ),
         if (!openSeg)
           MasterColumnDef(
@@ -500,7 +507,8 @@ class _SubcontractShortDeliveryPageState
             label: '损耗率',
             width: 90,
             type: 'number',
-            value: (c) => c.lossPct == null ? '—' : formatSubcontractPct(c.lossPct),
+            value: (c) =>
+                c.lossPct == null ? '—' : formatSubcontractPct(c.lossPct),
           ),
           MasterColumnDef(
             key: 'wasteBillNo',
@@ -513,7 +521,8 @@ class _SubcontractShortDeliveryPageState
             label: '结案时间',
             width: 150,
             type: 'date',
-            value: (c) => ChinaDateTime.formatIsoInstant(c.closedAt, fallback: '—'),
+            value: (c) =>
+                ChinaDateTime.formatIsoInstant(c.closedAt, fallback: '—'),
           ),
         ],
         MasterColumnDef(
@@ -615,9 +624,8 @@ class _SubcontractShortDeliveryPageState
 
   static UtenStatusBadgeType _statusType(SubcontractShortDeliveryCase c) =>
       switch (c.effectiveStatus) {
-        'PENDING_OWNER' => c.overdue
-            ? UtenStatusBadgeType.danger
-            : UtenStatusBadgeType.warning,
+        'PENDING_OWNER' =>
+          c.overdue ? UtenStatusBadgeType.danger : UtenStatusBadgeType.warning,
         'WAITING_MORE' => UtenStatusBadgeType.fuchsia,
         'ACCEPTED_LOSS' => UtenStatusBadgeType.violet,
         'COMPLETED' => UtenStatusBadgeType.success,
@@ -757,7 +765,10 @@ class _CaseDetailDialog extends StatelessWidget {
       children: [
         SizedBox(width: 120, child: Text(label)),
         Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
         ),
       ],
     ),

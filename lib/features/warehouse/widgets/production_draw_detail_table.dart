@@ -108,11 +108,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
         width: 150,
         value: (row) => names.department(row.document.departmentId),
       ),
+      // 姓名由详情接口随单返回(workerName): 单张详情/批量出库页都不再预加载员工档案,
+      // 仓库/车间账号没有 employee:view 也能看到是谁来领料。
       MasterColumnDef(
         key: 'worker',
         label: '领料负责人',
         width: 140,
-        value: (row) => names.employee(row.document.workerId),
+        value: (row) =>
+            names.employeeOr(row.document.workerName, row.document.workerId),
       ),
       MasterColumnDef(
         key: 'place',

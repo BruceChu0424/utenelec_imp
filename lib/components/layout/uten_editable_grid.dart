@@ -1187,15 +1187,17 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _viewportHeight = vpBox.size.height;
       setState(() {});
     }
-    final gridTop = gridBox.localToGlobal(Offset.zero).dy;
+    // 全部相对视口量(localToGlobal 带 ancestor)：不带 ancestor 得到的是窗口坐标，
+    // 根部整体缩放(UtenDisplayZoomBox)时与表头/表体的画布尺寸相差 zoom 倍。
+    final gridTop = gridBox.localToGlobal(Offset.zero, ancestor: vpBox).dy;
     final headerH = headerBox.size.height;
     if (headerH > 0 && (headerH - _headerHeight).abs() > 0.5) {
       // 表头实测高度变化（字体缩放/主题切换）→ 修正流内占位高度。
       setState(() => _headerHeight = headerH);
     }
-    final bodyTop = bodyBox.localToGlobal(Offset.zero).dy;
+    final bodyTop = bodyBox.localToGlobal(Offset.zero, ancestor: vpBox).dy;
     final bodyBottom = bodyTop + bodyBox.size.height;
-    final vpTop = vpBox.localToGlobal(Offset.zero).dy;
+    const vpTop = 0.0;
 
     // sticky 表头：自然位 local 0；表头随页面上滑到视口顶才吸附；表体尾部把表头顶出。
     var headerY = vpTop - gridTop;

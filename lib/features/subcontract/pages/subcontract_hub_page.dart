@@ -91,7 +91,12 @@ class SubcontractHubPage extends ConsumerWidget {
           ),
           // 本人待自审草稿数（与新建页「草稿」按钮同源）。本卡没有别的待办
           // 徽章，草稿就占右上角 badge 槽——用户要的正是这个位置。
-          badge: const UtenDraftBadge(kind: DraftDocKind.subcontractOrder),
+          // 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21; 退回件的待办累加由
+          // 委外任务中心 FINANCE_REJECTED 承担, 卡面只是同数展示)。
+          badge: const UtenDraftBadge(
+            kind: DraftDocKind.subcontractOrder,
+            withFinanceRejected: true,
+          ),
         ),
       if (can(Perm.subcontractReturnView))
         _Entry(

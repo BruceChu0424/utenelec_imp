@@ -14,7 +14,10 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.UUID;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -49,6 +52,12 @@ class DocumentDraftCountScopePostgresTest {
     JdbcTemplate db;
     @Autowired
     DocumentDraftCountQueryService drafts;
+    @Autowired
+    com.uten.imp.features.documents.DocumentStatusCountQueryService statusCounts;
+    @Autowired
+    com.uten.imp.features.sales.shipment.SalesShipmentService shipmentService;
+    @Autowired
+    com.uten.imp.features.common.taskclaim.TaskClaimService reviewClaims;
 
     private FullChainEndToEndTest fixture;
 
@@ -155,6 +164,121 @@ class DocumentDraftCountScopePostgresTest {
                 "盘点切片只数 doc_type=CHECK 的草稿");
         assertTrue(counts.stockDocument() >= counts.stockTransfer() + counts.stockCheck(),
                 "两个切片之和不得超过整表合计（切片必须是合计的子集）");
+    }
+
+    /**
+     * 采购订货财务退回件(最新 case=REJECTED)不再算草稿(2026-09-21 用户口径: 财务退回件有自己的
+     * 红徽章分段, 不能放在草稿里); 分段计数把它归到 FINANCE_REJECTED 桶, 退回后又有更新一条 case
+     * 覆盖(这里用 CANCELED 代表撤回重做)的单按最新 case 归回草稿, 与草稿计数同一口径.
+     * PENDING/APPROVED case 受商业快照守卫(V518)约束须带完整明细与金额, 不在本用例直插.
+     */
+    @Test
+    void financeRejectedProcurementOrdersLeaveTheDraftBucketAndGetTheirOwnCount() {
+        String tag = "DRAFTREJ" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
+        int seq = 100000 + new java.util.Random().nextInt(800000);
+        var world = fixture.seedWorld(tag);
+        UUID buyer = fixture.createUserWithPerms(world, "pb-" + tag, "purchase_order:view");
+        UUID buyerEmployee = employeeOf(buyer);
+        fixture.loginAs(buyer);
+        DraftCountsResponse base = drafts.counts();
+        java.util.Map<String, Long> baseCounts = statusCounts.counts("purchaseOrder", null, null);
+        long baseRejected = statusCounts.financeRejectedCounts().get("purchaseOrder");
+        UUID plainDraft = insertPurchaseOrderReturningId(docNo("CD", seq + 1), buyerEmployee);
+        UUID rejected = insertPurchaseOrderReturningId(docNo("CD", seq + 2), buyerEmployee);
+        UUID superseded = insertPurchaseOrderReturningId(docNo("CD", seq + 3), buyerEmployee);
+        assertNotNull(plainDraft);
+        insertApprovalCase(rejected, 1, "REJECTED", buyer, buyerEmployee);
+        insertApprovalCase(superseded, 1, "REJECTED", buyer, buyerEmployee);
+        insertApprovalCase(superseded, 2, "CANCELED", buyer, buyerEmployee);
+        fixture.loginAs(buyer);
+        assertEquals(2, drafts.counts().purchaseOrder() - base.purchaseOrder(),
+                "没交过财务的 + 退回后已被更新 case 覆盖的算草稿; 最新 case 仍是 REJECTED 的不算");
+        java.util.Map<String, Long> counts = statusCounts.counts("purchaseOrder", null, null);
+        assertEquals(2, counts.get("DRAFT") - baseCounts.get("DRAFT"));
+        assertEquals(0, counts.get("PENDING_FINANCE") - baseCounts.get("PENDING_FINANCE"));
+        assertEquals(1, counts.get("FINANCE_REJECTED") - baseCounts.get("FINANCE_REJECTED"),
+                "只有最新 case 仍是 REJECTED 的那张算财务已退回");
+        assertEquals(1, statusCounts.financeRejectedCounts().get("purchaseOrder") - baseRejected,
+                "hub 卡「草稿 + 财务已退回」用的退回数与分桶同源");
+    }
+
+    /**
+     * 销售出货草稿只数「销售尚未确认」的两审草稿: 提交财审后不再是草稿(PENDING_FINANCE 桶),
+     * 财务退回后归 FINANCE_REJECTED 桶并计入「财务已退回」张数——用户原话「财务退回...会放在草稿里面」
+     * 就是此前 status=0 裸口径把这两档都算成草稿. 走真实服务链(创建 → 销售确认 → 财务退回).
+     */
+    @Test
+    void salesShipmentDraftsStopAtSalesConfirmationAndFinanceRejectionGetsItsOwnBucket() {
+        String tag = "DRAFTSHP" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
+        var world = fixture.seedWorld(tag);
+        fixture.loginAs(world.superAdminUserId());
+        UUID seller = fixture.createUserWithPerms(world, "ss-" + tag,
+                "sales_shipment:view", "sales_other_shipment:view", "sales_other_shipment:create",
+                "sales_other_shipment:edit", "sales_other_shipment:approve", "sales_other_shipment:delete",
+                "sales_order:price:view", "client:view", "notice:read");
+        UUID finance = fixture.createUserWithPerms(world, "sf-" + tag, "finance_shipment_audit", "notice:read");
+        db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='DEPT_SALES' AND NOT is_deleted) WHERE id=?",
+                employeeOf(seller));
+        db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='DEPT_FIN' AND NOT is_deleted) WHERE id=?",
+                employeeOf(finance));
+        db.update("UPDATE clients SET owner_employee_id=? WHERE id=?", employeeOf(seller), world.clientId());
+
+        fixture.loginAs(seller);
+        long baseDrafts = drafts.counts().salesShipment();
+        java.util.Map<String, Long> baseCounts = statusCounts.counts("salesShipment", null, null);
+        long baseRejected = statusCounts.financeRejectedCounts().get("salesShipment");
+        long baseDirectRejected = statusCounts.counts("salesShipment", "DIRECT_CUSTOMER", null).get("FINANCE_REJECTED");
+        com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest request =
+                ReflectionTestUtils.invokeMethod(fixture, "directCustomerShipmentRequest", world, "FREE", "1");
+        assertNotNull(request);
+        UUID id = shipmentService.create(request).getId();
+        assertEquals(1, drafts.counts().salesShipment() - baseDrafts, "销售未确认: 是草稿");
+        assertEquals(1, statusCounts.counts("salesShipment", null, null).get("DRAFT") - baseCounts.get("DRAFT"));
+
+        shipmentService.confirmSales(id, 0L);
+        assertEquals(0, drafts.counts().salesShipment() - baseDrafts, "已提交财审: 不再是草稿");
+        java.util.Map<String, Long> pending = statusCounts.counts("salesShipment", null, null);
+        assertEquals(0, pending.get("DRAFT") - baseCounts.get("DRAFT"));
+        assertEquals(1, pending.get("PENDING_FINANCE") - baseCounts.get("PENDING_FINANCE"));
+
+        fixture.loginAs(finance);
+        var claim = reviewClaims.claim("SALES_SHIPMENT_FINANCE_AUDIT", id.toString());
+        var info = shipmentService.financeAuditInfo(id);
+        shipmentService.financeAuditReject(id, new com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest(
+                0L, info.get("contentHash").toString(), claim.claimId(), "请补充准确收货地址"));
+
+        fixture.loginAs(seller);
+        assertEquals(0, drafts.counts().salesShipment() - baseDrafts, "财务退回件不是草稿, 有自己的段");
+        java.util.Map<String, Long> rejected = statusCounts.counts("salesShipment", null, null);
+        assertEquals(0, rejected.get("PENDING_FINANCE") - baseCounts.get("PENDING_FINANCE"));
+        assertEquals(1, rejected.get("FINANCE_REJECTED") - baseCounts.get("FINANCE_REJECTED"));
+        assertEquals(1, statusCounts.financeRejectedCounts().get("salesShipment") - baseRejected,
+                "hub 卡「草稿 + 财务已退回」与销售待办用的退回数与分桶同源");
+        // 客户零星发货列表的切片只数 DIRECT_CUSTOMER, 这张单正是该类型.
+        assertEquals(1, statusCounts.counts("salesShipment", "DIRECT_CUSTOMER", null).get("FINANCE_REJECTED")
+                - baseDirectRejected, "DIRECT_CUSTOMER 切片包含本单");
+    }
+
+    private UUID insertPurchaseOrderReturningId(String billNo, UUID makerId) {
+        insertPurchaseOrder(billNo, makerId, (short) 0);
+        return db.queryForObject("select id from purchase_orders where bill_no = ?", UUID.class, billNo);
+    }
+
+    /** 财务审批 case: REJECTED 必须带原因与决定人/时间(表 CHECK), PENDING 三者皆空. */
+    private void insertApprovalCase(UUID orderId, int attempt, String status, UUID userId, UUID employeeId) {
+        boolean decided = "REJECTED".equals(status) || "APPROVED".equals(status);
+        db.update("""
+                insert into procurement_order_approval_cases(
+                    id, order_type, order_id, attempt, bill_no_snapshot, submission_snapshot, snapshot_hash,
+                    submitted_by_user_id, submitted_by_employee_id, status, rejection_reason,
+                    decided_at, decided_by_user_id, decided_by_employee_id)
+                values (gen_random_uuid(), 'PURCHASE', ?, ?, 'CD-SNAPSHOT', '{}'::jsonb, 'snapshot-hash',
+                        ?, ?, ?, ?, ?, ?, ?)
+                """, orderId, attempt, userId, employeeId, status,
+                "REJECTED".equals(status) ? "test rejection" : null,
+                decided ? java.time.OffsetDateTime.now() : null,
+                decided ? userId : null,
+                decided ? employeeId : null);
     }
 
     private static long readCount(DraftCountsResponse counts, String field) {

@@ -11,7 +11,8 @@
 - compact（`<600dp`）：底部悬浮胶囊，支持相邻 Tab 横滑；
 - medium（`600–1279dp`）：左侧纯图标 NavigationRail + Tooltip；
 - expanded（`>=1280dp`）：左侧展开 NavigationRail，常驻文字标签；
-- medium+ 内容区由 `UtenContentContainer(maxWidth: 1600)` 收敛，超宽屏不无限拉伸。
+- medium+ 内容区由 `UtenContentContainer(maxWidth: 1600)` 收敛，超宽屏不无限拉伸；
+- 2026-09-20 起窗口逻辑宽 >1920 时由 `app.dart` 根部的 `UtenDisplayZoomBox` 整体等比放大（画布定在 1920），2560 宽显示器看到的外壳/工作台与 1920 一致，不再出现两侧大留白（见 [02 §3.3.1](../00-项目准则/02-响应式与多端适配.md)）；字号档同样走整体缩放。
 
 ## 二、主导航与页面保活
 

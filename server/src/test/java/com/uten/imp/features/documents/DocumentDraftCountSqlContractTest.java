@@ -119,13 +119,15 @@ class DocumentDraftCountSqlContractTest {
         assertThat(sql).isEqualTo(
                 "SELECT count(*) FROM purchase_orders o WHERE o.is_deleted = false"
                         + " AND o.status = 0"
-                        + " AND NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
+                        + " AND COALESCE((SELECT c.status FROM procurement_order_approval_cases c"
                         + " WHERE c.order_type = 'PURCHASE' AND c.order_id = o.id"
-                        + " AND c.status = 'PENDING')"
+                        + " ORDER BY c.attempt DESC LIMIT 1), 'NONE')"
+                        + " NOT IN ('PENDING', 'REJECTED')"
                         + " AND (o.maker_id IS NULL OR o.maker_id IN (:draftOwners))");
-        // 归属集合只能经具名参数进入 SQL，不得被拼成字面量（NOT EXISTS 里的引号
-        // 是编译期常量订单类型/PENDING，不是归属值）。
-        assertThat(sql).doesNotContain("IN ('");
+        // 归属集合只能经具名参数进入 SQL，不得被拼成字面量（子查询里的引号是编译期常量
+        // 订单类型 / case 状态，不是归属值）。
+        assertThat(sql).doesNotContain("maker_id IN ('");
+        assertThat(sql).endsWith("o.maker_id IN (:draftOwners))");
     }
 
     /**
@@ -143,25 +145,47 @@ class DocumentDraftCountSqlContractTest {
     }
 
     /**
-     * 采购/委外订货单：财务通过前 status 保持 0，但存在 PENDING 审批 case 的单
-     * 已交由财务处理（列表另有「等待财务审核」段），不得再算「我的草稿」；
-     * 财务退回件无 PENDING case，仍按草稿计数（回到提交人手上）。
+     * 采购/委外订货单：财务通过前 status 保持 0，但最新一条审批 case 为 PENDING 的单
+     * 已交由财务处理（列表另有「等待财务审核」段），为 REJECTED 的单是财务退回件
+     * (2026-09-21 起列表另有「财务已退回」红徽章段, 任务中心 FINANCE_REJECTED 已计入待办),
+     * 两者都不得再算「我的草稿」——否则退回件被放进草稿且在模块内被数两遍.
      */
     @Test
-    void orderDraftsExcludeOrdersAwaitingFinanceReview() {
+    void orderDraftsExcludeOrdersAwaitingFinanceReviewAndFinanceRejectedOnes() {
         for (DraftSource source : List.of(
                 DocumentDraftCountQueryService.PURCHASE_ORDER,
                 DocumentDraftCountQueryService.SUBCONTRACT_ORDER)) {
             String orderType = "purchase_orders".equals(source.table())
                     ? "PURCHASE" : "SUBCONTRACT";
             assertThat(source.extraPredicate())
-                    .as("单据类型 %s 必须排除在审单", source.table())
+                    .as("单据类型 %s 必须排除在审单与财务退回件", source.table())
                     .isEqualTo(
-                            "NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
+                            "COALESCE((SELECT c.status FROM procurement_order_approval_cases c"
                                     + " WHERE c.order_type = '" + orderType
                                     + "' AND c.order_id = o.id"
-                                    + " AND c.status = 'PENDING')");
+                                    + " ORDER BY c.attempt DESC LIMIT 1), 'NONE')"
+                                    + " NOT IN ('PENDING', 'REJECTED')");
         }
+    }
+
+    /**
+     * 销售出货：status 只在仓库确认出库时才翻 1, 等待财审 / 财务已退回 / 已放行待出库都是
+     * status=0. 草稿只能数「销售尚未确认」的两审版本单, 谓词逐条与
+     * SalesShipmentService.addStagePredicates 的 DRAFT 阶段一致(2026-09-21 用户反馈
+     * 「财务退回...会放在草稿里面」).
+     */
+    @Test
+    void salesShipmentDraftsCountOnlySalesUnconfirmedTwoStepDocuments() {
+        String predicate = DocumentDraftCountQueryService.SALES_SHIPMENT.extraPredicate();
+        assertThat(predicate)
+                .isEqualTo(DocumentDraftCountQueryService.SALES_SHIPMENT_DRAFT_PREDICATE)
+                .contains("o.shipment_kind <> 'LEGACY'")
+                .contains("o.rejected = false")
+                .contains("o.finance_rejected = false")
+                .contains("o.finance_audit = 0")
+                .contains("o.finance_gate_version >= 2")
+                .contains("NOT (o.sales_confirmed_at IS NOT NULL"
+                        + " AND o.sales_confirmed_revision = o.review_revision)");
     }
 
     /**
@@ -173,6 +197,7 @@ class DocumentDraftCountSqlContractTest {
     void onlyDeclaredSourcesCarryAnExtraPredicate() {
         for (DraftSource source : DocumentDraftCountQueryService.SOURCES) {
             if (source == DocumentDraftCountQueryService.SALES_ORDER
+                    || source == DocumentDraftCountQueryService.SALES_SHIPMENT
                     || source == DocumentDraftCountQueryService.PURCHASE_ORDER
                     || source == DocumentDraftCountQueryService.SUBCONTRACT_ORDER
                     || source == DocumentDraftCountQueryService.STOCK_DOCUMENT

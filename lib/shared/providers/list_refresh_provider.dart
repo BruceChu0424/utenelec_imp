@@ -13,6 +13,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'draft_counts_provider.dart';
+import 'document_status_counts_provider.dart';
 
 /// B 类列表页的刷新信号（按 key family）。值为单调递增的 tick。
 ///
@@ -40,4 +41,6 @@ final listRefreshTickProvider = StateProvider.family<int, String>(
 void bumpListRefresh(WidgetRef ref, String key) {
   ref.read(listRefreshTickProvider(key).notifier).state++;
   ref.invalidate(draftCountsProvider);
+  // 财务退回/重提也走同一钩子: 三类单据「财务已退回」张数立即重取(hub 卡徽章 + 销售待办)。
+  ref.invalidate(financeRejectedCountsProvider);
 }

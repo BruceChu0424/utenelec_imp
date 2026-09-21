@@ -13,7 +13,8 @@
 //     派生：响应丢失重试复用同键安全重放，部分失败时已成功仓不会重复登记）；
 //   - 单位紧跟「本次实收」列展示；不设「实际重量」列——2026-09-05 起重量统计走
 //     单位的数量/重量维度（基础资料-单位），重量型单位的数量本身即重量；
-//   - 「登记并送检」一步完成：保存（服务端按订货单回填币族并建收货单草稿）+ 审核
+//   - 「先质检后入库」(2026-09-20 前叫「登记并送检」)一步完成：保存（服务端按订货单
+//     回填币族并建收货单草稿）+ 审核
 //     （转品质部待检 IQC）同事务；实到超量时服务端隔离并通知财务，返回隔离结果。
 //     登记后 pop(结果) 回预计到货任务中心就地刷新——仓库流程全程不进入采购/委外模块。
 // 审核通过后采购/委外侧即生成同一张收货单记录（本页创建的就是该单据）。
@@ -123,8 +124,8 @@ class _WarehouseArrivalReceiptPageState
   int _removedLineCount = 0;
 
   /// 先入库后质检(V596)：底部两个按钮二选一——「先入库后质检」= 登记送检的同一事务里
-  /// 把每行按库位上架(库位必填)；「登记并送检」= 原流程。记住最近一次点的是哪个，
-  /// 库位列是否必填(红框)跟着它走。
+  /// 把每行按库位上架(库位必填)；「先质检后入库」(2026-09-20 前叫「登记并送检」)= 原流程。
+  /// 记住最近一次点的是哪个，库位列是否必填(红框)跟着它走。
   bool _stockInBeforeInspection = false;
 
   final UtenEditableGridController<_ArrivalReceiptLine> _lineGrid =
@@ -400,7 +401,7 @@ class _WarehouseArrivalReceiptPageState
     });
   }
 
-  /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「登记并送检」按钮。
+  /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「先质检后入库」按钮(原「登记并送检」)。
   Future<void> _save({required bool preStock}) async {
     if (!_canRegisterNow) {
       context.appError('当前账号没有登记并送检权限，请返回任务中心刷新权限');
@@ -825,7 +826,7 @@ class _WarehouseArrivalReceiptPageState
                     const SizedBox(width: UtenSpacing.s8),
                     Expanded(
                       child: Text(
-                        '明细默认全选：右下「先入库后质检 / 登记并送检」只提交勾选的行，'
+                        '明细默认全选：右下「先入库后质检 / 先质检后入库」只提交勾选的行，'
                         '未勾选的行不登记、不写库存，仍留在待登记送检（可重新勾回）；'
                         '本次不收的货品也可以点行末 ⊖ 把该行移出本次登记'
                         '（可勾选多行后右键批量移出）。移出不删除订货明细、不写库存。'
@@ -1370,7 +1371,9 @@ class _WarehouseArrivalReceiptPageState
 
   Widget _buildBottomBar(ThemeData theme, bool canRegister, bool canPreStock) {
     // 合计不再挂底部操作条（2026-09-11 用户口径：明细表下方已有合计条，
-    // 底部再报一遍是重复），这里只剩取消 / 登记并送检。
+    // 底部再报一遍是重复），这里只剩取消 / 先入库后质检 / 先质检后入库。
+    // 2026-09-20：「登记并送检」改名「先质检后入库」(与「先入库后质检」对仗，
+    // 任务中心批量按钮同名)；单张页由双击行进入、未预选路线，故两个按钮都保留。
     // 2026-09-17 勾选口径：提交集=勾选集，一行都没勾时两个提交按钮置灰，
     // 灰态点击说明原因（未勾选的行本次不登记）。
     final hasCheckedLine = _lineGrid.selectedRows.isNotEmpty;
@@ -1386,7 +1389,7 @@ class _WarehouseArrivalReceiptPageState
           onPressed: _saving ? null : () => context.pop(),
           child: const Text('取消'),
         ),
-        // 先入库后质检(V596 / ADR-090)：与「登记并送检」并排的第二个主动作(用户口径
+        // 先入库后质检(V596 / ADR-090)：与「先质检后入库」并排的第二个主动作(用户口径
         // 2026-09-16「在登记并送检左边加个按钮」)。点它 = 登记 + 送检 + 按库位上架同一事务，
         // 品质部到库位检验；合格自动转正入库，不合格从库位取出退回。需独立权限。
         if (canPreStock)
@@ -1418,7 +1421,7 @@ class _WarehouseArrivalReceiptPageState
               ? null
               : () => _save(preStock: false),
           onDisabledTap: onDisabledTap,
-          child: const Text('登记并送检'),
+          child: const Text('先质检后入库'),
         ),
       ],
     );

@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_collapsible_section.dart';
+import '../../../components/layout/uten_drag_reorder_list.dart';
 import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/permission_by_path.dart';
@@ -104,35 +105,33 @@ class WorkbenchModuleArea extends ConsumerWidget {
         if (!layout.order.contains(g.key) && groupVisible(g)) g.key,
     ];
 
-    return ReorderableListView(
-      // 外层 dashboard 已有 SingleChildScrollView：这里不自滚、按需撑高，
-      // 避免嵌套滚动冲突，页面滚动手感保持正常
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      // 关闭默认拖手柄，改用分区标题行右侧的自定义手柄（见 _dragHandle）
-      buildDefaultDragHandles: false,
-      // onReorderItem 的 newIndex 已按移除后位置调整（新版 API，替代废弃的 onReorder）
-      onReorderItem: (oldIndex, newIndex) =>
+    // 分区拖手柄换位：Draggable 版列表（根部整体缩放 UtenDisplayZoomBox 之下拖影
+    // 与换位判定坐标都正确；SDK ReorderableListView 的拖影会偏 zoom 倍）。
+    // 外层 dashboard 已有 SingleChildScrollView：embedded = 渲染成 Column 不自滚，
+    // 拖到页面上下沿时滚页面。newIndex 即被拖分区的最终下标（removeAt 后 insert）。
+    return UtenDragReorderList.embedded(
+      ids: orderedKeys,
+      onReorder: (oldIndex, newIndex) =>
           layoutNotifier.reorder(orderedKeys, oldIndex, newIndex),
-      children: [
-        for (var i = 0; i < orderedKeys.length; i++)
-          _buildSection(
-            context,
-            key: ValueKey(orderedKeys[i]),
-            index: i,
-            group: byKey[orderedKeys[i]]!,
-            items: orderedItems(orderedKeys[i]),
-            expanded: !layout.collapsed.contains(orderedKeys[i]),
-            onExpandedChanged: (_) =>
-                layoutNotifier.toggleCollapsed(orderedKeys[i]),
-            onItemReorder: (dragged, target) => layoutNotifier.reorderItem(
-              orderedKeys[i],
-              [for (final it in orderedItems(orderedKeys[i])) it.location],
-              dragged,
-              target,
-            ),
-          ),
-      ],
+      // 拖影只显示标题行：分区本体可能几十张卡，整段做拖影既重又挡视线。
+      feedbackBuilder: (context, index, width) =>
+          _SectionDragFeedback(group: byKey[orderedKeys[index]]!, width: width),
+      itemBuilder: (context, i) => _buildSection(
+        context,
+        key: ValueKey(orderedKeys[i]),
+        index: i,
+        group: byKey[orderedKeys[i]]!,
+        items: orderedItems(orderedKeys[i]),
+        expanded: !layout.collapsed.contains(orderedKeys[i]),
+        onExpandedChanged: (_) =>
+            layoutNotifier.toggleCollapsed(orderedKeys[i]),
+        onItemReorder: (dragged, target) => layoutNotifier.reorderItem(
+          orderedKeys[i],
+          [for (final it in orderedItems(orderedKeys[i])) it.location],
+          dragged,
+          target,
+        ),
+      ),
     );
   }
 
@@ -182,30 +181,76 @@ class WorkbenchModuleArea extends ConsumerWidget {
     );
   }
 
-  /// 分区排序拖手柄：桌面/网页即按即拖，触屏平台长按拖动。
-  /// 套一层 GestureDetector 吸收点击，避免点手柄误触折叠。
+  /// 分区排序拖手柄：桌面/网页即按即拖，触屏平台长按拖动（UtenDragReorderHandle
+  /// 按平台决定）。套一层 GestureDetector 吸收点击，避免点手柄误触折叠。
   Widget _dragHandle(BuildContext context, int index) {
-    final platform = Theme.of(context).platform;
-    final touch =
-        platform == TargetPlatform.android ||
-        platform == TargetPlatform.iOS ||
-        platform == TargetPlatform.fuchsia;
-    final handle = MouseRegion(
-      cursor: SystemMouseCursors.grab,
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          Icons.drag_indicator_rounded,
-          size: 20,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+    final handle = Padding(
+      padding: const EdgeInsets.all(4),
+      child: Icon(
+        Icons.drag_indicator_rounded,
+        size: 20,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     );
     return GestureDetector(
       onTap: () {},
-      child: touch
-          ? ReorderableDelayedDragStartListener(index: index, child: handle)
-          : ReorderableDragStartListener(index: index, child: handle),
+      child: UtenDragReorderHandle(index: index, child: handle),
+    );
+  }
+}
+
+/// 分区拖动排序的拖影：只显示「色条 + 分区名」标题行，与原分区同宽、浮起投影，
+/// 起拖时正好盖在原标题行上。
+class _SectionDragFeedback extends StatelessWidget {
+  const _SectionDragFeedback({required this.group, required this.width});
+
+  final _ModuleGroup group;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: width,
+      child: Material(
+        elevation: 6,
+        color: theme.colorScheme.surface,
+        borderRadius: UtenRadius.mdAll,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: group.color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  group.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  Icons.drag_indicator_rounded,
+                  size: 20,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

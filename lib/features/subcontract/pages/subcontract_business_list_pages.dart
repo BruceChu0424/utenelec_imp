@@ -25,6 +25,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -36,6 +37,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
@@ -290,9 +292,6 @@ class _SubcontractBusinessListPageState
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染）。
   int? _actionableCount;
 
-  /// 「等待财务审核」段计数（仅订货单；中性数字，不挂红徽章）。
-  int? _awaitingFinanceCount;
-
   /// 表头列筛选：委外商/执行仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
@@ -307,6 +306,12 @@ class _SubcontractBusinessListPageState
 
   /// 「草稿」段：订货单额外带 NONE 切片（在审单归「等待财务审核」段，不算草稿）。
   _BizSeg get _draftSeg => _BizSeg.stage(0, _isOrder ? 'NONE' : null);
+
+  /// 分段计数范围(2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数): 订货/成品退回/
+  /// 余料退回/损耗按状态分桶(订货另有等待财审 / 财务已退回桶), 一次请求; 其余单据无
+  /// hub 徽章, 沿用 list(size:1) 草稿数。
+  DocumentStatusScope? get _statusScope =>
+      _cfg.draftKind == null ? null : DocumentStatusScope(_cfg.draftKind!);
 
   /// 待处理段：其余=草稿（待提交/待审）。历史兼容页（历史发料/询价）无待办
   /// 语义，不挂徽章。
@@ -407,40 +412,23 @@ class _SubcontractBusinessListPageState
   /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
   /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
   Future<void> _loadBadge() async {
+    // 订货/成品退回/余料退回/损耗: 分段计数走 documentStatusCountsProvider(全部桶一次
+    // 请求), 这里只失效重取; 没有 hub 徽章的单据仍按下方 list(size:1) 数草稿。
+    final statusScope = _statusScope;
+    if (statusScope != null) {
+      ref.invalidate(documentStatusCountsProvider(statusScope));
+      return;
+    }
     final status = _actionableStatus;
     if (status == null && !_isOrder) return;
     try {
       final repo = ref.read(subcontractRepositoryProvider(_p.type));
-      if (_isOrder) {
-        final results = await Future.wait([
-          repo.list(
-            size: 1,
-            filter: const SubcontractDocFilter(
-              status: 0,
-              financeApproval: 'NONE',
-            ),
-          ),
-          repo.list(
-            size: 1,
-            filter: const SubcontractDocFilter(
-              status: 0,
-              financeApproval: 'PENDING',
-            ),
-          ),
-        ]);
-        if (!mounted) return;
-        setState(() {
-          _actionableCount = results[0].total;
-          _awaitingFinanceCount = results[1].total;
-        });
-      } else {
-        final docs = await repo.list(
-          size: 1,
-          filter: SubcontractDocFilter(status: status),
-        );
-        if (!mounted) return;
-        setState(() => _actionableCount = docs.total);
-      }
+      final docs = await repo.list(
+        size: 1,
+        filter: SubcontractDocFilter(status: status),
+      );
+      if (!mounted) return;
+      setState(() => _actionableCount = docs.total);
     } catch (_) {
       // 计数失败静默：徽章不显示，不影响列表。
     }
@@ -459,6 +447,14 @@ class _SubcontractBusinessListPageState
 
   @override
   Widget build(BuildContext context) {
+    // 分段计数(有 hub 徽章的四类单据一次请求带回全部桶); 加载中或无权限为 null, 不渲染数字。
+    final statusScope = _statusScope;
+    final staged = statusScope != null;
+    final statusCounts = statusScope == null
+        ? null
+        : ref.watch(documentStatusCountsProvider(statusScope)).valueOrNull;
+    // 条件表达式里直接写 `? statusCounts?[key]` 会被 Dart 解析器当成两个 `?`, 走局部函数。
+    int? bucket(String key) => statusCounts?[key];
     _location ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_location!, () {
       _reload(null, true);
@@ -509,30 +505,47 @@ class _SubcontractBusinessListPageState
                 // 主分类行：阶段分段（无「全部」）+ 末尾「历史记录」+ 动作按钮同行。
                 UtenFilterToolbar<_BizSeg>(
                   segmentsKey: Key('subcontract-biz-segments-${_p.type.name}'),
-                  // 计数形态：草稿是「我自己没写完的东西」，没人在等它
-                  // → 中性括号 `(N)`（组件默认）；「等待财务审核」已在财务手上，
-                  // 同样是普通数字不挂红徽章；其余段不传 count。
+                  // 计数形态(2026-09-21 用户口径: 父分类 hub 卡有红徽章, 子分类也要有数):
+                  // 草稿 / 财务已退回 = 等本人动手 → 红徽章(与 hub 卡「草稿 + 财务已退回」
+                  // 同源同数); 等待财务审核 / 已审 / 红冲 = 中性括号数; 没有 hub 徽章的
+                  // 单据草稿仍是中性数。
                   segments: [
                     UtenFilterSegment(
                       value: _draftSeg,
                       label: '草稿',
-                      count: _actionableStatus == 0 ? _actionableCount : null,
+                      count: staged
+                          ? bucket(DocumentStatusBucket.draft)
+                          : (_actionableStatus == 0 ? _actionableCount : null),
+                      countForm: staged
+                          ? UtenSegmentCountForm.actionable
+                          : UtenSegmentCountForm.browsing,
                     ),
-                    // 订货单专属段：已提交财务审核的在审单（status 仍=0），
-                    // 与「草稿」段互斥，不再混在草稿里。
-                    if (_isOrder)
+                    // 订货单专属两段：已提交财务审核的在审单、财务退回件（status 仍=0），
+                    // 与「草稿」段三者互斥，退回件不再混在草稿里。
+                    if (_isOrder) ...[
                       UtenFilterSegment(
                         value: const _BizSeg.stage(0, 'PENDING'),
                         label: '等待财务审核',
-                        count: _awaitingFinanceCount,
+                        count:
+                            statusCounts?[DocumentStatusBucket.pendingFinance],
                       ),
-                    const UtenFilterSegment(
-                      value: _BizSeg.stage(1),
+                      UtenFilterSegment(
+                        value: const _BizSeg.stage(0, 'REJECTED'),
+                        label: '财务已退回',
+                        count:
+                            statusCounts?[DocumentStatusBucket.financeRejected],
+                        countForm: UtenSegmentCountForm.actionable,
+                      ),
+                    ],
+                    UtenFilterSegment(
+                      value: const _BizSeg.stage(1),
                       label: '已审',
+                      count: statusCounts?[DocumentStatusBucket.approved],
                     ),
-                    const UtenFilterSegment(
-                      value: _BizSeg.stage(-1),
+                    UtenFilterSegment(
+                      value: const _BizSeg.stage(-1),
                       label: '红冲',
+                      count: statusCounts?[DocumentStatusBucket.reversed],
                     ),
                     const UtenFilterSegment(
                       value: _BizSeg.history(),

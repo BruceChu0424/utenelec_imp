@@ -351,9 +351,24 @@ class _ProcurementIqcRejectionListPageState
           count: counts.pendingReturn,
           countForm: UtenSegmentCountForm.actionable,
         ),
-        const UtenFilterSegment(value: 'RETURN_RECORDED', label: '已退回待财务'),
-        const UtenFilterSegment(value: 'FINANCE_EXCEPTION', label: '财务异常'),
-        const UtenFilterSegment(value: 'TERMINAL', label: '终态'),
+        // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数——下一步在财务手上
+        // 或已完结的三段挂中性括号数(供掂量, 不进任何累加)。
+        UtenFilterSegment(
+          value: 'RETURN_RECORDED',
+          label: '已退回待财务',
+          count: counts.returnRecorded,
+        ),
+        UtenFilterSegment(
+          value: 'FINANCE_EXCEPTION',
+          label: '财务异常',
+          count: counts.financeException,
+        ),
+        UtenFilterSegment(
+          value: 'TERMINAL',
+          label: '终态',
+          count:
+              counts.creditConfirmed + counts.closedNoCredit + counts.reversed,
+        ),
       ],
       selected: _statusSelected ? {_status} : const {},
       onSelectionChanged: _changeStatus,

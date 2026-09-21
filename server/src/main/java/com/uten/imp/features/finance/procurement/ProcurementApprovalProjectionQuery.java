@@ -100,6 +100,29 @@ public class ProcurementApprovalProjectionQuery {
     }
 
     /**
+     * 财务退回中(最新一条 case 为 REJECTED, 之后没有再提交)的订货单 id 集合(按订货类型).
+     * 供列表过滤: 「财务已退回」段按此圈定, 草稿段(NONE)据此与在审单一并排除——
+     * 2026-09-21 起财务退回件不再混在草稿里, 有自己的红徽章分段. 与
+     * {@link #latestForOrders} 同一「attempt 最大者为准」口径.
+     */
+    @Transactional(readOnly = true)
+    public Set<UUID> rejectedOrderIds(String orderType) {
+        return Set.copyOf(jdbc.queryForList("""
+                SELECT order_id
+                FROM (
+                    SELECT DISTINCT ON (order_id) order_id, status
+                    FROM procurement_order_approval_cases
+                    WHERE order_type = :orderType
+                    ORDER BY order_id, attempt DESC
+                ) latest
+                WHERE status = 'REJECTED'
+                """,
+                new MapSqlParameterSource()
+                        .addValue("orderType", requireOrderType(orderType)),
+                UUID.class));
+    }
+
+    /**
      * A finance reviewer may open an otherwise owner-hidden order only while
      * that exact order has an actionable approval task. This deliberately does
      * not widen the purchase/subcontract list scope.

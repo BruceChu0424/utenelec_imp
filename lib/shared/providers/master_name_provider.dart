@@ -344,6 +344,13 @@ class MasterDictionaryService {
 
   String employee(String? id) => resolveName(_employees, id);
 
+  /// 员工姓名展示: 优先用服务端随单返回的已解析姓名(不依赖 employee:view, 不落人事
+  /// 查看审计), 缺失时退回本地员工缓存(旧后端或未返回姓名的接口)。
+  String employeeOr(String? resolvedName, String? id) {
+    final name = resolvedName?.trim();
+    return name != null && name.isNotEmpty ? name : employee(id);
+  }
+
   Map<String, String> get warehouseEntries => _warehouses;
 
   /// 仓库层级列表（V476）：顶层仓在前、子仓紧随其后按编号排序；

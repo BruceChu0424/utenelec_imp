@@ -136,9 +136,19 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     // 测量字段在屏幕的位置：下方空间不够（比上方小）则向上展开，并按可用空间收限高，
     // 避免浮层在底部被裁/溢出屏外（颜色/单位等表单字段靠近底部时尤甚）。
     final box = context.findRenderObject() as RenderBox?;
-    final screenH = MediaQuery.sizeOf(context).height;
+    // 位置与可用高度都按浮层(画布)坐标量：localToGlobal 不带 ancestor 得到的是窗口
+    // 坐标，根部整体缩放(UtenDisplayZoomBox)时与画布尺寸相差 zoom 倍。
+    final overlayObject = Overlay.of(
+      context,
+      rootOverlay: true,
+    ).context.findRenderObject();
+    final overlayBox = overlayObject is RenderBox && overlayObject.hasSize
+        ? overlayObject
+        : null;
+    final screenH =
+        overlayBox?.size.height ?? MediaQuery.sizeOf(context).height;
     if (box != null && box.hasSize) {
-      final top = box.localToGlobal(Offset.zero).dy;
+      final top = box.localToGlobal(Offset.zero, ancestor: overlayBox).dy;
       final down = screenH - (top + box.size.height);
       final up = top;
       _openAbove = up > down;

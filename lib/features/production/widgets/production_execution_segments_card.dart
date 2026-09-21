@@ -9,6 +9,8 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
@@ -58,6 +60,9 @@ class _ProductionExecutionSegmentsCardState
   String? _error;
   bool _loading = false;
   bool _busy = false;
+
+  /// 宿主页面(生产计划详情)的稳定路由，首次 build 捕获，供「返回即刷新」复位用。
+  String? _myLocation;
 
   /// 段级状态流转（开工/暂缓/解除等）的纯网络段：全屏加载遮罩只挂这段。
   bool _commanding = false;
@@ -621,8 +626,25 @@ class _ProductionExecutionSegmentsCardState
     }
   }
 
+  /// 报工/领料子页保存后用 replace / go 收尾时，go_router 不会完成本卡原 push 的
+  /// Future——上面各处 `await context.push` 后面的 finally 走不到，_busy 卡在 true：
+  /// 刷新按钮灰、行点不动、动作提示「正在处理」，只有整页重建才好(2026-09-20 用户
+  /// 反馈同款)。回到宿主页面时由「返回即刷新」复位并重拉，与 push 正常返回的收尾一致。
+  Future<void> _resumeAfterChildFlow() async {
+    if (!mounted) return;
+    if (_busy) setState(() => _busy = false);
+    await _load();
+    if (!mounted) return;
+    await widget.onChanged?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
+    _myLocation ??= currentLocationOr(
+      context,
+      RoutePath.productionPlanDetail(widget.planId),
+    );
+    ref.onPageResume(_myLocation!, _resumeAfterChildFlow);
     final segments = _segments;
     final theme = Theme.of(context);
     if (segments == null && _error == null) {

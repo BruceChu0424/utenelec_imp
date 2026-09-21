@@ -1,5 +1,9 @@
 // 字号档位 Provider（小/标准/大/超大/超超大）
 // 文档：docs/00-项目准则/04-字体与字号可调.md
+//
+// 2026-09-20 起档位因子是**整体缩放**倍率（core/responsive/display_zoom.dart）：
+// 文字、图标、卡片、间距一起等比变化，不再只乘 textScaler（文字大了容器不跟）。
+// 手机（窗口宽 < 600）沿用只放大文字。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,7 +11,7 @@ import 'shared_providers.dart';
 
 /// 字号档位
 ///
-/// 通过乘以缩放因子应用到 textTheme：
+/// 因子经 UtenDisplayZoomBox 作为整体缩放倍率生效（≥600 宽）：
 /// - small: 0.85
 /// - medium: 1.0（默认，UI 标签「标准」）
 /// - large: 1.15

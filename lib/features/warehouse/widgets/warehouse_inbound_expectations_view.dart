@@ -148,9 +148,10 @@ class _WarehouseInboundExpectationsViewState
     };
     const selection =
         '双击行直达下一步（待登记→登记实际到货）；'
-        '多选「批量登记送检」：待登记行进批量登记页（实收+行级入库仓库），'
+        '多选「先质检后入库」：待登记行进批量登记页（实收+行级入库仓库），'
         '已登记 · 待送检行直接送检；'
-        '多选「先入库后质检」：登记的同时逐行选库位上架，品质部到库位检验。';
+        '多选「先入库后质检」：登记的同时逐行选库位上架，品质部到库位检验；'
+        '进批量登记页后只显示所选这一条路线的提交按钮。';
     if (_orderType != null) return '$base$selection';
     final pending = _inspectionPendingCount;
     if (pending == null) {
@@ -224,7 +225,8 @@ class _WarehouseInboundExpectationsViewState
     return _batchIdempotencyKey!;
   }
 
-  /// 多选「批量登记送检」编排：待登记行进批量登记页（实收+行级入库仓库），
+  /// 多选「先质检后入库」(2026-09-20 前叫「批量登记送检」)编排：待登记行进
+  /// 批量登记页（实收+行级入库仓库），
   /// 断点「已登记 · 待送检」行直接批量送检（既有 batch-complete 通道）。
   /// 单张超量隔离不回滚其他单（与单册「继续送检」口径一致）。
   Future<void> _batchRegisterAndSend(Set<String> selectedIds) async {
@@ -348,7 +350,7 @@ class _WarehouseInboundExpectationsViewState
   /// 多选「先入库后质检」（2026-09-17 用户口径：不必双击进单张登记页才能选
   /// 这条路线）：待登记行进批量登记页并预置先入库后质检模式（库位逐行必填）；
   /// 断点「已登记 · 待送检」草稿单登记时没带库位，不能补走这条通道——跳过
-  /// 并提示走「批量登记送检」。
+  /// 并提示走「先质检后入库」。
   Future<void> _batchPreStockIn(Set<String> selectedIds) async {
     if (_batchSending || selectedIds.isEmpty) {
       if (selectedIds.isEmpty) {
@@ -372,7 +374,7 @@ class _WarehouseInboundExpectationsViewState
     if (drafts.isNotEmpty) {
       context.appInfo(
         '${drafts.length} 张已登记待送检的单登记时未选库位，不能改为先入库后质检；'
-        '请用「批量登记送检」处理',
+        '请用「先质检后入库」处理',
       );
     }
     if (ready.isEmpty) return;
@@ -418,9 +420,11 @@ class _WarehouseInboundExpectationsViewState
             child: Text(count == 0 ? '先入库后质检' : '先入库后质检($count)'),
           ),
         ),
+      // 2026-09-20 用户口径：「批量登记送检」改名「先质检后入库」(与「先入库后质检」
+      // 对仗)，进批量登记页后只显示这一条路线的提交按钮；键名与路由不变。
       Tooltip(
         message: count == 0
-            ? '多选预计到货任务：待登记行进批量登记页，已登记行直接送检'
+            ? '多选预计到货任务：待登记行进批量登记页(原登记送检流程)，已登记行直接送检'
             : '待登记行进批量登记页（实收+行级入库仓库）；已登记行一个事务逐张送检；超量单自动隔离待财务',
         child: UtenButton(
           key: const Key('inbound-expectation-batch-send-inspection'),
@@ -434,7 +438,7 @@ class _WarehouseInboundExpectationsViewState
           onDisabledTap: count == 0
               ? () => context.appWarning('请先选择预计到货任务')
               : null,
-          child: Text(count == 0 ? '批量登记送检' : '批量登记送检($count)'),
+          child: Text(count == 0 ? '先质检后入库' : '先质检后入库($count)'),
         ),
       ),
     ];

@@ -1,7 +1,8 @@
 // 2026-09-06 入库任务中心批量送检新契约：
 //  ① 「预计到货」多选不再只限「已登记 · 待送检」断点行——2026-09-05
 //     「登记并送检」一步化后该状态基本不再出现，只放开断点行使多选形同虚设。
-//     待登记（canCreateReceipt）行同样可勾选，批量动作升级为「批量登记送检」。
+//     待登记（canCreateReceipt）行同样可勾选，批量动作升级为「批量登记送检」
+//     (2026-09-20 改名「先质检后入库」；批量登记页只显示进页所选路线的提交按钮)。
 //  ② 批量登记页（/warehouse/inbound/receipts/batch）：多张订货单明细汇成行级表，
 //     本次实收默认=批准剩余，入库仓库行级必填（建议仓预填）；2026-09-11 起
 //     表头上方的批量按钮全撤，改为**勾选多行后改其中任意一行 = 整批落值**。
@@ -75,7 +76,7 @@ void main() {
     },
   );
 
-  testWidgets('预计到货：待登记行可勾选，批量登记送检按钮随选择计数', (tester) async {
+  testWidgets('预计到货：待登记行可勾选，先质检后入库按钮随选择计数', (tester) async {
     tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -104,12 +105,12 @@ void main() {
     );
     expect(table.selectable, isTrue);
     expect(find.byType(Checkbox), findsWidgets);
-    expect(find.text('批量登记送检'), findsOneWidget);
+    expect(find.text('先质检后入库'), findsOneWidget);
 
     await tester.tap(find.byType(Checkbox).at(1));
     await tester.pump();
     expect(find.text('已选 1 项'), findsOneWidget);
-    expect(find.text('批量登记送检(1)'), findsOneWidget);
+    expect(find.text('先质检后入库(1)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -305,7 +306,7 @@ void main() {
           apiClientProvider.overrideWithValue(api),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-          // 「先入库后质检」按钮需要独立权限点（与「登记并送检」并排验证置灰）。
+          // 持有「先入库后质检」独立权限，但没带 preStock 进页 = 「先质检后入库」路线。
           currentPermissionsProvider.overrideWithValue(const {
             Perm.warehouseIqcStockInBeforeInspection,
           }),
@@ -328,21 +329,21 @@ void main() {
     // 进页默认全选 → 提交可点。
     expect(submitButton().onPressed, isNotNull);
 
-    // 表头全选框再点一次 = 清空全部勾选 → 两个提交按钮置灰，灰态点击说明原因。
+    // 表头全选框再点一次 = 清空全部勾选 → 提交按钮置灰，灰态点击说明原因。
     final headerSelectAll = find.byWidgetPredicate(
       (widget) => widget is Checkbox && widget.tristate,
     );
     await tester.tap(headerSelectAll.first);
     await tester.pumpAndSettle();
     expect(submitButton().onPressed, isNull);
+    // 2026-09-20：不带 preStock 进页 = 「先质检后入库」路线，即使持有独立权限
+    // 也不再并排显示「先入库后质检」按钮；标题下标明本页路线。
     expect(
-      tester
-          .widget<UtenButton>(
-            find.byKey(const Key('warehouse-arrival-stock-in-first')),
-          )
-          .onPressed,
-      isNull,
+      find.byKey(const Key('warehouse-arrival-stock-in-first')),
+      findsNothing,
     );
+    expect(find.widgetWithText(UtenButton, '先质检后入库'), findsOneWidget);
+    expect(find.text('路线：先质检后入库'), findsOneWidget);
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pump();
@@ -412,7 +413,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 列表级批量按钮与「批量登记送检」并排（有独立权限才显示）。
+    // 列表级批量按钮与「先质检后入库」并排（有独立权限才显示）。
     expect(find.text('先入库后质检'), findsOneWidget);
     await tester.tap(find.byType(Checkbox).at(1));
     await tester.pump();
@@ -453,7 +454,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('批量登记送检'), findsOneWidget);
+    expect(find.text('先质检后入库'), findsOneWidget);
     expect(find.text('先入库后质检'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -478,7 +479,7 @@ void main() {
           home: WarehouseArrivalBatchReceiptPage(
             prefills: _prefills(),
             canRegister: true,
-            initialStockInBeforeInspection: true,
+            stockInBeforeInspection: true,
           ),
         ),
       ),
@@ -494,8 +495,14 @@ void main() {
         .single;
     expect(stockPlaceColumn.label, '上架库位(必填)');
     expect(stockPlaceColumn.required, isTrue);
-    expect(find.text('先入库后质检'), findsOneWidget);
-    expect(find.text('登记并送检'), findsOneWidget);
+    expect(find.widgetWithText(UtenButton, '先入库后质检'), findsOneWidget);
+    expect(find.text('路线：先入库后质检'), findsOneWidget);
+    // 2026-09-20：只显示进页路线的提交按钮，「先质检后入库」不再并排。
+    expect(find.text('先质检后入库'), findsNothing);
+    expect(
+      find.byKey(const Key('warehouse-arrival-batch-submit')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 }

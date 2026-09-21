@@ -22,6 +22,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -34,6 +35,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
@@ -105,9 +107,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染，不把未知伪装成 0）。
   int? _actionableCount;
 
-  /// 「等待财务审核」段计数（仅订货单；中性数字，不挂红徽章）。
-  int? _awaitingFinanceCount;
-
   /// 表头列筛选：供应商/仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
@@ -151,11 +150,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         ref.read(currentPermissionsProvider).contains(permission);
   }
 
-  /// 「草稿」段：订货单额外带 NONE 切片（在审单归「等待财务审核」段，不算草稿）。
+  /// 「草稿」段：订货单额外带 NONE 切片（在审单归「等待财务审核」段、财务退回件归
+  /// 「财务已退回」段，都不算草稿）。
   _PurchaseDocSeg get _draftSeg => _PurchaseDocSeg.stage(
     kPurchaseStatusDraft,
     widget.docType == PurchaseDocType.order ? 'NONE' : null,
   );
+
+  /// 分段计数范围(2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数): 订货/收货/退货
+  /// 按状态分桶(订货另有等待财审 / 财务已退回桶), 一次请求; 申请页没有 hub 徽章,
+  /// 仍用 list(size:1) 数「计划已下达」。
+  DocumentStatusScope? get _statusScope =>
+      _cfg.draftKind == null ? null : DocumentStatusScope(_cfg.draftKind!);
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<PurchaseDocListItem>> _fetch() {
@@ -219,38 +225,21 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
   /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
   Future<void> _loadBadge() async {
+    // 订货/收货/退货: 分段计数走 documentStatusCountsProvider(全部桶一次请求), 这里只
+    // 失效重取; 申请页仍按下方 list(size:1) 数「计划已下达」。
+    final statusScope = _statusScope;
+    if (statusScope != null) {
+      ref.invalidate(documentStatusCountsProvider(statusScope));
+      return;
+    }
     try {
       final repo = ref.read(purchaseRepositoryProvider(widget.docType));
-      if (widget.docType == PurchaseDocType.order) {
-        final results = await Future.wait([
-          repo.list(
-            size: 1,
-            filter: const PurchaseDocFilter(
-              status: kPurchaseStatusDraft,
-              financeApproval: 'NONE',
-            ),
-          ),
-          repo.list(
-            size: 1,
-            filter: const PurchaseDocFilter(
-              status: kPurchaseStatusDraft,
-              financeApproval: 'PENDING',
-            ),
-          ),
-        ]);
-        if (!mounted) return;
-        setState(() {
-          _actionableCount = results[0].total;
-          _awaitingFinanceCount = results[1].total;
-        });
-      } else {
-        final r = await repo.list(
-          size: 1,
-          filter: PurchaseDocFilter(status: _actionableStatus),
-        );
-        if (!mounted) return;
-        setState(() => _actionableCount = r.total);
-      }
+      final r = await repo.list(
+        size: 1,
+        filter: PurchaseDocFilter(status: _actionableStatus),
+      );
+      if (!mounted) return;
+      setState(() => _actionableCount = r.total);
     } catch (_) {
       // 计数失败静默：徽章不显示，不影响列表。
     }
@@ -343,6 +332,14 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    // 分段计数(订货/收货/退货一次请求带回全部桶); 加载中或无权限为 null, 不渲染数字。
+    final statusScope = _statusScope;
+    final staged = statusScope != null;
+    final statusCounts = statusScope == null
+        ? null
+        : ref.watch(documentStatusCountsProvider(statusScope)).valueOrNull;
+    // 条件表达式里直接写 `? statusCounts?[key]` 会被 Dart 解析器当成两个 `?`, 走局部函数。
+    int? bucket(String key) => statusCounts?[key];
     // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
@@ -352,7 +349,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
     // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _reload(null, true));
+    ref.onPageResume(_myLocation!, () {
+      _reload(null, true);
+      _loadBadge();
+    });
     final isRequest = widget.docType == PurchaseDocType.request;
     final approvedLabel = isRequest ? '计划已下达' : '已审';
     final seg = _seg;
@@ -394,42 +394,66 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                     segmentsKey: Key(
                       'purchase-doc-segments-${_cfg.type.pathSegment}',
                     ),
-                    // 计数形态：计数段都是中性括号 `(N)`（组件默认）——草稿是
-                    // 「我自己没写完的东西」，没人在等它；「等待财务审核」已在
-                    // 财务手上，同样不是需要我立刻处理的告警（用户口径：普通数字，
-                    // 不挂红徽章）；申请页「计划已下达」的待处理量已由采购任务中心
-                    // 「待分解」徽章承担（docs/00-项目准则/14-徽章与计数口径.md §三）。
+                    // 计数形态(2026-09-21 用户口径: 父分类 hub 卡有红徽章, 子分类也要有数):
+                    // 草稿 / 财务已退回 = 等本人动手 → 红徽章(与 hub 卡「草稿 + 财务已退回」
+                    // 同源同数); 等待财务审核 / 已审 / 红冲 = 中性括号数; 申请页「计划已下达」
+                    // 的待处理量已由采购任务中心「待分解」徽章承担, 仍是中性数
+                    // (docs/00-项目准则/14-徽章与计数口径.md)。
                     segments: [
                       UtenFilterSegment(
                         value: _draftSeg,
                         label: '草稿',
-                        count: _actionableStatus == kPurchaseStatusDraft
-                            ? _actionableCount
-                            : null,
+                        count: staged
+                            ? bucket(DocumentStatusBucket.draft)
+                            : (_actionableStatus == kPurchaseStatusDraft
+                                  ? _actionableCount
+                                  : null),
+                        countForm: staged
+                            ? UtenSegmentCountForm.actionable
+                            : UtenSegmentCountForm.browsing,
                       ),
-                      // 订货单专属段：已提交财务审核的在审单（status 仍=0），
-                      // 与「草稿」段互斥，不再混在草稿里。
-                      if (widget.docType == PurchaseDocType.order)
+                      // 订货单专属两段：已提交财务审核的在审单、财务退回件（status 仍=0），
+                      // 与「草稿」段三者互斥，退回件不再混在草稿里。
+                      if (widget.docType == PurchaseDocType.order) ...[
                         UtenFilterSegment(
                           value: const _PurchaseDocSeg.stage(
                             kPurchaseStatusDraft,
                             'PENDING',
                           ),
                           label: '等待财务审核',
-                          count: _awaitingFinanceCount,
+                          count:
+                              statusCounts?[DocumentStatusBucket
+                                  .pendingFinance],
                         ),
+                        UtenFilterSegment(
+                          value: const _PurchaseDocSeg.stage(
+                            kPurchaseStatusDraft,
+                            'REJECTED',
+                          ),
+                          label: '财务已退回',
+                          count:
+                              statusCounts?[DocumentStatusBucket
+                                  .financeRejected],
+                          countForm: UtenSegmentCountForm.actionable,
+                        ),
+                      ],
                       UtenFilterSegment(
                         value: const _PurchaseDocSeg.stage(
                           kPurchaseStatusApproved,
                         ),
                         label: approvedLabel,
-                        count: _actionableStatus == kPurchaseStatusApproved
-                            ? _actionableCount
-                            : null,
+                        count: staged
+                            ? bucket(DocumentStatusBucket.approved)
+                            : (_actionableStatus == kPurchaseStatusApproved
+                                  ? _actionableCount
+                                  : null),
                       ),
-                      const UtenFilterSegment(
-                        value: _PurchaseDocSeg.stage(kPurchaseStatusReversed),
+                      UtenFilterSegment(
+                        value: const _PurchaseDocSeg.stage(
+                          kPurchaseStatusReversed,
+                        ),
                         label: '红冲',
+                        count: statusCounts?[DocumentStatusBucket.reversed],
                       ),
                       const UtenFilterSegment(
                         value: _PurchaseDocSeg.history(),

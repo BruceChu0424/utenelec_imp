@@ -215,11 +215,15 @@ class SalesRepository {
   }
 
   /// 财务审核发货（仅出货单）；调用方必须先展示 [financeAuditInfo]。
+  ///
+  /// [exchangeRate] V632：放行时确认的记账汇率(十进制文本，本位币/1 原币)。不传则服务端用
+  /// 币种主档参考汇率；免费发货不需要。
   Future<ShipmentFinanceAuditInfo> financeAudit(
     String id, {
     required int expectedRevision,
     required String expectedContentHash,
     required String expectedClaimId,
+    String? exchangeRate,
   }) async {
     final json = await api.post(
       '${_doc(id)}/finance-audit',
@@ -227,6 +231,8 @@ class SalesRepository {
         'expectedRevision': expectedRevision,
         'expectedContentHash': expectedContentHash,
         'expectedClaimId': expectedClaimId,
+        if (exchangeRate != null && exchangeRate.isNotEmpty)
+          'exchangeRate': exchangeRate,
       },
     ); // ENDPOINT
     return ShipmentFinanceAuditInfo.fromJson(json);

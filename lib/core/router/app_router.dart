@@ -1091,9 +1091,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   : null,
             ),
           ),
-          // 批量登记实际到货页（入库任务中心多选「批量登记送检」落点；
+          // 批量登记实际到货页(入库任务中心多选「先质检后入库」/「先入库后质检」落点；
           // extra 带 List<ProcurementReceiptPrefill>，每张=一张订货单；
-          // ?preStock=1 = 列表「先入库后质检(N)」直达，进页预置该模式）。
+          // ?preStock=1 = 列表「先入库后质检(N)」直达，不带 = 「先质检后入库(N)」直达；
+          // 2026-09-20 起页面只显示所选路线的提交按钮)。
           GoRoute(
             path: RouteName.warehouseArrivalReceiptBatch,
             name: 'warehouse-arrival-receipt-batch',
@@ -1101,8 +1102,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               prefills: s.extra is List<ProcurementReceiptPrefill>
                   ? s.extra! as List<ProcurementReceiptPrefill>
                   : null,
-              initialStockInBeforeInspection:
-                  s.uri.queryParameters['preStock'] == '1',
+              stockInBeforeInspection: s.uri.queryParameters['preStock'] == '1',
             ),
           ),
           // 报表（静态段，需在 /warehouse/:code 之前声明以免被当作 :code 匹配）
@@ -1750,18 +1750,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     errorBuilder: (_, _) => const _ErrorPage(),
   );
 
-  // 「返回即刷新」信号源：任何导航落定（go / push / pop / 系统返回手势 / 深链）后，
-  // 把最新路径写入 pageResumeProvider；页面据此在自己重新可见时刷新数据。
-  // 路由监听可能在 build 阶段触发，故推迟到微任务里再改 provider，
-  // 避免 "Tried to modify a provider while the widget tree was building"。
-  var routerDisposed = false;
-  router.routerDelegate.addListener(() {
-    if (routerDisposed) return;
-    Future.microtask(() {
-      if (routerDisposed) return;
-      bumpPageResume(ref, router.routerDelegate.currentConfiguration.uri.path);
-    });
-  });
+  // 「返回即刷新」信号源：任何导航落定(go / push / replace / pop / 系统返回
+  // 手势 / 深链)后，把最新路径写入 pageResumeProvider；页面据此在自己重新可见
+  // 时刷新数据。接线本体在 page_resume_provider.attachPageResume(与页面导航
+  // 测试共用同一份，测试复现的就是线上触发链)。
+  final detachPageResume = attachPageResume(
+    router,
+    ref.read(pageResumeProvider.notifier),
+  );
 
   ref.listen(sessionProvider, (_, _) {
     router.refresh();
@@ -1771,7 +1767,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   });
 
   ref.onDispose(() {
-    routerDisposed = true;
+    detachPageResume();
     router.dispose();
   });
 

@@ -42,6 +42,7 @@
   "settingsThemeMode": "Theme mode",
   "settingsLanguage": "Language",
   "settingsFontSize": "Font size",
+  "settingsFontSizeHint": "Scales the whole interface together (text, icons, cards, spacing); phones scale text only",
   "settingsSectionPerformance": "Performance",
   "settingsPerformanceTier": "Performance mode",
   "settingsPerformanceHint": "Choose Lite for low-end devices",

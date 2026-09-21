@@ -131,6 +131,7 @@ class SettingsPage extends ConsumerWidget {
                   ),
                   SettingsItem(
                     title: l10n.settingsFontSize,
+                    subtitle: l10n.settingsFontSizeHint,
                     child: const UtenFontScaler(),
                   ),
                   const SettingsItem(

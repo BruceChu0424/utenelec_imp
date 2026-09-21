@@ -663,6 +663,12 @@ abstract final class ApiEndpoints {
   // 后端 features/documents/DocumentDraftCountController，按 *:view + 对象范围收敛）
   static const documentDraftCounts = '/documents/drafts/count';
 
+  // 单据列表页分段计数 + 三类单据「财务已退回」张数(2026-09-21, 同一控制器;
+  // 前端 lib/shared/providers/document_status_counts_provider.dart)
+  static const documentStatusCounts = '/documents/status-counts';
+  static const documentFinanceRejectedCounts =
+      '/documents/finance-rejected/count';
+
   // 系统测试（工作台「系统测试」区，仅超管+本地/内网测试环境可用；
   // 后端 features/admin/systemtest/SystemTestController）
   static const systemTestBusinessDataReset = '/system-test/business-data/reset';

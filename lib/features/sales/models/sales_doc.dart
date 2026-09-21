@@ -291,13 +291,26 @@ class ShipmentFinanceAuditInfo {
     this.currencyName,
     this.financeRate,
     this.financeRateReady,
+    this.baseCurrency,
+    this.shipmentExchangeRate,
+    this.suggestedExchangeRate,
   });
 
-  /// V631：本单币种的财务汇率状态——仓库确认出库要按它立账，未维护时财审页先拦住
-  /// 并指向基础资料→币种，不让仓库那步才报错。旧载荷没有该键时 [financeRateReady] 为 null。
+  /// V631/V632：本单币种的财务汇率状态。[financeRate] 是币种主档参考汇率；主档没维护时
+  /// [financeRateReady] 为 false——V632 起不再挡放行，改由财务在放行时填写记账汇率。
+  /// 旧载荷没有该键时 [financeRateReady] 为 null。
   final String? currencyName;
   final String? financeRate;
   final bool? financeRateReady;
+
+  /// V632：本位币(汇率固定为 1、不可改)。
+  final bool? baseCurrency;
+
+  /// V632：本单已冻结的记账汇率(放行后有值；撤回后为空)。
+  final String? shipmentExchangeRate;
+
+  /// V632：财审页汇率框的预填值：已冻结的 > 本位币 1 > 主档参考汇率 > 空(要财务填)。
+  final String? suggestedExchangeRate;
 
   final int? reviewRevision;
   final String? contentHash;
@@ -336,6 +349,11 @@ class ShipmentFinanceAuditInfo {
         financeRateReady: json['financeRateReady'] is bool
             ? json['financeRateReady'] as bool
             : null,
+        baseCurrency: json['baseCurrency'] is bool
+            ? json['baseCurrency'] as bool
+            : null,
+        shipmentExchangeRate: _text(json['shipmentExchangeRate']),
+        suggestedExchangeRate: _text(json['suggestedExchangeRate']),
         financeAudit: (json['financeAudit'] as num?)?.toInt(),
         clientName: _text(json['clientName']),
         settlementMethodId: _text(json['settlementMethodId']),

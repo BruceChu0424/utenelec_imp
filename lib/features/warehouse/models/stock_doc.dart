@@ -194,6 +194,7 @@ class StockDocDetail {
     this.departmentId,
     this.issueStatus,
     this.makerName,
+    this.workerName,
     this.createdAt,
     this.items = const [],
     this.productionLinked = false,
@@ -239,6 +240,10 @@ class StockDocDetail {
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
 
+  /// 领料/经办负责人姓名(服务端按 workerId 解析随单返回; 旧后端无此字段时为 null,
+  /// 展示层退回本地员工缓存)。
+  final String? workerName;
+
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final List<StockDocItem> items;
@@ -277,6 +282,7 @@ class StockDocDetail {
     departmentId: json['departmentId'] as String?,
     issueStatus: (json['issueStatus'] as num?)?.toInt(),
     makerName: json['makerName'] as String?,
+    workerName: json['workerName'] as String?,
     createdAt: json['createdAt'] as String?,
     productionLinked: (json['productionLinked'] as bool?) ?? false,
     productionMaterialReturn: json['productionMaterialReturn'] == true,

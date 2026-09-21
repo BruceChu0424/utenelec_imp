@@ -120,6 +120,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsFontSize => 'Font size';
 
   @override
+  String get settingsFontSizeHint =>
+      'Scales the whole interface together (text, icons, cards, spacing); phones scale text only';
+
+  @override
   String get settingsSectionPerformance => 'Performance';
 
   @override

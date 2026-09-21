@@ -45,6 +45,12 @@ public class StockDocDetail {
     private List<StockDocItemDto> items;
     /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;
+    /**
+     * 领料/经办负责人姓名(服务端按 worker_id 解析, 路径同 makerName)。
+     * 仓库端展示「领料负责人/经办人」不再逐张调员工档案接口:
+     * 该接口要求 employee:view 且每次调用都落人事查看审计, 仓库/车间账号通常拿不到。
+     */
+    private String workerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
     /** 是否由生产链自动生成并持有，禁止通用仓库 CRUD 改写。 */

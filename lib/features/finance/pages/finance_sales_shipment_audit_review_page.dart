@@ -35,6 +35,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -63,6 +64,11 @@ class _FinanceSalesShipmentAuditReviewPageState
   bool _busy = false;
   String? _error;
 
+  /// V632：放行时确认的记账汇率(本位币/1 原币)。预填服务端建议值(已冻结的 > 本位币 1 >
+  /// 币种主档参考汇率)，财务可按放行当日汇率修改；放行即冻结到本单，仓库确认出库按它立应收。
+  final _rateController = TextEditingController();
+  String? _rateError;
+
   TaskClaimSession? _claim;
   int _loadGeneration = 0;
 
@@ -70,8 +76,54 @@ class _FinanceSalesShipmentAuditReviewPageState
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).contains(Perm.financeShipmentAudit);
 
-  /// V631：币种财务汇率未维护(≤0)时不能放行——仓库确认出库要按它立账；退回不受影响。
-  bool get _rateReady => _info?.financeRateReady != false;
+  /// 免费发货不立应收，不需要记账汇率。
+  bool get _isFreeShipment => _info?.billingMode == 'FREE';
+
+  /// 本位币汇率固定为 1，汇率框锁定。
+  bool get _rateLocked => _info?.baseCurrency == true;
+
+  /// 币种主档参考汇率没维护(V631 口径 ≤0)：V632 起不挡放行，改由财务在放行时填写。
+  bool get _masterRateMissing => _info?.financeRateReady == false;
+
+  /// 服务端是否给了汇率信息(V632 之前的载荷三个键都没有：不在客户端拦，交服务端按主档决定)。
+  bool get _rateInfoKnown {
+    final info = _info;
+    return info != null &&
+        (info.financeRateReady != null ||
+            info.baseCurrency != null ||
+            info.suggestedExchangeRate != null);
+  }
+
+  /// 校验并返回要提交的记账汇率文本；免费发货或服务端未给汇率信息时返回 null(不提交)。
+  String? _validatedExchangeRate() {
+    if (_isFreeShipment || !_rateInfoKnown) return null;
+    if (_rateLocked) return '1';
+    final text = _rateController.text.trim();
+    if (text.isEmpty) {
+      throw const FormatException('请填写记账汇率(本位币/1 原币)，放行后仓库出库按它立应收');
+    }
+    final units = financeExactDecimalUnits(text, scale: 6);
+    if (units == null || units <= BigInt.zero) {
+      throw const FormatException('记账汇率必须大于 0，最多保留 6 位小数');
+    }
+    // 去掉小数尾零(7.200000 → 7.2)，服务端按 BigDecimal 比较，只是让请求与回显一致。
+    var normalized = financeExactDecimalFromUnits(units, scale: 6);
+    if (normalized.contains('.')) {
+      normalized = normalized.replaceFirst(RegExp(r'0+$'), '');
+      if (normalized.endsWith('.')) {
+        normalized = normalized.substring(0, normalized.length - 1);
+      }
+    }
+    return normalized;
+  }
+
+  /// 按当前汇率框折合本币的参考值(仅预览，权威值由服务端在出库立账时计算)。
+  String? _localAmountPreview() {
+    final total = _detail?.totalOriginal;
+    final rate = double.tryParse(_rateController.text.trim());
+    if (total == null || rate == null || rate <= 0) return null;
+    return (total * rate).toStringAsFixed(2);
+  }
 
   /// 决策可用：待审 + 已销售确认 + 未退回 + 快照完整 + 认领就绪。
   bool get _decisionReady {
@@ -96,6 +148,7 @@ class _FinanceSalesShipmentAuditReviewPageState
     ++_loadGeneration;
     _claim?.removeListener(_claimChanged);
     _claim?.releaseAll().ignore();
+    _rateController.dispose();
     super.dispose();
   }
 
@@ -160,6 +213,9 @@ class _FinanceSalesShipmentAuditReviewPageState
         _detail = detail;
         _info = info;
         _loading = false;
+        // 预填记账汇率：已冻结的 > 本位币 1 > 主档参考汇率 > 空(主档没维护，要财务填)。
+        _rateController.text = info.suggestedExchangeRate ?? '';
+        _rateError = null;
       });
       // 快照不可读时仍允许查看单据，但决策按钮保持不可用并明示原因。
       if (decided) {
@@ -210,30 +266,48 @@ class _FinanceSalesShipmentAuditReviewPageState
       context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
       return;
     }
-    if (!_rateReady) {
-      context.appWarning(
-        '币种「${info.currencyName ?? ''}」的财务汇率未维护，请先到 基础资料→币种 维护汇率再放行',
-      );
+    final String? exchangeRate;
+    try {
+      exchangeRate = _validatedExchangeRate();
+    } on FormatException catch (e) {
+      setState(() => _rateError = e.message);
+      context.appWarning(e.message);
       return;
     }
+    final localPreview = _localAmountPreview();
+    final rateLine = exchangeRate == null
+        ? null
+        : '记账汇率 $exchangeRate(1 ${info.currencyName ?? '原币'} = $exchangeRate 本币)'
+              '${localPreview == null ? '' : '，本单折合本币约 $localPreview'}；'
+              '仓库确认出库时按此汇率折算本币立应收。';
     final generation = _loadGeneration;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
         title: Text('确认放行 ${_detail?.billNo ?? ''}'),
-        content: const SizedBox(
+        content: SizedBox(
           width: 440,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              UtenReviewerResponsibilityNotice(
+              const UtenReviewerResponsibilityNotice(
                 actionLabel: '出货财务审核',
                 description: '确认仅放行仓库作业；正式应收在仓库确认出库后生成。系统将记录当前审核员并承担本次放行责任。',
                 compact: true,
               ),
-              SizedBox(height: UtenSpacing.s12),
-              Text('放行后仓库即可确认出库；出库时才扣库存并生成应收。确认放行？'),
+              const SizedBox(height: UtenSpacing.s12),
+              const Text('放行后仓库即可确认出库；出库时才扣库存并生成应收。确认放行？'),
+              if (rateLine != null) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  rateLine,
+                  key: const Key('finance-shipment-audit-confirm-rate'),
+                  style: Theme.of(
+                    dialogCtx,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ],
             ],
           ),
         ),
@@ -274,6 +348,7 @@ class _FinanceSalesShipmentAuditReviewPageState
               'SALES_SHIPMENT_FINANCE_AUDIT',
               widget.id,
             )!,
+            exchangeRate: exchangeRate,
           );
       if (!mounted) return;
       context.appSuccess('财务已确认，仓库可以出库');
@@ -654,7 +729,7 @@ class _FinanceSalesShipmentAuditReviewPageState
           size: UtenButtonSize.large,
           isLoading: _busy,
           icon: Icons.fact_check_outlined,
-          onPressed: _busy || !_rateReady ? null : _approve,
+          onPressed: _busy ? null : _approve,
           child: const Text('确认放行'),
         ),
       ],
@@ -825,13 +900,16 @@ class _FinanceSalesShipmentAuditReviewPageState
                   }),
                 if (info.freeReason != null) metric('不收费原因', info.freeReason),
                 metric('结账方式', info.settlementMethodName ?? '未设置'),
-                metric(
-                  '财务汇率${info.currencyName == null ? '' : '(${info.currencyName})'}',
-                  info.financeRateReady == false
-                      ? '未维护'
-                      : (info.financeRate ?? '—'),
-                  danger: info.financeRateReady == false,
-                ),
+                if (!_isFreeShipment)
+                  metric(
+                    '主档参考汇率${info.currencyName == null ? '' : '(${info.currencyName})'}',
+                    _rateLocked
+                        ? '1(本位币)'
+                        : info.financeRateReady == false
+                        ? '未维护'
+                        : (info.financeRate ?? '—'),
+                    danger: !_rateLocked && info.financeRateReady == false,
+                  ),
                 metric('正式应收未收(本币)', info.outstanding),
                 metric('铺底额(本币)', info.creditFloor),
                 metric('超出铺底额(本币)', info.overFloor, danger: overFloorDanger),
@@ -839,26 +917,9 @@ class _FinanceSalesShipmentAuditReviewPageState
                 metric('可用预收(本币)', info.availablePrepaymentLocal),
               ],
             ),
-            if (info.financeRateReady == false) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Container(
-                key: const Key('finance-audit-rate-block'),
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer.withValues(
-                    alpha: 0.6,
-                  ),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Text(
-                  '币种「${info.currencyName ?? '未知'}」的财务汇率未维护(当前 ${info.financeRate ?? '空'})，'
-                  '仓库确认出库要按它立账。请先到 基础资料→币种 维护汇率，再回来放行；仓库端不再为此报错。',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onErrorContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+            if (!_isFreeShipment) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              _exchangeRateSection(theme, info),
             ],
             const SizedBox(height: UtenSpacing.s8),
             Text(
@@ -870,6 +931,89 @@ class _FinanceSalesShipmentAuditReviewPageState
           ],
         ),
       ),
+    );
+  }
+
+  /// V632 记账汇率区：待审时可填(预填主档参考汇率/本位币锁 1)，已决策时只读展示冻结值。
+  Widget _exchangeRateSection(ThemeData theme, ShipmentFinanceAuditInfo info) {
+    final currency = info.currencyName?.trim().isNotEmpty == true
+        ? info.currencyName!.trim()
+        : '原币';
+    final decided =
+        (_detail?.financeAudit ?? info.financeAudit) == 1 ||
+        _detail?.shipmentWorkflow.financeRejected == true;
+    if (decided) {
+      final frozen = info.shipmentExchangeRate?.trim();
+      return Text(
+        frozen == null || frozen.isEmpty
+            ? '记账汇率：放行时未冻结(按币种主档参考汇率立账)'
+            : '已冻结记账汇率 $frozen(1 $currency = $frozen 本币)；仓库确认出库按此汇率折算本币立应收。',
+        key: const Key('finance-audit-rate-frozen'),
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+    final hint = _rateLocked
+        ? '本位币汇率固定为 1，无需填写。'
+        : _masterRateMissing
+        ? '币种主档没有参考汇率，请按放行当日汇率填写；到 基础资料→币种 维护参考汇率后，以后会自动预填。'
+        : '已按币种主档参考汇率预填，可按放行当日汇率修改；放行即冻结到本单，仓库确认出库按它折算本币立应收。';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_masterRateMissing && !_rateLocked)
+          Container(
+            key: const Key('finance-audit-rate-block'),
+            margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.6),
+              borderRadius: UtenRadius.mdAll,
+            ),
+            child: Text(
+              '币种「$currency」的主档参考汇率未维护(当前 ${info.financeRate?.trim().isNotEmpty == true ? info.financeRate!.trim() : '空'})，'
+              '请在下方按放行当日汇率填写记账汇率再放行；仓库端不再为此报错。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        UtenFormGrid(
+          children: [
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _rateController,
+              builder: (context, value, _) {
+                final preview = _localAmountPreview();
+                return TextField(
+                  key: const Key('finance-audit-exchange-rate'),
+                  controller: _rateController,
+                  readOnly: _rateLocked,
+                  enabled: !_busy,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: (_) {
+                    if (_rateError != null) setState(() => _rateError = null);
+                  },
+                  // 说明文案走 UtenInputDecoration 的 info(裸 helperText 被
+                  // uten_field_message_source_contract_test 禁止)。
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '记账汇率(1 $currency = ? 本币)',
+                      error: utenFieldError(_rateError, maxLines: 2),
+                    ),
+                    info: preview == null
+                        ? hint
+                        : '本单折合本币约 $preview(参考值)。$hint',
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 

@@ -264,7 +264,7 @@ abstract final class RouteName {
   static const String warehouseArrivalReceiptNew =
       '/warehouse/inbound/receipts/new';
 
-  /// 仓库批量登记实际到货页（入库任务中心多选「批量登记送检」落点；
+  /// 仓库批量登记实际到货页（入库任务中心多选「先质检后入库」/「先入库后质检」落点；
   /// extra 带 `List<ProcurementReceiptPrefill>`，每张=一张订货单）。
   static const String warehouseArrivalReceiptBatch =
       '/warehouse/inbound/receipts/batch';

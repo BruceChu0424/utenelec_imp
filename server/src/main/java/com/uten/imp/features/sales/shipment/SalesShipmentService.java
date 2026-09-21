@@ -722,9 +722,11 @@ public class SalesShipmentService {
         // 放行同事务 FOR SHARE 锁住客户主档行(须启用、未删)，让风险快照与客户条款在同一读一致性下形成；
         // 结账方式来自本单头/客户默认(resolveEffectiveSettlementMethod)，V630 起不再有客户级货款分类闸门。
         loadClientSettlementDefaults(s.getClientId(), true);
-        // V631：币种汇率是仓库确认出库立账时才用的财务事实——缺了不该等到仓库那一步才报错，
-        // 财务放行前就在这里拦住并指明去处（仓库只管仓库的事）。
-        if (!CustomerShipmentPolicy.free(s)) requireFinanceRateMaintained(s.getCurrencyId());
+        // V632：记账汇率在财务放行时确认——预填币种主档参考汇率、财务可按放行当日汇率改，
+        // 放行即冻结到本单，仓库确认出库按它折算本币立应收(同金蝶/用友「审核前可改、审核后锁定」)。
+        // 免费发货不立应收，不需要汇率。
+        FinanceReleaseRate releaseRate = CustomerShipmentPolicy.free(s) ? null
+                : resolveFinanceReleaseRate(s.getCurrencyId(), request == null ? null : request.exchangeRate());
         List<SalesShipmentItem> items =
                 itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
@@ -740,8 +742,10 @@ public class SalesShipmentService {
         s.setFinanceAudit((short) 1);
         s.setFinanceAuditorId(actorUserId);
         s.setFinanceAuditedAt(decisionTime);
+        s.setExchangeRate(releaseRate == null ? null : releaseRate.rate());
         shipmentRepo.save(s);
-        Map<String, Object> info = financeAuditInfo(s);
+        Map<String, Object> info = new LinkedHashMap<>(financeAuditInfo(s));
+        info.put("exchangeRateSource", releaseRate == null ? "" : releaseRate.source());
         UUID event=appendFinanceReleaseEvent(
                 s, "RELEASED", actorUserId, decisionTime, info,request==null?null:request.expectedClaimId(),null);
         s.setFinanceReleaseEventId(event);
@@ -866,6 +870,8 @@ public class SalesShipmentService {
         s.setFinanceAudit((short) 0);
         s.setFinanceAuditorId(null);
         s.setFinanceAuditedAt(null);
+        // V632：撤回放行即撤回这次冻结的记账汇率，下次放行重新预填/填写。
+        s.setExchangeRate(null);
         shipmentRepo.save(s);
         Map<String, Object> info = financeAuditInfo(s);
         appendFinanceReleaseEvent(
@@ -965,10 +971,17 @@ public class SalesShipmentService {
                 Map.entry("settlementMethodName", method == null || method.name() == null
                         ? "" : method.name()),
                 Map.entry("cashClient", isCashSettlement(method)),
-                // V631：币种财务汇率的当前状态——财审页据此在放行前提示财务去维护，而不是让仓库撞墙。
+                // V631/V632：币种财务汇率的当前状态——财审页据此预填记账汇率；主档没维护时
+                // 不再挡放行，改由财务在放行时填写(仓库只管仓库的事)。
                 Map.entry("currencyName", rateState.currencyName()),
                 Map.entry("financeRate", rateState.rate() == null ? "" : rateState.rate().toPlainString()),
                 Map.entry("financeRateReady", CustomerShipmentPolicy.free(s) || rateState.ready()),
+                Map.entry("baseCurrency", rateState.baseCurrency()),
+                // 本单已冻结的记账汇率(放行后有值；撤回后清空)。
+                Map.entry("shipmentExchangeRate", s.getExchangeRate() == null
+                        ? "" : s.getExchangeRate().stripTrailingZeros().toPlainString()),
+                // 财审页汇率框的预填值：已冻结的 > 本位币恒 1 > 主档参考汇率 > 空(要财务填)。
+                Map.entry("suggestedExchangeRate", suggestedFinanceReleaseRate(s, rateState)),
                 Map.entry("outstanding", outstanding),
                 Map.entry("outstandingExact",outstanding.toPlainString()),
                 Map.entry("creditFloor", creditFloor),
@@ -991,6 +1004,10 @@ public class SalesShipmentService {
         var snapshot=reviewSnapshots.snapshot(shipment.getId());
         String settlementMethod = Objects.toString(
                 info.get("settlementMethodId"), "").trim();
+        // V632：只有放行事件记录这次冻结的记账汇率与来源；撤回/退回/免费发货为空(成对约束)。
+        String rateSource = Objects.toString(info.get("exchangeRateSource"), "").trim();
+        boolean rateFrozen = "RELEASED".equals(eventType)
+                && shipment.getExchangeRate() != null && !rateSource.isEmpty();
         em.createNativeQuery("""
                 INSERT INTO sales_shipment_finance_release_events (
                     id,review_revision,claim_id,content_hash,commercial_snapshot,billing_mode,reverses_event_id,decision_reason,
@@ -1000,7 +1017,8 @@ public class SalesShipmentService {
                     formal_ar_outstanding_local,
                     credit_floor_local, over_floor_local,
                     available_prepayment_original,
-                    available_prepayment_local)
+                    available_prepayment_local,
+                    exchange_rate, exchange_rate_source)
                 VALUES (
                     :eventId,:revision,:claimId,:hash,CAST(:snapshot AS jsonb),:billingMode,:reversesEventId,:reason,
                     :shipmentId, :eventType, :actorUserId, :occurredAt,
@@ -1009,8 +1027,11 @@ public class SalesShipmentService {
                     :formalOutstanding,
                     :creditFloor, :overFloor,
                     :availablePrepaymentOriginal,
-                    :availablePrepaymentLocal)
+                    :availablePrepaymentLocal,
+                    :exchangeRate, :exchangeRateSource)
                 """)
+                .setParameter("exchangeRate", rateFrozen ? shipment.getExchangeRate() : null)
+                .setParameter("exchangeRateSource", rateFrozen ? rateSource : null)
                 .setParameter("eventId",eventId)
                 .setParameter("revision",shipment.getReviewRevision())
                 .setParameter("claimId",claimId)
@@ -1055,6 +1076,8 @@ public class SalesShipmentService {
         s.setFinanceAuditorId(null);
         s.setFinanceAuditedAt(null);
         s.setFinanceReleaseEventId(null);
+        // V632：商业内容变了，放行时冻结的记账汇率一并作废。
+        s.setExchangeRate(null);
     }
 
     private static BigDecimal snapshotMoney(
@@ -1625,42 +1648,108 @@ public class SalesShipmentService {
      */
     private void applyFinancePostingRate(
             SalesShipment shipment, List<SalesShipmentItem> items) {
-        BigDecimal financeRate = lockFinancePostingRate(shipment.getCurrencyId());
+        // V632：财务放行时冻结的记账汇率优先(放行事件在、汇率在)；V632 之前放行的老单
+        // 没有冻结值，仍回落到币种主档(FOR SHARE 锁住主档行)。
+        BigDecimal frozen = shipment.getExchangeRate();
+        BigDecimal financeRate = shipment.getFinanceReleaseEventId() != null
+                && frozen != null && frozen.signum() > 0
+                ? frozen : lockFinancePostingRate(shipment.getCurrencyId());
         applyPostingRateSnapshot(shipment, items, financeRate);
         requirePostedLocalAmounts(shipment, items);
         itemRepo.saveAll(items);
         itemRepo.flush();
     }
 
-    /** 币种主档的财务汇率状态（financeAuditInfo 展示 + financeAudit 闸门共用，V631）。 */
-    record FinanceRateState(String currencyName, BigDecimal rate, boolean ready) {}
+    /**
+     * 币种主档的财务汇率状态(financeAuditInfo 展示 + financeAudit 放行汇率共用，V631/V632)。
+     * {@code ready}=本位币或主档参考汇率大于 0；{@code exists}=币种在用。
+     */
+    record FinanceRateState(String currencyName, BigDecimal rate, boolean baseCurrency, boolean exists) {
+        boolean ready() { return exists && (baseCurrency || (rate != null && rate.signum() > 0)); }
+    }
+
+    /** 财务放行冻结的记账汇率及其来源(CURRENCY_MASTER=主档预填 / FINANCE_MANUAL=财务手填)。 */
+    record FinanceReleaseRate(BigDecimal rate, String source) {}
+
+    static final String RATE_SOURCE_CURRENCY_MASTER = "CURRENCY_MASTER";
+    static final String RATE_SOURCE_FINANCE_MANUAL = "FINANCE_MANUAL";
 
     private FinanceRateState financeRateState(UUID currencyId) {
-        if (currencyId == null) return new FinanceRateState("", null, false);
+        if (currencyId == null) return new FinanceRateState("", null, false, false);
         List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT currency.name, currency.exchange_rate
+                SELECT currency.name, currency.exchange_rate, currency.is_base_currency
                 FROM currencies currency
                 WHERE currency.id = :currencyId
                   AND COALESCE(currency.is_deleted, false) = false
                   AND currency.status = '使用'
                 """).setParameter("currencyId", currencyId));
-        if (rows.isEmpty()) return new FinanceRateState("", null, false);
+        if (rows.isEmpty()) return new FinanceRateState("", null, false, false);
         Object[] row = rows.getFirst();
         BigDecimal rate = row[1] == null ? null
                 : row[1] instanceof BigDecimal decimal ? decimal : new BigDecimal(row[1].toString());
-        return new FinanceRateState(Objects.toString(row[0], ""), rate, rate != null && rate.signum() > 0);
+        return new FinanceRateState(Objects.toString(row[0], ""), rate, Boolean.TRUE.equals(row[2]), true);
     }
 
-    private void requireFinanceRateMaintained(UUID currencyId) {
+    /** 财审页汇率框的预填值：已冻结的 > 本位币恒 1 > 主档参考汇率 > 空。 */
+    private static String suggestedFinanceReleaseRate(SalesShipment s, FinanceRateState state) {
+        if (s.getExchangeRate() != null && s.getExchangeRate().signum() > 0) {
+            return s.getExchangeRate().stripTrailingZeros().toPlainString();
+        }
+        if (state.baseCurrency()) return "1";
+        if (state.rate() != null && state.rate().signum() > 0) {
+            return state.rate().stripTrailingZeros().toPlainString();
+        }
+        return "";
+    }
+
+    /** 放行时确定记账汇率：财务填了以财务为准，否则用币种主档；本位币恒 1。 */
+    private FinanceReleaseRate resolveFinanceReleaseRate(UUID currencyId, BigDecimal requested) {
         if (currencyId == null) {
             throw new ApiException(ErrorCode.CONFLICT, "出货单缺少币种，无法财务放行");
         }
-        FinanceRateState state = financeRateState(currencyId);
-        if (state.ready()) return;
+        return decideFinanceReleaseRate(financeRateState(currencyId), requested);
+    }
+
+    /**
+     * 纯规则(单测覆盖)：
+     * <ul>
+     *   <li>币种停用/不存在 → 409；</li>
+     *   <li>财务填了汇率：必须大于 0、最多 6 位小数；本位币只能是 1；与主档相同记 CURRENCY_MASTER，
+     *       否则记 FINANCE_MANUAL；</li>
+     *   <li>没填：本位币恒 1；主档参考汇率大于 0 就用主档；否则 409 提示在放行时填写。</li>
+     * </ul>
+     */
+    static FinanceReleaseRate decideFinanceReleaseRate(FinanceRateState state, BigDecimal requested) {
+        if (!state.exists()) {
+            throw new ApiException(ErrorCode.CONFLICT, "出货单币种已停用或不存在，无法财务放行");
+        }
+        if (requested != null) {
+            if (requested.signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "记账汇率必须大于 0");
+            }
+            BigDecimal rate = requested.stripTrailingZeros();
+            if (rate.scale() > 6) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "记账汇率最多保留 6 位小数");
+            }
+            if (rate.scale() < 0) rate = rate.setScale(0);
+            if (state.baseCurrency() && rate.compareTo(BigDecimal.ONE) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "本位币「" + state.currencyName() + "」的记账汇率固定为 1");
+            }
+            boolean sameAsMaster = state.rate() != null && state.rate().compareTo(rate) == 0;
+            return new FinanceReleaseRate(rate,
+                    sameAsMaster ? RATE_SOURCE_CURRENCY_MASTER : RATE_SOURCE_FINANCE_MANUAL);
+        }
+        if (state.baseCurrency()) {
+            return new FinanceReleaseRate(BigDecimal.ONE, RATE_SOURCE_CURRENCY_MASTER);
+        }
+        if (state.rate() != null && state.rate().signum() > 0) {
+            return new FinanceReleaseRate(state.rate(), RATE_SOURCE_CURRENCY_MASTER);
+        }
         String current = state.rate() == null ? "空" : state.rate().stripTrailingZeros().toPlainString();
         throw new ApiException(ErrorCode.CONFLICT,
-                "币种「" + state.currencyName() + "」的财务汇率未维护(当前 " + current
-                        + ")，请先到 基础资料→币种 维护汇率再放行；仓库确认出库要按它立账");
+                "币种「" + state.currencyName() + "」的参考汇率未维护(当前 " + current
+                        + ")，请在放行时填写记账汇率，或先到 基础资料→币种 维护参考汇率；仓库确认出库要按它立账");
     }
 
     private BigDecimal lockFinancePostingRate(UUID currencyId) {

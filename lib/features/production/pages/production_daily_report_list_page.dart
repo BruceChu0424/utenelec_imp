@@ -8,8 +8,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/doc_status_badge.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -92,8 +94,16 @@ class _ProductionDailyReportListPageState
         order: _list.sortOrder,
       );
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
+  static const _statusScope = DocumentStatusScope(
+    DraftDocKind.productionDailyReport,
+  );
+
+  Future<void> _reload([int? page, bool silent = false]) {
+    // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
+    ref.invalidate(documentStatusCountsProvider(_statusScope));
+    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  }
 
   void _onStatus(int? s) {
     setState(() {
@@ -157,6 +167,10 @@ class _ProductionDailyReportListPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
+    final statusCounts = ref
+        .watch(documentStatusCountsProvider(_statusScope))
+        .valueOrNull;
     // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
     // 不再停留在进入子页前的老数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
@@ -236,19 +250,25 @@ class _ProductionDailyReportListPageState
                       ),
                       // 全平台统一筛选工具条：状态分段（搜索框在上方标题行，不在此收口）。
                       child: UtenFilterToolbar<int?>(
-                        segments: const [
-                          UtenFilterSegment(value: null, label: '全部'),
+                        // 2026-09-21 用户口径: hub 卡有草稿红徽章, 子分类也要有数——
+                        // 草稿红徽章(与卡面同源同数), 已审 / 红冲中性括号, 「全部」不挂。
+                        segments: [
+                          const UtenFilterSegment(value: null, label: '全部'),
                           UtenFilterSegment(
                             value: kProductionStatusDraft,
                             label: '草稿',
+                            count: statusCounts?[DocumentStatusBucket.draft],
+                            countForm: UtenSegmentCountForm.actionable,
                           ),
                           UtenFilterSegment(
                             value: kProductionStatusApproved,
                             label: '已审',
+                            count: statusCounts?[DocumentStatusBucket.approved],
                           ),
                           UtenFilterSegment(
                             value: kProductionStatusReversed,
                             label: '红冲',
+                            count: statusCounts?[DocumentStatusBucket.reversed],
                           ),
                         ],
                         selected: _statusFilterSelected

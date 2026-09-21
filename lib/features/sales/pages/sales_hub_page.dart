@@ -215,9 +215,13 @@ class _Entry {
           ? SalesRoutePath.docNew(cfg.type.pathSegment)
           : SalesRoutePath.list(cfg.type.pathSegment),
       listPerm = cfg.listPerm,
+      // 销售出货卡: 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21)。
       badge = cfg.draftKind == null
           ? null
-          : UtenDraftBadge(kind: cfg.draftKind!);
+          : UtenDraftBadge(
+              kind: cfg.draftKind!,
+              withFinanceRejected: cfg.type == SalesDocType.shipment,
+            );
 
   final IconData icon;
   final String label;

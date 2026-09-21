@@ -32,9 +32,13 @@ import java.util.Map;
  *   <li><b>销售订货单去重</b>：额外要求 {@code finance_rejected = false}。财务驳回单同样是
  *       {@code status = 0}，但已计入销售关注徽章的 REJECTED 桶，若此处再数一次就会双计。
  *       故草稿计数的语义是「待自审的新建/修订草稿」，驳回件继续走驳回徽章。</li>
- *   <li><b>采购/委外订货单排除在审单</b>：两族订货单财务通过前 {@code status = 0}，
- *       但存在 PENDING 财务审批 case 的单已交由财务处理（列表有独立的「等待财务审核」段），
- *       不再算「我的草稿」；财务退回件无 PENDING case，仍按草稿计数。</li>
+ *   <li><b>采购/委外订货单排除在审单与财务退回件</b>：两族订货单财务通过前 {@code status = 0}，
+ *       但最新一条审批 case 为 PENDING 的单已交由财务处理（列表有独立的「等待财务审核」段），
+ *       最新一条为 REJECTED 的单是财务退回件（列表另有「财务已退回」红徽章段, 任务中心的
+ *       FINANCE_REJECTED 已计入待办），两者都不再算「我的草稿」（2026-09-21）。</li>
+ *   <li><b>销售出货只数销售未确认的草稿</b>：出货单 status 只在仓库确认出库时才翻 1，
+ *       等待财审 / 财务已退回 / 已放行待出库都是 {@code status = 0}，裸口径会把它们全算成草稿；
+ *       各阶段张数由 {@link DocumentStatusCountQueryService} 分桶给出（2026-09-21）。</li>
  *   <li><b>仓库单据切片</b>：{@code stock_documents} 一张表装 8 种单据，除整表合计
  *       （{@code stockDocument}）外再按 {@code doc_type} 切出调拨 / 盘点两类，
  *       供仓库 hub 的两张卡各显各的数——前端择一展示，不得同时用合计与切片（会双计）。</li>
@@ -71,13 +75,26 @@ public class DocumentDraftCountQueryService {
             String extraPredicate) {
     }
 
+    /**
+     * 销售出货草稿 = 销售尚未确认提交财务的两审版本单(2026-09-21): 出货单的 status 只在仓库
+     * 确认出库时才翻 1, 等待财审 / 财务已退回 / 财务已放行待出库全是 status=0, 裸口径会把
+     * 这三档都算成「草稿」(用户原话「财务退回...会放在草稿里面」). 逐条与
+     * {@code SalesShipmentService.addStagePredicates} 的 DRAFT 阶段一致; 退回件走
+     * {@link DocumentStatusCountQueryService} 的 FINANCE_REJECTED 桶(红徽章, 登记进销售待办).
+     */
+    static final String SALES_SHIPMENT_DRAFT_PREDICATE =
+            "o.shipment_kind <> 'LEGACY' AND o.rejected = false AND o.finance_rejected = false"
+                    + " AND o.finance_audit = 0 AND o.finance_gate_version >= 2"
+                    + " AND NOT (o.sales_confirmed_at IS NOT NULL"
+                    + " AND o.sales_confirmed_revision = o.review_revision)";
+
     // —— 销售：订货/出货/退货的归属列是 owner_employee_id，报价沿用 maker_id（与 SalesQuoteService 一致）——
     static final DraftSource SALES_ORDER = new DraftSource(
             "sales_orders", "o.owner_employee_id", "sales", "sales:view:all",
             "sales_order:view", "o.finance_rejected = false");
     static final DraftSource SALES_SHIPMENT = new DraftSource(
             "sales_shipments", "o.owner_employee_id", "sales", "sales:view:all",
-            "sales_shipment:view", null);
+            "sales_shipment:view", SALES_SHIPMENT_DRAFT_PREDICATE);
     static final DraftSource SALES_RETURN = new DraftSource(
             "sales_returns", "o.owner_employee_id", "sales", "sales:view:all",
             "sales_return:view", null);
@@ -86,21 +103,16 @@ public class DocumentDraftCountQueryService {
             "sales_quote:view", null);
 
     // 采购/委外订货单：财务通过前单据 status 保持 0，但已提交财务审核的单
-    // 不再是「我的草稿」（在等财务处理，列表另设「等待财务审核」段），故排除
-    // 存在 PENDING 审批 case 的单。财务退回件（最新 case=REJECTED，无 PENDING）
-    // 仍算草稿——它回到提交人手上，是必须由本人处理完的活。
+    // 不再是「我的草稿」（在等财务处理，列表另设「等待财务审核」段）；
+    // 2026-09-21 起财务退回件(最新 case=REJECTED)也不算草稿——列表另设「财务已退回」
+    // 红徽章段, 采购/委外任务中心的 FINANCE_REJECTED 已把它计入待办, 草稿再数一次就是双计
+    // (用户原话「财务退回...会放在草稿里面」). 口径 = 最新一条 case 既不是 PENDING 也不是 REJECTED.
     static final DraftSource PURCHASE_ORDER = new DraftSource(
             "purchase_orders", "o.maker_id", "purchase", "purchase:view:all",
-            "purchase_order:view",
-            "NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
-                    + " WHERE c.order_type = 'PURCHASE' AND c.order_id = o.id"
-                    + " AND c.status = 'PENDING')");
+            "purchase_order:view", procurementDraftPredicate("PURCHASE"));
     static final DraftSource SUBCONTRACT_ORDER = new DraftSource(
             "subcontract_orders", "o.maker_id", "subcontract", "subcontract:view:all",
-            "subcontract_order:view",
-            "NOT EXISTS (SELECT 1 FROM procurement_order_approval_cases c"
-                    + " WHERE c.order_type = 'SUBCONTRACT' AND c.order_id = o.id"
-                    + " AND c.status = 'PENDING')");
+            "subcontract_order:view", procurementDraftPredicate("SUBCONTRACT"));
     static final DraftSource STOCK_DOCUMENT = new DraftSource(
             "stock_documents", "o.maker_id", "stock_doc", "stock_doc:view:all",
             "stock_doc:view", "NOT fn_is_production_linked_stock_document(o.id)");
@@ -157,6 +169,22 @@ public class DocumentDraftCountQueryService {
     static final DraftSource STOCK_CHECK = new DraftSource(
             "stock_documents", "o.maker_id", "stock_doc", "stock_doc:view:all",
             "stock_doc:view", "o.doc_type = 'CHECK'");
+
+    /**
+     * 采购/委外订货单「最新一条财务审批 case 的状态」子查询(无 case 记 NONE); orderType 只接
+     * 编译期常量 PURCHASE/SUBCONTRACT. 与 ProcurementApprovalProjectionQuery.latestForOrders 的
+     * DISTINCT ON ... attempt DESC 同口径, 列表切片 / 草稿计数 / 状态分桶三处共用.
+     */
+    static String latestApprovalCaseStatusSql(String orderType) {
+        return "COALESCE((SELECT c.status FROM procurement_order_approval_cases c"
+                + " WHERE c.order_type = '" + orderType + "' AND c.order_id = o.id"
+                + " ORDER BY c.attempt DESC LIMIT 1), 'NONE')";
+    }
+
+    /** 采购/委外订货草稿谓词: 不在审(PENDING)也不是财务退回(REJECTED). */
+    static String procurementDraftPredicate(String orderType) {
+        return latestApprovalCaseStatusSql(orderType) + " NOT IN ('PENDING', 'REJECTED')";
+    }
 
     /** 响应字段顺序（与 {@link DraftCountsResponse} 的构造参数顺序一一对应）。 */
     static final List<DraftSource> SOURCES = List.of(
@@ -272,7 +300,7 @@ public class DocumentDraftCountQueryService {
             String parameterName,
             OwnerVisibility.OwnerScope ownerScope) {}
 
-    private static boolean canView(AuthUser user, String authority) {
+    static boolean canView(AuthUser user, String authority) {
         if (user == null) {
             return false;
         }

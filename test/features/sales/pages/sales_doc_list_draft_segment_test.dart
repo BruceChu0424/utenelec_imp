@@ -85,20 +85,22 @@ void main() {
   testWidgets('草稿段计数来自 drafts/count，与新建页按钮同源', (tester) async {
     await _pumpOrderList(tester, counts: const DraftCounts(salesOrder: 7));
 
-    // 计数形态（docs/00-项目准则/14-徽章与计数口径.md）：草稿是「我自己没写完的
-    // 东西」，没人在等它 → 中性括号 `(7)`，不挂红色待办徽章。
+    // 计数形态（docs/00-项目准则/14-徽章与计数口径.md §四之七）：草稿是本人没提交的活，
+    // hub 卡是红徽章，列表「草稿」段同形——红色待办徽章 `7`，不再是中性括号。
     final draftSegment = find.byWidgetPredicate(
       (widget) => widget is UtenSegmentBadgeLabel && widget.label == '草稿',
     );
     expect(
       tester.widget<UtenSegmentBadgeLabel>(draftSegment).countForm,
-      UtenSegmentCountForm.browsing,
+      // 2026-09-21: hub 卡草稿是红徽章, 列表「草稿」段同形(父有红徽章子也要红)。
+      UtenSegmentCountForm.actionable,
     );
     expect(
-      find.descendant(of: draftSegment, matching: find.text('(7)')),
+      find.descendant(of: draftSegment, matching: find.text('7')),
       findsOneWidget,
     );
-    expect(find.byType(UtenNotificationBadge), findsNothing);
+    // 四个链路大类仍是中性括号：整条工具条只有「草稿」一枚红徽章。
+    expect(find.byType(UtenNotificationBadge), findsOneWidget);
   });
 
   testWidgets('草稿段下隐藏状态小类行（草稿本身就是状态）', (tester) async {

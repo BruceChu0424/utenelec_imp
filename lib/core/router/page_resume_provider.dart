@@ -17,7 +17,10 @@
 // 与 list_refresh_provider 的分工：listRefresh 是「操作变更后精准刷新」（省请求），
 // 本机制是「任何返回都刷新」，覆盖未 bump 的纯查看返回与跨模块返回。
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 /// 最近一次导航落点。location 为 path（不含 query）；tick 单调递增。
 typedef PageResumeState = ({String location, int tick});
@@ -28,11 +31,61 @@ final pageResumeProvider = StateProvider<PageResumeState>(
 );
 
 /// 路由落定后由 app_router 调用：路径确实变化才 bump（go_router 偶尔原地通知）。
-void bumpPageResume(Ref ref, String location) {
-  final notifier = ref.read(pageResumeProvider.notifier);
+void bumpPageResume(Ref ref, String location) =>
+    bumpPageResumeState(ref.read(pageResumeProvider.notifier), location);
+
+/// [bumpPageResume] 的无 Ref 版本：拿到 notifier 的调用方([attachPageResume]、
+/// 测试)直接写；路径未变的原地通知不 bump。
+void bumpPageResumeState(
+  StateController<PageResumeState> notifier,
+  String location,
+) {
   final cur = notifier.state;
   if (cur.location == location) return;
   notifier.state = (location: location, tick: cur.tick + 1);
+}
+
+/// 把 [router] 的导航落定接到「返回即刷新」信号上；返回解绑函数。
+///
+/// app_router 与页面导航测试共用这一份接线，测试里复现的就是线上的触发链：
+/// 任何导航落定(go / push / replace / pop / 系统返回手势 / 深链)后，把当前
+/// 路径写入 [notifier]。路由监听可能在 build 阶段触发，故推迟到微任务里再改
+/// provider，避免 "Tried to modify a provider while the widget tree was building"。
+void Function() attachPageResume(
+  GoRouter router,
+  StateController<PageResumeState> notifier,
+) {
+  var detached = false;
+  void onNavigated() {
+    if (detached) return;
+    Future.microtask(() {
+      if (detached) return;
+      final location = topMatchedLocationOf(router);
+      if (location != null) bumpPageResumeState(notifier, location);
+    });
+  }
+
+  router.routerDelegate.addListener(onNavigated);
+  return () {
+    detached = true;
+    router.routerDelegate.removeListener(onNavigated);
+  };
+}
+
+/// 当前落点 = 栈顶路由的 matchedLocation(push 进来的页面也算)。
+///
+/// 不能用 `currentConfiguration.uri.path`：go_router 的 push / replace / pop
+/// 不改 RouteMatchList.uri(源码 `RouteMatchList.push` 注释 "Imperative route
+/// match doesn't change the uri")，它始终是最近一次 go 的位置。2026-09-10 返回
+/// 键契约改成「能 pop 就 pop」后，列表 push 详情再 pop 回来的落点在 uri 上看
+/// 完全没变、一次也不 bump——「返回即刷新」实际只对 go 生效，push/pop 流程
+/// 全部静默失效(车间任务页从日报详情返回不刷新、_navigating 卡死即此)。
+/// 页面注册用的 `GoRouterState.of(context).matchedLocation` 同样是栈顶口径，
+/// 两边一致。空配置/错误页返回 null，不 bump。
+String? topMatchedLocationOf(GoRouter router) {
+  final config = router.routerDelegate.currentConfiguration;
+  if (config.isEmpty || config.isError) return null;
+  return config.last.matchedLocation;
 }
 
 /// 「返回即刷新」注册扩展。

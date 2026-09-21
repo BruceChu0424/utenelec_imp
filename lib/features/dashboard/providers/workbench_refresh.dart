@@ -26,6 +26,7 @@ import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../hr_task/providers/hr_task_count_provider.dart';
 import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
@@ -59,6 +60,7 @@ void invalidateWorkbenchBadgeCaches(WidgetRef ref) {
   // 跨模块草稿计数（hub 单据卡「草稿(N)」与新建页草稿按钮同源，2026-09-11）：
   // 浏览型计数，卡上要新鲜，但按徽章口径不进「待办总数」累加。
   ref.invalidate(draftCountsProvider);
+  ref.invalidate(financeRejectedCountsProvider);
   // 全部待办计数源：登记在 lib/shared/badges/todo_badge_registry.dart，
   // 与模块卡/Tab 总数同一张表——新增入口只改注册表，这里不再逐个点名。
   invalidateTodoBadgeCaches(ref);

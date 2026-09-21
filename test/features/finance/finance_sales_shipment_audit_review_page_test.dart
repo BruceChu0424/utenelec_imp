@@ -230,9 +230,9 @@ void main() {
   });
 
   testWidgets(
-    'missing currency finance rate blocks release at finance, not at the warehouse',
+    'missing master rate asks finance to fill the recognition rate at release',
     (tester) async {
-      // V631 用户口径：仓库只管仓库的，币种汇率没维护要在财务放行前提示。
+      // V632：主档参考汇率没维护不再禁用放行——财务在放行时填记账汇率，空着放行才被拦。
       final api = await _pumpReviewPage(
         tester,
         detail: const {
@@ -243,8 +243,10 @@ void main() {
           'status': 0,
           'financeAudit': 0,
           'warehouseWorkStatus': 'PENDING_PICK',
+          'currencyId': 'currency-usd',
+          'totalOriginal': 1000,
           'items': <Map<String, dynamic>>[
-            {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 100},
+            {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 10, 'price': 100},
           ],
         },
         claimSucceeds: true,
@@ -258,6 +260,9 @@ void main() {
           'currencyName': '美金',
           'financeRate': '0.000000',
           'financeRateReady': false,
+          'baseCurrency': false,
+          'shipmentExchangeRate': '',
+          'suggestedExchangeRate': '',
           'outstanding': '0',
           'creditFloor': '0',
           'overFloor': '0',
@@ -266,25 +271,183 @@ void main() {
         },
       );
 
-      expect(find.text('财务汇率(美金)'), findsOneWidget);
+      expect(find.text('主档参考汇率(美金)'), findsOneWidget);
       expect(find.text('未维护'), findsOneWidget);
       expect(find.byKey(const Key('finance-audit-rate-block')), findsOneWidget);
-      expect(find.textContaining('基础资料→币种'), findsWidgets);
-      final approve = tester.widget<UtenButton>(
-        find.byKey(const Key('finance-shipment-audit-approve')),
+      final rateField = find.byKey(const Key('finance-audit-exchange-rate'));
+      expect(rateField, findsOneWidget);
+      expect(tester.widget<TextField>(rateField).controller!.text, isEmpty);
+      final approve = find.byKey(const Key('finance-shipment-audit-approve'));
+      expect(
+        tester.widget<UtenButton>(approve).onPressed,
+        isNotNull,
+        reason: '主档没维护不再禁用放行，改由财务填汇率',
       );
-      expect(approve.onPressed, isNull, reason: '汇率未维护不能放行');
-      // 退回销售不受汇率影响，按钮仍可用。
-      final reject = tester.widget<UtenButton>(
-        find.byKey(const Key('finance-shipment-audit-reject')),
+      // 空着放行：被拦在客户端，不发 POST。
+      await tester.ensureVisible(approve);
+      await tester.tap(approve);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('finance-shipment-audit-confirm')),
+        findsNothing,
       );
-      expect(reject.onPressed, isNotNull);
       expect(
         api.postPaths.where((path) => path.endsWith('/finance-audit')),
         isEmpty,
       );
+      // 填了记账汇率：确认弹窗复述汇率与折合本币参考值，POST 带 exchangeRate。
+      await tester.enterText(rateField, '7.2');
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(approve);
+      await tester.tap(approve);
+      await tester.pumpAndSettle();
+      final rateLine = find.byKey(
+        const Key('finance-shipment-audit-confirm-rate'),
+      );
+      expect(rateLine, findsOneWidget);
+      expect(
+        tester.widget<Text>(rateLine).data,
+        allOf(contains('记账汇率 7.2'), contains('7200.00')),
+      );
+      await tester.tap(find.byKey(const Key('finance-shipment-audit-confirm')));
+      await tester.pumpAndSettle();
+      expect(
+        api.postPaths,
+        contains('/sales/shipments/shipment-no-rate/finance-audit'),
+      );
+      final body =
+          api.postBodies['/sales/shipments/shipment-no-rate/finance-audit']
+              as Map<String, dynamic>;
+      expect(body['exchangeRate'], '7.2');
     },
   );
+
+  testWidgets('master reference rate is prefilled and submitted as-is', (
+    tester,
+  ) async {
+    final api = await _pumpReviewPage(
+      tester,
+      detail: const {
+        'id': 'shipment-master-rate',
+        'financeReviewPending': true,
+        'salesConfirmed': true,
+        'status': 0,
+        'financeAudit': 0,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[
+          {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 100},
+        ],
+      },
+      claimSucceeds: true,
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-master-rate',
+        'reviewRevision': 0,
+        'contentHash': 'master-rate-content',
+        'financeAudit': 0,
+        'clientName': '美金客户',
+        'currencyName': '美金',
+        'financeRate': '7.000000',
+        'financeRateReady': true,
+        'baseCurrency': false,
+        'shipmentExchangeRate': '',
+        'suggestedExchangeRate': '7',
+      },
+    );
+    expect(find.byKey(const Key('finance-audit-rate-block')), findsNothing);
+    final rateField = find.byKey(const Key('finance-audit-exchange-rate'));
+    expect(tester.widget<TextField>(rateField).controller!.text, '7');
+    expect(tester.widget<TextField>(rateField).readOnly, isFalse);
+    final approve = find.byKey(const Key('finance-shipment-audit-approve'));
+    await tester.ensureVisible(approve);
+    await tester.tap(approve);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('finance-shipment-audit-confirm')));
+    await tester.pumpAndSettle();
+    final body =
+        api.postBodies['/sales/shipments/shipment-master-rate/finance-audit']
+            as Map<String, dynamic>;
+    expect(body['exchangeRate'], '7');
+  });
+
+  testWidgets('base currency locks the recognition rate to one', (
+    tester,
+  ) async {
+    final api = await _pumpReviewPage(
+      tester,
+      detail: const {
+        'id': 'shipment-base-rate',
+        'financeReviewPending': true,
+        'salesConfirmed': true,
+        'status': 0,
+        'financeAudit': 0,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[],
+      },
+      claimSucceeds: true,
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-base-rate',
+        'reviewRevision': 0,
+        'contentHash': 'base-rate-content',
+        'financeAudit': 0,
+        'clientName': '人民币客户',
+        'currencyName': '人民币',
+        'financeRate': '0.000000',
+        'financeRateReady': true,
+        'baseCurrency': true,
+        'shipmentExchangeRate': '',
+        'suggestedExchangeRate': '1',
+      },
+    );
+    expect(find.text('1(本位币)'), findsOneWidget);
+    expect(find.byKey(const Key('finance-audit-rate-block')), findsNothing);
+    final rateField = find.byKey(const Key('finance-audit-exchange-rate'));
+    expect(tester.widget<TextField>(rateField).controller!.text, '1');
+    expect(tester.widget<TextField>(rateField).readOnly, isTrue);
+    final approve = find.byKey(const Key('finance-shipment-audit-approve'));
+    await tester.ensureVisible(approve);
+    await tester.tap(approve);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('finance-shipment-audit-confirm')));
+    await tester.pumpAndSettle();
+    final body =
+        api.postBodies['/sales/shipments/shipment-base-rate/finance-audit']
+            as Map<String, dynamic>;
+    expect(body['exchangeRate'], '1');
+  });
+
+  testWidgets('released shipment shows the frozen recognition rate read-only', (
+    tester,
+  ) async {
+    await _pumpReviewPage(
+      tester,
+      detail: const {
+        'id': 'shipment-frozen-rate',
+        'billNo': 'XS-FROZEN',
+        'salesConfirmed': true,
+        'status': 0,
+        'financeAudit': 1,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[],
+      },
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-frozen-rate',
+        'reviewRevision': 1,
+        'contentHash': 'frozen-content',
+        'financeAudit': 1,
+        'clientName': '美金客户',
+        'currencyName': '美金',
+        'financeRate': '8.000000',
+        'financeRateReady': true,
+        'baseCurrency': false,
+        'shipmentExchangeRate': '7.25',
+        'suggestedExchangeRate': '7.25',
+      },
+    );
+    expect(find.byKey(const Key('finance-audit-exchange-rate')), findsNothing);
+    final frozen = find.byKey(const Key('finance-audit-rate-frozen'));
+    expect(frozen, findsOneWidget);
+    expect(tester.widget<Text>(frozen).data, contains('已冻结记账汇率 7.25'));
+  });
 
   testWidgets('reject requires reason and posts finance-audit-reject', (
     tester,
@@ -449,6 +612,7 @@ class _ReviewApi extends ApiClient {
   final Map<String, dynamic>? financeAuditInfo;
   final List<String> getPaths = [];
   final List<String> postPaths = [];
+  final Map<String, Object?> postBodies = {};
 
   @override
   Future<Map<String, dynamic>> get(
@@ -476,6 +640,7 @@ class _ReviewApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     postPaths.add(path);
+    postBodies[path] = body;
     if (path.startsWith('/task-claims/') &&
         (path.endsWith('/claim') || path.endsWith('/heartbeat'))) {
       if (!claimSucceeds || (path.endsWith('/heartbeat') && failHeartbeat)) {

@@ -22,6 +22,7 @@ import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -34,6 +35,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
@@ -209,6 +211,34 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   int? get _draftCount =>
       ref.watch(draftCountsProvider).valueOrNull?.salesOrder;
 
+  /// 分段计数范围(2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数): 出货/客户零星发货
+  /// 按六个真实阶段分桶(零星发货只数 DIRECT_CUSTOMER), 报价/退货按状态分桶; 订货单走 stats,
+  /// 历史其它出货的 hub 卡没有徽章, 不挂数。
+  DocumentStatusScope? get _statusScope {
+    if (widget.docType == SalesDocType.customerShipment) {
+      return const DocumentStatusScope(
+        DraftDocKind.salesShipment,
+        shipmentKind: 'DIRECT_CUSTOMER',
+      );
+    }
+    final kind = _cfg.draftKind;
+    if (_isOrder || kind == null) return null;
+    return DocumentStatusScope(kind);
+  }
+
+  /// 出货阶段里「等销售动手」的两档: 草稿(没提交)与财务已退回(改了重提) → 红徽章;
+  /// 等待财务审核 / 已审 / 已出库 / 红冲是中性括号数。
+  static bool _salesActionableStage(String stage) =>
+      stage == SalesShipmentStage.draft ||
+      stage == SalesShipmentStage.financeRejected;
+
+  /// 报价/退货的状态分段 → 分桶键。
+  static String _bucketOfStatus(int status) => switch (status) {
+    kSalesStatusDraft => DocumentStatusBucket.draft,
+    kSalesStatusApproved => DocumentStatusBucket.approved,
+    _ => DocumentStatusBucket.reversed,
+  };
+
   /// 大类段徽章计数（后端 stats 全量口径；失败保持旧值不显示变化）。
   Future<void> _loadStats() async {
     try {
@@ -351,6 +381,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   }
 
   Future<void> _reload([int? page, bool silent = false]) {
+    // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
+    final statusScope = _statusScope;
+    if (statusScope != null) {
+      ref.invalidate(documentStatusCountsProvider(statusScope));
+    }
     if (!_shouldLoad) return Future.value();
     return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
   }
@@ -565,6 +600,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
       if (_isOrder) _loadStats();
     });
     final seg = _statusSeg;
+    // 分段计数(出货六阶段 / 报价退货三状态); 加载中或无权限为 null, 不渲染数字。
+    final statusScope = _statusScope;
+    final statusCounts = statusScope == null
+        ? null
+        : ref.watch(documentStatusCountsProvider(statusScope)).valueOrNull;
     // 小类行（仅订货单渲染；搜索在大类行）。其他单据在下方自建带搜索的同行。
     final statusRow = UtenFilterToolbar<_SalesDocSeg>(
       segmentsKey: Key('sales-doc-status-${_cfg.type.pathSegment}'),
@@ -623,10 +663,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                         if (_isOrder) ...[
                           // 大类行（仅订货单）：待生产/生产中/待发货/本月完成 + 搜索。
                           // 原统计卡钻取口径不变（chain/closed/本月月初）。
-                          // 计数形态：五段全是中性括号 `(N)`（组件默认）——链路
-                          // 大类是订单进度的监控数（下一步在生产/仓库手里）、
-                          // 草稿没人在等；销售真正的待办（财务驳回/未读完工）
-                          // 由「订单进度查询」的红徽章承担，本页不重复告警。
+                          // 计数形态：四个链路大类是订单进度的监控数（下一步在
+                          // 生产/仓库手里）→ 中性括号 `(N)`；「草稿」是本人没提交的活,
+                          // 与 hub 卡草稿红徽章同源同形(2026-09-21 父有红徽章子也要红)；
+                          // 销售真正的待办（财务驳回/未读完工）由「订单进度查询」
+                          // 的红徽章承担，本页不重复告警。
                           UtenFilterToolbar<String>(
                             segmentsKey: const Key('sales-doc-order-stages'),
                             segments: [
@@ -657,6 +698,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                 value: _kDraftStage,
                                 label: '草稿',
                                 count: _draftCount,
+                                countForm: UtenSegmentCountForm.actionable,
                               ),
                             ],
                             selected: _stage == null ? const {} : {_stage!},
@@ -681,11 +723,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                               'sales-doc-status-${_cfg.type.pathSegment}',
                             ),
                             segments: [
+                              // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要
+                              // 有数——出货六阶段全部带数, 草稿 / 财务已退回红徽章
+                              // (财务退回件不再混在草稿里), 其余中性括号; 报价/退货
+                              // 三状态同理(草稿红, 已审/红冲括号)。
                               if (_shipmentStaged)
                                 for (final stage in SalesShipmentStage.segments)
                                   UtenFilterSegment(
                                     value: _SalesDocSeg.shipment(stage),
                                     label: salesShipmentStageLabel(stage),
+                                    count: statusCounts?[stage],
+                                    countForm: _salesActionableStage(stage)
+                                        ? UtenSegmentCountForm.actionable
+                                        : UtenSegmentCountForm.browsing,
                                   )
                               else
                                 for (final status in [
@@ -696,6 +746,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                   UtenFilterSegment(
                                     value: _SalesDocSeg.stage(status),
                                     label: salesStatusLabel(status),
+                                    count:
+                                        statusCounts?[_bucketOfStatus(status)],
+                                    countForm: status == kSalesStatusDraft
+                                        ? UtenSegmentCountForm.actionable
+                                        : UtenSegmentCountForm.browsing,
                                   ),
                               const UtenFilterSegment(
                                 value: _SalesDocSeg.history(),

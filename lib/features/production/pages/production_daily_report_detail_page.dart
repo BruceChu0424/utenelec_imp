@@ -91,20 +91,7 @@ class _ProductionDailyReportDetailPageState
       final d = await ref
           .read(productionDailyReportRepositoryProvider)
           .detail(widget.id);
-      final goodsIds = d.items
-          .map((e) => e.goodsId)
-          .whereType<String>()
-          .toSet();
-      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      // 货品列要显示编号，名称若早已被搜索缓存则 loadGoodsNames 会跳过详情，
-      // 这里补一次详情（编号）确保身份三属性齐全。
-      await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
-      await ref.read(masterNameServiceProvider).loadEmployeeNames(d.workerIds);
-      if (!mounted) return;
-      setState(() {
-        _detail = d;
-        _loading = false;
-      });
+      await _hydrate(d);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -120,6 +107,24 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
+  /// 把一份详情落到页面：补齐货品/员工名称缓存后换数据。审核/红冲接口本身就返回
+  /// 最新详情，走这里直接用，不再多发一次详情请求(2026-09-20 用户反馈审核后等太久)。
+  Future<void> _hydrate(ProductionDailyReportDetail d) async {
+    final goodsIds = d.items.map((e) => e.goodsId).whereType<String>().toSet();
+    final names = ref.read(masterNameServiceProvider);
+    await names.loadGoodsNames(goodsIds);
+    // 货品列要显示编号，名称若早已被搜索缓存则 loadGoodsNames 会跳过详情，
+    // 这里补一次详情(编号)确保身份三属性齐全。
+    await names.loadGoodsDetails(goodsIds);
+    await names.loadEmployeeNames(d.workerIds);
+    if (!mounted) return;
+    setState(() {
+      _detail = d;
+      _loading = false;
+      _error = null;
+    });
+  }
+
   Future<void> _approve() => _doAction(
     '审核后只累计完工申报量 fqty，并生成仓库到货登记任务；'
         '此时不会增加库存或 iqty。仓库登记成品仓与库位并送品质部检查，'
@@ -133,7 +138,10 @@ class _ProductionDailyReportDetailPageState
 
   Future<void> _doAction(
     String confirm,
-    Future<void> Function(ProductionDailyReportRepository) fn,
+    Future<ProductionDailyReportDetail> Function(
+      ProductionDailyReportRepository,
+    )
+    fn,
     String ok, {
     bool reviewerResponsibility = false,
   }) async {
@@ -164,10 +172,17 @@ class _ProductionDailyReportDetailPageState
       _busyTitle = '正在${reviewerResponsibility ? '审核' : '红冲'}生产日报';
     });
     try {
-      await fn(ref.read(productionDailyReportRepositoryProvider));
+      final updated = await fn(
+        ref.read(productionDailyReportRepositoryProvider),
+      );
       if (!mounted) return;
       context.appSuccess(ok);
-      await _load();
+      // 服务端已返回审核/红冲后的完整详情：直接落页面，省掉一次详情往返；
+      // 对象范围能力照旧失效重算(单据状态变了，编辑/删除按钮要跟着变)。
+      ref.invalidate(
+        documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+      );
+      await _hydrate(updated);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {

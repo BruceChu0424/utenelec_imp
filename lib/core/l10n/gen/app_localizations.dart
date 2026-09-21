@@ -310,6 +310,12 @@ abstract class AppLocalizations {
   /// **'字号'**
   String get settingsFontSize;
 
+  /// No description provided for @settingsFontSizeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'整体等比缩放：文字、图标、卡片与间距一起变大变小；手机上只放大文字'**
+  String get settingsFontSizeHint;
+
   /// No description provided for @settingsSectionPerformance.
   ///
   /// In zh, this message translates to:

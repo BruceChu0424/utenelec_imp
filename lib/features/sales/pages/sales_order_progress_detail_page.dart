@@ -35,6 +35,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -106,6 +107,9 @@ class _SalesOrderProgressDetailPageState
   }
 
   /// 整页刷新口径：摘要 + 履约时间线 + 产品进度三段全部重读。
+  /// 本页稳定路由，首次 build 捕获，供「返回即刷新」用。
+  String? _myLocation;
+
   Future<void> _reload() async {
     if (_reloading) return;
     setState(() {
@@ -137,6 +141,9 @@ class _SalesOrderProgressDetailPageState
   }
 
   Future<void> _editOrder() async {
+    // 订货单编辑页保存后 context.replace 成订货单详情，go_router 不会完成这个
+    // push 的 Future——下面的 _reload 只覆盖不保存直接返回；保存那条路由
+    // 「返回即刷新」(build 里的 onPageResume)兑现。
     await context.push(RoutePath.salesDocEdit('orders', widget.orderId));
     if (mounted) await _reload();
   }
@@ -267,6 +274,11 @@ class _SalesOrderProgressDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    _myLocation ??= currentLocationOr(
+      context,
+      RoutePath.salesOrderProgressDetail(widget.orderId),
+    );
+    ref.onPageResume(_myLocation!, _reload);
     return Scaffold(
       appBar: UtenAppBar(
         title: '订单进度详情',

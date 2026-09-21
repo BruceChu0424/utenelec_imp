@@ -132,7 +132,8 @@ class _WarehouseStockBatchOutboundPageState
             .whereType<String>()
             .toSet(),
       );
-      await names.loadEmployeeNames(documents.map((d) => d.workerId));
+      // 经办人姓名由详情接口随单返回(workerName), 不再逐张查员工档案
+      // (该接口要求 employee:view 且每次调用落人事查看审计)。
       if (!mounted) return;
       setState(() {
         _documents = documents;
@@ -398,7 +399,10 @@ class _WarehouseStockBatchOutboundPageState
     final facts = <(String, String?)>[
       (l10n.warehouseOutboundBatchBillDate, document.billDate),
       if (document.workerId?.isNotEmpty == true)
-        (l10n.warehouseOutboundBatchWorker, names.employee(document.workerId)),
+        (
+          l10n.warehouseOutboundBatchWorker,
+          names.employeeOr(document.workerName, document.workerId),
+        ),
       if (document.makerName?.trim().isNotEmpty == true)
         (l10n.warehouseOutboundBatchMaker, document.makerName),
       if (document.createdAt != null)

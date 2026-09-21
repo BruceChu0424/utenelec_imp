@@ -70,7 +70,12 @@ final class AuditNoisePolicy {
             "/api/production/plans/progress/summary",
             "/api/production/plans/progress/workshops",
             "/api/production/quality-inspections/capability",
-            "/api/warehouse/inbound/expectations/type-counts");
+            "/api/warehouse/inbound/expectations/type-counts",
+            "/api/warehouse/sales-outbound/count",
+            "/api/warehouse/sales-outbound/counts",
+            "/api/documents/drafts/count",
+            "/api/documents/status-counts",
+            "/api/documents/finance-rejected/count");
     private static final Set<String> AUTOMATIC_SESSION_WRITE_PATHS = Set.of(
             "/api/auth/refresh",
             "/api/visitor/auth/refresh",

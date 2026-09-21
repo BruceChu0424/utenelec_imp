@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
@@ -41,7 +42,11 @@ void main() {
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),
           ),
-          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          // 有出货查看权限才会拉分段计数(2026-09-21 六阶段全带数)。
+          currentPermissionsProvider.overrideWithValue(const <String>{
+            Perm.salesShipmentView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -61,6 +66,18 @@ void main() {
     }
     // 默认不选不发请求。
     expect(api.listQueries, isEmpty);
+    // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要有数——分段计数一次取自
+    // /documents/status-counts?kind=salesShipment: 草稿 4 / 财务已退回 2 红徽章,
+    // 等待财务审核 3 / 已审 1 / 已出库 9 / 红冲 0 中性括号(0 也显示保持队形), 历史记录不挂。
+    expect(api.statusCountQueries.single['kind'], 'salesShipment');
+    expect(api.statusCountQueries.single.containsKey('shipmentKind'), isFalse);
+    expect(find.byType(UtenNotificationBadge), findsNWidgets(2));
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('(3)'), findsOneWidget);
+    expect(find.text('(1)'), findsOneWidget);
+    expect(find.text('(9)'), findsOneWidget);
+    expect(find.text('(0)'), findsOneWidget);
 
     await tester.tap(find.text('等待财务审核'));
     await tester.pumpAndSettle();
@@ -86,12 +103,24 @@ class _StageApi extends ApiClient {
   _StageApi() : super(Dio());
 
   final List<Map<String, dynamic>> listQueries = [];
+  final List<Map<String, dynamic>> statusCountQueries = [];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/documents/status-counts') {
+      statusCountQueries.add(Map<String, dynamic>.from(query ?? const {}));
+      return const {
+        'DRAFT': 4,
+        'PENDING_FINANCE': 3,
+        'FINANCE_REJECTED': 2,
+        'FINANCE_APPROVED': 1,
+        'SHIPPED': 9,
+        'REVERSED': 0,
+      };
+    }
     if (path == '/sales/shipments') {
       listQueries.add(Map<String, dynamic>.from(query ?? const {}));
       return const {

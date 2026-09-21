@@ -45,6 +45,7 @@
   "settingsThemeMode": "主题模式",
   "settingsLanguage": "语言",
   "settingsFontSize": "字号",
+  "settingsFontSizeHint": "整体等比缩放：文字、图标、卡片与间距一起变大变小；手机上只放大文字",
   "settingsSectionPerformance": "性能",
   "settingsPerformanceTier": "性能模式",
   "settingsPerformanceHint": "性能差的设备建议选省电模式",

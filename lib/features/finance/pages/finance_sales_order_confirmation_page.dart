@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -88,6 +90,10 @@ class _FinanceSalesOrderConfirmationPageState
   /// 分段视图：false=待确认（默认）；true=已驳回。
   bool _showRejected = false;
 
+  /// 「已驳回」段的全量张数(中性括号, 下一步在销售手上; 2026-09-21 父有红徽章子也要有数)。
+  /// null = 尚未取到, 不渲染数字。
+  int? _rejectedCount;
+
   bool get _canView {
     return ref.read(isSuperAdminProvider) ||
         ref
@@ -121,6 +127,11 @@ class _FinanceSalesOrderConfirmationPageState
       _loading = true;
       _error = null;
     });
+    // 「已驳回」段全量数(不带关键字)先于列表请求发出, 列表请求始终是本轮最后一个请求;
+    // 已驳回段下且未搜索时本页 total 就是全量驳回数, 不另发。
+    if (!_showRejected || _keyword.isNotEmpty) {
+      unawaited(_loadRejectedCount());
+    }
     try {
       final result = await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
@@ -143,6 +154,10 @@ class _FinanceSalesOrderConfirmationPageState
             !result.items.any((item) => item.orderId == _activeItem!.orderId)) {
           _activeItem = null;
         }
+        // 已驳回段下且未搜索: 本页 total 就是全量驳回数, 不另发请求。
+        if (_showRejected && _keyword.isEmpty) {
+          _rejectedCount = result.total;
+        }
       });
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
     } on ApiException catch (error) {
@@ -157,6 +172,19 @@ class _FinanceSalesOrderConfirmationPageState
         _error = '待确认任务加载失败，请检查网络后重试';
         _loading = false;
       });
+    }
+  }
+
+  /// 「已驳回」段全量计数(size=1 只取 total; 失败保持旧值, 不把未知伪装成 0)。
+  Future<void> _loadRejectedCount() async {
+    try {
+      final page = await ref
+          .read(salesOrderFinanceConfirmationRepositoryProvider)
+          .pending(size: 1, rejected: true, changesOnly: widget.changesOnly);
+      if (!mounted) return;
+      setState(() => _rejectedCount = page.total);
+    } catch (_) {
+      // 计数失败静默: 分段不显示数字, 不影响列表。
     }
   }
 
@@ -860,14 +888,15 @@ class _FinanceSalesOrderConfirmationPageState
       searchKey: const Key('sales-order-finance-search'),
       compactBreakpoint: UtenBreakpoints.mediumStart,
       segments: [
-        // 「待确认」= 等我放行的队列 → 红徽章；「已驳回」无计数。
+        // 「待确认」= 等我放行的队列 → 红徽章；「已驳回」下一步在销售手上 → 中性括号数
+        // (2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数)。
         UtenFilterSegment(
           value: false,
           label: '待确认',
           count: pendingCount,
           countForm: UtenSegmentCountForm.actionable,
         ),
-        const UtenFilterSegment(value: true, label: '已驳回'),
+        UtenFilterSegment(value: true, label: '已驳回', count: _rejectedCount),
       ],
       selected: {_showRejected},
       onSelectionChanged: (value) {

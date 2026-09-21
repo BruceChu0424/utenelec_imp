@@ -1,7 +1,7 @@
-// 到货登记「登记并送检」一步完成的导航链路 widget 测试。
+// 到货登记「先质检后入库」(2026-09-20 前叫「登记并送检」)一步完成的导航链路 widget 测试。
 //
 // 覆盖 2026-08-27 的流程简化 + 2026-09-05 双击直达：预计到货任务中心双击行
-// （待登记）→ 登记页「登记并送检」（确认框）→ POST /warehouse/inbound/arrivals
+// （待登记）→ 登记页「先质检后入库」（确认框）→ POST /warehouse/inbound/arrivals
 // （服务端按订货单回填币族并同事务审核）→ pop(结果) 回任务中心就地刷新并提示
 // 下一步——全程不再经过到货详情中间页，也不跳采购/委外收货单详情页。
 // 用委外（SUBCONTRACT）类型：无需采购员，表单最小可提交。
@@ -221,7 +221,7 @@ void main() {
     await tester.enterText(find.byKey(qtyKey), '2');
     await tester.pump();
     expect(find.text('跨仓部分 24 个 不绑定计划 · 其余按预定分配'), findsOneWidget);
-    final submit = find.text('登记并送检');
+    final submit = find.text('先质检后入库');
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
@@ -296,7 +296,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    Finder submit() => find.widgetWithText(UtenButton, '登记并送检');
+    Finder submit() => find.widgetWithText(UtenButton, '先质检后入库');
     // 2026-09-11 起表头上方的「移出本次登记/全选」按钮全撤（移出搬进行右键、
     // 全选走表头复选框），写权限的可见凭据改看**行首勾选列在不在**
     //（UtenEditableGrid.selectable = canRegister）。
@@ -454,7 +454,7 @@ void main() {
     await tester.tap(find.byType(Checkbox).at(0));
     await tester.pump();
 
-    await tester.tap(find.text('登记并送检'));
+    await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();
@@ -568,7 +568,7 @@ void main() {
     await tester.tap(find.byType(Checkbox).at(0));
     await tester.pump();
 
-    await tester.tap(find.text('登记并送检'));
+    await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();
@@ -668,9 +668,9 @@ void main() {
     final preStockButton = find.byKey(
       const Key('warehouse-arrival-stock-in-first'),
     );
-    // 没有独立权限：只有「登记并送检」，看不到「先入库后质检」。
+    // 没有独立权限：只有「先质检后入库」，看不到「先入库后质检」。
     expect(preStockButton, findsNothing);
-    expect(find.widgetWithText(UtenButton, '登记并送检'), findsOneWidget);
+    expect(find.widgetWithText(UtenButton, '先质检后入库'), findsOneWidget);
     expect(find.text('库位号'), findsWidgets);
 
     container.read(_testArrivalPermissionsProvider.notifier).replace({
@@ -840,7 +840,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 登记页：数量已按批准剩余预填（5），仓库已按建议仓预填，直接登记并送检。
-    await tester.tap(find.text('登记并送检'));
+    await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     // 审核责任确认框 → 确认登记送检。
     expect(find.text('确认登记送检'), findsOneWidget);
@@ -860,7 +860,7 @@ void main() {
     );
 
     // 原页面原动作重试：服务端以 maker+key+hash 回放原结果，不再造第二张收货单。
-    await tester.tap(find.text('登记并送检'));
+    await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));
     // 有界推进（通知条默认 3.2s 自动消失，不能 pumpAndSettle 到底）：
@@ -922,7 +922,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('先补退货').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('登记并送检'));
+    await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));
     await tester.pump();

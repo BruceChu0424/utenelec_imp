@@ -118,6 +118,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsFontSize => '글자 크기';
 
   @override
+  String get settingsFontSizeHint =>
+      '화면 전체(글자, 아이콘, 카드, 간격)를 함께 확대/축소합니다. 휴대폰에서는 글자만 조절됩니다';
+
+  @override
   String get settingsSectionPerformance => '성능';
 
   @override

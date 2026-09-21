@@ -5,6 +5,10 @@
 // 没有确认按钮、没有任何弹窗或两步流程。未确认的行显示「选择生产路线」占位，
 // 不预填假默认值（ADR-093：路线必须是车间明确确认的事实）。「生产中」分类
 // 不显示「下一步」列（报工走勾选 + 右下角悬浮按钮，路线以只读徽章展示）。
+// 2026-09-21 追加口径「我明明多选了，选中一个，为什么批量设路线还要重新选」：被改的
+// 行已勾选且勾选集里还有别的可设路线行时，一次下拉 = 对全部勾选行提交(与
+// 「批量设路线」菜单同一套筛选：不支持该路线或已是该路线的行自动跳过)；
+// 没勾选的行照旧只改自己。路线记忆预填只是展示，勾选行不会因预填被算作已选。
 // 2026-09-06 改版（用户口径）：分类收敛为 等待物料｜生产中｜历史任务——
 //  - 等待物料 = 全部未开工段（WAITING 等料 + READY/DISPATCHED 物料齐套·可开工）；
 //    齐套未提交行可勾选进入「批量领料」汇总，明确提交后仓库才接到任务；
@@ -78,6 +82,10 @@ class _ProductionWorkshopTasksPageState
   /// 路线确认提交中，防止重复请求并显示明确反馈。
   bool _confirmingRoutes = false;
   bool _navigating = false;
+
+  /// 批量报工去了日报新建页：回来时清空勾选(原设计在 push 返回后清；保存后
+  /// 新建页 replace 成详情，push 的 Future 不再返回，改由「返回即刷新」兑现)。
+  bool _clearSelectionOnResume = false;
   String _keyword = '';
   String? _status;
   String? _preparationFilter;
@@ -174,6 +182,13 @@ class _ProductionWorkshopTasksPageState
           : '当前：${_routeOptionMeta[current]?.$1}——${_routeOptionMeta[current]?.$2}',
     );
     if (current != null) buffer.write(' 开工前可随时改选，已备物料不变。');
+    final followers = _checkedRouteFollowers(task);
+    if (followers.isNotEmpty) {
+      buffer.write(
+        ' 本行已勾选：在这里选路线会一并确认全部 ${followers.length + 1} 个勾选行'
+        '(不支持该路线或已是该路线的行自动跳过)。',
+      );
+    }
     if (!task.canSplitBatch) {
       buffer.write(
         task.materialKindCount > 0 && task.materialCoveredKindCount > 0
@@ -190,6 +205,42 @@ class _ProductionWorkshopTasksPageState
   ) => _items
       .where((task) => ids.contains(task.segmentId) && _routeSettableTask(task))
       .toList(growable: false);
+
+  /// 与 [task] 一起被勾选的其它可设路线行；[task] 自己没勾选时为空(下拉只改
+  /// 自己)。悬停说明与 [_routeSubmitTargets] 共用，两处口径不会漂。
+  List<ProductionExecutionWorkbenchSegment> _checkedRouteFollowers(
+    ProductionExecutionWorkbenchSegment task,
+  ) {
+    if (!_selected.contains(task.segmentId)) return const [];
+    return _selectedRouteTasks(
+      _selected,
+    ).where((row) => row.segmentId != task.segmentId).toList(growable: false);
+  }
+
+  /// 「下一步」下拉的提交目标(2026-09-21 用户口径「我明明多选了，选中一个，
+  /// 为什么批量设路线还要重新选」)：被改的行已勾选且勾选集里还有别的可设路线
+  /// 行时，一次下拉 = 对全部勾选行提交，筛选与 [_showBatchRouteMenu] 同一套
+  /// (不支持该路线或已是该路线的行自动跳过)；没勾选的行照旧只改自己。被改的
+  /// 行本身永远在内——它正是触发提交的那一行。
+  List<ProductionExecutionWorkbenchSegment> _routeSubmitTargets(
+    ProductionExecutionWorkbenchSegment task,
+    String route,
+  ) {
+    final followers = _checkedRouteFollowers(task)
+        .where(
+          (row) =>
+              row.startRoute != route && _routeOptions(row).contains(route),
+        )
+        .toList(growable: false);
+    if (followers.isEmpty) return [task];
+    return _items
+        .where(
+          (row) =>
+              row.segmentId == task.segmentId ||
+              followers.any((f) => f.segmentId == row.segmentId),
+        )
+        .toList(growable: false);
+  }
 
   /// 「批量设路线」菜单(2026-09-20 用户口径「能够批量选择路线，现在必须一个一个选」)：
   /// 三条路线各显示能改的行数(不支持该路线或已是该路线的行自动跳过)，另有一条
@@ -401,7 +452,8 @@ class _ProductionWorkshopTasksPageState
 
   /// 「下一步」格（2026-09-20 用户口径，终版）：等待物料的下一步就是选定生产
   /// 路线——列内直接下拉（齐套 / 持续 / 分批），**选中即提交**，没有草稿、没有
-  /// 确认按钮、没有任何弹窗。未确认的行预填**路线记忆**（V602 恢复：同产品最近
+  /// 确认按钮、没有任何弹窗。本行已勾选且勾选集里还有别的可设路线行时，选中即
+  /// 对全部勾选行提交([_routeSubmitTargets])。未确认的行预填**路线记忆**（V602 恢复：同产品最近
   /// 一次确认的路线，仅在当前可选范围内），旁挂黄标「已按上次选择预填，请核对」
   /// ——预填只是展示，不写任何事实，选中才提交（ADR-093 明确确认口径不破）。
   /// 路线已冻结的行只读回显徽章；路线色标竖线沿用五轮配色口径（齐套=绿 / 分批=蓝 / 持续=品红）。
@@ -459,7 +511,8 @@ class _ProductionWorkshopTasksPageState
                 if (chosen == null || chosen == current) return;
                 if (!options.contains(chosen)) return;
                 if (_navigating || _loading) return;
-                _submitRoutes([task], chosen);
+                // 本行已勾选且还有别的勾选行 → 一次下拉对全部勾选行提交。
+                _submitRoutes(_routeSubmitTargets(task, chosen), chosen);
               },
             ),
           ),
@@ -903,11 +956,21 @@ class _ProductionWorkshopTasksPageState
     final path = requested.length == 1
         ? '/production/daily-reports/new?executionSegmentId=$encoded'
         : '/production/daily-reports/new?executionSegmentIds=$encoded';
-    setState(() => _navigating = true);
+    setState(() {
+      _navigating = true;
+      _clearSelectionOnResume = true;
+    });
     try {
+      // 日报新建页保存后 context.replace 成详情页：go_router 的 replace 会丢弃
+      // 这个 push 的 completer，下面的 await 就此不再返回、finally 也不会执行。
+      // 那条路上的列表刷新、清勾选与 _navigating 复位由「返回即刷新」(pageResume
+      // 以栈顶路由为落点)承担；这里的收尾只覆盖用户不保存直接返回的情况。
       await context.push(path);
       if (!mounted) return;
-      setState(_selected.clear);
+      setState(() {
+        _selected.clear();
+        _clearSelectionOnResume = false;
+      });
       await _load();
     } finally {
       if (mounted) setState(() => _navigating = false);
@@ -1320,7 +1383,13 @@ class _ProductionWorkshopTasksPageState
     // true，右下角「批量报工」就一直点不动。各流程自己的 finally 清 False 是
     // 幂等的，重复清无副作用。
     ref.onPageResume(RouteName.productionWorkshopTasks, () {
-      if (_navigating && mounted) setState(() => _navigating = false);
+      if (mounted && (_navigating || _clearSelectionOnResume)) {
+        setState(() {
+          _navigating = false;
+          if (_clearSelectionOnResume) _selected.clear();
+          _clearSelectionOnResume = false;
+        });
+      }
       _load();
     });
     // Route access, report creation and server row capabilities are separate
@@ -1345,7 +1414,15 @@ class _ProductionWorkshopTasksPageState
             onPressed: _loading
                 ? null
                 : () {
-                    setState(() => _page = 1);
+                    // 刷新兼作自愈：批量报工/领料等流程页保存后用 replace / go
+                    // 收尾时，go_router 不会完成本页原 push 的 Future，各流程的
+                    // finally 走不到、_navigating 卡在 true——勾选/开工/报工会
+                    // 静默不动。「返回即刷新」是第一道复位，这里是用户手里的
+                    // 第二道，否则只剩浏览器刷新(2026-09-20 用户反馈)。
+                    setState(() {
+                      _page = 1;
+                      _navigating = false;
+                    });
                     _load();
                   },
             icon: const Icon(Icons.refresh_rounded),
@@ -1569,7 +1646,9 @@ class _ProductionWorkshopTasksPageState
                           batchActionsBuilder: (_, ids) => [
                             if (_isPreparing) ...[
                               // 批量设路线(ADR-096)：勾选多行 → 菜单里点一条路线
-                              // 即提交；单行仍走「下一步」下拉。
+                              // 即提交。勾选多行后在任一勾选行的「下一步」下拉选
+                              // 路线也是对全部勾选行提交(同一套筛选)，本菜单是不
+                              // 经过某一行、直接按路线提交的第二入口。
                               Builder(
                                 builder: (menuContext) => UtenButton(
                                   key: const Key('workshop-batch-route'),
@@ -1737,7 +1816,8 @@ class _ProductionWorkshopTasksPageState
             '等待物料的下一步=选定生产路线，下拉选中即提交：齐套生产=全部物料到齐'
             '并实际领齐后开工；持续生产=每种物料共同支持部分产量即可开工，后续到货'
             '在同一工单继续领料/直送；分批生产=按当前可齐套量拆批，各批独立开工与'
-            '报工。已有领料、报工或预留后路线冻结，只读回显。',
+            '报工。勾选多行后在任一勾选行选路线=对全部勾选行一起提交(不支持该路线'
+            '或已是该路线的行自动跳过)。已开工或已有报工后路线冻结，只读回显。',
         value: (task) => task.startRoute == null
             ? '选择生产路线'
             : _routeOptionMeta[task.startRoute]?.$1 ?? task.startRouteLabel,

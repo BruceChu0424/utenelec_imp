@@ -1,6 +1,6 @@
 // 仓库批量登记实际到货页（/warehouse/inbound/receipts/batch）。
 //
-// 入库任务中心「预计到货」多选「批量登记送检」的落点（2026-09-06）：把多张
+// 入库任务中心「预计到货」多选「先质检后入库」/「先入库后质检」的落点（2026-09-06）：把多张
 // 采购/委外订货单的待登记明细汇成一张行级表——本次实收默认=批准剩余、入库仓库
 // 行级必填（建议仓预填；**勾选多行后在其中任意一行改仓/写库位即整批落值**，
 // 2026-09-11 起不再有表头上方的批量按钮，并记住上次所落仓与库位下次自动带），
@@ -82,7 +82,7 @@ class WarehouseArrivalBatchReceiptPage extends ConsumerStatefulWidget {
     super.key,
     this.prefills,
     this.canRegister,
-    this.initialStockInBeforeInspection = false,
+    this.stockInBeforeInspection = false,
   });
 
   /// 入库任务中心多选带入的预计到货预填（每张=一张订货单）；空 = 直达兜底。
@@ -91,9 +91,11 @@ class WarehouseArrivalBatchReceiptPage extends ConsumerStatefulWidget {
   /// 仅供独立预览/测试覆盖；正式路由为空时从当前登录权限实时推导。
   final bool? canRegister;
 
-  /// 任务中心「先入库后质检(N)」直达（2026-09-17）：进页即预置先入库后质检
-  /// 模式——库位列必填红框、提示语按该模式，省一次「先点错按钮再切换」。
-  final bool initialStockInBeforeInspection;
+  /// 任务中心进页时选定的路线(2026-09-20 用户口径：本页只显示所选那条路线的
+  /// 提交按钮，不再并排两个)：true = 「先入库后质检(N)」直达(`?preStock=1`)，
+  /// 库位列进页即必填红框；false = 「先质检后入库(N)」(原「批量登记送检」)直达，
+  /// 走原登记送检流程。
+  final bool stockInBeforeInspection;
 
   @override
   ConsumerState<WarehouseArrivalBatchReceiptPage> createState() =>
@@ -117,10 +119,14 @@ class _WarehouseArrivalBatchReceiptPageState
   final String _registrationId = const Uuid().v4();
   int _removedLineCount = 0;
 
-  /// 先入库后质检(V596)：底部两个按钮二选一——「先入库后质检」= 登记送检的同一事务里
-  /// 把每行按库位上架(库位必填)；「登记并送检」= 原流程。记住最近一次点的是哪个，
-  /// 库位列是否必填(红框)跟着它走。
+  /// 先入库后质检(V596)：本页路线由任务中心进页时定死(2026-09-20 起底部只有一个
+  /// 提交按钮)——「先入库后质检」= 登记送检的同一事务里把每行按库位上架(库位必填)；
+  /// 「先质检后入库」= 原登记送检流程。库位列是否必填(红框)跟着它走；进页或提交时
+  /// 发现没有独立权限则退回原流程并提示(服务端同样兜底)。
   bool _stockInBeforeInspection = false;
+
+  /// 本页路线的按钮名(与任务中心批量按钮同名)。
+  String get _routeLabel => _stockInBeforeInspection ? '先入库后质检' : '先质检后入库';
 
   bool get _canRegisterNow {
     final override = widget.canRegister;
@@ -151,7 +157,9 @@ class _WarehouseArrivalBatchReceiptPageState
   @override
   void initState() {
     super.initState();
-    _stockInBeforeInspection = widget.initialStockInBeforeInspection;
+    // 进页即定路线；没有独立权限时退回「先质检后入库」(任务中心本就不显示该入口)。
+    _stockInBeforeInspection =
+        widget.stockInBeforeInspection && _canStockInBeforeInspection;
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -383,7 +391,7 @@ class _WarehouseArrivalBatchReceiptPageState
     return false;
   }
 
-  /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「登记并送检」按钮。
+  /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「先质检后入库」按钮(原「登记并送检」)。
   Future<void> _save({required bool preStock}) async {
     if (!_canRegisterNow) {
       context.appError('当前账号没有登记并送检权限，请返回任务中心刷新权限');
@@ -391,8 +399,13 @@ class _WarehouseArrivalBatchReceiptPageState
     }
     final wantPreStock = preStock && _canStockInBeforeInspection;
     if (_stockInBeforeInspection != wantPreStock) {
-      // 先切模式再校验：缺库位的行立刻红框，用户补齐后再点同一个按钮。
+      // 路线进页已定，这里只会因权限被收回而退回原流程：说明原因并换成
+      // 「先质检后入库」按钮，由用户决定是否继续，不静默换路线提交。
       setState(() => _stockInBeforeInspection = wantPreStock);
+      if (preStock && !wantPreStock) {
+        context.appWarning('当前账号没有「到货先入库后质检」权限，已切换为「先质检后入库」，请确认后再提交');
+        return;
+      }
     }
     if (_receiverId == null || _receiverId!.isEmpty) {
       context.appError('请选择收货人(仓库收货人)');
@@ -467,8 +480,8 @@ class _WarehouseArrivalBatchReceiptPageState
     final confirmed = await UtenDialog.show(
       context,
       title: stockInFirst
-          ? '批量登记并先入库(${groups.length} 张收货单)'
-          : '批量登记送检（${groups.length} 张收货单）',
+          ? '先入库后质检(${groups.length} 张收货单)'
+          : '先质检后入库(${groups.length} 张收货单)',
       confirmLabel: stockInFirst ? '确认登记并先入库' : '确认登记送检',
       content: _confirmPoints([
         // 有未勾选行时先说清去向，防「取消勾选=静默不登记」。
@@ -584,7 +597,7 @@ class _WarehouseArrivalBatchReceiptPageState
         context.go(RouteName.warehouseInboundExpectations);
       }
     } catch (_) {
-      if (mounted) context.appError('批量登记送检失败，请保持当前内容后重试');
+      if (mounted) context.appError('批量登记失败，请保持当前内容后重试');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -619,15 +632,11 @@ class _WarehouseArrivalBatchReceiptPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canRegister = widget.canRegister ?? _canRegisterNow;
-    // 「先入库后质检」按钮随权限快照实时显隐(独立权限点，与 canRegister 注入无关)。
-    final canPreStock =
-        ref.watch(isSuperAdminProvider) ||
-        ref
-            .watch(currentPermissionsProvider)
-            .contains(Perm.warehouseIqcStockInBeforeInspection);
     return Scaffold(
       appBar: UtenAppBar(
         title: '批量登记实际到货',
+        // 2026-09-20：路线在任务中心已选定，标题下标明本页走哪条，底部只此一个提交按钮。
+        subtitle: '路线：$_routeLabel',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(
             context,
@@ -663,8 +672,7 @@ class _WarehouseArrivalBatchReceiptPageState
           ? null
           : ListenableBuilder(
               listenable: _lineGrid,
-              builder: (context, _) =>
-                  _buildBottomBar(theme, canRegister, canPreStock),
+              builder: (context, _) => _buildBottomBar(theme, canRegister),
             ),
     );
   }
@@ -748,7 +756,7 @@ class _WarehouseArrivalBatchReceiptPageState
             // 页面零提示，用户判定「不能删除部分」。2026-09-17 勾选口径后，
             // 未勾选=不进本次登记（与移出等效、可重新勾回），一并说明。
             Text(
-              '明细默认全选：右下「先入库后质检 / 登记并送检」只提交勾选的行，'
+              '明细默认全选：右下「$_routeLabel」只提交勾选的行，'
               '未勾选的行不登记、不写库存，仍留在待登记送检（可重新勾回）；'
               '本次不收的货品也可点行末 ⊖ 移出本次登记（也可勾选多行后右键批量移出）。',
               style: theme.textTheme.bodySmall?.copyWith(
@@ -1154,13 +1162,17 @@ class _WarehouseArrivalBatchReceiptPageState
     ],
   );
 
-  Widget _buildBottomBar(ThemeData theme, bool canRegister, bool canPreStock) {
+  Widget _buildBottomBar(ThemeData theme, bool canRegister) {
     // 2026-09-12 用户口径「跟其他页面一样，悬浮的在右下角」：吸底操作条改
-    // UtenFloatingActionGroup（与品质批量审批页同款），只剩取消 / 登记并送检
+    // UtenFloatingActionGroup（与品质批量审批页同款），只剩取消 / 提交
     //（合计在明细表下方的合计条，不在操作条重复）。
-    // 2026-09-17 勾选口径：提交集=勾选集，一行都没勾时两个提交按钮置灰，
+    // 2026-09-17 勾选口径：提交集=勾选集，一行都没勾时提交按钮置灰，
     // 灰态点击说明原因（未勾选的行本次不登记）。
+    // 2026-09-20 用户口径：任务中心点哪条路线进来就只显示哪条路线的提交按钮
+    // (「先入库后质检」或「先质检后入库」二者只出现一个)，不再并排两个让人再选一次。
     final hasCheckedLine = _lineGrid.selectedRows.isNotEmpty;
+    final canSubmit =
+        canRegister && !_saving && _lines.isNotEmpty && hasCheckedLine;
     final VoidCallback? onDisabledTap =
         !canRegister || _lines.isEmpty || hasCheckedLine
         ? null
@@ -1173,41 +1185,41 @@ class _WarehouseArrivalBatchReceiptPageState
           onPressed: _saving ? null : () => context.pop(),
           child: const Text('取消'),
         ),
-        // 先入库后质检(V596 / ADR-090)：与「登记并送检」并排的第二个主动作(用户口径
-        // 2026-09-16「在登记并送检左边加个按钮」)。点它 = 登记 + 送检 + 按库位上架同一事务，
-        // 品质部到库位检验；合格自动转正入库，不合格从库位取出退回。需独立权限。
-        if (canPreStock)
+        // 先入库后质检(V596 / ADR-090)：登记 + 送检 + 按库位上架同一事务，品质部到
+        // 库位检验；合格自动转正入库，不合格从库位取出退回。需独立权限(进页已校验)。
+        if (_stockInBeforeInspection)
           Tooltip(
             message:
                 '货品直接上架到库位、品质部到库位检验：每行「库位号」必填；'
                 '合格由系统按上架位置自动转正入库，不合格由仓库从库位取出登记退回',
             child: UtenButton(
               key: const Key('warehouse-arrival-stock-in-first'),
+              // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
+              type: UtenButtonType.danger,
               size: UtenButtonSize.large,
-              isLoading: _saving && _stockInBeforeInspection,
+              isLoading: _saving,
               icon: Icons.shelves,
-              onPressed:
-                  !canRegister || _saving || _lines.isEmpty || !hasCheckedLine
-                  ? null
-                  : () => _save(preStock: true),
+              onPressed: canSubmit ? () => _save(preStock: true) : null,
               onDisabledTap: onDisabledTap,
               child: const Text('先入库后质检'),
             ),
+          )
+        else
+          Tooltip(
+            message:
+                '原登记送检流程：登记到货并直送品质部待检(IQC)，'
+                '检验合格后转仓库待入库，仓库确认实物与库位后库存才增加',
+            child: UtenButton(
+              key: const Key('warehouse-arrival-batch-submit'),
+              type: UtenButtonType.danger,
+              size: UtenButtonSize.large,
+              isLoading: _saving,
+              icon: Icons.fact_check_outlined,
+              onPressed: canSubmit ? () => _save(preStock: false) : null,
+              onDisabledTap: onDisabledTap,
+              child: const Text('先质检后入库'),
+            ),
           ),
-        UtenButton(
-          key: const Key('warehouse-arrival-batch-submit'),
-          // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          isLoading: _saving && !_stockInBeforeInspection,
-          icon: Icons.fact_check_outlined,
-          onPressed:
-              !canRegister || _saving || _lines.isEmpty || !hasCheckedLine
-              ? null
-              : () => _save(preStock: false),
-          onDisabledTap: onDisabledTap,
-          child: const Text('登记并送检'),
-        ),
       ],
     );
   }

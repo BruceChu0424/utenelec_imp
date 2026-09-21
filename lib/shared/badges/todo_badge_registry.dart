@@ -58,6 +58,7 @@ import '../auth/permissions.dart';
 import '../models/procurement_inbound.dart';
 import '../providers/production_fqc_pending_count_provider.dart';
 import '../providers/draft_counts_provider.dart';
+import '../providers/document_status_counts_provider.dart';
 import '../providers/sales_shipment_finance_count_provider.dart';
 
 /// 待办容器：一个 [TodoModule] 对应工作台上的一张模块卡 / 一个 hub。
@@ -193,6 +194,10 @@ enum TodoEntry {
   /// 订单进度查询：财务驳回待修正 + 可分批发货待开单，阅读通知不清除业务待办。
   salesAttention(TodoModule.sales),
 
+  /// 销售出货「财务已退回」: 财务退回给销售修改后重提的出货单(2026-09-21 起不再混在草稿里;
+  /// 采购/委外订货的退回件已由各自任务中心的 FINANCE_REJECTED 计入, 不另登记)。
+  salesShipmentFinanceRejected(TodoModule.sales),
+
   // —— 草稿（2026-09-11 起计入累加；每个模块一条，数字来自 draftCountsProvider）——
   /// 销售模块草稿（订货/发货/退货/报价）。
   salesDrafts(TodoModule.sales),
@@ -314,6 +319,10 @@ int todoEntryCount(TodoEntry entry, TodoWatch watch) => switch (entry) {
     productionFqcPendingCountProvider,
   ),
   TodoEntry.salesAttention => _async(watch, salesAttentionCountProvider),
+  TodoEntry.salesShipmentFinanceRejected => _async(
+    watch,
+    salesShipmentFinanceRejectedCountProvider,
+  ),
   // 草稿：一次请求带回全部 21 类，这里按模块切片求和（每类都已在服务端按
   // *:view 权限 + 对象级归属收敛，无权限的类型固定为 0，不用再判权限）。
   TodoEntry.salesDrafts => _drafts(watch, const [
@@ -402,6 +411,8 @@ final todoTotalCountProvider = Provider<int>(
 /// 走各自的 `notifier.refresh()`，不在此列。
 void invalidateTodoBadgeCaches(WidgetRef ref) {
   ref.invalidate(expenseCountsProvider);
+  // 三类单据「财务已退回」张数(销售出货待办 + hub 卡徽章), 派生 provider 随源头刷新.
+  ref.invalidate(financeRejectedCountsProvider);
   ref.invalidate(warehouseProductionReturnPendingCountProvider);
   ref.invalidate(salesOrderFinanceConfirmationCountProvider);
   ref.invalidate(salesShipmentFinanceCountProvider);

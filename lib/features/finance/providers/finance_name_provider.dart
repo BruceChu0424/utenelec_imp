@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
 import '../../../shared/providers/master_name_provider.dart'
@@ -47,10 +48,26 @@ class FinanceAccountReference {
   final String? status;
 }
 
+/// 币种主档引用：名称 + 参考汇率 + 本位币标记(收款单预填汇率用)。
+class FinanceCurrencyReference {
+  const FinanceCurrencyReference({
+    required this.id,
+    this.name,
+    this.exchangeRateText,
+    this.baseCurrency = false,
+  });
+
+  final String id;
+  final String? name;
+  final String? exchangeRateText;
+  final bool baseCurrency;
+}
+
 class FinanceNameService extends ChangeNotifier {
   FinanceNameService(this.api, this._paymentStyleRepo);
   final ApiClient api;
   final PaymentStyleRepository _paymentStyleRepo;
+  Map<String, FinanceCurrencyReference> _currencyReferences = {};
 
   Map<String, String> _clients = {};
   Map<String, String> _suppliers = {};
@@ -95,21 +112,49 @@ class FinanceNameService extends ChangeNotifier {
     }
 
     final accountsFuture = _loadAccounts();
+    final currencyRefsFuture = _loadCurrencyReferences();
     final results = await Future.wait<Map<String, String>>([
       loadDict(ApiEndpoints.clientsDict),
       loadDict(ApiEndpoints.suppliersDict),
-      loadDict(ApiEndpoints.currenciesDict),
     ]);
     final accounts = await accountsFuture;
+    final currencyRefs = await currencyRefsFuture;
     _clients = results[0];
     _suppliers = results[1];
-    _currencies = results[2];
+    _currencies = {
+      for (final ref in currencyRefs.values) ref.id: ref.name ?? '',
+    };
+    _currencyReferences = currencyRefs;
     _accounts = accounts.names;
     _accountEntries = accounts.entries;
     _accountCurrencies = accounts.currencies;
     _accountBaseCurrencies = accounts.baseCurrencies;
     _accountReferences = accounts.references;
     _accountLoadError = accounts.error;
+  }
+
+  /// 币种字典：名称之外还留参考汇率与本位币标记(V632 收款单按币种预填「本批汇率报价」)。
+  /// 端点失败时返回空表，与其它 dict 一样独立容错。
+  Future<Map<String, FinanceCurrencyReference>>
+  _loadCurrencyReferences() async {
+    try {
+      final list = await api.getList(ApiEndpoints.currenciesDict);
+      final refs = <String, FinanceCurrencyReference>{};
+      for (final item in list) {
+        final id = item['id'] as String;
+        refs[id] = FinanceCurrencyReference(
+          id: id,
+          name: (item['name'] ?? '') as String,
+          exchangeRateText: financeExactDecimal(
+            item['exchangeRateText'] ?? item['exchangeRate'],
+          ),
+          baseCurrency: item['baseCurrency'] as bool? ?? false,
+        );
+      }
+      return refs;
+    } catch (_) {
+      return const {};
+    }
   }
 
   Future<_FinanceAccountDictionaries> _loadAccounts() async {
@@ -254,6 +299,19 @@ class FinanceNameService extends ChangeNotifier {
   bool get accountMetadataAvailable =>
       _accountLoadError == null && _accountReferences.isNotEmpty;
   String currency(String? id) => _resolve(_currencies, id);
+
+  /// 币种主档参考汇率(十进制文本；未维护/为 0/字典缺失时返回 null)。
+  String? currencyReferenceRateText(String? id) {
+    if (id == null || id.isEmpty) return null;
+    final text = _currencyReferences[id]?.exchangeRateText?.trim();
+    if (text == null || text.isEmpty) return null;
+    final value = double.tryParse(text);
+    return value == null || value <= 0 ? null : text;
+  }
+
+  /// 币种是否本位币(汇率固定为 1)；字典缺失时返回 null。
+  bool? currencyIsBase(String? id) =>
+      id == null || id.isEmpty ? null : _currencyReferences[id]?.baseCurrency;
 
   Map<String, String> get clientEntries => _clients;
   Map<String, String> get supplierEntries => _suppliers;

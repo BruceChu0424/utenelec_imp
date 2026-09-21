@@ -25,6 +25,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_button.dart';
 import '../inputs/uten_field_hint_icon.dart';
+import 'uten_drag_reorder_list.dart';
 
 /// 列头「标签 + ⓘ 说明」（MasterDataTableView / UtenEditableGrid 共用，2026-09-10）。
 ///
@@ -487,7 +488,7 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
         _entryRow(theme, entry, hidden, visibleCount),
     ];
     // 首两行（全选+分隔）与末尾（恢复默认区）固定不参与排序：拖拽把手只挂列行；
-    // ReorderableListView 契约要求全部子项带 key，固定行用稳定 key 补齐。
+    // 换位列表按稳定 id 认项（见下方 ids），固定行用稳定 key/id 补齐。
     final rows = <Widget>[
       KeyedSubtree(
         key: const ValueKey('uten-column-chooser-header'),
@@ -527,15 +528,27 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
       );
     }
     final fixedTail = widget.onReset != null ? 2 : 0;
-    // onReorderItem 的 newIndex 已含下移补偿（等价 removeAt 后的最终插入位）。
-    return ReorderableListView(
+    // 与 rows 一一对应的稳定 id：固定行用行 key 名，列行用列 key。
+    final ids = <Object>[
+      'uten-column-chooser-header',
+      'uten-column-chooser-divider',
+      for (final entry in entries) 'uten-column-option-${entry.key}',
+      if (widget.onReset != null) ...[
+        'uten-column-chooser-reset-divider',
+        'uten-column-chooser-reset',
+      ],
+    ];
+    // Draggable 版换位列表（根部整体缩放之下拖影/换位判定坐标正确；SDK
+    // ReorderableListView 的拖影会偏 zoom 倍）。newIndex 为被拖行的最终下标
+    // （等价 removeAt 后的插入位），越出列行区间由下面钳位。
+    return UtenDragReorderList(
       key: const ValueKey('uten-column-chooser-scroll'),
-      buildDefaultDragHandles: false,
-      scrollController: _scroll,
+      ids: ids,
+      controller: _scroll,
       shrinkWrap: true,
       padding: EdgeInsets.zero,
-      children: rows,
-      onReorderItem: (oldIndex, newIndex) {
+      itemBuilder: (context, index) => rows[index],
+      onReorder: (oldIndex, newIndex) {
         // 固定行（全选/分隔/恢复默认）不可搬：只允许在列行区间内移动。
         if (oldIndex < 2) return;
         final lastColumnIndex = rows.length - fixedTail - 1;
@@ -572,8 +585,10 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
         enabled: canHide,
         subtitle: hint,
         trailing: widget.onReorder != null
-            ? ReorderableDragStartListener(
+            // 列行手柄按住即拖（全平台；弹层内列表短、无滚动手势竞争）。
+            ? UtenDragReorderHandle(
                 index: index + 2,
+                immediate: true,
                 child: const SizedBox(
                   width: 40,
                   height: 40,

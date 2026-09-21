@@ -1,5 +1,6 @@
 // 仓库单据详情（生产 DRAW）：出库弹窗备注随首轮「出库即审核」下发；
 // 出库凭证区常驻详情页并按状态/权限门控（2026-09-10）。
+// 领料负责人姓名随详情 payload 返回(workerName), 页面不查员工档案(2026-09-21)。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,6 +79,8 @@ class _DrawDetailApi extends ApiClient {
       'billDate': '2026-09-10',
       'status': status,
       'warehouseId': 'main',
+      'workerId': 'worker-1',
+      'workerName': '石磊',
       'issueStatus': issuedQty > 0 ? 1 : 0,
       'productionLinked': true,
       'canEdit': false,
@@ -168,6 +171,17 @@ const _approverIssuer = {
 };
 
 void main() {
+  testWidgets('worker column shows the server-resolved name', (tester) async {
+    await _pumpDrawDetail(
+      tester,
+      status: 1,
+      issuedQty: 5,
+      permissions: _viewer,
+    );
+    // 假 API 对 /org/employees/* 直接抛错, 能显示姓名即证明页面没有再查员工档案。
+    expect(find.text('石磊'), findsOneWidget, reason: '领料负责人来自 workerName');
+  });
+
   testWidgets('first issue of a draft passes the remark to approve-and-issue', (
     tester,
   ) async {

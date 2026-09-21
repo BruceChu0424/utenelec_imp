@@ -130,6 +130,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         Set<UUID> pendingFinanceIds = financeApproval == null
                 ? null
                 : approvalProjection.pendingOrderIds(orderType());
+        // 财务退回件(最新 case=REJECTED): 「财务已退回」段圈定; 草稿段(NONE)同时排除在审与退回.
+        Set<UUID> rejectedFinanceIds = financeApproval == null
+                ? null
+                : approvalProjection.rejectedOrderIds(orderType());
         Specification<PurchaseOrder> spec = (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -151,9 +155,21 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     } else {
                         ps.add(root.get("id").in(pendingFinanceIds));
                     }
-                } else if (!pendingFinanceIds.isEmpty()) {
-                    // NONE：排除在审单；没有在审单时无需谓词。
-                    ps.add(cb.not(root.get("id").in(pendingFinanceIds)));
+                } else if ("REJECTED".equals(financeApproval)) {
+                    // 财务已退回段: 无退回件 → 恒假.
+                    if (rejectedFinanceIds.isEmpty()) {
+                        ps.add(cb.disjunction());
+                    } else {
+                        ps.add(root.get("id").in(rejectedFinanceIds));
+                    }
+                } else {
+                    // NONE: 排除在审单与财务退回件(2026-09-21 起退回件有自己的段); 空集无需谓词.
+                    if (!pendingFinanceIds.isEmpty()) {
+                        ps.add(cb.not(root.get("id").in(pendingFinanceIds)));
+                    }
+                    if (!rejectedFinanceIds.isEmpty()) {
+                        ps.add(cb.not(root.get("id").in(rejectedFinanceIds)));
+                    }
                 }
             }
             return cb.and(ps.toArray(new Predicate[0]));
@@ -485,7 +501,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private static String normalizeFinanceApprovalSlice(String raw) {
         String value = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
         return switch (value) {
-            case "", "NONE", "PENDING" -> value.isEmpty() ? null : value;
+            case "", "NONE", "PENDING", "REJECTED" -> value.isEmpty() ? null : value;
             default -> throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "财务审批态筛选无效");
         };

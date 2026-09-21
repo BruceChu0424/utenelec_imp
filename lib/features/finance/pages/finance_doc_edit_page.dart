@@ -408,12 +408,22 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         return;
       }
     }
+    final permissions = ref.read(currentPermissionsProvider);
+    final canSwitchToPrepayment =
+        _cfg.type == FinanceDocType.receipt &&
+        _grid.isEmpty &&
+        permissions.contains(Perm.financeViewAll) &&
+        permissions.contains(Perm.customerPrepaymentView) &&
+        permissions.contains(Perm.financeReceiptCreate);
     final picked = await showArApPickerDialog(
       context,
       ref,
       direction: direction,
       partyId: _partyId,
       lockedCurrencyId: lockedCurrencyId,
+      onSwitchToPrepayment: canSwitchToPrepayment
+          ? _switchToPrepaymentAndPickOrder
+          : null,
     );
     if (!mounted) return;
     if (picked == null || picked.isEmpty) return;
@@ -450,6 +460,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         _currencyId = pickedCurrencyId;
         _paymentCurrencyError = null;
       });
+      _prefillReceiptRateForCurrency();
     }
     _grid.addRows(
       additions.map((a) => FinanceGridRow.fromApplied(_cfg.itemMode, a)),
@@ -458,6 +469,54 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     if (_cfg.type == FinanceDocType.receipt) {
       _alignReceiptChannelWithAccount();
     }
+  }
+
+  /// V632：「引用应收」空列表处一键切到登记订单预收并直接打开订单选择
+  /// (应收要等仓库出库才有，订单定金/预付走预收)。
+  Future<void> _switchToPrepaymentAndPickOrder() async {
+    if (!mounted) return;
+    _onReceiptKindChanged(_receiptKindCustomerPrepayment);
+    if (!mounted || _receiptKind != _receiptKindCustomerPrepayment) return;
+    final selected = await showSalesOrderPicker(context, ref);
+    if (!mounted || selected == null) return;
+    _onPrepaymentOrderSelected(selected);
+  }
+
+  /// 收付款方式字典是否有可选项(为空时不拦保存，见 V632)。
+  bool get _financeMethodOptionsAvailable {
+    if (_cfg.type == FinanceDocType.bankTransfer) return false;
+    final direction =
+        _cfg.type == FinanceDocType.receipt ||
+            _cfg.type == FinanceDocType.otherIncome
+        ? 'RECEIPT'
+        : 'PAYMENT';
+    final options = ref
+        .read(financePaymentMethodOptionsProvider(direction))
+        .valueOrNull;
+    return options != null && options.isNotEmpty;
+  }
+
+  /// 本批汇率报价是否锁定为 1(应收/预收原币是本位币)。
+  bool get _receiptRateLocked =>
+      _cfg.type == FinanceDocType.receipt &&
+      ref.read(financeNameServiceProvider).currencyIsBase(_currencyId) == true;
+
+  /// V632：按应收/预收原币预填「本批汇率报价」(对齐金蝶/用友「收款单汇率默认取汇率表」)：
+  /// 本位币恒 1 并锁定；外币取币种主档参考汇率；主档没维护则留空由财务按银行回单填。
+  /// 只在汇率框为空或仍是默认 1 时预填，不覆盖财务已经改过的值。
+  void _prefillReceiptRateForCurrency() {
+    if (_cfg.type != FinanceDocType.receipt) return;
+    final currencyId = _currencyId;
+    if (currencyId == null || currencyId.isEmpty) return;
+    final names = ref.read(financeNameServiceProvider);
+    final current = _rate.text.trim();
+    if (names.currencyIsBase(currencyId) == true) {
+      if (current != '1') _rate.text = '1';
+    } else if (current.isEmpty || current == '1') {
+      _rate.text = names.currencyReferenceRateText(currencyId) ?? '';
+    }
+    _syncReceiptRateToRows();
+    if (mounted) setState(() {});
   }
 
   void _alignReceiptChannelWithAccount() {
@@ -593,6 +652,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       _otherFee.clear();
       _otherFeeStyleId = null;
     });
+    _prefillReceiptRateForCurrency();
     _alignReceiptChannelWithAccount();
   }
 
@@ -639,7 +699,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       return;
     }
     if (_cfg.type != FinanceDocType.bankTransfer &&
-        _financePaymentMethodId == null) {
+        _financePaymentMethodId == null &&
+        _financeMethodOptionsAvailable) {
+      // 字典为空(旧库方式名称未同步、标准方式也没播种)时不拦保存——服务端本就允许空方式，
+      // 先把款记上比卡在一个没法选的必填框上重要。
       context.appError(
         '请选择${_cfg.type == FinanceDocType.receipt || _cfg.type == FinanceDocType.otherIncome ? '收款' : '付款'}方式',
       );
@@ -1262,7 +1325,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
               key: const ValueKey('finance-receipt-exchange-rate'),
               label: '本批汇率报价',
               controller: _rate,
-              info: '按本批银行回单或代理结算单填写。结汇报价供核对，实际到账按银行金额记录；外币原币账户按此明确汇率折算本币。',
+              readOnly: _receiptRateLocked,
+              info: _receiptRateLocked
+                  ? '应收/预收原币是本位币，汇率固定为 1。'
+                  : '已按币种主档参考汇率预填(没维护则留空)，请按本批银行回单或代理结算单核对修改。结汇报价供核对，实际到账按银行金额记录；与应收记账汇率的差额进汇兑损益。',
               onChanged: (_) {},
             ),
             _requiredPositiveNumberField(
@@ -1724,14 +1790,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                           items: [
                                             const UtenDropdownItem(
                                               value: _receiptKindArSettlement,
-                                              label: '货款收款（核销应收）',
+                                              label: '货款收款(核销已发货的应收)',
                                             ),
                                             if (canRegisterCustomerPrepayment ||
                                                 _isCustomerPrepayment)
                                               const UtenDropdownItem(
                                                 value:
                                                     _receiptKindCustomerPrepayment,
-                                                label: '登记订单预收',
+                                                label: '登记订单预收(订单未发货的定金/预付款)',
                                               ),
                                           ],
                                           onChanged: _onReceiptKindChanged,
@@ -1790,7 +1856,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                             () =>
                                                 _financePaymentMethodId = value,
                                           ),
-                                          required: true,
+                                          // V632：字典为空(旧库方式名称未同步且标准方式未播种)时不必填，
+                                          // 并说明去处，避免「点开没得选还必填」把单据卡死。
+                                          required: financeMethods.isNotEmpty,
+                                          info: financeMethods.isEmpty
+                                              ? '暂无可选的收付款方式：旧库方式名称尚未同步、标准方式也未播种。可先保存，请管理员升级到 V632 或导入旧库收付款方式后再补选。'
+                                              : null,
                                         ),
                                       if (_cfg.hasCurrency && !isReceipt)
                                         _cfg.type == FinanceDocType.payment
@@ -2513,6 +2584,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     required ValueChanged<String> onChanged,
     String? info,
     String? errorMessage,
+    bool readOnly = false,
   }) {
     final theme = Theme.of(context);
     return ValueListenableBuilder<TextEditingValue>(
@@ -2520,6 +2592,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       builder: (context, value, _) => TextField(
         key: key,
         controller: controller,
+        readOnly: readOnly,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         onChanged: onChanged,
         decoration: applyRequiredEmpty(

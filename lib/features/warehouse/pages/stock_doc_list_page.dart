@@ -30,6 +30,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -85,9 +86,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
 
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
-
-  /// 「草稿」段计数（中性括号 `(N)`，草稿不是待办）；null = 加载中（不渲染）。
-  int? _draftCount;
 
   /// 表头列筛选：仓库（warehouses/dict 桶）+ 领料车间（departments/tree 展平桶，
   /// 仅 DRAW 有该列）+ 调入仓（warehouses/dict 桶，仅 TRANSFER 有该列）；
@@ -199,17 +197,15 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     _reload(1);
   }
 
-  /// 「草稿」段计数（list size=1 取 total；失败保持 null 不渲染括号数字）。
-  Future<void> _loadBadge() async {
-    try {
-      final r = await ref
-          .read(stockDocRepositoryProvider(widget.docType))
-          .list(size: 1, filter: const StockDocFilter(status: 0));
-      if (!mounted) return;
-      setState(() => _draftCount = r.total);
-    } catch (_) {
-      // 计数失败静默：徽章不显示，不影响列表。
-    }
+  /// 分段计数范围: 仓库单据按本页单据类型切片(草稿/已审/红冲三桶一次请求, 与列表同一读范围)。
+  DocumentStatusScope get _statusScope => DocumentStatusScope(
+    DraftDocKind.stockDocument,
+    docType: widget.docType.code,
+  );
+
+  /// 分段计数刷新(2026-09-21 起走 documentStatusCountsProvider, 不再 list(size:1) 数草稿)。
+  void _loadBadge() {
+    ref.invalidate(documentStatusCountsProvider(_statusScope));
   }
 
   // ---- 列定义 -----------------------------------------------------------
@@ -286,6 +282,10 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     final theme = Theme.of(context);
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
     final names = ref.watch(masterNameServiceProvider);
+    // 分段计数(草稿/已审/红冲); 加载中或无权限为 null, 不渲染数字。
+    final statusCounts = ref
+        .watch(documentStatusCountsProvider(_statusScope))
+        .valueOrNull;
     // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(widget.docType.refreshKey), (_, _) {
@@ -332,21 +332,23 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                         segmentsKey: Key(
                           'stock-doc-segments-${widget.docType.code}',
                         ),
-                        // 计数形态：草稿是「我自己没写完的东西」，没人在等它
-                        // → 中性括号 `(N)`（组件默认）；其余段不传 count。
+                        // 计数形态：仓库调拨/盘点的 hub 卡是中性括号草稿数, 本页三段
+                        // 同形(草稿 / 已审 / 红冲全是中性括号, 2026-09-21 子分类补齐数字)。
                         segments: [
                           UtenFilterSegment(
                             value: const _StockDocSeg.stage(0),
                             label: '草稿',
-                            count: _draftCount,
+                            count: statusCounts?[DocumentStatusBucket.draft],
                           ),
-                          const UtenFilterSegment(
-                            value: _StockDocSeg.stage(1),
+                          UtenFilterSegment(
+                            value: const _StockDocSeg.stage(1),
                             label: '已审',
+                            count: statusCounts?[DocumentStatusBucket.approved],
                           ),
-                          const UtenFilterSegment(
-                            value: _StockDocSeg.stage(-1),
+                          UtenFilterSegment(
+                            value: const _StockDocSeg.stage(-1),
                             label: '红冲',
+                            count: statusCounts?[DocumentStatusBucket.reversed],
                           ),
                           const UtenFilterSegment(
                             value: _StockDocSeg.history(),

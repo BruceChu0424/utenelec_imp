@@ -83,6 +83,12 @@ Future<UtenContextMenuCloseReason> showUtenContextMenu(
     return Future.value(UtenContextMenuCloseReason.dismissed);
   }
   final overlay = Overlay.of(context, rootOverlay: true);
+  // 手势的 globalPosition 是窗口坐标，浮层里 Positioned 用的是浮层(画布)坐标：
+  // 根部整体缩放(UtenDisplayZoomBox)时两者相差 zoom 倍，先换算到浮层坐标。
+  final overlayBox = overlay.context.findRenderObject();
+  final position = overlayBox is RenderBox && overlayBox.attached
+      ? overlayBox.globalToLocal(globalPosition)
+      : globalPosition;
   final completer = Completer<UtenContextMenuCloseReason>();
   late OverlayEntry entry;
   var closed = false;
@@ -108,7 +114,7 @@ Future<UtenContextMenuCloseReason> showUtenContextMenu(
 
   entry = OverlayEntry(
     builder: (ctx) => _UtenContextMenuOverlay(
-      position: globalPosition,
+      position: position,
       entries: entries,
       onDismiss: dismiss,
       onItemSelected: (item) => unawaited(runAction(item)),

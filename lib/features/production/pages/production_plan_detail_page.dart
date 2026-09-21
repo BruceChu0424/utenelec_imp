@@ -56,6 +56,7 @@ import '../widgets/progress_ring.dart';
 import '../widgets/production_material_settlement_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 
 class ProductionPlanDetailPage extends ConsumerStatefulWidget {
@@ -83,6 +84,9 @@ class _ProductionPlanDetailPageState
   String? _subplanError;
   String? _focusedExecutionSegmentId;
   int _executionSegmentsRevision = 0;
+
+  /// 本页稳定路由，首次 build 捕获，供「返回即刷新」用。
+  String? _myLocation;
 
   /// 本批次（来源物料分析）关联单据：采购/委外申请与订货单、本批次计划树。
   List<ProductionExecutionWorkbenchRelatedDocument>? _relatedDocuments;
@@ -1056,8 +1060,23 @@ class _ProductionPlanDetailPageState
     }
   }
 
+  /// 「返回即刷新」：报工/领料/物料分析等子页保存后用 replace / go 收尾时，
+  /// `_openLinkedPage` 里 await context.push 之后的收尾走不到(go_router 不完成
+  /// 原 push 的 Future)，本页与执行段卡片停在老数据。回到本页就按同一套收尾
+  /// 重拉：执行段卡片换代 + 重载计划(2026-09-20 用户反馈「返回没刷新」同款)。
+  void _refreshOnResume() {
+    if (!mounted || _commandBusy) return;
+    setState(() => _executionSegmentsRevision++);
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
+    _myLocation ??= currentLocationOr(
+      context,
+      RoutePath.productionPlanDetail(widget.id),
+    );
+    ref.onPageResume(_myLocation!, _refreshOnResume);
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
     );

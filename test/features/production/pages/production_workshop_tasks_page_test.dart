@@ -1371,6 +1371,92 @@ void routeConfirmationTests() {
     await tester.pumpAndSettle();
     expect(plans.confirmedRoutes, [('segment-c', 'CONTINUOUS')]);
   });
+
+  // 2026-09-21 用户口径「我明明多选了，选中一个，为什么批量设路线还要重新选」：
+  // 勾选多行后在任一勾选行的「下一步」下拉选路线 = 对全部勾选行提交(与批量
+  // 菜单同一套筛选：不支持该路线或已是该路线的行自动跳过)；没勾选的行照旧只改
+  // 自己。此前下拉永远只提交本行，其余行只是被路线记忆预填成同样的字，事实没写。
+  Future<_FakePlanRepository> mountBothRoutable(WidgetTester tester) async {
+    final plans = _FakePlanRepository();
+    await mount(
+      tester,
+      planRepository: plans,
+      repository: _repository(
+        withWaitingRow: true,
+        startRoute: null,
+        canConfirmRoute: true,
+        rowCanSplitBatch: true,
+        // 产品 A 已确认齐套但未开工：服务端说仍可改路线；产品 C 未选路线。
+        aRouteChangeable: true,
+      ),
+    );
+    return plans;
+  }
+
+  Future<void> pickOnRowC(WidgetTester tester, String label) async {
+    await tester.tap(
+      find.byKey(const ValueKey('workshop-next-step-segment-c')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_menuEntry(label));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'picking a route on a checked row applies it to every checked row',
+    (tester) async {
+      final plans = await mountBothRoutable(tester);
+      // 未勾选时悬停不提批量，勾选后先讲清「会一并确认全部勾选行」。
+      Finder batchHint() => find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('一并确认全部 2 个勾选行'),
+      );
+      expect(batchHint(), findsNothing);
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) => widget is Checkbox && widget.tristate,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('批量设路线(2)'), findsOneWidget);
+      expect(batchHint(), findsWidgets);
+      await pickOnRowC(tester, '持续生产');
+      expect(plans.confirmedRoutes, [
+        ('segment-a', 'CONTINUOUS'),
+        ('segment-c', 'CONTINUOUS'),
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'checked-row pick skips checked rows that cannot take the route',
+    (tester) async {
+      final plans = await mountBothRoutable(tester);
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) => widget is Checkbox && widget.tristate,
+        ),
+      );
+      await tester.pumpAndSettle();
+      // 产品 A 不可拆分批：选「分批」只提交产品 C 自己，不把 A 硬塞进去。
+      await pickOnRowC(tester, '分批生产');
+      expect(plans.confirmedRoutes, [('segment-c', 'BATCH')]);
+    },
+  );
+
+  testWidgets('picking a route on an unchecked row changes only that row', (
+    tester,
+  ) async {
+    final plans = await mountBothRoutable(tester);
+    // 只勾了产品 A，却在没勾选的产品 C 行选路线：勾选集不受牵连。
+    await _selectRow(tester, '产品 A');
+    await tester.pumpAndSettle();
+    expect(find.text('批量设路线(1)'), findsOneWidget);
+    await pickOnRowC(tester, '持续生产');
+    expect(plans.confirmedRoutes, [('segment-c', 'CONTINUOUS')]);
+  });
 }
 
 void materialUsageEntryTests() {

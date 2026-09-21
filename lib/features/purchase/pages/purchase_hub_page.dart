@@ -227,9 +227,14 @@ class _Entry {
       // 草稿徽章占 badge（卡右上角浮层）：4 张单据卡都没有别的待办徽章，
       // 这个空槽正是用户要的位置。将来哪张卡挂上待办徽章（如「待收货」），
       // 待办留 badge、草稿改传 UtenHubCard.labelSuffix——一个槽两个红点读不懂。
+      // 采购订货卡: 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21;
+      // 退回件的待办累加由采购任务中心 FINANCE_REJECTED 承担, 卡面只是同数展示)。
       badge = cfg.draftKind == null
           ? null
-          : UtenDraftBadge(kind: cfg.draftKind!);
+          : UtenDraftBadge(
+              kind: cfg.draftKind!,
+              withFinanceRejected: cfg.type == PurchaseDocType.order,
+            );
 
   final IconData icon;
   final String label;

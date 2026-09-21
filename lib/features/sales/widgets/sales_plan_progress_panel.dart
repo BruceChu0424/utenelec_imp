@@ -19,6 +19,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -140,6 +142,9 @@ class _SalesPlanProgressPanelState
   final _selected = <String>{};
   List<OrderPlanProgressLine>? _lines;
   bool _navigating = false;
+
+  /// 宿主页面(订货单详情/订单进度详情)的稳定路由，首次 build 捕获，供「返回即刷新」复位用。
+  String? _myLocation;
 
   @override
   void initState() {
@@ -277,8 +282,23 @@ class _SalesPlanProgressPanelState
     await _createShipment();
   }
 
+  /// 出货单新建页保存后 replace 成详情，go_router 不会完成本面板原 push 的 Future——
+  /// `_createShipment` 里 await 之后的收尾走不到，_navigating 卡在 true：「去发货」
+  /// 一直灰着，只有整页重建才好(2026-09-20 用户反馈同款)。回到宿主页面时由
+  /// 「返回即刷新」复位并重拉，与 push 正常返回的收尾一致。
+  Future<void> _resumeAfterChildFlow() async {
+    if (!mounted) return;
+    if (_navigating) setState(() => _navigating = false);
+    await _refresh();
+    if (!mounted) return;
+    ref.invalidate(salesAttentionCountProvider);
+    await widget.onChanged?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
+    _myLocation ??= currentLocationOr(context, RouteName.sales);
+    ref.onPageResume(_myLocation!, _resumeAfterChildFlow);
     final permissions = ref.watch(currentPermissionsProvider);
     final canShip =
         widget.canShip &&

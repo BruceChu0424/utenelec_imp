@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/l10n/gen/app_localizations.dart';
+import 'core/responsive/display_zoom.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/dark_theme.dart';
 import 'core/theme/light_theme.dart';
@@ -83,9 +84,8 @@ class UtenApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      // 字号缩放 + 顶部横幅/通知宿主
+      // 整体缩放（宽屏自动放大 × 字号档）+ 顶部横幅/通知宿主
       builder: (context, child) {
-        final mediaQuery = MediaQuery.of(context);
         final routedChild = noticeArrivalEnabled
             ? NoticeArrivalListener(
                 identityKey: noticeIdentityKey,
@@ -93,13 +93,12 @@ class UtenApp extends ConsumerWidget {
                 child: child!,
               )
             : child!;
-        // textScaler 用 linear 缩放：原始 scaleFactor 乘以用户选择的字号因子
-        final scaledTextScaler = TextScaler.linear(
-          mediaQuery.textScaler.scale(1) * fontScale.factor,
-        );
-        return MediaQuery(
-          // 外层：字号缩放（横幅与页面都吃）。padding 保留，供顶部横幅 SafeArea 用。
-          data: mediaQuery.copyWith(textScaler: scaledTextScaler),
+        // 最外层整体缩放：横幅、通知宿主与路由树一起等比放大/缩小（字号档不再只乘
+        // textScaler——文字、图标、卡片、间距同步变化；窗口比 1920 宽时自动放大，
+        // 宽屏观感与基准机器一致）。之下的 MediaQuery 已换算成画布口径，
+        // 见 core/responsive/display_zoom.dart。
+        return UtenDisplayZoomBox(
+          fontFactor: fontScale.factor,
           child: Column(
             children: [
               // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
@@ -117,37 +116,44 @@ class UtenApp extends ConsumerWidget {
               // 非模拟时返回 SizedBox.shrink，自动收起不占空间。
               const ImpersonationBanner(),
               Expanded(
-                child: MediaQuery(
-                  // 模拟时状态栏 top 留白已由顶部横幅承担，下方页面 top 置 0，
-                  // 避免 AppBar 再加一次状态栏高度（双重留白）。
-                  // 非模拟时保持原 padding，由页面自己处理状态栏。
-                  data: impersonating
-                      ? mediaQuery.copyWith(
-                          textScaler: scaledTextScaler,
-                          padding: mediaQuery.padding.copyWith(top: 0),
-                          viewPadding: mediaQuery.viewPadding.copyWith(top: 0),
-                        )
-                      : mediaQuery.copyWith(textScaler: scaledTextScaler),
-                  child: Stack(
-                    children: [
-                      routedChild,
-                      const Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: SafeArea(
-                          bottom: false,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ConnectionRecoveryBanner(useSafeArea: false),
-                              AppNotificationHost(useSafeArea: false),
-                            ],
+                child: Builder(
+                  builder: (context) {
+                    // 取整体缩放之下（画布口径）的 MediaQuery，再按模拟态调 padding。
+                    final mediaQuery = MediaQuery.of(context);
+                    return MediaQuery(
+                      // 模拟时状态栏 top 留白已由顶部横幅承担，下方页面 top 置 0，
+                      // 避免 AppBar 再加一次状态栏高度（双重留白）。
+                      // 非模拟时保持原 padding，由页面自己处理状态栏。
+                      data: impersonating
+                          ? mediaQuery.copyWith(
+                              padding: mediaQuery.padding.copyWith(top: 0),
+                              viewPadding: mediaQuery.viewPadding.copyWith(
+                                top: 0,
+                              ),
+                            )
+                          : mediaQuery,
+                      child: Stack(
+                        children: [
+                          routedChild,
+                          const Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: SafeArea(
+                              bottom: false,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ConnectionRecoveryBanner(useSafeArea: false),
+                                  AppNotificationHost(useSafeArea: false),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             ],

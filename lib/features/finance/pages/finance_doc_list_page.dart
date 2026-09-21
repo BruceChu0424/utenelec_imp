@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
@@ -24,6 +25,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -110,8 +112,14 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
         order: _list.sortOrder,
       );
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
+  DocumentStatusScope get _statusScope => DocumentStatusScope(_cfg.draftKind);
+
+  Future<void> _reload([int? page, bool silent = false]) {
+    // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
+    ref.invalidate(documentStatusCountsProvider(_statusScope));
+    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  }
 
   void _onStatus(int? s) {
     setState(() {
@@ -216,6 +224,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
+    // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
+    final statusCounts = ref
+        .watch(documentStatusCountsProvider(_statusScope))
+        .valueOrNull;
     // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
@@ -306,20 +318,34 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                           ),
                           const SizedBox(height: UtenSpacing.s12),
                           // 全平台统一筛选工具条：单据状态分段（纯分类无搜索）。
+                          // 2026-09-21 用户口径: hub 卡有草稿红徽章, 子分类也要有数——
+                          // 草稿红徽章(与卡面同源同数), 已审 / 红冲中性括号, 「全部」不挂。
                           UtenFilterToolbar<int?>(
-                            segments: const [
-                              UtenFilterSegment<int?>(value: null, label: '全部'),
+                            segments: [
+                              const UtenFilterSegment<int?>(
+                                value: null,
+                                label: '全部',
+                              ),
                               UtenFilterSegment<int?>(
                                 value: kFinanceStatusDraft,
                                 label: '草稿',
+                                count:
+                                    statusCounts?[DocumentStatusBucket.draft],
+                                countForm: UtenSegmentCountForm.actionable,
                               ),
                               UtenFilterSegment<int?>(
                                 value: kFinanceStatusApproved,
                                 label: '已审',
+                                count:
+                                    statusCounts?[DocumentStatusBucket
+                                        .approved],
                               ),
                               UtenFilterSegment<int?>(
                                 value: kFinanceStatusReversed,
                                 label: '红冲',
+                                count:
+                                    statusCounts?[DocumentStatusBucket
+                                        .reversed],
                               ),
                             ],
                             selected: _statusFilterSelected

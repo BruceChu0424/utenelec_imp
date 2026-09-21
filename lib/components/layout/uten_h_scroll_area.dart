@@ -158,9 +158,11 @@ class _UtenHScrollAreaState extends State<UtenHScrollArea> {
       if (_pinnedY.value != null) _pinnedY.value = null;
       return;
     }
-    final areaTop = areaBox.localToGlobal(Offset.zero).dy;
+    // 相对视口量(localToGlobal 带 ancestor)：不带 ancestor 得到的是窗口坐标，
+    // 根部整体缩放(UtenDisplayZoomBox)时与区域/视口的画布尺寸相差 zoom 倍。
+    final areaTop = areaBox.localToGlobal(Offset.zero, ancestor: vpBox).dy;
     final areaBottom = areaTop + areaBox.size.height;
-    final vpTop = vpBox.localToGlobal(Offset.zero).dy;
+    const vpTop = 0.0;
     final vpBottom = vpTop + vpBox.size.height;
 
     final double? pinnedY = (areaBottom > vpBottom && areaTop < vpBottom)

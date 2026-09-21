@@ -705,7 +705,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (_hBarY.value != null) _hBarY.value = null;
       return;
     }
-    final areaTop = areaBox.localToGlobal(Offset.zero).dy;
+    // 末行位置相对表体区量(localToGlobal 带 ancestor)：不带 ancestor 得到的是窗口
+    // 坐标，根部整体缩放(UtenDisplayZoomBox)时与区高的画布尺寸相差 zoom 倍。
+    const areaTop = 0.0;
     final areaBottom = areaTop + areaBox.size.height;
     final lastRowBox =
         _lastRowKey.currentContext?.findRenderObject() as RenderBox?;
@@ -716,7 +718,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 表体区右下角、不与贴末行的横滚条冲突。
       const pad = _hBarGap;
       final contentBottom =
-          lastRowBox.localToGlobal(Offset.zero).dy +
+          lastRowBox.localToGlobal(Offset.zero, ancestor: areaBox).dy +
           lastRowBox.size.height +
           pad;
       barBottom = contentBottom < areaBottom

@@ -14,13 +14,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/auth/permissions.dart';
+import '../../shared/providers/document_status_counts_provider.dart';
 import '../../shared/providers/draft_counts_provider.dart';
 import 'uten_notification_badge.dart';
 
 class UtenDraftBadge extends ConsumerWidget {
-  const UtenDraftBadge({super.key, required this.kind, this.size = 16});
+  const UtenDraftBadge({
+    super.key,
+    required this.kind,
+    this.size = 16,
+    this.withFinanceRejected = false,
+  });
 
   final DraftDocKind kind;
+
+  /// true = 徽章数 = 草稿 + 财务已退回(销售出货 / 采购订货 / 委外订货三张卡, 2026-09-21):
+  /// 列表页里这两段都是红徽章, 卡面数字必须等于页内红色分段之和。
+  final bool withFinanceRejected;
 
   /// 徽章直径；hub 单据卡用默认 16，顶栏按钮内用 16，工作台模块卡用 20。
   final double size;
@@ -33,10 +43,16 @@ class UtenDraftBadge extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     // 加载中/失败按 0（不放大成异常态，与 module_badge_sum 的降级口径一致）。
-    final count = ref.watch(draftCountsProvider).valueOrNull?.of(kind) ?? 0;
+    final drafts = ref.watch(draftCountsProvider).valueOrNull?.of(kind) ?? 0;
+    final rejected = withFinanceRejected
+        ? ref.watch(financeRejectedCountsProvider).valueOrNull?.of(kind) ?? 0
+        : 0;
+    final count = drafts + rejected;
     if (count <= 0) return const SizedBox.shrink();
     return Tooltip(
-      message: '草稿 $count 张（本人未提交）',
+      message: rejected > 0
+          ? '草稿 $drafts 张（本人未提交）+ 财务已退回 $rejected 张'
+          : '草稿 $count 张（本人未提交）',
       child: UtenNotificationBadge(count: count, size: size),
     );
   }

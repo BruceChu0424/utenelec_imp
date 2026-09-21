@@ -54,6 +54,14 @@ class UtenFontScaler extends ConsumerWidget {
                 '字号档：${current.persistKey}(${(current.factor * 100).round()}%)',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              const SizedBox(height: 4),
+              // 2026-09-20 起档位 = 整体缩放（display_zoom.dart）：预览卡本身也随之变大。
+              Text(
+                '文字、图标、卡片与间距一起等比变化',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),

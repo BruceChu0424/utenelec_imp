@@ -72,12 +72,15 @@ class AppliedArAp {
 }
 
 /// 弹出核销引入右滑入大面板。[direction] = 'AR'（收款）/ 'AP'（付款）。
+/// [onSwitchToPrepayment] V632：客户尚未发货、没有可核销应收时，空列表处给一键
+/// 「改为登记订单预收」——面板先关闭再回调，由收款页切换收款类型并打开订单选择。
 Future<List<AppliedArAp>?> showArApPickerDialog(
   BuildContext context,
   WidgetRef ref, {
   required String direction,
   required String? partyId,
   String? lockedCurrencyId,
+  VoidCallback? onSwitchToPrepayment,
 }) {
   return showUtenAdaptivePanel<List<AppliedArAp>>(
     context: context,
@@ -87,6 +90,7 @@ Future<List<AppliedArAp>?> showArApPickerDialog(
       direction: direction,
       partyId: partyId,
       lockedCurrencyId: lockedCurrencyId,
+      onSwitchToPrepayment: onSwitchToPrepayment,
     ),
   );
 }
@@ -111,10 +115,12 @@ class _ArApPickerSheet extends ConsumerStatefulWidget {
     required this.direction,
     required this.partyId,
     required this.lockedCurrencyId,
+    this.onSwitchToPrepayment,
   });
   final String direction;
   final String? partyId;
   final String? lockedCurrencyId;
+  final VoidCallback? onSwitchToPrepayment;
 
   @override
   ConsumerState<_ArApPickerSheet> createState() => _ArApPickerSheetState();
@@ -518,15 +524,35 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     if (_items.isEmpty && _keyword.trim().isEmpty) {
       // 2026-09-14：应收在仓库「确认出库」后才立账——客户没走过完整出货时
       // 选择器必然为空。明说生成时机，避免误以为丢数据（用户实测困惑点）。
+      final switchToPrepayment = _isAr ? widget.onSwitchToPrepayment : null;
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Text(
-            _isAr
-                ? '暂无未清$_ledgerNoun。应收在仓库确认出货单出库后自动生成；客户尚未发货时这里没有内容，收到的是订单定金/预付款请改用「登记订单预收」。'
-                : '暂无未清$_ledgerNoun', // TODO(l10n): 补 arb
-            style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-            textAlign: TextAlign.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _isAr
+                    ? '暂无未清$_ledgerNoun。应收在仓库确认出货单出库后自动生成；客户尚未发货时这里没有内容，收到的是订单定金/预付款请改用「登记订单预收」。'
+                    : '暂无未清$_ledgerNoun', // TODO(l10n): 补 arb
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                textAlign: TextAlign.center,
+              ),
+              if (switchToPrepayment != null) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                // V632：用户实测「明明下了销售单却找不到」——订单没出货就没有应收，
+                // 这里直接切到登记订单预收并打开订单选择，不用回头找收款类型下拉。
+                FilledButton.tonalIcon(
+                  key: const ValueKey('ar-picker-switch-to-prepayment'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    switchToPrepayment();
+                  },
+                  icon: const Icon(Icons.savings_outlined),
+                  label: const Text('改为登记订单预收并选择订单'),
+                ),
+              ],
+            ],
           ),
         ),
       );

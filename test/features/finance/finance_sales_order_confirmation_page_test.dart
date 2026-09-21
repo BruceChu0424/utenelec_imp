@@ -284,7 +284,10 @@ void main() {
                 widget is UtenSegmentBadgeLabel && widget.label == '已驳回',
           ),
         );
-        expect(rejected.count, isNull);
+        // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数——已驳回段挂中性括号数
+        // (下一步在销售手上, 不进任何累加), 数字取自 rejected=true 的全量 total。
+        expect(rejected.count, 1);
+        expect(rejected.countForm, UtenSegmentCountForm.browsing);
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );

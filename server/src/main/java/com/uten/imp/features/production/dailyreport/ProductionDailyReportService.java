@@ -17,6 +17,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
@@ -89,6 +90,10 @@ public class ProductionDailyReportService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
+    /** 日报命令账本的命令种类(V644)：同一把 (操作者, 幂等键) 永久绑定一种命令和一张日报。 */
+    private static final String COMMAND_CREATE = "CREATE";
+    private static final String COMMAND_APPROVE = "APPROVE";
+
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate");
 
@@ -100,6 +105,7 @@ public class ProductionDailyReportService {
     private final DailyReportExecutionSegmentGuard executionSegments;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
+    private final com.uten.imp.common.util.DepartmentNameResolver departmentNameResolver;
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
     private final ProductionProductNoAllocator productNoAllocator;
@@ -161,10 +167,40 @@ public class ProductionDailyReportService {
                 "production_daily_report:reverse");
         List<ProductionDailyReportItem> rows = itemRepo.findByReportIdOrderByLineNoAsc(id);
         Map<UUID, String> transferLabels = directTransferTargetLabels(rows);
+        Map<UUID, String[]> identities = goodsIdentities(rows);
         List<DailyReportItemDto> items = rows.stream()
-                .map(item -> toItemDto(item, transferLabels)).toList();
+                .map(item -> toItemDto(item, transferLabels, identities)).toList();
         populateExecutionContext(r, items);
         return toDetail(r, items);
+    }
+
+    /**
+     * 明细行的货品身份三列与单位，一次 IN 查询取齐，详情页直接显示。
+     *
+     * <p>不让页面拿 UUID 自己查字典：客户端字典缓存会随连接恢复或权限快照变化整体清空，
+     * 那时这四列会集体变成「—」且不会自愈；跨模块读字典还要 goods:view/color:view/unit:view。
+     * 同一响应里的制单员与「转给工单」本来就走服务端解析，这里补齐同一口径。
+     */
+    private Map<UUID, String[]> goodsIdentities(List<ProductionDailyReportItem> items) {
+        List<UUID> itemIds = items.stream()
+                .map(ProductionDailyReportItem::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (itemIds.isEmpty()) return Map.of();
+        Map<UUID, String[]> byItem = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.id, goods.name, goods.code, color.name, unit.name
+                FROM production_daily_report_items item
+                LEFT JOIN goods ON goods.id = item.goods_id
+                LEFT JOIN colors color ON color.id = item.color_id
+                LEFT JOIN units unit ON unit.id = item.unit_id
+                WHERE item.id IN (:ids)
+                """).setParameter("ids", itemIds))) {
+            byItem.put((UUID) row[0], new String[] {
+                    (String) row[1], (String) row[2], (String) row[3], (String) row[4]});
+        }
+        return byItem;
     }
 
     private void populateExecutionContext(ProductionDailyReport report, List<DailyReportItemDto> items) {
@@ -207,10 +243,11 @@ public class ProductionDailyReportService {
                 normalizeCreateIdempotencyKey(req.getIdempotencyKey());
         List<UUID> workerIds = normalizeWorkerIds(req);
         String requestHash = createRequestHash(req);
-        lockCreateCommand(actorId, idempotencyKey);
-        CreateCommand replay = findCreateCommand(actorId, idempotencyKey);
+        lockCommand(COMMAND_CREATE, actorId, idempotencyKey);
+        ReportCommand replay = findCommand(actorId, idempotencyKey);
         if (replay != null) {
-            if (!requestHash.equals(replay.requestHash())) {
+            if (!COMMAND_CREATE.equals(replay.commandKind())
+                    || !requestHash.equals(replay.requestHash())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报创建请求");
             }
@@ -227,7 +264,7 @@ public class ProductionDailyReportService {
         itemRepo.flush();
         syncMaterialUsages(r, req);
         syncReportWorkers(r.getId(), workerIds);
-        recordCreateCommand(
+        recordCommand(COMMAND_CREATE,
                 actorId, idempotencyKey, requestHash, r.getId());
         return detail(r.getId());
     }
@@ -271,15 +308,38 @@ public class ProductionDailyReportService {
     /** 审核（status 0→1）：报工链联动（见类注释）。 */
     @Transactional
     @PreAuthorize("hasAuthority('production_daily_report:approve')")
-    public DailyReportDetail approve(UUID id) {
+    public DailyReportDetail approve(UUID id, DailyReportApproveRequest req) {
         tx.bind();
+        // 幂等闸门排在最前：回放请求不该去抢履约图的顾问锁和日报行写锁，
+        // 它只在 (操作者, 幂等键) 这一把顾问锁上等前一笔提交，然后原样返回结果。
+        UUID actorId = currentUser.requireId();
+        String idempotencyKey = normalizeApproveIdempotencyKey(
+                req == null ? null : req.getIdempotencyKey());
+        String requestHash = approveRequestHash(id);
+        lockCommand(COMMAND_APPROVE, actorId, idempotencyKey);
+        ReportCommand replay = findCommand(actorId, idempotencyKey);
+        if (replay != null) {
+            if (!COMMAND_APPROVE.equals(replay.commandKind())
+                    || !id.equals(replay.reportId())
+                    || !requestHash.equals(replay.requestHash())) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报审核请求");
+            }
+            return detail(id);
+        }
         var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(
                 r.getMakerId(), "无权审核此生产日报",
                 "production_daily_report:approve");
+        // 状态闸绝不放宽——它是唯一挡住重复副作用的东西(fqty 累加与直送单都是纯增量)。
+        // 只把错误码从 BUSINESS(400) 换成 CONFLICT(409)：客户端据此知道该刷新而不是当校验失败。
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
-            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "生产日报已不是草稿状态，不能重复审核；请刷新后查看当前状态");
+        // 过了闸门就落命令账本：同事务，失败一起回滚；重发时上面的回放分支直接命中。
+        recordCommand(COMMAND_APPROVE, actorId, idempotencyKey, requestHash, id);
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
         if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -1270,22 +1330,26 @@ public class ProductionDailyReportService {
 
     // ====================== 私有辅助 ======================
 
-    private void lockCreateCommand(UUID actorId, String idempotencyKey) {
+    private void lockCommand(
+            String commandKind, UUID actorId, String idempotencyKey) {
         em.createNativeQuery("""
                 SELECT pg_advisory_xact_lock(
                     hashtextextended(:lockKey, CAST(409 AS bigint)))
                 """)
                 .setParameter("lockKey",
-                        "PRODUCTION-DAILY-REPORT-CREATE:"
+                        "PRODUCTION-DAILY-REPORT-" + commandKind + ":"
                                 + actorId + ":" + idempotencyKey)
                 .getSingleResult();
     }
 
-    private CreateCommand findCreateCommand(
-            UUID actorId, String idempotencyKey) {
+    /**
+     * 按 (操作者, 幂等键) 查，故意不按命令种类过滤：唯一键就是这两列，
+     * 一把键被用在另一种命令上必须当场说清楚，而不是让 INSERT 撞唯一键报裸错。
+     */
+    private ReportCommand findCommand(UUID actorId, String idempotencyKey) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                        SELECT request_hash, report_id
+                        SELECT command_kind, request_hash, report_id
                         FROM production_daily_report_commands
                         WHERE actor_user_id = :actorId
                           AND idempotency_key = :idempotencyKey
@@ -1293,24 +1357,29 @@ public class ProductionDailyReportService {
                         .setParameter("actorId", actorId)
                         .setParameter("idempotencyKey", idempotencyKey));
         if (rows.isEmpty()) return null;
-        return new CreateCommand(
+        return new ReportCommand(
                 Objects.toString(rows.getFirst()[0], ""),
-                (UUID) rows.getFirst()[1]);
+                Objects.toString(rows.getFirst()[1], ""),
+                (UUID) rows.getFirst()[2]);
     }
 
-    private void recordCreateCommand(
+    private void recordCommand(
+            String commandKind,
             UUID actorId,
             String idempotencyKey,
             String requestHash,
             UUID reportId) {
+        // 列默认值只用来回填历史行，应用写入永远显式给种类，
+        // 否则将来新加的命令会静默落成 CREATE。
         em.createNativeQuery("""
                 INSERT INTO production_daily_report_commands(
                     id, actor_user_id, idempotency_key, request_hash,
-                    report_id, created_by)
+                    report_id, created_by, command_kind)
                 VALUES(
                     gen_random_uuid(), :actorId, :idempotencyKey, :requestHash,
-                    :reportId, :actorId)
+                    :reportId, :actorId, :commandKind)
                 """)
+                .setParameter("commandKind", commandKind)
                 .setParameter("actorId", actorId)
                 .setParameter("idempotencyKey", idempotencyKey)
                 .setParameter("requestHash", requestHash)
@@ -1319,10 +1388,18 @@ public class ProductionDailyReportService {
     }
 
     static String normalizeCreateIdempotencyKey(String raw) {
+        return normalizeCommandIdempotencyKey(raw, "新建生产日报必须提供幂等键");
+    }
+
+    static String normalizeApproveIdempotencyKey(String raw) {
+        return normalizeCommandIdempotencyKey(raw, "审核生产日报必须提供幂等键");
+    }
+
+    /** 长度与去空白口径由 production_daily_report_command_key_chk 在库里兜底，两种命令不得分叉。 */
+    private static String normalizeCommandIdempotencyKey(
+            String raw, String missingMessage) {
         if (raw == null || raw.isBlank()) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "新建生产日报必须提供幂等键");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, missingMessage);
         }
         String normalized = raw.strip();
         if (normalized.length() < 8 || normalized.length() > 128) {
@@ -1380,6 +1457,17 @@ public class ProductionDailyReportService {
      * Canonical create payload. Server-owned bill numbers, retry metadata and
      * readable plan/order number snapshots are intentionally excluded.
      */
+    /**
+     * 审核当前没有可变载荷，指纹只绑定「审核哪张日报」。
+     * 留成独立函数是为了以后审核加参数时有地方挂，
+     * 也满足 production_daily_report_command_hash_chk 的 64 位十六进制形状。
+     */
+    static String approveRequestHash(UUID reportId) {
+        return CanonicalFingerprint.sha256(List.of(
+                "PRODUCTION-DAILY-REPORT-APPROVE-V1",
+                "report:" + reportId));
+    }
+
     static String createRequestHash(DailyReportSaveRequest request) {
         if (request == null) {
             throw new ApiException(
@@ -1954,12 +2042,15 @@ public class ProductionDailyReportService {
                 r.getStatus(), r.isClosed(), r.isCanceled(), r.getLegacyId());
     }
 
+    /** 保存路径用：返回值不进响应，身份名称留空，避免多一次字典查询。 */
     private DailyReportItemDto toItemDto(ProductionDailyReportItem it) {
-        return toItemDto(it, Map.of());
+        return toItemDto(it, Map.of(), Map.of());
     }
 
     private DailyReportItemDto toItemDto(
-            ProductionDailyReportItem it, Map<UUID, String> directTransferLabels) {
+            ProductionDailyReportItem it, Map<UUID, String> directTransferLabels,
+            Map<UUID, String[]> goodsIdentities) {
+        String[] identity = goodsIdentities.get(it.getId());
         return new DailyReportItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getTotal(), it.getStotal(),
                 it.getSalesOrderItemId(), it.getSalesOrderNo(), it.getPlanItemId(),
@@ -1970,7 +2061,11 @@ public class ProductionDailyReportService {
                 it.getOrderDate(), it.getBoxes(), it.getPerBoxQty(), it.getWeight(),
                 it.getClientName(), it.getSourceDocNo(), it.getRemark(), it.isFinal(),
                 it.getDestination(), it.getDirectTransferDemandId(),
-                directTransferLabels.get(it.getId()), null, null);
+                directTransferLabels.get(it.getId()), null, null,
+                identity == null ? null : identity[0],
+                identity == null ? null : identity[1],
+                identity == null ? null : identity[2],
+                identity == null ? null : identity[3]);
     }
 
     /** 直送行的接收方(父件产品名 编号 · 工单号)，详情页「转给工单」列用；非直送行不出现。 */
@@ -2063,13 +2158,18 @@ public class ProductionDailyReportService {
     }
 
     private DailyReportDetail toDetail(ProductionDailyReport r, List<DailyReportItemDto> items) {
+        List<UUID> workerIds = reportWorkerIds(r.getId(), r.getWorkerId());
         return new DailyReportDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(),
-                reportWorkerIds(r.getId(), r.getWorkerId()), r.getSupplierId(),
+                workerIds, r.getSupplierId(),
                 r.getMakerId(), r.getApproverId(), r.getMakerLegacyId(), r.getApproverLegacyId(), r.getRemark(),
                 r.getStatus(), r.isClosed(), r.isCanceled(), r.getSourceDocNo(), items,
                 materialUsages(r.getId()), r.isSurplusReturnRequested(),
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), r.getRowVersion());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), r.getRowVersion(),
+                // 车间与参与人员同样随单下发，页面不再查部门字典、也不再逐个调员工档案接口
+                // (那个接口要 employee:view 且会落人事查看审计)。
+                departmentNameResolver.nameOf(r.getDepartmentId()),
+                workerIds.stream().map(nameResolver::nameOf).toList());
     }
 
     private ProductionDailyReport requireReport(UUID id) {
@@ -2088,6 +2188,8 @@ public class ProductionDailyReportService {
         return report;
     }
 
-    private record CreateCommand(String requestHash, UUID reportId) {
+    /** 日报命令账本的一行：同一把 (操作者, 幂等键) 永久绑定一种命令和一张日报。 */
+    private record ReportCommand(
+            String commandKind, String requestHash, UUID reportId) {
     }
 }

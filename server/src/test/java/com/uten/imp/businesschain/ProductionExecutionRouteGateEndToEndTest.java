@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.support.DailyReportApproveRequests;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -768,13 +769,13 @@ class ProductionExecutionRouteGateEndToEndTest {
         })).contains("commit together"));
         qty("10",db.queryForObject("SELECT qty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE plan_item_id=?",Integer.class,c.planItem()));
-        reports().approve(report);
+        reports().approve(report, DailyReportApproveRequests.freshKey());
         assertEquals(report,reports().create(request).getId(),"已审核final的相同创建请求只能重放原单");
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE report_id=?",Integer.class,report));
         reports().reverse(report);
         assertThrows(ApiException.class,()->reports().reverse(report));
         qty("10",db.queryForObject("SELECT qty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
-        UUID replacement=reports().approve(reports().create(adversarialFinalReport(c)).getId()).getId();
+        UUID replacement=reports().approve(reports().create(adversarialFinalReport(c)).getId(), DailyReportApproveRequests.freshKey()).getId();
         assertNotEquals(report,replacement);
         assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE report_id=?",Integer.class,report));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE report_id=?",Integer.class,replacement));
@@ -870,7 +871,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         stock.approve(pending.documentId());
         assertTrue(custodyValid(c)); qty("10",capacity(c));
         assertEquals(historical.workshopDepartmentId(),db.queryForObject("SELECT department_id FROM stock_documents WHERE id=?",UUID.class,wrongDraw));
-        reports().approve(reports().create(report).getId());
+        reports().approve(reports().create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 
     @Test
@@ -1481,7 +1482,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
-        reports().approve(reports().create(report).getId());
+        reports().approve(reports().create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 
     private UUID childGoods(Case c) {

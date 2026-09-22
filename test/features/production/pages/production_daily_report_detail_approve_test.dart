@@ -34,6 +34,9 @@ class _DailyReportApi extends ApiClient {
 
   int serverStatus = 0;
   int detailReads = 0;
+  final requestedPaths = <String>[];
+  final approveKeys = <String>[];
+  int rowVersion = 0;
 
   Map<String, dynamic> get _detail => <String, dynamic>{
     'id': 'dr-1',
@@ -42,11 +45,20 @@ class _DailyReportApi extends ApiClient {
     'makerName': '朱振炜',
     'createdAt': '2026-09-22T05:49:19+08:00',
     'status': serverStatus,
+    'rowVersion': rowVersion,
+    'departmentName': '六车间',
+    'workerIds': <String>['emp-1'],
+    'workerNames': <String>['王小明'],
     'items': <Map<String, dynamic>>[
       <String, dynamic>{
         'id': 'di-1',
         'qty': 1000,
         'planNo': 'SJ20260922000016',
+        'goodsId': 'g-1',
+        'goodsName': '外贸V5多功能三插后座',
+        'goodsCode': 'HV50070',
+        'colorName': '深灰色',
+        'unitName': '只',
       },
     ],
   };
@@ -56,6 +68,7 @@ class _DailyReportApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    requestedPaths.add(path);
     detailReads++;
     return _detail;
   }
@@ -64,7 +77,10 @@ class _DailyReportApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const <Map<String, dynamic>>[];
+  }) async {
+    requestedPaths.add(path);
+    return const <Map<String, dynamic>>[];
+  }
 
   @override
   Future<Map<String, dynamic>> post(
@@ -73,6 +89,9 @@ class _DailyReportApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    requestedPaths.add(path);
+    final key = (body as Map?)?['idempotencyKey'];
+    if (key is String) approveKeys.add(key);
     final failure = onApprove(this);
     if (failure != null) throw failure;
     return _detail;
@@ -186,6 +205,54 @@ void main() {
       notices.any((message) => message.contains('本次提交服务端已完成')),
       isTrue,
       reason: '不能把一次已经成功的审核报成失败',
+    );
+  });
+
+  testWidgets('货品/颜色/单位/车间/参与人员全用随单下发的名字，不查任何主档字典', (tester) async {
+    final (api, _) = await _pump(tester, onApprove: (server) => null);
+
+    expect(find.text('外贸V5多功能三插后座'), findsWidgets);
+    expect(find.text('HV50070'), findsWidgets);
+    expect(find.text('深灰色'), findsWidgets);
+    expect(find.text('只'), findsWidgets);
+    expect(find.text('六车间'), findsOneWidget);
+    expect(find.text('王小明'), findsOneWidget);
+    expect(
+      api.requestedPaths.where((path) => path.contains('/master/')),
+      isEmpty,
+      reason: '名称随单下发后不该再查货品/颜色/单位字典',
+    );
+    expect(
+      api.requestedPaths.where((path) => path.contains('/org/employees')),
+      isEmpty,
+      reason: '参与人员姓名随单下发后不该再调员工档案接口',
+    );
+  });
+
+  testWidgets('同一次点击重发用同一把幂等键，服务端推进状态后换一把新键', (tester) async {
+    final (api, _) = await _pump(
+      tester,
+      // 每次都丢响应：页面走失败自愈分支重取详情，键随详情里的版本号走。
+      onApprove: (server) => NetworkTimeoutException(),
+    );
+
+    await _tapApprove(tester);
+    // 这一步模拟「服务端其实提交了」：下一次重取详情就会看到新的版本号。
+    api.rowVersion = 7;
+    await _tapApprove(tester);
+    await _tapApprove(tester);
+
+    expect(api.approveKeys, hasLength(3));
+    expect(api.approveKeys.first, startsWith('daily-report-approve-'));
+    expect(
+      api.approveKeys[0],
+      api.approveKeys[1],
+      reason: '服务端还没推进状态，重试就是同一次操作，键必须一样才能被回放认出来',
+    );
+    expect(
+      api.approveKeys[2],
+      isNot(api.approveKeys[1]),
+      reason: '版本号已经前进，这是一次新操作，键必须换掉，不能被当成上一次的重放',
     );
   });
 

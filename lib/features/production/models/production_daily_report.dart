@@ -137,6 +137,10 @@ class ProductionDailyReportItem {
     this.destination,
     this.directTransferDemandId,
     this.directTransferTargetLabel,
+    this.goodsName,
+    this.goodsCode,
+    this.colorName,
+    this.unitName,
   });
 
   final String id;
@@ -182,6 +186,13 @@ class ProductionDailyReportItem {
   /// 直送接收方的可读标识(V595)：父件产品名 编号 · 工单号。
   final String? directTransferTargetLabel;
 
+  /// 货品身份三列与单位由服务端随单解析下发，页面不再查字典缓存。
+  /// 客户端字典会随连接恢复或权限快照变化整体清空，那时逐格解析会集体变「—」且不自愈。
+  final String? goodsName;
+  final String? goodsCode;
+  final String? colorName;
+  final String? unitName;
+
   bool get isDirectTransfer => destination == 'WORKSHOP';
 
   factory ProductionDailyReportItem.fromJson(Map<String, dynamic> json) =>
@@ -222,6 +233,10 @@ class ProductionDailyReportItem {
         sourceDocNo: json['sourceDocNo'] as String?,
         remark: json['remark'] as String?,
         isFinal: json['isFinal'] == true,
+        goodsName: json['goodsName'] as String?,
+        goodsCode: json['goodsCode'] as String?,
+        colorName: json['colorName'] as String?,
+        unitName: json['unitName'] as String?,
       );
 }
 
@@ -253,6 +268,8 @@ class ProductionDailyReportDetail {
     this.items = const [],
     this.materialUsages = const [],
     this.surplusReturnRequested = false,
+    this.departmentName,
+    this.workerNames = const [],
   });
 
   final String id;
@@ -290,6 +307,12 @@ class ProductionDailyReportDetail {
 
   /// 收尾余料退仓意愿；审核时先结实耗再按剩余可退量开退料单。
   final bool surplusReturnRequested;
+
+  /// 车间名(服务端按 departmentId 解析)；页面不再查部门字典。
+  final String? departmentName;
+
+  /// 生产参与人员姓名，顺序与 [workerIds] 一一对应；页面不再逐个调员工档案接口。
+  final List<String> workerNames;
 
   factory ProductionDailyReportDetail.fromJson(
     Map<String, dynamic> json,
@@ -334,6 +357,12 @@ class ProductionDailyReportDetail {
             .toList() ??
         const [],
     surplusReturnRequested: json['surplusReturnRequested'] == true,
+    departmentName: json['departmentName'] as String?,
+    workerNames:
+        (json['workerNames'] as List?)
+            ?.map((e) => e?.toString() ?? '')
+            .toList() ??
+        const [],
   );
 }
 

@@ -42,4 +42,8 @@ public class DailyReportDetail {
     private java.time.Instant createdAt;
     /** 当前乐观锁版本；PUT 时原样回传为 expectedVersion。 */
     private long rowVersion;
+    /** 车间名(服务端按 department_id 解析)：页面不再查部门字典，缓存清空时也不会变「—」。 */
+    private String departmentName;
+    /** 生产参与人员姓名，顺序与 workerIds 一一对应；页面不再逐个调员工档案接口。 */
+    private List<String> workerNames;
 }

@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.support.DailyReportApproveRequests;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
@@ -464,7 +465,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
-        reports.approve(reports.create(report).getId());
+        reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 
     /** 父件按普通报工(送仓库)申报完工。 */
@@ -492,7 +493,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         item.setExecutionSegmentSalesAllocationId((UUID) allocation.get("id"));
         item.setSalesOrderItemId((UUID) allocation.get("sales_order_item_id"));
         report.setItems(List.of(item));
-        reports.approve(reports.create(report).getId());
+        reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 
     private void receive(Case c, UUID goods, UUID warehouse, String quantity) {

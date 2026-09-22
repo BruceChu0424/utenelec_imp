@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.support.DailyReportApproveRequests;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -1658,7 +1659,27 @@ class FullChainEndToEndTest {
                 SELECT count(*) FROM production_execution_segment_events
                 WHERE execution_segment_id=? AND action='DISPATCH'
                 """,segmentId),"直接开工不需要重新分配或先派工");
-        assertNotNull(reportService.create(report).getId(),"明确开工后才允许登记报工");
+        DailyReportDetail reported = reportService.create(report);
+        assertNotNull(reported.getId(),"明确开工后才允许登记报工");
+        // 2026-09-22：货品身份三列/单位/车间/参与人员一律随单下发。页面拿 UUID 自己查字典时，
+        // 客户端缓存被清空(连接恢复、权限快照变化)就会集体显示「—」且不会自愈。
+        DailyReportDetail viewed = reportService.detail(reported.getId());
+        var line = viewed.getItems().getFirst();
+        assertEquals(jdbc.queryForObject("SELECT name FROM goods WHERE id=?",String.class,w.goodsA()),
+                line.getGoodsName(),"货品名称必须随单下发");
+        assertEquals(jdbc.queryForObject("SELECT code FROM goods WHERE id=?",String.class,w.goodsA()),
+                line.getGoodsCode(),"货品编号必须随单下发");
+        assertEquals(jdbc.queryForObject("SELECT name FROM units WHERE id=?",String.class,w.unitId()),
+                line.getUnitName(),"单位必须随单下发");
+        assertNull(line.getColorName(),"这条报工没有颜色：LEFT JOIN 要给 null，不能把整行丢掉");
+        assertEquals(jdbc.queryForObject("SELECT name FROM departments WHERE id=?",String.class,
+                        assignment.workshopId()),
+                viewed.getDepartmentName(),"车间名必须随单下发");
+        assertEquals(viewed.getWorkerIds().size(),viewed.getWorkerNames().size(),
+                "参与人员姓名与 id 必须一一对应");
+        assertEquals(jdbc.queryForObject("SELECT full_name FROM employees WHERE id=?",String.class,
+                        assignment.workerId()),
+                viewed.getWorkerNames().getFirst(),"参与人员姓名必须随单下发");
     }
 
     @Test
@@ -7432,7 +7453,7 @@ class FullChainEndToEndTest {
             UUID firstReport=reportAndApprove(w,planItem,orderItem,w.goodsA(),"5");
             UUID inbound=finishedInDocForReport(firstReport);
             PrefixReportDraft second=createPrefixReportDraft(w,plan,planItem,orderItem,"5");
-            Runnable report=()->reportService.approve(second.id());
+            Runnable report=()->reportService.approve(second.id(), DailyReportApproveRequests.freshKey());
             Runnable receive=()->confirmFinishedInboundFully(inbound);
             Runnable reportPrefix=()->qualityMutationFootprint.beginReport(second.id()).verifyUnchanged();
             Runnable receivePrefix=()->fulfillmentMutationLocks.acquire(()->productionMutationFootprint.forStockDocuments(List.of(inbound))).verifyUnchanged();
@@ -7468,7 +7489,7 @@ class FullChainEndToEndTest {
             receiveOpeningInputsForA(w,"10"); UUID plan=approvedPlan(w,w.goodsA(),"10","10");
             issueReadyPlanAndMaterials(w,plan); UUID planItem=planItemIdFor(plan,w.goodsA()); UUID orderItem=orderItemIdOfPlan(plan);
             PrefixReportDraft report=createPrefixReportDraft(w,plan,planItem,orderItem,"10");
-            loginAs(report.reporter()); reportService.approve(report.id()); loginAs(w.superAdminUserId());
+            loginAs(report.reporter()); reportService.approve(report.id(), DailyReportApproveRequests.freshKey()); loginAs(w.superAdminUserId());
             UUID reportItem=jdbc.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",UUID.class,report.id());
             finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest(
                     "prefix-fqc-arrival-"+report.id(),w.warehouseId(),List.of(new ArrivalRegistrationItemRequest(reportItem,"PREFIX-FQC-01")), null));
@@ -12398,7 +12419,7 @@ class FullChainEndToEndTest {
         DailyReportDetail report;
         try {
             report = reportService.create(req);
-            reportService.approve(report.getId());
+            reportService.approve(report.getId(), DailyReportApproveRequests.freshKey());
         } finally {
             SecurityContextHolder.getContext().setAuthentication(previousAuth);
         }
@@ -12741,7 +12762,7 @@ class FullChainEndToEndTest {
         request.setItems(lines);
         loginAs(reporter);
         try {
-            DailyReportDetail created=reportService.create(request); reportService.approve(created.getId());
+            DailyReportDetail created=reportService.create(request); reportService.approve(created.getId(), DailyReportApproveRequests.freshKey());
             List<UUID> itemIds=jdbc.queryForList("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted ORDER BY line_no NULLS LAST, id",UUID.class,created.getId());
             return new MultiLineReport(created.getId(),created.getBillNo(),reporter,itemIds);
         } finally {loginAs(w.superAdminUserId());}

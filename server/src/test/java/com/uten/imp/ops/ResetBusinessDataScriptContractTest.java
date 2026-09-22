@@ -378,7 +378,9 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(640, 592)")
                 // V641 我方供料委外件放开公共超量 (592→593)。
                 .contains("(641, 593)")
-                .contains("V507/469、V508/470及V511至V641完整目录")
+                // V644 审核生产日报幂等键: 命令账本加一列换一把唯一键 (V642、V643 跳号, 593→594)。
+                .contains("(644, 594)")
+                .contains("V507/469、V508/470及V511至V644完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

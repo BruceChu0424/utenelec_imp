@@ -25,6 +25,7 @@ com/uten/imp/migration/PermissionCatalogActionTaxonomyMigrationContractTest.java
 com/uten/imp/migration/PreplanAnalysisExactStockPegMigrationContractTest.java
 com/uten/imp/migration/PreplanMakeEntitlementDelegationMigrationContractTest.java
 com/uten/imp/migration/PreplanPublicSupplyRuntimeMigrationContractTest.java
+com/uten/imp/migration/PreplanSupplyLineGrowthMigrationContractTest.java
 com/uten/imp/migration/ProcurementIqcWarehouseStockInMigrationContractTest.java
 com/uten/imp/migration/ProductionDailyReportWorkersMigrationContractTest.java
 com/uten/imp/migration/ProductionFinishedArrivalRegistrationMigrationContractTest.java

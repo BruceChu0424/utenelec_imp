@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
 import 'package:uten_imp/features/warehouse/providers/warehouse_quality_result_count_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -15,7 +16,10 @@ Widget _app(Widget page, Set<String> permissions) {
       sharedPreferencesProvider.overrideWithValue(_preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      warehouseQualityResultPendingCountProvider.overrideWith((ref) async => 0),
+      // 覆写只能打在源头: 红黄两支计数都是它的派生, 盖派生盖不住底下的真请求。
+      warehouseQualityResultTypeCountsProvider.overrideWith(
+        (ref) async => WarehouseQualityTypeCounts.empty,
+      ),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,

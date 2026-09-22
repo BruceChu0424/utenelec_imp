@@ -6,7 +6,8 @@
 > 未选引导占位 UtenFilterPlaceholder；单据列表页待处理段徽章口径修订）
 > 更新：2026-09-21(分段计数扩成**三种形态**：默认中性括号 `(N)`，红徽章「待办」与
 > 黄徽章「进行中」由 `UtenFilterSegment.countForm` 显式挑；见 §三。
-> 2026-09-11 立的两形态口径由 [ADR-100](../99-决策记录-ADR/ADR-100-进行中黄色数量徽章与三形态计数口径.md) 扩充)
+> 2026-09-11 立的两形态口径由 [ADR-100](../99-决策记录-ADR/ADR-100-进行中黄色数量徽章与三形态计数口径.md) 扩充;
+> 同日补记 `UtenFilterSegment.inProgressCount`: 双维度页大类行并排两枚、黄左红右)
 > 相关：[UtenSearchBar](UtenSearchBar.md) · [UtenHistoryTimeFilter](UtenHistoryTimeFilter.md) · UtenSegmentBadgeLabel（`components/feedback/`）
 
 ## 一、定位
@@ -24,6 +25,12 @@
   (在办型)；两种徽章的 0 与 null 都不渲染，`> 99` 显 `99+`。
   三种形态下 `count == null`(加载中/未知)都不渲染——不把「未知」伪装成 0。
   计数须取该分段**全量口径**（非当前页推算）；
+- **大类行的第二枚计数**(`UtenFilterSegment.inProgressCount`，2026-09-21)：双维度页的
+  大类行可以并排挂两枚——主枚 `count` 按 `countForm` 着色(大类行一律 `actionable` 红)，
+  第二枚 `inProgressCount` 颜色写死为黄、画在红那枚的**左边**(黄左红右，与 hub 卡同序)。
+  只在一个大类里**同时**装着「等我动手」和「在办中」两批活时才传；该传不传的后果是大类行
+  只显红数、点进去的小类行却有黄数，「大类 = 各小类之和」当场对不上(见 §三)。两枚各自
+  遵守 0 与 null 不渲染；小屏收成「分类」下拉时两枚的总量也已自动合并，不必另行接线；
 - **搜索框**：全平台唯一组件 `UtenSearchBar`（胶囊 + 清除 + 300ms 防抖），
   `searchHint` 不传且无 controller 时不渲染（纯分类工具条）；
 - **响应式**：宽屏一行 `分段 | 搜索 | 弹性 | trailing`；窄屏（默认 < 840）分段
@@ -86,6 +93,18 @@
 
 默认是括号：新调用方忘了传 `countForm` 也不会凭空造出一个假警报。
 
+### 大类行两枚并排(2026-09-21)
+
+双维度页(大类在上、小类在下)的大类行, 只要它下面的小类既有红段又有黄段, 大类行就得两枚
+都挂: `count` + `countForm: actionable` 是红那枚, `inProgressCount` 是黄那枚, 每枚都等于
+本大类下同色小类之和。范本 `sales_order_progress_page.dart`(进行中 / 可发货两个大类)与
+`warehouse_quality_results_page.dart`(采购收货 / 委外回厂两个来源)。
+
+来由见准则 §四之七 第 1 条: 大类行漏掉黄那枚时, hub 卡上的黄数字一进页面就在大类行上
+凭空消失, 点到当下没有在办单的那个大类只剩一张空表, 用户会以为徽章在骗人。两枚的数最好
+同出一次服务端聚合(品质部检查结果的 `/type-counts` 一个响应带回红黄两组数), 别一枚一支
+端点 —— 那样恒等式只能靠人守。
+
 ### 硬约束
 
 - **分段计数永不登记进 `lib/shared/badges/todo_badge_registry.dart`**：
@@ -123,6 +142,19 @@ UtenFilterToolbar<StageSeg>(
 )
 // 内容区：未选 → UtenFilterPlaceholder；历史段未选时间 → UtenHistoryTimePlaceholder；
 // 否则列表/表格。
+```
+
+双维度页的大类行并排两枚(2026-09-21):
+
+```dart
+UtenFilterSegment(
+  value: _Seg.type(type),
+  label: type.label,
+  count: typeCounts?.actionable[type],            // 红: 本类里等仓库动手的
+  countForm: UtenSegmentCountForm.actionable,
+  inProgressCount: typeCounts?.inProgress[type],  // 黄: 本类里还在别人手上跑的, 画在红左边
+)
+// typeCounts 为 null(加载中)时两枚都传 null → 都不渲染, 不写 `?? 0`。
 ```
 
 范本实现：`purchase_doc_list_page.dart`（阶段+末尾历史记录+草稿括号计数）、

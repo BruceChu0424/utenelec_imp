@@ -92,7 +92,6 @@ abstract final class ApiEndpoints {
   // 品质部检查结果合并页（原 IQC 合格待入库 + IQC 不合格实物退回）：
   // 按收货单聚合 等待检查结果/全部合格待入库/部分合格/全部不合格需退回/已完结。
   static const warehouseQualityResults = '/warehouse/quality-results';
-  static const warehouseQualityResultCount = '$warehouseQualityResults/count';
   static const warehouseQualityResultTypeCounts =
       '$warehouseQualityResults/type-counts';
   static const warehouseQualityResultStatusCounts =

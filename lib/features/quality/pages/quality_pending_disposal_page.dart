@@ -1212,7 +1212,8 @@ class _ProcurementInspectionDetailPageState
       });
       await _load();
       ref.invalidate(procurementInspectionPendingCountProvider);
-      ref.invalidate(warehouseQualityResultPendingCountProvider);
+      // 打源头 type-counts: 仓库侧的红黄两支都是它的派生, 失效派生不重发请求。
+      ref.invalidate(warehouseQualityResultTypeCountsProvider);
       if (mounted) {
         UtenNotify.success(
           context,

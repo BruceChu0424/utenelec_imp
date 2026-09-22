@@ -30,7 +30,6 @@ import '../../production/providers/production_execution_group_count_provider.dar
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
-import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../../shared/auth/session_epoch_provider.dart';
 import 'dashboard_overview_provider.dart';
@@ -79,8 +78,8 @@ void invalidateWorkbenchBadgeCaches(WidgetRef ref) {
   // 与黄色模块卡同一张表——新增入口只改注册表，这里不再逐个点名(ADR-100)。
   invalidateInProgressBadgeCaches(ref);
   // 仅用于 hub 内分型展示、未登记进待办累加的切片计数。
+  // 品质部检查结果的来源分段不在此列：红黄两条链都由它派生，两张注册表已各自失效。
   ref.invalidate(warehouseInboundExpectationTypeCountsProvider);
-  ref.invalidate(warehouseQualityResultTypeCountsProvider);
 }
 
 /// 新会话建立（未登录→已登录，含清空业务数据后的重新登录）时的全局状态重建。

@@ -211,10 +211,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   }) async => throw StateError('unexpected status counts');
 
   @override
-  Future<int> pendingCount() async => 1;
-
-  @override
-  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async =>
+  Future<WarehouseQualityTypeCounts> typeCounts() async =>
       throw StateError('unexpected type counts');
 
   @override

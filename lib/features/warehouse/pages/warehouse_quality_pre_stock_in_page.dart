@@ -165,7 +165,8 @@ class _WarehouseQualityPreStockInPageState
             ),
           );
       if (!mounted) return;
-      ref.invalidate(warehouseQualityResultPendingCountProvider);
+      // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
+      ref.invalidate(warehouseQualityResultTypeCountsProvider);
       final replayed = result.replayedLineCount;
       context.appSuccess(
         '已先入库上架 ${result.stockedLineCount} 行'

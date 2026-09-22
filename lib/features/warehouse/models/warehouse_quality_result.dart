@@ -60,6 +60,56 @@ enum WarehouseQualityWorkStatus {
   }
 }
 
+/// 来源类型(大类)分段的两枚计数: 红色「轮到仓库动手」与黄色「等待检查结果」。
+///
+/// 两支同出服务端一次聚合, 结构上保证「卡面数字 = 页内同色分段之和」。此前红黄
+/// 各走各的端点, 大类分段只拿得到红的那支, 黄数字一进页面就蒸发, 用户不知道那几张
+/// 在哪个来源下面(准则 14 的自检铁律)。
+class WarehouseQualityTypeCounts {
+  const WarehouseQualityTypeCounts({
+    required this.actionable,
+    required this.inProgress,
+  });
+
+  /// 轮到仓库动手: 全部合格待入库 + 部分合格 + 全部不合格需退回。
+  final Map<WarehouseIqcStockInReceiptType, int> actionable;
+
+  /// 等待检查结果: 货已收、结论还在品质部手上, 仓库此刻办不了事。
+  final Map<WarehouseIqcStockInReceiptType, int> inProgress;
+
+  static const empty = WarehouseQualityTypeCounts(
+    actionable: {},
+    inProgress: {},
+  );
+
+  int get actionableTotal => _sum(actionable);
+
+  int get inProgressTotal => _sum(inProgress);
+
+  factory WarehouseQualityTypeCounts.fromJson(Map<String, dynamic> json) =>
+      WarehouseQualityTypeCounts(
+        actionable: _receiptTypeCounts(json['actionable']),
+        inProgress: _receiptTypeCounts(json['inProgress']),
+      );
+
+  static int _sum(Map<WarehouseIqcStockInReceiptType, int> counts) {
+    var total = 0;
+    for (final value in counts.values) {
+      total += value;
+    }
+    return total;
+  }
+}
+
+/// 逐来源取值, 缺键按 0: 服务端两支 map 都会带齐全部来源, 这里只防少给。
+Map<WarehouseIqcStockInReceiptType, int> _receiptTypeCounts(Object? value) {
+  final raw = value is Map ? value : const <String, Object?>{};
+  return {
+    for (final type in WarehouseIqcStockInReceiptType.values)
+      type: _integer(raw[type.apiValue]),
+  };
+}
+
 /// 合并页任务行：按收货单聚合的品质结论 + 仓库待办量（无金额字段）。
 class WarehouseQualityResultTask {
   const WarehouseQualityResultTask({

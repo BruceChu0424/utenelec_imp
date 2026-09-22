@@ -44,8 +44,9 @@ import java.util.UUID;
  * <li>所有聚合 CTE 先 JOIN 类型/状态收窄后的 receipt_scope，再 GROUP BY——
  *     筛了采购或委外时只扫一类收货单的事实行，聚合规模随筛选收窄而不是全库恒定；</li>
  * <li>判定列全部走 V448 覆盖/部分索引（index-only scan），不做回表；</li>
- * <li>角标 countPending/pendingTypeCounts 与列表同一聚合管线按 (类型, 状态)
- *     分组后排除「已完结」——未完结口径（等待+待入库+需退回）全端统一；</li>
+ * <li>角标 typeCounts 与列表同一聚合管线按 (类型, 状态) 分组，一次查询分流出红黄两支：
+ *     红 actionable(待入库 + 需退回) 与黄 inProgress(等待检查结果) 同源，
+ *     两支各走一个端点时结构上就允许漂移——黄数曾因此在来源大类行上凭空消失；</li>
  * <li>详情用单收货单直查 + Java 侧状态推导，与列表 STATUS_CASE 同一口径。</li>
  * </ul>
  */
@@ -346,21 +347,28 @@ public class WarehouseQualityResultService {
     }
 
     /**
-     * 角标计数（口径 = <b>轮到仓库动手</b>的任务数：待入库 + 需退回）。
+     * 来源类型(大类)分段的两枚计数。
+     * actionable = 轮到仓库动手(全部合格待入库 + 部分合格 + 全部不合格需退回);
+     * inProgress = 等待检查结果(货已收、结论在品质部手上, 仓库不用动手)。
+     * 两支同出一次聚合, 结构上保证「卡面数字 = 页内同色分段之和」。
+     */
+    public record TypeCounts(Map<String, Long> actionable, Map<String, Long> inProgress) {}
+
+    /**
+     * 来源类型分段的红黄两枚计数：复用列表聚合管线按 (来源类型, 作业状态) 分组，
+     * 只扫一次再在 Java 侧分流。
      *
-     * <p>2026-09-11 起<b>剔除「等待检查结果」</b>（{@code WAITING_INSPECTION}）：
-     * 那一档球在品质部手上，仓库看得见但办不了，计进红徽章等于天天挂着一个
-     * 点进去什么也做不了的数字（用户原话：「等待检查这个不计入消息累计，
-     * 只有检查结束后通知」）。它仍在页内分段里以中性计数呈现，只是不上卷。
-     * 「已完结」是终态，本就排除。
-     *
-     * <p>复用列表聚合管线按 (来源类型, 作业状态) 分组，与页内分段同一
-     * STATUS_CASE，口径不漂移；hub 卡角标与父分类分段计数共用。
+     * <p>「等待检查结果」{@code WAITING_INSPECTION} 不进红色：那一档球在品质部
+     * 手上，仓库看得见但办不了，计进红徽章等于天天挂着一个点进去什么也做不了的数字
+     * (用户原话：「等待检查这个不计入消息累计，只有检查结束后通知」)。但它必须以
+     * 黄色随同一支响应回去——此前这支口径把它直接丢掉、黄数另从别处取，来源大类行上
+     * 的黄徽章一进页面就蒸发，用户无从知道那几张单挂在哪个来源下面。
+     * 「已完结」是终态，两支都不数。
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
             + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
-    public Map<String, Long> pendingTypeCounts() {
+    public TypeCounts typeCounts() {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = (List<Object[]>) aggregateQuery("ALL", "", "", """
                 SELECT scope.receipt_type, (%s) AS work_status, COUNT(*)
@@ -368,27 +376,23 @@ public class WarehouseQualityResultService {
                 GROUP BY scope.receipt_type, (%s)
                 """.formatted(STATUS_CASE, AGGREGATE_FROM, KEYWORD_WHERE, STATUS_CASE))
                 .getResultList();
-        Map<String, Long> counts = new LinkedHashMap<>();
+        Map<String, Long> actionable = new LinkedHashMap<>();
+        Map<String, Long> inProgress = new LinkedHashMap<>();
+        // 两支都预置全部来源键：缺键会让前端读出 null 而不是 0，分段直接空着。
         for (String known : List.of(PURCHASE, SUBCONTRACT)) {
-            counts.put(known, 0L);
+            actionable.put(known, 0L);
+            inProgress.put(known, 0L);
         }
         for (Object[] row : rows) {
             String workStatus = str(row[1]);
-            // 终态不数；等待检查结果不数（见方法注释：那一档不是仓库的待办）。
-            if (COMPLETED.equals(workStatus) || WAITING_INSPECTION.equals(workStatus)) {
+            if (COMPLETED.equals(workStatus)) {
                 continue;
             }
-            counts.merge(str(row[0]), number(row[2]).longValue(), Long::sum);
+            Map<String, Long> bucket = WAITING_INSPECTION.equals(workStatus)
+                    ? inProgress : actionable;
+            bucket.merge(str(row[0]), number(row[2]).longValue(), Long::sum);
         }
-        return counts;
-    }
-
-    /** 合并页角标：全部来源未完结任务数（各类型之和）。 */
-    @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
-            + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
-    public long countPending() {
-        return pendingTypeCounts().values().stream().mapToLong(Long::longValue).sum();
+        return new TypeCounts(actionable, inProgress);
     }
 
     @Transactional(readOnly = true)

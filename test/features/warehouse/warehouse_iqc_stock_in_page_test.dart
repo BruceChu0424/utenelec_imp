@@ -63,16 +63,13 @@ void main() {
     // 旧详情页已删除，深链重定向到合并页详情（同参）。
     expect(hub, contains('WarehouseQualityResultBadge'));
     expect(hub, contains('RouteName.warehouseQualityResults'));
-    // hub 的计数失效统一走 invalidateWarehouseTaskCounts（2026-09-01 下午起），
-    // 品质结果的 未完结总数 + 父分类（来源）分段计数 都在其中失效。
+    // hub 的计数失效统一走 invalidateWarehouseTaskCounts(2026-09-01 下午起);
+    // 2026-09-21 起品质结果的红数与黄数都从来源分段计数那一支派生, 失效源头一支
+    // 两枚一起重拉(派生的两支单独失效拿到的仍是上游缓存)。
     final countRefresh = File(
       'lib/features/warehouse/providers/warehouse_count_refresh.dart',
     ).readAsStringSync();
     expect(hub, contains('invalidateWarehouseTaskCounts'));
-    expect(
-      countRefresh,
-      contains('warehouseQualityResultPendingCountProvider'),
-    );
     expect(countRefresh, contains('warehouseQualityResultTypeCountsProvider'));
     // 2026-09-11：同上，工作台模块卡按 BadgeModule 委托求和；品质结果计数源
     // 在注册表里（下一条断言）。
@@ -207,14 +204,21 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     WarehouseQualityWorkStatus.completed: 0,
   };
 
+  // 与本夹具的另外两处保持同一个世界: 唯一那张任务是 WAITING_INSPECTION 的采购单,
+  // 所以它只能落在 inProgress.purchase 上, actionable 两支都是 0(等品质部出结论,
+  // 仓库这会儿没活)。夹具自相矛盾会把「大类两枚 = 各状态小类之和」那条口径测成假绿。
   @override
-  Future<int> pendingCount() async => 1;
-
-  @override
-  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async => const {
-    WarehouseIqcStockInReceiptType.purchase: 1,
-    WarehouseIqcStockInReceiptType.subcontract: 0,
-  };
+  Future<WarehouseQualityTypeCounts> typeCounts() async =>
+      const WarehouseQualityTypeCounts(
+        actionable: {
+          WarehouseIqcStockInReceiptType.purchase: 0,
+          WarehouseIqcStockInReceiptType.subcontract: 0,
+        },
+        inProgress: {
+          WarehouseIqcStockInReceiptType.purchase: 1,
+          WarehouseIqcStockInReceiptType.subcontract: 0,
+        },
+      );
 
   @override
   Future<WarehouseQualityResultDetail> detail(

@@ -23,7 +23,7 @@ void main() {
       'warehouseArrivalExceptionCountProvider',
       'warehouseProductionDrawPendingCountProvider',
       'warehouseProductionFinishedInboundPendingCountProvider',
-      'warehouseQualityResultPendingCountProvider',
+      // 品质结果的红数与黄数都从这一支派生(2026-09-21), 失效它就等于两枚一起重拉。
       'warehouseQualityResultTypeCountsProvider',
     ]) {
       expect(
@@ -33,25 +33,35 @@ void main() {
       );
     }
 
-    // 2026-09-20: 销售待办数 provider 由分组计数 warehouseSalesOutboundCountsProvider
-    // 派生(同一次请求), 单独失效派生 provider 拿到的仍是缓存、不会重拉——全库只能失效源头.
-    final derivedInvalidations = Directory('lib')
+    // 2026-09-20 销售待办数、2026-09-21 品质结果的红数与黄数, 都由一次请求的分组
+    // 计数派生, 单独失效派生 provider 拿到的仍是缓存、不会重拉——全库只能失效源头.
+    const derivedSources = {
+      'warehouseSalesOutboundPendingCountProvider':
+          'warehouseSalesOutboundCountsProvider',
+      'warehouseQualityResultPendingCountProvider':
+          'warehouseQualityResultTypeCountsProvider',
+      'warehouseQualityResultWaitingCountProvider':
+          'warehouseQualityResultTypeCountsProvider',
+    };
+    final libSources = Directory('lib')
         .listSync(recursive: true)
         .whereType<File>()
         .where((file) => file.path.endsWith('.dart'))
-        .where(
-          (file) => file.readAsStringSync().contains(
-            'ref.invalidate(warehouseSalesOutboundPendingCountProvider)',
-          ),
-        )
-        .map((file) => file.path)
+        .map((file) => MapEntry(file.path, file.readAsStringSync()))
         .toList();
-    expect(
-      derivedInvalidations,
-      isEmpty,
-      reason:
-          '派生的销售待办数 provider 不能单独失效, 请改失效 warehouseSalesOutboundCountsProvider',
-    );
+    for (final derived in derivedSources.entries) {
+      final derivedInvalidations = libSources
+          .where(
+            (entry) => entry.value.contains('ref.invalidate(${derived.key})'),
+          )
+          .map((entry) => entry.key)
+          .toList();
+      expect(
+        derivedInvalidations,
+        isEmpty,
+        reason: '派生的 ${derived.key} 不能单独失效, 请改失效 ${derived.value}',
+      );
+    }
 
     // 2026-09-01 口径：所有草稿不计入数量徽章——草稿计数 provider 已删除，
     // 任何徽章聚合/刷新链路不得再引用。

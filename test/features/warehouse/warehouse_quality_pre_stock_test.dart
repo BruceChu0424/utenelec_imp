@@ -279,11 +279,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   ) async => WarehouseQualityResultDetail.fromJson(detailJson);
 
   @override
-  Future<int> pendingCount() async => 0;
-
-  @override
-  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async =>
-      const {};
+  Future<WarehouseQualityTypeCounts> typeCounts() async =>
+      WarehouseQualityTypeCounts.empty;
 
   @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({

@@ -224,11 +224,9 @@ class _WarehouseQualityResultsPageState
         _result = result;
         _loading = false;
       });
-      ref.invalidate(warehouseQualityResultPendingCountProvider);
+      // hub 卡的红数字与黄数字(ADR-100)都从这一支派生, 失效源头一支两枚一起重拉;
+      // 否则办完一单回到仓库 hub 还要等 60s 轮询才看到数字变。
       ref.invalidate(warehouseQualityResultTypeCountsProvider);
-      // 「等待结果」是 hub 卡的黄色数字(ADR-100), 与红色两支同批失效, 否则办完
-      // 一单回到仓库 hub 还得等 60s 轮询才看到黄数字变。
-      ref.invalidate(warehouseQualityResultWaitingCountProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -475,8 +473,14 @@ class _WarehouseQualityResultsPageState
   }
 
   Widget _buildToolbars(PagedResult<WarehouseQualityResultTask> result) {
-    // 父分类徽章 = 该来源未完结任务数（等待+待入库+需退回，后端 type-counts
-    // 全量口径，与 hub 卡/工作台角标同源）。
+    // 来源大类段并排挂两枚(黄左红右, ADR-100): 红 = 该来源轮到仓库动手的数
+    // (全部合格待入库 + 部分合格 + 全部不合格需退回), 黄 = 等待检查结果的数
+    // (货已经收了、结论还在品质部手上, 仓库这会儿不用动手)。两枚同出后端
+    // type-counts 一次聚合, 与 hub 卡/工作台角标同源。
+    // 两枚必须都在场: 只挂红那一枚时, hub 卡上的黄数字一进本页就蒸发, 用户不知道
+    // 那几张压在哪个来源下面, 点了没有等待单的来源只看到一张空表。
+    // 已知口径边界: 这两枚不随关键词收窄(type-counts 是全量), 下面那行状态计数随
+    // 关键词收窄, 所以搜索框一打字「大类 = 各小类之和」就不成立, 别拿两处数字对账。
     final typeCounts = ref
         .watch(warehouseQualityResultTypeCountsProvider)
         .valueOrNull;
@@ -485,7 +489,7 @@ class _WarehouseQualityResultsPageState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 第一条（大类）：来源类型分段 + 搜索框。进页面不预选；无「全部来源」段，
-        // 各来源段挂未完结计数。
+        // 各来源段挂红黄两枚计数(口径见上)。
         UtenFilterToolbar<WarehouseIqcStockInReceiptType>(
           segmentsKey: const Key('warehouse-quality-result-type'),
           searchKey: const Key('warehouse-quality-result-search'),
@@ -494,9 +498,9 @@ class _WarehouseQualityResultsPageState
               UtenFilterSegment(
                 value: type,
                 label: type.label,
-                count: typeCounts?[type],
-                // 来源段计数 = 该来源未完结任务数（仓库待办）→ 红徽章。
+                count: typeCounts?.actionable[type],
                 countForm: UtenSegmentCountForm.actionable,
+                inProgressCount: typeCounts?.inProgress[type],
               ),
           ],
           selected: _receiptType == null ? const {} : {_receiptType!},

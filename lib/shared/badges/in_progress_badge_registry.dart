@@ -175,7 +175,9 @@ final inProgressTotalCountProvider = Provider<int>(
 /// provider 未存活时 invalidate 是空操作。60s 轮询的 `StateNotifier` 角标走各自的
 /// `notifier.refresh()`, 不在此列 —— 与 [invalidateTodoBadgeCaches] 同款分工。
 void invalidateInProgressBadgeCaches(WidgetRef ref) {
-  ref.invalidate(warehouseQualityResultWaitingCountProvider);
+  // 「等待检查结果」与红表那支同出一份来源分段计数, 失效打在源头(两条链失效的是
+  // 同一支, 同一帧里合并成一次重拉)。
+  ref.invalidate(warehouseQualityResultTypeCountsProvider);
   ref.invalidate(salesOrderInProgressCountProvider);
   ref.invalidate(expenseCountsProvider);
 }

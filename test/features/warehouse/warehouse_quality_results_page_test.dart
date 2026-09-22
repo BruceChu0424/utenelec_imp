@@ -227,6 +227,112 @@ void main() {
     },
   );
 
+  // 2026-09-21 修复回归锁：来源大类行此前只挂红徽章，库里那几张「等待检查结果」的
+  // 委外收货单在 hub 卡上是黄色的数字，一进本页就蒸发——用户不知道它们压在哪个来源
+  // 下面，点了采购只看到一张空表。大类行改成并排两枚(黄左红右)后，「卡面黄 = 各来源
+  // 黄之和 = 页内『等待结果』段」这条父子求和铁律才在页面上成立。
+  testWidgets(
+    'receipt-type segments pair the in-progress badge left of the actionable one',
+    (tester) async {
+      _viewport(tester, const Size(1200, 900));
+      // 委外：1 张轮到仓库动手 + 2 张还在品质部手上；采购两样都没有。
+      final gateway = _QualityGateway(const [])
+        ..typeCountsResult = const WarehouseQualityTypeCounts(
+          actionable: {
+            WarehouseIqcStockInReceiptType.purchase: 0,
+            WarehouseIqcStockInReceiptType.subcontract: 1,
+          },
+          inProgress: {
+            WarehouseIqcStockInReceiptType.purchase: 0,
+            WarehouseIqcStockInReceiptType.subcontract: 2,
+          },
+        )
+        ..statusCountsResult = const {
+          WarehouseQualityWorkStatus.waitingInspection: 2,
+          WarehouseQualityWorkStatus.allPassed: 1,
+          WarehouseQualityWorkStatus.partialPassed: 0,
+          WarehouseQualityWorkStatus.returnRequired: 0,
+          WarehouseQualityWorkStatus.completed: 0,
+        };
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        _app(const WarehouseQualityResultsPage(), gateway, preferences),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('委外进仓'));
+      await tester.pumpAndSettle();
+
+      Finder segment(String label) => find.byWidgetPredicate(
+        (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
+      );
+
+      final subcontract = tester.widget<UtenSegmentBadgeLabel>(segment('委外进仓'));
+      expect(subcontract.count, 1, reason: '红 = 该来源轮到仓库动手的单');
+      expect(subcontract.countForm, UtenSegmentCountForm.actionable);
+      expect(subcontract.inProgressCount, 2, reason: '黄 = 该来源等待检查结果的单');
+      final inProgressBadge = find.descendant(
+        of: segment('委外进仓'),
+        matching: find.byType(UtenInProgressBadge),
+      );
+      final actionableBadge = find.descendant(
+        of: segment('委外进仓'),
+        matching: find.byType(UtenNotificationBadge),
+      );
+      expect(inProgressBadge, findsOneWidget);
+      expect(actionableBadge, findsOneWidget);
+      expect(tester.widget<UtenInProgressBadge>(inProgressBadge).count, 2);
+      // 黄左红右：与 hub 卡右上角同序，两枚并存时顺序是死的。
+      expect(
+        tester.getCenter(inProgressBadge).dx,
+        lessThan(tester.getCenter(actionableBadge).dx),
+        reason: '黄色在办徽章必须画在红色待办徽章左边',
+      );
+
+      // 采购两样都是 0：两枚都缩回，也不退化成 `(0)` 占位。
+      expect(
+        find.descendant(
+          of: segment('采购收货'),
+          matching: find.byType(UtenInProgressBadge),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: segment('采购收货'),
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: segment('采购收货'), matching: find.text('(0)')),
+        findsNothing,
+      );
+
+      // 父子求和：大类那枚黄 = 小类「等待结果」段的黄，同一批活在两行里是同一个数。
+      final waiting = tester.widget<UtenSegmentBadgeLabel>(segment('等待结果'));
+      expect(waiting.countForm, UtenSegmentCountForm.inProgress);
+      expect(waiting.count, subcontract.inProgressCount);
+      expect(
+        tester
+            .widget<UtenInProgressBadge>(
+              find.descendant(
+                of: segment('等待结果'),
+                matching: find.byType(UtenInProgressBadge),
+              ),
+            )
+            .count,
+        2,
+      );
+      // 红那半同理：大类红 = 三个「轮到仓库动手」小类段之和。
+      final actionableSum = [
+        for (final label in ['全部合格', '部分合格', '不合格退回'])
+          tester.widget<UtenSegmentBadgeLabel>(segment(label)).count ?? 0,
+      ].fold<int>(0, (sum, value) => sum + value);
+      expect(actionableSum, subcontract.count);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('multi-select batch stock-in submits grouped command', (
     tester,
   ) async {
@@ -509,6 +615,30 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   int statusCountsCalls = 0;
   WarehouseQualityBatchConfirmCommand? lastBatchCommand;
 
+  /// 状态小类计数(后端全量口径, 随选中的来源收窄); 默认形状 = 采购那张
+  /// 「全部合格待入库」, 没有等待检查结果的单。要别的形状就整支替换。
+  Map<WarehouseQualityWorkStatus, int> statusCountsResult = const {
+    WarehouseQualityWorkStatus.waitingInspection: 0,
+    WarehouseQualityWorkStatus.allPassed: 1,
+    WarehouseQualityWorkStatus.partialPassed: 0,
+    WarehouseQualityWorkStatus.returnRequired: 0,
+    WarehouseQualityWorkStatus.completed: 0,
+  };
+
+  /// 来源大类两枚计数(红 = 轮到仓库动手, 黄 = 等待检查结果); 默认值与
+  /// [statusCountsResult] 的默认形状对得上, 父子两行的数才是同一批活。
+  WarehouseQualityTypeCounts typeCountsResult =
+      const WarehouseQualityTypeCounts(
+        actionable: {
+          WarehouseIqcStockInReceiptType.purchase: 1,
+          WarehouseIqcStockInReceiptType.subcontract: 0,
+        },
+        inProgress: {
+          WarehouseIqcStockInReceiptType.purchase: 0,
+          WarehouseIqcStockInReceiptType.subcontract: 0,
+        },
+      );
+
   @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
     int page = 1,
@@ -532,23 +662,11 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? keyword,
   }) async {
     statusCountsCalls++;
-    return const {
-      WarehouseQualityWorkStatus.waitingInspection: 0,
-      WarehouseQualityWorkStatus.allPassed: 1,
-      WarehouseQualityWorkStatus.partialPassed: 0,
-      WarehouseQualityWorkStatus.returnRequired: 0,
-      WarehouseQualityWorkStatus.completed: 0,
-    };
+    return statusCountsResult;
   }
 
   @override
-  Future<int> pendingCount() async => tasks.length;
-
-  @override
-  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async => {
-    WarehouseIqcStockInReceiptType.purchase: 1,
-    WarehouseIqcStockInReceiptType.subcontract: 0,
-  };
+  Future<WarehouseQualityTypeCounts> typeCounts() async => typeCountsResult;
 
   @override
   Future<WarehouseQualityResultDetail> detail(

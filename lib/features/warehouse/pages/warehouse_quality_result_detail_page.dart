@@ -247,7 +247,8 @@ class _WarehouseQualityResultDetailPageState
             ),
           );
       if (!mounted) return;
-      ref.invalidate(warehouseQualityResultPendingCountProvider);
+      // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
+      ref.invalidate(warehouseQualityResultTypeCountsProvider);
       setState(() {
         _saving = false;
         _busy = null;

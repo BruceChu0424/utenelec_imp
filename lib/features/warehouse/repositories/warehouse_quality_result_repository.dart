@@ -22,12 +22,9 @@ abstract interface class WarehouseQualityResultGateway {
     String? keyword,
   });
 
-  /// 角标：轮到仓库动手的任务数（待入库 + 需退回，全来源之和）。
-  /// 「等待检查结果」球在品质部手上，2026-09-11 起不计入（后端同口径）。
-  Future<int> pendingCount();
-
-  /// 父分类（来源类型）分段计数：各来源未完结任务数。
-  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts();
+  /// 父分类(来源类型)分段计数: 红色「轮到仓库动手」与黄色「等待检查结果」两支。
+  /// 页内大类分段、hub 卡红黄徽章都取这一份, 三个数字不会再各算各的。
+  Future<WarehouseQualityTypeCounts> typeCounts();
 
   Future<WarehouseQualityResultDetail> detail(
     String receiptType,
@@ -92,21 +89,9 @@ class WarehouseQualityResultRepository
   }
 
   @override
-  Future<int> pendingCount() async {
-    final json = await api.get(ApiEndpoints.warehouseQualityResultCount);
-    final value = json['count'];
-    return value is num
-        ? value.toInt()
-        : int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  @override
-  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async {
+  Future<WarehouseQualityTypeCounts> typeCounts() async {
     final json = await api.get(ApiEndpoints.warehouseQualityResultTypeCounts);
-    return {
-      for (final type in WarehouseIqcStockInReceiptType.values)
-        type: _countOf(json, type.apiValue),
-    };
+    return WarehouseQualityTypeCounts.fromJson(json);
   }
 
   @override

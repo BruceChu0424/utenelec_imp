@@ -3,6 +3,7 @@ package com.uten.imp.features.warehouse.inbound;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.TaskDetail;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.TaskSummary;
+import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService.TypeCounts;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -50,17 +51,13 @@ public class WarehouseQualityResultController {
         return service.statusCounts(receiptType, keyword);
     }
 
-    /** 合并页角标：轮到仓库动手的任务数（待入库 + 需退回，全来源之和；
-     *  「等待检查结果」球在品质部手上，2026-09-11 起不计入）。 */
-    @GetMapping("/count")
-    public Map<String, Long> count() {
-        return Map.of("count", service.countPending());
-    }
-
-    /** 父分类（来源类型）分段计数：各来源未完结任务数（与页内分段徽章同口径）。 */
+    /**
+     * 父分类(来源类型)分段的红黄两枚计数：红 actionable = 轮到仓库动手(待入库 + 需退回),
+     * 黄 inProgress = 等待检查结果。页内三个数字只有这一个服务端来源, 两支不会各算各的。
+     */
     @GetMapping("/type-counts")
-    public Map<String, Long> typeCounts() {
-        return service.pendingTypeCounts();
+    public TypeCounts typeCounts() {
+        return service.typeCounts();
     }
 
     @GetMapping("/{receiptType}/{receiptId}")

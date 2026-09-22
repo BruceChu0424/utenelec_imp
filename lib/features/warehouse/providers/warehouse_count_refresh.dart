@@ -32,7 +32,7 @@ void invalidateWarehouseTaskCounts(WidgetRef ref) {
   // 领料：履约待领（DRAW open_qty 投影）。
   ref.invalidate(warehouseProductionDrawPendingCountProvider);
   ref.invalidate(warehouseProductionReturnPendingCountProvider);
-  // 品质部检查结果（仓库 hub 第四张任务卡）：未完结总数 + 父分类（来源）分段。
-  ref.invalidate(warehouseQualityResultPendingCountProvider);
+  // 品质部检查结果(仓库 hub 第四张任务卡): 红黄两枚徽章与页内来源大类分段同出
+  // 这一支, 失效只打源头(单独失效派生出来的计数只会拿回缓存, 不会重拉)。
   ref.invalidate(warehouseQualityResultTypeCountsProvider);
 }

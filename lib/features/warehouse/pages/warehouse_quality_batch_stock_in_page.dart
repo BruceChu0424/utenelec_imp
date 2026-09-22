@@ -238,7 +238,8 @@ class _WarehouseQualityBatchStockInPageState
           .read(warehouseQualityResultRepositoryProvider)
           .batchConfirm(WarehouseQualityBatchConfirmCommand(batches: entries));
       if (!mounted) return;
-      ref.invalidate(warehouseQualityResultPendingCountProvider);
+      // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
+      ref.invalidate(warehouseQualityResultTypeCountsProvider);
       context.appSuccess(
         '已批量入库 ${result.confirmedReceipts} 张收货单 / '
         '${result.confirmedItemCount} 条明细，库存已更新',

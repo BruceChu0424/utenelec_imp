@@ -130,10 +130,10 @@ class WarehouseQualityResultApiContractTest {
                 .contains("AND (:type = 'ALL' OR 'PURCHASE'::text = :type)")
                 .contains("AND (:type = 'ALL' OR 'SUBCONTRACT'::text = :type)")
                 .contains("JOIN receipt_scope scope");
-        // 角标与页内分段同口径：复用聚合管线按 (类型, 状态) 分组排除已完结，
-        // 「等待检查结果」计入（未完结口径：hub 卡 / 工作台 / 页内徽章统一）。
+        // 角标与页内分段同口径：复用聚合管线按 (类型, 状态) 分组，
+        // 红黄两支分流在 Java 侧做，不在 SQL 里另起一套状态白名单。
         assertThat(source)
-                .contains("public Map<String, Long> pendingTypeCounts()")
+                .contains("public TypeCounts typeCounts()")
                 .doesNotContain("IN ('ALL_PASSED','PARTIAL_PASSED','RETURN_REQUIRED')");
         // 列表不再为展示列做整库 stocked 聚合（历史直接在详情按单读取）。
         assertThat(source).doesNotContain("stocked_stat");
@@ -149,6 +149,66 @@ class WarehouseQualityResultApiContractTest {
                 .contains("idx_procurement_iqc_stock_in_item_event_qty")
                 .contains("idx_procurement_iqc_stock_in_item_batch")
                 .contains("idx_procurement_iqc_rejection_pending_return");
+    }
+
+    @Test
+    void typeCountsSplitsOneAggregateIntoActionableAndInProgress() throws Exception {
+        String source = readSource("WarehouseQualityResultService.java");
+        // 红黄两支曾各走一个端点、各算各的：type-counts 刻意剔除「等待检查结果」，
+        // 于是来源大类行上的黄徽章一进页面就蒸发。现在两支必须同出一次聚合。
+        assertThat(source)
+                .contains("public record TypeCounts(")
+                .contains("public TypeCounts typeCounts()")
+                .doesNotContain("pendingTypeCounts")
+                .doesNotContain("countPending");
+        assertThat(Arrays.stream(WarehouseQualityResultService.TypeCounts.class
+                        .getRecordComponents())
+                .map(RecordComponent::getName)
+                .toList())
+                .containsExactly("actionable", "inProgress");
+
+        int signature = source.indexOf("public TypeCounts typeCounts()");
+        String guards = source.substring(
+                source.lastIndexOf("@Transactional", signature), signature);
+        // 计数端点是只读聚合，且不得比列表/详情的任一视图权限更松。
+        assertThat(guards)
+                .contains("@Transactional(readOnly = true)")
+                .contains("@PreAuthorize(");
+        assertThat(WarehouseQualityResultService.class
+                .getDeclaredMethod("typeCounts")
+                .getAnnotation(PreAuthorize.class).value())
+                .contains("warehouse_iqc_stock_in:view")
+                .contains("warehouse_iqc_return:view");
+
+        String body = source.substring(signature);
+        body = body.substring(0, body.indexOf("\n    }"));
+        // 只跑一次聚合、只读一次结果集：红黄同源是结构保证，不是两处写法碰巧一致。
+        assertThat(countOccurrences(body, "aggregateQuery(")).isEqualTo(1);
+        assertThat(countOccurrences(body, "getResultList()")).isEqualTo(1);
+        // SELECT 与 GROUP BY 都用同一个 STATUS_CASE 常量，和页内分段同口径。
+        assertThat(countOccurrences(body, "STATUS_CASE")).isEqualTo(2);
+        // 分流口径：已完结两支都不数；等待检查结果只进黄色，其余三档只进红色。
+        assertThat(body)
+                .contains("if (COMPLETED.equals(workStatus)) {")
+                .contains("continue;")
+                .contains("WAITING_INSPECTION.equals(workStatus)")
+                .contains("? inProgress : actionable")
+                .doesNotContain("ALL_PASSED")
+                .doesNotContain("PARTIAL_PASSED")
+                .doesNotContain("RETURN_REQUIRED");
+        // 两个 map 都预置全部来源键：缺键前端读出 null 而不是 0，分段会空着。
+        assertThat(body)
+                .contains("actionable.put(known, 0L)")
+                .contains("inProgress.put(known, 0L)");
+
+        // /count 已下线：红数字改由 actionable 之和派生，端点不再重复一份口径。
+        assertThat(WarehouseQualityResultController.class.getDeclaredMethods())
+                .noneMatch(method -> "count".equals(method.getName()));
+        Method typeCounts = WarehouseQualityResultController.class
+                .getDeclaredMethod("typeCounts");
+        assertThat(typeCounts.getReturnType())
+                .isEqualTo(WarehouseQualityResultService.TypeCounts.class);
+        assertThat(typeCounts.getAnnotation(PreAuthorize.class)).isNull();
     }
 
     @Test

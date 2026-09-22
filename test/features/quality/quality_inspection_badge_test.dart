@@ -569,9 +569,11 @@ void main() {
 
       // 2026-09-05 提交报告（decide-batch）后仍要刷新仓库队列角标
       //（合并页可办计数：待入库+需退回）；旧单行/批量合格双入口已收敛为单按钮。
+      // 2026-09-21 起失效改打源头 type-counts: 合并页的红黄两支都是它的派生,
+      // 打派生只会拿回缓存、不重发请求, 表现就是办完一单徽章要等 60s 才动。
       expect(
         RegExp(
-          r'ref\.invalidate\(warehouseQualityResultPendingCountProvider\)',
+          r'ref\.invalidate\(warehouseQualityResultTypeCountsProvider\)',
         ).allMatches(source),
         hasLength(1),
       );

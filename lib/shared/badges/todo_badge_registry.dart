@@ -139,7 +139,8 @@ enum TodoEntry {
   /// 入库任务中心 · 产成品待点收。
   warehouseFinishedInbound(BadgeModule.warehouse),
 
-  /// 品质部检查结果 · 未完结任务。
+  /// 品质部检查结果 · 轮到仓库动手的任务(待入库 + 部分合格 + 需退回)。
+  /// 「等待检查结果」那档球在品质部手上, 走黄色链(in_progress_badge_registry)。
   warehouseQualityResult(BadgeModule.warehouse),
 
   // —— 采购 ——
@@ -404,7 +405,8 @@ void invalidateTodoBadgeCaches(WidgetRef ref) {
   ref.invalidate(warehouseArrivalExceptionCountProvider);
   ref.invalidate(warehouseProductionDrawPendingCountProvider);
   ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
-  ref.invalidate(warehouseQualityResultPendingCountProvider);
+  // 品质部检查结果的红黄两枚徽章由同一支来源分段计数派生, 失效打在源头.
+  ref.invalidate(warehouseQualityResultTypeCountsProvider);
   ref.invalidate(
     procurementArrivalReturnCountProvider(ProcurementInboundOrderType.purchase),
   );

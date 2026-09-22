@@ -8,6 +8,10 @@ enum _MaterialTableRowKind {
   orphan,
 }
 
+/// 主表一行此刻该显示的三个数：需要数量 / 本次要覆盖的量(毛) / 还缺数量(净)。
+/// 来源按优先级：页面当场换算的估算值 → 服务端模拟快照 → 权威快照。
+typedef _TableQty = ({double required, double residual, double net});
+
 final class _MaterialTableRow {
   const _MaterialTableRow({
     required this.kind,
@@ -1797,17 +1801,16 @@ abstract class _MaterialAnalysisMaterialTableState
   double? _materialTableRequiredQty(_MaterialTableRow row) => row.contextOnly
       ? null
       : row.material?.isRootSupply == true
-      ? _tablePreviewed(row.material!).requiredQty
+      ? _tableShownQty(row.material!).required
       : row.product?.remainingQty ??
             (row.aggregate != null
                 ? row.aggregate!.paths.fold<double>(
                     0,
-                    (sum, material) =>
-                        sum + _tablePreviewed(material).requiredQty,
+                    (sum, material) => sum + _tableShownQty(material).required,
                   )
                 : row.material == null
                 ? null
-                : _tablePreviewed(row.material!).requiredQty);
+                : _tableShownQty(row.material!).required);
 
   /// 「可用数量」：该物料此刻在所选仓库还能动用的现货。
   ///
@@ -1896,9 +1899,12 @@ abstract class _MaterialAnalysisMaterialTableState
       : row.aggregate != null
       ? row.aggregate!.paths.fold<double>(
           0,
-          (sum, material) => sum + material.additionalSupplyRecommendedQty,
+          (sum, material) => sum + _tableShownQty(material).residual,
         )
-      : row.material?.additionalSupplyRecommendedQty;
+      : row.material == null
+      ? null
+      // 与「还缺数量」「下单数量」同一份来源：父行改量之后三列必须一起变。
+      : _tableShownQty(row.material!).residual;
 
   // ==================== ADR-102 一张表：数量、办理与指派 ====================
   //
@@ -1938,6 +1944,18 @@ abstract class _MaterialAnalysisMaterialTableState
   Timer? _tableCascadeDebounce;
   bool _tableCascadePreviewing = false;
 
+  /// [_tableCascadePreview] 是按哪一份「用户亲手填的数」算出来的(键 = materialLineId)；
+  /// 权威快照对应空表。当场换算下层的**分母**必须按它算：那份快照里子层的数字是
+  /// 按这些数展开的，不是按此刻框里的数——服务端那趟在路上时用户又改了数，
+  /// 回来以后也要拿它把这期间多改的那部分就地补算，屏幕才不会先跳回旧数字。
+  Map<String, double> _tableCascadePreviewTyped = const {};
+
+  /// 父行刚改完、服务端那份重算还在路上时，页面**当场**按比例换算出来的子层数字
+  /// (键 = materialLineId)。用户口径 2026-09-21「输入框输入的时候子层级就要变，
+  /// 不是等到确认后」——那趟回滚式预览在服务端是真跑一遍下达再回滚，实测 1.4 到
+  /// 7 秒，光等它主表上就是「改了没反应」。只覆盖展示与预填，提交仍按权威快照。
+  final Map<String, _TableQty> _tableEstimatedQty = {};
+
   /// 批量可调拨量(materialLineId -> 可调入数量)。空表示还没取到或无可调。
   Map<String, double> _tableTransferableIn = const {};
 
@@ -1970,6 +1988,8 @@ abstract class _MaterialAnalysisMaterialTableState
     _tableSeededQtyTexts.clear();
     _tableUserTypedQty.clear();
     _tableCascadePreview = null;
+    _tableCascadePreviewTyped = const {};
+    _tableEstimatedQty.clear();
     _tableCascadeGeneration++;
     _tableWorkshopDraft.clear();
     _tableWorkerDraft.clear();
@@ -2019,11 +2039,11 @@ abstract class _MaterialAnalysisMaterialTableState
       : row.aggregate != null
       ? row.aggregate!.paths.fold<double>(
           0,
-          (sum, material) => sum + _tablePreviewed(material).netShortageQty,
+          (sum, material) => sum + _tableShownQty(material).net,
         )
       : row.material == null
       ? null
-      : _tablePreviewed(row.material!).netShortageQty;
+      : _tableShownQty(row.material!).net;
 
   /// 本提交单元累计已下单量。
   ///
@@ -2077,11 +2097,10 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 可认领 300 时填 700 只换来「认领 300 + 新单 400 = 700」, 对着 1000 仍差 300,
   /// 每一行都少下一个认领量。这是 2026-09-22 对抗复查抓出来的真缺陷。
   ///
-  /// 有父行改量的预览时取预览值——子层该跟着变多少由服务端算。
+  /// 父行改量之后取当场换算的估算值，服务端那份重算回来再整体覆盖。
   double _tableGroupResidual(_MaterialGroup group) => group.paths.fold<double>(
     0,
-    (sum, material) =>
-        sum + _tablePreviewed(material).additionalSupplyRecommendedQty,
+    (sum, material) => sum + _tableShownQty(material).residual,
   );
 
   /// 这一类行必须整批接管：要先自制目标件的委外。
@@ -2192,10 +2211,17 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 2026-09-22 对抗复查抓出来的真缺陷。
   @override
   void _invalidateMaterialTableCascadePreview() {
-    if (_tableCascadePreview == null) return;
+    if (_tableCascadePreview == null &&
+        _tableEstimatedQty.isEmpty &&
+        _tableUserTypedQty.isEmpty) {
+      return;
+    }
     _tableCascadePreview = null;
+    _tableCascadePreviewTyped = const {};
     _tableCascadeGeneration++;
-    // 用户填过的数还在，按新的权威快照重新算一遍下层。
+    // 用户填过的数还在：先按新的权威快照就地重估一遍(屏幕不闪回旧数字)，
+    // 再要服务端重算一遍下层。
+    _recomputeTableEstimates();
     if (_tableUserTypedQty.isNotEmpty) {
       _tableCascadeDebounce?.cancel();
       _tableCascadeDebounce = Timer(
@@ -2208,21 +2234,17 @@ abstract class _MaterialAnalysisMaterialTableState
   // ---------------- 父行改量带动子层(ADR-099 回滚式预览) ----------------
 
   /// 这一行在树上还有没有下层：只有带下层的行改量才值得惊动服务端重算。
+  ///
+  /// 按**表上画出来的那棵树**判(`_bomPresentation` 的父子链)，不按 `parentNodeKey`
+  /// 原始桶：顶层产品行的第 1 层子件 `parentNodeKey` 是空的，按原始桶查顶层
+  /// 永远「没有下层」——在顶层产品行改数既不当场换算、也不问服务端，正是用户
+  /// 2026-09-22 实机看到的「主表改数值没反应」。前置自制接管的分支同理。
   bool _tableGroupHasChildren(_MaterialGroup group) {
     final analysis = _analysis;
     if (analysis == null) return false;
-    final indexes = _analysisIndexes(analysis);
-    for (final path in group.paths) {
-      final nodeKey = path.nodeKey;
-      if (nodeKey == null) continue;
-      final children =
-          indexes.childrenByParentNodeKey[(
-            analysisLineId: path.analysisLineId,
-            parentNodeKey: nodeKey,
-          )];
-      if (children != null && children.isNotEmpty) return true;
-    }
-    return false;
+    final parents = _bomPresentation(analysis).parentIdsByMaterial;
+    final ids = {for (final path in group.paths) path.materialLineId};
+    return parents.values.any(ids.contains);
   }
 
   /// 用户在某一行填了数：记下**他亲手填的值**，并安排一次服务端重算。
@@ -2273,6 +2295,11 @@ abstract class _MaterialAnalysisMaterialTableState
       _tableUserTypedQty[lineId] = total;
     }
     if (!_tableGroupHasChildren(group)) return;
+    // 敲一下当场变：先按比例把它下面每一层换算好并回填预填值，再去抖要服务端
+    // 那份权威重算。叶子行改量到不了这里，照旧不重建整表。
+    _recomputeTableEstimates();
+    _reseedMaterialTableQtyInputs();
+    setState(() {});
     _tableCascadeDebounce?.cancel();
     _tableCascadeDebounce = Timer(
       const Duration(milliseconds: 300),
@@ -2294,11 +2321,17 @@ abstract class _MaterialAnalysisMaterialTableState
     // 派生出来的模拟快照会照样装上去，之后全表的数字与预填都来自它。
     final generation = ++_tableCascadeGeneration;
     if (_tableUserTypedQty.isEmpty) {
-      if (_tableCascadePreview == null) return;
-      setState(() => _tableCascadePreview = null);
+      if (_tableCascadePreview == null && _tableEstimatedQty.isEmpty) return;
+      setState(() {
+        _tableCascadePreview = null;
+        _tableCascadePreviewTyped = const {};
+        _recomputeTableEstimates();
+      });
       _reseedMaterialTableQtyInputs();
       return;
     }
+    // 记下这一趟是按哪份填数要的：回来时它就是新的换算分母。
+    final typedSent = Map<String, double>.unmodifiable(_tableUserTypedQty);
     setState(() => _tableCascadePreviewing = true);
     try {
       final view = await ref
@@ -2323,18 +2356,29 @@ abstract class _MaterialAnalysisMaterialTableState
             // lines 为空 = 只重算、不模拟下达任何一条计划，
             // 因此只要查看权限即可，不需要生成生产计划权限。
             lines: const [],
-            typedOutputs: Map<String, double>.from(_tableUserTypedQty),
+            typedOutputs: Map<String, double>.from(typedSent),
           );
       // 代际丢弃：用户还在敲，迟到的那一份直接作废。
       if (!mounted || generation != _tableCascadeGeneration) return;
-      setState(() => _tableCascadePreview = view);
+      setState(() {
+        _tableCascadePreview = view;
+        _tableCascadePreviewTyped = typedSent;
+        // 服务端那份在路上时用户又改了数：分母摆到「请求时那份填数」上，把这期间
+        // 多改的那部分就地补算一次。不补的话屏幕会先跳回旧数字，等下一份重算回来
+        // 才跳到新数字。
+        _recomputeTableEstimates();
+      });
       // 子层的数字变了，没被人动过的「下单数量」格要跟着回填——否则父行改成
       // 1500、子行「还缺数量」如期变成 750，可提交的却还是改量前的 500。
       _reseedMaterialTableQtyInputs();
     } catch (_) {
-      // 重算失败不打断填数：退回服务端权威快照的数字，并停掉预览态。
+      // 重算失败不打断填数：退回按权威快照换算的估算值，并停掉预览态。
       if (!mounted || generation != _tableCascadeGeneration) return;
-      setState(() => _tableCascadePreview = null);
+      setState(() {
+        _tableCascadePreview = null;
+        _tableCascadePreviewTyped = const {};
+        _recomputeTableEstimates();
+      });
       _reseedMaterialTableQtyInputs();
     } finally {
       if (mounted && generation == _tableCascadeGeneration) {
@@ -2354,6 +2398,188 @@ abstract class _MaterialAnalysisMaterialTableState
       if (candidate.materialLineId == material.materialLineId) return candidate;
     }
     return material;
+  }
+
+  /// 服务端那份快照(模拟优先、否则权威)给这一行的三个数——当场换算的**分母**。
+  _TableQty _tablePreviewedQty(ProductionMaterialAnalysisMaterial material) {
+    final shown = _tablePreviewed(material);
+    return (
+      required: shown.requiredQty,
+      residual: shown.additionalSupplyRecommendedQty,
+      net: shown.netShortageQty,
+    );
+  }
+
+  /// 这一行此刻该显示的三个数：有当场换算的估算值就用它，否则用服务端那份快照。
+  /// 「需要数量」「还缺数量」「下单数量」三列都从这里读，父行改量之后一起变。
+  _TableQty _tableShownQty(ProductionMaterialAnalysisMaterial material) =>
+      _tableEstimatedQty[material.materialLineId] ??
+      _tablePreviewedQty(material);
+
+  // ---------------- 敲一下当场变(与级联页共用 material_cascade_math) ----------------
+
+  /// 按此刻的填数把估算值整个重算一遍。
+  ///
+  /// **从头算、不增量**：分母永远是服务端快照当时的数(权威快照 = 没填过；模拟
+  /// 快照 = 它是按 [_tableCascadePreviewTyped] 算出来的)，所以退格、改回、清空都是
+  /// 幂等的，中间怎么敲都不影响结果。只有「此刻填数与快照当时不同」的那些树才要算，
+  /// 一棵树里所有填过的行一次算齐——父行与它下面被人改过的中间层要按同一份口径走。
+  void _recomputeTableEstimates() {
+    _tableEstimatedQty.clear();
+    final analysis = _analysis;
+    if (analysis == null) return;
+    final changed = <String>{
+      for (final entry in _tableUserTypedQty.entries)
+        if (_tableCascadePreviewTyped[entry.key] != entry.value) entry.key,
+      for (final key in _tableCascadePreviewTyped.keys)
+        if (!_tableUserTypedQty.containsKey(key)) key,
+    };
+    if (changed.isEmpty) return;
+    final presentation = _bomPresentation(analysis);
+    final roots = <String?>{
+      for (final key in changed) presentation.rootIdsByMaterial[key],
+    };
+    for (final rootId in roots) {
+      _estimateTableTree(analysis, presentation, rootId);
+    }
+  }
+
+  /// 把 [rootId] 这一棵树未经投影的全量前序(折叠、表头筛选、分页都不影响它)
+  /// 交给共用件换算：屏幕上相邻不等于树上父子，比例只能沿真实父子链传。
+  void _estimateTableTree(
+    ProductionMaterialAnalysisView analysis,
+    _BomPresentation presentation,
+    String? rootId,
+  ) {
+    final nodes = presentation.nodesByProduct[rootId];
+    if (nodes == null || nodes.isEmpty) return;
+    final indexes = _analysisIndexes(analysis);
+    final byId = {for (final node in nodes) node.materialLineId: node};
+    final children = <String?, List<ProductionMaterialAnalysisMaterial>>{};
+    for (final node in nodes) {
+      final parent = presentation.parentIdsByMaterial[node.materialLineId];
+      children
+          .putIfAbsent(byId.containsKey(parent) ? parent : null, () => [])
+          .add(node);
+    }
+    // 层级在遍历时重新数(根 = 0)，保证「子 = 父 + 1」——共用件按层级差判子树边界。
+    final preorder = <ProductionMaterialAnalysisMaterial>[];
+    final depths = <int>[];
+    final visited = <String>{};
+    void visit(ProductionMaterialAnalysisMaterial node, int depth) {
+      if (!visited.add(node.materialLineId)) return;
+      preorder.add(node);
+      depths.add(depth);
+      for (final child
+          in children[node.materialLineId] ??
+              const <ProductionMaterialAnalysisMaterial>[]) {
+        visit(child, depth + 1);
+      }
+    }
+
+    for (final root
+        in children[null] ?? const <ProductionMaterialAnalysisMaterial>[]) {
+      visit(root, 0);
+    }
+    final inputs = <CascadeScaleInput>[];
+    final committed = <String, double>{};
+    for (var index = 0; index < preorder.length; index++) {
+      final row = _tableScaleInputOf(
+        preorder[index],
+        indexes,
+        depth: depths[index],
+      );
+      inputs.add(row.input);
+      committed[row.input.key] = row.committed;
+    }
+    for (var index = 0; index < inputs.length; index++) {
+      if (depths[index] != 0) continue;
+      final root = preorder[index];
+      final factor = cascadeFactor(
+        baselineOutput: inputs[index].baselineOutput,
+        output: _tablePlannedOutput(
+          root,
+          committedOutput: committed[root.materialLineId] ?? 0,
+          server: inputs[index].server,
+          typed: _tableUserTypedQty[root.materialLineId],
+        ),
+      );
+      // 分母是 0(快照里这一行本来就不下)：比例算不出，这一支交给服务端。
+      if (factor == null) continue;
+      for (final result in cascadeScaleSubtree(
+        preorder: inputs,
+        rootIndex: index,
+        rootFactor: factor,
+        committedOutput: committed,
+      )) {
+        final snapshot = _tablePreviewedQty(preorder[result.index]);
+        // 下达时会自动认领的公共在途是个池子，与父行数量无关：净数 = 毛数 − 它。
+        final claimable = snapshot.residual - snapshot.net;
+        final net = result.scaled.residual - (claimable > 0 ? claimable : 0);
+        _tableEstimatedQty[result.key] = (
+          required: result.scaled.required,
+          residual: result.scaled.residual,
+          net: net > 0 ? net : 0,
+        );
+      }
+    }
+  }
+
+  /// 喂给共用件的一行：服务端快照的三个数 + 用户亲手填的数 + 分母，外加这一行
+  /// 已下达的量(分子分母都要含它，见 [_tablePlannedOutput])。
+  ({CascadeScaleInput input, double committed}) _tableScaleInputOf(
+    ProductionMaterialAnalysisMaterial material,
+    _MaterialAnalysisIndexes indexes, {
+    required int depth,
+  }) {
+    final group = indexes.groupsByLine[material.materialLineId];
+    final snapshot = _tablePreviewedQty(material);
+    final server = (
+      required: snapshot.required,
+      residual: snapshot.residual,
+      suggested: snapshot.residual,
+    );
+    final committed = group == null ? 0.0 : _tableGroupIssuedQty(group);
+    return (
+      input: (
+        key: material.materialLineId,
+        depth: depth,
+        ownsInput: group != null,
+        server: server,
+        userTyped: _tableUserTypedQty[material.materialLineId],
+        // 分母 = 这一行在当前快照里按的产出量 = 用快照当时的填数算出来的计划产出量。
+        baselineOutput: _tablePlannedOutput(
+          material,
+          committedOutput: committed,
+          server: server,
+          typed: _tableCascadePreviewTyped[material.materialLineId],
+        ),
+      ),
+      committed: committed,
+    );
+  }
+
+  /// 这一行按 [typed] 这个填数会有的计划产出量(服务端同款口径)。
+  ///
+  /// 顶层供给行是「来源需求量 与 已下达计划 + 本次填的 取大」——需求量那一项是
+  /// 产品的整批需求，不扣现货；其余行是「已下达 + max(本次填的, 还需安排)」，
+  /// 还需安排里已经扣过现货与在途。两条都写在服务端 `plannedSourceOutput` /
+  /// `withTypedOutput` 的注释里。
+  double _tablePlannedOutput(
+    ProductionMaterialAnalysisMaterial material, {
+    required double committedOutput,
+    required CascadeServerQty server,
+    required double? typed,
+  }) {
+    if (material.isRootSupply) {
+      final planned = committedOutput + (typed ?? 0);
+      return planned > server.required ? planned : server.required;
+    }
+    return cascadePlannedOutput(
+      committedOutput: committedOutput,
+      server: server,
+      userTyped: typed,
+    );
   }
 
   /// 本行此刻可以从别的计划锁定量里调进来多少(0 = 调拨按钮置灰)。
@@ -3259,9 +3485,12 @@ abstract class _MaterialAnalysisMaterialTableState
         ).groupsByKey[key]?.representative.materialLineId;
         if (typedKey != null) _tableUserTypedQty.remove(typedKey);
       }
-      // 刚落库的那批已经进了权威快照，上一份模拟快照连同它派生的预填一并作废。
+      // 刚落库的那批已经进了权威快照，上一份模拟快照连同它派生的预填一并作废；
+      // 没下成的行填的数还在，按权威快照就地重估。
       _tableCascadePreview = null;
+      _tableCascadePreviewTyped = const {};
       _tableCascadeGeneration++;
+      _recomputeTableEstimates();
       // 可调拨量随下达变化，下次进主表重取。
       _tableTransferableInScope = null;
     });

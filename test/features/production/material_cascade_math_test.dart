@@ -17,6 +17,7 @@ CascadeScaleInput _row(
   bool ownsInput = true,
   double? userTyped,
   double? baselineOutput,
+  double committed = 0,
 }) => (
   key: key,
   depth: depth,
@@ -24,9 +25,14 @@ CascadeScaleInput _row(
   server: server,
   userTyped: userTyped,
   // 分母默认取「这一行在当前快照里按的产出量」——与页面播种 _snapshotOutput
-  // 的口径一致(手工填过的行按他填的数，没填过的按系统建议量)。
+  // 的口径一致(手工填过的行按他填的数，没填过的按系统建议量)，已下达的量算在内。
   baselineOutput:
-      baselineOutput ?? cascadeBaselineOf(server: server, userTyped: userTyped),
+      baselineOutput ??
+      cascadePlannedOutput(
+        committedOutput: committed,
+        server: server,
+        userTyped: userTyped,
+      ),
 );
 
 void main() {
@@ -179,6 +185,41 @@ void main() {
       expect(rows.firstWhere((r) => r.key == 'C').displayQty, 0);
       // G 没有被换算(比例算不出)。
       expect(rows.where((r) => r.key == 'G'), isEmpty);
+    });
+
+    test('已下过单的中间层再追加：它下面那一层按「已下达 + 追加」展开，不是只按追加量', () {
+      // C 已下达 1000(还需安排 0)，孙层 G 是按那 1000 铺开的(需求 1000、已覆盖 400)。
+      // 在 C 的追加格填 1500：C 的产出量从 1000 变成 2500，G 的需求跟到 2500、
+      // 还需安排 2100；不算已下达量的话分母是 0，这一支只能干等服务端。
+      final rows = cascadeScaleSubtree(
+        preorder: [
+          _row('P', 0, _qty(1000, 1000)),
+          // 快照当时追加格还是空的：分母 = 已下达 1000 + 还需安排 0。
+          _row(
+            'C',
+            1,
+            _qty(1000, 0),
+            userTyped: 1500,
+            committed: 1000,
+            baselineOutput: 1000,
+          ),
+          _row('G', 2, _qty(1000, 600)),
+        ],
+        rootIndex: 0,
+        rootFactor: 1,
+        committedOutput: const {'C': 1000},
+      );
+      expect(rows[0].displayQty, 1500);
+      expect(rows[1].scaled.required, closeTo(2500, 0.0001));
+      expect(rows[1].displayQty, closeTo(2100, 0.0001));
+      expect(
+        cascadePlannedOutput(
+          committedOutput: 1000,
+          server: _qty(1000, 0),
+          userTyped: null,
+        ),
+        1000,
+      );
     });
 
     test('没有输入框的上下文行把父行的比例原样传下去', () {

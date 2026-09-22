@@ -177,6 +177,90 @@ void main() {
     expect(_qtyText(tester, _orderQty('m-pc')), '600');
   });
 
+  testWidgets('敲一下当场变：父行填数的那一拍子件就按比例换算好，不等服务端那趟', (tester) async {
+    await _pump(tester);
+    final shortage = find.byKey(
+      const ValueKey('material-analysis-net-shortage-m-pc'),
+    );
+    expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 600'));
+
+    await tester.enterText(_appendQty('m-p'), '1500');
+    // 只推一帧、不推时间：去抖还没到，服务端一趟都没发。
+    await tester.pump();
+    expect(previews, isEmpty);
+    // 估算：父件已下 1000、再追加 1500 → 产出 2500 = 2.5 倍；子件需求 1000 → 2500，
+    // 已覆盖的 400 是不变量，还需安排 2100。三列一起变。
+    expect(find.text('2500'), findsOneWidget);
+    expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 2100'));
+    expect(_qtyText(tester, _orderQty('m-pc')), '2100');
+
+    // 300ms 后服务端那份回来(假后端按 1500 展开)，整体覆盖估算值。
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews, hasLength(1));
+    expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 1500'));
+    expect(_qtyText(tester, _orderQty('m-pc')), '1500');
+  });
+
+  testWidgets('填了又立刻清空：子件当场回落到快照值，一次服务端都不问', (tester) async {
+    await _pump(tester);
+    await tester.enterText(_appendQty('m-p'), '1500');
+    await tester.pump();
+    expect(_qtyText(tester, _orderQty('m-pc')), '2100');
+
+    await tester.enterText(_appendQty('m-p'), '');
+    await tester.pump();
+    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews, isEmpty);
+    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+  });
+
+  testWidgets('服务端那份回来之后再改：从模拟快照起算比例，不是从权威快照', (tester) async {
+    await _pump(tester);
+    await tester.enterText(_appendQty('m-p'), '1500');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(_qtyText(tester, _orderQty('m-pc')), '1500');
+
+    // 分母摆到「请求时那份填数」上：父件产出 1000 + 1500 = 2500 → 1000 + 3000 = 4000，
+    // 比例 1.6；子件在模拟快照里是 1500(没有覆盖量) → 2400。
+    await tester.enterText(_appendQty('m-p'), '3000');
+    await tester.pump();
+    expect(previews, hasLength(1));
+    expect(_qtyText(tester, _orderQty('m-pc')), '2400');
+
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews, hasLength(2));
+    expect(_qtyText(tester, _orderQty('m-pc')), '3000');
+  });
+
+  testWidgets('顶层产品行改数：整棵树当场按比例变，而且会去问服务端(原来判成没有下层)', (tester) async {
+    await _pump(tester);
+    expect(_qtyText(tester, _orderQty('m-6')), '400');
+    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+
+    // 顶层需求 1000、本次填 1200 → 1.2 倍。第 1 层子件的 parentNodeKey 是空的，
+    // 按原始桶查顶层永远「没有下层」——既不换算也不发请求，正是用户实机看到的
+    // 「主表改数值没反应」。
+    await tester.enterText(_orderQty('m-root'), '1200');
+    await tester.pump();
+    expect(previews, isEmpty);
+    // 自制子件：需求 1000 → 1200，已覆盖 600 不变 → 还需 600。
+    expect(_qtyText(tester, _orderQty('m-6')), '600');
+    // 已下达的委外父件 m-p 跟着变(已下 1000 + 还需 200 = 1200)，它的子件再按 1.2 倍：
+    // 需求 1200、已覆盖 400 → 还需 800。
+    expect(_qtyText(tester, _orderQty('m-pc')), '800');
+
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews.last['typedOutputs'], [
+      {'materialLineId': 'm-root', 'qty': 1200.0},
+    ]);
+  });
+
   testWidgets('物料办理：有别的计划锁着的量才可调拨，没有就置灰并说明', (tester) async {
     await _pump(tester);
     // 夹具只给 m-2 返回了可调拨量。

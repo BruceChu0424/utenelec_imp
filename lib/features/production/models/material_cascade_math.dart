@@ -87,6 +87,19 @@ double cascadeBaselineOf({
   required double? userTyped,
 }) => cascadeFollowUpQty(server: server, userTyped: userTyped);
 
+/// 这一行的计划产出量 = 已下达的 + 本次框里该显示的数。
+///
+/// 服务端同款：「已下达计划量 + 本次填的量，再与需求取大」——需求那一项在
+/// [CascadeServerQty.residual] 里已经扣掉了已下达覆盖的部分，所以
+/// `committed + max(typed, residual)` 与它逐字相等。用此刻填的数算是分子，
+/// 用快照当时填的数算就是分母([CascadeScaleInput.baselineOutput])。
+double cascadePlannedOutput({
+  required double committedOutput,
+  required CascadeServerQty server,
+  required double? userTyped,
+}) =>
+    committedOutput + cascadeFollowUpQty(server: server, userTyped: userTyped);
+
 /// 按父行的新产出量换算本行：[factor] = 父行现在的产出量 ÷ 服务端那份快照当时的。
 ///
 /// **一律从服务端值重算，不在上一次换算结果上再乘**：用户是一位一位退格改数的
@@ -121,10 +134,15 @@ double? cascadeFactor({
 /// 第三条。比例算不出的那一支整个跳过，交给服务端。
 ///
 /// [preorder] 必须是未经投影的全量前序列表。返回值只含**真的被换算到**的行。
+///
+/// [committedOutput]：各行(按 key)**已经下达 / 在途**的产出量。已下过单的父件再追加时，
+/// 它下面那一层是按「已下达 + 本次填的」展开的(服务端「已下达计划量 + 本次填的量，
+/// 再与需求取大」)，分子要把它算进去、传进来的分母也得含它；不传 = 全按 0 算。
 List<CascadeScaleResult> cascadeScaleSubtree({
   required List<CascadeScaleInput> preorder,
   required int rootIndex,
   required double rootFactor,
+  Map<String, double> committedOutput = const {},
 }) {
   if (rootIndex < 0 || rootIndex >= preorder.length) return const [];
   final rootDepth = preorder[rootIndex].depth;
@@ -153,9 +171,10 @@ List<CascadeScaleResult> cascadeScaleSubtree({
       server: scaled,
       userTyped: row.userTyped,
     );
+    // 它下面那一层按「已下达 + 框里显示的数」展开，与分母同一口径。
     factorByDepth[row.depth] = cascadeFactor(
       baselineOutput: row.baselineOutput,
-      output: display,
+      output: (committedOutput[row.key] ?? 0) + display,
     );
     results.add((
       index: next,

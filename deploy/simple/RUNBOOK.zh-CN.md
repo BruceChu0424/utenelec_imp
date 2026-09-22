@@ -33,7 +33,11 @@ Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan
    - **Secrets**（3 个）：
      - `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` —— 发布用 RAM 子账号（见下）
      - `RELEASE_SIGNING_KEY` —— 下面第 2 步生成的**私钥**全文
-   - **Variables**（2 个）：`OSS_BUCKET`、`OSS_ENDPOINT`
+   - **Variables**（2 个必填）：`OSS_BUCKET`、`OSS_ENDPOINT`
+   - **Variables**（可选）：`OSS_UPLOAD_ENDPOINT` —— 只作用于上传。GitHub 托管跑批机在境外，
+     传境内桶是整条发布链唯一的慢点（2026-09-21 同样的产物传了 1h23m，隔天同样的产物 4 分钟）。
+     桶上开了传输加速后把它填成 `oss-accelerate.aliyuncs.com`：发布前会先打一个探针对象试水，
+     加速不可用就原样回落 `OSS_ENDPOINT`，不会因为一个加速开关发不出去。下载与清理仍走 `OSS_ENDPOINT`。
 2. 生成发布签名密钥（在本机或任意可信机器，私钥另存一份冷备份）：
 
    ```bash
@@ -50,7 +54,9 @@ Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan
 
 ## 二、阿里云 OSS 侧（一次性，10 分钟）
 
-1. 建桶（私有读写都关，仅授权访问），**开启版本控制**；
+1. 建桶（私有读写都关，仅授权访问），**开启版本控制**；跨境发布建议同时**开启传输加速**
+   （控制台 → 该桶 → 传输加速），再把 GitHub 变量 `OSS_UPLOAD_ENDPOINT` 填成
+   `oss-accelerate.aliyuncs.com`；加速按流量另计费，只用于上传；
 2. RAM 建两个子账号，都只授权这一个桶：
    - **发布账号**（给 GitHub）：`PutObject/GetObject` 限 `releases/*` 与 `LATEST.txt`；
    - **服务器账号**（给 updater）：仅 `GetObject` 同前缀，无任何写删权限；
@@ -201,6 +207,8 @@ git tag v1.4.1 && git push origin v1.4.1
 | 迁移失败恢复库 | 保持停写；核对失败迁移及备份摘要，先向独立库恢复并验证，再切换匹配组合，见第五节 |
 | 误激活坏版本 | 纯代码版早已自动回滚；含迁移版按上一条恢复备份 |
 | 应用反复崩溃（duplicate key users_employee_id_key） | 核对引导账号与已有员工/用户映射及环境配置；修复已确认的冲突后再启动，不能新建重复身份 |
+| 更新器报「启动或健康检查失败」，但日志里明明有 `Started …Application` | 不是新版本起不来，是判活拿不到 UP。`curl -sS $UTEN_HEALTH_URL` 看 readiness，再逐个查它的四个探针 `readinessState,db,diskSpace,attachmentSafety`——2026-09-22 就是发行版自动升级（clamav 1.5.3→1.5.4）后 `clamav-daemon.socket` 重复绑定 3310 起不来，附件探针 UNAVAILABLE 把整组拖成 DOWN，发布被误判失败并回滚 |
+| `clamav-daemon.socket` 报 `Address already in use` 但 3310 上没有进程 | 是自己绑了自己：clamav 1.5.4 起包里自带 socket 生成器，按 `clamd.conf` 生成了两条 `ListenStream`，我们 `/etc` 里的 drop-in 再追加一条就重复了。drop-in 必须先 `ListenStream=` 清空再写回环两条，见 `deploy/systemd/clamav-uten-imp-loopback.socket.conf.example` |
 
 ## 七、纪律红线
 

@@ -1212,13 +1212,13 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'handle',
       label: _l10n.materialHandle,
-      width: 182,
+      width: 110,
       value: _materialTableHandleText,
       cellBuilderHandlesSemantics: true,
       info:
-          '这一行现在能办的事：从别的计划已锁定的量里调拨，或按供应方式下达。'
-          '没有可调拨的量、缺少对应权限、或还没确认供应方式时按钮置灰，'
-          '鼠标悬停会说明是哪一种。',
+          '从别的计划已锁定的量里调入。没有可调拨的量或缺少调拨权限时按钮置灰，'
+          '鼠标悬停会说明是哪一种；已经调过的进度也在同一个悬浮说明里。'
+          '下单不在这一列办：填好「下单数量」后勾选行，用底部的「下单(N)」提交。',
       cellBuilder: (_, row) => _materialTableHandleCell(theme, row),
     ),
     MasterColumnDef(
@@ -1972,10 +1972,22 @@ abstract class _MaterialAnalysisMaterialTableState
   /// **可勾判据必须与它对齐**：聚合行这五列全是横杠，却照样能勾、能计进
   /// 「下单(N)」的话，提交用的就是界面上从没显示过的隐藏默认值——直接违反
   /// 「看到的勾选 = 提交的内容」。2026-09-22 对抗复查抓出来的真缺陷。
+  /// 这一行是不是「持有输入框、能被办理」的行。
+  ///
+  /// **2026-09-22 修订：顶层产品行不再一律排除。** V478 之后产品行直接承载真实的
+  /// ROOT_SUPPLY 节点(建行时就挂了 `material: rootMaterial` 与根供给 `group`，
+  /// 并把根物料行从子行里剔掉不再单独渲染)，它恰恰是「这个产品到底自己做、还是买、
+  /// 还是外发」的那一行。原来在这里一律返回 null，导致顶层的物料办理 / 下单数量 /
+  /// 追加下单 / 生产车间 / 负责人五列全是横杠，而「还缺数量」走的是另一套判据、
+  /// 对已确认采购或直接外发委外的顶层行**会显示真实数字** —— 于是同一行左边看得见
+  /// 缺口、右边办不了事。这条排除没有 ADR 依据也没有用例覆盖，是 ADR-102 之前的
+  /// 实现惯性，与「把顶层父件 + 下层一起下单搬进这张表」的立意相反。
+  ///
+  /// 仍然排除的两类没变：分页补的只读上下文行、汇总视图的聚合行(它五列全横杠，
+  /// 可勾会让人提交界面上从没显示过的默认值)；没有根供给组的产品行由
+  /// [_materialRowAllGroups] 返回空列表自然落空。
   _MaterialGroup? _tableEditableGroup(_MaterialTableRow row) {
-    if (row.contextOnly || row.product != null || row.aggregate != null) {
-      return null;
-    }
+    if (row.contextOnly || row.aggregate != null) return null;
     // 用「全部操作组」而不是「可改路线的组」：已下达的行照样要能填追加。
     final groups = _materialRowAllGroups(row);
     return groups.length == 1 ? groups.first : null;
@@ -1984,9 +1996,13 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 还缺数量(ADR-102 口径，服务端权威派生)：已把「下达时真会自动认领的
   /// 公共在途」当成已占用扣掉。客户端只做跨路径求和，不做任何缺口减在途的算术
   /// (ADR-099 不变量 2)。
+  ///
+  /// 2026-09-22：顶层放开办理后，这一列与办理/下单两列收口到同一条判据 ——
+  /// 有根供给组的产品行照常显示它自己的缺口，没有的才是横杠。原来只对
+  /// 「已确认非自制路线」的顶层行显示，顶层自制明明也能下达车间却看不到缺口。
   double? _materialTableNetShortageQty(_MaterialTableRow row) => row.contextOnly
       ? null
-      : row.product != null && !_rootExternalSupplyRow(row)
+      : row.product != null && row.group == null
       ? null
       : row.aggregate != null
       ? row.aggregate!.paths.fold<double>(
@@ -2056,16 +2072,58 @@ abstract class _MaterialAnalysisMaterialTableState
         sum + _tablePreviewed(material).additionalSupplyRecommendedQty,
   );
 
-  /// 这一类行必须整批接管：自制、以及要先自制目标件的委外。
-  /// 服务端要求下单量逐字等于全部剩余需求，既不能超也不能少，所以格子只读。
+  /// 这一类行必须整批接管：要先自制目标件的委外。
+  ///
+  /// **2026-09-22 修订：自制行不再算在内。** 原来的理由是「服务端要求下单量逐字等于
+  /// 全部剩余需求，既不能超也不能少」，而那条校验(`createsChildOwnership`)长在
+  /// `MaterialAnalysisCommandService.notifySupply` 里 —— 自制行在同一个方法更靠前的
+  /// 地方就被另一道闸拦掉了(「自制路线请直接『创建生产计划』下达车间，不再单独创建
+  /// 子件任务」)，**根本走不到那条数量校验**。自制行实际走的是 `issue-plans`，而那条路
+  /// 明确接受任意数量：`demandQty = line.qty().min(remainingQty)`，超出部分按 V577 记进
+  /// `public_surplus_qty`，连超量权限都不要。兄弟页面早就是这个口径 ——「下达车间」
+  /// 分桶页写着「任何行都可填超量」，「父件 + 下层一起下单」页把用户填的数原样送进
+  /// issue-plans。所以锁死自制行是引错了对象的历史惯性，不是技术约束。
+  ///
+  /// 委外那一支保持原样：它确实可能落回 `notifySupply` 的整量接管。
   bool _tableGroupWholeTakeover(_MaterialGroup group) {
     final route = _draftRoute(group);
-    if (route == MaterialSupplyRoute.make) return true;
     if (route != MaterialSupplyRoute.subcontract) return false;
     final analysis = _analysis;
     // 快照还没到手时按「要整批接管」处理：格子只读比让人填个数再吃 400 好。
     if (analysis == null) return true;
     return _subcontractNeedsPreparation(group.representative, analysis);
+  }
+
+  /// 顶层自制行要走的「产品行排产」通道的 analysisLineId；不是这类行就返回 null。
+  ///
+  /// 服务端 `candidateRoutesByMaterialLine` 的过滤是
+  /// `!"ROOT_SUPPLY".equals(nodeRole) || "SUBCONTRACT".equals(sourceConfirmed)` ——
+  /// 顶层自制既不是候选、也不该走 notify(自制路线在 notifySupply 开头就被拒),
+  /// 它本身就是排产对象, 要按产品的 analysisLineId 送进 issue-plans 的 planDrafts。
+  /// 顶层委外则**是**候选(ADR-099 放开), 照常走 materialLineId 那条。
+  String? _tableRootMakePlanLineId(_MaterialGroup group) {
+    final material = group.representative;
+    if (!material.isRootSupply) return null;
+    if (_draftRoute(group) != MaterialSupplyRoute.make) return null;
+    return material.analysisLineId;
+  }
+
+  /// 自制行这次填的数比本行「还需安排」少多少；不少就返回 null。
+  ///
+  /// **只提示，不拦提交。** 填少了并不会丢东西：没下的那部分仍旧留在这一行的
+  /// 「还需安排」里，下一轮接着下，分批下达本来就是合法用法。真正「不能少」的是
+  /// 「父件 + 下层一起下单」那个页面 —— 那里是同一次提交里子件必须盖住父件本批，
+  /// 与主表逐行下单不是一回事，别把那条下限照搬过来把分批堵死。
+  double? _tableBelowMinimumBy(_MaterialGroup group) {
+    if (_draftRoute(group) != MaterialSupplyRoute.make) return null;
+    if (_tableGroupIssued(group)) return null;
+    final text = _tableOrderQtyControllers[group.key]?.text;
+    if (text == null || text.trim().isEmpty) return null;
+    final typed = double.tryParse(text.trim());
+    if (typed == null) return null;
+    final floor = _tableGroupResidual(group);
+    final gap = floor - typed;
+    return gap > 0.0001 ? gap : null;
   }
 
   TextEditingController _tableOrderQtyController(_MaterialGroup group) {
@@ -2582,59 +2640,42 @@ abstract class _MaterialAnalysisMaterialTableState
     return null;
   }
 
+  /// 2026-09-22 用户复核：「物料办理只要调拨, 不需要有下达的按钮」。
+  ///
+  /// 这一列原本并排画「调拨 + 下达」两个按钮。行内那个下达与悬浮区「下单(N)」是
+  /// 同一个 [_submitMaterialTableRows] 的两个入口, 端点、确认框、数量来源、权限门
+  /// 全部相同, 且可勾判据 [_materialRowSelectableGroups] 用的正是下达那同一个谓词
+  /// —— 凡是行内按钮亮着的行必定有复选框, 所以撤掉它不丢任何能力, 下单统一走
+  /// 「勾选 + 下单(N)」。调拨必须留在行内: V311 规定一个物料节点不能同时参与多笔
+  /// 未补齐的让料, 多选调拨必然部分失败(ADR-102 §2.8)。
+  ///
+  /// [_tableIssueBlockedReason] 不能跟着删 —— 它还是可勾判据、悬浮下单集合、
+  /// 下单数量/追加下单两格与车间负责人两列的权威判据。它产出的人话原因原本只挂在
+  /// 置灰的下达按钮上, 现在改挂到「下单数量」格的悬浮说明里。
   String? _materialTableHandleText(_MaterialTableRow row) {
     final group = _tableEditableGroup(row);
     if (group == null) return '—';
-    final parts = <String>[];
-    if (_tableTransferBlockedReason(group) == null) parts.add('可调拨');
-    if (_tableIssueBlockedReason(group) == null) {
-      parts.add(
-        _tableGroupIssued(group) ? '可追加' : _tableIssueTarget(group).label,
-      );
-    }
-    return parts.isEmpty ? '暂不可办理' : parts.join(' · ');
+    return _tableTransferBlockedReason(group) == null ? '可调拨' : '暂不可办理';
   }
 
   Widget _materialTableHandleCell(ThemeData theme, _MaterialTableRow row) {
     final group = _tableEditableGroup(row);
     if (group == null) return const Text('—');
     final transferReason = _tableTransferBlockedReason(group);
-    final issueReason = _tableIssueBlockedReason(group);
-    final target = _tableIssueTarget(group);
     final transferable = _tableTransferableInQty(group);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _materialTableHandleButton(
-          theme,
-          key: 'material-analysis-handle-transfer-${group.key}',
-          icon: Icons.swap_horiz_rounded,
-          label: '调拨',
-          // 退役的「在途调拨」列并到这里：已经调过的进度跟着按钮一起看。
-          tooltip: [
-            transferReason ?? '可从别的计划调入 ${_qty(transferable)}',
-            if (_futureTransferRecords.isNotEmpty) _futureProgressText(row),
-          ].where((line) => line != '—').join('\n'),
-          onTap: transferReason == null && !_busy
-              ? () => unawaited(_showTransferLauncher(group))
-              : null,
-        ),
-        const SizedBox(width: UtenSpacing.s4),
-        _materialTableHandleButton(
-          theme,
-          key: 'material-analysis-handle-issue-${group.key}',
-          icon: Icons.send_rounded,
-          label: _tableGroupIssued(group) ? '追加' : target.label.substring(2),
-          tooltip:
-              issueReason ??
-              (_tableGroupIssued(group)
-                  ? '按「追加下单」里填的数再下一次'
-                  : '按「下单数量」里填的数${target.label}'),
-          onTap: issueReason == null && !_busy
-              ? () => unawaited(_submitMaterialTableRows([group]))
-              : null,
-        ),
-      ],
+    return _materialTableHandleButton(
+      theme,
+      key: 'material-analysis-handle-transfer-${group.key}',
+      icon: Icons.swap_horiz_rounded,
+      label: '调拨',
+      // 退役的「在途调拨」列并到这里：已经调过的进度跟着按钮一起看。
+      tooltip: [
+        transferReason ?? '可从别的计划调入 ${_qty(transferable)}',
+        if (_futureTransferRecords.isNotEmpty) _futureProgressText(row),
+      ].where((line) => line != '—').join('\n'),
+      onTap: transferReason == null && !_busy
+          ? () => unawaited(_showTransferLauncher(group))
+          : null,
     );
   }
 
@@ -2789,8 +2830,9 @@ abstract class _MaterialAnalysisMaterialTableState
         ),
       );
     }
-    // 整批接管的行(自制 / 要先自制目标件的委外)：服务端要求逐字等于剩余需求，
-    // 给输入框只会让人填完吃 400，所以直接只读并说明原因。
+    // 整批接管的行(要先自制目标件的委外)：它可能落回 notifySupply，那条路要求
+    // 逐字等于剩余需求，给输入框只会让人填完吃 400，所以直接只读并说明原因。
+    // 自制行已于 2026-09-22 放开，理由见 _tableGroupWholeTakeover。
     if (_tableGroupWholeTakeover(group)) {
       return Tooltip(
         message:
@@ -2810,7 +2852,12 @@ abstract class _MaterialAnalysisMaterialTableState
         child: Text('—', style: theme.textTheme.bodySmall),
       );
     }
-    return _materialTableQtyField(
+    // 行内「下达」按钮撤掉后(2026-09-22 用户口径「物料办理只要调拨」)，
+    // 「这一行为什么下不了单」的人话原因改挂在这一格上 —— 原来它只挂在那个
+    // 置灰按钮的悬浮里，是全表唯一常驻的解释面，不能跟着按钮一起消失。
+    final blocked = _tableIssueBlockedReason(group);
+    final shortBy = _tableBelowMinimumBy(group);
+    final field = _materialTableQtyField(
       theme,
       key: 'material-analysis-order-qty-${group.key}',
       controller: _tableOrderQtyController(group),
@@ -2819,6 +2866,16 @@ abstract class _MaterialAnalysisMaterialTableState
       // 带下层的行改量要带动子层：记下用户亲手填的数，去抖后向服务端要重算。
       onTyped: (text) => _onTableQtyTyped(group, text),
     );
+    final hint = [
+      if (shortBy != null)
+        '本次只下 ${_qty(_tableGroupResidual(group) - shortBy)}，'
+            '比这一行的「还需安排」${_qty(_tableGroupResidual(group))} 少 ${_qty(shortBy)}。'
+            '没下的部分仍留在这一行，下一轮可以接着下。',
+      if (blocked != null) '这一行本次下不了单：$blocked',
+      if (blocked == null && shortBy == null)
+        '填多少下多少。填得比需求多的部分按公共备货产出记账，下层物料需求不会自动变大。',
+    ].join('\n');
+    return Tooltip(message: hint, child: field);
   }
 
   String? _materialTableAppendQtyText(_MaterialTableRow row) {
@@ -2830,10 +2887,11 @@ abstract class _MaterialAnalysisMaterialTableState
   Widget _materialTableAppendQtyCell(ThemeData theme, _MaterialTableRow row) {
     final group = _tableEditableGroup(row);
     if (group == null) return const Text('—');
-    // 整批接管的行(自制、需先自制目标件的委外)提交量恒等于剩余需求，
-    // 这一格填了也不会被读走——所以不给输入框，直接说清追加走哪条路。
+    // 整批接管的行(需先自制目标件的委外)提交量恒等于剩余需求，这一格填了也不会
+    // 被读走——所以不给输入框，直接说清追加走哪条路。
     // 2026-09-22 对抗复查：原先这一格对已下达的自制行是可编辑的，用户填的数
     // 被 _tableSubmitQtyOf 的整批接管分支整个丢弃，还弹「请先填数」。
+    // 同日自制行已从整批接管里摘出去，这一格对自制行重新可填(走 publicSurplusOnly)。
     if (_tableGroupWholeTakeover(group)) {
       return Tooltip(
         message: '这一行按整批接管提交，追加产出请在「下达车间」建好的计划里填，不在这里。',
@@ -3051,8 +3109,30 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     for (final level in byLevel.keys.toList()..sort()) {
       final batch = byLevel[level]!;
-      final inputs = <_BucketCandidatePlanInput>[
-        for (final group in batch)
+      // 顶层自制与其它自制行走的是**两条不同的通道**：服务端
+      // candidateRoutesByMaterialLine 明确把 ROOT_SUPPLY 排除在候选之外(除非它
+      // 确认为委外)，顶层产品行本身就是排产对象，要按 analysisLineId 走 planDrafts。
+      // 当成候选按 materialLineId 提交的话服务端解析不出候选、整批失败。
+      final inputs = <_BucketCandidatePlanInput>[];
+      final drafts = <_BucketPlanDraft>[];
+      for (final group in batch) {
+        final publicSurplusOnly =
+            _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001;
+        final rootMakeLineId = _tableRootMakePlanLineId(group);
+        if (rootMakeLineId != null) {
+          drafts.add(
+            _BucketPlanDraft(
+              analysisLineId: rootMakeLineId,
+              qty: pending[group]!,
+              departmentId: _tableWorkshopFor(group).id,
+              workshopName: _tableWorkshopFor(group).name,
+              workerId: _tableWorkerFor(group).id,
+              publicSurplusOnly: publicSurplusOnly,
+            ),
+          );
+          continue;
+        }
+        inputs.add(
           _BucketCandidatePlanInput(
             materialLineId: group.representative.materialLineId,
             qty: pending[group]!,
@@ -3060,13 +3140,13 @@ abstract class _MaterialAnalysisMaterialTableState
             workshopName: _tableWorkshopFor(group).name,
             workerId: _tableWorkerFor(group).id,
             // 锚点已无剩余需求时，本次填的全是追加的公共备货产出。
-            publicSurplusOnly:
-                _tableGroupIssued(group) &&
-                _tableGroupResidual(group) <= 0.0001,
+            publicSurplusOnly: publicSurplusOnly,
           ),
-      ];
+        );
+      }
       final ok = await _issueWorkshopPlans(
         candidateInputs: inputs,
+        planDrafts: drafts,
         silent: true,
       );
       steps.add((

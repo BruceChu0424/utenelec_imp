@@ -86,19 +86,14 @@ void main() {
     // 路线未定 = 两个数量格都不给填。
     expect(_orderQty('m-1'), findsNothing);
     expect(_appendQty('m-1'), findsNothing);
-    // 办理里的「下达」按钮置灰，并说清为什么。
-    expect(_enabled(tester, _issueButton('m-1')), isFalse);
+    // 2026-09-22 用户口径「物料办理只要调拨」: 这一列不再有下达按钮, 整表一个都没有。
+    expect(_issueButton('m-1'), findsNothing);
     expect(
-      tester
-          .widget<Tooltip>(
-            find.ancestor(
-              of: _issueButton('m-1'),
-              matching: find.byType(Tooltip),
-            ),
-          )
-          .message,
-      contains('还没确认供应方式'),
+      find.byKey(const ValueKey('material-analysis-handle-issue-any')),
+      findsNothing,
     );
+    // 调拨按钮照常在(置灰), 这一列没被整个抹掉。
+    expect(_transferButton('m-1'), findsOneWidget);
   });
 
   testWidgets('确认过路线但没下过单的行：下单数量可填并预填还缺数量，追加下单恒为只读 0', (tester) async {
@@ -118,11 +113,8 @@ void main() {
     final append = tester.widget<TextField>(_appendQty('m-3'));
     expect(append.enabled, isTrue);
     expect(append.controller!.text, '0');
-    // 办理按钮改叫「追加」。
-    expect(
-      find.descendant(of: _issueButton('m-3'), matching: find.text('追加')),
-      findsOneWidget,
-    );
+    // 「追加」这个语义现在只由追加下单格承载, 办理列不再有下达/追加按钮。
+    expect(_issueButton('m-3'), findsNothing);
   });
 
   testWidgets('物料办理：有别的计划锁着的量才可调拨，没有就置灰并说明', (tester) async {
@@ -159,6 +151,29 @@ void main() {
     expect(find.text('确认路线(0)'), findsOneWidget);
   });
 
+  testWidgets('自制行的下单数量可填：预填毛量, 不再是只读的整批接管', (tester) async {
+    await _pump(tester);
+    // 2026-09-22 修订：锁死自制行的理由(服务端要求逐字等于剩余需求)引错了对象 ——
+    // 那条校验长在 notifySupply 里, 而自制行在更靠前的地方就被拦掉、根本走不到;
+    // 自制行实际走 issue-plans, 那条路按 V577 接受任意数量。
+    final field = tester.widget<TextField>(_orderQty('m-6'));
+    expect(field.enabled, isTrue);
+    expect(field.controller!.text, '400');
+    // 还没下达过, 追加格仍是只读的(避免两列都能填的歧义)。
+    expect(_appendQty('m-6'), findsNothing);
+  });
+
+  testWidgets('顶层行不再是一排横杠：调拨按钮、下单数量、还缺数量都在', (tester) async {
+    await _pump(tester);
+    // 产品行直接承载 ROOT_SUPPLY(V478)。原来 _tableEditableGroup 对产品行一律
+    // 早退, 导致办理/下单/追加/车间/负责人五列全横杠, 而「还缺数量」走另一套判据
+    // 会显示真实数字 —— 同一行左边看得见缺口、右边办不了事。
+    expect(_transferButton('m-root'), findsOneWidget);
+    final field = tester.widget<TextField>(_orderQty('m-root'));
+    expect(field.enabled, isTrue);
+    expect(field.controller!.text, '600');
+  });
+
   testWidgets('有公共在途可认领时：还缺数量显示净数，下单数量预填毛量', (tester) async {
     await _pump(tester);
     // 这一行需求覆盖 1000，其中 300 下达时服务端会自动从公共在途认领。
@@ -182,10 +197,8 @@ void main() {
     // 它不该被当成「已下达」——否则下单格锁死、追加默认 0、批量下单静默跳过它。
     expect(_orderQty('m-5'), findsOneWidget);
     expect(_appendQty('m-5'), findsNothing);
-    expect(
-      find.descendant(of: _issueButton('m-5'), matching: find.text('追加')),
-      findsNothing,
-    );
+    // 追加格不出现本身就说明这一行没被当成「已下达」(已下达才给追加格)。
+    expect(_issueButton('m-5'), findsNothing);
   });
 
   testWidgets('还缺数量的悬浮说明接住了退役三列的事实', (tester) async {
@@ -320,9 +333,26 @@ Map<String, dynamic> _analysis() => {
       'canSchedule': true,
       'maxSchedulableQty': 1000,
       'unitName': '件',
+      'rootMaterialLineId': 'm-root',
     },
   ],
   'flatMaterials': [
+    // 顶层根供给行: 产品行直接承载它(V478), 不再单独渲染一条根物料行。
+    _material(
+      line: 'm-root',
+      name: '智能多功能插座',
+      confirmed: 'MAKE',
+      netShortageQty: 600,
+      nodeRole: 'ROOT_SUPPLY',
+      level: 0,
+    ),
+    // 自制子件: 2026-09-22 起下单数量可填可超量。
+    _material(
+      line: 'm-6',
+      name: '自制外壳',
+      confirmed: 'MAKE',
+      netShortageQty: 400,
+    ),
     _material(line: 'm-1', name: '未定路线件', confirmed: null, netShortageQty: 800),
     _material(
       line: 'm-2',
@@ -391,10 +421,13 @@ Map<String, dynamic> _material({
   double? grossQty,
   double sharedFutureAvailableQty = 0,
   double inboundQty = 0,
+  String nodeRole = 'BOM_NODE',
+  int level = 1,
   List<Map<String, dynamic>> downstream = const [],
 }) => {
   'materialLineId': line,
   'analysisLineId': 'product-1',
+  'nodeRole': nodeRole,
   'nodeKey': 'n-$line',
   'actionGroupKey': 'a-$line',
   'goodsId': 'g-$line',
@@ -403,7 +436,7 @@ Map<String, dynamic> _material({
   'colorName': '本色',
   'unitName': '个',
   'unitId': 'unit-1',
-  'level': 1,
+  'level': level,
   'path': ['智能多功能插座', name],
   'requiredQty': 1000,
   'allocatedAvailableQty': 200,

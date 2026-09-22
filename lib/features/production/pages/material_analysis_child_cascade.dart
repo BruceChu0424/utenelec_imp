@@ -69,23 +69,21 @@ abstract class _MaterialAnalysisChildCascadeState
     bool Function(_ChildCascadeRow row)? willIssue,
   }) {
     final withChildren = _cascadeSubmitKeysWithChildren(rows);
-    return {
+    // 过滤与取值口径都在共用件里(主表那张表用的是同一份)：只送用户亲手填的
+    // 那个数，不送框里显示的值——那可能是按父行比例换算出来的、或按下限替他
+    // 抬上去的。服务端那一侧是单调向上的，送回声值会把整棵子树钉在旧值上。
+    return cascadeTypedOutputs([
       for (final row in rows)
-        if (!row.isSeed &&
-            row.ownsInput &&
-            row.material != null &&
-            row.blockedReason == null &&
-            row.userTypedQty != null &&
-            withChildren.contains(row.submitKey) &&
-            row.userTypedQty! > 0.0001 &&
-            (willIssue == null || willIssue(row)))
-          // 送**用户亲手填的那个数**，不是框里显示的数：框里可能是页面按父行
-          // 比例换算出来的、或按下限替他抬上去的值。服务端那一侧是「加进计划
-          // 产出量再与缺口取大」，送一个被放大过的数上去，它就成了整棵子树的
-          // 地板，回来又被子层原样采纳，再也降不下来。地板该是多少，服务端
-          // 自己会从父行算出来。
-          row.material!.materialLineId: row.userTypedQty!,
-    };
+        if (!row.isSeed && row.material != null)
+          (
+            payloadId: row.material!.materialLineId,
+            userTyped: row.userTypedQty,
+            ownsInput: row.ownsInput,
+            blocked: row.blockedReason != null,
+            hasChildren: withChildren.contains(row.submitKey),
+            willIssue: willIssue == null || willIssue(row),
+          ),
+    ]);
   }
 
   /// 本次重算要带给服务端的全部「每行填了多少」。

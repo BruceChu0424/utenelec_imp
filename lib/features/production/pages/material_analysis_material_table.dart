@@ -1789,13 +1789,25 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
+  /// 「需要数量」：本批要用多少。
+  ///
+  /// 与「还缺数量」走**同一份快照**：父行改量之后有一份服务端算好的模拟快照时，
+  /// 两列都读它。少了这一句，同一行会出现「需要 1000 / 还缺 2000」这种自相
+  /// 矛盾的组合——一列跟着父行变了，另一列还停在权威快照上。
   double? _materialTableRequiredQty(_MaterialTableRow row) => row.contextOnly
       ? null
       : row.material?.isRootSupply == true
-      ? row.material!.requiredQty
+      ? _tablePreviewed(row.material!).requiredQty
       : row.product?.remainingQty ??
-            row.aggregate?.totalRequired ??
-            row.material?.requiredQty;
+            (row.aggregate != null
+                ? row.aggregate!.paths.fold<double>(
+                    0,
+                    (sum, material) =>
+                        sum + _tablePreviewed(material).requiredQty,
+                  )
+                : row.material == null
+                ? null
+                : _tablePreviewed(row.material!).requiredQty);
 
   /// 「可用数量」：该物料此刻在所选仓库还能动用的现货。
   ///
@@ -2218,15 +2230,47 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 去抖是页面级单例(不是每行一个 Timer)：整张表铺开输入框之后，每行一个
   /// 定时器会把回滚式预览的请求量放大到不可接受——那个端点在服务端是真跑一遍
   /// 下达再整体回滚。
-  void _onTableQtyTyped(_MaterialGroup group, String text) {
+  void _onTableQtyTyped(_MaterialGroup group, String text) =>
+      _recordTableTypedQty(group, orderText: text);
+
+  /// 追加格填的数：与下单格是**同一个提交单元**的两半，合起来才是「这一行这批
+  /// 要产出多少」，所以两格都往同一个键上写合计值，不各写各的。
+  void _onTableAppendQtyTyped(_MaterialGroup group, String text) =>
+      _recordTableTypedQty(group, appendText: text);
+
+  /// 记下用户**亲手填的值**，并安排一次服务端重算。
+  ///
+  /// 两格只要有一格填了数，这一行就算「用户亲手决定过」；两格都空 = 把这一行
+  /// 交还给系统算(手滑敲一下再删掉能复位，不会永久脱离跟随)。
+  void _recordTableTypedQty(
+    _MaterialGroup group, {
+    String? orderText,
+    String? appendText,
+  }) {
     final lineId = group.representative.materialLineId;
-    final trimmed = text.trim();
-    final value = double.tryParse(trimmed);
-    if (trimmed.isEmpty || value == null || value <= 0) {
-      // 清空输入框 = 把这一行交还给系统算，不是「填了 0」。
+    double? parse(String? text) {
+      final trimmed = text?.trim() ?? '';
+      if (trimmed.isEmpty) return null;
+      final value = double.tryParse(trimmed);
+      return value == null || !value.isFinite || value <= 0 ? null : value;
+    }
+
+    final order =
+        parse(orderText) ??
+        (orderText != null
+            ? null
+            : parse(_tableOrderQtyControllers[group.key]?.text));
+    final append =
+        parse(appendText) ??
+        (appendText != null
+            ? null
+            : parse(_tableAppendQtyControllers[group.key]?.text));
+    final total = (order ?? 0) + (append ?? 0);
+    if (total <= 0) {
+      // 两格都空 = 把这一行交还给系统算，不是「填了 0」。
       _tableUserTypedQty.remove(lineId);
     } else {
-      _tableUserTypedQty[lineId] = value;
+      _tableUserTypedQty[lineId] = total;
     }
     if (!_tableGroupHasChildren(group)) return;
     _tableCascadeDebounce?.cancel();
@@ -2922,6 +2966,12 @@ abstract class _MaterialAnalysisMaterialTableState
       controller: _tableAppendQtyController(group),
       enabled: !_busy && (_canNotify || _canGenerate),
       hintText: '0',
+      // 追加格也要带动子层(用户口径 2026-09-21：「追加对应的子层级也要追加数量」)。
+      // 少这一句时，「还需安排为 0 的已下达中间层」只能在这一格填数，填了却既不
+      // 进 _tableUserTypedQty、也不触发重算——子层纹丝不动，提交时还因为提交量
+      // 读不到而被静默剔掉。两格共用同一个提交单元键，所以这里必须走
+      // _onTableAppendQtyTyped，让它按「下单格 + 追加格」的合计写那一个键。
+      onTyped: (text) => _onTableAppendQtyTyped(group, text),
     );
   }
 
@@ -3200,7 +3250,18 @@ abstract class _MaterialAnalysisMaterialTableState
         _tableAppendQtyControllers[key]?.text = '0';
         _tableSeededQtyTexts['APPEND|$key'] = '0';
         _selectedMaterialGroupKeys.remove(key);
+        // 已经落库的量必须从「用户亲手填的数」里摘掉：服务端那一侧是**加进**
+        // 计划产出量，留着它下一次重算就把刚下达的量再加一遍；而且
+        // _hasUnsubmittedMaterialTableInput 会永远为真，45 秒轮询再也不跑。
+        // 注意两套键空间：done 装的是操作组键，这张表按物料行 id 记。
+        final typedKey = _analysisIndexes(
+          analysis,
+        ).groupsByKey[key]?.representative.materialLineId;
+        if (typedKey != null) _tableUserTypedQty.remove(typedKey);
       }
+      // 刚落库的那批已经进了权威快照，上一份模拟快照连同它派生的预填一并作废。
+      _tableCascadePreview = null;
+      _tableCascadeGeneration++;
       // 可调拨量随下达变化，下次进主表重取。
       _tableTransferableInScope = null;
     });

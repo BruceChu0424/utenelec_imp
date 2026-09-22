@@ -29,6 +29,9 @@ const _permissions = {
 /// 提交单元身份：`NODE|<actionGroupKey>|<materialLineId>`。
 String _groupKey(String line) => 'NODE|a-$line|$line';
 
+String _qtyText(WidgetTester tester, Finder field) =>
+    tester.widget<TextField>(field).controller!.text;
+
 Finder _orderQty(String line) =>
     find.byKey(ValueKey('material-analysis-order-qty-${_groupKey(line)}'));
 Finder _appendQty(String line) =>
@@ -115,6 +118,63 @@ void main() {
     expect(append.controller!.text, '0');
     // 「追加」这个语义现在只由追加下单格承载, 办理列不再有下达/追加按钮。
     expect(_issueButton('m-3'), findsNothing);
+  });
+
+  testWidgets('主表追加格也带动子层：在已下达父件的追加格填数，子件按新数量重算', (tester) async {
+    await _pump(tester);
+    // 已下达的自制父件两格都在(下单数量 + 追加下单)，它们是同一个提交单元的
+    // 两半；子件此刻按权威快照是 600。
+    expect(find.text('已下达委外父件'), findsWidgets);
+    expect(find.text('父件的子件'), findsWidgets);
+    expect(_qtyText(tester, _appendQty('m-p')), '0');
+    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+
+    await tester.enterText(_appendQty('m-p'), '1500');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    // 追加格填的数要进 typedOutputs，否则子层纹丝不动(这一条原来是断的)。
+    expect(previews, isNotEmpty);
+    expect(previews.last['typedOutputs'], [
+      {'materialLineId': 'm-p', 'qty': 1500.0},
+    ]);
+    expect(previews.last['lines'], isEmpty);
+    // 子件跟着重算后的数走。
+    expect(_qtyText(tester, _orderQty('m-pc')), '1500');
+  });
+
+  testWidgets('父行改量后子件的还缺数量与下单预填都跟着重算后的快照走', (tester) async {
+    await _pump(tester);
+    final shortage = find.byKey(
+      const ValueKey('material-analysis-net-shortage-m-pc'),
+    );
+    expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 600'));
+
+    await tester.enterText(_appendQty('m-p'), '1500');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    // 「还缺数量」与「下单数量」预填同源；「需要数量」列现在读的也是这份重算
+    // 快照(原先它直读权威快照，同一行会出现「需要 1000 / 还缺 1500」的矛盾)。
+    expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 1500'));
+    expect(_qtyText(tester, _orderQty('m-pc')), '1500');
+  });
+
+  testWidgets('两格都空 = 交还系统算：清掉追加格后不再送这一行的数', (tester) async {
+    await _pump(tester);
+    await tester.enterText(_appendQty('m-p'), '1500');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews.last['typedOutputs'], isNotEmpty);
+
+    final sent = previews.length;
+    await tester.enterText(_appendQty('m-p'), '');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    // 手滑敲一下再删掉不能让这一行永久脱离跟随：模拟快照当场作废、子件回到
+    // 权威快照的 600，而且不必再问服务端一次(没有要送的数量了)。
+    expect(previews, hasLength(sent));
+    expect(_qtyText(tester, _orderQty('m-pc')), '600');
   });
 
   testWidgets('物料办理：有别的计划锁着的量才可调拨，没有就置灰并说明', (tester) async {
@@ -215,11 +275,15 @@ void main() {
   });
 }
 
+/// 本次 pump 期间发出的每一份「下达预览」请求体，供断言 typedOutputs。
+final List<Map<String, dynamic>> previews = [];
+
 Future<void> _pump(
   WidgetTester tester, {
   Set<String> permissions = _permissions,
   Size size = const Size(1800, 1200),
 }) async {
+  previews.clear();
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
   tester.view.physicalSize = size;
@@ -250,6 +314,30 @@ Future<void> _pump(
           };
         } else if (request.path.endsWith('/default-workshops')) {
           result = <String, dynamic>{};
+        } else if (request.path.endsWith('/issue-plans/preview')) {
+          // 回滚式预览：按请求里 typedOutputs 把子层需求放大(与服务端「子件按
+          // 父件计划产出量展开」同一口径)，并记下这次送了什么供断言。
+          final body = request.data as Map<String, dynamic>;
+          previews.add(body);
+          final typed = {
+            for (final raw in (body['typedOutputs'] as List? ?? const []))
+              (raw as Map)['materialLineId'] as String: (raw['qty'] as num)
+                  .toDouble(),
+          };
+          final scaled = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+          final parent = typed['m-p'];
+          if (parent != null) {
+            for (final raw in (scaled['flatMaterials'] as List)) {
+              final material = raw as Map<String, dynamic>;
+              if (material['materialLineId'] != 'm-pc') continue;
+              material['requiredQty'] = parent;
+              material['netShortageQty'] = parent;
+              material['additionalSupplyRecommendedQty'] = parent;
+            }
+          }
+          result = scaled;
+        } else if (request.path.endsWith('/notify')) {
+          result = data;
         } else if (request.path == '/production/material-analyses/analysis-1') {
           result = data;
         } else if (request.path.endsWith('/routes') &&
@@ -354,6 +442,33 @@ Map<String, dynamic> _analysis() => {
       netShortageQty: 400,
     ),
     _material(line: 'm-1', name: '未定路线件', confirmed: null, netShortageQty: 800),
+    // 已下达的自制父件 + 它的采购子件：主表上「父改子跟」与「追加也要带动子层」
+    // 两条口径都落在这一对上(父件只能在追加格填数)。
+    _material(
+      line: 'm-p',
+      name: '已下达委外父件',
+      confirmed: 'SUBCONTRACT',
+      // V581 我方供料的单一子件件：直接外发、不建前置自制任务，所以追加格可填。
+      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
+      netShortageQty: 0,
+      downstream: [
+        {
+          'actionId': 'act-p',
+          'route': 'SUBCONTRACT',
+          'status': 'REQUESTED',
+          'documentNo': 'SC-0001',
+          'allocatedQty': 1000,
+        },
+      ],
+    ),
+    _material(
+      line: 'm-pc',
+      name: '父件的子件',
+      confirmed: 'BUY',
+      netShortageQty: 600,
+      level: 2,
+      parentLine: 'm-p',
+    ),
     _material(
       line: 'm-2',
       name: '待下单紧固件',
@@ -424,11 +539,15 @@ Map<String, dynamic> _material({
   String nodeRole = 'BOM_NODE',
   int level = 1,
   List<Map<String, dynamic>> downstream = const [],
+  String? parentLine,
+  String? subcontractOutboundForm,
 }) => {
+  'subcontractOutboundForm': ?subcontractOutboundForm,
   'materialLineId': line,
   'analysisLineId': 'product-1',
   'nodeRole': nodeRole,
   'nodeKey': 'n-$line',
+  if (parentLine != null) 'parentNodeKey': 'n-$parentLine',
   'actionGroupKey': 'a-$line',
   'goodsId': 'g-$line',
   'goodsCode': 'M-$line',

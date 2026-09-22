@@ -293,12 +293,20 @@ class _ChildCascadeRow extends EditableGridRow {
   /// (2000 → 200 → 20 → 2 → 空 → 1 → 10 → 100 → 1000)，逐拍相乘的话中间那拍
   /// 空框没有比例可算，丢掉的那一档再也补不回来，最后父件回到 1000 而子层还
   /// 停在 2000。从快照重算是幂等的：中间怎么敲都不影响最终值。
-  void applyOptimisticScale(double factor) {
-    final covered = serverRequiredQty - serverResidual;
-    final required = serverRequiredQty * factor;
-    _optimisticRequiredQty = required;
-    final rest = required - covered;
-    _optimisticResidual = rest > 0 ? rest : 0;
+  void applyOptimisticScale(double factor) =>
+      applyScaled(cascadeScaleOne(serverQty, factor));
+
+  /// 服务端那份快照给这一行的三个数(喂给共用件用)。
+  CascadeServerQty get serverQty => (
+    required: serverRequiredQty,
+    residual: serverResidual,
+    suggested: serverSuggested,
+  );
+
+  /// 装上共用件算好的估算值。
+  void applyScaled(CascadeServerQty scaled) {
+    _optimisticRequiredQty = scaled.required;
+    _optimisticResidual = scaled.residual;
   }
 
   void clearOptimistic() {
@@ -342,11 +350,10 @@ class _ChildCascadeRow extends EditableGridRow {
 
   /// 本行此刻该显示的下单量：手工填过的取「用户填的数」与「还需安排」的大者,
   /// 没填过的就跟服务端(或按父行换算出来)的建议量走。
-  double get followUpQty {
-    final typed = userTypedQty;
-    if (!qtyTouched || typed == null) return suggested;
-    return typed > residual ? typed : residual;
-  }
+  double get followUpQty => cascadeFollowUpQty(
+    server: (required: requiredQty, residual: residual, suggested: suggested),
+    userTyped: qtyTouched ? userTypedQty : null,
+  );
 
   /// 行身份：物料行用它的 materialLineId；无物料行的树顶用产品行 id 加前缀。
   String get id =>

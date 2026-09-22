@@ -318,14 +318,11 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     // 空框那一拍，拿上一拍当分母就会在那里断链(分母成 0)，丢掉的那一档再也补
     // 不回来——父件退回 1000 了，子层还停在 2000。从快照算则每一拍都是独立的
     // 幂等换算，中间怎么敲都不影响结果。
-    final baseline = _snapshotOutput[source.submitKey];
-    if (baseline == null ||
-        baseline <= 0.0001 ||
-        !output.isFinite ||
-        output < 0) {
-      return;
-    }
-    final factor = output / baseline;
+    final factor = cascadeFactor(
+      baselineOutput: _snapshotOutput[source.submitKey],
+      output: output,
+    );
+    if (factor == null) return;
     var changed = false;
     // 同一提交单元可能出现在树里多处，每一处的子树都按同一个比例走。
     for (var index = 0; index < _allRows.length; index++) {
@@ -378,38 +375,37 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   /// 这正是用户要的「先把子件改成 3000，父件再怎么变子件都不跟」。没手工改过的
   /// 行则相反：它的值跟父行走，它的子树也跟着一起走，改大改小都跟。
   bool _scaleSubtreeAt(int index, double rootFactor) {
-    final rootDepth = _allRows[index].depth;
-    final factorByDepth = <int, double?>{rootDepth: rootFactor};
-    var changed = false;
-    for (var next = index + 1; next < _allRows.length; next++) {
-      final row = _allRows[next];
-      if (row.depth <= rootDepth) break;
-      final factor = factorByDepth[row.depth - 1];
-      // 父行那一层算不出比例(它的快照基准是 0)：整支交给服务端那份重算，
-      // 不拿别人的比例硬乘。
-      if (factor == null) {
-        factorByDepth[row.depth] = null;
-        continue;
-      }
-      row.applyOptimisticScale(factor);
-      changed = true;
-      if (!row.ownsInput) {
-        factorByDepth[row.depth] = factor;
-        continue;
-      }
-      final after = row.followUpQty;
+    // 换算与判断全在共用件 material_cascade_math.dart 里：主表那张表用的是同一份，
+    // 两边各写一套再各踩一遍坑这件事发生过一次就够了。
+    final results = cascadeScaleSubtree(
+      preorder: [
+        for (final row in _allRows)
+          (
+            key: row.submitKey,
+            depth: row.depth,
+            ownsInput: row.ownsInput,
+            server: (
+              required: row.serverRequiredQty,
+              residual: row.serverResidual,
+              suggested: row.serverSuggested,
+            ),
+            userTyped: row.qtyTouched ? row.userTypedQty : null,
+            baselineOutput: _snapshotOutput[row.submitKey],
+          ),
+      ],
+      rootIndex: index,
+      rootFactor: rootFactor,
+    );
+    for (final result in results) {
+      final row = _allRows[result.index];
+      row.applyScaled(result.scaled);
+      final after = result.displayQty;
+      if (after == null) continue;
       if ((after - row.enteredQty).abs() > 0.0001) {
         _setQtyText(row, _bucketQtyText(after));
       }
-      // 本行下面那一层按**本行自己**的变化比例走：服务端那一侧子层跟的是父行的
-      // 净产出(缺口扣在途)，页面这一侧与它同源的量就是「这一行要下多少」。
-      // 手工改过的行的下单量不跟父行走，于是比例恒为 1，它下面那一支跟着它不动。
-      final rowBaseline = _snapshotOutput[row.submitKey];
-      factorByDepth[row.depth] = rowBaseline != null && rowBaseline > 0.0001
-          ? after / rowBaseline
-          : null;
     }
-    return changed;
+    return results.isNotEmpty;
   }
 
   /// 树顶那一行还能不能真实模拟一遍下达：父件还没提交、有车间通道的种子、

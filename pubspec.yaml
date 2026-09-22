@@ -23,7 +23,7 @@ dependencies:
   riverpod_annotation: ^2.6.1
 
   # 国际化
-  intl: ^0.20.2
+  intl: ^0.20.3
 
   # 时间抽象（表格手动双击检测用；测试环境为 fake clock 随 pump 推进）
   clock: ^1.1.2

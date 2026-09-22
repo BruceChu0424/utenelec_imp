@@ -44,7 +44,7 @@ class UtenModuleProgressChip extends StatelessWidget {
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
-                  // 与黄色徽章同一个深琥珀实底 + 白字(2026-09-21 用户口径);
+                  // 与黄色徽章同一个亮琥珀实底 + 深棕字(2026-09-22 用户口径);
                   // 明暗两档同色, 理由见 UtenColors.warningStrong。
                   color: UtenColors.warningStrong,
                   borderRadius: BorderRadius.circular(UtenRadius.control),
@@ -55,7 +55,7 @@ class UtenModuleProgressChip extends StatelessWidget {
                   child: Text(
                     '进行中 $text',
                     style: theme.textTheme.labelLarge?.copyWith(
-                      color: Colors.white,
+                      color: UtenColors.onWarningStrong,
                       fontWeight: FontWeight.w800,
                     ),
                   ),

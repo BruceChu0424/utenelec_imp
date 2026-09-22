@@ -7,6 +7,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/uten_colors.dart';
+
 class UtenNotificationBadge extends StatelessWidget {
   const UtenNotificationBadge({
     super.key,
@@ -23,7 +25,6 @@ class UtenNotificationBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     if (count <= 0) return const SizedBox.shrink();
 
-    final theme = Theme.of(context);
     final label = count > 99 ? '99+' : count.toString();
 
     return SizedBox(
@@ -32,7 +33,10 @@ class UtenNotificationBadge extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: showLabel ? 8 : (size / 4)),
         constraints: BoxConstraints(minWidth: size),
         decoration: BoxDecoration(
-          color: theme.colorScheme.error,
+          // 徽章有自己的实底色, 不吃 colorScheme.error(2026-09-22 用户口径
+          // 「红变得更红」)。那是全站语义红, 400 多处引用, 为角标改深它是过度波及;
+          // 与黄徽章的 UtenColors.warningStrong 同一个路子。
+          color: UtenColors.dangerStrong,
           borderRadius: BorderRadius.circular(size / 2),
         ),
         alignment: Alignment.center,
@@ -41,7 +45,9 @@ class UtenNotificationBadge extends StatelessWidget {
           textAlign: TextAlign.center,
           maxLines: 1,
           style: TextStyle(
-            color: theme.colorScheme.onError,
+            // 实底是固定的深红, 字就得是固定的白 —— 跟着 colorScheme.onError 走的话
+            // 深色模式下可能换成深色, 压在这块固定红底上会读不清。
+            color: Colors.white,
             fontSize: showLabel ? 11 : 10,
             fontWeight: FontWeight.w700,
           ),

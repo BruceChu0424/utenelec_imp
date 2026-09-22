@@ -18,9 +18,9 @@
 // 形态与 UtenNotificationBadge 严格同构(高度恒等于 size、minWidth=size 保证
 // 单数字是正圆、多位数横向变宽呈胶囊、>99 显 99+、count<=0 整个不渲染),
 // 这样卡片右上角「黄在左、红在右」并排时两枚一样高、基线对齐。
-// 配色也与红色那枚同构: 深色实底 + 白字加粗, 只是底色换成深琥珀
-// (2026-09-21 用户口径「数字加粗变白, 黄色再深点」; 白字要读得清, 底色就必须
-//  压到 amber-700, 见 UtenColors.warningStrong 的注释)。
+// 形态与红色那枚同构(实底药丸 + 数字加粗), 但**配色是反的**: 红徽章是深红底白字,
+// 黄徽章是亮琥珀底深棕字。2026-09-22 用户要「黄变得更黄、偏亮一点, 两个色差明显点」,
+// 而亮黄配白字必糊 —— 见 UtenColors.warningStrong 的三轮定色记录。
 
 import 'package:flutter/material.dart';
 
@@ -55,7 +55,7 @@ class UtenInProgressBadge extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: showLabel ? 8 : (size / 4)),
         constraints: BoxConstraints(minWidth: size),
         decoration: BoxDecoration(
-          // 深琥珀实底 + 白字(2026-09-21 用户口径「加粗变白, 黄色再深点」)。
+          // 亮琥珀实底 + 深棕字(2026-09-22 用户口径「黄更黄、偏亮」)。
           // 明暗两档同一个底: 这是自带对比度的实心药丸, 不吃表面色。
           color: UtenColors.warningStrong,
           borderRadius: BorderRadius.circular(size / 2),
@@ -66,7 +66,8 @@ class UtenInProgressBadge extends StatelessWidget {
           textAlign: TextAlign.center,
           maxLines: 1,
           style: TextStyle(
-            color: Colors.white,
+            // 亮琥珀底上是深棕字不是白字, 与 UtenColors.warningStrong 配套。
+            color: UtenColors.onWarningStrong,
             fontSize: showLabel ? 11 : 10,
             fontWeight: FontWeight.w800,
           ),

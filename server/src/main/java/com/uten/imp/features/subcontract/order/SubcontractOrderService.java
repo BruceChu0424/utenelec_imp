@@ -222,7 +222,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 .map(it -> toItemDto(it, sourceApplicationDocs(
                         sources.getOrDefault(it.getId(), List.of()))))
                 .toList();
-        return toDetail(r, itemDtos);
+        return toDetail(r, itemDtos, approvalProjection.latestForOrder(
+                orderType(), r.getId(), r.getStatus()), shortDeliveryHold(r.getId()));
     }
 
     /** sources 原始行 → 结构化来源申请引用（明细 id + 申请单 id + 单号）。 */
@@ -642,6 +643,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @PreAuthorize("hasAuthority('subcontract_order:change_qty')")
     public OrderDetail changeQty(
             UUID id, OrderQtyChangeRequest request) {
+        requireNoPendingShortDeliveryJudgement(id);
         return changeQtyInternal(id, request);
     }
 
@@ -772,6 +774,77 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         // ADR-098：改量后重评开放的短交案件(新订货量不高于累计回厂 → 自然完成)。
         shortDeliveryHook(hooks -> hooks.reevaluateAfterOrderQuantityChange(id));
         return detail(id);
+    }
+
+    /**
+     * ADR-098 修订「等待委外判定期间先锁住」：本单还有待委外判定的回厂短交时, 不许人工改量。
+     * 只挂公开入口——接受损耗结案走的是 changeQtyForShortDelivery, 那条路已经把本行案件落成
+     * 终态再改量, 而同单其它行可能仍在待判定, 守卫若下沉到 changeQtyInternal 会把结案自己拦死。
+     */
+    /**
+     * ADR-098 修订：本单待委外判定的回厂短交(红档 + 分批逾期)。有就返回锁定提示, 没有返回 null。
+     * 口径与委外判定页「待判定」段、任务中心红徽章完全一致, 判定完成即自动消失。
+     */
+    private OrderDetail.ShortDeliveryHold shortDeliveryHold(UUID orderId) {
+        if (em == null || orderId == null) return null;
+        var query = em.createNativeQuery("""
+                SELECT c.id, c.goods_name_snapshot, c.goods_code_snapshot,
+                       c.shortfall_qty, c.ordered_qty, c.delivered_qty,
+                       (c.status = 'WAITING_MORE') AS overdue_wait,
+                       unit.name
+                FROM subcontract_short_delivery_cases c
+                LEFT JOIN units unit ON unit.id = c.unit_id
+                WHERE c.order_id = :id
+                  AND ((c.status = 'PENDING_OWNER'
+                        AND c.severity IN ('SEVERE', 'BELOW_FLOOR'))
+                       OR (c.status = 'WAITING_MORE'
+                           AND c.expected_complete_by < CURRENT_DATE))
+                ORDER BY c.detected_at
+                """);
+        // 纯单测用 mock EntityManager, createNativeQuery 会返回 null; 锁定块是只读附加信息,
+        // 取不到就当没有, 不要让它把主流程 NPE 掉。真实拦截在 changeQty 与入库闸上, 不靠这里。
+        if (query == null) return null;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.setParameter("id", orderId).getResultList();
+        if (rows == null || rows.isEmpty()) return null;
+        Object[] first = rows.getFirst();
+        String unit = first[7] == null ? "" : " " + first[7];
+        String goods = String.valueOf(first[1]) + (first[2] == null ? "" : " " + first[2]);
+        boolean overdue = Boolean.TRUE.equals(first[6]);
+        String more = rows.size() > 1 ? "等 " + rows.size() + " 项" : "";
+        String summary = "「" + goods + "」" + more + "回厂比订货少 "
+                + plainNumber(first[3]) + unit
+                + "(订 " + plainNumber(first[4]) + unit
+                + ", 累计到 " + plainNumber(first[5]) + unit + ")。"
+                + (overdue ? "此前判定的分批到货已过预计到齐日, 需要重新判定。" : "")
+                + "仓库已登记并通知委外, 正等委外判定是分批到货继续等还是接受损耗结案; "
+                + "判定完成前这批货先不入库, 本单也不改量。";
+        return new OrderDetail.ShortDeliveryHold(
+                (UUID) first[0], rows.size(), summary, overdue);
+    }
+
+    private static String plainNumber(Object value) {
+        if (value == null) return "0";
+        return new java.math.BigDecimal(value.toString()).stripTrailingZeros().toPlainString();
+    }
+
+    private void requireNoPendingShortDeliveryJudgement(UUID id) {
+        Boolean pending = (Boolean) em.createNativeQuery("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM subcontract_short_delivery_cases c
+                    WHERE c.order_id = :id
+                      AND ((c.status = 'PENDING_OWNER'
+                            AND c.severity IN ('SEVERE', 'BELOW_FLOOR'))
+                           OR (c.status = 'WAITING_MORE'
+                               AND c.expected_complete_by < CURRENT_DATE)))
+                """).setParameter("id", id).getSingleResult();
+        if (Boolean.TRUE.equals(pending)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "本单回厂数量少于订货量, 已通知委外判定是分批到货还是接受损耗; "
+                            + "判定完成前先锁住不改量。接受损耗结案时系统会自动把订货量改成实际回厂量。");
+        }
     }
 
     private void requireNoPendingApprovalCase(UUID id) {
@@ -1666,13 +1739,21 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             SubcontractOrder order, List<OrderItemDto> items) {
         FinanceApproval approval = approvalProjection.latestForOrder(
                 orderType(), order.getId(), order.getStatus());
-        return toDetail(order, items, approval);
+        return toDetail(order, items, approval, null);
     }
 
     private OrderDetail toDetail(
             SubcontractOrder order,
             List<OrderItemDto> items,
             FinanceApproval approval) {
+        return toDetail(order, items, approval, null);
+    }
+
+    private OrderDetail toDetail(
+            SubcontractOrder order,
+            List<OrderItemDto> items,
+            FinanceApproval approval,
+            OrderDetail.ShortDeliveryHold shortDeliveryHold) {
         boolean priceMasked = subcontractPriceMasked();
         boolean productionLinked =
                 productionSourceGuard.isSubcontractOrderLinked(order.getId());
@@ -1701,7 +1782,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 approval,
                 sourceApplication == null ? null : sourceApplication.id(),
                 sourceApplication == null ? null : sourceApplication.billNo(),
-                priceMasked);
+                priceMasked,
+                shortDeliveryHold);
     }
 
     private boolean subcontractPriceMasked() {

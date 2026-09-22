@@ -86,6 +86,10 @@ public class ProcurementIqcStockInService {
     @Autowired
     private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
 
+    /** ADR-098 委外回厂短交入库放行闸(跨 feature 只经 application.port); 纯单测手工 new 时为 null。 */
+    @Autowired(required = false)
+    private com.uten.imp.application.port.SubcontractShortDeliveryPort shortDelivery;
+
     @Autowired
     void setInboundAllocationRead(PreplanInboundAllocationReadPort value) {
         this.inboundAllocationRead = value;
@@ -464,9 +468,23 @@ public class ProcurementIqcStockInService {
                         List.copyOf(resolvedItems)), enforceRowLimit)), null, locked);
     }
 
+    /**
+     * ADR-098 修订「先锁住, 先不入库」：委外回厂短交待判定期间不放行入库。货已经到厂、
+     * 也已送检, 但到底按分批到货继续等还是按接受损耗结案由委外判定, 判定完成即自动放行。
+     * 幂等重放在 confirmCommands 里已提前短路, 走不到这里, 所以不会把历史成功单变成 409。
+     */
+    private void requireShortDeliveryReleasedForStockIn(String type, UUID receiptId) {
+        if (!SUBCONTRACT.equals(type) || shortDelivery == null) return;
+        String hold = shortDelivery.stockInHoldReason(receiptId);
+        if (hold != null) {
+            throw new ApiException(ErrorCode.CONFLICT, hold);
+        }
+    }
+
     private ConfirmResult confirmOne(
             String type, UUID receiptId, NormalizedCommand command, Map<UUID, PassSlice> locked,
             String origin) {
+        requireShortDeliveryReleasedForStockIn(type, receiptId);
         UUID actorUserId = currentUser.requireId();
         UUID actorEmployeeId = currentUser.requireEmployeeId();
         stockService.lockInventory(command.items().stream()

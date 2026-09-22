@@ -305,6 +305,36 @@ class SubcontractSourceApplicationRef {
       );
 }
 
+/// ADR-098 修订：委外订货单「等待委外判定回厂短交」的锁定说明(服务端派生, 只读)。
+class SubcontractShortDeliveryHold {
+  const SubcontractShortDeliveryHold({
+    this.caseId,
+    this.caseCount = 1,
+    this.summary = '',
+    this.overdue = false,
+  });
+
+  factory SubcontractShortDeliveryHold.fromJson(Map<String, dynamic> json) =>
+      SubcontractShortDeliveryHold(
+        caseId: json['caseId'] as String?,
+        caseCount: (json['caseCount'] as num?)?.toInt() ?? 1,
+        summary: (json['summary'] as String?) ?? '',
+        overdue: (json['overdue'] as bool?) ?? false,
+      );
+
+  /// 首条案件 id，供深链到委外回厂短交判定页。
+  final String? caseId;
+
+  /// 本单待判定的行数。
+  final int caseCount;
+
+  /// 面向人的一句话说明。
+  final String summary;
+
+  /// 是否由「分批到货」过了预计到齐日重新转回待判定。
+  final bool overdue;
+}
+
 class SubcontractDocDetail {
   const SubcontractDocDetail({
     required this.id,
@@ -348,6 +378,7 @@ class SubcontractDocDetail {
     this.canDelete = false,
     this.canReverse = false,
     this.restrictionReason,
+    this.shortDeliveryHold,
     this.financeApproval,
     this.sourceApplicationId,
     this.sourceApplicationNo,
@@ -404,6 +435,10 @@ class SubcontractDocDetail {
   final bool canDelete;
   final bool canReverse;
   final String? restrictionReason;
+
+  /// ADR-098 修订：回厂短交待委外判定期间的锁定说明。非空 = 本单正等委外判定
+  /// (分批到货还是接受损耗)，期间这批货先不入库、本单也不改量；判定完成自动解除。
+  final SubcontractShortDeliveryHold? shortDeliveryHold;
   final ProcurementFinanceApproval? financeApproval;
 
   /// 来源委外申请（订货单全部明细同源时给出，供跳转；跨申请为 null）
@@ -460,6 +495,11 @@ class SubcontractDocDetail {
         canDelete: (json['canDelete'] as bool?) ?? false,
         canReverse: (json['canReverse'] as bool?) ?? false,
         restrictionReason: json['restrictionReason'] as String?,
+        shortDeliveryHold: json['shortDeliveryHold'] is Map
+            ? SubcontractShortDeliveryHold.fromJson(
+                Map<String, dynamic>.from(json['shortDeliveryHold'] as Map),
+              )
+            : null,
         sourceApplicationId: json['sourceApplicationId'] as String?,
         sourceApplicationNo: json['sourceApplicationNo'] as String?,
         sourceOrderId: json['sourceOrderId'] as String?,

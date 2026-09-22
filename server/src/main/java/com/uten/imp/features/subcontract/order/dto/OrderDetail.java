@@ -50,4 +50,23 @@ public class OrderDetail {
     private String sourceApplicationNo;
     /** 当前用户无委外商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
     private boolean priceMasked;
+
+    /**
+     * ADR-098 修订：回厂短交待委外判定期间的「锁定」提示。非空表示本单正等委外判定
+     * (分批到货还是接受损耗), 期间这批货先不入库、也不许人工改量; 判定完成自动解除。
+     */
+    private ShortDeliveryHold shortDeliveryHold;
+
+    /**
+     * @param caseId 首条案件 id, 供页面深链到委外回厂短交判定页
+     * @param caseCount 本单待判定的行数
+     * @param summary 面向人的一句话说明(不含表名/状态码)
+     * @param overdue 是否由「分批到货」逾期未到齐重新转回待判定
+     */
+    public record ShortDeliveryHold(
+            java.util.UUID caseId,
+            int caseCount,
+            String summary,
+            boolean overdue) {
+    }
 }

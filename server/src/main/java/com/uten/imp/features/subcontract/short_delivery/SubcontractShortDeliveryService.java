@@ -186,6 +186,47 @@ public class SubcontractShortDeliveryService
         return List.copyOf(findings);
     }
 
+    /**
+     * 入库放行闸(ADR-098 修订, 用户口径「先锁住, 先不入库」)：这张收货单所属的委外订货单
+     * 只要还有待委外判定的回厂短交(含分批等待已过预计到齐日), 就先不放行入库；委外判定成
+     * 「分批到货」或「接受损耗」之后自动解锁。中性档(容差内 / 未设允许损耗)既不通知也不锁。
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public String stockInHoldReason(UUID receiptId) {
+        if (receiptId == null) return null;
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT DISTINCT order_doc.bill_no AS order_bill_no,
+                       c.goods_name_snapshot AS goods_name,
+                       c.goods_code_snapshot AS goods_code,
+                       unit.name AS unit_name,
+                       c.ordered_qty, c.delivered_qty, c.shortfall_qty,
+                       (c.status = 'WAITING_MORE') AS overdue_wait
+                FROM subcontract_receipt_items receipt_item
+                JOIN subcontract_order_items order_item ON order_item.id = receipt_item.order_item_id
+                JOIN subcontract_orders order_doc ON order_doc.id = order_item.order_id
+                JOIN subcontract_short_delivery_cases c ON c.order_id = order_doc.id
+                LEFT JOIN units unit ON unit.id = c.unit_id
+                WHERE receipt_item.receipt_id = ?
+                  AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
+                  AND %s
+                ORDER BY goods_name
+                """.formatted(PENDING_PREDICATE), receiptId);
+        if (rows.isEmpty()) return null;
+        Map<String, Object> first = rows.getFirst();
+        String unit = first.get("unit_name") == null ? "" : " " + first.get("unit_name");
+        String goods = String.valueOf(first.get("goods_name"))
+                + (first.get("goods_code") == null ? "" : " " + first.get("goods_code"));
+        boolean overdue = Boolean.TRUE.equals(first.get("overdue_wait"));
+        String more = rows.size() > 1 ? "等 " + rows.size() + " 项" : "";
+        return "委外订货单 " + first.get("order_bill_no") + " 的「" + goods + "」" + more
+                + "回厂比订货少 " + plain(decimal(first.get("shortfall_qty"))) + unit
+                + "(订 " + plain(decimal(first.get("ordered_qty"))) + unit
+                + ", 累计到 " + plain(decimal(first.get("delivered_qty"))) + unit + "), "
+                + (overdue ? "此前判定的分批到货已过预计到齐日, " : "")
+                + "已通知委外判定是分批到货还是接受损耗; 判定完成前这批先不入库, 货先留在待入库不要上架。";
+    }
+
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordArrival(UUID receiptId, String receiptBillNo, boolean acknowledged) {

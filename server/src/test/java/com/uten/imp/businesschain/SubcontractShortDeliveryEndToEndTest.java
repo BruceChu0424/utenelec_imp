@@ -8,6 +8,8 @@ import com.uten.imp.features.operations.workbench.FulfillmentTaskRow;
 import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest;
 import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
 import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.CaseDetail;
@@ -125,6 +127,32 @@ class SubcontractShortDeliveryEndToEndTest {
         assertTrue(workbench.countPending("SUBCONTRACT")>=1);
         assertEquals(1,shortDeliveries.counts().pending());assertEquals(0,shortDeliveries.counts().waiting());
 
+        // ③b 「先锁住, 先不入库」(用户口径 2026-09-22)：判定完成前这批货送检合格也不放行入库,
+        //     订货单同时锁住不许人工改量; 订货单详情给出面向人的锁定说明。
+        UUID keeper=ReflectionTestUtils.invokeMethod(fixture,"createIqcWarehouseConfirmer",w,"sc-short-keeper");
+        UUID firstInspection=db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,first.receiptId());
+        inspections.dispose("SUBCONTRACT",first.receiptId(),firstInspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                "PASS",null,"回厂件检查合格","sc-short-pass-first"));
+        UUID firstPass=db.queryForObject("SELECT id FROM procurement_inspection_events WHERE inspection_item_id=? AND action='PASS'",UUID.class,firstInspection);
+        BigDecimal firstPassed=db.queryForObject("SELECT base_qty FROM procurement_inspection_events WHERE id=?",BigDecimal.class,firstPass);
+        fixture.loginAs(keeper);
+        ApiException held=assertThrows(ApiException.class,()->iqcStockIn.confirm("SUBCONTRACT",first.receiptId(),stockIn("sc-short-stock-first",firstPass,firstPassed,w)));
+        assertEquals(ErrorCode.CONFLICT,held.getCode());
+        assertTrue(held.getMessage().contains("先不入库")&&held.getMessage().contains("委外判定"),held.getMessage());
+        assertEquals(0,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",first.receiptId()),"被锁期间不得留下入库批次");
+        fixture.loginAs(w.superAdminUserId());
+        assertNotNull(shortDeliveries.stockInHoldReason(first.receiptId()),"待判定期间入库闸必须拦住");
+        ApiException lockedQty=assertThrows(ApiException.class,()->orders.changeQty(orderId,
+                new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(itemId,new BigDecimal("12"))))));
+        assertEquals(ErrorCode.CONFLICT,lockedQty.getCode());
+        assertTrue(lockedQty.getMessage().contains("判定完成前先锁住不改量"),lockedQty.getMessage());
+        rate("20",db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
+        var lockedDetail=orders.detail(orderId).getShortDeliveryHold();
+        assertNotNull(lockedDetail,"订货单详情要给出锁定说明");
+        assertEquals(caseId,lockedDetail.caseId());assertEquals(1,lockedDetail.caseCount());
+        assertFalse(lockedDetail.overdue());
+        assertTrue(lockedDetail.summary().contains("先不入库")&&lockedDetail.summary().contains("不改量"),lockedDetail.summary());
+
         // ④ 判定分批到货：预计一周内到齐 → 分批等待中，卡片撤回。
         long version=((Number)c.get("version")).longValue();
         CaseDetail waiting=shortDeliveries.decide(caseId,new DecisionRequest("WAIT_MORE",BusinessTime.today().plusDays(7),"委外商答复下周补齐",version));
@@ -135,6 +163,33 @@ class SubcontractShortDeliveryEndToEndTest {
                 "判定后原卡片办结撤回");
         assertEquals("WAITING_MORE_BATCH",workbenchRow(orderId).displayStage());
         assertEquals(1,shortDeliveries.counts().waiting());assertEquals(0,shortDeliveries.counts().pending());
+
+        // ④b 判定完成即解锁：先到的 12 件可以入库了(剩下的按分批继续等)；订货单详情不再提示锁定。
+        assertNull(shortDeliveries.stockInHoldReason(first.receiptId()),"判定完成后入库闸放行");
+        assertNull(orders.detail(orderId).getShortDeliveryHold(),"判定完成后详情不再提示锁定");
+        fixture.loginAs(keeper);
+        iqcStockIn.confirm("SUBCONTRACT",first.receiptId(),stockIn("sc-short-stock-first",firstPass,firstPassed,w));
+        fixture.loginAs(w.superAdminUserId());
+        assertEquals(1,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",first.receiptId()),"解锁后先到的 12 件正常入库");
+
+        // ④c 两条边界(发布会话提的风险, 都真跑一遍而不是读代码确认)：
+        //   1) 预计到齐日「就是今天」不算逾期、不锁；退到昨天才锁。比较一律用库里的 CURRENT_DATE,
+        //      避免 JVM 与容器时区不一致让临界日判定漂一天。
+        //   2) 已经成功的入库按同一幂等键重放, 即使此刻单子又被锁住, 也照常返回原批次不被改判成 409
+        //      (幂等在 confirmCommands 里先短路, 根本走不到挂闸的 confirmOne)。
+        db.update("UPDATE subcontract_short_delivery_cases SET expected_complete_by = CURRENT_DATE WHERE id = ?",caseId);
+        assertNull(shortDeliveries.stockInHoldReason(first.receiptId()),"预计到齐日就是今天, 还没逾期, 不该锁");
+        db.update("UPDATE subcontract_short_delivery_cases SET expected_complete_by = CURRENT_DATE - 1 WHERE id = ?",caseId);
+        assertNotNull(shortDeliveries.stockInHoldReason(first.receiptId()),"分批到货过了预计到齐日, 要重新锁住");
+        assertNotNull(orders.detail(orderId).getShortDeliveryHold(),"逾期重新锁住时详情也要提示");
+        assertTrue(orders.detail(orderId).getShortDeliveryHold().overdue(),"这次锁定的原因是分批到货逾期");
+        fixture.loginAs(keeper);
+        var replayed=iqcStockIn.confirm("SUBCONTRACT",first.receiptId(),stockIn("sc-short-stock-first",firstPass,firstPassed,w));
+        assertTrue(replayed.replayed(),"已成功的入库重放必须原样返回, 不能被闸门改判");
+        assertEquals(1,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",first.receiptId()),"重放不得多出批次");
+        fixture.loginAs(w.superAdminUserId());
+        db.update("UPDATE subcontract_short_delivery_cases SET expected_complete_by = ? WHERE id = ?",BusinessTime.today().plusDays(7),caseId);
+        assertNull(shortDeliveries.stockInHoldReason(first.receiptId()),"改回未到期后重新放行");
 
         // ⑤ 第二批 5 件：累计 17 仍低于下限 19 → 仓库仍要确认(弹窗说明已判定分批)，但案件只刷新数字、不再通知。
         ApiException again=assertThrows(ApiException.class,()->arrivals.register(arrival(w,itemId,"5",false,"sd-2")));
@@ -175,9 +230,9 @@ class SubcontractShortDeliveryEndToEndTest {
         assertEquals(0,shortDeliveries.counts().pending());assertEquals(0,shortDeliveries.counts().waiting());
         assertEquals("RECEIVED_PENDING_STOCK",workbenchRow(orderId).displayStage(),"回厂 17 ≥ 改后订货 17：状态列=已回厂待入库(结案不等于入库)");
 
-        // ⑥b 两张收货单 IQC 合格 12+5 → 仓库确认入库 17：实收净量 17 ≥ 改后订货量 17, 订货单按既有结案口径关闭。
-        UUID keeper=ReflectionTestUtils.invokeMethod(fixture,"createIqcWarehouseConfirmer",w,"sc-short-keeper");
-        for(var receipt:List.of(first,second)){
+        // ⑥b 第二张收货单 IQC 合格 5 件 → 仓库确认入库(第一张 12 件已在 ④b 解锁后入库)：
+        //     实收净量 17 ≥ 改后订货量 17, 订货单按既有结案口径关闭。
+        for(var receipt:List.of(second)){
             UUID inspection=db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,receipt.receiptId());
             fixture.loginAs(w.superAdminUserId());
             inspections.dispose("SUBCONTRACT",receipt.receiptId(),inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
@@ -270,6 +325,13 @@ class SubcontractShortDeliveryEndToEndTest {
                 null,w.employeeId(),null,
                 List.of(new ArrivalLine(w.goodsE(),new BigDecimal(qty),itemId,null,w.unitId(),BigDecimal.ONE,null,null)),
                 null,acknowledged?Boolean.TRUE:null);
+    }
+
+    private com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest stockIn(
+            String key,UUID passEventId,BigDecimal qty,FullChainEndToEndTest.World w){
+        return new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest(
+                key,List.of(new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem(
+                        passEventId,qty,qty,"SC-SHORT-01",w.warehouseId())));
     }
 
     private Map<String,Object> caseRow(UUID itemId){

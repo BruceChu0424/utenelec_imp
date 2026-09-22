@@ -50,4 +50,13 @@ public interface SubcontractShortDeliveryPort {
     List<ShortDeliveryFinding> evaluateArrival(List<ArrivalQuantity> lines);
 
     void recordArrival(UUID receiptId, String receiptBillNo, boolean acknowledged);
+
+    /**
+     * 入库放行闸(用户口径「先锁住, 先不入库」): 这张委外收货单所属订货单只要还有
+     * 待委外判定的回厂短交, 就先不让入库——货已经到了厂里, 但到底是分批到货还是
+     * 接受损耗结案由委外判定, 判定完成即自动放行。
+     *
+     * @return 不放行时返回一句面向仓库的大白话原因; 可以入库时返回 null
+     */
+    String stockInHoldReason(UUID receiptId);
 }

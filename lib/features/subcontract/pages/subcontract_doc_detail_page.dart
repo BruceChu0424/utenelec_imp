@@ -129,6 +129,9 @@ class _SubcontractDocDetailPageState
       _detail?.financeApproval?.isPending != true &&
       _hasPermission(Perm.subcontractOrderChangeQty);
 
+  /// 回厂短交待委外判定：详情页据此锁住改量并显示锁定横幅(服务端同样拦截)。
+  bool get _shortDeliveryLocked => _detail?.shortDeliveryHold != null;
+
   String get _defaultBackPath =>
       _financeReviewOnly ? _financeApprovalTasksPath : '/subcontract';
 
@@ -562,6 +565,10 @@ class _SubcontractDocDetailPageState
                             if (widget.docType == SubcontractDocType.order) ...[
                               const SizedBox(height: UtenSpacing.s12),
                               _financeApprovalBanner(theme),
+                              if (_detail!.shortDeliveryHold != null) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                _shortDeliveryHoldBanner(theme),
+                              ],
                               const SizedBox(height: UtenSpacing.s12),
                               // V304 全链路进度包含商业/履约扩展端点；仅持财务审批任务 view
                               // 的点名审核员可看主订货详情，但不额外放宽完整委外进度权限。
@@ -1128,6 +1135,74 @@ class _SubcontractDocDetailPageState
     );
   }
 
+  /// ADR-098 修订「等待委外判定期间先锁住」：仓库登记发现回厂比订货少并通知委外后，
+  /// 这张单在判定出结论之前先不入库、也不改量。判定成分批到货或接受损耗即自动解除。
+  Widget _shortDeliveryHoldBanner(ThemeData theme) {
+    final hold = _detail!.shortDeliveryHold!;
+    final canDecide = _hasPermission(Perm.subcontractShortDeliveryDecide);
+    return Semantics(
+      container: true,
+      label: '等待委外判定回厂短交，本单已锁定。${hold.summary}',
+      child: Card(
+        margin: EdgeInsets.zero,
+        color: theme.colorScheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_clock_outlined,
+                color: theme.colorScheme.onErrorContainer,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hold.overdue
+                          ? '分批到货已过预计到齐日，等待委外重新判定(本单已锁定)'
+                          : '等待委外判定回厂短交(本单已锁定)',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onErrorContainer,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      hold.summary,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onErrorContainer,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    UtenButton(
+                      key: const Key('subcontract-order-short-delivery-judge'),
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.small,
+                      icon: Icons.fact_check_outlined,
+                      onPressed: () async {
+                        await context.push(
+                          RouteName.subcontractShortDeliveriesWith(
+                            orderId: _detail!.id,
+                          ),
+                        );
+                        if (!mounted) return;
+                        await _load();
+                      },
+                      child: Text(canDecide ? '去判定' : '查看短交详情'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _financeApprovalBanner(ThemeData theme) {
     final approval = _detail!.financeApproval;
     final pending = approval?.isPending == true;
@@ -1315,8 +1390,15 @@ class _SubcontractDocDetailPageState
             key: const Key('subcontract-order-change-qty'),
             type: UtenButtonType.secondary,
             size: UtenButtonSize.large,
-            icon: Icons.edit_note_outlined,
-            onPressed: _changeQty,
+            icon: _shortDeliveryLocked
+                ? Icons.lock_outline_rounded
+                : Icons.edit_note_outlined,
+            onPressed: _shortDeliveryLocked ? null : _changeQty,
+            onDisabledTap: () => context.appWarning(
+              _detail?.shortDeliveryHold?.summary ?? '本单回厂数量少于订货量，等委外判定后才能改量。',
+              title: '等待委外判定，本单已锁定',
+              force: true,
+            ),
             child: Text(AppLocalizations.of(context).orderChangeQtyButton),
           ),
         );

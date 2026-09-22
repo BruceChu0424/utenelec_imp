@@ -1,4 +1,16 @@
 # /etc/systemd/system/clamav-daemon.socket.d/uten-loopback.conf
 # Keep the distribution's Unix socket and add only the same-host scanner port.
+#
+# 2026-09-22 起先清空再写死两条：clamav 1.5.4 的包里带了
+# clamav-daemon-socket-generator，它按 /etc/clamav/clamd.conf 自动生成
+# /run/systemd/generator/clamav-daemon.socket.d/listen.conf，里面已经有
+# 127.0.0.1:3310 与 /run/clamav/clamd.ctl 两条。ListenStream 是可叠加列表，
+# 本文件若只追加一条 127.0.0.1:3310，同一地址就会被绑两次，socket 单元直接以
+# Address already in use 失败——当天 06:47 的自动升级就是这样把 clamd 打掉的，
+# 连锁反应是 attachmentSafety 探针 UNAVAILABLE、readiness DOWN，更新器判活失败
+# 把正在激活的版本回滚。清空列表再显式写死，既不重复绑定，也仍然把扫描端口钉死
+# 在本机回环上（不跟随 clamd.conf 漂移）。
 [Socket]
+ListenStream=
 ListenStream=127.0.0.1:3310
+ListenStream=/run/clamav/clamd.ctl

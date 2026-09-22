@@ -246,6 +246,32 @@ class ProductionPlanRepository {
     return MaterialSupplyProgress.fromJson(json);
   }
 
+  /// 批量可调拨量(ADR-102)：本分析每一行此刻能从别的计划已锁定的量里调进多少。
+  ///
+  /// 主表「物料办理」列用它决定调拨按钮灰不灰。单独取一次而不并进分析详情：
+  /// 服务端那条查询要跑供方血缘的递归 CTE，并进首屏会拖慢热路径。
+  /// 返回 materialLineId -> 可调入数量；不在表里的行即为 0。
+  Future<Map<String, double>> materialTransferableInSummary(
+    String analysisId,
+  ) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/$analysisId/transferable-in-summary',
+    ); // ENDPOINT
+    final raw = json['qtyByMaterialLineId'];
+    if (raw is! Map) return const {};
+    return {
+      for (final entry in raw.entries)
+        if (_toDouble(entry.value) case final qty? when qty > 0)
+          '${entry.key}': qty,
+    };
+  }
+
+  static double? _toDouble(Object? value) => switch (value) {
+    num() => value.toDouble(),
+    String() => double.tryParse(value),
+    _ => null,
+  };
+
   Future<ProductionPlanDetail> approve(String id) async {
     final json = await api.post('/production/plans/$id/approve'); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);

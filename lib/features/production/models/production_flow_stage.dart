@@ -128,6 +128,12 @@ class ProductionFlowStage {
   static const _buyStepCount = 7;
   static const _subcontractStepCount = 8;
 
+  /// 服务端 ADR-102 的「路线未定」阶段键([MaterialAnalysisFlowStageService])。
+  static const routePendingKey = 'ROUTE_PENDING';
+
+  /// 这一行还没确认供应方式，任何下单动作都不成立。
+  bool get isRoutePending => key == routePendingKey;
+
   /// 解析服务端阶段键（物料行 flowStage 字段）。
   ///
   /// [route] 为该行的确认路线；委外行的前置自制阶段（MAKE_* 键）会显示
@@ -138,6 +144,24 @@ class ProductionFlowStage {
     double? progress,
   }) {
     final key = serverKey?.trim().toUpperCase() ?? '';
+    // ADR-102「路线未定」：这一行还没确认供应方式，任何一条链的阶段都不成立。
+    // 以前服务端把空路线归成采购，于是同一行上同时写着「请先选供应方式」和
+    // 「等待下发采购」。它跨三条链共用，route 只用来占位。
+    if (key == routePendingKey) {
+      return ProductionFlowStage(
+        route: route,
+        key: routePendingKey,
+        label: '待选供应方式',
+        tone: ProductionFlowTone.decide,
+        stepIndex: 0,
+        stepCount: switch (route) {
+          ProductionFlowRoute.make => _makeStepCount,
+          ProductionFlowRoute.buy => _buyStepCount,
+          ProductionFlowRoute.subcontract => _subcontractStepCount,
+        },
+        detail: '先在「供应方式」里选好采购 / 委外 / 自制，这一行才能下单。',
+      );
+    }
     final isSubcontractPrefix =
         route == ProductionFlowRoute.subcontract && key.startsWith('MAKE_');
     final stage = _fromKey(key.isEmpty ? null : key, progress: progress);

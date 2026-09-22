@@ -372,13 +372,17 @@ void main() {
         (data['flatMaterials'] as List).first as Map<String, dynamic>;
     material['inboundQty'] = 10;
     await _pump(tester, data);
-    expect(
+    // 2026-09-22(ADR-102)：「在途未到」独立列退役，它那句「10 · 已锚定」改到
+    // 「还缺数量」的悬浮说明里。这里直接读 Tooltip 的文案，断言这条事实没丢。
+    final shortageTooltip = tester.widget<Tooltip>(
       find.descendant(
         of: _root(1),
-        matching: find.textContaining(RegExp('^10.*已锚定')),
+        matching: find.byKey(
+          const ValueKey('material-analysis-net-shortage-root-1'),
+        ),
       ),
-      findsOneWidget,
     );
+    expect(shortageTooltip.message, contains('已安排但还没合格入库 10'));
     expect(
       find.descendant(of: _root(1), matching: find.text('10')),
       findsWidgets,

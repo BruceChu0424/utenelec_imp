@@ -1080,6 +1080,7 @@ class ProductionMaterialAnalysisMaterial {
     this.lateSharedFutureAvailableQty = 0,
     this.additionalSupplyRecommendedQty = 0,
     this.sharedFutureClaimableQty = 0,
+    this.netShortageQty = 0,
     this.plannedOutputQty = 0,
     this.minOrderQty,
     this.orderMultipleQty,
@@ -1219,6 +1220,15 @@ class ProductionMaterialAnalysisMaterial {
   /// 此刻可自动认领的同主仓公共在途（按期 + 晚到，不含本分析自己的）。
   /// 下达采购 / 委外时服务端先认领它，只为余下部分新下单（ADR-099）。
   final double sharedFutureClaimableQty;
+
+  /// 还缺数量(ADR-102 主表口径)：在 [additionalSupplyRecommendedQty] 之上，
+  /// 再把「下达时服务端真会自动认领的公共在途」当成已占用扣掉，得到人真正还要
+  /// 另外下单的量。服务端权威，**客户端不得自己做这个减法**(ADR-099 不变量 2)。
+  ///
+  /// 与 [shortageQty] 不是一回事：后者是物理缺口，同时是可操作判据、让料候选与
+  /// 入库齐套的口径，算法不动。自制、需先自制的委外等不会自动认领的行，这里与
+  /// [additionalSupplyRecommendedQty] 相等。
+  final double netShortageQty;
 
   /// 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位；已建
   /// 自制 / 前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量。
@@ -1368,6 +1378,12 @@ class ProductionMaterialAnalysisMaterial {
     additionalSupplyRecommendedQty:
         _double(json['additionalSupplyRecommendedQty']) ?? 0,
     sharedFutureClaimableQty: _double(json['sharedFutureClaimableQty']) ?? 0,
+    // 旧服务端没有这个字段时回落到毛口径：宁可显示得比实际需要大，也不能偏小
+    // 让人少下单(与服务端那侧的保守方向一致)。
+    netShortageQty:
+        _double(json['netShortageQty']) ??
+        _double(json['additionalSupplyRecommendedQty']) ??
+        0,
     plannedOutputQty: _double(json['plannedOutputQty']) ?? 0,
     minOrderQty: _double(json['minOrderQty']),
     orderMultipleQty: _double(json['orderMultipleQty']),

@@ -4309,6 +4309,30 @@ abstract class AppLocalizations {
   /// **'下单数量'**
   String get materialToSupply;
 
+  /// No description provided for @materialHandle.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料办理'**
+  String get materialHandle;
+
+  /// No description provided for @materialAdditionalOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'追加下单'**
+  String get materialAdditionalOrder;
+
+  /// No description provided for @materialProductionWorkshop.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产车间'**
+  String get materialProductionWorkshop;
+
+  /// No description provided for @materialResponsible.
+  ///
+  /// In zh, this message translates to:
+  /// **'负责人'**
+  String get materialResponsible;
+
   /// No description provided for @materialFutureSupply.
   ///
   /// In zh, this message translates to:

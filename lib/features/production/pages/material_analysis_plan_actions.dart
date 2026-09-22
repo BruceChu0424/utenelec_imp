@@ -342,19 +342,33 @@ abstract class _MaterialAnalysisPlanActionsState
   /// [_MaterialAnalysisMaterialTableState._materialTableSelectionActions]：
   /// 全选筛选结果 + 路线说明）+ 确认路线(N)。
   List<Widget> _bottomActionButtons() {
-    if (_isFqcReplenishmentOnly || !_canRoute) return const [];
+    if (_isFqcReplenishmentOnly) return const [];
+    // ADR-102：一个选中集，两个按钮。各自只对自己够格的子集动手，缺哪把权限
+    // 就少哪个按钮——不是整个悬浮区消失。
+    final issuable = _selectedIssuableGroups();
     return [
-      UtenButton(
-        key: const Key('material-analysis-create-routes'),
-        size: UtenButtonSize.large,
-        type: UtenButtonType.danger,
-        icon: Icons.alt_route_rounded,
-        isLoading: _savingRoutes,
-        onPressed: _busy || _selectedRouteCount == 0
-            ? null
-            : _createSelectedRoutes,
-        child: Text(_l10n.materialCreateRoutes(_selectedRouteCount)),
-      ),
+      if (_canRoute)
+        UtenButton(
+          key: const Key('material-analysis-create-routes'),
+          size: UtenButtonSize.large,
+          type: UtenButtonType.danger,
+          icon: Icons.alt_route_rounded,
+          isLoading: _savingRoutes,
+          onPressed: _busy || _selectedRouteCount == 0
+              ? null
+              : _createSelectedRoutes,
+          child: Text(_l10n.materialCreateRoutes(_selectedRouteCount)),
+        ),
+      if (_canNotify || _canGenerate)
+        UtenButton(
+          key: const Key('material-analysis-submit-orders'),
+          size: UtenButtonSize.large,
+          icon: Icons.send_rounded,
+          onPressed: _busy || issuable.visible.isEmpty
+              ? null
+              : () => unawaited(_submitMaterialTableRows(issuable.visible)),
+          child: Text('下单(${issuable.visible.length})'),
+        ),
     ];
   }
 

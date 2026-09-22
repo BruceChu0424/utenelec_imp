@@ -2220,6 +2220,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialToSupply => '下单数量';
 
   @override
+  String get materialHandle => '物料办理';
+
+  @override
+  String get materialAdditionalOrder => '追加下单';
+
+  @override
+  String get materialProductionWorkshop => '生产车间';
+
+  @override
+  String get materialResponsible => '负责人';
+
+  @override
   String get materialFutureSupply => '在途未到';
 
   @override

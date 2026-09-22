@@ -253,6 +253,138 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 (int) ((total + safeSize - 1) / safeSize));
     }
 
+    /**
+     * 批量可调拨量(ADR-102)：本分析每一行此刻能从别的计划已锁定的量里调进来多少。
+     *
+     * <p>主表「物料办理」列要按行决定调拨按钮灰不灰。逐行去问
+     * {@link #sources} 不可行——那条查询把递归血缘 CTE 内联到全库物料行扫描上，
+     * 一页 100 行就是 100 次。这里利用一个结构性事实把它降成一次：
+     * <b>某一行供方能不能借出，只取决于供方自己</b>(它自己的血缘、它自己的未了结
+     * 关系、它自己的可分配余量)，与接收方是哪一行无关。唯一与接收方相关的排除项是
+     * 「接收方自己已卷在一笔未了结的让料/借用里」——V311 规定一个物料节点不能同时
+     * 参与多笔未补齐的让料，那一整行的可调拨量直接归零。
+     *
+     * <p>于是可调拨量 = 接收方自身合格 ? 该物料维度的供方合计 : 0，
+     * 一次按维度聚合即可，语义与逐行口径逐字一致。
+     *
+     * <p>结果随登录人的对象级可见范围变，不可跨账号缓存，也不进分析快照的热路径。
+     */
+    @Transactional(readOnly = true)
+    public TransferableInSummary transferableInSummary(UUID analysisId) {
+        List<Object[]> header = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT maker_id, warehouse_id FROM production_material_analyses
+                WHERE id = :analysisId AND is_deleted = FALSE
+                """).setParameter("analysisId", analysisId));
+        if (header.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "物料分析不存在或已删除");
+        }
+        UUID makerId = uuid(header.getFirst()[0]);
+        UUID warehouseId = uuid(header.getFirst()[1]);
+        OwnerVisibility.OwnerScope scope = access.scope();
+        access.requireWritable(makerId, "无权为该物料分析调入材料", scope);
+        if (!scope.seeAll() && scope.visibleOwners().isEmpty()) {
+            return new TransferableInSummary(Map.of());
+        }
+
+        // 一、本分析里「还能当接收方」的行，连同它的物料维度。
+        List<Object[]> targets = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT mine.id, mine.goods_id, mine.color_id, mine.unit_id
+                FROM production_material_analysis_materials mine
+                WHERE mine.analysis_id = :analysisId
+                  AND mine.active = TRUE
+                  AND mine.depth >= 1
+                  AND mine.control_stage NOT IN ('SHIP', 'REFERENCE')
+                  AND mine.shortage_qty > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM preplan_material_reallocations relation
+                      WHERE relation.status IN ('OPEN', 'PARTIAL')
+                        AND (relation.from_analysis_material_id = mine.id
+                             OR relation.to_analysis_material_id = mine.id))
+                  AND NOT EXISTS (
+                      SELECT 1 FROM production_material_analysis_borrows borrow
+                      WHERE borrow.status = 'ACTIVE'
+                        AND (borrow.from_material_id = mine.id
+                             OR borrow.to_material_id = mine.id))
+                """).setParameter("analysisId", analysisId));
+        if (targets.isEmpty()) return new TransferableInSummary(Map.of());
+
+        // 二、按物料维度一次算完供方合计。血缘口径与 create() / sources() 同源：
+        // 只认 ORIGIN_IQC / ORIGIN_MAKE 血统，调进来的量不能二次转调。
+        String originalLots = PreplanStockEntitlementService.AVAILABLE_ORIGINAL_LOTS_SQL
+                .replace(":analysisId", "analysis.id")
+                .replace(":materialId", "material.id")
+                .replace(":goodsId", "material.goods_id")
+                .replace(":colorId", "material.color_id");
+        String ownerPredicate = scope.seeAll()
+                ? "analysis.maker_id IS NOT NULL"
+                : "analysis.maker_id IN (:visibleOwners)";
+        Query donorQuery = em.createNativeQuery("""
+                SELECT material.goods_id, material.color_id, material.unit_id,
+                       SUM(LEAST(lendable.qty, material.allocated_available_qty))
+                FROM production_material_analysis_materials material
+                JOIN production_material_analyses analysis ON analysis.id = material.analysis_id
+                JOIN production_material_analysis_items item
+                  ON item.id = material.analysis_item_id AND item.analysis_id = analysis.id
+                 AND item.is_deleted = FALSE
+                JOIN LATERAL (
+                    SELECT SUM(original.remaining_qty) AS qty FROM (
+                """ + originalLots + """
+                    ) original
+                ) lendable ON lendable.qty > 0
+                WHERE analysis.id <> :analysisId
+                  AND analysis.is_deleted = FALSE
+                  AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
+                  AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
+                  AND material.active = TRUE AND material.depth >= 1
+                  AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
+                  AND material.allocated_available_qty > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM preplan_material_reallocations relation
+                      WHERE relation.status IN ('OPEN', 'PARTIAL')
+                        AND (relation.from_analysis_material_id = material.id
+                             OR relation.to_analysis_material_id = material.id))
+                  AND NOT EXISTS (
+                      SELECT 1 FROM production_material_analysis_borrows borrow
+                      WHERE borrow.status = 'ACTIVE'
+                        AND (borrow.from_material_id = material.id
+                             OR borrow.to_material_id = material.id))
+                  AND EXISTS (
+                      SELECT 1 FROM production_material_analysis_materials mine
+                      WHERE mine.analysis_id = :analysisId AND mine.active = TRUE
+                        AND mine.depth >= 1 AND mine.shortage_qty > 0
+                        AND mine.goods_id = material.goods_id
+                        AND mine.color_id IS NOT DISTINCT FROM material.color_id
+                        AND mine.unit_id = material.unit_id)
+                  AND %s
+                GROUP BY material.goods_id, material.color_id, material.unit_id
+                """.formatted(ownerPredicate))
+                .setParameter("analysisId", analysisId)
+                .setParameter("warehouseId", warehouseId);
+        if (!scope.seeAll()) donorQuery.setParameter("visibleOwners", scope.visibleOwners());
+
+        Map<String, BigDecimal> byDimension = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(donorQuery)) {
+            BigDecimal qty = row[3] == null
+                    ? BigDecimal.ZERO : new BigDecimal(row[3].toString());
+            if (qty.signum() <= 0) continue;
+            byDimension.put(dimensionKey(uuid(row[0]), uuid(row[1]), uuid(row[2])),
+                    qty.setScale(4, RoundingMode.DOWN));
+        }
+        if (byDimension.isEmpty()) return new TransferableInSummary(Map.of());
+
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        for (Object[] target : targets) {
+            BigDecimal qty = byDimension.get(dimensionKey(
+                    uuid(target[1]), uuid(target[2]), uuid(target[3])));
+            if (qty != null && qty.signum() > 0) result.put(uuid(target[0]), qty);
+        }
+        return new TransferableInSummary(Map.copyOf(result));
+    }
+
+    private static String dimensionKey(UUID goodsId, UUID colorId, UUID unitId) {
+        return goodsId + "|" + Objects.toString(colorId, "NONE") + "|" + unitId;
+    }
+
     private static void bindSourceCandidateQuery(Query query, Endpoint target,
             OwnerVisibility.OwnerScope scope, String keyword) {
         query.setParameter("targetAnalysisId", target.analysisId())

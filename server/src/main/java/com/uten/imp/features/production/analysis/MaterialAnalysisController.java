@@ -155,6 +155,18 @@ public class MaterialAnalysisController {
         return stockReallocationService.sources(id, materialLineId, keyword, page, size);
     }
 
+    /**
+     * 批量可调拨量(ADR-102)：主表「物料办理」列按行决定调拨按钮灰不灰。
+     *
+     * <p>单独成端点而不并进 GET /{id}：它要跑供方血缘的递归查询，并进分析详情
+     * 会拖慢首屏这条热路径；页面按需取一次即可，与「在途调拨」列同一种加载方式。
+     */
+    @GetMapping("/{id}/transferable-in-summary")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cross_reallocate')")
+    public TransferableInSummary transferableInSummary(@PathVariable UUID id) {
+        return stockReallocationService.transferableInSummary(id);
+    }
+
     @PostMapping("/{id}/cross-reallocations")
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cross_reallocate')")
     public AnalysisView createCrossReallocation(

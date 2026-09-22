@@ -2232,6 +2232,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialToSupply => 'Additional supply';
 
   @override
+  String get materialHandle => '자재 처리';
+
+  @override
+  String get materialAdditionalOrder => '추가 발주';
+
+  @override
+  String get materialProductionWorkshop => '생산 작업장';
+
+  @override
+  String get materialResponsible => '담당자';
+
+  @override
   String get materialFutureSupply => 'Expected supply';
 
   @override

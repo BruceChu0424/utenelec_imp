@@ -562,6 +562,36 @@ abstract class _MaterialAnalysisPageBase
   /// 表头筛选值只在当前桶里仍存在时保留（刷新/轮询/切视图后失效值自动移除，
   /// 仍有效的用户筛选不清）；实现见 material_analysis_material_table.dart。
   void _pruneMaterialTableFilters();
+
+  /// 主表「这一行此刻能不能下单」的判据，不能时返回人话原因(ADR-102)。
+  /// 实现见 material_analysis_material_table.dart。
+  String? _tableIssueBlockedReason(_MaterialGroup group);
+
+  /// 主表里还有用户手填未提交的数量，或还勾着待下单的行(ADR-102)。
+  /// 轮询期间必须让路，否则整树换快照会把人填了一屏的数与勾选一起吃掉。
+  bool get _hasUnsubmittedMaterialTableInput;
+
+  /// 主表勾选集里此刻真能下单的那些行，以及被折叠/表头筛选藏起来的行数
+  /// (ADR-102)。实现见 material_analysis_material_table.dart。
+  ({List<_MaterialGroup> visible, int hidden}) _selectedIssuableGroups();
+
+  /// 把这些行按「车间逐层 → 采购 → 委外」分段下达(ADR-102)。
+  Future<void> _submitMaterialTableRows(List<_MaterialGroup> groups);
+
+  /// 释放主表行内「下单数量 / 追加下单」的输入控制器(ADR-102)。
+  /// 实现见 material_analysis_material_table.dart。
+  void _disposeMaterialTableInputs();
+
+  /// 换成另一份分析时，把主表的行内输入与指派草稿整体作废(ADR-102)。
+  void _resetMaterialTableInputsForNewAnalysis();
+
+  /// 同一份分析换了新快照后，把系统预填值刷新一遍——**只覆盖用户没动过的格子**。
+  /// 轮询与 409 恢复都会整树换快照，少了这一步，用户填了一屏的数会被静默吃掉。
+  void _reseedMaterialTableQtyInputs();
+
+  /// 权威快照一到就让父子联动的回滚式预览作废(ADR-102)：模拟快照永远比权威旧，
+  /// 留着它会让主表拿下达前的模拟值预填并让人下单。
+  void _invalidateMaterialTableCascadePreview();
   bool _normalizeNewWarehouseScope();
   ProductionMaterialAnalysisMaterial? _rootSupplyMaterialOf(
     ProductionMaterialAnalysisProduct product,
@@ -656,6 +686,9 @@ abstract class _MaterialAnalysisPageBase
       _editingPriorities ||
       _dirtyRouteGroups.isNotEmpty ||
       _selectedPlanLineIds.isNotEmpty ||
+      // ADR-102：主表现在整张铺开了行内数量输入与下单勾选，轮询期间必须一并让路。
+      // 少了这一条，45 秒一次的静默刷新会把人填了一屏的数和勾选一起冲掉。
+      _hasUnsubmittedMaterialTableInput ||
       _batchQtyControllers.entries.any(
         (entry) =>
             entry.value.text.trim().isNotEmpty &&
@@ -727,6 +760,7 @@ abstract class _MaterialAnalysisPageBase
     _manualSourceRef.dispose();
     _manualQty.dispose();
     _manualReason.dispose();
+    _disposeMaterialTableInputs();
     for (final controller in _sourceQtyControllers.values) {
       controller.dispose();
     }
@@ -808,8 +842,14 @@ abstract class _MaterialAnalysisPageBase
       }
       _batchQtyControllers.clear();
       _systemSeededBatchQtyTexts.clear();
+      // 换了一份分析，主表行内输入与指派草稿全部作废(ADR-102)。
+      _resetMaterialTableInputsForNewAnalysis();
     }
     _analysis = view;
+    // 权威快照优先：先让父子联动的模拟快照作废，再按新快照刷系统预填值
+    // (只覆盖用户没动过的格子)。顺序不能反——反了就是拿模拟值去回填。
+    _invalidateMaterialTableCascadePreview();
+    _reseedMaterialTableQtyInputs();
     unawaited(Future<void>.microtask(() => _refreshFutureTransfers(view)));
     _serverRefreshNotice = null;
     _invalidateBucketRowsCache();
@@ -850,10 +890,21 @@ abstract class _MaterialAnalysisPageBase
     _dirtyRouteGroups.clear();
     _selectedPlanLineIds.clear();
     final groups = _materialGroups(view);
-    // 刷新后草稿已清空，只有仍未确认的组才可勾选：轮询期间被同事确认的行
+    // 刷新后草稿已清空，只有仍可勾的组才留在选中集：轮询期间被同事确认的行
     // 自动脱选（否则「勾着但不计数」）。
+    //
+    // ADR-102：这里的谓词必须与主表的可勾判据同源(路线可提交 ∪ 此刻能下单)。
+    // 原先只写了路线那一支，而上面刚 _dirtyRouteGroups.clear()，于是它退化成
+    // 「confirmedRoute == null」——为下单勾的行按定义路线已确认，**每次刷新都会
+    // 被 100% 清空**：45 秒轮询、确认路线、任何一次下达成功、409 恢复都会触发，
+    // 用户勾好 20 行填好数一转眼全没了，混合批次中途失败时「未完成的行仍然勾着」
+    // 这句承诺也是假的。2026-09-22 对抗复查抓出来的真缺陷。
     final selectableKeys = groups
-        .where((g) => _canEditMaterialRoute(g) && _routeGroupSelectable(g))
+        .where(
+          (g) =>
+              (_canEditMaterialRoute(g) && _routeGroupSelectable(g)) ||
+              _tableIssueBlockedReason(g) == null,
+        )
         .map((g) => g.key)
         .toSet();
     _selectedMaterialGroupKeys.removeWhere(

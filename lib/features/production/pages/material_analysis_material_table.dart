@@ -561,7 +561,12 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// Canonical route selections are independent of visible rows and pages.
-  List<_MaterialGroup> _materialRowGroups(_MaterialTableRow row) {
+  /// 本行对应的全部操作组，**不过滤可改路线**。
+  ///
+  /// ADR-102 拆出这一个：勾选换义成「选行去下单」之后，已经下过单的行必须也能
+  /// 勾上(要填追加下单)，而 [_materialRowGroups] 按定义排除了「已有未撤销下游
+  /// 任务」的组——那是给路线下拉用的口径，不能拿来当下单的口径。
+  List<_MaterialGroup> _materialRowAllGroups(_MaterialTableRow row) {
     if (row.contextOnly ||
         (row.product != null && row.group == null) ||
         _analysis == null) {
@@ -575,22 +580,49 @@ abstract class _MaterialAnalysisMaterialTableState
     final groups = <String, _MaterialGroup>{};
     for (final path in paths) {
       final group = indexes.groupsByLine[path.materialLineId];
-      if (group != null && _canEditMaterialRoute(group)) {
-        groups[group.key] = group;
-      }
+      if (group != null) groups[group.key] = group;
     }
     return groups.values.toList(growable: false);
   }
 
-  /// 可勾选的操作组 = 可改路线 ∩ 有可提交决定（未确认或已改下拉）；已确认且未
-  /// 改动的行不给勾选框，与「确认路线(N)」计数/提交门同一谓词（2026-09-10 F2d）。
-  List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) =>
-      _materialRowGroups(
+  /// 本行里**可以改供料路线**的操作组(已有未撤销下游任务的组不在内)。
+  List<_MaterialGroup> _materialRowGroups(_MaterialTableRow row) =>
+      _materialRowAllGroups(
         row,
-      ).where(_routeGroupSelectable).toList(growable: false);
+      ).where(_canEditMaterialRoute).toList(growable: false);
+
+  /// 可勾选的操作组(ADR-102 勾选换义)。
+  ///
+  /// 勾选从「选行去确认路线」扩成「选行去办事」：一个选中集，底部两个按钮，
+  /// 各自只对自己够格的子集动手。所以这里是并集——
+  /// 有待提交的路线决定(原口径)，**或**这一行此刻能下单/追加。
+  ///
+  /// 并集是必须的：以前这个谓词绑死在路线权限上，换义之后只有采购权限的
+  /// 采购员会一行都勾不上。
+  List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) {
+    // 「能下单」这一支只对真正持有输入框的行成立：汇总视图的聚合行五列全是
+    // 横杠，勾了它提交的就是界面从没显示过的默认值。路线确认那一支不受影响
+    // ——它本来就按逐路径的真实节点提交。
+    final issuable = _tableEditableGroup(row);
+    return _materialRowAllGroups(row)
+        .where(
+          (group) =>
+              (_canRoute &&
+                  _canEditMaterialRoute(group) &&
+                  _routeGroupSelectable(group)) ||
+              (identical(group, issuable) &&
+                  _tableIssueBlockedReason(group) == null),
+        )
+        .toList(growable: false);
+  }
+
+  /// 勾选框本身的权限门：四把锁的并集，缺哪一把只是少一个可做的动作，
+  /// 不该整列没有勾选框。
+  bool get _canSelectMaterialRows =>
+      _canRoute || _canNotify || _canGenerate || _canCrossReallocate;
 
   bool _materialRowSelected(_MaterialTableRow row) {
-    if (!_canRoute) return false;
+    if (!_canSelectMaterialRows) return false;
     final groups = _materialRowSelectableGroups(row);
     return groups.isNotEmpty &&
         groups.every((group) => _selectedMaterialGroupKeys.contains(group.key));
@@ -600,7 +632,7 @@ abstract class _MaterialAnalysisMaterialTableState
     List<_MaterialTableRow> rows,
     Set<String> selected,
   ) {
-    if (_busy || !_canRoute) return;
+    if (_busy || !_canSelectMaterialRows) return;
     final additions = <String>{};
     final removals = <String>{};
     for (final row in rows) {
@@ -628,6 +660,14 @@ abstract class _MaterialAnalysisMaterialTableState
     ProductionMaterialAnalysisView analysis, {
     bool primary = true,
   }) {
+    // 主表要用的两份按需事实(ADR-102)：批量可调拨量决定「物料办理」里调拨
+    // 按钮灰不灰，车间/负责人学习记忆决定两个指派列的默认值。都带作用域键，
+    // 同一份分析只取一次；放在 build 里是因为它们依赖权限与会话身份，
+    // 而这两者在 initState 时还可能没定下来。
+    unawaited(Future<void>.microtask(() => _loadTableTransferableIn(analysis)));
+    unawaited(
+      Future<void>.microtask(() => _loadTableAssignmentDefaults(analysis)),
+    );
     // 表头筛选已在投影层生效（祖先保留为只读上下文），行集即最终行；桶随
     // 行缓存一起算出（未套表头筛选的全量行）。
     final rows = _materialTableRows(analysis);
@@ -654,7 +694,9 @@ abstract class _MaterialAnalysisMaterialTableState
         selectable: true,
         preserveSelectionOnContextMenu: true,
         // 已确认且未改动的行无勾选框（F2d）；改下拉后（脏组）勾选框出现并自动勾上。
-        idOf: (row) => _canRoute && _materialRowSelectableGroups(row).isNotEmpty
+        idOf: (row) =>
+            _canSelectMaterialRows &&
+                _materialRowSelectableGroups(row).isNotEmpty
             ? row.key
             : null,
         // idOf 为 null 的行组件默认渲染灰勾选框：已确认未改动的行明确「无勾选框」
@@ -759,12 +801,18 @@ abstract class _MaterialAnalysisMaterialTableState
     return value == null || value.isEmpty ? null : value;
   }
 
+  /// 这是「要不要跑筛选」的总闸：为 false 时投影层整批放行，
+  /// 所有 _headerFilterMatchesRow 都不会被调用。
+  ///
+  /// 因此它必须认全部筛选键，**不能只列特例四个**——漏掉的键会表现成
+  /// 「下拉里选了值、桶和计数都对，但一行都没被过滤掉」，
+  /// 直到用户顺手又选了一个特例键，总闸翻 true，先前那个筛选才突然追认生效。
+  /// 2026-09-22 对抗复查抓出来的真缺陷(新增的十个通用筛选当时全是死的)。
   @override
   bool get _hasActiveMaterialTableFilters =>
-      _materialTableFilterValue('route') != null ||
-      _materialTableFilterValue('status') != null ||
-      _materialTableFilterValue('owningWarehouse') != null ||
-      _materialTableFilterValue('owningWorkshop') != null;
+      _materialTableFilters.values.any(
+        (value) => value != null && value.isNotEmpty,
+      );
 
   /// 投影/行缓存键：表头筛选值 + 路线草稿/脏组/学习记忆代际（路线桶与路线
   /// 筛选随下拉草稿变化）+ 视图排布。
@@ -936,7 +984,65 @@ abstract class _MaterialAnalysisMaterialTableState
         _materialTableOwningWorkshopFacetKey(row) != owningWorkshopFilter) {
       return false;
     }
+    for (final entry in _materialTableGenericFacetExtractors.entries) {
+      final selected = _materialTableFilterValue(entry.key);
+      if (selected != null && entry.value(row) != selected) return false;
+    }
     return true;
+  }
+
+  /// 通用表头筛选取值器(ADR-102「能加筛选的列全部加上」)。
+  ///
+  /// 在这里加一条，建桶、匹配与失效清理三处自动跟上——老写法是三处各写一遍，
+  /// 加列必漏其中一处。路线 / 进度 / 所属仓库 / 归属车间四列因为各有特例
+  /// (路线要放行改过下拉的脏行、进度要带中文标签、两个仓库列有「未登记」沉底
+  /// 规则)仍单独处理，不进这张表。
+  ///
+  /// 没有筛选的列只有一个：树形的「物料名称」——它已经有关键词搜索框，
+  /// 再挂一个几百个值的下拉没有意义。
+  Map<String, String? Function(_MaterialTableRow)>
+  get _materialTableGenericFacetExtractors => {
+    'goodsCode': (row) => _blankFacet(_materialTableCodeText(row)),
+    'colorName': (row) => _blankFacet(_materialTableColorText(row)),
+    'unitName': (row) => _blankFacet(_materialTableUnitText(row)),
+    // 下面四个一律复用列自己的取值函数, 不另写一份判据。
+    // 2026-09-22 对抗复查: 原先各写各的, 于是「筛生产车间=二车间」会筛出一屏
+    // 生产车间列显示横杠的采购行, 「筛可下达」会筛出一屏显示「暂不可办理」的行
+    // ——筛选值与眼睛看到的对不上。
+    'productionWorkshop': (row) =>
+        _blankFacet(_materialTableProductionWorkshopText(row)),
+    'responsible': (row) => _blankFacet(_materialTableResponsibleText(row)),
+    'handle': (row) => _blankFacet(_materialTableHandleText(row)),
+    'requiredQty': (row) {
+      final value = _materialTableRequiredQty(row);
+      if (value == null) return null;
+      return value > 0 ? '有需求' : '无需求';
+    },
+    'netShortageQty': (row) {
+      final value = _materialTableNetShortageQty(row);
+      if (value == null) return null;
+      return value > 0 ? '还缺' : '不缺';
+    },
+    // 下单数量的桶按**与控制器无关**的事实推导：控制器只在单元格真被渲染过
+    // 才建，按控制器分桶会把没翻到过的页上的行一律算成「未填」。
+    'orderQty': (row) {
+      final group = _tableEditableGroup(row);
+      if (group == null) return null;
+      if (_tableGroupIssued(group)) return '已下达(锁定)';
+      return _tableGroupResidual(group) > 0 ? '待下单' : '无需下单';
+    },
+    'appendQty': (row) {
+      final group = _tableEditableGroup(row);
+      if (group == null || !_tableGroupIssued(group)) return null;
+      final text = _tableAppendQtyControllers[group.key]?.text.trim() ?? '0';
+      return (double.tryParse(text) ?? 0) > 0 ? '已填追加' : '未填追加';
+    },
+  };
+
+  /// 空串/横杠都是「没有值」，不进桶——否则筛选下拉里会冒出一个空白项。
+  static String? _blankFacet(String? raw) {
+    final text = raw?.trim() ?? '';
+    return text.isEmpty || text == '—' ? null : text;
   }
 
   /// 进度/路线/所属仓库列的筛选桶：稳定键 + 中文标签 + 计数；空值行不进桶。
@@ -1033,6 +1139,46 @@ abstract class _MaterialAnalysisMaterialTableState
         for (final key in owningWorkshopKeys)
           MasterFacetBucket(value: key, count: owningWorkshopCounts[key]!),
       ],
+      ..._materialTableGenericFacets(rows),
+    };
+  }
+
+  /// 通用列的筛选桶：按 [_materialTableGenericFacetExtractors] 一次算完。
+  /// 桶键即显示值，按名称排；「未指派」「未填」这类缺失态沉底。
+  Map<String, List<MasterFacetBucket>> _materialTableGenericFacets(
+    Iterable<_MaterialTableRow> rows,
+  ) {
+    const trailing = {
+      '未指派',
+      '待指派',
+      '无需下单',
+      '未填追加',
+      '无需求',
+      '不缺',
+      '暂不可办理',
+    };
+    final counts = <String, Map<String, int>>{};
+    for (final row in rows) {
+      for (final entry in _materialTableGenericFacetExtractors.entries) {
+        final value = entry.value(row);
+        if (value == null) continue;
+        final bucket = counts.putIfAbsent(entry.key, () => <String, int>{});
+        bucket[value] = (bucket[value] ?? 0) + 1;
+      }
+    }
+    return {
+      for (final entry in counts.entries)
+        entry.key: [
+          for (final key
+              in entry.value.keys.toList()
+                ..sort((a, b) {
+                  final aTrailing = trailing.contains(a);
+                  final bTrailing = trailing.contains(b);
+                  if (aTrailing != bTrailing) return aTrailing ? 1 : -1;
+                  return a.compareTo(b);
+                }))
+            MasterFacetBucket(value: key, count: entry.value[key]!),
+        ],
     };
   }
 
@@ -1056,9 +1202,35 @@ abstract class _MaterialAnalysisMaterialTableState
     });
   }
 
+  /// 主表列定稿(ADR-102 一张表)。
+  ///
+  /// 列顺序按用户口径：先「这一行我能干什么」(物料办理)，再是身份四列、
+  /// 供应方式，然后四个数量(需要 / 还缺 / 下单 / 追加)，再是落点与指派
+  /// (所属仓库 / 归属车间 / 生产车间 / 负责人)，最后进度。
+  ///
+  /// 退役的四列及去向：
+  /// - 「可用数量」「在途未到」「公共认领未实收」——三者都是「还缺多少」的
+  ///   分解项，新的「还缺数量」已经把它们全部扣完，并在悬浮里逐项讲清楚；
+  /// - 「在途调拨」——并进「物料办理」列的调拨按钮与其悬浮说明。
+  ///
+  /// 这里不给任何列开点击排序：本表是树，按列重排会把层级打散。列的顺序与
+  /// 显隐仍由表头设置(拖拽换位 / 竖拖隐藏)控制，那才是用户要的「表头排序
+  /// 或者添加删除」。
   List<MasterColumnDef<_MaterialTableRow>> _materialTableColumns(
     ThemeData theme,
   ) => [
+    MasterColumnDef(
+      key: 'handle',
+      label: _l10n.materialHandle,
+      width: 182,
+      value: _materialTableHandleText,
+      cellBuilderHandlesSemantics: true,
+      info:
+          '这一行现在能办的事：从别的计划已锁定的量里调拨，或按供应方式下达。'
+          '没有可调拨的量、缺少对应权限、或还没确认供应方式时按钮置灰，'
+          '鼠标悬停会说明是哪一种。',
+      cellBuilder: (_, row) => _materialTableHandleCell(theme, row),
+    ),
     MasterColumnDef(
       key: 'treeIdentity',
       label: _bomAggregateByMaterial
@@ -1074,8 +1246,7 @@ abstract class _MaterialAnalysisMaterialTableState
     ),
     // 2026-09-14 用户口径：编号 / 颜色 / 单位从身份格副行提升为独立列，
     // 紧跟「物料名称」。同名不同色/不同单位的行在这里一眼分得开，也能各自
-    // 排序、筛选、导出（原副行只是一串 · 连起来的文本）。三列全站统一：
-    // 主表与「下达采购 / 下达委外 / 下达车间」三个分桶详情用同一组列定义。
+    // 筛选、导出(原副行只是一串 · 连起来的文本)。
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
@@ -1097,12 +1268,70 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'route',
       label: _l10n.materialRoute,
-      width: 132,
+      width: 140,
       value: _materialTableRouteText,
       info:
           '这批物料怎么准备：采购 = 向供应商买；委外 = 发给加工商加工；'
-          '自制 = 自己车间生产。带下层物料的可选路线更多。',
+          '自制 = 自己车间生产。带下层物料的可选路线更多。'
+          '未确认的行框标红——先在这里选好并确认，这一行才能下单；'
+          '确认之后仍可随时改，三个下达桶的行与计数会跟着变，'
+          '但已经下达过的行要先撤回才能改。',
       cellBuilder: (_, row) => _materialTableRouteCell(theme, row),
+    ),
+    MasterColumnDef(
+      key: 'requiredQty',
+      label: _l10n.materialRequired,
+      width: 100,
+      type: 'number',
+      info: '按本批产品数量 × 单件用量算出的总需求量。',
+      value: (row) => _qty(_materialTableRequiredQty(row)),
+    ),
+    // ADR-102：这一列是服务端派生的净口径，客户端不做任何减法。
+    MasterColumnDef(
+      key: 'netShortageQty',
+      label: _l10n.materialShortage,
+      width: 112,
+      type: 'number',
+      info:
+          '把公共的量都当成已占用之后，这一行还要另外下单多少。'
+          '仓库里的公共现货、以及下达时会自动认领的公共在途(含晚到来源)，'
+          '都已经在这个数里扣掉了。自制、以及要先自制目标件的委外不会自动'
+          '认领公共在途，这两类显示的是未扣的量。',
+      value: (row) => _qty(_materialTableNetShortageQty(row)),
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) => _materialTableNetShortageCell(theme, row),
+      cellColor: (_, row) =>
+          _shortageCellColor(theme, _materialTableNetShortageQty(row)),
+    ),
+    MasterColumnDef(
+      key: 'orderQty',
+      label: _l10n.materialToSupply,
+      width: 132,
+      type: 'number',
+      info:
+          '本次要**覆盖**多少，不是「要新开多少单」。默认填的是没算公共在途的毛量，'
+          '因为下达时服务端会先从你填的这个数里认领公共在途、只为余下部分开新单——'
+          '照着左边的「还缺数量」填反而会少下一个认领量。'
+          '可以填得更多：多下的部分算公共备货，需要超量下达权限。'
+          '自制、以及要先自制目标件的委外必须整批接管，既不能多填也不能少填，所以这两类只读。'
+          '下达之后这一格锁住并改成显示累计已下单量，要再下就填右边的「追加下单」。',
+      value: _materialTableOrderQtyText,
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) => _materialTableOrderQtyCell(theme, row),
+    ),
+    MasterColumnDef(
+      key: 'appendQty',
+      label: _l10n.materialAdditionalOrder,
+      width: 124,
+      type: 'number',
+      info:
+          '已经下达过的行要再下多少。默认 0 = 本次不动它，填成正数才追加。'
+          '追加只能增不能减：原申请还没被采购 / 委外做成订货单时直接改大那张申请，'
+          '已经做成订货单的另立新单。要改小只能撤回重下。'
+          '追加成功后它会并进左边的「下单数量」，这一格回到 0。',
+      value: _materialTableAppendQtyText,
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) => _materialTableAppendQtyCell(theme, row),
     ),
     // 2026-09-15 用户口径（V590 收敛）: 所属仓库 = 货品主档 goods.
     // owning_warehouse_id 的**单一事实源**——任何入库(采购/委外/完工/调拨/退料/
@@ -1118,182 +1347,51 @@ abstract class _MaterialAnalysisMaterialTableState
           '同一事实源）；点单元格可直接改主档。',
       cellBuilder: (_, row) => _materialTableOwningWarehouseCell(theme, row),
     ),
-    // 归属生产车间(V590): 最近一次排产确认/车间改派自动学习回写, 只读展示;
-    // 车间桶下计划格里的「生产车间」输入就是它的学习入口。
+    // 归属生产车间(V590): 最近一次排产确认/车间改派自动学习回写, 只读展示。
     MasterColumnDef(
       key: 'owningWorkshop',
       label: '归属车间',
       width: 120,
       value: _materialTableOwningWorkshopText,
       info:
-          '这个货品归哪个生产车间生产。最近一次排产确认或车间改派会自动记住，'
-          '下次下达车间默认带出。',
+          '这个货品平时归哪个生产车间生产。最近一次排产确认或车间改派会自动记住，'
+          '下次下达车间默认带出到右边的「生产车间」。',
     ),
+    // ADR-102：下达车间之前就地指派本次的车间与负责人，不必再进分桶页。
     MasterColumnDef(
-      key: 'requiredQty',
-      label: _l10n.materialRequired,
-      width: 100,
-      type: 'number',
-      info: '按本批产品数量 × 单件用量算出的总需求量。',
-      value: (row) => _qty(_materialTableRequiredQty(row)),
-    ),
-    // 2026-09-14 用户口径：原「已备数量」= 分配给本批的合格量，恒等于
-    //「需要数量 − 还缺数量」，与右边的缺口列完全冗余，看不出任何新事实。
-    // 改为「可用数量」= 该物料此刻在所选仓库里真正还能动用的现货，够不够
-    // 需求用绿/红标出（与分桶详情「仓库余量」同一口径与配色）。
-    MasterColumnDef(
-      key: 'availableQty',
-      label: '可用数量',
-      width: 100,
-      type: 'number',
-      info:
-          '该物料此刻在所选仓库里还可动用的现货量（不含在途、待检）。'
-          '够本批需求=绿、不够=红；即使够货也不跳过流程，仍可按富余量下单。',
-      value: (row) => _qty(_materialTableAvailableQty(row)),
-      cellColor: (_, row) {
-        final available = _materialTableAvailableQty(row);
-        final required = _materialTableRequiredQty(row);
-        if (available == null || required == null || required <= 0) return null;
-        return available >= required
-            ? (theme.brightness == Brightness.dark
-                  ? UtenColors.successOnDark
-                  : UtenColors.successText)
-            : theme.colorScheme.error;
-      },
-    ),
-    MasterColumnDef(
-      key: 'shortageQty',
-      label: _l10n.materialShortage,
-      width: 100,
-      type: 'number',
-      info: _l10n.materialPhysicalShortageHint,
-      value: (row) => _qty(_materialTableShortageQty(row)),
-      cellBuilder: (_, row) {
-        // 2026-09-05 顶层同构：缺口列与物料行一致，只显示数字
-        //（不再「待生产 X」特例；列头「缺口」已说明含义）。
-        // 2026-09-10 用户口径：缺口=0 的行用绿色（与红色缺口对称），
-        // 一眼看出「这里已经不缺了」；无缺口数据（产品行/参考行）保持中性。
-        // 颜色走语义 token 明暗配对（_shortageTextColor），桶详情缺口列同口径。
-        final shortage = _materialTableShortageQty(row);
-        return Text(
-          _qty(shortage),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: _shortageTextColor(theme, shortage),
-            fontWeight: FontWeight.w800,
-          ),
-        );
-      },
-      cellColor: (_, row) =>
-          _shortageCellColor(theme, _materialTableShortageQty(row)),
-    ),
-    MasterColumnDef(
-      key: 'additionalSupplyRecommendedQty',
-      label: _l10n.materialToSupply,
-      width: 138,
-      type: 'number',
-      info:
-          '还缺数量扣除已安排且仍有效的未合格入库供给后，建议本次新下单的数量（可改小分批）。'
-          '仓库现货已够的行显示 0，仍可按富余量下单。',
-      value: (row) => _qty(_materialTableAdditionalRecommendedQty(row)),
+      key: 'productionWorkshop',
+      label: _l10n.materialProductionWorkshop,
+      width: 156,
+      value: _materialTableProductionWorkshopText,
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) =>
-          _materialTableSupplyRecommendationCell(theme, row),
+      info:
+          '本次下达车间要交给哪个车间做(不是货品平时的归属车间)。'
+          '默认按这个货品上次的排产记住的车间带出，黄框提醒核对，点格子可改。'
+          '只对走自制的行有意义，采购 / 委外行显示横杠。',
+      cellBuilder: (_, row) => _materialTableProductionWorkshopCell(theme, row),
     ),
     MasterColumnDef(
-      key: 'inboundQty',
-      label: _l10n.materialFutureSupply,
+      key: 'responsible',
+      label: _l10n.materialResponsible,
       width: 140,
-      type: 'number',
-      info:
-          '已安排采购/委外但尚未合格入库的数量；待到货、待检或合格待入库以来源任务为准，实收合格后'
-          '补进可用量（已锚定本批，非公共现货）。',
-      value: (row) => _qty(_materialTableInboundQty(row)),
+      value: _materialTableResponsibleText,
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => _materialTableInboundCell(theme, row),
+      info:
+          '本次这批活谁负责。优先带出这个货品上次记住的负责人，'
+          '其次是所选车间在组织架构上的负责人，黄框提醒核对，点格子可改。',
+      cellBuilder: (_, row) => _materialTableResponsibleCell(theme, row),
     ),
-    if (_analysis?.materials.any(
-          (material) => (material.sharedFuturePendingQty ?? 0) > 0,
-        ) ==
-        true)
-      MasterColumnDef(
-        key: 'sharedFuturePendingQty',
-        label: '公共认领未实收',
-        width: 130,
-        type: 'number',
-        info:
-            '从公共余量认领且尚未实际合格入库的数量，也保留失败来源的未兑现承诺；仍需补多少看建议下达。其他计划专属份额另见在途调拨，不计现货或立即可开工量。',
-        value: (row) => _qty(
-          row.aggregate == null
-              ? row.material?.sharedFuturePendingQty
-              : row.aggregate!.paths.every(
-                  (path) => path.sharedFuturePendingQty != null,
-                )
-              ? row.aggregate!.paths.fold<double>(
-                  0,
-                  (sum, path) => sum + path.sharedFuturePendingQty!,
-                )
-              : null,
-        ),
-      ),
     MasterColumnDef(
       key: 'status',
       label: _l10n.materialProgress,
       width: 230,
       info:
           '这行物料现在走到哪一步（等待下单 → 下单 → 财务审批 → 收货 → 检验 → '
-          '入库）；点击状态可看全程明细。',
+          '入库)；点击状态可看全程明细。还没确认供应方式的行显示「待选供应方式」。',
       value: _materialTableStatusText,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableStatusCell(theme, row),
     ),
-    if (_analysis?.allowedActions.contains('VIEW_FUTURE_TRANSFERS') == true &&
-        (_futureTransferRecords.isNotEmpty || _futureTransferError != null))
-      MasterColumnDef(
-        key: 'futureTransfers',
-        label: '在途调拨',
-        width: 285,
-        info: '其他计划专属在途的调整记录。待入数量不计现货，尚需新下达的数量仍看建议下达列。',
-        value: _futureProgressText,
-        cellBuilder: (context, row) {
-          if (row.product != null || row.contextOnly) return const Text('—');
-          final color = _crossReallocationSourceColor(theme);
-          final text = _futureProgressText(row);
-          return Tooltip(
-            message: _futureTransferError ?? '$text\n点击查看精确来源、已实收和可撤未收份额',
-            child: InkWell(
-              onTap: _busy
-                  ? null
-                  : _futureTransferError != null
-                  ? () => unawaited(_refreshFutureTransfers(_analysis!))
-                  : _futureProgressFor(row).hasRecords
-                  ? () => _openMaterialTableRow(row)
-                  : null,
-              child: Semantics(
-                label: '在途调拨进度 $text',
-                button: true,
-                child: Row(
-                  children: [
-                    if (_futureTransferError != null) ...[
-                      Icon(Icons.refresh, size: 18, color: color),
-                      const SizedBox(width: UtenSpacing.s4),
-                    ],
-                    Expanded(
-                      child: Text(
-                        text,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: color,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
   ];
 
   MaterialFutureTransferProgress _futureProgressFor(_MaterialTableRow row) {
@@ -1566,11 +1664,31 @@ abstract class _MaterialAnalysisMaterialTableState
         unawaited(_confirmRouteChanges(groups, next));
       },
     );
-    if (!blankSourceFallback) return dropdown;
+    // ADR-102：还没确认路线的行把这一格框成红的。这一行的下单、追加、办理
+    // 全部锁着，红框是唯一的入口提示——「先在这里选好并确认」。
+    final pending = groups.any(
+      (group) => group.representative.confirmedRoute == null,
+    );
+    final framed = pending
+        ? Tooltip(
+            message: '这一行还没确认供应方式，先在这里选好并确认，它才能下单。',
+            child: DecoratedBox(
+              key: ValueKey(
+                'material-route-pending-${row.material?.materialLineId ?? row.key}',
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(UtenRadius.control),
+                border: Border.all(color: theme.colorScheme.error, width: 1.5),
+              ),
+              child: dropdown,
+            ),
+          )
+        : dropdown;
+    if (!blankSourceFallback) return framed;
     // 主档来源为空的行：下拉预填的「委外」只是缺省值，黄标提醒核对（F8）。
     return Row(
       children: [
-        Expanded(child: dropdown),
+        Expanded(child: framed),
         UtenFieldHintIcon(
           key: ValueKey(
             'material-route-blank-source-${row.material?.materialLineId ?? row.key}',
@@ -1732,36 +1850,6 @@ abstract class _MaterialAnalysisMaterialTableState
         })()
       : row.material?.inboundQty;
 
-  Widget _materialTableInboundCell(ThemeData theme, _MaterialTableRow row) {
-    if (row.contextOnly) return const Text('—');
-    if (row.product != null && row.material?.isRootSupply != true) {
-      return const Text('—');
-    }
-    final value = _materialTableInboundQty(row);
-    if (row.aggregate != null && value == null) {
-      return Text(
-        '各路径按期供给不同，展开逐条查看',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      );
-    }
-    final label = '${_qty(value)}（已锚定，非现货）';
-    const explanation = '已锚定预计供给，非现货，入库并质检合格前不进入当前可开工量';
-    return Tooltip(
-      message: explanation,
-      child: Semantics(
-        container: true,
-        label: '$label，$explanation',
-        child: ExcludeSemantics(
-          child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
-        ),
-      ),
-    );
-  }
-
   double? _materialTablePublicSurplusRemainingQty(_MaterialTableRow row) =>
       row.contextOnly || row.product != null
       ? null
@@ -1810,21 +1898,1363 @@ abstract class _MaterialAnalysisMaterialTableState
         )
       : row.material?.additionalSupplyRecommendedQty;
 
-  Widget _materialTableSupplyRecommendationCell(
+  // ==================== ADR-102 一张表：数量、办理与指派 ====================
+  //
+  // 这一段把原先分散在三个分桶详情页与「父件 + 下层一起下单」弹窗里的能力
+  // 收进主表：行内填「下单数量 / 追加下单」、按行办理(调拨 / 下达)、下达车间
+  // 前就地指派生产车间与负责人。容器仍是 MasterDataTableView——分桶详情页
+  // 已经证明它能在 cellBuilder 里放输入框、控制器交给宿主 State 托管，
+  // 因此列显隐/列序/列宽/表头筛选这些主表既有能力一个都不用丢。
+
+  /// 行内「下单数量」输入(键 = [_MaterialGroup.key]，即服务端的提交单元身份)。
+  ///
+  /// 控制器由宿主 State 持有而不是挂在行对象上：主表的行每次投影都会重建，
+  /// 且带客户端分页，挂在行上会翻一页就丢一次用户填的数。
+  final Map<String, TextEditingController> _tableOrderQtyControllers = {};
+
+  /// 行内「追加下单」输入(键同上)。已下达的行填这里，填 0 = 本次不动它。
+  final Map<String, TextEditingController> _tableAppendQtyControllers = {};
+
+  /// 系统预填过的文本快照：轮询刷新只回填「用户没动过」的格子，
+  /// 已经被人改过的一律保留，不让后台刷新吃掉手输的数。
+  final Map<String, String> _tableSeededQtyTexts = {};
+
+  /// 用户**亲手填过**的数量(键 = materialLineId)。
+  ///
+  /// 送给服务端重算的只能是这一份，绝不能送界面显示值：服务端那侧按
+  /// 计划产出量单调向上取 max，把回显值送回去会把整棵子树钉在旧数上。
+  /// 清空输入框 = 从这里移除 = 把这一行交还给系统算。
+  final Map<String, double> _tableUserTypedQty = {};
+
+  /// 父行改量之后，服务端算出的「下达之后」快照(ADR-099 回滚式预览)。
+  ///
+  /// **只用于展示子层数量，绝不替换权威快照 [_analysis]**：它是服务端真跑一遍
+  /// 下达再整体回滚的模拟结果，版本与指纹都是模拟态。提交一律按 [_analysis] 走，
+  /// 否则就是拿模拟结果当依据下单。
+  ProductionMaterialAnalysisView? _tableCascadePreview;
+  int _tableCascadeGeneration = 0;
+  Timer? _tableCascadeDebounce;
+  bool _tableCascadePreviewing = false;
+
+  /// 批量可调拨量(materialLineId -> 可调入数量)。空表示还没取到或无可调。
+  Map<String, double> _tableTransferableIn = const {};
+
+  /// 与 [_tableTransferableIn] 同生命周期的会话作用域键：切账号后丢弃迟到响应。
+  String? _tableTransferableInScope;
+  bool _tableTransferableInLoading = false;
+
+  /// 下达车间前的就地指派草稿(键 = [_MaterialGroup.key])。
+  final Map<String, ({String? id, String? name})> _tableWorkshopDraft = {};
+  final Map<String, ({String? id, String? name})> _tableWorkerDraft = {};
+
+  /// 页面销毁时统一释放行内输入控制器。
+  @override
+  void _disposeMaterialTableInputs() {
+    _tableCascadeDebounce?.cancel();
+    _tableCascadeDebounce = null;
+    for (final controller in _tableOrderQtyControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _tableAppendQtyControllers.values) {
+      controller.dispose();
+    }
+    _tableOrderQtyControllers.clear();
+    _tableAppendQtyControllers.clear();
+  }
+
+  @override
+  void _resetMaterialTableInputsForNewAnalysis() {
+    _disposeMaterialTableInputs();
+    _tableSeededQtyTexts.clear();
+    _tableUserTypedQty.clear();
+    _tableCascadePreview = null;
+    _tableCascadeGeneration++;
+    _tableWorkshopDraft.clear();
+    _tableWorkerDraft.clear();
+    _tableTransferableIn = const {};
+    _tableTransferableInScope = null;
+    _tableAssignmentScope = null;
+  }
+
+  /// 这一行是不是「持有输入框」的行：只有恰好对应一个提交单元的物料行才可填。
+  /// 汇总视图的聚合行、分页补的上下文行、产品行都只作展示。
+  ///
+  /// **可勾判据必须与它对齐**：聚合行这五列全是横杠，却照样能勾、能计进
+  /// 「下单(N)」的话，提交用的就是界面上从没显示过的隐藏默认值——直接违反
+  /// 「看到的勾选 = 提交的内容」。2026-09-22 对抗复查抓出来的真缺陷。
+  _MaterialGroup? _tableEditableGroup(_MaterialTableRow row) {
+    if (row.contextOnly || row.product != null || row.aggregate != null) {
+      return null;
+    }
+    // 用「全部操作组」而不是「可改路线的组」：已下达的行照样要能填追加。
+    final groups = _materialRowAllGroups(row);
+    return groups.length == 1 ? groups.first : null;
+  }
+
+  /// 还缺数量(ADR-102 口径，服务端权威派生)：已把「下达时真会自动认领的
+  /// 公共在途」当成已占用扣掉。客户端只做跨路径求和，不做任何缺口减在途的算术
+  /// (ADR-099 不变量 2)。
+  double? _materialTableNetShortageQty(_MaterialTableRow row) => row.contextOnly
+      ? null
+      : row.product != null && !_rootExternalSupplyRow(row)
+      ? null
+      : row.aggregate != null
+      ? row.aggregate!.paths.fold<double>(
+          0,
+          (sum, material) => sum + _tablePreviewed(material).netShortageQty,
+        )
+      : row.material == null
+      ? null
+      : _tablePreviewed(row.material!).netShortageQty;
+
+  /// 本提交单元累计已下单量。
+  ///
+  /// 两条来源不是随便选的：已建自制锚点的行，真实已下达量在锚点产品的计划总量
+  /// 上(含公共备货产出)；采购 / 直接外发委外的行在申请明细的分摊量上。
+  /// 一行只可能是其中一种，不会同时成立。
+  double _tableGroupIssuedQty(_MaterialGroup group) {
+    final material = group.representative;
+    final route = _draftRoute(group);
+    if (route == MaterialSupplyRoute.make) {
+      final anchorId = material.planAnchorAnalysisLineId;
+      final analysis = _analysis;
+      if (anchorId == null || analysis == null) return 0;
+      return _analysisIndexes(analysis).productsById[anchorId]?.issuedPlanQty ??
+          0;
+    }
+    var ordered = 0.0;
+    for (final path in group.paths) {
+      for (final target in path.notifiedTargets) {
+        if (target.target != route ||
+            target.isRootOutput ||
+            target.status == 'CANCELLED') {
+          continue;
+        }
+        // 跨计划调拨与公共在途认领也会投影进 downstreamReferences, 而且服务端按
+        // **目标行的确认路线**归位, 所以路线过滤拦不住它们。它们只是把别处的在途
+        // 份额搬过来, 本行一张订货单都没下——算成「已下单」会让这一行的下单数量
+        // 格被锁死、追加默认 0、批量下单静默跳过它。这是 2026-09-22 对抗复查抓出
+        // 来的真缺陷: 调拨恰恰是主表「物料办理」列主推的第一个动作。
+        if (const {
+          'FUTURE_TRANSFER',
+          'SHARED_FUTURE_CLAIM',
+        }.contains(_supplyOperationType(target.actionId))) {
+          continue;
+        }
+        ordered += target.allocatedQty ?? 0;
+      }
+    }
+    return ordered;
+  }
+
+  /// 这一行下过单没有(下过 = 下单数量列锁死、改填追加下单列)。
+  bool _tableGroupIssued(_MaterialGroup group) =>
+      _tableGroupIssuedQty(group) > 0.0001;
+
+  /// 本提交单元本次要**覆盖**的量 = 「下单数量」列的预填值与提交值。
+  ///
+  /// **必须用毛口径 additionalSupplyRecommendedQty, 不能用「还缺数量」那个净数。**
+  /// 服务端下达时是 demandQty = requested.min(delta) 之后再从中减掉自动认领的公共
+  /// 在途——认领是从你填的这个数里切走的, 不是在它之上另加。填净数的话, 需求 1000、
+  /// 可认领 300 时填 700 只换来「认领 300 + 新单 400 = 700」, 对着 1000 仍差 300,
+  /// 每一行都少下一个认领量。这是 2026-09-22 对抗复查抓出来的真缺陷。
+  ///
+  /// 有父行改量的预览时取预览值——子层该跟着变多少由服务端算。
+  double _tableGroupResidual(_MaterialGroup group) => group.paths.fold<double>(
+    0,
+    (sum, material) =>
+        sum + _tablePreviewed(material).additionalSupplyRecommendedQty,
+  );
+
+
+  /// 这一类行必须整批接管：自制、以及要先自制目标件的委外。
+  /// 服务端要求下单量逐字等于全部剩余需求，既不能超也不能少，所以格子只读。
+  bool _tableGroupWholeTakeover(_MaterialGroup group) {
+    final route = _draftRoute(group);
+    if (route == MaterialSupplyRoute.make) return true;
+    if (route != MaterialSupplyRoute.subcontract) return false;
+    final analysis = _analysis;
+    // 快照还没到手时按「要整批接管」处理：格子只读比让人填个数再吃 400 好。
+    if (analysis == null) return true;
+    return _subcontractNeedsPreparation(group.representative, analysis);
+  }
+
+  TextEditingController _tableOrderQtyController(_MaterialGroup group) {
+    final seeded = _qty(_tableGroupResidual(group));
+    return _tableOrderQtyControllers.putIfAbsent(group.key, () {
+      _tableSeededQtyTexts['ORDER|${group.key}'] = seeded;
+      return TextEditingController(text: seeded);
+    });
+  }
+
+  TextEditingController _tableAppendQtyController(_MaterialGroup group) =>
+      _tableAppendQtyControllers.putIfAbsent(group.key, () {
+        // 用户口径 2026-09-21：追加默认就写 0——勾着不动 = 本次不下它，
+        // 要追加才改成正数。0 是合法值，不是「没填」。
+        _tableSeededQtyTexts['APPEND|${group.key}'] = '0';
+        return TextEditingController(text: '0');
+      });
+
+  /// 新快照回来后把系统预填值刷新一遍，但只覆盖「仍等于旧预填值」的格子。
+  ///
+  /// 这是主表铺开输入框之后必须补的一课：轮询与 409 恢复都会整树换快照，
+  /// 不做这一步，用户填了一屏的数会被后台刷新静默吃掉。
+  @override
+  void _reseedMaterialTableQtyInputs() {
+    final analysis = _analysis;
+    if (analysis == null) return;
+    for (final group in _analysisIndexes(analysis).groupsByKey.values) {
+      final controller = _tableOrderQtyControllers[group.key];
+      if (controller == null) continue;
+      final seededKey = 'ORDER|${group.key}';
+      // 一旦发现这一格与上次系统预填值不同，就**永久**判给用户：把 seed 键删掉，
+      // 以后任何一次刷新都不再覆盖它。
+      //
+      // 原先是「不覆盖但把 seed 写成新值」，那样只要系统算出的新预填值某一次
+      // 恰好等于用户手填的数，这一格就被重新归类成「系统预填」，下一次刷新就把
+      // 它冲掉。宿主页的 _refreshSystemSeededPlanBatchQty 早就是 remove 这个写法，
+      // 这里漏了。2026-09-22 对抗复查抓出来的真缺陷。
+      if (controller.text != _tableSeededQtyTexts[seededKey]) {
+        _tableSeededQtyTexts.remove(seededKey);
+        continue;
+      }
+      final next = _qty(_tableGroupResidual(group));
+      controller.text = next;
+      _tableSeededQtyTexts[seededKey] = next;
+    }
+  }
+
+  /// 权威快照一到就让父子联动的模拟快照作废(ADR-102)。
+  ///
+  /// 回滚式预览是「下达之后会变成什么样」的模拟，它没有版本与指纹，永远比
+  /// 权威快照旧。不清它的话：轮询/409 恢复/下达成功换上新快照之后，
+  /// 「还缺数量」列与下单数量预填仍旧来自下达前那次模拟——同事的到货入库已经
+  /// 把某行缺口清零，主表还照着模拟值预填并让人下单，就是凭空多买一批。
+  /// 2026-09-22 对抗复查抓出来的真缺陷。
+  @override
+  void _invalidateMaterialTableCascadePreview() {
+    if (_tableCascadePreview == null) return;
+    _tableCascadePreview = null;
+    _tableCascadeGeneration++;
+    // 用户填过的数还在，按新的权威快照重新算一遍下层。
+    if (_tableUserTypedQty.isNotEmpty) {
+      _tableCascadeDebounce?.cancel();
+      _tableCascadeDebounce = Timer(
+        const Duration(milliseconds: 300),
+        () => unawaited(_refreshTableCascadePreview()),
+      );
+    }
+  }
+
+  // ---------------- 父行改量带动子层(ADR-099 回滚式预览) ----------------
+
+  /// 这一行在树上还有没有下层：只有带下层的行改量才值得惊动服务端重算。
+  bool _tableGroupHasChildren(_MaterialGroup group) {
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    final indexes = _analysisIndexes(analysis);
+    for (final path in group.paths) {
+      final nodeKey = path.nodeKey;
+      if (nodeKey == null) continue;
+      final children = indexes.childrenByParentNodeKey[(
+        analysisLineId: path.analysisLineId,
+        parentNodeKey: nodeKey,
+      )];
+      if (children != null && children.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  /// 用户在某一行填了数：记下**他亲手填的值**，并安排一次服务端重算。
+  ///
+  /// 去抖是页面级单例(不是每行一个 Timer)：整张表铺开输入框之后，每行一个
+  /// 定时器会把回滚式预览的请求量放大到不可接受——那个端点在服务端是真跑一遍
+  /// 下达再整体回滚。
+  void _onTableQtyTyped(_MaterialGroup group, String text) {
+    final lineId = group.representative.materialLineId;
+    final trimmed = text.trim();
+    final value = double.tryParse(trimmed);
+    if (trimmed.isEmpty || value == null || value <= 0) {
+      // 清空输入框 = 把这一行交还给系统算，不是「填了 0」。
+      _tableUserTypedQty.remove(lineId);
+    } else {
+      _tableUserTypedQty[lineId] = value;
+    }
+    if (!_tableGroupHasChildren(group)) return;
+    _tableCascadeDebounce?.cancel();
+    _tableCascadeDebounce = Timer(
+      const Duration(milliseconds: 300),
+      () => unawaited(_refreshTableCascadePreview()),
+    );
+  }
+
+  /// 按用户填过的数向服务端要一份「下达之后」的快照，用它显示子层数量。
+  ///
+  /// 客户端一行算术都不做：子层该变成多少由服务端按计划产出量展开
+  /// (ADR-099 不变量——客户端没有任何缺口减在途的回退)。代价是有一次
+  /// 往返延迟，换来的是主表不会把父子联动的算术重实现一遍再踩一遍坑。
+  Future<void> _refreshTableCascadePreview() async {
+    final analysis = _analysis;
+    final warehouseId = _warehouseId;
+    if (analysis == null || warehouseId == null || !mounted) return;
+    // 代际先推：用户把输入清空时也要占一个代际，否则上一次在途的预览回来时
+    // `generation != _tableCascadeGeneration` 判定为假，那份**已被撤销的输入**
+    // 派生出来的模拟快照会照样装上去，之后全表的数字与预填都来自它。
+    final generation = ++_tableCascadeGeneration;
+    if (_tableUserTypedQty.isEmpty) {
+      if (_tableCascadePreview == null) return;
+      setState(() => _tableCascadePreview = null);
+      _reseedMaterialTableQtyInputs();
+      return;
+    }
+    setState(() => _tableCascadePreviewing = true);
+    try {
+      final view = await ref
+          .read(productionPlanRepositoryProvider)
+          .previewIssuePlans(
+            analysis: analysis,
+            warehouseId: warehouseId,
+            // 幂等键必须每次都新：这是一次纯重算，不是要复用上一次的结果。
+            idempotencyKey: businessIdempotencyKey(
+              'material-analysis-table-cascade-preview',
+              [
+                analysis.analysisId,
+                analysis.version,
+                analysis.fingerprint,
+                generation,
+                for (final entry in _tableUserTypedQty.entries)
+                  '${entry.key}:${entry.value}',
+              ].join('|'),
+            ),
+            billDate: _dateText(_billDate)!,
+            deliveryDate: _dateText(_deliveryDate),
+            // lines 为空 = 只重算、不模拟下达任何一条计划，
+            // 因此只要查看权限即可，不需要生成生产计划权限。
+            lines: const [],
+            typedOutputs: Map<String, double>.from(_tableUserTypedQty),
+          );
+      // 代际丢弃：用户还在敲，迟到的那一份直接作废。
+      if (!mounted || generation != _tableCascadeGeneration) return;
+      setState(() => _tableCascadePreview = view);
+      // 子层的数字变了，没被人动过的「下单数量」格要跟着回填——否则父行改成
+      // 1500、子行「还缺数量」如期变成 750，可提交的却还是改量前的 500。
+      _reseedMaterialTableQtyInputs();
+    } catch (_) {
+      // 重算失败不打断填数：退回服务端权威快照的数字，并停掉预览态。
+      if (!mounted || generation != _tableCascadeGeneration) return;
+      setState(() => _tableCascadePreview = null);
+      _reseedMaterialTableQtyInputs();
+    } finally {
+      if (mounted && generation == _tableCascadeGeneration) {
+        setState(() => _tableCascadePreviewing = false);
+      }
+    }
+  }
+
+  /// 展示用的物料行：有预览时取预览里的同一行(子层数量已按父行新量展开)。
+  /// 找不到就退回权威快照那一行——预览只能让数字更新，不能让行消失。
+  ProductionMaterialAnalysisMaterial _tablePreviewed(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    final preview = _tableCascadePreview;
+    if (preview == null) return material;
+    for (final candidate in preview.materials) {
+      if (candidate.materialLineId == material.materialLineId) return candidate;
+    }
+    return material;
+  }
+
+  /// 本行此刻可以从别的计划锁定量里调进来多少(0 = 调拨按钮置灰)。
+  double _tableTransferableInQty(_MaterialGroup group) {
+    if (_tableTransferableIn.isEmpty) return 0;
+    var total = 0.0;
+    for (final path in group.paths) {
+      total += _tableTransferableIn[path.materialLineId] ?? 0;
+    }
+    return total;
+  }
+
+  /// 按需取一次批量可调拨量。带会话作用域键：切账号后丢弃迟到响应，
+  /// 免得把上一个账号可见范围里的量显示给下一个账号。
+  Future<void> _loadTableTransferableIn(
+    ProductionMaterialAnalysisView analysis,
+  ) async {
+    if (!_canCrossReallocate || _tableTransferableInLoading) return;
+    final sessionKey = _sessionScopeKey();
+    final scope = '$sessionKey#${analysis.analysisId}';
+    if (_tableTransferableInScope == scope) return;
+    _tableTransferableInLoading = true;
+    try {
+      final summary = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialTransferableInSummary(analysis.analysisId);
+      // 切账号后到货的响应直接丢弃：可调拨量随登录人的对象级可见范围变，
+      // 把上一个账号看得见的量显示给下一个账号是越权泄露。
+      // 会话键**先存下来再比**，不要从拼接串里拆——会话键自身含 '|'。
+      if (!mounted || _sessionScopeKey() != sessionKey) return;
+      setState(() {
+        _tableTransferableIn = summary;
+        _tableTransferableInScope = scope;
+      });
+    } catch (_) {
+      // 调拨按钮灰不灰是辅助信息，取不到就一律按「无可调拨」置灰，不打断主表。
+      if (!mounted) return;
+      setState(() {
+        _tableTransferableIn = const {};
+        _tableTransferableInScope = scope;
+      });
+    } finally {
+      _tableTransferableInLoading = false;
+    }
+  }
+
+  // ---------------- 下达车间前的就地指派(生产车间 / 负责人) ----------------
+  //
+  // 这套学习记忆原先只长在分桶详情页里。主表要在行上直接指派，就得把它提到
+  // 宿主 State：默认值优先货品学习记忆(V488 连负责人一起记)，否则组织树上
+  // 该车间的负责人，都带黄标提醒核对；两者都没有才留空手选。
+
+  Map<
+    String,
+    ({
+      String departmentId,
+      String? departmentName,
+      String? workerId,
+      String? workerName,
+    })
+  >
+  _tableWorkshopDefaults = const {};
+  Map<String, ({String? id, String? name})> _tableWorkshopManagers = const {};
+  List<DepartmentNode> _tableWorkshopTree = const [];
+  String? _tableAssignmentScope;
+  bool _tableAssignmentLoading = false;
+
+  Future<void> _loadTableAssignmentDefaults(
+    ProductionMaterialAnalysisView analysis,
+  ) async {
+    if (!_canGenerate || _tableAssignmentLoading) return;
+    final scope = '${_sessionScopeKey()}|${analysis.analysisId}';
+    if (_tableAssignmentScope == scope) return;
+    final goodsIds = <String>{
+      for (final material in analysis.materials)
+        if (material.goodsId?.isNotEmpty == true) material.goodsId!,
+    };
+    if (goodsIds.isEmpty) return;
+    _tableAssignmentLoading = true;
+    try {
+      final tree = await _tableWorkshopTreeOrEmpty();
+      final defaults = await ref
+          .read(productionPlanRepositoryProvider)
+          .defaultWorkshops(goodsIds);
+      if (!mounted) return;
+      setState(() {
+        _tableWorkshopTree = tree;
+        _tableWorkshopDefaults = defaults;
+        _tableWorkshopManagers = {
+          for (final node in tree)
+            if (node.managerId?.isNotEmpty == true)
+              node.id: (id: node.managerId, name: node.managerName),
+        };
+        _tableAssignmentScope = scope;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _tableAssignmentScope = scope);
+    } finally {
+      _tableAssignmentLoading = false;
+    }
+  }
+
+  Future<List<DepartmentNode>> _tableWorkshopTreeOrEmpty() async {
+    // 直读稳定的部门仓库而不是 autoDispose provider：后者被一次性 read(.future)
+    // 时可能在请求中途回收，Future 永不完成(默认车间带不出的隐患)。
+    try {
+      final tree = await ref.read(departmentRepositoryProvider).tree();
+      return findDepartmentByCode(tree, kDeptCodeProduction)?.children ??
+          const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// 本行此刻的生产车间：手选草稿 > 货品学习记忆 > 主档归属车间。
+  ({String? id, String? name, bool autofilled}) _tableWorkshopFor(
+    _MaterialGroup group,
+  ) {
+    final draft = _tableWorkshopDraft[group.key];
+    if (draft != null) {
+      return (id: draft.id, name: draft.name, autofilled: false);
+    }
+    final goodsId = group.representative.goodsId;
+    final learned = goodsId == null ? null : _tableWorkshopDefaults[goodsId];
+    if (learned != null) {
+      return (
+        id: learned.departmentId,
+        name: learned.departmentName,
+        autofilled: true,
+      );
+    }
+    final material = group.representative;
+    if (material.owningWorkshopId?.isNotEmpty == true) {
+      return (
+        id: material.owningWorkshopId,
+        name: material.owningWorkshopName,
+        autofilled: true,
+      );
+    }
+    return (id: null, name: null, autofilled: false);
+  }
+
+  /// 本行此刻的负责人：手选草稿 > 学习记忆里与本次车间一致的负责人 >
+  /// 组织树上该车间的负责人。
+  ({String? id, String? name, bool autofilled}) _tableWorkerFor(
+    _MaterialGroup group,
+  ) {
+    final draft = _tableWorkerDraft[group.key];
+    if (draft != null) {
+      return (id: draft.id, name: draft.name, autofilled: false);
+    }
+    final workshop = _tableWorkshopFor(group);
+    final goodsId = group.representative.goodsId;
+    final learned = goodsId == null ? null : _tableWorkshopDefaults[goodsId];
+    if (learned?.workerId != null &&
+        learned!.departmentId == workshop.id) {
+      return (
+        id: learned.workerId,
+        name: learned.workerName,
+        autofilled: true,
+      );
+    }
+    final manager = workshop.id == null
+        ? null
+        : _tableWorkshopManagers[workshop.id!];
+    if (manager != null) {
+      return (id: manager.id, name: manager.name, autofilled: true);
+    }
+    return (id: null, name: null, autofilled: false);
+  }
+
+  Future<void> _pickTableWorkshop(_MaterialGroup group) async {
+    final tree = _tableWorkshopTree.isNotEmpty
+        ? _tableWorkshopTree
+        : await _tableWorkshopTreeOrEmpty();
+    if (!mounted) return;
+    final selectable = {for (final node in tree) node.id};
+    final current = _tableWorkshopFor(group);
+    final picked = await showUtenDepartmentPickerPanel(
+      context,
+      tree: tree,
+      selectablePredicate: (node) => selectable.contains(node.id),
+      initialSelection: current.id == null
+          ? const []
+          : [
+              DeptSelection(
+                id: current.id!,
+                name: current.name ?? '',
+                fullPath: '',
+                level: '',
+              ),
+            ],
+    );
+    final selection = picked == null || picked.isEmpty ? null : picked.first;
+    if (selection == null || !mounted) return;
+    setState(() {
+      _tableWorkshopDraft[group.key] = (
+        id: selection.id,
+        name: selection.name,
+      );
+      // 换车间必须把负责人草稿清掉：留着上一个车间的人是最容易漏掉的错派。
+      _tableWorkerDraft.remove(group.key);
+    });
+  }
+
+  Future<void> _pickTableWorker(_MaterialGroup group) async {
+    final workshop = _tableWorkshopFor(group);
+    final current = _tableWorkerFor(group);
+    final picked = await showUtenEmployeePickerPanel(
+      context,
+      title: '选择生产负责人',
+      selectedId: current.id,
+      departmentName: workshop.name,
+      loader: (keyword) async {
+        final result = await ref
+            .read(employeeRepositoryProvider)
+            .list(
+              size: 30,
+              search: keyword,
+              departmentId: (keyword?.trim().isEmpty ?? true)
+                  ? workshop.id
+                  : null,
+              includeSubtree: true,
+            );
+        return [
+          for (final employee in result.items)
+            UtenEmployeePickerItem(
+              id: employee.id,
+              name: employee.fullName,
+              employeeCode: employee.code,
+              departmentName: employee.departmentName,
+            ),
+        ];
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _tableWorkerDraft[group.key] = (id: picked.id, name: picked.name);
+    });
+  }
+
+  // ------------------------- 物料办理列 -------------------------
+
+  /// 这一行的下达去向。与「父件 + 下层一起下单」页的分通道判定同源：
+  /// 自制、以及要先自制目标件的委外都走车间；其余委外与采购走外发通道。
+  ({String label, bool viaWorkshop}) _tableIssueTarget(_MaterialGroup group) {
+    final route = _draftRoute(group);
+    if (route == MaterialSupplyRoute.make) {
+      return (label: '下达车间', viaWorkshop: true);
+    }
+    if (route == MaterialSupplyRoute.subcontract) {
+      return _tableGroupWholeTakeover(group)
+          ? (label: '下达车间', viaWorkshop: true)
+          : (label: '下达委外', viaWorkshop: false);
+    }
+    return (label: '下达采购', viaWorkshop: false);
+  }
+
+  /// 主表里还有用户手填未提交的数量，或还勾着待下单的行。
+  @override
+  bool get _hasUnsubmittedMaterialTableInput =>
+      _selectedMaterialGroupKeys.isNotEmpty ||
+      _tableUserTypedQty.isNotEmpty ||
+      _tableOrderQtyControllers.entries.any(
+        (entry) =>
+            _tableSeededQtyTexts['ORDER|${entry.key}'] != entry.value.text,
+      ) ||
+      _tableAppendQtyControllers.entries.any(
+        (entry) =>
+            _tableSeededQtyTexts['APPEND|${entry.key}'] != entry.value.text,
+      );
+
+  /// 这一行现在能不能下达；不能时给出**人话**原因(缺权限要说清缺哪一个)。
+  @override
+  String? _tableIssueBlockedReason(_MaterialGroup group) {
+    if (group.representative.confirmedRoute == null) {
+      return '这一行还没确认供应方式，先在「供应方式」列里选好并确认';
+    }
+    // 路线草稿保存失败时 _routeDraft/_dirtyRouteGroups 会留在页面上，此时
+    // _draftRoute 给的是还没落盘的路线：照它选下达通道会直接吃服务端 400，
+    // 而且 _notifyRoute 只要页面上还有任一脏组就整段拒绝。所有旧入口都把脏组
+    // 当「路线待确认」，主表这个新口子不能漏。
+    if (_dirtyRouteGroups.contains(group.key)) {
+      return '这一行的供应方式还没保存成功，请先确认路线';
+    }
+    final planningBlock = _planningBlockForGroup(group);
+    if (planningBlock != null) return planningBlock;
+    // 服务端会拒的形态在这里就拦掉，别让人勾了、填了数、点了下达才吃 400。
+    // 判据复用既有权威谓词的同名分支，不另造一套。
+    final route = _draftRoute(group);
+    if (_routeBlockedBySafetyGap(group, route)) {
+      return '本版本仅采购路线支持公共安全补库，请改用采购路线下达';
+    }
+    if (!group.paths.every(_hasResolvedMaterialSource)) {
+      return '这一行的物料来源解析不出来，请刷新分析后核对';
+    }
+    final target = _tableIssueTarget(group);
+    if (target.viaWorkshop && !_canGenerate) {
+      return '你没有「下达车间」的权限，请找管理员开通';
+    }
+    if (!target.viaWorkshop && !_canNotify) {
+      return '你没有「下达采购 / 委外」的权限，请找管理员开通';
+    }
+    if (target.viaWorkshop) {
+      final workshop = _tableWorkshopFor(group);
+      if (workshop.id == null) return '先在「生产车间」列里指定本次交给哪个车间';
+      if (_tableWorkerFor(group).id == null) {
+        return '先在「负责人」列里指定本次谁负责';
+      }
+    } else if (!_isExecutableSupplyGroup(
+      group,
+      route,
+      allowExtra: _canOverSupply,
+    )) {
+      // 外发段最终由 _notifyRoute 里的 _executableSupplyGroups 把关，它比上面
+      // 这些条件严(还要求 actionable、无未挂钩的已下达计划、有可提交量或有超量
+      // 权限)。不在这里先拦住的话，被它静默剔掉的行照样会被记成「已完成」：
+      // 勾选被撤、追加清零、结果弹「✓ 下达采购(5 行)」，实际只下了 4 行。
+      // 2026-09-22 对抗复查抓出来的真缺陷。
+      return _canOverSupply
+          ? '这一行当前没有可下达的量，请刷新后核对'
+          : '这一行已按需求下满，再下属于公共备货，需要超量下达权限';
+    }
+    return null;
+  }
+
+  /// 这一行现在能不能调拨；不能时给出原因。
+  String? _tableTransferBlockedReason(_MaterialGroup group) {
+    if (!_canCrossReallocate) {
+      return '你没有「跨计划调拨」的权限，请找管理员开通';
+    }
+    if (_tableTransferableInQty(group) <= 0) {
+      return '现在没有别的计划锁着这个物料可以调给你';
+    }
+    return null;
+  }
+
+  String? _materialTableHandleText(_MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (group == null) return '—';
+    final parts = <String>[];
+    if (_tableTransferBlockedReason(group) == null) parts.add('可调拨');
+    if (_tableIssueBlockedReason(group) == null) {
+      parts.add(_tableGroupIssued(group) ? '可追加' : _tableIssueTarget(group).label);
+    }
+    return parts.isEmpty ? '暂不可办理' : parts.join(' · ');
+  }
+
+  Widget _materialTableHandleCell(ThemeData theme, _MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (group == null) return const Text('—');
+    final transferReason = _tableTransferBlockedReason(group);
+    final issueReason = _tableIssueBlockedReason(group);
+    final target = _tableIssueTarget(group);
+    final transferable = _tableTransferableInQty(group);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _materialTableHandleButton(
+          theme,
+          key: 'material-analysis-handle-transfer-${group.key}',
+          icon: Icons.swap_horiz_rounded,
+          label: '调拨',
+          // 退役的「在途调拨」列并到这里：已经调过的进度跟着按钮一起看。
+          tooltip: [
+            transferReason ?? '可从别的计划调入 ${_qty(transferable)}',
+            if (_futureTransferRecords.isNotEmpty)
+              _futureProgressText(row),
+          ].where((line) => line != '—').join('\n'),
+          onTap: transferReason == null && !_busy
+              ? () => unawaited(_showTransferLauncher(group))
+              : null,
+        ),
+        const SizedBox(width: UtenSpacing.s4),
+        _materialTableHandleButton(
+          theme,
+          key: 'material-analysis-handle-issue-${group.key}',
+          icon: Icons.send_rounded,
+          label: _tableGroupIssued(group) ? '追加' : target.label.substring(2),
+          tooltip: issueReason ??
+              (_tableGroupIssued(group)
+                  ? '按「追加下单」里填的数再下一次'
+                  : '按「下单数量」里填的数${target.label}'),
+          onTap: issueReason == null && !_busy
+              ? () => unawaited(_submitMaterialTableRows([group]))
+              : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _materialTableHandleButton(
+    ThemeData theme, {
+    required String key,
+    required IconData icon,
+    required String label,
+    required String tooltip,
+    VoidCallback? onTap,
+  }) {
+    final enabled = onTap != null;
+    final color = enabled
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55);
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        key: ValueKey(key),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(UtenRadius.control),
+        child: Semantics(
+          label: '$label，$tooltip',
+          button: true,
+          enabled: enabled,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s8,
+              vertical: UtenSpacing.s4,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(UtenRadius.control),
+              border: Border.all(color: color.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: UtenSpacing.s4),
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ------------------------- 还缺数量列 -------------------------
+
+  Widget _materialTableNetShortageCell(
     ThemeData theme,
     _MaterialTableRow row,
   ) {
-    if (row.contextOnly) return const Text('—');
-    // 顶层自制产品无采购/委外建议量；直购/直委外顶层行继续展示根供料建议量。
-    if (row.product != null && !_rootExternalSupplyRow(row)) {
-      return const Text('—');
+    final net = _materialTableNetShortageQty(row);
+    final gross = _materialTableAdditionalRecommendedQty(row) ?? net ?? 0;
+    final claimed = (gross - (net ?? gross)).clamp(0.0, gross);
+    final late = row.aggregate != null
+        ? row.aggregate!.paths.fold<double>(
+            0,
+            (sum, item) => sum + item.lateSharedFutureAvailableQty,
+          )
+        : row.material?.lateSharedFutureAvailableQty ?? 0;
+    // 退役的「可用数量 / 在途未到 / 公共认领未实收」三列并进这段说明：
+    // 它们本来就是「还缺多少」的分解项，分成三列反而要人自己做减法。
+    final available = _materialTableAvailableQty(row);
+    final inbound = _materialTableInboundQty(row);
+    final physical = _materialTableShortageQty(row);
+    // 顶层自制产品行没有「还要另外下多少」这个数(它的补货走下达车间)，
+    // 但仓库可用与在途这些事实照样要有落点——格子显示横杠，说明照给。
+    final buffer = StringBuffer(
+      net == null
+          ? '这一行的补货走「下达车间」，没有单独的下单缺口。'
+          : '扣掉公共的量之后，这一行还要另外下 ${_qty(net)}。',
+    );
+    if (available != null && available > 0) {
+      buffer.write('\n仓库现在可用 ${_qty(available)}。');
     }
-    final recommended = _materialTableAdditionalRecommendedQty(row) ?? 0;
+    if (inbound != null && inbound > 0) {
+      buffer.write('\n已安排但还没合格入库 ${_qty(inbound)}。');
+    }
+    if (claimed > 0) {
+      buffer.write('\n其中已按公共在途扣减 ${_qty(claimed)}，下达时服务端会自动认领。');
+      // ADR-070 要求晚到供给让人看得见自己接受了什么：不混进一个数里。
+      if (late > 0) buffer.write('\n(含晚到来源 ${_qty(late)}，交期晚于本批需要的日子。)');
+      // 认领是从「下单数量」里切走的，不是在它之上另加——所以右边那一格填的是
+      // 没扣公共量的毛数，两个数字不一样是对的。
+      buffer.write('\n右边「下单数量」填的是本次要覆盖的总量 ${_qty(gross)}，'
+          '服务端会从中认领 ${_qty(claimed)}、只为余下部分开新单。');
+    }
+    if (physical != null && physical > 0) {
+      buffer.write('\n实物缺口仍是 ${_qty(physical)}——下单不会让它变小，合格入库才会。');
+    }
+    if (_tableCascadePreviewing) {
+      buffer.write('\n(正在按你刚填的数重算下层，稍候刷新。)');
+    }
     return Tooltip(
-      message: '主仓汇总后，当前还需补充 ${_qty(recommended)}。',
-      child: Text(_qty(recommended), style: theme.textTheme.bodySmall),
+      key: ValueKey(
+        'material-analysis-net-shortage-'
+        '${row.material?.materialLineId ?? row.key}',
+      ),
+      message: buffer.toString(),
+      child: net == null
+          ? const Text('—')
+          : Text(
+              _qty(net),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: _shortageTextColor(theme, net),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
     );
   }
+
+  // ------------------------- 下单数量 / 追加下单 -------------------------
+
+  String? _materialTableOrderQtyText(_MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (group == null) return '—';
+    if (_tableGroupIssued(group)) return _qty(_tableGroupIssuedQty(group));
+    return _tableOrderQtyControllers[group.key]?.text ??
+        _qty(_tableGroupResidual(group));
+  }
+
+  Widget _materialTableOrderQtyCell(ThemeData theme, _MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (group == null) return const Text('—');
+    // 已下达：这一格锁住并改成显示累计已下单量，本次要再下就填右边的追加。
+    if (_tableGroupIssued(group)) {
+      return Tooltip(
+        message:
+            '累计已下单 ${_qty(_tableGroupIssuedQty(group))}。'
+            '下达之后这一格不可改，要再下请填右边的「追加下单」。',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.lock_outline_rounded,
+              size: 13,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+            Text(
+              _qty(_tableGroupIssuedQty(group)),
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    // 整批接管的行(自制 / 要先自制目标件的委外)：服务端要求逐字等于剩余需求，
+    // 给输入框只会让人填完吃 400，所以直接只读并说明原因。
+    if (_tableGroupWholeTakeover(group)) {
+      return Tooltip(
+        message:
+            '这类行必须整批接管 ${_qty(_tableGroupResidual(group))}，不能多填也不能少填。'
+            '本批实际生产数量在子件任务建好后的计划里填。',
+        child: Text(
+          _qty(_tableGroupResidual(group)),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    if (group.representative.confirmedRoute == null) {
+      return Tooltip(
+        message: '先确认供应方式，这一行才能填下单数量。',
+        child: Text('—', style: theme.textTheme.bodySmall),
+      );
+    }
+    return _materialTableQtyField(
+      theme,
+      key: 'material-analysis-order-qty-${group.key}',
+      controller: _tableOrderQtyController(group),
+      enabled: !_busy && (_canNotify || _canGenerate),
+      hintText: _qty(_tableGroupResidual(group)),
+      // 带下层的行改量要带动子层：记下用户亲手填的数，去抖后向服务端要重算。
+      onTyped: (text) => _onTableQtyTyped(group, text),
+    );
+  }
+
+  String? _materialTableAppendQtyText(_MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (group == null || !_tableGroupIssued(group)) return '—';
+    return _tableAppendQtyControllers[group.key]?.text ?? '0';
+  }
+
+  Widget _materialTableAppendQtyCell(ThemeData theme, _MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (group == null) return const Text('—');
+    // 整批接管的行(自制、需先自制目标件的委外)提交量恒等于剩余需求，
+    // 这一格填了也不会被读走——所以不给输入框，直接说清追加走哪条路。
+    // 2026-09-22 对抗复查：原先这一格对已下达的自制行是可编辑的，用户填的数
+    // 被 _tableSubmitQtyOf 的整批接管分支整个丢弃，还弹「请先填数」。
+    if (_tableGroupWholeTakeover(group)) {
+      return Tooltip(
+        message: '这一行按整批接管提交，追加产出请在「下达车间」建好的计划里填，不在这里。',
+        child: Text(
+          '—',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    // 还没下达过的行没有「追加」可言：这一格恒为 0 且不可填，避免两列都能填
+    // 造成「到底该填哪个」的歧义。
+    if (!_tableGroupIssued(group)) {
+      return Tooltip(
+        message: '这一行还没下达过，本次要下多少请填左边的「下单数量」。',
+        child: Text(
+          '0',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    return _materialTableQtyField(
+      theme,
+      key: 'material-analysis-append-qty-${group.key}',
+      controller: _tableAppendQtyController(group),
+      enabled: !_busy && (_canNotify || _canGenerate),
+      hintText: '0',
+    );
+  }
+
+  Widget _materialTableQtyField(
+    ThemeData theme, {
+    required String key,
+    required TextEditingController controller,
+    required bool enabled,
+    required String hintText,
+    ValueChanged<String>? onTyped,
+  }) => TextField(
+    key: ValueKey(key),
+    controller: controller,
+    enabled: enabled,
+    textAlign: TextAlign.right,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    style: theme.textTheme.bodySmall,
+    decoration: UtenInputDecoration(
+      InputDecoration(isDense: true, hintText: hintText),
+    ),
+    // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
+    // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
+    onChanged: onTyped,
+    onSubmitted: (_) => setState(() {}),
+  );
+
+  // ------------------------- 生产车间 / 负责人 -------------------------
+
+  bool _tableAssignable(_MaterialGroup? group) =>
+      group != null && _tableIssueTarget(group).viaWorkshop;
+
+  String? _materialTableProductionWorkshopText(_MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (!_tableAssignable(group)) return '—';
+    return _tableWorkshopFor(group!).name ?? '待指派';
+  }
+
+  Widget _materialTableProductionWorkshopCell(
+    ThemeData theme,
+    _MaterialTableRow row,
+  ) {
+    final group = _tableEditableGroup(row);
+    if (!_tableAssignable(group)) return const Text('—');
+    final current = _tableWorkshopFor(group!);
+    return _materialTableAssignmentCell(
+      theme,
+      key: 'material-analysis-workshop-${group.key}',
+      text: current.name ?? '点击选择',
+      autofilled: current.autofilled && current.id != null,
+      empty: current.id == null,
+      semanticsLabel: '生产车间 ${current.name ?? "待指派"}',
+      onTap: _canGenerate && !_busy
+          ? () => unawaited(_pickTableWorkshop(group))
+          : null,
+    );
+  }
+
+  String? _materialTableResponsibleText(_MaterialTableRow row) {
+    final group = _tableEditableGroup(row);
+    if (!_tableAssignable(group)) return '—';
+    return _tableWorkerFor(group!).name ?? '待指派';
+  }
+
+  Widget _materialTableResponsibleCell(
+    ThemeData theme,
+    _MaterialTableRow row,
+  ) {
+    final group = _tableEditableGroup(row);
+    if (!_tableAssignable(group)) return const Text('—');
+    final current = _tableWorkerFor(group!);
+    return _materialTableAssignmentCell(
+      theme,
+      key: 'material-analysis-worker-${group.key}',
+      text: current.name ?? '点击选择',
+      autofilled: current.autofilled && current.id != null,
+      empty: current.id == null,
+      semanticsLabel: '负责人 ${current.name ?? "待指派"}',
+      onTap: _canGenerate && !_busy
+          ? () => unawaited(_pickTableWorker(group))
+          : null,
+    );
+  }
+
+  // ------------------------- 一张表的下达编排 -------------------------
+
+  String _tableGroupLabel(_MaterialGroup group) {
+    final material = group.representative;
+    final name = material.goodsName?.trim();
+    if (name?.isNotEmpty == true) return name!;
+    return material.goodsCode?.trim().isNotEmpty == true
+        ? material.goodsCode!.trim()
+        : '未命名物料';
+  }
+
+  /// 本次这一行要提交的数量：下达过的行取「追加下单」，没下过的取「下单数量」。
+  double _tableSubmitQtyOf(_MaterialGroup group) {
+    if (_tableGroupWholeTakeover(group)) return _tableGroupResidual(group);
+    final controller = _tableGroupIssued(group)
+        ? _tableAppendQtyControllers[group.key]
+        : _tableOrderQtyControllers[group.key];
+    final text = controller?.text.trim() ?? '';
+    if (text.isEmpty) {
+      // 没建过控制器 = 用户没看过这一行，按系统预填值走；追加默认 0。
+      return _tableGroupIssued(group) ? 0 : _tableGroupResidual(group);
+    }
+    return double.tryParse(text) ?? 0;
+  }
+
+  /// 主表直接下达：把选中的行按「车间(自上而下逐层)→ 采购 → 委外」分段提交。
+  ///
+  /// **这不是一个事务，是编排。** 三条下达链各有自己的端点、请求形状、权限与
+  /// 幂等键，合成一个端点要新造一套契约；任一段失败就停下并如实回报已完成的段，
+  /// 未完成的行保留勾选让人接着重试。这一点与「父件 + 下层一起下单」页的口径一致。
+  ///
+  /// 车间段必须按层级自上而下逐层提交：一次性全发，深层那些按父件新数量填的量
+  /// 会被服务端当成超出当时需求，记成公共备货产出。
+  /// 勾选集里此刻真能下单的行，以及被折叠或表头筛选藏起来的行数。
+  ///
+  /// 「看到的勾选 = 提交的内容」是硬口径：主表折叠不撤勾、表头筛选也不撤勾，
+  /// 而选中集是跨分页累积的。所以提交前必须按**当前投影**过一遍——
+  /// 藏起来的行不进提交集合，但要如实数出来告诉人，不能静默丢掉。
+  @override
+  ({List<_MaterialGroup> visible, int hidden}) _selectedIssuableGroups() {
+    final analysis = _analysis;
+    if (analysis == null || _selectedMaterialGroupKeys.isEmpty) {
+      return (visible: const [], hidden: 0);
+    }
+    final onScreen = <String, _MaterialGroup>{};
+    for (final row in _materialTableRows(analysis)) {
+      if (row.contextOnly) continue;
+      for (final group in _materialRowAllGroups(row)) {
+        onScreen[group.key] = group;
+      }
+    }
+    final visible = <_MaterialGroup>[];
+    var hidden = 0;
+    for (final key in _selectedMaterialGroupKeys) {
+      final group = onScreen[key];
+      if (group == null) {
+        hidden++;
+        continue;
+      }
+      if (_tableIssueBlockedReason(group) == null) visible.add(group);
+    }
+    return (visible: visible, hidden: hidden);
+  }
+
+  @override
+  Future<void> _submitMaterialTableRows(List<_MaterialGroup> groups) async {
+    final analysis = _analysis;
+    if (analysis == null || _busy || groups.isEmpty) return;
+
+    final pending = <_MaterialGroup, double>{};
+    final blocked = <String>[];
+    for (final group in groups) {
+      final reason = _tableIssueBlockedReason(group);
+      if (reason != null) {
+        blocked.add('${_tableGroupLabel(group)}：$reason');
+        continue;
+      }
+      final qty = _tableSubmitQtyOf(group);
+      // 追加填 0 = 本次不动这一行，不进提交集合(服务端把「给了身份却不给数量」
+      // 当成全量剩余下达，漏掉这一步会凭空多下一单)。
+      if (qty <= 0.0001) continue;
+      pending[group] = qty;
+    }
+    if (pending.isEmpty) {
+      if (!mounted) return;
+      context.appInfo(
+        blocked.isEmpty
+            ? '所选的行本次都没有要下的数量，请先在「下单数量」或「追加下单」里填数'
+            : blocked.first,
+      );
+      return;
+    }
+    if (!await _confirmMaterialTableSubmit(pending, blocked)) return;
+
+    final steps = <({String label, bool ok, String? note})>[];
+    final done = <String>{};
+
+    // 一、车间段：按层级自上而下逐层。
+    final workshopGroups =
+        pending.keys.where((g) => _tableIssueTarget(g).viaWorkshop).toList()
+          ..sort(
+            (a, b) =>
+                a.representative.level.compareTo(b.representative.level),
+          );
+    final byLevel = <int, List<_MaterialGroup>>{};
+    for (final group in workshopGroups) {
+      byLevel.putIfAbsent(group.representative.level, () => []).add(group);
+    }
+    for (final level in byLevel.keys.toList()..sort()) {
+      final batch = byLevel[level]!;
+      final inputs = <_BucketCandidatePlanInput>[
+        for (final group in batch)
+          _BucketCandidatePlanInput(
+            materialLineId: group.representative.materialLineId,
+            qty: pending[group]!,
+            departmentId: _tableWorkshopFor(group).id,
+            workshopName: _tableWorkshopFor(group).name,
+            workerId: _tableWorkerFor(group).id,
+            // 锚点已无剩余需求时，本次填的全是追加的公共备货产出。
+            publicSurplusOnly:
+                _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001,
+          ),
+      ];
+      final ok = await _issueWorkshopPlans(
+        candidateInputs: inputs,
+        silent: true,
+      );
+      steps.add((
+        label: '下达车间(第 $level 层，${batch.length} 行)',
+        ok: ok,
+        note: ok ? null : '已停在这一步，后面的段没有提交',
+      ));
+      if (!ok) break;
+      done.addAll(batch.map((group) => group.key));
+    }
+
+    // 二、外发段：采购、委外各一次。
+    if (steps.every((step) => step.ok)) {
+      for (final route in const [
+        MaterialSupplyRoute.buy,
+        MaterialSupplyRoute.subcontract,
+      ]) {
+        final batch = pending.keys
+            .where(
+              (group) =>
+                  !_tableIssueTarget(group).viaWorkshop &&
+                  _draftRoute(group) == route,
+            )
+            .toList(growable: false);
+        if (batch.isEmpty) continue;
+        final view = await _notifyRoute(
+          route,
+          onlyGroupKeys: batch.map((group) => group.key).toSet(),
+          qtyByActionGroupKey: {
+            for (final group in batch)
+              ?group.representative.actionGroupKey: _qty(pending[group]!),
+          },
+          silent: true,
+          allowExtra: _canOverSupply,
+        );
+        final ok = view != null;
+        steps.add((
+          label: '${route.label == "采购" ? "下达采购" : "下达委外"}(${batch.length} 行)',
+          ok: ok,
+          note: ok ? null : '已停在这一步，后面的段没有提交',
+        ));
+        if (!ok) break;
+        done.addAll(batch.map((group) => group.key));
+      }
+    }
+
+    if (!mounted) return;
+    // 成功下达的行：追加格回 0、勾选撤掉；失败的保留，让人原地重试。
+    setState(() {
+      for (final key in done) {
+        _tableAppendQtyControllers[key]?.text = '0';
+        _tableSeededQtyTexts['APPEND|$key'] = '0';
+        _selectedMaterialGroupKeys.remove(key);
+      }
+      // 可调拨量随下达变化，下次进主表重取。
+      _tableTransferableInScope = null;
+    });
+    _reportMaterialTableSubmit(steps, blocked);
+  }
+
+  Future<bool> _confirmMaterialTableSubmit(
+    Map<_MaterialGroup, double> pending,
+    List<String> blocked,
+  ) async {
+    final lines = <String>[
+      for (final entry in pending.entries)
+        '· ${_tableGroupLabel(entry.key)}'
+            ' ${_tableIssueTarget(entry.key).label} ${_qty(entry.value)}'
+            '${_tableGroupIssued(entry.key) ? "(追加)" : ""}',
+    ];
+    final hiddenSelected = _selectedIssuableGroups().hidden;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '确认下达 ${pending.length} 行？',
+      content: SingleChildScrollView(
+        child: Text(
+          [
+            ...lines.take(12),
+            if (lines.length > 12) '…… 以及其余 ${lines.length - 12} 行',
+            if (blocked.isNotEmpty) ...[
+              '',
+              '以下 ${blocked.length} 行本次跳过：',
+              ...blocked.take(5).map((reason) => '· $reason'),
+              if (blocked.length > 5) '…… 以及其余 ${blocked.length - 5} 行',
+            ],
+            // 折叠起来或被表头筛选藏起来的勾选行不会提交——如实说出来，
+            // 别让人以为「我勾了的都下了」。
+            if (hiddenSelected > 0) ...[
+              '',
+              '另有 $hiddenSelected 行还勾着但当前看不到'
+                  '(折叠起来了，或被表头筛选挡住了)，本次不提交。',
+            ],
+            '',
+            '三条下达链是分段提交的，中途失败会停下并告诉你停在哪一步。',
+          ].join('\n'),
+        ),
+      ),
+      confirmLabel: '下达',
+    );
+    return confirmed == true;
+  }
+
+  void _reportMaterialTableSubmit(
+    List<({String label, bool ok, String? note})> steps,
+    List<String> blocked,
+  ) {
+    if (steps.isEmpty) return;
+    final failed = steps.where((step) => !step.ok).toList();
+    final summary = steps
+        .map((step) => '${step.ok ? "✓" : "✗"} ${step.label}')
+        .join('\n');
+    if (failed.isEmpty) {
+      context.appSuccess(
+        blocked.isEmpty
+            ? '已下达：\n$summary'
+            : '已下达：\n$summary\n(另有 ${blocked.length} 行不满足条件，本次跳过)',
+      );
+      return;
+    }
+    // 如实回报：说清哪几段成了、停在哪一步，别把半截状态说成成功。
+    context.appError('下达没有全部完成：\n$summary\n未完成的行仍然勾着，可以修改后重试。');
+  }
+
+  Widget _materialTableAssignmentCell(
+    ThemeData theme, {
+    required String key,
+    required String text,
+    required bool autofilled,
+    required bool empty,
+    required String semanticsLabel,
+    VoidCallback? onTap,
+  }) => Semantics(
+    label: semanticsLabel,
+    button: onTap != null,
+    child: InkWell(
+      key: ValueKey(key),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(UtenRadius.control),
+      child: InputDecorator(
+        // 学习默认带出 = 黄框提醒核对；手选后清除(与计划向导同口径)。
+        decoration: applyAutofillHint(
+          InputDecoration(
+            isDense: true,
+            suffixIcon: Icon(
+              empty ? Icons.search_rounded : Icons.unfold_more_rounded,
+              size: 14,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            suffixIconConstraints: const BoxConstraints(minWidth: 18),
+          ),
+          theme,
+          autofilled: autofilled,
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: empty
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.onSurface,
+          ),
+        ),
+      ),
+    ),
+  );
 
   Widget _materialTableSharedFutureCell(
     ThemeData theme,

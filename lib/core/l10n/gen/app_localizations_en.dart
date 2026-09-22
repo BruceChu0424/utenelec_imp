@@ -2281,6 +2281,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialToSupply => 'Order quantity';
 
   @override
+  String get materialHandle => 'Handle';
+
+  @override
+  String get materialAdditionalOrder => 'Additional order';
+
+  @override
+  String get materialProductionWorkshop => 'Production workshop';
+
+  @override
+  String get materialResponsible => 'Owner';
+
+  @override
   String get materialFutureSupply => 'In transit';
 
   @override

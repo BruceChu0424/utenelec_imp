@@ -4181,8 +4181,18 @@ public class MaterialAnalysisService {
         Map<UUID, BigDecimal> shortageByLine = new LinkedHashMap<>();
         Map<UUID, BigDecimal> requiredByLine = new LinkedHashMap<>();
         for (MaterialRow row : materialRows) {
-            routeByLine.put(row.id(), row.confirmedRoute() != null
-                    ? row.confirmedRoute() : row.suggestion());
+            // ADR-102：depth>0 且还有需求的行，路线没确认就是「路线未定」——
+            // 以前这里回落 suggestion，主档来源为空时 suggestion 是 REVIEW，
+            // 掉进采购分支后整行显示「等待下发采购」，与红框「请先选供应方式」
+            // 自相矛盾。根供给行(depth=0)另有根路线冻结机制，不在此列。
+            boolean routePending = row.depth() > 0
+                    && row.confirmedRoute() == null
+                    && row.requiredQty() != null
+                    && row.requiredQty().signum() > 0;
+            routeByLine.put(row.id(), routePending
+                    ? MaterialAnalysisFlowStageService.ROUTE_PENDING_INPUT
+                    : (row.confirmedRoute() != null
+                            ? row.confirmedRoute() : row.suggestion()));
             shortageByLine.put(row.id(), row.shortageQty());
             requiredByLine.put(row.id(), row.requiredQty());
         }
@@ -4222,6 +4232,9 @@ public class MaterialAnalysisService {
         // V581：委外路线里「只有一个叶子子件」的货品——同批一次查询，
         // 供客户端区分「先自制再发外」与「直接发子件」。
         Set<UUID> soleComponentSubcontractGoods = soleComponentSubcontractGoods(materialRows);
+        // ADR-102：「还缺数量」要不要替这一行扣掉可认领的公共在途，见 sharedFutureDeductible。
+        Set<UUID> subcontractBomParentGoods = subcontractBomParentGoods(materialRows);
+        Set<String> soleRowDimensions = soleRowDimensions(materialRows);
         List<MaterialView> materials = materialRows.stream()
                 .map(row -> {
                     List<BorrowRef> rowBorrows =
@@ -4297,7 +4310,9 @@ public class MaterialAnalysisService {
                             claimedFuture.getOrDefault(row.id(),ClaimedFutureState.NONE).pendingQty(),
                             soleComponentSubcontractGoods.contains(row.goodsId())
                                     ? "COMPONENT_OUTBOUND" : null,
-                            plannedOutput);
+                            plannedOutput,
+                            sharedFutureDeductible(
+                                    row, subcontractBomParentGoods, soleRowDimensions));
                 })
                 .toList();
         Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
@@ -5764,6 +5779,76 @@ public class MaterialAnalysisService {
      * 判据统一在 {@code fn_subcontract_sole_component_goods}（与订货批准、
      * 下达分流共用），这里只按委外行的货品批量过滤一次——不对全树每行调函数。
      */
+    /**
+     * 「还缺数量」这一行要不要替它扣掉可认领的公共在途(ADR-102)。
+     *
+     * <p>两个条件同时成立才扣：
+     *
+     * <p>① <b>下达时服务端真会自动认领。</b> 对应
+     * {@code MaterialAnalysisCommandService} 下达段的
+     * {@code !createsChildOwnership && !ownSupplyBom}：自制、需先自制目标件的委外、
+     * 有我方供料 BOM 的委外这三类在下达段跳过认领；对委外来说两者的并集就是「有 BOM」。
+     *
+     * <p>② <b>这个物料维度在本分析里只有这一行。</b> 公共在途池是按
+     * (仓 + 货 + 色 + 单位) 共享的，{@code SharedFutureIndex.forMaterial} 对同维度的
+     * 每一行都返回**整池**；而「建议下单量」是逐行可加的。同料多行时逐行扣就会把
+     * 同一池扣 N 次，三行各需 100、池里只有 100 时会算出三行都「不缺」，
+     * 人照着填就少下 200——这正是本列唯一的真损失方向。
+     *
+     * <p>判错方向是刻意选的：把「其实会扣」的行判成不扣，人看到的是毛数，照着填
+     * 不会多买(服务端下达时仍旧先认领、只为余下部分开新单)；反过来才会少下。
+     * 因此两个条件都取保守侧。
+     *
+     * <p>同料多行按逐行份额精确分摊是更好的做法，但要在装配期跨行算一遍池的分配，
+     * 见 ADR-102 §六待办。
+     */
+    private static boolean sharedFutureDeductible(
+            MaterialRow row,
+            Set<UUID> subcontractBomParentGoods,
+            Set<String> soleRowDimensions) {
+        if (!soleRowDimensions.contains(row.materialKey())) return false;
+        String route = row.confirmedRoute() != null ? row.confirmedRoute() : row.suggestion();
+        if ("BUY".equals(route)) return true;
+        if (!"SUBCONTRACT".equals(route)) return false;
+        return !subcontractBomParentGoods.contains(row.goodsId());
+    }
+
+    /** 本分析里只出现一行的物料维度(公共在途池可以整池归给它)。 */
+    private static Set<String> soleRowDimensions(List<MaterialRow> rows) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (MaterialRow row : rows) {
+            counts.merge(row.materialKey(), 1, Integer::sum);
+        }
+        Set<String> sole = new LinkedHashSet<>();
+        counts.forEach((key, count) -> {
+            if (count == 1) sole.add(key);
+        });
+        return sole;
+    }
+
+    /**
+     * 有我方供料 BOM 的委外货品(ADR-102)。口径与
+     * {@code MaterialAnalysisCommandService#activeBomParentIds} 逐字一致：
+     * 活动 BOM 里存在非 stub 子件即为真。
+     */
+    private Set<UUID> subcontractBomParentGoods(List<MaterialRow> rows) {
+        List<UUID> goodsIds = rows.stream()
+                .filter(row -> "SUBCONTRACT".equals(row.confirmedRoute() != null
+                        ? row.confirmedRoute() : row.suggestion()))
+                .map(MaterialRow::goodsId)
+                .filter(Objects::nonNull)
+                .distinct().sorted().toList();
+        if (goodsIds.isEmpty()) return Set.of();
+        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT bom.goods_id
+                FROM goods_bom_items bom
+                JOIN goods child ON child.id = bom.component_goods_id
+                 AND child.is_deleted = FALSE
+                 AND COALESCE(child.auto_created, FALSE) = FALSE
+                WHERE bom.goods_id IN (:goodsIds) AND bom.is_deleted = FALSE
+                """, UUID.class).setParameter("goodsIds", goodsIds), UUID.class));
+    }
+
     private Set<UUID> soleComponentSubcontractGoods(List<MaterialRow> rows) {
         List<UUID> goodsIds = rows.stream()
                 .filter(row -> "SUBCONTRACT".equals(row.confirmedRoute() != null
@@ -8183,12 +8268,31 @@ public class MaterialAnalysisService {
                             PreplanReallocationMakeSupplement.Allowance makeSupplement,
                             BigDecimal makeSupplementOpenSupply, BigDecimal sharedFuturePendingQty,
                             String subcontractOutboundForm,
-                            BigDecimal plannedOutputQty) {
+                            BigDecimal plannedOutputQty,
+                            boolean sharedFutureDeductible) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             BigDecimal demandGap = unboundDemandSupplyGap(
                     requiredQty, allocatedAvailableQty, exactPeggedQty,
                     subcontractHandoffFutureQty);
+            BigDecimal additionalRecommended = demandGap.subtract(activeFutureCoverageQty)
+                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+            // 可认领的公共在途 = 按期 + 晚到(下达采购/委外时自动认领，ADR-099)。
+            BigDecimal sharedFutureClaimable = sharedFuture.availableQty()
+                    .add(sharedFuture.lateAvailableQty())
+                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+            // 还缺数量(ADR-102 一张表口径)：在「建议下单量」基础上再把此刻可认领的
+            // 同主仓公共在途当成已占用扣掉，得到人真正还要另外下单的量。
+            //
+            // **只是展示量**：这里不建任何占用，真正的认领仍发生在下达那一刻(ADR-099)，
+            // 而且下达时服务端是从「本次要覆盖的总量」里切走认领量、不是在它之上另加——
+            // 所以这个数**不能拿去预填下单数量**，否则每一行都会少下一个认领量。
+            // 物理缺口 shortageQty 的算法不动——它同时是 actionable、让料候选与入库
+            // 齐套三处的判据，把公共量算进去会让这些行整行掉出可下达集合。
+            BigDecimal netShortage = sharedFutureDeductible
+                    ? additionalRecommended.subtract(sharedFutureClaimable)
+                            .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING)
+                    : additionalRecommended;
             return new MaterialView(id, analysisItemId, nodeKey,
                     actionGroupKey(), materialKey(),
                     goodsId, goodsCode, goodsName,
@@ -8213,8 +8317,7 @@ public class MaterialAnalysisService {
                     cross.refs(), breakdown, references,
                     sharedFuture.approvedInboundQty(),
                     sharedFuture.availableQty(), sharedFutureClaimedQty,
-                    demandGap.subtract(activeFutureCoverageQty)
-                            .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING),
+                    additionalRecommended,
                     minOrderQty, orderMultipleQty,
                     selectedWarehousesAvailableQty,
                     selectedOtherWarehouseTransferableQty,
@@ -8227,10 +8330,9 @@ public class MaterialAnalysisService {
                     owningWarehouseId, owningWarehouseName,
                     owningWorkshopId, owningWorkshopName,
                     externalFutureCoverageQty, internalCommittedOutputQty,
-                    // 可认领的公共在途 = 按期 + 晚到（下达采购/委外时自动认领，ADR-099）。
-                    sharedFuture.availableQty().add(sharedFuture.lateAvailableQty())
-                            .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN),
-                    plannedOutputQty == null ? BigDecimal.ZERO : plannedOutputQty);
+                    sharedFutureClaimable,
+                    plannedOutputQty == null ? BigDecimal.ZERO : plannedOutputQty,
+                    netShortage);
         }
 
         String actionGroupKey() {

@@ -737,12 +737,34 @@ public final class MaterialAnalysisContracts {
              * 已建自制/前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量
              * （归需求量 + 公共备货产出）；其余行为 0。下层物料按它展开。
              */
-            BigDecimal plannedOutputQty) {
+            BigDecimal plannedOutputQty,
+            /**
+             * 还缺数量 (ADR-102 一张表口径): 在 additionalSupplyRecommendedQty
+             * 的基础上再把「此刻可认领的同主仓公共在途」当成已占用扣掉, 也就是
+             * 人真正还要另外下单的量。
+             *
+             * <p>它是**纯展示量**: 不建任何占用, 不进物理预留。真正的占用仍然
+             * 只发生在下达那一刻由服务端自动认领公共在途 (ADR-099)。
+             *
+             * <p>务必与 {@link #shortageQty} 区分: shortageQty 是物理缺口, 同时
+             * 是 actionable / 让料候选 / 入库齐套三处的判据, 口径不动。
+             */
+            BigDecimal netShortageQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";
         }
     }
+
+    /**
+     * 批量可调拨量 (ADR-102): 本分析每一行此刻能从**别的计划已锁定的量**里调进来
+     * 多少。主表「物料办理」列用它决定调拨按钮灰不灰, 避免逐行去问
+     * cross-reallocation-sources 那条递归查询。
+     *
+     * <p>结果随登录人的对象级可见范围变, 不可跨账号缓存。
+     */
+    public record TransferableInSummary(
+            java.util.Map<UUID, BigDecimal> qtyByMaterialLineId) {}
 
     public record SharedFutureSupplyRef(
             String route,

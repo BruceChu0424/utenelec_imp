@@ -35,6 +35,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MaterialAnalysisFlowStageService {
 
+    /**
+     * 路线未定(ADR-102)。供料路线还没确认的行以前会掉进 {@code default} 分支被
+     * 当成采购链，于是同一行上同时写着「你还没选供应方式」和「正在等采购下发」。
+     * 主表把「先确认路线才能下单」做成硬门禁后，这个自相矛盾必须有自己的终态。
+     */
+    static final String ROUTE_PENDING = "ROUTE_PENDING";
+
+    /** 调用方用它占位：该行还没确认路线，不要按任何一条供应链推导阶段。 */
+    static final String ROUTE_PENDING_INPUT = "ROUTE_PENDING";
+
     // 采购链
     static final String BUY_PENDING_ISSUE = "BUY_PENDING_ISSUE";
     static final String BUY_REQUESTED = "BUY_REQUESTED";
@@ -96,6 +106,9 @@ public class MaterialAnalysisFlowStageService {
             BigDecimal required = requiredByLine.getOrDefault(
                     lineId, BigDecimal.ZERO);
             switch (route) {
+                // 路线未定的行不进任何一条供应链(ADR-102)：调用方已经判定过
+                // 「这一行需要人先选供应方式」，这里只如实回传，不猜成采购。
+                case ROUTE_PENDING_INPUT -> result.put(lineId, ROUTE_PENDING);
                 case "MAKE" -> result.put(lineId, makeStage(
                         childStatusByLine.get(lineId),
                         childZeroByLine.getOrDefault(lineId, Boolean.FALSE)));

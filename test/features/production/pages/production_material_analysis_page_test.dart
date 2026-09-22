@@ -2718,11 +2718,14 @@ void main() {
         hasLength(1),
       );
       buyRow = await _materialTableRowVisible(tester, 'material-path-1');
-      // Confirmed routes stay unchanged when the explicit change is cancelled.
+      // 2026-09-22(ADR-102 勾选换义)：已确认且未改动的行**现在有勾选框**——
+      // 勾选从「选行去确认路线」扩成「选行去办事」，确认过的行正是可以下单的行。
+      // 真正要守住的不变量没变：它不计进「确认路线(N)」，也没有任何隐式写入。
       expect(
         find.descendant(of: buyRow, matching: find.byType(Checkbox)),
-        findsNothing,
+        findsOneWidget,
       );
+      expect(find.text('确认路线(0)'), findsOneWidget);
       await _chooseMaterialRoute(
         tester,
         'material-path-1',
@@ -2733,9 +2736,10 @@ void main() {
       await tester.tap(find.text('取消').last);
       await tester.pumpAndSettle();
       buyRow = await _materialTableRowVisible(tester, 'material-path-1');
+      // 取消换路线之后同理：勾选框在(可下单)，但没有待提交的路线决定。
       expect(
         find.descendant(of: buyRow, matching: find.byType(Checkbox)),
-        findsNothing,
+        findsOneWidget,
       );
       expect(find.text('确认路线(0)'), findsOneWidget);
       await _openBucketDetail(tester, 'buy');
@@ -3964,11 +3968,12 @@ void main() {
         const ValueKey('material-table-row-buy-child'),
       );
       expect(depNode, findsOneWidget);
-      // 2026-09-10 F2d：已确认（BUY）且未改动的行没有勾选框；行级动作与右键菜单
-      // 仍在，批量提交从「可采购」桶内发起。
+      // 2026-09-22(ADR-102 勾选换义)：已确认(BUY)的深层缺料行现在有勾选框——
+      // 它就是「可以直接在主表下单」的那种行。原先这里断言没有勾选框，是因为
+      // 勾选当时只服务「确认路线」。行级动作、右键菜单与分桶批量提交都还在。
       expect(
         find.descendant(of: depNode, matching: find.byType(Checkbox)),
-        findsNothing,
+        findsOneWidget,
       );
       expect(find.textContaining('新建采购需求'), findsNothing);
 
@@ -7513,11 +7518,14 @@ void main() {
       );
       await _scrollToMaterialTable(tester);
       expect(find.textContaining('可调 1500'), findsNothing);
+      // 2026-09-22(ADR-102)：「建议下达」列并进「还缺数量」，文案随之改口。
+      // 这条测试守的事实没变：页面只认服务端给的主仓合计，不自己发明一次
+      // 分仓调拨(1500 那个数不许出现在任何地方)。
       expect(
         find.byWidgetPredicate(
           (widget) =>
               widget is Tooltip &&
-              widget.message?.contains('主仓汇总后，当前还需补充 1000。') == true,
+              widget.message?.contains('还要另外下 1000。') == true,
         ),
         findsWidgets,
       );

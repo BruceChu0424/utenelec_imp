@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.plan;
 
+import com.uten.imp.application.port.SubcontractOutboundWakePort;
 import com.uten.imp.application.port.SubcontractPreparationInventoryPort;
 import com.uten.imp.application.port.SubcontractChainNoticePort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
@@ -35,8 +36,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -58,7 +61,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractMaterialPlanService
-        implements SubcontractPreparationInventoryPort {
+        implements SubcontractPreparationInventoryPort, SubcontractOutboundWakePort {
 
     private static final short ISSUE_DRAFT = 0;
 
@@ -203,7 +206,8 @@ public class SubcontractMaterialPlanService
                         line.prepareTaskId()==null?line.orderItemId():line.prepareTaskId(),line.plannedBaseQty(),actorUser);
             }
         }
-        createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser);
+        Set<UUID> draftedPlanItems = new LinkedHashSet<>();
+        createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser, draftedPlanItems);
         for (PendingLine line : pendingLines) {
             if ("MAKE_THEN_OUTBOUND".equals(line.flowMode())) {
                 // 2026-09-05 委外收敛：准备中心/手工 start 已退役，MAKE 行
@@ -211,8 +215,75 @@ public class SubcontractMaterialPlanService
                 // 前置生产分析并通知计划部；现货直发行走 OUTBOUND_READY。
                 chainNotice.notifySubcontractPrepareShortage(line.id());
                 orderPreparation.autoStartPlanLinePreparation(line.id());
-            } else {
+            } else if (!draftedPlanItems.isEmpty()) {
+                // ADR-101：这张计划一张草稿都没排出来，就说明料还没到，此刻把仓库叫来只会
+                // 白跑一趟——等料到了由 wakeOutboundAfterStockIn 补草稿并补这条通知。
+                // 判定放在**计划级**：通知本身就是一张计划级任务卡(深链指向 /:planId)，
+                // 一张计划只要有活可干就该叫人，具体每行能发多少由任务详情给。
                 chainNotice.notifySubcontractOutboundReady(line.id());
+            }
+        }
+    }
+
+    /**
+     * ADR-101：货真正入库之后，叫醒在等这批货的委外出仓计划行。
+     *
+     * <p>只管「发的是现货」的两种流向(COMPONENT 发子件、DIRECT 发目标件本身)：前置自制
+     * 两种流向吃的是专属预留，由 V458 那条链自己推进，与公共库存到货无关。
+     *
+     * <p>幂等由 {@link #hasPendingDraftForPlanItem} 兜底：已有未审草稿的行直接跳过，所以
+     * 入库幂等重放、一次入库命中同一计划的多行、以及后续每一批到货都可以安全地再调一次。
+     * 通知只发给「这次真的新开出了草稿」的行，不会每来一批货就刷一遍旧提醒。
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void wakeOutboundAfterStockIn(List<StockedDimension> dimensions) {
+        if (dimensions == null || dimensions.isEmpty()) return;
+        Set<UUID> waitingLines = new LinkedHashSet<>();
+        Map<UUID, Object[]> plans = new LinkedHashMap<>();
+        for (StockedDimension dimension : dimensions) {
+            if (dimension == null || dimension.goodsId() == null) continue;
+            for (Object[] row : jdbc.query("""
+                    SELECT pi.id, p.id, p.order_bill_no, p.supplier_id, o.deliver_date
+                    FROM subcontract_material_plan_items pi
+                    JOIN subcontract_material_plans p
+                      ON p.id = pi.plan_id AND p.is_deleted = FALSE AND p.status = 'OPEN'
+                    JOIN subcontract_orders o ON o.id = p.order_id
+                    WHERE pi.is_deleted = FALSE
+                      AND pi.flow_mode IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
+                      AND pi.preparation_status = 'READY_OUTBOUND'
+                      AND pi.goods_id = CAST(? AS uuid)
+                      AND pi.color_id IS NOT DISTINCT FROM CAST(? AS uuid)
+                      AND LEAST(pi.planned_qty, pi.prepared_qty) - pi.issued_qty - COALESCE((
+                            SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii
+                            JOIN subcontract_material_issues i ON i.id = ii.issue_id
+                            WHERE ii.plan_item_id = pi.id
+                              AND i.status = 0 AND i.is_deleted = FALSE), 0) > 0
+                    ORDER BY p.id, pi.line_no ASC NULLS LAST, pi.id
+                    """,
+                    (rs, rowNum) -> new Object[]{
+                            rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
+                            rs.getString(3), rs.getObject(4, UUID.class),
+                            rs.getObject(5, LocalDate.class)},
+                    dimension.goodsId(), dimension.colorId())) {
+                UUID planItemId = (UUID) row[0];
+                if (hasPendingDraftForPlanItem(planItemId)) continue;
+                waitingLines.add(planItemId);
+                plans.putIfAbsent((UUID) row[1], row);
+            }
+        }
+        if (waitingLines.isEmpty()) return;
+        UUID actorUser = currentUser.requireId();
+        Set<UUID> draftedPlanItems = new LinkedHashSet<>();
+        for (Object[] plan : plans.values()) {
+            createDraftForPlan((UUID) plan[1], Objects.toString(plan[2], null),
+                    (UUID) plan[3], (LocalDate) plan[4], actorUser, draftedPlanItems);
+        }
+        // 只给「这一次真排进草稿」的行发通知：同一张计划里别的行可能还在等自己的料，
+        // 每来一批货就把它们全刷一遍提醒，等于把通知做成噪音。
+        for (UUID planItemId : waitingLines) {
+            if (draftedPlanItems.contains(planItemId)) {
+                chainNotice.notifySubcontractOutboundReady(planItemId);
             }
         }
     }
@@ -238,18 +309,11 @@ public class SubcontractMaterialPlanService
                     WHERE inventory_item.order_id=:orderId AND inventory_item.is_deleted=FALSE
                       AND edge.consumption_basis='PER_UNIT'
                       AND edge.control_stage IN ('START','ASSEMBLY','FINISH')
-                      AND (SELECT COUNT(*) FROM goods_bom_items only_edge
-                           JOIN goods only_child ON only_child.id=only_edge.component_goods_id
-                            AND only_child.is_deleted=FALSE
-                            AND COALESCE(only_child.auto_created,FALSE)=FALSE
-                           WHERE only_edge.goods_id=inventory_item.goods_id
-                             AND only_edge.is_deleted=FALSE)=1
-                      AND NOT EXISTS (SELECT 1 FROM goods_bom_items grand
-                           JOIN goods grand_child ON grand_child.id=grand.component_goods_id
-                            AND grand_child.is_deleted=FALSE
-                            AND COALESCE(grand_child.auto_created,FALSE)=FALSE
-                           WHERE grand.goods_id=edge.component_goods_id
-                             AND grand.is_deleted=FALSE)
+                      AND edge.qty>0
+                      -- ADR-085 §三.1「判据只有一个来源」：这里以前内联抄了一整套判据，
+                      -- 而且漏了 edge.qty>0，判据与加锁集合从此是两份定义。改回调函数本体，
+                      -- 收紧判据时不会再漏掉这一份副本(ADR-101)。
+                      AND fn_subcontract_sole_component_goods(inventory_item.goods_id)
                 ) dimension
                 ORDER BY goods_id, color_id NULLS FIRST
                 """).setParameter("orderId",orderId));
@@ -1097,7 +1161,14 @@ public class SubcontractMaterialPlanService
                                  WHERE ii.plan_item_id = item.id
                                    AND i.status = 1 AND ii.is_deleted=FALSE
                                    AND i.is_deleted = FALSE), 0) AS returned_qty,
-                       item.preparation_analysis_id,item.loss_replacement_qty_base
+                       item.preparation_analysis_id,item.loss_replacement_qty_base,
+                       COALESCE((SELECT SUM(ii.wasted_qty)
+                                 FROM subcontract_material_issue_items ii
+                                 JOIN subcontract_material_issues i
+                                   ON i.id = ii.issue_id
+                                 WHERE ii.plan_item_id = item.id
+                                   AND i.status = 1 AND ii.is_deleted=FALSE
+                                   AND i.is_deleted = FALSE), 0) AS wasted_qty
                 FROM subcontract_material_plan_items item
                 JOIN subcontract_material_plans plan ON plan.id = item.plan_id
                 WHERE item.order_item_id = ?
@@ -1111,7 +1182,8 @@ public class SubcontractMaterialPlanService
                 rs.getObject(1, UUID.class),
                 rs.getBigDecimal(2), rs.getBigDecimal(3), rs.getBigDecimal(4),
                 rs.getString(5),rs.getObject(6,UUID.class),rs.getObject(7,UUID.class),rs.getObject(8,UUID.class),
-                rs.getBigDecimal(9),rs.getBigDecimal(10),rs.getObject(11,UUID.class),rs.getBigDecimal(12)},
+                rs.getBigDecimal(9),rs.getBigDecimal(10),rs.getObject(11,UUID.class),rs.getBigDecimal(12),
+                rs.getBigDecimal(13)},
                 orderItemId, orderId);
         BigDecimal targetOrderQty=jdbc.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,orderItemId);
         Map<String,List<Object[]>> groups=new LinkedHashMap<>();
@@ -1126,8 +1198,16 @@ public class SubcontractMaterialPlanService
             if(factor.signum()<=0 || group.stream().anyMatch(line -> issuesComponent(line[4])
                     && decimal(line[8]).compareTo(decimal(group.getFirst()[8]))!=0))
                 throw new ApiException(ErrorCode.CONFLICT,"历史同子料的冻结单耗不一致，不能自动改量");
+            // 计划量该留多少 = 新订货量折算 + 已精确退回的材料 + 损耗补量额度
+            //                  + **已核销损耗**(ADR-101)。
+            // 最后一项是 ADR-098「接受损耗·结案」能不能走完的关键：结案先开损耗单把供应商处
+            // 那份料核销掉，再把订货量改成实收量。料已全发完的单(issued = planned, 单一子件
+            // 直发的常态)如果不认这份损耗，planned 就一点都收不回来(take = planned − issued = 0)，
+            // 剩余差额只能抛「新数量仍低于已实发或进行中的前置生产量」把整笔结案回滚——
+            // 用户看到的是一句看不懂的红字，库里连损耗单都没留下。
             BigDecimal target=targetOrderQty.multiply(factor).setScale(4,RoundingMode.HALF_UP)
-                    .add(group.stream().map(line->decimal(line[9]).add(decimal(line[11])))
+                    .add(group.stream()
+                            .map(line->decimal(line[9]).add(decimal(line[11])).add(decimal(line[12])))
                             .reduce(BigDecimal.ZERO,BigDecimal::add));
             BigDecimal remaining=group.stream().map(line->decimal(line[1])).reduce(BigDecimal.ZERO,BigDecimal::add)
                     .subtract(target).max(BigDecimal.ZERO);
@@ -1315,7 +1395,12 @@ public class SubcontractMaterialPlanService
                 flowMode,
                 makeFirst ? "ACTION_REQUIRED" : "READY_OUTBOUND",
                 makeFirst ? BigDecimal.ZERO : plannedQty,
-                suggestedWarehouse,
+                // ADR-101：COMPONENT 行发的是**子件**，而 suggested_warehouse 取的是
+                // COALESCE(申请收货仓, 订货收货仓)——那是**目标件**回厂要进的仓。把它写成子件的
+                // 发料仓，reserveDraft 就会跑到一个根本不放子件的仓上查库存，订货改量会被一句
+                // 「待发子件在该仓的合格可动用库存不足」顶回来，与改量这件事毫无关系。
+                // 留空交给 draftLineCappedByStock 按子件实际有货的叶仓来选，与批准路径同一口径。
+                component ? null : suggestedWarehouse,
                 children, bom.fingerprint(), actorUser, actorUser);
         if (makeFirst) {
             chainNotice.notifySubcontractPrepareShortage(lineId);
@@ -2082,7 +2167,25 @@ public class SubcontractMaterialPlanService
                     SELECT 1 FROM subcontract_material_plan_items pi
                     WHERE pi.plan_id = p.id AND pi.is_deleted = FALSE
                       AND pi.preparation_status IN ('LEGACY_READY','READY_OUTBOUND')
-                      AND LEAST(pi.planned_qty, pi.prepared_qty) - pi.issued_qty > 0)
+                      AND LEAST(pi.planned_qty, pi.prepared_qty) - pi.issued_qty > 0
+                      -- ADR-101: 角标是「轮到仓库动手」的红数，发现货的两种流向仓里一件都
+                      -- 没有时不算轮到仓库——那是在等采购/生产到货, 属于中性的「等子件到货」。
+                      -- 有未审草稿(说明当时有货已经占住了)或此刻仓里还有可动用量, 才算有活。
+                      AND (pi.flow_mode NOT IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
+                           OR EXISTS (
+                               SELECT 1 FROM subcontract_material_issue_items ii
+                               JOIN subcontract_material_issues i ON i.id = ii.issue_id
+                               WHERE ii.plan_item_id = pi.id
+                                 AND i.status = 0 AND i.is_deleted = FALSE)
+                           OR EXISTS (
+                               SELECT 1 FROM v_stock_available sa
+                               JOIN warehouses w ON w.id = sa.warehouse_id
+                               WHERE sa.goods_id = pi.goods_id
+                                 AND sa.color_id IS NOT DISTINCT FROM pi.color_id
+                                 AND sa.available_qty > 0
+                                 AND NOT w.is_deleted AND NOT w.is_defective
+                                 AND NOT w.is_line_side
+                                 AND fn_warehouse_is_operational_leaf(w.id))))
                 """, Long.class);
         return count == null ? 0 : count;
     }
@@ -2103,7 +2206,19 @@ public class SubcontractMaterialPlanService
                        GREATEST(LEAST(pi.planned_qty, pi.prepared_qty)
                            - pi.issued_qty - COALESCE(draft_qty.qty, 0), 0),
                        GREATEST(pi.planned_qty - pi.issued_qty, 0),
-                       pi.preparation_analysis_id, pi.preparation_analysis_item_id
+                       pi.preparation_analysis_id, pi.preparation_analysis_item_id,
+                       -- 发现货的两种流向必须给出确定的数：一个仓都没货时是 0 而不是 NULL，
+                       -- 否则客户端按「服务端没算」回落成计划余量，又变回那个「界面说有 1000、
+                       -- 其实一件都发不出去」的老毛病。其余流向吃的是专属预留，一律 NULL。
+                       CASE WHEN pi.flow_mode IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
+                            THEN LEAST(
+                                GREATEST(LEAST(pi.planned_qty, pi.prepared_qty)
+                                    - pi.issued_qty - COALESCE(draft_qty.qty, 0), 0),
+                                COALESCE(stock.available_qty, 0))
+                       END,
+                       CASE WHEN pi.flow_mode IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
+                            THEN COALESCE(stock.available_qty, 0) END,
+                       stock.warehouse_id, stock.warehouse_name
                 FROM subcontract_material_plan_items pi
                 JOIN goods pg ON pg.id = pi.parent_goods_id
                 JOIN goods g ON g.id = pi.goods_id
@@ -2116,6 +2231,24 @@ public class SubcontractMaterialPlanService
                     WHERE ii.plan_item_id = pi.id
                       AND i.status = 0 AND i.is_deleted = FALSE
                 ) draft_qty ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT w.id AS warehouse_id, w.name AS warehouse_name,
+                           GREATEST(COALESCE(sa.available_qty, 0), 0) AS available_qty
+                    FROM warehouses w
+                    LEFT JOIN v_stock_available sa
+                      ON sa.warehouse_id = w.id AND sa.goods_id = pi.goods_id
+                     AND sa.color_id IS NOT DISTINCT FROM pi.color_id
+                    WHERE pi.flow_mode IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
+                      AND NOT w.is_deleted
+                      AND (w.id = pi.preparation_warehouse_id
+                           OR (pi.preparation_warehouse_id IS NULL
+                               AND NOT w.is_defective AND NOT w.is_line_side
+                               AND fn_warehouse_is_operational_leaf(w.id)
+                               AND COALESCE(sa.available_qty, 0) > 0))
+                    ORDER BY CASE WHEN w.id = pi.preparation_warehouse_id THEN 0 ELSE 1 END,
+                             GREATEST(COALESCE(sa.available_qty, 0), 0) DESC, w.code
+                    LIMIT 1
+                ) stock ON TRUE
                 WHERE pi.plan_id = ? AND pi.is_deleted = FALSE
                   AND pi.preparation_status IN ('LEGACY_READY','READY_OUTBOUND')
                   AND pi.planned_qty - pi.issued_qty > 0
@@ -2138,7 +2271,9 @@ public class SubcontractMaterialPlanService
                         rs.getBigDecimal(24), rs.getObject(25, UUID.class),
                         rs.getObject(26, UUID.class), null,
                         outboundActions(canHandleOutbound, rs.getBigDecimal(23),
-                                rs.getBigDecimal(19))),
+                                rs.getBigDecimal(19)),
+                        rs.getBigDecimal(27), rs.getBigDecimal(28),
+                        rs.getObject(29, UUID.class), rs.getString(30)),
                 planId);
         if (lines.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "委外发料计划不存在");
@@ -2375,8 +2510,21 @@ public class SubcontractMaterialPlanService
      */
     private UUID createDraftForPlan(UUID planId, String orderBillNo, UUID supplierId,
                                     LocalDate deliverDate, UUID actorUser) {
+        return createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser, null);
+    }
+
+    /**
+     * @param draftedPlanItems 非 null 时装入本次真的排进草稿的计划行 id。调用方据此决定叫不叫
+     *                         仓库——没排进草稿的行就是「还在等料」，此刻通知它只会让人白跑一趟。
+     */
+    private UUID createDraftForPlan(UUID planId, String orderBillNo, UUID supplierId,
+                                    LocalDate deliverDate, UUID actorUser,
+                                    Set<UUID> draftedPlanItems) {
         List<Object[]> remaining = remainingLines(planId).stream()
-                .filter(row -> decimal(row[8]).signum() > 0).toList();
+                .filter(row -> decimal(row[8]).signum() > 0)
+                .map(this::draftLineCappedByStock)
+                .filter(Objects::nonNull)
+                .toList();
         if (remaining.isEmpty()) {
             return null;
         }
@@ -2403,8 +2551,73 @@ public class SubcontractMaterialPlanService
             UUID draftId = createDraftForLines(
                     group, orderBillNo, supplierId, deliverDate, actorUser);
             if (firstDraftId == null) firstDraftId = draftId;
+            if (draftedPlanItems != null) {
+                group.forEach(row -> draftedPlanItems.add((UUID) row[0]));
+            }
         }
         return firstDraftId;
+    }
+
+    /**
+     * 现货流向(DIRECT / COMPONENT)建草稿前先按「该仓此刻的合格可动用量」把本批截断，
+     * 并在还没定发料仓时替仓库选一个有货的作业叶仓。返回 null = 这一行此刻一件都发不出去，
+     * 本轮不给它建草稿，等子件(或目标件)到货唤醒时再来。
+     *
+     * <p>这一段是 ADR-101 的核心：在此之前系统一律按整笔余量开满量草稿，于是
+     * ①子件还在采购路上时仓库照样收到一张发不出去的活，②分批发料时「审核第一批」会顺手
+     * 为剩余量再开一张满量草稿，占不上库存就抛 409 把刚审核的那一批一起回滚。
+     *
+     * <p>返回的数组比 {@link #remainingLines} 多一位：[12] 是这张草稿实际该落的仓
+     * (已冻结的发料仓优先，否则是这里选出来的建议仓)。[10] 保持原样，分组口径不变——
+     * 未定仓的行仍各自成单，仓库要改仓时互不牵连。前置自制两种流向吃的是专属预留而不是
+     * 公共可动用量，这里一律原样放行，由 reserveDraft 按预留口径把关。
+     */
+    private Object[] draftLineCappedByStock(Object[] row) {
+        Object[] extended = Arrays.copyOf(row, 13);
+        extended[12] = row[10];
+        String flowMode = Objects.toString(row[11], "");
+        if (!"DIRECT_OUTBOUND".equals(flowMode) && !"COMPONENT_OUTBOUND".equals(flowMode)) {
+            return extended;
+        }
+        UUID goodsId = (UUID) row[4];
+        UUID colorId = (UUID) row[9];
+        UUID warehouseId = (UUID) row[10];
+        BigDecimal available;
+        if (warehouseId == null) {
+            List<Object[]> best = jdbc.query("""
+                    SELECT sa.warehouse_id, GREATEST(COALESCE(sa.available_qty, 0), 0)
+                    FROM v_stock_available sa
+                    JOIN warehouses w ON w.id = sa.warehouse_id
+                    WHERE sa.goods_id = CAST(? AS uuid)
+                      AND sa.color_id IS NOT DISTINCT FROM CAST(? AS uuid)
+                      AND sa.available_qty > 0
+                      AND NOT w.is_deleted AND NOT w.is_defective AND NOT w.is_line_side
+                      AND fn_warehouse_is_operational_leaf(w.id)
+                    ORDER BY GREATEST(COALESCE(sa.available_qty, 0), 0) DESC, w.code
+                    LIMIT 1
+                    """,
+                    (rs, rowNum) -> new Object[]{rs.getObject(1, UUID.class), rs.getBigDecimal(2)},
+                    goodsId, colorId);
+            if (best.isEmpty()) {
+                return null;
+            }
+            extended[12] = best.getFirst()[0];
+            available = decimal(best.getFirst()[1]);
+        } else {
+            available = decimal(jdbc.query("""
+                    SELECT GREATEST(COALESCE(sa.available_qty, 0), 0)
+                    FROM v_stock_available sa
+                    WHERE sa.warehouse_id = CAST(? AS uuid)
+                      AND sa.goods_id = CAST(? AS uuid)
+                      AND sa.color_id IS NOT DISTINCT FROM CAST(? AS uuid)
+                    """, (rs, rowNum) -> rs.getBigDecimal(1), warehouseId, goodsId, colorId)
+                    .stream().findFirst().orElse(BigDecimal.ZERO));
+        }
+        if (available.signum() <= 0) {
+            return null;
+        }
+        extended[8] = decimal(row[8]).min(available);
+        return extended;
     }
 
     private boolean hasPendingDraftForPlanItem(UUID planItemId) {
@@ -2452,7 +2665,8 @@ public class SubcontractMaterialPlanService
         draft.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SUB_MATERIAL_ISSUE));
         draft.setBillDate(BusinessTime.today());
         draft.setSupplierId(supplierId);
-        draft.setWarehouseId((UUID) remaining.getFirst()[10]);
+        // [12]：已冻结的发料仓优先，否则是 draftLineCappedByStock 选出来的建议仓。
+        draft.setWarehouseId((UUID) remaining.getFirst()[12]);
         draft.setDeliverDate(deliverDate);
         draft.setStatus(ISSUE_DRAFT);
         draft.setMakerId(null); // 系统生成草稿：无归属人，仓库按权限执行出仓

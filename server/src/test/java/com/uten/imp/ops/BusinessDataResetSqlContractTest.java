@@ -429,9 +429,12 @@ class BusinessDataResetSqlContractTest {
                 .contains("(640, 592)")
                 // V641 我方供料委外件放开公共超量: 锚点补丁两个函数, 不加表 (V641 592→593)。
                 .contains("(641, 593)")
+                // V642 委外回厂守恒守卫计入财务已批准的委外商自带料 (ADR-101): 只锚点补丁
+                // 一个断言函数, 不加表 (V642 593→594)。
+                .contains("(642, 594)")
                 // V644 审核生产日报幂等键: 命令账本加 command_kind 一列并换一把唯一键,
-                // 不加表 (V642、V643 跳号, V644 593→594)。
-                .contains("(644, 594)")
+                // 不加表 (V643 跳号, V644 594→595)。
+                .contains("(644, 595)")
                 .contains("V507/469、V508/470及V511至V644完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)

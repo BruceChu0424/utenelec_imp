@@ -188,11 +188,20 @@ public class MaterialAnalysisCommandService {
             boolean createsChildOwnership = "MAKE".equals(group.route())
                     || ("SUBCONTRACT".equals(group.route())
                         && subcontractMakeFirst.contains(group.dimension().goodsId()));
-            // 我方供料的带 BOM 委外件(含 V581 单一子件件)：**不自动认领**别人的
-            // 公共在途——它要的是我们自己做出来、再发给委外商的那颗子件。
-            // (超量备货那一侧 2026-09-21 已按用户口径放开，见下方分账段。)
-            boolean ownSupplyBom = "SUBCONTRACT".equals(group.route())
-                    && subcontractBomParents.contains(group.dimension().goodsId());
+            // 我方供料的带 BOM 委外件(含 V581 单一子件件)原本被两条禁令同时罩着：
+            // 既不许自己公共超量备货, 也不许自动认领别人的公共在途。2026-09-21/22 两条
+            // 分别由两路改动放开, 本合并把它们并在一起 —— 它们本来就是相反的两件事:
+            //
+            // - 超量备货(V641/ADR-099 修订): 多下的量此前会凭空多出一份无人负责的子件需求,
+            //   所以禁着。现在层级表上填多少子层就按多少算, 下达时在同一张「父件 + 下层
+            //   一起下单」页里一并办掉, 无人负责的情形不再存在, 于是放开。
+            // - 自动认领(ADR-101): 认领吃的是别人已经下好、料也由别人备的那一批成品, 本计划
+            //   这一层不会因此多出任何子件需求 —— 认领行落的是 SHARED_FUTURE_CLAIM, 按
+            //   EXTERNAL 归类, 正好把下层展开基准同步净掉。不放开的话同一颗件别人已经在路上,
+            //   本计划仍要再下一单, 正是用户说的「需要的也要减去公共的、包括公共在途的」。
+            //
+            // 两条都放开之后这里不再需要 ownSupplyBom 这个判据, 故不再计算它;
+            // subcontractBomParents 仍被 subcontractMakeFirst 用来识别「需先自制的委外件」。
             if (input != null) {
                 BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
                 if (createsChildOwnership) {
@@ -279,8 +288,9 @@ public class MaterialAnalysisCommandService {
                 }
             }
             // ADR-099：外部路线先自动认领公共在途，认领到多少就少下多少新单。
+            // ADR-101：我方供料的带 BOM 委外件也走这条路(只有「超量备货」仍然禁止)。
             BigDecimal claimedQty = BigDecimal.ZERO.setScale(4);
-            if (!createsChildOwnership && !ownSupplyBom && demandQty.signum() > 0) {
+            if (!createsChildOwnership && demandQty.signum() > 0) {
                 claimedQty = claimSharedFutureForGroup(analysisId, view, group, demandQty,
                         null, true, request.idempotencyKey(), requestHash,
                         claimActionIds, acceptedLateSources);
@@ -473,14 +483,11 @@ public class MaterialAnalysisCommandService {
         List<Map<String,String>> acceptedLateSources=new ArrayList<>();
         for (ActionGroup group : groups) {
             // 2026-09-13 起自制（车间）物料也可采用公共在途：到达的合格供给
-            // 直接冲减本计划自制需求，剩余仍走原下达车间流程；
-            // 「我方供料 BOM 委外件」限制继续保留。
+            // 直接冲减本计划自制需求，剩余仍走原下达车间流程。
+            // ADR-101 起「我方供料 BOM 委外件」也能认领——认领的是别人已经备好料下好单的
+            // 那一批，本计划不会因此多出无人负责的子件需求；禁止的只是自己超量备货。
             if (!Set.of("BUY", "SUBCONTRACT", "MAKE").contains(group.route())) {
                 throw validation("只有采购、委外或自制物料可以采用公共在途");
-            }
-            if ("SUBCONTRACT".equals(group.route())
-                    && subcontractBomParents.contains(group.dimension().goodsId())) {
-                throw validation("有我方供料 BOM 的委外件不能采用公共超量在途");
             }
             BigDecimal existingOpen = activeOpenActionQty(coverage, group);
             BigDecimal needed = group.demandRequiredQty().subtract(existingOpen)
@@ -510,6 +517,17 @@ public class MaterialAnalysisCommandService {
         return analysisService.detailInternal(analysisId, false);
     }
 
+    /**
+     * 可认领的公共在途来源。
+     *
+     * <p>ADR-101：候选**只取同路线**({@code route = :route})。在此之前这里是
+     * {@code route IN ('BUY','SUBCONTRACT')}，跨路线也能认领，而界面上告诉用户
+     * 「其中 X 可自动认领」的 {@code sharedFutureClaimableQty} 一直是按路线过滤的——两侧口径
+     * 不一致时，界面显示 0、用户照填 100 点下达，服务端却把需求全认领成 0，一张新申请明细都
+     * 不生成，用户以为下了 100 其实一分没下。ADR-101 把「还需安排」改成预扣公共在途的净数，
+     * 显示的数就是会下的数，两侧口径必须严格一致，跨路线认领要放开得连提示那一侧一起放开，
+     * 那是另一次产品决策。
+     */
     private List<SharedFutureSource> sharedFutureSources(
             UUID analysisId, ActionGroup group,boolean allowLateSupply) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -522,7 +540,7 @@ public class MaterialAnalysisCommandService {
                   AND goods_id = :goodsId
                   AND color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                   AND unit_id = :unitId
-                  AND route IN ('BUY','SUBCONTRACT')
+                  AND route = :route
                   AND available_to_claim_qty > 0
                   AND claim_external_item_id IS NOT NULL
                   AND (:allowLateSupply=TRUE OR (expected_date IS NOT NULL AND
@@ -534,6 +552,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("goodsId", group.dimension().goodsId())
                 .setParameter("colorId", group.dimension().colorId())
                 .setParameter("unitId", group.dimension().unitId())
+                .setParameter("route", group.route())
                 .setParameter("needDate", group.needDate()).setParameter("allowLateSupply",allowLateSupply)).stream()
                 .map(row -> new SharedFutureSource(
                         (UUID) row[0], decimal(row[1]),

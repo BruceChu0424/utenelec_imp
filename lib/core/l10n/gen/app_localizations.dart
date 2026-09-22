@@ -5755,17 +5755,17 @@ abstract class AppLocalizations {
   /// **'编号'**
   String get warehouseSubcontractOutboundGoodsCode;
 
-  /// No description provided for @warehouseSubcontractOutboundLegacyParentName.
+  /// No description provided for @warehouseSubcontractOutboundParentName.
   ///
   /// In zh, this message translates to:
-  /// **'历史父件名称'**
-  String get warehouseSubcontractOutboundLegacyParentName;
+  /// **'回厂交回的委外件'**
+  String get warehouseSubcontractOutboundParentName;
 
-  /// No description provided for @warehouseSubcontractOutboundLegacyParentCode.
+  /// No description provided for @warehouseSubcontractOutboundParentCode.
   ///
   /// In zh, this message translates to:
-  /// **'父件编号'**
-  String get warehouseSubcontractOutboundLegacyParentCode;
+  /// **'委外件编号'**
+  String get warehouseSubcontractOutboundParentCode;
 
   /// No description provided for @warehouseSubcontractOutboundColor.
   ///
@@ -5796,6 +5796,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已出库'**
   String get warehouseSubcontractOutboundIssued;
+
+  /// No description provided for @warehouseSubcontractOutboundStockAvailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓内可动用'**
+  String get warehouseSubcontractOutboundStockAvailable;
 
   /// No description provided for @warehouseSubcontractOutboundAvailable.
   ///

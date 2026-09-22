@@ -168,7 +168,7 @@ class WarehouseArrivalRegistrationContractTest {
     }
 
     @Test
-    void subcontractReceiptChecksPhysicalOutboundCapacityBeforeFinancialOverage()
+    void subcontractReceiptSendsSupplierSuppliedExcessToFinanceInsteadOfRefusingIt()
             throws Exception {
         Path direct = Path.of(
                 "src/main/java/com/uten/imp/features/subcontract/receipt/"
@@ -176,18 +176,28 @@ class WarehouseArrivalRegistrationContractTest {
         Path source = Files.exists(direct) ? direct : Path.of("server").resolve(direct);
         String java = Files.readString(source);
 
+        // ADR-101 §2.8：到货异常闸必须**先**跑。它会把「超过我方供料能做出来的数量」那部分
+        // 落成 PENDING_FINANCE 到货异常并通知财务(抛的是不回滚的 Blocked 异常，异常记录照常
+        // 提交)；守恒闸留在后面兜底，只有财务已经批准过那份自带料的单子才走得到它。
+        // 顺序一旦反过来，仓库又会先撞上一句看不懂的「禁止超量回仓」，财务全程不知情，
+        // 多出来的实物落在账外。
         assertThat(java).containsSubsequence(
-                "requireTargetOutboundCapacity(items, id);",
-                "arrivalControl.validateBeforeApproval(");
+                "arrivalControl.validateBeforeApproval(",
+                "requireTargetOutboundCapacity(items, id);");
         assertThat(java)
                 .contains("lockAndRequireDraftOutboundCapacity(req.getItems(), null, List.of())")
                 .contains("FOR UPDATE OF order_item")
                 .contains("active_draft_base")
-                .contains("真实出仓可回厂额度不足，或额度已被其它回厂草稿占用")
+                // 登记只拦并发撞单：物理上够、但额度被同明细另一张未审草稿占住。
+                .contains("本行可回厂额度已被同一订货明细的其它回厂草稿占用")
+                .doesNotContain("真实出仓可回厂额度不足，或额度已被其它回厂草稿占用")
                 .contains("issue.status = 1 AND issue.is_deleted = FALSE")
                 .contains("receivedBase.add(entry.getValue())")
-                .contains("issuedBase.add(returnedFailureBase)")
-                .contains("委外目标件尚未足额出仓且无足够IQC失败返修额度");
+                // 守恒额度里要认财务已批准的委外商自带料，否则财务批准完这单仍然审不过去。
+                .contains("issuedBase.add(returnedFailureBase).add(approvedExcessBase)")
+                .contains("financeApprovedExcessBase")
+                .contains("回厂数量超过我方发给委外商的材料能做出来的数量")
+                .doesNotContain("委外目标件尚未足额出仓且无足够IQC失败返修额度");
     }
 
     @Test

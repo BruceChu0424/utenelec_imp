@@ -280,9 +280,13 @@ public class SubcontractReceiptService {
                 SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
                 SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
                 OffsetDateTime.now());
-        requireTargetOutboundCapacity(items, id);
+        // ADR-101：顺序不能反。到货异常闸先跑——它会把「超过我方供料能做出来的数量」那部分
+        // 落成 PENDING_FINANCE 到货异常并通知财务(货不入库、不立应付)，抛的是不回滚的
+        // ProcurementArrivalBlockedException，异常记录照常提交。守恒闸留在后面做兜底：
+        // 只有财务已经批准了那份委外商自带料(approved_excess_qty)的单子才走得到这里。
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
+        requireTargetOutboundCapacity(items, id);
         receiptAmountAuthority.apply(r, items);
         var payable=consideration.freezeReceipt("SUBCONTRACT",id);
         productionSupply.lockSubcontractReceiptProductionDemands(
@@ -689,12 +693,38 @@ public class SubcontractReceiptService {
                     .setParameter("currentReceiptId", currentReceiptId).getSingleResult());
             BigDecimal returnedFailureBase=iqcReplacementAllocation
                     .releasedCapacity("SUBCONTRACT",orderItemId).baseQty();
+            // ADR-101：财务已经批准的那份「委外商自带料」也算额度。走到这一步说明到货异常闸
+            // 已经放行，即财务在到货异常任务中心确认过价格与归属；此处再拒就等于把财务的批准
+            // 作废。没有这份批准时本行仍然守恒，超量在上一道闸就被隔离走了。
+            BigDecimal approvedExcessBase=financeApprovedExcessBase(orderItemId);
             if (receivedBase.add(entry.getValue())
-                    .compareTo(issuedBase.add(returnedFailureBase)) > 0) {
+                    .compareTo(issuedBase.add(returnedFailureBase).add(approvedExcessBase)) > 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "委外目标件尚未足额出仓且无足够IQC失败返修额度，禁止超量回仓");
+                        "回厂数量超过我方发给委外商的材料能做出来的数量，且没有财务批准的"
+                                + "委外商自带料额度；请在到货异常任务中心先由财务确认");
             }
         }
+    }
+
+    /**
+     * 财务在到货异常任务中心批准的「委外商自带料」数量，折算到目标件基本量(ADR-101)。
+     * 口径与 {@code SubcontractReceiptAmountAuthority} 的授权额度同源：只认已调整收货
+     * (RECEIPT_ADJUSTED) 且决定是批准的异常。
+     */
+    private BigDecimal financeApprovedExcessBase(UUID orderItemId) {
+        return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(exception_row.approved_excess_qty
+                        * COALESCE(order_item.unit_rate, 1)), 0)
+                FROM procurement_arrival_exceptions exception_row
+                JOIN subcontract_order_items order_item
+                  ON order_item.id = exception_row.order_item_id
+                WHERE exception_row.order_type = 'SUBCONTRACT'
+                  AND exception_row.order_item_id = :orderItemId
+                  AND exception_row.status IN (
+                      'RECEIPT_ADJUSTED', 'RECEIPT_POSTED', 'CLOSED')
+                  AND exception_row.decision IN ('APPROVE_ALL', 'APPROVE_CUSTOM')
+                  AND exception_row.approved_excess_qty > 0
+                """).setParameter("orderItemId", orderItemId).getSingleResult());
     }
 
     /**
@@ -811,15 +841,26 @@ public class SubcontractReceiptService {
             BigDecimal requestedBase = requestedQty
                     .getOrDefault(orderItemId, BigDecimal.ZERO)
                     .multiply(decimal(row[1]));
-            BigDecimal availableBase = decimal(row[3])
+            // 「我方供料 + IQC 返修额度 − 已审回厂」：这是物理上限本身。
+            BigDecimal physicalBase = decimal(row[3])
                     .add(decimal(row[4]))
                     .subtract(decimal(row[5]))
+                    .max(BigDecimal.ZERO);
+            // 再扣掉其它未审草稿已经占住的额度。
+            BigDecimal availableBase = physicalBase
                     .subtract(decimal(row[6]))
                     .max(BigDecimal.ZERO);
-            if (requestedBase.compareTo(availableBase) > 0) {
+            // ADR-101：超过物理上限不再在登记这一步拒收。实物已经到厂了，多出来的部分说明
+            // 委外商贴了自己的料——那是价格和归属问题，要财务定案，不是让仓库改数或少登记，
+            // 否则超出的实物就落在账外。登记照常建草稿，审核时由到货异常闸落 PENDING_FINANCE
+            // 并通知财务审核组，货不入库、不立应付。
+            // 仍然拦的只有一种：物理上够，但额度被同明细的另一张未审草稿占住了——那是并发
+            // 冲突，刷新一下就能看清，不该变成一条挂在财务那里的异常。
+            if (requestedBase.compareTo(physicalBase) <= 0
+                    && requestedBase.compareTo(availableBase) > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "委外目标件真实出仓可回厂额度不足，或额度已被其它回厂草稿占用；请刷新预计到货任务");
+                        "本行可回厂额度已被同一订货明细的其它回厂草稿占用；请刷新预计到货任务后再登记");
             }
         }
     }

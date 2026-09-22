@@ -2,6 +2,8 @@
 //
 // 新委外单只把订货目标件交给仓库：无子层级直接进入目标件出仓准备；有子层级
 // 先完成前置自制/FQC/成品入仓，再按服务端 readyOutboundQty 交仓库。
+// COMPONENT_OUTBOUND 是唯一发的不是目标件本身的新流向：目标件的活动 BOM 恰好
+// 只有一个叶子子件时，仓库发那颗子件、委外商交回目标件(ADR-085 / V581)。
 // LEGACY_BOM_COMPONENT 仅兼容历史 V304 BOM 子件发料单。
 
 enum SubcontractOutboundFlowMode {
@@ -9,6 +11,7 @@ enum SubcontractOutboundFlowMode {
   directOutbound('DIRECT_OUTBOUND', '目标件直接出仓'),
   makeThenOutbound('MAKE_THEN_OUTBOUND', '先自制再出仓'),
   preparedOutbound('PREPARED_OUTBOUND', '已备齐目标件出仓'),
+  componentOutbound('COMPONENT_OUTBOUND', '发子件给委外商'),
   unknown('UNKNOWN', '路线待确认');
 
   const SubcontractOutboundFlowMode(this.wireName, this.label);
@@ -150,6 +153,10 @@ class OutboundPlanLine {
     this.preparationAnalysisItemId,
     this.blocker,
     this.allowedActions = const {},
+    this.issuableQty,
+    this.stockAvailableQty,
+    this.stockWarehouseId,
+    this.stockWarehouseName,
   });
 
   final String planItemId;
@@ -180,6 +187,16 @@ class OutboundPlanLine {
   final String? blocker;
   final Set<String> allowedActions;
 
+  /// 服务端权威的「本次最多可填」= min(计划余量, 该仓合格可动用量)，已把本草稿
+  /// 自己占住的预留加回来。服务端没下发时(旧版本)回落到纯计划口径。
+  final double? issuableQty;
+
+  /// [stockWarehouseId] 这个仓里该货品/颜色当前的合格可动用量，不含本草稿占用。
+  /// 仓库据此判断「为什么只能发这么多」。
+  final double? stockAvailableQty;
+  final String? stockWarehouseId;
+  final String? stockWarehouseName;
+
   double get remainingQty {
     if (remainingQtySnapshot case final value?) return value < 0 ? 0 : value;
     final r = plannedQty - issuedQty - draftQty;
@@ -195,13 +212,27 @@ class OutboundPlanLine {
     return value < 0 ? 0 : value;
   }
 
+  /// 此刻还能再填多少：服务端下发 [issuableQty] 时以它为准(= min(计划余量,
+  /// 该仓合格可动用量)，两边都已扣掉未审草稿占用)，否则回落到纯计划口径。
+  /// 有了它，仓库在界面上看到的上限就是真能存下去的量，不必靠保存被 409 打回来才知道。
+  double get freeIssuableQty {
+    if (flowMode == SubcontractOutboundFlowMode.unknown ||
+        preparationStatus == SubcontractPreparationStatus.unknown) {
+      return 0;
+    }
+    final value = issuableQty ?? readyOutboundQty;
+    return value < 0 ? 0 : value;
+  }
+
   /// A loaded draft already reserves [draftQty], so editing that same draft may
   /// reuse its reservation in addition to currently free ready quantity.
-  double get maxEditableQty =>
-      flowMode == SubcontractOutboundFlowMode.unknown ||
-          preparationStatus == SubcontractPreparationStatus.unknown
-      ? 0
-      : readyOutboundQty + draftQty;
+  double get maxEditableQty {
+    if (flowMode == SubcontractOutboundFlowMode.unknown ||
+        preparationStatus == SubcontractPreparationStatus.unknown) {
+      return 0;
+    }
+    return freeIssuableQty + draftQty;
+  }
 
   bool allows(String action) => allowedActions.contains(action);
 
@@ -245,6 +276,10 @@ class OutboundPlanLine {
           for (final action in (json['allowedActions'] as List? ?? const []))
             if (action != null) action.toString(),
         },
+        issuableQty: (json['issuableQty'] as num?)?.toDouble(),
+        stockAvailableQty: (json['stockAvailableQty'] as num?)?.toDouble(),
+        stockWarehouseId: json['stockWarehouseId'] as String?,
+        stockWarehouseName: json['stockWarehouseName'] as String?,
       );
 
   /// 按服务端发料计划快照构造出仓草稿行，颜色/单位 UUID 不由客户端重选。

@@ -2528,12 +2528,27 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             UUID orderId = (UUID) item.get("order_id");
             String orderNo = str(item.get("order_bill_no"));
             String goods = subcontractGoodsLabel(item);
+            // COMPONENT_OUTBOUND(ADR-085/ADR-101)发出去的是子件、交回来的是委外件，
+            // 两者不是同一个货号；再叫它「目标件」会让仓库以为发错货。
+            boolean sendsComponent = "COMPONENT_OUTBOUND".equals(str(item.get("flow_mode")));
+            String parentLabel = (str(item.get("parent_goods_code")) + " "
+                    + str(item.get("parent_goods_name"))).strip();
+            // 可发量优先取「已经给仓库开好的草稿量」：ADR-101 起草稿按该仓此刻的合格可动用量
+            // 截断，所以这个数才是仓库现在真能拣出来的量，计划余量不是。
+            // 通知走 Outbox 异步投递，投递时草稿可能已经被审核掉了；那时回落到计划余量，
+            // 与 ADR-101 之前的口径一致，不会给出一句「当前可发 0」的死消息。
             BigDecimal remaining = bd(item.get("prepared_qty"))
                     .min(bd(item.get("planned_qty")))
                     .subtract(bd(item.get("issued_qty")))
                     .max(BigDecimal.ZERO);
-            String warehouseContent = "委外订货单 " + orderNo + " 的目标件 "
-                    + goods + " 当前可出仓 " + qty(remaining)
+            BigDecimal draftQty = bd(item.get("draft_qty")).max(BigDecimal.ZERO);
+            BigDecimal issuable = draftQty.signum() > 0 ? draftQty.min(remaining) : remaining;
+            String warehouseContent = (sendsComponent
+                    ? "委外订货单 " + orderNo + " 要发出去加工的是子件 " + goods
+                        + "，加工完交回的是 " + (parentLabel.isEmpty() ? "委外件" : parentLabel)
+                        + "。当前可发 " + qty(issuable)
+                    : "委外订货单 " + orderNo + " 的目标件 " + goods
+                        + " 当前可出仓 " + qty(issuable))
                     + "(基本单位)。请打开委外出仓任务核对来源仓、库位和实物后拣货并"
                     + "审核出仓；通知不代表已预留、已拣货或已出仓，可执行操作以任务"
                     + "实时 allowedActions 为准。";
@@ -2545,7 +2560,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
-                        "待执行委外目标件出仓：" + orderNo,
+                        (sendsComponent ? "待发委外子件出仓：" : "待执行委外目标件出仓：")
+                                + orderNo,
                         warehouseContent,
                         "/warehouse/subcontract-outbound/" + planId,
                         EVENT_SUBCONTRACT_OUTBOUND_READY);
@@ -2556,10 +2572,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             notifyUser(
                     makerUserId,
                     TYPE_WORKFLOW,
-                    "委外目标件已可出仓：" + orderNo,
-                    "委外订货单 " + orderNo + " 的目标件 " + goods
-                            + " 已达到委外出仓条件，仓储部已收到出仓任务。"
-                            + "本通知仅作进度提醒，不代表目标件已经出仓。",
+                    (sendsComponent ? "委外子件已可发料：" : "委外目标件已可出仓：") + orderNo,
+                    (sendsComponent
+                            ? "委外订货单 " + orderNo + " 的子件 " + goods
+                                + " 已有现货可发，仓储部已收到发料任务；加工完交回的是 "
+                                + (parentLabel.isEmpty() ? "委外件" : parentLabel) + "。"
+                                + "本通知仅作进度提醒，不代表子件已经发出。"
+                            : "委外订货单 " + orderNo + " 的目标件 " + goods
+                                + " 已达到委外出仓条件，仓储部已收到出仓任务。"
+                                + "本通知仅作进度提醒，不代表目标件已经出仓。"),
                     "/subcontract/orders/" + orderId,
                     EVENT_SUBCONTRACT_OUTBOUND_READY);
         });
@@ -2592,7 +2613,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                       ON plan_item.id = issue_item.plan_item_id
                      AND plan_item.is_deleted = FALSE
                      AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
+                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND',
+                         'COMPONENT_OUTBOUND')
                     JOIN subcontract_material_plans plan
                       ON plan.id = plan_item.plan_id
                      AND plan.is_deleted = FALSE
@@ -2656,7 +2678,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                       ON plan_item.id = issue_item.plan_item_id
                      AND plan_item.is_deleted = FALSE
                      AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
+                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND',
+                         'COMPONENT_OUTBOUND')
                     JOIN subcontract_order_items order_item
                       ON order_item.id = issue_item.order_item_id
                      AND COALESCE(order_item.is_deleted, FALSE) = FALSE
@@ -2727,7 +2750,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                       ON plan_item.id = issue_item.plan_item_id
                      AND plan_item.is_deleted = FALSE
                      AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
+                         'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND',
+                         'COMPONENT_OUTBOUND')
                     JOIN subcontract_material_plans plan
                       ON plan.id = plan_item.plan_id
                      AND plan.is_deleted = FALSE
@@ -2883,7 +2907,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 SELECT item.plan_id, plan.order_id, plan.order_bill_no,
                        order_header.maker_id, item.planned_qty,
                        item.prepared_qty, item.issued_qty,
-                       goods.code AS goods_code, goods.name AS goods_name
+                       goods.code AS goods_code, goods.name AS goods_name,
+                       item.flow_mode,
+                       parent_goods.code AS parent_goods_code,
+                       parent_goods.name AS parent_goods_name,
+                       COALESCE(draft.qty, 0) AS draft_qty
                 FROM subcontract_material_plan_items item
                 JOIN subcontract_material_plans plan
                   ON plan.id = item.plan_id
@@ -2894,9 +2922,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                  AND order_header.status = 1
                  AND order_header.is_deleted = FALSE
                 JOIN goods ON goods.id = item.goods_id
+                LEFT JOIN goods parent_goods ON parent_goods.id = item.parent_goods_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(issue_item.qty) AS qty
+                    FROM subcontract_material_issue_items issue_item
+                    JOIN subcontract_material_issues issue
+                      ON issue.id = issue_item.issue_id
+                    WHERE issue_item.plan_item_id = item.id
+                      AND issue.status = 0 AND issue.is_deleted = FALSE
+                ) draft ON TRUE
                 WHERE item.id = ?
                   AND item.is_deleted = FALSE
-                  AND item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
+                  AND item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND',
+                                         'PREPARED_OUTBOUND', 'COMPONENT_OUTBOUND')
                   AND item.preparation_status = 'READY_OUTBOUND'
                   AND LEAST(item.planned_qty, item.prepared_qty) > item.issued_qty
                 """, planItemId);

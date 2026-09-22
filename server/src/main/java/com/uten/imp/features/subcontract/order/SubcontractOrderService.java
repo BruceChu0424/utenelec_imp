@@ -644,21 +644,26 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail changeQty(
             UUID id, OrderQtyChangeRequest request) {
         requireNoPendingShortDeliveryJudgement(id);
-        return changeQtyInternal(id, request);
+        return changeQtyInternal(id, request, true);
     }
 
     /**
      * ADR-098 委外回厂短交「接受损耗结案」专用入口：权限点是 subcontract_short_delivery:decide
-     * (由判定服务校验), 不再要求 change_qty; 业务守卫(本人订货单、财务批准后、无在办复核、
-     * 下限=已回厂净量+供应商处剩料)与普通改量完全一致。
+     * (由判定服务校验), 不再要求 change_qty; 业务守卫(本人订货单、财务批准后、下限=已回厂净量
+     * +供应商处剩料)与普通改量完全一致。
+     *
+     * <p>唯一放宽的是「无在办财务复核」那一条(ADR-101)：受控改量自己就会开一条 PENDING 复核，
+     * 于是同一张订货单的第二行结案必被第一行开出来的复核挡死，连它刚开的损耗单一起回滚——
+     * 多货品委外单只要短交两行就永远结不掉。这道闸防的是人为叠加两次自由改量；短交结案
+     * 不是自由改量，它记的是「回厂多少、损耗多少」这个既成事实，且每行只有一个开放案件把关。
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public OrderDetail changeQtyForShortDelivery(UUID id, OrderQtyChangeRequest request) {
-        return changeQtyInternal(id, request);
+        return changeQtyInternal(id, request, false);
     }
 
     private OrderDetail changeQtyInternal(
-            UUID id, OrderQtyChangeRequest request) {
+            UUID id, OrderQtyChangeRequest request, boolean rejectWhenReconfirmationPending) {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder order = requireOrderForUpdate(id);
@@ -669,7 +674,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         mutationGuard.verifyUnchanged();
         materialPlanService.lockOrderInventoryDimensions(id);
-        requireNoPendingApprovalCase(id);
+        if (rejectWhenReconfirmationPending) requireNoPendingApprovalCase(id);
         List<SubcontractOrderItem> items =
                 itemRepo.findByOrderIdOrderByLineNoAsc(id);
         Map<UUID, SubcontractOrderItem> byId = items.stream()

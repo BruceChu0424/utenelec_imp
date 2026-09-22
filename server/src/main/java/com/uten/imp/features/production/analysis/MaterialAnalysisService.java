@@ -8317,6 +8317,14 @@ public class MaterialAnalysisService {
                     cross.refs(), breakdown, references,
                     sharedFuture.approvedInboundQty(),
                     sharedFuture.availableQty(), sharedFutureClaimedQty,
+                    // 「还需安排」= 需求缺口 − 本分析自己的在途, 保持毛口径。
+                    //
+                    // 「再扣掉别人计划的公共在途、显示净数」不在本字段上就地改: 下达时的自动
+                    // 认领对 createsChildOwnership 那一类组是排除的, 在这些行上扣可认领量会把
+                    // 数做小, 计划员照着填就会少下。本字段同时还是 PreplanFutureSupplyTransferService
+                    // 与 MaterialStockReallocationService 的数量上限, 就地改语义会连带改掉那两处
+                    // 闸门的含义。净数由 ADR-102 以独立派生字段 netShortage 给出(见上方 8284 行起
+                    // 的注释), 两个数并排显示, 各自口径清楚。
                     additionalRecommended,
                     minOrderQty, orderMultipleQty,
                     selectedWarehousesAvailableQty,

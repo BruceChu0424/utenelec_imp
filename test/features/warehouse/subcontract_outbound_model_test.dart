@@ -56,6 +56,107 @@ void main() {
     );
   });
 
+  group('COMPONENT_OUTBOUND 发子件给委外商 (ADR-085 / ADR-101)', () {
+    // 这条流向此前**根本不在枚举里**：服务端原样下发 COMPONENT_OUTBOUND，客户端落
+    // unknown 并把可出量 fail-closed 成 0，于是同一行同时显示「已备齐 1000」和
+    // 「本次最多 0」，填任何数字都报超量——与子件有没有货毫无关系，有货也发不出去。
+    Map<String, dynamic> componentLine({
+      required double readyOutboundQty,
+      required double draftReservedQty,
+      double? issuableQty,
+      double? stockAvailableQty,
+    }) => {
+      'planItemId': 'component-line',
+      'orderItemId': 'component-order-line',
+      'parentGoodsId': 'subcontract-goods',
+      'parentGoodsCode': 'SC001',
+      'parentGoodsName': '委外件',
+      'goodsId': 'component-goods',
+      'goodsCode': 'C001',
+      'goodsName': '采购子件',
+      'flowMode': 'COMPONENT_OUTBOUND',
+      'preparationStatus': 'READY_OUTBOUND',
+      'plannedQty': 1000,
+      'preparedQty': 1000,
+      'issuedQty': 0,
+      'readyOutboundQty': readyOutboundQty,
+      'draftReservedQty': draftReservedQty,
+      'remainingQty': 1000,
+      // null 表示旧服务端没下发这两个字段；fromJson 对「键不存在」与「值是 null」
+      // 的处理相同，都会回落到纯计划口径。
+      'issuableQty': issuableQty,
+      'stockAvailableQty': stockAvailableQty,
+      'stockWarehouseId': 'leaf-warehouse',
+      'stockWarehouseName': '成品仓',
+      'allowedActions': ['HANDLE_OUTBOUND'],
+    };
+
+    test('流向被识别，父件身份保留，不再被 fail closed 成零', () {
+      final line = OutboundPlanLine.fromJson(
+        componentLine(readyOutboundQty: 1000, draftReservedQty: 0),
+      );
+
+      expect(line.flowMode, SubcontractOutboundFlowMode.componentOutbound);
+      expect(line.readyOutboundQty, 1000);
+      expect(line.parentGoodsName, '委外件');
+      expect(line.goodsName, '采购子件');
+    });
+
+    test('子件一件都没有时可发数量是 0，不回落成计划余量', () {
+      final line = OutboundPlanLine.fromJson(
+        componentLine(
+          readyOutboundQty: 1000,
+          draftReservedQty: 0,
+          issuableQty: 0,
+          stockAvailableQty: 0,
+        ),
+      );
+
+      expect(line.freeIssuableQty, 0);
+      expect(line.maxEditableQty, 0);
+      expect(line.stockWarehouseName, '成品仓');
+    });
+
+    test('子件到了 300 就先发 300：上限按可发量而不是计划余量', () {
+      final line = OutboundPlanLine.fromJson(
+        componentLine(
+          readyOutboundQty: 1000,
+          draftReservedQty: 0,
+          issuableQty: 300,
+          stockAvailableQty: 300,
+        ),
+      );
+
+      expect(line.freeIssuableQty, 300);
+      expect(line.maxEditableQty, 300);
+    });
+
+    test('已有草稿占住的量算自己的额度，子件续到可以把同一张草稿直接改大', () {
+      // 草稿已占 300(这 300 在 v_stock_available 里已被预留扣掉)，仓里又到了 200。
+      final line = OutboundPlanLine.fromJson(
+        componentLine(
+          readyOutboundQty: 700,
+          draftReservedQty: 300,
+          issuableQty: 200,
+          stockAvailableQty: 200,
+        ),
+      );
+
+      expect(line.freeIssuableQty, 200);
+      expect(line.maxEditableQty, 500);
+    });
+
+    test('服务端没下发可发量时回落纯计划口径，旧服务端行为不变', () {
+      final line = OutboundPlanLine.fromJson(
+        componentLine(readyOutboundQty: 1000, draftReservedQty: 0),
+      );
+
+      expect(line.issuableQty, isNull);
+      expect(line.freeIssuableQty, 1000);
+      expect(line.maxEditableQty, 1000);
+    });
+  });
+
   test('未知新流模式 fail closed，不得按历史发料行放行', () {
     final line = OutboundPlanLine.fromJson({
       'planItemId': 'plan-item-future',

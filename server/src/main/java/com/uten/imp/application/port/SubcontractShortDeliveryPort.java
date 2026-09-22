@@ -59,4 +59,14 @@ public interface SubcontractShortDeliveryPort {
      * @return 不放行时返回一句面向仓库的大白话原因; 可以入库时返回 null
      */
     String stockInHoldReason(UUID receiptId);
+
+    /**
+     * ADR-101 容差内自动结案：仓库把这张收货单的货确认入库之后，累计回厂已经落在本单约定的
+     * 允许损耗范围内、且该行的料已经全部发给委外商的，直接按接受损耗结案(损耗单 + 受控改量
+     * + 记损耗率)，不再挂在「容差内待结案」等人点一下。
+     *
+     * <p>用户口径：订 1000、允许损耗 10%，收到 900 以上就正常入库并结束这张单，差的那部分
+     * 算损耗。低于下限的两档、以及没填允许损耗的行仍然保持人工判定。
+     */
+    void settleAfterStockIn(UUID receiptId);
 }

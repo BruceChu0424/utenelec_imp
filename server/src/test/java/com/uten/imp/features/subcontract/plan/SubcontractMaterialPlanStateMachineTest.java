@@ -53,6 +53,8 @@ class SubcontractMaterialPlanStateMachineTest {
 
     private EntityManager em;
     private JdbcTemplate jdbc;
+    /** ADR-101：未定发料仓的现货行，服务端按可动用量替仓库选的那个仓。 */
+    private UUID suggestedOutboundWarehouseId = UUID.randomUUID();
     private SubcontractMaterialIssueRepository issueRepo;
     private SubcontractMaterialIssueItemRepository issueItemRepo;
     private ChainNoticeService chainNotice;
@@ -243,8 +245,13 @@ class SubcontractMaterialPlanStateMachineTest {
         int insertionIndex = lastCallIndex("insert into stock_reservations");
         assertThat(restoreIndex).isLessThan(replacementIndex);
         assertThat(replacementIndex).isLessThan(insertionIndex);
-        assertThat(oneCall("source_doc_type = 'subcontract_outbound_draft'")
-                .parameters()).containsEntry("issueId", regeneratedIssueId);
+        // ADR-101：补齐草稿时服务端已经替仓库选好有货的仓并按可动用量截了量，所以补齐那一刻
+        // 就会占住预留；仓库保存时再占一次是同一把「先释放旧的、再等量新建」，净结果仍是
+        // 一条预留。两次都必须冲着这张新草稿来，不能去动别人的。
+        assertThat(callsContaining("source_doc_type = 'subcontract_outbound_draft'"))
+                .isNotEmpty()
+                .allSatisfy(call -> assertThat(call.parameters())
+                        .containsEntry("issueId", regeneratedIssueId));
         assertThat(nativeCalls.get(insertionIndex).parameters())
                 .containsEntry("planItemId", planItemId)
                 .containsEntry("balanceId", balanceId);
@@ -508,6 +515,22 @@ class SubcontractMaterialPlanStateMachineTest {
                         && sql.contains("FROM subcontract_material_plan_items pi")),
                 ArgumentMatchers.<RowMapper<Object[]>>any(), eq(planId)))
                 .thenReturn(remaining);
+        // ADR-101：建草稿前先看该仓此刻的合格可动用量，没货就不建。本文件测的是预留与状态
+        // 机，不是库存门禁，所以一律给足现货；「没货不派活」由
+        // SubcontractMaterialPlanServiceTest 与真库全链用例钉死。
+        when(jdbc.query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM v_stock_available sa")
+                        && sql.contains("JOIN warehouses w")),
+                ArgumentMatchers.<RowMapper<Object[]>>any(), any(), any()))
+                .thenAnswer(invocation -> List.<Object[]>of(
+                        new Object[]{suggestedOutboundWarehouseId, new BigDecimal("999999")}));
+        when(jdbc.query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM v_stock_available sa")
+                        && !sql.contains("JOIN warehouses w")),
+                ArgumentMatchers.<RowMapper<BigDecimal>>any(), any(), any(), any()))
+                .thenAnswer(invocation -> List.of(new BigDecimal("999999")));
     }
 
     private Object[] finishedInboundRow(

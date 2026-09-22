@@ -3121,12 +3121,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseSubcontractOutboundGoodsCode => 'Code';
 
   @override
-  String get warehouseSubcontractOutboundLegacyParentName =>
-      'Historical parent goods name';
+  String get warehouseSubcontractOutboundParentName =>
+      'Subcontract item returned';
 
   @override
-  String get warehouseSubcontractOutboundLegacyParentCode =>
-      'Parent goods code';
+  String get warehouseSubcontractOutboundParentCode => 'Subcontract item code';
 
   @override
   String get warehouseSubcontractOutboundColor => 'Colour';
@@ -3142,6 +3141,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundIssued => 'Issued quantity';
+
+  @override
+  String get warehouseSubcontractOutboundStockAvailable =>
+      'Available in warehouse';
 
   @override
   String get warehouseSubcontractOutboundAvailable => 'Maximum this issue';

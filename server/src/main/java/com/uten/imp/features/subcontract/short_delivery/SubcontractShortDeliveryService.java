@@ -107,7 +107,19 @@ public class SubcontractShortDeliveryService
                    COALESCE(oi.goods_code_snapshot, goods.code), COALESCE(oi.goods_name_snapshot, goods.name),
                    color.name, unit.name, oi.line_no, oi.qty, oi.allowed_loss_pct,
                    COALESCE(oi.unit_rate, 1),
-                   %s AS delivered_qty
+                   %s AS delivered_qty,
+                   NOT EXISTS (
+                       SELECT 1
+                       FROM subcontract_material_plan_items plan_item
+                       JOIN subcontract_material_plans plan
+                         ON plan.id = plan_item.plan_id
+                        AND plan.status = 'OPEN'
+                        AND plan.is_deleted = FALSE
+                       WHERE plan_item.order_item_id = oi.id
+                         AND plan_item.is_deleted = FALSE
+                         AND plan_item.issued_qty
+                             < LEAST(plan_item.planned_qty, plan_item.prepared_qty)
+                   ) AS material_fully_issued
             FROM subcontract_order_items oi
             JOIN subcontract_orders order_doc ON order_doc.id = oi.order_id
             JOIN goods ON goods.id = oi.goods_id
@@ -125,6 +137,7 @@ public class SubcontractShortDeliveryService
     private final SubcontractDocumentAccessPolicy access;
     private final SubcontractWasteService wasteService;
     private final SubcontractOrderService orderService;
+    private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
     private final EmployeeNameResolver nameResolver;
     private final ObjectMapper objectMapper;
 
@@ -137,6 +150,7 @@ public class SubcontractShortDeliveryService
             SubcontractDocumentAccessPolicy access,
             SubcontractWasteService wasteService,
             SubcontractOrderService orderService,
+            com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans,
             EmployeeNameResolver nameResolver,
             ObjectMapper objectMapper) {
         this.jdbc = jdbc;
@@ -147,6 +161,7 @@ public class SubcontractShortDeliveryService
         this.access = access;
         this.wasteService = wasteService;
         this.orderService = orderService;
+        this.materialPlans = materialPlans;
         this.nameResolver = nameResolver;
         this.objectMapper = objectMapper;
     }
@@ -167,8 +182,7 @@ public class SubcontractShortDeliveryService
         for (ItemFacts fact : loadFacts(declared.keySet(), false)) {
             BigDecimal now = declared.getOrDefault(fact.orderItemId(), BigDecimal.ZERO);
             BigDecimal after = fact.deliveredQty().add(now);
-            String severity = SubcontractShortDeliveryPolicy.severity(
-                    fact.orderedQty(), fact.allowedLossPct(), after);
+            String severity = severityOf(fact, after);
             if (severity == null) continue;
             OpenCase open = openCases.get(fact.orderItemId());
             boolean waitingActive = open != null && STATUS_WAITING.equals(open.status())
@@ -187,9 +201,13 @@ public class SubcontractShortDeliveryService
     }
 
     /**
-     * 入库放行闸(ADR-098 修订, 用户口径「先锁住, 先不入库」)：这张收货单所属的委外订货单
-     * 只要还有待委外判定的回厂短交(含分批等待已过预计到齐日), 就先不放行入库；委外判定成
-     * 「分批到货」或「接受损耗」之后自动解锁。中性档(容差内 / 未设允许损耗)既不通知也不锁。
+     * 入库放行闸(ADR-098 修订, 用户口径「先锁住, 先不入库」)：这张收货单里**哪一行**还有待
+     * 委外判定的回厂短交(含分批等待已过预计到齐日), 就先不放行入库；委外判定成「分批到货」
+     * 或「接受损耗」之后自动解锁。中性档(容差内 / 未设允许损耗)既不通知也不锁。
+     *
+     * <p>ADR-101 把关联口径从「同一张订货单」收到「同一行订货明细」：一张委外单多个货品时,
+     * 一行短交不该把同单其它已经足额到齐的货一起冻在待入库——那与「分批发货、分批入库」
+     * 直接冲突, 仓库会看到一批完全正常的货莫名其妙上不了架。
      */
     @Override
     @Transactional(readOnly = true)
@@ -205,7 +223,8 @@ public class SubcontractShortDeliveryService
                 FROM subcontract_receipt_items receipt_item
                 JOIN subcontract_order_items order_item ON order_item.id = receipt_item.order_item_id
                 JOIN subcontract_orders order_doc ON order_doc.id = order_item.order_id
-                JOIN subcontract_short_delivery_cases c ON c.order_id = order_doc.id
+                JOIN subcontract_short_delivery_cases c
+                  ON c.order_item_id = receipt_item.order_item_id
                 LEFT JOIN units unit ON unit.id = c.unit_id
                 WHERE receipt_item.receipt_id = ?
                   AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
@@ -253,6 +272,10 @@ public class SubcontractShortDeliveryService
                 continue;
             }
             if (open == null) {
+                // ADR-101：料还没全部发给委外商时不开案件——供应商手上只有已经发过去的那部分，
+                // 这时候回厂少是分批发料的常态，不是短交。料发完之后由下一次登记，或者
+                // settleAfterStockIn(仓库确认入库那一刻)补开。
+                if (!fact.materialFullyIssued()) continue;
                 openCase(fact, receiptId, receiptBillNo, severity, actorUser, actorEmployee, acknowledged);
                 continue;
             }
@@ -346,7 +369,16 @@ public class SubcontractShortDeliveryService
             publishResolved(caseId, locked.version() + 1, "WAIT_MORE_DECIDED");
             return detail(caseId);
         }
-        // 接受损耗结案
+        return acceptLoss(caseId, locked, fact, note, actorUser, actorEmployee);
+    }
+
+    /**
+     * 「接受损耗·结案」的本体：损耗单 → 案件落 ACCEPTED_LOSS → 受控改量到累计回厂量。
+     * 人工判定({@link #decide})与容差内自动结案({@link #settleAfterStockIn})共用，
+     * 权限/归属校验在各自入口做完。
+     */
+    private CaseDetail acceptLoss(UUID caseId, LockedCase locked, ItemFacts fact, String note,
+                                  UUID actorUser, UUID actorEmployee) {
         BigDecimal shortfall = SubcontractShortDeliveryPolicy.shortfallQty(fact.orderedQty(), fact.deliveredQty());
         if (shortfall.signum() <= 0) {
             closeCase(new OpenCase(caseId, locked.status(), null, locked.version(), locked.ownerEmployeeId()),
@@ -410,6 +442,70 @@ public class SubcontractShortDeliveryService
         appendEvent(caseId, "ACCEPT_LOSS_DECIDED", actorUser, actorEmployee, snapshot);
         publishResolved(caseId, locked.version() + 1, "ACCEPT_LOSS_DECIDED");
         return detail(caseId);
+    }
+
+    /**
+     * ADR-101(推翻 ADR-098 §四「不做容差内自动结案」)：仓库把货确认入库的那一刻，
+     * 累计回厂已经落在允许损耗范围内、并且本行的料已经全部发出去了，就直接按接受损耗结案。
+     *
+     * <p>用户口径：「需要 1000 个、损耗比 10%，我仓库收货只要大于 900 就能正常入库，然后这个
+     * 单子结束，不需要再等那 100 个了，但这 100 个算损耗件。」允许损耗本身就是双方事先约定
+     * 的「交到这个数就算交完」，所以它就是 ADR-098 当初说缺的那个「供应商说交完了」的信号；
+     * 再要人去判定页点一次，只是把一件已经谈好的事又挂起来等人。
+     *
+     * <p>只自动结 WITHIN_TOLERANCE 一档：没填允许损耗(UNSET_TOLERANCE)时没有约定可依，
+     * 低于下限的两档本来就要委外自己判分批还是认损耗，都保持人工。
+     *
+     * <p>同一张收货单可能一次结掉同一订货单的多行。逐行结案能走通，靠的是
+     * {@code changeQtyForShortDelivery} 不再受「无在办财务复核」那道闸约束——否则第二行会被
+     * 第一行自己开出来的复核 case 挡死，连它刚开的损耗单一起回滚。
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void settleAfterStockIn(UUID receiptId) {
+        if (receiptId == null) return;
+        List<UUID> orderItemIds = jdbc.queryForList("""
+                SELECT DISTINCT order_item_id
+                FROM subcontract_receipt_items
+                WHERE receipt_id = ? AND order_item_id IS NOT NULL
+                  AND COALESCE(is_deleted, FALSE) = FALSE
+                ORDER BY order_item_id
+                """, UUID.class, receiptId);
+        if (orderItemIds.isEmpty()) return;
+        UUID actorUser = currentUser.requireId();
+        UUID actorEmployee = currentUser.requireEmployeeId();
+        Map<UUID, OpenCase> openCases = openCases(orderItemIds, true);
+        List<ItemFacts> tolerant = new ArrayList<>();
+        for (ItemFacts fact : loadFacts(orderItemIds, false)) {
+            if (!fact.materialFullyIssued()) continue;
+            String severity = SubcontractShortDeliveryPolicy.severity(
+                    fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
+            if (severity == null) continue;
+            OpenCase open = openCases.get(fact.orderItemId());
+            if (open == null) {
+                // 料是在最后一批货到齐之后才发完的：登记那一刻还判不出短交，这里补开。
+                openCase(fact, receiptId, null, severity, actorUser, actorEmployee, true);
+                open = openCases(List.of(fact.orderItemId()), true).get(fact.orderItemId());
+                if (open == null) continue;
+            }
+            if (SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE.equals(severity)
+                    && STATUS_PENDING.equals(open.status())
+                    && fact.deliveredQty().signum() > 0
+                    && autoCloseWouldSucceed(fact)) {
+                tolerant.add(fact);
+            }
+        }
+        if (tolerant.isEmpty()) return;
+        for (ItemFacts fact : tolerant) {
+            OpenCase open = openCases(List.of(fact.orderItemId()), true).get(fact.orderItemId());
+            if (open == null) continue;
+            acceptLoss(open.id(),
+                    new LockedCase(open.id(), open.status(), fact.orderItemId(), fact.orderId(),
+                            open.version(), open.ownerEmployeeId(),
+                            SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE),
+                    fact, "累计回厂已在本单允许损耗范围内，系统按约定的允许损耗自动结案",
+                    actorUser, actorEmployee);
+        }
     }
 
     // ===================== 读模型 =====================
@@ -635,7 +731,9 @@ public class SubcontractShortDeliveryService
             UUID orderItemId, UUID orderId, String orderBillNo, UUID supplierId, UUID makerId, UUID purchaserId,
             UUID goodsId, UUID colorId, UUID unitId, String goodsCode, String goodsName, String colorName,
             String unitName, Integer lineNo, BigDecimal orderedQty, BigDecimal allowedLossPct,
-            BigDecimal orderUnitRate, BigDecimal deliveredQty) {
+            BigDecimal orderUnitRate, BigDecimal deliveredQty,
+            /** 本行的料是不是已经全部发给委外商了(没有 OPEN 计划行还留着未发的量)。 */
+            boolean materialFullyIssued) {
         String goodsLabel() {
             StringBuilder label = new StringBuilder();
             if (goodsName != null && !goodsName.isBlank()) label.append(goodsName);
@@ -643,6 +741,41 @@ public class SubcontractShortDeliveryService
             if (colorName != null && !colorName.isBlank()) label.append(label.isEmpty() ? "" : " ").append(colorName);
             return label.toString();
         }
+    }
+
+    /**
+     * 自动结案的前置体检：结案第三步的受控改量有一条下限——订货量不得低于「供应商手上还
+     * 没交代的料」。结案第一步的损耗单会把短交那一份核销掉，所以只要供应商手上的料不超过
+     * 原订货量，改量就一定过得去。
+     *
+     * <p>为什么必须先体检而不是 try/catch：这段跑在**仓库确认入库的同一个事务**里，
+     * changeQtyForShortDelivery 一旦抛异常就会把整个事务标成只能回滚——货就入不了库了。
+     * 自动结案是锦上添花，绝不能反过来把仓库正常的入库动作搞失败。体检没过的行原样留着，
+     * 由人去判定页按 ADR-098 的老路处理(多半是供应商手上还有多发的料，要先退料或记损耗)。
+     */
+    private boolean autoCloseWouldSucceed(ItemFacts fact) {
+        try {
+            BigDecimal supplierHeld = materialPlans.minimumOrderQtyFromIssued(
+                    fact.orderItemId(), fact.orderUnitRate());
+            return supplierHeld == null || supplierHeld.compareTo(fact.orderedQty()) <= 0;
+        } catch (ApiException probeFailed) {
+            // 历史行缺冻结单耗之类推算不出来的，一律留给人工，不在入库路径上冒险。
+            return false;
+        }
+    }
+
+    /**
+     * 程度判定的唯一入口(ADR-101)：本行的料还没全部发给委外商时一律不判短交。
+     *
+     * <p>委外是「先发料、后回厂」，分批发料时供应商手上只有已经发过去的那部分，回厂自然
+     * 少于订货量。此前按整张订货行的数量直判，于是每一批回厂都会被判成严重短交、开红档
+     * 案件、通知委外、并把整单锁住不让入库——分批发货在这条口径下根本走不通。
+     * 料发完之后(含仓库「不再出仓」关掉余量)再判，口径与用户给的 1000 / 10% / 900 完全一致。
+     */
+    private String severityOf(ItemFacts fact, BigDecimal deliveredQty) {
+        if (!fact.materialFullyIssued()) return null;
+        return SubcontractShortDeliveryPolicy.severity(
+                fact.orderedQty(), fact.allowedLossPct(), deliveredQty);
     }
 
     private record OpenCase(UUID id, String status, LocalDate expectedCompleteBy, long version,
@@ -661,7 +794,8 @@ public class SubcontractShortDeliveryService
                 rs.getObject(7, UUID.class), rs.getObject(8, UUID.class), rs.getObject(9, UUID.class),
                 rs.getString(10), rs.getString(11), rs.getString(12), rs.getString(13),
                 rs.getObject(14) == null ? null : rs.getInt(14),
-                rs.getBigDecimal(15), rs.getBigDecimal(16), rs.getBigDecimal(17), rs.getBigDecimal(18)),
+                rs.getBigDecimal(15), rs.getBigDecimal(16), rs.getBigDecimal(17), rs.getBigDecimal(18),
+                rs.getBoolean(19)),
                 ids.toArray());
     }
 

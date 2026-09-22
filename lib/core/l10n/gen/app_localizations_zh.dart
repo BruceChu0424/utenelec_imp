@@ -3005,10 +3005,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundGoodsCode => '编号';
 
   @override
-  String get warehouseSubcontractOutboundLegacyParentName => '历史父件名称';
+  String get warehouseSubcontractOutboundParentName => '回厂交回的委外件';
 
   @override
-  String get warehouseSubcontractOutboundLegacyParentCode => '父件编号';
+  String get warehouseSubcontractOutboundParentCode => '委外件编号';
 
   @override
   String get warehouseSubcontractOutboundColor => '颜色';
@@ -3024,6 +3024,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundIssued => '已出库';
+
+  @override
+  String get warehouseSubcontractOutboundStockAvailable => '仓内可动用';
 
   @override
   String get warehouseSubcontractOutboundAvailable => '本次最多';

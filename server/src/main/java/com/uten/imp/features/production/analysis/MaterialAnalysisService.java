@@ -7965,6 +7965,16 @@ public class MaterialAnalysisService {
                     cross.refs(), breakdown, references,
                     sharedFuture.approvedInboundQty(),
                     sharedFuture.availableQty(), sharedFutureClaimedQty,
+                    // 「还需安排」= 需求缺口 − 本分析自己的在途，保持毛口径。
+                    //
+                    // 「再扣掉别人计划的公共在途、显示净数」(用户 2026-09-21 口径)**不在这里做**：
+                    // 下达时的自动认领对两类组是排除的(createsChildOwnership——自制组、以及
+                    // 需要前置自制的委外组，见 MaterialAnalysisCommandService 的下达分流)，在
+                    // 这些行上扣可认领量会把数做小，计划员照着填就会少下。要做对得按行判定
+                    // 「本行下达时到底会不会自动认领」，那个判据要随物料分析主表一起落，
+                    // 由主表改造那一路以独立派生字段给出，不改本字段——本字段同时是
+                    // PreplanFutureSupplyTransferService 与 MaterialStockReallocationService
+                    // 的数量上限，就地改语义会连带改掉那两处闸门的含义。
                     demandGap.subtract(activeFutureCoverageQty)
                             .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING),
                     minOrderQty, orderMultipleQty,

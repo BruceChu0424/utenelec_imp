@@ -45,6 +45,7 @@ import static org.mockito.Mockito.when;
 class SubcontractMaterialPlanServiceTest {
 
     private static final UUID ORDER_ID = UUID.randomUUID();
+    private static final UUID OUTBOUND_WAREHOUSE_ID = UUID.randomUUID();
     private static final UUID SUPPLIER_ID = UUID.randomUUID();
     private static final UUID ACTOR_ID = UUID.randomUUID();
     private static final UUID DIRECT_ITEM_ID = UUID.randomUUID();
@@ -78,6 +79,8 @@ class SubcontractMaterialPlanServiceTest {
     /** V581：货品 → 其唯一叶子子件行 [component_goods_id, color_id, unit_id, qty]；空=不是该形态。 */
     private Map<UUID, List<Object[]>> soleComponentRowsByGoods;
     private Map<UUID, BigDecimal> availableBaseByGoods;
+    /** ADR-101：建出仓草稿时该仓能动用多少现货；0 表示一件都没有，本轮不该建草稿。 */
+    private BigDecimal onHandForOutbound;
 
     @BeforeEach
     void setUp() {
@@ -111,6 +114,24 @@ class SubcontractMaterialPlanServiceTest {
                         && sql.contains("FROM subcontract_material_plan_items pi")),
                 ArgumentMatchers.<RowMapper<Object[]>>any(), any(Object.class)))
                 .thenAnswer(invocation -> remainingRows);
+        // ADR-101：建草稿前按「该仓此刻的合格可动用量」截断，没货就不建。
+        // 默认给足现货，好让既有用例仍然测「批准时排计划、建草稿、通知仓库」这件事本身；
+        // 「没货不派活」由 componentOutboundWithoutChildStockCreatesNoDraftAndNoNotice 单独钉。
+        onHandForOutbound = new BigDecimal("999999");
+        when(jdbc.query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM v_stock_available sa")
+                        && sql.contains("JOIN warehouses w")),
+                ArgumentMatchers.<RowMapper<Object[]>>any(), any(), any()))
+                .thenAnswer(invocation -> onHandForOutbound.signum() <= 0
+                        ? List.<Object[]>of()
+                        : List.<Object[]>of(new Object[]{OUTBOUND_WAREHOUSE_ID, onHandForOutbound}));
+        when(jdbc.query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM v_stock_available sa")
+                        && !sql.contains("JOIN warehouses w")),
+                ArgumentMatchers.<RowMapper<BigDecimal>>any(), any(), any(), any()))
+                .thenAnswer(invocation -> List.of(onHandForOutbound));
 
         DocNumberService docNumber = mock(DocNumberService.class);
         when(docNumber.nextNumber(eq(DocNumberPrefix.SUB_MATERIAL_ISSUE)))
@@ -214,6 +235,12 @@ class SubcontractMaterialPlanServiceTest {
         bomRowsByGoods = Map.of(MAKE_GOODS_ID, rows(new Object[]{
                 UUID.randomUUID(), COMPONENT_GOODS_ID, null, new BigDecimal("3")}));
         availableBaseByGoods = Map.of(MAKE_GOODS_ID, new BigDecimal("99"));
+        // ADR-101：现货充足这一路真的会排出一张草稿，仓库才会被叫。
+        remainingRows = rows(new Object[]{
+                UUID.randomUUID(), MAKE_ITEM_ID, MAKE_GOODS_ID, null,
+                MAKE_GOODS_ID, MAKE_BASE_UNIT_ID, new BigDecimal("2"),
+                new BigDecimal("14.0000"), new BigDecimal("14.0000"), null,
+                WAREHOUSE_ID, "DIRECT_OUTBOUND"});
 
         service.createPlanOnApproval(ORDER_ID);
 
@@ -254,6 +281,12 @@ class SubcontractMaterialPlanServiceTest {
                 UUID.randomUUID(), COMPONENT_GOODS_ID, null, new BigDecimal("3")}));
         // 需求 14、现货 5 → DIRECT 行 5 + MAKE 缺口行 9。
         availableBaseByGoods = Map.of(MAKE_GOODS_ID, new BigDecimal("5"));
+        // ADR-101：能直发的那 5 个排出一张草稿，仓库被叫；缺口那 9 个仍去交计划部。
+        remainingRows = rows(new Object[]{
+                UUID.randomUUID(), MAKE_ITEM_ID, MAKE_GOODS_ID, null,
+                MAKE_GOODS_ID, MAKE_BASE_UNIT_ID, new BigDecimal("2"),
+                new BigDecimal("5.0000"), new BigDecimal("5.0000"), null,
+                WAREHOUSE_ID, "DIRECT_OUTBOUND"});
 
         service.createPlanOnApproval(ORDER_ID);
 
@@ -498,6 +531,51 @@ class SubcontractMaterialPlanServiceTest {
         verify(chainNotice, never()).notifySubcontractPrepareShortage(any());
     }
 
+    /**
+     * ADR-101：子件还在采购路上时批准订货——计划行照落，但**不开出仓草稿、不叫仓库**。
+     * 在此之前这里会开一张满量草稿并发通知，仓库点进去拣不出货，保存才被「合格可动用库存
+     * 不足」打回，四个岗位白跑一趟。
+     */
+    @Test
+    void soleLeafComponentWithoutChildStockPlansTheLineButStagesNoWarehouseWork() {
+        BigDecimal bomQty = new BigDecimal("3");
+        BigDecimal componentUnitQty = new BigDecimal("6.000000");
+        BigDecimal plannedComponentQty = new BigDecimal("60.0000");
+        orderRows = rows(new Object[]{ORDER_ID, "EO-SOLE-NOSTOCK", SUPPLIER_ID, null});
+        orderItemRows = rows(new Object[]{
+                SOLE_ITEM_ID, SOLE_GOODS_ID, null, new BigDecimal("10"), 1,
+                new BigDecimal("2"), DOCUMENT_UNIT_ID, null});
+        goodsRows = rows(new Object[]{
+                SOLE_GOODS_ID, "FG-S", "单一子件委外件", SOLE_BASE_UNIT_ID, "C-01"});
+        bomRowsByGoods = Map.of(SOLE_GOODS_ID, rows(new Object[]{
+                UUID.randomUUID(), COMPONENT_GOODS_ID, null, bomQty}));
+        soleComponentRowsByGoods = Map.of(SOLE_GOODS_ID, rows(new Object[]{
+                COMPONENT_GOODS_ID, null, COMPONENT_UNIT_ID, bomQty}));
+        remainingRows = rows(new Object[]{
+                UUID.randomUUID(), SOLE_ITEM_ID, SOLE_GOODS_ID, null,
+                COMPONENT_GOODS_ID, COMPONENT_UNIT_ID, componentUnitQty,
+                plannedComponentQty, plannedComponentQty, null, null,
+                "COMPONENT_OUTBOUND"});
+        // 子件一件都没有。
+        onHandForOutbound = BigDecimal.ZERO;
+
+        service.createPlanOnApproval(ORDER_ID);
+
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(SOLE_ITEM_ID), eq(1),
+                eq(SOLE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(COMPONENT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(COMPONENT_UNIT_ID), eq(componentUnitQty), eq(plannedComponentQty),
+                eq("COMPONENT_OUTBOUND"), eq("READY_OUTBOUND"), eq(plannedComponentQty),
+                ArgumentMatchers.<UUID>isNull(), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(issueItemRepo, never()).save(any());
+        verify(chainNotice, never()).notifySubcontractOutboundReady(any());
+        verify(chainNotice, never()).notifySubcontractPrepareShortage(any());
+    }
+
     private void stubNativeQueriesBySql() {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
@@ -547,6 +625,14 @@ class SubcontractMaterialPlanServiceTest {
         }
         if (sql.contains("FROM goods_bom_items bom")) {
             return bomRowsByGoods.getOrDefault(parameters.get("goodsId"), List.of());
+        }
+        if (sql.contains("SELECT issue_item.id, issue_item.plan_item_id, issue_item.qty")) {
+            // ADR-101 起草稿带着建议仓建出来，于是 createDraftForLines 末尾真的会走进
+            // reserveDraft。本文件是「批准时怎么排计划、建什么草稿、通知谁」的聚焦单测，
+            // 预留与库存占用由 SubcontractMaterialPlanStateMachineTest 和真库全链
+            // SubcontractSoleComponentUnlockEndToEndTest 覆盖；这里返回空行让它提前返回，
+            // 不把整套预留 SQL 搬进来。
+            return List.of();
         }
         if (sql.contains("FROM subcontract_material_issue_items")
                 && sql.contains("WHERE issue_id")) {

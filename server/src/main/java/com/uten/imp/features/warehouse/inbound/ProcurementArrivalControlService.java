@@ -326,6 +326,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 siblingOpenExceptionReceipts(orderType, receiptId);
         Map<UUID, ArrivalCapacity> capacities = new HashMap<>();
         boolean blocked = false;
+        boolean blockedBySuppliedMaterial = false;
         boolean receiptBoundAllowance = false;
         for (ArrivalRow row : rows) {
             String blockingSibling = siblingOpenException.get(row.orderItemId());
@@ -352,6 +353,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             } else if (row.declaredQty().compareTo(available) > 0) {
                 registerException(row, available, exception);
                 blocked = true;
+                if (capacity.materialBound) blockedBySuppliedMaterial = true;
             } else if (exception != null
                     && !List.of(CLOSED, RECEIPT_POSTED, "CANCELED")
                             .contains(exception.status())) {
@@ -365,8 +367,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             bindReceiptAllowance(orderType, receiptId);
         }
         if (blocked) {
-            throw new ProcurementArrivalBlockedException(
-                    "实际到货超过财务已批准的可收数量；本次未入库、未立应付，已转交财务审核组共享待审");
+            throw new ProcurementArrivalBlockedException(blockedBySuppliedMaterial
+                    ? "回厂数量超过我方发给委外商的材料能做出来的数量，多出来的部分用的是委外商"
+                        + "自己的材料；本次未入库、未立应付，已转交财务审核组确认价格和归属"
+                    : "实际到货超过财务已批准的可收数量；本次未入库、未立应付，已转交财务审核组共享待审");
         }
     }
 
@@ -2180,14 +2184,79 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         BigDecimal normal=nonNegative(row.financeApprovedQty().add(zero(row.returnedQty()))
                 .add(allocated).subtract(zero(row.receivedQty())));
         BigDecimal replacement=nonNegative(returnedIqcFailureQty(orderType,row.orderItemId()).subtract(allocated));
-        return new ArrivalCapacity(normal,replacement);
+        // ADR-101 委外：回厂上限除了财务批准量，还有一条更硬的物理上限——我方一共发出去多少料。
+        // 发了 1000 个子件就只能交回 1000 个委外件；交回 1050 说明多出来的 50 个用的是委外商
+        // 自己的料，那是价格和归属问题，要财务定案，而不是仓库在登记页面上被一句
+        // 「禁止超量回仓」挡回去。这里把上限压到实际供料量，超出的部分照 ADR-019 落
+        // PENDING_FINANCE 到货异常：货不入库、不立应付，转到货异常任务中心等财务。
+        // 返修补回(replacement)不压：那是拿已退回的不合格品换回来的，本来就不占新发的料。
+        BigDecimal supplied=subcontractSuppliedCapacity(orderType,row);
+        boolean materialBound=false;
+        if(supplied!=null){
+            BigDecimal materialRemaining=nonNegative(supplied.subtract(zero(row.receivedQty())));
+            if(materialRemaining.compareTo(normal)<0){normal=materialRemaining;materialBound=true;}
+        }
+        return new ArrivalCapacity(normal,replacement,materialBound);
+    }
+
+    /**
+     * 委外订货明细「我方已发出的料」折算到订货单位的合计；没有新流发料计划的历史单返回 null
+     * (V304 之前的手工发料不受这条物理上限约束，口径与既有守恒守卫一致)。
+     *
+     * <p>发子件的流向(COMPONENT_OUTBOUND)按冻结单耗倒扣：子件基本量 ÷ 冻结单耗 = 目标件订货
+     * 单位数；发目标件的三种流向按订货换算率折算。缺冻结单耗的行按 NULL 传播、不计入，
+     * 与 {@code SubcontractOutboundFlowSql} 的 fail-closed 口径一致。
+     */
+    private BigDecimal subcontractSuppliedCapacity(String orderType,ArrivalRow row) {
+        if(!SUBCONTRACT.equals(orderType))return null;
+        Boolean newFlow=jdbc.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1 FROM subcontract_material_plan_items plan_item
+                    WHERE plan_item.order_item_id = ?
+                      AND plan_item.flow_mode IN (
+                          'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
+                      AND plan_item.is_deleted = FALSE)
+                """,Boolean.class,row.orderItemId());
+        if(!Boolean.TRUE.equals(newFlow))return null;
+        return zero(jdbc.queryForObject("""
+                SELECT COALESCE(SUM(CASE
+                         WHEN plan_item.flow_mode = 'COMPONENT_OUTBOUND'
+                           THEN ROUND(issue_item.qty * COALESCE(issue_item.unit_rate, 1)
+                                / NULLIF(issue_item.frozen_unit_qty, 0), 4)
+                         ELSE issue_item.qty * COALESCE(issue_item.unit_rate, 1)
+                              / NULLIF(COALESCE(order_unit.unit_rate, 1), 0)
+                       END), 0)
+                FROM subcontract_material_issue_items issue_item
+                JOIN subcontract_material_issues issue
+                  ON issue.id = issue_item.issue_id
+                 AND issue.status = 1 AND issue.is_deleted = FALSE
+                JOIN subcontract_material_plan_items plan_item
+                  ON plan_item.id = issue_item.plan_item_id
+                 AND plan_item.flow_mode IN (
+                     'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
+                 AND plan_item.is_deleted = FALSE
+                JOIN subcontract_order_items order_unit
+                  ON order_unit.id = issue_item.order_item_id
+                WHERE issue_item.order_item_id = ?
+                  AND issue_item.is_deleted = FALSE
+                """,BigDecimal.class,row.orderItemId()));
     }
 
     /** Normal arrivals cannot consume a physically returned replacement entitlement. */
     private static final class ArrivalCapacity {
         private BigDecimal normal;
         private BigDecimal replacement;
-        private ArrivalCapacity(BigDecimal normal,BigDecimal replacement){this.normal=normal;this.replacement=replacement;}
+        /**
+         * 委外专用(ADR-101)：本行的上限是被「我方发出去的料」压住的，而不是被财务批准量压住的。
+         * 超出这一档意味着多出来的成品用的是委外商自己的料，文案要照实说，不能沿用
+         * 「超过财务已批准的可收数量」。
+         */
+        private final boolean materialBound;
+        private ArrivalCapacity(BigDecimal normal,BigDecimal replacement){
+            this(normal,replacement,false);
+        }
+        private ArrivalCapacity(BigDecimal normal,BigDecimal replacement,boolean materialBound){
+            this.normal=normal;this.replacement=replacement;this.materialBound=materialBound;}
         private boolean usesReplacement(String intent){
             if(intent==null&&normal.signum()>0&&replacement.signum()>0)
                 throw new ApiException(ErrorCode.CONFLICT,"该订单同时存在正常待到货和已退未补数量，请明确选择到货来源");

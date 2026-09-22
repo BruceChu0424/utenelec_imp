@@ -226,7 +226,9 @@ class ProcurementIqcStockInBatchExecutionTest {
             when(user.requireEmployeeId()).thenReturn(UUID.randomUUID());
             service = new ProcurementIqcStockInService(em, stock, user, mock(TxSessionVars.class),
                     mock(ProductionSupplyTransitionPort.class), mock(ProductionSubcontractSupplyTransitionPort.class),
-                    production, peg, mock(ChainNoticeService.class), locks, consideration);
+                    production, peg,
+                    mock(com.uten.imp.application.port.SubcontractOutboundWakePort.class),
+                    mock(ChainNoticeService.class), locks, consideration);
             service.setInboundAllocationRead(allocations);
             ReflectionTestUtils.setField(service, "warehouseScopes", warehouses);
             when(locks.stockIn(any())).thenReturn(guard);

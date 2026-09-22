@@ -60,7 +60,19 @@ public final class OutboundContracts {
             UUID preparationAnalysisId,
             UUID preparationAnalysisItemId,
             String blocker,
-            List<String> allowedActions) {
+            List<String> allowedActions,
+            /**
+             * 此刻还能再填多少 = min(计划余量, 该仓合格可动用量)，两边都已扣掉未审草稿占用。
+             * 只有真按现货出仓的 DIRECT / COMPONENT 两种流向算得出来，**一个仓都没货时是 0
+             * 而不是 null**；前置自制两种流向吃的是专属预留、历史 LEGACY 行不经出仓预留校验，
+             * 一律 null，客户端据此回落纯计划口径。
+             */
+            BigDecimal issuableQty,
+            /** [stockWarehouseId] 里该货品/颜色当前的合格可动用量，不含本计划行的草稿占用。 */
+            BigDecimal stockAvailableQty,
+            /** 上面两个数算在哪个仓：已定发料仓就是它，未定则是当前可动用量最多的作业叶仓。 */
+            UUID stockWarehouseId,
+            String stockWarehouseName) {
         public OutboundPlanLine {
             allowedActions = allowedActions == null ? List.of() : List.copyOf(allowedActions);
         }

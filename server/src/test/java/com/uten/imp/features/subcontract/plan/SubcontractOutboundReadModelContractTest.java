@@ -49,7 +49,10 @@ class SubcontractOutboundReadModelContractTest {
                 new BigDecimal("20"), new BigDecimal("4"), new BigDecimal("3"),
                 "MAKE_THEN_OUTBOUND", "READY_OUTBOUND", new BigDecimal("20"),
                 new BigDecimal("13"), new BigDecimal("16"),
-                UUID.randomUUID(), UUID.randomUUID(), null, mutableActions);
+                UUID.randomUUID(), UUID.randomUUID(), null, mutableActions,
+                // 前置自制流向吃的是专属预留而不是公共可动用量，可发量一律 null，
+                // 客户端据此回落纯计划口径(ADR-101)。
+                null, null, null, null);
         mutableActions.clear();
 
         JsonNode json = mapper.valueToTree(line);

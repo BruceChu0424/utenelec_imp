@@ -14,6 +14,13 @@ String subcontractOutboundQuantity(double value) =>
     ? value.toStringAsFixed(0)
     : value.toString();
 
+/// 这两种流向发出去的都不是委外件本身，父件列才有意义：历史 V304 的 BOM 子件
+/// 发料单，以及 ADR-085「只有一个叶子子件」时直接发那颗子件。其余流向发的就是
+/// 委外件自己，再列一遍父件只会让人以为发错货。
+bool _showsParentGoods(SubcontractOutboundFlowMode mode) =>
+    mode == SubcontractOutboundFlowMode.legacyBomComponent ||
+    mode == SubcontractOutboundFlowMode.componentOutbound;
+
 /// One plan UUID remains attached to each editable quantity, including when
 /// several orders contain the same goods and colour.
 class SubcontractOutboundLineDraft {
@@ -44,11 +51,16 @@ class SubcontractOutboundLineDraft {
 
   // A plan can have drafts in several real warehouses. Reuse this draft's
   // quantity only; other drafts' reservations belong to their own EC documents.
-  double get maxEditableQty => line.maxEditableQty == 0
-      ? 0
-      : draftItemId == null
-      ? line.readyOutboundQty
-      : ownDraftQty;
+  //
+  // 服务端下发可发量时，已有草稿的上限是「还空着的可发量 + 本草稿已占的量」——
+  // 子件陆续到货后仓库可以把这张草稿直接改大，不必删了重建(分批发料的常态)。
+  double get maxEditableQty {
+    if (line.maxEditableQty == 0) return 0;
+    if (draftItemId == null) return line.freeIssuableQty;
+    return line.issuableQty == null
+        ? ownDraftQty
+        : line.freeIssuableQty + ownDraftQty;
+  }
 
   String? validate(AppLocalizations l10n) {
     if (!selected) return null;
@@ -205,6 +217,9 @@ class _SubcontractOutboundDetailTableState
         'warehouse',
         'quantity',
         'unit',
+        // 「仓内可动用」紧挨「本次最多」之前：上限被库存压住时，仓库一眼看出
+        // 是计划没量还是仓里没货，不用靠保存被打回来才知道。
+        'stockAvailable',
         'maximum',
         'place',
         'lineRemark',
@@ -215,8 +230,9 @@ class _SubcontractOutboundDetailTableState
         'order',
         'supplier',
         'status',
-        'legacyParentName',
-        'legacyParentCode',
+        // 发出去的不是委外件本身的两种流向才有父件列(历史 BOM 子件发料、单一子件直发)。
+        'parentGoodsName',
+        'parentGoodsCode',
       ],
       selectable: widget.editable && widget.selectable,
       selectionEnabled: widget.editable,
@@ -263,28 +279,25 @@ class _SubcontractOutboundDetailTableState
           130,
           (row) => row.draft.line.goodsCode ?? '—',
         ),
+        // 发出去的不是委外件本身的两种流向(历史 V304 的 BOM 子件发料，以及
+        // ADR-085 的单一子件直发)才有父件可显示：上面两列是**发出去的子件**，
+        // 这两列是**回厂交回的委外件**，仓库要能一眼看出发的和收的不是同一个货号。
         if (widget.rows.any(
-          (row) =>
-              row.draft.line.flowMode ==
-              SubcontractOutboundFlowMode.legacyBomComponent,
+          (row) => _showsParentGoods(row.draft.line.flowMode),
         )) ...[
           textColumn(
-            'legacyParentName',
-            l10n.warehouseSubcontractOutboundLegacyParentName,
+            'parentGoodsName',
+            l10n.warehouseSubcontractOutboundParentName,
             200,
-            (row) =>
-                row.draft.line.flowMode ==
-                    SubcontractOutboundFlowMode.legacyBomComponent
+            (row) => _showsParentGoods(row.draft.line.flowMode)
                 ? row.draft.line.parentGoodsName ?? '—'
                 : '—',
           ),
           textColumn(
-            'legacyParentCode',
-            l10n.warehouseSubcontractOutboundLegacyParentCode,
+            'parentGoodsCode',
+            l10n.warehouseSubcontractOutboundParentCode,
             130,
-            (row) =>
-                row.draft.line.flowMode ==
-                    SubcontractOutboundFlowMode.legacyBomComponent
+            (row) => _showsParentGoods(row.draft.line.flowMode)
                 ? row.draft.line.parentGoodsCode ?? '—'
                 : '—',
           ),
@@ -316,6 +329,18 @@ class _SubcontractOutboundDetailTableState
           l10n.warehouseSubcontractOutboundIssued,
           (row) => row.draft.line.issuedQty,
         ),
+        // 「仓内可动用」是这次能不能发得出去的真正原因，排在「本次最多」前面：
+        // 上限被库存压住时，仓库不用猜是计划没量还是仓里没货。
+        if (widget.rows.any((row) => row.draft.line.stockAvailableQty != null))
+          quantityColumn(
+            'stockAvailable',
+            l10n.warehouseSubcontractOutboundStockAvailable,
+            // 服务端下发的是「还空着的可动用量」——本草稿已经占住的那部分已经被预留扣掉了。
+            // 仓库要看的是「这个仓里这张单能动多少」，所以把自己占的量加回来，
+            // 否则一张刚开出来的草稿会显示「仓内可动用 0 / 本次最多 6」，像是自相矛盾。
+            (row) =>
+                (row.draft.line.stockAvailableQty ?? 0) + row.draft.ownDraftQty,
+          ),
         quantityColumn(
           'maximum',
           l10n.warehouseSubcontractOutboundAvailable,

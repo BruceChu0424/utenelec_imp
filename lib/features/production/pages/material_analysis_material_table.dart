@@ -809,10 +809,9 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 直到用户顺手又选了一个特例键，总闸翻 true，先前那个筛选才突然追认生效。
   /// 2026-09-22 对抗复查抓出来的真缺陷(新增的十个通用筛选当时全是死的)。
   @override
-  bool get _hasActiveMaterialTableFilters =>
-      _materialTableFilters.values.any(
-        (value) => value != null && value.isNotEmpty,
-      );
+  bool get _hasActiveMaterialTableFilters => _materialTableFilters.values.any(
+    (value) => value != null && value.isNotEmpty,
+  );
 
   /// 投影/行缓存键：表头筛选值 + 路线草稿/脏组/学习记忆代际（路线桶与路线
   /// 筛选随下拉草稿变化）+ 视图排布。
@@ -1148,15 +1147,7 @@ abstract class _MaterialAnalysisMaterialTableState
   Map<String, List<MasterFacetBucket>> _materialTableGenericFacets(
     Iterable<_MaterialTableRow> rows,
   ) {
-    const trailing = {
-      '未指派',
-      '待指派',
-      '无需下单',
-      '未填追加',
-      '无需求',
-      '不缺',
-      '暂不可办理',
-    };
+    const trailing = {'未指派', '待指派', '无需下单', '未填追加', '无需求', '不缺', '暂不可办理'};
     final counts = <String, Map<String, int>>{};
     for (final row in rows) {
       for (final entry in _materialTableGenericFacetExtractors.entries) {
@@ -1170,13 +1161,12 @@ abstract class _MaterialAnalysisMaterialTableState
       for (final entry in counts.entries)
         entry.key: [
           for (final key
-              in entry.value.keys.toList()
-                ..sort((a, b) {
-                  final aTrailing = trailing.contains(a);
-                  final bTrailing = trailing.contains(b);
-                  if (aTrailing != bTrailing) return aTrailing ? 1 : -1;
-                  return a.compareTo(b);
-                }))
+              in entry.value.keys.toList()..sort((a, b) {
+                final aTrailing = trailing.contains(a);
+                final bTrailing = trailing.contains(b);
+                if (aTrailing != bTrailing) return aTrailing ? 1 : -1;
+                return a.compareTo(b);
+              }))
             MasterFacetBucket(value: key, count: entry.value[key]!),
         ],
     };
@@ -2066,7 +2056,6 @@ abstract class _MaterialAnalysisMaterialTableState
         sum + _tablePreviewed(material).additionalSupplyRecommendedQty,
   );
 
-
   /// 这一类行必须整批接管：自制、以及要先自制目标件的委外。
   /// 服务端要求下单量逐字等于全部剩余需求，既不能超也不能少，所以格子只读。
   bool _tableGroupWholeTakeover(_MaterialGroup group) {
@@ -2156,10 +2145,11 @@ abstract class _MaterialAnalysisMaterialTableState
     for (final path in group.paths) {
       final nodeKey = path.nodeKey;
       if (nodeKey == null) continue;
-      final children = indexes.childrenByParentNodeKey[(
-        analysisLineId: path.analysisLineId,
-        parentNodeKey: nodeKey,
-      )];
+      final children =
+          indexes.childrenByParentNodeKey[(
+            analysisLineId: path.analysisLineId,
+            parentNodeKey: nodeKey,
+          )];
       if (children != null && children.isNotEmpty) return true;
     }
     return false;
@@ -2417,13 +2407,8 @@ abstract class _MaterialAnalysisMaterialTableState
     final workshop = _tableWorkshopFor(group);
     final goodsId = group.representative.goodsId;
     final learned = goodsId == null ? null : _tableWorkshopDefaults[goodsId];
-    if (learned?.workerId != null &&
-        learned!.departmentId == workshop.id) {
-      return (
-        id: learned.workerId,
-        name: learned.workerName,
-        autofilled: true,
-      );
+    if (learned?.workerId != null && learned!.departmentId == workshop.id) {
+      return (id: learned.workerId, name: learned.workerName, autofilled: true);
     }
     final manager = workshop.id == null
         ? null
@@ -2459,10 +2444,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final selection = picked == null || picked.isEmpty ? null : picked.first;
     if (selection == null || !mounted) return;
     setState(() {
-      _tableWorkshopDraft[group.key] = (
-        id: selection.id,
-        name: selection.name,
-      );
+      _tableWorkshopDraft[group.key] = (id: selection.id, name: selection.name);
       // 换车间必须把负责人草稿清掉：留着上一个车间的人是最容易漏掉的错派。
       _tableWorkerDraft.remove(group.key);
     });
@@ -2606,7 +2588,9 @@ abstract class _MaterialAnalysisMaterialTableState
     final parts = <String>[];
     if (_tableTransferBlockedReason(group) == null) parts.add('可调拨');
     if (_tableIssueBlockedReason(group) == null) {
-      parts.add(_tableGroupIssued(group) ? '可追加' : _tableIssueTarget(group).label);
+      parts.add(
+        _tableGroupIssued(group) ? '可追加' : _tableIssueTarget(group).label,
+      );
     }
     return parts.isEmpty ? '暂不可办理' : parts.join(' · ');
   }
@@ -2629,8 +2613,7 @@ abstract class _MaterialAnalysisMaterialTableState
           // 退役的「在途调拨」列并到这里：已经调过的进度跟着按钮一起看。
           tooltip: [
             transferReason ?? '可从别的计划调入 ${_qty(transferable)}',
-            if (_futureTransferRecords.isNotEmpty)
-              _futureProgressText(row),
+            if (_futureTransferRecords.isNotEmpty) _futureProgressText(row),
           ].where((line) => line != '—').join('\n'),
           onTap: transferReason == null && !_busy
               ? () => unawaited(_showTransferLauncher(group))
@@ -2642,7 +2625,8 @@ abstract class _MaterialAnalysisMaterialTableState
           key: 'material-analysis-handle-issue-${group.key}',
           icon: Icons.send_rounded,
           label: _tableGroupIssued(group) ? '追加' : target.label.substring(2),
-          tooltip: issueReason ??
+          tooltip:
+              issueReason ??
               (_tableGroupIssued(group)
                   ? '按「追加下单」里填的数再下一次'
                   : '按「下单数量」里填的数${target.label}'),
@@ -2704,10 +2688,7 @@ abstract class _MaterialAnalysisMaterialTableState
 
   // ------------------------- 还缺数量列 -------------------------
 
-  Widget _materialTableNetShortageCell(
-    ThemeData theme,
-    _MaterialTableRow row,
-  ) {
+  Widget _materialTableNetShortageCell(ThemeData theme, _MaterialTableRow row) {
     final net = _materialTableNetShortageQty(row);
     final gross = _materialTableAdditionalRecommendedQty(row) ?? net ?? 0;
     final claimed = (gross - (net ?? gross)).clamp(0.0, gross);
@@ -2741,8 +2722,10 @@ abstract class _MaterialAnalysisMaterialTableState
       if (late > 0) buffer.write('\n(含晚到来源 ${_qty(late)}，交期晚于本批需要的日子。)');
       // 认领是从「下单数量」里切走的，不是在它之上另加——所以右边那一格填的是
       // 没扣公共量的毛数，两个数字不一样是对的。
-      buffer.write('\n右边「下单数量」填的是本次要覆盖的总量 ${_qty(gross)}，'
-          '服务端会从中认领 ${_qty(claimed)}、只为余下部分开新单。');
+      buffer.write(
+        '\n右边「下单数量」填的是本次要覆盖的总量 ${_qty(gross)}，'
+        '服务端会从中认领 ${_qty(claimed)}、只为余下部分开新单。',
+      );
     }
     if (physical != null && physical > 0) {
       buffer.write('\n实物缺口仍是 ${_qty(physical)}——下单不会让它变小，合格入库才会。');
@@ -2944,10 +2927,7 @@ abstract class _MaterialAnalysisMaterialTableState
     return _tableWorkerFor(group!).name ?? '待指派';
   }
 
-  Widget _materialTableResponsibleCell(
-    ThemeData theme,
-    _MaterialTableRow row,
-  ) {
+  Widget _materialTableResponsibleCell(ThemeData theme, _MaterialTableRow row) {
     final group = _tableEditableGroup(row);
     if (!_tableAssignable(group)) return const Text('—');
     final current = _tableWorkerFor(group!);
@@ -3050,9 +3030,7 @@ abstract class _MaterialAnalysisMaterialTableState
     if (pending.isEmpty) {
       if (!mounted) return;
       context.appInfo(
-        blocked.isEmpty
-            ? '所选的行本次都没有要下的数量，请先在「下单数量」或「追加下单」里填数'
-            : blocked.first,
+        blocked.isEmpty ? '所选的行本次都没有要下的数量，请先在「下单数量」或「追加下单」里填数' : blocked.first,
       );
       return;
     }
@@ -3065,8 +3043,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final workshopGroups =
         pending.keys.where((g) => _tableIssueTarget(g).viaWorkshop).toList()
           ..sort(
-            (a, b) =>
-                a.representative.level.compareTo(b.representative.level),
+            (a, b) => a.representative.level.compareTo(b.representative.level),
           );
     final byLevel = <int, List<_MaterialGroup>>{};
     for (final group in workshopGroups) {
@@ -3084,7 +3061,8 @@ abstract class _MaterialAnalysisMaterialTableState
             workerId: _tableWorkerFor(group).id,
             // 锚点已无剩余需求时，本次填的全是追加的公共备货产出。
             publicSurplusOnly:
-                _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001,
+                _tableGroupIssued(group) &&
+                _tableGroupResidual(group) <= 0.0001,
           ),
       ];
       final ok = await _issueWorkshopPlans(

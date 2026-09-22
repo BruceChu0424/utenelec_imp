@@ -89,17 +89,19 @@ void main() {
     // 办理里的「下达」按钮置灰，并说清为什么。
     expect(_enabled(tester, _issueButton('m-1')), isFalse);
     expect(
-      tester.widget<Tooltip>(find.ancestor(
-        of: _issueButton('m-1'),
-        matching: find.byType(Tooltip),
-      )).message,
+      tester
+          .widget<Tooltip>(
+            find.ancestor(
+              of: _issueButton('m-1'),
+              matching: find.byType(Tooltip),
+            ),
+          )
+          .message,
       contains('还没确认供应方式'),
     );
   });
 
-  testWidgets('确认过路线但没下过单的行：下单数量可填并预填还缺数量，追加下单恒为只读 0', (
-    tester,
-  ) async {
+  testWidgets('确认过路线但没下过单的行：下单数量可填并预填还缺数量，追加下单恒为只读 0', (tester) async {
     await _pump(tester);
     final field = tester.widget<TextField>(_orderQty('m-2'));
     expect(field.enabled, isTrue);
@@ -129,10 +131,14 @@ void main() {
     expect(_enabled(tester, _transferButton('m-2')), isTrue);
     expect(_enabled(tester, _transferButton('m-3')), isFalse);
     expect(
-      tester.widget<Tooltip>(find.ancestor(
-        of: _transferButton('m-3'),
-        matching: find.byType(Tooltip),
-      )).message,
+      tester
+          .widget<Tooltip>(
+            find.ancestor(
+              of: _transferButton('m-3'),
+              matching: find.byType(Tooltip),
+            ),
+          )
+          .message,
       contains('没有别的计划锁着这个物料'),
     );
   });
@@ -165,10 +171,7 @@ void main() {
     // 但「下单数量」必须预填毛量 1000：服务端是从你填的数里切走认领量、
     // 不是在它之上另加。填 700 只会换来「认领 300 + 新单 400 = 700」，
     // 对着 1000 的需求仍差 300 —— 每一行都少下一个认领量。
-    expect(
-      tester.widget<TextField>(_orderQty('m-4')).controller!.text,
-      '1000',
-    );
+    expect(tester.widget<TextField>(_orderQty('m-4')).controller!.text, '1000');
     // 悬浮说明要把这个「两个数不一样」讲清楚，别让人以为填错了。
     expect(tooltip.message, contains('本次要覆盖的总量 1000'));
   });
@@ -267,7 +270,9 @@ Future<void> _pump(
           ProductionPlanRepository(api),
         ),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-        materialAnalysisWarehousePrefsProvider.overrideWith(_WarehousePrefs.new),
+        materialAnalysisWarehousePrefsProvider.overrideWith(
+          _WarehousePrefs.new,
+        ),
         currentPermissionsProvider.overrideWithValue(permissions),
       ],
       child: MaterialApp(
@@ -318,12 +323,7 @@ Map<String, dynamic> _analysis() => {
     },
   ],
   'flatMaterials': [
-    _material(
-      line: 'm-1',
-      name: '未定路线件',
-      confirmed: null,
-      netShortageQty: 800,
-    ),
+    _material(line: 'm-1', name: '未定路线件', confirmed: null, netShortageQty: 800),
     _material(
       line: 'm-2',
       name: '待下单紧固件',

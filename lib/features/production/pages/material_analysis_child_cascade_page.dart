@@ -319,7 +319,10 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     // 不回来——父件退回 1000 了，子层还停在 2000。从快照算则每一拍都是独立的
     // 幂等换算，中间怎么敲都不影响结果。
     final baseline = _snapshotOutput[source.submitKey];
-    if (baseline == null || baseline <= 0.0001 || !output.isFinite || output < 0) {
+    if (baseline == null ||
+        baseline <= 0.0001 ||
+        !output.isFinite ||
+        output < 0) {
       return;
     }
     final factor = output / baseline;
@@ -468,7 +471,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     // 重建一次，否则那些估算值会永久留在屏幕上、也会被提交。
     _previewDebounce = Timer(
       const Duration(milliseconds: 300),
-      () => unawaited(_needsPreview ? _refreshPreview() : _restoreFromSnapshot()),
+      () =>
+          unawaited(_needsPreview ? _refreshPreview() : _restoreFromSnapshot()),
     );
   }
 
@@ -637,9 +641,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         // 祖先刚被手工改大、但它自己的计划还没落地时，服务端这一份算出来的
         // 下层还是旧数——保住屏幕上那个数，并如实说一声。
         row.qty.text = _bucketQtyText(old.displayedQty);
-        kept.add(
-          '${row.displayName} ${_host._qty(old.displayedQty)}',
-        );
+        kept.add('${row.displayName} ${_host._qty(old.displayedQty)}');
       }
       if (old.departmentId != null) {
         row.departmentId.value = old.departmentId;

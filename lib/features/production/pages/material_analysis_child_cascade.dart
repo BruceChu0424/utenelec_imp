@@ -943,8 +943,8 @@ abstract class _MaterialAnalysisChildCascadeState
     final workshopRows = rows
         .where((row) => row.kind == _CascadeKind.workshop)
         .toList(growable: false);
-    final workshopDepths = (workshopRows.map((row) => row.depth).toSet().toList()
-      ..sort());
+    final workshopDepths =
+        (workshopRows.map((row) => row.depth).toSet().toList()..sort());
     for (final depth in workshopDepths) {
       final batch = workshopRows
           .where((row) => row.depth == depth)

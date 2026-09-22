@@ -369,16 +369,22 @@ public class SubcontractShortDeliveryService
             publishResolved(caseId, locked.version() + 1, "WAIT_MORE_DECIDED");
             return detail(caseId);
         }
-        return acceptLoss(caseId, locked, fact, note, actorUser, actorEmployee);
+        return acceptLoss(caseId, locked, fact, note, actorUser, actorEmployee, false);
     }
 
     /**
      * 「接受损耗·结案」的本体：损耗单 → 案件落 ACCEPTED_LOSS → 受控改量到累计回厂量。
      * 人工判定({@link #decide})与容差内自动结案({@link #settleAfterStockIn})共用，
      * 权限/归属校验在各自入口做完。
+     *
+     * <p>{@code systemInitiated} 区分第三步受控改量走哪条入口：人工判定是本人在操作自己
+     * 负责的单, 照旧过订货单属主守卫; 容差内自动结案跑在**仓库确认入库的同一个事务**里,
+     * 发起人是仓库账号 —— 它既不是委外订货单的制单人, 通常也没有 subcontract:view:all,
+     * 走属主守卫必拿 FORBIDDEN, 而这段异常会把整个事务标成只能回滚, 货就入不了库。
+     * 自动结案是锦上添花, 绝不能反过来把仓库正常的入库动作搞失败。
      */
     private CaseDetail acceptLoss(UUID caseId, LockedCase locked, ItemFacts fact, String note,
-                                  UUID actorUser, UUID actorEmployee) {
+                                  UUID actorUser, UUID actorEmployee, boolean systemInitiated) {
         BigDecimal shortfall = SubcontractShortDeliveryPolicy.shortfallQty(fact.orderedQty(), fact.deliveredQty());
         if (shortfall.signum() <= 0) {
             closeCase(new OpenCase(caseId, locked.status(), null, locked.version(), locked.ownerEmployeeId()),
@@ -419,10 +425,14 @@ public class SubcontractShortDeliveryService
         if (changed != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "该短交案件状态已变化，请刷新后重试");
         }
-        orderService.changeQtyForShortDelivery(fact.orderId(),
-                new ProcurementApprovalContracts.OrderQtyChangeRequest(List.of(
-                        new ProcurementApprovalContracts.OrderQtyChangeItem(
-                                fact.orderItemId(), fact.deliveredQty()))));
+        var qtyChange = new ProcurementApprovalContracts.OrderQtyChangeRequest(List.of(
+                new ProcurementApprovalContracts.OrderQtyChangeItem(
+                        fact.orderItemId(), fact.deliveredQty())));
+        if (systemInitiated) {
+            orderService.changeQtyForShortDeliveryBySystem(fact.orderId(), qtyChange);
+        } else {
+            orderService.changeQtyForShortDelivery(fact.orderId(), qtyChange);
+        }
         UUID changeLogId = jdbc.query("""
                 SELECT id FROM procurement_order_qty_change_logs
                 WHERE order_type = 'SUBCONTRACT' AND order_item_id = ?
@@ -441,6 +451,14 @@ public class SubcontractShortDeliveryService
         if (note != null && !note.isBlank()) snapshot.put("note", note);
         appendEvent(caseId, "ACCEPT_LOSS_DECIDED", actorUser, actorEmployee, snapshot);
         publishResolved(caseId, locked.version() + 1, "ACCEPT_LOSS_DECIDED");
+        if (systemInitiated) {
+            // 与 SubcontractOrderService.changeQtyInternal 末尾同一道理: 自动结案的返回值在
+            // settleAfterStockIn 那里就被丢弃, 而 detail(caseId) 走的是
+            // nativeReadScope(owner_employee_id, VIEW_AUTHORITY=subcontract_order:view) —— 案件
+            // 归属人是订货单制单人, 仓库账号既没有这个权限点也不在可见归属集里, 会抛
+            // NOT_FOUND「短交案件不存在或无权查看」, 把仓库确认入库的整个事务毒死。
+            return null;
+        }
         return detail(caseId);
     }
 
@@ -504,7 +522,7 @@ public class SubcontractShortDeliveryService
                             open.version(), open.ownerEmployeeId(),
                             SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE),
                     fact, "累计回厂已在本单允许损耗范围内，系统按约定的允许损耗自动结案",
-                    actorUser, actorEmployee);
+                    actorUser, actorEmployee, true);
         }
     }
 

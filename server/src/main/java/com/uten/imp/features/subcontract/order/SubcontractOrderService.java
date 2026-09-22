@@ -644,7 +644,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail changeQty(
             UUID id, OrderQtyChangeRequest request) {
         requireNoPendingShortDeliveryJudgement(id);
-        return changeQtyInternal(id, request, true);
+        return changeQtyInternal(id, request, true, false);
     }
 
     /**
@@ -659,15 +659,39 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public OrderDetail changeQtyForShortDelivery(UUID id, OrderQtyChangeRequest request) {
-        return changeQtyInternal(id, request, false);
+        return changeQtyInternal(id, request, false, false);
+    }
+
+    /**
+     * ADR-101 容差内自动结案专用入口：与 {@link #changeQtyForShortDelivery} 的唯一差别是
+     * **不走订货单属主守卫**。
+     *
+     * <p>为什么必须区分：自动结案跑在仓库确认入库的同一个事务里, 发起人是仓库账号。
+     * 仓库账号既不是委外订货单的制单人, 通常也没有 subcontract:view:all, 走属主守卫必拿
+     * FORBIDDEN; 而这段异常会把整个事务标成只能回滚 —— 货就入不了库了。自动结案是锦上添花,
+     * 绝不能反过来把仓库正常的入库动作搞失败(同一条理由见 SubcontractShortDeliveryService
+     * 的 autoCloseWouldSucceed 注释, 那里体检的是数量维度, 这里补的是权限维度)。
+     *
+     * <p>放宽的只有属主这一条, 而且它放宽的是「谁在操作」而不是「能做什么」：这条路径不是
+     * 人在改别人的单, 是系统按本单自己约定的允许损耗记一笔既成事实。数量下限、财务批准态、
+     * 并发互斥锁、库存维度锁、身份守卫与审计一个不动; 调用方那一侧还另有四重前提
+     * (severity 在允许损耗内、案件处于 PENDING_OWNER、已回厂量为正、autoCloseWouldSucceed
+     * 体检通过), 人手动走判定页仍然走 {@link #changeQtyForShortDelivery} 的属主守卫。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public OrderDetail changeQtyForShortDeliveryBySystem(UUID id, OrderQtyChangeRequest request) {
+        return changeQtyInternal(id, request, false, true);
     }
 
     private OrderDetail changeQtyInternal(
-            UUID id, OrderQtyChangeRequest request, boolean rejectWhenReconfirmationPending) {
+            UUID id, OrderQtyChangeRequest request, boolean rejectWhenReconfirmationPending,
+            boolean systemInitiated) {
         tx.bind();
         var mutationGuard=mutationLocks.order(orderType(),id);
         SubcontractOrder order = requireOrderForUpdate(id);
-        access.requireWritable(order.getMakerId(), "只能操作本人负责的委外订货单");
+        if (!systemInitiated) {
+            access.requireWritable(order.getMakerId(), "只能操作本人负责的委外订货单");
+        }
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
             throw new ApiException(
                     ErrorCode.BUSINESS, "仅财务批准后的委外订货单可改量");
@@ -778,6 +802,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         itemRepo.flush();
         // ADR-098：改量后重评开放的短交案件(新订货量不高于累计回厂 → 自然完成)。
         shortDeliveryHook(hooks -> hooks.reevaluateAfterOrderQuantityChange(id));
+        if (systemInitiated) {
+            // 系统自动结案这条路的返回值在调用点(SubcontractShortDeliveryService.acceptLoss)
+            // 就被丢弃, 而 detail(id) 是面向人的读模型, 它自己带一道属主**读**守卫
+            // (access.canRead(makerId), 读不到就抛 NOT_FOUND「委外订货单不存在」)。
+            // 放开写守卫却在这里构造读模型, 仓库账号照样会在方法最后一行炸, 照样把仓库
+            // 确认入库的整个事务标成只能回滚 —— 和放开前的表现一模一样, 只是换了个洞。
+            // 系统路径压根不需要这个读模型, 不构造它。
+            return null;
+        }
         return detail(id);
     }
 

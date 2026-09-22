@@ -35,7 +35,29 @@
         <tomcat.version>10.1.59</tomcat.version>
         <opentelemetry.version>1.62.0</opentelemetry.version>
         <postgresql.version>42.7.12</postgresql.version>
+        <!-- 短信 SDK 的传递依赖里有三个构件把 com.aliyun:tea 声明成版本**区间**:
+             alibabacloud-gateway-spi:0.0.3 写 [1.1.14, 2.0.0)、credentials-java 与
+             openapiutil:0.2.2 写 [1.2.0, 2.0.0)。区间必须先拉 maven-metadata.xml 才能解析,
+             那一次拉取失败整个构建就在依赖收集阶段挂掉, 连编译都到不了:
+               No versions available for com.aliyun:tea:jar:[1.1.14, 2.0.0) within specified range
+             2026-09-22 CI 的 backend-db 就是这么红的, 而同一次 workflow 用同样 pom 的
+             backend-fast 却过了 —— 典型的抖动, re-run 能蒙过去但会反复回来。
+             钉死版本让解析不再依赖网络上的 metadata。取值 1.4.1 不是最新, 是
+             dysmsapi20170525:4.6.0 自己直接声明的那一版, 也正是钉之前实际解析到的那一版
+             (本地仓库里只有 1.4.1 有 jar, 其余版本只有为求区间而下载的 pom),
+             所以这次钉版本不改变依赖图, 只把它变成确定的。 -->
+        <aliyun-tea.version>1.4.1</aliyun-tea.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.aliyun</groupId>
+                <artifactId>tea</artifactId>
+                <version>${aliyun-tea.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>

@@ -243,21 +243,22 @@ class PreplanPrivateFutureTransferEndToEndTest {
         qty("40",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
     }
 
-    @Test void publicInTransitCanBeClaimedByAWorkshopTargetAcrossRoutes() {
+    @Test void crossRoutePublicInTransitIsNoLongerClaimableBecauseCandidatesAreSameRouteOnly() {
         var c=scenario("cross-route-claim");
         AnalysisView a=preview(c,"A","100");
         order(c,a,"1000",BusinessTime.today().plusDays(2));
         AnalysisView e=previewWithRoute(c,"E","300","MAKE");
         var em=material(e,c.material());
-        e=commands.claimSharedFuture(e.analysisId(),new ClaimSharedFutureRequest(
+        // ADR-101 §2.7：认领候选收成同路线——提示侧 SharedFutureIndex 一直按路线过滤,
+        // 服务端候选也必须同路线, 否则「界面显示 0、用户填 300 点下达、服务端把需求
+        // 全认领成 0、一张申请明细都不生成」。自制目标认不了采购路线的公共在途。
+        ApiException rejected=assertThrows(ApiException.class,()->commands.claimSharedFuture(e.analysisId(),new ClaimSharedFutureRequest(
                 e.version(),e.fingerprint(),"cross-route-claim-"+e.analysisId(),
-                List.of(em.actionGroupKey())));
-        qty("0",material(analyses.detail(e.analysisId()),c.material()).additionalSupplyRecommendedQty());
-        assertEquals("BUY",db.queryForObject(
-                "SELECT route FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SHARED_FUTURE_CLAIM'",
-                String.class,e.analysisId()));
-        assertTrue(material(analyses.detail(e.analysisId()),c.material())
-                .notifiedTargets().contains("MAKE"));
+                List.of(em.actionGroupKey()))));
+        assertTrue(String.valueOf(rejected.getMessage()).contains("当前没有可采用的同主仓、按期公共在途余量"),
+                "跨路线候选应按同路线口径被拒: "+rejected.getMessage());
+        // 被拒就是被拒——300 的需求原样保留, 不许出现认领不成功却把建议量静默吃成 0。
+        qty("300",material(analyses.detail(e.analysisId()),c.material()).additionalSupplyRecommendedQty());
     }
 
     private Scenario scenario(String label){var w=fixture.seedWorld(label);fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID(),material=UUID.randomUUID();fixture.insertGoods(product,"FUT-P-"+product,"在途归属产品","自制",w.unitId(),w.unitLegacy());fixture.insertGoods(material,"FUT-M-"+material,"在途归属材料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(product,material,"1");db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),material);return new Scenario(w,product,material);}

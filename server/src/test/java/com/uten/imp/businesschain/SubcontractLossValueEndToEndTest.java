@@ -82,7 +82,15 @@ class SubcontractLossValueEndToEndTest {
     @Test void physicalLossAllowsTwoMorePiecesWithoutInflatingTheCommercialTargetToSeven(){
         var c=ready("normal-replenishment","5","5");loss(c,"2","2");receive(c,"3");drain();
         fixture.loginAs(c.world().superAdminUserId());opening(c.world(),"2","2");
-        UUID additional=plans.regenerateDraft(c.plan());approveIssue(c.world(),additional,c.item(),"2");
+        // ADR-101：receive 落库那一刻 wakeOutboundAfterStockIn 已按补量额度替这行补好
+        // 未审草稿(按当时可动用量截断)——「补齐出仓单」的 regenerateDraft 只服务红冲后
+        // 手工补开, 有草稿在就 409「计划已无待出仓余量」, 这里直接认领自动草稿。
+        UUID additional=db.queryForObject("""
+                SELECT issue.id FROM subcontract_material_issues issue
+                JOIN subcontract_material_issue_items item ON item.issue_id=issue.id
+                WHERE item.order_item_id=? AND issue.status=0 AND NOT issue.is_deleted
+                """,UUID.class,c.item());
+        approveIssue(c.world(),additional,c.item(),"2");
         receive(c,"2");drain();money(stock(c),"257");
         money(decimal("select qty from subcontract_order_items where id=?",c.item()),"5");
         money(decimal("select sum(at_supplier_qty) from subcontract_material_issue_items where order_item_id=?",c.item()),"7");

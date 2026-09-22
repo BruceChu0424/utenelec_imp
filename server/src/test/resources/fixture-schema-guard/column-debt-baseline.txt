@@ -3606,7 +3606,6 @@ com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.jav
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#subcontract_material_plan_items.preparation_started_at
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#subcontract_material_plan_items.preparation_started_by
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#subcontract_material_plan_items.preparation_version
-com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#subcontract_material_plan_items.preparation_warehouse_id
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#subcontract_material_plan_items.remark
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#subcontract_material_plan_items.updated_at
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#subcontract_material_plan_items.updated_by
@@ -3693,14 +3692,10 @@ com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.jav
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#units.updated_at
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#units.updated_by
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.auto_created
-com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.code
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.created_at
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.created_by
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.deleted_at
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.is_accountable
-com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.is_defective
-com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.is_deleted
-com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.is_line_side
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.legacy_id
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.legacy_operator_id
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#warehouses.location

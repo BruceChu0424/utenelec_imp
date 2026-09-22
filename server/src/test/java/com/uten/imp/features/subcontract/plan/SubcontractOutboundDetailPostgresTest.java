@@ -48,7 +48,22 @@ class SubcontractOutboundDetailPostgresTest {
         jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE suppliers(id uuid PRIMARY KEY, name text)");
-        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text)");
+        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, code text, name text, is_deleted boolean, is_defective boolean, is_line_side boolean)");
+        // taskDetail 的 LATERAL 会按「作业叶仓 + 合格可动用量」替仓库选发料仓(ADR-101)：
+        // 桩视图只喂一条「第一仓对目标件有充足可动用量」的行(9999 不会压住任何断言)，
+        // 让发现货行的 issuable/stock 字段照生产口径算出来而不是整个 LATERAL 落空。
+        jdbc.execute("""
+                CREATE VIEW v_stock_available AS
+                SELECT '00000000-0000-0000-0000-000000000007'::uuid AS warehouse_id,
+                       '00000000-0000-0000-0000-000000000006'::uuid AS goods_id,
+                       NULL::uuid AS color_id,
+                       9999::numeric AS available_qty
+                """);
+        // 本测试不关心仓库层级语义，叶仓判定恒真即可(真实函数由 V613 定义, 这里只做桩)。
+        jdbc.execute("""
+                CREATE FUNCTION fn_warehouse_is_operational_leaf(uuid)
+                RETURNS boolean LANGUAGE sql IMMUTABLE AS $$ SELECT true $$
+                """);
         jdbc.execute("CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, deliver_date date, legacy_import_run_id uuid)");
         jdbc.execute("""
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, order_id uuid,
@@ -60,7 +75,8 @@ class SubcontractOutboundDetailPostgresTest {
                     color_id uuid, unit_id uuid, unit_rate numeric, bom_unit_qty numeric,
                     planned_qty numeric, issued_qty numeric, prepared_qty numeric, flow_mode text,
                     preparation_status text, preparation_analysis_id uuid,
-                    preparation_analysis_item_id uuid, line_no integer, is_deleted boolean)
+                    preparation_analysis_item_id uuid, preparation_warehouse_id uuid,
+                    line_no integer, is_deleted boolean)
                 """);
         jdbc.execute("""
                 CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, bill_no text,
@@ -79,7 +95,7 @@ class SubcontractOutboundDetailPostgresTest {
         jdbc.update("INSERT INTO goods VALUES (?, 'TARGET', '目标件', 'A-01')", id(6));
         jdbc.update("INSERT INTO units VALUES (?, '件')", id(4));
         jdbc.update("INSERT INTO suppliers VALUES (?, '委外商')", id(3));
-        jdbc.update("INSERT INTO warehouses VALUES (?, '第一仓'), (?, '第二仓')", id(7), id(8));
+        jdbc.update("INSERT INTO warehouses VALUES (?, 'WH-001', '第一仓', FALSE, FALSE, FALSE), (?, 'WH-002', '第二仓', FALSE, FALSE, FALSE)", id(7), id(8));
         jdbc.update("INSERT INTO subcontract_orders VALUES (?, DATE '2026-09-20')", id(2));
         jdbc.update("INSERT INTO subcontract_material_plans VALUES (?, ?, 'EO-001', 'OPEN', ?, NULL, FALSE)",
                 id(1), id(2), id(3));

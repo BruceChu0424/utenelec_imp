@@ -1198,16 +1198,17 @@ public class SubcontractMaterialPlanService
             if(factor.signum()<=0 || group.stream().anyMatch(line -> issuesComponent(line[4])
                     && decimal(line[8]).compareTo(decimal(group.getFirst()[8]))!=0))
                 throw new ApiException(ErrorCode.CONFLICT,"历史同子料的冻结单耗不一致，不能自动改量");
-            // 计划量该留多少 = 新订货量折算 + 已精确退回的材料 + 损耗补量额度
-            //                  + **已核销损耗**(ADR-101)。
-            // 最后一项是 ADR-098「接受损耗·结案」能不能走完的关键：结案先开损耗单把供应商处
-            // 那份料核销掉，再把订货量改成实收量。料已全发完的单(issued = planned, 单一子件
-            // 直发的常态)如果不认这份损耗，planned 就一点都收不回来(take = planned − issued = 0)，
-            // 剩余差额只能抛「新数量仍低于已实发或进行中的前置生产量」把整笔结案回滚——
-            // 用户看到的是一句看不懂的红字，库里连损耗单都没留下。
+            // 计划量该留多少 = 新订货量折算 + 已精确退回的材料 + 损耗头寸。
+            // 损耗头寸按流向取数，两处来源记的是同一批料、严禁叠加：
+            // DIRECT 行的补量额度就是 synchronizeDirectLossAllowance 从 wasted_qty 推出来的
+            // (批准那一刻已经加进 planned)，只认额度；其余流向(COMPONENT 被 V581 焊死额度=0、
+            // LEGACY/前置自制根本没有额度同步)只能认 wasted_qty 本身——否则结案第一步刚把
+            // 供应商处那份料核销掉，planned 一点都收不回来(take = planned − issued = 0)，
+            // 剩余差额只能抛「新数量仍低于已实发或进行中的前置生产量」把整笔结案回滚。
             BigDecimal target=targetOrderQty.multiply(factor).setScale(4,RoundingMode.HALF_UP)
                     .add(group.stream()
-                            .map(line->decimal(line[9]).add(decimal(line[11])).add(decimal(line[12])))
+                            .map(line->decimal(line[9]).add(decimal(line[11]))
+                                    .add("DIRECT_OUTBOUND".equals(line[4]) ? BigDecimal.ZERO : decimal(line[12])))
                             .reduce(BigDecimal.ZERO,BigDecimal::add));
             BigDecimal remaining=group.stream().map(line->decimal(line[1])).reduce(BigDecimal.ZERO,BigDecimal::add)
                     .subtract(target).max(BigDecimal.ZERO);

@@ -498,8 +498,17 @@ public class SubcontractShortDeliveryService
             if (!fact.materialFullyIssued()) continue;
             String severity = SubcontractShortDeliveryPolicy.severity(
                     fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
-            if (severity == null) continue;
             OpenCase open = openCases.get(fact.orderItemId());
+            if (severity == null) {
+                // 到齐即完结。补开路径(settleAfterStockIn)开的案件没有「登记 → recordArrival」
+                // 替它落 COMPLETED——这里不收口，它就永远挂在「容差内待结案」(ADR-098 中性档
+                // 零通知, 没有人会被提醒)。与 recordArrival 的「累计回厂已到齐」同款收口。
+                if (open != null) {
+                    closeCase(open, STATUS_COMPLETED, "COMPLETED", actorUser, actorEmployee,
+                            snapshot(fact, null, "累计回厂已到齐"));
+                }
+                continue;
+            }
             if (open == null) {
                 // 料是在最后一批货到齐之后才发完的：登记那一刻还判不出短交，这里补开。
                 openCase(fact, receiptId, null, severity, actorUser, actorEmployee, true);

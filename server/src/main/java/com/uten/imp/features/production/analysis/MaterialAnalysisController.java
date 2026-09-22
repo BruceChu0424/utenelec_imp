@@ -306,13 +306,20 @@ public class MaterialAnalysisController {
      * 下达车间预览（ADR-099）：真实跑一遍 issue-plans 拿到「下达之后」的分析快照
      * （下层需求、还需安排、锚点剩余按计划产出量重算），然后整体回滚，库里不留
      * 任何痕迹。「父件 + 下层一起下单」页面用它展示服务端算好的下层数量。
+     *
+     * <p>2026-09-21 起同一个端点还接层级表上每一行填的数量(typedOutputs)：任意
+     * 一层改量都按计划产出量带大它的子层。只重算不下达时(改中间层、父件已提交过
+     * 的重试)lines 为空——那条路径不建任何计划，所以只要求下达采购/委外权限，
+     * 真要模拟下达车间时服务端另行要生成生产计划权限。</p>
      */
     @PostMapping("/{id}/issue-plans/preview")
-    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:generate')")
-    public AnalysisView previewIssueWorkshopPlans(
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and "
+            + "(hasAuthority('production_material_analysis:generate') "
+            + "or hasAuthority('production_material_analysis:notify'))")
+    public AnalysisView previewIssuePlans(
             @PathVariable UUID id,
-            @Valid @RequestBody IssueWorkshopPlansRequest request) {
-        return commandService.previewIssueWorkshopPlans(id, request);
+            @Valid @RequestBody PreviewIssuePlansRequest request) {
+        return commandService.previewIssuePlans(id, request);
     }
 
     @PostMapping("/{id}/cancel")

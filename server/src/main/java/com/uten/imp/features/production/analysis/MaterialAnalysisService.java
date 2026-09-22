@@ -1275,6 +1275,21 @@ public class MaterialAnalysisService {
     }
 
     int refreshLocked(UUID analysisId) {
+        return refreshLocked(analysisId, Map.of());
+    }
+
+    /**
+     * 按「本次每个父行填了多少」重算一遍(ADR-099 修订，2026-09-21 第五轮)。
+     *
+     * <p>[typedOutputByMaterialLine] = 层级表上每一行输入框里的数量(键是物料行 id)。
+     * 它只补进该节点的<b>计划产出量</b>那一项：子件毛需求按父件计划产出展开，所以
+     * 填在中间层的数量能像顶层一样把它自己的子层、孙层一路带大；节点自己的需求量、
+     * 还需安排量一个字节不动(那是祖先决定的，不能被自己填的数覆盖)。</p>
+     *
+     * <p><b>只有下达预览会传它</b>：预览整体回滚，库里不留痕。真实下达恒传空 Map，
+     * 此时这里与旧版逐字等价。</p>
+     */
+    int refreshLocked(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine) {
         AnalysisHeader header = lockHeader(analysisId);
         if (!isOpenForFulfillment(header)) {
             throw conflict("物料分析已结束，不能刷新");
@@ -1299,12 +1314,18 @@ public class MaterialAnalysisService {
         Map<UUID, SourceLine> sourcesById = sources.stream()
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId);
+        // 层级表上「顶层供给行」那一行填的数量：第 1 层子件是按**来源行**展开的，
+        // 不走 parentSupply，所以它要并到来源的计划产出量上(顶层直委外件按 1500
+        // 下达时，那颗我方供料的子件就要按 1500 备)。
+        Map<UUID, BigDecimal> typedSourceOutput =
+                typedSourceOutputs(analysisId, typedOutputByMaterialLine);
         nodes = nodes.stream().map(node -> {
             BomNode batched = node.withOutputBatches(plannedBatches.getOrDefault(
                     node.analysisItemId()+"|"+Objects.toString(node.parentNodeKey(),""),List.of()));
             // 第 1 层按来源「计划产出量」展开（需求与已下达计划取大，ADR-099）。
             return node.depth()==1 ? batched.withSnapshotRequiredQty(batched.requiredForOutput(
-                    sourcesById.get(node.analysisItemId()).plannedOutputQty())) : batched;
+                    plannedSourceOutput(sourcesById.get(node.analysisItemId()), typedSourceOutput)))
+                    : batched;
         }).toList();
         validateExactPegRefreshCompatibility(analysisId, nodes);
         // Reconcile identity membership, not every row's active flag. Existing
@@ -1367,7 +1388,8 @@ public class MaterialAnalysisService {
         }
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
         persistAllocationSnapshot(
-                analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows, baseline);
+                analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows, baseline,
+                typedOutputByMaterialLine);
         if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId));
         bumpFingerprint(analysisId);
         return routeResets;
@@ -2244,7 +2266,8 @@ public class MaterialAnalysisService {
             List<BomNode> nodes,
             AvailabilitySnapshot availability,
             List<NodeSnapshotRow> inputs,
-            MaterialAnalysisSnapshotBaseline storedSnapshot) {
+            MaterialAnalysisSnapshotBaseline storedSnapshot,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine) {
         Map<String, NodeSnapshotRow> inputsByNode = inputs.stream().collect(Collectors.toMap(
                 row -> nodeAllocationKey(row.node()), row -> row));
         Map<UUID, List<BomNode>> directBySource = nodes.stream()
@@ -2267,8 +2290,8 @@ public class MaterialAnalysisService {
                 (key, qty) -> subcontractTakeoverByNode.merge(key, qty, BigDecimal::add));
         // 子层展开基准的输入：父件已被外部最终件在途覆盖的量，以及父件已经
         // 承诺由我方制造的量。两条语句都按 analysis_id 一次取回。
-        Map<String, ParentSupplyCommitment> parentSupply =
-                parentSupplyCommitments(analysisId);
+        Map<String, ParentSupplyCommitment> parentSupply = withTypedOutput(
+                analysisId, parentSupplyCommitments(analysisId), typedOutputByMaterialLine);
         // V307 精确到货归属：先在扣除安全库存后的真实可分配池内，为原供应
         // 分摊行锁定 secured coverage；同分析兄弟产品只能看到扣除后的共享池。
         // 没有 exact 子账的历史 V298 预留仍留在共享池，维持兼容语义。
@@ -4679,6 +4702,26 @@ public class MaterialAnalysisService {
     }
 
     /** Snapshot the exact nodes before an explicit source/BOM preview, never before a GET or issue command. */
+    /**
+     * 每个锚点行上「未撤销供给行动登记了多少」：需求回落时配额不能退到它以下,
+     * 否则行动的撤回链路({@code cancelMakeDemandRow}, 它按行动自己登记的数回退)
+     * 会把配额减成负数或减过头。没有行动背书的锚点取 0。
+     */
+    private Map<UUID, BigDecimal> actionBackedAnchorQuantities(UUID analysisId) {
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT external_document_id, SUM(requested_qty)::numeric
+                FROM preplan_supply_actions
+                WHERE analysis_id=:analysis AND status<>'CANCELLED'
+                  AND external_document_type IN ('PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK')
+                  AND external_document_id IS NOT NULL
+                GROUP BY 1
+                """).setParameter("analysis",analysisId))) {
+            result.put(uuid(row[0]), decimal(row[1]));
+        }
+        return result;
+    }
+
     private Map<UUID, BigDecimal> makeAnchorParentRequirements(UUID analysisId) {
         Map<UUID, BigDecimal> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -4704,11 +4747,16 @@ public class MaterialAnalysisService {
      * [previousRequirements] 为空表示调用方没有提前取基线，这里自行取一次。</p>
      */
     int refreshWithAnchorGrowth(UUID analysisId, Map<UUID, BigDecimal> previousRequirements) {
+        return refreshWithAnchorGrowth(analysisId, previousRequirements, Map.of());
+    }
+
+    int refreshWithAnchorGrowth(UUID analysisId, Map<UUID, BigDecimal> previousRequirements,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine) {
         Map<UUID, BigDecimal> previous = previousRequirements == null || previousRequirements.isEmpty()
                 ? makeAnchorParentRequirements(analysisId) : previousRequirements;
-        int routeResets = refreshLocked(analysisId);
+        int routeResets = refreshLocked(analysisId, typedOutputByMaterialLine);
         if (growMakeAnchorQuotasAfterSourcePreview(analysisId, previous)) {
-            routeResets += refreshLocked(analysisId);
+            routeResets += refreshLocked(analysisId, typedOutputByMaterialLine);
         }
         return routeResets;
     }
@@ -4717,28 +4765,86 @@ public class MaterialAnalysisService {
         return refreshWithAnchorGrowth(analysisId, Map.of());
     }
 
-    /** Admit only new source demand into an existing MAKE quota; old physical shortage cannot enlarge it. */
+    /**
+     * 让自制锚点的配额跟着来源需求走。
+     *
+     * <p>涨：只认**新增的来源需求**，老的物理缺口不能把配额撑大。</p>
+     *
+     * <p>落(2026-09-21 用户口径「假如没有下单, 立马把父件改回 1000, 子件也要立马
+     * 变回 1000」)：把**从来没下达过**的那部分配额退回来。地板是
+     * `submitted + approved`——已经提交/已审核的计划是冻结承诺, 一分不动(与
+     * `cancelMakeDemandRow` 同一道地板)。不退的话, 把来源数量调高再调回来, 锚点
+     * 就永久停在高位, 子件那一行的「还需安排」再也降不下来, 只能删掉整条分析重建。
+     * 行动背书的锚点(通知供给建的)不在这里退, 它有自己的撤回链路。</p>
+     */
     private boolean growMakeAnchorQuotasAfterSourcePreview(
             UUID analysisId, Map<UUID, BigDecimal> previousRequirements) {
         if (previousRequirements.isEmpty()) return false;
         AnalysisView view=detailInternal(analysisId,false);
         Map<UUID,ProductView> products=view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId,product->product));
+        Map<UUID,BigDecimal> actionBackedAnchors=null;
         boolean changed=false;
         for (MaterialView material:view.flatMaterials()) {
             BigDecimal previous=previousRequirements.get(material.materialLineId());
             if (previous==null || material.planAnchorAnalysisLineId()==null) continue;
-            BigDecimal admittedIncrease=material.requiredQty().subtract(previous).max(BigDecimal.ZERO);
-            if (admittedIncrease.signum()==0) continue;
+            BigDecimal delta=material.requiredQty().subtract(previous);
+            if (delta.signum()==0) continue;
+            BigDecimal admittedIncrease=delta.max(BigDecimal.ZERO);
             ProductView anchor=products.get(material.planAnchorAnalysisLineId());
             if (anchor==null || !SOURCE_MAKE_COMPONENT.equals(anchor.sourceType())
                     || !Objects.equals(anchor.goodsId(),material.goodsId())
                     || !Objects.equals(anchor.colorId(),material.colorId())
                     || !Objects.equals(anchor.unitId(),material.unitId())) {
+                if (delta.signum()<0) continue;
                 throw conflict("来源变化后的物料与原计划锚点不一致，请先核对原任务");
             }
             String blocked=view.planningBlockedReasons().get(material.analysisLineId());
-            if (blocked!=null) throw conflict(blocked);
+            if (blocked!=null) {
+                if (delta.signum()<0) continue;
+                throw conflict(blocked);
+            }
+            if (delta.signum()<0) {
+                if (actionBackedAnchors==null) actionBackedAnchors=actionBackedAnchorQuantities(analysisId);
+                // 行动背书的那一截由撤回链路管, 不在这里退; 其余(下达车间建的锚点
+                // 本来就没有行动)照退。涨的那一侧对行动背书锚点也是加的, 只退不涨
+                // 或只涨不退都会让配额单向漂移。
+                BigDecimal actionFloor=actionBackedAnchors
+                        .getOrDefault(anchor.analysisLineId(),BigDecimal.ZERO);
+                BigDecimal decrease=delta.negate().min(anchor.remainingQty())
+                        .min(anchor.requestedQty().subtract(actionFloor).max(BigDecimal.ZERO))
+                        .max(BigDecimal.ZERO).setScale(4,RoundingMode.DOWN);
+                if (decrease.signum()==0) continue;
+                // 齐套列(ready_*)是按旧配额算的, 紧跟着的那次 refreshLocked 会重算,
+                // 但本条 UPDATE 必须先把它们压回新配额的余量内, 否则撞
+                // production_material_analysis_item_qty_chk。退到 0 不在这里做
+                // ——那是「这条子件任务整个不要了」, 走撤回链路软删, 不是改量。
+                int shrunk=em.createNativeQuery("""
+                        UPDATE production_material_analysis_items
+                        SET requested_qty=requested_qty-:decrease,
+                            ready_now_qty=LEAST(ready_now_qty,
+                                requested_qty-:decrease-submitted_qty-approved_qty),
+                            ready_by_date_qty=LEAST(ready_by_date_qty,
+                                requested_qty-:decrease-submitted_qty-approved_qty),
+                            ready_start_qty=LEAST(ready_start_qty,
+                                requested_qty-:decrease-submitted_qty-approved_qty),
+                            ready_finish_qty=LEAST(ready_finish_qty,
+                                requested_qty-:decrease-submitted_qty-approved_qty),
+                            ready_ship_qty=LEAST(ready_ship_qty,
+                                requested_qty-:decrease-submitted_qty-approved_qty),
+                            updated_by=:actor,updated_at=now()
+                        WHERE id=:child AND analysis_id=:analysis AND parent_analysis_material_id=:parent
+                          AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE AND requested_qty=:previous
+                          AND requested_qty-:decrease>=submitted_qty+approved_qty
+                          AND requested_qty-:decrease>0
+                        """).setParameter("decrease",decrease).setParameter("actor",currentUser.requireId())
+                        .setParameter("child",anchor.analysisLineId()).setParameter("analysis",analysisId)
+                        .setParameter("parent",material.materialLineId())
+                        .setParameter("previous",anchor.requestedQty())
+                        .executeUpdate();
+                if (shrunk==1) changed=true;
+                continue;
+            }
             // Unplanned, submitted and approved-but-not-inbound quantities are one quota,
             // including old action-backed anchors. Do not add the action quantity a second time.
             BigDecimal openQuota=anchor.requestedQty().subtract(anchor.planExecutionInboundQty()).max(BigDecimal.ZERO);
@@ -6131,6 +6237,34 @@ public class MaterialAnalysisService {
                 """).setParameter("analysisId", analysisId))) {
             planned.put(string(row[0]), decimal(row[1]));
         }
+        // ADR-085 单一叶子子件的委外件(我方供料、直接外发)：它不建锚点也不出计划,
+        // 上面那条计划链接的查询对它恒为空。V641 放开这类件的超量下达之后, 多下的
+        // 那部分同样要有人备料——用它自己那张**未结的委外供给行动**当载体:
+        // 归需求量 + 公共备货量 − 已回厂量, 按该行动在各物料行上的分摊比例摊回节点。
+        // 没有这一项, 真实下达 1500 之后子件需求会退回按物理缺口算的 1000,
+        // 多出来的 500 片子件就成了无人负责的需求(仓库要发 1500, 只有 1000 下过单)。
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT material.analysis_item_id || '|' || material.node_key,
+                       SUM(GREATEST(
+                           allocation.allocated_qty / NULLIF(action.requested_qty, 0)
+                           * (action.requested_qty + action.public_surplus_qty
+                              - fn_preplan_action_received_qty(action.id)), 0))::numeric
+                FROM preplan_supply_actions action
+                JOIN preplan_supply_action_allocations allocation
+                  ON allocation.action_id = action.id
+                JOIN production_material_analysis_materials material
+                  ON material.id = allocation.analysis_material_id
+                 AND material.active = TRUE
+                WHERE action.analysis_id = :analysisId
+                  AND action.operation_type = 'SUPPLY'
+                  AND action.route = 'SUBCONTRACT'
+                  AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                  AND action.requested_qty > 0
+                  AND fn_subcontract_sole_component_goods(action.goods_id)
+                GROUP BY 1
+                """).setParameter("analysisId", analysisId))) {
+            planned.merge(string(row[0]), decimal(row[1]), BigDecimal::add);
+        }
         if (external.isEmpty() && internal.isEmpty() && planned.isEmpty()) return Map.of();
         Map<String, ParentSupplyCommitment> result = new LinkedHashMap<>();
         Set<String> keys = new LinkedHashSet<>(external.keySet());
@@ -6143,6 +6277,120 @@ public class MaterialAnalysisService {
                     planned.getOrDefault(key, BigDecimal.ZERO)));
         }
         return Map.copyOf(result);
+    }
+
+    /**
+     * 层级表上「顶层供给行」(ROOT_SUPPLY) 填的数量 → 它那条来源行的计划产出量。
+     * 第 1 层子件按来源展开，不经 parentSupply，所以顶层那一行必须单独落到这里。
+     */
+    private Map<UUID, BigDecimal> typedSourceOutputs(
+            UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine) {
+        if (typedOutputByMaterialLine == null || typedOutputByMaterialLine.isEmpty()) return Map.of();
+        List<UUID> lineIds = typedOutputByMaterialLine.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue().signum() > 0)
+                .map(Map.Entry::getKey).distinct().toList();
+        if (lineIds.isEmpty()) return Map.of();
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, analysis_item_id
+                FROM production_material_analysis_materials
+                WHERE analysis_id = :analysisId AND active = TRUE
+                  AND node_role = 'ROOT_SUPPLY' AND id IN (:lineIds)
+                """).setParameter("analysisId", analysisId).setParameter("lineIds", lineIds))) {
+            BigDecimal typed = typedOutputByMaterialLine.get(uuid(row[0]));
+            if (typed != null && typed.signum() > 0) {
+                result.merge(uuid(row[1]), typed, BigDecimal::max);
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    /**
+     * 来源行的计划产出量, 把「顶层供给行这次填了多少」并进来。
+     *
+     * <p>并法与 {@link #withTypedOutput} 逐字一致: <b>已下达计划量 + 本次填的量</b>,
+     * 再与需求量取大。框里那个数是「本次要下达多少」(追加行更是明写「追加量」),
+     * 不是「把这一批改成多少」——取大的话, 已经下达过 1000 的顶层再追加 500 就只算
+     * 1000, 那 500 的子件需求凭空消失。</p>
+     */
+    private static BigDecimal plannedSourceOutput(
+            SourceLine source, Map<UUID, BigDecimal> typedSourceOutput) {
+        BigDecimal typed = typedSourceOutput.get(source.analysisItemId());
+        if (typed == null) return source.plannedOutputQty();
+        return source.materialRequirementQty().max(source.issuedPlanQty().add(typed));
+    }
+
+    /**
+     * 把「本次每个父行填了多少」并进各自节点的计划产出量(ADR-099 修订，2026-09-21)。
+     *
+     * <p>加在 {@link ParentSupplyCommitment#plannedOutputQty()} 上，而不是与需求量取大：
+     * 那一项本来就是「已下达且未完工的计划总量」，本次要下的这批与它是同一种东西，
+     * 所以是 <b>已下达 + 本次填写</b>。{@link #parentPlannedOutput} 随后再与物理缺口
+     * 取大，于是「填得比缺口少」(缺口里有一部分已由在途顶上)不会把子层需求抬高，
+     * 「填得比缺口多」(超量 / 追加公共备货)则如实带大子层。</p>
+     *
+     * <p>输入框挂在<b>提交单元</b>上(同一操作组在树里可能出现多条路径，只有第一处
+     * 能填)，所以填的是整组的总量：这里按各路径当前需求量的占比拆回节点，全组需求
+     * 都是 0 时平均分。不拆的话，整组的量会全压在第一条路径上，那条路径的子层被
+     * 撑大、别的路径的子层纹丝不动，合计对不上。</p>
+     */
+    private Map<String, ParentSupplyCommitment> withTypedOutput(
+            UUID analysisId, Map<String, ParentSupplyCommitment> committed,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine) {
+        if (typedOutputByMaterialLine == null || typedOutputByMaterialLine.isEmpty()) return committed;
+        List<UUID> lineIds = typedOutputByMaterialLine.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue().signum() > 0)
+                .map(Map.Entry::getKey).distinct().toList();
+        if (lineIds.isEmpty()) return committed;
+        record Peer(UUID ownerId, String nodeRef, BigDecimal requiredQty) {}
+        List<Peer> peers = new ArrayList<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT owner.id,
+                       peer.analysis_item_id || '|' || peer.node_key,
+                       peer.required_qty
+                FROM production_material_analysis_materials owner
+                JOIN production_material_analysis_materials peer
+                  ON peer.analysis_id = owner.analysis_id
+                 AND peer.active = TRUE
+                 AND peer.analysis_item_id = owner.analysis_item_id
+                 AND peer.path = owner.path
+                 AND peer.goods_id = owner.goods_id
+                 AND peer.color_id IS NOT DISTINCT FROM owner.color_id
+                 AND peer.unit_id = owner.unit_id
+                WHERE owner.analysis_id = :analysisId
+                  AND owner.active = TRUE
+                  AND owner.id IN (:lineIds)
+                """).setParameter("analysisId", analysisId).setParameter("lineIds", lineIds))) {
+            peers.add(new Peer(uuid(row[0]), string(row[1]), decimal(row[2])));
+        }
+        if (peers.isEmpty()) return committed;
+        Map<UUID, List<Peer>> byOwner = peers.stream()
+                .collect(Collectors.groupingBy(Peer::ownerId, LinkedHashMap::new, Collectors.toList()));
+        Map<String, ParentSupplyCommitment> merged = new LinkedHashMap<>(committed);
+        byOwner.forEach((ownerId, group) -> {
+            BigDecimal typed = typedOutputByMaterialLine.get(ownerId);
+            if (typed == null || typed.signum() <= 0) return;
+            BigDecimal totalRequired = group.stream().map(Peer::requiredQty)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal allocated = BigDecimal.ZERO;
+            for (int index = 0; index < group.size(); index++) {
+                Peer peer = group.get(index);
+                BigDecimal share = index == group.size() - 1
+                        ? typed.subtract(allocated)
+                        : totalRequired.signum() > 0
+                                ? typed.multiply(peer.requiredQty())
+                                        .divide(totalRequired, 4, RoundingMode.DOWN)
+                                : typed.divide(BigDecimal.valueOf(group.size()), 4, RoundingMode.DOWN);
+                allocated = allocated.add(share);
+                if (share.signum() <= 0) continue;
+                ParentSupplyCommitment current = merged.getOrDefault(
+                        peer.nodeRef(), ParentSupplyCommitment.NONE);
+                merged.put(peer.nodeRef(), new ParentSupplyCommitment(
+                        current.externalFutureQty(), current.internalCommittedQty(),
+                        current.plannedOutputQty().add(share)));
+            }
+        });
+        return Map.copyOf(merged);
     }
 
     private Map<MaterialDimension, List<WarehouseBreakdown>> warehouseBreakdown(

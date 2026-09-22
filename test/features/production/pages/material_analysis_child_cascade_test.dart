@@ -189,6 +189,266 @@ void main() {
     );
   });
 
+  testWidgets('改中间层父件的数量，它的孙层跟着变；它自己和兄弟行不受影响', (tester) async {
+    final harness = await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '20');
+    expect(_qtyOf(tester, 'm-c'), '20');
+    expect(_qtyOf(tester, 'm-d'), '60');
+
+    // 半成品C 是自制件、下面还带着孙层：改它的数量要再要一份重算。
+    final before = harness.writes
+        .where((r) => r.path.endsWith('/issue-plans/preview'))
+        .length;
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-c')),
+      '30',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    final previews = harness.writes
+        .where((r) => r.path.endsWith('/issue-plans/preview'))
+        .toList();
+    expect(previews.length, before + 1);
+    final body = previews.last.data as Map<String, dynamic>;
+    // 树顶照旧真实模拟一遍下达；中间层的数量走 typedOutputs。
+    expect(((body['lines'] as List).single as Map)['qty'], 20.0);
+    expect(body['typedOutputs'], [
+      {'materialLineId': 'm-c', 'qty': 30.0},
+    ]);
+    // 孙层跟着中间层走(D 单件用 3)；中间层自己填的数不被自己带跑，兄弟行不动。
+    expect(_qtyOf(tester, 'm-d'), '90');
+    expect(_qtyOf(tester, 'm-c'), '30');
+    expect(_qtyOf(tester, 'm-b'), '40');
+    // 叶子行改量不值得回服务端：改采购件 B 不再发预览。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-b')),
+      '45',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(
+      harness.writes.where((r) => r.path.endsWith('/issue-plans/preview')),
+      hasLength(previews.length),
+    );
+    // 零真实下达。
+    expect(
+      harness.writes.where((r) => r.path.endsWith('/issue-plans')),
+      isEmpty,
+    );
+  });
+
+  testWidgets('父件数量一改，子层当场就跟着变——不等服务端那份重算回来', (tester) async {
+    final harness = await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '20');
+    expect(_qtyOf(tester, 'm-b'), '40');
+    expect(_qtyOf(tester, 'm-d'), '60');
+    final before = harness.writes
+        .where((r) => r.path.endsWith('/issue-plans/preview'))
+        .length;
+
+    // 敲完就过一帧：去抖还没到，服务端一个字都还没问，屏幕上的子层已经变了。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '40',
+    );
+    await tester.pump();
+    expect(
+      harness.writes.where((r) => r.path.endsWith('/issue-plans/preview')),
+      hasLength(before),
+    );
+    expect(_qtyOf(tester, 'm-b'), '80');
+    expect(_qtyOf(tester, 'm-d'), '120');
+
+    // 去抖到了才问服务端，回来换成权威值(这里两者一致)。
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      harness.writes.where((r) => r.path.endsWith('/issue-plans/preview')),
+      hasLength(before + 1),
+    );
+    expect(_qtyOf(tester, 'm-b'), '80');
+    expect(_qtyOf(tester, 'm-d'), '120');
+  });
+
+  testWidgets('父件改大又立刻改回：没手工改过的子层原路跟着回落，手工改过的那一支不跟', (tester) async {
+    final harness = await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '20');
+    expect(_qtyOf(tester, 'm-b'), '40');
+    expect(_qtyOf(tester, 'm-c'), '20');
+    expect(_qtyOf(tester, 'm-d'), '60');
+
+    // 父件 20 → 40：子层、孙层跟着翻倍。
+    await _setSeedQty(tester, '40');
+    expect(_qtyOf(tester, 'm-b'), '80');
+    expect(_qtyOf(tester, 'm-c'), '40');
+    expect(_qtyOf(tester, 'm-d'), '120');
+
+    // 还没下单就立刻改回 20：刚刚因父件变大的那些数原路回落(用户口径
+    // 2026-09-21 第九轮：先操作变数、然后立马又变，就跟着父件一起变)。
+    await _setSeedQty(tester, '20');
+    expect(_qtyOf(tester, 'm-b'), '40');
+    expect(_qtyOf(tester, 'm-c'), '20');
+    expect(_qtyOf(tester, 'm-d'), '60');
+    // 没手工改过的行不会被送回服务端当输入——送了就会把孙层钉在旧值上。
+    final lastPreview =
+        harness.writes
+                .where((r) => r.path.endsWith('/issue-plans/preview'))
+                .last
+                .data
+            as Map<String, dynamic>;
+    expect(lastPreview['typedOutputs'], isEmpty);
+
+    // 手工把半成品C 改成 100：它的孙层跟它走(100 × 3)。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-c')),
+      '100',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-c'), '100');
+    expect(_qtyOf(tester, 'm-d'), '300');
+
+    // 父件再怎么变，手工改过的那一支都不跟：C 停在 100、D 停在 300；
+    // 没手工改过的兄弟行 B 照样跟着父件走。
+    await _setSeedQty(tester, '40');
+    expect(_qtyOf(tester, 'm-c'), '100');
+    expect(_qtyOf(tester, 'm-d'), '300');
+    expect(_qtyOf(tester, 'm-b'), '80');
+    await _setSeedQty(tester, '10');
+    expect(_qtyOf(tester, 'm-c'), '100');
+    expect(_qtyOf(tester, 'm-d'), '300');
+    expect(_qtyOf(tester, 'm-b'), '20');
+
+    // 只有父件的需求涨过用户填的那个数时才抬上去，孙层跟着抬。
+    await _setSeedQty(tester, '400');
+    expect(_qtyOf(tester, 'm-c'), '400');
+    expect(_qtyOf(tester, 'm-d'), '1200');
+  });
+
+  testWidgets('手工把中间层改大后一键下单：孙层按屏幕上确认过的数下，不被悄悄调小', (tester) async {
+    final harness = await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '20');
+    // 半成品C 手工改成 50：孙层 外购件D 跟到 150(服务端重算给的数)。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-c')),
+      '50',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-c'), '50');
+    expect(_qtyOf(tester, 'm-d'), '150');
+
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键下单'));
+    await tester.pumpAndSettle();
+
+    // 父件段落地时，半成品C 自己的计划还没下达，服务端那份快照算出来的 D 还是
+    // 旧数(60)。屏幕上刚刚确认过的是 150，下出去的就必须是 150。
+    final notify = harness.writes
+        .where((request) => request.path.endsWith('/notify'))
+        .toList();
+    expect(notify, isNotEmpty);
+    final quantities =
+        ((notify.last.data as Map<String, dynamic>)['quantities'] as List)
+            .cast<Map<String, dynamic>>();
+    expect(
+      quantities.firstWhere((row) => row['actionGroupKey'] == 'ag-d')['qty'],
+      150.0,
+    );
+  });
+
+  testWidgets('退格一位一位改数：中途空框既不发请求，也不会把子层甩在旧倍数上', (tester) async {
+    final harness = await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '20');
+    expect(_qtyOf(tester, 'm-b'), '40');
+    final seedBox = find.byKey(
+      const ValueKey('material-analysis-child-cascade-qty-root-1'),
+    );
+
+    // 先改到 40，再用退格一位一位退回 20(真人改数就是这么改的)：
+    // 40 → 4 → 空 → 2 → 20。中间那一拍空框没有数可算，不能把换算基准吃掉，
+    // 否则后面每补一位都在错的基准上 ×10，父件回到 20 了子层还停在 2000 档。
+    await _setSeedQty(tester, '40');
+    expect(_qtyOf(tester, 'm-b'), '80');
+    await tester.enterText(seedBox, '4');
+    await tester.pump();
+    expect(_qtyOf(tester, 'm-b'), '8');
+
+    final beforeBlank = harness.writes
+        .where((r) => r.path.endsWith('/issue-plans/preview'))
+        .length;
+    await tester.enterText(seedBox, '');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    // 树顶还空着：这一拍不发重算请求(发了只会拿到一份「什么都不下达」的快照，
+    // 把基准换掉)。
+    expect(
+      harness.writes.where((r) => r.path.endsWith('/issue-plans/preview')),
+      hasLength(beforeBlank),
+    );
+
+    await tester.enterText(seedBox, '2');
+    await tester.pump();
+    expect(_qtyOf(tester, 'm-b'), '4');
+    await _setSeedQty(tester, '20');
+
+    // 退格改回来的结果，与一开始直接填 20 逐字一致。
+    expect(_qtyOf(tester, 'm-b'), '40');
+    expect(_qtyOf(tester, 'm-c'), '20');
+    expect(_qtyOf(tester, 'm-d'), '60');
+  });
+
+  testWidgets('手滑敲一下又删掉不算「改过」：这一行照旧跟着父件走', (tester) async {
+    await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '20');
+    final childBox = find.byKey(
+      const ValueKey('material-analysis-child-cascade-qty-m-b'),
+    );
+    await tester.enterText(childBox, '7');
+    await tester.pump();
+    await tester.enterText(childBox, '');
+    await tester.pump();
+
+    // 清空 = 把这一行交还给系统算：父件一改它照样跟着走(没有这条的话，
+    // 误触一下就永久脱离跟随，而且界面上没有任何退回去的入口)。
+    await _setSeedQty(tester, '40');
+    expect(_qtyOf(tester, 'm-b'), '80');
+    await _setSeedQty(tester, '20');
+    expect(_qtyOf(tester, 'm-b'), '40');
+  });
+
+  testWidgets('先把子层改大再改父件：填得比新需求多就原样留着，比新需求少就跟着抬上去', (tester) async {
+    await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '20');
+    // 子层手工改成 100(远高于按 20 算出来的 40)。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-m-b')),
+      '100',
+    );
+    await tester.pumpAndSettle();
+
+    // 父件改小到 10：新需求 20 < 手填的 100，子层原样不动。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '10',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '100');
+
+    // 父件改大到 60：新需求 120 > 手填的 100，子层跟着抬到 120(否则父件缺料)。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+      '60',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(_qtyOf(tester, 'm-b'), '120');
+  });
+
   testWidgets('树顶数量被清空时不按旧数量提交，而是当场拦下', (tester) async {
     final harness = await _pump(tester);
     await _openWorkshopBucket(tester);
@@ -357,7 +617,7 @@ void main() {
     );
   });
 
-  testWidgets('单一叶子子件的委外件：父件走下达委外、不请求预览，子件仍进一起办', (tester) async {
+  testWidgets('单一叶子子件的委外件：父件走下达委外，子件按它填的量重算后一起办', (tester) async {
     final harness = await _pump(tester, soleComponentSubcontract: true);
     await tester.tap(
       find.byKey(const Key('material-analysis-entry-subcontract')),
@@ -372,11 +632,18 @@ void main() {
       find.byKey(const Key('material-analysis-child-cascade-dialog')),
       findsOneWidget,
     );
-    // 直接外发的委外件不需要预览：子件需求本来就不依赖通知量。
-    expect(
-      harness.writes.where((r) => r.path.endsWith('/issue-plans/preview')),
-      isEmpty,
-    );
+    // 直接外发的委外通道不模拟下达(它不建计划)，但它填的量要按计划产出量
+    // 补给服务端——我方供料的那颗子件得按这个量备(2026-09-21 用户口径：
+    // 委外也能超量，多下的量要带大子件需求)。
+    final previews = harness.writes
+        .where((r) => r.path.endsWith('/issue-plans/preview'))
+        .toList();
+    expect(previews, hasLength(1));
+    final previewBody = previews.single.data as Map<String, dynamic>;
+    expect(previewBody['lines'], isEmpty);
+    expect(previewBody['typedOutputs'], [
+      {'materialLineId': 'root-1', 'qty': 10.0},
+    ]);
     expect(_inDialog('外购件B'), findsOneWidget);
     expect(_qtyOf(tester, 'm-b'), '20');
     await tester.tap(
@@ -584,6 +851,40 @@ Finder _inDialog(String text) => find.descendant(
 Finder _bucketQty(String rowId) =>
     find.byKey(ValueKey('material-analysis-bucket-qty-$rowId'));
 
+/// 改树顶数量并等那份服务端重算回来(去抖 300ms)。
+Future<void> _setSeedQty(WidgetTester tester, String qty) async {
+  await tester.enterText(
+    find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
+    qty,
+  );
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pumpAndSettle();
+}
+
+/// 下达车间桶 → 按 [batchQty] 勾选成品A → 过超量确认 → 停在「父件 + 下层
+/// 一起下单」整页。
+Future<void> _enterCascadeFromWorkshopBucket(
+  WidgetTester tester,
+  String batchQty,
+) async {
+  await _openWorkshopBucket(tester);
+  await tester.enterText(_bucketQty('p1'), batchQty);
+  await tester.pumpAndSettle();
+  await _tapRowCheckbox(tester, '成品A');
+  await tester.tap(
+    find.byKey(const Key('material-analysis-bucket-action-ready')),
+  );
+  await tester.pumpAndSettle();
+  if (find.text('确认超量下达').evaluate().isNotEmpty) {
+    await tester.tap(find.text('确认超量下达'));
+    await tester.pumpAndSettle();
+  }
+  expect(
+    find.byKey(const Key('material-analysis-child-cascade-dialog')),
+    findsOneWidget,
+  );
+}
+
 /// 按行内文本定位整行（横滚时首列勾选框在冻结包裹层里）并点它的勾选框。
 Future<void> _tapRowCheckbox(WidgetTester tester, String text) async {
   final frozen = find.ancestor(
@@ -685,13 +986,19 @@ Map<String, dynamic> _scaledAnalysis(
   final body = request.data;
   if (body is! Map<String, dynamic>) return analysis;
   final lines = (body['lines'] as List?)?.cast<Map<String, dynamic>>();
-  if (lines == null || lines.isEmpty) return analysis;
-  final top = lines.firstWhere(
+  final top = (lines ?? const <Map<String, dynamic>>[]).firstWhere(
     (line) => line['analysisLineId'] == 'p1',
     orElse: () => const <String, dynamic>{},
   );
   final batch = (top['qty'] as num?)?.toDouble();
-  if (batch == null) return analysis;
+  // 2026-09-21：层级表上每一行填的数量。服务端按它补齐该节点的计划产出量，
+  // 于是中间层改量同样带得动它的子层——本假后端照同一口径算：半成品C 的孙层
+  // 外购件D 单件用 3(相对 C)，C 填了多少，D 就是多少 × 3。
+  final typed = <String, double>{
+    for (final raw in (body['typedOutputs'] as List? ?? const []))
+      (raw as Map)['materialLineId'] as String: (raw['qty'] as num).toDouble(),
+  };
+  if (batch == null && typed.isEmpty) return analysis;
   return {
     ...analysis,
     'flatMaterials': [
@@ -705,7 +1012,16 @@ Map<String, dynamic> _scaledAnalysis(
               (material['additionalSupplyRecommendedQty'] as num).toDouble();
           // 已有覆盖（现货 / 在途 / 已下达）原样保留，只有需求随本批数量放大。
           final covered = baseRequired - baseResidual;
-          final required = batch * perProduct;
+          final fromTop = batch == null ? baseRequired : batch * perProduct;
+          // 与服务端 parentPlannedOutput 同口径：父件的计划产出量是「祖先算出来
+          // 的净需求」与「这一层自己填的数量」取大，所以 typedOutputs 只会把
+          // 子层带大，不会把它按过期的旧值压小。
+          final parentTyped = material['materialLineId'] == 'm-d'
+              ? typed['m-c']
+              : null;
+          final required = parentTyped != null && parentTyped * 3 > fromTop
+              ? parentTyped * 3
+              : fromTop;
           final residual = (required - covered).clamp(0.0, double.infinity);
           return material
             ..['requiredQty'] = required

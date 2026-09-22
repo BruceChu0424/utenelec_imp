@@ -23,6 +23,16 @@ abstract interface class GoodsBomRepository {
 
   Future<void> delete(String goodsId, String itemId);
 
+  /// 批量删除组装行(同一父货品下的多条关系一次提交，上限 200 条)。
+  ///
+  /// 服务端是**整批原子**的：只要有一条 id 不存在、已被别人删掉、或压根不属于
+  /// 这个 goodsId，整批就失败且一条都不删(抛 ApiException，通常是 404)。所以本
+  /// 方法要么正常返回、要么抛异常，不存在「删了一部分」的返回值。
+  ///
+  /// 返回值是服务端去重后实际删掉的条数：调用方提交重复 id 时它会小于提交条数，
+  /// 报「成功几条」要按它来。
+  Future<int> deleteMany(String goodsId, List<String> itemIds);
+
   /// 审计标记（goods:bom:audit，V256）：把组装行标记为「已核对无误」或取消。
   Future<GoodsBomItem> setAudited(String goodsId, String itemId, bool audited);
 }
@@ -59,6 +69,17 @@ class DioGoodsBomRepository implements GoodsBomRepository {
   @override
   Future<void> delete(String goodsId, String itemId) async {
     await api.delete(ApiEndpoints.goodsBomItem(goodsId, itemId));
+  }
+
+  @override
+  Future<int> deleteMany(String goodsId, List<String> itemIds) async {
+    final json = await api.post(
+      ApiEndpoints.goodsBomBatchDelete(goodsId),
+      body: {'itemIds': itemIds},
+    );
+    // 后端 int 字段在 JSON 里可能是 int 也可能是 num，直接 as int 会炸。
+    final deleted = json['deleted'];
+    return deleted is num ? deleted.toInt() : 0;
   }
 
   @override

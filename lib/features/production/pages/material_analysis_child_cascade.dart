@@ -36,19 +36,116 @@ abstract class _MaterialAnalysisChildCascadeState
         ),
   ];
 
+  /// 在树里还带着下层的提交单元：只有这些行的数量值得回服务端重算一遍
+  /// (叶子行改量不影响任何人)。同一提交单元在树里出现多次时，任一处有下层
+  /// 就算有。
+  Set<String> _cascadeSubmitKeysWithChildren(List<_ChildCascadeRow> rows) {
+    final keys = <String>{};
+    for (var index = 0; index + 1 < rows.length; index++) {
+      if (rows[index + 1].depth > rows[index].depth) {
+        keys.add(rows[index].submitKey);
+      }
+    }
+    return keys;
+  }
+
+  /// 层级表上**用户亲手填过**的那些行的数量(键 = 物料行 id)：服务端按它补齐
+  /// 各自节点的**计划产出量**，子层、孙层按新数量重算。
+  ///
+  /// **只收用户手工改过的行**(2026-09-21 用户口径「如果跟着父类变、但是子类没有
+  /// 更改过，父类再变也跟着变」)：没手工改过的行，它格子里那个数只是上一轮父行
+  /// 传下来的回声，送回服务端只会经「与缺口取大」把子树钉在旧值上——父件改小时
+  /// 孙层就降不下来。不送它，服务端便从父件的新数量一路算到底。
+  ///
+  /// 还要「下面确实带着层级」且「能下达」；填 0 的追加行自然不进来
+  /// (0 不改变任何东西)。
+  ///
+  /// 树顶那一行不在这里：它由 [_cascadePreviewTypedOutputs] 按「这次要不要真跑
+  /// 一遍下达」决定走哪条路。
+  /// [willIssue] = 这一行本次真的会下(默认全算)。没勾的行不下单，也就不该
+  /// 带动它的子层——「看到的勾选 = 提交的内容」，数字也得跟着这条走。
+  Map<String, double> _cascadeTypedOutputs(
+    List<_ChildCascadeRow> rows, {
+    bool Function(_ChildCascadeRow row)? willIssue,
+  }) {
+    final withChildren = _cascadeSubmitKeysWithChildren(rows);
+    return {
+      for (final row in rows)
+        if (!row.isSeed &&
+            row.ownsInput &&
+            row.material != null &&
+            row.blockedReason == null &&
+            row.userTypedQty != null &&
+            withChildren.contains(row.submitKey) &&
+            row.userTypedQty! > 0.0001 &&
+            (willIssue == null || willIssue(row)))
+          // 送**用户亲手填的那个数**，不是框里显示的数：框里可能是页面按父行
+          // 比例换算出来的、或按下限替他抬上去的值。服务端那一侧是「加进计划
+          // 产出量再与缺口取大」，送一个被放大过的数上去，它就成了整棵子树的
+          // 地板，回来又被子层原样采纳，再也降不下来。地板该是多少，服务端
+          // 自己会从父行算出来。
+          row.material!.materialLineId: row.userTypedQty!,
+    };
+  }
+
+  /// 本次重算要带给服务端的全部「每行填了多少」。
+  ///
+  /// 树顶那一行分两种走法：**车间通道**([lines] 里那些)由服务端真跑一遍
+  /// issue-plans，量已经落在计划链接上，再补一次就成了双倍，所以不进这里；
+  /// **直接外发的委外通道**不模拟下达(它不建计划)，它填的量只能按计划产出量
+  /// 补进去——不然「委外件按 1500 下达、我方供料的那颗子件仍按 1000 备」
+  /// (2026-09-21 用户口径：委外也要能超量，多下的量要带大子件需求)。
+  /// [seedPending] = 父件段还没提交；已提交过的(重试模式)它的量已经是库里的
+  /// 事实，不能再补一次。
+  Map<String, double> _cascadePreviewTypedOutputs(
+    List<_ChildCascadeSeed> seeds,
+    List<_ChildCascadeRow> rows,
+    List<MaterialAnalysisIssueLine> lines, {
+    required bool seedPending,
+    bool Function(_ChildCascadeRow row)? willIssue,
+  }) {
+    final simulated = {
+      for (final line in lines) line.materialLineId ?? line.analysisLineId,
+    };
+    return {
+      for (final seed in seeds)
+        if (seedPending &&
+            seed.materialLineId != null &&
+            !simulated.contains(seed.materialLineId) &&
+            seed.batchQty > 0 &&
+            seed.batchQty.isFinite)
+          seed.materialLineId!: seed.batchQty,
+      ..._cascadeTypedOutputs(rows, willIssue: willIssue),
+    };
+  }
+
   /// 下达预览：服务端按同一套代码真实跑一遍 issue-plans 再整体回滚，返回
   /// 「下达之后」的分析快照——下层需求按计划产出量放大、锚点配额自动增长、
-  /// 还需安排量全部是服务端口径。没有车间通道的种子时直接用当前快照。
+  /// 还需安排量全部是服务端口径。[rows] 里各层填的数量一并带上，中间层改量
+  /// 同样带得动它的子层(ADR-099 修订 2026-09-21)。
   ///
   /// 返回 null = 本页还没有快照 / 仓库（调用方按「不进页」处理）。
   Future<ProductionMaterialAnalysisView?> _previewCascadeView(
-    List<_ChildCascadeSeed> seeds,
-  ) async {
+    List<_ChildCascadeSeed> seeds, {
+    List<_ChildCascadeRow> rows = const [],
+    bool includeSeedIssue = true,
+    bool seedPending = true,
+    bool Function(_ChildCascadeRow row)? willIssue,
+  }) async {
     final analysis = _analysis;
     final warehouseId = _warehouseId;
     if (analysis == null || warehouseId == null) return null;
-    final lines = _cascadeIssueLines(seeds);
-    if (lines.isEmpty) return analysis;
+    final lines = includeSeedIssue
+        ? _cascadeIssueLines(seeds)
+        : const <MaterialAnalysisIssueLine>[];
+    final typedOutputs = _cascadePreviewTypedOutputs(
+      seeds,
+      rows,
+      lines,
+      seedPending: seedPending,
+      willIssue: willIssue,
+    );
+    if (lines.isEmpty && typedOutputs.isEmpty) return analysis;
     // 预览专用的新键：它在服务端随事务一起回滚，不能与真实下达撞键。
     final key = businessIdempotencyKey(
       'material-analysis-issue-preview',
@@ -62,7 +159,7 @@ abstract class _MaterialAnalysisChildCascadeState
     );
     return ref
         .read(productionPlanRepositoryProvider)
-        .previewIssueWorkshopPlans(
+        .previewIssuePlans(
           analysis: analysis,
           warehouseId: warehouseId,
           idempotencyKey: key,
@@ -70,6 +167,7 @@ abstract class _MaterialAnalysisChildCascadeState
           deliveryDate: _dateText(_deliveryDate),
           approveNow: _permissions.contains(Perm.productionPlanApprove),
           lines: lines,
+          typedOutputs: typedOutputs,
         );
   }
 
@@ -837,8 +935,30 @@ abstract class _MaterialAnalysisChildCascadeState
       ));
       if (stillPending.isNotEmpty) return results;
     }
-    // 2) 采购 3) 直接外发委外：行内数量交给既有的裁决 / 分批 / 幂等链路；
+    // 2) 车间：自制 + 需先自制的委外。**按层级自上而下逐层下达**——同一批里
+    //    父行的计划必须先落地，下一层的需求与锚点配额才是真的；一次性全发时，
+    //    深层那行按父件新数量填的量会被服务端当成超出当时需求的部分，记成公共
+    //    备货产出而不是本需求(用户口径 2026-09-21「改上一层，下一层要跟着改」
+    //    之后，深层的量本来就常常比下达前的需求大)。
+    final workshopRows = rows
+        .where((row) => row.kind == _CascadeKind.workshop)
+        .toList(growable: false);
+    final workshopDepths = (workshopRows.map((row) => row.depth).toSet().toList()
+      ..sort());
+    for (final depth in workshopDepths) {
+      final batch = workshopRows
+          .where((row) => row.depth == depth)
+          .toList(growable: false);
+      final label = workshopDepths.length > 1 ? '下达车间(第 $depth 层)' : '下达车间';
+      if (!await _issueCascadeWorkshopBatch(batch, label, results)) {
+        return results;
+      }
+    }
+    // 3) 采购 4) 直接外发委外：行内数量交给既有的裁决 / 分批 / 幂等链路；
     //    服务端先自动认领公共在途、再看原申请能不能就地追加，最后才新单。
+    //    放在车间之后：它们的服务端余量随父件的计划一起长大，父件还没下达时
+    //    按新数量填的采购量会被当成超量。直接外发的委外还要更靠后——它一下达，
+    //    我方供料的那颗子件就转由委外申请负责，子件行的需求会归零。
     for (final kind in [_CascadeKind.buy, _CascadeKind.subcontractLeaf]) {
       final batch = rows
           .where((row) => row.kind == kind)
@@ -904,11 +1024,17 @@ abstract class _MaterialAnalysisChildCascadeState
       ));
       if (view == null) return results;
     }
-    // 4) 车间：自制 + 需先自制的委外一次原子调用（服务端建锚点 / 台账 + 出
-    //    计划同事务）。已有自制锚点的行按锚点追加；其余按候选行提交。
-    final workshop = rows
-        .where((row) => row.kind == _CascadeKind.workshop)
-        .toList(growable: false);
+    return results;
+  }
+
+  /// 同一层的车间行一次原子调用(服务端建锚点 / 台账 + 出计划同事务)。
+  /// 已有自制锚点的行按锚点追加；其余按候选行提交。返回 false = 本段失败，
+  /// 调用方停下后续所有段。
+  Future<bool> _issueCascadeWorkshopBatch(
+    List<_ChildCascadeRow> workshop,
+    String label,
+    List<_CascadeStepResult> results,
+  ) async {
     if (workshop.isNotEmpty) {
       final submittable = <_ChildCascadeRow>[];
       final dropped = <_ChildCascadeRow>[];
@@ -938,14 +1064,14 @@ abstract class _MaterialAnalysisChildCascadeState
       }
       if (submittable.isEmpty) {
         results.add((
-          label: '下达车间',
+          label: label,
           count: 0,
           ok: false,
           note:
               '${dropped.length} 行在最新快照里已不可排产'
               '（${_names(dropped.map((row) => row.displayName))}），本段未提交',
         ));
-        return results;
+        return false;
       }
       final ok = await _issueWorkshopPlans(
         candidateInputs: [
@@ -987,9 +1113,9 @@ abstract class _MaterialAnalysisChildCascadeState
         ],
         silent: true,
       );
-      if (!mounted) return results;
+      if (!mounted) return false;
       results.add((
-        label: '下达车间',
+        label: label,
         count: ok ? submittable.length : 0,
         ok: ok && dropped.isEmpty,
         note: ok
@@ -999,8 +1125,9 @@ abstract class _MaterialAnalysisChildCascadeState
                         '（${_names(dropped.map((row) => row.displayName))}）')
             : '生产计划未生成，整批已回滚',
       ));
+      if (!ok) return false;
     }
-    return results;
+    return true;
   }
 
   /// 本行物料在**最新快照**里的锚点产品行。车间段提交前按它复核「还能不能

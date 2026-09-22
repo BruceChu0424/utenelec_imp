@@ -1317,17 +1317,6 @@ abstract class _MaterialAnalysisSupplyActionsState
             (material.demandSupplyGapQty > 0 ? material.demandSupplyGapQty : 0);
       }
     }
-    // 「我方供料的委外件不能吃公共超量备货」——多出来的量会凭空产生一份
-    // 无人负责的子件需求，服务端与数据库
-    //（preplan_public_surplus_subcontract_leaf_guard）都拒绝。
-    //
-    // 这里问的是**有没有生产性子层**（V581 的单一子件委外同样有，同样不许超量），
-    // 不是「要不要先自制」。原先这一处内联判定只查 childrenByParentNodeKey、
-    // 没有根行回退，导致 ROOT_SUPPLY 顶层直委外行被判成「无子层」而放开超量，
-    // 与同一批数量裁决的判定相反；改用带根行回退的 _analysisMaterialHasChildren
-    // （它不排除 SHIP/REFERENCE，恰好与数据库那条「有任意活动 BOM 边即拒」同口径）。
-    final hasProductionChildren =
-        representative != null && _analysisMaterialHasChildren(representative);
     return MaterialSupplyQuantityEntry(
       actionGroupKey: target.actionGroupKey,
       materialLineId: target.materialLineId,
@@ -1351,9 +1340,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       publicAvailableQty: publicAvailable,
       openSafetySupplyQty: openSafetySupply,
       safetyReplenishmentGapQty: safetyGap,
-      allowPublicExtra:
-          route == MaterialSupplyRoute.buy ||
-          (route == MaterialSupplyRoute.subcontract && !hasProductionChildren),
+      // 2026-09-21 用户口径「采购能超量下，委外也要能」：我方供料的委外件
+      // (有生产性子层，含 V581 单一子件件)从此同样可以超量。原先这里与
+      // 服务端、数据库一起拒绝，理由是「多下的量会凭空多出一份无人负责的
+      // 子件需求」——那条理由已被 ADR-099 修订解决：多下的量按计划产出量
+      // 如实带大子件需求，在「父件 + 下层一起下单」页里一并办掉(V641)。
+      allowPublicExtra: true,
     );
   }
 

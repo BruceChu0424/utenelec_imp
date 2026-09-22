@@ -188,8 +188,9 @@ public class MaterialAnalysisCommandService {
             boolean createsChildOwnership = "MAKE".equals(group.route())
                     || ("SUBCONTRACT".equals(group.route())
                         && subcontractMakeFirst.contains(group.dimension().goodsId()));
-            // 我方供料的带 BOM 委外件（含 V581 单一子件件）：多下的量会凭空多出一份
-            // 无人负责的子件需求，既不能公共超量备货，也不吃公共超量在途。
+            // 我方供料的带 BOM 委外件(含 V581 单一子件件)：**不自动认领**别人的
+            // 公共在途——它要的是我们自己做出来、再发给委外商的那颗子件。
+            // (超量备货那一侧 2026-09-21 已按用户口径放开，见下方分账段。)
             boolean ownSupplyBom = "SUBCONTRACT".equals(group.route())
                     && subcontractBomParents.contains(group.dimension().goodsId());
             if (input != null) {
@@ -208,22 +209,22 @@ public class MaterialAnalysisCommandService {
                     demandQty = requested.min(delta);
                     publicExtraQty = requested.subtract(demandQty).max(BigDecimal.ZERO)
                             .setScale(4, RoundingMode.CEILING);
-                    if (publicExtraQty.signum() > 0) {
-                        if (!access.hasAuthority(
-                                "production_material_analysis:over_supply")) {
-                            throw new ApiException(ErrorCode.FORBIDDEN,
-                                    "「" + groupLabel(group) + "」本次最多还能按需求下达 "
-                                    + delta.stripTrailingZeros().toPlainString()
-                                    + "，超出部分属主动公共备货，需要独立的超量下达权限");
-                        }
-                        // 数据库 preplan_public_surplus_subcontract_leaf_guard 同口径拒绝，
-                        // 这里先给出可读文案，不让请求跑到 23514。
-                        if (ownSupplyBom) {
-                            throw validation("「" + groupLabel(group)
-                                    + "」是我方供料的委外件（要发子件给委外商），"
-                                    + "不能创建公共超量备货；多做的量请另立需求");
-                        }
+                    if (publicExtraQty.signum() > 0
+                            && !access.hasAuthority(
+                                    "production_material_analysis:over_supply")) {
+                        throw new ApiException(ErrorCode.FORBIDDEN,
+                                "「" + groupLabel(group) + "」本次最多还能按需求下达 "
+                                + delta.stripTrailingZeros().toPlainString()
+                                + "，超出部分属主动公共备货，需要独立的超量下达权限");
                     }
+                    // 2026-09-21 用户口径「采购能超量下, 委外和车间也要能」：我方供料的
+                    // 委外件(含 V581 单一子件件)从此同样可以超量。原先这里与数据库
+                    // preplan_public_surplus_subcontract_leaf_guard 一起拒绝, 理由是
+                    // 「多下的量会凭空多出一份无人负责的子件需求」——那条理由已经不
+                    // 成立：多下的量现在按计划产出量如实带大子件需求(ADR-099 修订,
+                    // 层级表上填多少, 子层就按多少算), 下达时在同一张「父件 + 下层
+                    // 一起下单」页里一并办掉, 没人负责的情形不再存在。V641 同步放开
+                    // 数据库侧的形状守卫与运行时超订容量。
                 }
             } else if (arrangeQtyByMaterialLine != null) {
                 // Existing preparation commitment can still have unscheduled output.
@@ -854,6 +855,20 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public GenerateResult issueWorkshopPlans(
             UUID analysisId, IssueWorkshopPlansRequest request) {
+        if (request.lines().isEmpty()) {
+            throw validation("本次没有要下达的行");
+        }
+        return issueWorkshopPlansInternal(analysisId, request, Map.of());
+    }
+
+    /**
+     * @param typedOutputByMaterialLine 下达预览专用：层级表上每个父行填的数量
+     *        (键 = 物料行 id)。只影响最后那次重算里「子件按父件计划产出展开」
+     *        这一步，真实下达恒传空 Map。
+     */
+    private GenerateResult issueWorkshopPlansInternal(
+            UUID analysisId, IssueWorkshopPlansRequest request,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine) {
         tx.bind();
         // 本命令会嵌套进 notifySupplyInternal 的 ARRANGE 腿(委外件有自制子层时建台账),
         // 那一腿按 ADR-099 要锁「本分析 + 可认领公共在途」。预锁一旦 prepared 就只允许
@@ -883,7 +898,9 @@ public class MaterialAnalysisCommandService {
         // change through generic warehouse commands without updating this
         // analysis, so recompute allocation under the held mutation locks before
         // deciding a new child quota. Page entry and GET remain read-only.
-        analysisService.requireCurrentBomSnapshot(analysisId, workshopSourceIds(analysisId, request));
+        if (!request.lines().isEmpty()) {
+            analysisService.requireCurrentBomSnapshot(analysisId, workshopSourceIds(analysisId, request));
+        }
         analysisService.refreshLocked(analysisId);
         // 1) 候选行建「子件锚点行」（2026-09-05 简化：计划侧不再接管子树需求、
         //    不搬权益——物料行保持原位单一份数据，计划员照常在采购/委外桶下达；
@@ -994,7 +1011,11 @@ public class MaterialAnalysisCommandService {
             }
         }
         // BOM/订单来源漂移闸：分析快照之后 BOM 或销售订单状态变了就拒绝下达。
-        analysisService.requireCurrentBomSnapshot(analysisId, lineByAnalysisLine.keySet());
+        // 一行都不下达的重算(预览只带层级数量)没有要校验的产品，跳过这道闸——
+        // 它本来就只校验「本次要生成计划的那些产品」。
+        if (!lineByAnalysisLine.isEmpty()) {
+            analysisService.requireCurrentBomSnapshot(analysisId, lineByAnalysisLine.keySet());
+        }
         PlanScheduleDefaults defaults = new PlanScheduleDefaults(
                 request.billDate(), request.deliveryDate());
         List<GeneratedPlan> generated = new ArrayList<>();
@@ -1060,7 +1081,9 @@ public class MaterialAnalysisCommandService {
                 || "PARTIALLY_PLANNED".equals(postPlanHeader.status())) {
             // ADR-099：下层物料按计划产出量重算；已有自制锚点的物料需求变大时，
             // 锚点配额同步增长，车间桶的剩余可排量随之变大。
-            analysisService.refreshWithAnchorGrowth(analysisId);
+            // 预览还会把层级表上每个父行填的数量一起并进来(typedOutput)，于是
+            // 中间层改量同样能把它自己的子层、孙层一路带大。
+            analysisService.refreshWithAnchorGrowth(analysisId, Map.of(), typedOutputByMaterialLine);
         }
         recordCommand(analysisId, OP_GENERATE, request.idempotencyKey(), requestHash,
                 Map.of("planIds", generated.stream().map(GeneratedPlan::planId).toList()));
@@ -1074,11 +1097,29 @@ public class MaterialAnalysisCommandService {
      * 重算），随后把整个事务标记回滚——库里不留计划、锚点、台账、通知或命令记录。
      * 客户端据此在「父件 + 下层一起下单」页面展示服务端算好的下层数量，不再在
      * 浏览器里按单耗自行相乘。幂等键必须是预览专用的新键。
+     *
+     * <p>2026-09-21 修订(用户口径「我改下面某个层级的父件数量，它的子层级也要跟着
+     * 改」)：{@link PreviewIssuePlansRequest#typedOutputs()} 是层级表上<b>每一行</b>
+     * 输入框里的数量。树顶那行照旧真实跑一遍下达，其余每一层填的数量按「计划产出量」
+     * 并进重算——中间层改量、追加量同样带得动它自己的子层与孙层。树顶不下达(只改
+     * 中间层、或父件已提交过的重试)时 {@code lines} 可以为空，此时本方法只重算不
+     * 下达任何东西。</p>
      */
     @Transactional
-    public AnalysisView previewIssueWorkshopPlans(
-            UUID analysisId, IssueWorkshopPlansRequest request) {
-        GenerateResult result = issueWorkshopPlans(analysisId, request);
+    public AnalysisView previewIssuePlans(UUID analysisId, PreviewIssuePlansRequest request) {
+        if (request.lines().isEmpty() && request.typedOutputs().isEmpty()) {
+            throw validation("预览至少要给出一行本批数量");
+        }
+        if (!request.lines().isEmpty()
+                && !access.hasAuthority("production_material_analysis:generate")) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "预览下达车间需要生成生产计划权限");
+        }
+        Map<UUID, BigDecimal> typedOutputs = new LinkedHashMap<>();
+        for (PreviewIssuePlansRequest.TypedOutput typed : request.typedOutputs()) {
+            typedOutputs.merge(typed.materialLineId(), typed.qty(), BigDecimal::add);
+        }
+        GenerateResult result = issueWorkshopPlansInternal(
+                analysisId, request.toIssueRequest(), Map.copyOf(typedOutputs));
         if (result.replayed()) {
             throw conflict("该幂等键已被真实下达使用，预览请使用新的幂等键");
         }

@@ -1,7 +1,7 @@
 # UtenTreeTableCell（表格树形层级单元格）
 
 > 路径：`lib/shared/widgets/uten_tree_table_cell.dart` · 测试：`test/shared/widgets/uten_tree_table_cell_test.dart`
-> 已接入：货品资料-组装信息（`goods_bom_tab.dart`，懒加载不传 `childCount`；**2026-09-12 用户口径「只显示名字和组件X级」**：不再传路径行/编号副标题，身份格 = 级联号徽标 + 「组件 N 级」 + 名字，编号看表格「编号」列）/ 生产物料分析统一物料表（`material_analysis_material_table.dart`，2026-09-10 起传 `childCount` = 当前投影可见的直接子件数：产品行 = 直挂子件数、物料行 = `childCountByParent`；「只看缺料」/表头筛选下是可见数而非 BOM 全量；汇总行副标题已有「N 来源」不传）。**凡在 MasterDataTableView/UtenEditableGrid 类表格里展示「父子层级行」，层级标识一律用本单元格，不得各页自写缩进**（2026-09-04 起）。`pathLabel` 路径行参数已随最后宿主下线（2026-09-12）删除。
+> 已接入：货品资料-组装信息（`goods_bom_tab.dart`，懒加载不传 `childCount`；**2026-09-12 用户口径「只显示名字和组件X级」**：不再传路径行/编号副标题，身份格 = 级联号徽标 + 「组件 N 级」 + 名字，编号看表格「编号」列；**2026-09-21 起该表开多选**：勾选列由 `MasterDataTableView.selectable` 渲染在层级格**之前**并随横滚冻结，展开箭头的 48×48 命中区与勾选/行点击仍互不抢手势，折叠起来的子行不参与表头三态全选）/ 生产物料分析统一物料表（`material_analysis_material_table.dart`，2026-09-10 起传 `childCount` = 当前投影可见的直接子件数：产品行 = 直挂子件数、物料行 = `childCountByParent`；「只看缺料」/表头筛选下是可见数而非 BOM 全量；汇总行副标题已有「N 来源」不传）。**凡在 MasterDataTableView/UtenEditableGrid 类表格里展示「父子层级行」，层级标识一律用本单元格，不得各页自写缩进**（2026-09-04 起）。`pathLabel` 路径行参数已随最后宿主下线（2026-09-12）删除。
 
 ## 一、解决什么
 

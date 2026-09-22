@@ -7,6 +7,7 @@ import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.features.master.goods.dto.BomAuditRequest;
+import com.uten.imp.features.master.goods.dto.BomBatchDeleteRequest;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomItemView;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -33,6 +35,7 @@ import java.util.UUID;
  * - POST   /api/master/goods/{id}/bom              → 添加组件（goods:bom:create，同成品下组件 UUID 唯一）
  * - PUT    /api/master/goods/{id}/bom/{itemId}     → 编辑组件行（goods:bom:edit）
  * - DELETE /api/master/goods/{id}/bom/{itemId}     → 删除组件行（goods:bom:delete，软删）
+ * - POST   /api/master/goods/{id}/bom/batch-delete → 批量删除勾选的组件行(goods:bom:delete，软删，整批原子)
  * - POST   /api/master/goods/{id}/bom/export       → 产品配件清单加密 Excel（goods:export）
  *
  * 组装树的子级由前端对组件 id 再调 GET list 懒加载（组件自身也是货品）。
@@ -71,6 +74,17 @@ public class GoodsBomController {
     @PreAuthorize("hasAuthority('goods:bom:delete')")
     public void delete(@PathVariable UUID id, @PathVariable UUID itemId) {
         service.delete(id, itemId);
+    }
+
+    /**
+     * 批量删除组件行：勾选多行后一次删完，要么全删要么一条不删。
+     * 用 POST 而非 DELETE，是因为 id 清单要走 body(DELETE 带 body 各代理/客户端行为不一致)。
+     */
+    @PostMapping("/batch-delete")
+    @PreAuthorize("hasAuthority('goods:bom:delete')")
+    public Map<String, Object> batchDelete(@PathVariable UUID id,
+                                           @Valid @RequestBody BomBatchDeleteRequest req) {
+        return Map.of("deleted", service.deleteAll(id, req.getItemIds()));
     }
 
     /** 审计标记：把组装行标记为「已核对无误」或取消；非 BOM 数据变更。 */

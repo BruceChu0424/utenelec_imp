@@ -427,7 +427,9 @@ class BusinessDataResetSqlContractTest {
                 // V640 未订货申请明细就地追加 (ADR-099): 两个判定函数 + 锚点补丁三个身份守卫,
                 // 不加表 (V639 跳号, V640 591→592)。
                 .contains("(640, 592)")
-                .contains("V507/469、V508/470及V511至V640完整目录");
+                // V641 我方供料委外件放开公共超量: 锚点补丁两个函数, 不加表 (V641 592→593)。
+                .contains("(641, 593)")
+                .contains("V507/469、V508/470及V511至V641完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

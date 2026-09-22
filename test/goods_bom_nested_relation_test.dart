@@ -38,6 +38,9 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
 
   String? deletedParentId;
   String? deletedItemId;
+
+  /// 批量删除调用记录：(父货品 id, 提交的关系行 id)。
+  final batchDeleteCalls = <(String, List<String>)>[];
   String? updatedParentId;
   String? updatedItemId;
   Map<String, dynamic>? updatedBody;
@@ -66,6 +69,12 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
   Future<void> delete(String goodsId, String itemId) async {
     deletedParentId = goodsId;
     deletedItemId = itemId;
+  }
+
+  @override
+  Future<int> deleteMany(String goodsId, List<String> itemIds) async {
+    batchDeleteCalls.add((goodsId, List<String>.of(itemIds)));
+    return itemIds.length;
   }
 
   @override
@@ -129,7 +138,7 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再有路径行，
   // 编号也不再堆进副标题（看「编号」列）。
   expect(find.textContaining('路径：'), findsNothing);
-  // 单击嵌套行：选中（onSelectionChanged 驱动 _selected），编辑/删除按钮随之可用。
+  // 单击嵌套行：勾上这一行(多选模式下单击 = 切换勾选)，编辑/删除按钮随之可用。
   await tester.tap(nestedName);
   await tester.pumpAndSettle();
 }
@@ -223,22 +232,19 @@ void main() {
     await tester.tap(find.text('删除').first);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '删除'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
 
-    expect(repo.deletedParentId, 'goods-b');
-    expect(repo.deletedItemId, 'row-c');
-    expect(
-      tester
-          .widget<UtenButton>(find.widgetWithText(UtenButton, '删除'))
-          .onPressed,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<UtenButton>(find.widgetWithText(UtenButton, '编辑'))
-          .onPressed,
-      isNull,
-    );
+    // 2026-09-21 多选批量删除后，删除只剩批量这一条路径：勾一条也按
+    // (父货品, 关系行 id)分组提交，嵌套行认的仍是它真正挂在的父货品。
+    expect(repo.batchDeleteCalls.length, 1);
+    expect(repo.batchDeleteCalls.first.$1, 'goods-b');
+    expect(repo.batchDeleteCalls.first.$2, ['row-c']);
+    // 旧的单条 DELETE 不再被页面调用(接口保留给其它调用方)。
+    expect(repo.deletedItemId, isNull);
+    // 「删完按钮回灰」这条断言挪到 goods_bom_multi_select_delete_test.dart：
+    // 页面改为按业务键剪裁勾选集(勾选不再被重载无条件清空)，要用一个真会
+    // 删掉行的伪仓库才能验证，本文件的伪仓库并不真正移除数据。
   });
 
   testWidgets('nested edit keeps row color and uses the owning parent', (

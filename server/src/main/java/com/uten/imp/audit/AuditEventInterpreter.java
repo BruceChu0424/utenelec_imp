@@ -249,7 +249,12 @@ public class AuditEventInterpreter {
                 || !readOnlyRequest && containsAny(haystack,
                 "permission", "authorization", "data-scopes", "data_scopes",
                 "system-setting", "system_setting", "reset-password",
-                "balance-adjust", "blacklist", "/reverse", "/offboard")) {
+                "balance-adjust", "blacklist", "/reverse", "/offboard",
+                // 批量软删走 POST 而不是 DELETE(id 清单要放请求体), 所以上面那条
+                // http_delete 判定接不住它。一次最多删 200 行主档组装明细, 破坏性
+                // 不比单条 DELETE 小, 不能因为动词是 POST 就掉到 low 而在高风险
+                // 视图里整条消失。
+                "/bom/batch-delete")) {
             return "high";
         }
         if ((statusCode != null && statusCode >= 400)
@@ -387,7 +392,16 @@ public class AuditEventInterpreter {
             if (path.contains("/takeover")) return "接管任务";
             if (path.contains("/force-release")) return "强制释放任务";
             if (path.contains("/acknowledge")) return "确认收到通知";
-            if (path.contains("/batch-delete")) return "移除通知";
+            // 组装明细批量删除要排在通知那条之前: 两条路径都以 /batch-delete 收尾,
+            // 先匹配到谁就按谁显示。
+            if (path.contains("/bom/batch-delete")) return "批量删除组装明细";
+            // 「移除通知」必须限定在通知域。原先只看 /batch-delete 这个后缀, 当时全仓
+            // 只有 /api/notices/batch-delete 一条路径, 所以看不出问题; 2026-09-21 加了
+            // 货品组装明细批量删除之后, 一次货品主档删除会在审计里读成「移除通知 · 货品」,
+            // 事后查「谁删了这个货品的组件」的人既搜不到也看不懂。
+            if (path.startsWith("/api/notices") && path.contains("/batch-delete")) {
+                return "移除通知";
+            }
         }
         return switch (action) {
             case "http_get" -> "查看";

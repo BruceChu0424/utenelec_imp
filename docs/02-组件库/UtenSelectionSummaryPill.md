@@ -5,7 +5,9 @@
 - 契约已接入表：MasterDataTableView（悬浮批量组首位，含经其 `batchActionsBuilder` 接入的
   待检处置详情等 30+ 表格页）、物料分析「下达车间」可安排桶（钉底动作组）、
   销售订单财务确认紧凑端选择条（2026-09-10）、品质批量审批页吸底栏（2026-09-10，
-  `UtenBottomActionBar` 首位）。
+  `UtenBottomActionBar` 首位）、货品资料「组装信息」页签的组件树(2026-09-21，首个开多选的
+  **树表**；该页不传 `batchActionsBuilder`，批量删除的 danger「删除」按钮在**表头工具条**里，
+  本胶囊因此是 `showSelectionSummary` 驻留表头上方工具条的那一枚，不是悬浮组里的)。
 
 ## 功能
 

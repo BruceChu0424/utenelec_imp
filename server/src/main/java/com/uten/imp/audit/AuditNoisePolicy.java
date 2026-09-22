@@ -62,6 +62,13 @@ final class AuditNoisePolicy {
             "/api/operations/workbench/purchase/count",
             "/api/operations/workbench/subcontract/count",
             "/api/operations/workbench/warehouse/count",
+            // ADR-100 的黄色「进行中」徽章各自常驻 60s 轮询, 与上面这些红徽章端点同类,
+            // 不登记就是每个会话每分钟往 audit_log 写一行噪声(2026-09-21 发布前审查)。
+            // 后两条是基线上就漏登的同类端点, 一并补齐。
+            "/api/production/execution-workbench/count",
+            "/api/warehouse/quality-results/status-counts",
+            "/api/warehouse/quality-results/type-counts",
+            "/api/expense-claims/counts",
             "/api/production/schedule/pending-count",
             "/api/sales/orders/stats",
             "/api/sales/orders/progress",

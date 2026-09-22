@@ -51,6 +51,9 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   /// 用户**手工**取消勾选的提交单元：重算与重建都不得替他重新勾上。
   final Set<String> _userDeselected = {};
 
+  /// 上一拍「勾着的、且下面还带着层级」的提交单元：勾选一变就要重算子层。
+  final Set<String> _selectedKeysWithChildren = {};
+
   /// 正在程序性写入数量框（预填 / 重建），此时的控制器变更不算「用户改过」。
   bool _programmaticQty = false;
 
@@ -65,8 +68,15 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
   ];
 
-  /// 树顶数量改动后向服务端再要一份预览：去抖，最后一次输入停下 600ms 才发。
+  /// 改数量后向服务端再要一份重算：去抖，最后一次输入停下 300ms 才发。
+  /// 屏幕上的数字不等它——每敲一下就先按比例换算好([_applyOptimisticCascade])，
+  /// 服务端那份回来再整体换成权威值。
   Timer? _previewDebounce;
+
+  /// 每个提交单元**在当前这份服务端快照里**按的产出量：页面先行换算下层时的
+  /// 分母。只在按服务端那份重建行集时重新播种，键入不改它——这样每一拍换算都
+  /// 是从快照出发的幂等计算，退格经过空框也不会丢掉一档比例。
+  final Map<String, double> _snapshotOutput = {};
   int _previewGeneration = 0;
   bool _previewing = false;
 
@@ -137,6 +147,21 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   void _trackManualDeselection() {
     if (_programmaticSelection) return;
     final selected = {for (final row in _selectedRows) row.submitKey};
+    final withChildren = _host._cascadeSubmitKeysWithChildren(_allRows);
+    // 勾选变化影响的是「这一行的数量送不送给服务端」，所以要比的是**勾选集本身
+    // 有没有变**，不能只看 _userDeselected 有没有增删：追加行(进页时默认不勾)
+    // 先填数、后勾上时，它从来没被手工撤勾过，_userDeselected 里删不到东西，
+    // 于是那一拍不重算——填的量送不上去，它的子层一直按 0 算。
+    var parentChanged = false;
+    for (final key in {...selected, ..._selectedKeysWithChildren}) {
+      if (!withChildren.contains(key)) continue;
+      if (selected.contains(key) != _selectedKeysWithChildren.contains(key)) {
+        parentChanged = true;
+      }
+    }
+    _selectedKeysWithChildren
+      ..clear()
+      ..addAll(selected.where(withChildren.contains));
     for (final row in _allRows) {
       if (row.isSeed || !row.ownsInput || !row.selectable) continue;
       if (selected.contains(row.submitKey)) {
@@ -145,6 +170,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         _userDeselected.add(row.submitKey);
       }
     }
+    // 勾上/勾掉一个还带着下层的父行 = 本次下不下它，它的子层要跟着重算。
+    if (parentChanged) _schedulePreviewRefresh();
   }
 
   void _programmaticSelect(void Function() body) {
@@ -204,8 +231,34 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       }
       if (!row.ownsInput) continue;
       // 「用户手工改过」由**控制器监听**标记，不靠 TextField.onChanged。
+      // 本行也可能是别人的父件(自制件 / 要先自制的委外件都还有自己的下层)：
+      // 改完同样要向服务端再要一份重算，子层、孙层跟着变(用户口径 2026-09-21
+      // 「我修改下面某个层级的父件，它的子层级也要对应地改」)。
       row.qty.addListener(() {
-        if (!_programmaticQty) row.qtyTouched = true;
+        if (_programmaticQty) return;
+        // 亲手填的那个数单独记一份：父行之后改大改小，这一行都按「用户填的数」
+        // 与「还需安排」的大者走，不会被替人改过的值覆盖掉。
+        //
+        // **清空 = 把这一行交还给系统算**：空框、只敲了个小数点这类解析不出数的
+        // 中间态不算「填过」，否则手滑敲一下再删掉，这一行就永久脱离「跟随父件」
+        // 且没有任何退回去的入口。填 0 能解析，仍是一个明确的决定(追加行「本次
+        // 不下它」)。
+        final typed = double.tryParse(row.qty.text.trim());
+        final decided = typed != null && typed.isFinite && typed >= 0;
+        row.qtyTouched = decided;
+        row.userTypedQty = decided ? typed : null;
+        if (!_hasDescendants(row)) return;
+        // 先当场把下层换算好(用户口径：输入框里一改，子层级就要跟着变)，
+        // 再去抖向服务端要一份权威重算。
+        //
+        // 传的是 followUpQty(这一行此刻要下多少)而**不是** enteredQty：空框不是
+        // 「这一批做 0 个」而是「没决定」，拿 0 去换算会把整支子树就地压成 0；
+        // followUpQty 在没填过时落回服务端建议量，比例自然是 1。
+        // 也**不能**改用「本批需求」的比例——服务端子层跟的是父行的**净产出**
+        // (物理缺口扣掉在途，见 parentPlannedOutput 从 shortageQty 起算)，
+        // 这一行有现货覆盖时净产出与毛需求差着一个覆盖量。
+        _applyOptimisticCascade(row, row.followUpQty);
+        _schedulePreviewRefresh();
       });
       // 默认只勾还有缺口的行；已覆盖的行（填了就是追加，属公共备货）由用户
       // 自己勾。重建行集时沿用用户此前的勾选。
@@ -221,6 +274,17 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     final liveIds = {for (final row in _allRows) row.id};
     _collapsedBranches.removeWhere((id) => !liveIds.contains(id));
     _collapsedSelection.removeWhere((id) => !liveIds.contains(id));
+    // 换算下层的分母重新以这批行为准：这批数字刚由服务端给定，估算从这里起算。
+    _snapshotOutput
+      ..clear()
+      ..addEntries([
+        for (final row in _allRows)
+          if (row.isSeed || row.ownsInput)
+            MapEntry(
+              row.submitKey,
+              row.isSeed ? (row.seed?.batchQty ?? 0) : row.enteredQty,
+            ),
+      ]);
     if (mounted) setState(() {});
   }
 
@@ -229,43 +293,238 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   ///
   /// 清空 / 填 0 / 填非法字符时**必须**把种子归零，不能保留旧值。
   void _onSeedQtyChanged(_ChildCascadeRow row) {
+    if (_programmaticQty) return;
     final seed = row.seed;
     if (seed == null) return;
     final value = row.enteredQty;
     seed.batchQty = value > 0 && value.isFinite ? value : 0;
     if (mounted) setState(() {});
+    // 同下层：先当场换算，再去抖要服务端那份权威重算。
+    _applyOptimisticCascade(row, seed.batchQty);
     _schedulePreviewRefresh();
   }
 
-  /// 要不要（还能不能）向服务端要预览：父件还没提交、有车间通道的种子、
-  /// 数量与车间都齐了。
-  bool get _needsPreview =>
-      widget.parentAction != null &&
-      !_parentSubmitted &&
+  /// 把 [source] 这一行刚输入的数量当场传导到它下面的每一层。
+  ///
+  /// 按**比例**换算而不是按单耗相乘：本行从 1000 改到 2000 时，它下面每一行的
+  /// 本批需求就翻一倍，已被现货 / 在途 / 已下达覆盖的那部分是不变量，所以
+  /// 「还需安排」= 新需求 − 原覆盖量。这样算出来的数与服务端那份重算在常见
+  /// 情形下逐字一致，个别情形(起订量抬量、锚点配额、包装取整)以服务端为准
+  /// ——那份 300ms 后就回来，回来即整体覆盖。
+  ///
+  /// 原数量为 0(追加行从 0 开始填)时没有比例可言，只能等服务端那份。
+  void _applyOptimisticCascade(_ChildCascadeRow source, double output) {
+    // 分母是**服务端那份快照当时按的数**，不是上一拍键入的数：退格改数会经过
+    // 空框那一拍，拿上一拍当分母就会在那里断链(分母成 0)，丢掉的那一档再也补
+    // 不回来——父件退回 1000 了，子层还停在 2000。从快照算则每一拍都是独立的
+    // 幂等换算，中间怎么敲都不影响结果。
+    final baseline = _snapshotOutput[source.submitKey];
+    if (baseline == null || baseline <= 0.0001 || !output.isFinite || output < 0) {
+      return;
+    }
+    final factor = output / baseline;
+    var changed = false;
+    // 同一提交单元可能出现在树里多处，每一处的子树都按同一个比例走。
+    for (var index = 0; index < _allRows.length; index++) {
+      if (_allRows[index].submitKey != source.submitKey) continue;
+      if (_scaleSubtreeAt(index, factor)) changed = true;
+    }
+    if (changed && mounted) setState(() {});
+  }
+
+  /// 服务端那份重算在路上时用户又改了数：回来以后把分母摆回「请求时那个数」，
+  /// 再把这期间多改的那部分就地补算一次。不补的话屏幕会先跳回旧数字，等下一份
+  /// 重算回来才跳到新数字。
+  void _reapplyEditsMadeWhileWaiting(
+    Map<_ChildCascadeSeed, double> requestedSeedQty,
+    Map<String, double> requestedTypedQty,
+  ) {
+    for (final row in _allRows) {
+      if (row.isSeed) {
+        final seed = row.seed;
+        final requested = seed == null ? null : requestedSeedQty[seed];
+        if (seed == null ||
+            requested == null ||
+            (seed.batchQty - requested).abs() <= 0.0001) {
+          continue;
+        }
+        _snapshotOutput[row.submitKey] = requested;
+        _applyOptimisticCascade(row, seed.batchQty);
+        continue;
+      }
+      if (!row.ownsInput) continue;
+      final typed = row.userTypedQty;
+      final requested = requestedTypedQty[row.submitKey];
+      if (typed == null ||
+          requested == null ||
+          (typed - requested).abs() <= 0.0001) {
+        continue;
+      }
+      _snapshotOutput[row.submitKey] = requested > row.serverResidual
+          ? requested
+          : row.serverResidual;
+      _applyOptimisticCascade(row, row.followUpQty);
+    }
+  }
+
+  /// 把 [index] 这一行下面的每一层就地换算：每一层按**它自己那个父行**的变化
+  /// 比例走，而不是一路套用树顶的比例。
+  ///
+  /// 于是「手工改过的行」天然把链条断在自己这一层：它的下单量不跟父行走
+  /// (只在父行需求涨过用户填的数时被抬上去)，它的子树也就跟着它不动——
+  /// 这正是用户要的「先把子件改成 3000，父件再怎么变子件都不跟」。没手工改过的
+  /// 行则相反：它的值跟父行走，它的子树也跟着一起走，改大改小都跟。
+  bool _scaleSubtreeAt(int index, double rootFactor) {
+    final rootDepth = _allRows[index].depth;
+    final factorByDepth = <int, double?>{rootDepth: rootFactor};
+    var changed = false;
+    for (var next = index + 1; next < _allRows.length; next++) {
+      final row = _allRows[next];
+      if (row.depth <= rootDepth) break;
+      final factor = factorByDepth[row.depth - 1];
+      // 父行那一层算不出比例(它的快照基准是 0)：整支交给服务端那份重算，
+      // 不拿别人的比例硬乘。
+      if (factor == null) {
+        factorByDepth[row.depth] = null;
+        continue;
+      }
+      row.applyOptimisticScale(factor);
+      changed = true;
+      if (!row.ownsInput) {
+        factorByDepth[row.depth] = factor;
+        continue;
+      }
+      final after = row.followUpQty;
+      if ((after - row.enteredQty).abs() > 0.0001) {
+        _setQtyText(row, _bucketQtyText(after));
+      }
+      // 本行下面那一层按**本行自己**的变化比例走：服务端那一侧子层跟的是父行的
+      // 净产出(缺口扣在途)，页面这一侧与它同源的量就是「这一行要下多少」。
+      // 手工改过的行的下单量不跟父行走，于是比例恒为 1，它下面那一支跟着它不动。
+      final rowBaseline = _snapshotOutput[row.submitKey];
+      factorByDepth[row.depth] = rowBaseline != null && rowBaseline > 0.0001
+          ? after / rowBaseline
+          : null;
+    }
+    return changed;
+  }
+
+  /// 树顶那一行还能不能真实模拟一遍下达：父件还没提交、有车间通道的种子、
+  /// 数量与车间都齐了。**有一个车间通道的种子还没选车间就整批不模拟**——
+  /// 少发一行会让下层数字悄悄变小，比不预览更糟。
+  bool get _canPreviewSeedIssue {
+    if (widget.parentAction == null || _parentSubmitted) return false;
+    final workshopSeeds = widget.seeds
+        .where((seed) => seed.needsWorkshop)
+        .toList(growable: false);
+    if (workshopSeeds.isEmpty) return false;
+    return workshopSeeds.every(
+      (seed) =>
+          seed.batchQty > 0 &&
+          seed.batchQty.isFinite &&
+          seed.departmentId?.isNotEmpty == true,
+    );
+  }
+
+  /// 父件段还没提交：树顶填的量还只是「打算下多少」，重算时要带给服务端。
+  bool get _seedPending => widget.parentAction != null && !_parentSubmitted;
+
+  /// 有没有要带给服务端的「每行填了多少」：树顶走直接外发委外通道时它自己
+  /// 也在其中(那条通道不模拟下达，只能按计划产出量补)。
+  bool get _hasTypedParentRows => _host
+      ._cascadePreviewTypedOutputs(
+        widget.seeds,
+        _allRows,
+        _canPreviewSeedIssue
+            ? _host._cascadeIssueLines(widget.seeds)
+            : const [],
+        seedPending: _seedPending,
+        willIssue: _grid.isSelected,
+      )
+      .isNotEmpty;
+
+  /// 这一行(或它在树里别处的同一提交单元)下面还有没有层级。
+  bool _hasDescendants(_ChildCascadeRow row) =>
+      _host._cascadeSubmitKeysWithChildren(_allRows).contains(row.submitKey);
+
+  /// 要不要(还能不能)向服务端要重算：树顶能模拟下达，或者层级里有人填了
+  /// 会带动下层的数量。
+  bool get _needsPreview => _canPreviewSeedIssue || _hasTypedParentRows;
+
+  /// 树顶数量还空着(或是 0)：这次什么都不会下达，此时去要重算只会得到一份
+  /// 「父件根本没下达」的快照，把换算基准换掉——用户还在打字，下一位数字就
+  /// 乘在错的基准上。等他打出一个正数再说；本来这种状态提交也会被当场拦下。
+  bool get _seedQtyPending =>
+      _seedPending &&
       widget.seeds.any(
-        (seed) =>
-            seed.needsWorkshop &&
-            seed.batchQty > 0 &&
-            seed.batchQty.isFinite &&
-            seed.departmentId?.isNotEmpty == true,
+        (seed) => !(seed.batchQty > 0 && seed.batchQty.isFinite),
       );
 
   void _schedulePreviewRefresh() {
-    if (!_needsPreview) return;
     _previewDebounce?.cancel();
+    if (_seedQtyPending) return;
+    // 没有任何要送给服务端的数量时(比如唯一填过数的那一行刚被清空)，屏幕上
+    // 却还留着先行换算的估算值——这时不发请求，但必须按**当前真实快照**把整页
+    // 重建一次，否则那些估算值会永久留在屏幕上、也会被提交。
     _previewDebounce = Timer(
-      const Duration(milliseconds: 600),
-      () => unawaited(_refreshPreview()),
+      const Duration(milliseconds: 300),
+      () => unawaited(_needsPreview ? _refreshPreview() : _restoreFromSnapshot()),
+    );
+  }
+
+  /// 退回当前真实快照：不需要向服务端要重算(没有要送的数量)，但页面上留着的
+  /// 估算值不能当结论。
+  Future<void> _restoreFromSnapshot() async {
+    if (!mounted || _running) return;
+    if (!_allRows.any((row) => row.isOptimistic)) {
+      setState(() {});
+      return;
+    }
+    final analysis = _host._analysis;
+    if (analysis == null) {
+      setState(() {
+        for (final row in _allRows) {
+          row.clearOptimistic();
+        }
+      });
+      return;
+    }
+    _rebuildRowsFrom(
+      analysis,
+      selectedKeys: {for (final row in _selectedRows) row.submitKey},
     );
   }
 
   Future<void> _refreshPreview() async {
-    if (!mounted || !_needsPreview || _running) return;
+    if (!mounted) return;
+    if (!_needsPreview || _running) {
+      // 去抖定时器已经到点但这次不发请求：提交按钮是按「定时器还活着」禁用的，
+      // 这里必须重建一帧把它放开，否则按钮会一直灰着。
+      setState(() {});
+      return;
+    }
     final generation = ++_previewGeneration;
     _previewing = true;
+    // 这份重算是按**此刻**这些数算的。等它回来的这段时间用户可能又改了几下，
+    // 所以记下请求时各行的数：回来以后分母按请求时那个数摆正，再把用户后来
+    // 多改的那部分补算一次，屏幕不会先跳回旧数字再跳回来。
+    final requestedSeedQty = {
+      for (final seed in widget.seeds) seed: seed.batchQty,
+    };
+    final requestedTypedQty = {
+      for (final row in _allRows)
+        if (!row.isSeed && row.ownsInput && row.userTypedQty != null)
+          row.submitKey: row.userTypedQty!,
+    };
     await _withLoading(() async {
       try {
-        final view = await _host._previewCascadeView(widget.seeds);
+        final view = await _host._previewCascadeView(
+          widget.seeds,
+          rows: _allRows,
+          includeSeedIssue: _canPreviewSeedIssue,
+          seedPending: _seedPending,
+          willIssue: _grid.isSelected,
+        );
         if (!mounted || generation != _previewGeneration || view == null) {
           return;
         }
@@ -273,8 +532,22 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           view,
           selectedKeys: {for (final row in _selectedRows) row.submitKey},
         );
+        _reapplyEditsMadeWhileWaiting(requestedSeedQty, requestedTypedQty);
       } catch (error) {
         if (!mounted || generation != _previewGeneration) return;
+        // 估算值不能留在屏幕上当结论：数字**和输入框里的文本**一起退回上一份
+        // 服务端数字，并如实报错。只清数字不清文本的话，屏幕上会留着一个服务端
+        // 从没算过的数，而「一键下单」提交读的正是这个文本。
+        setState(() {
+          for (final row in _allRows) {
+            row.clearOptimistic();
+            if (row.isSeed || !row.ownsInput) continue;
+            final restored = row.followUpQty;
+            if ((restored - row.enteredQty).abs() > 0.0001) {
+              _setQtyText(row, _bucketQtyText(restored));
+            }
+          }
+        });
         context.appError(
           productionErrorMessage(error, fallback: '下层需求重算失败，请稍后重试'),
         );
@@ -286,15 +559,22 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
 
   /// 按 [view] 重建行集，并继承用户已填的数量 / 车间 / 负责人 / 勾选。
   /// 返回重建后仍可下达且原本勾选的行。
+  /// [keepDisplayedAsFloor] = 屏幕上那个数不许被悄悄调小(父件段落地之后的重建
+  /// 用它)。父件刚下达时中间层自己的计划还没落地，服务端那份快照里下层自然还
+  /// 按旧数算——可用户刚刚在屏幕上确认过更大的数、下一步就要按它下单，
+  /// 这时候把它换回小数字等于当面答应了又少订，而且全程有遮罩盖着，没人看得见。
   List<_ChildCascadeRow> _rebuildRowsFrom(
     ProductionMaterialAnalysisView view, {
     required Set<String> selectedKeys,
+    bool keepDisplayedAsFloor = false,
   }) {
     final carried =
         <
           String,
           ({
-            String? qtyText,
+            double? userTypedQty,
+            double displayedQty,
+            double residual,
             String? departmentId,
             String? departmentName,
             String? workerId,
@@ -304,8 +584,19 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           })
         >{};
     for (final row in _allRows) {
+      // 只记**持有输入框的那一行**。同一提交单元在树里出现多次时，后面那些
+      // 「并入上方」的上下文行没有输入框、没有车间，让它们也写一遍会把前面
+      // 那行记下来的数量与车间整条覆盖成空——重建后用户刚填的东西无声消失。
+      if (!row.ownsInput) continue;
       carried[row.submitKey] = (
-        qtyText: row.qtyTouched ? row.qty.text : null,
+        // 只继承「用户亲手填的那个数」。页面替他按比例换算出来的、或按下限抬上去的
+        // 值都不算——那些跟着新快照重算就行，继承它们反而会把过期数字钉住。
+        userTypedQty: row.userTypedQty,
+        // 重建前屏幕上那个数：只有它真的被改大了才需要当面提示。
+        displayedQty: row.enteredQty,
+        // 比的是**服务端口径**的前后两个还需安排量：页面先行换算出来的估算值
+        // 不能当基准，否则「父件改大了」这件事会被估算值自己抵消掉。
+        residual: row.serverResidual,
         departmentId: row.departmentId.value,
         departmentName: row.departmentName,
         workerId: row.workerId.value,
@@ -315,14 +606,40 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       );
     }
     final fresh = _host._buildChildCascadeRows(widget.seeds, view);
+    final raised = <String>[];
+    final kept = <String>[];
     for (final row in fresh) {
       if (row.isSeed) continue;
       final old = carried[row.submitKey];
       if (old == null) continue;
-      // 「用户手工改过」原样继承，包括改成 0 / 清空——那是「这行本次不下」。
-      if (old.qtyText != null) {
-        row.qty.text = old.qtyText!.trim();
+      // 用户亲手填过的行：本次仍按他填的数走(「先把子层改成 3000，再把父层改成
+      // 2000，子层不动」)；只有父件的需求涨过那个数时才抬到新的还需安排量，
+      // 父件再改小又退回用户自己填的数——不会停在替他抬上去的那个值上。
+      // 没填过的行不进这个分支：它的数字只是父行的回声，跟着新快照走(改大改小都跟)。
+      // 追加行的下限本来就是 0，填 0 原样留着 = 这一行本次不下。
+      final typed = old.userTypedQty;
+      if (typed != null) {
         row.qtyTouched = true;
+        row.userTypedQty = typed;
+        final value = row.followUpQty;
+        row.qty.text = _bucketQtyText(value);
+        // 替他抬上去就当面说清：只有**屏幕上那个数真的变大了**才提示，
+        // 下限没动时反复重建不会重复刷同一条。
+        if (value > typed + 0.0001 && value > old.displayedQty + 0.0001) {
+          raised.add(
+            '${row.displayName} ${_host._qty(typed)} → ${_host._qty(value)}',
+          );
+        }
+      }
+      if (keepDisplayedAsFloor &&
+          row.ownsInput &&
+          old.displayedQty > row.enteredQty + 0.0001) {
+        // 祖先刚被手工改大、但它自己的计划还没落地时，服务端这一份算出来的
+        // 下层还是旧数——保住屏幕上那个数，并如实说一声。
+        row.qty.text = _bucketQtyText(old.displayedQty);
+        kept.add(
+          '${row.displayName} ${_host._qty(old.displayedQty)}',
+        );
       }
       if (old.departmentId != null) {
         row.departmentId.value = old.departmentId;
@@ -335,6 +652,19 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     }
     _installRows(fresh, selectedKeys: selectedKeys);
     unawaited(_withLoading(_loadWorkshopDefaults));
+    if (kept.isNotEmpty && mounted) {
+      context.appInfo(
+        '${kept.length} 行按刚才屏幕上确认过的数量下达(服务端那份快照里它们的上一层'
+        '计划还没落地，算出来的数偏小)：${_names(kept)}',
+      );
+    }
+    // 替人改过的数量一律当面说清，不静默改写用户填的数。
+    if (raised.isNotEmpty && mounted) {
+      context.appInfo(
+        '按新的父件数量，${raised.length} 行的下单量已抬到新的还需安排量：'
+        '${_names(raised)}',
+      );
+    }
     return [
       for (final row in fresh)
         if (selectedKeys.contains(row.submitKey) && row.selectable) row,
@@ -345,7 +675,11 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   List<_ChildCascadeRow> _rebuildAfterParent(Set<String> selectedKeys) {
     final analysis = _host._analysis;
     if (analysis == null) return const [];
-    return _rebuildRowsFrom(analysis, selectedKeys: selectedKeys);
+    return _rebuildRowsFrom(
+      analysis,
+      selectedKeys: selectedKeys,
+      keepDisplayedAsFloor: true,
+    );
   }
 
   void _computeTreeInfo() {
@@ -1105,9 +1439,13 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                         ),
                         type: UtenButtonType.danger,
                         size: UtenButtonSize.large,
+                        // 去抖窗口里屏幕上那些数还是页面先行换算的估算值，
+                        // 服务端那份还没回来——这段时间不许提交，否则下出去的
+                        // 是服务端从没算过的数。
                         onPressed:
                             _running ||
                                 _busy ||
+                                (_previewDebounce?.isActive ?? false) ||
                                 (count == 0 &&
                                     (widget.parentAction == null ||
                                         _parentSubmitted))
@@ -1116,8 +1454,11 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                         child: Text(
                           _running
                               ? '正在下达…'
+                              : (_busy && _previewing) ||
+                                    (_previewDebounce?.isActive ?? false)
+                              ? '正在按本批数量重算下层…'
                               : _busy
-                              ? (_previewing ? '正在按本批数量重算下层…' : '正在载入默认车间…')
+                              ? '正在载入默认车间…'
                               : count == 0
                               ? '只下达父件'
                               : '一键下单($count)',

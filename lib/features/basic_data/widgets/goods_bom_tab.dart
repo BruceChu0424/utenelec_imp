@@ -10,6 +10,13 @@
 // 树结构：一级 = 当前货品的组件清单；组件自身有 BOM（hasChildren）可展开，
 // 展开时对组件 id 再调 list 接口懒加载（对照老系统 001.jpg 的 +/- 树）。
 //
+// 多选批量删除(2026-09-21 用户口径「组件信息最前面加个多选框，可以多选批量
+// 删除」)：表格最前列由 MasterDataTableView 自己渲染勾选框 + 表头三态全选，
+// 选中集 _selectedRowIds 是本页唯一的「当前选中」真相——「编辑」只在恰好勾中
+// 一条时可用，「删除」勾中一条起就是批量删除。行键用 `父货品id|关系行id` 复合
+// 键：同一个子件可能同时挂在两个父件下并各自展开，光用关系行 id 会串行；复合
+// 键正好也是删除要的(父货品, 关系行)二元组。审计模式例外，见下。
+//
 // 表格：复用全站统一表格组件 MasterDataTableView（与货品资料列表同款）——
 // Excel 风格表头（竖线分隔 + 可拖拽拉宽拉窄）+ 表头/表体横滚同步 +
 // 底部横向滚动条 + 单击行高亮。树形通过「可见节点平铺」表达：
@@ -80,6 +87,25 @@ class _BomParentOption {
   final String label;
 }
 
+/// 批量删除的一条目标：一条组装关系(挂在哪个父货品下 + 关系行 id)
+/// 加上确认框要用的人话标签与「是不是子件自己的明细」。
+class _BomDeleteTarget {
+  const _BomDeleteTarget({
+    required this.parentGoodsId,
+    required this.itemId,
+    required this.label,
+    required this.nested,
+  });
+
+  final String parentGoodsId;
+  final String itemId;
+  final String label;
+
+  /// true = 这条关系不是直接挂在本页货品下的(删它改的是某个子件自己的
+  /// 组装清单，用到该子件的其它货品都会跟着变)。
+  final bool nested;
+}
+
 class GoodsBomTab extends ConsumerStatefulWidget {
   const GoodsBomTab({
     super.key,
@@ -119,8 +145,15 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   bool _loading = true;
   String? _error;
 
-  /// 当前点选行（工具条 编辑/删除 的作用对象；表格内同步高亮）。
-  _BomRow? _selected;
+  /// 当前勾选的行键集合(复合键 `父货品id|关系行id`，见 [_rowId])。
+  ///
+  /// 本页「当前选中」的唯一真相：多选态由表格最前列勾选框写入，审计模式的单击
+  /// 单选也写这里。不再另留一个 _selected 字段，否则两份真相一旦错位，批量删除
+  /// 删的就不是用户勾的那几条。
+  Set<String> _selectedRowIds = <String>{};
+
+  /// 批量删除的网络段进行中(只包住网络调用本身，确认框弹出时必须是 false)。
+  bool _deleting = false;
 
   /// 当前展开的组件 goodsId 集合：CRUD 重载后据此恢复展开，让新加的子组件可见。
   final Set<String> _expandedIds = {};
@@ -163,9 +196,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       if (!mounted) return;
       setState(() {
         _roots = roots;
-        // A reload creates new row/node objects. Clear the old action context
-        // so edit/delete/add-parent never targets a stale or already deleted id.
-        _selected = null;
+        // 重载会重建全部行/节点对象，但勾选集用的是业务复合键而非对象引用，
+        // 所以审计标记、编辑保存后的重载不会平白丢掉用户的勾选；真正已经不在
+        // 树里的行(刚被删掉的、父级子树没恢复展开的)在这里一并剪掉，
+        // 避免编辑/删除去指一个已经不存在的 id。
+        _pruneSelection();
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -245,6 +280,85 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     return rows;
   }
 
+  /// 行键：`父货品id|关系行id`。
+  ///
+  /// _BomRow 没有天然唯一 id——同一个子件可能同时挂在两个父件下并各自展开，
+  /// 此时两行的 node.item.id 一模一样。复合键把「挂在谁下面」也算进身份，同时
+  /// 正好就是删除动作需要的(父货品, 关系行)二元组。一条关系在树里出现两次时
+  /// 两处会一起勾上，这是**正确**的：删的本来就是同一条关系。
+  static String _rowId(_BomRow r) => '${r.parentGoodsId}|${r.node.item.id}';
+
+  /// 把已经看不见的行从勾选集里剪掉。
+  ///
+  /// 「看到的勾选 = 提交的内容」：勾了子级行再把父级折叠起来，该行从表里消失、
+  /// id 却还留在集合里——「已选 N 项」数得对，用户却一条都看不见，点批量删除就会
+  /// 删掉屏幕上根本没有的组件。宁可丢掉这几条勾选，也不能删用户看不见的东西。
+  /// 必须在改完 _roots / 展开状态之后调用(它按新的可见行重算)。
+  void _pruneSelection() {
+    if (_selectedRowIds.isEmpty) return;
+    final visible = <String>{for (final r in _visibleRows) _rowId(r)};
+    _selectedRowIds = _selectedRowIds.intersection(visible);
+  }
+
+  /// 恰好勾中一条时的那一行(编辑、以及「添加组件」的默认父级都只认单条)。
+  /// 勾了 0 条或多条一律返回 null——多选时目标不明确，宁可灰掉按钮也不替用户猜。
+  _BomRow? get _singleSelectedRow {
+    if (_selectedRowIds.length != 1) return null;
+    final id = _selectedRowIds.first;
+    for (final r in _visibleRows) {
+      if (_rowId(r) == id) return r;
+    }
+    return null;
+  }
+
+  /// 勾选集 → 批量删除目标(按行键去重，一条关系只提交一次)。
+  List<_BomDeleteTarget> get _selectedTargets {
+    final rows = _visibleRows;
+    // 父件名字典：某行的 componentGoodsId 就是它作为下一层父件时的 parentGoodsId。
+    // 确认框要能说出「这条挂在谁下面」——只列组件名的话，用户看不出自己动的是哪个
+    // 共用子件的清单，而那恰好是这个警告想拦住的误删。
+    final parentNames = <String, String>{};
+    for (final r in rows) {
+      final item = r.node.item;
+      final label = item.componentName?.trim().isNotEmpty == true
+          ? item.componentName!.trim()
+          : item.componentCode?.trim();
+      if (label != null && label.isNotEmpty) {
+        parentNames.putIfAbsent(item.componentGoodsId, () => label);
+      }
+    }
+    final byRowId = <String, _BomDeleteTarget>{};
+    for (final r in rows) {
+      final id = _rowId(r);
+      if (!_selectedRowIds.contains(id)) continue;
+      final item = r.node.item;
+      final name = item.componentName?.trim();
+      final code = item.componentCode?.trim();
+      // 级联号打头，让人在确认框里能和表里的行一一对上；名称在前编号在后。
+      final identity = [
+        if (name != null && name.isNotEmpty) name,
+        if (code != null && code.isNotEmpty) code,
+      ].join(' ');
+      final display = identity.isEmpty ? '未命名组件' : identity;
+      // 不是直接挂在本货品下 = 删的是某个子件自己的组装明细，影响面不止
+      // 当前货品，确认框要为此单独出警告。
+      final nested = r.parentGoodsId != widget.goodsId;
+      final parentName = nested ? parentNames[r.parentGoodsId] : null;
+      byRowId.putIfAbsent(
+        id,
+        () => _BomDeleteTarget(
+          parentGoodsId: r.parentGoodsId,
+          itemId: item.id,
+          label: parentName == null
+              ? '${r.seq} $display'
+              : '${r.seq} $display — 挂在「$parentName」下',
+          nested: nested,
+        ),
+      );
+    }
+    return byRowId.values.toList();
+  }
+
   Future<void> _toggle(_BomNode node) async {
     final id = node.item.componentGoodsId;
     if (!node.item.hasChildren) return;
@@ -252,6 +366,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       setState(() {
         node.expanded = false;
         _expandedIds.remove(id);
+        // 整棵子树的行随折叠消失，它们的勾选跟着剪掉(见 _pruneSelection)。
+        _pruneSelection();
       });
       return;
     }
@@ -295,8 +411,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
               '${r.node.item.componentName ?? r.node.item.componentCode ?? ''}',
         ),
     ];
+    // 只勾一条时默认加在它下面；勾了 0 条或多条都回落顶层(多选时「加在谁下面」
+    // 没有唯一答案，弹窗里再让用户自己选)。
     final defaultParent =
-        _selected?.node.item.componentGoodsId ?? widget.goodsId;
+        _singleSelectedRow?.node.item.componentGoodsId ?? widget.goodsId;
     final result = await showDialog<_AddResult>(
       context: context,
       builder: (_) => _BomItemAddDialog(
@@ -315,7 +433,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   }
 
   Future<void> _editSelected() async {
-    final row = _selected;
+    final row = _singleSelectedRow;
     if (row == null) return;
     final saved = await showDialog<bool>(
       context: context,
@@ -330,47 +448,167 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
   }
 
+  /// 批量删除勾中的组件(勾中一条也走这条路，删除动作只有一个实现)。
+  ///
+  /// 确认框弹出前不能有任何 busy 态：UtenBusyOverlay 是挂 root Overlay 的裸
+  /// entry，Navigator 每次 rearrange 都把它重新抬到最顶，会盖住之后弹出的对话框
+  /// 并让它点不动(全站铁律)。所以遮罩只包住确认之后的纯网络段，且 finally 必清。
   Future<void> _deleteSelected() async {
-    final row = _selected;
-    if (row == null) return;
-    final item = row.node.item;
+    final targets = _selectedTargets;
+    if (targets.isEmpty) return;
+    final nestedCount = targets.where((t) => t.nested).length;
+    // 清单太长会把确认框撑成一屏文字，前 10 条足够让人认出自己勾了什么。
+    final shown = targets.take(10).toList();
+    final rest = targets.length - shown.length;
+    // TODO(l10n): 本弹窗文案待进 arb。
+    final dialogTitle = targets.length == 1
+        ? '删除组件'
+        : '删除 ${targets.length} 个组件';
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除组件'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定把「${item.componentName ?? item.componentCode ?? '该组件'}」从组装清单中删除吗？', // TODO(l10n): 补 arb
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'), // TODO(l10n): 补 arb
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          title: Text(dialogTitle),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('确定把下面 ${targets.length} 个组件从组装清单里删掉吗？'),
+                  // 跨层级警告：删子级行改的是那个子件自己的组装清单，影响面
+                  // 不止眼前这个货品。真实踩过的坑，所以单独出大字警告。
+                  if (nestedCount > 0) ...[
+                    const SizedBox(height: UtenSpacing.s12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer,
+                        borderRadius: UtenRadius.mdAll,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 20,
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          Expanded(
+                            child: Text(
+                              '注意：其中 $nestedCount 个不是直接装在本货品上的，'
+                              '删掉改的是那个子件自己的组装清单。'
+                              '以后凡是用到该子件的货品，做出来都会跟着少这几样料，不只是眼前这个货品。',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onErrorContainer,
+                                fontWeight: FontWeight.w600,
+                                height: 1.45,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: UtenSpacing.s12),
+                  for (final t in shown)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        '· ${t.label}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  if (rest > 0)
+                    Text(
+                      '还有 $rest 条未列出',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'), // TODO(l10n): 补 arb
+            ),
+            FilledButton(
+              key: const Key('goods-bom-batch-delete-confirm'),
+              style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除'), // TODO(l10n): 补 arb
+            ),
+          ],
+        );
+      },
     );
     if (ok != true) return;
-    try {
-      await ref
-          .read(goodsBomRepositoryProvider)
-          .delete(row.parentGoodsId, item.id);
-      if (!mounted) return;
-      context.appSuccess('组件已删除'); // TODO(l10n): 补 arb
-      widget.onDataChanged?.call();
-      await _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
+    if (!mounted) return;
+
+    // 勾选可能横跨树的多层，每条关系挂在各自的父货品下；按父货品分组，每组一次
+    // 请求(服务端每个请求只认自己那个父货品下的 id)。
+    final grouped = <String, List<String>>{};
+    for (final t in targets) {
+      grouped.putIfAbsent(t.parentGoodsId, () => <String>[]).add(t.itemId);
     }
+    final repo = ref.read(goodsBomRepositoryProvider);
+    setState(() => _deleting = true);
+    var deleted = 0;
+    var failed = 0;
+    final errors = <String>{};
+    try {
+      for (final group in grouped.entries) {
+        for (final chunk in _chunked(group.value, _batchDeleteLimit)) {
+          try {
+            deleted += await repo.deleteMany(group.key, chunk);
+          } on ApiException catch (e) {
+            failed += chunk.length;
+            errors.add(e.message);
+          } catch (_) {
+            failed += chunk.length;
+            errors.add('删除失败，请稍后重试');
+          }
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+    if (!mounted) return;
+    // 部分成功要如实报数并把服务端的话带出来，不能报一句「已删除」把失败吞掉。
+    // TODO(l10n): 以下结果文案待进 arb。
+    final detail = errors.join('；');
+    if (failed == 0) {
+      context.appSuccess('已删除 $deleted 个组件');
+    } else if (deleted > 0) {
+      context.appError('成功 $deleted 条，失败 $failed 条：$detail');
+    } else {
+      context.appError('删除失败 $failed 条：$detail');
+    }
+    if (deleted > 0) widget.onDataChanged?.call();
+    // 失败也重载：树可能已被别人改过，重载顺带把删掉的行从勾选集剪掉。
+    await _load();
+  }
+
+  /// 单次批量删除请求的条数上限(与服务端 itemIds 上限一致)。
+  static const int _batchDeleteLimit = 200;
+
+  /// 超过上限时切段：同一父货品下勾了 200 条以上就分多次提交，
+  /// 免得整批被服务端的条数校验一次性顶回来。
+  static List<List<String>> _chunked(List<String> ids, int size) {
+    final chunks = <List<String>>[];
+    for (var start = 0; start < ids.length; start += size) {
+      final end = start + size;
+      chunks.add(ids.sublist(start, end > ids.length ? ids.length : end));
+    }
+    return chunks;
   }
 
   // ---- 审计标记（V256） ---------------------------------------------------
@@ -559,8 +797,32 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final roots = _roots ?? const <_BomNode>[];
     final visible = _visibleRows;
     final auditedCount = visible.where((r) => r.node.item.audited).length;
+    // 勾中条数决定工具条两个按钮的可用性：编辑只认 1 条，删除 >=1 条即可。
+    final selectedCount = _selectedRowIds.length;
+    // 勾选框要不要给：审计模式下单击行是「翻已核对」，与勾选打架，一律关掉；
+    // 三个动作(批量删除/编辑/添加组件定位)一个都没权限时也关掉——只读账号看到
+    // 一整列勾选框却没有任何按钮可接，勾了等于白勾，按准则「隐藏而非禁用」。
+    final canActOnSelection =
+        widget.canDelete || widget.canEdit || widget.canCreate;
+    final selectable = !_auditMode && canActOnSelection;
+    // 说明条只讲这个账号真能做的事：没有删除权还写着「可勾多行一起删除」，
+    // 等于教用户去点一个不存在的按钮。
+    // TODO(l10n): 本段提示待进 arb。
+    final hints = <String>[
+      '层级列箭头可展开',
+      if (selectable && widget.canDelete) '最前面的方框可勾多行一起删除',
+      if (selectable && widget.canEdit) '只勾一行时「编辑」可用',
+      if (selectable && widget.canCreate) '只勾一行时「添加组件」默认加在它下面',
+    ];
     return Column(
       children: [
+        // 批量删除网络段的全屏加载遮罩(root Overlay 传送门，不占布局)。
+        // 确认框已经关掉才会挂上来，否则它会盖住确认框(见 _deleteSelected)。
+        if (_deleting)
+          const UtenBusyOverlay(
+            title: '正在删除组件',
+            description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
+          ),
         // 说明条：组件数 / 操作提示；审计模式下显示核对进度。
         // 编辑/删除/添加组件/审计模式按钮已挪进表格工具条
         // （toolbarActions），全屏表格路由里也带同一组按钮与逻辑。
@@ -581,7 +843,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       ? '审计模式：点击行标记/取消「已核对无误」(已审 $auditedCount/${visible.length}；编辑组件后需重新核对)' // TODO(l10n)
                       : (roots.isEmpty
                             ? '该货品暂无组装信息'
-                            : '共 ${roots.length} 个顶层组件(层级列箭头可展开；单击行只选中，选中后添加默认作为其子组件)'), // TODO(l10n): 补 arb
+                            : '共 ${roots.length} 个顶层组件(${hints.join('；')})'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: _auditMode
                         ? Colors.green.shade700
@@ -596,22 +858,38 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         // 统一表格（与货品资料列表同款）：Excel 表头分隔线 + 拖拽列宽 + 底部横滑条。
         Expanded(
           child: MasterDataTableView<_BomRow>(
+            // 按 selectable 分键，进出审计模式时整棵表重建而不是原地重排。
+            // 勾选列的出现/消失会把行子树换一个父级，SelectionArea 的
+            // SelectionKeepAlive 带着 GlobalKey 一起被搬走，于是同一帧里
+            // 「Duplicate GlobalKeys detected」+ 释放时 null check 崩(widget 树
+            // finalize 阶段)。代价是切模式会丢掉列宽与滚动位置，可以接受：那本来
+            // 就是一次模式切换，不是刷新。
+            key: ValueKey('goods-bom-table-$selectable'),
             columns: _columns,
-            items: _visibleRows,
+            items: visible,
             facets: const {},
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
-            // 单击行只选中(驱动编辑/删除与添加默认父级)；展开/折叠由
-            // 层级单元里的 48dp 箭头单击完成。审计模式下单击顺带翻面。
+            // 多选：最前列勾选框 + 表头三态全选，工具条驻「已选 N 项 + 清除」。
+            // **审计模式下必须关掉**——那时单击行的语义是翻「已核对无误」，与
+            // 「单击切换勾选」直接打架；审计模式因此退回原来的单选点击。
+            // 只读账号(三个动作都没权限)同样不给勾选框，见 [canActOnSelection]。
+            selectable: selectable,
+            // _BomRow 无天然唯一 id，用复合键(见 _rowId)。
+            idOf: _rowId,
+            selectedIds: _selectedRowIds,
+            onSelectedIdsChanged: (next) =>
+                setState(() => _selectedRowIds = next),
+            // 下面两个回调只在审计模式(selectable=false)生效：多选态下表格会
+            // 忽略它们(master_data_table_view.dart 的硬契约)。两种模式都写同一个
+            // _selectedRowIds，页面里不存在第二份「当前选中」。
             onSelectionChanged: (row) {
-              setState(() => _selected = row);
+              setState(() => _selectedRowIds = {_rowId(row)});
               if (_auditMode) _toggleAudited(row);
             },
-            // _BomRow 每次 build 重建（引用变），故按组件行 id 比较而非引用相等。
-            isSelected: (row) =>
-                _selected != null &&
-                row.node.item.id == _selected!.node.item.id,
+            // _BomRow 每次 build 重建(引用变)，故按行键比较而非引用相等。
+            isSelected: (row) => _selectedRowIds.contains(_rowId(row)),
             // 已审行浅绿底（审计标记持久在服务端，对所有人可见）；
             // 单击选中时表格组件自动加深加亮。
             rowColor: (r) => r.node.item.audited
@@ -657,20 +935,24 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                 label: '导出组件', // TODO(l10n): 补 arb
                 size: UtenButtonSize.large,
               ),
+              // 编辑只对一条生效：勾了多条时目标不明确，宁可灰掉也不替用户猜。
               if (widget.canEdit)
                 UtenButton(
                   type: UtenButtonType.secondary,
                   size: UtenButtonSize.large,
                   icon: Icons.edit_outlined,
-                  onPressed: _selected == null ? null : _editSelected,
+                  onPressed: selectedCount == 1 ? _editSelected : null,
                   child: const Text('编辑'), // TODO(l10n): 补 arb
                 ),
+              // 删除：勾一条起可用，一律走批量路径(条数在确认框里报)。
+              // 按钮文字不带条数——已选数由工具条的「已选 N 项」胶囊负责。
               if (widget.canDelete)
                 UtenButton(
+                  key: const Key('goods-bom-delete-selected'),
                   type: UtenButtonType.danger,
                   size: UtenButtonSize.large,
                   icon: Icons.delete_outline,
-                  onPressed: _selected == null ? null : _deleteSelected,
+                  onPressed: selectedCount == 0 ? null : _deleteSelected,
                   child: const Text('删除'), // TODO(l10n): 补 arb
                 ),
               // 审计模式（V256，goods:bom:audit）：开=点行标记/取消「已核对无误」
@@ -682,7 +964,13 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       : UtenButtonType.tonal,
                   size: UtenButtonSize.large,
                   icon: Icons.fact_check_outlined,
-                  onPressed: () => setState(() => _auditMode = !_auditMode),
+                  onPressed: () => setState(() {
+                    _auditMode = !_auditMode;
+                    // 两种模式的「选中」语义不同(勾选集 vs 单选高亮)，切换时
+                    // 不清空就会留下看不见的残留勾选：退出审计后一点「删除」，
+                    // 删的是用户压根没勾过的行。
+                    _selectedRowIds = <String>{};
+                  }),
                   child: Text(_auditMode ? '退出审计' : '审计模式'), // TODO(l10n)
                 ),
             ],

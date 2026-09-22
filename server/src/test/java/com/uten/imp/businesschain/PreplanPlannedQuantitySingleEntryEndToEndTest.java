@@ -99,7 +99,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     @Test void issuePreviewRunsTheRealCommandThenRollsBackEverything() {
         Tree t=seed("preview");
         AnalysisView before=analyses.detail(t.analysis());
-        AnalysisView preview=commands.previewIssueWorkshopPlans(t.analysis(),issue(before,t,"preview-root",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))));
+        AnalysisView preview=commands.previewIssuePlans(t.analysis(),previewOf(issue(before,t,"preview-root",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500")))));
         // 预览结果就是真实下达后的样子：下层需求已按 1500 展开。
         qty("1500",material(preview,t.parentLine()).requiredQty());qty("1500",material(preview,t.childLine()).requiredQty());
         qty("1500",material(preview,t.buyLine()).requiredQty());
@@ -111,10 +111,64 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         assertEquals(before.version(),after.version());assertEquals(before.fingerprint(),after.fingerprint());
         qty("1000",material(after,t.parentLine()).requiredQty());qty("1000",material(after,t.childLine()).requiredQty());
         // 同一个幂等键可以再预览，也可以随后真实下达。
-        commands.previewIssueWorkshopPlans(t.analysis(),issue(after,t,"preview-root",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))));
+        commands.previewIssuePlans(t.analysis(),previewOf(issue(after,t,"preview-root",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500")))));
         commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"preview-root",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
         qty("1500",material(analyses.detail(t.analysis()),t.parentLine()).requiredQty());
+    }
+
+    /**
+     * 2026-09-21 用户口径「我修改下面某个层级的父件数量, 它的子层级也要对应地改」：
+     * 层级表上任意一行填的数量都按计划产出量带动它自己的子层, 而它自己的需求量
+     * 一个字节不动(那是祖先决定的)。预览整体回滚, 库里一行不留。
+     */
+    @Test void typedOutputOnAMiddleRowDrivesItsChildrenAndLeavesItselfAlone() {
+        Tree t=seed("typed-middle");
+        AnalysisView before=analyses.detail(t.analysis());
+        qty("1000",material(before,t.parentLine()).requiredQty());qty("1000",material(before,t.childLine()).requiredQty());
+        // 树顶不下达, 只把中间那个自制父件本批填成 1800。
+        AnalysisView preview=commands.previewIssuePlans(t.analysis(),preview(before,t,"middle-1800",
+                List.of(),List.of(typed(t.parentLine(),"1800"))));
+        qty("1800",material(preview,t.childLine()).requiredQty());
+        qty("1800",material(preview,t.childLine()).additionalSupplyRecommendedQty());
+        // 填数量的那一行自己不受影响：需求仍是顶层给的 1000, 兄弟行也不动。
+        qty("1000",material(preview,t.parentLine()).requiredQty());qty("1000",material(preview,t.buyLine()).requiredQty());
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        AnalysisView after=analyses.detail(t.analysis());
+        qty("1000",material(after,t.childLine()).requiredQty());
+        assertEquals(before.version(),after.version());assertEquals(before.fingerprint(),after.fingerprint());
+    }
+
+    /** 树顶超量下达与中间层改量同时生效：顶层 1500 带大中间层, 中间层再按 1800 带大孙层。 */
+    @Test void seedIssueAndTypedOutputsStackInOnePreview() {
+        Tree t=seed("typed-stack");
+        AnalysisView before=analyses.detail(t.analysis());
+        AnalysisView preview=commands.previewIssuePlans(t.analysis(),preview(before,t,"stack",
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))),
+                List.of(typed(t.parentLine(),"1800"))));
+        qty("1500",material(preview,t.parentLine()).requiredQty());qty("1500",material(preview,t.buyLine()).requiredQty());
+        qty("1800",material(preview,t.childLine()).requiredQty());
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_plan_links WHERE analysis_id=?",Integer.class,t.analysis()));
+    }
+
+    /**
+     * 用户口径第三条：子件已经下过单的量要抵扣——父件还是 1000 时子件「还需安排 0」,
+     * 父件改到 2000 时子件就只差 1000。
+     */
+    @Test void typedOutputNetsOutWhatTheChildAlreadyOrdered() {
+        Tree t=seed("typed-ordered");
+        AnalysisView view=analyses.detail(t.analysis());
+        view=commands.notifySupply(t.analysis(),new NotifyRequest(view.version(),view.fingerprint(),
+                "planned-notify-"+t.analysis()+"-child-1000","BUY",List.of(t.childLine()),List.of(),
+                List.of(new SupplyQuantityInput(null,t.childLine(),new BigDecimal("1000"),BigDecimal.ZERO))));
+        qty("1000",material(view,t.childLine()).requiredQty());
+        qty("0",material(view,t.childLine()).additionalSupplyRecommendedQty());
+        AnalysisView preview=commands.previewIssuePlans(t.analysis(),preview(view,t,"ordered-2000",
+                List.of(),List.of(typed(t.parentLine(),"2000"))));
+        qty("2000",material(preview,t.childLine()).requiredQty());
+        qty("1000",material(preview,t.childLine()).additionalSupplyRecommendedQty());
+        AnalysisView after=analyses.detail(t.analysis());
+        qty("0",material(after,t.childLine()).additionalSupplyRecommendedQty());
     }
 
     @Test void secondNotifyGrowsTheUnorderedRequestLineInPlaceAndOrderedLinesGetANewRequest() {
@@ -319,6 +373,120 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     private static IssueWorkshopPlansRequest issue(AnalysisView view,Tree t,String key,IssueWorkshopPlansRequest.IssuePlanLine... lines) {
         return new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"planned-issue-"+t.analysis()+"-"+key,t.world().warehouseId(),
                 BusinessTime.today(),BusinessTime.today().plusDays(10),true,List.of(lines));
+    }
+    /**
+     * 2026-09-21 用户口径「假如没有下单, 立马把父件改回 1000, 子件也要立马变回 1000」：
+     * 把来源数量调高再调回来, 自制锚点的配额要跟着回落——只退**从来没下达过**的那部分,
+     * 已提交/已审核的计划一分不动。不退的话锚点永久停在高位, 子件那一行的「还需安排」
+     * 再也降不下来。
+     */
+    @Test void makeAnchorQuotaFollowsSourceDemandBackDownWhenNothingWasIssued() {
+        Tree t=seed("anchor-shrink");
+        AnalysisView before=analyses.detail(t.analysis());
+        commands.issueWorkshopPlans(t.analysis(),issue(before,t,"parent-anchor",candidate(t.parentLine(),"1000")));
+        AnalysisView anchored=analyses.detail(t.analysis());
+        UUID anchor=material(anchored,t.parentLine()).planAnchorAnalysisLineId();
+        assertNotNull(anchor);qty("1000",product(anchored,anchor).requestedQty());
+        // 来源数量 1000 → 2000: 锚点配额跟着涨到 2000。
+        AnalysisView raised=refreshSource(t,"2000","up1");
+        qty("2000",material(raised,t.parentLine()).requiredQty());
+        qty("2000",product(raised,anchor).requestedQty());
+        qty("1000",product(raised,anchor).remainingQty());
+        // 一张计划都没下就把来源改回 1000: 配额退回 1000, 子件行的「还需安排」跟着回落。
+        AnalysisView back=refreshSource(t,"1000","down1");
+        qty("1000",material(back,t.parentLine()).requiredQty());
+        qty("1000",product(back,anchor).requestedQty());
+        qty("0",product(back,anchor).remainingQty());
+        qty("1000",material(back,t.childLine()).requiredQty());
+        // 已下达的那部分退不掉: 涨到 2000 后真排 1500, 再改回 1000 只退到 1500。
+        AnalysisView again=refreshSource(t,"2000","up2");
+        commands.issueWorkshopPlans(t.analysis(),new IssueWorkshopPlansRequest(again.version(),again.fingerprint(),
+                "planned-issue-"+t.analysis()+"-anchor-500",t.world().warehouseId(),
+                BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(anchor,new BigDecimal("500")))));
+        AnalysisView issued=analyses.detail(t.analysis());
+        qty("2000",product(issued,anchor).requestedQty());
+        AnalysisView floored=refreshSource(t,"1000","down2");
+        qty("1500",product(floored,anchor).requestedQty());
+        qty("0",product(floored,anchor).remainingQty());
+    }
+
+    /** 按新数量重跑一次来源预览(与页面上改数量后刷新同一条路径, 会提交)。 */
+    private AnalysisView refreshSource(Tree t,String qty,String tag) {
+        AnalysisView current=analyses.detail(t.analysis());
+        return analyses.preview(new PreviewRequest(t.analysis(),current.version(),current.fingerprint(),
+                t.world().warehouseId(),"planned-resource-"+t.analysis()+"-"+tag,
+                List.of(new PreviewItem("OTHER",null,t.root(),null,t.world().unitId(),
+                        "planned-source-anchor-shrink-"+t.root(),"计划量单一入口",
+                        BusinessTime.today().plusDays(10),new BigDecimal(qty)))));
+    }
+
+    /**
+     * 2026-09-21 用户口径「采购能超量下, 委外和车间也要能」(V641)：我方供料、只有一颗
+     * 叶子子件的委外件(ADR-085 直接外发)可以超量下达, 服务端按「归需求量 + 公共备货」
+     * 分账并合成一条申请明细; 多下的那部分在层级表上按计划产出量如实带大子件需求。
+     */
+    @Test void soleComponentSubcontractTakesOverQuantityAndItsComponentFollows() {
+        var w=fixture.seedWorld("planned-sole-surplus");fixture.loginAs(w.superAdminUserId());
+        UUID root=UUID.randomUUID(),sub=UUID.randomUUID();
+        fixture.insertGoods(root,"PQL-ROOT-"+root,"单一子件委外成品","自制",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(sub,"PQL-S-"+sub,"我方供料委外件","委外",w.unitId(),w.unitLegacy());
+        // 委外件正好一颗子件 = ADR-085 直接外发形态(我方发那颗子件给委外商)。
+        fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),w.goodsC());
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),sub);
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"planned-sole-preview-"+root,
+                List.of(new PreviewItem("OTHER",null,root,null,w.unitId(),"planned-sole-source-"+root,"单一子件委外",BusinessTime.today().plusDays(10),new BigDecimal("1000")))));
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"planned-sole-routes-"+view.analysisId(),
+                view.flatMaterials().stream().filter(MaterialView::actionable)
+                        .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
+                                m.goodsId().equals(sub)?"SUBCONTRACT":m.goodsId().equals(root)?"MAKE":"BUY",null)).toList()));
+        UUID analysis=view.analysisId(),subLine=line(view,sub),componentLine=line(view,w.goodsC());
+        qty("1000",material(view,subLine).requiredQty());qty("1000",material(view,componentLine).requiredQty());
+        // 层级表上把委外件填成 1500：我方供料的那颗子件按 1500 备(预览整体回滚)。
+        AnalysisView preview=commands.previewIssuePlans(analysis,new PreviewIssuePlansRequest(
+                view.version(),view.fingerprint(),"planned-sole-preview-cascade-"+analysis,w.warehouseId(),
+                BusinessTime.today(),BusinessTime.today().plusDays(10),false,List.of(),
+                List.of(new PreviewIssuePlansRequest.TypedOutput(subLine,new BigDecimal("1500")))));
+        qty("1500",material(preview,componentLine).requiredQty());
+        qty("1500",material(preview,componentLine).additionalSupplyRecommendedQty());
+        qty("1000",material(preview,subLine).requiredQty());
+        // 真的按 1500 下达委外：V641 之前这里被「我方供料的委外件不能创建公共超量备货」拒绝。
+        AnalysisView notified=commands.notifySupply(analysis,new NotifyRequest(view.version(),view.fingerprint(),
+                "planned-sole-notify-"+analysis,"SUBCONTRACT",List.of(subLine),List.of(),
+                List.of(new SupplyQuantityInput(null,subLine,new BigDecimal("1500"),BigDecimal.ZERO))));
+        Object[] action=db.queryForObject("""
+                SELECT requested_qty,public_surplus_qty FROM preplan_supply_actions
+                WHERE analysis_id=? AND route='SUBCONTRACT' AND operation_type='SUPPLY'
+                """,(rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},analysis);
+        qty("1000",(BigDecimal)action[0]);qty("500",(BigDecimal)action[1]);
+        // 需求片与公共片合成同一条委外申请明细(V588 形态)。
+        qty("1500",db.queryForObject("""
+                SELECT item.qty FROM subcontract_application_items item
+                JOIN preplan_supply_actions action ON action.public_surplus_external_item_id=item.id
+                WHERE action.analysis_id=?
+                """,BigDecimal.class,analysis));
+        // **真实下达之后**子件需求也要跟到 1500: 单一子件委外件不建锚点、不出计划,
+        // 计划链接那条载体对它恒为空, 所以多下的 500 由它自己那张未结的委外供给行动
+        // (归需求量 + 公共备货量 − 已回厂量)承接。少了这一项, 仓库要发 1500 片子件
+        // 而只有 1000 片下过单。
+        qty("1500",material(notified,componentLine).requiredQty());
+        qty("1500",material(notified,componentLine).additionalSupplyRecommendedQty());
+        AnalysisView reloaded=analyses.detail(analysis);
+        qty("1500",material(reloaded,componentLine).requiredQty());
+    }
+
+    private static PreviewIssuePlansRequest previewOf(IssueWorkshopPlansRequest request) {
+        return new PreviewIssuePlansRequest(request.version(),request.fingerprint(),request.idempotencyKey(),request.warehouseId(),
+                request.billDate(),request.deliveryDate(),request.approveNow(),request.lines(),List.of());
+    }
+    private static PreviewIssuePlansRequest.TypedOutput typed(UUID materialLine,String qty) {
+        return new PreviewIssuePlansRequest.TypedOutput(materialLine,new BigDecimal(qty));
+    }
+    private static PreviewIssuePlansRequest preview(AnalysisView view,Tree t,String key,
+            List<IssueWorkshopPlansRequest.IssuePlanLine> lines,List<PreviewIssuePlansRequest.TypedOutput> typed) {
+        return new PreviewIssuePlansRequest(view.version(),view.fingerprint(),"planned-preview-"+t.analysis()+"-"+key,
+                t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines,typed);
     }
     private static NotifyRequest notify(AnalysisView view,Tree t,String key,String qty) {
         return new NotifyRequest(view.version(),view.fingerprint(),"planned-notify-"+t.analysis()+"-"+key,"BUY",List.of(t.buyLine()),List.of(),

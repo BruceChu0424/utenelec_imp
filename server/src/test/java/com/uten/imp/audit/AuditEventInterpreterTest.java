@@ -711,6 +711,36 @@ class AuditEventInterpreterTest {
         assertEquals("security", event.category());
     }
 
+    /**
+     * 两条路径都以 /batch-delete 收尾: 通知的 /api/notices/batch-delete 和货品组装明细的
+     * /api/master/goods/{id}/bom/batch-delete。这条规则原先只看后缀, 当时全仓只有通知一条,
+     * 新端点一加进来就把货品主档删除显示成「移除通知 · 货品」。两个断言一起钉住, 下一个
+     * *-batch-delete 端点再撞时这里先红。
+     */
+    @Test
+    void tellsBomBatchDeleteApartFromNoticeBatchDelete() {
+        AuditEventInterpreter.InterpretedEvent bom = interpreter.interpret(
+                writeRequest("api/master/goods",
+                        "/api/master/goods/" + UUID.randomUUID() + "/bom/batch-delete"));
+        assertEquals("批量删除组装明细", bom.actionLabel());
+        // 批量软删走 POST, 接不住 http_delete 那条判定, 得靠路径进高风险。
+        assertEquals("high", bom.riskLevel());
+
+        AuditEventInterpreter.InterpretedEvent notice = interpreter.interpret(
+                writeRequest("api/notices", "/api/notices/batch-delete"));
+        assertEquals("移除通知", notice.actionLabel());
+    }
+
+    private AuditLog writeRequest(String targetType, String path) {
+        AuditLog log = new AuditLog();
+        log.setAction("http_post");
+        log.setTargetType(targetType);
+        log.setHttpPath(path);
+        log.setResult("success");
+        log.setStatusCode(200);
+        return log;
+    }
+
     private AuditLog request(String action, String path) {
         AuditLog log = new AuditLog();
         log.setAction(action);

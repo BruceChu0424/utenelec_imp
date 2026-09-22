@@ -292,6 +292,12 @@ abstract final class ApiEndpoints {
       '/master/goods/$id/bom/$itemId';
   static String goodsBomItemAudit(String id, String itemId) =>
       '/master/goods/$id/bom/$itemId/audit';
+
+  /// 批量删除组装行：一次提交同一父货品下的多条关系 id。
+  /// 用 POST 而非 DELETE —— 删除清单要走请求体，带 body 的 DELETE 在网关/代理
+  /// 上并不可靠(部分中间件会直接丢掉 DELETE 的 body)。
+  static String goodsBomBatchDelete(String id) =>
+      '/master/goods/$id/bom/batch-delete';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
   // 货品批量导入：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
   static const goodsImportDetect = '/master/goods/import/detect';

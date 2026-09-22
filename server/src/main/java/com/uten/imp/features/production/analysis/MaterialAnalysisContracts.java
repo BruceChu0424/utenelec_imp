@@ -3,6 +3,9 @@ package com.uten.imp.features.production.analysis;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.uten.imp.common.validation.RequestLimits;
+// 预览请求要在 List<@Valid ...> 上逐行级联校验；type-use 注解不能加在带限定名的
+// 嵌套类型上, 所以这里把嵌套的行记录单独 import 一次, 好写成简单名。
+import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.IssueWorkshopPlansRequest.IssuePlanLine;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -213,6 +216,45 @@ public final class MaterialAnalysisContracts {
             public IssuePlanLine(UUID analysisLineId, BigDecimal qty) {
                 this(null, analysisLineId, qty, null, null, null, null, null, null, null, null);
             }
+        }
+    }
+
+    /**
+     * 「父件 + 下层一起下单」整页的重算请求(ADR-099 修订，2026-09-21 第五轮)。
+     *
+     * <p>{@link #lines()} 是树顶那一行的真实下达意图(服务端真跑一遍再整体回滚)，
+     * {@link #typedOutputs()} 是层级表上<b>每一行</b>输入框里的数量——服务端按它把
+     * 各自节点的计划产出量补齐，于是任意一层改量都能把它的子层、孙层一路带大。
+     * 两者都可以为空一边：只改中间层(或父件已提交过的重试)时 lines 为空；
+     * 刚进页、下层还没填时 typedOutputs 为空。</p>
+     */
+    public record PreviewIssuePlansRequest(
+            @NotNull @JsonAlias("expectedVersion") Long version,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
+            @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
+            @NotNull UUID warehouseId,
+            @NotNull LocalDate billDate,
+            LocalDate deliveryDate,
+            boolean approveNow,
+            @Size(max = RequestLimits.DOCUMENT_LINES)
+            List<@Valid IssuePlanLine> lines,
+            @Size(max = RequestLimits.DOCUMENT_LINES)
+            List<@Valid TypedOutput> typedOutputs) {
+
+        public PreviewIssuePlansRequest {
+            lines = lines == null ? List.of() : lines;
+            typedOutputs = typedOutputs == null ? List.of() : typedOutputs;
+        }
+
+        /** 层级表里某一行填的本批数量(键 = 该行的物料行 id)。 */
+        public record TypedOutput(
+                @NotNull UUID materialLineId,
+                @NotNull @DecimalMin(value = "0.0000")
+                @Digits(integer = 14, fraction = 4) BigDecimal qty) {}
+
+        IssueWorkshopPlansRequest toIssueRequest() {
+            return new IssueWorkshopPlansRequest(version, fingerprint, idempotencyKey, warehouseId,
+                    billDate, deliveryDate, approveNow, lines);
         }
     }
 

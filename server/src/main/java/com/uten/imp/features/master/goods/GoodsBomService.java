@@ -195,6 +195,51 @@ public class GoodsBomService {
         recalcSourceE(parent);
     }
 
+    /**
+     * 批量删除组装行(前端勾选多行后一次删完)。
+     *
+     * <p>要么全删要么一条不删：先把所有 id 解析成行(任意一条不存在/不属于本货品即整批 404)，
+     * 全部通过后才动手软删。先校验后落库不是为了省事务，而是让「删一半」在设计上不可能发生
+     * ——不必依赖事务回滚兜底，单元测试也能验到原子性。
+     *
+     * <p>归属校验复用 {@link #requireItem}：它同时挡住「拿别的货品的行 id 冒充本货品」，
+     * 是这个批量入口的越权闸，绝不能因为是批量就换成 findAllById 走捷径。
+     *
+     * <p>{@code recalcSourceE} 只在末尾调一次：它会整棵直接组件重算成本并发一次
+     * GOODS_BOM_UPDATED；逐条删是每条一遍，删 20 行就会把研发/计划通知刷 20 次。
+     *
+     * @return 实际删除条数(已按 id 去重，重复勾选不重复计数)
+     */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:bom:delete')")
+    @Transactional
+    public int deleteAll(UUID goodsId, List<UUID> itemIds) {
+        tx.bind();
+        references.requireVisibleGoods(goodsId);
+        // 去重：组装树上同一行可能被重复提交，删一次、算一次。
+        Set<UUID> distinct = new java.util.LinkedHashSet<>();
+        for (UUID itemId : itemIds == null ? List.<UUID>of() : itemIds) {
+            if (itemId != null) {
+                distinct.add(itemId);
+            }
+        }
+        if (distinct.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择要删除的组件行");
+        }
+        List<GoodsBomItem> rows = new ArrayList<>(distinct.size());
+        for (UUID itemId : distinct) {
+            rows.add(requireItem(goodsId, itemId));
+        }
+        OffsetDateTime deletedAt = OffsetDateTime.now();
+        for (GoodsBomItem r : rows) {
+            r.setDeleted(true);
+            r.setDeletedAt(deletedAt);
+            bomRepo.save(r);
+        }
+        // requireItem 已保证每行 goods 都是 goodsId，父件只有一个，取第一行的即可。
+        recalcSourceE(rows.getFirst().getGoods());
+        return rows.size();
+    }
+
     // ===== 配件清单导出（产品配件清单，对照老系统 003.jpg 列） =====
 
     /** 树展开深度上限（防历史脏数据 A→B→A 环路死循环）。 */

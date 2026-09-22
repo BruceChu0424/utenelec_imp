@@ -164,10 +164,10 @@ class _ChildCascadeRow extends EditableGridRow {
     required this.seedLabel,
     required this.route,
     required this.kind,
-    required this.requiredQty,
-    required this.residual,
+    required double requiredQty,
+    required double residual,
     required this.claimableQty,
-    required this.suggested,
+    required double suggested,
     required this.ownsInput,
     required this.mergedPathCount,
     required this.blockedReason,
@@ -179,7 +179,9 @@ class _ChildCascadeRow extends EditableGridRow {
     this.seed,
     this.anchorAnalysisLineId,
     this.preparationAnchorAnalysisLineId,
-  }) {
+  }) : serverRequiredQty = requiredQty,
+       serverResidual = residual,
+       serverSuggested = suggested {
     if (ownsInput && suggested > 0) {
       qty.text = _bucketQtyText(suggested);
     } else if (ownsInput && allowsExtra) {
@@ -261,12 +263,48 @@ class _ChildCascadeRow extends EditableGridRow {
 
   /// 服务端快照里这行的本批需求（持有输入框的行 = 该提交单元全部路径之和）。
   /// 父件按超过需求的数量下达时，这里已经是按计划产出量放大过的值。
-  final double requiredQty;
+  final double serverRequiredQty;
 
   /// 服务端口径的还需安排量：采购 / 直接外发委外 = 本批缺口 − 已在途；
   /// 已建自制任务的行 = 锚点剩余可排量；其余自制 / 需先自制的委外 = 本批
   /// 缺口 − 已在途（含既有前置自制台账未通知量）。
-  final double residual;
+  final double serverResidual;
+
+  /// 服务端口径的建议下单量(采购行已按起订量 / 订货倍数抬过)。
+  final double serverSuggested;
+
+  /// 父行数量刚改完、服务端那份重算还在路上时，页面**当场**按比例换算出来的
+  /// 本行数量(用户口径 2026-09-21「输入框输入的时候子层级就要变，不是等到
+  /// 确认之后」)。已被现货 / 在途 / 已下达覆盖的部分是不变量，只有需求按父件
+  /// 的新数量等比放大缩小；服务端那份一回来就整体作废、按服务端的重建。
+  double? _optimisticRequiredQty;
+  double? _optimisticResidual;
+
+  double get requiredQty => _optimisticRequiredQty ?? serverRequiredQty;
+  double get residual => _optimisticResidual ?? serverResidual;
+
+  /// 正在等服务端重算时，本行数字是不是页面先行换算的估算值。
+  bool get isOptimistic => _optimisticResidual != null;
+
+  /// 按父行的新数量就地换算本行：[factor] = 父行现在填的数 ÷ **服务端那份快照
+  /// 当时按的数**。
+  ///
+  /// 一律从服务端值重算，不在上一次估算值上再乘：用户是一位一位退格改数的
+  /// (2000 → 200 → 20 → 2 → 空 → 1 → 10 → 100 → 1000)，逐拍相乘的话中间那拍
+  /// 空框没有比例可算，丢掉的那一档再也补不回来，最后父件回到 1000 而子层还
+  /// 停在 2000。从快照重算是幂等的：中间怎么敲都不影响最终值。
+  void applyOptimisticScale(double factor) {
+    final covered = serverRequiredQty - serverResidual;
+    final required = serverRequiredQty * factor;
+    _optimisticRequiredQty = required;
+    final rest = required - covered;
+    _optimisticResidual = rest > 0 ? rest : 0;
+  }
+
+  void clearOptimistic() {
+    _optimisticRequiredQty = null;
+    _optimisticResidual = null;
+  }
 
   /// 此刻可自动认领的同主仓公共在途（只对采购 / 直接外发委外有意义）。
   /// 下达时服务端先认领它，只为余下部分新下单。
@@ -274,7 +312,9 @@ class _ChildCascadeRow extends EditableGridRow {
 
   /// 预填的下单量 = [residual]，采购行再按货品的最小起订量 / 订货倍数向上
   /// 抬一次（软约束：抬出来的富余归公共备货，用户可以改回 [residual]）。
-  final double suggested;
+  /// 页面先行换算期间直接用换算出来的还需安排量——起订量那一抬留给服务端
+  /// 那份重算，不在估算里猜。
+  double get suggested => _optimisticResidual ?? serverSuggested;
 
   final bool ownsInput;
   final int mergedPathCount;
@@ -292,6 +332,21 @@ class _ChildCascadeRow extends EditableGridRow {
 
   /// 用户手工改过本行数量：重新预览重建行集时保留它。
   bool qtyTouched = false;
+
+  /// 用户**亲手填进去**的那个数(不含页面替他抬上去、或按父行比例换算出来的值)。
+  ///
+  /// 有它才分得清两件事(用户口径 2026-09-21 第九轮)：没手工改过的行, 它的数字只是
+  /// 父行传下来的回声, 父行改大改小都要跟着走; 手工改过的行, 本次就按用户填的数走,
+  /// 只有父行的需求涨过它时才被抬上去, 父行再改小也退回用户自己填的那个数。
+  double? userTypedQty;
+
+  /// 本行此刻该显示的下单量：手工填过的取「用户填的数」与「还需安排」的大者,
+  /// 没填过的就跟服务端(或按父行换算出来)的建议量走。
+  double get followUpQty {
+    final typed = userTypedQty;
+    if (!qtyTouched || typed == null) return suggested;
+    return typed > residual ? typed : residual;
+  }
 
   /// 行身份：物料行用它的 materialLineId；无物料行的树顶用产品行 id 加前缀。
   String get id =>
@@ -324,12 +379,17 @@ class _ChildCascadeRow extends EditableGridRow {
   String get displayName => goodsName ?? goodsCode ?? id;
 
   /// 可勾选可下达：有输入框、无阻断原因，且服务端还有可下达量**或**本行允许
-  /// 追加（还需安排 0 也能填追加量）。默认只勾还有缺口的行。
+  /// 追加(还需安排 0 也能填追加量)**或**用户已经亲手在这一行填过数。
+  ///
+  /// 最后那一条不能少：父件往下调一次、把这一行的还需安排压到 0 时，若因此判成
+  /// 不可勾选，这一行连输入框都没了——用户填的数从屏幕上消失、勾选被撤、它的
+  /// 数量也不再送回服务端(子层于是回去跟父行走)，父件再调回来也回不去，提交时
+  /// 还会被静默漏掉。
   bool get selectable =>
       !isSeed &&
       ownsInput &&
       blockedReason == null &&
-      (suggested > 0.0001 || allowsExtra);
+      (suggested > 0.0001 || allowsExtra || (userTypedQty ?? 0) > 0.0001);
 
   /// 本行要不要指定生产车间与负责人：树顶看种子通道；下层行看去向。
   bool get needsWorkshop => isSeed

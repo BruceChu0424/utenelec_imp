@@ -174,7 +174,8 @@ MasterDataTableView<T>(
   isSelected: (item)?,                 // 可选：外部受控选中判定（item 重建场景用，按业务键比较）
   rowMenuBuilder: (item) => [...],     // 可选：行右键/长按菜单条目（UtenContextMenuEntry）
   batchActionsBuilder: (ctx, ids) => [...], // 可选：右下悬浮批量动作；选择摘要仍在表头上方
-  selectable: true,                    // 列表页受控多选；embedded/picker/明细表禁止开启
+  selectable: true,                    // 受控多选：列表页 + 详情页里的树表(货品「组装信息」页签)；
+                                        // embedded/picker/单据明细表禁止开启
   enableTextSelection: true,           // 只读表体文字框选；重交互/自动刷新大表可显式 false
   idOf: (item) => item.id,             // 多选业务键；无单一 id 时传稳定复合键
   selectedIds: selectedIds,            // 调用方持有的唯一选中真值
@@ -259,7 +260,17 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 ## 七、实现要点 / 避坑
 
-- **多选只用于列表页**：`selectable:true` 必须同时提供 `idOf` 和 `onSelectedIdsChanged`，且不能与 `embedded:true` 共用。`selectedIds` 是只读输入，回调收到的是复制后的新集合；调用方不得依赖 item 引用相等。表头全选只作用于当前页可勾选行，已有的其他页选择保持不变。
+- **多选用于列表页与详情页树表**：`selectable:true` 必须同时提供 `idOf` 和 `onSelectedIdsChanged`，且不能与 `embedded:true` 共用。`selectedIds` 是只读输入，回调收到的是复制后的新集合；调用方不得依赖 item 引用相等。表头全选只作用于当前页可勾选行，已有的其他页选择保持不变。
+- **树表(懒加载父子行)接入多选的三条口径**(2026-09-21 货品「组装信息」页签首次接入，见
+  [基础资料页 §六 36](../03-页面/基础资料页.md))：① `idOf` 取**行自己的业务 id**(BOM 用
+  `goods_bom_items.id`，不是组件货品 id)——同一个子件可以挂在多个父件下，用货品 id 当键会
+  一勾勾中好几行；行对象每次 build 重建(`_BomRow`)不影响，选中集按 id 存活。② 表头三态只
+  覆盖**当前可见行**：折叠起来的子行既不被「全选」勾上，也不该被批量动作牵连——用户看到几个
+  勾就是删几行，折叠着的看不见、就不能算在内。③ 选中集可能跨多个父实体(BOM 行分属不同父
+  货品)，而批量端点通常是「父 id 在路径上」的形状，调用方要按父分组后逐组提交，不能把整包
+  id 发给某一个父(服务端归属校验会整批拒掉，这也是它挡越权的方式)。**原子性的粒度因此是
+  单个请求，不是一次界面操作**——某组失败时其余组已经写进去了，调用方要如实报「成功 N 条，
+  失败 M 条」并重拉整棵树，不能报一句「已完成」把失败吞掉。
 - **文字框选与业务多选是两个开关**：`selectable` 只控制行复选框；`enableTextSelection`
   只控制只读表体是否创建局部 `SelectionArea`，默认 true 以保留复制。设置 false 或开启
   `selectable:true` 时整表使用 `SelectionContainer.disabled`；不要为了关闭文字框选把只读表
@@ -268,6 +279,11 @@ return MasterDataTableView<Map<String, dynamic>>(
 - **仅选择也是真交互**：页面只传 `onSelectionChanged`、不传 `onRowTap` 时，整行仍可
   单击选中，但不暴露“打开详情”的无障碍动作。BOM 将展开/折叠放进树单元格后使用此模式。
 - **单选和多选语义互斥**：多选开启后，`isSelected`、`onSelectionChanged` 和内部单选高亮不再参与选择；单击行 = 切换勾选（与点勾选框等价），双击行 = `onRowTap` 打开详情。已选行双击时，第一次点击虽会即时切换，第二击识别为双击后必须补回勾选，保证打开详情不会让批量/悬浮主操作意外变灰。
+  **宿主页面有「单击行 = 执行某个动作」的模式时，该模式期间必须关掉 `selectable`**：货品
+  「组装信息」页签的审计模式靠 `onSelectionChanged` 把单击翻成「已核对无误」打标，与多选的
+  「单击 = 切换勾选」是同一个手势的两种语义，只能二选一(开着多选时打标那条线根本收不到
+  回调)。切换模式时连勾选集一起清空——留着上一轮的勾，用户在另一个模式里看不见它，下一次
+  批量动作就会多删几行。
 - **右键选择是动作上下文，不是动作完成态**：菜单条目回调结束后组件清空选择；页面另有
   外部单选动作状态时传 `onSelectionCleared` 同步清理。点外部取消不清选，避免破坏用户
   右键前已有的多选。异步条目必须返回其 Future，不能在回调里无等待地另起任务。
@@ -314,7 +330,12 @@ return MasterDataTableView<Map<String, dynamic>>(
   换关键字后剪掉已失效的筛选值（`_pruneMaterialTableFilters` 同款），否则列头 sanitize 回
   列名、表体仍在过滤，用户会面对一张没有出口的空表（空态「清除筛选」是最后兜底）。
 
-**最后更新**：2026-09-16 · 列头筛选菜单的空值桶改为**末尾「其他 (n)」**（原「空值 (n)」在顶部「所有」下方）：语义=该列为空/未归类行的兜底桶，回传哨兵与服务端 `nullFields` 参数不变；`facets` 桶源明确三种——服务端 facet 端点 / 主档 dict 端点（经 `masterDictionaryFacets` 转桶）/ 前端固定枚举。前序 2026-09-11 · 补记客户端 facet 的适用边界（只限整表装完的页面；服务端分页页面
+**最后更新**：2026-09-21 · 受控多选的适用范围从「列表页」扩到**详情页里的树表**——货品
+「组装信息」页签接入 `selectable` 开勾选列，**批量删除的 danger「删除」按钮挂宿主的
+`toolbarActions`(表头工具条)、不传 `batchActionsBuilder`**，所以「已选 N 项 + 清除」胶囊仍由
+`showSelectionSummary` 留在表头上方；同时补记树表接入的三条口径(行自己的业务 id 当键 /
+表头三态只覆盖当前可见行 / 选中集跨父实体时按父分组提交)与「宿主有单击动作模式(审计模式)
+或勾选接不上任何动作(权限全无)时必须关掉多选并清空勾选」。前序 2026-09-16 · 列头筛选菜单的空值桶改为**末尾「其他 (n)」**（原「空值 (n)」在顶部「所有」下方）：语义=该列为空/未归类行的兜底桶，回传哨兵与服务端 `nullFields` 参数不变；`facets` 桶源明确三种——服务端 facet 端点 / 主档 dict 端点（经 `masterDictionaryFacets` 转桶）/ 前端固定枚举。前序 2026-09-11 · 补记客户端 facet 的适用边界（只限整表装完的页面；服务端分页页面
 不得按当页自算桶）与失效筛选值的剪除义务。前序 2026-09-10 · 成功空态保留「全屏/退出全屏」与 `toolbarLeadingActions`，有激活 `filters` 时给「清除筛选」出口并在空态说明标注筛选生效数（新增 `master_data_table_view_empty_state_test.dart`）；物料分析表头筛选改稳定键 + 中文标签接入。前序 2026-09-04 · 行菜单动作完成后统一清选，纯取消保留选择；成功空态保留业务工具条；`MasterColumnDef.cellBuilder` 支持行内按钮等自定义内容，同时保留 `value` 的数据与无障碍语义。2026-08-17：`primary` 联动折叠模式接入范围扩大。
 此前：2026-08-14 · 新增 `primary` 联动折叠模式（配合 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md)：大屏列表页顶部卡上滑收起、表格内滚；联动模式下 `shrinkWrap` 为 false，默认 / `embedded` 路径仍 true）。货品 / 模具 / 客户 / 供应商 四个分类详情页接入。
 

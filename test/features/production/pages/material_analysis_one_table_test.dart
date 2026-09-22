@@ -45,6 +45,17 @@ Finder _issueButton(String line) =>
 bool _enabled(WidgetTester tester, Finder finder) =>
     tester.widget<InkWell>(finder).onTap != null;
 
+/// 数量框此刻是不是被 RequiredCellFrame 描了红边(它把红边交给最近那层 Theme 的
+/// inputDecorationTheme 来画)。
+bool _framedRed(WidgetTester tester, Finder field) {
+  final theme = tester.widget<Theme>(
+    find.ancestor(of: field, matching: find.byType(Theme)).first,
+  );
+  final border = theme.data.inputDecorationTheme.enabledBorder;
+  return border is OutlineInputBorder &&
+      border.borderSide.color == theme.data.colorScheme.error;
+}
+
 void main() {
   testWidgets('列定稿为 15 列，四列新增列都在表头里', (tester) async {
     await _pump(tester);
@@ -259,6 +270,46 @@ void main() {
     expect(previews.last['typedOutputs'], [
       {'materialLineId': 'm-root', 'qty': 1200.0},
     ]);
+  });
+
+  testWidgets('数量填少了 / 填错了当场冒红，改对了红框就消失；父行改大让子行缺了也冒红', (tester) async {
+    await _pump(tester);
+    // 自制外壳：还需安排 400，预填 400 → 不红。
+    expect(_framedRed(tester, _orderQty('m-6')), isFalse);
+    await tester.enterText(_orderQty('m-6'), '300');
+    await tester.pump();
+    expect(_framedRed(tester, _orderQty('m-6')), isTrue);
+    await tester.enterText(_orderQty('m-6'), '');
+    await tester.pump();
+    expect(_framedRed(tester, _orderQty('m-6')), isTrue);
+    await tester.enterText(_orderQty('m-6'), '400');
+    await tester.pump();
+    expect(_framedRed(tester, _orderQty('m-6')), isFalse);
+    // 多填不红：超出部分按公共备货记账。
+    await tester.enterText(_orderQty('m-6'), '900');
+    await tester.pump();
+    expect(_framedRed(tester, _orderQty('m-6')), isFalse);
+
+    // 子件亲手填了 700(此刻还需安排 600，多填不红)，父件再追加 1500 → 子件还需
+    // 安排当场变成 2100，700 就是「缺的」，那一拍就冒红；不必等服务端。
+    // (填 600 会与系统预填值相同，被当成没动过而跟着回填成 2100——那不叫缺。)
+    await tester.enterText(_orderQty('m-pc'), '700');
+    await tester.pump();
+    expect(_framedRed(tester, _orderQty('m-pc')), isFalse);
+    await tester.enterText(_appendQty('m-p'), '1500');
+    await tester.pump();
+    expect(previews, isEmpty);
+    expect(_framedRed(tester, _orderQty('m-pc')), isTrue);
+    await tester.enterText(_orderQty('m-pc'), '2100');
+    await tester.pump();
+    expect(_framedRed(tester, _orderQty('m-pc')), isFalse);
+    // 追加格：0 合法不红，清空才红。
+    expect(_framedRed(tester, _appendQty('m-p')), isFalse);
+    await tester.enterText(_appendQty('m-p'), '');
+    await tester.pump();
+    expect(_framedRed(tester, _appendQty('m-p')), isTrue);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('物料办理：有别的计划锁着的量才可调拨，没有就置灰并说明', (tester) async {

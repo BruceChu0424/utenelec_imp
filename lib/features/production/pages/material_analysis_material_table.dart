@@ -1279,6 +1279,9 @@ abstract class _MaterialAnalysisMaterialTableState
       type: 'number',
       info: '按本批产品数量 × 单件用量算出的总需求量。',
       value: (row) => _qty(_materialTableRequiredQty(row)),
+      // 父行敲一下这一格自己重建(订阅估算 tick)，整页不动。
+      cellBuilder: (_, row) =>
+          _materialTableLiveQtyCell(() => _materialTableRequiredQty(row)),
     ),
     // ADR-102：这一列是服务端派生的净口径，客户端不做任何减法。
     MasterColumnDef(
@@ -1293,7 +1296,12 @@ abstract class _MaterialAnalysisMaterialTableState
           '认领公共在途，这两类显示的是未扣的量。',
       value: (row) => _qty(_materialTableNetShortageQty(row)),
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => _materialTableNetShortageCell(theme, row),
+      // 数字随估算 tick 当场变；底色(cellColor)由表格在整页重建时算，停手 200ms
+      // 后跟上——每敲一下都整页重建是 260-450ms 一帧，见 _tableEstimateTick。
+      cellBuilder: (_, row) => ValueListenableBuilder<int>(
+        valueListenable: _tableEstimateTick,
+        builder: (_, _, _) => _materialTableNetShortageCell(theme, row),
+      ),
       cellColor: (_, row) =>
           _shortageCellColor(theme, _materialTableNetShortageQty(row)),
     ),
@@ -1956,6 +1964,21 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 7 秒，光等它主表上就是「改了没反应」。只覆盖展示与预填，提交仍按权威快照。
   final Map<String, _TableQty> _tableEstimatedQty = {};
 
+  /// 「敲一下当场变」只通知**依赖估算值的那几个格子**自己重建(需要数量 / 还缺数量 /
+  /// 下单数量的红框)，不整页 setState。实测(debug, 300 行)整页重建一帧 260-450ms，
+  /// 而只重绘输入框那一帧 13-20ms——整页重建就是「速度不够快」的全部成本。
+  /// 依赖估算但不逐格监听的东西(还缺数量的底色、表头筛选桶、底部按钮)由
+  /// [_tableEstimateRebuild] 在停手 200ms 后一次性刷新。
+  final ValueNotifier<int> _tableEstimateTick = ValueNotifier<int>(0);
+  Timer? _tableEstimateRebuild;
+
+  @override
+  void dispose() {
+    _tableEstimateRebuild?.cancel();
+    _tableEstimateTick.dispose();
+    super.dispose();
+  }
+
   /// 批量可调拨量(materialLineId -> 可调入数量)。空表示还没取到或无可调。
   Map<String, double> _tableTransferableIn = const {};
 
@@ -1972,6 +1995,8 @@ abstract class _MaterialAnalysisMaterialTableState
   void _disposeMaterialTableInputs() {
     _tableCascadeDebounce?.cancel();
     _tableCascadeDebounce = null;
+    _tableEstimateRebuild?.cancel();
+    _tableEstimateRebuild = null;
     for (final controller in _tableOrderQtyControllers.values) {
       controller.dispose();
     }
@@ -2197,9 +2222,43 @@ abstract class _MaterialAnalysisMaterialTableState
         continue;
       }
       final next = _qty(_tableGroupResidual(group));
-      controller.text = next;
+      // 没变就不写：每次赋值都会通知那个 TextField 重建，一屏几十个格子白跑。
+      if (controller.text != next) controller.text = next;
       _tableSeededQtyTexts[seededKey] = next;
     }
+  }
+
+  /// 随估算值当场变的只读数字格：只订阅 [_tableEstimateTick]，父行敲一下这一格
+  /// 自己重建，整页不动。
+  Widget _materialTableLiveQtyCell(double? Function() value) =>
+      ValueListenableBuilder<int>(
+        valueListenable: _tableEstimateTick,
+        builder: (_, _, _) =>
+            Text(_qty(value()), maxLines: 1, overflow: TextOverflow.ellipsis),
+      );
+
+  /// 「下单数量」格此刻是不是填错了 / 填少了(用户口径 2026-09-22「数量填的不对的
+  /// 或者缺的都要输入框冒红……父类下了 1000，子类需要 1000，输入小于 1000 就冒红，
+  /// 一输入就冒红直到输入正确」)：空 / 不是数 / 不大于 0 / 小于这一行此刻的
+  /// 「还需安排」。还需安排随父行的估算当场变，所以红框同时订阅估算 tick。
+  bool _tableOrderQtyInvalid(_MaterialGroup group) {
+    final text = _tableOrderQtyControllers[group.key]?.text.trim() ?? '';
+    final typed = double.tryParse(text);
+    if (text.isEmpty || typed == null || !typed.isFinite || typed <= 0) {
+      return true;
+    }
+    return typed + 0.0001 < _tableGroupResidual(group);
+  }
+
+  /// 「追加下单」格：0 是合法值(本次不追加)；空 / 不是数 / 负数是错；父行改大之后
+  /// 这一行又有了还需安排量时，填的追加量小于它也冒红——那就是缺的那部分。
+  bool _tableAppendQtyInvalid(_MaterialGroup group) {
+    final text = _tableAppendQtyControllers[group.key]?.text.trim() ?? '';
+    final typed = double.tryParse(text);
+    if (text.isEmpty || typed == null || !typed.isFinite || typed < 0) {
+      return true;
+    }
+    return typed + 0.0001 < _tableGroupResidual(group);
   }
 
   /// 权威快照一到就让父子联动的模拟快照作废(ADR-102)。
@@ -2296,10 +2355,17 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     if (!_tableGroupHasChildren(group)) return;
     // 敲一下当场变：先按比例把它下面每一层换算好并回填预填值，再去抖要服务端
-    // 那份权威重算。叶子行改量到不了这里，照旧不重建整表。
+    // 那份权威重算。叶子行改量到不了这里。
     _recomputeTableEstimates();
     _reseedMaterialTableQtyInputs();
-    setState(() {});
+    // 不整页 setState：只让订阅了 tick 的格子(需要数量 / 还缺数量 / 红框)重建，
+    // 其余依赖估算的东西停手 200ms 后一次刷新。
+    _tableEstimateTick.value++;
+    _tableEstimateRebuild?.cancel();
+    _tableEstimateRebuild = Timer(const Duration(milliseconds: 200), () {
+      _tableEstimateRebuild = null;
+      if (mounted) setState(() {});
+    });
     _tableCascadeDebounce?.cancel();
     _tableCascadeDebounce = Timer(
       const Duration(milliseconds: 300),
@@ -3135,6 +3201,7 @@ abstract class _MaterialAnalysisMaterialTableState
       hintText: _qty(_tableGroupResidual(group)),
       // 带下层的行改量要带动子层：记下用户亲手填的数，去抖后向服务端要重算。
       onTyped: (text) => _onTableQtyTyped(group, text),
+      invalid: () => _tableOrderQtyInvalid(group),
     );
     final hint = [
       if (shortBy != null)
@@ -3198,30 +3265,38 @@ abstract class _MaterialAnalysisMaterialTableState
       // 读不到而被静默剔掉。两格共用同一个提交单元键，所以这里必须走
       // _onTableAppendQtyTyped，让它按「下单格 + 追加格」的合计写那一个键。
       onTyped: (text) => _onTableAppendQtyTyped(group, text),
+      invalid: () => _tableAppendQtyInvalid(group),
     );
   }
 
+  /// 数量输入框：填错 / 填少了当场描红(RequiredCellFrame 订阅控制器 + 估算 tick，
+  /// 父行改大让这一行的还需安排涨上去时红框也立刻出现)。
   Widget _materialTableQtyField(
     ThemeData theme, {
     required String key,
     required TextEditingController controller,
     required bool enabled,
     required String hintText,
+    required bool Function() invalid,
     ValueChanged<String>? onTyped,
-  }) => TextField(
-    key: ValueKey(key),
-    controller: controller,
-    enabled: enabled,
-    textAlign: TextAlign.right,
-    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    style: theme.textTheme.bodySmall,
-    decoration: UtenInputDecoration(
-      InputDecoration(isDense: true, hintText: hintText),
+  }) => RequiredCellFrame(
+    listenable: Listenable.merge([controller, _tableEstimateTick]),
+    isEmpty: invalid,
+    child: TextField(
+      key: ValueKey(key),
+      controller: controller,
+      enabled: enabled,
+      textAlign: TextAlign.right,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: theme.textTheme.bodySmall,
+      decoration: UtenInputDecoration(
+        InputDecoration(isDense: true, hintText: hintText),
+      ),
+      // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
+      // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
+      onChanged: onTyped,
+      onSubmitted: (_) => setState(() {}),
     ),
-    // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
-    // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
-    onChanged: onTyped,
-    onSubmitted: (_) => setState(() {}),
   );
 
   // ------------------------- 生产车间 / 负责人 -------------------------

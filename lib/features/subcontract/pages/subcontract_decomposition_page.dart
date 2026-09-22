@@ -107,6 +107,11 @@ class _SubcontractDecompositionPageState
     (code: 'IN_PROGRESS', label: '进行中'),
   ];
 
+  /// 合并后的大类码与它内部「等委外动手」的那一档(服务端 statusCounts 两个键都在:
+  /// 原始 task_status 逐个入表, IN_PROGRESS 是三档之和另加的派生键)。
+  static const _inProgressStage = 'IN_PROGRESS';
+  static const _financeRejectedStatus = 'FINANCE_REJECTED';
+
   /// 阶段计数的呈现形态(docs/00-项目准则/14-徽章与计数口径.md)；三形态见 ADR-100。
   ///
   /// 红徽章只给「等委外部门动手」的阶段：待处理（= 委外任务中心角标同源）；
@@ -572,8 +577,22 @@ class _SubcontractDecompositionPageState
                   UtenFilterSegment(
                     value: _DecompositionSeg.stage(stage.code),
                     label: stage.label,
-                    count: statusCounts[stage.code],
-                    countForm: _stageCountForm(stage.code),
+                    // 「进行中」大类挂两枚(准则 §四之七 第 1 条, 2026-09-21 追加):
+                    // 黄 = 本类在跑的全量(与列表行数相等), 红 = 其中等委外动手的
+                    // 财务已退回单。只挂黄的话, 退回件要点进异常小类行才看得见,
+                    // 等于在大类行上蒸发。两枚刻意重叠(退回件本来就在跑), 跨色不算
+                    // 双计, 别改成相减 —— 相减会让黄数对不上「进行中」列表行数。
+                    // 回厂短交待判定同样是红, 但它是案件数、不是任务行数, 量纲不同,
+                    // 留在异常小类行里单独喊, 不并进这一枚。
+                    count: stage.code == _inProgressStage
+                        ? statusCounts[_financeRejectedStatus]
+                        : statusCounts[stage.code],
+                    countForm: stage.code == _inProgressStage
+                        ? UtenSegmentCountForm.actionable
+                        : _stageCountForm(stage.code),
+                    inProgressCount: stage.code == _inProgressStage
+                        ? statusCounts[_inProgressStage]
+                        : null,
                   ),
                 const UtenFilterSegment(
                   value: _DecompositionSeg.history(),

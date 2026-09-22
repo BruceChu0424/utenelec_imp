@@ -122,6 +122,11 @@ class _OperationsWorkbenchPageState
     };
   }
 
+  /// 合并后的大类码与它内部「等本部门动手」的那一档(服务端 statusCounts 两个键都在:
+  /// 原始 task_status 逐个入表, IN_PROGRESS 是三档之和另加的派生键)。
+  static const _inProgressStage = 'IN_PROGRESS';
+  static const _financeRejectedStatus = 'FINANCE_REJECTED';
+
   /// 阶段计数的呈现形态(docs/00-项目准则/14-徽章与计数口径.md)；三形态见 ADR-100。
   ///
   /// 红徽章只给「等本部门动手」的阶段：申请待分解（采购/委外任务中心角标同源）、
@@ -528,8 +533,21 @@ class _OperationsWorkbenchPageState
               UtenFilterSegment(
                 value: _WorkbenchSeg.stage(stage.code),
                 label: stage.label,
-                count: statusCounts[stage.code],
-                countForm: _stageCountForm(stage.code),
+                // 「进行中」是大类, 底下的异常小类行里有要本部门动手的档(财务驳回),
+                // 所以这一段挂两枚: 黄 = 本类在跑的全量(与列表行数相等), 红 = 其中
+                // 等我动手的那几张。准则 §四之七 第 1 条(2026-09-21 追加): 大类行
+                // 只挂一种颜色时, 另一色的数字点进去才看得到, 等于在大类行上蒸发。
+                // 两枚**刻意重叠**(被驳回的单本来就在跑) —— 跨色不算双计, 别改成相减,
+                // 相减会让黄数与「进行中」列表行数对不上。
+                count: stage.code == _inProgressStage
+                    ? statusCounts[_financeRejectedStatus]
+                    : statusCounts[stage.code],
+                countForm: stage.code == _inProgressStage
+                    ? UtenSegmentCountForm.actionable
+                    : _stageCountForm(stage.code),
+                inProgressCount: stage.code == _inProgressStage
+                    ? statusCounts[_inProgressStage]
+                    : null,
               ),
             const UtenFilterSegment(
               value: _WorkbenchSeg.history(),

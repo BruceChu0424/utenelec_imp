@@ -30,7 +30,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # vars（非敏感）：OSS_BUCKET、OSS_ENDPOINT（如 oss-cn-shenzhen.aliyuncs.com）
+  # vars（非敏感）：OSS_BUCKET、OSS_ENDPOINT（如 oss-cn-shenzhen.aliyuncs.com）、
+  # OSS_UPLOAD_ENDPOINT（可选，上传专用；填 oss-accelerate.aliyuncs.com 走传输加速，
+  # 桶上没开加速时自动回落 OSS_ENDPOINT。下载与清理仍用 OSS_ENDPOINT）
   # secrets（敏感）：OSS_ACCESS_KEY_ID、OSS_ACCESS_KEY_SECRET、RELEASE_SIGNING_KEY
   MAVEN_ARGS: --batch-mode --no-transfer-progress
 
@@ -160,6 +162,7 @@ jobs:
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           OSS_BUCKET: ${{ vars.OSS_BUCKET }}
           OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+          OSS_UPLOAD_ENDPOINT: ${{ vars.OSS_UPLOAD_ENDPOINT }}
         run: |
           set -euo pipefail
           pip install --quiet oss2==2.19.1
@@ -176,10 +179,28 @@ jobs:
           # 2026-09-21 v1.3.0 教训：不设超时时单次 PUT 大 JAR 会在跨境链路上
           # 静默挂死（该次两小时零字节落地，最后被 job 的 120 分钟超时杀掉）。
           # connect_timeout 同时作用于连接与读写，卡住就报错走重试，不再空转。
-          bucket = oss2.Bucket(auth, f"https://{endpoint}", bucket_name,
-                               connect_timeout=60)
+          def open_bucket(ep):
+              return oss2.Bucket(auth, f"https://{ep}", bucket_name, connect_timeout=60)
 
           prefix = f"releases/{version}"
+
+          # 2026-09-22 起上传可走传输加速域名 oss-accelerate.aliyuncs.com:
+          # 瓶颈只在「境外跑批机 -> 境内 OSS」这一段(服务器从 OSS 下载实测 10.6MB/s)。
+          # 加速域名要在控制台给桶开启才生效, 所以先传一个探针对象试水:
+          # 不可用就原样回落标准域名, 发布不因为一个加速开关而失败。
+          upload_endpoint = (os.environ.get("OSS_UPLOAD_ENDPOINT") or "").strip() or endpoint
+          bucket = open_bucket(upload_endpoint)
+          probe_key = f"{prefix}/.upload-probe"
+          if upload_endpoint != endpoint:
+              try:
+                  bucket.put_object(probe_key, b"probe")
+                  print(f"上传走加速域名 {upload_endpoint}", flush=True)
+              except Exception as exc:  # noqa: BLE001 - 任何加速侧故障都回落
+                  print(f"::warning::加速域名 {upload_endpoint} 不可用({exc})，回落 {endpoint}",
+                        flush=True)
+                  upload_endpoint = endpoint
+                  bucket = open_bucket(endpoint)
+
           files = []
           for root, _dirs, names in os.walk("dist"):
               for name in names:
@@ -223,7 +244,16 @@ jobs:
                   done += 1
                   if done % 100 == 0 or done == len(small):
                       print(f"  小文件进度 {done}/{len(small)}", flush=True)
-          print(f"已上传 {len(large)} 个大文件 + {len(small)} 个小文件", flush=True)
+          print(f"已上传 {len(large)} 个大文件 + {len(small)} 个小文件"
+                f"（域名 {upload_endpoint}）", flush=True)
+
+          # 探针对象不在 SHA256SUMS 里, 更新器只按清单逐文件下载, 留着也不影响安装;
+          # 但删不掉(RAM 少 DeleteObject)也不该让发布失败。
+          if upload_endpoint != endpoint:
+              try:
+                  bucket.delete_object(probe_key)
+              except Exception as exc:  # noqa: BLE001
+                  print(f"::warning::探针对象未删除({exc})", flush=True)
 
           bucket.put_object("LATEST.txt", (version + "\n").encode())
           got = bucket.get_object("LATEST.txt").read().decode().strip()

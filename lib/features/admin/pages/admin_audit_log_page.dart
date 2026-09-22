@@ -22,6 +22,7 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import 'admin_audit_session_detail_page.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/audit/device_audit_store.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -99,6 +100,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   final _searchController = TextEditingController();
   final _requestIdController = TextEditingController();
   final _scrollController = ScrollController();
+
+  // 2026-09-22 全站表格滚动口径：会话/事件两张明细表表头吸顶；任一表置顶后
+  // 页面滚动条才显示（替换本页此前自带的常显 Scrollbar——常显条与全站
+  // 「表格未置顶不显示」口径冲突）。
+  final _sessionsPinned = ValueNotifier<bool>(false);
+  final _eventsPinned = ValueNotifier<bool>(false);
 
   /// 动作 chip 定义：(label, 前缀|null)。null 表示"全部"。
   static const _actionChips = <(String, String?)>[
@@ -423,6 +430,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _searchController.dispose();
     _requestIdController.dispose();
     _scrollController.dispose();
+    _sessionsPinned.dispose();
+    _eventsPinned.dispose();
     super.dispose();
   }
 
@@ -1098,6 +1107,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditSessionTable(
                           sessions: sessions,
+                          stickyHeaderPinned: _sessionsPinned,
                           onOpen: (session) => showUtenAdaptivePanel<void>(
                             context: context,
                             drawerWidth: 1080,
@@ -1149,6 +1159,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditEventTable(
                           items: items,
+                          stickyHeaderPinned: _eventsPinned,
                           onOpen: _openDetail,
                         ),
                       ),
@@ -1183,10 +1194,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                 ),
               );
               if (constraints.maxWidth < 720) return scrollView;
-              return Scrollbar(
+              // 2026-09-22 全站表格滚动口径：替换此前常显 Scrollbar——表格未
+              // 置顶不显示，任一明细表表头吸附视口顶后才显示（贴视口右缘）。
+              return UtenGridPageScrollbar(
+                pinned: _sessionsPinned,
+                extraPinned: [_eventsPinned],
                 controller: _scrollController,
-                thumbVisibility: true,
-                interactive: true,
                 child: scrollView,
               );
             },

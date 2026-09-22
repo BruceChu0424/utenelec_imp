@@ -18,6 +18,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -74,6 +75,10 @@ class _WarehouseQualityResultDetailPageState
   /// 遮罩必须在刷新/通知之前撤下（组件契约：遮罩只跟随网络调用本身）。
   ({String title, String description})? _busy;
 
+  // 2026-09-22 全站表格滚动口径：明细表表头吸顶 + 置顶后才显示页面滚动条。
+  final ScrollController _pageScroll = ScrollController();
+  final _gridPinned = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +90,8 @@ class _WarehouseQualityResultDetailPageState
     for (final draft in _drafts) {
       draft.dispose();
     }
+    _pageScroll.dispose();
+    _gridPinned.dispose();
     _grid.dispose();
     super.dispose();
   }
@@ -399,53 +406,58 @@ class _WarehouseQualityResultDetailPageState
         onAction: _load,
       );
     }
-    return UtenContentContainer.wide(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          0,
-          UtenSpacing.s16,
-          0,
-          UtenFloatingActionGroup.scrollClearance,
+    return UtenGridPageScrollbar(
+      pinned: _gridPinned,
+      controller: _pageScroll,
+      child: UtenContentContainer.wide(
+        child: ListView(
+          controller: _pageScroll,
+          padding: const EdgeInsets.fromLTRB(
+            0,
+            UtenSpacing.s16,
+            0,
+            UtenFloatingActionGroup.scrollClearance,
+          ),
+          children: [
+            _headerCard(detail),
+            if (detail.preStockedLineCount > 0) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              UtenInlineNotice(
+                key: const Key('warehouse-quality-detail-pre-stocked'),
+                title: '先入库后检：${detail.preStockedLineCount} 行实物已上架待检',
+                message:
+                    '品质部到库位检验；合格后系统按上架位置自动转正入库，无需再点确认入库；'
+                    '不合格的请到库位取出后在下方「不合格实物退回」登记。',
+              ),
+            ],
+            if (detail.containsOwnRelease && detail.items.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              _OwnReleaseNotice(editable: _canConfirm),
+            ],
+            if (_conflictMessage != null) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              _MessagePanel(message: _conflictMessage!),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              _MessagePanel(message: '刷新失败：$_error'),
+            ],
+            if (_loading) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              const LinearProgressIndicator(),
+            ],
+            const SizedBox(height: UtenSpacing.s20),
+            _mergedSection(detail),
+            if (detail.rejections.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s20),
+              _rejectionsSection(detail),
+            ],
+            if (detail.history.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s20),
+              _historySection(detail),
+            ],
+          ],
         ),
-        children: [
-          _headerCard(detail),
-          if (detail.preStockedLineCount > 0) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            UtenInlineNotice(
-              key: const Key('warehouse-quality-detail-pre-stocked'),
-              title: '先入库后检：${detail.preStockedLineCount} 行实物已上架待检',
-              message:
-                  '品质部到库位检验；合格后系统按上架位置自动转正入库，无需再点确认入库；'
-                  '不合格的请到库位取出后在下方「不合格实物退回」登记。',
-            ),
-          ],
-          if (detail.containsOwnRelease && detail.items.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _OwnReleaseNotice(editable: _canConfirm),
-          ],
-          if (_conflictMessage != null) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _MessagePanel(message: _conflictMessage!),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _MessagePanel(message: '刷新失败：$_error'),
-          ],
-          if (_loading) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            const LinearProgressIndicator(),
-          ],
-          const SizedBox(height: UtenSpacing.s20),
-          _mergedSection(detail),
-          if (detail.rejections.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s20),
-            _rejectionsSection(detail),
-          ],
-          if (detail.history.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s20),
-            _historySection(detail),
-          ],
-        ],
       ),
     );
   }
@@ -585,6 +597,7 @@ class _WarehouseQualityResultDetailPageState
             saving: _saving || _loading,
             onChanged: () => setState(() {}),
             onPickWarehouse: _pickWarehouse,
+            stickyHeaderPinned: _gridPinned,
           ),
       ],
     );

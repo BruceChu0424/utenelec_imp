@@ -27,6 +27,7 @@ import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
@@ -499,11 +500,12 @@ class _SubcontractBusinessListPageState
           ),
           child: ListenableBuilder(
             listenable: _controller,
-            builder: (context, _) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 主分类行：阶段分段（无「全部」）+ 末尾「历史记录」+ 动作按钮同行。
-                UtenFilterToolbar<_BizSeg>(
+            builder: (context, _) {
+              // 2026-09-22 全站表格滚动口径：与采购/销售单据列表对齐——上滑先收
+              // 分类条（表头随之顶到视口顶），继续滚动才滚表格内容；竖向滚动条
+              // 由联动门控（外滚收头部阶段不显示）。
+              return UtenCollapsingHeaderScrollView(
+                collapsingHeader: UtenFilterToolbar<_BizSeg>(
                   segmentsKey: Key('subcontract-biz-segments-${_p.type.name}'),
                   // 计数形态(2026-09-21 用户口径: 父分类 hub 卡有红徽章, 子分类也要有数):
                   // 草稿 / 财务已退回 = 等本人动手 → 红徽章(与 hub 卡「草稿 + 财务已退回」
@@ -573,90 +575,103 @@ class _SubcontractBusinessListPageState
                         )
                       : null,
                 ),
-                // 订货页结案状态小类行：选中阶段后出现（无「全部结案状态」，默认不选）。
-                // 「等待财务审核」段下的单尚未生效，不存在结案语义，不显示本行。
-                if (_p.showClosedFilter &&
-                    seg != null &&
-                    !seg.history &&
-                    seg.financeApproval == null) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  UtenFilterToolbar<bool>(
-                    segmentsKey: Key('subcontract-biz-closed-${_p.type.name}'),
-                    segments: const [
-                      UtenFilterSegment(value: false, label: '执行中'),
-                      UtenFilterSegment(value: true, label: '已结案'),
-                    ],
-                    selected: _closed == null ? const <bool>{} : {_closed!},
-                    onSelectionChanged: (value) {
-                      setState(() => _closed = value);
-                      _reload(1);
-                    },
-                  ),
-                ],
-                if (seg?.history == true) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  UtenHistoryTimeFilter(
-                    key: Key('subcontract-biz-history-time-${_p.type.name}'),
-                    value: _historyTime,
-                    onChanged: _onHistoryTime,
-                  ),
-                ],
-                const SizedBox(height: UtenSpacing.s12),
-                Expanded(
-                  child: seg == null
-                      ? const UtenFilterPlaceholder()
-                      : seg.history && _historyTime.isNone
-                      ? const UtenHistoryTimePlaceholder()
-                      : MasterDataTableView<SubcontractDocListItem>(
-                          columns: _p.columns(
-                            names,
-                            _canViewCommercial &&
-                                !(_controller.result?.items.any(
-                                      (row) => row.priceMasked,
-                                    ) ??
-                                    false),
-                          ),
-                          items:
-                              _controller.result?.items ??
-                              const <SubcontractDocListItem>[],
-                          facets: {
-                            'supplier': masterDictionaryFacets(
-                              names.supplierEntries,
-                            ),
-                            'warehouse': masterDictionaryFacets(
-                              names.warehouseEntries,
-                            ),
-                          },
-                          nullCounts: const {},
-                          filters: {
-                            'supplier': _supplierIdFilter,
-                            'warehouse': _warehouseIdFilter,
-                          },
-                          onFilterChanged: _onColumnFilterChanged,
-                          onRowTap: (row) {
-                            context.push(
-                              SubcontractRoute.detail(
-                                _p.type.pathSegment,
-                                row.id,
-                              ),
-                            );
-                          },
-                          isLoading:
-                              _controller.loading && _controller.result == null,
-                          loadingMore:
-                              _controller.loading && _controller.result != null,
-                          error: _controller.error,
-                          onRetry: _reload,
-                          emptyMessage: seg.history
-                              ? '该时间段内暂无记录'
-                              : _p.emptyMessage,
-                          currentPage: _controller.page,
-                          totalPages: _controller.result?.totalPages ?? 1,
-                          onPageChange: (p) => _reload(p),
+                body: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 订货页结案状态小类行：选中阶段后出现（无「全部结案状态」，默认不选）。
+                    // 「等待财务审核」段下的单尚未生效，不存在结案语义，不显示本行。
+                    if (_p.showClosedFilter &&
+                        seg != null &&
+                        !seg.history &&
+                        seg.financeApproval == null) ...[
+                      const SizedBox(height: UtenSpacing.s8),
+                      UtenFilterToolbar<bool>(
+                        segmentsKey: Key(
+                          'subcontract-biz-closed-${_p.type.name}',
                         ),
+                        segments: const [
+                          UtenFilterSegment(value: false, label: '执行中'),
+                          UtenFilterSegment(value: true, label: '已结案'),
+                        ],
+                        selected: _closed == null ? const <bool>{} : {_closed!},
+                        onSelectionChanged: (value) {
+                          setState(() => _closed = value);
+                          _reload(1);
+                        },
+                      ),
+                    ],
+                    if (seg?.history == true) ...[
+                      const SizedBox(height: UtenSpacing.s8),
+                      UtenHistoryTimeFilter(
+                        key: Key(
+                          'subcontract-biz-history-time-${_p.type.name}',
+                        ),
+                        value: _historyTime,
+                        onChanged: _onHistoryTime,
+                      ),
+                    ],
+                    const SizedBox(height: UtenSpacing.s12),
+                    Expanded(
+                      child: seg == null
+                          ? const UtenFilterPlaceholder()
+                          : seg.history && _historyTime.isNone
+                          ? const UtenHistoryTimePlaceholder()
+                          : MasterDataTableView<SubcontractDocListItem>(
+                              // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                              primary: true,
+                              columns: _p.columns(
+                                names,
+                                _canViewCommercial &&
+                                    !(_controller.result?.items.any(
+                                          (row) => row.priceMasked,
+                                        ) ??
+                                        false),
+                              ),
+                              items:
+                                  _controller.result?.items ??
+                                  const <SubcontractDocListItem>[],
+                              facets: {
+                                'supplier': masterDictionaryFacets(
+                                  names.supplierEntries,
+                                ),
+                                'warehouse': masterDictionaryFacets(
+                                  names.warehouseEntries,
+                                ),
+                              },
+                              nullCounts: const {},
+                              filters: {
+                                'supplier': _supplierIdFilter,
+                                'warehouse': _warehouseIdFilter,
+                              },
+                              onFilterChanged: _onColumnFilterChanged,
+                              onRowTap: (row) {
+                                context.push(
+                                  SubcontractRoute.detail(
+                                    _p.type.pathSegment,
+                                    row.id,
+                                  ),
+                                );
+                              },
+                              isLoading:
+                                  _controller.loading &&
+                                  _controller.result == null,
+                              loadingMore:
+                                  _controller.loading &&
+                                  _controller.result != null,
+                              error: _controller.error,
+                              onRetry: _reload,
+                              emptyMessage: seg.history
+                                  ? '该时间段内暂无记录'
+                                  : _p.emptyMessage,
+                              currentPage: _controller.page,
+                              totalPages: _controller.result?.totalPages ?? 1,
+                              onPageChange: (p) => _reload(p),
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),

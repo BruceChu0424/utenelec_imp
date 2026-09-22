@@ -36,6 +36,7 @@ import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_dialog.dart';
 import 'uten_grid_header_filter_cell.dart';
 import 'uten_h_scroll_area.dart';
+import 'uten_sticky_header.dart';
 import 'uten_table_column_kit.dart';
 
 /// 行模型基类。行持有自己的 TextEditingController / ValueNotifier（跨重建存活）。
@@ -767,14 +768,21 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   // —— sticky 表头 测量与位置状态 ——
-  /// 网格 Stack / 表头单元 / 表体区 的测量键（post-frame 量全局位置用）。
+  /// 网格 Stack / 表头单元 / 表体区 的测量键（量位锚点用）。
   final GlobalKey _gridKey = GlobalKey();
   final GlobalKey _headerKey = GlobalKey();
   final GlobalKey _bodyKey = GlobalKey();
 
-  /// 表头覆盖层在网格内的 local top（0=自然位，表头就在网格顶；
-  /// 页面上滑把表头顶到视口顶后=吸附位；表体尾部上推时随尾部推出）。
-  final ValueNotifier<double> _headerY = ValueNotifier<double>(0);
+  /// 吸顶核心（2026-09-22 抽出共用）：post-frame 量位只刷新内容空间锚点，
+  /// 滚动 tick 用锚点纯算术**同帧**算出表头位置——旧实现 post-frame 才写
+  /// _headerY，表头比滚动内容滞后一整帧，快速滚动时与行错位抖动（用户
+  /// 「动画卡卡的」根因）。pinnedSink 即 widget.stickyHeaderPinned。
+  late final UtenStickyHeaderTracker _sticky = UtenStickyHeaderTracker(
+    stackKey: _gridKey,
+    headerKey: _headerKey,
+    bodyKey: _bodyKey,
+    pinnedSink: widget.stickyHeaderPinned,
+  );
 
   /// 表头实测高度（流内占位用；首帧用兜底值，post-frame 实测修正）。
   double _headerHeight = 40;
@@ -945,6 +953,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didUpdateWidget(covariant UtenEditableGrid<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 置顶信号 notifier 换实例（宿主页重建换新 notifier）→ 吸顶核心重绑。
+    if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
+      _sticky.pinnedSink = widget.stickyHeaderPinned;
+    }
     // 列集合变了（数量或 key 序列不同，如切换 docType）→ 按新 columns.width 重置列宽，
     // 清手动锁定（新列集合下标/语义已变），重挂监听并重算自动加宽。
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
@@ -983,13 +995,20 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 页面上下滑（最近的祖先 Scrollable）时驱动 sticky 表头/钉底横滚条位置重算。
+    // 页面上下滑（最近的祖先 Scrollable）时：先同帧快路径（锚点+pixels 纯算术，
+    // 表头零滞后），再 post-frame 全量量位刷新锚点（布局变化对账）。
     final pos = Scrollable.maybeOf(context)?.position;
     if (!identical(pos, _pagePos)) {
-      _pagePos?.removeListener(_scheduleStickyUpdate);
+      _pagePos?.removeListener(_onPagePosChanged);
       _pagePos = pos;
-      _pagePos?.addListener(_scheduleStickyUpdate);
+      _pagePos?.addListener(_onPagePosChanged);
     }
+  }
+
+  /// 祖先滚动 tick：同帧定表头位置 + post-frame 复核量位。
+  void _onPagePosChanged() {
+    _sticky.handleScrollTick();
+    _scheduleStickyUpdate();
   }
 
   bool _sameColumnKeys(
@@ -1157,63 +1176,29 @@ class _UtenEditableGridState<T extends EditableGridRow>
     setState(() {});
   }
 
-  /// 量网格/表头/表体与页面视口的全局位置，算出 sticky 表头覆盖层的位置：
-  /// local top 0=自然位（表头就在网格顶，不原地固定）；页面上滑把表头顶到视口顶后
-  /// 钉住；表体尾部上推时表头随尾部一起推出（pushed sticky，不悬空）。
-  /// （钉底横滚条不在本组件——表体横滚整体走共用 UtenHScrollArea。）
+  /// 量网格/表头/表体与页面视口的全局位置，刷新吸顶核心的内容空间锚点并应用：
+  /// 表头自然位 local 0；页面上滑把表头顶到视口顶后钉住；表体尾部上推时表头随
+  /// 尾部一起推出（pushed sticky，不悬空）。滚动 tick 的同帧快路径在
+  /// [_onPagePosChanged]（本方法只做 post-frame 量位与本组件自身的状态修正）。
   void _updateSticky() {
     if (!mounted) return;
-    final gridCtx = _gridKey.currentContext;
-    final gridBox = gridCtx?.findRenderObject() as RenderBox?;
-    final headerBox =
-        _headerKey.currentContext?.findRenderObject() as RenderBox?;
-    final bodyBox = _bodyKey.currentContext?.findRenderObject() as RenderBox?;
-    if (gridCtx == null ||
-        gridBox == null ||
-        !gridBox.attached ||
-        headerBox == null ||
-        !headerBox.attached ||
-        bodyBox == null ||
-        !bodyBox.attached) {
-      return;
-    }
-    // 视口 = 最近的祖先 Scrollable（单据编辑页的页面 ListView）；找不到则保持自然布局。
-    final scrollable = Scrollable.maybeOf(gridCtx);
-    final vpBox = scrollable?.context.findRenderObject() as RenderBox?;
-    if (vpBox == null || !vpBox.attached || !vpBox.hasSize) return;
+    _sticky.measure();
     // 短表/空表撑高依据(见 _viewportHeight 文档)：视口高度变化(窗口缩放)也要刷新。
+    final vh = _sticky.viewportHeight;
     if (widget.stickyHeaderPinned != null &&
-        _viewportHeight != vpBox.size.height) {
-      _viewportHeight = vpBox.size.height;
+        vh != null &&
+        _viewportHeight != vh) {
+      _viewportHeight = vh;
       setState(() {});
     }
-    // 全部相对视口量(localToGlobal 带 ancestor)：不带 ancestor 得到的是窗口坐标，
-    // 根部整体缩放(UtenDisplayZoomBox)时与表头/表体的画布尺寸相差 zoom 倍。
-    final gridTop = gridBox.localToGlobal(Offset.zero, ancestor: vpBox).dy;
-    final headerH = headerBox.size.height;
+    // 表头实测高度变化（字体缩放/主题切换）→ 修正流内占位高度。
+    final headerH = _sticky.headerHeight;
     if (headerH > 0 && (headerH - _headerHeight).abs() > 0.5) {
-      // 表头实测高度变化（字体缩放/主题切换）→ 修正流内占位高度。
       setState(() => _headerHeight = headerH);
-    }
-    final bodyTop = bodyBox.localToGlobal(Offset.zero, ancestor: vpBox).dy;
-    final bodyBottom = bodyTop + bodyBox.size.height;
-    const vpTop = 0.0;
-
-    // sticky 表头：自然位 local 0；表头随页面上滑到视口顶才吸附；表体尾部把表头顶出。
-    var headerY = vpTop - gridTop;
-    if (headerY < 0) headerY = 0;
-    final headerMaxY = bodyBottom - gridTop - headerH;
-    if (headerY > headerMaxY) headerY = headerMaxY < 0 ? 0 : headerMaxY;
-    if (_headerY.value != headerY) _headerY.value = headerY;
-    // 发布「表头已置顶」信号(页面滚动条门控)：headerY>0 = 已吸附视口顶，
-    // 此后的页面滚动在观感上就是表内滚动。
-    final pinned = widget.stickyHeaderPinned;
-    if (pinned != null && pinned.value != (headerY > 0.5)) {
-      pinned.value = headerY > 0.5;
     }
     // 首次置顶 → 启用短表撑高([_bodyMinHeight])。撑高发生在「表头已在视口顶」
     // 之后，网格顶之上只有表头占位，内容高度变化不影响视口内的表头位置。
-    if (headerY > 0.5 && !_stickyEngaged) {
+    if (_sticky.isPinned && !_stickyEngaged) {
       _stickyEngaged = true;
       setState(() {});
     }
@@ -1380,13 +1365,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   @override
   void dispose() {
-    _pagePos?.removeListener(_scheduleStickyUpdate);
+    _pagePos?.removeListener(_onPagePosChanged);
     widget.controller.removeListener(_onControllerChanged);
     for (final u in _autoGrowUnsubs) {
       u();
     }
     _autoGrowUnsubs = const [];
-    _headerY.dispose();
+    _sticky.dispose();
     _headerH.dispose();
     _bodyH.dispose();
     super.dispose();
@@ -1719,10 +1704,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
               ),
           ],
         ),
-        // sticky 表头覆盖层：top 由 [_headerY] 驱动——0=自然位（表头在网格顶）；
+        // sticky 表头覆盖层：top 由吸顶核心驱动——0=自然位（表头在网格顶）；
         // 页面上滑把表头顶到视口顶后钉住；表体尾部上推时随尾部推出。
         ValueListenableBuilder<double>(
-          valueListenable: _headerY,
+          valueListenable: _sticky.headerY,
           builder: (context, y, _) =>
               Positioned(left: 0, right: 0, top: y, child: headerUnit),
         ),

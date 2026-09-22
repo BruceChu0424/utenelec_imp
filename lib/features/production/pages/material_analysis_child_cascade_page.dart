@@ -40,6 +40,9 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   int _page = 1;
   final ScrollController _pageScroll = ScrollController();
 
+  // 2026-09-22 全站表格滚动口径：网格表头吸顶 + 置顶后才显示页面滚动条。
+  final _gridPinned = ValueNotifier<bool>(false);
+
   List<_ChildCascadeRow> get _selectedRows =>
       _allRows.where(_grid.isSelected).toList(growable: false);
   Map<_ChildCascadeRow, UtenTreeRowProjection> _treeInfo = const {};
@@ -192,6 +195,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       if (!visible.contains(row)) row.dispose();
     }
     _grid.dispose();
+    _gridPinned.dispose();
     _pageScroll.dispose();
     super.dispose();
   }
@@ -1391,12 +1395,16 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                   const SizedBox(height: UtenSpacing.s8),
                   _pager(),
                   Expanded(
-                    child: SingleChildScrollView(
+                    child: UtenGridPageScrollbar(
+                      pinned: _gridPinned,
                       controller: _pageScroll,
-                      padding: const EdgeInsets.only(
-                        bottom: UtenFloatingActionGroup.scrollClearance,
+                      child: SingleChildScrollView(
+                        controller: _pageScroll,
+                        padding: const EdgeInsets.only(
+                          bottom: UtenFloatingActionGroup.scrollClearance,
+                        ),
+                        child: _table(theme),
                       ),
-                      child: _table(theme),
                     ),
                   ),
                 ],
@@ -1697,6 +1705,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
 
   Widget _table(ThemeData theme) => UtenEditableGrid<_ChildCascadeRow>(
     controller: _grid,
+    stickyHeaderPinned: _gridPinned,
     selectable: true,
     canSelectRow: (row) => row.selectable,
     // 树顶与只作层级上下文的合并行整格不画方框。

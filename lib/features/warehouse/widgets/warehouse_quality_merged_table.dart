@@ -121,6 +121,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     required this.onChanged,
     this.onPickWarehouse,
     this.showReceipt = false,
+    this.stickyHeaderPinned,
   });
 
   final UtenEditableGridController<WarehouseQualityMergedRow> controller;
@@ -130,11 +131,15 @@ class WarehouseQualityMergedTable extends StatelessWidget {
   final void Function(WarehouseQualitySliceDraft draft)? onPickWarehouse;
   final bool showReceipt;
 
+  /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
+  final ValueNotifier<bool>? stickyHeaderPinned;
+
   @override
   Widget build(BuildContext context) {
     return UtenEditableGrid<WarehouseQualityMergedRow>(
       key: const Key('warehouse-quality-merged-table'),
       controller: controller,
+      stickyHeaderPinned: stickyHeaderPinned,
       columns: _columns(context),
       showAddRow: false,
       showRowDelete: false,

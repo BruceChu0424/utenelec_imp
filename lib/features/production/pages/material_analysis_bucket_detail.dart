@@ -325,6 +325,10 @@ class _MaterialAnalysisBucketPageState
   /// 可安排桶的可编辑计划行控制器（产品行填数量/车间/负责人；候选行只勾选）。
   UtenEditableGridController<_BucketPlanRow>? _planGrid;
 
+  /// 2026-09-22 全站表格滚动口径：计划网格表头吸顶 + 置顶后才显示滚动条。
+  final ScrollController _planPageScroll = ScrollController();
+  final _planGridPinned = ValueNotifier<bool>(false);
+
   _MaterialAnalysisProductTasksState get _host => widget.host;
   _AnalysisBucket get _bucket => widget.bucket;
 
@@ -342,6 +346,8 @@ class _MaterialAnalysisBucketPageState
   @override
   void dispose() {
     _disposeSubmitQtyControllers();
+    _planPageScroll.dispose();
+    _planGridPinned.dispose();
     _planGrid?.dispose();
     super.dispose();
   }
@@ -2351,36 +2357,41 @@ class _MaterialAnalysisBucketPageState
                 // 可安排桶：网格按内容收缩 + 外层滚动（网格表体本身
                 // NeverScrollable，编辑页同款结构）；首屏 100 行增量装载。
                 child: _usesPlanGrid
-                    ? SingleChildScrollView(
-                        padding: const EdgeInsets.only(
-                          bottom: UtenFloatingActionGroup.scrollClearance,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _readyPlanGrid(theme),
-                            if (_allPlanOrigins.length > _planVisibleLimit)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: UtenSpacing.s8,
-                                  bottom: UtenSpacing.s16,
-                                ),
-                                child: Center(
-                                  child: UtenButton(
-                                    key: const Key(
-                                      'material-analysis-bucket-show-more',
-                                    ),
-                                    type: UtenButtonType.tonal,
-                                    icon: Icons.expand_more_rounded,
-                                    onPressed: _showMorePlanRows,
-                                    child: Text(
-                                      '继续显示(还有 '
-                                      '${_allPlanOrigins.length - _planVisibleLimit} 行)',
+                    ? UtenGridPageScrollbar(
+                        pinned: _planGridPinned,
+                        controller: _planPageScroll,
+                        child: SingleChildScrollView(
+                          controller: _planPageScroll,
+                          padding: const EdgeInsets.only(
+                            bottom: UtenFloatingActionGroup.scrollClearance,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _readyPlanGrid(theme),
+                              if (_allPlanOrigins.length > _planVisibleLimit)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: UtenSpacing.s8,
+                                    bottom: UtenSpacing.s16,
+                                  ),
+                                  child: Center(
+                                    child: UtenButton(
+                                      key: const Key(
+                                        'material-analysis-bucket-show-more',
+                                      ),
+                                      type: UtenButtonType.tonal,
+                                      icon: Icons.expand_more_rounded,
+                                      onPressed: _showMorePlanRows,
+                                      child: Text(
+                                        '继续显示(还有 '
+                                        '${_allPlanOrigins.length - _planVisibleLimit} 行)',
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       )
                     : _bucketReadOnlyTable(rows),
@@ -2807,6 +2818,7 @@ class _MaterialAnalysisBucketPageState
   Widget _readyPlanGrid(ThemeData theme) {
     return UtenEditableGrid<_BucketPlanRow>(
       controller: _planGrid!,
+      stickyHeaderPinned: _planGridPinned,
       selectable: _canAct,
       canSelectRow: (row) => _canSelectTask(row.origin),
       showAddRow: false,

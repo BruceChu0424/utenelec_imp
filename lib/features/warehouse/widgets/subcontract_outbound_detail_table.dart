@@ -128,11 +128,15 @@ class SubcontractOutboundDetailTable extends StatefulWidget {
     this.showOrder = false,
     this.selectable = false,
     this.onRowSelected,
+    this.stickyHeaderPinned,
   });
   final List<SubcontractOutboundTableRow> rows;
   final bool editable;
   final bool showOrder;
   final bool selectable;
+
+  /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
+  final ValueNotifier<bool>? stickyHeaderPinned;
   final void Function(SubcontractOutboundTableRow row, bool selected)?
   onRowSelected;
   final VoidCallback onChanged;
@@ -200,6 +204,7 @@ class _SubcontractOutboundDetailTableState
     return UtenEditableGrid<SubcontractOutboundTableRow>(
       key: const Key('subcontract-outbound-detail-table'),
       controller: _grid,
+      stickyHeaderPinned: widget.stickyHeaderPinned,
       showAddRow: false,
       showRowDelete: false,
       showColumnSettings: true,

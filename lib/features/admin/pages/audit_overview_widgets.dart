@@ -1052,10 +1052,17 @@ class _AuditListHeader extends StatelessWidget {
 }
 
 class _AuditEventTable extends StatelessWidget {
-  const _AuditEventTable({required this.items, required this.onOpen});
+  const _AuditEventTable({
+    required this.items,
+    required this.onOpen,
+    this.stickyHeaderPinned,
+  });
 
   final List<AuditLogEntry> items;
   final ValueChanged<AuditLogEntry> onOpen;
+
+  /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
+  final ValueNotifier<bool>? stickyHeaderPinned;
 
   static String _summary(AuditLogEntry entry) =>
       AuditEventPresentation.salesViewNarrative(
@@ -1069,6 +1076,7 @@ class _AuditEventTable extends StatelessWidget {
   Widget build(BuildContext context) => MasterDataTableView<AuditLogEntry>(
     key: const Key('audit-event-table'),
     embedded: true,
+    stickyHeaderPinned: stickyHeaderPinned,
     columns: [
       MasterColumnDef(
         key: 'summary',
@@ -1158,16 +1166,24 @@ class _AuditEventTable extends StatelessWidget {
 }
 
 class _AuditSessionTable extends StatelessWidget {
-  const _AuditSessionTable({required this.sessions, required this.onOpen});
+  const _AuditSessionTable({
+    required this.sessions,
+    required this.onOpen,
+    this.stickyHeaderPinned,
+  });
 
   final List<AuditSessionSummary> sessions;
   final ValueChanged<AuditSessionSummary> onOpen;
+
+  /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
+  final ValueNotifier<bool>? stickyHeaderPinned;
 
   @override
   Widget build(BuildContext context) =>
       MasterDataTableView<AuditSessionSummary>(
         key: const Key('audit-session-table'),
         embedded: true,
+        stickyHeaderPinned: stickyHeaderPinned,
         columns: [
           const MasterColumnDef(
             key: 'actor',

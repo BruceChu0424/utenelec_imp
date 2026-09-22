@@ -14,6 +14,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -608,7 +609,7 @@ class _SalesShipmentTaskWorkbenchState
       // 仓库模式保持 桌面表格 / 窄屏卡片 的既有形态。
       final desktop = breakpointForWidth(constraints.maxWidth).isExpanded;
       return _isFinance || desktop
-          ? _table(result, names)
+          ? _table(result, names, standalone: !widget.embedded)
           : _compact(result, names);
     }
 
@@ -629,15 +630,22 @@ class _SalesShipmentTaskWorkbenchState
   }
 
   /// 财务+桌面共用的表格形态（财务含多选与批量动作；仓库纯只读）。
+  ///
+  /// [standalone]（独立路由页）：摘要卡/筛选行进折叠头——上滑先收它们（表头
+  /// 随之顶到视口顶），继续滚动才滚表格内容，竖向滚动条由联动门控（全站表格
+  /// 滚动口径 2026-09-22）；嵌入形态（业务审核中心分段，有界 Tab 面板）保持
+  /// 常驻头 + 默认内滚。
   Widget _table(
     PagedResult<SalesDocListItem> result,
-    SalesMasterNameService names,
-  ) {
+    SalesMasterNameService names, {
+    bool standalone = false,
+  }) {
     final selectable =
         _isFinance &&
         ((result.items.any(_canSelectItem)) || _selectedItems.isNotEmpty);
-    return Column(
+    final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         _summary(result.total),
         const SizedBox(height: UtenSpacing.s12),
@@ -647,49 +655,62 @@ class _SalesShipmentTaskWorkbenchState
           _InlineTaskError(message: _error!, onRetry: _load),
         ],
         const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: AbsorbPointer(
-            absorbing: _busyDecision,
-            child: MasterDataTableView<SalesDocListItem>(
-              key: Key(
-                _isFinance
-                    ? 'finance-shipment-audit-table'
-                    : 'warehouse-sales-outbound-table',
-              ),
-              columns: _columns(names),
-              items: result.items,
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-              onRowTap: _open,
-              selectable: selectable,
-              idOf: (item) => _canSelectItem(item) ? item.id : null,
-              selectedIds: _selectedIds,
-              onSelectedIdsChanged: _setSelectedIds,
-              batchActionsBuilder: selectable ? _batchActions : null,
-              rowMenuBuilder: _isFinance
-                  ? (item) => [
-                      UtenMenuItem(
-                        label: '打开审核详情',
-                        icon: Icons.fact_check_outlined,
-                        onTap: () => _open(item),
-                      ),
-                      UtenMenuItem(
-                        label: '查看销售出货单',
-                        icon: Icons.open_in_new_rounded,
-                        onTap: () => _openSalesDetail(item),
-                      ),
-                    ]
-                  : null,
-              isLoading: _loading,
-              emptyMessage: _emptyMessage,
-              currentPage: result.page,
-              totalPages: result.totalPages,
-              onPageChange: _load,
-            ),
-          ),
+      ],
+    );
+    final table = AbsorbPointer(
+      absorbing: _busyDecision,
+      child: MasterDataTableView<SalesDocListItem>(
+        // 独立页：primary 联动（折叠头收完 → 表格内滚）；嵌入形态默认内滚。
+        primary: standalone,
+        key: Key(
+          _isFinance
+              ? 'finance-shipment-audit-table'
+              : 'warehouse-sales-outbound-table',
         ),
+        columns: _columns(names),
+        items: result.items,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        onRowTap: _open,
+        selectable: selectable,
+        idOf: (item) => _canSelectItem(item) ? item.id : null,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: _setSelectedIds,
+        batchActionsBuilder: selectable ? _batchActions : null,
+        rowMenuBuilder: _isFinance
+            ? (item) => [
+                UtenMenuItem(
+                  label: '打开审核详情',
+                  icon: Icons.fact_check_outlined,
+                  onTap: () => _open(item),
+                ),
+                UtenMenuItem(
+                  label: '查看销售出货单',
+                  icon: Icons.open_in_new_rounded,
+                  onTap: () => _openSalesDetail(item),
+                ),
+              ]
+            : null,
+        isLoading: _loading,
+        emptyMessage: _emptyMessage,
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+      ),
+    );
+    if (standalone) {
+      return UtenCollapsingHeaderScrollView(
+        collapsingHeader: header,
+        body: table,
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        Expanded(child: table),
       ],
     );
   }

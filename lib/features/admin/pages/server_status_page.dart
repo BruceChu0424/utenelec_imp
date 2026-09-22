@@ -13,6 +13,7 @@ import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -47,6 +48,10 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
 
   /// 采样成功次数；只驱动总览的脉冲点，不参与任何数据判断。
   int _pulse = 0;
+
+  // 2026-09-22 全站表格滚动口径：后台任务表表头吸顶，置顶后才显示页面滚动条。
+  final ScrollController _pageScroll = ScrollController();
+  final ValueNotifier<bool> _jobsPinned = ValueNotifier<bool>(false);
 
   bool get _hasPermission =>
       ref.read(currentPermissionsProvider).contains(Perm.serverStatusView);
@@ -146,6 +151,8 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     _generation++;
     _timer?.cancel();
     _staleTimer?.cancel();
+    _pageScroll.dispose();
+    _jobsPinned.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -219,53 +226,58 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
           : SafeArea(
               child: RefreshIndicator(
                 onRefresh: _refresh,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: UtenContentContainer(
-                    selectable: false,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s20,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _overview(),
-                        if (_fresh && _snapshot!.alerts.isNotEmpty) ...[
-                          const SizedBox(height: UtenSpacing.s16),
-                          _alerts(),
-                        ],
-                        const SizedBox(height: UtenSpacing.s24),
-                        _sectionTitle(l10n.serverStatusResources),
-                        const SizedBox(height: UtenSpacing.s12),
-                        _grid(_resourceCards()),
-                        const SizedBox(height: UtenSpacing.s24),
-                        _sectionTitle(l10n.serverStatusStorage),
-                        const SizedBox(height: UtenSpacing.s12),
-                        _grid([
-                          if (_snapshot?.disks.isNotEmpty == true)
-                            for (final disk in _snapshot!.disks) _disk(disk)
-                          else
-                            _disk(null),
-                        ]),
-                        const SizedBox(height: UtenSpacing.s24),
-                        _sectionTitle(l10n.serverStatusDataProtection),
-                        const SizedBox(height: UtenSpacing.s12),
-                        _grid([_database(), _backup()]),
-                        if (extras.isNotEmpty) ...[
+                child: UtenGridPageScrollbar(
+                  pinned: _jobsPinned,
+                  controller: _pageScroll,
+                  child: SingleChildScrollView(
+                    controller: _pageScroll,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: UtenContentContainer(
+                      selectable: false,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: UtenSpacing.s20,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _overview(),
+                          if (_fresh && _snapshot!.alerts.isNotEmpty) ...[
+                            const SizedBox(height: UtenSpacing.s16),
+                            _alerts(),
+                          ],
                           const SizedBox(height: UtenSpacing.s24),
-                          // TODO(l10n): 补 arb
-                          _sectionTitle('平台运行指标'),
+                          _sectionTitle(l10n.serverStatusResources),
                           const SizedBox(height: UtenSpacing.s12),
-                          _grid([for (final extra in extras) _extra(extra)]),
-                        ],
-                        if (jobs.isNotEmpty) ...[
+                          _grid(_resourceCards()),
                           const SizedBox(height: UtenSpacing.s24),
-                          // TODO(l10n): 补 arb
-                          _sectionTitle('后台自动任务'),
+                          _sectionTitle(l10n.serverStatusStorage),
                           const SizedBox(height: UtenSpacing.s12),
-                          _jobs(jobs),
+                          _grid([
+                            if (_snapshot?.disks.isNotEmpty == true)
+                              for (final disk in _snapshot!.disks) _disk(disk)
+                            else
+                              _disk(null),
+                          ]),
+                          const SizedBox(height: UtenSpacing.s24),
+                          _sectionTitle(l10n.serverStatusDataProtection),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _grid([_database(), _backup()]),
+                          if (extras.isNotEmpty) ...[
+                            const SizedBox(height: UtenSpacing.s24),
+                            // TODO(l10n): 补 arb
+                            _sectionTitle('平台运行指标'),
+                            const SizedBox(height: UtenSpacing.s12),
+                            _grid([for (final extra in extras) _extra(extra)]),
+                          ],
+                          if (jobs.isNotEmpty) ...[
+                            const SizedBox(height: UtenSpacing.s24),
+                            // TODO(l10n): 补 arb
+                            _sectionTitle('后台自动任务'),
+                            const SizedBox(height: UtenSpacing.s12),
+                            _jobs(jobs),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -673,6 +685,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
   Widget _jobs(List<ServerJob> jobs) => UtenCard(
     child: MasterDataTableView<ServerJob>(
       embedded: true,
+      stickyHeaderPinned: _jobsPinned,
       columns: [
         MasterColumnDef(
           key: 'label',

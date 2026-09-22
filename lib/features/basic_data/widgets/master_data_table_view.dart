@@ -18,6 +18,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -221,10 +222,16 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onClearSelection,
     this.showSelectionSummary = true,
     this.preserveSelectionOnContextMenu = false,
+    this.stickyHeaderPinned,
     this.onFullscreenChanged,
   }) : assert(
          !embedded || !virtualized,
          'virtualized=true requires a bounded, non-embedded table',
+       ),
+       assert(
+         stickyHeaderPinned == null || embedded,
+         'MasterDataTableView: stickyHeaderPinned 仅用于 embedded（详情页等'
+         '滚动流内的明细表）——非 embedded 表格表头结构上恒在其滚动盒顶部，无需吸顶。',
        );
 
   /// 全屏态变化通知（进入/退出各回调一次）。宿主页可借此把搜索框等控件
@@ -347,6 +354,17 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// Keep explicit business selections when opening or completing a row menu.
   /// Default tables retain their standard context-selection behaviour.
   final bool preserveSelectionOnContextMenu;
+
+  /// embedded 明细表的「表头吸顶」信号（2026-09-22 全站滚动口径）：
+  ///
+  /// 详情页等**普通滚动页**里的 embedded 表，上滑时表头行随页滚走、列头与数据
+  /// 脱节。传本 notifier 后组件改用吸顶结构：表头行顶到视口上沿后钉住，数据行
+  /// 从其下方滚过，表尾推到时表头随表尾离开（pushed sticky）——与
+  /// [UtenEditableGrid.stickyHeaderPinned] 同一套 [UtenStickyHeaderTracker]
+  /// 实现（同帧跟手，不滞后一帧）。true = 已置顶，宿主拿去门控页面滚动条
+  /// （UtenGridPageScrollbar）。无祖先滚动的有界容器（弹窗/picker）量不到
+  /// 视口时自动回落自然布局，传了也无副作用。
+  final ValueNotifier<bool>? stickyHeaderPinned;
 
   /// 表头上方工具条的追加按钮（预览打印 / 下载表格等），排在工具条右侧贴边
   /// （全站口径：刷新等页面动作放表格右上角）。调用方通常传深绿大号款
@@ -484,6 +502,53 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 表体 ListView 当前底 padding，随悬浮动作或外部留白配置同步。
   double _bodyBottomPad = _hBarGap;
+
+  // —— embedded 表头吸顶（stickyHeaderPinned，2026-09-22）——
+  /// 吸顶核心（仅传了 stickyHeaderPinned 的 embedded 表创建）。表体测量复用
+  /// [_bodyAreaKey]；Stack/表头单元各有独立键。
+  UtenStickyHeaderTracker? _sticky;
+  final GlobalKey _stickyStackKey = GlobalKey();
+  final GlobalKey _stickyHeaderKey = GlobalKey();
+
+  /// 吸顶单元的流内占位高度（首帧 45 兜底 = 表头 minHeight 44 + 1px 分隔线；
+  /// post-frame 实测修正——见 _updateStickyHeader）。
+  double _pinnedUnitHeight = 45;
+
+  /// 祖先滚动（详情页页面 ListView）position：滚动 tick 同帧驱动吸顶。
+  ScrollPosition? _stickyPagePos;
+
+  /// 滚动条只认竖轴通知（depth<=1 = 穿过表体横向滚动那一层）。
+  ///
+  /// 2026-09-22 根治「竖向滚动条长度乱跳」：Scrollbar 无 controller 时框架对
+  /// 任何通过谓词的通知都重画 thumb——表体横向 ScrollView（depth 0）的横轴
+  /// 通知会把竖向 thumb 按横向 metrics 重画（横滚一下表格，竖条就忽短忽长）。
+  /// 谓词必须加竖轴过滤；controller 侧见 _buildTable 的 vScrollbarController。
+  static bool _isVerticalTableScroll(ScrollNotification n) =>
+      n.depth <= 1 && n.metrics.axis == Axis.vertical;
+
+  void _onStickyPageScroll() {
+    _sticky?.handleScrollTick();
+    _scheduleStickyMeasure();
+  }
+
+  /// post-frame 量位（build/数据/滚动后刷新锚点与占位高度）。
+  bool _stickyMeasureScheduled = false;
+
+  void _scheduleStickyMeasure() {
+    if (_sticky == null || !mounted || _stickyMeasureScheduled) return;
+    _stickyMeasureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stickyMeasureScheduled = false;
+      if (!mounted) return;
+      final sticky = _sticky;
+      if (sticky == null) return;
+      sticky.measure();
+      final h = sticky.headerHeight;
+      if (h > 0 && (h - _pinnedUnitHeight).abs() > 0.5) {
+        setState(() => _pinnedUnitHeight = h);
+      }
+    });
+  }
 
   /// 当前列宽：默认按列内容自动适配最宽值（[MasterColumnDef.width] 不再用于布局，
   /// 保留字段供未来手动覆盖/最小宽度扩展）。用户拖拽后覆盖；自动适配需 BuildContext 的
@@ -643,10 +708,33 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _bodyH = ScrollController();
     _bodyV = ScrollController();
     _pageCtrl = TextEditingController(text: '${widget.currentPage}');
+    if (widget.stickyHeaderPinned != null) {
+      _sticky = UtenStickyHeaderTracker(
+        stackKey: _stickyStackKey,
+        headerKey: _stickyHeaderKey,
+        bodyKey: _bodyAreaKey,
+        pinnedSink: widget.stickyHeaderPinned,
+      );
+    }
     _headerH.addListener(() => _sync(_headerH, _bodyH));
     _bodyH.addListener(() => _sync(_bodyH, _headerH));
     _bodyH.addListener(() => _syncH(_bodyH, _overlayH));
     _overlayH.addListener(() => _syncH(_overlayH, _bodyH));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 吸顶表：绑定祖先滚动 position（详情页页面 ListView）——滚动 tick 同帧
+    // 定表头位置，post-frame 复核量位（与 UtenEditableGrid 同款两段式）。
+    if (_sticky == null) return;
+    final pos = Scrollable.maybeOf(context)?.position;
+    if (!identical(pos, _stickyPagePos)) {
+      _stickyPagePos?.removeListener(_onStickyPageScroll);
+      _stickyPagePos = pos;
+      _stickyPagePos?.addListener(_onStickyPageScroll);
+    }
+    _scheduleStickyMeasure();
   }
 
   void _sync(ScrollController src, ScrollController dst) {
@@ -757,6 +845,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 数据变了（翻页/筛选/排序/加载更多）→ 标记重算；已手动调整的列在 _ensureWidths 保留。
       _widthsDirty = true;
     }
+    // 吸顶表：数据/列变化改表高 → post-frame 重测锚点；notifier 换实例重绑。
+    if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
+      _sticky?.pinnedSink = widget.stickyHeaderPinned;
+    }
+    if (_sticky != null) _scheduleStickyMeasure();
     // 翻页（currentPage 变化）→ 表体竖向回顶，从第一条开始。
     // primary 模式下竖向 position 由祖先 NestedScrollView 持有（_bodyV 无 client），
     // 须走 PrimaryScrollController；且 didUpdateWidget 处于 build 期，inner position
@@ -947,6 +1040,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _overlayH.dispose();
     _hBarY.dispose();
     _pageCtrl.dispose();
+    _stickyPagePos?.removeListener(_onStickyPageScroll);
+    _sticky?.dispose();
     super.dispose();
   }
 
@@ -1140,6 +1235,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   Widget build(BuildContext context) {
+    // 吸顶表：每帧 post-frame 复核量位（数据/布局变化后刷新锚点）。
+    if (_sticky != null) _scheduleStickyMeasure();
     // 全屏中：表格在全屏路由里渲染，正常树让位（ScrollController 只挂一棵树）。
     if (_fullscreen) {
       return const SizedBox.shrink();
@@ -1422,295 +1519,333 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 内容靠左，而非整体水平居中（Column 默认 crossAxisAlignment.center 会把窄于
     // 视口的表格居中、左右留白）。仅作用于交叉轴（横向），不影响主轴 Flexible(loose)
     // 的「行少收缩、横滚条贴末行」行为。
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // 表头上方工具条：左侧「表头设置」列显隐选择 + 追加按钮（预览打印/下载
-        // 表格等）左对齐；右侧为调用方动作区（刷新等——全站口径：刷新按钮放
-        // 表格右上角）。宽度足够时动作区固定贴右；窄屏回退整条 Wrap 流式换行
-        //（动作不收缩，Row 会在窄约束溢出，故按可用宽度分流）。
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final toolbarChildren = [
-                if (widget.showColumnChooser)
-                  UtenColumnChooserButton(
-                    entries: [
-                      for (final c in widget.columns)
-                        UtenColumnChooserEntry(key: c.key, label: c.label),
-                    ],
-                    hiddenKeys: _hiddenKeys,
-                    onToggle: _toggleColumn,
-                    onToggleAll: _toggleAllColumns,
-                    order: _columnOrder,
-                    onReorder: (oldIndex, newIndex) =>
-                        _reorderColumnByKeys(oldIndex, newIndex),
-                  ),
-                // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），
-                // 再点退出（与空态共用 _fullscreenToggleButton）。
-                if (showFullscreen) _fullscreenToggleButton(),
-                // 前缀按钮：视图切换类 chip 紧挨全屏按钮（左簇内，Wrap s8 间距）。
-                ...?widget.toolbarLeadingActions,
-                // 选择摘要：有悬浮批量动作时随动作进右下悬浮组（见
-                // [_buildFloatingBatchActions]）；无悬浮动作的表格仍驻表头上方；
-                // 页面自管选择摘要（showSelectionSummary=false）时不驻留。
-                if (widget.selectable &&
-                    widget.showSelectionSummary &&
-                    !_hasFloatingBatchActions)
-                  _buildBatchBar(theme),
-              ];
-              final actions = widget.toolbarActions;
-              if (actions == null || constraints.maxWidth < 720) {
-                return Wrap(
+    //
+    // 表头上方工具条：左侧「表头设置」列显隐选择 + 追加按钮（预览打印/下载
+    // 表格等）左对齐；右侧为调用方动作区（刷新等——全站口径：刷新按钮放
+    // 表格右上角）。宽度足够时动作区固定贴右；窄屏回退整条 Wrap 流式换行
+    //（动作不收缩，Row 会在窄约束溢出，故按可用宽度分流）。
+    final Widget toolbar = Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final toolbarChildren = [
+            if (widget.showColumnChooser)
+              UtenColumnChooserButton(
+                entries: [
+                  for (final c in widget.columns)
+                    UtenColumnChooserEntry(key: c.key, label: c.label),
+                ],
+                hiddenKeys: _hiddenKeys,
+                onToggle: _toggleColumn,
+                onToggleAll: _toggleAllColumns,
+                order: _columnOrder,
+                onReorder: (oldIndex, newIndex) =>
+                    _reorderColumnByKeys(oldIndex, newIndex),
+              ),
+            // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），
+            // 再点退出（与空态共用 _fullscreenToggleButton）。
+            if (showFullscreen) _fullscreenToggleButton(),
+            // 前缀按钮：视图切换类 chip 紧挨全屏按钮（左簇内，Wrap s8 间距）。
+            ...?widget.toolbarLeadingActions,
+            // 选择摘要：有悬浮批量动作时随动作进右下悬浮组（见
+            // [_buildFloatingBatchActions]）；无悬浮动作的表格仍驻表头上方；
+            // 页面自管选择摘要（showSelectionSummary=false）时不驻留。
+            if (widget.selectable &&
+                widget.showSelectionSummary &&
+                !_hasFloatingBatchActions)
+              _buildBatchBar(theme),
+          ];
+          final actions = widget.toolbarActions;
+          if (actions == null || constraints.maxWidth < 720) {
+            return Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [...toolbarChildren, ...?actions],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(
+                child: Wrap(
                   spacing: UtenSpacing.s8,
                   runSpacing: UtenSpacing.s8,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [...toolbarChildren, ...?actions],
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: UtenSpacing.s8,
-                      runSpacing: UtenSpacing.s8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: toolbarChildren,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  // 右侧贴边动作区也走 Wrap（s8 间距）：多个动作不再零间距粘连，
-                  // 宽度不足时换行而非溢出。
-                  Wrap(
-                    spacing: UtenSpacing.s8,
-                    runSpacing: UtenSpacing.s8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: actions,
-                  ),
-                ],
-              );
-            },
-          ),
+                  children: toolbarChildren,
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              // 右侧贴边动作区也走 Wrap（s8 间距）：多个动作不再零间距粘连，
+              // 宽度不足时换行而非溢出。
+              Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: actions,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    // 表头：横向跟随表体同步（无可见滚动条），竖向固定（sticky）。
+    // 表头整体 SelectionContainer.disabled：表头有「拖拽换位/移除列」「拖拽调宽」
+    // 手势，与文字拖选打架（准则 §3.4：表头不进选择区）；disabled 同时挡住外层
+    // 页面级 SelectionArea（UtenContentContainer）渗入，保证手势稳定。
+    // 吸顶表（stickyHeaderPinned）：表头行+分隔线进覆盖层（顶到视口上沿后钉住、
+    // 表尾推到时随表尾离开），流内留同高占位——组装见下方 children 的 Stack 分支。
+    final Widget headerRow = SelectionContainer.disabled(
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHigh,
+        child: SingleChildScrollView(
+          controller: _headerH,
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(width: total, child: _buildHeaderRow(theme)),
         ),
-        // 表头：横向跟随表体同步（无可见滚动条），竖向固定（sticky）。
-        // 表头整体 SelectionContainer.disabled：表头有「拖拽换位/移除列」「拖拽调宽」
-        // 手势，与文字拖选打架（准则 §3.4：表头不进选择区）；disabled 同时挡住外层
-        // 页面级 SelectionArea（UtenContentContainer）渗入，保证手势稳定。
-        SelectionContainer.disabled(
-          child: Material(
-            color: theme.colorScheme.surfaceContainerHigh,
-            child: SingleChildScrollView(
-              controller: _headerH,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(width: total, child: _buildHeaderRow(theme)),
-            ),
-          ),
-        ),
-        Divider(
-          height: 1,
-          thickness: 1,
-          color: theme.colorScheme.outlineVariant,
-        ),
-        // 表体：竖向按内容收缩（行少→横滚条贴最后一行），顶到 LayoutBuilder 上限则竖向滚动（行多→横滚条钉视口底）。
-        // 用 Flexible(loose) 而非 Expanded，让 ListView(shrinkWrap) 在行少时真正收缩；
-        // ConstrainedBox(maxHeight) 把高度封顶在可用空间，行多时转为可滚。
-        // embedded（详情页 ListView 等无界高度场景）不能用 Flexible：flex 在无界约束下
-        // 会直接抛 "non-zero flex but incoming height constraints are unbounded"。
-        // primary（联动折叠）例外：表体竖向填满联动区（折叠手势全域有效），流内横滚条
-        // 会沉到区底 → 横滚条改走覆盖层（下方 Stack），按内容高度定位。
-        _BodyFlex(
-          embedded: widget.embedded,
-          primary: widget.primary,
-          virtualized: widget.virtualized,
-          child: _maybeSelectionArea(
-            Stack(
-              key: _bodyAreaKey,
-              children: [
-                LayoutBuilder(
-                  builder: (ctx, c) {
-                    // 区高随卡片折叠/展开变化（constraints 变化）→ 重测横滚条位置。
-                    if (_usesOverlayHBar) {
-                      _scheduleHBarUpdate();
-                    }
-                    // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
-                    // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
-                    final summaryInline =
-                        widget.summaryBarInline && widget.summaryBar != null;
-                    final summaryIndex =
-                        plan.length + (widget.loadingMore ? 1 : 0);
-                    final list = ListView.builder(
-                      controller: widget.primary ? null : _bodyV,
-                      // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
-                      // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
-                      // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
-                      primary: widget.primary,
-                      shrinkWrap: widget.primary || widget.virtualized
-                          ? false
-                          : true,
-                      physics: widget.primary
-                          ? const AlwaysScrollableScrollPhysics()
-                          : const ClampingScrollPhysics(),
-                      // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
-                      padding: EdgeInsets.only(bottom: _bodyBottomPad),
-                      itemCount: summaryIndex + (summaryInline ? 1 : 0),
-                      itemBuilder: (ctx, i) {
-                        if (summaryInline && i == summaryIndex) {
-                          return _ViewportPinnedRow(
-                            controller: _bodyH,
-                            contentWidth: total,
-                            fallbackViewportWidth: c.maxWidth,
-                            child: Padding(
-                              padding: const EdgeInsets.only(
-                                top: UtenSpacing.s8,
-                                left: UtenSpacing.s4,
-                                right: UtenSpacing.s4,
-                              ),
-                              child: widget.summaryBar!,
-                            ),
-                          );
-                        }
-                        if (widget.loadingMore && i == plan.length) {
-                          return const Padding(
-                            padding: EdgeInsets.all(UtenSpacing.s12),
-                            child: Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ),
-                          );
-                        }
-                        final row = plan[i];
-                        if (row.header) {
-                          return _buildGroupHeader(theme, row.group!);
-                        }
-                        // 数据行：item 必非空（仅 header 行 item=null）；显式 null
-                        // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
-                        final item = row.item;
-                        if (item == null) {
-                          return const SizedBox.shrink();
-                        }
-                        // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
-                        // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
-                        // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
-                        final idKey =
-                            widget.rowKeyOf?.call(item) ??
-                            widget.idOf?.call(item);
-                        final rowWidget = RepaintBoundary(
-                          key:
-                              widget.rowWidgetKeyOf?.call(item) ??
-                              ((idKey != null && idKey.isNotEmpty)
-                                  ? ValueKey('row:$idKey')
-                                  : ValueKey('idx:$i')),
-                          child: _buildDataRow(theme, item),
-                        );
-                        // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
-                        // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
-                        if (i == plan.length - 1) {
-                          return KeyedSubtree(
-                            key: _lastRowKey,
-                            child: rowWidget,
-                          );
-                        }
-                        return rowWidget;
-                      },
-                    );
-                    final hArea = SingleChildScrollView(
-                      key: _bodyHorizontalKey,
-                      controller: _bodyH,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: total,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(maxHeight: c.maxHeight),
-                          child: list,
+      ),
+    );
+    final Widget headerDivider = Divider(
+      height: 1,
+      thickness: 1,
+      color: theme.colorScheme.outlineVariant,
+    );
+    // 表体：竖向按内容收缩（行少→横滚条贴最后一行），顶到 LayoutBuilder 上限则竖向滚动（行多→横滚条钉视口底）。
+    // 用 Flexible(loose) 而非 Expanded，让 ListView(shrinkWrap) 在行少时真正收缩；
+    // ConstrainedBox(maxHeight) 把高度封顶在可用空间，行多时转为可滚。
+    // embedded（详情页 ListView 等无界高度场景）不能用 Flexible：flex 在无界约束下
+    // 会直接抛 "non-zero flex but incoming height constraints are unbounded"。
+    // primary（联动折叠）例外：表体竖向填满联动区（折叠手势全域有效），流内横滚条
+    // 会沉到区底 → 横滚条改走覆盖层（下方 Stack），按内容高度定位。
+    final Widget tableBody = _BodyFlex(
+      embedded: widget.embedded,
+      primary: widget.primary,
+      virtualized: widget.virtualized,
+      child: _maybeSelectionArea(
+        Stack(
+          key: _bodyAreaKey,
+          children: [
+            LayoutBuilder(
+              builder: (ctx, c) {
+                // 区高随卡片折叠/展开变化（constraints 变化）→ 重测横滚条位置。
+                if (_usesOverlayHBar) {
+                  _scheduleHBarUpdate();
+                }
+                // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
+                // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
+                final summaryInline =
+                    widget.summaryBarInline && widget.summaryBar != null;
+                final summaryIndex = plan.length + (widget.loadingMore ? 1 : 0);
+                final list = ListView.builder(
+                  controller: widget.primary ? null : _bodyV,
+                  // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
+                  // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
+                  // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
+                  primary: widget.primary,
+                  shrinkWrap: widget.primary || widget.virtualized
+                      ? false
+                      : true,
+                  physics: widget.primary
+                      ? const AlwaysScrollableScrollPhysics()
+                      : const ClampingScrollPhysics(),
+                  // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
+                  padding: EdgeInsets.only(bottom: _bodyBottomPad),
+                  itemCount: summaryIndex + (summaryInline ? 1 : 0),
+                  itemBuilder: (ctx, i) {
+                    if (summaryInline && i == summaryIndex) {
+                      return _ViewportPinnedRow(
+                        controller: _bodyH,
+                        contentWidth: total,
+                        fallbackViewportWidth: c.maxWidth,
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            top: UtenSpacing.s8,
+                            left: UtenSpacing.s4,
+                            right: UtenSpacing.s4,
+                          ),
+                          child: widget.summaryBar!,
                         ),
-                      ),
-                    );
-                    // 普通无悬浮留白表使用流内横滚条；联动/悬浮表使用独立覆盖层，
-                    // 避免 ListView 底部留白把横滚条推离末行。
-                    final hWrapped = _usesOverlayHBar
-                        ? hArea
-                        : Scrollbar(
-                            controller: _bodyH,
-                            thumbVisibility: true,
-                            child: hArea,
-                          );
-                    // 竖向滚动条（上下）：绑表体 ListView 的 _bodyV。置于横向滚动之外层，
-                    // 使 thumb 固定在视口右边缘、不随横向滚动被带走。竖向 ListView 嵌在
-                    // 横向 SingleChildScrollView 内层，其滚动通知冒泡到本 Scrollbar 时
-                    // depth=1（穿过了横向那层 Scrollable），Scrollbar 默认 notificationPredicate
-                    // (depth==0) 会滤掉 → thumb 不更新；放宽到 depth<=1 才能捕获竖向滚动。
-                    // primary 模式下 _bodyV 无 client，省略 controller：Scrollbar 经
-                    // notificationPredicate(depth<=1) 仍能捕获 primary ListView 的竖向滚动。
-                    //
-                    // 2026-09-14 滚动条口径（全站统一）：在 UtenCollapsingHeaderScrollView
-                    // 内的表格，外层收头部阶段（表格未置顶）不显示竖向滚动条，进入表体
-                    // 内滚后再显示——显示的就是本条表内滚动条（大小与表内容对应）。
-                    // 独立表格查不到 scope，维持常显。
-                    final vScrollbarController = widget.primary ? null : _bodyV;
-                    Widget vScrolled = Scrollbar(
-                      controller: vScrollbarController,
-                      thumbVisibility: true,
-                      notificationPredicate: (ScrollNotification n) =>
-                          n.depth <= 1,
-                      child: hWrapped,
-                    );
-                    final innerPhase = UtenInnerScrollActiveScope.maybeOf(
-                      context,
-                    );
-                    if (innerPhase != null) {
-                      vScrolled = ValueListenableBuilder<bool>(
-                        valueListenable: innerPhase,
-                        builder: (context, innerActive, child) => Scrollbar(
-                          controller: vScrollbarController,
-                          thumbVisibility: innerActive,
-                          notificationPredicate: (ScrollNotification n) =>
-                              n.depth <= 1,
-                          child: child!,
-                        ),
-                        child: hWrapped,
                       );
                     }
-                    return vScrolled;
-                  },
-                ),
-                // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
-                // 内容少 → 贴末行下方（约 1px 空隙）；超高 → 钉表体区底。与 _bodyH 双向同步，
-                // 表头经既有 _sync 跟随，底部额外留白不参与定位。
-                if (_usesOverlayHBar)
-                  ValueListenableBuilder<double?>(
-                    valueListenable: _hBarY,
-                    builder: (context, y, _) => Positioned(
-                      left: 0,
-                      right: 0,
-                      top: (y ?? 0) - _hBarHeight,
-                      child: Offstage(
-                        offstage: y == null,
-                        child: SizedBox(
-                          height: _hBarHeight,
-                          child: Scrollbar(
-                            controller: _overlayH,
-                            thumbVisibility: true,
-                            child: SingleChildScrollView(
-                              controller: _overlayH,
-                              scrollDirection: Axis.horizontal,
-                              physics: const ClampingScrollPhysics(),
-                              child: SizedBox(width: total, height: 1),
-                            ),
+                    if (widget.loadingMore && i == plan.length) {
+                      return const Padding(
+                        padding: EdgeInsets.all(UtenSpacing.s12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
+                        ),
+                      );
+                    }
+                    final row = plan[i];
+                    if (row.header) {
+                      return _buildGroupHeader(theme, row.group!);
+                    }
+                    // 数据行：item 必非空（仅 header 行 item=null）；显式 null
+                    // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
+                    final item = row.item;
+                    if (item == null) {
+                      return const SizedBox.shrink();
+                    }
+                    // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
+                    // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
+                    // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
+                    final idKey =
+                        widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+                    final rowWidget = RepaintBoundary(
+                      key:
+                          widget.rowWidgetKeyOf?.call(item) ??
+                          ((idKey != null && idKey.isNotEmpty)
+                              ? ValueKey('row:$idKey')
+                              : ValueKey('idx:$i')),
+                      child: _buildDataRow(theme, item),
+                    );
+                    // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
+                    // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
+                    if (i == plan.length - 1) {
+                      return KeyedSubtree(key: _lastRowKey, child: rowWidget);
+                    }
+                    return rowWidget;
+                  },
+                );
+                final hArea = SingleChildScrollView(
+                  key: _bodyHorizontalKey,
+                  controller: _bodyH,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: total,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: c.maxHeight),
+                      child: list,
+                    ),
+                  ),
+                );
+                // 普通无悬浮留白表使用流内横滚条；联动/悬浮表使用独立覆盖层，
+                // 避免 ListView 底部留白把横滚条推离末行。
+                final hWrapped = _usesOverlayHBar
+                    ? hArea
+                    : Scrollbar(
+                        controller: _bodyH,
+                        thumbVisibility: true,
+                        child: hArea,
+                      );
+                // 竖向滚动条（上下）：绑表体竖向滚动。置于横向滚动之外层，
+                // 使 thumb 固定在视口右边缘、不随横向滚动被带走。竖向 ListView 嵌在
+                // 横向 SingleChildScrollView 内层，其滚动通知冒泡到本 Scrollbar 时
+                // depth=1（穿过了横向那层 Scrollable），谓词须放宽到 depth<=1 才能捕获。
+                //
+                // 2026-09-22 根治「滚动条长度乱跳/越滚越长」：Scrollbar 无 controller
+                // 时框架对**任何**通过谓词的通知都重画 thumb（SDK _shouldUpdatePainter：
+                // controller 为 null 恒返回 true，不做轴向过滤）——表体横向 ScrollView
+                // （depth 0）的横轴通知会把竖向 thumb 按横向 metrics 重画（长度=视口宽/
+                // 内容宽比例）。两刀根治：① primary 模式显式挂 PrimaryScrollController
+                //（联动内滚真身，thumb 由 controller 驱动、轴向恒对，且拖动 thumb 可用）；
+                // ② 谓词加竖轴过滤（[_isVerticalTableScroll]），controller 拿不到的
+                // 场景（全屏路由等）走通知路径也不会再被横轴污染。
+                //
+                // 2026-09-14 滚动条口径（全站统一）：在 UtenCollapsingHeaderScrollView
+                // 内的表格，外层收头部阶段（表格未置顶）不显示竖向滚动条，进入表体
+                // 内滚后再显示——显示的就是本条表内滚动条（大小与表内容对应）。
+                // 独立表格查不到 scope，维持常显。
+                final vScrollbarController = widget.primary
+                    ? PrimaryScrollController.maybeOf(ctx)
+                    : _bodyV;
+                Widget vScrolled = Scrollbar(
+                  controller: vScrollbarController,
+                  thumbVisibility: true,
+                  notificationPredicate: _isVerticalTableScroll,
+                  child: hWrapped,
+                );
+                final innerPhase = UtenInnerScrollActiveScope.maybeOf(context);
+                if (innerPhase != null) {
+                  vScrolled = ValueListenableBuilder<bool>(
+                    valueListenable: innerPhase,
+                    builder: (context, innerActive, child) => Scrollbar(
+                      controller: vScrollbarController,
+                      thumbVisibility: innerActive,
+                      notificationPredicate: _isVerticalTableScroll,
+                      child: child!,
+                    ),
+                    child: hWrapped,
+                  );
+                }
+                return vScrolled;
+              },
+            ),
+            // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
+            // 内容少 → 贴末行下方（约 1px 空隙）；超高 → 钉表体区底。与 _bodyH 双向同步，
+            // 表头经既有 _sync 跟随，底部额外留白不参与定位。
+            if (_usesOverlayHBar)
+              ValueListenableBuilder<double?>(
+                valueListenable: _hBarY,
+                builder: (context, y, _) => Positioned(
+                  left: 0,
+                  right: 0,
+                  top: (y ?? 0) - _hBarHeight,
+                  child: Offstage(
+                    offstage: y == null,
+                    child: SizedBox(
+                      height: _hBarHeight,
+                      child: Scrollbar(
+                        controller: _overlayH,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _overlayH,
+                          scrollDirection: Axis.horizontal,
+                          physics: const ClampingScrollPhysics(),
+                          child: SizedBox(width: total, height: 1),
                         ),
                       ),
                     ),
                   ),
-              ],
-            ),
-          ),
+                ),
+              ),
+          ],
         ),
+      ),
+    );
+    // —— 表头/表体组装 ——
+    // 吸顶表（stickyHeaderPinned，详情页滚动流内的 embedded 明细表）：表头行+分隔线
+    // 顶到视口上沿后钉住（覆盖层），数据行从其下方滚过；表尾推到时随表尾离开
+    // （pushed sticky）。流内留同高占位（[_pinnedUnitHeight]，post-frame 实测修正），
+    // 整表总高与非吸顶形态一致。普通表原样流内渲染，零结构变化。
+    final sticky = _sticky;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        toolbar,
+        if (sticky == null) ...[
+          headerRow,
+          headerDivider,
+          tableBody,
+        ] else
+          Stack(
+            key: _stickyStackKey,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(height: _pinnedUnitHeight),
+                  tableBody,
+                ],
+              ),
+              ValueListenableBuilder<double>(
+                valueListenable: sticky.headerY,
+                builder: (context, y, child) =>
+                    Positioned(left: 0, right: 0, top: y, child: child!),
+                child: KeyedSubtree(
+                  key: _stickyHeaderKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [headerRow, headerDivider],
+                  ),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }

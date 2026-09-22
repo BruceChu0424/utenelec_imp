@@ -23,6 +23,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../models/expense_invoice.dart';
@@ -58,8 +59,17 @@ class _ExpenseApprovalDetailPageState
   final _comment = TextEditingController();
   bool _acting = false;
 
+  // 2026-09-22 全站表格滚动口径：明细表/发票表表头吸顶，任一表置顶后才显示
+  // 页面滚动条（UtenGridPageScrollbar 门控）。
+  final ScrollController _pageScroll = ScrollController();
+  final ValueNotifier<bool> _itemsPinned = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _invoicePinned = ValueNotifier<bool>(false);
+
   @override
   void dispose() {
+    _pageScroll.dispose();
+    _itemsPinned.dispose();
+    _invoicePinned.dispose();
     _comment.dispose();
     super.dispose();
   }
@@ -266,128 +276,138 @@ class _ExpenseApprovalDetailPageState
           message: '加载失败，请重试',
           onAction: () => ref.invalidate(expenseDetailProvider(widget.claimId)),
         ),
-        data: (claim) => UtenContentContainer(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              0,
-              UtenSpacing.s16,
-              0,
-              UtenFloatingActionGroup.scrollClearance,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Hero(claim: claim),
-                const SizedBox(height: UtenSpacing.s16),
-                _sectionTitle(theme, '申请信息'),
-                const SizedBox(height: UtenSpacing.s8),
-                _applicantCard(theme, claim),
-                const SizedBox(height: UtenSpacing.s20),
-                _itemsSection(theme, claim),
-                const SizedBox(height: UtenSpacing.s20),
-                _sectionTitle(theme, '发票登记'),
-                const SizedBox(height: UtenSpacing.s8),
-                ExpenseInvoiceSection(
-                  claim: claim,
-                  editable: false,
-                  canVerify: _canInspect,
-                ),
-                const SizedBox(height: UtenSpacing.s20),
-                _sectionTitle(theme, '附件 / 发票影像 (${claim.attachments.length})'),
-                const SizedBox(height: UtenSpacing.s8),
-                AttachmentSection(
-                  ownerType: 'EXPENSE_CLAIM',
-                  ownerId: claim.id,
-                  attachments: claim.attachments,
-                  ownerCanUpload: false,
-                  ownerCanDelete: false,
-                  onChanged: () =>
-                      ref.invalidate(expenseDetailProvider(claim.id)),
-                ),
-                const SizedBox(height: UtenSpacing.s20),
-                if (claim.status == ExpenseClaimStatus.approved ||
-                    claim.status == ExpenseClaimStatus.paid) ...[
+        data: (claim) => UtenGridPageScrollbar(
+          pinned: _itemsPinned,
+          extraPinned: [_invoicePinned],
+          controller: _pageScroll,
+          child: UtenContentContainer(
+            child: SingleChildScrollView(
+              controller: _pageScroll,
+              padding: const EdgeInsets.fromLTRB(
+                0,
+                UtenSpacing.s16,
+                0,
+                UtenFloatingActionGroup.scrollClearance,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Hero(claim: claim),
+                  const SizedBox(height: UtenSpacing.s16),
+                  _sectionTitle(theme, '申请信息'),
+                  const SizedBox(height: UtenSpacing.s8),
+                  _applicantCard(theme, claim),
+                  const SizedBox(height: UtenSpacing.s20),
+                  _itemsSection(theme, claim),
+                  const SizedBox(height: UtenSpacing.s20),
+                  _sectionTitle(theme, '发票登记'),
+                  const SizedBox(height: UtenSpacing.s8),
+                  ExpenseInvoiceSection(
+                    claim: claim,
+                    editable: false,
+                    canVerify: _canInspect,
+                    stickyHeaderPinned: _invoicePinned,
+                  ),
+                  const SizedBox(height: UtenSpacing.s20),
+                  _sectionTitle(
+                    theme,
+                    '附件 / 发票影像 (${claim.attachments.length})',
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
                   AttachmentSection(
-                    ownerType: 'EXPENSE_PAYMENT_PROOF',
+                    ownerType: 'EXPENSE_CLAIM',
                     ownerId: claim.id,
-                    title: AppLocalizations.of(
-                      context,
-                    ).expenseFlowPaymentProofs,
-                    emptyHint: AppLocalizations.of(
-                      context,
-                    ).expenseFlowPaymentProofGuide,
-                    attachments: claim.paymentProofs,
-                    ownerCanUpload: _canPay,
-                    ownerCanDelete: _canPay,
+                    attachments: claim.attachments,
+                    ownerCanUpload: false,
+                    ownerCanDelete: false,
                     onChanged: () =>
                         ref.invalidate(expenseDetailProvider(claim.id)),
                   ),
                   const SizedBox(height: UtenSpacing.s20),
-                ],
-                _sectionTitle(theme, '审批轨迹'),
-                const SizedBox(height: UtenSpacing.s8),
-                UtenCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s16),
-                    child: ExpenseClaimTimeline(claim: claim),
-                  ),
-                ),
-                if (_canApprove && !_canInspect)
-                  Text(
-                    AppLocalizations.of(
-                      context,
-                    ).expenseFlowReadEvidenceRequired,
-                  ),
-                if (_canApprove) ...[
-                  const SizedBox(height: UtenSpacing.s20),
-                  TaskClaimHandle(
-                    targetType: 'EXPENSE_APPROVE',
-                    targetKey: widget.claimId,
-                    builder: (heldByMe, claim) {
-                      final blocked = !heldByMe && claim != null;
-                      if (!blocked) {
-                        return const UtenReviewerResponsibilityNotice(
-                          actionLabel: '报销审批',
-                          description:
-                              '点击通过或驳回后，系统将记录当前审核员及审批结果，请对本次决定负责。'
-                              '请核对明细与发票（登记要素+影像）后再决定。',
-                        );
-                      }
-                      return Row(
-                        children: [
-                          TaskClaimBadge(claim: claim),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '他人正在审批此单，请稍后再试',
-                              style: Theme.of(context).textTheme.labelMedium
-                                  ?.copyWith(fontWeight: FontWeight.w400),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: UtenSpacing.s20),
-                  _sectionTitle(theme, '审批意见'),
+                  if (claim.status == ExpenseClaimStatus.approved ||
+                      claim.status == ExpenseClaimStatus.paid) ...[
+                    AttachmentSection(
+                      ownerType: 'EXPENSE_PAYMENT_PROOF',
+                      ownerId: claim.id,
+                      title: AppLocalizations.of(
+                        context,
+                      ).expenseFlowPaymentProofs,
+                      emptyHint: AppLocalizations.of(
+                        context,
+                      ).expenseFlowPaymentProofGuide,
+                      attachments: claim.paymentProofs,
+                      ownerCanUpload: _canPay,
+                      ownerCanDelete: _canPay,
+                      onChanged: () =>
+                          ref.invalidate(expenseDetailProvider(claim.id)),
+                    ),
+                    const SizedBox(height: UtenSpacing.s20),
+                  ],
+                  _sectionTitle(theme, '审批轨迹'),
                   const SizedBox(height: UtenSpacing.s8),
                   UtenCard(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: TextField(
-                      controller: _comment,
-                      maxLines: 3,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '驳回原因',
-                          hintText: '驳回时必填，通过时不会提交',
-                        ),
-                        info: '驳回后申请人可修订重提：请写明修改要求（如缺票、金额不符）。',
-                      ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: ExpenseClaimTimeline(claim: claim),
                     ),
                   ),
+                  if (_canApprove && !_canInspect)
+                    Text(
+                      AppLocalizations.of(
+                        context,
+                      ).expenseFlowReadEvidenceRequired,
+                    ),
+                  if (_canApprove) ...[
+                    const SizedBox(height: UtenSpacing.s20),
+                    TaskClaimHandle(
+                      targetType: 'EXPENSE_APPROVE',
+                      targetKey: widget.claimId,
+                      builder: (heldByMe, claim) {
+                        final blocked = !heldByMe && claim != null;
+                        if (!blocked) {
+                          return const UtenReviewerResponsibilityNotice(
+                            actionLabel: '报销审批',
+                            description:
+                                '点击通过或驳回后，系统将记录当前审核员及审批结果，请对本次决定负责。'
+                                '请核对明细与发票（登记要素+影像）后再决定。',
+                          );
+                        }
+                        return Row(
+                          children: [
+                            TaskClaimBadge(claim: claim),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '他人正在审批此单，请稍后再试',
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(fontWeight: FontWeight.w400),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: UtenSpacing.s20),
+                    _sectionTitle(theme, '审批意见'),
+                    const SizedBox(height: UtenSpacing.s8),
+                    UtenCard(
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
+                      child: TextField(
+                        controller: _comment,
+                        maxLines: 3,
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(
+                            labelText: '驳回原因',
+                            hintText: '驳回时必填，通过时不会提交',
+                          ),
+                          info: '驳回后申请人可修订重提：请写明修改要求（如缺票、金额不符）。',
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: UtenSpacing.s32),
                 ],
-                const SizedBox(height: UtenSpacing.s32),
-              ],
+              ),
             ),
           ),
         ),
@@ -458,6 +478,7 @@ class _ExpenseApprovalDetailPageState
           filters: const {},
           onFilterChanged: (_, _) {},
           embedded: true,
+          stickyHeaderPinned: _itemsPinned,
           summaryBar: Wrap(
             alignment: WrapAlignment.end,
             spacing: UtenSpacing.s8,

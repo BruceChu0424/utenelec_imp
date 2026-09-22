@@ -19,6 +19,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -48,6 +49,21 @@ class ExpenseDetailPage extends ConsumerStatefulWidget {
 
 class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   bool _acting = false;
+
+  // 2026-09-22 全站表格滚动口径：明细表/发票表表头吸顶（stickyHeaderPinned），
+  // 任一张表置顶后页面滚动条才显示（UtenGridPageScrollbar 门控）——
+  // 表头未置顶不显示滚动条、表头随页滚走的旧形态退役。
+  final ScrollController _pageScroll = ScrollController();
+  final ValueNotifier<bool> _itemsPinned = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _invoicePinned = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _pageScroll.dispose();
+    _itemsPinned.dispose();
+    _invoicePinned.dispose();
+    super.dispose();
+  }
 
   ExpenseClaim? get _claim =>
       ref.read(expenseDetailProvider(widget.claimId)).valueOrNull;
@@ -139,75 +155,84 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
         data: (claim) => Stack(
           children: [
             Positioned.fill(
-              child: UtenContentContainer(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    0,
-                    UtenSpacing.s16,
-                    0,
-                    UtenFloatingActionGroup.scrollClearance,
+              child: UtenGridPageScrollbar(
+                pinned: _itemsPinned,
+                extraPinned: [_invoicePinned],
+                controller: _pageScroll,
+                child: UtenContentContainer(
+                  child: ListView(
+                    controller: _pageScroll,
+                    padding: const EdgeInsets.fromLTRB(
+                      0,
+                      UtenSpacing.s16,
+                      0,
+                      UtenFloatingActionGroup.scrollClearance,
+                    ),
+                    children: [
+                      _HeroCard(claim: claim),
+                      if (claim.status == ExpenseClaimStatus.draft ||
+                          claim.status == ExpenseClaimStatus.rejected)
+                        Padding(
+                          padding: const EdgeInsets.only(top: UtenSpacing.s12),
+                          child: Text(
+                            AppLocalizations.of(
+                              context,
+                            ).expenseFlowInvoiceGuide,
+                          ),
+                        ),
+                      const SizedBox(height: UtenSpacing.s16),
+                      _infoCard(context, claim),
+                      const SizedBox(height: UtenSpacing.s16),
+                      _itemsSection(context, claim),
+                      const SizedBox(height: UtenSpacing.s16),
+                      _section(
+                        context,
+                        '发票登记',
+                        ExpenseInvoiceSection(
+                          claim: claim,
+                          editable:
+                              _isOwner &&
+                              (claim.status == ExpenseClaimStatus.draft ||
+                                  claim.status == ExpenseClaimStatus.rejected),
+                          stickyHeaderPinned: _invoicePinned,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s16),
+                      _attachments(claim),
+                      if (claim.status == ExpenseClaimStatus.paid) ...[
+                        const SizedBox(height: UtenSpacing.s16),
+                        AttachmentSection(
+                          ownerType: 'EXPENSE_PAYMENT_PROOF',
+                          ownerId: claim.id,
+                          title: AppLocalizations.of(
+                            context,
+                          ).expenseFlowPaymentProofs,
+                          attachments: claim.paymentProofs,
+                          ownerCanUpload: false,
+                          ownerCanDelete: false,
+                          onChanged: () =>
+                              ref.invalidate(expenseDetailProvider(claim.id)),
+                        ),
+                      ],
+                      const SizedBox(height: UtenSpacing.s16),
+                      _section(
+                        context,
+                        '审批轨迹',
+                        Card(
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s16),
+                            child: ExpenseClaimTimeline(claim: claim),
+                          ),
+                        ),
+                      ),
+                      if (claim.remark != null &&
+                          claim.remark!.trim().isNotEmpty) ...[
+                        const SizedBox(height: UtenSpacing.s16),
+                        _section(context, '备注', _remarkCard(context, claim)),
+                      ],
+                    ],
                   ),
-                  children: [
-                    _HeroCard(claim: claim),
-                    if (claim.status == ExpenseClaimStatus.draft ||
-                        claim.status == ExpenseClaimStatus.rejected)
-                      Padding(
-                        padding: const EdgeInsets.only(top: UtenSpacing.s12),
-                        child: Text(
-                          AppLocalizations.of(context).expenseFlowInvoiceGuide,
-                        ),
-                      ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    _infoCard(context, claim),
-                    const SizedBox(height: UtenSpacing.s16),
-                    _itemsSection(context, claim),
-                    const SizedBox(height: UtenSpacing.s16),
-                    _section(
-                      context,
-                      '发票登记',
-                      ExpenseInvoiceSection(
-                        claim: claim,
-                        editable:
-                            _isOwner &&
-                            (claim.status == ExpenseClaimStatus.draft ||
-                                claim.status == ExpenseClaimStatus.rejected),
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    _attachments(claim),
-                    if (claim.status == ExpenseClaimStatus.paid) ...[
-                      const SizedBox(height: UtenSpacing.s16),
-                      AttachmentSection(
-                        ownerType: 'EXPENSE_PAYMENT_PROOF',
-                        ownerId: claim.id,
-                        title: AppLocalizations.of(
-                          context,
-                        ).expenseFlowPaymentProofs,
-                        attachments: claim.paymentProofs,
-                        ownerCanUpload: false,
-                        ownerCanDelete: false,
-                        onChanged: () =>
-                            ref.invalidate(expenseDetailProvider(claim.id)),
-                      ),
-                    ],
-                    const SizedBox(height: UtenSpacing.s16),
-                    _section(
-                      context,
-                      '审批轨迹',
-                      Card(
-                        margin: EdgeInsets.zero,
-                        child: Padding(
-                          padding: const EdgeInsets.all(UtenSpacing.s16),
-                          child: ExpenseClaimTimeline(claim: claim),
-                        ),
-                      ),
-                    ),
-                    if (claim.remark != null &&
-                        claim.remark!.trim().isNotEmpty) ...[
-                      const SizedBox(height: UtenSpacing.s16),
-                      _section(context, '备注', _remarkCard(context, claim)),
-                    ],
-                  ],
                 ),
               ),
             ),
@@ -412,6 +437,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
           filters: const {},
           onFilterChanged: (_, _) {},
           embedded: true,
+          stickyHeaderPinned: _itemsPinned,
           summaryBar: _itemsSummary(claim),
         ),
       ],

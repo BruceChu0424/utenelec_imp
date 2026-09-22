@@ -20,6 +20,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -54,6 +55,10 @@ class _WarehouseQualityBatchStockInPageState
   bool _saving = false;
   String? _error;
 
+  // 2026-09-22 全站表格滚动口径：明细表表头吸顶 + 置顶后才显示页面滚动条。
+  final ScrollController _pageScroll = ScrollController();
+  final _gridPinned = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +75,8 @@ class _WarehouseQualityBatchStockInPageState
   @override
   void dispose() {
     _drafts?.forEach((draft) => draft.dispose());
+    _pageScroll.dispose();
+    _gridPinned.dispose();
     _grid.dispose();
     super.dispose();
   }
@@ -337,21 +344,25 @@ class _WarehouseQualityBatchStockInPageState
                   children: [
                     AbsorbPointer(
                       absorbing: _saving,
-                      child: UtenContentContainer.wide(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              child: _drafts == null || _grid.rows.isEmpty
-                                  ? UtenEmpty.error(
-                                      message: _error ?? '所选任务没有可入库明细',
-                                      description: '可能已由其他同事处理完毕，请返回刷新。',
-                                      actionLabel: '重新加载',
-                                      onAction: _load,
-                                    )
-                                  : _buildBody(theme),
-                            ),
-                          ],
+                      child: UtenGridPageScrollbar(
+                        pinned: _gridPinned,
+                        controller: _pageScroll,
+                        child: UtenContentContainer.wide(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _drafts == null || _grid.rows.isEmpty
+                                    ? UtenEmpty.error(
+                                        message: _error ?? '所选任务没有可入库明细',
+                                        description: '可能已由其他同事处理完毕，请返回刷新。',
+                                        actionLabel: '重新加载',
+                                        onAction: _load,
+                                      )
+                                    : _buildBody(theme),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -372,6 +383,7 @@ class _WarehouseQualityBatchStockInPageState
 
   Widget _buildBody(ThemeData theme) {
     return ListView(
+      controller: _pageScroll,
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s12,
@@ -394,6 +406,7 @@ class _WarehouseQualityBatchStockInPageState
           onChanged: () => setState(() {}),
           onPickWarehouse: _pickWarehouse,
           showReceipt: true,
+          stickyHeaderPinned: _gridPinned,
         ),
         if (_error != null) ...[
           const SizedBox(height: UtenSpacing.s8),

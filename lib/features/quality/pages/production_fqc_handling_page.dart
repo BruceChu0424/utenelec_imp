@@ -31,6 +31,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -874,6 +875,12 @@ class _ProductionFqcInspectionPageState
   bool _canDecide = false;
   String? _error;
 
+  // 2026-09-22 全站表格滚动口径：事实表/判定表表头吸顶，任一表置顶后才显示
+  // 页面滚动条（UtenGridPageScrollbar 门控）。
+  final ScrollController _pageScroll = ScrollController();
+  final ValueNotifier<bool> _factsPinned = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _decisionPinned = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -886,6 +893,9 @@ class _ProductionFqcInspectionPageState
   @override
   void dispose() {
     _row?.dispose();
+    _pageScroll.dispose();
+    _factsPinned.dispose();
+    _decisionPinned.dispose();
     super.dispose();
   }
 
@@ -1041,32 +1051,39 @@ class _ProductionFqcInspectionPageState
                 actionLabel: '重新加载',
                 onAction: _load,
               )
-            : UtenContentContainer.wide(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s16,
-                    UtenSpacing.s16,
-                    UtenSpacing.s16,
-                    UtenFloatingActionGroup.scrollClearance,
-                  ),
-                  children: [
-                    if (fqcPreStockedNotice([
-                          inspection!,
-                        ], key: const Key('fqc-inspection-pre-stocked-notice'))
-                        case final notice?) ...[
-                      notice,
+            : UtenGridPageScrollbar(
+                pinned: _factsPinned,
+                extraPinned: [_decisionPinned],
+                controller: _pageScroll,
+                child: UtenContentContainer.wide(
+                  child: ListView(
+                    controller: _pageScroll,
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s16,
+                      UtenSpacing.s16,
+                      UtenSpacing.s16,
+                      UtenFloatingActionGroup.scrollClearance,
+                    ),
+                    children: [
+                      if (fqcPreStockedNotice(
+                            [inspection!],
+                            key: const Key('fqc-inspection-pre-stocked-notice'),
+                          )
+                          case final notice?) ...[
+                        notice,
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
+                      _buildFactsCard(theme, inspection),
                       const SizedBox(height: UtenSpacing.s12),
+                      if (_canDecide && _row != null) ...[
+                        _buildDecisionForm(theme, _row!),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ] else
+                        ..._readOnlyHint(theme, inspection),
+                      _buildAttachments(theme, inspection),
+                      const SizedBox(height: UtenSpacing.s24),
                     ],
-                    _buildFactsCard(theme, inspection),
-                    const SizedBox(height: UtenSpacing.s12),
-                    if (_canDecide && _row != null) ...[
-                      _buildDecisionForm(theme, _row!),
-                      const SizedBox(height: UtenSpacing.s12),
-                    ] else
-                      ..._readOnlyHint(theme, inspection),
-                    _buildAttachments(theme, inspection),
-                    const SizedBox(height: UtenSpacing.s24),
-                  ],
+                  ),
                 ),
               ),
       ),
@@ -1105,6 +1122,7 @@ class _ProductionFqcInspectionPageState
             MasterDataTableView<_FactRow>(
               key: const Key('fqc-inspection-facts-table'),
               embedded: true,
+              stickyHeaderPinned: _factsPinned,
               showColumnChooser: false,
               columns: [
                 MasterColumnDef<_FactRow>(
@@ -1242,6 +1260,7 @@ class _ProductionFqcInspectionPageState
             MasterDataTableView<FqcReportRow>(
               key: const Key('fqc-inspection-decision-table'),
               embedded: true,
+              stickyHeaderPinned: _decisionPinned,
               showColumnChooser: false,
               columns: [
                 // 决定表原来只有名称：本表没有编号/颜色列，判定合格与不合格前

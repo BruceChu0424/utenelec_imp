@@ -23,6 +23,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
@@ -637,24 +638,27 @@ class _SubcontractDecompositionPageState
         );
 
         if (desktop) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              header,
-              // 分类/筛选行与表格工具条（表头设置/全屏）行之间的呼吸间距——
-              // 窄屏列表同款 s12，避免两行零间距紧贴（2026-09-06 用户反馈）。
-              const SizedBox(height: UtenSpacing.s12),
-              Expanded(
-                child: seg == null
-                    ? const UtenFilterPlaceholder(
-                        message: '在上方选择阶段后开始办理',
-                        description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
-                      )
-                    : seg.history && _historyTime.isNone
-                    ? const UtenHistoryTimePlaceholder()
-                    : _buildTable(data),
-              ),
-            ],
+          // 2026-09-22 全站表格滚动口径：上滑先收阶段/筛选行（表头随之顶到
+          // 视口顶），继续滚动才滚表格内容；竖向滚动条由联动门控（外滚阶段隐藏）。
+          return UtenCollapsingHeaderScrollView(
+            collapsingHeader: Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+              child: header,
+            ),
+            body: Builder(
+              builder: (context) {
+                if (seg == null) {
+                  return const UtenFilterPlaceholder(
+                    message: '在上方选择阶段后开始办理',
+                    description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
+                  );
+                }
+                if (seg.history && _historyTime.isNone) {
+                  return const UtenHistoryTimePlaceholder();
+                }
+                return _buildTable(data);
+              },
+            ),
           );
         }
         return _withCardActions(
@@ -735,6 +739,8 @@ class _SubcontractDecompositionPageState
   Widget _buildTable(OperationsWorkbenchData data) {
     return MasterDataTableView<OperationsWorkbenchTask>(
       key: const Key('subcontract-decomposition-table'),
+      // primary:true → 表体参与「筛选行折叠 → 表格内滚」联动。
+      primary: true,
       columns: [
         MasterColumnDef(
           key: 'planNo',

@@ -19,6 +19,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -70,8 +71,15 @@ class _WarehouseQualityPreStockInPageState
     _load();
   }
 
+  // 2026-09-22 全站表格滚动口径：网格表头吸顶 + 置顶后才显示页面滚动条
+  // （与单据编辑页同款：stickyHeaderPinned + UtenGridPageScrollbar 门控）。
+  final ScrollController _pageScroll = ScrollController();
+  final _gridPinned = ValueNotifier<bool>(false);
+
   @override
   void dispose() {
+    _pageScroll.dispose();
+    _gridPinned.dispose();
     _grid.dispose();
     super.dispose();
   }
@@ -231,17 +239,21 @@ class _WarehouseQualityPreStockInPageState
                   children: [
                     AbsorbPointer(
                       absorbing: _saving,
-                      child: UtenContentContainer.wide(
-                        child: detail == null || _grid.rows.isEmpty
-                            ? UtenEmpty.error(
-                                message: _error ?? '本单没有可先入库上架的待检明细',
-                                description:
-                                    '只有仍在等待检查结果、尚未上架的明细行才能先入库；'
-                                    '已出结论的行请按原流程办理。',
-                                actionLabel: '重新加载',
-                                onAction: _load,
-                              )
-                            : _buildBody(theme, detail),
+                      child: UtenGridPageScrollbar(
+                        pinned: _gridPinned,
+                        controller: _pageScroll,
+                        child: UtenContentContainer.wide(
+                          child: detail == null || _grid.rows.isEmpty
+                              ? UtenEmpty.error(
+                                  message: _error ?? '本单没有可先入库上架的待检明细',
+                                  description:
+                                      '只有仍在等待检查结果、尚未上架的明细行才能先入库；'
+                                      '已出结论的行请按原流程办理。',
+                                  actionLabel: '重新加载',
+                                  onAction: _load,
+                                )
+                              : _buildBody(theme, detail),
+                        ),
                       ),
                     ),
                     if (_saving)
@@ -260,6 +272,7 @@ class _WarehouseQualityPreStockInPageState
 
   Widget _buildBody(ThemeData theme, WarehouseQualityResultDetail detail) {
     return ListView(
+      controller: _pageScroll,
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s12,
@@ -288,6 +301,7 @@ class _WarehouseQualityPreStockInPageState
         UtenEditableGrid<WarehousePreStockRow>(
           key: const Key('warehouse-quality-pre-stock-grid'),
           controller: _grid,
+          stickyHeaderPinned: _gridPinned,
           columns: _columns(context),
           showAddRow: false,
           showRowDelete: false,

@@ -32,6 +32,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/payroll_batch.dart';
 import '../models/payroll_slip.dart';
@@ -128,17 +129,8 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
                     ref.invalidate(payrollBatchDetailProvider(batch.id));
                     await ref.read(payrollBatchDetailProvider(batch.id).future);
                   },
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
-                    padding: const EdgeInsets.fromLTRB(
-                      0,
-                      UtenSpacing.s16,
-                      0,
-                      UtenFloatingActionGroup.scrollClearance,
-                    ),
-                    child: _BatchDetail(batch: batch),
-                  ),
+                  // 2026-09-22 全站表格滚动口径：折叠容器即滚动体（刷新手势仍全域有效）。
+                  child: _BatchDetail(batch: batch),
                 ),
               ),
             ),
@@ -418,86 +410,97 @@ class _BatchDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UtenCard(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-          child: Column(
-            children: [
-              UtenInfoRow(label: '工资月份', value: batch.periodLabel),
-              UtenInfoRow(label: '生成范围', value: batch.scopeLabel),
-              UtenInfoRow(
-                label: '状态',
-                value: null,
-                valueWidget: Align(
-                  alignment: Alignment.centerRight,
-                  child: UtenStatusBadge(
-                    label: batch.status.label,
-                    type: _batchBadge(batch.status),
+    Widget buildHeader() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          UtenCard(
+            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
+            child: Column(
+              children: [
+                UtenInfoRow(label: '工资月份', value: batch.periodLabel),
+                UtenInfoRow(label: '生成范围', value: batch.scopeLabel),
+                UtenInfoRow(
+                  label: '状态',
+                  value: null,
+                  valueWidget: Align(
+                    alignment: Alignment.centerRight,
+                    child: UtenStatusBadge(
+                      label: batch.status.label,
+                      type: _batchBadge(batch.status),
+                    ),
                   ),
                 ),
-              ),
-              UtenInfoRow(label: '员工人数', value: '${batch.headcount} 人'),
-              UtenInfoRow(
-                label: '应发合计',
-                value: '¥ ${batch.grossIncome.toStringAsFixed(2)}',
-              ),
-              UtenInfoRow(
-                label: '扣除合计',
-                value: '¥ ${batch.totalDeduction.toStringAsFixed(2)}',
-              ),
-              UtenInfoRow(
-                label: '实发合计',
-                value: '¥ ${batch.netIncome.toStringAsFixed(2)}',
-                isImportant: true,
-                showDivider: false,
-              ),
-            ],
-          ),
-        ),
-        if (batch.rejectReason != null &&
-            batch.rejectReason!.trim().isNotEmpty) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          UtenCard(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.error_outline, color: theme.colorScheme.error),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '驳回原因：${batch.rejectReason}',
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
+                UtenInfoRow(label: '员工人数', value: '${batch.headcount} 人'),
+                UtenInfoRow(
+                  label: '应发合计',
+                  value: '¥ ${batch.grossIncome.toStringAsFixed(2)}',
+                ),
+                UtenInfoRow(
+                  label: '扣除合计',
+                  value: '¥ ${batch.totalDeduction.toStringAsFixed(2)}',
+                ),
+                UtenInfoRow(
+                  label: '实发合计',
+                  value: '¥ ${batch.netIncome.toStringAsFixed(2)}',
+                  isImportant: true,
+                  showDivider: false,
                 ),
               ],
             ),
           ),
+          if (batch.rejectReason != null &&
+              batch.rejectReason!.trim().isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            UtenCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.error_outline, color: theme.colorScheme.error),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      '驳回原因：${batch.rejectReason}',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s16),
+          const UtenSectionHeader(title: '员工工资明细'),
+          const SizedBox(height: UtenSpacing.s8),
         ],
-        const SizedBox(height: UtenSpacing.s16),
-        const UtenSectionHeader(title: '员工工资明细'),
-        const SizedBox(height: UtenSpacing.s8),
-        if (batch.slips.isEmpty)
-          const UtenEmpty(message: '服务器未返回该批次的员工明细')
-        else
-          // 明细表：定高内滚（沿用旧版高度钳制，多行时不与摘要卡争屏）。
-          SizedBox(
-            height: (batch.slips.length * 56.0).clamp(240.0, 480.0).toDouble(),
-            child: MasterDataTableView<PayrollSlip>(
+      );
+    }
+
+    // 2026-09-22 全站表格滚动口径：摘要/驳回卡进折叠头——上滑先收卡（表头随之
+    // 顶到视口顶），继续滚动才滚表格内容；竖向滚动条由联动门控（外滚阶段隐藏）。
+    // 旧「定高表格 + 外层 SingleChildScrollView」双层滚动互不协调的形态退役。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Padding(
+        padding: const EdgeInsets.only(top: UtenSpacing.s16),
+        child: buildHeader(),
+      ),
+      body: batch.slips.isEmpty
+          ? const UtenEmpty(message: '服务器未返回该批次的员工明细')
+          : MasterDataTableView<PayrollSlip>(
               key: const Key('payroll-review-slip-table'),
+              primary: true,
               columns: _slipColumns,
               items: batch.slips,
               facets: const {},
               nullCounts: const {},
               filters: const {},
               onFilterChanged: (_, _) {},
+              // 底部留出右下悬浮操作组的高度，末行可滚出按钮区。
+              bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
               // 明细无独立详情页，不接 onRowTap；审核只有整批语义（底部操作条），
               // 故明细表不开多选——勾选几条却整批生效是语义误导（2026-09-10 下线）。
               emptyMessage: '服务器未返回该批次的员工明细',
             ),
-          ),
-      ],
     );
   }
 }

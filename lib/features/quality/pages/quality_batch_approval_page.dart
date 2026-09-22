@@ -27,6 +27,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
@@ -144,6 +145,25 @@ class _QualityBatchApprovalPageState
   bool _leaving = false;
   QualityBatchSubmission? _submission;
 
+  // 2026-09-22 全站表格滚动口径：各分组明细表表头吸顶（stickyHeaderPinned）；
+  // 一页动态多表（IQC 按单 + FQC 按检查单），任一张置顶 = 处于「表内滚动」段
+  // → 页面滚动条显示（UtenGridPageScrollbar 门控）。
+  final ScrollController _pageScroll = ScrollController();
+  final Map<String, ValueNotifier<bool>> _tablePins = {};
+  final ValueNotifier<bool> _anyPinned = ValueNotifier<bool>(false);
+  int _pinnedCount = 0;
+
+  ValueNotifier<bool> _pinOf(String id) => _tablePins.putIfAbsent(id, () {
+    final pin = ValueNotifier<bool>(false);
+    pin.addListener(() {
+      _pinnedCount += pin.value ? 1 : -1;
+      if (_pinnedCount < 0) _pinnedCount = 0;
+      final any = _pinnedCount > 0;
+      if (_anyPinned.value != any) _anyPinned.value = any;
+    });
+    return pin;
+  });
+
   @override
   void initState() {
     super.initState();
@@ -153,6 +173,11 @@ class _QualityBatchApprovalPageState
   @override
   void dispose() {
     _leaving = true;
+    _pageScroll.dispose();
+    for (final pin in _tablePins.values) {
+      pin.dispose();
+    }
+    _anyPinned.dispose();
     _flatRows?.forEach((row) => row.dispose());
     super.dispose();
   }
@@ -524,12 +549,16 @@ class _QualityBatchApprovalPageState
                   children: [
                     AbsorbPointer(
                       absorbing: _submitting,
-                      child: UtenContentContainer.wide(
-                        child: AbsorbPointer(
-                          absorbing: _submission != null,
-                          child: ExcludeFocus(
-                            excluding: _submission != null,
-                            child: _buildBody(theme),
+                      child: UtenGridPageScrollbar(
+                        pinned: _anyPinned,
+                        controller: _pageScroll,
+                        child: UtenContentContainer.wide(
+                          child: AbsorbPointer(
+                            absorbing: _submission != null,
+                            child: ExcludeFocus(
+                              excluding: _submission != null,
+                              child: _buildBody(theme),
+                            ),
                           ),
                         ),
                       ),
@@ -576,6 +605,7 @@ class _QualityBatchApprovalPageState
       );
     }
     return ListView(
+      controller: _pageScroll,
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
         UtenSpacing.s12,
@@ -828,6 +858,7 @@ class _QualityBatchApprovalPageState
       MasterDataTableView<_EditableIqcRow>(
         key: ValueKey('batch-approval-iqc-table-${group.receipt.receiptId}'),
         embedded: true,
+        stickyHeaderPinned: _pinOf('iqc:${group.receipt.receiptId}'),
         showSelectionSummary: false,
         columns: [
           // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
@@ -971,6 +1002,7 @@ class _QualityBatchApprovalPageState
   }) => MasterDataTableView<ProductionFqcInspection>(
     key: ValueKey('batch-approval-fqc-table-$tableKey'),
     embedded: true,
+    stickyHeaderPinned: _pinOf('fqc:$tableKey'),
     showSelectionSummary: false,
     columns: [
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。

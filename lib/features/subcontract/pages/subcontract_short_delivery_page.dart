@@ -15,6 +15,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
@@ -365,17 +366,18 @@ class _SubcontractShortDeliveryPageState
         ),
       ],
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        header,
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: _historyBlocked
-              ? const UtenHistoryTimePlaceholder()
-              : _buildTable(),
-        ),
-      ],
+    // 2026-09-22 全站表格滚动口径：上滑先收分段/说明（表头随之顶到视口顶），
+    // 继续滚动才滚表格内容；竖向滚动条由联动门控（外滚阶段不显示）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Padding(
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+        child: header,
+      ),
+      body: Builder(
+        builder: (context) => _historyBlocked
+            ? const UtenHistoryTimePlaceholder()
+            : _buildTable(),
+      ),
     );
   }
 
@@ -388,6 +390,8 @@ class _SubcontractShortDeliveryPageState
         pendingSeg || _seg == SubcontractShortDeliverySegment.tolerant;
     return MasterDataTableView<SubcontractShortDeliveryCase>(
       key: const Key('subcontract-short-delivery-table'),
+      // primary:true → 表体参与「分段行折叠 → 表格内滚」联动。
+      primary: true,
       columns: [
         MasterColumnDef(
           key: 'orderBillNo',

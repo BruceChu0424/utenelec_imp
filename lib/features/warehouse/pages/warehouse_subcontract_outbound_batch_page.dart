@@ -14,6 +14,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -108,6 +109,10 @@ class _WarehouseSubcontractOutboundBatchPageState
   int _loadGeneration = 0;
   Set<String> _submittedDraftIds = {};
 
+  // 2026-09-22 全站表格滚动口径：出仓明细表表头吸顶 + 置顶后才显示页面滚动条。
+  final ScrollController _pageScroll = ScrollController();
+  final _gridPinned = ValueNotifier<bool>(false);
+
   AppLocalizations get l10n =>
       (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
       AppLocalizationsZh());
@@ -134,6 +139,8 @@ class _WarehouseSubcontractOutboundBatchPageState
     for (final draft in _drafts) {
       draft.dispose();
     }
+    _pageScroll.dispose();
+    _gridPinned.dispose();
     super.dispose();
   }
 
@@ -647,69 +654,78 @@ class _WarehouseSubcontractOutboundBatchPageState
                         )
                       : AbsorbPointer(
                           absorbing: _saving || _confirming,
-                          child: ListView(
-                            padding: const EdgeInsets.fromLTRB(
-                              UtenSpacing.s12,
-                              UtenSpacing.s16,
-                              UtenSpacing.s12,
-                              UtenFloatingActionGroup.scrollClearance,
-                            ),
-                            children: [
-                              _headers(),
-                              for (final draft in _drafts)
-                                if (draft.error != null)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: UtenSpacing.s8,
-                                    ),
-                                    child: Text(
-                                      '${draft.detail.orderBillNo ?? '—'}: ${draft.error}',
-                                      style: TextStyle(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.error,
-                                      ),
-                                    ),
-                                  ),
-                              // 明细表紧接单据卡，不再写「出库明细」标题:
-                              // 页面本身就叫批量出库详情，表头已说明每列是什么。
-                              const SizedBox(height: UtenSpacing.s16),
-                              SubcontractOutboundDetailTable(
-                                rows: [
-                                  for (final draft in _drafts)
-                                    for (final line in draft.lines)
-                                      SubcontractOutboundTableRow(
-                                        draft: line,
-                                        warehouse: names.warehouse(
-                                          draft.warehouseId,
-                                        ),
-                                        orderBillNo: draft.detail.orderBillNo,
-                                        supplierName: draft.detail.supplierName,
-                                        documentNo: draft.document?.billNo,
-                                        documentRemark: draft.remark,
-                                        warehouseId: draft.warehouseId,
-                                        warehouses: names.warehouseHierarchy,
-                                        onWarehouseChanged: (value) => setState(
-                                          () => draft.warehouseId = value,
-                                        ),
-                                        status: _status(draft),
-                                        editable: draft.pending,
-                                      ),
-                                ],
-                                editable: _canExecute,
-                                selectable: true,
-                                onRowSelected: (row, selected) {
-                                  final document = _drafts.firstWhere(
-                                    (draft) => draft.lines.contains(row.draft),
-                                  );
-                                  for (final line in document.lines) {
-                                    line.selected = selected;
-                                  }
-                                },
-                                showOrder: true,
-                                onChanged: () => setState(() {}),
+                          child: UtenGridPageScrollbar(
+                            pinned: _gridPinned,
+                            controller: _pageScroll,
+                            child: ListView(
+                              controller: _pageScroll,
+                              padding: const EdgeInsets.fromLTRB(
+                                UtenSpacing.s12,
+                                UtenSpacing.s16,
+                                UtenSpacing.s12,
+                                UtenFloatingActionGroup.scrollClearance,
                               ),
-                            ],
+                              children: [
+                                _headers(),
+                                for (final draft in _drafts)
+                                  if (draft.error != null)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: UtenSpacing.s8,
+                                      ),
+                                      child: Text(
+                                        '${draft.detail.orderBillNo ?? '—'}: ${draft.error}',
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.error,
+                                        ),
+                                      ),
+                                    ),
+                                // 明细表紧接单据卡，不再写「出库明细」标题:
+                                // 页面本身就叫批量出库详情，表头已说明每列是什么。
+                                const SizedBox(height: UtenSpacing.s16),
+                                SubcontractOutboundDetailTable(
+                                  stickyHeaderPinned: _gridPinned,
+                                  rows: [
+                                    for (final draft in _drafts)
+                                      for (final line in draft.lines)
+                                        SubcontractOutboundTableRow(
+                                          draft: line,
+                                          warehouse: names.warehouse(
+                                            draft.warehouseId,
+                                          ),
+                                          orderBillNo: draft.detail.orderBillNo,
+                                          supplierName:
+                                              draft.detail.supplierName,
+                                          documentNo: draft.document?.billNo,
+                                          documentRemark: draft.remark,
+                                          warehouseId: draft.warehouseId,
+                                          warehouses: names.warehouseHierarchy,
+                                          onWarehouseChanged: (value) =>
+                                              setState(
+                                                () => draft.warehouseId = value,
+                                              ),
+                                          status: _status(draft),
+                                          editable: draft.pending,
+                                        ),
+                                  ],
+                                  editable: _canExecute,
+                                  selectable: true,
+                                  onRowSelected: (row, selected) {
+                                    final document = _drafts.firstWhere(
+                                      (draft) =>
+                                          draft.lines.contains(row.draft),
+                                    );
+                                    for (final line in document.lines) {
+                                      line.selected = selected;
+                                    }
+                                  },
+                                  showOrder: true,
+                                  onChanged: () => setState(() {}),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                 ),

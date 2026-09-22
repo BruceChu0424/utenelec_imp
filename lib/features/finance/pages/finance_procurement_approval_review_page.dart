@@ -26,6 +26,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -63,6 +64,11 @@ class _FinanceProcurementApprovalReviewPageState
   String? _error;
   TaskClaimSession? _reviewClaim;
   int _loadGeneration = 0;
+
+  // 2026-09-22 全站表格滚动口径：订货明细表头吸顶，表头置顶后才显示页面滚动条。
+  final ScrollController _pageScroll = ScrollController();
+  final ValueNotifier<bool> _itemsPinned = ValueNotifier<bool>(false);
+
   void _claimChanged() {
     if (mounted) setState(() {});
   }
@@ -70,6 +76,8 @@ class _FinanceProcurementApprovalReviewPageState
   @override
   void dispose() {
     ++_loadGeneration;
+    _pageScroll.dispose();
+    _itemsPinned.dispose();
     _reviewClaim?.removeListener(_claimChanged);
     _reviewClaim?.releaseAll().ignore();
     super.dispose();
@@ -451,58 +459,63 @@ class _FinanceProcurementApprovalReviewPageState
                 ? const SizedBox.shrink()
                 // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
                 // 改默认容器对齐新建销售订货单页。
-                : UtenContentContainer(
-                    child: ListView(
-                      // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
-                      padding: const EdgeInsets.fromLTRB(
-                        UtenSpacing.s12,
-                        UtenSpacing.s12,
-                        UtenSpacing.s12,
-                        UtenFloatingActionGroup.scrollClearance,
-                      ),
-                      children: [
-                        if (review.isPending &&
-                            review.allowedActions.isNotEmpty &&
-                            _reviewClaim?.isReady != true)
-                          FinanceReviewClaimNotice(
-                            claim: _reviewClaim,
-                            onRetry: _busy ? null : _load,
-                          ),
-                        _statusStrip(theme, review),
-                        const SizedBox(height: UtenSpacing.s12),
-                        _supplierFinanceCard(theme, review),
-                        const SizedBox(height: UtenSpacing.s12),
-                        _orderCard(theme, review),
-                        if (review.qtyChanges.isNotEmpty) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          _qtyChangesCard(theme, review),
-                        ],
-                        const SizedBox(height: UtenSpacing.s12),
-                        _itemsSection(theme, review),
-                        // 财务审核只读查看采购/委外合同原件；后端按「待审可见」口径终审，
-                        // 审核页不提供上传/删除（原件不能在审批时被悄悄替换）。
-                        if (review.orderId.isNotEmpty &&
-                            review.orderType !=
-                                FinanceProcurementOrderType.unknown) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          BusinessAttachmentSection(
-                            key: const ValueKey(
-                              'finance-order-review-attachments',
+                : UtenGridPageScrollbar(
+                    pinned: _itemsPinned,
+                    controller: _pageScroll,
+                    child: UtenContentContainer(
+                      child: ListView(
+                        controller: _pageScroll,
+                        // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenFloatingActionGroup.scrollClearance,
+                        ),
+                        children: [
+                          if (review.isPending &&
+                              review.allowedActions.isNotEmpty &&
+                              _reviewClaim?.isReady != true)
+                            FinanceReviewClaimNotice(
+                              claim: _reviewClaim,
+                              onRetry: _busy ? null : _load,
                             ),
-                            ownerType:
-                                review.orderType ==
-                                    FinanceProcurementOrderType.purchase
-                                ? 'PURCHASE_ORDER'
-                                : 'SUBCONTRACT_ORDER',
-                            ownerId: review.orderId,
-                            canView: true,
-                            canManage: false,
-                            title: '合同与确认文件（只读）',
-                          ),
+                          _statusStrip(theme, review),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _supplierFinanceCard(theme, review),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _orderCard(theme, review),
+                          if (review.qtyChanges.isNotEmpty) ...[
+                            const SizedBox(height: UtenSpacing.s12),
+                            _qtyChangesCard(theme, review),
+                          ],
+                          const SizedBox(height: UtenSpacing.s12),
+                          _itemsSection(theme, review),
+                          // 财务审核只读查看采购/委外合同原件；后端按「待审可见」口径终审，
+                          // 审核页不提供上传/删除（原件不能在审批时被悄悄替换）。
+                          if (review.orderId.isNotEmpty &&
+                              review.orderType !=
+                                  FinanceProcurementOrderType.unknown) ...[
+                            const SizedBox(height: UtenSpacing.s12),
+                            BusinessAttachmentSection(
+                              key: const ValueKey(
+                                'finance-order-review-attachments',
+                              ),
+                              ownerType:
+                                  review.orderType ==
+                                      FinanceProcurementOrderType.purchase
+                                  ? 'PURCHASE_ORDER'
+                                  : 'SUBCONTRACT_ORDER',
+                              ownerId: review.orderId,
+                              canView: true,
+                              canManage: false,
+                              title: '合同与确认文件（只读）',
+                            ),
+                          ],
+                          const SizedBox(height: UtenSpacing.s12),
+                          _historyCard(theme, review),
                         ],
-                        const SizedBox(height: UtenSpacing.s12),
-                        _historyCard(theme, review),
-                      ],
+                      ),
                     ),
                   ),
             // 处理中屏幕中央加载动画（对齐财审专页口径：按钮 isLoading 同步转圈，
@@ -889,6 +902,7 @@ class _FinanceProcurementApprovalReviewPageState
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<FinanceProcurementReviewLine>(
           embedded: true,
+          stickyHeaderPinned: _itemsPinned,
           columns: [
             MasterColumnDef(
               key: 'lineNo',

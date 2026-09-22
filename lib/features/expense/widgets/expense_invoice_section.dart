@@ -34,6 +34,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
     required this.claim,
     required this.editable,
     this.canVerify = false,
+    this.stickyHeaderPinned,
   });
 
   final ExpenseClaim claim;
@@ -41,6 +42,10 @@ class ExpenseInvoiceSection extends ConsumerWidget {
   /// DRAFT/REJECTED 且本人 → 可登记/编辑/删除。
   final bool editable;
   final bool canVerify;
+
+  /// 发票要素表的表头吸顶信号（详情页滚动流内表头随页滚走会与数据脱节，
+  /// 2026-09-22 全站表格滚动口径）。可空；不传则表头随页滚动（旧行为）。
+  final ValueNotifier<bool>? stickyHeaderPinned;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,6 +143,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
             filters: const {},
             onFilterChanged: (_, _) {},
             embedded: true,
+            stickyHeaderPinned: stickyHeaderPinned,
             onRowTap: canVerify
                 ? (invoice) => showDialog<bool>(
                     context: context,

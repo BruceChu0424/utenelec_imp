@@ -326,12 +326,18 @@ public class WarehouseService {
     private WarehouseListItem toList(Warehouse w, Map<UUID, String> workshopNames,
                                      Map<UUID, String> parentNames) {
         UUID workshopId = w.getWorkshopDepartmentId();
-        // Map.copyOf 返回的不可变 Map 对 null key 的 get 会抛 NPE，车间未设置时需先判空。
+        // Map.copyOf/Map.of 返回的不可变 Map 对 null key 的 get 会抛 NPE，未设置时一律先判空。
+        // 上级仓库这一路 2026-09-22 在服务器上真炸过：本页所有行都没有上级时 parentNames()
+        // 返回 Map.of()，再拿 null 的 parentId 去 get 就是 NPE 500(整页仓库列表打不开)。
+        // 页里只要有一行带上级就换成 HashMap，get(null) 合法——所以平时翻不出来，
+        // 只在「筛选后或小页只剩顶层仓库」时才现形。
         String workshopName = workshopId == null ? null : workshopNames.get(workshopId);
+        UUID parentId = w.getParentId();
+        String parentName = parentId == null ? null : parentNames.get(parentId);
         return new WarehouseListItem(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
                 w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
-                w.getStatus(), w.getLegacyId(), w.getParentId(), parentNames.get(w.getParentId()),
+                w.getStatus(), w.getLegacyId(), parentId, parentName,
                 w.isLineSide());
     }
 

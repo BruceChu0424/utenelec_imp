@@ -533,7 +533,13 @@ class _WarehouseArrivalExceptionsViewState
               UtenFilterSegment(
                 value: false,
                 label: '待处理',
-                count: ref.watch(warehouseArrivalExceptionCountProvider).value,
+                // 不能用 .value: riverpod 的这个 getter 在 error 态会把异常重新抛出,
+                // 而本 provider 直接打网络。计数接口一次 500 或超时, 整页就会被错误视图
+                // 替换掉——列表其实已经取回来了, 用户却只能刷新重来。valueOrNull 在
+                // 加载中与失败时都只是不渲染这个数字, 列表照常可用(全仓其余取法同此)。
+                count: ref
+                    .watch(warehouseArrivalExceptionCountProvider)
+                    .valueOrNull,
                 countForm: UtenSegmentCountForm.actionable,
               ),
               const UtenFilterSegment(value: true, label: '历史'),

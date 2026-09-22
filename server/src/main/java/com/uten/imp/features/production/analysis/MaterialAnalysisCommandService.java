@@ -104,12 +104,7 @@ public class MaterialAnalysisCommandService {
         // 认领后的刷新会撞「回调来源超出预锁集合」。
         var mutationGuard = "MAKE".equals(request.target())
                 ? lockAnalysisInventoryDimensions(analysisId)
-                : mutationLocks.acquire(() -> {
-                    var own = mutationFootprints.forAnalyses(List.of(analysisId));
-                    var claimable = mutationFootprints.forSharedFutureClaim(analysisId);
-                    return com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.merge(
-                            own.fingerprint() + "|" + claimable.fingerprint(), List.of(own, claimable));
-                });
+                : lockAnalysisWithClaimableShared(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireNotFqcRecoveryWorkspace(analysisId);
         requireWritable(header, "只能下达本人负责的物料分析备料任务");
@@ -860,7 +855,11 @@ public class MaterialAnalysisCommandService {
     public GenerateResult issueWorkshopPlans(
             UUID analysisId, IssueWorkshopPlansRequest request) {
         tx.bind();
-        var mutationGuard = lockAnalysisInventoryDimensions(analysisId);
+        // 本命令会嵌套进 notifySupplyInternal 的 ARRANGE 腿(委外件有自制子层时建台账),
+        // 那一腿按 ADR-099 要锁「本分析 + 可认领公共在途」。预锁一旦 prepared 就只允许
+        // 覆盖检查、不允许补拿, 所以这里必须一次锁到同样宽, 否则同主仓只要存在可认领的
+        // 公共在途, 下达车间与 issue-plans/preview 就必然 409(还会被自动重跑放大 5 次)。
+        var mutationGuard = lockAnalysisWithClaimableShared(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireNotFqcRecoveryWorkspace(analysisId);
         requireWritable(header, "只能从本人负责的物料分析下达车间");
@@ -1362,6 +1361,26 @@ public class MaterialAnalysisCommandService {
      */
     com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockAnalysisInventoryDimensions(UUID analysisId) {
         return mutationLocks.acquire(() -> mutationFootprints.forAnalyses(List.of(analysisId)));
+    }
+
+    /**
+     * 本分析 + 它可认领的同主仓公共在途(别的分析名下的申请/委外申请)的合并足迹。
+     *
+     * <p>ADR-099 的外部路线下达会先自动认领公共在途, 认领引用的是别的分析的单据,
+     * 必须与本分析一起预锁。**凡是可能嵌套进 notifySupplyInternal 的入口都要用这一份**:
+     * 预锁一旦 prepared, 嵌套的 acquire 只做覆盖检查(requireCovered), 不允许持锁补拿;
+     * 外层若只锁了本分析, 嵌套那腿的合并足迹必然超出, 抛可重跑冲突, 再被最外层的自动
+     * 重跑放大成 5 次同样的确定性失败, 最后仍是 409。2026-09-21 发布前审查实测:
+     * issueWorkshopPlans 的 ARRANGE 腿(委外件有自制子层时建台账)正是这条路径,
+     * 同主仓一旦存在可认领的公共在途, 下达车间与「父件+下层一起下单」的预览必挂。</p>
+     */
+    com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockAnalysisWithClaimableShared(UUID analysisId) {
+        return mutationLocks.acquire(() -> {
+            var own = mutationFootprints.forAnalyses(List.of(analysisId));
+            var claimable = mutationFootprints.forSharedFutureClaim(analysisId);
+            return com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.merge(
+                    own.fingerprint() + "|" + claimable.fingerprint(), List.of(own, claimable));
+        });
     }
 
     /**

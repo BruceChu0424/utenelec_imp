@@ -94,13 +94,12 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
     // 红 = 待处理(OPEN): 没人开工, 轮到研发动手。
     // 黄 = 进行中(IN_PROGRESS): 已认领在做, 此刻不用催。
     //
-    // 后端一次返回 {count, open, inProgress} 且 count 保持旧含义 = open +
-    // inProgress(工作台红徽章的老调用点还在读它), 注册表对外只暴露了 count 与
-    // inProgress 两个 provider, 所以这里按同一份口径相减还原 open。两个计数同
-    // 周期轮询, 错拍时可能瞬时对不齐, 负数按 0 兜底(宁可少显示也不显示负数)。
-    final openAndInProgress = ref.watch(rdTaskCountProvider);
+    // 2026-09-21: 两个数各读服务端一个字段, 不再用「count 减 inProgress」还原 open。
+    // 相减有两处毛病: 卡面红徽章读的同一个 count 含 inProgress, 等于让黄色那批被红黄
+    // 两条链各数一次(ADR-100 禁止的双计); 而且两支 provider 各自 60s 轮询、起拍时刻不同,
+    // 一次 OPEN→IN_PROGRESS 跃迁后最长会偏 1 直到下次对齐。
+    final pendingCount = ref.watch(rdTaskCountProvider);
     final inProgressCount = ref.watch(rdTaskInProgressCountProvider);
-    final pendingCount = openAndInProgress - inProgressCount;
     return Scaffold(
       appBar: UtenAppBar(
         title: '工程研发部 · 任务中心',

@@ -76,12 +76,17 @@ public class ProductionCompletionReverseService
                     ErrorCode.VALIDATION_FAILED,
                     "成品入库触发自制件就绪提升时缺少单据或仓库");
         }
-        readiness.onFinishedInboundApproved(
-                stockDocumentId, warehouseId);
         // 线边仓入库(车间直送，V595)：料不进公共可用量，不会喂给任何物料分析、委外备料或
         // 委外订货准备——下面三套唤醒只会把整张分析重算一遍再发现什么都没变(实测占直送审核 0.8s)。
         // 直送料投给谁由直送服务自己按需求补投，不经这里。
+        //
+        // 2026-09-22：就绪提升也一样要跳过。直送服务在同一事务里已经按需求调
+        // topUpDirectSupply / promoteAfterWorkshopDirectTransfer 投给确定的接收工单，
+        // 这里再按 peg 图找一遍并 tryPromote，每条直送行都要白跑一次可用量扫描。
+        // 判定必须排在 onFinishedInboundApproved 之前，否则跳过的只是后面三套唤醒。
         if (isLineSideWarehouse(warehouseId)) return;
+        readiness.onFinishedInboundApproved(
+                stockDocumentId, warehouseId);
         subcontractPreparation.afterFinishedInboundApproved(
                 stockDocumentId, warehouseId);
         // V458：有子层级委外件的前置自制产出先转 SUBCONTRACT_PREPARE_TASK

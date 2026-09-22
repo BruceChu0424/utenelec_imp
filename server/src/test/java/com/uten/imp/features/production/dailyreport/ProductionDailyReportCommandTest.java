@@ -59,6 +59,7 @@ class ProductionDailyReportCommandTest {
     @Mock private StockDocumentItemRepository stockDocItemRepo;
     @Mock private SecurityContextCurrentUser currentUser;
     @Mock private EmployeeNameResolver nameResolver;
+    @Mock private com.uten.imp.common.util.DepartmentNameResolver departmentNameResolver;
     @Mock private TxSessionVars tx;
     @Mock private DocNumberService docNumberService;
     @Mock private ProductionProductNoAllocator productNoAllocator;
@@ -257,7 +258,7 @@ class ProductionDailyReportCommandTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
-            if (sql.contains("SELECT request_hash")
+            if (sql.contains("SELECT command_kind, request_hash")
                     && sql.contains("production_daily_report_commands")) {
                 return commandRead;
             }
@@ -321,7 +322,7 @@ class ProductionDailyReportCommandTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
-            if (sql.contains("SELECT request_hash")
+            if (sql.contains("SELECT command_kind, request_hash")
                     && sql.contains("production_daily_report_commands")) {
                 return commandRead;
             }
@@ -367,7 +368,7 @@ class ProductionDailyReportCommandTest {
         });
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{hash, reportId}));
+                        new Object[]{"CREATE", hash, reportId}));
         when(currentUser.requireId()).thenReturn(actorId);
         ProductionDailyReport existing = new ProductionDailyReport();
         existing.setId(reportId);
@@ -409,7 +410,7 @@ class ProductionDailyReportCommandTest {
         Query command = query(false);
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{legacyHash, reportId}));
+                        new Object[]{"CREATE", legacyHash, reportId}));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
@@ -462,7 +463,7 @@ class ProductionDailyReportCommandTest {
         });
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{"a".repeat(64), UUID.randomUUID()}));
+                        new Object[]{"CREATE", "a".repeat(64), UUID.randomUUID()}));
         when(currentUser.requireId()).thenReturn(actorId);
 
         ApiException error = assertThrows(
@@ -599,5 +600,138 @@ class ProductionDailyReportCommandTest {
         line.setSalesOrderItemId(orderItemId);
         request.setItems(List.of(line));
         return request;
+    }
+
+    // ====================== V644 审核幂等键 ======================
+
+    @Test
+    void approveWithoutAnIdempotencyKeyIsRejectedBeforeAnythingIsLocked() {
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.approve(UUID.randomUUID(), approveRequest("  ")));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        assertEquals("审核生产日报必须提供幂等键", error.getMessage());
+        verify(executionSegments, never()).approve(any(), any());
+    }
+
+    @Test
+    void sameActorKeyAndReportReplaysTheApprovedDetailWithoutRedoingTheChain() {
+        UUID reportId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        stubApproveLedger(new Object[]{
+                "APPROVE",
+                ProductionDailyReportService.approveRequestHash(reportId),
+                reportId});
+        ProductionDailyReport approved = approvedReport(reportId, employeeId);
+        when(reportRepo.findById(reportId)).thenReturn(Optional.of(approved));
+        when(itemRepo.findByReportIdOrderByLineNoAsc(reportId)).thenReturn(List.of());
+        when(nameResolver.nameOf(employeeId)).thenReturn("Planner");
+
+        DailyReportDetail replay = service.approve(reportId, approveRequest("stable-approve-key"));
+
+        assertEquals(reportId, replay.getId());
+        assertEquals((short) 1, replay.getStatus());
+        // 回放绝不能再跑一遍报工链：那是 fqty 累加与直送单重复的来源。
+        verify(executionSegments, never()).approve(any(), any());
+        verify(reportRepo, never()).saveAndFlush(any());
+        verify(directTransfer, never()).executeForApprovedReport(any(), any());
+    }
+
+    @Test
+    void anApproveKeyAlreadyBoundToACreateCommandFailsClosed() {
+        UUID reportId = UUID.randomUUID();
+        stubApproveLedger(new Object[]{
+                "CREATE",
+                ProductionDailyReportService.approveRequestHash(reportId),
+                reportId});
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.approve(reportId, approveRequest("stable-approve-key")));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertEquals("同一幂等键已用于不同的生产日报审核请求", error.getMessage());
+        verify(executionSegments, never()).approve(any(), any());
+    }
+
+    @Test
+    void anApproveKeyPointedAtAnotherReportFailsClosed() {
+        UUID reportId = UUID.randomUUID();
+        UUID otherReportId = UUID.randomUUID();
+        stubApproveLedger(new Object[]{
+                "APPROVE",
+                ProductionDailyReportService.approveRequestHash(otherReportId),
+                otherReportId});
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.approve(reportId, approveRequest("stable-approve-key")));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(executionSegments, never()).approve(any(), any());
+    }
+
+    @Test
+    void aFreshKeyOnAnAlreadyApprovedReportIsAConflictSoTheClientKnowsToRefresh() {
+        UUID reportId = UUID.randomUUID();
+        stubApproveLedger(null);
+        ProductionDailyReport approved = approvedReport(reportId, UUID.randomUUID());
+        when(em.find(ProductionDailyReport.class, reportId, LockModeType.PESSIMISTIC_WRITE))
+                .thenReturn(approved);
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.approve(reportId, approveRequest("another-approve-key")));
+
+        // 400 会和「明细为空」「报工量超计划剩余」混在一起，客户端分不出该刷新还是该改单。
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(executionSegments, never()).approve(any(), any());
+        verify(reportRepo, never()).saveAndFlush(any());
+    }
+
+    private static com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest
+            approveRequest(String key) {
+        var request = new com.uten.imp.features.production.dailyreport.dto
+                .DailyReportApproveRequest();
+        request.setIdempotencyKey(key);
+        return request;
+    }
+
+    private static ProductionDailyReport approvedReport(UUID reportId, UUID makerId) {
+        ProductionDailyReport report = new ProductionDailyReport();
+        report.setId(reportId);
+        report.setBillNo("SR20260922000005");
+        report.setBillDate(LocalDate.of(2026, 9, 22));
+        report.setMakerId(makerId);
+        report.setStatus((short) 1);
+        report.setRowVersion(3);
+        return report;
+    }
+
+    /** 审核路径只碰顾问锁、命令账本与(回放时)详情读；[ledgerRow] 为 null 表示这把键还没用过。 */
+    private void stubApproveLedger(Object[] ledgerRow) {
+        Query advisory = query(true);
+        Query commandRead = query(false);
+        when(commandRead.getResultList()).thenReturn(ledgerRow == null
+                ? List.of()
+                : java.util.Collections.singletonList(ledgerRow));
+        // 只有回放路径会走到这几张表；拒绝路径在此之前就抛了，所以放宽严格桩检查。
+        Query empty = org.mockito.Mockito.mock(Query.class);
+        org.mockito.Mockito.lenient()
+                .when(empty.setParameter(anyString(), any())).thenReturn(empty);
+        org.mockito.Mockito.lenient()
+                .when(empty.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("pg_advisory_xact_lock")) return advisory;
+            if (sql.contains("SELECT command_kind, request_hash")
+                    && sql.contains("production_daily_report_commands")) {
+                return commandRead;
+            }
+            if (sql.contains("production_daily_report_workers")
+                    || sql.contains("production_daily_report_material_usages")
+                    || sql.contains("production_daily_report_items")) {
+                return empty;
+            }
+            throw new AssertionError("unexpected SQL: " + sql);
+        });
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
     }
 }

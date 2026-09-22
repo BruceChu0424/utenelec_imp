@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.support.DailyReportApproveRequests;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
@@ -57,7 +58,16 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@org.springframework.context.annotation.Import(ProductionJdbcMeasurement.Configuration.class)
 class WorkshopDirectTransferBatchEndToEndTest {
+
+    /**
+     * 一行车间直送审核的语句预算(2026-09-22 实测 490 条, 留一点余量)。
+     *
+     * <p>这个数字是拿来挡回归的，不是拿来抬的：抬它之前先跑这条用例看剖面，
+     * 确认多出来的语句是新做的事而不是又一遍重复的读。
+     */
+    private static final int APPROVE_STATEMENTS_BUDGET = 520;
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -112,6 +122,42 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 new SegmentTransitionRequest(version(c.segment()), "dt-full-start-" + c.segment()));
         assertEquals("IN_PROGRESS", started.status());
         assertTrue(started.materialIssued());
+    }
+
+    /**
+     * 直送审核的语句预算(2026-09-22)。
+     *
+     * <p>一次审核必须是一笔事务，且语句条数守在上限内。上限是刻意钉死的：审核是整条报工链
+     * 最重的一次写，Flutter Web 对慢写请求的容忍度有限，谁把它做慢了要在这里先红一次。
+     * 2026-09-22 实测：一行直送审核 490 条语句、约 2.0 秒 JDBC + 0.4 秒提交。
+     */
+    @Test
+    void oneDirectTransferApproveStaysInsideItsStatementBudget() {
+        Case c = create("dt-budget", false);
+        fixture.loginAs(c.workerUser());
+        confirmRoute(c.plan(), c.segment(), "FULL_KIT");
+
+        var sample = measureTransferApprove(c, "100");
+
+        // 超预算时把剖面打出来，省得下一个人还要自己加日志再跑一遍两百秒。
+        if (sample.logicalStatements > APPROVE_STATEMENTS_BUDGET) {
+            sample.fingerprints.entrySet().stream()
+                    .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                    .limit(20)
+                    .forEach(entry -> System.out.println("APPROVE-PROFILE "
+                            + entry.getKey() + " calls=" + entry.getValue()
+                            + " millis=" + (sample.nanosByFingerprint
+                                    .getOrDefault(entry.getKey(), 0L) / 1_000_000.0)
+                            + " label=" + sample.labelsByFingerprint.get(entry.getKey())));
+        }
+        assertEquals(1, sample.commits, "审核必须是一笔事务，剖面才有意义");
+        assertTrue(sample.logicalStatements <= APPROVE_STATEMENTS_BUDGET,
+                "一行直送审核用了 " + sample.logicalStatements
+                        + " 条语句，超出预算 " + APPROVE_STATEMENTS_BUDGET
+                        + "；先量再改，别直接抬预算");
+        // 顺带确认省下来的不是靠少做事：父件照样提升、领料单照样自动出库。
+        assertEquals("READY", status(c.segment()));
+        assertAutoIssued(drawOf(c.segment()), "100");
     }
 
     @Test
@@ -321,7 +367,41 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
-        reports.approve(reports.create(report).getId());
+        reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
+    }
+
+    /** 同 {@link #transfer}，但只对「审核」那一段计量，返回本次审核的 JDBC 剖面。 */
+    private ProductionJdbcMeasurement.Sample measureTransferApprove(
+            Case c, String quantity) {
+        fixture.loginAs(c.workerUser());
+        var report = new DailyReportSaveRequest();
+        report.setIdempotencyKey("dt-probe-" + c.segment() + "-" + quantity);
+        report.setBillDate(BusinessTime.today());
+        report.setWarehouseId(c.leaf());
+        report.setDepartmentId(c.workshop());
+        report.setWorkerIds(List.of(c.worker()));
+        var item = new DailyReportItemLine();
+        item.setLineNo(1);
+        item.setExecutionSegmentId(c.childSegment());
+        item.setPlanItemId(db.queryForObject(
+                "SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",
+                UUID.class, c.childSegment()));
+        item.setGoodsId(c.child());
+        item.setUnitId(c.world().unitId());
+        item.setUnitRate(BigDecimal.ONE);
+        item.setQty(new BigDecimal(quantity));
+        item.setIsFinal(false);
+        item.setDestination("WORKSHOP");
+        item.setDirectTransferDemandId(parentDemand(c));
+        report.setItems(List.of(item));
+        UUID reportId = reports.create(report).getId();
+        ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
+        try {
+            reports.approve(reportId, DailyReportApproveRequests.freshKey());
+        } finally {
+            ProductionJdbcMeasurement.end();
+        }
+        return sample;
     }
 
     private void receive(Case c, UUID goods, UUID warehouse, String quantity) {

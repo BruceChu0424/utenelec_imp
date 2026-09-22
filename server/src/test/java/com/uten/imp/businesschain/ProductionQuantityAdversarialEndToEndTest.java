@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.support.DailyReportApproveRequests;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
@@ -83,7 +84,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         requestReturn(c,"3");
         qty("7",capacity(c));
         fixture.loginAs(c.world().superAdminUserId());
-        assertThrows(ApiException.class,()->reports().approve(draft.getId()),"approval must reread the returned-material freeze");
+        assertThrows(ApiException.class,()->reports().approve(draft.getId(), DailyReportApproveRequests.freshKey()),"approval must reread the returned-material freeze");
         reports().delete(draft.getId());
         qty("7",beans.getBean(com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService.class)
                 .list(1,50,null,c.workshop(),List.of(c.segment())).getItems().getFirst().maxReportQty());
@@ -109,7 +110,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         assertEquals(1,candidates.size(),"a started FULL_KIT task must remain reportable after a real surplus return");
         qty("7",candidates.getFirst().maxReportQty());
         assertThrows(ApiException.class,()->reports().create(report(c,"8",false)));
-        reports().approve(reports().create(report(c,"7",false)).getId());
+        reports().approve(reports().create(report(c,"7",false)).getId(), DailyReportApproveRequests.freshKey());
         qty("7",db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
     }
 
@@ -141,7 +142,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         var request=report(c,"7",true);
         var usage=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
         usage.setDemandId(parentDemand(c));usage.setQtyBase(new BigDecimal("7"));request.setMaterialLines(List.of(usage));
-        UUID report=reports().approve(reports().create(request).getId()).getId();
+        UUID report=reports().approve(reports().create(request).getId(), DailyReportApproveRequests.freshKey()).getId();
         UUID reportItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=?",UUID.class,report);
         beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class).register(report,
                 new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest(
@@ -181,7 +182,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         Case c=create("aq-final-reverse",false,"10");
         confirm(c,"CONTINUOUS"); receive(c,c.material(),c.leaf(),"4"); issueDraws(c); start(c);
         fixture.loginAs(c.world().superAdminUserId());
-        var completed=reports().approve(reports().create(report(c,"4",true)).getId());
+        var completed=reports().approve(reports().create(report(c,"4",true)).getId(), DailyReportApproveRequests.freshKey());
         qty("6",db.queryForObject("SELECT released_qty FROM production_material_demands WHERE id=?",BigDecimal.class,parentDemand(c)));
         qty("10",db.queryForObject("SELECT qty+COALESCE(capped_qty,0) FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         qty("10",db.queryForObject("SELECT submitted_qty FROM production_material_analysis_plan_links WHERE plan_id=?",BigDecimal.class,c.plan()));
@@ -226,11 +227,11 @@ class ProductionQuantityAdversarialEndToEndTest {
         Case c=create("aq-normal-waste",false,"10");
         confirm(c,"CONTINUOUS"); receive(c,c.material(),c.leaf(),"11"); issueDraws(c); start(c);
         fixture.loginAs(c.world().superAdminUserId());
-        reports().approve(reports().create(report(c,"5",false)).getId());
+        reports().approve(reports().create(report(c,"5",false)).getId(), DailyReportApproveRequests.freshKey());
         // The BOM already includes normal process waste: actual consumption records it once.
         settle(c,"CONSUMED","6");
         qty("10",capacity(c));
-        reports().approve(reports().create(report(c,"5",false)).getId());
+        reports().approve(reports().create(report(c,"5",false)).getId(), DailyReportApproveRequests.freshKey());
         qty("10",db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
     }
 
@@ -238,10 +239,10 @@ class ProductionQuantityAdversarialEndToEndTest {
     void reversingLaterFinalWithoutReductionCannotRestoreAnotherReportsCap() {
         Case c=create("aq-final-owner",false,"10");
         confirm(c,"CONTINUOUS"); receive(c,c.material(),c.leaf(),"10"); issueDraws(c); start(c);
-        var first=reports().approve(reports().create(report(c,"2",false)).getId());
-        var owner=reports().approve(reports().create(report(c,"2",true)).getId());
+        var first=reports().approve(reports().create(report(c,"2",false)).getId(), DailyReportApproveRequests.freshKey());
+        var owner=reports().approve(reports().create(report(c,"2",true)).getId(), DailyReportApproveRequests.freshKey());
         reports().reverse(first.getId());
-        var later=reports().approve(reports().create(report(c,"2",true)).getId());
+        var later=reports().approve(reports().create(report(c,"2",true)).getId(), DailyReportApproveRequests.freshKey());
         reports().reverse(later.getId());
         qty("4",db.queryForObject("SELECT qty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         qty("6",db.queryForObject("SELECT capped_qty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
@@ -259,7 +260,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         usage.setDemandId(parentDemand(c)); usage.setQtyBase(new BigDecimal("5"));
         request.setMaterialLines(List.of(usage));
         var draft=reports().create(request);
-        assertThrows(ApiException.class,()->reports().approve(draft.getId()));
+        assertThrows(ApiException.class,()->reports().approve(draft.getId(), DailyReportApproveRequests.freshKey()));
         qty("10",db.queryForObject("SELECT qty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         qty("0",db.queryForObject("SELECT COALESCE(capped_qty,0) FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         qty("0",db.queryForObject("SELECT released_qty FROM production_material_demands WHERE id=?",BigDecimal.class,parentDemand(c)));
@@ -293,10 +294,10 @@ class ProductionQuantityAdversarialEndToEndTest {
                     ledger.refreshDemandStatuses(List.of(demand.getId()));
                 });
         var finalDraft=reports().create(report(c,"4",true));
-        ApiException failure=assertThrows(ApiException.class,()->reports().approve(finalDraft.getId()));
+        ApiException failure=assertThrows(ApiException.class,()->reports().approve(finalDraft.getId(), DailyReportApproveRequests.freshKey()));
         assertTrue(failure.getMessage().contains("供给"),failure.getMessage());
         reports().delete(finalDraft.getId());
-        reports().approve(reports().create(report(c,"4",false)).getId());
+        reports().approve(reports().create(report(c,"4",false)).getId(), DailyReportApproveRequests.freshKey());
         qty("10",db.queryForObject("SELECT qty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         qty("4",db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE plan_item_id=?",Integer.class,c.planItem()));
@@ -321,12 +322,12 @@ class ProductionQuantityAdversarialEndToEndTest {
         assertTrue(blocked.getMessage().contains("尚差 6"),blocked.getMessage());
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_items WHERE execution_segment_id=?",Integer.class,c.childSegment()));
         item.setIsFinal(false);
-        reports().approve(reports().create(request).getId());
+        reports().approve(reports().create(request).getId(), DailyReportApproveRequests.freshKey());
         qty("10",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,c.childSegment()));
         qty("10",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,parentDemand(c)));
         request.setIdempotencyKey("aq-internal-complete-"+UUID.randomUUID());
         item.setQty(new BigDecimal("6")); item.setIsFinal(true);
-        reports().approve(reports().create(request).getId());
+        reports().approve(reports().create(request).getId(), DailyReportApproveRequests.freshKey());
         qty("10",db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=?",BigDecimal.class,childItem));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE plan_item_id=?",Integer.class,childItem));
     }
@@ -338,15 +339,15 @@ class ProductionQuantityAdversarialEndToEndTest {
         qty("10",db.queryForObject("SELECT SUM(qty-released_qty) FROM stock_reservations WHERE demand_id=? AND NOT is_deleted",BigDecimal.class,parentDemand(c)));
         qty("5",capacity(c));
         var finalDraft=reports().create(report(c,"5",true));
-        ApiException blocked=assertThrows(ApiException.class,()->reports().approve(finalDraft.getId()),
+        ApiException blocked=assertThrows(ApiException.class,()->reports().approve(finalDraft.getId(), DailyReportApproveRequests.freshKey()),
                 "short final must not silently leave a live unissued material commitment");
         assertTrue(blocked.getMessage().contains("未实发"),blocked.getMessage());
         qty("10",db.queryForObject("SELECT qty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE plan_item_id=?",Integer.class,c.planItem()));
         reports().delete(finalDraft.getId());
-        reports().approve(reports().create(report(c,"5",false)).getId());
+        reports().approve(reports().create(report(c,"5",false)).getId(), DailyReportApproveRequests.freshKey());
         issueSlice(c,"5");
-        reports().approve(reports().create(report(c,"5",true)).getId());
+        reports().approve(reports().create(report(c,"5",true)).getId(), DailyReportApproveRequests.freshKey());
         qty("10",db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=?",BigDecimal.class,c.planItem()));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",Integer.class,c.plan()));
     }
@@ -542,7 +543,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
-        reports().approve(reports().create(report).getId());
+        reports().approve(reports().create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 
     private UUID childGoods(Case c) {

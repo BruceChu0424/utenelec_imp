@@ -23,6 +23,7 @@
 | 版本 | 数据库职责 | 对存量数据的影响 |
 |---|---|---|
 | V409 | 为 `production_daily_reports` 增加单调 `row_version`；新增 append-only `production_daily_report_commands`，以操作者、幂等键和请求哈希绑定唯一日报 | 既有日报版本为 0；不改数量、状态或库存 |
+| V644 | 把 V409 的「创建命令账本」升级为「日报命令账本」：加 `command_kind`(CREATE/APPROVE/REVERSE，存量默认 CREATE)，`UNIQUE(report_id)` 换成 `UNIQUE(report_id, command_kind)`；审核自此要求幂等键 | 不加表；状态闸不放宽，只把「已不是草稿」从 400 换成 409 |
 | V410 | 新增 FQC 检验、决定事件、放行命令和 PASS 分配四张账；数据库守住决定投影、命令总量和 PASS 容量 | 明确不回填历史 FQC，不把既有入库或 `iqty` 猜成 PASS |
 | V411 | 在写唯一索引前检查活动 `plan_draw_links` 是否重复；一张物理 DRAW 只能有一个活动生产计划归属 | 发现歧义即阻断迁移，不自动删除、合并或猜归属 |
 | V412 | 新增来源报工红冲对应的 FQC cancellation 事件；决定和放行分配保留为 append-only 历史；有活动成品入库时禁止取消 | 不补造历史 cancellation；只扩展检验状态约束 |

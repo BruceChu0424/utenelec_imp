@@ -4,9 +4,9 @@
 // XMLHttpRequest 没有独立的建连超时，dio_web_adapter 在 xhr.send() 之前就起一个
 // Timer(connectTimeout)，到点若 readyState 还没到 HEADERS_RECEIVED 就 xhr.abort()。
 // 这个 Timer 只被「上传进度」或「下载进度」事件取消，而上传进度监听只在请求带 body 时才注册
-// (dio 仅在 data != null 时建上传流)。于是所有不带 body 的写请求(/approve、/reverse、
-// /confirm 这一类)把 connectTimeout 变成了「服务端必须在这么久内开口」的硬上限，
-// 与 receiveTimeout 完全无关。
+// (dio 仅在 data != null 时建上传流)。于是所有不带 body 的写请求(/reverse、/confirm 这一类)
+// 把 connectTimeout 变成了「服务端必须在这么久内开口」的硬上限，与 receiveTimeout 完全无关。
+// (生产日报 /approve 自 V644 起带幂等键 body，已不吃这一条；但同类端点还有很多。)
 //
 // 后果是最坏的一种：服务端事务已经提交，浏览器却把连接掐了，用户看到「网络连接超时」，
 // 页面停在旧状态，再点一次就撞上「仅草稿单据可审核」。实测 15.094 秒的一次审核就是这样丢的。

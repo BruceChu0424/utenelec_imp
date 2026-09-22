@@ -4,6 +4,7 @@ import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportQueryFilter;
@@ -42,7 +43,7 @@ import java.util.UUID;
  *   <li>POST   /api/production/daily-reports            新建（草稿）</li>
  *   <li>PUT    /api/production/daily-reports/{id}       编辑（仅草稿）</li>
  *   <li>DELETE /api/production/daily-reports/{id}       软删（仅草稿/红冲）</li>
- *   <li>POST   /api/production/daily-reports/{id}/approve  审核（0→1，本期仅置状态）</li>
+ *   <li>POST   /api/production/daily-reports/{id}/approve  审核(0→1，body 带幂等键，同键重发原样回放)</li>
  *   <li>POST   /api/production/daily-reports/{id}/reverse  红冲（1→-1）</li>
  * </ul>
  */
@@ -157,8 +158,10 @@ public class ProductionDailyReportController {
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('production_daily_report:approve')")
-    public DailyReportDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+    public DailyReportDetail approve(
+            @PathVariable UUID id,
+            @Valid @RequestBody DailyReportApproveRequest req) {
+        return service.approve(id, req);
     }
 
     @PostMapping("/{id}/reverse")

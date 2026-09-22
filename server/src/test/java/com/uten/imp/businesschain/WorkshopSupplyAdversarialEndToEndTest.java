@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.support.DailyReportApproveRequests;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
@@ -613,7 +614,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         item.setSalesOrderItemId(db.queryForObject("SELECT sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,c.segment()));
         item.setGoodsId(c.parent());item.setUnitId(c.world().unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(quantity));
         item.setIsFinal(true);item.setDestination("WAREHOUSE");report.setItems(List.of(item));
-        UUID reportId=reports.create(report).getId();reports.approve(reportId);return reportId;
+        UUID reportId=reports.create(report).getId();reports.approve(reportId, DailyReportApproveRequests.freshKey());return reportId;
     }
 
     private UUID reportTo(Case c,UUID demand,String quantity) {
@@ -626,7 +627,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         var allocations=db.queryForList("SELECT id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,c.childSegment());
         if(allocations.size()==1)item.setExecutionSegmentSalesAllocationId(allocations.getFirst());
         item.setDestination(demand==null?"WAREHOUSE":"WORKSHOP");item.setDirectTransferDemandId(demand);report.setItems(List.of(item));
-        UUID reportId=reports.create(report).getId();reports.approve(reportId);return reportId;
+        UUID reportId=reports.create(report).getId();reports.approve(reportId, DailyReportApproveRequests.freshKey());return reportId;
     }
 
     // ===================== 夹具 =====================
@@ -745,7 +746,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
-        reports.approve(reports.create(report).getId());
+        reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 
     private void receive(Case c, UUID goods, UUID warehouse, String quantity) {

@@ -22,8 +22,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -260,8 +262,11 @@ public class ProductionWorkshopDirectTransferService {
 
         // 一张报工可送至多个收料主仓；每个线边位置分别保留真实仓库身份。
         Map<UUID, UUID> transferByLocation = new LinkedHashMap<>();
+        // 同一张报工常有多行出自同一个执行工单；车间成员资格只由 (工单, 当前操作者) 决定，
+        // 在一次调用里逐行重查是纯粹的重复往返(每行两条语句)。
+        Set<UUID> memberCheckedSegments = new LinkedHashSet<>();
         for (ProductionDailyReportItem item : direct) {
-            Resolved resolved = resolve(item);
+            Resolved resolved = resolve(item, memberCheckedSegments);
             UUID transferId = transferByLocation.computeIfAbsent(
                     resolved.lineSideWarehouseId(),
                     location -> insertTransfer(report, resolved.workshopDepartmentId(), location));
@@ -347,7 +352,8 @@ public class ProductionWorkshopDirectTransferService {
      * 逐行解析收料需求、车间与线边仓，并把「同车间」这条边界在应用层也说清楚。
      * 线边仓按「车间 × 收料主仓」自动配置(V595)，第一次直送时就地建好。
      */
-    private Resolved resolve(ProductionDailyReportItem item) {
+    private Resolved resolve(
+            ProductionDailyReportItem item, Set<UUID> memberCheckedSegments) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT demand.id, receiving.id, receiving.plan_id,
                                producing.workshop_department_id,
@@ -394,7 +400,9 @@ public class ProductionWorkshopDirectTransferService {
                     "转送车间只能在同一个车间内部进行；跨车间请改选「送入仓库」，"
                             + "由仓库送检登记、品质部检验后入库再发料");
         }
-        requireWorkshopMember(item.getExecutionSegmentId());
+        if (memberCheckedSegments.add(item.getExecutionSegmentId())) {
+            requireWorkshopMember(item.getExecutionSegmentId());
+        }
         BigDecimal remaining=decimal(row[10]);
         if (baseQuantity(item).compareTo(remaining)>0) {
             throw conflict("本生产来源剩余可直送数量为 " + remaining.stripTrailingZeros().toPlainString()

@@ -2029,9 +2029,13 @@ class ProductionDailyReportRepository {
     await api.delete('/production/daily-reports/$id'); // ENDPOINT
   }
 
-  Future<ProductionDailyReportDetail> approve(String id) async {
+  Future<ProductionDailyReportDetail> approve(
+    String id, {
+    required String idempotencyKey,
+  }) async {
     final json = await api.post(
       '/production/daily-reports/$id/approve',
+      body: {'idempotencyKey': idempotencyKey},
     ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
   }

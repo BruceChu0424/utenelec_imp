@@ -7,8 +7,6 @@
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/表头卡/附件），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部。
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,13 +26,13 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_daily_report.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_status_badge.dart';
@@ -92,7 +90,8 @@ class _ProductionDailyReportDetailPageState
       final d = await ref
           .read(productionDailyReportRepositoryProvider)
           .detail(widget.id);
-      await _hydrate(d);
+      if (!mounted) return;
+      _applyDetail(d);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -108,24 +107,11 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  /// 首次加载用：页面此刻还是转圈，先把名称备齐再一次性出画面，不会闪「—」。
-  Future<void> _hydrate(ProductionDailyReportDetail d) async {
-    await _loadNames(d);
-    if (!mounted) return;
-    _applyDetail(d);
-  }
-
-  /// 写操作(审核/红冲)回来后用：权威状态**先**落地，按钮立刻与服务端一致，名称随后补。
-  /// 名称只是展示，绝不能挡在状态翻转前面——中间任何一次等待都可能让页面停在旧状态，
-  /// 而旧状态上还画着「审核」按钮，等于邀请用户重复提交。
-  /// 审核/红冲接口本身就返回最新详情，走这里直接用，不再多发一次详情请求
-  /// (2026-09-20 用户反馈审核后等太久)。
-  Future<void> _applyFreshDetail(ProductionDailyReportDetail d) async {
-    _applyDetail(d);
-    await _loadNames(d);
-    if (mounted) setState(() {});
-  }
-
+  /// 落一份详情到页面。
+  ///
+  /// 本页显示的每个名字都由服务端随单解析下发(货品名称/编号/颜色/单位/车间/参与人员),
+  /// 所以这里没有任何名称预热，状态翻转不再被字典往返挡住——审核/红冲接口本身就返回
+  /// 最新详情，走这里直接用，也不再多发一次详情请求(2026-09-20 用户反馈审核后等太久)。
   void _applyDetail(ProductionDailyReportDetail d) {
     setState(() {
       _detail = d;
@@ -134,25 +120,21 @@ class _ProductionDailyReportDetailPageState
     });
   }
 
-  /// 补齐本页要用的名称缓存。MasterNameService 的缓存都是实例字段，连接恢复或权限快照
-  /// 变化会让 provider 整体重建、缓存清零，所以每次都要把字典一起 ensure 一遍，
-  /// 否则货品/颜色/单位/车间会集体变成「—」且永不自愈(2026-09-21 审核超时事故的次生现象)。
-  Future<void> _loadNames(ProductionDailyReportDetail d) async {
-    final names = ref.read(masterNameServiceProvider);
-    await names.ensureLoaded();
-    final goodsIds = d.items.map((e) => e.goodsId).whereType<String>().toSet();
-    await names.loadGoodsNames(goodsIds);
-    // 货品列要显示编号，名称若早已被搜索缓存则 loadGoodsNames 会跳过详情，
-    // 这里补一次详情(编号)确保身份三属性齐全。
-    await names.loadGoodsDetails(goodsIds);
-    await names.loadEmployeeNames(d.workerIds);
-  }
-
   Future<void> _approve() => _doAction(
     '审核后只累计完工申报量 fqty，并生成仓库到货登记任务；'
         '此时不会增加库存或 iqty。仓库登记成品仓与库位并送品质部检查，'
         '品质放行后再进入最终点收。确认继续？',
-    (repo) => repo.approve(widget.id),
+    (repo) => repo.approve(
+      widget.id,
+      // 同一次点击重发必须是同一把键，换一次点击必须换键。
+      // 用「单号 + 当前版本号」确定性派生而不是页面里存一个随机数：
+      // 页面重建或来回跳转后仍算得出同一把键，而服务端一旦真的提交、版本号变了，
+      // 键自然就变了，不会把下一次操作当成上一次的重放。
+      idempotencyKey: businessIdempotencyKey(
+        'daily-report-approve',
+        '${widget.id}:${_detail?.rowVersion ?? 0}',
+      ),
+    ),
     '已审核',
     reviewerResponsibility: true,
   );
@@ -205,7 +187,7 @@ class _ProductionDailyReportDetailPageState
       ref.invalidate(
         documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
       );
-      await _applyFreshDetail(updated);
+      _applyDetail(updated);
     } on ApiException catch (e) {
       await _settleFailedAction(e.message, ok);
     } catch (_) {
@@ -244,8 +226,7 @@ class _ProductionDailyReportDetailPageState
       ref.invalidate(
         documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
       );
-      await _applyFreshDetail(fresh);
-      if (!mounted) return;
+      _applyDetail(fresh);
       if (fresh.status != before) {
         context.appSuccess('$successMessage(本次提交服务端已完成，页面已刷新)');
         return;
@@ -302,23 +283,10 @@ class _ProductionDailyReportDetailPageState
 
   @override
   Widget build(BuildContext context) {
-    // 连接恢复或权限快照变化会整体重建 MasterNameService，新实例的名称缓存是空的，
-    // 本页所有客户端解析的名称(货品/编号/颜色/单位/车间)会集体变成「—」。
-    // 监听到换实例就补一次，别让用户盯着一屏破折号(2026-09-21 审核超时事故的次生现象)。
-    ref.listen(masterNameServiceProvider, (previous, next) {
-      if (previous == null || identical(previous, next)) return;
-      final detail = _detail;
-      if (detail == null) return;
-      unawaited(() async {
-        await _loadNames(detail);
-        if (mounted) setState(() {});
-      }());
-    });
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
     );
     final theme = Theme.of(context);
-    final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
       appBar: const UtenAppBar(title: '生产日报详情', showBackButton: true),
       body: Stack(
@@ -355,7 +323,7 @@ class _ProductionDailyReportDetailPageState
                                 ),
                               ),
                             ),
-                            _headerCard(theme, names),
+                            _headerCard(theme),
                             // 日报附件（报工照片/检验记录）：草稿可管理，审核后只读。
                             // 属「备注类小卡」，并入折叠头尾部随头部一起收起。
                             const SizedBox(height: UtenSpacing.s12),
@@ -385,7 +353,7 @@ class _ProductionDailyReportDetailPageState
                           UtenFloatingActionGroup.controlHeight +
                               UtenSpacing.s32,
                         ),
-                        child: _itemsCard(theme, names),
+                        child: _itemsCard(theme),
                       ),
                     ),
             ),
@@ -405,22 +373,19 @@ class _ProductionDailyReportDetailPageState
     );
   }
 
-  Widget _headerCard(ThemeData theme, MasterNameService names) {
+  Widget _headerCard(ThemeData theme) {
     final d = _detail!;
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      if (d.departmentId != null || (d.workshopName ?? '').isNotEmpty)
-        _KV(
-          '车间',
-          d.departmentId != null
-              ? names.department(d.departmentId)
-              : d.workshopName,
-        ),
-      if (d.workerIds.isNotEmpty)
-        _KV('生产参与人员', d.workerIds.map(names.employee).join('、')),
+      // 车间与参与人员都用服务端随单解析的名字：客户端字典缓存会随连接恢复或权限快照
+      // 变化整体清空，那时这两行会变「—」且不自愈; 员工档案接口还要 employee:view。
+      if ((d.departmentName ?? d.workshopName ?? '').isNotEmpty)
+        _KV('车间', d.departmentName ?? d.workshopName),
+      if (d.workerNames.isNotEmpty)
+        _KV('生产参与人员', d.workerNames.where((n) => n.isNotEmpty).join('、')),
       if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),
       if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark),
       _KV(
@@ -464,7 +429,7 @@ class _ProductionDailyReportDetailPageState
   /// 明细区：统一表格样式（MasterDataTableView，与全站报表/主档同款），
   /// 不再是卡片式拼凑行；口径保留（颜色/单位并入货品列）。
   /// 2026-09-11 起是折叠容器的 body：标题行钉住、表格 primary:true 参与联动内滚。
-  Widget _itemsCard(ThemeData theme, MasterNameService names) {
+  Widget _itemsCard(ThemeData theme) {
     final items = _detail!.items;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -488,41 +453,35 @@ class _ProductionDailyReportDetailPageState
                 key: 'goods',
                 label: '货品名称',
                 width: 200,
-                value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
+                value: (it) => _dictText(it.goodsName) ?? '—',
                 cellBuilderHandlesSemantics: true,
-                cellBuilder: (_, it) => UtenGoodsIdentityCell(
-                  name: _dictText(names.goods(it.goodsId)),
-                ),
+                cellBuilder: (_, it) =>
+                    UtenGoodsIdentityCell(name: _dictText(it.goodsName)),
               ),
               MasterColumnDef(
                 key: 'goodsCode',
                 label: '编号',
                 width: 130,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  names.goodsInfo(it.goodsId)?.code,
-                ),
-                cellBuilder: (_, it) =>
-                    UtenGoodsAttributeCell(names.goodsInfo(it.goodsId)?.code),
+                value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
               ),
               MasterColumnDef(
                 key: 'colorName',
                 label: '颜色',
                 width: 96,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  _dictText(names.color(it.colorId)),
-                ),
+                value: (it) =>
+                    UtenGoodsAttributeCell.text(_dictText(it.colorName)),
                 cellBuilder: (_, it) =>
-                    UtenGoodsAttributeCell(_dictText(names.color(it.colorId))),
+                    UtenGoodsAttributeCell(_dictText(it.colorName)),
               ),
               MasterColumnDef(
                 key: 'unitName',
                 label: '单位',
                 width: 72,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  _dictText(names.unit(it.unitId)),
-                ),
+                value: (it) =>
+                    UtenGoodsAttributeCell.text(_dictText(it.unitName)),
                 cellBuilder: (_, it) =>
-                    UtenGoodsAttributeCell(_dictText(names.unit(it.unitId))),
+                    UtenGoodsAttributeCell(_dictText(it.unitName)),
               ),
               MasterColumnDef(
                 key: 'qty',
@@ -667,7 +626,7 @@ class _ProductionDailyReportDetailPageState
   }
 }
 
-/// 字典解析结果转身份格入参：MasterNameService 未命中时返回 '—'，
+/// 身份格入参归一：服务端可能给空串或历史占位「—」，
 /// 身份格约定「没有就不显示」，占位符要还原成 null。
 String? _dictText(String? value) {
   final trimmed = value?.trim();

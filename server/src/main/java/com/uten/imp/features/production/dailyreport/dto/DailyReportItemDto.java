@@ -52,4 +52,16 @@ public class DailyReportItemDto {
     /** Remaining task target after approved ordinary reports; drafts are not completion. */
     @lombok.Setter
     private BigDecimal remainingPlanQty;
+    /**
+     * 货品身份三列随单下发(名称/编号/颜色)与单位：页面不再自己查字典解析。
+     *
+     * <p>客户端字典缓存会随连接恢复或权限快照变化整体清空，那时逐格解析出来的名称
+     * 会集体变成「—」且不会自愈(2026-09-21 生产日报审核超时实测)。同一响应里的
+     * 制单员与「转给工单」本来就由服务端解析，这里补齐口径；跨模块读货品字典还要
+     * goods:view/color:view/unit:view，随单下发一并解除这层权限耦合。
+     */
+    private String goodsName;
+    private String goodsCode;
+    private String colorName;
+    private String unitName;
 }

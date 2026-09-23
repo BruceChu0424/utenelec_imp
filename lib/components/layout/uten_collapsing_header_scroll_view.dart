@@ -39,10 +39,28 @@
 // 是否收完）。表格上滑置顶之前不显示上下滚动条，进入表体内滚后再显示（显示的是
 // 表格自带的表内滚动条，大小与表内容对应）。紧凑回退分支复用同一外层控制器，
 // 「收完」= 整页滚到底（表格盒占满视口）。
+//
+// 滚轮交接手感（2026-09-22 用户口径「表格置顶后得再滑一点点距离才开始动表内；往下
+// 也一样」）：NestedScrollView 原生把一格滚轮拆给外层和内层——收完头部剩下的余量
+// 当场就滚进表内，表格刚置顶第一行就没了；反向亦然，表内一回顶头部立刻被拉下来，
+// 「看不到最前面的内容」。本组件在 NestedScrollView 上盖一层透明 Listener 先拿到
+// 滚轮（命中序在内外 Scrollable 之前），自己决定怎么给：
+//  - 一格滚到「刚好置顶」/「刚好回顶」即止，余量丢弃；
+//  - 越过交接点之后，同方向还要再滚 [wheelGateDistance] 的空行程才开始动另一段，
+//    掉头即撤门（反向是明确意图，不吃空行程）；
+//  - 命中点下若有**独立**（非联动）的竖向滚动件且还能滚（页内侧栏、嵌套面板），
+//    让给框架原样处理，不抢；shift+滚轮（横滚修饰键）也不接管；
+//  - 只管滚轮 / 触控板；触屏拖动仍由 NestedScrollView 原生协调。
+//
+// 卡顿本身（「表格一步步往置顶移动时一卡一卡」）的根因在 NestedScrollView 的 body
+// 每格都在变高，见 MasterDataTableView 表体 LayoutBuilder 的「只按宽度重建」。
 
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/responsive/breakpoint.dart';
 
@@ -62,7 +80,7 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
     this.pinnedHeader,
     this.pinnedHeaderExtent,
     this.controller,
-    this.floatHeaderSlivers = false,
+    this.wheelGateDistance = 50,
     this.compactBreakpoint = UtenBreakpoints.mediumStart,
     this.compactHeightBreakpoint = UtenBreakpoints.mediumStart,
     this.compactBodyMinHeight = 360,
@@ -89,9 +107,10 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
   /// 可选外层 ScrollController（一般无需传）。
   final ScrollController? controller;
 
-  /// 是否在向下滚时优先让 header 浮回（floating）。默认 false = 平滑跟手：先把 body
-  /// 回顶，再把 header 拉回（非吸附）。
-  final bool floatHeaderSlivers;
+  /// 滚轮交接空行程（逻辑像素）：表格刚置顶 / 表内刚回顶之后，同方向再滚这么多
+  /// 才开始动另一段（见文件头「滚轮交接手感」）。0 = 只丢弃交接那一格的余量，
+  /// 不加空行程。默认 50 ≈ 网页端半格滚轮（Chrome 一格 100）。
+  final double wheelGateDistance;
 
   /// 紧凑视口回退阈值（默认 [UtenBreakpoints.mediumStart] = 600，即手机竖屏）：视口宽
   /// 小于该值时不再用 NestedScrollView——其 body 高度 = 视口高 − 顶部内容高，手机上
@@ -164,6 +183,17 @@ class _UtenCollapsingHeaderScrollViewState
   late final ScrollController _ownedOuter = ScrollController();
   ScrollController get _outer => widget.controller ?? _ownedOuter;
 
+  /// NestedScrollView 注入给 body 的 inner controller（body 里 primary 可滚动件
+  /// 挂在它上面）。建 body 时记下，滚轮门要读表内位置。
+  ScrollController? _innerController;
+
+  /// 滚轮门状态：方向（+1 收头部 / 表内下翻，-1 表内回顶 / 放头部；0 未上门）
+  /// 与剩余空行程。
+  int _gateDirection = 0;
+  double _gateBudget = 0;
+
+  static const double _epsilon = 0.5;
+
   @override
   void initState() {
     super.initState();
@@ -220,6 +250,157 @@ class _UtenCollapsingHeaderScrollViewState
     });
   }
 
+  // ------------------------- 滚轮交接门 -------------------------
+
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_outer.hasClients) return;
+    final dy = event.scrollDelta.dy;
+    if (dy == 0) return;
+    // shift+滚轮是横滚（ScrollBehavior.pointerAxisModifiers），交给横向滚动件。
+    final modifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
+    if (HardwareKeyboard.instance.logicalKeysPressed.any(modifiers.contains)) {
+      return;
+    }
+    // 用户口径「不管在表格内还是表格外滚，都先把表格置顶」：头部没收完之前的上滚
+    // 一律归联动，不看命中点下是谁；其余情况沿命中路径看有没有独立滚动件要先滚。
+    final outer = _outer.position;
+    final collapsing =
+        dy > 0 && outer.maxScrollExtent - outer.pixels > _epsilon;
+    if (!collapsing && !_wheelBelongsToLinkedScroll(event, dy)) return;
+    GestureBinding.instance.pointerSignalResolver.register(
+      event,
+      (_) => _applyWheel(dy),
+    );
+  }
+
+  /// 这格滚轮是不是联动滚动的：沿命中路径由内向外找竖向视口——先碰到联动的
+  /// （外层 / inner）就接管；先碰到独立的且它还能往这个方向滚，就让给框架
+  /// （页内侧栏、嵌套面板自己滚）；什么都没碰到（头部 / 空白）也接管。
+  bool _wheelBelongsToLinkedScroll(PointerScrollEvent event, double dy) {
+    final result = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(result, event.position, event.viewId);
+    final linked = <ViewportOffset>{
+      _outer.position,
+      ...?_innerController?.positions,
+    };
+    for (final entry in result.path) {
+      final target = entry.target;
+      ViewportOffset? offset;
+      Axis? axis;
+      if (target is RenderViewportBase) {
+        offset = target.offset;
+        axis = target.axis;
+      } else if (target is RenderEditable) {
+        // 多行文本框自己能竖滚（单行的横滚，不在竖向滚轮的考虑之内）。
+        offset = target.offset;
+        axis = target.maxLines == 1 ? Axis.horizontal : Axis.vertical;
+      } else if (target is RenderAbstractViewport) {
+        // SingleChildScrollView 的视口类在 SDK 里是私有的
+        // （_RenderSingleChildViewport），只能动态取它公开的 offset / axis；
+        // SDK 改名就按「不认识」处理，继续向外找。
+        try {
+          final dynamic viewport = target;
+          // ignore: avoid_dynamic_calls
+          offset = viewport.offset as ViewportOffset;
+          // ignore: avoid_dynamic_calls
+          axis = viewport.axis as Axis;
+        } on NoSuchMethodError {
+          continue;
+        }
+      }
+      if (offset == null || axis != Axis.vertical) continue;
+      if (linked.contains(offset)) return true;
+      if (offset is ScrollPosition &&
+          offset.hasPixels &&
+          offset.hasContentDimensions) {
+        final next = (offset.pixels + dy).clamp(
+          offset.minScrollExtent,
+          offset.maxScrollExtent,
+        );
+        if (next != offset.pixels) return false;
+      }
+    }
+    return true;
+  }
+
+  /// 把一格滚轮分给外层 / 表内。[delta] > 0 = 内容上移（先收头部，再表内下翻）；
+  /// < 0 = 内容下移（先表内回顶，再放头部）。非交接段照常交给 NestedScrollView
+  /// 协调器（它自己会把头部收完的部分给表内、表内回顶的部分给头部——所以交接
+  /// 那一格必须在这里先截住）。
+  void _applyWheel(double delta) {
+    if (!_outer.hasClients) return;
+    final outer = _outer.position;
+    final direction = delta > 0 ? 1 : -1;
+    // 掉头是明确意图：撤门，不吃空行程。
+    if (_gateDirection != 0 && _gateDirection != direction) _disarm();
+    final outerRoom = outer.maxScrollExtent - outer.pixels;
+    final innerRoom = _innerScrolledExtent();
+    if (direction > 0) {
+      if (outerRoom > _epsilon) {
+        // 收头部段：这一格最多滚到「刚好置顶」，余量丢弃并上门。
+        if (delta >= outerRoom - _epsilon) {
+          _outer.jumpTo(outer.maxScrollExtent);
+          _arm(direction);
+          return;
+        }
+        outer.pointerScroll(delta);
+        return;
+      }
+      // 已经在表内滚了（触屏拖过 / 拖过滚动条），门失效。
+      if (innerRoom > _epsilon) _disarm();
+      final rest = _consumeGate(direction, delta);
+      if (rest > 0) outer.pointerScroll(rest);
+      return;
+    }
+    if (innerRoom > _epsilon) {
+      // 表内回顶段：这一格最多滚到「刚好回顶」，余量丢弃并上门。
+      if (-delta >= innerRoom - _epsilon) {
+        for (final position in _innerController!.positions) {
+          position.jumpTo(position.minScrollExtent);
+        }
+        _arm(direction);
+        return;
+      }
+      outer.pointerScroll(delta);
+      return;
+    }
+    // 头部已经在放了（触屏拖过），门失效。
+    if (outerRoom > _epsilon) _disarm();
+    final rest = _consumeGate(direction, delta);
+    if (rest < 0) outer.pointerScroll(rest);
+  }
+
+  /// 表内离顶部多远（多个 inner 位置取最大；没有可内滚主体 = 0）。
+  double _innerScrolledExtent() {
+    final controller = _innerController;
+    if (controller == null || !controller.hasClients) return 0;
+    var room = 0.0;
+    for (final position in controller.positions) {
+      if (!position.hasPixels || !position.hasContentDimensions) continue;
+      room = math.max(room, position.pixels - position.minScrollExtent);
+    }
+    return room;
+  }
+
+  void _arm(int direction) {
+    _gateDirection = direction;
+    _gateBudget = widget.wheelGateDistance;
+  }
+
+  void _disarm() {
+    _gateDirection = 0;
+    _gateBudget = 0;
+  }
+
+  /// 门上着且同方向：先吃空行程，返回吃剩的（0 = 这格全吃掉）。
+  double _consumeGate(int direction, double delta) {
+    if (_gateDirection != direction || _gateBudget <= 0) return delta;
+    final take = math.min(delta.abs(), _gateBudget);
+    _gateBudget -= take;
+    if (_gateBudget <= 0) _disarm();
+    return delta - take * direction;
+  }
+
   @override
   Widget build(BuildContext context) {
     _scheduleOuterPhaseEval();
@@ -246,32 +427,54 @@ class _UtenCollapsingHeaderScrollViewState
               body: widget.body,
             );
           }
-          return NestedScrollView(
-            controller: _outer,
-            floatHeaderSlivers: widget.floatHeaderSlivers,
-            headerSliverBuilder:
-                (BuildContext context, bool innerBoxIsScrolled) {
-                  return <Widget>[
-                    if (widget.collapsingHeader != null)
-                      SliverToBoxAdapter(child: widget.collapsingHeader!),
-                    if (widget.pinnedHeader != null)
-                      SliverPersistentHeader(
-                        pinned: true,
-                        delegate: _PinnedHeaderDelegate(
-                          extent: widget.pinnedHeaderExtent!,
-                          child: widget.pinnedHeader!,
-                        ),
-                      ),
-                  ];
-                },
-            body: canFallBack
-                ? _SqueezeGuard(
-                    viewport: viewport,
-                    minHeight: widget.compactBodyMinHeight,
-                    onSqueezed: _reportSqueezed,
-                    child: widget.body,
-                  )
-                : widget.body,
+          final body = canFallBack
+              ? _SqueezeGuard(
+                  viewport: viewport,
+                  minHeight: widget.compactBodyMinHeight,
+                  onSqueezed: _reportSqueezed,
+                  child: widget.body,
+                )
+              : widget.body;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              NestedScrollView(
+                controller: _outer,
+                headerSliverBuilder:
+                    (BuildContext context, bool innerBoxIsScrolled) {
+                      return <Widget>[
+                        if (widget.collapsingHeader != null)
+                          SliverToBoxAdapter(child: widget.collapsingHeader!),
+                        if (widget.pinnedHeader != null)
+                          SliverPersistentHeader(
+                            pinned: true,
+                            delegate: _PinnedHeaderDelegate(
+                              extent: widget.pinnedHeaderExtent!,
+                              child: widget.pinnedHeader!,
+                            ),
+                          ),
+                      ];
+                    },
+                body: Builder(
+                  builder: (bodyContext) {
+                    // 记下 NestedScrollView 注入的 inner controller（滚轮门读表内位置）。
+                    _innerController = PrimaryScrollController.maybeOf(
+                      bodyContext,
+                    );
+                    return body;
+                  },
+                ),
+              ),
+              // 滚轮交接门（见文件头）：透明覆盖层在命中序上先于内外 Scrollable
+              // 拿到滚轮；不吃点击 / 拖动 / 悬停，其余指针事件原样到达下层。
+              Positioned.fill(
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerSignal: _onPointerSignal,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ],
           );
         },
       ),

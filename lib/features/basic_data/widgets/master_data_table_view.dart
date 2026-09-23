@@ -18,6 +18,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -517,14 +518,27 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 祖先滚动（详情页页面 ListView）position：滚动 tick 同帧驱动吸顶。
   ScrollPosition? _stickyPagePos;
 
-  /// 滚动条只认竖轴通知（depth<=1 = 穿过表体横向滚动那一层）。
-  ///
-  /// 2026-09-22 根治「竖向滚动条长度乱跳」：Scrollbar 无 controller 时框架对
-  /// 任何通过谓词的通知都重画 thumb——表体横向 ScrollView（depth 0）的横轴
-  /// 通知会把竖向 thumb 按横向 metrics 重画（横滚一下表格，竖条就忽短忽长）。
-  /// 谓词必须加竖轴过滤；controller 侧见 _buildTable 的 vScrollbarController。
-  static bool _isVerticalTableScroll(ScrollNotification n) =>
-      n.depth <= 1 && n.metrics.axis == Axis.vertical;
+  /// 表体右缘竖向内容滚动条（自绘，2026-09-22）。
+  Widget _buildVerticalScrollbar() {
+    final controller = widget.primary
+        ? PrimaryScrollController.maybeOf(context)
+        : _bodyV;
+    final innerPhase = UtenInnerScrollActiveScope.maybeOf(context);
+    if (innerPhase == null) {
+      return UtenContentScrollbar(
+        controller: controller ?? _bodyV,
+        bottomInset: _bodyBottomPad,
+      );
+    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: innerPhase,
+      builder: (context, innerActive, child) => UtenContentScrollbar(
+        controller: controller ?? _bodyV,
+        visible: innerActive,
+        bottomInset: _bodyBottomPad,
+      ),
+    );
+  }
 
   void _onStickyPageScroll() {
     _sticky?.handleScrollTick();
@@ -1273,6 +1287,122 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
+  /// 表体舞台：横滚区 + 竖向 ListView(+ 表内合计条)。
+  ///
+  /// 由 [_buildTable] 里表体区的 LayoutBuilder 调用，但**只在宽度变化或宿主重建时**
+  /// 调用一次；高度只变时 LayoutBuilder 原样交回上一次的实例(见那里的注释)。
+  /// 因此这里不能读任何高度值：ListView 的高度全靠约束传下来。
+  Widget _buildBodyStage(
+    BuildContext context,
+    ThemeData theme,
+    List<({bool header, MasterDataGroup<T>? group, T? item})> plan,
+    double total,
+    double viewportWidth,
+  ) {
+    // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
+    // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
+    final summaryInline = widget.summaryBarInline && widget.summaryBar != null;
+    final summaryIndex = plan.length + (widget.loadingMore ? 1 : 0);
+    final list = ListView.builder(
+      controller: widget.primary ? null : _bodyV,
+      // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
+      // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
+      // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
+      primary: widget.primary,
+      shrinkWrap: widget.primary || widget.virtualized ? false : true,
+      physics: widget.primary
+          ? const AlwaysScrollableScrollPhysics()
+          : const ClampingScrollPhysics(),
+      // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
+      padding: EdgeInsets.only(bottom: _bodyBottomPad),
+      itemCount: summaryIndex + (summaryInline ? 1 : 0),
+      itemBuilder: (ctx, i) {
+        if (summaryInline && i == summaryIndex) {
+          return _ViewportPinnedRow(
+            controller: _bodyH,
+            contentWidth: total,
+            fallbackViewportWidth: viewportWidth,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                top: UtenSpacing.s8,
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+              ),
+              child: widget.summaryBar!,
+            ),
+          );
+        }
+        if (widget.loadingMore && i == plan.length) {
+          return const Padding(
+            padding: EdgeInsets.all(UtenSpacing.s12),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        final row = plan[i];
+        if (row.header) {
+          return _buildGroupHeader(theme, row.group!);
+        }
+        // 数据行：item 必非空（仅 header 行 item=null）；显式 null
+        // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
+        final item = row.item;
+        if (item == null) {
+          return const SizedBox.shrink();
+        }
+        // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
+        // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
+        // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
+        final idKey = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+        final rowWidget = RepaintBoundary(
+          key:
+              widget.rowWidgetKeyOf?.call(item) ??
+              ((idKey != null && idKey.isNotEmpty)
+                  ? ValueKey('row:$idKey')
+                  : ValueKey('idx:$i')),
+          child: _buildDataRow(theme, item),
+        );
+        // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
+        // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
+        if (i == plan.length - 1) {
+          return KeyedSubtree(key: _lastRowKey, child: rowWidget);
+        }
+        return rowWidget;
+      },
+    );
+    final hArea = SingleChildScrollView(
+      key: _bodyHorizontalKey,
+      controller: _bodyH,
+      scrollDirection: Axis.horizontal,
+      // 高度只经约束传给 ListView 视口(SingleChildScrollView 横滚只放开
+      // 宽度, 高度约束原样透传), 子树里不出现任何高度值——这是下面
+      // 「高度只变时复用同一实例」成立的前提。
+      child: SizedBox(width: total, child: list),
+    );
+    // 普通无悬浮留白表使用流内横滚条；联动/悬浮表使用独立覆盖层，
+    // 避免 ListView 底部留白把横滚条推离末行。
+    final hWrapped = _usesOverlayHBar
+        ? hArea
+        : Scrollbar(controller: _bodyH, thumbVisibility: true, child: hArea);
+    // 竖向滚动条（上下）已改为表体 Stack 上的覆盖层
+    // （见 body Stack children），此处只产出表体本体。
+    //
+    // 2026-09-22 根治「竖条长度乱跳/越滚越长」：旧 Scrollbar 无
+    // controller 时框架对任何通过谓词的通知都重画 thumb（SDK
+    // _shouldUpdatePainter：controller 为 null 恒 true，不做轴向过滤），
+    // 表体横向 SV（depth 0）的横轴通知会把竖向 thumb 按横向 metrics 重画。
+    // 改用自绘 UtenContentScrollbar（controller 驱动，轴向恒对）。
+    //
+    // 2026-09-14 滚动条口径（全站统一）：在 UtenCollapsingHeaderScrollView
+    // 内的表格，外层收头部阶段（表格未置顶）不显示竖向滚动条，进入表体
+    // 内滚后再显示。独立表格查不到 scope，维持常显。
+    return hWrapped;
+  }
+
   /// 合计条容器：与表体同宽、左右对齐表格内容边距。
   /// 只在这一处定义间距，所有接入页的合计条位置与留白因此完全一致。
   Widget _buildSummaryBar(BuildContext context) => Padding(
@@ -1616,6 +1746,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 会直接抛 "non-zero flex but incoming height constraints are unbounded"。
     // primary（联动折叠）例外：表体竖向填满联动区（折叠手势全域有效），流内横滚条
     // 会沉到区底 → 横滚条改走覆盖层（下方 Stack），按内容高度定位。
+    // 表体舞台缓存(见下方 LayoutBuilder 内注释)：本次 build 的局部变量，键 = 区宽。
+    Widget? bodyStage;
+    double? bodyStageWidth;
     final Widget tableBody = _BodyFlex(
       embedded: widget.embedded,
       primary: widget.primary,
@@ -1625,153 +1758,44 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           key: _bodyAreaKey,
           children: [
             LayoutBuilder(
-              builder: (ctx, c) {
+              builder: (context, c) {
                 // 区高随卡片折叠/展开变化（constraints 变化）→ 重测横滚条位置。
                 if (_usesOverlayHBar) {
                   _scheduleHBarUpdate();
                 }
-                // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
-                // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
-                final summaryInline =
-                    widget.summaryBarInline && widget.summaryBar != null;
-                final summaryIndex = plan.length + (widget.loadingMore ? 1 : 0);
-                final list = ListView.builder(
-                  controller: widget.primary ? null : _bodyV,
-                  // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
-                  // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
-                  // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
-                  primary: widget.primary,
-                  shrinkWrap: widget.primary || widget.virtualized
-                      ? false
-                      : true,
-                  physics: widget.primary
-                      ? const AlwaysScrollableScrollPhysics()
-                      : const ClampingScrollPhysics(),
-                  // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
-                  padding: EdgeInsets.only(bottom: _bodyBottomPad),
-                  itemCount: summaryIndex + (summaryInline ? 1 : 0),
-                  itemBuilder: (ctx, i) {
-                    if (summaryInline && i == summaryIndex) {
-                      return _ViewportPinnedRow(
-                        controller: _bodyH,
-                        contentWidth: total,
-                        fallbackViewportWidth: c.maxWidth,
-                        child: Padding(
-                          padding: const EdgeInsets.only(
-                            top: UtenSpacing.s8,
-                            left: UtenSpacing.s4,
-                            right: UtenSpacing.s4,
-                          ),
-                          child: widget.summaryBar!,
-                        ),
-                      );
-                    }
-                    if (widget.loadingMore && i == plan.length) {
-                      return const Padding(
-                        padding: EdgeInsets.all(UtenSpacing.s12),
-                        child: Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      );
-                    }
-                    final row = plan[i];
-                    if (row.header) {
-                      return _buildGroupHeader(theme, row.group!);
-                    }
-                    // 数据行：item 必非空（仅 header 行 item=null）；显式 null
-                    // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
-                    final item = row.item;
-                    if (item == null) {
-                      return const SizedBox.shrink();
-                    }
-                    // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
-                    // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
-                    // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
-                    final idKey =
-                        widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
-                    final rowWidget = RepaintBoundary(
-                      key:
-                          widget.rowWidgetKeyOf?.call(item) ??
-                          ((idKey != null && idKey.isNotEmpty)
-                              ? ValueKey('row:$idKey')
-                              : ValueKey('idx:$i')),
-                      child: _buildDataRow(theme, item),
-                    );
-                    // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
-                    // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
-                    if (i == plan.length - 1) {
-                      return KeyedSubtree(key: _lastRowKey, child: rowWidget);
-                    }
-                    return rowWidget;
-                  },
-                );
-                final hArea = SingleChildScrollView(
-                  key: _bodyHorizontalKey,
-                  controller: _bodyH,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: total,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: c.maxHeight),
-                      child: list,
-                    ),
-                  ),
-                );
-                // 普通无悬浮留白表使用流内横滚条；联动/悬浮表使用独立覆盖层，
-                // 避免 ListView 底部留白把横滚条推离末行。
-                final hWrapped = _usesOverlayHBar
-                    ? hArea
-                    : Scrollbar(
-                        controller: _bodyH,
-                        thumbVisibility: true,
-                        child: hArea,
-                      );
-                // 竖向滚动条（上下）：绑表体竖向滚动。置于横向滚动之外层，
-                // 使 thumb 固定在视口右边缘、不随横向滚动被带走。竖向 ListView 嵌在
-                // 横向 SingleChildScrollView 内层，其滚动通知冒泡到本 Scrollbar 时
-                // depth=1（穿过了横向那层 Scrollable），谓词须放宽到 depth<=1 才能捕获。
-                //
-                // 2026-09-22 根治「滚动条长度乱跳/越滚越长」：Scrollbar 无 controller
-                // 时框架对**任何**通过谓词的通知都重画 thumb（SDK _shouldUpdatePainter：
-                // controller 为 null 恒返回 true，不做轴向过滤）——表体横向 ScrollView
-                // （depth 0）的横轴通知会把竖向 thumb 按横向 metrics 重画（长度=视口宽/
-                // 内容宽比例）。两刀根治：① primary 模式显式挂 PrimaryScrollController
-                //（联动内滚真身，thumb 由 controller 驱动、轴向恒对，且拖动 thumb 可用）；
-                // ② 谓词加竖轴过滤（[_isVerticalTableScroll]），controller 拿不到的
-                // 场景（全屏路由等）走通知路径也不会再被横轴污染。
-                //
-                // 2026-09-14 滚动条口径（全站统一）：在 UtenCollapsingHeaderScrollView
-                // 内的表格，外层收头部阶段（表格未置顶）不显示竖向滚动条，进入表体
-                // 内滚后再显示——显示的就是本条表内滚动条（大小与表内容对应）。
-                // 独立表格查不到 scope，维持常显。
-                final vScrollbarController = widget.primary
-                    ? PrimaryScrollController.maybeOf(ctx)
-                    : _bodyV;
-                Widget vScrolled = Scrollbar(
-                  controller: vScrollbarController,
-                  thumbVisibility: true,
-                  notificationPredicate: _isVerticalTableScroll,
-                  child: hWrapped,
-                );
-                final innerPhase = UtenInnerScrollActiveScope.maybeOf(context);
-                if (innerPhase != null) {
-                  vScrolled = ValueListenableBuilder<bool>(
-                    valueListenable: innerPhase,
-                    builder: (context, innerActive, child) => Scrollbar(
-                      controller: vScrollbarController,
-                      thumbVisibility: innerActive,
-                      notificationPredicate: _isVerticalTableScroll,
-                      child: child!,
-                    ),
-                    child: hWrapped,
-                  );
+                // 只按宽度重建（2026-09-22 根治「表格一步步往置顶移动时一卡一卡」）：
+                // 联动折叠(NestedScrollView)收/放头部时本区**每格滚轮都在变高**，
+                // LayoutBuilder 每次都再跑一遍 builder——原来整棵表体子树跟着重建，
+                // 一格滚轮 25-31 个可见单元格从头建一遍再布局(探针数据)，而表内滚动
+                // 高度不变、只动偏移，所以「表内滚还好、往上移就卡」。表体子树里不含
+                // 任何高度值(高度只经约束传给 ListView 视口)，高度只变时原样交回
+                // 同一 widget 实例：框架看到同一实例直接跳过重建，只做一次布局，
+                // 且 ListView 里已布局过的行按原约束缓存、不再动。宽度变了(拖窗 /
+                // 折叠侧栏 / 换列)或宿主重建(bodyStage 是本次 build 的局部变量，
+                // 每次 build 天然作废)才真正重建。
+                if (bodyStage != null && bodyStageWidth == c.maxWidth) {
+                  return bodyStage!;
                 }
-                return vScrolled;
+                bodyStageWidth = c.maxWidth;
+                return bodyStage = _buildBodyStage(
+                  context,
+                  theme,
+                  plan,
+                  total,
+                  c.maxWidth,
+                );
               },
+            ),
+            // 竖向内容滚动条（自绘）：thumb 活动带与长度剔除底部让位空白
+            // （悬浮批量动作 clearance / bottomContentPadding），滚到底时 thumb
+            // 下缘贴内容底而非视口底；可拖、hover 高亮。联动表经
+            // UtenInnerScrollActiveScope 门控（外滚收头部阶段隐藏）。
+            Positioned(
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 14,
+              child: _buildVerticalScrollbar(),
             ),
             // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
             // 内容少 → 贴末行下方（约 1px 空隙）；超高 → 钉表体区底。与 _bodyH 双向同步，

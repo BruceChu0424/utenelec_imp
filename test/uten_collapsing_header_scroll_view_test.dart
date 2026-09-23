@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
+import 'package:uten_imp/components/layout/uten_content_scrollbar.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 String _identity(String value) => value;
@@ -133,40 +134,43 @@ void main() {
   });
 
   // 2026-09-14 滚动条口径：外层收头部阶段不显示表内竖向滚动条，收完后（表格
-  // 吸顶、内滚生效）再显示；下滚拉回头部后再次隐藏。竖向滚动条 = 表体行的
-  // Scrollbar 祖先（primary 表的横滚条是独立覆盖层，不含数据行）。
+  // 吸顶、内滚生效）再显示；下滚拉回头部后再次隐藏。竖向滚动条 = 自绘
+  // UtenContentScrollbar（2026-09-22 起替换框架 Scrollbar：thumb 不伸进底部
+  // 让位空白、可拖；显隐仍由 UtenInnerScrollActiveScope 门控）。
+  //
+  // 2026-09-22 滚轮交接门（UtenCollapsingHeaderScrollView 自带，见其文件头）：
+  // 一格到交接点即止、余量丢弃，越点后同方向先吃 50 空行程再动另一段。
+  // 本用例 180 高的卡片：2 格收完（第 2 格只用 80 到点），第 3 格吃 50 空行程后
+  // 进表内 50，之后整格进表内；下滚对称。
   testWidgets('表内竖向滚动条按滚动阶段显隐', (tester) async {
     await tester.pumpWidget(_harness());
     await tester.pumpAndSettle();
 
-    Scrollbar vBar() => tester.widget<Scrollbar>(
-      find
-          .ancestor(of: find.text('ROW-0'), matching: find.byType(Scrollbar))
-          .first,
-    );
+    UtenContentScrollbar vBar() =>
+        tester.widget<UtenContentScrollbar>(find.byType(UtenContentScrollbar));
 
     // 卡片展开（外滚阶段）：滚动条不显示。
-    expect(vBar().thumbVisibility, isFalse);
+    expect(vBar().visible, isFalse);
 
-    // 滚足 200+ 把 180 高的卡片收完，进入表体内滚。
+    // 滚 5 格（每格缩放后 50，共 250 > 180）把卡片收完，进入表体内滚段。
     final bodyFinder = find.byWidgetPredicate(
       (w) => w is MasterDataTableView<String>,
     );
     final pointer = TestPointer(3, PointerDeviceKind.mouse);
     final center = tester.getCenter(bodyFinder);
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 5; i++) {
       await tester.sendEventToBinding(pointer.hover(center));
       await tester.sendEventToBinding(pointer.scroll(const Offset(0, 100)));
       await tester.pumpAndSettle();
     }
-    expect(vBar().thumbVisibility, isTrue, reason: '头部收完后应显示表内滚动条');
+    expect(vBar().visible, isTrue, reason: '头部收完后应显示表内滚动条');
 
     // 向下滚：body 回顶后头部拉回，脱离内滚阶段 → 滚动条隐藏。
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 6; i++) {
       await tester.sendEventToBinding(pointer.hover(center));
       await tester.sendEventToBinding(pointer.scroll(const Offset(0, -100)));
       await tester.pumpAndSettle();
     }
-    expect(vBar().thumbVisibility, isFalse, reason: '头部拉回后应隐藏表内滚动条');
+    expect(vBar().visible, isFalse, reason: '头部拉回后应隐藏表内滚动条');
   });
 }

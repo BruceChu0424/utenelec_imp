@@ -294,8 +294,9 @@ return MasterDataTableView<Map<String, dynamic>>(
 - **排序菜单 vs 筛选菜单**：可排序列 overlay 顶部是「排序」段、下方保留 facet 桶（Excel autofilter 范式）；纯日期列无 facet → 只显排序段。
 - **服务端排序（非前端）**：报表分页，排序必须回后端（前端只发 `sort`/`order`，后端白名单 ORDER BY）；前端排序只用于极小结果集。
 - **多选行 stretch 必须套 `IntrinsicHeight`，勿拆**：selectable 模式的表头/表体行用 `CrossAxisAlignment.stretch`（单元格同高、网格竖线贯通），而表头在横向滚动视口内、表体行在竖向 `ListView` 内，高度都无界——stretch 会让子级拿到 tight `h=Infinity` 直接布局崩溃，表现为「表头设置按钮还在、表头表体整片空白」（2026-08-11 采购/委外/仓库任务台空白的根因，曾误判为 SelectionArea CME）。修复是 `_boundStretchRow()`：selectable 时套 `IntrinsicHeight` 先按内容收紧高度。**不要**为省一次固有布局拆掉它，也不要把 stretch 改回 center（网格竖线会断）。
-- **`shrinkWrap: true` 是刻意保留，勿动**：表体 `ListView` 用 `shrinkWrap: true` + 外层 `Flexible(loose)` + `ConstrainedBox(maxHeight)`，目的是「行少时表随内容收缩、不全屏撑满」。**不要**为省冷构建的全量 extent 布局改成 `false` / `widget.embedded`——会让短表撑满高度、留大片空白（一度试过并已回退）。行少收缩是产品要的行为；冷构建成本后续用 `TextPainter` 宽度缓存 / 降采样消除，不靠动 `shrinkWrap`。
+- **`shrinkWrap: true` 是刻意保留，勿动**：表体 `ListView` 用 `shrinkWrap: true` + 外层 `Flexible(loose)`（高度上限由横滚 `SingleChildScrollView` 原样透传的约束给出，2026-09-22 起不再另套 `ConstrainedBox(maxHeight)`——见下条「只按宽度重建」），目的是「行少时表随内容收缩、不全屏撑满」。**不要**为省冷构建的全量 extent 布局改成 `false` / `widget.embedded`——会让短表撑满高度、留大片空白（一度试过并已回退）。行少收缩是产品要的行为；冷构建成本后续用 `TextPainter` 宽度缓存 / 降采样消除，不靠动 `shrinkWrap`。
 - **`primary:true` 联动折叠模式**：包在 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md) 的 `body` 里时传 `primary:true`——表体竖向 `ListView` 改用 `primary:true`（拾取 `NestedScrollView` 注入的 inner controller）、`shrinkWrap` 关、physics 改 `AlwaysScrollableScrollPhysics`、`_BodyFlex` 改 tight，参与「顶部折叠 → 表格内滚」联动；翻页回顶经 `PrimaryScrollController.maybeOf` + post-frame。**注意：联动模式下 `shrinkWrap` 必须为 false**（短表 `maxScrollExtent=0` 会让顶部收完后滚动卡死）——这是上条 `shrinkWrap:true` 规则的**唯一例外**，仅 `primary:true` 生效；默认 / `embedded` 路径仍保持 `true`。不能与 `embedded:true` 同用（断言拦截）。
+- **表体舞台只按宽度重建，子树里不得出现高度值（2026-09-22 根治「表格一步步往置顶移动时一卡一卡」）**：联动折叠时 `NestedScrollView` 的 body 每收 / 放一格头部就变一次高，表体区的 `LayoutBuilder` 每次约束变化都会再跑 builder——原来整棵表体子树（可见行全部）跟着重建，一格滚轮 25-31 个单元格从头建一遍（探针 `test/uten_collapsing_header_scroll_relayout_test.dart`），而表内滚动高度不变只动偏移，所以「表内滚还好、往上移就卡」。现在 builder 把舞台缓存在本次 build 的局部变量里、键 = 区宽：高度只变时原样交回同一 widget 实例，框架看到同一实例跳过重建、只做一次布局，`ListView` 里已布局的行按原约束缓存不动；宽度变了或宿主重建才真正重建（`_buildBodyStage`）。**因此 `_buildBodyStage` 及其子树不能读 `c.maxHeight` 之类的高度值**（原来的 `ConstrainedBox(maxHeight: c.maxHeight)` 就是因此删掉的，高度只经约束传给视口）；要按高度做的事（横滚条覆盖层定位、底部留白）走既有的 post-frame 量测 + `ValueNotifier`，不进 builder。修后收头部每格 0-3 个单元格重建（只有新露出的行），放头部 0 个。
 - **后续能力落点**：导出按钮放 `UtenAppBar.actions`（Phase4）、行点击跳源头单据靠 `onRowTap` + 后端行带 `__srcId`（Phase5）——都在本组件/共享层加一次，全表生效。
 
 ---
@@ -330,7 +331,8 @@ return MasterDataTableView<Map<String, dynamic>>(
   换关键字后剪掉已失效的筛选值（`_pruneMaterialTableFilters` 同款），否则列头 sanitize 回
   列名、表体仍在过滤，用户会面对一张没有出口的空表（空态「清除筛选」是最后兜底）。
 
-**最后更新**：2026-09-21 · 受控多选的适用范围从「列表页」扩到**详情页里的树表**——货品
+**最后更新**：2026-09-22 · 表体舞台只按宽度重建（§七「只按宽度重建」）：联动折叠收 / 放头部时 body 每格变高，原来表体 `LayoutBuilder` 整树重建致「表格一步步往置顶移动时一卡一卡」；现在高度只变时交回同一实例，`ConstrainedBox(maxHeight)` 随之删除。滚轮交接门在 [UtenCollapsingHeaderScrollView §八](UtenCollapsingHeaderScrollView.md)。
+此前：2026-09-21 · 受控多选的适用范围从「列表页」扩到**详情页里的树表**——货品
 「组装信息」页签接入 `selectable` 开勾选列，**批量删除的 danger「删除」按钮挂宿主的
 `toolbarActions`(表头工具条)、不传 `batchActionsBuilder`**，所以「已选 N 项 + 清除」胶囊仍由
 `showSelectionSummary` 留在表头上方；同时补记树表接入的三条口径(行自己的业务 id 当键 /

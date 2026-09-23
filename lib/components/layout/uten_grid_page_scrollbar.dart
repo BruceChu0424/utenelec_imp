@@ -12,7 +12,9 @@
 //
 // 2026-09-22 口径收紧（用户反馈「表格向上移动过程 滚动条也在」）：撤掉此前
 // 「页面滚动进行中临时亮条 600ms」的过渡反馈——未置顶阶段**一律不显示**，
-// 只有 sticky 表头吸附视口顶后才出现。
+// 只有 sticky 表头吸附视口顶后才出现。同日第二刀：框架 Scrollbar 换自绘
+// [UtenContentScrollbar]——thumb 活动带与长度剔除底部让位空白（悬浮操作组
+// clearance），滚到底 thumb 贴内容底而非视口底，且可拖、hover 高亮。
 //
 // 用法（pinned 与 UtenEditableGrid.stickyHeaderPinned 传同一个 notifier）：
 //   final _gridPinned = ValueNotifier<bool>(false);
@@ -25,6 +27,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'uten_content_scrollbar.dart';
+import 'uten_floating_action_group.dart';
+
 class UtenGridPageScrollbar extends StatefulWidget {
   const UtenGridPageScrollbar({
     super.key,
@@ -32,6 +37,7 @@ class UtenGridPageScrollbar extends StatefulWidget {
     required this.controller,
     required this.child,
     this.extraPinned = const <ValueListenable<bool>>[],
+    this.bottomInset,
   });
 
   /// 明细表 sticky 表头是否已置顶（由 UtenEditableGrid /
@@ -44,6 +50,10 @@ class UtenGridPageScrollbar extends StatefulWidget {
 
   /// 页面 ListView 的控制器（挂到内层 ListView 与滚动条上）。
   final ScrollController controller;
+
+  /// 底部让位空白（页面 ListView 的底 padding）：thumb 不伸进该区。
+  /// null = 自动取 UtenFloatingActionGroup.scrollClearance（编辑页全站口径）。
+  final double? bottomInset;
 
   final Widget child;
 
@@ -74,11 +84,11 @@ class _UtenGridPageScrollbarState extends State<UtenGridPageScrollbar> {
               right: 0,
               bottom: 0,
               width: 14,
-              child: Scrollbar(
+              child: UtenContentScrollbar(
                 controller: widget.controller,
-                thumbVisibility: true,
-                // 覆盖条自身不承载内容：thumb 的长短/位置由 controller 驱动。
-                child: const SizedBox.expand(),
+                bottomInset:
+                    widget.bottomInset ??
+                    UtenFloatingActionGroup.scrollClearance,
               ),
             ),
         ],

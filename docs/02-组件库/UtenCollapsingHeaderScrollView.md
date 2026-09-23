@@ -12,7 +12,7 @@
 
 - **向上滚**（鼠标滚轮 / 触屏上滑）：先把 `collapsingHeader` 收完，再滚 `body` 内部；
 - **向下滚**：先把 `body` 回顶，再把 `collapsingHeader` 拉回原位；
-- 手感**默认平滑跟手**（`floatHeaderSlivers: false`，不吸附）。
+- 手感**平滑跟手**（不吸附），且鼠标滚轮在两段之间有**交接门**（§八）：一格滚到「刚好置顶 / 刚好回顶」即止，再滚一小段空行程才开始动另一段。
 
 > **关键**：`body` 里「想吸顶保留」的内容（如「标题 + 搜索 + 添加」一行）放在可滚动件（表格）之上的同一个 `Column` 兄弟位即可——它不随表格内滚而滚（表格是 `Column` 里的 `Expanded`），卡片收起后它自然顶到屏幕顶。
 
@@ -38,7 +38,7 @@
 | `body` | `Widget` | 必填 | 滚动主体。**须含一个拾取 `PrimaryScrollController` 的竖向可滚动件**：`MasterDataTableView(primary: true)` 或 `ListView(primary: true)` |
 | `collapsingHeader` | `Widget?` | `null` | 随滚动收起 / 拉回的顶部内容（分类信息卡等）。为空则只有 `body` |
 | `controller` | `ScrollController?` | `null` | 可选外层 `ScrollController`（一般无需传） |
-| `floatHeaderSlivers` | `bool` | `false` | 是否在向下滚时优先让顶部浮回（floating）。`false` = 平滑跟手：先把 `body` 回顶，再把顶部拉回（非吸附） |
+| `wheelGateDistance` | `double` | `50` | 滚轮交接空行程（逻辑像素，§八）：表格刚置顶 / 表内刚回顶之后，同方向再滚这么多才开始动另一段；`0` = 只丢弃交接那一格的余量。默认 50 ≈ 网页端半格滚轮（Chrome 一格 100） |
 | `compactBreakpoint` | `double` | `UtenBreakpoints.mediumStart`(600) | 视口**宽**小于该值时走**紧凑回退**（整页滚动 + body 定高内滚），见 §四 |
 | `compactHeightBreakpoint` | `double` | `UtenBreakpoints.mediumStart`(600) | 视口**高**小于该值时同样走紧凑回退（2026-09-11 手机横屏 844x390） |
 | `compactBodyMinHeight` | `double` | `360` | 紧凑回退时 body 的最小高度；同时是「body 被头部挤扁」的判定线（body 实得高 < 该值 → 下一帧切紧凑回退） |
@@ -150,7 +150,8 @@ return Padding(
 
 ## 七、实现要点 / 避坑
 
-- **为什么用 `NestedScrollView`**：它是 Flutter 原生的「外层先收、内层后滚，反向内层先回顶、外层再展开」协调机制，与诉求逐条吻合；`floatHeaderSlivers:false` = 平滑跟手。**不要**改用 `SliverFillRemaining`（它不会做这种「先收后滚」的交接）或 `UtenEditableGrid` 的 rect 量测浮层（那是单视图内吸顶，不跨两个滚动视图）。
+- **为什么用 `NestedScrollView`**：它是 Flutter 原生的「外层先收、内层后滚，反向内层先回顶、外层再展开」协调机制，与诉求逐条吻合（不开 floating，平滑跟手；2026-09-22 起 `floatHeaderSlivers` 参数删除——滚轮交接门依赖这个固定顺序）。**不要**改用 `SliverFillRemaining`（它不会做这种「先收后滚」的交接）或 `UtenEditableGrid` 的 rect 量测浮层（那是单视图内吸顶，不跨两个滚动视图）。
+- **body 每格都在变高——body 里的重活必须对「只有高度变」免疫**：`NestedScrollView` 把 body 放在 `SliverFillRemaining` 里，body 高 = 视口剩余高，头部每收 / 放一格 body 就重新布局一次。body 里若有 `LayoutBuilder` 按约束整树重建、或按约束做 post-frame 量测 + `setState`，就会「表格一步步往置顶移动时一格一顿」。`MasterDataTableView` 的表体已改成只按宽度重建（见其文档 §七），新接入的 body 组件照此办理：子树里不要出现高度值，让高度只经约束传给可滚动视口。
 - **`body` 必须用注入的 `PrimaryScrollController`**：`NestedScrollView` 给 `body` 注入 inner controller，`body` 的可滚动件必须用 `primary:true`（不传自己的 controller）才能被协调。`MasterDataTableView` 传 `primary:true` 即满足。
 - **`collapsingHeader` 整块随滚动消失 / 重现**：它放在 `SliverToBoxAdapter` 里，滚出视口后会被释放（widget 不在树里）——这是预期行为，不是泄漏。
 - **短表也要能收**：联动模式下表格 `shrinkWrap` 必须关、physics 必须 `AlwaysScrollable`，否则行少时表格不滚 → 顶部收不动（`MasterDataTableView.primary:true` 已自动处理）。
@@ -158,7 +159,26 @@ return Padding(
 
 ---
 
-**最后更新**：2026-09-14 · 新增滚动条口径（§五）：外层收头部阶段不显示上下滚动条，进入表体内滚后再显示表内滚动条（`UtenInnerScrollActiveScope` 注入 + `MasterDataTableView` 门控）。
+## 八、滚轮交接门与卡顿根治（2026-09-22）
+
+用户口径：「所有页面鼠标上下滚动都一卡一卡的，表格里面滚动还好，就是表格一步一步往置顶移动的时候」；「表格置顶后得再滑一点点距离才开始动表内，往下也一样——之前一置顶瞬间就滚表内，看不到最前面的内容」；「不管在表格内还是表格外滚，都先把表格置顶」。
+
+**卡顿根因**（探针 `test/uten_collapsing_header_scroll_relayout_test.dart`）：`NestedScrollView` 的 body 高 = 视口剩余高，头部每收一格 body 就变一次高；`MasterDataTableView` 表体的 `LayoutBuilder` 每次约束变化都整树重建——一格滚轮 25-31 个可见单元格从头建一遍再布局，而表内滚动高度不变、只动偏移，所以「表内滚还好、往上移就卡」。根治在表格侧：表体子树只按**宽度**重建，高度只经约束传给 `ListView` 视口，高度只变时原样交回同一 widget 实例（框架看到同一实例跳过重建，行按原约束缓存）。修后收头部每格 0-3 个单元格重建、耗时与表内滚动同级；放头部每格 0 个。
+
+**滚轮交接门**（本组件）：在 `NestedScrollView` 上盖一层透明 `Listener`，命中序先于内外 `Scrollable` 拿到滚轮，自己决定怎么给：
+
+- 一格滚到「刚好置顶」/「刚好回顶」即止，余量丢弃（原生会把余量当场滚进另一段）；
+- 越过交接点之后，同方向还要再滚 `wheelGateDistance`（默认 50）的空行程才开始动另一段；
+- 掉头即撤门：反向是明确意图，不吃空行程；触屏拖过 / 拖过滚动条离开交接点后门自动失效；
+- 头部没收完之前的上滚一律归联动（鼠标在表格内 / 表格外 / 页内侧栏上都先把表格置顶）；置顶之后沿命中路径由内向外找竖向滚动件——先碰到联动的（外层 / inner）就接管，先碰到**独立**的（`primary:false` / 自带 controller 的侧栏、嵌套面板、多行文本框）且它还能往这个方向滚，就让给框架原样处理；
+- shift+滚轮（`ScrollBehavior.pointerAxisModifiers`）是横滚，不接管；触屏拖动仍由 `NestedScrollView` 原生协调。
+
+> 注意：body 里不传 controller 的竖向可滚动件会继承 `NestedScrollView` 注入的 inner controller（它对全平台开启自动继承），成为联动的一员——这是既有行为，也是「表格 `primary:true`」生效的原因；要独立就显式传 `primary:false` + 自己的 controller。
+
+---
+
+**最后更新**：2026-09-22 · 新增 §八：滚轮交接门（`wheelGateDistance`，到点即止 + 空行程 + 掉头撤门 + 先置顶再表内 + 不抢独立滚动件）；卡顿根因定位到 body 每格变高 + 表格整树重建，表格侧只按宽度重建；`floatHeaderSlivers` 参数删除（无调用方，且门依赖非 floating 顺序）。回归：`test/uten_collapsing_header_scroll_relayout_test.dart`（6 例）。
+此前：2026-09-14 · 新增滚动条口径（§五）：外层收头部阶段不显示上下滚动条，进入表体内滚后再显示表内滚动条（`UtenInnerScrollActiveScope` 注入 + `MasterDataTableView` 门控）。
 此前：2026-09-11 · 接入范围扩大到单据详情页（销售 / 委外 / 钱流 / 仓库单据、生产日报、仓库实物历史、仓库销售出库作业）；组件新增「矮视口」与「被头部挤扁」两条紧凑回退触发线 + body 挤扁哨兵（`compactHeightBreakpoint`）。回归测试夹具见 `test/support/collapsing_header_harness.dart`（折叠断言 + 1280x900 / 390x844 / 844x390 三视口 × textScale 1.5 不溢出）。
 此前：2026-08-17 · 接入范围扩大到任务/单据页：任务工作台（采购 / 委外 / 仓库，expanded 断点——概览卡收起、筛选行 + 选中操作条吸顶）、订单进度查询（指标卡收起、`ListView(primary: true)` 内滚、分页条常驻底部）、采购 / 仓库 / 销售（订货单）单据列表页（KPI / 统计卡条收起，标题行吸顶，表格 `primary: true` 经 `UtenListTwoPane` 内滚）。
 此前：2026-08-14 · 新增组件。货品 / 模具 / 客户 / 供应商 四个分类详情页接入（卡片折叠 + 搜索行吸顶 + 表格内滚）。扁平主档页（颜色 / 单位 / 仓库 / 币种 / 账户）顶部仅一行搜索条、本就吸顶，不接入。

@@ -115,7 +115,7 @@ class CrossAnalysisReallocationWorkflowContractTest {
         assertThat(command).doesNotContain(
                 "where analysis_id = :id and status <> 'cancelled' order by created_at desc");
         assertThat(command).contains(
-                "analysispeg.releaseforanalysis( analysisid, request.reason(), request.idempotencykey())");
+                "analysispeg.releaseforanalysis( analysisid, request.effectivereason(), request.idempotencykey())");
     }
 
     private static String compact(Path path) throws Exception {

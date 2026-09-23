@@ -563,10 +563,11 @@ void main() {
     expect(dismissals, 0);
     await tester.pump(const Duration(seconds: 26));
     await tester.pump(const Duration(milliseconds: 221));
-    expect(find.text('看不见才停表'), findsNothing);
+    // 看不见时系统不出帧, 界面树要等回到前台才重建; 到上限时通知本身必须已经收走。
     expect(dismissals, 1);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
+    expect(find.text('看不见才停表'), findsNothing);
   });
 
   testWidgets('small screen with large text shows one bounded banner', (

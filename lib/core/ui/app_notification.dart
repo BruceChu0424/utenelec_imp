@@ -608,7 +608,10 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     if (_dismissing) return;
     _dismissing = true;
     _autoDismissTimer?.cancel();
-    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+    // 看不见时(hidden/paused)系统不出帧, 收起动画不会推进, 停表上限到了也收不掉;
+    // 反正没人看得见, 直接收起。
+    if ((MediaQuery.maybeOf(context)?.disableAnimations ?? false) ||
+        !_visibleUnder(WidgetsBinding.instance.lifecycleState)) {
       _ctrl.value = 0;
     } else {
       await _ctrl.reverse();

@@ -36,7 +36,6 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -119,11 +118,6 @@ class _SubcontractDecompositionPageState
   /// 原始 task_status 逐个入表, IN_PROGRESS 是三档之和另加的派生键)。
   static const _inProgressStage = 'IN_PROGRESS';
   static const _financeRejectedStatus = 'FINANCE_REJECTED';
-
-  /// 「待处理」大类与它内部「等子件到货」的那一档(ADR-103): 服务端 statusCounts 的
-  /// WAITING_ORDER 已减去被锁的路线 B 申请行, 锁行单独出 WAITING_COMPONENT_STOCK 键。
-  static const _waitingOrderStage = 'WAITING_ORDER';
-  static const _waitingComponentStatus = 'WAITING_COMPONENT_STOCK';
 
   /// 阶段计数的呈现形态(docs/00-项目准则/14-徽章与计数口径.md)；三形态见 ADR-100。
   ///
@@ -421,12 +415,9 @@ class _SubcontractDecompositionPageState
   bool _orderBlocked(OperationsWorkbenchTask task) =>
       _seg?.code == 'WAITING_ORDER' && !_canOrderTask(task);
 
-  /// 行 / 卡片底色。ADR-103：路线 B 锁行先判——黄底(在办等别人到货)；其余不可
-  /// 下单行与回厂短交待判定单沿用红底(ADR-098)。
+  /// 行 / 卡片底色。不可下单行(含 ADR-103 路线 B 等子件到货的锁行, 与路线 A 前置
+  /// 自制合成行同款)与回厂短交待判定单沿用红底(ADR-098)；锁的说明在状态列与悬浮上。
   Color? _rowColorOf(BuildContext context, OperationsWorkbenchTask task) {
-    if (task.waitingComponentStock) {
-      return UtenColors.warning.withValues(alpha: 0.16);
-    }
     if (_orderBlocked(task) || _shortDelivery(task)) {
       return Theme.of(
         context,
@@ -647,21 +638,18 @@ class _SubcontractDecompositionPageState
                     // 双计, 别改成相减 —— 相减会让黄数对不上「进行中」列表行数。
                     // 回厂短交待判定同样是红, 但它是案件数、不是任务行数, 量纲不同,
                     // 留在异常小类行里单独喊, 不并进这一枚。
-                    // 「待处理」同构挂两枚(ADR-103): 红 = 轮到委外下单的行(服务端
-                    // WAITING_ORDER 已减去锁行), 黄 = 等子件到货的路线 B 锁行; 两枚
-                    // 之和 = 待处理列表行数, 不重叠。
+                    // 「待处理」只挂一枚红(ADR-103, 2026-09-22 用户实机纠偏「刚下单的
+                    // 都是待处理」): 服务端 WAITING_ORDER 含等子件到货的路线 B 锁行, 与
+                    // 路线 A 前置自制合成行同款计红; 锁只体现在行上, 不另挂黄枚。
                     count: stage.code == _inProgressStage
                         ? statusCounts[_financeRejectedStatus]
                         : statusCounts[stage.code],
                     countForm: stage.code == _inProgressStage
                         ? UtenSegmentCountForm.actionable
                         : _stageCountForm(stage.code),
-                    inProgressCount: switch (stage.code) {
-                      _inProgressStage => statusCounts[_inProgressStage],
-                      _waitingOrderStage =>
-                        statusCounts[_waitingComponentStatus],
-                      _ => null,
-                    },
+                    inProgressCount: stage.code == _inProgressStage
+                        ? statusCounts[_inProgressStage]
+                        : null,
                   ),
                 const UtenFilterSegment(
                   value: _DecompositionSeg.history(),

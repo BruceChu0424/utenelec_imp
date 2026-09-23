@@ -354,11 +354,11 @@ void main() {
   );
 
   testWidgets(
-    'ADR-103 route B: locked row is yellow, unselectable, explained; ready row shows available qty',
+    'ADR-103 route B: locked row is blocked like route A, unselectable, explained; ready row shows available qty',
     (tester) async {
-      // 路线 B(单一子件直发)申请行：子件没货 = WAITING_COMPONENT_STOCK(黄底、不可勾选、
+      // 路线 B(单一子件直发)申请行：子件没货 = WAITING_COMPONENT_STOCK(红底、不可勾选、
       // 状态列「等子件到货」带悬浮说明、弹窗顶部横幅)；子件到货 = COMPONENT_STOCK_READY
-      // (状态列带仓内可动用量、可勾选)；「待处理」段红黄两枚徽章。
+      // (状态列带仓内可动用量、可勾选)；「待处理」段只有一枚红, 锁行照计。
       final gateway = _Gateway(
         _data(capability: true, includeComponentRoute: true),
       );
@@ -384,11 +384,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 「待处理」段同构挂两枚：红 = WAITING_ORDER(3)、黄 = WAITING_COMPONENT_STOCK(1)。
+      // 「待处理」只挂一枚红 = WAITING_ORDER(4, 含等子件到货的锁行)；没有黄枚
+      // (2026-09-22 用户实机纠偏「刚下单的都是待处理」, 与路线 A 合成行同款计红)。
       final stages = find.byKey(const Key('subcontract-decomposition-stages'));
       expect(
         find.descendant(of: stages, matching: find.byType(UtenInProgressBadge)),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.descendant(
@@ -398,11 +399,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: stages, matching: find.text('3')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: stages, matching: find.text('1')),
+        find.descendant(of: stages, matching: find.text('4')),
         findsOneWidget,
       );
 
@@ -419,10 +416,11 @@ void main() {
         (task) => task.taskId == 'task-ready',
       );
       final plain = table.items.firstWhere((task) => task.taskId == 'task-1');
-      // 锁行黄底(与路线 A 红底区分)、不可勾选；解锁行正常、可勾选。
+      // 锁行与路线 A 合成行同款红底(不可下单)、不可勾选；解锁行正常、可勾选。
+      expect(table.rowColor!(locked), isNotNull);
       expect(
         table.rowColor!(locked),
-        UtenColors.warning.withValues(alpha: 0.16),
+        isNot(UtenColors.warning.withValues(alpha: 0.16)),
       );
       expect(table.idOf!(locked), isNull);
       expect(table.rowColor!(ready), isNull);
@@ -437,10 +435,7 @@ void main() {
         displayStage: 'WAITING_COMPONENT_STOCK',
       );
       expect(table.idOf!(legacyLocked), isNull);
-      expect(
-        table.rowColor!(legacyLocked),
-        UtenColors.warning.withValues(alpha: 0.16),
-      );
+      expect(table.rowColor!(legacyLocked), isNotNull);
       final legacyReady = _task(
         'legacy-ready',
         'application-legacy-ready',
@@ -515,7 +510,7 @@ void main() {
   );
 
   testWidgets(
-    'ADR-103 route B compact cards: locked card is yellow without checkbox, ready card selectable',
+    'ADR-103 route B compact cards: locked card is blocked without checkbox, ready card selectable',
     (tester) async {
       final gateway = _Gateway(
         _data(capability: true, includeComponentRoute: true),
@@ -550,9 +545,10 @@ void main() {
         matching: find.byType(Card),
       );
       expect(lockedCard, findsOneWidget);
+      expect(tester.widget<Card>(lockedCard).color, isNotNull);
       expect(
         tester.widget<Card>(lockedCard).color,
-        UtenColors.warning.withValues(alpha: 0.16),
+        isNot(UtenColors.warning.withValues(alpha: 0.16)),
       );
       expect(
         find.descendant(of: lockedCard, matching: find.byType(Checkbox)),
@@ -720,12 +716,13 @@ OperationsWorkbenchData _data({
     overdueTasks: 0,
     openTasks: 2,
     openQty: 12,
-    // ADR-103：服务端 WAITING_ORDER 已减去被锁的路线 B 行，锁行单独一键。
+    // ADR-103(2026-09-22 纠偏)：服务端 WAITING_ORDER 含被锁的路线 B 行(2 普通 + 锁 1 + 解锁 1),
+    // WAITING_COMPONENT_STOCK 只是其中在等子件的行数, 不挂徽章。
     statusCounts: {
       'WAITING_ORDER': includePreparation
           ? 4
           : includeComponentRoute
-          ? 3
+          ? 4
           : 2,
       if (includeComponentRoute) 'WAITING_COMPONENT_STOCK': 1,
     },

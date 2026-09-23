@@ -347,7 +347,7 @@ class SubcontractPreparationPaginationPostgresTest {
 
     /**
      * ADR-103 路线 B: 只有一个子层物料的委外件, 子件仓里一件都没有时申请行锁住 (不能生成委外订货单,
-     * 阶段 WAITING_COMPONENT_STOCK, 进黄段不进红段); 子件在作业叶仓有货 (数量不限) 即解锁
+     * 阶段 WAITING_COMPONENT_STOCK, 留在待处理段照计红数); 子件在作业叶仓有货 (数量不限) 即解锁
      * (阶段 COMPONENT_STOCK_READY, 行带子件可动用量); 线边仓的货不算; 普通委外件 (无 BOM) 不受影响.
      * 红黄徽章、分段计数与列表行数用同一片段 SQL, 这里逐个对账.
      */
@@ -367,30 +367,29 @@ class SubcontractPreparationPaginationPostgresTest {
             jdbc.update("INSERT INTO warehouses(id, name, is_line_side) VALUES (?,?,false),(?,?,true)",
                     id("wh-main"), "Main", id("wh-line-side"), "Line side");
 
-            // 1) 子件一件都没有 → 锁: 不能下单, 阶段 WAITING_COMPONENT_STOCK, 从红段与红徽章里剔除, 进黄段.
+            // 1) 子件一件都没有 → 锁: 不能下单, 阶段 WAITING_COMPONENT_STOCK; 但它**留在待处理段、照计红数**
+            //    (2026-09-22 用户实机纠偏「刚下单的都是待处理」, 与路线 A 前置自制合成行同款), 不进「进行中」.
             var locked = applicationRow("APP-1");
             assertThat(locked.canCreateOrder()).isFalse();
             assertThat(locked.displayStage()).isEqualTo("WAITING_COMPONENT_STOCK");
             assertThat(locked.componentAvailableQty()).isNotNull().isEqualByComparingTo("0");
             var waitingOrder = service.query("SUBCONTRACT", "WAITING_ORDER", "", "", null, null, 1, 100);
-            assertThat(waitingOrder.total()).isEqualTo(127);
-            assertThat(waitingOrder.items()).extracting(FulfillmentTaskRow::actionDocNo).doesNotContain("APP-1");
+            assertThat(waitingOrder.total()).isEqualTo(128);
+            assertThat(waitingOrder.items()).extracting(FulfillmentTaskRow::actionDocNo).contains("APP-1");
             assertThat(waitingOrder.summary().statusCounts())
-                    .containsEntry("WAITING_ORDER", 127L)
+                    .containsEntry("WAITING_ORDER", 128L)
                     .containsEntry("WAITING_COMPONENT_STOCK", 1L)
-                    .containsEntry("IN_PROGRESS", 1L);
-            var waitingComponent = service.query("SUBCONTRACT", "WAITING_COMPONENT_STOCK", "", "", null, null, 1, 100);
-            assertThat(waitingComponent.items()).extracting(FulfillmentTaskRow::actionDocNo).containsExactly("APP-1");
+                    .containsEntry("IN_PROGRESS", 0L);
             assertThat(service.query("SUBCONTRACT", "IN_PROGRESS", "", "", null, null, 1, 100).items())
-                    .extracting(FulfillmentTaskRow::actionDocNo).containsExactly("APP-1");
-            assertThat(service.countPending("SUBCONTRACT")).isEqualTo(127L);
-            assertThat(service.countInProgress("SUBCONTRACT")).isEqualTo(1L);
+                    .extracting(FulfillmentTaskRow::actionDocNo).doesNotContain("APP-1");
+            assertThat(service.countPending("SUBCONTRACT")).isEqualTo(128L);
+            assertThat(service.countInProgress("SUBCONTRACT")).isEqualTo(0L);
 
             // 2) 线边仓里的子件不算「仓里有货」(与出仓草稿选仓同口径), 仍然锁.
             jdbc.update("INSERT INTO stock_balances(id, warehouse_id, goods_id, color_id, qty) VALUES (?,?,?,NULL,50)",
                     UUID.randomUUID(), id("wh-line-side"), id("sole-child"));
             assertThat(applicationRow("APP-1").displayStage()).isEqualTo("WAITING_COMPONENT_STOCK");
-            assertThat(service.countPending("SUBCONTRACT")).isEqualTo(127L);
+            assertThat(service.countPending("SUBCONTRACT")).isEqualTo(128L);
 
             // 3) 作业叶仓入库了 (不管多少) → 解锁: 可下单, 阶段 COMPONENT_STOCK_READY, 行带子件可动用量.
             jdbc.update("INSERT INTO stock_balances(id, warehouse_id, goods_id, color_id, qty) VALUES (?,?,?,NULL,5)",

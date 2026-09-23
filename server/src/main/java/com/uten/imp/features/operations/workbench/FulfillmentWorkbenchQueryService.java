@@ -101,17 +101,6 @@ public class FulfillmentWorkbenchQueryService {
               AND COALESCE(sole_item.qty, 0) > COALESCE(sole_item.ordered_qty, 0)
               AND fn_subcontract_sole_component_goods(sole_item.goods_id)""".formatted(
             COMPONENT_STOCK_AVAILABLE_SQL.formatted("sole_edge.component_goods_id", "sole_edge.color_id"), "%s");
-    /**
-     * ADR-103: 该申请是否被路线 B 锁住——任一单一子件明细的子件仓里一件都没有 (BOOL_OR 口径).
-     * 任务中心申请行的 can_create_order / display_stage、红黄徽章、分段计数四处都从这一个片段展开,
-     * 与 SubcontractOrderService.prepareDraft / 送审 / 批准的服务端守卫同一判据. %s = 申请 id 表达式.
-     */
-    static final String APPLICATION_COMPONENT_LOCKED_EXISTS =
-            "EXISTS (SELECT 1 FROM (" + APPLICATION_SOLE_COMPONENT_ROWS + ") locked WHERE locked.available_qty <= 0)";
-    /** 上面的锁片段套在 v_procurement_decomposition_tasks 申请行上 (红黄徽章与列表同口径). */
-    private static final String DECOMPOSITION_APPLICATION_LOCKED =
-            "(decomposition.task_status = 'WAITING_ORDER' AND decomposition.action_doc_type = 'SUBCONTRACT_APPLICATION'"
-                    + " AND " + APPLICATION_COMPONENT_LOCKED_EXISTS.formatted("decomposition.action_doc_id") + ")";
 
     /**
      * 仓库待领任务的单据归组行（一行=一张 DRAW 领料单；未挂单的行退回行级）。
@@ -300,16 +289,10 @@ public class FulfillmentWorkbenchQueryService {
             sourceView = "(" + sourceView + " UNION ALL " + subcontractPreparationRows() + ")";
         }
         sourceView = enrichTableRows(sourceView, department);
-        // ADR-103: 委外申请行被路线 B 锁住 (display_stage = WAITING_COMPONENT_STOCK) 时不再属于
-        // 「申请待分解」红段, 而是「进行中」黄段里可单独筛的一档——分段计数与列表行数必须逐条相等,
-        // 所以筛选和 statusCounts 都在这里改口径, 不让前端自己相减.
-        String statusBranches = "SUBCONTRACT".equals(department) ? """
-                       OR (:status = 'IN_PROGRESS' AND (task_status IN (%s)
-                           OR display_stage = 'WAITING_COMPONENT_STOCK'))
-                       OR (:status = 'WAITING_COMPONENT_STOCK' AND display_stage = 'WAITING_COMPONENT_STOCK')
-                       OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS', 'WAITING_COMPONENT_STOCK')
-                           AND task_status = :status
-                           AND display_stage IS DISTINCT FROM 'WAITING_COMPONENT_STOCK')""" : """
+        // ADR-103 (2026-09-22 用户实机纠偏): 路线 B 被锁的申请行(display_stage = WAITING_COMPONENT_STOCK)
+        // **留在「待处理」段**, 与路线 A 的前置自制合成行同款——用户口径「两个都是刚刚下单的, 都是待处理;
+        // 等采购件到了再下委外订货单」。锁只体现在行上(不可勾选、阶段文案), 分段归属与计数一个不动。
+        String statusBranches = """
                        OR (:status = 'IN_PROGRESS' AND task_status IN (%s))
                        OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)""";
         String filters = """
@@ -378,35 +361,36 @@ public class FulfillmentWorkbenchQueryService {
         Object[] summary = (Object[]) summaryQuery.getSingleResult();
         long total = ((Number) summary[0]).longValue();
 
-        // ADR-103: 委外分段计数把被锁的申请行单独分到 WAITING_COMPONENT_STOCK 桶, WAITING_ORDER 桶
-        // 因此只剩解锁行——服务端直接出两个键, 前端不做减法.
-        String statusBucket = "SUBCONTRACT".equals(department)
-                ? "CASE WHEN display_stage = 'WAITING_COMPONENT_STOCK' THEN display_stage ELSE task_status END"
-                : "task_status";
+        // ADR-103: 分段计数仍按 task_status 分桶(锁行留在 WAITING_ORDER 桶里, 与路线 A 合成行同款);
+        // 第三列只是顺带数一下其中有多少行在等子件, 以 WAITING_COMPONENT_STOCK 键给前端做说明用,
+        // 不参与任何分段徽章、也不从 WAITING_ORDER 里减掉。
         Query statusQuery = em.createNativeQuery("""
-                SELECT %s AS status_bucket, COUNT(*)
+                SELECT task_status, COUNT(*),
+                       COUNT(*) FILTER (WHERE display_stage = 'WAITING_COMPONENT_STOCK')
                 FROM %s
                 WHERE %s
-                GROUP BY 1
-                ORDER BY 1
-                """.formatted(statusBucket, sourceView, filters));
+                GROUP BY task_status
+                ORDER BY task_status
+                """.formatted(sourceView, filters));
         // Status cards always describe the whole department/keyword result so
         // selecting one card never makes the other card counts disappear.
         bind(statusQuery, department, "", normalizedKeyword, normalizedException, null, null);
         Map<String, Long> statusCounts = new LinkedHashMap<>();
+        long waitingComponent = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(statusQuery)) {
             statusCounts.put((String) row[0], ((Number) row[1]).longValue());
+            if (row.length > 2 && row[2] != null) {
+                waitingComponent += ((Number) row[2]).longValue();
+            }
         }
         if (usesDecompositionProjection(department)) {
             // 采购与委外的任务中心都把等待财务审核 / 财务已通过 / 财务已退回合并成「进行中」
             // 一段(ADR-100 的黄色在办数); 三档各自的计数保留给可筛的状态列与异常小类行。
             // 合并只发生在分段栏这一层, 逐档明细一个都没丢。
-            // ADR-103: 委外「等子件到货」的锁行是在办不是轮到委外动手 (准则 14: 黄=在办), 也计入.
             statusCounts.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
-                    .mapToLong(code -> statusCounts.getOrDefault(code, 0L)).sum()
-                    + statusCounts.getOrDefault("WAITING_COMPONENT_STOCK", 0L));
+                    .mapToLong(code -> statusCounts.getOrDefault(code, 0L)).sum());
             if ("SUBCONTRACT".equals(department)) {
-                statusCounts.putIfAbsent("WAITING_COMPONENT_STOCK", 0L);
+                statusCounts.put("WAITING_COMPONENT_STOCK", waitingComponent);
             }
         }
 
@@ -527,21 +511,18 @@ public class FulfillmentWorkbenchQueryService {
                         + " AND decomposition.action_doc_type = 'SUBCONTRACT_ORDER' AND "
                         + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id") + ")"
                 : "";
-        // ADR-103: 路线 B 被锁的申请行 (子件仓里一件都没有) 不是轮到委外动手, 从红数里剔除——
-        // 它们进黄数 countInProgress. 采购分支不拼这一段, SQL 原文一字不变.
-        String componentLock = "SUBCONTRACT".equals(department)
-                ? " AND NOT " + DECOMPOSITION_APPLICATION_LOCKED
-                : "";
+        // ADR-103 (2026-09-22 用户实机纠偏): 路线 B 被锁的申请行照样计入红数——与路线 A 的前置自制
+        // 合成行同款, 用户口径「刚下单的都是待处理」; 锁只体现在行上, 不改分段与角标口径。
         Query query = em.createNativeQuery(decomposition
                 ? """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT decomposition.action_doc_id
                         FROM v_procurement_decomposition_tasks decomposition
                         WHERE decomposition.department = :department AND decomposition.open_qty > 0
-                          AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)%s
+                          AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)
                         %s
                     ) documents
-                    """.formatted(shortDelivery, componentLock, preparation)
+                    """.formatted(shortDelivery, preparation)
                 : """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT COALESCE(action_doc_id, task_id)
@@ -577,22 +558,17 @@ public class FulfillmentWorkbenchQueryService {
         if (!usesDecompositionProjection(department)) {
             return 0;
         }
-        // ADR-103: 委外路线 B 被锁的申请 (等子件采购/生产入库) 是在办不是轮到委外动手, 计入黄数;
-        // 与 countPending 剔除的是同一批行 (open_qty > 0 且锁住), 红黄之间一行不丢不重.
-        String componentLock = "SUBCONTRACT".equals(department)
-                ? " OR (decomposition.open_qty > 0 AND " + DECOMPOSITION_APPLICATION_LOCKED + ")"
-                : "";
         Query query = em.createNativeQuery("""
                 SELECT COUNT(*) FROM (
                     SELECT decomposition.action_doc_type, decomposition.action_doc_id,
                            decomposition.task_status
                     FROM v_procurement_decomposition_tasks decomposition
                     WHERE decomposition.department = :department
-                      AND (decomposition.task_status IN (%s)%s)
+                      AND decomposition.task_status IN (%s)
                     GROUP BY decomposition.action_doc_type, decomposition.action_doc_id,
                              decomposition.task_status
                 ) documents
-                """.formatted(IN_PROGRESS_STATUS_SQL, componentLock));
+                """.formatted(IN_PROGRESS_STATUS_SQL));
         query.setParameter("department", department);
         return ((Number) query.getSingleResult()).longValue();
     }

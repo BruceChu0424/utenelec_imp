@@ -167,22 +167,18 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(2)).createNativeQuery(sql.capture());
+        // ADR-103 (2026-09-22 用户实机纠偏): 锁行照计红数, 与路线 A 合成行同款——红数 SQL 不碰子件库存.
         String subcontract = sql.getAllValues().getFirst();
-        assertTrue(subcontract.contains("AND NOT (decomposition.task_status = 'WAITING_ORDER'"
-                + " AND decomposition.action_doc_type = 'SUBCONTRACT_APPLICATION'"));
-        assertTrue(subcontract.contains(FulfillmentWorkbenchQueryService.APPLICATION_COMPONENT_LOCKED_EXISTS
-                .formatted("decomposition.action_doc_id")));
-        assertTrue(subcontract.contains("fn_subcontract_sole_component_goods(sole_item.goods_id)"));
-        assertTrue(subcontract.contains("fn_warehouse_is_operational_leaf(w.id)"));
-        assertTrue(subcontract.contains("NOT w.is_deleted AND NOT w.is_defective AND NOT w.is_line_side"));
-        assertTrue(subcontract.contains("COALESCE(sole_item.qty, 0) > COALESCE(sole_item.ordered_qty, 0)"));
+        assertFalse(subcontract.contains("fn_subcontract_sole_component_goods"));
+        assertFalse(subcontract.contains("v_stock_available"));
+        assertTrue(subcontract.contains("decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')"));
         String purchase = sql.getAllValues().getLast();
         assertFalse(purchase.contains("fn_subcontract_sole_component_goods"));
         assertFalse(purchase.contains("v_stock_available"));
         assertFalse(purchase.contains("decomposition.action_doc_type"));
     }
 
-    /** ADR-103: 锁行是在办 (黄), 黄数把 open_qty > 0 的锁行加进来, 与红数剔除的是同一批行. */
+    /** ADR-103 (2026-09-22 用户实机纠偏): 锁行留在待处理段, 黄数只数财审三档, 不再把锁行加进来. */
     @Test
     void subcontractInProgressCountAddsRouteBLockedApplications() {
         EntityManager em = mock(EntityManager.class);
@@ -198,8 +194,8 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(2)).createNativeQuery(sql.capture());
         String subcontract = sql.getAllValues().getFirst();
-        assertTrue(subcontract.contains("OR (decomposition.open_qty > 0 AND (decomposition.task_status = 'WAITING_ORDER'"));
-        assertTrue(subcontract.contains("fn_subcontract_sole_component_goods(sole_item.goods_id)"));
+        assertFalse(subcontract.contains("fn_subcontract_sole_component_goods"));
+        assertFalse(subcontract.contains("decomposition.open_qty > 0 AND"));
         assertTrue(subcontract.contains("task_status IN ('ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED')"));
         String purchase = sql.getAllValues().getLast();
         assertFalse(purchase.contains("fn_subcontract_sole_component_goods"));
@@ -208,7 +204,8 @@ class FulfillmentWorkbenchQueryServiceTest {
 
     /**
      * ADR-103: 委外列表行带路线 B 的三个阶段码与 component_available_qty 列, 锁行不能生成订货单;
-     * 分段计数由服务端直接出 WAITING_COMPONENT_STOCK 键并计入 IN_PROGRESS, 前端不做减法.
+     * 分段计数仍按 task_status 分桶(锁行留在 WAITING_ORDER, 用户口径「刚下单的都是待处理」),
+     * WAITING_COMPONENT_STOCK 键只是其中在等子件的行数(说明用), IN_PROGRESS 只数财审三档.
      */
     @Test
     void subcontractRowsCarryComponentLockStagesAndStatusCountsSplitTheLockedBucket() {
@@ -223,9 +220,8 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(rows.getResultList()).thenReturn(List.of());
         when(summary.getSingleResult()).thenReturn(new Object[]{3L, 0L, 3L, new BigDecimal("30")});
         when(statuses.getResultList()).thenReturn(List.of(
-                new Object[]{"FINANCE_APPROVED", 1L},
-                new Object[]{"WAITING_COMPONENT_STOCK", 2L},
-                new Object[]{"WAITING_ORDER", 4L}));
+                new Object[]{"FINANCE_APPROVED", 1L, 0L},
+                new Object[]{"WAITING_ORDER", 4L, 2L}));
         when(exceptions.getResultList()).thenReturn(List.of());
         when(pending.getSingleResult()).thenReturn(3L);
         FulfillmentWorkbenchAccessPolicy accessPolicy = mock(FulfillmentWorkbenchAccessPolicy.class);
@@ -235,8 +231,8 @@ class FulfillmentWorkbenchQueryServiceTest {
                 .query("SUBCONTRACT", "WAITING_ORDER", "", "", null, null, 1, 20);
 
         assertEquals(2L, page.summary().statusCounts().get("WAITING_COMPONENT_STOCK"));
-        assertEquals(4L, page.summary().statusCounts().get("WAITING_ORDER"));
-        assertEquals(3L, page.summary().statusCounts().get("IN_PROGRESS"));
+        assertEquals(4L, page.summary().statusCounts().get("WAITING_ORDER"), "锁行留在 WAITING_ORDER 桶里, 不减");
+        assertEquals(1L, page.summary().statusCounts().get("IN_PROGRESS"), "黄数只数财审三档");
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(5)).createNativeQuery(sql.capture());
@@ -249,12 +245,12 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertTrue(rowsSql.contains("waiting_item.flow_mode = 'COMPONENT_OUTBOUND'"));
         assertTrue(rowsSql.contains(FulfillmentWorkbenchQueryService.COMPONENT_STOCK_AVAILABLE_SQL
                 .formatted("waiting_item.goods_id", "waiting_item.color_id")));
-        // 锁行从「申请待分解」段挪进「进行中」段, 列表筛选与分段计数同口径.
-        assertTrue(rowsSql.contains("AND display_stage IS DISTINCT FROM 'WAITING_COMPONENT_STOCK'"));
-        assertTrue(rowsSql.contains("OR display_stage = 'WAITING_COMPONENT_STOCK'))"));
+        // 锁行留在「待处理」段: 分段筛选按 task_status, 与采购同一句 SQL; 分桶只顺带数在等子件的行数.
+        assertFalse(rowsSql.contains("display_stage IS DISTINCT FROM 'WAITING_COMPONENT_STOCK'"));
+        assertTrue(rowsSql.contains("OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)"));
         String statusSql = sql.getAllValues().get(2);
-        assertTrue(statusSql.contains(
-                "CASE WHEN display_stage = 'WAITING_COMPONENT_STOCK' THEN display_stage ELSE task_status END"));
+        assertTrue(statusSql.contains("COUNT(*) FILTER (WHERE display_stage = 'WAITING_COMPONENT_STOCK')"));
+        assertTrue(statusSql.contains("GROUP BY task_status"));
     }
 
     /** 采购列表不拼委外的子件锁, 只补一列 NULL 占位, 行映射两边同宽. */

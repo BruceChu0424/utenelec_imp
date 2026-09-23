@@ -164,6 +164,9 @@ public interface PaymentStyleRepository extends JpaRepository<PaymentStyle, UUID
                     UNION ALL
                     SELECT 1 FROM accounts
                     WHERE style_id IN (SELECT id FROM style_subtree)
+                    UNION ALL
+                    SELECT 1 FROM finance_report_line_bindings
+                    WHERE style_id IN (SELECT id FROM style_subtree)
                 ) business_reference
                 LIMIT 1
             )

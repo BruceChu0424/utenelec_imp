@@ -160,8 +160,6 @@ class SubcontractOrderMergeGuardTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("20"));
         line.setPrice(BigDecimal.ONE);
-        line.setAmountOriginal(new BigDecimal("20"));
-        line.setAmountLocal(new BigDecimal("20"));
         line.setSupplierId(UUID.randomUUID());
         line.setSettlementMethodId(UUID.randomUUID());
         line.setCurrencyId(UUID.randomUUID());

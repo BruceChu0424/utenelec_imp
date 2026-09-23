@@ -132,8 +132,6 @@ class SalesOrderExchangeRateAuthorityTest {
         OrderSaveRequest request = request(currencyId, "999999");
         OrderItemLine line = request.getItems().getFirst();
         line.setPrice(null);
-        line.setAmountOriginal(new BigDecimal("0.01"));
-        line.setAmountLocal(new BigDecimal("0.02"));
         line.setDiscount(new BigDecimal("0.8"));
 
         var detail = service.create(request);

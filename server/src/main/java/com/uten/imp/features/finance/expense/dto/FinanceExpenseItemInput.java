@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.expense.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,7 +11,7 @@ import java.util.UUID;
 /** 一般费用单保存请求中的明细行。 */
 @Getter
 @Setter
-public class FinanceExpenseItemInput {
+public class FinanceExpenseItemInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -24,9 +25,6 @@ public class FinanceExpenseItemInput {
     private BigDecimal qty;
     private BigDecimal price;
     private BigDecimal amountOriginal;
-
-    @NotNull
-    private BigDecimal amountLocal;
 
     private String summary;
     private String remark;

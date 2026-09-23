@@ -96,12 +96,13 @@ void main() {
         contains('parsedTax == null || parsedTax < 0 || parsedTax > 100'),
       );
 
-      // 请求体：整套条款随单提交，本币金额按表头汇率就地折算。
+      // 请求体：整套条款随单提交；金额由服务端按 数量 × 单价 × 汇率 派生(ADR-112)，请求不带金额。
       expect(flat, contains("'currencyId': _currencyId"));
       expect(flat, contains("'exchangeRate': exchangeRate"));
       expect(flat, contains("'taxRate': taxRate"));
       expect(flat, contains("'settlementMethodId': _settlementMethodId"));
-      expect(flat, contains("'amountLocal': qty * price * exchangeRate"));
+      expect(flat, isNot(contains("'amountLocal'")));
+      expect(flat, isNot(contains("'amountOriginal'")));
 
       // 表单绑定：币种下拉取币种字典、回写 _currencyId(即上面提交的那个字段)。
       expect(flat, contains("'币种', _currencyId, names.currencyEntries"));

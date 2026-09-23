@@ -313,7 +313,6 @@ class SubcontractShortDeliveryEndToEndTest {
         var line=new OrderItemLine();
         line.setGoodsId(w.goodsE());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("10"));
-        line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());
         if(allowedLossPct!=null)line.setAllowedLossPct(new BigDecimal(allowedLossPct));
         request.setItems(List.of(line));
         return request;

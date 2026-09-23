@@ -199,8 +199,6 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal(qty));
         line.setPrice(new BigDecimal("10"));
-        line.setAmountOriginal(line.getQty().multiply(line.getPrice()));
-        line.setAmountLocal(line.getAmountOriginal());
         line.setAllowedLossPct(new BigDecimal("10"));
         request.setItems(List.of(line));
         return request;

@@ -183,7 +183,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new FullGroup("finance_docs", "data_change", false,
                     "财务单据、凭证、往来台账与资产: 人工录入并审核的财务事实",
                     Set.of(
-                        "ar_ap_ledger", "customer_open_item_offset_batches",
+                        "ar_ap_ledger", "customer_open_item_offset_batches", "finance_report_line_bindings",
                         "customer_open_item_offsets", "deferred_expenses",
                         "expense_claim_invoices", "finance_asset_accounting_periods",
                         "finance_asset_books", "finance_asset_categories",
@@ -527,8 +527,14 @@ class AuditTriggerCoverageMigrationContractTest {
                 }
             }
         }
-        assertEquals(fullTables(), declaredFull, "V646 FULL calls must equal the FULL list and categories");
-        assertEquals(redactedFullTables(), declaredRedacted, "Payroll-class redaction flags must match");
+        // 基线之后新建的 FULL 表由各自建表迁移调用 fn_audit_track_table 登记(见下一个用例), 不在 V646 里。
+        Map<String, Integer> created = liveTableVersions();
+        Map<String, String> baselineFull = new LinkedHashMap<>(fullTables());
+        baselineFull.keySet().removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
+        Set<String> baselineRedacted = new HashSet<>(redactedFullTables());
+        baselineRedacted.removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
+        assertEquals(baselineFull, declaredFull, "V646 FULL calls must equal the FULL list and categories");
+        assertEquals(baselineRedacted, declaredRedacted, "Payroll-class redaction flags must match");
 
         Map<String, ScopedTable> declaredScoped = new LinkedHashMap<>();
         Matcher scoped = SCOPED_CALL.matcher(sql);

@@ -250,8 +250,6 @@ class ProcurementRejectedOrderEditTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(BigDecimal.TEN);
         line.setPrice(BigDecimal.ONE);
-        line.setAmountOriginal(BigDecimal.TEN);
-        line.setAmountLocal(BigDecimal.TEN);
         line.setRequestItemId(requestItemId);
         return line;
     }
@@ -322,8 +320,6 @@ class ProcurementRejectedOrderEditTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(BigDecimal.TEN);
         line.setPrice(BigDecimal.ONE);
-        line.setAmountOriginal(BigDecimal.TEN);
-        line.setAmountLocal(BigDecimal.TEN);
         line.setApplicationItemId(applicationItemId);
         return line;
     }

@@ -138,7 +138,7 @@ final class WarehouseIqcScaleFixture {
         var line = new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
         line.setOrderItemId(orderItem); line.setGoodsId(w.goodsE()); line.setUnitId(w.unitId()); line.setUnitRate(BigDecimal.ONE);
         line.setQty(RECEIPT_QTY); line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(RECEIPT_QTY.multiply(line.getPrice())); line.setAmountLocal(line.getAmountOriginal()); request.setItems(List.of(line));
+        request.setItems(List.of(line));
         UUID receipt = subcontractReceipts.create(request).getId(); subcontractReceipts.approve(receipt); return receipt;
     }
 

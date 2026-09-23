@@ -16,11 +16,12 @@ class SubcontractReturnAmountAuthorityTest {
     void partialReturnUsesSourceProcessingPriceAndRate() {
         var amounts = SubcontractReturnAmountAuthority.sourceAmounts(
                 new BigDecimal("1.2500"), new BigDecimal("8.0000"), new BigDecimal("1.234567"),
-                new BigDecimal("2.5000"), new BigDecimal("20.0000"), new BigDecimal("24.6913"),
+                new BigDecimal("2.5000"), new BigDecimal("20.0000"), new BigDecimal("24.691340"),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
 
         assertThat(amounts.original()).isEqualByComparingTo("10.0000");
-        assertThat(amounts.local()).isEqualByComparingTo("12.3457");
+        // ADR-112: 来源本币是精确乘积, 部分退货取累计份额, 不再四舍五入到 4 位。
+        assertThat(amounts.local()).isEqualByComparingTo("12.345670");
     }
 
     @Test

@@ -905,3 +905,7 @@ SELECT set_config(
     'off',
     true
 );
+
+-- ADR-112: 科目导入完成、引用守卫恢复正常之后, 按默认科目名单为还没有任何绑定的
+-- 总账附表/经营损益表行补默认绑定(幂等: 已有绑定的行不动; 只绑费用类末级科目)。
+SELECT fn_finance_report_line_bindings_seed_defaults();

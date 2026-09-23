@@ -38,13 +38,14 @@ class ProcurementIqcDispositionAmountBehaviorTest {
         BigDecimal amount = new BigDecimal("0.0247");
         BigDecimal received = new BigDecimal("3");
 
-        BigDecimal passFirst = ProcurementInspectionService.proratedIncrement(
+        BigDecimal passFirst = ProcurementInspectionService.releasedAmountSlice(
                 amount, received, BigDecimal.ZERO, BigDecimal.ONE);
-        BigDecimal failMiddle = ProcurementInspectionService.proratedIncrement(
+        BigDecimal failMiddle = ProcurementInspectionService.releasedAmountSlice(
                 amount, received, BigDecimal.ONE, BigDecimal.ONE);
-        BigDecimal passLast = ProcurementInspectionService.proratedIncrement(
+        BigDecimal passLast = ProcurementInspectionService.releasedAmountSlice(
                 amount, received, new BigDecimal("2"), BigDecimal.ONE);
 
+        // ADR-112: 累计份额取到 4 位(0.0082 / 0.0165), 末片取余; 三片恰好等于收货金额(与库级守卫同式)。
         assertThat(passFirst).isEqualByComparingTo("0.0082");
         assertThat(failMiddle).isEqualByComparingTo("0.0083");
         assertThat(passLast).isEqualByComparingTo("0.0082");

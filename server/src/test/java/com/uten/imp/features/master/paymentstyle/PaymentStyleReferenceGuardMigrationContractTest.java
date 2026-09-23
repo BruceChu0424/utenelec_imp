@@ -44,6 +44,7 @@ class PaymentStyleReferenceGuardMigrationContractTest {
             "finance_deferral_schedule_versions.expense_style_id",
             "finance_expense_items.expense_style_id",
             "finance_other_income_items.income_style_id",
+            "finance_report_line_bindings.style_id",
             "finance_payments.gl_account_style_id",
             "finance_payments.gl_ap_style_id",
             "finance_payments.gl_bank_fee_style_id",
@@ -127,6 +128,12 @@ class PaymentStyleReferenceGuardMigrationContractTest {
             guardedReferences.add(explicitGuards.group(1) + "." + explicitGuards.group(2));
         }
         explicitGuards = EXPLICIT_GUARD.matcher(v400);
+        while (explicitGuards.find()) {
+            guardedReferences.add(explicitGuards.group(1) + "." + explicitGuards.group(2));
+        }
+        String v665 = Files.readString(serverPath(
+                "src/main/resources/db/migration/V665__finance_report_line_bindings.sql"));
+        explicitGuards = EXPLICIT_GUARD.matcher(v665);
         while (explicitGuards.find()) {
             guardedReferences.add(explicitGuards.group(1) + "." + explicitGuards.group(2));
         }

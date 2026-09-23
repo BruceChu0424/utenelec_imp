@@ -20,10 +20,16 @@ class AccountBalanceAdjustmentAuditIdentityContractTest {
                 .contains("UUID auditUserId = currentUser.requireId()")
                 .contains(".setParameter(\"actor\", actorEmployeeId)")
                 .contains(".setParameter(\"createdBy\", auditUserId)")
-                .contains("updated_at=now(),updated_by=:actor")
-                .contains(".setParameter(\"actor\", auditUserId)")
-                .contains("in_amount,out_amount,amount_local,entry_kind,bill_date,settled_date")
-                .contains(":inAmount,:outAmount,:amountLocal,'ADJUSTMENT',:billDate,NULL")
-                .contains(".setParameter(\"amountLocal\", deltaLocal.abs())");
+                // ADR-112: 余额与流水统一经账本写入, 操作人仍是用户 id(不是员工 id)。
+                .contains("AccountPosting.adjustment(RECON_SOURCE, batchId, batchNo, account.id())")
+                .contains(".amounts(delta, deltaLocal)")
+                .contains(".actor(auditUserId)");
+        String ledger = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/finance/accountflow/AccountFlowLedgerService.java"));
+        assertThat(ledger)
+                .contains("updated_by = COALESCE(CAST(:actor AS uuid), updated_by)")
+                .contains("now(), now(), :actor, :actor, FALSE)")
+                .contains(".setParameter(\"entryKind\", adjustment ? \"ADJUSTMENT\" : POSTING)")
+                .contains("local = local == null ? null : local.abs();");
     }
 }

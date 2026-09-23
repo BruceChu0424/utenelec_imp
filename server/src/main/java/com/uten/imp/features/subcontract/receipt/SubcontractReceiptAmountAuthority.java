@@ -2,6 +2,7 @@ package com.uten.imp.features.subcontract.receipt;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.finance.ProcurementIqcReplacementAllocationService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -119,14 +120,16 @@ public class SubcontractReceiptAmountAuthority {
             var released=replacementAllocation.releasedCapacity(
                     "SUBCONTRACT",item.getOrderItemId());
             BigDecimal effectivePriorQty=rawPriorQty.subtract(released.qty());
-            boolean exactPriceBasis=sourceQty.multiply(sourcePrice).compareTo(sourceOriginal)==0
-                    &&sourceOriginal.multiply(sourceRate).compareTo(sourceLocal)==0;
+            boolean exactPriceBasis=MoneyPolicy.exactProduct(sourceQty,sourcePrice).compareTo(sourceOriginal)==0
+                    &&MoneyPolicy.local(sourceOriginal,sourceRate).compareTo(sourceLocal)==0;
             if(!exactPriceBasis&&(released.amountOriginal()==null||released.amountLocal()==null))
                 throw conflict("历史原单金额与单价不一致且退回金额没有有限表示，请保留来源待核对");
-            BigDecimal effectivePriorOriginal=exactPriceBasis?money(effectivePriorQty.multiply(sourcePrice))
-                    :money(rawPriorOriginal.subtract(released.amountOriginal()));
-            BigDecimal effectivePriorLocal=exactPriceBasis?money(effectivePriorOriginal.multiply(sourceRate))
-                    :money(rawPriorLocal.subtract(released.amountLocal()));
+            BigDecimal effectivePriorOriginal=exactPriceBasis
+                    ?MoneyPolicy.exactProduct(effectivePriorQty,sourcePrice)
+                    :rawPriorOriginal.subtract(released.amountOriginal());
+            BigDecimal effectivePriorLocal=exactPriceBasis
+                    ?MoneyPolicy.local(effectivePriorOriginal,sourceRate)
+                    :rawPriorLocal.subtract(released.amountLocal());
             if(effectivePriorQty.signum()<0||effectivePriorOriginal.signum()<0
                     ||effectivePriorLocal.signum()<0){
                 throw conflict("委外IQC失败退回释放额度超过历史有效进仓累计");
@@ -188,10 +191,10 @@ public class SubcontractReceiptAmountAuthority {
             throw conflict("委外到货授权数量或金额快照无效");
         }
         BigDecimal overageQty = postedOverageQty.add(currentApprovedOverageQty);
-        BigDecimal overageOriginal = money(overageQty.multiply(sourcePrice));
-        BigDecimal overageLocal = money(overageOriginal.multiply(sourceRate));
+        BigDecimal overageOriginal = MoneyPolicy.exactProduct(overageQty, sourcePrice);
+        BigDecimal overageLocal = MoneyPolicy.local(overageOriginal, sourceRate);
         return new AuthorizedSource(baseQty.add(overageQty),
-                money(baseOriginal.add(overageOriginal)), money(baseLocal.add(overageLocal)));
+                baseOriginal.add(overageOriginal), baseLocal.add(overageLocal));
     }
 
     static ReceiptAmounts sourceAmounts(
@@ -208,21 +211,16 @@ public class SubcontractReceiptAmountAuthority {
             throw conflict("委外进仓来源数量、加工单价、汇率或历史进仓累计无效");
         }
         BigDecimal remainingQty = sourceQty.subtract(priorQty);
-        BigDecimal remainingOriginal = money(sourceOriginal.subtract(priorOriginal));
-        BigDecimal remainingLocal = money(sourceLocal.subtract(priorLocal));
+        BigDecimal remainingOriginal = sourceOriginal.subtract(priorOriginal);
+        BigDecimal remainingLocal = sourceLocal.subtract(priorLocal);
         if (remainingQty.signum() < 0 || remainingOriginal.signum() < 0
                 || remainingLocal.signum() < 0 || receiptQty.compareTo(remainingQty) > 0) {
             throw conflict("委外进仓数量或金额超过财务批准订单行剩余额度");
         }
-        if (receiptQty.compareTo(remainingQty) == 0) {
-            return new ReceiptAmounts(remainingOriginal, remainingLocal);
-        }
-        BigDecimal original = money(receiptQty.multiply(sourcePrice));
-        BigDecimal local = money(original.multiply(sourceRate));
-        if (original.compareTo(remainingOriginal) > 0 || local.compareTo(remainingLocal) > 0) {
-            throw conflict("委外进仓标准金额超过财务批准订单行剩余金额");
-        }
-        return new ReceiptAmounts(original, local);
+        // 累计量对应金额 − 已收金额; 末批(收满授权量)取全部剩余, 不丢也不造尾差。
+        MoneyPolicy.LineAmounts amounts = MoneyPolicy.prorateBatch(
+                receiptQty, priorQty, sourceQty, sourceOriginal, sourceLocal, priorOriginal, priorLocal);
+        return new ReceiptAmounts(money(amounts.original()), money(amounts.local()));
     }
 
     private static BigDecimal decimal(Object value) {

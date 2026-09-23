@@ -89,7 +89,6 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController writeOff = TextEditingController(text: '0');
   final TextEditingController remark = TextEditingController();
   String? originalAmountSnapshot;
-  String? localAmountSnapshot;
   String? amountInputSnapshot;
   String? summarySnapshot;
   final ValueNotifier<double> localAmountNotifier = ValueNotifier<double>(0);

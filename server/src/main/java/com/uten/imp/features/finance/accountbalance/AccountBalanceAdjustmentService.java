@@ -1,5 +1,7 @@
 package com.uten.imp.features.finance.accountbalance;
 
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
+import com.uten.imp.features.finance.accountflow.AccountPosting;
 import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
@@ -66,6 +68,7 @@ public class AccountBalanceAdjustmentService {
     private final SecurityContextCurrentUser currentUser;
     private final DocNumberService docNumberService;
     private final GlPostingService glPostingService;
+    private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional
     @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
@@ -95,6 +98,9 @@ public class AccountBalanceAdjustmentService {
         requireScopeCoverage(normalized.scope(), requestedIds, activeBefore);
 
         List<AccountSnapshot> accounts = lockAccounts(requestedIds);
+        // 过账统一经账本(ADR-112): 同一批账户按主键顺序交给账本锁定, 余额与流水只在账本里写。
+        var ledgerAccounts = accounts.size() == requestedIds.size()
+                ? accountFlowLedger.lockActive(requestedIds, "校准账户") : null;
         if (accounts.size() != requestedIds.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -203,42 +209,14 @@ public class AccountBalanceAdjustmentService {
                     .executeUpdate();
 
             if (delta.signum() == 0) continue;
-            int updated = em.createNativeQuery("""
-                            UPDATE accounts
-                            SET balance_adjustments_total=balance_adjustments_total+:delta,
-                                balance_current=balance_current+:delta,
-                                updated_at=now(),updated_by=:actor
-                            WHERE id=:account
-                            """)
-                    .setParameter("delta", delta)
-                    .setParameter("actor", auditUserId)
-                    .setParameter("account", account.id())
-                    .executeUpdate();
-            if (updated != 1) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "账户余额更新失败：" + account.code());
-            }
-            em.createNativeQuery("""
-                            INSERT INTO finance_reconciliations(
-                                bill_no,source_doc_type,source_doc_id,account_id,
-                                in_amount,out_amount,amount_local,entry_kind,bill_date,settled_date,
-                                source_remark,remark,created_at,updated_at,created_by,updated_by,is_deleted)
-                            VALUES(
-                                :batchNo,:source,:batch,:account,
-                                :inAmount,:outAmount,:amountLocal,'ADJUSTMENT',:billDate,NULL,
-                                '账户余额校准',:reason,now(),now(),:actor,:actor,FALSE)
-                            """)
-                    .setParameter("batchNo", batchNo)
-                    .setParameter("source", RECON_SOURCE)
-                    .setParameter("batch", batchId)
-                    .setParameter("account", account.id())
-                    .setParameter("inAmount", delta.signum() > 0 ? delta : BigDecimal.ZERO)
-                    .setParameter("outAmount", delta.signum() < 0 ? delta.abs() : BigDecimal.ZERO)
-                    .setParameter("amountLocal", deltaLocal.abs())
-                    .setParameter("billDate", BusinessTime.startOfDay(normalized.effectiveDate()))
-                    .setParameter("reason", normalized.reason())
-                    .setParameter("actor", auditUserId)
-                    .executeUpdate();
+            accountFlowLedger.post(ledgerAccounts.get(account.id()),
+                    AccountPosting.adjustment(RECON_SOURCE, batchId, batchNo, account.id())
+                            .amounts(delta, deltaLocal)
+                            .bookedAt(BusinessTime.startOfDay(normalized.effectiveDate()))
+                            .sourceRemark("账户余额校准")
+                            .remark(normalized.reason())
+                            .actor(auditUserId)
+                            .label("校准账户 " + account.code()));
         }
         return loadResult(batchId);
     }

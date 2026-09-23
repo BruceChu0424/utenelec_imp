@@ -161,7 +161,6 @@ class FinancePaymentStyleValidationTest {
     private static FinanceExpenseSaveRequest expenseRequest(UUID styleId) {
         FinanceExpenseItemInput item = new FinanceExpenseItemInput();
         item.setExpenseStyleId(styleId);
-        item.setAmountLocal(BigDecimal.ONE);
         FinanceExpenseSaveRequest request = new FinanceExpenseSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 13));
         request.setItems(List.of(item));
@@ -171,7 +170,6 @@ class FinancePaymentStyleValidationTest {
     private static FinanceOtherIncomeSaveRequest incomeRequest(UUID styleId) {
         FinanceOtherIncomeItemInput item = new FinanceOtherIncomeItemInput();
         item.setIncomeStyleId(styleId);
-        item.setAmountLocal(BigDecimal.ONE);
         FinanceOtherIncomeSaveRequest request = new FinanceOtherIncomeSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 13));
         request.setItems(List.of(item));

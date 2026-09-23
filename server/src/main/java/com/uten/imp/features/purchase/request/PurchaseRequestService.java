@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.OrganizationReferencePort;
 
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
@@ -401,8 +402,10 @@ public class PurchaseRequestService {
             it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            // 金额只由服务端派生(ADR-112): 数量 × 单价; 本单据无币种, 按本位币计(汇率 1)。单价空则金额空。
+            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);
+            it.setAmountOriginal(amounts.original());
+            it.setAmountLocal(amounts.local());
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());

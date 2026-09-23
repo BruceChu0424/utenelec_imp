@@ -100,7 +100,13 @@ public class StockReconciliationService {
     private static BigDecimal toBd(Object value) {
         if (value == null) return BigDecimal.ZERO;
         if (value instanceof BigDecimal bd) return bd;
-        if (value instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+        if (value instanceof Long || value instanceof Integer || value instanceof Short) {
+            return BigDecimal.valueOf(((Number) value).longValue());
+        }
+        if (value instanceof Number n) {
+            // 数量只来自 numeric 列; 浮点会让差异核对出现假差异, 直接暴露。
+            throw new IllegalStateException("库存数量列类型不精确: " + n.getClass().getName());
+        }
         return new BigDecimal(value.toString());
     }
 }

@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payment.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -11,7 +12,7 @@ import java.util.UUID;
 /** 采购付款单保存请求中的明细行。 */
 @Getter
 @Setter
-public class FinancePaymentLineInput {
+public class FinancePaymentLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
     private UUID appliedLedgerId;
@@ -24,10 +25,5 @@ public class FinancePaymentLineInput {
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal amountOriginal;
 
-    /** 服务端按本次付款汇率重算；仅保留用于兼容旧客户端。 */
-    private BigDecimal amountLocal;
-
-    /** 服务端按付款汇率与应付开账汇率重算；客户端值不会入账。 */
-    private BigDecimal exchangeDiff;
     private String remark;
 }

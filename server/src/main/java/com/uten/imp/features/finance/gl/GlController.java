@@ -8,6 +8,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,6 +37,7 @@ public class GlController {
 
     private final GlPostingService posting;
     private final GlReportService reports;
+    private final GlReportLineBindingService lineBindings;
 
     // ======================== 过账 ========================
 
@@ -129,6 +133,34 @@ public class GlController {
             @RequestParam(required = false) Integer month,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
         return reports.operatingPl(yearOf(year, dateTo), monthOf(month, dateTo));
+    }
+
+    // ======================== 报表设置: 报表行 → 科目/部门 ========================
+
+    /** 附表与经营损益表各可配置行当前绑定的科目/部门; 未绑定的行在报表上标注未配置。 */
+    @GetMapping("/api/finance/reports/gl/line-bindings")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public java.util.List<GlReportLineBindingService.LineBinding> lineBindings() {
+        return lineBindings.list();
+    }
+
+    /** 整行替换某报表行的绑定(人工行传部门, 其余传费用科目); 空列表即清空。 */
+    @PutMapping("/api/finance/reports/gl/line-bindings/{lineKey}")
+    @PreAuthorize("hasAuthority('payment_style:edit')")
+    public GlReportLineBindingService.LineBinding replaceLineBinding(
+            @PathVariable String lineKey, @RequestBody LineBindingRequest request) {
+        return lineBindings.replace(lineKey, request == null ? null : request.targetIds());
+    }
+
+    /** 按默认科目名单为还没有任何绑定的行补齐绑定(已有绑定的行不动)。 */
+    @PostMapping("/api/finance/reports/gl/line-bindings/defaults")
+    @PreAuthorize("hasAuthority('payment_style:edit')")
+    public java.util.List<GlReportLineBindingService.LineBinding> seedDefaultLineBindings() {
+        return lineBindings.seedDefaults();
+    }
+
+    /** 报表行绑定请求。 */
+    public record LineBindingRequest(java.util.List<java.util.UUID> targetIds) {
     }
 
     private static int yearOf(Integer year, LocalDate dateTo) {

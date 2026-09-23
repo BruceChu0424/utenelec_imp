@@ -71,7 +71,6 @@ public class FinanceReportService {
 
     // ======================== 通用执行器（镜像销售/采购） ========================
 
-    @Transactional(readOnly = true)
     private ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
                                         WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                         Map<String, String> activeFacets, int page, int size,
@@ -336,7 +335,6 @@ public class FinanceReportService {
     }
 
     /** arApOverview 专用：带 category 递归 CTE 参数 + 计数 + 分页（无 facet）。 */
-    @Transactional(readOnly = true)
     private ReportTableResponse executeOverview(List<ReportColumn> cols, String dataSelect, String fromJoin,
                                                 WhereBuilder w, LocalDate dateFrom, LocalDate dateTo,
                                                 String keyword, UUID catId, UUID catParam, int page, int size) {
@@ -963,7 +961,6 @@ public class FinanceReportService {
 
     /** 原生 SQL 分页执行器（CTE/聚合报表用，如 B 应收汇总 / D 应付汇总）。SQL 含 :from/:to[/:kw] 参数。
      *  [partyAlias] 外层主表别名（应收=客户 c / 应付=供应商 s），keyword 走 {alias}.name/{alias}.code。 */
-    @Transactional(readOnly = true)
     private ReportTableResponse executeRawPaged(List<ReportColumn> cols, String coreSql, String orderBy,
                                                  String keyword, LocalDate from, LocalDate to, int page, int size,
                                                  String partyAlias, NativeReadScope documentScope) {
@@ -2182,11 +2179,25 @@ public class FinanceReportService {
                 List.of(new com.uten.imp.common.report.ReportTotalGroup(null, num(value)))));
     }
 
-    private static BigDecimal num(Object v) {
+    /**
+     * 报表数值只接受精确类型(ADR-112): numeric → BigDecimal, 整数 → 精确转换; 文本按十进制严格解析。
+     * 浮点或解析失败直接报错暴露问题, 不再静默当 0 让合计少算。
+     */
+    static BigDecimal num(Object v) {
         if (v == null) return BigDecimal.ZERO;
         if (v instanceof BigDecimal bd) return bd;
-        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
-        try { return new BigDecimal(v.toString()); } catch (Exception e) { return BigDecimal.ZERO; }
+        if (v instanceof Long || v instanceof Integer || v instanceof Short || v instanceof Byte) {
+            return BigDecimal.valueOf(((Number) v).longValue());
+        }
+        if (v instanceof java.math.BigInteger integer) return new BigDecimal(integer);
+        if (v instanceof CharSequence text) {
+            try {
+                return new BigDecimal(text.toString().trim());
+            } catch (NumberFormatException invalid) {
+                throw new IllegalStateException("报表数值列不是十进制数: " + text, invalid);
+            }
+        }
+        throw new IllegalStateException("报表数值列类型不精确: " + v.getClass().getName());
     }
 
     private static BigDecimal numOrNull(Object v) {
@@ -2194,7 +2205,6 @@ public class FinanceReportService {
     }
 
     /** S 帐户流水滚动余额。 */
-    @Transactional(readOnly = true)
     private ReportTableResponse buildAccountRunning(List<ReportColumn> cols, String sql, UUID aid,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw, int page, int size) {
         String keyword = (kw == null || kw.isBlank()) ? null : kw.toLowerCase(Locale.ROOT);
@@ -2244,7 +2254,6 @@ public class FinanceReportService {
     }
 
     /** X 年度对帐（GROUP BY 月，无滚动；直接分页）。 */
-    @Transactional(readOnly = true)
     private ReportTableResponse executeRawGrouped(List<ReportColumn> cols, String sql, UUID pid,
                                                   LocalDate yearStart, LocalDate yearEnd, int page, int size,
                                                   NativeReadScope documentScope) {
@@ -2295,7 +2304,6 @@ public class FinanceReportService {
     }
 
     /** 按 GROUP BY 的聚合报表（如 F 销售收款汇总按客户）。 */
-    @Transactional(readOnly = true)
     private ReportTableResponse executeGrouped(List<ReportColumn> cols, String dataSelect, String fromJoin,
                                                WhereBuilder w, String orderBy, String groupExpr, int page, int size) {
         int safePage = Math.max(1, page);
@@ -2455,20 +2463,35 @@ public class FinanceReportService {
      *  {@code ReportQueryKit.paginateAll}（本包 ReportTableResponse 的取数适配在 export 调用点）。 */
 
     private static Boolean parseBool(String s) { return (s == null || s.isBlank()) ? null : Boolean.valueOf(s); }
-    private static BigDecimal parseBigDecimal(String s) { return (s == null || s.isBlank()) ? null : new BigDecimal(s); }
+    private static BigDecimal parseBigDecimal(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return new BigDecimal(s.trim());
+        } catch (NumberFormatException invalid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "筛选金额格式不正确: " + s);
+        }
+    }
     private static int yearOf(Map<String, String> p, LocalDate dateTo) {
         String y = p == null ? null : p.get("year");
-        if (y != null && !y.isBlank()) return Integer.parseInt(y);
+        if (y != null && !y.isBlank()) return parseInt(y, "年份");
         return (dateTo != null ? dateTo : BusinessTime.today()).getYear();
     }
     private static int monthOf(Map<String, String> p, LocalDate dateTo) {
         String m = p == null ? null : p.get("month");
-        if (m != null && !m.isBlank()) return Integer.parseInt(m);
+        if (m != null && !m.isBlank()) return parseInt(m, "月份");
         return (dateTo != null ? dateTo : BusinessTime.today()).getMonthValue();
     }
+    /** 未填为 0(调用方按「不限」处理); 填了但不是整数时明确报错, 不再悄悄当 0。 */
     private static int parseIntOrZero(String s) {
         if (s == null || s.isBlank()) return 0;
-        try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { return 0; }
+        return parseInt(s, "年份");
+    }
+    private static int parseInt(String s, String label) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException invalid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "格式不正确: " + s);
+        }
     }
 
     // ======================== 内部结构 ========================

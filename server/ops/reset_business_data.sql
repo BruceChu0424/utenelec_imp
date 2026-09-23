@@ -485,6 +485,8 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('employment_history', 'PRESERVE'),
 ('finance_asset_categories', 'PRESERVE'),
 ('finance_payment_methods', 'PRESERVE'),
+-- V665 总账附表/经营损益表 报表行绑定：报表配置随科目/部门主档保留。
+('finance_report_line_bindings', 'PRESERVE'),
 ('flyway_schema_history', 'PRESERVE'),
 ('goods', 'PRESERVE'),
 ('goods_bom_items', 'PRESERVE'),

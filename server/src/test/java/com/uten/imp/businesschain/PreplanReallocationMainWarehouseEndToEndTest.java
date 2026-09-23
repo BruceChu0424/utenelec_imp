@@ -167,7 +167,7 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         for(var row:requestItems) {
             var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(goods);line.setRequestItemId((UUID)row.get("id"));
             line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty((BigDecimal)row.get("qty"));line.setPrice(new BigDecimal("50"));
-            line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());lines.add(line);
+            lines.add(line);
         }
         order.setItems(lines);
         var purchases=(com.uten.imp.features.purchase.order.PurchaseOrderService)ReflectionTestUtils.getField(fixture,"purchaseOrderService");

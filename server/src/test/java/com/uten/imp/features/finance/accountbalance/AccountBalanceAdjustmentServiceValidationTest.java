@@ -204,7 +204,8 @@ class AccountBalanceAdjustmentServiceValidationTest {
                 mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(DocNumberService.class),
-                mock(GlPostingService.class));
+                mock(GlPostingService.class),
+                mock(com.uten.imp.features.finance.accountflow.AccountFlowLedgerService.class));
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -234,7 +235,8 @@ class AccountBalanceAdjustmentServiceValidationTest {
                 mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(DocNumberService.class),
-                gl);
+                gl,
+                mock(com.uten.imp.features.finance.accountflow.AccountFlowLedgerService.class));
     }
 
     private static Query query() {

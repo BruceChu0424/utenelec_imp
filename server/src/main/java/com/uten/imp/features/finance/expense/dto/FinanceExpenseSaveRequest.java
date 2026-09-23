@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.expense.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -16,7 +17,7 @@ import java.util.UUID;
 /** 一般费用单新建/编辑请求（主表字段 + 明细分摊行）。 */
 @Getter
 @Setter
-public class FinanceExpenseSaveRequest {
+public class FinanceExpenseSaveRequest implements ServerDerivedAmounts {
 
     private String billNo;
 
@@ -27,8 +28,6 @@ public class FinanceExpenseSaveRequest {
     private UUID counterpartAccountId;
     private UUID currencyId;
     private BigDecimal exchangeRate;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private UUID paymentMethodId;
     private Integer paymentMethodLegacyId;
     private UUID operatorId;

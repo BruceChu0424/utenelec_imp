@@ -41,8 +41,9 @@ class SupplierSettlementAndClaimContractTest {
                 "src/main/java/com/uten/imp/features/finance/gl/GlPostingService.java"));
         assertThat(schema).contains("supplier_claim_receivables",
                 "SUPPLIER_CLAIM_RECEIVABLE","SUBCONTRACT_LOSS_RECOVERY");
+        // ADR-112: 现金赔偿到账的账户余额与对账流水经统一账本写入。
         assertThat(service).contains("createCashClaimReceivable","fulfillCashCompensation",
-                "supplier_claim_cash_receipts","finance_reconciliations");
+                "supplier_claim_cash_receipts","AccountPosting.in(\"SUPPLIER_CLAIM_RECEIPT\"");
         assertThat(gl).contains("SUPPLIER_CLAIM_RECEIVABLE","SUPPLIER_CLAIM_CASH",
                 "SUBCONTRACT_LOSS_RECOVERY");
     }

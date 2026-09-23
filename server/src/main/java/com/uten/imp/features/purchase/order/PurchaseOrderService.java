@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.order;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.PreplanPublicSupplyCapturePort;
@@ -931,9 +932,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         ErrorCode.VALIDATION_FAILED,
                         "采购订货数量、单价和金额必须完整且不能为负");
             }
-            BigDecimal expectedOriginal =
-                    money(item.getQty().multiply(item.getPrice()));
-            BigDecimal expectedLocal = money(expectedOriginal.multiply(rate));
+            BigDecimal expectedOriginal = MoneyPolicy.exactProduct(item.getQty(), item.getPrice());
+            BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
                 throw new ApiException(
@@ -1087,11 +1087,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         lines.stream().map(OrderItemLine::getGoodsId).toList(),
                         PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         UUID actorId = currentUser.requireId();
-        // 行金额由服务端按「数量×单价」「原币金额×表头汇率」精确重算(2026-09-21): 客户端
-        // 用浮点相乘再序列化(3×0.10 送来的是 0.30000000000000004), 原样落库后送审时的
-        // 精确比对(requireFinanceCommercialAuthority)必然不一致; 客户端金额只在单价缺省
-        // 时原样保留(草稿不丢值, 送审本就要求单价完整)。
-        BigDecimal headerRate = o.getExchangeRate() == null ? BigDecimal.ONE : o.getExchangeRate();
+        // 行金额只由服务端按「数量×单价」「原币金额×表头汇率」精确派生(ADR-112), 请求不带金额;
+        // 单价缺省则金额为空(送审要求单价完整), 汇率缺省则本币为空。
+        BigDecimal headerRate = o.getExchangeRate();
         int auto = 1;
         for (OrderItemLine l : lines) {
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
@@ -1121,13 +1119,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setQty(l.getQty());
             BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购单价");
             it.setPrice(price);
-            BigDecimal amountOriginal = price == null
-                    ? l.getAmountOriginal()
-                    : money(l.getQty().multiply(price));
-            it.setAmountOriginal(amountOriginal);
-            it.setAmountLocal(price == null
-                    ? (l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal())
-                    : money(amountOriginal.multiply(headerRate)));
+            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), price, null, headerRate);
+            it.setAmountOriginal(amounts.original());
+            it.setAmountLocal(amounts.local());
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
             it.setRequestItemId(primarySource);
             it.setDeliverDate(l.getDeliverDate());

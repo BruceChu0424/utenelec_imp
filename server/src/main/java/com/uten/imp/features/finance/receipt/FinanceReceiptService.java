@@ -13,6 +13,7 @@ import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.LegacyOpeningReversalFloor;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
+import com.uten.imp.features.finance.accountflow.AccountPosting;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -640,9 +641,7 @@ public class FinanceReceiptService {
                 .map(line -> nz(line.getAmountLocal()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal original = lines.stream()
-                .map(line -> line.getAmountOriginal() == null
-                        ? nz(line.getAmountLocal())
-                        : line.getAmountOriginal())
+                .map(line -> nz(line.getAmountOriginal()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         receipt.setAmountLocal(local);
         receipt.setAmountOriginal(original);
@@ -658,239 +657,61 @@ public class FinanceReceiptService {
      * 账户余额与 finance_reconciliations 始终保持同一账户币种口径。
      */
     private void applyAccountPosting(FinanceReceipt receipt, int sign) {
-        if (receipt.getSettlementAuthorityVersion() < SETTLEMENT_AUTHORITY_V1) {
-            BigDecimal accountAmount = adjustAccount(
-                    receipt.getAccountId(),
-                    receipt.getCurrencyId(),
-                    nz(receipt.getAmountOriginal()).multiply(BigDecimal.valueOf(sign)),
-                    nz(receipt.getAmountLocal()).multiply(BigDecimal.valueOf(sign)));
-            if (sign > 0) {
-                insertReconciliation(receipt, accountAmount);
-            } else {
-                accountFlowLedger.reverse(
-                        RECON_SOURCE, receipt.getId(), receipt.getReversedAt(), "销售收款红冲");
-            }
-            return;
-        }
-
-        List<UUID> ids = new ArrayList<>();
-        ids.add(receipt.getAccountId());
-        if (FEE_SEPARATE.equals(receipt.getFeeSettlementMode())
-                && receipt.getFeePaymentAccountId() != null
-                && !receipt.getFeePaymentAccountId().equals(receipt.getAccountId())) {
-            ids.add(receipt.getFeePaymentAccountId());
-        }
-        Map<UUID, AccountCurrencySnapshot> accounts =
-                loadAccountCurrencySnapshots(ids, true);
-        AccountCurrencySnapshot receiving = accounts.get(receipt.getAccountId());
-        if (receiving == null
-                || !Objects.equals(receiving.currencyId(), receipt.getAccountCurrencyId())) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "收款账户或币种已变化，禁止继续过账");
-        }
-        BigDecimal incoming = money(receipt.getAccountAmount())
-                .multiply(BigDecimal.valueOf(sign));
-        updateIncomingAccount(receipt.getAccountId(), incoming);
-
-        if (FEE_SEPARATE.equals(receipt.getFeeSettlementMode())) {
-            AccountCurrencySnapshot feeAccount =
-                    accounts.get(receipt.getFeePaymentAccountId());
-            if (feeAccount == null
-                    || !Objects.equals(
-                            feeAccount.currencyId(), receipt.getFeeAccountCurrencyId())) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "手续费付款账户或币种已变化，禁止继续过账");
-            }
-            BigDecimal feeAmount = money(nz(receipt.getBankFeeAccountAmount())
-                    .add(nz(receipt.getOtherFeeAccountAmount())))
-                    .multiply(BigDecimal.valueOf(sign));
-            updateOutgoingAccount(receipt.getFeePaymentAccountId(), feeAmount);
-        }
-
-        if (sign > 0) {
-            insertV1Reconciliations(receipt);
-        } else {
+        if (sign < 0) {
+            // 账户余额与流水由账本按原始流水一并冲回(另付费用是独立来源, 一起冲)。
             accountFlowLedger.reverse(
                     RECON_SOURCE, receipt.getId(), receipt.getReversedAt(), "销售收款红冲");
-            if (FEE_SEPARATE.equals(receipt.getFeeSettlementMode())) {
+            if (receipt.getSettlementAuthorityVersion() >= SETTLEMENT_AUTHORITY_V1
+                    && FEE_SEPARATE.equals(receipt.getFeeSettlementMode())) {
                 accountFlowLedger.reverse(
                         RECON_FEE_SOURCE, receipt.getId(), receipt.getReversedAt(),
                         "销售收款另付费用红冲");
             }
+            return;
         }
-    }
-
-    private void updateIncomingAccount(UUID accountId, BigDecimal delta) {
-        int updated = em.createNativeQuery("""
-                        UPDATE accounts
-                        SET balance_current=balance_current+:amount,
-                            receipts_total=receipts_total+:amount,
-                            updated_at=now()
-                        WHERE id=:id
-                        """)
-                .setParameter("amount", delta)
-                .setParameter("id", accountId)
-                .executeUpdate();
-        if (updated != 1) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "收款账户余额更新失败：" + accountId);
-        }
-    }
-
-    private void updateOutgoingAccount(UUID accountId, BigDecimal delta) {
-        int updated = em.createNativeQuery("""
-                        UPDATE accounts
-                        SET balance_current=balance_current-:amount,
-                            payments_total=payments_total+:amount,
-                            updated_at=now()
-                        WHERE id=:id
-                        """)
-                .setParameter("amount", delta)
-                .setParameter("id", accountId)
-                .executeUpdate();
-        if (updated != 1) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "手续费付款账户余额更新失败：" + accountId);
-        }
-    }
-
-    private BigDecimal adjustAccount(
-            UUID accountId,
-            UUID receiptCurrencyId,
-            BigDecimal originalDelta,
-            BigDecimal localDelta) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        SELECT account.currency_id, currency.code, currency.name,
-                               currency.is_base_currency
-                        FROM accounts account
-                        LEFT JOIN currencies currency
-                          ON currency.id=account.currency_id
-                         AND COALESCE(currency.is_deleted,false)=false
-                         AND currency.status='使用'
-                        WHERE account.id=:id
-                          AND COALESCE(account.is_deleted,false)=false
-                          AND account.status='使用'
-                        FOR UPDATE OF account
-                        """)
-                .setParameter("id", accountId)
-                .getResultList();
-        if (rows.size() != 1) {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "收款账户不存在或已停用：" + accountId);
-        }
-        Object[] row = rows.getFirst();
-        UUID accountCurrencyId = (UUID) row[0];
-        String currencyCode = row[1] == null ? null : row[1].toString();
-        String currencyName = row[2] == null ? null : row[2].toString();
-        boolean baseCurrency = Boolean.TRUE.equals(row[3]);
-        if (accountCurrencyId == null) {
-            throw new ApiException(ErrorCode.BUSINESS, "收款账户未设置币种");
-        }
-        if (currencyCode == null && currencyName == null) {
-            throw new ApiException(ErrorCode.BUSINESS, "收款账户币种不存在或已停用");
-        }
-        BigDecimal accountDelta;
-        if (baseCurrency) {
-            accountDelta = money(localDelta);
-        } else if (Objects.equals(accountCurrencyId, receiptCurrencyId)) {
-            accountDelta = money(originalDelta);
-        } else {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "收款账户必须为人民币账户或与应收原币相同的账户；"
-                            + "美元应收可结汇进入人民币账户，不能直接进入第三币种账户："
-                            + accountId);
-        }
-        int updated = em.createNativeQuery("""
-                        UPDATE accounts
-                        SET balance_current=COALESCE(balance_current,0)+:amount,
-                            receipts_total=COALESCE(receipts_total,0)+:amount,
-                            updated_at=now()
-                        WHERE id=:id
-                        """)
-                .setParameter("amount", accountDelta)
-                .setParameter("id", accountId)
-                .executeUpdate();
-        if (updated != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "收款账户余额更新失败：" + accountId);
-        }
-        return accountDelta;
-    }
-
-    private void insertReconciliation(FinanceReceipt r, BigDecimal accountAmount) {
-        String counterpart = r.getClientId() == null ? null : lookupClientName(r.getClientId());
-        em.createNativeQuery("""
-                INSERT INTO finance_reconciliations
-                  (bill_no, source_doc_type, source_doc_id, account_id, check_no, counterpart_name,
-                   in_amount, out_amount, bill_date, settled_date, source_remark, legacy_bstyle, created_at, updated_at, is_deleted)
-                VALUES (:billNo, :src, :sid, :acc, :chk, :cpn, :inAmt, 0, :bd, :sd, :sr, 20, now(), now(), false)
-                """)
-                .setParameter("billNo", r.getBillNo())
-                .setParameter("src", RECON_SOURCE)
-                .setParameter("sid", r.getId())
-                .setParameter("acc", r.getAccountId())
-                .setParameter("chk", r.getInvoiceNo())
-                .setParameter("cpn", counterpart)
-                .setParameter("inAmt", accountAmount)
-                .setParameter("bd", r.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime()) // M17：bill_date 用单据日期，settled_date 保持审核时刻
-                .setParameter("sd", OffsetDateTime.now())
-                .setParameter("sr", r.getSourceRemark())
-                .executeUpdate();
-    }
-
-    private void insertV1Reconciliations(FinanceReceipt receipt) {
         String counterpart = receipt.getClientId() == null
                 ? null : lookupClientName(receipt.getClientId());
-        em.createNativeQuery("""
-                        INSERT INTO finance_reconciliations(
-                            bill_no,source_doc_type,source_doc_id,account_id,
-                            account_currency_id,in_amount,out_amount,amount_local,
-                            bill_date,settled_date,source_remark,remark,
-                            entry_kind,created_at,updated_at,is_deleted)
-                        VALUES(
-                            :billNo,:source,:sourceId,:account,:currency,
-                            :amount,0,:local,:bookedAt,now(),:sourceRemark,:remark,
-                            'POSTING',now(),now(),FALSE)
-                        """)
-                .setParameter("billNo", receipt.getBillNo())
-                .setParameter("source", RECON_SOURCE)
-                .setParameter("sourceId", receipt.getId())
-                .setParameter("account", receipt.getAccountId())
-                .setParameter("currency", receipt.getAccountCurrencyId())
-                .setParameter("amount", receipt.getAccountAmount())
-                .setParameter("local", receipt.getAccountAmountLocal())
-                .setParameter("bookedAt", receipt.getBankBookedAt())
-                .setParameter("sourceRemark", receipt.getSettlementChannel())
-                .setParameter("remark", counterpart == null
+        if (receipt.getSettlementAuthorityVersion() < SETTLEMENT_AUTHORITY_V1) {
+            accountFlowLedger.post(AccountPosting.in(RECON_SOURCE, receipt.getId(), receipt.getBillNo(),
+                            receipt.getAccountId())
+                    .rule(AccountPosting.CurrencyRule.BASE_OR_DOCUMENT_CURRENCY, receipt.getCurrencyId())
+                    .amounts(nz(receipt.getAmountOriginal()), nz(receipt.getAmountLocal()))
+                    .bookedAt(receipt.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime())
+                    .settledAt(OffsetDateTime.now())
+                    .checkNo(receipt.getInvoiceNo())
+                    .counterpart(counterpart)
+                    .sourceRemark(receipt.getSourceRemark())
+                    .legacyBstyle(20)
+                    .label("收款账户"));
+            return;
+        }
+        boolean feeSeparate = FEE_SEPARATE.equals(receipt.getFeeSettlementMode());
+        List<UUID> accountIds = new ArrayList<>();
+        accountIds.add(receipt.getAccountId());
+        if (feeSeparate) accountIds.add(receipt.getFeePaymentAccountId());
+        var locked = accountFlowLedger.lockActive(accountIds, "收款账户或手续费付款账户");
+        accountFlowLedger.post(locked.get(receipt.getAccountId()),
+                AccountPosting.in(RECON_SOURCE, receipt.getId(), receipt.getBillNo(), receipt.getAccountId())
+                .rule(AccountPosting.CurrencyRule.ACCOUNT_CURRENCY, receipt.getAccountCurrencyId())
+                .amounts(receipt.getAccountAmount(), receipt.getAccountAmountLocal())
+                .bookedAt(receipt.getBankBookedAt())
+                .settledAt(OffsetDateTime.now())
+                .sourceRemark(receipt.getSettlementChannel())
+                .remark(counterpart == null
                         ? receipt.getRemark() : counterpart + " " + Objects.toString(receipt.getRemark(), ""))
-                .executeUpdate();
-
-        if (!FEE_SEPARATE.equals(receipt.getFeeSettlementMode())) return;
-        BigDecimal feeAmount = money(nz(receipt.getBankFeeAccountAmount())
-                .add(nz(receipt.getOtherFeeAccountAmount())));
-        BigDecimal feeLocal = money(nz(receipt.getBankFee())
-                .add(nz(receipt.getOtherFee())));
-        em.createNativeQuery("""
-                        INSERT INTO finance_reconciliations(
-                            bill_no,source_doc_type,source_doc_id,account_id,
-                            account_currency_id,in_amount,out_amount,amount_local,
-                            bill_date,settled_date,source_remark,remark,
-                            entry_kind,created_at,updated_at,is_deleted)
-                        VALUES(
-                            :billNo,:source,:sourceId,:account,:currency,
-                            0,:amount,:local,:bookedAt,now(),'收款费用另付',:remark,
-                            'POSTING',now(),now(),FALSE)
-                        """)
-                .setParameter("billNo", receipt.getBillNo())
-                .setParameter("source", RECON_FEE_SOURCE)
-                .setParameter("sourceId", receipt.getId())
-                .setParameter("account", receipt.getFeePaymentAccountId())
-                .setParameter("currency", receipt.getFeeAccountCurrencyId())
-                .setParameter("amount", feeAmount)
-                .setParameter("local", feeLocal)
-                .setParameter("bookedAt", receipt.getBankBookedAt())
-                .setParameter("remark", "银行手续费/外贸代理费")
-                .executeUpdate();
+                .label("收款账户"));
+        if (!feeSeparate) return;
+        accountFlowLedger.post(locked.get(receipt.getFeePaymentAccountId()),
+                AccountPosting.out(RECON_FEE_SOURCE, receipt.getId(), receipt.getBillNo(),
+                        receipt.getFeePaymentAccountId())
+                .rule(AccountPosting.CurrencyRule.ACCOUNT_CURRENCY, receipt.getFeeAccountCurrencyId())
+                .amounts(nz(receipt.getBankFeeAccountAmount()).add(nz(receipt.getOtherFeeAccountAmount())),
+                        nz(receipt.getBankFee()).add(nz(receipt.getOtherFee())))
+                .bookedAt(receipt.getBankBookedAt())
+                .settledAt(OffsetDateTime.now())
+                .sourceRemark("收款费用另付")
+                .remark("银行手续费/外贸代理费")
+                .label("手续费付款账户"));
     }
 
     private void assertNoExistingPosting(UUID receiptId) {

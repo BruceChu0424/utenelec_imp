@@ -317,7 +317,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                     ''
               : it.amountLocalText ?? it.amountLocal?.toString() ?? '';
           row.originalAmountSnapshot = it.amountOriginalText;
-          row.localAmountSnapshot = it.amountLocalText;
           row.amountInputSnapshot = row.amount.text;
           row.summarySnapshot = it.summary;
           row.exchangeRate.text = _cfg.type == FinanceDocType.receipt
@@ -828,10 +827,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         return;
       }
       final unchangedAmount = amountText == r.amountInputSnapshot;
+      // 只送实际金额原文; 本币由服务端按表头汇率精确派生(ADR-112), 请求不带本币。
       final item = <String, dynamic>{
-        'amountLocal': unchangedAmount
-            ? r.localAmountSnapshot ?? amountText
-            : amountText,
         'amountOriginal': unchangedAmount
             ? r.originalAmountSnapshot ?? amountText
             : amountText,

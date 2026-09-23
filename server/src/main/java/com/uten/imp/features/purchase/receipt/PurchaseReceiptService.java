@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.receipt;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
@@ -493,8 +494,7 @@ public class PurchaseReceiptService {
         int autoLine = 1;
         for (ReceiptItemLine l : lines) {
             NonNegativeCommercialSignGuard.requireRequestLine(
-                    "采购收货", l.getQty(), l.getPrice(),
-                    l.getAmountOriginal(), l.getAmountLocal());
+                    "采购收货", l.getQty(), l.getPrice());
             int lineNo = l.getLineNo() != null ? l.getLineNo() : autoLine;
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
@@ -520,8 +520,10 @@ public class PurchaseReceiptService {
             it.setQty(l.getQty());
             it.setReplacementIntent(l.getReplacementIntent());
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购收货单价"));
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
+            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, r.getExchangeRate());
+            it.setAmountOriginal(amounts.original());
+            it.setAmountLocal(amounts.local());
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
             it.setOrderItemId(l.getOrderItemId());
             it.setWeight(l.getWeight());

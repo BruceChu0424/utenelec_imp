@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
@@ -650,19 +651,15 @@ public class SalesReturnQualityService {
     }
 
     /**
-     * Uses cumulative rounding so partial releases add up to the exact source
-     * amount when the final quantity is released.
+     * Uses cumulative slicing so partial releases add up to the exact source
+     * weight when the final quantity is released.
      */
     static BigDecimal proratedIncrement(BigDecimal sourceAmount,
                                         BigDecimal receivedBaseQty,
                                         BigDecimal alreadyReleasedBaseQty,
                                         BigDecimal releaseBaseQty) {
-        BigDecimal previous = sourceAmount.multiply(alreadyReleasedBaseQty)
-                .divide(receivedBaseQty, 4, RoundingMode.HALF_UP);
-        BigDecimal next = sourceAmount
-                .multiply(alreadyReleasedBaseQty.add(releaseBaseQty))
-                .divide(receivedBaseQty, 4, RoundingMode.HALF_UP);
-        return next.subtract(previous);
+        return MoneyPolicy.quantitySlice(
+                sourceAmount, receivedBaseQty, alreadyReleasedBaseQty, releaseBaseQty);
     }
 
     static BigDecimal proratedIncrementNullable(

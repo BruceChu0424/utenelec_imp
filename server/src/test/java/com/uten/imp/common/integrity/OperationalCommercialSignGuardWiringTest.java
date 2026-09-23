@@ -50,8 +50,12 @@ class OperationalCommercialSignGuardWiringTest {
                 STORED_GUARD_CALL, "lockStoredSourceGraph(items);");
     }
 
+    /**
+     * ADR-112: 退货请求不再带成本(成本与金额只由服务端派生), 请求阶段只校验数量/单价/折扣;
+     * 落库后的成本仍在审核与红冲前校验非负。
+     */
     @Test
-    void salesReturnIncludesCostAmountInBothPhases() throws IOException {
+    void salesReturnGuardsServerDerivedCostOnlyInTheStoredPhase() throws IOException {
         String source = read("sales/ret/SalesReturnService.java");
         String requestGuard = method(source,
                 "NonNegativeCommercialSignGuard.requireRequestLine(",
@@ -60,7 +64,9 @@ class OperationalCommercialSignGuardWiringTest {
                 "private static void requireNonNegativeStoredCommercial",
                 "private void applyTotals");
 
-        assertThat(requestGuard).contains("l.getCostAmount()");
+        assertThat(requestGuard).contains("l.getQty(), l.getPrice(), l.getDiscount()")
+                .doesNotContain("getCostAmount");
+        assertThat(source).doesNotContain("l.getCostAmount()");
         assertThat(storedGuard).contains("item.getCostAmount()");
     }
 

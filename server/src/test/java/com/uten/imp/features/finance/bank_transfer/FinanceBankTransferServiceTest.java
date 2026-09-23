@@ -54,8 +54,9 @@ class FinanceBankTransferServiceTest {
         DocNumberService numbers = mock(DocNumberService.class);
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         glPosting = mock(GlPostingService.class);
-        accountFlowLedger = mock(AccountFlowLedgerService.class);
         em = mock(EntityManager.class);
+        // ADR-112: 过账走真实账本(同一个 mock EntityManager), 断言账本写出的余额与流水参数。
+        accountFlowLedger = org.mockito.Mockito.spy(new AccountFlowLedgerService(em));
 
         accountLock = query();
         postingCount = query();
@@ -68,7 +69,7 @@ class FinanceBankTransferServiceTest {
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
-            if (sql.contains("FROM accounts a")) {
+            if (sql.contains("FROM accounts account")) {
                 return accountLock;
             }
             if (sql.contains("SELECT COUNT(*)")) {
@@ -107,8 +108,8 @@ class FinanceBankTransferServiceTest {
         when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId()))
                 .thenReturn(List.of(line));
         when(accountLock.getResultList()).thenReturn(List.of(
-                new Object[] {outAccount, currency, true, "使用", false},
-                new Object[] {inAccount, currency, true, "使用", false}));
+                new Object[] {outAccount, currency, true, null},
+                new Object[] {inAccount, currency, true, null}));
         when(postingCount.getSingleResult()).thenReturn(0L);
         when(currentUser.requireEmployeeId()).thenReturn(approver);
 
@@ -120,8 +121,10 @@ class FinanceBankTransferServiceTest {
         assertEquals((short) 1, transfer.getStatus());
         assertSame(approver, transfer.getApproverId());
         verify(lineRepo).save(line);
-        verify(outgoingUpdate).setParameter("amount", new BigDecimal("100.0000"));
-        verify(incomingUpdate).setParameter("amount", new BigDecimal("100.0000"));
+        verify(outgoingUpdate).setParameter("balanceDelta", new BigDecimal("-100.0000"));
+        verify(outgoingUpdate).setParameter("totalDelta", new BigDecimal("100.0000"));
+        verify(incomingUpdate).setParameter("balanceDelta", new BigDecimal("100.0000"));
+        verify(incomingUpdate).setParameter("totalDelta", new BigDecimal("100.0000"));
         verify(reconciliationInsert, org.mockito.Mockito.times(2))
                 .setParameter("amountLocal", new BigDecimal("100.0000"));
         verify(reconciliationInsert, org.mockito.Mockito.times(2)).executeUpdate();
@@ -144,8 +147,8 @@ class FinanceBankTransferServiceTest {
         when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId()))
                 .thenReturn(List.of(line));
         when(accountLock.getResultList()).thenReturn(List.of(
-                new Object[] {outAccount, usd, false, "使用", false},
-                new Object[] {inAccount, cny, true, "使用", false}));
+                new Object[] {outAccount, usd, false, null},
+                new Object[] {inAccount, cny, true, null}));
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
 
         com.uten.imp.common.web.ApiException error = assertThrows(
@@ -178,17 +181,18 @@ class FinanceBankTransferServiceTest {
                 .thenReturn(Optional.of(transfer));
         when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId()))
                 .thenReturn(List.of(line));
-        when(accountLock.getResultList()).thenReturn(List.of(
-                new Object[] {outAccount, outCurrency, false, null, false},
-                new Object[] {inAccount, inCurrency, false, null, false}));
         when(postingCount.getSingleResult()).thenReturn(2L);
+        org.mockito.Mockito.doReturn(2).when(accountFlowLedger).reverse(
+                anyString(), any(UUID.class), any(OffsetDateTime.class), anyString());
 
         service.reverse(transfer.getId());
 
         assertEquals((short) -1, transfer.getStatus());
         verify(lineRepo, never()).save(line);
-        verify(outgoingUpdate).setParameter("amount", new BigDecimal("-100.0000"));
-        verify(incomingUpdate).setParameter("amount", new BigDecimal("-50.0000"));
+        // 红冲不再由单据服务自己改余额: 两边账户按审核时的原始流水由账本冲回。
+        verify(outgoingUpdate, never()).executeUpdate();
+        verify(incomingUpdate, never()).executeUpdate();
+        verify(accountLock, never()).getResultList();
         verify(accountFlowLedger).reverse(
                 org.mockito.ArgumentMatchers.eq("BANK_TRANSFER"),
                 org.mockito.ArgumentMatchers.eq(transfer.getId()),
@@ -211,8 +215,8 @@ class FinanceBankTransferServiceTest {
         when(transferRepo.findById(transfer.getId())).thenReturn(Optional.of(transfer));
         when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId())).thenReturn(List.of(line));
         when(accountLock.getResultList()).thenReturn(List.of(
-                new Object[] {outAccount, currency, true, "使用", false},
-                new Object[] {inAccount, currency, true, "使用", false}));
+                new Object[] {outAccount, currency, true, null},
+                new Object[] {inAccount, currency, true, null}));
         when(postingCount.getSingleResult()).thenReturn(0L);
         when(currentUser.requireEmployeeId()).thenReturn(maker); // 审核人=制单人
 

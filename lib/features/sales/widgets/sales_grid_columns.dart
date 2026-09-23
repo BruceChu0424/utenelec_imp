@@ -18,6 +18,7 @@ import '../../../core/ui/app_notification.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import 'sales_doc_link_picker.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 final _salesOrderDiscountPattern = RegExp(r'^(?:0\.\d{1,4}|1(?:\.0{1,4})?)$');
 
@@ -153,7 +154,22 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     return r;
   }
 
-  void _recalc() => recalcAmount(() {
+  /// 行金额预览(十进制精确乘积, ADR-112, 订单含折扣倍率); 数量或单价未填时为空。
+  /// 只用于显示, 保存不上送金额, 金额由服务端派生。
+  final ValueNotifier<String?> amountExactNotifier = ValueNotifier<String?>(
+    null,
+  );
+
+  void _recalc() {
+    amountExactNotifier.value = exactLineAmountText(
+      qty.text,
+      price.text,
+      discount: amountUsesDiscount ? discount.text : null,
+    );
+    _recalcDouble();
+  }
+
+  void _recalcDouble() => recalcAmount(() {
     final q = double.tryParse(qty.text) ?? 0;
     final p = double.tryParse(price.text) ?? 0;
     if (!amountUsesDiscount) return q * p;
@@ -196,6 +212,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   @override
   void dispose() {
     goodsNotifier.dispose();
+    amountExactNotifier.dispose();
     colorIdNotifier.dispose();
     unitIdNotifier.dispose();
     stockPlaceNotifier.dispose();
@@ -431,13 +448,15 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             : '金额',
         width: 110,
         numeric: true,
-        cellBuilder: (context, row) => ValueListenableBuilder<double>(
-          valueListenable: row.amountNotifier,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.amountExactNotifier,
           builder: (_, v, _) => Text(
-            docType == SalesDocType.order ||
-                    docType == SalesDocType.customerShipment
-                ? v.toStringAsFixed(2)
-                : '¥${v.toStringAsFixed(2)}',
+            v == null
+                ? '—'
+                : docType == SalesDocType.order ||
+                      docType == SalesDocType.customerShipment
+                ? financeExactMoneyDisplay(v)
+                : '¥${financeExactMoneyDisplay(v)}',
           ),
         ),
       ),

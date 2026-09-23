@@ -68,6 +68,7 @@ import '../widgets/doc_link_picker.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../widgets/purchase_grid_columns.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 String purchaseSaveActionLabel(
   PurchaseDocType docType, {
@@ -548,11 +549,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
-        if (price case final price?) ...{
-          'price': price,
-          'amountOriginal': qty * price,
-          'amountLocal': qty * price * exchangeRate,
-        },
+        // 金额由服务端按 数量 × 单价 × 汇率 精确派生(ADR-112), 请求不带金额。
+        'price': ?price,
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
         // 来源单据编号谱系（到货登记=来源订货单号），与委外进仓口径一致。
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
@@ -990,8 +988,13 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                               )
                                             : null,
                                       ),
-                                      _grid.totalListenable.value
-                                          .toStringAsFixed(2),
+                                      financeExactMoneyDisplay(
+                                        exactAmountSumText(
+                                          _grid.rows.map(
+                                            (r) => r.amountExactNotifier.value,
+                                          ),
+                                        ),
+                                      ),
                                       danger: true,
                                     ),
                                   ],

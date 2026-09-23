@@ -129,8 +129,6 @@ class SalesReturnAmountAuthorityPostgresTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(BigDecimal.ONE);
         line.setPrice(new BigDecimal("999"));
-        line.setAmountOriginal(new BigDecimal("999999"));
-        line.setAmountLocal(new BigDecimal("999999"));
         request.setItems(List.of(line));
         return request;
     }
@@ -142,6 +140,7 @@ class SalesReturnAmountAuthorityPostgresTest {
         UUID second = service.create(request(fixture)).getId();
         service.approve(first);
         service.approve(second);
+        // ADR-112: 累计份额 0.3333 / 0.6667, 本批 = 累计份额差, 末批收回全部剩余。
         assertThat(service.detail(first).getTotalOriginal()).isEqualByComparingTo("0.3333");
         assertThat(service.detail(second).getTotalOriginal()).isEqualByComparingTo("0.3334");
         service.reverse(first);

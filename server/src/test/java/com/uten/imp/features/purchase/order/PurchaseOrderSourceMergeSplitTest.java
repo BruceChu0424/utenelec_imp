@@ -183,8 +183,6 @@ class PurchaseOrderSourceMergeSplitTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(qty);
         line.setPrice(BigDecimal.ONE);
-        line.setAmountOriginal(qty);
-        line.setAmountLocal(qty);
         line.setSupplierId(UUID.randomUUID());
         line.setSettlementMethodId(UUID.randomUUID());
         line.setCurrencyId(UUID.randomUUID());

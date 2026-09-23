@@ -82,8 +82,11 @@ class FinancePaymentSettlementTest {
         DocNumberService numbers = mock(DocNumberService.class);
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         glPostingService = mock(GlPostingService.class);
-        accountFlowLedger = mock(AccountFlowLedgerService.class);
         em = mock(EntityManager.class);
+        // ADR-112: 付款过账走真实账本(同一个 mock EntityManager); 红冲的账本细节由账本自己的测试覆盖。
+        accountFlowLedger = org.mockito.Mockito.spy(new AccountFlowLedgerService(em));
+        org.mockito.Mockito.doReturn(1).when(accountFlowLedger).reverse(
+                anyString(), any(UUID.class), any(OffsetDateTime.class), anyString());
 
         when(paymentRepo.save(any(FinancePayment.class))).thenAnswer(invocation -> {
             FinancePayment payment = invocation.getArgument(0);
@@ -140,8 +143,13 @@ class FinancePaymentSettlementTest {
         when(idempotencyLock.getSingleResult()).thenReturn(1L);
         when(createReplay.getResultList()).thenReturn(List.of());
         when(supplierLookup.getSingleResult()).thenReturn("测试供应商");
+        Query ledgerLock = query();
+        when(ledgerLock.getResultList()).thenAnswer(ignored -> accountLock.getResultList().stream()
+                .map(row -> new Object[] {ACCOUNT_ID, ((Object[]) row)[0], ((Object[]) row)[3], ((Object[]) row)[4]})
+                .toList());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
+            if (sql.contains("account_style_id(account.id)")) return ledgerLock;
             if(sql.contains("PAYMENT_STYLE_HIERARCHY"))return hierarchy;
             if(sql.contains("system_posting_style_id(:roleKey)"))return postingStyle;
             if (sql.contains("pg_advisory_xact_lock(hashtextextended")) {
@@ -370,8 +378,8 @@ class FinancePaymentSettlementTest {
         assertMoney(payable.getAmountSettled(), "210.0000");
         assertMoney(payable.getAmountBalanceOriginal(), "70.0000");
         assertMoney(payable.getAmountBalance(), "490.0000");
-        verify(accountUpdate).setParameter("amount", new BigDecimal("30.0000"));
-        verify(reconciliationInsert).setParameter("outAmt", new BigDecimal("30.0000"));
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("30.0000"));
+        verify(reconciliationInsert).setParameter("outAmount", new BigDecimal("30.0000"));
 
         postingCounts.add(1L);
         FinancePaymentDetail reversed = service.reverse(draft.getId());
@@ -383,7 +391,6 @@ class FinancePaymentSettlementTest {
         assertMoney(payable.getAmountBalanceOriginal(), "100.0000");
         assertMoney(payable.getAmountBalance(), "700.0000");
         verify(glPostingService).reverseActualBankPayment(org.mockito.ArgumentMatchers.eq(draft.getId()),any(OffsetDateTime.class));
-        verify(accountUpdate).setParameter("amount", new BigDecimal("-30.0000"));
         verify(accountFlowLedger).reverse(
                 org.mockito.ArgumentMatchers.eq(FinancePaymentService.RECON_SOURCE),
                 org.mockito.ArgumentMatchers.eq(draft.getId()),
@@ -405,8 +412,8 @@ class FinancePaymentSettlementTest {
 
         service.approve(draft.getId());
 
-        verify(accountUpdate).setParameter("amount", new BigDecimal("216.0000"));
-        verify(reconciliationInsert).setParameter("outAmt", new BigDecimal("216.0000"));
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("216.0000"));
+        verify(reconciliationInsert).setParameter("outAmount", new BigDecimal("216.0000"));
     }
 
     @Test
@@ -421,8 +428,8 @@ class FinancePaymentSettlementTest {
 
         service.approve(draft.getId());
 
-        verify(accountUpdate).setParameter("amount", new BigDecimal("30.0000"));
-        verify(reconciliationInsert).setParameter("outAmt", new BigDecimal("30.0000"));
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("30.0000"));
+        verify(reconciliationInsert).setParameter("outAmount", new BigDecimal("30.0000"));
     }
 
     @ParameterizedTest
@@ -548,8 +555,6 @@ class FinancePaymentSettlementTest {
         line.setAppliedBillNo("CLIENT-CONTROLLED");
         line.setSupplierId(SUPPLIER_ID);
         line.setAmountOriginal(new BigDecimal(amountOriginal));
-        line.setAmountLocal(new BigDecimal(clientAmountLocal));
-        line.setExchangeDiff(new BigDecimal(clientExchangeDiff));
 
         FinancePaymentSaveRequest request = new FinancePaymentSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 9));
@@ -559,7 +564,6 @@ class FinancePaymentSettlementTest {
         request.setCurrencyId(currencyId);
         request.setExchangeRate(new BigDecimal(paymentRate));
         request.setAmountOriginal(new BigDecimal("999.0000"));
-        request.setAmountLocal(new BigDecimal("9999.0000"));
         request.setCreateIdempotencyKey(UUID.randomUUID().toString());
         request.setItems(List.of(line));
         return request;
@@ -589,10 +593,12 @@ class FinancePaymentSettlementTest {
         assertMoney(draft.getItems().getFirst().getExchangeDiff(),"-25.9753");
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);postingCounts.add(0L);service.approve(draft.getId());
         verify(glPostingService).postActualBankPayment(draft.getId());
-        verify(accountUpdate).setParameter("amount",new BigDecimal("327.8885"));
+        verify(accountUpdate).setParameter("totalDelta",new BigDecimal("327.8885"));
         assertMoney(payable.getAmountReceivedLocal(),"324.8885");
         postingCounts.add(1L);service.reverse(draft.getId());
-        verify(accountUpdate).setParameter("amount",new BigDecimal("-327.8885"));
+        verify(accountFlowLedger).reverse(org.mockito.ArgumentMatchers.eq(FinancePaymentService.RECON_SOURCE),
+                org.mockito.ArgumentMatchers.eq(draft.getId()),any(OffsetDateTime.class),
+                org.mockito.ArgumentMatchers.eq("采购付款红冲"));
         assertMoney(payable.getAmountBalanceOriginal(),"100");assertMoney(payable.getAmountBalance(),"700");
     }
 

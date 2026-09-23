@@ -18,6 +18,7 @@ import '../../../shared/widgets/procurement_commercial_grid.dart';
 import '../../../shared/widgets/procurement_supplier_cell.dart';
 import '../models/purchase_doc.dart' show PurchaseSourceRequestRef;
 import 'doc_link_picker.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 /// 采购明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。
@@ -113,9 +114,18 @@ class PurchaseGridRow extends EditableGridRow
     return r;
   }
 
-  void _recalc() => recalcAmount(
-    () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+  /// 行金额预览(十进制精确乘积, ADR-112); 数量或单价未填时为空。只用于显示, 保存不上送金额。
+  final ValueNotifier<String?> amountExactNotifier = ValueNotifier<String?>(
+    null,
   );
+
+  void _recalc() {
+    recalcAmount(
+      () =>
+          (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+    );
+    amountExactNotifier.value = exactLineAmountText(qty.text, price.text);
+  }
 
   /// 深拷贝（明细复制/粘贴用）：拷用户录入（数量/重量/单价/行供应商/行级商业条款/
   /// 备注）与货品主档透传描述（颜色/单位/换算率/库位显示）。不拷上游明细 id、来源谱系、
@@ -148,6 +158,7 @@ class PurchaseGridRow extends EditableGridRow
   @override
   void dispose() {
     goodsNotifier.dispose();
+    amountExactNotifier.dispose();
     qty.dispose();
     weight.dispose();
     price.dispose();
@@ -444,9 +455,10 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       label: '金额',
       width: 110,
       numeric: true,
-      cellBuilder: (context, row) => ValueListenableBuilder<double>(
-        valueListenable: row.amountNotifier,
-        builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
+      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+        valueListenable: row.amountExactNotifier,
+        builder: (_, v, _) =>
+            Text(v == null ? '—' : '¥${financeExactMoneyDisplay(v)}'),
       ),
     ),
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。

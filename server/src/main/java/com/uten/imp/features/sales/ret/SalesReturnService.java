@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.saleschain.SalesChainStatus;
@@ -39,7 +40,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -462,7 +462,7 @@ public class SalesReturnService {
             reservationService.reserve(orderItemId, goodsId, colorId, take,
                     StockReservation.SOURCE_ORDER, "SALES_RETURN_RESHIP", salesReturn.getId());
             pool.put(key, avail.subtract(take));
-            BigDecimal addDoc = take.divide(rate, 4, RoundingMode.HALF_UP);
+            BigDecimal addDoc = MoneyPolicy.quantityFromBase(take, rate);
             em.createNativeQuery("""
                     UPDATE sales_order_items
                     SET reserved_qty = COALESCE(reserved_qty, 0) + :add
@@ -1157,8 +1157,7 @@ public class SalesReturnService {
         int auto = 1;
         for (ReturnItemLine l : lines) {
             NonNegativeCommercialSignGuard.requireRequestLine(
-                    "销售退货", l.getQty(), l.getPrice(),
-                    l.getAmountOriginal(), l.getAmountLocal(), l.getCostAmount());
+                    "销售退货", l.getQty(), l.getPrice(), l.getDiscount());
             SalesReturnItem it = new SalesReturnItem();
             it.setReturnId(r.getId());
             it.setBillNo(r.getBillNo());
@@ -1179,9 +1178,13 @@ public class SalesReturnService {
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
-            it.setCostAmount(l.getCostAmount());
+            // 草稿预览按同一规则派生; 审核时由 SalesReturnAmountAuthority 按原出货累计分摊定稿。
+            // 成本金额不接受客户端填写, 由退货质检入库链路形成。
+            MoneyPolicy.LineAmounts amounts =
+                    MoneyPolicy.line(l.getQty(), it.getPrice(), l.getDiscount(), r.getExchangeRate());
+            it.setAmountOriginal(amounts.original());
+            it.setAmountLocal(amounts.local());
+            it.setCostAmount(null);
             it.setWeight(l.getWeight());
             it.setClientNo(l.getClientNo());
             it.setClientModel(l.getClientModel());

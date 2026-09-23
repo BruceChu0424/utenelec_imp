@@ -32,16 +32,25 @@ class PurchaseReceiptAmountAuthorityTest {
                 new BigDecimal("3"), new BigDecimal("1.0001"), new BigDecimal("1.0001"),
                 new BigDecimal("2"), new BigDecimal("0.6668"), new BigDecimal("0.6668"));
 
-        assertThat(partial.original()).isEqualByComparingTo("0.33335");
-        assertThat(partial.local()).isEqualByComparingTo("0.33335");
-        assertThat(second.original()).isEqualByComparingTo("0.33335");
-        assertThat(second.local()).isEqualByComparingTo("0.33335");
-        assertThat(last.original()).isEqualByComparingTo("0.33340");
-        assertThat(last.local()).isEqualByComparingTo("0.33340");
+        // ADR-112: 来源金额与单价不一致(1.0001 ≠ 3 × 0.33335)时按「累计量份额 − 已收」分摊,
+        // 除不尽的累计份额取到来源金额位数(0.3334 / 0.6667), 末批取全部剩余; 合计恰好等于来源金额。
+        assertThat(partial.original()).isEqualByComparingTo("0.3334");
+        assertThat(partial.local()).isEqualByComparingTo("0.3334");
+        assertThat(second.original()).isEqualByComparingTo("0.3333");
+        assertThat(second.local()).isEqualByComparingTo("0.3333");
+        assertThat(last.original()).isEqualByComparingTo("0.3334");
+        assertThat(last.local()).isEqualByComparingTo("0.3334");
         assertThat(partial.original().add(second.original()).add(last.original()))
                 .isEqualByComparingTo("1.0001");
         assertThat(partial.local().add(second.local()).add(last.local()))
                 .isEqualByComparingTo("1.0001");
+        // 服务端派生的订单(金额 = 数量 × 单价)每批就是本批数量的精确乘积。
+        var exact = PurchaseReceiptAmountAuthority.sourceAmounts(
+                BigDecimal.ONE, new BigDecimal("0.33335"), new BigDecimal("7.1"),
+                new BigDecimal("3"), new BigDecimal("1.00005"), new BigDecimal("7.100355"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        assertThat(exact.original()).isEqualByComparingTo("0.33335");
+        assertThat(exact.local()).isEqualByComparingTo("2.366785");
         // Previously approved amounts stay authoritative; no retroactive repricing.
         assertThat(historicalLast.original()).isEqualByComparingTo("0.3333");
         assertThat(historicalLast.local()).isEqualByComparingTo("0.3333");

@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.order.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -11,7 +12,7 @@ import java.util.UUID;
 /** 销售订货保存请求中的明细行。 */
 @Getter
 @Setter
-public class OrderItemLine {
+public class OrderItemLine implements ServerDerivedAmounts {
 
     /** 被驳回订单修订时用于稳定匹配既有行；新行留空。 */
     private UUID id;
@@ -33,13 +34,8 @@ public class OrderItemLine {
      * 既有草稿同一行保留已冻结价；非空预览值若与权威价不同则按冲突拒绝。
      */
     private BigDecimal price;
-    /** 客户端预览兼容字段；持久化前由服务端按数量、权威单价和折扣重算。 */
-    private BigDecimal amountOriginal;
-    /** 销售订单阶段不形成本币金额；本字段被服务端忽略。 */
-    private BigDecimal amountLocal;
     /** 销售可编辑的折扣倍率；新写 0 < discount <= 1，null/0 兼容为原价。 */
     private BigDecimal discount;
-    private BigDecimal taxAmount;
     private BigDecimal weight;
     private String clientNo;
     private String clientModel;

@@ -174,3 +174,31 @@ String financeExactMoneyDisplay(String? raw) {
   fraction = fraction.padRight(2, '0');
   return '${negative ? '-' : ''}${parts.first}.$fraction';
 }
+
+/// 编辑页金额预览(ADR-112): 数量 × 单价(× 折扣倍率)的十进制精确乘积, 与服务端 MoneyPolicy
+/// 同一口径; 折扣空或 0 按不打折。任一输入为空或不是数字时返回 null(不猜 0)。
+/// 预览只用于显示, 保存请求不再带金额, 金额由服务端派生。
+String? exactLineAmountText(String qty, String price, {String? discount}) {
+  final q = qty.trim();
+  final p = price.trim();
+  if (q.isEmpty || p.isEmpty) return null;
+  final factors = <String>[q, p];
+  if (discount != null) {
+    final d = discount.trim();
+    final exact = financeExactDecimal(d);
+    if (d.isNotEmpty && exact == null) return null;
+    final isZero = exact != null && RegExp(r'^-?0+(\.0+)?$').hasMatch(exact);
+    if (exact != null && !isZero) factors.add(exact);
+  }
+  return financeExactMultiplyTexts(factors);
+}
+
+/// 行金额预览合计: 只加已算出的行, 全部为空时为 0; 不经过 double。
+String exactAmountSumText(Iterable<String?> amounts) =>
+    financeExactSumTexts(amounts.whereType<String>()) ?? '0';
+
+/// 数量/单价/汇率等十进制原文的展示: 去掉末尾多余的 0, 不四舍五入; 不是数字时原样返回。
+String? financeExactTrimmed(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  return _canonicalDecimalText(raw) ?? raw.trim();
+}

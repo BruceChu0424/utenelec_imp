@@ -32,12 +32,13 @@ class SubcontractReceiptAmountAuthorityTest {
                 new BigDecimal("3"), new BigDecimal("1.0001"), new BigDecimal("1.0001"),
                 new BigDecimal("2"), new BigDecimal("0.6668"), new BigDecimal("0.6668"));
 
-        assertThat(partial.original()).isEqualByComparingTo("0.33335");
-        assertThat(partial.local()).isEqualByComparingTo("0.33335");
-        assertThat(second.original()).isEqualByComparingTo("0.33335");
-        assertThat(second.local()).isEqualByComparingTo("0.33335");
-        assertThat(last.original()).isEqualByComparingTo("0.33340");
-        assertThat(last.local()).isEqualByComparingTo("0.33340");
+        // ADR-112: 来源金额与单价不一致时按「累计量份额 − 已收」分摊, 末批取全部剩余; 合计恰好等于来源金额。
+        assertThat(partial.original()).isEqualByComparingTo("0.3334");
+        assertThat(partial.local()).isEqualByComparingTo("0.3334");
+        assertThat(second.original()).isEqualByComparingTo("0.3333");
+        assertThat(second.local()).isEqualByComparingTo("0.3333");
+        assertThat(last.original()).isEqualByComparingTo("0.3334");
+        assertThat(last.local()).isEqualByComparingTo("0.3334");
         assertThat(partial.original().add(second.original()).add(last.original()))
                 .isEqualByComparingTo("1.0001");
         assertThat(partial.local().add(second.local()).add(last.local()))

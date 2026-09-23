@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.bank_transfer.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,12 +11,11 @@ import java.util.UUID;
 /** 银行存取款单保存请求中的明细行。 */
 @Getter
 @Setter
-public class FinanceBankTransferLineInput {
+public class FinanceBankTransferLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
     private UUID inAccountId;
     private LocalDate occurDate;
     private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private String summary;
 }

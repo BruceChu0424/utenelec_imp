@@ -2,6 +2,7 @@ package com.uten.imp.features.purchase.ret;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.finance.ProcurementReturnQualityPolicy;
 import com.uten.imp.common.finance.ProcurementReturnPayableAuthority;
 import jakarta.persistence.EntityManager;
@@ -11,7 +12,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -156,21 +156,16 @@ public class PurchaseReturnAmountAuthority {
             throw conflict("采购退货来源数量、单价、汇率或历史退货累计无效");
         }
         BigDecimal remainingQty = sourceQty.subtract(priorQty);
-        BigDecimal remainingOriginal = money(sourceOriginal.subtract(priorOriginal));
-        BigDecimal remainingLocal = money(sourceLocal.subtract(priorLocal));
+        BigDecimal remainingOriginal = sourceOriginal.subtract(priorOriginal);
+        BigDecimal remainingLocal = sourceLocal.subtract(priorLocal);
         if (remainingQty.signum() < 0 || remainingOriginal.signum() < 0
                 || remainingLocal.signum() < 0 || returnQty.compareTo(remainingQty) > 0) {
             throw conflict("采购退货数量或金额超过来源收货行可退余额");
         }
-        if (returnQty.compareTo(remainingQty) == 0) {
-            return new ReturnAmounts(remainingOriginal, remainingLocal);
-        }
-        BigDecimal original = money(returnQty.multiply(sourcePrice));
-        BigDecimal local = money(original.multiply(sourceRate));
-        if (original.compareTo(remainingOriginal) > 0 || local.compareTo(remainingLocal) > 0) {
-            throw conflict("采购退货标准金额超过来源收货行剩余金额");
-        }
-        return new ReturnAmounts(original, local);
+        // 累计退货量对应的来源金额 − 已退金额; 全部退完时取来源全部剩余, 应付原币与本币同时归零。
+        MoneyPolicy.LineAmounts amounts = MoneyPolicy.prorateBatch(
+                returnQty, priorQty, sourceQty, sourceOriginal, sourceLocal, priorOriginal, priorLocal);
+        return new ReturnAmounts(money(amounts.original()), money(amounts.local()));
     }
 
     private static BigDecimal decimal(Object value) {
@@ -179,7 +174,7 @@ public class PurchaseReturnAmountAuthority {
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP);
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value, "采购退货金额");
     }
 
     private static ApiException conflict(String message) {

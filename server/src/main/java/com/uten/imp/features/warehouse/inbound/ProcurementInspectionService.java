@@ -7,6 +7,7 @@ import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
@@ -334,13 +335,15 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
 
         OffsetDateTime now = OffsetDateTime.now();
         UUID actor = currentUser.requireEmployeeId();
+        // 合格放行的价值切片与财务不合格金额、退货可退额度同一口径(ProcurementIqcAmountSplit):
+        // 按处置顺序累计切片, 处置完整条收货时各片之和恰好等于收货金额(与库级守卫 V446 的 ROUND(.., 4) 逐位一致)。
         BigDecimal releasedAmount = "PASS".equals(action)
-                ? proratedIncrement(dec(row[7]), received, resolvedBefore, requested)
+                ? releasedAmountSlice(dec(row[7]), received, resolvedBefore, requested)
                 : null;
         UUID receivedWeightUnitId = (UUID) row[13];
         BigDecimal trustedReceivedWeight = nullableDec(row[12]);
         BigDecimal releasedWeight = "PASS".equals(action)
-                ? proratedIncrementNullable(
+                ? releasedWeightSlice(
                         trustedReceivedWeight, received, resolvedBefore, requested)
                 : null;
         UUID releasedWeightUnitId = releasedWeight == null
@@ -847,58 +850,18 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 : StockService.SRC_SUBCONTRACT_RECEIPT;
     }
 
-    static BigDecimal proratedIncrement(BigDecimal sourceAmount, BigDecimal receivedBase,
-                                        BigDecimal alreadyPassed, BigDecimal passBase) {
-        BigDecimal previous = sourceAmount.multiply(alreadyPassed)
-                .divide(receivedBase, 4, RoundingMode.HALF_UP);
-        BigDecimal next = sourceAmount.multiply(alreadyPassed.add(passBase))
-                .divide(receivedBase, 4, RoundingMode.HALF_UP);
-        return next.subtract(previous);
+    /** 合格放行价值(本币, 4 位库存价值列)切片: MoneyPolicy.projectedSlice, 与库级守卫同式。 */
+    static BigDecimal releasedAmountSlice(BigDecimal sourceAmount, BigDecimal receivedBase,
+                                          BigDecimal alreadyResolved, BigDecimal passBase) {
+        return MoneyPolicy.projectedSlice(sourceAmount, receivedBase, alreadyResolved, passBase);
     }
 
-    static BigDecimal proratedIncrementNullable(
+    /** 合格放行重量切片(重量是数量口径: 4 位累计四舍五入, 切完恰好等于收货重量)。 */
+    static BigDecimal releasedWeightSlice(
             BigDecimal sourceWeight, BigDecimal receivedBase,
-            BigDecimal alreadyPassed, BigDecimal passBase) {
-        return sourceWeight == null ? null : proratedIncrement(
-                sourceWeight, receivedBase, alreadyPassed, passBase);
-    }
-
-    private BigDecimal actionAllocatedAmount(
-            UUID inspectionItemId,BigDecimal sourceTotal,
-            BigDecimal receivedBase,String wantedAction,BigDecimal fallbackBase){
-        @SuppressWarnings("unchecked")
-        List<Object[]> events=em.createNativeQuery("""
-                SELECT action,base_qty
-                FROM procurement_inspection_events
-                WHERE inspection_item_id=:inspectionItemId
-                  AND action IN('PASS','FAIL')
-                ORDER BY occurred_at,id
-                """).setParameter("inspectionItemId",inspectionItemId).getResultList();
-        if(events.isEmpty()){
-            return proratedIncrement(
-                    sourceTotal,receivedBase,BigDecimal.ZERO,fallbackBase);
-        }
-        BigDecimal resolvedBefore=BigDecimal.ZERO;
-        BigDecimal selected=BigDecimal.ZERO;
-        for(Object[] event:events){
-            BigDecimal sliceBase=dec(event[1]);
-            BigDecimal slice=proratedIncrement(
-                    sourceTotal,receivedBase,resolvedBefore,sliceBase);
-            if(wantedAction.equals(event[0]))selected=selected.add(slice);
-            resolvedBefore=resolvedBefore.add(sliceBase);
-        }
-        if(resolvedBefore.compareTo(receivedBase)!=0){
-            throw new ApiException(
-                    ErrorCode.CONFLICT,"IQC处置事件数量与冻结行不守恒，禁止红冲");
-        }
-        return selected;
-    }
-
-    private BigDecimal actionAllocatedAmountNullable(
-            UUID inspectionItemId,BigDecimal sourceTotal,
-            BigDecimal receivedBase,String wantedAction,BigDecimal fallbackBase){
-        return sourceTotal==null?null:actionAllocatedAmount(
-                inspectionItemId,sourceTotal,receivedBase,wantedAction,fallbackBase);
+            BigDecimal alreadyResolved, BigDecimal passBase) {
+        return sourceWeight == null ? null : MoneyPolicy.quantitySlice(
+                sourceWeight, receivedBase, alreadyResolved, passBase);
     }
 
     static String normalizeAction(String action) {

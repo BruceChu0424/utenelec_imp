@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.shipment.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -7,10 +8,10 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/** 销售出货保存请求中的明细行。 */
+/** 销售出货保存请求中的明细行。金额由服务端派生(ADR-112), 请求不能带金额字段。 */
 @Getter
 @Setter
-public class ShipmentItemLine {
+public class ShipmentItemLine implements ServerDerivedAmounts {
     /** Stable current-shipment row identity for reviewed edits; null only for a new line. */
     private UUID id;
 
@@ -33,9 +34,6 @@ public class ShipmentItemLine {
     private BigDecimal qty;
 
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
-    private BigDecimal costAmount;
     private BigDecimal weight;
     private BigDecimal parcelQty;
     private BigDecimal cartonCount;

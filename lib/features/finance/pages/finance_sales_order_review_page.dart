@@ -41,6 +41,7 @@ import '../models/sales_order_finance_confirmation.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderReviewPage({
@@ -1120,16 +1121,14 @@ class _FinanceSalesOrderReviewPageState
       financeCurrencyDisplayLabel(name: r.currencyName, code: r.currencyCode) ??
       '订单币种';
 
+  /// 金额按服务端十进制原文显示(ADR-112): 至少 2 位小数、多余的 0 去掉, 不经过 double、不四舍五入。
   String _money(String? raw) {
     if (raw == null || raw.isEmpty) return '—';
-    final v = double.tryParse(raw);
-    return v == null ? raw : v.toStringAsFixed(2);
+    return financeExactDecimal(raw) == null
+        ? raw
+        : financeExactMoneyDisplay(raw);
   }
 
-  String? _trimNum(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    final v = double.tryParse(raw);
-    if (v == null) return raw;
-    return v.toStringAsFixed(v == v.roundToDouble() ? 0 : 2);
-  }
+  /// 数量/单价/汇率按原文去掉末尾多余的 0, 不四舍五入到 2 位。
+  String? _trimNum(String? raw) => financeExactTrimmed(raw);
 }

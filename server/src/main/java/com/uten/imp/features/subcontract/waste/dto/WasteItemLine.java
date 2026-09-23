@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.waste.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,7 +13,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-public class WasteItemLine {
+public class WasteItemLine implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -35,8 +36,6 @@ public class WasteItemLine {
     private UUID materialIssueItemId;
 
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private BigDecimal weight;
 
     private String sourceDocNo;

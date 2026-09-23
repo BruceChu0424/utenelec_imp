@@ -3329,8 +3329,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal(qty));
         line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(new BigDecimal(qty).multiply(new BigDecimal("50")));
-        line.setAmountLocal(new BigDecimal(qty).multiply(new BigDecimal("50")));
         return line;
     }
 
@@ -4475,8 +4473,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("20"));
         line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(new BigDecimal("1000"));
-        line.setAmountLocal(new BigDecimal("1000"));
         orderReq.setItems(List.of(line));
         purchaseOrderService.createBatch(orderReq);
 
@@ -4560,8 +4556,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(reqQty);
         line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(reqQty.multiply(new BigDecimal("50")));
-        line.setAmountLocal(reqQty.multiply(new BigDecimal("50")));
         orderReq.setItems(List.of(line));
         purchaseOrderService.createBatch(orderReq);
         UUID orderId = jdbc.queryForObject(
@@ -4617,7 +4611,6 @@ class FullChainEndToEndTest {
         var item=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
         item.setGoodsId(material);item.setOrderItemId(orderItem);item.setUnitId(w.unitId());item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal("10"));item.setPrice(new BigDecimal("50"));
-        item.setAmountOriginal(new BigDecimal("500"));item.setAmountLocal(new BigDecimal("500"));
         receiptRequest.setItems(List.of(item));
         UUID receipt=purchaseReceiptService.create(receiptRequest).getId();purchaseReceiptService.approve(receipt);
         UUID inspection=jdbc.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='PURCHASE' AND receipt_id=?",UUID.class,receipt);
@@ -4677,7 +4670,7 @@ class FullChainEndToEndTest {
         var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
         line.setGoodsId(material);line.setOrderItemId(orderItem);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("20"));line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(new BigDecimal("1000"));line.setAmountLocal(new BigDecimal("1000"));request.setItems(List.of(line));
+        request.setItems(List.of(line));
         UUID receipt=purchaseReceiptService.create(request).getId();purchaseReceiptService.approve(receipt);
         UUID inspection=jdbc.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='PURCHASE' AND receipt_id=?",UUID.class,receipt);
         inspectionService.dispose("PURCHASE",receipt,inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
@@ -4936,8 +4929,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(quantity);
         line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(quantity.multiply(new BigDecimal("50")));
-        line.setAmountLocal(quantity.multiply(new BigDecimal("50")));
         order.setItems(List.of(line));
         // 订货拆单 + 送审是采购岗/超管动作（planner 无 purchase_order:* 权限），
         // 与其他链路辅助一致由超管驱动；随后审核员独立批。
@@ -4992,8 +4983,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(qty);
         line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(qty.multiply(new BigDecimal("50")));
-        line.setAmountLocal(qty.multiply(new BigDecimal("50")));
         request.setItems(List.of(line));
         purchaseReceiptService.create(request);
         UUID receiptId = jdbc.queryForObject("""
@@ -5064,8 +5053,6 @@ class FullChainEndToEndTest {
         ri.setUnitRate(BigDecimal.ONE);
         ri.setQty(new BigDecimal("20"));
         ri.setPrice(new BigDecimal("50"));
-        ri.setAmountOriginal(new BigDecimal("1000"));
-        ri.setAmountLocal(new BigDecimal("1000"));
         rr.setItems(List.of(ri));
         purchaseReceiptService.create(rr);
         UUID receiptId = jdbc.queryForObject(
@@ -5161,8 +5148,6 @@ class FullChainEndToEndTest {
         ri.setUnitRate(BigDecimal.ONE);
         ri.setQty(new BigDecimal("20"));
         ri.setPrice(new BigDecimal("50"));
-        ri.setAmountOriginal(new BigDecimal("1000"));
-        ri.setAmountLocal(new BigDecimal("1000"));
         rr.setItems(List.of(ri));
         purchaseReceiptService.create(rr);
         UUID receiptId = jdbc.queryForObject(
@@ -5395,8 +5380,6 @@ class FullChainEndToEndTest {
         ri.setUnitRate(BigDecimal.ONE);
         ri.setQty(new BigDecimal("20"));
         ri.setPrice(new BigDecimal("50"));
-        ri.setAmountOriginal(new BigDecimal("1000"));
-        ri.setAmountLocal(new BigDecimal("1000"));
         rr.setItems(List.of(ri));
         purchaseReceiptService.create(rr);
         UUID receiptId = jdbc.queryForObject(
@@ -6027,8 +6010,6 @@ class FullChainEndToEndTest {
         BigDecimal orderQuantity = reversePreparation ? new BigDecimal("4") : quantity;
         orderLine.setQty(orderQuantity);
         orderLine.setPrice(new BigDecimal("30"));
-        orderLine.setAmountOriginal(orderQuantity.multiply(new BigDecimal("30")));
-        orderLine.setAmountLocal(orderQuantity.multiply(new BigDecimal("30")));
         orderRequest.setItems(List.of(orderLine));
         UUID subcontractOrderId = subcontractOrderService.create(orderRequest).getId();
         UUID subcontractOrderItemId = jdbc.queryForObject("""
@@ -6200,8 +6181,6 @@ class FullChainEndToEndTest {
         receiptLine.setUnitRate(BigDecimal.ONE);
         receiptLine.setQty(quantity);
         receiptLine.setPrice(new BigDecimal("30"));
-        receiptLine.setAmountOriginal(quantity.multiply(new BigDecimal("30")));
-        receiptLine.setAmountLocal(quantity.multiply(new BigDecimal("30")));
         receiptRequest.setItems(List.of(receiptLine));
         UUID receiptId = subcontractReceiptService.create(receiptRequest).getId();
         subcontractReceiptService.approve(receiptId);
@@ -6468,8 +6447,6 @@ class FullChainEndToEndTest {
         orderLine.setUnitRate(BigDecimal.ONE);
         orderLine.setQty(quantity);
         orderLine.setPrice(new BigDecimal("30"));
-        orderLine.setAmountOriginal(quantity.multiply(new BigDecimal("30")));
-        orderLine.setAmountLocal(quantity.multiply(new BigDecimal("30")));
         orderRequest.setItems(List.of(orderLine));
         return subcontractOrderService.create(orderRequest).getId();
     }
@@ -6798,8 +6775,8 @@ class FullChainEndToEndTest {
     @Test
     // 2026-09-21 用户实测: 采购订货把申请量 0.5 改成 3(超量下单)后「提交财务审核」报「采购订货
     // 金额与数量、单价或汇率不一致」——真因不是超量, 是客户端按 double 相乘送来 0.30000000000000004
-    // (3×0.10), 服务端原样落库后送审精确比对失败。行金额改由服务端按数量×单价×汇率精确重算,
-    // 客户端浮点乘积不采信; 采购/委外同口径。
+    // (3×0.10), 服务端原样落库后送审精确比对失败。ADR-112 起保存请求根本不带金额, 行金额只由服务端
+    // 按数量×单价×汇率精确派生(MoneyPolicy); 采购/委外同口径。
     void procurementOrderLineAmounts_areRecomputedByServerFromQuantityTimesPrice() {
         World w = seedWorld("amt-float");
         loginAs(w.superAdminUserId());
@@ -6816,10 +6793,8 @@ class FullChainEndToEndTest {
         orderRequest.setSettlementMethodId(activeSettlementMethodId());
         var ordered = new com.uten.imp.features.purchase.order.dto.OrderItemLine();
         ordered.setGoodsId(w.goodsD()); ordered.setUnitId(w.unitId()); ordered.setUnitRate(BigDecimal.ONE);
-        // 申请 0.5, 订 3(超采备货), 单价 0.10; 金额按客户端 double 相乘的字面值送来。
+        // 申请 0.5, 订 3(超采备货), 单价 0.10; 请求不带金额。
         ordered.setQty(new BigDecimal("3")); ordered.setPrice(new BigDecimal("0.1"));
-        ordered.setAmountOriginal(new BigDecimal("0.30000000000000004"));
-        ordered.setAmountLocal(new BigDecimal("0.30000000000000004"));
         ordered.setRequestItemId(savedRequest.getItems().getFirst().getId()); orderRequest.setItems(List.of(ordered));
         var order = purchaseOrderService.create(orderRequest);
         UUID itemId = order.getItems().getFirst().getId();
@@ -6839,7 +6814,7 @@ class FullChainEndToEndTest {
         assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
                 "select is_closed from purchase_requests where id = ?", Boolean.class, savedRequest.getId())));
 
-        // 委外手工行同款: 3 × 0.10、汇率 7 -> 原币 0.3、本币 2.1(客户端送来 0.30000000000000004 / 2.1000000000000005)。
+        // 委外手工行同款: 3 × 0.10、汇率 7 -> 原币 0.3、本币 2.1, 全由服务端精确派生。
         loginAs(w.superAdminUserId());
         receiveOpeningInputsForA(w, "3");
         var sc = new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
@@ -6849,8 +6824,6 @@ class FullChainEndToEndTest {
         var scLine = new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
         scLine.setGoodsId(w.goodsE()); scLine.setUnitId(w.unitId()); scLine.setUnitRate(BigDecimal.ONE);
         scLine.setQty(new BigDecimal("3")); scLine.setPrice(new BigDecimal("0.1"));
-        scLine.setAmountOriginal(new BigDecimal("0.30000000000000004"));
-        scLine.setAmountLocal(new BigDecimal("2.1000000000000005"));
         sc.setItems(List.of(scLine));
         var scOrder = subcontractOrderService.create(sc);
         assertEquals(0, scOrder.getItems().getFirst().getAmountOriginal().compareTo(new BigDecimal("0.3")));
@@ -6993,8 +6966,6 @@ class FullChainEndToEndTest {
         line.setQty(new BigDecimal("10"));
         line.setDeliverDate(LocalDate.of(2026, 9, 5));
         line.setPrice(BigDecimal.ONE);
-        line.setAmountOriginal(new BigDecimal("10"));
-        line.setAmountLocal(new BigDecimal("10"));
         orderRequest.setItems(List.of(line));
         UUID subcontractOrderId = subcontractOrderService.create(orderRequest).getId();
         UUID orderItemId=jdbc.queryForObject("select id from subcontract_order_items where order_id=? and is_deleted=false",UUID.class,subcontractOrderId);
@@ -7238,21 +7209,23 @@ class FullChainEndToEndTest {
     }
 
     @Test
-    void directCustomerShipment_unrepresentableLocalMoneyDoesNotShipOrCreateAr() {
+    void directCustomerShipment_tinyLocalMoneyIsKeptExactlyInsteadOfBlocked() {
         World w=seedWorld("direct-money-exact-v511");receiveOpeningInputsForA(w,"1");loginAs(w.superAdminUserId());
         var request=directCustomerShipmentRequest(w,"CHARGED","1");request.getItems().getFirst().setPrice(new BigDecimal("0.0001"));
         UUID id=shipmentService.create(request).getId();shipmentService.confirmSales(id,0L);
-        // V582 一步式：把毒化汇率放在确认出库之前，整笔 SHIPPED 原子失败（无任何实物/会计事实）。
-        // V632 起记账汇率在财务放行那一刻冻结到本单、仓库确认出库按冻结值折算，所以毒化必须早于
-        // 放行（放行不带汇率即取币种主档）；放行之后再改主档已经影响不到本单，那正是冻结的本意。
+        // ADR-112: 金额列存完整十进制; 0.0001 × 记账汇率 0.0001 = 0.00000001 原样入账,
+        // 不再因为旧 4 位列装不下而拒绝出库(旧口径), 也不四舍五入成 0; 直发与订货发货同一规则。
         jdbc.update("UPDATE currencies SET exchange_rate=0.0001 WHERE id=?",w.currencyId());
         confirmShipmentFinance(id);
         var work=new WarehouseWorkTransitionRequest();work.setTargetStatus("SHIPPED");
-        assertEquals(ErrorCode.VALIDATION_FAILED,assertThrows(ApiException.class,()->shipmentService.transitionWarehouseWork(id,work)).getCode());
-        assertEquals("PENDING_PICK",shipmentWorkStatus(id));assertEquals(0,stockBalance(w.warehouseId(),w.goodsB()).compareTo(new BigDecimal("2")));
-        assertEquals(0,count("SELECT count(*) FROM stock_movements WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
-        assertEquals(0,count("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id));
-        assertEquals(0,count("SELECT count(*) FROM sales_shipment_warehouse_events WHERE shipment_id=? AND to_status='SHIPPED'",id));
+        shipmentService.transitionWarehouseWork(id,work);
+        assertEquals("SHIPPED",shipmentWorkStatus(id));
+        assertEquals(0,bigDecimalFor("SELECT amount_local FROM sales_shipment_items WHERE shipment_id=?",id)
+                .compareTo(new BigDecimal("0.00000001")));
+        assertEquals(0,bigDecimalFor("SELECT amount_original_local FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id)
+                .compareTo(new BigDecimal("0.00000001")));
+        assertEquals(0,bigDecimalFor("SELECT amount_original FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",id)
+                .compareTo(new BigDecimal("0.0001")));
     }
 
     private ShipmentSaveRequest directCustomerShipmentRequest(World w,String billing,String qty) {
@@ -7362,7 +7335,7 @@ class FullChainEndToEndTest {
         var ordered=new com.uten.imp.features.purchase.order.dto.OrderItemLine();
         ordered.setRequestItemId(source.getItems().getFirst().getId()); ordered.setGoodsId(w.goodsB());
         ordered.setUnitId(w.unitId()); ordered.setUnitRate(BigDecimal.ONE); ordered.setQty(new BigDecimal("20"));
-        ordered.setPrice(new BigDecimal("50")); ordered.setAmountOriginal(new BigDecimal("1000")); ordered.setAmountLocal(new BigDecimal("1000"));
+        ordered.setPrice(new BigDecimal("50"));
         var order=new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
         order.setBillDate(BusinessTime.today()); order.setWarehouseId(w.warehouseId()); order.setSupplierId(w.supplierId());
         order.setCurrencyId(w.currencyId()); order.setExchangeRate(BigDecimal.ONE); order.setTaxRate(BigDecimal.ZERO);
@@ -8903,7 +8876,6 @@ class FullChainEndToEndTest {
         returnedLine.setOutItemId(secondShipmentItem); returnedLine.setOrderItemId(orderItem);
         returnedLine.setGoodsId(w.goodsA()); returnedLine.setUnitId(w.unitId()); returnedLine.setUnitRate(BigDecimal.ONE);
         returnedLine.setQty(new BigDecimal("5")); returnedLine.setPrice(new BigDecimal("999"));
-        returnedLine.setAmountOriginal(new BigDecimal("99999")); returnedLine.setAmountLocal(new BigDecimal("99999"));
         returned.setItems(List.of(returnedLine));
         UUID returnId=customerReturnService.create(returned).getId();
         var approvedReturn=customerReturnService.approve(returnId);
@@ -10618,8 +10590,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(reqQty);
         line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(reqQty.multiply(new BigDecimal("50")));
-        line.setAmountLocal(reqQty.multiply(new BigDecimal("50")));
         orderReq.setItems(List.of(line));
         purchaseOrderService.createBatch(orderReq);
         return jdbc.queryForObject(
@@ -10839,8 +10809,6 @@ class FullChainEndToEndTest {
         ri.setQty(q);
         ri.setReplacementIntent(replacementIntent);
         ri.setPrice(new BigDecimal("50"));
-        ri.setAmountOriginal(q.multiply(new BigDecimal("50")));
-        ri.setAmountLocal(q.multiply(new BigDecimal("50")));
         rr.setItems(List.of(ri));
         purchaseReceiptService.create(rr);
         UUID receiptId = jdbc.queryForObject(
@@ -10894,8 +10862,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(reqQty);
         line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(reqQty.multiply(new BigDecimal("50")));
-        line.setAmountLocal(reqQty.multiply(new BigDecimal("50")));
         orderReq.setItems(List.of(line));
         purchaseOrderService.createBatch(orderReq);
         UUID orderId = jdbc.queryForObject(
@@ -11125,7 +11091,7 @@ class FullChainEndToEndTest {
         var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
         line.setGoodsId(w.goodsE()); line.setUnitId(orderUnit); line.setUnitRate(unitRate);
         line.setQty(quantity); line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(quantity.multiply(line.getPrice())); line.setAmountLocal(line.getAmountOriginal()); request.setItems(List.of(line));
+        request.setItems(List.of(line));
         UUID orderId=subcontractOrderService.create(request).getId();
         UUID reviewer=createApprover(w);
         financeApproval.submit("SUBCONTRACT",orderId);
@@ -11255,7 +11221,7 @@ class FullChainEndToEndTest {
         request.setBillDate(BusinessTime.today());request.setDeliverDate(BusinessTime.today().plusDays(3));request.setSupplierId(w.supplierId());request.setWarehouseId(w.warehouseId());
         request.setCurrencyId(w.currencyId());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);request.setSettlementMethodId(activeSettlementMethodId());
         var lines=new ArrayList<com.uten.imp.features.subcontract.order.dto.OrderItemLine>();
-        for(String qty:quantities){var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();line.setGoodsId(goods);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("10"));line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());lines.add(line);}
+        for(String qty:quantities){var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();line.setGoodsId(goods);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("10"));lines.add(line);}
         request.setItems(lines);return request;
     }
 
@@ -11330,7 +11296,7 @@ class FullChainEndToEndTest {
         var receiptLine=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
         receiptLine.setGoodsId(w.goodsE()); receiptLine.setOrderItemId(itemId); receiptLine.setUnitId(box);
         receiptLine.setUnitRate(new BigDecimal("2")); receiptLine.setQty(new BigDecimal("4")); receiptLine.setPrice(new BigDecimal("50"));
-        receiptLine.setAmountOriginal(new BigDecimal("200")); receiptLine.setAmountLocal(new BigDecimal("200")); receipt.setItems(List.of(receiptLine));
+        receipt.setItems(List.of(receiptLine));
         UUID receiptId=subcontractReceiptService.create(receipt).getId();
         subcontractReceiptService.approve(receiptId);
         if(reviseOrder){
@@ -11423,7 +11389,7 @@ class FullChainEndToEndTest {
         var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
         line.setGoodsId(w.goodsE()); line.setUnitId(w.unitId()); line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("0.001")); line.setPrice(new BigDecimal("0.5"));
-        line.setAmountOriginal(new BigDecimal("0.0005")); line.setAmountLocal(new BigDecimal("0.0035")); request.setItems(List.of(line));
+        request.setItems(List.of(line));
         var created=subcontractOrderService.create(request);
         UUID reviewer=createApprover(w);
         financeApproval.submit("SUBCONTRACT",created.getId());
@@ -11464,7 +11430,6 @@ class FullChainEndToEndTest {
         var ordered=new com.uten.imp.features.purchase.order.dto.OrderItemLine();
         ordered.setGoodsId(w.goodsD()); ordered.setUnitId(w.unitId()); ordered.setUnitRate(BigDecimal.ONE);
         ordered.setQty(new BigDecimal("20")); ordered.setPrice(new BigDecimal("50"));
-        ordered.setAmountOriginal(new BigDecimal("1000")); ordered.setAmountLocal(new BigDecimal("1000"));
         ordered.setRequestItemId(savedRequest.getItems().getFirst().getId()); orderRequest.setItems(List.of(ordered));
         var order=purchaseOrderService.create(orderRequest);
         UUID reviewer=createApprover(w); financeApproval.submit("PURCHASE",order.getId());
@@ -11496,7 +11461,6 @@ class FullChainEndToEndTest {
         var returnLine=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();
         returnLine.setGoodsId(w.goodsD()); returnLine.setUnitId(w.unitId()); returnLine.setUnitRate(BigDecimal.ONE);
         returnLine.setQty(new BigDecimal("2")); returnLine.setPrice(new BigDecimal("50"));
-        returnLine.setAmountOriginal(new BigDecimal("100")); returnLine.setAmountLocal(new BigDecimal("100"));
         returnLine.setOrderItemId(itemId); returnLine.setReceiptItemId(purchaseReceiptService.detail(excessReceipt).getItems().getFirst().getId());
         returned.setItems(List.of(returnLine));
         UUID returnId=supplierPurchaseReturnService.create(returned).getId(); supplierPurchaseReturnService.approve(returnId);
@@ -11621,7 +11585,6 @@ class FullChainEndToEndTest {
         var returnLine=new com.uten.imp.features.subcontract.ret.dto.ReturnItemLine();
         returnLine.setGoodsId(w.goodsE());returnLine.setUnitId(box);returnLine.setUnitRate(new BigDecimal("2"));
         returnLine.setQty(new BigDecimal("0.5"));returnLine.setPrice(new BigDecimal("50"));
-        returnLine.setAmountOriginal(new BigDecimal("25"));returnLine.setAmountLocal(new BigDecimal("25"));
         returnLine.setOrderItemId(item);returnLine.setReceiptItemId(subcontractReceiptService.detail(receipt).getItems().getFirst().getId());returned.setItems(List.of(returnLine));
         UUID productReturn=supplierSubcontractReturnService.create(returned).getId();supplierSubcontractReturnService.approve(productReturn);
         assertEquals(0,stockBalance(w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("19")));
@@ -11724,7 +11687,7 @@ class FullChainEndToEndTest {
         var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
         line.setOrderItemId(item);line.setGoodsId(w.goodsE());line.setUnitId(unit);line.setUnitRate(new BigDecimal("2"));
         line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());request.setItems(List.of(line));
+        request.setItems(List.of(line));
         UUID receipt=subcontractReceiptService.create(request).getId();subcontractReceiptService.approve(receipt);return receipt;
     }
 
@@ -12217,8 +12180,6 @@ class FullChainEndToEndTest {
         line.setQty(new BigDecimal(qty));
         line.setPrice(new BigDecimal("100"));
         BigDecimal amt = new BigDecimal(qty).multiply(new BigDecimal("100"));
-        line.setAmountOriginal(amt);
-        line.setAmountLocal(amt);
         line.setDiscount(BigDecimal.ONE);
         req.setItems(List.of(line));
         return req;
@@ -12949,8 +12910,6 @@ class FullChainEndToEndTest {
         line.setUnitId(w.unitId());
         line.setUnitRate(BigDecimal.ONE);
         BigDecimal amount = new BigDecimal(qty).multiply(new BigDecimal(price));
-        line.setAmountOriginal(amount);
-        line.setAmountLocal(amount);
         req.setItems(List.of(line));
         return req;
     }

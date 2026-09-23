@@ -204,16 +204,8 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
 
     @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
     public Amounts failedAmounts(UUID inspectionItemId) {
-        Object[] result=rows("""
-                SELECT COUNT(*),CASE WHEN BOOL_AND(quality.amount_original IS NOT NULL) FILTER(WHERE event.action='FAIL')
-                           THEN SUM(quality.amount_original) FILTER(WHERE event.action='FAIL') END,
-                       CASE WHEN BOOL_AND(quality.amount_local IS NOT NULL) FILTER(WHERE event.action='FAIL')
-                           THEN SUM(quality.amount_local) FILTER(WHERE event.action='FAIL') END
-                FROM procurement_iqc_quality_consideration_parts quality
-                JOIN procurement_inspection_events event ON event.id=quality.inspection_event_id
-                WHERE event.inspection_item_id=:id AND fn_procurement_consideration_active('QUALITY',quality.id)
-                """,Map.of("id",inspectionItemId)).getFirst();
-        return decimal(result[0]).signum()==0?null:new Amounts(nullableDecimal(result[1]),nullableDecimal(result[2]));
+        var frozen=ProcurementIqcAmountSplit.frozenFailed(em,inspectionItemId);
+        return frozen==null?null:new Amounts(frozen.original(),frozen.local());
     }
 
     /** Freeze each real quality event against the remaining exact receipt parts. */

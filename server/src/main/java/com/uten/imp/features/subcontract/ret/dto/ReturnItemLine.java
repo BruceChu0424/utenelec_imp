@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.ret.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,7 +11,7 @@ import java.util.UUID;
 /** 委外退货单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class ReturnItemLine {
+public class ReturnItemLine implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -25,8 +26,6 @@ public class ReturnItemLine {
     private BigDecimal qty;
 
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
 
     /** 关联进仓明细（可选；审核回写 receipt_items.returned_qty）。 */
     private UUID receiptItemId;

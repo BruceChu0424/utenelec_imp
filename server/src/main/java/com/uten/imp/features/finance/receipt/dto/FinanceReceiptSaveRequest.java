@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.receipt.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -17,7 +18,7 @@ import java.util.UUID;
 /** 销售收款单新建/编辑请求（主表字段 + 明细行）。明细可为空（直接收款，无显式核销）。 */
 @Getter
 @Setter
-public class FinanceReceiptSaveRequest {
+public class FinanceReceiptSaveRequest implements ServerDerivedAmounts {
 
     private String billNo;
     private Long expectedVersion;
@@ -38,7 +39,6 @@ public class FinanceReceiptSaveRequest {
     private UUID currencyId;
     private BigDecimal exchangeRate;
     private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private BigDecimal bankFee;
     private BigDecimal otherFee;
     private UUID otherFeeStyleId;

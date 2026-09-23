@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -9,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -408,12 +408,13 @@ public class ProcurementPayablesService {
         return new BigDecimal(value.toString());
     }
 
+    /** 金额原文(ADR-112): 至少 4 位小数, 更多位数原样给出, 不在接口层截短。 */
     private static String money(Object value) {
-        return value == null ? null : decimal(value).setScale(4, RoundingMode.HALF_UP).toPlainString();
+        return value == null ? null : MoneyPolicy.canonical(decimal(value)).toPlainString();
     }
 
     private static String rate(Object value) {
-        return value == null ? null : decimal(value).setScale(6, RoundingMode.HALF_UP).toPlainString();
+        return value == null ? null : MoneyPolicy.canonicalRate(decimal(value)).toPlainString();
     }
 
     private record Filter(String sql, Map<String, Object> params) {}

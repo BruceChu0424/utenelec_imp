@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.shipment;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
@@ -42,7 +43,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -90,7 +90,6 @@ public class SalesShipmentService {
     private static final String REJECT_AUTHORITY = "sales_shipment:reject";
     private static final String WAREHOUSE_WORK_AUTHORITY = "sales_shipment:warehouse-work";
     private static final String SETTLEMENT_ROLE_CASH = "CASH";
-    private static final int MONEY_SCALE = 4;
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
@@ -361,7 +360,7 @@ public class SalesShipmentService {
         LinkedSource source;
         if (CustomerShipmentPolicy.DIRECT.equals(kind)) {
             directCommercial.normalize(req);
-            source=new LinkedSource(false,null,null,null,null);
+            source=new LinkedSource(false,null,null,null,null,Map.of());
         } else {
             requireOrderLinkedNewShipment(req);
             lockAndValidateDraftAllocation(req, null, true);
@@ -385,7 +384,7 @@ public class SalesShipmentService {
         s.setWarehouseWorkUpdatedAt(OffsetDateTime.now());
         s.setWarehouseWorkUpdatedBy(currentUser.requireEmployeeId());
         shipmentRepo.save(s);
-        List<ShipmentItemDto> items = saveItems(s, req.getItems());
+        List<ShipmentItemDto> items = saveItems(s, req.getItems(), source.amounts());
         applyTotals(s, items);
         recordWarehouseEvent(
                 s, null, SalesShipment.WORK_PENDING_PICK,
@@ -574,7 +573,7 @@ public class SalesShipmentService {
         LinkedSource source;
         if (customerShipmentPolicy.direct(s)) {
             directCommercial.normalize(req);
-            source=new LinkedSource(false,null,null,null,null);
+            source=new LinkedSource(false,null,null,null,null,Map.of());
         } else {
             requireOrderLinkedNewShipment(req);
             lockAndValidateDraftAllocation(req,id,true);
@@ -594,7 +593,7 @@ public class SalesShipmentService {
         s.setFinanceRejectionReason(null);
         applyHeader(req, s);
         applySource(s, source);
-        List<ShipmentItemDto> items = saveItems(s, req.getItems());
+        List<ShipmentItemDto> items = saveItems(s, req.getItems(), source.amounts());
         applyTotals(s, items);
         if (!customerShipmentPolicy.direct(s)) {
             reviewSnapshots.submit(s);
@@ -1566,7 +1565,7 @@ public class SalesShipmentService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         lockStoredOrderTargets(items);
-        assertStoredOrderLinks(s, items, true, operationAuthorities);
+        assertStoredOrderLinks(s, items, true, true, operationAuthorities);
         directCommercial.validateStored(s,items);
         // The source-order comparison above is against the untouched draft.
         // Only after it succeeds may the explicit client-default UUID fallback
@@ -1901,9 +1900,8 @@ public class SalesShipmentService {
             if (original.signum() < 0) {
                 throw new ApiException(ErrorCode.CONFLICT, "发运原币金额无效，禁止发运立账");
             }
-            BigDecimal local = CustomerShipmentPolicy.direct(shipment)
-                    ? DirectCustomerShipmentCommercialService.exactStoredMoney(original.multiply(financeRate))
-                    : original.multiply(financeRate).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+            // 直发与订货发货同一规则: 本币 = 原币 × 财务冻结汇率, 完整乘积不舍入。
+            BigDecimal local = MoneyPolicy.local(original, financeRate);
             item.setAmountLocal(local);
             totalOriginal = totalOriginal.add(original);
             totalLocal = totalLocal.add(local);
@@ -2101,7 +2099,7 @@ public class SalesShipmentService {
                                OffsetDateTime ts, BigDecimal overrideAmount) {
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
         BigDecimal baseQty = it.getQty().multiply(rate);
-        if (CustomerShipmentPolicy.direct(s)) baseQty=baseQty.setScale(4,RoundingMode.HALF_UP);
+        if (CustomerShipmentPolicy.direct(s)) baseQty=MoneyPolicy.quantity(baseQty);
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
         // V631：按行的实际发出仓过账；没有行仓的历史行回落到表头仓。
         UUID movementWarehouse = it.getWarehouseId() != null ? it.getWarehouseId() : s.getWarehouseId();
@@ -2277,7 +2275,7 @@ public class SalesShipmentService {
      */
     private LinkedSource validateLinkedOrderItems(ShipmentSaveRequest req) {
         return validateLinkedOrderItems(
-                req, true, true, true, new String[0]);
+                req, true, true, true, true, new String[0]);
     }
 
     /**
@@ -2302,6 +2300,7 @@ public class SalesShipmentService {
                                                    boolean requireOpenSource,
                                                    boolean rejectDuplicateLinks,
                                                    boolean enforceCommercialSource,
+                                                   boolean deriveAmounts,
                                                    String... operationAuthorities) {
         if (req.getItems() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货明细不能为空");
@@ -2309,7 +2308,7 @@ public class SalesShipmentService {
         List<ShipmentItemLine> linked = req.getItems().stream()
                 .filter(line -> line.getOrderItemId() != null).toList();
         if (linked.isEmpty()) {
-            return new LinkedSource(false, null, null, null, null);
+            return new LinkedSource(false, null, null, null, null, Map.of());
         }
         List<UUID> ids = linked.stream().map(ShipmentItemLine::getOrderItemId).toList();
         if (rejectDuplicateLinks && Set.copyOf(ids).size() != ids.size()) {
@@ -2336,6 +2335,9 @@ public class SalesShipmentService {
         for (Object[] row : rows) {
             byId.put((UUID) row[0], row);
         }
+        Map<UUID, BigDecimal[]> priorNet = enforceCommercialSource && deriveAmounts
+                ? netShippedByOrderItem(ids) : Map.of();
+        Map<UUID, BigDecimal> amounts = new HashMap<>();
 
         var writeScope = accessPolicy.scope(operationAuthorities);
         UUID commonOwner = null;
@@ -2396,6 +2398,10 @@ public class SalesShipmentService {
                             "一张出货单不能合并币种、税率、结算方式或业务员不同的订单");
                 }
                 normalizeCommercialLine(line, row);
+                if (deriveAmounts) {
+                    amounts.put(line.getOrderItemId(), authoritativeShipmentAmount(
+                            line, row, priorNet.get(line.getOrderItemId())));
+                }
             }
         }
         if (enforceCommercialSource && commonTerms != null) {
@@ -2409,7 +2415,7 @@ public class SalesShipmentService {
             req.setSellerId(commonTerms.sellerId());
         }
         return new LinkedSource(
-                true, commonOrderId, commonOrderNo, commonOwner, commonTerms);
+                true, commonOrderId, commonOrderNo, commonOwner, commonTerms, Map.copyOf(amounts));
     }
 
     private static CommercialTerms commercialTerms(Object[] row) {
@@ -2459,37 +2465,79 @@ public class SalesShipmentService {
                             + " 的数量或金额不是可安全出货的已审事实");
         }
         line.setPrice(sourcePrice);
-        line.setAmountOriginal(authoritativeShipmentAmount(
-                sourceOriginal, sourceQty, shipQty));
-        // A draft has no authoritative local amount. SHIPPED recalculates it
-        // from the finance-owned posting rate.
-        line.setAmountLocal(null);
         line.setDiscount((BigDecimal) sourceRow[18]);
         line.setMachiningPrice((BigDecimal) sourceRow[19]);
         line.setClientNo((String) sourceRow[20]);
         line.setClientModel((String) sourceRow[21]);
         line.setSourceDocNo((String) sourceRow[10]);
         // These fields have no audited sales-order source. A caller may not
-        // inject inventory cost or undocumented price components into AR.
-        line.setCostAmount(null);
+        // inject undocumented price components into AR.
         line.setMaterialPrice(null);
         line.setDieCastPrice(null);
     }
 
+    private static BigDecimal authoritativeShipmentAmount(
+            ShipmentItemLine line, Object[] sourceRow, BigDecimal[] priorNet) {
+        return authoritativeShipmentAmount(
+                (BigDecimal) sourceRow[16], (BigDecimal) sourceRow[17],
+                priorNet == null ? BigDecimal.ZERO : priorNet[0],
+                priorNet == null ? BigDecimal.ZERO : priorNet[1],
+                line.getQty());
+    }
+
+    /**
+     * 出货行金额 = 订单行金额按「已出净量 + 本次」的累计份额 − 已出净额(ADR-112)。
+     * 已出净量/净额 = 已出库出货行合计 − 其有效退货合计; 本次出完订单行全部数量时取订单行全部剩余金额,
+     * 各批合计恰好等于订单行金额。订单行金额 = 数量 × 单价 × 折扣(精确乘积)时, 每批就是本批数量的精确乘积。
+     */
     static BigDecimal authoritativeShipmentAmount(
             BigDecimal sourceAmount,
             BigDecimal sourceQty,
+            BigDecimal priorNetQty,
+            BigDecimal priorNetAmount,
             BigDecimal shipmentQty) {
         if (sourceAmount == null || sourceAmount.signum() < 0
                 || sourceQty == null || sourceQty.signum() <= 0
                 || shipmentQty == null || shipmentQty.signum() <= 0
-                || shipmentQty.compareTo(sourceQty) > 0) {
+                || priorNetQty == null || priorNetQty.signum() < 0
+                || priorNetAmount == null || priorNetAmount.signum() < 0
+                || priorNetQty.add(shipmentQty).compareTo(sourceQty) > 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "来源订单数量或金额无效，禁止生成出货应收");
+                    "来源订单数量或金额无效，或本次出货超过订单未出数量，禁止生成出货应收");
         }
-        return sourceAmount.multiply(shipmentQty)
-                .divide(sourceQty, MONEY_SCALE, RoundingMode.HALF_UP);
+        return MoneyPolicy.prorate(sourceAmount, priorNetQty.add(shipmentQty), sourceQty, priorNetAmount);
+    }
+
+    /** 各订单行已出库出货的净量与净额(出货行合计 − 有效退货行合计), 一条语句取全。 */
+    private Map<UUID, BigDecimal[]> netShippedByOrderItem(List<UUID> orderItemIds) {
+        if (orderItemIds.isEmpty()) return Map.of();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT item.order_item_id,
+                       COALESCE(SUM(item.qty),0) - COALESCE(SUM(returned.qty),0),
+                       COALESCE(SUM(item.amount_original),0) - COALESCE(SUM(returned.amount_original),0)
+                FROM sales_shipment_items item
+                JOIN sales_shipments shipment ON shipment.id = item.shipment_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(return_item.qty) AS qty,
+                           SUM(return_item.amount_original) AS amount_original
+                    FROM sales_return_items return_item
+                    JOIN sales_returns return_doc ON return_doc.id = return_item.return_id
+                    WHERE return_item.out_item_id = item.id
+                      AND return_doc.status = 1
+                      AND NOT return_item.is_deleted AND NOT return_doc.is_deleted
+                ) returned ON TRUE
+                WHERE item.order_item_id IN (:ids)
+                  AND shipment.status = 1
+                  AND NOT item.is_deleted AND NOT shipment.is_deleted
+                GROUP BY item.order_item_id
+                """).setParameter("ids", orderItemIds).getResultList();
+        Map<UUID, BigDecimal[]> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], new BigDecimal[]{(BigDecimal) row[1], (BigDecimal) row[2]});
+        }
+        return result;
     }
 
     private static boolean sameDecimal(BigDecimal left, BigDecimal right) {
@@ -2703,6 +2751,18 @@ public class SalesShipmentService {
                                         List<SalesShipmentItem> items,
                                         boolean requireOpenSource,
                                         String... operationAuthorities) {
+        assertStoredOrderLinks(shipment, items, requireOpenSource, false, operationAuthorities);
+    }
+
+    /**
+     * 出库确认(SHIPPED)时 deriveAmounts=true: 订单行已在本事务锁住, 按锁内的已出净量/净额重新派生
+     * 出货行原币金额并回写表头合计——应收只认这一刻的结果; 草稿期金额只是同一规则的预览。
+     */
+    private void assertStoredOrderLinks(SalesShipment shipment,
+                                        List<SalesShipmentItem> items,
+                                        boolean requireOpenSource,
+                                        boolean deriveAmounts,
+                                        String... operationAuthorities) {
         ShipmentSaveRequest snapshot = new ShipmentSaveRequest();
         snapshot.setClientId(shipment.getClientId());
         snapshot.setCurrencyId(shipment.getCurrencyId());
@@ -2724,9 +2784,6 @@ public class SalesShipmentService {
             line.setUnitRate(item.getUnitRate());
             line.setQty(item.getQty());
             line.setPrice(item.getPrice());
-            line.setAmountOriginal(item.getAmountOriginal());
-            line.setAmountLocal(item.getAmountLocal());
-            line.setCostAmount(item.getCostAmount());
             line.setClientNo(item.getClientNo());
             line.setClientModel(item.getClientModel());
             line.setMaterialPrice(item.getMaterialPrice());
@@ -2742,7 +2799,7 @@ public class SalesShipmentService {
                         shipment.getWarehouseWorkStatus());
         LinkedSource source = validateLinkedOrderItems(
                 snapshot, requireOpenSource, false, strictCommercial,
-                operationAuthorities);
+                deriveAmounts && strictCommercial, operationAuthorities);
         if (source.present()
                 && !Objects.equals(source.ownerEmployeeId(), shipment.getOwnerEmployeeId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源订单与出货单归属不一致");
@@ -2757,6 +2814,24 @@ public class SalesShipmentService {
         if (strictCommercial && source.present()) {
             requireStoredCommercialAuthority(
                     shipment, items, links, source.terms());
+            if (deriveAmounts) {
+                for (SalesShipmentItem item : items) {
+                    BigDecimal derived = source.amounts().get(item.getOrderItemId());
+                    // 销售确认/财务放行冻结的是确认那一刻的金额。之后同一订单行又有别的出货或退货时,
+                    // 累计分摊(一口价行)会让本单金额变化: 这里给出看得懂的冲突, 不让库级快照守卫报一句英文。
+                    if (shipment.getSalesConfirmedRevision() != null && item.getAmountOriginal() != null
+                            && derived != null && derived.compareTo(item.getAmountOriginal()) != 0) {
+                        throw new ApiException(ErrorCode.CONFLICT,
+                                "同一订单行在本单确认后又有出货或退货，按累计分摊本单金额应为 "
+                                        + derived.stripTrailingZeros().toPlainString() + " (确认时为 "
+                                        + item.getAmountOriginal().stripTrailingZeros().toPlainString()
+                                        + ")。请财务撤销放行、销售重新提交确认后再出库");
+                    }
+                    item.setAmountOriginal(derived);
+                }
+                shipment.setTotalOriginal(MoneyPolicy.sum(
+                        items.stream().map(SalesShipmentItem::getAmountOriginal).toList()));
+            }
         }
     }
 
@@ -2782,9 +2857,6 @@ public class SalesShipmentService {
             ShipmentItemLine expected = authoritativeItems.get(i);
             if (!sameDecimal(stored.getPrice(), expected.getPrice())
                     || !sameDecimal(
-                            stored.getAmountOriginal(),
-                            expected.getAmountOriginal())
-                    || !sameDecimal(
                             stored.getDiscount(), expected.getDiscount())
                     || !sameDecimal(
                             stored.getMachiningPrice(),
@@ -2801,7 +2873,7 @@ public class SalesShipmentService {
                             expected.getSourceDocNo())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "出货行金额或来源快照与已审订货单不一致，禁止财审或出库");
+                        "出货行单价、折扣或来源快照与已审订货单不一致，禁止财审或出库");
             }
         }
     }
@@ -2953,7 +3025,8 @@ public class SalesShipmentService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private List<ShipmentItemDto> saveItems(SalesShipment s, List<ShipmentItemLine> lines) {
+    private List<ShipmentItemDto> saveItems(
+            SalesShipment s, List<ShipmentItemLine> lines, Map<UUID, BigDecimal> linkedAmounts) {
         Map<UUID,SalesShipmentItem> existing=new HashMap<>();
         itemRepo.findByShipmentIdOrderByLineNoAsc(s.getId()).forEach(item->existing.put(item.getId(),item));
         Set<UUID> retained=new java.util.HashSet<>();
@@ -2996,9 +3069,11 @@ public class SalesShipmentService {
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            // Draft input cannot author a local-currency fact. SHIPPED is the
-            // only transition that writes amount_local from the finance rate.
+            // 原币金额只由服务端派生: 订货发货按订单行累计分摊, 零星发货 = 数量 × 单价 × 折扣。
+            // 本币没有草稿事实, 只在出库确认时按财务冻结汇率形成。
+            it.setAmountOriginal(l.getOrderItemId() != null
+                    ? linkedAmounts.get(l.getOrderItemId())
+                    : DirectCustomerShipmentCommercialService.lineAmount(s, l));
             it.setAmountLocal(null);
             it.setCostAmount(null);
             it.setWeight(l.getWeight());
@@ -3085,16 +3160,13 @@ public class SalesShipmentService {
             ShipmentItemLine line) {
         if (line.getQty() == null || line.getQty().signum() <= 0
                 || isNegative(line.getPrice())
-                || isNegative(line.getAmountOriginal())
-                || isNegative(line.getAmountLocal())
-                || isNegative(line.getCostAmount())
                 || isNegative(line.getWeight())
                 || isNegative(line.getMaterialPrice())
                 || isNegative(line.getDieCastPrice())
                 || isNegative(line.getMachiningPrice())) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "出货数量必须大于 0，实际总重量、价格与金额不得为负数");
+                    "出货数量必须大于 0，实际总重量与价格不得为负数");
         }
     }
 
@@ -3322,7 +3394,7 @@ public class SalesShipmentService {
 
     private static List<com.uten.imp.application.port.CustomerShipmentInventoryPort.Line> customerInventoryLines(List<SalesShipmentItem> items) {
         return items.stream().map(item->new com.uten.imp.application.port.CustomerShipmentInventoryPort.Line(
-                item.getId(),item.getGoodsId(),item.getColorId(),item.getQty().multiply(item.getUnitRate()).setScale(4,RoundingMode.HALF_UP),
+                item.getId(),item.getGoodsId(),item.getColorId(),MoneyPolicy.quantity(item.getQty().multiply(item.getUnitRate())),
                 item.getWarehouseId())).toList();
     }
 
@@ -3331,7 +3403,8 @@ public class SalesShipmentService {
             UUID sourceOrderId,
             String sourceBillNo,
             UUID ownerEmployeeId,
-            CommercialTerms terms) {}
+            CommercialTerms terms,
+            Map<UUID, BigDecimal> amounts) {}
     private record CommercialTerms(
             UUID currencyId,
             BigDecimal taxRate,

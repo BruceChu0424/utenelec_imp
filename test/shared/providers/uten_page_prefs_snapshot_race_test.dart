@@ -19,7 +19,7 @@ class _LoggedIn extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
     status: AuthStatus.authenticated,
-    user: AppUser(id: 'user-1', code: 'u1', name: 'U', roles: []),
+    user: AppUser(id: 'user-1', code: 'u1', name: 'U'),
   );
 }
 

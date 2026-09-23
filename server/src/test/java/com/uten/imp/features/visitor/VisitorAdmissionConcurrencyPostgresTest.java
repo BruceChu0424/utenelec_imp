@@ -92,15 +92,15 @@ class VisitorAdmissionConcurrencyPostgresTest {
         var current = mock(SecurityContextCurrentUser.class);
         UUID actor = UUID.randomUUID();
         when(current.id()).thenReturn(Optional.of(actor));
-        when(current.get()).thenReturn(Optional.of(new AuthUser(actor, employeeId, "test",
-                Set.of(), Set.of("visitor:approve", "visitor:host-confirm", "visitor:check-in"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(actor, employeeId, "test", Set.of("visitor:approve", "visitor:host_confirm", "visitor:check_in"), false, true, false)));
         var mapper = mock(VisitorApplicationMapper.class);
         when(mapper.hostInfo(any())).thenReturn(new String[]{"Host", "Department"});
         // 2026-09-10：HrNoticeService 与业务同事务且不再吞异常，裸 null 依赖会让
         // 申请/审批因 NPE 回滚；本测试只验证准入并发，通知用 mock 隔离。
         var hrNotice = mock(HrNoticeService.class);
         var service = new VisitorApplicationService(applications, steps, accounts,
-                mock(EmployeeRepository.class), mapper, tx, hrNotice, current);
+                mock(EmployeeRepository.class), mapper, tx, hrNotice, current,
+                mock(VisitorHostEligibility.class));
         var guard = new VisitorGuard(current);
         gate = new VisitorGateService(applications, accounts, service, mapper, guard, tx, current, new ObjectMapper(),
                 mock(AuditService.class), mock(UserAccountRepository.class), mock(EmployeeRepository.class));

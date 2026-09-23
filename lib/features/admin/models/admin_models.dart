@@ -1,9 +1,11 @@
 // 权限管理（超级管理员）数据模型。
-// 对应后端接口契约：/admin/users · /admin/permissions · /admin/permission-catalog
+// 对应后端接口契约：/admin/users · /admin/permission-catalog
 // · /admin/users/{id}/permission-overrides · /admin/users/{id}/effective-permissions
-// · /admin/departments/{id}/permissions。角色体系已下线（ADR-011/V29）。
+// · /admin/departments/{id}/permissions · /admin/permission-baseline。
+// 角色体系已删除(ADR-109)：授权只有全员基础包 + 部门 + 个人覆盖 + 负责人委派。
 
 import '../../../shared/auth/permission_action_type.dart';
+import '../../../shared/auth/permission_grant_policy.dart';
 
 /// 员工账号摘要（GET /admin/users 的 items[]）。
 class AdminUserSummary {
@@ -12,7 +14,6 @@ class AdminUserSummary {
     required this.loginAccount,
     required this.status,
     required this.mustChangePassword,
-    required this.roles,
     required this.remoteAccess,
     this.employeeId,
     this.employeeStatus,
@@ -31,9 +32,6 @@ class AdminUserSummary {
   /// 'active' | 'locked' | 'disabled'
   final String status;
   final bool mustChangePassword;
-
-  /// 已分配的角色 code 列表（历史遗留字段，后端仍返回；角色体系下线后仅作展示参考，不参与权限）
-  final List<String> roles;
 
   /// 是否授权云端(外网)访问。仅 remote_access=TRUE 的账号可在云端实例登录；
   /// 权限页顶部「云端访问」开关据此回显，授权后该账号须重新登录拿新 token。
@@ -96,9 +94,6 @@ class AdminUserSummary {
         loginAccount: json['loginAccount'] as String? ?? '',
         status: json['status'] as String? ?? 'active',
         mustChangePassword: json['mustChangePassword'] as bool? ?? false,
-        roles: (json['roles'] as List<dynamic>? ?? const [])
-            .map((e) => e as String)
-            .toList(),
         employeeId: json['employeeId'] as String?,
         employeeStatus: json['employeeStatus'] as String?,
         currentEmployee: json['currentEmployee'] as bool? ?? false,
@@ -112,7 +107,7 @@ class AdminUserSummary {
       );
 }
 
-/// 权限点（GET /admin/permissions）。
+/// 权限点(GET /admin/permission-catalog 的目录项)。
 class AdminPermission {
   const AdminPermission({
     required this.id,
@@ -122,7 +117,8 @@ class AdminPermission {
     this.module,
     this.actionType = PermissionActionType.other,
     this.description,
-    this.bulkAssignable = true,
+    this.grantPolicy = PermissionGrantPolicy.normalOnly,
+    this.baseline = false,
     this.sensitivity = 'NORMAL',
   });
 
@@ -141,7 +137,14 @@ class AdminPermission {
 
   /// 面向授权人员的权限边界说明。
   final String? description;
-  final bool bulkAssignable;
+
+  /// 授权策略(服务端唯一事实源，ADR-109)：决定能否批量、能否配给部门、能否转授。
+  final PermissionGrantPolicy grantPolicy;
+
+  /// 是否在全员基础包里(每个在职员工都隐式持有)。
+  final bool baseline;
+
+  /// 只作展示标签(商业敏感数据)，不参与任何授权判断。
   final String sensitivity;
 
   factory AdminPermission.fromJson(Map<String, dynamic> json) =>
@@ -153,8 +156,65 @@ class AdminPermission {
         module: json['module'] as String?,
         actionType: PermissionActionType.fromJson(json['actionType']),
         description: _nullableTrimmed(json['description']),
-        bulkAssignable: json['bulkAssignable'] as bool? ?? true,
+        grantPolicy: PermissionGrantPolicy.fromJson(json['grantPolicy']),
+        baseline: json['baseline'] as bool? ?? false,
         sensitivity: json['sensitivity'] as String? ?? 'NORMAL',
+      );
+}
+
+/// 「全部授权 / 本模块 / 本组」的范围(PUT .../grant-all 的请求体)。
+///
+/// 两个字段都为空 = 整个目录；只给 [module] = 该模块；两者都给 = 该子类。
+/// 哪些码真正被带上由服务端按授权策略决定(ADR-109)，前端不做任何本地过滤。
+class PermissionBulkScope {
+  const PermissionBulkScope({this.module, this.category});
+
+  static const everything = PermissionBulkScope();
+
+  final String? module;
+  final String? category;
+
+  Map<String, dynamic> toJson() => {
+    if (module != null) 'module': module,
+    if (category != null) 'category': category,
+  };
+
+  /// 面向管理员的范围描述(确认弹窗与提示用)。
+  String get label => category != null
+      ? '「$category」这一组'
+      : module != null
+      ? '「$module」这个模块'
+      : '整个权限目录';
+
+  @override
+  bool operator ==(Object other) =>
+      other is PermissionBulkScope &&
+      other.module == module &&
+      other.category == category;
+
+  @override
+  int get hashCode => Object.hash(module, category);
+}
+
+/// 一次授权保存真正改动的码(服务端按差量落库后回传)。
+class PermissionChange {
+  const PermissionChange({required this.added, required this.removed});
+
+  static const none = PermissionChange(added: [], removed: []);
+
+  final List<String> added;
+  final List<String> removed;
+
+  bool get isEmpty => added.isEmpty && removed.isEmpty;
+
+  factory PermissionChange.fromJson(Map<String, dynamic> json) =>
+      PermissionChange(
+        added: (json['added'] as List<dynamic>? ?? const [])
+            .map((e) => e as String)
+            .toList(growable: false),
+        removed: (json['removed'] as List<dynamic>? ?? const [])
+            .map((e) => e as String)
+            .toList(growable: false),
       );
 }
 
@@ -216,7 +276,8 @@ class PermissionCatalogGroup {
           module: p['module'] as String? ?? module,
           actionType: PermissionActionType.fromJson(p['actionType']),
           description: _nullableTrimmed(p['description']),
-          bulkAssignable: p['bulkAssignable'] as bool? ?? true,
+          grantPolicy: PermissionGrantPolicy.fromJson(p['grantPolicy']),
+          baseline: p['baseline'] as bool? ?? false,
           sensitivity: p['sensitivity'] as String? ?? 'NORMAL',
         );
       }).toList(),

@@ -25,8 +25,7 @@ class DocumentScopedOperationWriteTest {
                 visibility, currentUser);
         UUID owner = UUID.randomUUID();
         AuthUser approver = new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), "approver",
-                Set.of(), Set.of("finance_receipt:approve"),
+                UUID.randomUUID(), UUID.randomUUID(), "approver", Set.of("finance_receipt:approve"),
                 false, true, false);
         when(currentUser.get()).thenReturn(Optional.of(approver));
 

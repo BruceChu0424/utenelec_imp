@@ -237,7 +237,7 @@ public class DashboardOverviewService {
         // 检查类（INSPECTION/SAFETY/QUALITY）与其他 = 仅总经办直属（GM）。
         // GM 标签只来自直属部门（depth=0），总经办下级部门员工不会继承。
         Set<String> audienceTags = new LinkedHashSet<>(department.audienceTags());
-        if (can(user, "dashboard:finance-sensitive:view")) {
+        if (can(user, "dashboard:finance_sensitive:view")) {
             audienceTags.add(PolicyAudiences.FINANCE);
         }
 

@@ -2,6 +2,7 @@
 //
 // 高密度授权信息按三个页内分区呈现，默认进入功能权限。完整权限目录仍由后端动态
 // 下发；前端只负责搜索、筛选、分组和把最终状态变化换算为个人 grants/revokes。
+// 「全部授权 / 本模块 / 本组」交给服务端按授权策略补齐(ADR-109)，本页不维护排除名单。
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,7 +21,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../authorize_all_excluded.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/admin_models.dart';
 import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
@@ -523,20 +524,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       isChanged: (permission) =>
           grants.contains(permission.code) || revokes.contains(permission.code),
       changedFilterLabel: '个人覆盖',
-      onEnableGroup: canEdit
-          ? (permissions) => _setPermissions(data, permissions, true)
-          : null,
+      onGrantScope: canEdit ? (scope) => _grantScope(data, scope) : null,
       onDisableGroup: canEdit
           ? (permissions) => _setPermissions(data, permissions, false)
-          : null,
-      onEnableAll: canEdit
-          ? (permissions) => _setPermissionCodes(
-              data,
-              permissions
-                  .where((p) => !kAuthorizeAllExcluded.contains(p.code))
-                  .map((p) => p.code),
-              true,
-            )
           : null,
       onDisableAll: canEdit
           ? (permissions) =>
@@ -556,13 +546,61 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         _pendingGrants(data).contains(code);
   }
 
+  /// 「全部授权 / 本模块 / 本组」：服务端按授权策略补齐个人加授并立即生效。
+  /// 与本地暂存的逐项修改分开：有未保存修改时先让管理员保存或撤销。
+  Future<void> _grantScope(
+    EffectivePermissions data,
+    PermissionBulkScope scope,
+  ) async {
+    if (_savingOverrides) return;
+    if (!widget.user.authorizationGrantAllowed) {
+      _explainAuthorizationRestriction();
+      return;
+    }
+    if (_dirtyCount(data) > 0) {
+      context.appWarning('请先保存或撤销当前的逐项修改，再做批量授权');
+      return;
+    }
+    final name = widget.user.employeeName ?? widget.user.loginAccount;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '批量授权',
+      content: Text(
+        '将把${scope.label}里可以批量授予的权限加授给「$name」，保存后立即生效。'
+        '需要逐项勾选的敏感权限不会带上。',
+      ),
+      confirmLabel: '确认授权',
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() => _savingOverrides = true);
+    try {
+      final change = await ref
+          .read(adminRepositoryProvider)
+          .grantAllToUser(widget.user.id, scope);
+      ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+      if (!mounted) return;
+      context.appSuccess(
+        change.added.isEmpty
+            ? '没有新增：可批量授予的权限都已生效'
+            : '已为「$name」加授 ${change.added.length} 项权限，即时生效',
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      context.appApiError(error, fallback: '批量授权失败，请稍后重试');
+    } catch (_) {
+      if (mounted) context.appError('批量授权失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _savingOverrides = false);
+    }
+  }
+
   Future<void> _togglePerm(
     EffectivePermissions data,
     AdminPermission permission,
     bool value,
   ) async {
     if (value &&
-        !permission.bulkAssignable &&
+        !permission.grantPolicy.bulkEligible &&
         !_isEffective(data, permission.code)) {
       final confirmed = await UtenDialog.show(
         context,
@@ -638,9 +676,17 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final viaManager = data.managerGrants.contains(permission.code);
     final revoked = !data.superAdmin && revokes.contains(permission.code);
     final effective = _isEffective(data, permission.code);
-    final canEdit = !data.superAdmin && widget.user.authorizationGrantAllowed;
+    // 只随超级管理员身份生效的码不能逐人加授(授权策略由服务端下发)；已生效的仍可收回。
+    final policyAllows =
+        permission.grantPolicy.individuallyGrantable || effective;
+    final canEdit =
+        !data.superAdmin &&
+        widget.user.authorizationGrantAllowed &&
+        policyAllows;
     final editRestriction = data.superAdmin
         ? '超级管理员默认拥有全部权限，不能逐项调整'
+        : !policyAllows
+        ? '这项权限只随超级管理员身份生效，不能逐人授予'
         : widget.user.authorizationRestrictionReason;
 
     final details = Column(
@@ -650,7 +696,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           name: permission.name,
           actionType: permission.actionType,
           description: permission.description,
-          bulkAssignable: permission.bulkAssignable,
+          grantPolicy: permission.grantPolicy,
+          baseline: permission.baseline,
           sensitivity: permission.sensitivity,
           nameStyle: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,

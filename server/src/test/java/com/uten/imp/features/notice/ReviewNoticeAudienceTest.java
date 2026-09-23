@@ -37,7 +37,7 @@ class ReviewNoticeAudienceTest {
                 permissions, Set.of("GM"))).isFalse();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         UUID employeeId = UUID.randomUUID();
-        AuthUser user = new AuthUser(UUID.randomUUID(), employeeId, "test", Set.of(),
+        AuthUser user = new AuthUser(UUID.randomUUID(), employeeId, "test",
                 permissions, false, true, true);
         when(jdbc.queryForList(anyString(), eq(String.class), eq(employeeId), eq(employeeId)))
                 .thenReturn(List.of("GM"));
@@ -49,7 +49,7 @@ class ReviewNoticeAudienceTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         UUID employeeId = UUID.randomUUID();
         Set<String> permissions = Set.of("notice:read", "finance_order_approval:view", "finance_order_approval:reject");
-        AuthUser user = new AuthUser(UUID.randomUUID(), employeeId, "test", Set.of(),
+        AuthUser user = new AuthUser(UUID.randomUUID(), employeeId, "test",
                 permissions, false, true, false);
         when(jdbc.queryForList(anyString(), eq(String.class), eq(employeeId), eq(employeeId)))
                 .thenReturn(List.of("DEPT_FIN"));

@@ -37,7 +37,6 @@ class StockCostMaskerTest {
 
     private static AuthUser user(Set<String> permissions) {
         return new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), "tester",
-                Set.of(), permissions, false, true, false);
+                UUID.randomUUID(), UUID.randomUUID(), "tester", permissions, false, true, false);
     }
 }

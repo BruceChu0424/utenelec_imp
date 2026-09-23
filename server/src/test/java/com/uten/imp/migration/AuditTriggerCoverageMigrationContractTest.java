@@ -82,14 +82,13 @@ class AuditTriggerCoverageMigrationContractTest {
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
             new FullGroup("authorization", "authorization", false,
-                    "账号、角色、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值",
+                    "账号、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值(角色四表已随 V655 删除)",
                     Set.of(
-                        "client_visibility_grants", "department_permissions", "department_roles",
+                        "client_visibility_grants", "department_permissions",
                         "manager_permission_delegations",
                         "organization_permission_leader_assignments",
                         "permission_surface_permissions", "permission_surfaces", "permissions",
-                        "role_permissions", "roles", "user_data_scopes",
-                        "user_permission_overrides", "user_roles", "users")),
+                        "user_data_scopes", "user_permission_overrides", "users")),
             new FullGroup("system", "system", false,
                     "系统设置与全局配置: 改动影响全平台运行口径",
                     Set.of(
@@ -533,6 +532,9 @@ class AuditTriggerCoverageMigrationContractTest {
         baselineFull.keySet().removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
         Set<String> baselineRedacted = new HashSet<>(redactedFullTables());
         baselineRedacted.removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
+        // V646 之后被整表删除的(如 V655 删除的角色四表)在 V646 登记过, 但不再出现在清单里。
+        declaredFull.keySet().removeIf(t -> !created.containsKey(t));
+        declaredRedacted.removeIf(t -> !created.containsKey(t));
         assertEquals(baselineFull, declaredFull, "V646 FULL calls must equal the FULL list and categories");
         assertEquals(baselineRedacted, declaredRedacted, "Payroll-class redaction flags must match");
 

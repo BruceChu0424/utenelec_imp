@@ -72,15 +72,17 @@ class SensitiveActionPermissionContractTest {
         assertThat(RdTaskController.class.getAnnotation(PreAuthorize.class)).isNull();
         assertGate(RdTaskController.class, "list", "rd_task:view");
         assertGate(RdTaskController.class, "count", "rd_task:view");
-        assertGate(RdTaskController.class, "create", "rd_task:create");
-        assertGate(RdTaskController.class, "assign", "rd_task:assign");
         assertGate(RdTaskController.class, "resolve", "rd_task:resolve");
+        // ADR-109：研发任务的新建 / 指派从未开放给任何人，码与端点一并删除。
+        assertThat(java.util.Arrays.stream(RdTaskController.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName))
+                .doesNotContain("create", "assign");
     }
 
     @Test
     void visitorVerificationAndCheckInAreIndependent() {
         assertGate(SecurityVisitorController.class, "verify", "visitor:verify");
-        assertGate(SecurityVisitorController.class, "checkIn", "visitor:check-in");
+        assertGate(SecurityVisitorController.class, "checkIn", "visitor:check_in");
     }
 
     @Test

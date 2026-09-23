@@ -11,13 +11,8 @@ import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
-import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
-import com.uten.imp.features.rbac.Role;
-import com.uten.imp.features.rbac.RolePermissionRepository;
-import com.uten.imp.features.rbac.RoleRepository;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.PermissionDelegationPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,21 +28,20 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 权限合成（ADR-011 演进版，角色体系下线后）：
+ * 权限合成(ADR-011 演进版；ADR-109 起角色体系彻底删除)：
  * <pre>
- *   有效权限 = 全员基础权限（employee 角色权限包，人人有份）
+ *   有效权限 = 全员基础包(permissions.baseline，人人有份，管理页可编辑)
  *            ∪ 部门配置（department_permissions，员工所在部门 + 所有上级部门，向上取并集）
  *            ∪ 中央个人加授
  *            ∪ 当前仍有效的负责人页面委派
  *            − 中央个人收回（user_permission_overrides revoke 始终优先）
- *   超级管理员恒为全量 permissions。
+ *   超级管理员恒为全部目录码(含超管专属码)。
  * </pre>
  *
  * <p>说明：
  * <ul>
- *   <li>旧的"直接角色 ∪ 部门默认角色"层已下线（角色分配 UI 同步移除），
- *       仅保留 employee 角色作为全员基础权限包；user_roles 里其他角色数据保留
- *       但不再参与权限合成；rolesOf 只为 AuthUser/AdminGrantGuard 的角色兼容读取。</li>
+ *   <li>roles / user_roles / role_permissions / department_roles 四张表已随 V655 删除，
+ *       权限只有上面这一套来源。</li>
  *   <li>部门配置向上生效：在「综合营销部」配的权限，销售一~四组等下级部门员工自动获得；
  *       子部门也可以单独追加配置。与 ADR-007 的"仅直属"决策不同，此处是向上读取配置，
  *       符合"给部门配权限、部门里的人就有"的直觉。</li>
@@ -56,13 +50,7 @@ import java.util.UUID;
 @Service
 public class PermissionResolver {
 
-    /** 全员基础权限包的角色 code（人人隐式持有，无需在 user_roles 里显式挂） */
-    private static final String BASELINE_ROLE_CODE = "employee";
-
-    private final UserRoleRepository userRoleRepo;
-    private final RolePermissionRepository rolePermissionRepo;
     private final PermissionRepository permissionRepo;
-    private final RoleRepository roleRepo;
     private final DepartmentPermissionRepository departmentPermissionRepo;
     private final UserPermissionOverrideRepository overrideRepo;
     private final EmployeeRepository employeeRepo;
@@ -74,8 +62,7 @@ public class PermissionResolver {
     private final PermissionSurfaceRegistry surfaceRegistry;
     private final PagePermissionDelegationFeatureGate delegationFeatureGate;
 
-    public PermissionResolver(UserRoleRepository userRoleRepo, RolePermissionRepository rolePermissionRepo,
-                              PermissionRepository permissionRepo, RoleRepository roleRepo,
+    public PermissionResolver(PermissionRepository permissionRepo,
                               DepartmentPermissionRepository departmentPermissionRepo,
                               UserPermissionOverrideRepository overrideRepo,
                               EmployeeRepository employeeRepo,
@@ -86,10 +73,7 @@ public class PermissionResolver {
                               PermissionDelegationPolicy delegationPolicy,
                               PermissionSurfaceRegistry surfaceRegistry,
                               PagePermissionDelegationFeatureGate delegationFeatureGate) {
-        this.userRoleRepo = userRoleRepo;
-        this.rolePermissionRepo = rolePermissionRepo;
         this.permissionRepo = permissionRepo;
-        this.roleRepo = roleRepo;
         this.departmentPermissionRepo = departmentPermissionRepo;
         this.overrideRepo = overrideRepo;
         this.employeeRepo = employeeRepo;
@@ -108,7 +92,7 @@ public class PermissionResolver {
      * @param departmentId          员工直属部门 id（无部门时为 null）
      * @param departmentName        员工直属部门名称（无部门时为 null）
      * @param departmentPermissions 部门配置权限点（所在部门 + 上级部门并集）
-     * @param baselinePermissions   全员基础权限点（employee 角色包）
+     * @param baselinePermissions   全员基础包(permissions.baseline)
      * @param grants                个人加授覆盖
      * @param confirmedGrants       超级管理员在全局权限页重新确认的个人加授
      * @param legacyUnknownGrants   来源不可证明、仅维持现状且不可二次转授的历史加授
@@ -138,22 +122,15 @@ public class PermissionResolver {
 
     /** Immutable server-side authority snapshot suitable for short-lived caching. */
     public record AuthorizationSnapshot(
-            Set<String> roles,
             Set<String> permissions,
             boolean contextualDelegationPresent) {
-        public AuthorizationSnapshot(Set<String> roles, Set<String> permissions) {
-            this(roles, permissions, false);
+        public AuthorizationSnapshot(Set<String> permissions) {
+            this(permissions, false);
         }
 
         public AuthorizationSnapshot {
-            roles = Set.copyOf(roles);
             permissions = Set.copyOf(permissions);
         }
-    }
-
-    /** AuthUser 角色兼容：仍返回 user_roles 里显式挂的角色（不影响权限合成，也不写入 staff JWT）。 */
-    public Set<String> rolesOf(UUID userId) {
-        return new HashSet<>(userRoleRepo.findRoleCodesByUserId(userId));
     }
 
     /**
@@ -167,7 +144,6 @@ public class PermissionResolver {
             boolean superAdmin) {
         PermBreakdown breakdown = breakdownOf(userId, employeeId, superAdmin);
         return new AuthorizationSnapshot(
-                rolesOf(userId),
                 breakdown.effective(),
                 breakdown.contextualDelegationPresent());
     }
@@ -175,7 +151,7 @@ public class PermissionResolver {
     public Set<String> permsOf(UserAccount user) {
         // Effective-only callers do not need the management-page breakdown.
         // Account/employment eligibility remains the caller's existing gate;
-        // super-admin effective permissions have always been the active catalog.
+        // super-admin effective permissions are the whole catalog (retired codes are deleted).
         if (user.isSuperAdmin()) return allPermissionCodes();
         return breakdownOf(user).effective();
     }
@@ -247,11 +223,8 @@ public class PermissionResolver {
     }
 
     private BaseParts baseParts(UUID userId, UUID employeeId, boolean superAdmin) {
-        // 全员基础权限（employee 角色包）
-        Set<String> baseline = roleRepo.findByCode(BASELINE_ROLE_CODE)
-                .map(Role::getId)
-                .map(id -> new HashSet<>(rolePermissionRepo.findPermissionCodesByRoleIds(Set.of(id))))
-                .orElseGet(HashSet::new);
+        // 全员基础包(permissions.baseline，一条 SQL)
+        Set<String> baseline = new HashSet<>(permissionRepo.findBaselineCodes());
 
         // 部门配置：员工所在部门 + 所有上级部门（递归 CTE，一条 SQL 取并集，避免懒加载）
         Employee e = employeeId == null ? null : employeeRepo.findById(employeeId).orElse(null);
@@ -301,7 +274,7 @@ public class PermissionResolver {
             }
         }
         if (superAdmin) {
-            // 超管：effective 恒为全量（即便将来新增 permission 也按"已有"处理）
+            // 超管：effective 恒为全部目录码(即便将来新增 permission 也按"已有"处理)
             effective = allPermissionCodes();
         }
         return new BaseParts(
@@ -474,9 +447,7 @@ public class PermissionResolver {
     }
 
     private Set<String> allPermissionCodes() {
-        return permissionRepo.findAllByActiveTrue().stream()
-                .map(Permission::getCode)
-                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        return new HashSet<>(permissionRepo.findAllCodes());
     }
 
     private record BaseParts(

@@ -8,7 +8,6 @@ import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibilit
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -266,7 +265,6 @@ class SubcontractReturnDueNoticeTest {
                 notice,
                 users,
                 mock(PermissionResolver.class),
-                mock(UserRoleRepository.class),
                 jdbc,
                 outbox,
                 mock(RdTaskService.class),

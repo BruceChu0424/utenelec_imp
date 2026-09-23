@@ -199,9 +199,6 @@ class AuditTriggerCoveragePostgresTest {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try (Statement statement = connection.createStatement()) {
-                statement.execute("INSERT INTO roles(code, name) VALUES('AUDIT_ROLE', '审计测试角色')");
-                assertEquals("high|authorization", scalar(statement,
-                        "SELECT risk_level || '|' || event_category FROM audit_log WHERE target_type='roles' AND action='insert'"));
                 statement.execute("""
                         INSERT INTO employees(id, code, full_name, id_type, department_id, hire_date, status, employment_type)
                         VALUES('%s', 'AUD-EMP', '审计员工', '其他', (SELECT id FROM departments WHERE NOT is_deleted LIMIT 1),
@@ -209,6 +206,9 @@ class AuditTriggerCoveragePostgresTest {
                         """.formatted(ACTOR));
                 statement.execute("INSERT INTO users(id, employee_id, login_account, password_hash, status)"
                         + " VALUES(gen_random_uuid(), '" + ACTOR + "', '13600001234', 'unused', 'active')");
+                // 角色表已随 V655(ADR-109) 删除, 授权类高风险分类改由账号表验证。
+                assertEquals("high|authorization", scalar(statement,
+                        "SELECT risk_level || '|' || event_category FROM audit_log WHERE target_type='users' AND action='insert'"));
                 assertEquals("*******1234", scalar(statement,
                         "SELECT \"after\"->>'login_account' FROM audit_log WHERE target_type='users' AND action='insert'"));
                 assertEquals("0", scalar(statement,

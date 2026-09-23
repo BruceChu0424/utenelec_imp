@@ -171,7 +171,7 @@ public class ProductionDailyReportService {
         List<DailyReportItemDto> items = rows.stream()
                 .map(item -> toItemDto(item, transferLabels, identities)).toList();
         populateExecutionContext(r, items);
-        return toDetail(r, items);
+        return toDetail(r, items, allowedActions(r, rows));
     }
 
     /**
@@ -2157,7 +2157,27 @@ public class ProductionDailyReportService {
         if(!restored.isEmpty())fulfillmentLedger.refreshDemandStatuses(restored);
     }
 
-    private DailyReportDetail toDetail(ProductionDailyReport r, List<DailyReportItemDto> items) {
+    /**
+     * 详情页可执行动作(permissions-15 规定：按钮只按服务端下发显隐)。审核要同时满足：
+     * 草稿、有明细、持日报审核码且在审核对象范围内；含「转下一道工序」(车间直送)的行
+     * 还必须持车间直送审核码、且是每个出料工单所属车间的成员——与审核写路径
+     * {@code executeForApprovedReport} 同一口径，不会再出现点了才报「没有权限」的按钮。
+     */
+    private List<String> allowedActions(ProductionDailyReport r, List<ProductionDailyReportItem> rows) {
+        List<String> actions = new ArrayList<>();
+        boolean draft = r.getStatus() != null && r.getStatus() == STATUS_DRAFT;
+        if (draft
+                && !rows.isEmpty()
+                && access.hasAuthority("production_daily_report:approve")
+                && access.canWrite(r.getMakerId(), "production_daily_report:approve")
+                && directTransfer.canApproveDirectTransfers(rows)) {
+            actions.add("APPROVE");
+        }
+        return List.copyOf(actions);
+    }
+
+    private DailyReportDetail toDetail(ProductionDailyReport r, List<DailyReportItemDto> items,
+                                       List<String> allowedActions) {
         List<UUID> workerIds = reportWorkerIds(r.getId(), r.getWorkerId());
         return new DailyReportDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(),
@@ -2169,7 +2189,8 @@ public class ProductionDailyReportService {
                 // 车间与参与人员同样随单下发，页面不再查部门字典、也不再逐个调员工档案接口
                 // (那个接口要 employee:view 且会落人事查看审计)。
                 departmentNameResolver.nameOf(r.getDepartmentId()),
-                workerIds.stream().map(nameResolver::nameOf).toList());
+                workerIds.stream().map(nameResolver::nameOf).toList(),
+                allowedActions);
     }
 
     private ProductionDailyReport requireReport(UUID id) {

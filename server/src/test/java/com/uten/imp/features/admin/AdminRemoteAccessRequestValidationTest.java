@@ -28,7 +28,6 @@ class AdminRemoteAccessRequestValidationTest {
         accounts = mock(UserAccountAdminService.class);
         AdminUserController controller = new AdminUserController(
                 accounts,
-                mock(RoleAdminService.class),
                 mock(PermissionOverrideAdminService.class),
                 mock(DataScopeAdminService.class));
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();

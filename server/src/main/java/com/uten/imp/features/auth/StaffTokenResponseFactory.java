@@ -127,7 +127,6 @@ public class StaffTokenResponseFactory {
             UUID userId,
             AuthorizationSnapshot snapshot) {
         Employee employee = employeeRepo.findById(snapshot.employeeId()).orElse(null);
-        List<String> roles = snapshot.roles().stream().sorted().toList();
         List<String> permissions = snapshot.permissions().stream().sorted().toList();
         String department = employee != null && employee.getDepartment() != null
                 ? employee.getDepartment().getName()
@@ -148,7 +147,6 @@ public class StaffTokenResponseFactory {
                 position,
                 snapshot.mustChangePassword(),
                 snapshot.superAdmin(),
-                roles,
                 permissions);
     }
 
@@ -172,7 +170,6 @@ public class StaffTokenResponseFactory {
                         after.getEmployeeId(),
                         after.getLoginAccount(),
                         after.isSuperAdmin(),
-                        authorities.roles(),
                         authorities.permissions(),
                         after.isMustChangePassword(),
                         after.getAuthVersion(),
@@ -210,7 +207,6 @@ public class StaffTokenResponseFactory {
             UUID employeeId,
             String loginAccount,
             boolean superAdmin,
-            Set<String> roles,
             Set<String> permissions,
             boolean mustChangePassword,
             long authVersion,

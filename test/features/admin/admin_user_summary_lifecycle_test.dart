@@ -7,7 +7,6 @@ void main() {
       'id': 'user-1',
       'loginAccount': '13800000000',
       'status': 'active',
-      'roles': <String>[],
       'remoteAccess': false,
       'employeeStatus': 'probation',
       'currentEmployee': true,
@@ -25,7 +24,6 @@ void main() {
       'id': 'user-1',
       'loginAccount': '13800000000',
       'status': 'active',
-      'roles': <String>[],
       'remoteAccess': false,
     });
 
@@ -42,7 +40,6 @@ void main() {
       loginAccount: '13800000000',
       status: 'disabled',
       mustChangePassword: false,
-      roles: [],
       remoteAccess: false,
       employeeStatus: 'resigned',
     );
@@ -51,7 +48,6 @@ void main() {
       loginAccount: '13800000000',
       status: 'locked',
       mustChangePassword: false,
-      roles: [],
       remoteAccess: false,
       employeeStatus: 'resigned',
     );

@@ -38,9 +38,10 @@ class ProductionDailyReportAttachmentAccessPolicyTest {
         h.permissions.add("production_daily_report:view");
         h.scope(Set.of(), Set.of());
         denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanView(h.id, h.user()));
+        // ADR-109 / security-18：没有负责人的日报不再公共可读，附件同样只对全量范围可见。
         h.report.setMakerId(null);
-        assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
-        denied(ErrorCode.FORBIDDEN, () -> h.policy.requireCanManage(h.id, h.user()));
+        denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanView(h.id, h.user()));
+        denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanManage(h.id, h.user()));
     }
 
     @Test void approverOrReverserAuthorityBypassesOwnerScopeForReadingOnly() {
@@ -115,7 +116,7 @@ class ProductionDailyReportAttachmentAccessPolicyTest {
             policy = new ProductionDailyReportAttachmentAccessPolicy(
                     em, new ProductionDocumentAccessPolicy(ownership, current));
         }
-        AuthUser user() { return new AuthUser(owner, owner, "owner", Set.of(), Set.copyOf(permissions), false, true, false); }
+        AuthUser user() { return new AuthUser(owner, owner, "owner", Set.copyOf(permissions), false, true, false); }
         void scope(Set<UUID> readable, Set<UUID> writable) {
             when(ownership.evaluate(anyString(), anyString())).thenReturn(new OwnerVisibility.OwnerScope(false, readable, writable));
         }

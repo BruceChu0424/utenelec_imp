@@ -155,7 +155,10 @@ public final class MigrationRehearsalSupport {
         // 有意整表废弃（升级到当前目录后合法消失），点名豁免；其余任何被删表仍然算红。
         Set<String> intentionallyDropped = Set.of(
                 // V590 车间偏好表废弃删除，学习数据搬进货品表随 goods 保留。
-                "production_goods_workshop_preferences");
+                "production_goods_workshop_preferences",
+                // V655(ADR-109) 角色体系四张表删除：全员基础包平移到 permissions.baseline，
+                // 通知受众改按部门子树 + 权限码。
+                "roles", "user_roles", "role_permissions", "department_roles");
         Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());
         requiredTables.removeAll(intentionallyDropped);
         assertThat(after.tableRows().keySet())

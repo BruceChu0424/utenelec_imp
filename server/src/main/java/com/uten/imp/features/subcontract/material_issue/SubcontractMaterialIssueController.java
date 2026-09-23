@@ -1,16 +1,11 @@
 package com.uten.imp.features.subcontract.material_issue;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueDetail;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueListItem;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueQueryFilter;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -75,22 +70,6 @@ public class SubcontractMaterialIssueController {
                 result.getLegacyId(),
                 "委外材料出仓单");
         return result;
-    }
-
-    @PostMapping
-    @PreAuthorize("hasAuthority('subcontract_material_issue:create')")
-    @Operation(
-            summary = "历史委外发料手工新建入口（已停用）",
-            description = "该兼容端点不再创建单据。请从仓库委外出仓任务执行，旧权限客户端固定收到 409。",
-            deprecated = true)
-    @ApiResponses({
-            @ApiResponse(responseCode = "403", description = "没有历史新建权限"),
-            @ApiResponse(responseCode = "409", description = "手工新建入口已停用")
-    })
-    public MaterialIssueDetail create(@Valid @RequestBody MaterialIssueSaveRequest req) {
-        throw new ApiException(
-                ErrorCode.CONFLICT,
-                "旧委外发料手工新建已关闭；请从“仓库管理 → 委外出仓”领取系统任务并执行出仓");
     }
 
     @PutMapping("/{id}")

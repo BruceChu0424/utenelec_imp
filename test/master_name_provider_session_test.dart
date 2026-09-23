@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/shared/models/role.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -45,13 +44,8 @@ void main() {
     );
   });
 
-  AppUser user(String id, List<String> permissions) => AppUser(
-    id: id,
-    code: id,
-    name: id,
-    roles: const [Role.employee],
-    permissions: permissions,
-  );
+  AppUser user(String id, List<String> permissions) =>
+      AppUser(id: id, code: id, name: id, permissions: permissions);
 
   test('master name cache key changes across accounts', () {
     final accountA = masterDataSessionCacheKey(

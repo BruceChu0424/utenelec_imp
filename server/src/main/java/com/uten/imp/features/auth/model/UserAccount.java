@@ -68,8 +68,8 @@ public class UserAccount extends SoftDeletableEntity {
 
     /**
      * 超级管理员标记。TRUE 时：
-     *  - 鉴权层绕过 role_permissions 映射，直接拿到全量权限（即便将来新增的 permission 也按"已有"处理）
-     *  - 该账号不被"职务 / 岗位"语义绑定——admin 不需要 role 也能 work
+     *  - 鉴权层直接拿到全部目录码(含超管专属码；即便将来新增的 permission 也按"已有"处理)
+     *  - 该账号不被"职务 / 岗位"语义绑定
      * 默认 false。
      */
     @Column(name = "is_super_admin", nullable = false)

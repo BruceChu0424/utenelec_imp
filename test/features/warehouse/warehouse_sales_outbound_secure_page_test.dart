@@ -184,11 +184,11 @@ void main() {
       isTrue,
     );
     expect(requiredAnyPermFor(RouteName.warehouseSalesOutbound), <String>[
-      Perm.salesShipmentWarehouseWork,
+      Perm.warehouseSalesOutboundView,
     ]);
     expect(
       requiredAnyPermFor(RoutePath.warehouseSalesOutboundDetail('shipment-1')),
-      <String>[Perm.salesShipmentWarehouseWork],
+      <String>[Perm.warehouseSalesOutboundView],
     );
     expect(
       pagePermissionScopeFor(

@@ -35,12 +35,14 @@ class SalesDocumentAccessPolicyTest {
     }
 
     @Test
-    void legacyOwnerlessDocumentIsReadableButNotWritable() {
+    void ownerlessDocumentIsNeitherReadableNorWritableWithoutCompanyWideScope() {
+        // ADR-109 / security-18：没有负责人不再等于公共可读。
         scope(false, Set.of());
 
-        assertTrue(policy.canRead(null));
+        assertFalse(policy.canRead(null));
         assertFalse(policy.canWrite(null));
-        assertDoesNotThrow(() -> policy.requireReadable(null, "missing"));
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> policy.requireReadable(null, "missing")).getCode());
         ApiException denied = assertThrows(ApiException.class,
                 () -> policy.requireWritable(null, "read only"));
 
@@ -79,8 +81,7 @@ class SalesDocumentAccessPolicyTest {
                 UUID.randomUUID(),
                 employeeId,
                 "finance",
-                Set.of(),
-                Set.of("finance_shipment_audit"),
+                Set.of("sales_shipment_finance:view"),
                 false,
                 true,
                 false);
@@ -89,14 +90,14 @@ class SalesDocumentAccessPolicyTest {
 
         UUID otherOwner = UUID.randomUUID();
         assertFalse(policy.canRead(otherOwner));
-        assertTrue(policy.canRead(otherOwner, "finance_shipment_audit"));
-        assertTrue(policy.canWrite(otherOwner, "finance_shipment_audit"));
+        assertTrue(policy.canRead(otherOwner, "sales_shipment_finance:view"));
+        assertTrue(policy.canWrite(otherOwner, "sales_shipment_finance:view"));
         assertDoesNotThrow(() -> policy.requireWritable(
-                otherOwner, "denied", "finance_shipment_audit"));
+                otherOwner, "denied", "sales_shipment_finance:view"));
     }
 
     @Test
-    void nativeScopeUsesPublicOrDelegatedOwnersAndBindsCollection() {
+    void nativeScopeBindsOnlyVisibleOwnersAndNeverTreatsMissingOwnerAsPublic() {
         UUID owner = UUID.randomUUID();
         scope(false, Set.of(owner));
 
@@ -106,31 +107,20 @@ class SalesDocumentAccessPolicyTest {
 
         nativeScope.bind(query);
 
-        assertEquals(
-                "(o.owner_employee_id IS NULL OR o.owner_employee_id IN (:salesOwners))",
-                nativeScope.predicate());
+        // permissions-10：空归属不再是「全员可读」旁路。
+        assertEquals("o.owner_employee_id IN (:salesOwners)", nativeScope.predicate());
         verify(query).setParameter("salesOwners", Set.of(owner));
     }
 
     @Test
-    void materializedScopeTreatsNilOwnerAsLegacyPublicAndBindsDelegatedOwners() {
-        UUID owner = UUID.randomUUID();
-        UUID nil = new UUID(0L, 0L);
-        OwnerVisibility.OwnerScope scope =
-                new OwnerVisibility.OwnerScope(false, Set.of(owner));
+    void documentWithoutOwnerIsReadableOnlyByCompanyWideScope() {
+        scope(false, Set.of(UUID.randomUUID()));
+        assertFalse(policy.canRead(null));
+        assertFalse(policy.canWrite(null));
 
-        SalesDocumentAccessPolicy.NativeReadScope nativeScope =
-                policy.nativeReadScopeWithLegacySentinel(
-                        "owner_employee_id", "salesOwners", nil, scope);
-        Query query = mock(Query.class);
-
-        nativeScope.bind(query);
-
-        assertEquals(
-                "(owner_employee_id = '00000000-0000-0000-0000-000000000000'::uuid "
-                        + "OR owner_employee_id IN (:salesOwners))",
-                nativeScope.predicate());
-        verify(query).setParameter("salesOwners", Set.of(owner));
+        scope(true, Set.of());
+        assertTrue(policy.canRead(null));
+        assertFalse(policy.canWrite(null), "无归属单据即使全量高权也须先补负责人再写");
     }
 
     @Test

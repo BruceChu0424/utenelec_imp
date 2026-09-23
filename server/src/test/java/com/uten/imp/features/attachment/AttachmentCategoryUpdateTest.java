@@ -142,7 +142,7 @@ class AttachmentCategoryUpdateTest {
 
     private static AuthUser user(Set<String> permissions) {
         UUID id = UUID.randomUUID();
-        return new AuthUser(id, UUID.randomUUID(), "seller", Set.of(), permissions,
+        return new AuthUser(id, UUID.randomUUID(), "seller", permissions,
                 false, true, false);
     }
 

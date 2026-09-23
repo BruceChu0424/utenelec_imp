@@ -23,7 +23,7 @@ import java.util.UUID;
  * </ul>
  *
  * <p>账户流水包含敏感资金金额，必须同时具备账户查看、余额查看和流水查看权限。
- * 历史 {@code finance_reconciliation:view} 不再构成访问授权。
+ * 旧的「对账查看」码只在前端生效，已随 V655 从目录删除。
  * 流水由各 finance_*审核 Service 写入（用户不直接编辑）。
  */
 @RestController

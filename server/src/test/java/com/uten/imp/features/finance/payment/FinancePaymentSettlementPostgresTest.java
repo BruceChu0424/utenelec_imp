@@ -624,7 +624,6 @@ class FinancePaymentSettlementPostgresTest {
         // （含 GL 重生成用的 finance_post:execute），roles 留空。
         AuthUser user = new AuthUser(
                 userId, employeeId, actualLogin,
-                Set.of(),
                 Set.of("finance_post:execute", "finance:view:all",
                         "customer_prepayment:view",
                         "finance_payment:create", "finance_payment:edit",

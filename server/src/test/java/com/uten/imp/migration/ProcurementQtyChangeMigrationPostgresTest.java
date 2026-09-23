@@ -85,11 +85,12 @@ class ProcurementQtyChangeMigrationPostgresTest {
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword());
              Statement statement = connection.createStatement()) {
+            // V655(ADR-109)：目录只剩活码、授权策略由 grant_policy 表达。
             assertEquals(2, scalar(statement, """
                     select count(*) from permissions
                     where code in ('purchase_order:change_qty',
                                    'subcontract_order:change_qty')
-                      and active and assignable
+                      and grant_policy = array['NORMAL']::text[]
                     """));
             assertEquals(2, scalar(statement, """
                     select count(*)
@@ -100,22 +101,37 @@ class ProcurementQtyChangeMigrationPostgresTest {
                         ('purchase.order', 'purchase_order:change_qty'),
                         ('subcontract.order', 'subcontract_order:change_qty'))
                     """));
+            // V486 登记时零授权；V655 起「批准后改量」与「提交财务」同口径默认发放：
+            // 持有提交财务的部门恰好也持有改量，没有别的部门、没有个人/委派授权。
             assertEquals(0, scalar(statement, """
                     select count(*) from (
-                        select permission_id from department_permissions
-                        union all select permission_id from role_permissions
-                        union all select permission_id from user_permission_overrides
+                        select department_id, submit.code as submit_code
+                        from department_permissions grant_row
+                        join permissions submit on submit.id = grant_row.permission_id
+                        where submit.code in ('purchase_order:submit_finance',
+                                              'subcontract_order:submit_finance')
+                    ) submit_holder
+                    where not exists (
+                        select 1 from department_permissions change_row
+                        join permissions change on change.id = change_row.permission_id
+                        where change_row.department_id = submit_holder.department_id
+                          and change.code = replace(submit_holder.submit_code,
+                                                    'submit_finance', 'change_qty'))
+                    """));
+            assertEquals(0, scalar(statement, """
+                    select count(*) from (
+                        select permission_id from user_permission_overrides
                         union all select permission_id from manager_permission_delegations
                     ) grant_row
                     join permissions permission on permission.id = grant_row.permission_id
                     where permission.code in ('purchase_order:change_qty',
                                    'subcontract_order:change_qty')
                     """));
-            assertEquals(2, scalar(statement, """
+            // 委外准备中心两个停用码：V655 起停用即删除。
+            assertEquals(0, scalar(statement, """
                     select count(*) from permissions
                     where code in ('subcontract_preparation:view',
                                    'subcontract_preparation:start')
-                      and active = false and assignable = false
                     """));
             assertEquals(0, scalar(statement, """
                     select count(*) from permission_surfaces

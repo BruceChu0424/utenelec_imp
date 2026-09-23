@@ -41,7 +41,6 @@ class StaffTokenResponseFactoryTest {
         when(users.findAccountStateById(detached.getId())).thenReturn(Optional.of(current));
         when(permissions.authorizationSnapshot(detached.getId(), currentEmployeeId, false))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
-                        Set.of("employee", "warehouse"),
                         Set.of("employee:view", "stock:view")));
 
         Employee employee = new Employee();
@@ -64,7 +63,6 @@ class StaffTokenResponseFactoryTest {
         assertTrue(response.mustChangePassword());
         assertTrue(response.user().mustChangePassword());
         assertFalse(response.user().superAdmin());
-        assertEquals(java.util.List.of("employee", "warehouse"), response.user().roles());
         assertEquals(java.util.List.of("employee:view", "stock:view"), response.user().permissions());
         verify(jwt).issueAccess(detached.getId(), 7, 11);
         verify(permissions).authorizationSnapshot(detached.getId(), currentEmployeeId, false);

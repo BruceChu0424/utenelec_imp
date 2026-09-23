@@ -213,7 +213,6 @@ class EmployeeQueryServiceSelfProfileTest {
                 USER_ID,
                 employeeId,
                 "employee",
-                Set.of(),
                 permissions,
                 false,
                 true,

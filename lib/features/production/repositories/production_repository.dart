@@ -282,6 +282,27 @@ class ProductionPlanRepository {
     return ProductionPlanDetail.fromJson(json);
   }
 
+  /// 一次批量审核 / 删除最多多少张(与服务端 PlanBatchRequest.MAX_PLANS 同值)。
+  static const batchLimit = 50;
+
+  /// 批量审核(permissions-06)：一次请求、服务端单事务；任何一张失败整批回滚。
+  Future<ProductionPlanBatchResult> batchApprove(List<String> ids) async {
+    final json = await api.post(
+      '/production/plans/batch-approve', // ENDPOINT
+      body: {'ids': ids},
+    );
+    return ProductionPlanBatchResult.fromJson(json);
+  }
+
+  /// 批量删除草稿：一次请求、服务端单事务；任何一张失败整批回滚。
+  Future<ProductionPlanBatchResult> batchDelete(List<String> ids) async {
+    final json = await api.post(
+      '/production/plans/batch-delete', // ENDPOINT
+      body: {'ids': ids},
+    );
+    return ProductionPlanBatchResult.fromJson(json);
+  }
+
   /// 生产进度看板（服务端分页）：closed=false 进行中（默认）/ true 已完成。
   /// sort=billDate|billDateDesc|deliveryDate|progress；dateFrom/dateTo 开单日期范围。
   Future<PagedResult<PlanProgressRow>> planProgress({
@@ -575,15 +596,6 @@ class ProductionPlanRepository {
         ],
       },
     ); // ENDPOINT
-  }
-
-  /// D3 订单物料分析：已审销售订货单直接 BOM 展开。
-  Future<List<MrpRow>> mrpOrderPreview(String orderId) async {
-    final list = await api.getList(
-      '/production/mrp/order-preview',
-      query: {'orderId': orderId},
-    ); // ENDPOINT
-    return list.map(MrpRow.fromJson).toList();
   }
 
   /// 已生成的自制件子计划溯源（父计划 MRP 面板展示，可跳子计划详情）。

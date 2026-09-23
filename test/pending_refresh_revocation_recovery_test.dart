@@ -168,7 +168,6 @@ class _FastAuthRepository implements AuthRepository {
           id: 'new-user-id',
           loginAccount: loginAccount,
           name: '新用户',
-          roles: const <String>['admin'],
           permissions: const <String>['dashboard:view'],
           superAdmin: true,
         ),

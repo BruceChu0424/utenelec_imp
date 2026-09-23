@@ -131,7 +131,7 @@ class ClientAccessPolicyTest {
 
     private static AuthUser user(UUID employeeId, Set<String> permissions) {
         return new AuthUser(
-                UUID.randomUUID(), employeeId, "tester", Set.of(), permissions,
+                UUID.randomUUID(), employeeId, "tester", permissions,
                 false, true, false);
     }
 }

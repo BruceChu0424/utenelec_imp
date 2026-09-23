@@ -52,8 +52,7 @@ class VisitorBlacklistTest {
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
         when(current.id()).thenReturn(Optional.of(actorId));
         when(current.get()).thenReturn(Optional.of(new AuthUser(
-                actorId, UUID.randomUUID(), "tester",
-                Set.of(), Set.of("visitor:blacklist"), false, false, false)));
+                actorId, UUID.randomUUID(), "tester", Set.of("visitor:blacklist"), false, false, false)));
         VisitorGuard guard = new VisitorGuard(current);
         TxSessionVars tx = mock(TxSessionVars.class);
         when(tx.decrypt(anyString())).thenAnswer(inv -> "decrypted:" + inv.getArgument(0));

@@ -138,7 +138,6 @@ AdminUserSummary _user({required String status, bool remoteAccess = false}) =>
       loginAccount: '13800000000',
       status: status,
       mustChangePassword: false,
-      roles: const [],
       remoteAccess: remoteAccess,
     );
 
@@ -200,7 +199,7 @@ class _LifecycleRepository implements AdminRepository {
   Future<List<PermissionCatalogGroup>> permissionCatalog() async => _catalog;
 
   @override
-  Future<void> updateUserPermOverrides(
+  Future<PermissionChange> updateUserPermOverrides(
     String userId, {
     required List<String> grants,
     required List<String> revokes,
@@ -214,6 +213,7 @@ class _LifecycleRepository implements AdminRepository {
       effective: [...grants],
       superAdmin: _effective.superAdmin,
     );
+    return PermissionChange(added: [...grants], removed: [...revokes]);
   }
 
   @override

@@ -63,6 +63,33 @@ double? _asDouble(dynamic v) {
 }
 
 /// 生产计划单列表行（GET /production/plans → PlanListItem）。
+/// 生产计划批量动作结果：done 已处理；skipped 提交前就不满足条件、没有动(带原因)。
+class ProductionPlanBatchResult {
+  const ProductionPlanBatchResult({required this.done, required this.skipped});
+
+  final List<({String id, String? billNo})> done;
+  final List<({String id, String? billNo, String reason})> skipped;
+
+  factory ProductionPlanBatchResult.fromJson(Map<String, dynamic> json) =>
+      ProductionPlanBatchResult(
+        done: [
+          for (final row in (json['done'] as List<dynamic>? ?? const []))
+            (
+              id: (row as Map<String, dynamic>)['id'] as String,
+              billNo: row['billNo'] as String?,
+            ),
+        ],
+        skipped: [
+          for (final row in (json['skipped'] as List<dynamic>? ?? const []))
+            (
+              id: (row as Map<String, dynamic>)['id'] as String,
+              billNo: row['billNo'] as String?,
+              reason: row['reason'] as String? ?? '',
+            ),
+        ],
+      );
+}
+
 class ProductionPlanListItem {
   const ProductionPlanListItem({
     required this.id,

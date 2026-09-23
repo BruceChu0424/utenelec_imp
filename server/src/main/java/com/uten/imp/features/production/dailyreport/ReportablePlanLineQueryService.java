@@ -360,17 +360,18 @@ public class ReportablePlanLineQueryService {
                 .sorted()
                 .toList();
         List<Object> ownerArgs = new ArrayList<>();
+        // 与 DocumentAccessPolicy 同口径(ADR-109)：没有负责人的计划只对全量范围可见。
         String ownerPredicate;
         if (readScope.seeAll()) {
             ownerPredicate = "1=1";
         } else if (visibleOwners.isEmpty()) {
-            ownerPredicate = "p.maker_id IS NULL";
+            ownerPredicate = "1=0";
         } else {
-            ownerPredicate = "(p.maker_id IS NULL OR p.maker_id IN ("
+            ownerPredicate = "p.maker_id IN ("
                     + String.join(
                             ",", java.util.Collections.nCopies(
                                     visibleOwners.size(), "?"))
-                    + "))";
+                    + ")";
             ownerArgs.addAll(visibleOwners);
         }
         UUID employeeId = currentUser.employeeId().orElse(null);

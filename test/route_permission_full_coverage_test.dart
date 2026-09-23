@@ -35,7 +35,6 @@ const _documentedExempt = <String>{
   '/not-found',
   // 工作台首页：全员可达，卡片逐个按权限过滤（设计决策，总设计 §三）。
   '/dashboard',
-  '/reviews/inbox', // Retired inbox redirects to dashboard; no business data.
   // 本人资料/设置：字段策略由后端 ProfileFieldPolicy 管。
   '/profile',
   '/profile/edit',
@@ -81,12 +80,12 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 当前工作区逐条核对：196 条守卫 / 19 条豁免（2026-09-19）。
+/// 当前工作区逐条核对：198 条守卫 / 18 条豁免(2026-09-23，ADR-109 删除已退役的审核收件箱跳转)。
 /// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
 const _expectedGuardedCount = 198;
-const _expectedExemptCount = 19;
+const _expectedExemptCount = 18;
 
 void main() {
   test(

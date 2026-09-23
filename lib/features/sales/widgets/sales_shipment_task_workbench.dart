@@ -95,8 +95,9 @@ class _SalesShipmentTaskWorkbenchState
   bool get _isFinance =>
       widget.mode == SalesShipmentTaskWorkbenchMode.financeAudit;
 
-  String get _requiredPermission =>
-      _isFinance ? Perm.financeShipmentAudit : Perm.salesShipmentWarehouseWork;
+  String get _requiredPermission => _isFinance
+      ? Perm.salesShipmentFinanceView
+      : Perm.warehouseSalesOutboundView;
 
   String get _route => _isFinance
       ? RouteName.financeSalesShipmentAudit
@@ -551,7 +552,7 @@ class _SalesShipmentTaskWorkbenchState
             !allowed
                 ? UtenEmpty.error(
                     message: '无权查看$_title',
-                    description: '请在本页权限中授予 $_requiredPermission。',
+                    description: '请联系负责人或超级管理员开通这项查看权限。',
                   )
                 : _loading && _result == null
                 ? const UtenSkeletonList()

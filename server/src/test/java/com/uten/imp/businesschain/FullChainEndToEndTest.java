@@ -85,6 +85,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -172,6 +173,8 @@ class FullChainEndToEndTest {
     @Autowired private ProductionScheduleService scheduleService;
     @Autowired private ProductionPlanService planService;
     @Autowired private MrpService mrpService;
+    @Autowired private com.uten.imp.features.production.mrp.MrpController mrpController;
+    @Autowired private com.uten.imp.features.production.mrp.ProductionPlanResourceGuard planGuard;
     @Autowired private ProductionPlanningPackageService planningPackageService;
     @Autowired private ProductionExecutionSegmentService executionSegmentService;
     @Autowired private com.uten.imp.features.purchase.order.PurchaseOrderService purchaseOrderService;
@@ -256,10 +259,9 @@ class FullChainEndToEndTest {
                 where permission.code='client:assign'
                 """), "client:assign must not be a department default");
         assertEquals(0L, count("""
-                select count(*) from role_permissions assignment
-                join permissions permission on permission.id=assignment.permission_id
-                where permission.code='client:assign'
-                """), "client:assign must not be a role default");
+                select count(*) from permissions permission
+                where permission.code='client:assign' and permission.baseline
+                """), "client:assign must not be in the all-staff baseline package");
         UUID userA = createUserWithPerms(
                 w, "client-a", "client:view", "client:edit");
         UUID userB = createUserWithPerms(
@@ -491,12 +493,11 @@ class FullChainEndToEndTest {
 
         AuthUser principal =
                 (AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        // Super-admin must hold EVERY active permission code
-        // (PermissionResolver.allPermissionCodes；V328 保留的 inactive 历史码不参与授权)。
+        // Super-admin must hold EVERY catalog code (ADR-109: 退役即删除，目录里没有停用码)。
         Integer permissionCount = jdbc.queryForObject(
-                "select count(*) from permissions where active", Integer.class);
+                "select count(*) from permissions", Integer.class);
         assertEquals(permissionCount, principal.getPermissions().size(),
-                "super-admin effective permission set must equal the active permissions table");
+                "super-admin effective permission set must equal the permissions catalog");
         // And a concrete known code must be present as a granted authority.
         assertTrue(principal.getAuthorities().stream()
                         .anyMatch(a -> a.getAuthority().equals("sales_order:edit")),
@@ -7168,7 +7169,7 @@ class FullChainEndToEndTest {
         World w=seedWorld("direct-review-notice-v511");loginAs(w.superAdminUserId());
         UUID seller=createUserWithPerms(w,"direct-notice-seller","sales_other_shipment:view","sales_other_shipment:create",
                 "sales_other_shipment:edit","sales_other_shipment:approve","sales_other_shipment:delete","sales_order:price:view","client:view","notice:read");
-        UUID finance=createUserWithPerms(w,"direct-notice-finance","finance_shipment_audit","notice:read");
+        UUID finance=createUserWithPerms(w,"direct-notice-finance","sales_shipment_finance:view", "sales_shipment_finance:approve", "sales_shipment_finance:reject", "sales_shipment_finance:reverse","notice:read");
         jdbc.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='DEPT_SALES' AND NOT is_deleted) WHERE id=?",employeeIdOf(seller));
         jdbc.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='DEPT_FIN' AND NOT is_deleted) WHERE id=?",employeeIdOf(finance));
         loginAs(seller);
@@ -9193,8 +9194,8 @@ class FullChainEndToEndTest {
         UUID orderId = orderIdOfItem(orderItemId);
         UUID salesOwner = createUserWithPerms(w, "sales-owner", "sales_shipment:create");
         UUID salesOther = createUserWithPerms(w, "sales-other", "sales_shipment:create");
-        UUID financeUser = createUserWithPerms(w, "finance-s29", "finance_shipment_audit");
-        UUID warehouseUser = createUserWithPerms(w, "wh-s29", "sales_shipment:warehouse-work");
+        UUID financeUser = createUserWithPerms(w, "finance-s29", "sales_shipment_finance:view", "sales_shipment_finance:approve", "sales_shipment_finance:reject", "sales_shipment_finance:reverse");
+        UUID warehouseUser = createUserWithPerms(w, "wh-s29", "warehouse_sales_outbound:view", "warehouse_sales_outbound:execute");
         // assign the order to salesOwner — only the owning sales rep can act on it (object scope)
         jdbc.update("update sales_orders set owner_employee_id = ? where id = ?",
                 employeeIdOf(salesOwner), orderId);
@@ -9215,7 +9216,7 @@ class FullChainEndToEndTest {
         picking.setTargetStatus("SHIPPED");
         assertThrows(AccessDeniedException.class,
                 () -> shipmentService.transitionWarehouseWork(shipmentId, picking),
-                "销售无 sales_shipment:warehouse-work → 确认出库被拒");
+                "销售无仓库销售出库执行权 → 确认出库被拒");
 
         // (4) finance releases the shipment; the warehouse cannot self-release.
         loginAs(financeUser);
@@ -10510,20 +10511,127 @@ class FullChainEndToEndTest {
         assertDoesNotThrow(() -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w)),
                 "owner：A 可改自己的采购单(归属 gate 放行)");
 
-        // (5) NULL-maker legacy order: public-readable but unwritable until an owner is assigned
+        // (5) NULL-maker order (ADR-109 / security-18): 没有负责人不再等于公共可读——
+        //     普通用户读不到(404 不泄露存在性)，看全部与超管可读；任何人都不能直接写，必须先显式补负责人。
         jdbc.update("update purchase_orders set maker_id = null where id = ?", orderId);
         loginAs(purchaserB);
-        assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
-                "NULL owner：老数据公共可读(B 可读)");
+        assertEquals(ErrorCode.NOT_FOUND,
+                assertThrows(ApiException.class, () -> purchaseOrderService.detail(orderId)).getCode(),
+                "NULL owner：普通用户不可读(B → NOT_FOUND)，不再公共可读");
+        assertTrue(purchaseOrderService.list(emptyOrderFilter(), 1, 50, null, null).getItems().stream()
+                        .noneMatch(i -> i.getId().equals(orderId)),
+                "NULL owner：普通用户列表也不含");
         assertEquals(ErrorCode.FORBIDDEN,
                 assertThrows(ApiException.class,
                         () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
                 "NULL owner：老数据普通用户不可写(B → FORBIDDEN)");
         loginAs(supervisor);
+        assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
+                "NULL owner：view:all 可读");
         assertEquals(ErrorCode.FORBIDDEN,
                 assertThrows(ApiException.class,
                         () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
                 "NULL owner：view:all 也不可直接写，必须先显式补负责人");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // permissions-06：生产计划批量审核 / 删除走服务端一个事务。提交前就不满足条件的计划记入
+    // skipped 不动；任何一张在审核时失败，整批回滚并报出是哪一张(不会只审了一半)。
+    // 批量与单张同一个码，旧的前端专属批量码已删除。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void planBatchApproveAndDelete_runInOneTransactionAndReportSkips() {
+        World w = seedWorld("pbatch");
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "30", "100");
+        UUID orderItemId = orderItemId(orderId);
+        loginAs(w.superAdminUserId());
+        UUID d1 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        UUID d2 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        UUID approved = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        planService.approve(approved);
+        UUID missing = UUID.randomUUID();
+
+        com.uten.imp.features.production.plan.dto.PlanBatchResult result =
+                planService.batchApprove(List.of(d1, d2, approved, missing, d1));
+        assertEquals(java.util.Set.of(d1, d2),
+                result.done().stream().map(com.uten.imp.features.production.plan.dto.PlanBatchResult.Done::id)
+                        .collect(java.util.stream.Collectors.toSet()),
+                "两张草稿审核完成(重复 id 只处理一次)");
+        Map<UUID, String> skipped = result.skipped().stream().collect(java.util.stream.Collectors.toMap(
+                com.uten.imp.features.production.plan.dto.PlanBatchResult.Skipped::id,
+                com.uten.imp.features.production.plan.dto.PlanBatchResult.Skipped::reason));
+        assertEquals("不是草稿", skipped.get(approved));
+        assertEquals("计划不存在", skipped.get(missing));
+        assertEquals(1, planStatus(d1));
+        assertEquals(1, planStatus(d2));
+
+        UUID d3 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        UUID broken = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        jdbc.update("delete from production_plan_items where plan_id = ?", broken);
+        ApiException failure = assertThrows(ApiException.class,
+                () -> planService.batchApprove(List.of(d3, broken)));
+        assertTrue(failure.getMessage().contains("全部未生效"), failure.getMessage());
+        assertEquals(0, planStatus(d3), "整批回滚：同一批里能审的那张也没有被审");
+
+        com.uten.imp.features.production.plan.dto.PlanBatchResult deleted =
+                planService.batchDelete(List.of(d3, d1));
+        assertEquals(List.of(d3), deleted.done().stream()
+                .map(com.uten.imp.features.production.plan.dto.PlanBatchResult.Done::id).toList());
+        assertEquals("不是草稿", deleted.skipped().getFirst().reason());
+        assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
+                "select is_deleted from production_plans where id = ?", Boolean.class, d3)));
+        assertFalse(Boolean.TRUE.equals(jdbc.queryForObject(
+                "select is_deleted from production_plans where id = ?", Boolean.class, d1)));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // security-07：计划子资源(/plans/{id}/mrp/**)与计划详情同一对象范围——越权读 404、越权写 403。
+    // 旧的订单物料分析(order-preview)没有任何调用方，已随本次整改删除(ADR-109)。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void planSubresourcesFollowObjectScope() {
+        World w = seedWorld("pscope");
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID plannerA = createUserWithPerms(w, "planA-pscope",
+                "production_plan:view", "production_plan:create", "production_plan:edit");
+        UUID plannerB = createUserWithPerms(w, "planB-pscope",
+                "production_plan:view", "production_planning_package:draft_edit");
+        UUID supervisor = createUserWithPerms(w, "planSup-pscope",
+                "production_plan:view", "production_plan:view:all",
+                "production_planning_package:draft_edit");
+        UUID approver = createUserWithPerms(w, "planApr-pscope",
+                "production_plan:view", "production_plan:approve");
+
+        loginAs(plannerA);
+        UUID planId = createLegacyTestDraft(orderItemId, w.goodsA(), "10");
+        assertEquals(employeeIdOf(plannerA),
+                jdbc.queryForObject("select maker_id from production_plans where id = ?", UUID.class, planId),
+                "前置：计划 maker = A");
+
+        loginAs(plannerB);
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> mrpController.preview(planId)).getCode(), "B 读 A 的计划物料预览 → 404");
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> mrpController.subplans(planId)).getCode());
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> planGuard.requireWritable(planId, "production_planning_package:draft_edit")).getCode(),
+                "B 写 A 的计划预排草案 → 先按读范围 404，不泄露存在性");
+
+        loginAs(supervisor);
+        assertDoesNotThrow(() -> planGuard.requireReadable(planId), "看全部的主管可读");
+        assertDoesNotThrow(() -> planGuard.requireWritable(planId, "production_planning_package:draft_edit"),
+                "看全部的主管可代办(与计划主服务同一口径)");
+
+        loginAs(approver);
+        assertDoesNotThrow(() -> planGuard.requireReadable(planId), "审核人按业务需要可跨人读待审计划");
+        assertEquals(ErrorCode.FORBIDDEN, assertThrows(ApiException.class,
+                () -> planGuard.requireWritable(planId, "production_planning_package:draft_edit")).getCode(),
+                "能读不等于能改：审核人改别人的预排草案 → 403");
+
+        loginAs(plannerA);
+        assertDoesNotThrow(() -> mrpController.preview(planId), "本人可读");
+        assertDoesNotThrow(() -> planGuard.requireReadable(planId));
     }
 
     private com.uten.imp.features.purchase.order.dto.OrderQueryFilter emptyOrderFilter() {
@@ -10704,13 +10812,19 @@ class FullChainEndToEndTest {
     void security_superAdminGrantGatedAndSelfDemotionBlocked() {
         World w = seedWorld("s32");
         UUID target = createUserWithPerms(w, "target-s32"); // plain user
-        UUID adminNonSuper = createUserWithPerms(w, "admin-s32", "authorization:manage");
+        UUID adminNonSuper = createUserWithPerms(w, "admin-s32", "account:support");
+        // authorization:manage 是超管专属码(ADR-109 SUPERADMIN_ONLY)：任何人都不能被单独授予，
+        // 数据库守卫兜底拒绝，非超管根本持有不了。
+        assertThrows(org.springframework.dao.DataAccessException.class, () -> jdbc.update(
+                "insert into user_permission_overrides(user_id, permission_id, effect)"
+                        + " select ?, p.id, 'grant' from permissions p where p.code = 'authorization:manage'",
+                adminNonSuper), "超管专属码不能授给任何个人");
 
-        // non-super admin (even with authorization:manage) CANNOT grant super-admin
+        // non-super admin (even with account support) CANNOT grant super-admin
         loginAs(adminNonSuper);
         assertThrows(AccessDeniedException.class,
                 () -> userAccountAdmin.setSuperAdmin(target, true),
-                "非超管(纵有 authorization:manage)不能授超管 → principal.superAdmin 门槛防自我提权");
+                "非超管(纵有账号支持权)不能授超管 → principal.superAdmin 门槛防自我提权");
 
         // real super-admin CAN grant
         loginAs(w.superAdminUserId());
@@ -10750,7 +10864,7 @@ class FullChainEndToEndTest {
                 other), "超管可改他人授权");
 
         // non-super admin CANNOT assign permissions at all
-        UUID adminNonSuper = createUserWithPerms(w, "admin-s33", "authorization:manage");
+        UUID adminNonSuper = createUserWithPerms(w, "admin-s33", "account:support");
         loginAs(adminNonSuper);
         assertThrows(AccessDeniedException.class,
                 () -> permissionOverrideAdmin.setPermissionOverrides(
@@ -12970,7 +13084,7 @@ class FullChainEndToEndTest {
                 permissionResolver.authorizationSnapshot(userId, employeeId, superAdmin);
         AuthUser authUser = new AuthUser(
                 userId, employeeId, (String) u.get("login_account"),
-                snap.roles(), snap.permissions(), mustChange,
+                snap.permissions(), mustChange,
                 "active".equals(u.get("status")), superAdmin);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(authUser, null, authUser.getAuthorities()));

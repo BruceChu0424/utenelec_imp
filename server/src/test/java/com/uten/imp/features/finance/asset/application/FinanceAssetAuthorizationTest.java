@@ -66,7 +66,7 @@ class FinanceAssetAuthorizationTest {
 
     private static AuthUser user(Set<String> permissions, boolean superAdmin) {
         return new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), "asset-user", Set.of(), permissions,
+                UUID.randomUUID(), UUID.randomUUID(), "asset-user", permissions,
                 false, true, superAdmin);
     }
 }

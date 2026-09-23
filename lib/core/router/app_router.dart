@@ -508,12 +508,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'notice-list',
             builder: (_, _) => const NoticeListPage(),
           ),
-          // V459 我的待审收件台：跨业务域待审聚合（弹卡的稳定入口）。
-          GoRoute(
-            path: RouteName.reviewsInbox,
-            name: 'reviews-inbox',
-            redirect: (_, _) => RouteName.dashboard,
-          ),
           GoRoute(
             path: RouteName.noticePublish,
             name: 'notice-publish',

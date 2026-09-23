@@ -1,4 +1,5 @@
 import '../../shared/models/user.dart';
+import 'hub_catalog.dart';
 import 'permission_by_path.dart';
 import 'route_names.dart';
 
@@ -15,6 +16,16 @@ bool isVisitorPortalLocation(String location) =>
 /// entry cannot be bypassed by typing or opening a deep link directly.
 String? employeePermissionRedirect(AppUser? user, String location) {
   if (user == null) return RouteName.dashboard;
+
+  // hub：任一子卡能进就能进(hub 守卫 = 子卡守卫并集，ADR-109)。
+  if (isHubLocation(location)) {
+    final children = hubCardLocations[hubCardPath(location)]!;
+    return children.any(
+          (child) => employeePermissionRedirect(user, child) == null,
+        )
+        ? null
+        : RouteName.accessDenied;
+  }
 
   final requiredAny = requiredAnyPermFor(location);
   if (requiredAny != null) {
@@ -41,6 +52,11 @@ bool locationAllowedFor(
   String location,
 ) {
   if (superAdmin) return true;
+  if (isHubLocation(location)) {
+    return hubCardLocations[hubCardPath(location)]!.any(
+      (child) => locationAllowedFor(permissions, superAdmin, child),
+    );
+  }
   final requiredAny = requiredAnyPermFor(location);
   if (requiredAny != null) {
     if (requiredAny.isEmpty) return false;
@@ -48,4 +64,21 @@ bool locationAllowedFor(
   }
   final requiredAll = requiredAllPermsFor(location);
   return requiredAll.every(permissions.contains);
+}
+
+/// hub 页 / 工作台用：该卡片是否可见(与路由守卫同一份 any/all 契约)。
+///
+/// [hub] 非空时调试态断言卡片落点已登记在 hub_catalog——页面多出一张目录外的卡，
+/// hub 守卫的并集就会漏掉它的权限，持码人又会点不进。
+bool hubCardAllowed(
+  String hub,
+  String location,
+  Set<String> permissions,
+  bool superAdmin,
+) {
+  assert(
+    hubCardLocations[hub]?.contains(hubCardPath(location)) ?? false,
+    'hub 卡片落点 $location 未登记在 hub_catalog[$hub]',
+  );
+  return locationAllowedFor(permissions, superAdmin, location);
 }

@@ -264,9 +264,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyHost => 'Host';
 
   @override
-  String get visitorApplyDept => 'Department';
-
-  @override
   String get visitorApplyVisitTime => 'Planned visit time';
 
   @override
@@ -3677,13 +3674,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'Submitting your application. Please do not resubmit or leave this page.';
 
   @override
-  String get visitorApplyDeptHint => 'Select the host department';
-
-  @override
   String get visitorApplyHostHint => 'Select the person to visit';
 
   @override
   String get visitorApplyHostSheetTitle => 'Select the person to visit';
+
+  @override
+  String get visitorApplyHostSearchEmpty =>
+      'Search the person to visit by name';
+
+  @override
+  String get visitorApplyHostSearchHint =>
+      'Type at least 2 characters; up to 5 matches are shown';
 
   @override
   String visitorSettingsPortalTag(Object app) {

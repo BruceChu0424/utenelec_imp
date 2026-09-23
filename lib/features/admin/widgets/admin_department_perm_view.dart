@@ -2,6 +2,8 @@
 //
 // 部门配置保留完整权限点，使用搜索、状态筛选、默认折叠和整组批量操作降低
 // 高密度目录的设置成本；未保存修改通过固定底部操作栏统一提交。
+// 能否配给部门、能否随批量带上只看服务端下发的授权策略(ADR-109)，
+// 「全部授权 / 本模块 / 本组」直接交给服务端按策略补齐，本页不维护任何排除名单。
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +17,7 @@ import '../../../components/feedback/uten_toast.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/auth/permissions.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
@@ -35,12 +37,6 @@ class AdminDepartmentPermView extends ConsumerStatefulWidget {
 
 class _AdminDepartmentPermViewState
     extends ConsumerState<AdminDepartmentPermView> {
-  static const _individualOnlyPermissions = <String>{
-    Perm.auditLogView,
-    Perm.auditLogExport,
-    Perm.accountBalanceAdjust,
-  };
-
   DeptSelection? _dept;
   Set<String>? _localChecked;
   bool _saving = false;
@@ -123,13 +119,19 @@ class _AdminDepartmentPermViewState
     if (department == null || _saving || !_isDirty) return;
     setState(() => _saving = true);
     try {
-      await ref
+      final change = await ref
           .read(adminRepositoryProvider)
           .updateDepartmentPermissions(department.id, _checked.toList());
       ref.invalidate(adminDepartmentPermissionsProvider(department.id));
       if (!mounted) return;
       setState(() => _localChecked = null);
-      UtenToast.success(context, '已保存「${department.name}」的权限配置并即时生效');
+      UtenToast.success(
+        context,
+        change.isEmpty
+            ? '「${department.name}」的权限没有变化'
+            : '已保存「${department.name}」的权限：新增 ${change.added.length} 项，'
+                  '收回 ${change.removed.length} 项，即时生效',
+      );
     } catch (_) {
       if (!mounted) return;
       UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');
@@ -146,9 +148,48 @@ class _AdminDepartmentPermViewState
     });
   }
 
+  /// 「全部授权 / 本模块 / 本组」：服务端按授权策略补齐并立即生效。
+  /// 与本地暂存的逐项修改分开：有未保存修改时先让管理员保存或撤销，避免两路写入互相覆盖。
+  Future<void> _grantScope(PermissionBulkScope scope) async {
+    final department = _dept;
+    if (department == null || _saving) return;
+    if (_isDirty) {
+      context.appWarning('请先保存或撤销当前的逐项修改，再做批量授权');
+      return;
+    }
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '批量授权',
+      content: Text(
+        '将把${scope.label}里可以批量授予的权限配置给「${department.name}」，'
+        '保存后立即生效。只能逐人授予或需要逐项勾选的权限不会带上。',
+      ),
+      confirmLabel: '确认授权',
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() => _saving = true);
+    try {
+      final change = await ref
+          .read(adminRepositoryProvider)
+          .grantAllToDepartment(department.id, scope);
+      ref.invalidate(adminDepartmentPermissionsProvider(department.id));
+      if (!mounted) return;
+      context.appSuccess(
+        change.added.isEmpty
+            ? '没有新增：可批量授予的权限都已配置'
+            : '已为「${department.name}」新增 ${change.added.length} 项权限，即时生效',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      context.appError('批量授权失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _toggle(AdminPermission permission, bool value) async {
     if (value &&
-        !permission.bulkAssignable &&
+        !permission.grantPolicy.bulkEligible &&
         !_checked.contains(permission.code)) {
       final confirmed = await UtenDialog.show(
         context,
@@ -214,8 +255,8 @@ class _AdminDepartmentPermViewState
                       child: Text(
                         '勾选的权限会授予该部门及其下级部门员工。'
                         '可搜索、按状态筛选，或从分组右侧菜单整组配置。'
-                        '审计查看、审计导出和账户余额调整属于高风险权限，'
-                        '只能在个人授权中点名配置，不支持部门授权。',
+                        '只能逐人授予的高风险权限不在这里显示，'
+                        '请到「按员工」里点名配置。',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           height: 1.5,
@@ -367,10 +408,12 @@ class _AdminDepartmentPermViewState
           (group) => PermissionCatalogGroup(
             module: group.module,
             category: group.category,
+            // 不能配给部门的码不显示(授权策略由服务端下发)；已在部门里的仍显示，便于收回。
             permissions: group.permissions
                 .where(
                   (permission) =>
-                      !_individualOnlyPermissions.contains(permission.code),
+                      permission.grantPolicy.departmentGrantable ||
+                      checked.contains(permission.code),
                 )
                 .toList(growable: false),
           ),
@@ -394,20 +437,13 @@ class _AdminDepartmentPermViewState
       enableModuleLabel: '本模块全部配置',
       disableModuleLabel: '本模块全部取消配置',
       isEnabled: (permission) => checked.contains(permission.code),
-      onEnableGroup: (permissions) => _setPermissions(
-        permissions.map((permission) => permission.code),
-        true,
-      ),
+      onGrantScope: _grantScope,
       onDisableGroup: (permissions) => _setPermissions(
         permissions.map((permission) => permission.code),
         false,
       ),
       enableAllLabel: '全部配置',
       disableAllLabel: '全部取消配置',
-      onEnableAll: (permissions) => _setPermissions(
-        permissions.map((permission) => permission.code),
-        true,
-      ),
       onDisableAll: (permissions) => _setPermissions(
         permissions.map((permission) => permission.code),
         false,
@@ -422,7 +458,8 @@ class _AdminDepartmentPermViewState
                   name: permission.name,
                   actionType: permission.actionType,
                   description: permission.description,
-                  bulkAssignable: permission.bulkAssignable,
+                  grantPolicy: permission.grantPolicy,
+                  baseline: permission.baseline,
                   sensitivity: permission.sensitivity,
                   nameStyle: Theme.of(
                     context,

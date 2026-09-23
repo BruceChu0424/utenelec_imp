@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permission_action_type.dart';
+import '../../../shared/auth/permission_grant_policy.dart';
 
 /// 由后端权限目录动作分类驱动的紧凑徽标。
 class PermissionActionBadge extends StatelessWidget {
@@ -27,7 +28,8 @@ class PermissionTitleBlock extends StatelessWidget {
     required this.actionType,
     this.description,
     this.nameStyle,
-    this.bulkAssignable = true,
+    this.grantPolicy = PermissionGrantPolicy.normalOnly,
+    this.baseline = false,
     this.sensitivity = 'NORMAL',
   });
 
@@ -35,7 +37,12 @@ class PermissionTitleBlock extends StatelessWidget {
   final PermissionActionType actionType;
   final String? description;
   final TextStyle? nameStyle;
-  final bool bulkAssignable;
+
+  /// 授权策略(服务端唯一事实源，ADR-109)，按它挂说明标签。
+  final PermissionGrantPolicy grantPolicy;
+
+  /// 是否在全员基础包里。
+  final bool baseline;
   final String sensitivity;
 
   @override
@@ -59,11 +66,18 @@ class PermissionTitleBlock extends StatelessWidget {
                 icon: Icons.lock_outline_rounded,
                 size: UtenStatusBadgeSize.small,
               ),
-            if (!bulkAssignable)
-              const UtenStatusBadge(
-                label: '需单项授权',
+            for (final label in grantPolicy.labels)
+              UtenStatusBadge(
+                label: label,
                 type: UtenStatusBadgeType.warning,
                 icon: Icons.touch_app_outlined,
+                size: UtenStatusBadgeSize.small,
+              ),
+            if (baseline)
+              const UtenStatusBadge(
+                label: '全员默认拥有',
+                type: UtenStatusBadgeType.info,
+                icon: Icons.groups_outlined,
                 size: UtenStatusBadgeSize.small,
               ),
           ],

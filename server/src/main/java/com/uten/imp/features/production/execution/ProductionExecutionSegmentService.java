@@ -41,8 +41,6 @@ public class ProductionExecutionSegmentService {
     private static final String ACTION_ASSIGNMENT = "ASSIGNMENT";
     private static final String ACTION_DISPATCH = "DISPATCH";
     private static final String ACTION_START = "START";
-    private static final String ACTION_CANCEL = "CANCEL";
-    private static final String ACTION_REVERSE = "REVERSE";
     private static final String ACTION_RELEASE_DEFER = "RELEASE_DEFER";
     private static final String ACTION_RECHECK_MATERIAL = "RECHECK_MATERIAL";
     private static final String ACTION_ROUTE_CONFIRMED = "ROUTE_CONFIRMED";
@@ -548,36 +546,6 @@ public class ProductionExecutionSegmentService {
         return List.copyOf(results);
     }
 
-    @Transactional
-    public ExecutionSegmentView cancel(
-            UUID planId,
-            UUID segmentId,
-            SegmentTransitionRequest request) {
-        return terminal(
-                planId,
-                segmentId,
-                request,
-                ACTION_CANCEL,
-                "CANCELLED",
-                ProductionExecutionSegment.STATUS_CANCELLED,
-                "production_execution:cancel");
-    }
-
-    @Transactional
-    public ExecutionSegmentView reverse(
-            UUID planId,
-            UUID segmentId,
-            SegmentTransitionRequest request) {
-        return terminal(
-                planId,
-                segmentId,
-                request,
-                ACTION_REVERSE,
-                "REVERSED",
-                ProductionExecutionSegment.STATUS_REVERSED,
-                "production_execution:reverse");
-    }
-
     private ExecutionSegmentView transition(
             UUID planId,
             UUID segmentId,
@@ -722,59 +690,6 @@ public class ProductionExecutionSegmentService {
                 .setParameter("segmentId", segmentId == null ? "" : segmentId.toString())
                 .setParameter("expectedVersion", expectedVersion == null ? "" : expectedVersion.toString())
                 .getSingleResult();
-    }
-
-    private ExecutionSegmentView terminal(
-            UUID planId,
-            UUID segmentId,
-            SegmentTransitionRequest request,
-            String action,
-            String requiredPackageStatus,
-            String terminalStatus,
-            String operationAuthority) {
-        tx.bind();
-        requireTransitionRequest(request);
-        LockedSegment segment = lock(planId, segmentId);
-        requireSegmentOperationAccess(segment, operationAuthority);
-        String requestHash = hashTransition(request, action);
-        ExecutionSegmentView replay =
-                replay(segment, action, request.idempotencyKey(), requestHash);
-        if (replay != null) return replay;
-        requireVersion(segment, request.expectedVersion());
-        if ("CONFIRMED".equals(segment.packageStatus())) {
-            throw conflict(
-                    "单段取消/红冲会破坏计划行数量守恒；请使用计划包整包"
-                            + ("CANCELLED".equals(requiredPackageStatus) ? "取消" : "红冲")
-                            + "入口");
-        }
-        if (!requiredPackageStatus.equals(segment.packageStatus())) {
-            throw conflict("计划包状态与执行段操作不一致");
-        }
-        if (!List.of(
-                        ProductionExecutionSegment.STATUS_READY,
-                        ProductionExecutionSegment.STATUS_WAITING)
-                .contains(segment.status())) {
-            throw conflict("历史已确认或已进入生产的执行工单不能直接取消/红冲");
-        }
-        if (hasExecutionActivity(segmentId)) {
-            throw conflict("执行段已有发料、报工或入库记录，必须先完成精确反向处理");
-        }
-        updateStatus(
-                segmentId,
-                request.expectedVersion(),
-                segment.status(),
-                terminalStatus);
-        long resultingVersion = request.expectedVersion() + 1;
-        recordEvent(
-                segmentId,
-                action,
-                request.idempotencyKey(),
-                requestHash,
-                request.expectedVersion(),
-                resultingVersion);
-        chainNotice.resolveProductionWorkshopTasks(
-                List.of(segmentId), terminalStatus);
-        return one(planId, segmentId);
     }
 
     private void updateStatus(
@@ -964,36 +879,6 @@ public class ProductionExecutionSegmentService {
                 .setParameter("resultingVersion", resultingVersion)
                 .setParameter("actorId", currentUser.requireId())
                 .executeUpdate();
-    }
-
-    private boolean hasExecutionActivity(UUID segmentId) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT
-                            (SELECT COUNT(*)
-                             FROM production_material_stock_postings posting
-                             JOIN production_material_demands demand
-                               ON demand.id = posting.demand_id
-                             WHERE demand.execution_segment_id = :segmentId)
-                          + (SELECT COUNT(*)
-                             FROM production_daily_report_items item
-                             JOIN production_daily_reports report
-                               ON report.id = item.report_id
-                             WHERE item.execution_segment_id = :segmentId
-                               AND report.is_deleted = FALSE
-                               AND report.status <> -1)
-                          + (SELECT COUNT(*)
-                             FROM stock_document_items item
-                             JOIN stock_documents document
-                               ON document.id = item.doc_id
-                             WHERE item.execution_segment_id = :segmentId
-                               AND item.bill_type = 'FINISHED_IN'
-                               AND item.is_deleted = FALSE
-                               AND document.is_deleted = FALSE
-                               AND document.status <> -1)
-                        """)
-                .setParameter("segmentId", segmentId)
-                .getSingleResult();
-        return count.longValue() > 0;
     }
 
     private List<ExecutionSegmentView> rows(UUID planId, UUID segmentId) {

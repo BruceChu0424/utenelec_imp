@@ -48,7 +48,7 @@ class WarehouseSalesOutboundContractTest {
                 .getAnnotation(PreAuthorize.class);
         assertThat(root.value()).containsExactly("/api/warehouse/sales-outbound");
         assertThat(authority.value())
-                .isEqualTo("hasAuthority('sales_shipment:warehouse-work')");
+                .isEqualTo("hasAuthority('warehouse_sales_outbound:view')");
 
         Method list = WarehouseSalesOutboundController.class.getDeclaredMethod(
                 "list", String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class);
@@ -60,6 +60,10 @@ class WarehouseSalesOutboundContractTest {
         assertThat(detail.getAnnotation(GetMapping.class).value()).containsExactly("/{id}");
         assertThat(command.getAnnotation(PostMapping.class).value())
                 .containsExactly("/{id}/warehouse-work");
+        // permissions-09：查看与执行拆成两个码，写入口额外要求执行码。
+        assertThat(command.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('warehouse_sales_outbound:view')"
+                        + " and hasAuthority('warehouse_sales_outbound:execute')");
         // 角标计数两个只读端点: /count = 待出库张数(hub 卡/父分类), /counts = 按仓库作业状态分组(小类行).
         Method pendingCount = WarehouseSalesOutboundController.class.getDeclaredMethod("pendingCount");
         Method counts = WarehouseSalesOutboundController.class.getDeclaredMethod("counts");

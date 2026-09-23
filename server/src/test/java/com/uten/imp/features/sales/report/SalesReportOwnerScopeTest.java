@@ -35,15 +35,13 @@ class SalesReportOwnerScopeTest {
     @Test
     void scopedMonthlyReportUsesOwnerDimensionInMaterializedView() {
         UUID owner = UUID.randomUUID();
-        UUID legacyOwner = new UUID(0L, 0L);
         OwnerVisibility.OwnerScope scope =
                 new OwnerVisibility.OwnerScope(false, Set.of(owner));
         when(accessPolicy.scope()).thenReturn(scope);
-        when(accessPolicy.nativeReadScopeWithLegacySentinel(
-                "owner_employee_id", "salesOwners", legacyOwner, scope))
+        // 物化视图里空归属存成 NIL 哨兵，哨兵永远不在可见归属人里，只对全量范围可见。
+        when(accessPolicy.nativeReadScope("owner_employee_id", "salesOwners", scope))
                 .thenReturn(new SalesDocumentAccessPolicy.NativeReadScope(
-                        "(owner_employee_id = '00000000-0000-0000-0000-000000000000'::uuid "
-                                + "OR owner_employee_id IN (:salesOwners))",
+                        "owner_employee_id IN (:salesOwners)",
                         "salesOwners",
                         Set.of(owner)));
         Query query = emptyQuery();
@@ -69,7 +67,7 @@ class SalesReportOwnerScopeTest {
         when(accessPolicy.scope()).thenReturn(scope);
         when(accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners", scope))
                 .thenReturn(new SalesDocumentAccessPolicy.NativeReadScope(
-                        "(o.owner_employee_id IS NULL OR o.owner_employee_id IN (:salesOwners))",
+                        "o.owner_employee_id IN (:salesOwners)",
                         "salesOwners",
                         Set.of(owner)));
         Query query = emptyQuery();

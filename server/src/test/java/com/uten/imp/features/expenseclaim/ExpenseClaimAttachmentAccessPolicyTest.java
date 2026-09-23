@@ -25,8 +25,7 @@ class ExpenseClaimAttachmentAccessPolicyTest {
         claim.setStatus("DRAFT");
         when(claims.findByIdForUpdate(ownerId)).thenReturn(Optional.of(claim));
         AuthUser user = new AuthUser(
-                UUID.randomUUID(), employeeId, "applicant",
-                Set.of(), Set.of("expense:apply"), false, true, false);
+                UUID.randomUUID(), employeeId, "applicant", Set.of("expense:apply"), false, true, false);
 
         policy.requireCanManageForUpdate(ownerId, user);
 

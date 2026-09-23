@@ -22,7 +22,6 @@ void main() {
           'department': '行政与人力资源部',
           'position': null,
           'mustChangePassword': true,
-          'roles': ['admin', 'hr'],
           'permissions': ['employee:view', 'department:edit'],
         },
       });
@@ -30,9 +29,9 @@ void main() {
       expect(r.mustChangePassword, isTrue);
       expect(r.user.mustChangePassword, isTrue);
       expect(r.user.id, 'u1');
-      expect(r.user.roles, containsAll(['admin', 'hr']));
+      // 角色体系已删除(ADR-109)：身份只看服务端下发的权限集合与超管标记。
       expect(r.user.permissions, contains('employee:view'));
-      expect(r.user.isAdmin, isTrue);
+      expect(r.user.superAdmin, isFalse);
     });
   });
 

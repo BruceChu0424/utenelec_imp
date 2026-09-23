@@ -37,8 +37,7 @@ public final class VisitorScanDto {
             String blockedReason, OffsetDateTime blockedAt,
             String blockedByName) {}
 
-    /** 被访人候选（排除离职，仅 id/姓名/部门）。 */
-    public record EmployeeDirectoryItem(UUID id, String name, String departmentName) {}
+    /** 访客可选的接待人(可对外接待的在职员工；只有 id 和姓名，不带部门)。 */
+    public record EmployeeDirectoryItem(UUID id, String name) {}
 
-    public record DepartmentDirectoryItem(UUID id, String name, String level, UUID parentId) {}
 }

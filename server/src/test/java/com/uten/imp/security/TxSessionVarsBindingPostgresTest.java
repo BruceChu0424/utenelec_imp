@@ -59,8 +59,7 @@ class TxSessionVarsBindingPostgresTest {
             var currentUser = mock(SecurityContextCurrentUser.class);
             var device = mock(AuditDeviceContext.class);
             var userId = UUID.randomUUID();
-            when(currentUser.get()).thenReturn(Optional.of(new AuthUser(userId, UUID.randomUUID(), "audit-test",
-                    Set.of(), Set.of(), false, true, false)));
+            when(currentUser.get()).thenReturn(Optional.of(new AuthUser(userId, UUID.randomUUID(), "audit-test", Set.of(), false, true, false)));
             var request = new MockHttpServletRequest();
             request.setRemoteAddr("192.0.2.10");
             request.addHeader("User-Agent", "audit-test-agent");

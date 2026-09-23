@@ -34,53 +34,45 @@ class NoticePermissionCandidatePostgresTest {
         query = new NoticePermissionCandidateQuery(jdbc);
         jdbc.execute("""
                 DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                CREATE TABLE permissions(id uuid PRIMARY KEY,code text,active boolean);
+                CREATE TABLE permissions(id uuid PRIMARY KEY,code text,baseline boolean NOT NULL DEFAULT false);
                 CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid,is_super_admin boolean,is_deleted boolean,status text);
                 CREATE TABLE employees(id uuid PRIMARY KEY,department_id uuid);
                 CREATE TABLE departments(id uuid PRIMARY KEY,parent_id uuid);
                 CREATE TABLE department_permissions(department_id uuid,permission_id uuid);
                 CREATE TABLE employee_secondary_departments(employee_id uuid,department_id uuid);
-                CREATE TABLE roles(id uuid PRIMARY KEY,code text);
-                CREATE TABLE role_permissions(role_id uuid,permission_id uuid);
-                CREATE TABLE user_roles(user_id uuid,role_id uuid);
                 CREATE TABLE user_permission_overrides(user_id uuid,permission_id uuid,active boolean,effect text);
                 CREATE TABLE manager_permission_delegations(user_id uuid,permission_id uuid,enabled boolean);
                 """);
-        jdbc.update("INSERT INTO permissions VALUES (?,'procurement_iqc_rejection:confirm_credit',true)", action);
+        jdbc.update("INSERT INTO permissions VALUES (?,'procurement_iqc_rejection:confirm_credit',false)", action);
         jdbc.update("INSERT INTO departments VALUES (?,null),(?,?)", parent, child, parent);
     }
 
     @Test
     void everyPositiveSourceIsIncludedAndRevokeDoesNotPrematurelyRemoveCandidate() {
         UUID primary = user(false), secondary = user(false), personal = user(false), manager = user(false);
-        UUID admin = user(true), roleOnly = user(false), ordinary = user(false), revoked = user(false);
+        UUID admin = user(true), ordinary = user(false), revoked = user(false);
         jdbc.update("UPDATE employees SET department_id=? WHERE id IN (?,?)", child, primary, revoked);
         jdbc.update("INSERT INTO department_permissions VALUES (?,?)", parent, action);
         jdbc.update("INSERT INTO employee_secondary_departments VALUES (?,?)", secondary, child);
         jdbc.update("INSERT INTO user_permission_overrides VALUES (?,?,true,'grant'),(?,?,true,'revoke')", personal, action, revoked, action);
         jdbc.update("INSERT INTO manager_permission_delegations VALUES (?,?,true)", manager, action);
-        UUID role = UUID.randomUUID();
-        jdbc.update("INSERT INTO roles VALUES (?,'historical-role')", role);
-        jdbc.update("INSERT INTO role_permissions VALUES (?,?)", role, action);
-        jdbc.update("INSERT INTO user_roles VALUES (?,?)", roleOnly, role);
-        assertEquals(Set.of(primary, secondary, personal, manager, admin, roleOnly, revoked), candidates());
+        // 角色体系已删除(ADR-109)：历史角色不再是任何候选来源。
+        assertEquals(Set.of(primary, secondary, personal, manager, admin, revoked), candidates());
         assertFalse(candidates().contains(ordinary));
     }
 
     @Test
-    void baselineRoleKeepsEveryActiveUserWithoutRequiringAnEmployeeProfile() {
+    void baselinePackageKeepsEveryActiveUserWithoutRequiringAnEmployeeProfile() {
         UUID normal = user(false), noEmployee = user(false), disabled = user(true), deleted = user(true);
         jdbc.update("UPDATE users SET employee_id=null WHERE id=?", noEmployee);
         jdbc.update("UPDATE users SET status='disabled' WHERE id=?", disabled);
         jdbc.update("UPDATE users SET is_deleted=true WHERE id=?", deleted);
-        UUID baseline = UUID.randomUUID();
-        jdbc.update("INSERT INTO roles VALUES (?,'employee')", baseline);
-        jdbc.update("INSERT INTO role_permissions VALUES (?,?)", baseline, action);
+        jdbc.update("UPDATE permissions SET baseline=true WHERE id=?", action);
         assertEquals(Set.of(normal, noEmployee), candidates());
     }
 
     @Test
-    void newGrantRevocationInactiveCatalogAndDisabledDelegationAreReadFresh() {
+    void newGrantRevocationDeletedCatalogAndDisabledDelegationAreReadFresh() {
         UUID personal = user(false), manager = user(false);
         assertTrue(candidates().isEmpty());
         jdbc.update("INSERT INTO user_permission_overrides VALUES (?,?,true,'grant')", personal, action);
@@ -91,7 +83,8 @@ class NoticePermissionCandidatePostgresTest {
         assertTrue(candidates().isEmpty());
         jdbc.update("UPDATE user_permission_overrides SET effect='legacy-non-revoke-expression'");
         assertEquals(Set.of(personal), candidates(), "unknown non-revoke grant must remain over-selected");
-        jdbc.update("UPDATE permissions SET active=false");
+        // 停用即删除(V655)：码从目录删除后不再有任何候选。
+        jdbc.update("DELETE FROM permissions");
         assertTrue(candidates().isEmpty());
     }
 
@@ -114,7 +107,7 @@ class NoticePermissionCandidatePostgresTest {
             // swallowed PostgreSQL error would make both reads fail with 25P02.
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM user_permission_overrides", Integer.class));
             assertEquals(Set.of("procurement_iqc_rejection:confirm_credit"), Set.copyOf(
-                    jdbc.queryForList("SELECT code FROM permissions WHERE active=TRUE", String.class)));
+                    jdbc.queryForList("SELECT code FROM permissions", String.class)));
         });
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM user_permission_overrides WHERE user_id=?", Integer.class, caller));
     }

@@ -1,5 +1,5 @@
-// 权限管理 Provider：权限点 / 权限目录 / 部门权限配置 / 员工有效权限 / 部门树。
-// 角色体系已下线（ADR-011/V29），角色相关 Provider 已移除。
+// 权限管理 Provider：权限目录 / 部门权限配置 / 全员基础包 / 员工有效权限 / 部门树。
+// 角色体系已删除(ADR-109)，授权来源只剩全员基础包 + 部门 + 个人覆盖 + 负责人委派。
 // 账号列表走页面局部状态（搜索防抖 + 加载更多，与员工列表页同模式）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,6 +25,12 @@ final adminDepartmentPermissionsProvider = FutureProvider.autoDispose
       (ref, departmentId) => ref
           .watch(adminRepositoryProvider)
           .departmentPermissions(departmentId),
+    );
+
+/// 全员基础包的码(每个在职员工都默认拥有)
+final adminPermissionBaselineProvider =
+    FutureProvider.autoDispose<List<String>>(
+      (ref) => ref.watch(adminRepositoryProvider).permissionBaseline(),
     );
 
 /// 指定员工的有效权限（全员基础 ∪ 部门配置 ± 个人覆盖，后端计算）

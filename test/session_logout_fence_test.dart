@@ -297,7 +297,6 @@ const _profile = UserProfile(
   id: 'user-1',
   loginAccount: 'admin',
   name: '管理员',
-  roles: <String>['admin'],
   permissions: <String>['dashboard:view'],
   superAdmin: true,
 );

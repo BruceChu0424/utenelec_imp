@@ -1042,7 +1042,7 @@ public class SalesReturnService {
                   AND COALESCE(i.is_deleted,false)=false
                   AND COALESCE(o.is_deleted,false)=false
                 """).setParameter("ids", ids).getResultList();
-        var readScope = accessPolicy.scope("finance_shipment_audit", "sales_shipment:reject");
+        var readScope = accessPolicy.scope("sales_shipment_finance:view", "sales_shipment:reject");
         java.util.HashSet<UUID> readable = new java.util.HashSet<>();
         for (Object[] row : rows) {
             if (accessPolicy.canRead((UUID) row[1], readScope)) {
@@ -1092,7 +1092,7 @@ public class SalesReturnService {
                 .setParameter("sourceShipmentId", sourceShipmentId)
                 .getResultList();
         var shipmentScope = accessPolicy.scope(
-                "finance_shipment_audit", "sales_shipment:reject");
+                "sales_shipment_finance:view", "sales_shipment:reject");
         return owners.size() == 1
                 && accessPolicy.canRead(owners.getFirst(), shipmentScope);
     }

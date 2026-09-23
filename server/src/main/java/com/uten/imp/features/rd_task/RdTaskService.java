@@ -1,16 +1,12 @@
 package com.uten.imp.features.rd_task;
 
 import com.uten.imp.application.port.BusinessEventPublisher;
-import com.uten.imp.common.docnumber.DocNumberPrefix;
-import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.rd_task.RdTaskContracts.RdTaskInput;
 import com.uten.imp.features.rd_task.RdTaskContracts.RdTaskRow;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,16 +56,14 @@ public class RdTaskService {
             """;
 
     private final JdbcTemplate jdbc;
-    private final DocNumberService docNumberService;
     private final BusinessEventPublisher events;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
 
-    public RdTaskService(JdbcTemplate jdbc, DocNumberService docNumberService,
+    public RdTaskService(JdbcTemplate jdbc,
                          BusinessEventPublisher events, SecurityContextCurrentUser currentUser,
                          TxSessionVars tx) {
         this.jdbc = jdbc;
-        this.docNumberService = docNumberService;
         this.events = events;
         this.currentUser = currentUser;
         this.tx = tx;
@@ -169,24 +163,6 @@ public class RdTaskService {
     }
 
     @Transactional
-    public RdTaskRow create(RdTaskInput input) {
-        tx.bind();
-        UUID actor = currentUser.requireId();
-        UUID reporter = currentUser.requireEmployeeId();
-        UUID id = UUID.randomUUID();
-        String taskNo = docNumberService.nextNumber(DocNumberPrefix.RD_TASK);
-        String priority = input.priority() == null || input.priority().isBlank() ? "NORMAL" : input.priority();
-        jdbc.update("""
-                INSERT INTO rd_tasks (id, task_no, title, description, category, status, priority,
-                    goods_id, assignee_employee_id, reporter_employee_id, due_date, row_version, created_by, updated_by)
-                VALUES (?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, 1, ?, ?)
-                """,
-                id, taskNo, input.title(), input.description(), input.category(), priority,
-                input.goodsId(), input.assigneeEmployeeId(), reporter, input.dueDate(), actor, actor);
-        return get(id);
-    }
-
-    @Transactional
     public RdTaskRow resolve(UUID id, long expectedVersion, String note) {
         tx.bind();
         UUID actor = currentUser.requireId();
@@ -199,19 +175,6 @@ public class RdTaskService {
                 """, note, actor, id, expectedVersion);
         if (changed != 1) throw concurrentChange();
         events.publish(EVENT_RESOLVED, "RD_TASK", id, Map.of("resolverUserId", actor.toString()));
-        return get(id);
-    }
-
-    @Transactional
-    public RdTaskRow assign(UUID id, UUID employeeId) {
-        tx.bind();
-        UUID actor = currentUser.requireId();
-        int changed = jdbc.update("""
-                UPDATE rd_tasks
-                SET assignee_employee_id = ?, updated_at = now(), updated_by = ?
-                WHERE id = ? AND is_deleted = false AND status IN ('OPEN','IN_PROGRESS')
-                """, employeeId, actor, id);
-        if (changed != 1) throw new ApiException(ErrorCode.NOT_FOUND, "任务不存在或已结束");
         return get(id);
     }
 

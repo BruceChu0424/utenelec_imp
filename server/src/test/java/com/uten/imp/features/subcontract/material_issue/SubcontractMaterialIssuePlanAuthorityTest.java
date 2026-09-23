@@ -177,7 +177,9 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         SubcontractMaterialIssue document = new SubcontractMaterialIssue();
         document.setId(issueId);
         document.setStatus((short) 0);
+        // 计划生成的发料草稿没有个人归属人，显式属于仓库委外出仓池(V656)。
         document.setMakerId(null);
+        document.setOwnerPool(SubcontractMaterialIssue.POOL_WAREHOUSE_OUTBOUND);
         document.setWarehouseId(UUID.randomUUID());
         when(em.find(SubcontractMaterialIssue.class, issueId, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(document);
@@ -186,6 +188,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         item.setIssueId(issueId);
         item.setPlanItemId(UUID.randomUUID());
         when(itemRepo.findByIssueIdOrderByLineNoAsc(issueId)).thenReturn(List.of(item));
+        when(access.hasAuthority("subcontract_outbound:view")).thenReturn(true);
         when(access.hasAuthority("subcontract_material_issue:edit")).thenReturn(false);
         when(access.hasAuthority("subcontract_material_issue:approve")).thenReturn(false);
         when(access.hasAuthority("subcontract_outbound:execute")).thenReturn(true);

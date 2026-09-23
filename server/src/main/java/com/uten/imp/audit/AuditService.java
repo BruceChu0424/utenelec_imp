@@ -81,6 +81,19 @@ public class AuditService {
                 actorId, actorAccount, action, targetType, targetId, result, null, false);
     }
 
+    /**
+     * Transaction-bound business event whose complete structured change set
+     * (for example granted/revoked permission codes) is stored in {@code after};
+     * {@code result} stays a short human-readable summary.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void logCommittedChange(UUID actorId, String actorAccount, String action,
+                                   String targetType, String targetId, String result,
+                                   Map<String, Object> change) {
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, null, false, change);
+    }
+
     /** Transaction-bound success evidence with an explicit authentication session. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void logCommitted(UUID actorId, String actorAccount, String action,
@@ -99,12 +112,33 @@ public class AuditService {
             String result,
             UUID sessionId,
             boolean durable) {
+        persistBusinessEvent(actorId, actorAccount, action, targetType, targetId, result,
+                sessionId, durable, null);
+    }
+
+    private void persistBusinessEvent(
+            UUID actorId,
+            String actorAccount,
+            String action,
+            String targetType,
+            String targetId,
+            String result,
+            UUID sessionId,
+            boolean durable,
+            Map<String, Object> change) {
         HttpServletRequest request = currentRequest();
         AuditLog a = base(
                 truncate(action, 120),
                 truncate(targetType, 200),
                 truncate(targetId, 1000),
                 truncate(result, 500));
+        if (change != null) {
+            try {
+                a.setAfter(AUDIT_JSON.writeValueAsString(change));
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Unable to encode business change audit", exception);
+            }
+        }
         a.setEventSource("business");
         applyActor(a, request, actorId, actorAccount);
         fillRequest(a, request, sessionId);

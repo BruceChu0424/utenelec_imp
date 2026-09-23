@@ -187,20 +187,6 @@ class ProductionExecutionSegmentServiceTest {
     }
 
     @Test
-    void confirmedPackageCannotCancelOneSegment() {
-        stubLockAndReplay("READY", 2L, "CONFIRMED");
-
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> service.cancel(
-                        planId,
-                        segmentId,
-                        new SegmentTransitionRequest(2L, "cancel-key-00001")));
-
-        assertTrue(error.getMessage().contains("整包取消"));
-    }
-
-    @Test
     void confirmRouteResolvesTheArrivalProgressCardBeforeKitPromotion() {
         UUID warehouseId = UUID.randomUUID();
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());

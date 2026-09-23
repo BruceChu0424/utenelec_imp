@@ -143,6 +143,38 @@ class SalesShipmentFinanceReleaseRateEndToEndTest {
         assertEquals("RELEASED|1.000000|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
     }
 
+    /**
+     * permissions-15：财审页的放行 / 退回 / 撤回按钮只按核对信息里服务端下发的 allowedActions 显隐——
+     * 动作码 + 对象范围 + 单据状态一次算好：只持查看码的人什么都不能做，只持放行码的只能放行，
+     * 放行后只剩持反审码的人能撤回。
+     */
+    @Test void financeAuditInfoCarriesTheActionsTheCurrentUserCanTakeNow() {
+        var w=fixture.seedWorld("fin-release-actions");fixture.loginAs(w.superAdminUserId());
+        UUID base=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency",UUID.class);
+        ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",w,w.goodsE(),"10");
+        OrderSaveRequest orderRequest=fixture.orderRequest(w,w.goodsE(),"10","100");orderRequest.setCurrencyId(base);
+        var order=orders.create(orderRequest);orders.approve(order.getId());
+        ReflectionTestUtils.invokeMethod(fixture,"confirmInitialSalesFinance",order.getId());
+        UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order.getId());
+        ShipmentSaveRequest request=ReflectionTestUtils.invokeMethod(fixture,"shipmentRequest",w,orderItem,w.goodsE(),"10");
+        assertNotNull(request);request.setCurrencyId(base);
+        var draft=shipments.create(request);
+        UUID viewer=fixture.createUserWithPerms(w,"fin-actions-viewer","sales_shipment_finance:view");
+        UUID approver=fixture.createUserWithPerms(w,"fin-actions-approver","sales_shipment_finance:view","sales_shipment_finance:approve");
+
+        assertEquals(List.of("APPROVE","REJECT"),shipments.financeAuditInfo(draft.getId()).get("allowedActions"),"超管待审：放行 / 退回");
+        fixture.loginAs(viewer);
+        assertEquals(List.of(),shipments.financeAuditInfo(draft.getId()).get("allowedActions"),"只持查看码：什么都不能做");
+        fixture.loginAs(approver);
+        assertEquals(List.of("APPROVE"),shipments.financeAuditInfo(draft.getId()).get("allowedActions"),"只持放行码：只能放行");
+
+        fixture.loginAs(w.superAdminUserId());
+        release(draft.getId(),null);
+        assertEquals(List.of("REVERSE"),shipments.financeAuditInfo(draft.getId()).get("allowedActions"),"已放行：只剩撤回");
+        fixture.loginAs(approver);
+        assertEquals(List.of(),shipments.financeAuditInfo(draft.getId()).get("allowedActions"),"没有反审码：放行后不能撤回");
+    }
+
     @Test void standardPaymentMethodsAreSeededWhenNoConfirmedLegacyMethodExists() {
         // V273 只带 3 条待同步名称的占位行(不进选择器)；V632 在没有任何已确认方式时补一套标准方式。
         List<String> codes=db.queryForList("SELECT code FROM finance_payment_methods WHERE legacy_name_confirmed AND is_receipt AND is_payment AND status='使用' AND is_deleted=false ORDER BY sort_order",String.class);

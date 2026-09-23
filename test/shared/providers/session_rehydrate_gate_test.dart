@@ -53,13 +53,7 @@ class _TestSessionNotifier extends SessionNotifier {
   void signIn() {
     state = const SessionState(
       status: AuthStatus.authenticated,
-      user: AppUser(
-        id: 'u-1',
-        code: 'ADMIN',
-        name: '超管',
-        roles: [],
-        superAdmin: true,
-      ),
+      user: AppUser(id: 'u-1', code: 'ADMIN', name: '超管', superAdmin: true),
     );
   }
 }

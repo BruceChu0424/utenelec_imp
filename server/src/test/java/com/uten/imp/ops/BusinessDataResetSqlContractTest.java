@@ -134,7 +134,12 @@ class BusinessDataResetSqlContractTest {
      * 补丁）。新增删除时同步登记，并保持 ops 脚本与 V590 补丁锚点一致。
      */
     private static final Map<String, Integer> REMOVED_RESET_TABLES = Map.of(
-            "production_goods_workshop_preferences", 590);
+            "production_goods_workshop_preferences", 590,
+            // V655 / ADR-109：角色体系删除，四张角色表从清单两侧同时移除。
+            "roles", 655,
+            "user_roles", 655,
+            "role_permissions", 655,
+            "department_roles", 655);
 
     private String opsScript;
     private String migrationSql;
@@ -286,7 +291,8 @@ class BusinessDataResetSqlContractTest {
                         .isEqualTo("CLEAR"));
         // 废弃表必须真的不在两侧策略里。
         REMOVED_RESET_TABLES.keySet().forEach(table ->
-                assertThat(opsPolicy).as(table + " was retired by V590").doesNotContainKey(table));
+                assertThat(opsPolicy).as(table + " was retired by V" + REMOVED_RESET_TABLES.get(table))
+                        .doesNotContainKey(table));
     }
 
     @Test

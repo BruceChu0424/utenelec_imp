@@ -778,7 +778,7 @@ class _PagePermissionSettingsPageState
                       onChanged: permission.editable && !_saving
                           ? (next) async {
                               if (next &&
-                                  !permission.bulkAssignable &&
+                                  !permission.grantPolicy.bulkEligible &&
                                   !value) {
                                 final confirmed = await UtenDialog.show(
                                   context,
@@ -818,7 +818,7 @@ class _PagePermissionSettingsPageState
                         name: permission.name,
                         actionType: permission.actionType,
                         description: permission.description,
-                        bulkAssignable: permission.bulkAssignable,
+                        grantPolicy: permission.grantPolicy,
                         sensitivity: permission.sensitivity,
                       ),
                       subtitle: Text(

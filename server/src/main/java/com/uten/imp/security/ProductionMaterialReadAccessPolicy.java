@@ -100,9 +100,10 @@ public class ProductionMaterialReadAccessPolicy {
             UUID ownerId, String scope, String viewAllAuthority) {
         OwnerVisibility.OwnerScope ownerScope =
                 ownerVisibility.evaluate(scope, viewAllAuthority);
+        // 没有负责人的计划/领料单只对全量范围可读(ADR-109)；生产链领料单另有仓库任务池旁路。
         return ownerScope.seeAll()
-                || ownerId == null
-                || ownerScope.visibleOwners().contains(ownerId);
+                || ownerId != null
+                && ownerScope.visibleOwners().contains(ownerId);
     }
 
     private boolean canUseWarehousePool() {

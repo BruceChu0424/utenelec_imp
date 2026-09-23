@@ -76,7 +76,9 @@ class _ProductionDailyReportDetailPageState
       _ordinaryWritable && _allows(DocumentPermissionAction.edit);
   bool get _canDelete =>
       _ordinaryWritable && _allows(DocumentPermissionAction.delete);
-  bool get _canApprove => _allows(DocumentPermissionAction.approve);
+  // 审核按钮只看服务端下发的 allowedActions(含车间直送审核权与对象范围，permissions-15)，
+  // 避免没有直送审核权的人点了才被拒。
+  bool get _canApprove => _detail?.canApprove ?? false;
   bool get _canReverse => _allows(DocumentPermissionAction.reverse);
 
   Future<void> _load() async {

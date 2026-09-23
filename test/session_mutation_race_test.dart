@@ -365,7 +365,6 @@ UserProfile _profile(String id, String name) => UserProfile(
   id: id,
   loginAccount: id,
   name: name,
-  roles: const <String>['admin'],
   permissions: const <String>['dashboard:view'],
   superAdmin: true,
 );

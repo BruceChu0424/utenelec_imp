@@ -12,10 +12,7 @@ import com.uten.imp.features.org.employee.EmployeeSecondaryDepartmentRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
 import com.uten.imp.features.rbac.PermissionRepository;
-import com.uten.imp.features.rbac.RolePermissionRepository;
-import com.uten.imp.features.rbac.RoleRepository;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.PermissionDelegationPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,10 +47,7 @@ class PermissionResolverSecondaryDepartmentTest {
     private static final String SECONDARY_CODE = "finance_order_approval:review";
     private static final String SECONDARY_REVOKED_CODE = "stock:balance:adjust";
 
-    @Mock private UserRoleRepository userRoleRepo;
-    @Mock private RolePermissionRepository rolePermissionRepo;
     @Mock private PermissionRepository permissionRepo;
-    @Mock private RoleRepository roleRepo;
     @Mock private DepartmentPermissionRepository departmentPermissionRepo;
     @Mock private UserPermissionOverrideRepository overrideRepo;
     @Mock private EmployeeRepository employeeRepo;
@@ -72,14 +66,16 @@ class PermissionResolverSecondaryDepartmentTest {
     @BeforeEach
     void setUp() {
         resolver = new PermissionResolver(
-                userRoleRepo, rolePermissionRepo, permissionRepo, roleRepo,
+                permissionRepo,
                 departmentPermissionRepo, overrideRepo, employeeRepo,
                 secondaryDeptRepo, userAccountRepo, departmentRepo,
-                managerDelegationRepo, new PermissionDelegationPolicy(),
+                managerDelegationRepo,
+                new PermissionDelegationPolicy(com.uten.imp.features.rbac.PermissionGrantPolicyCatalog.fixed(
+                        java.util.Map.of())),
                 PermissionSurfaceRegistryTestFixture.registry(java.util.Map.of()),
                 new PagePermissionDelegationFeatureGate(true));
 
-        when(roleRepo.findByCode("employee")).thenReturn(Optional.empty());
+        when(permissionRepo.findBaselineCodes()).thenReturn(List.of());
         when(overrideRepo.findCodeAndEffectByUserId(userId)).thenReturn(List.of());
         lenient().when(managerDelegationRepo.findEnabledCandidatesByUserId(userId))
                 .thenReturn(List.of());
@@ -185,16 +181,14 @@ class PermissionResolverSecondaryDepartmentTest {
         stubDepartments(List.of(secondaryDeptId), List.of(PRIMARY_CODE, SECONDARY_CODE));
         when(overrideRepo.findCodeAndEffectByUserId(userId))
                 .thenReturn(List.<Object[]>of(new Object[]{SECONDARY_CODE, "revoke", "SUPER_ADMIN_CONFIRMED"}));
-        var primary = new com.uten.imp.features.rbac.Permission(); primary.setCode(PRIMARY_CODE);
-        var secondary = new com.uten.imp.features.rbac.Permission(); secondary.setCode(SECONDARY_CODE);
-        when(permissionRepo.findAllByActiveTrue()).thenReturn(List.of(primary, secondary));
+        when(permissionRepo.findAllCodes()).thenReturn(List.of(PRIMARY_CODE, SECONDARY_CODE));
         var management = resolver.breakdownOf(account);
         assertTrue(management.revokes().contains(SECONDARY_CODE), "管理页仍保留完整个人撤销来源");
-        org.mockito.Mockito.<Object>clearInvocations(permissionRepo, roleRepo, rolePermissionRepo, departmentPermissionRepo,
+        org.mockito.Mockito.<Object>clearInvocations(permissionRepo, departmentPermissionRepo,
                 overrideRepo, employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
         assertEquals(management.effective(), resolver.permsOf(account));
-        verify(permissionRepo).findAllByActiveTrue();
-        verifyNoInteractions(roleRepo, rolePermissionRepo, departmentPermissionRepo,
+        verify(permissionRepo).findAllCodes();
+        verifyNoInteractions(departmentPermissionRepo,
                 overrideRepo, employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
     }
 }

@@ -12,9 +12,6 @@ import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
-import com.uten.imp.features.rbac.Role;
-import com.uten.imp.features.rbac.RoleRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -66,8 +63,6 @@ class EmployeeOnboardingServiceTest {
     @Mock private PositionRepository positionRepo;
     @Mock private EntityManager entityManager;
     @Mock private UserAccountRepository userRepo;
-    @Mock private RoleRepository roleRepo;
-    @Mock private UserRoleRepository userRoleRepo;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private MasterCodeService masterCodeService;
     @Mock private TxSessionVars tx;
@@ -81,7 +76,6 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void alwaysAllocatesEmployeeCodeOnServerAndSkipsHistoricalCollision() {
-        stubEmployeeRole();
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
         when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE))
@@ -100,7 +94,6 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void onboardingUsesIdCardLastSixAndStoresOnlyTheEncodedPassword() {
-        stubEmployeeRole();
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
         when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0006");
@@ -121,7 +114,6 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void laterAccountProvisioningUsesTheSameIdCardLastSixRule() {
-        stubEmployeeRole();
         Employee employee = new Employee();
         employee.setStatus("active");
         EmployeeSensitive sensitive = new EmployeeSensitive();
@@ -167,7 +159,6 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void typedPositionReusesFirstNormalizedActiveMatch() {
-        stubEmployeeRole();
         Department center = managementCenter();
         Position existing = position(center, "ZW0042", "Engineer");
         stubCustomPositionLock();
@@ -186,7 +177,6 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void typedUnknownPositionIsCreatedAsNeutralEmployeePosition() {
-        stubEmployeeRole();
         Department center = managementCenter();
         stubCustomPositionLock();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
@@ -208,26 +198,18 @@ class EmployeeOnboardingServiceTest {
     }
 
     @Test
-    void rejectsUnknownAccountRoleInsteadOfCreatingAnUnprivilegedAccount() {
+    void onboardingAccountCarriesNoRoleOrPermissionAssignment() {
+        // 角色体系已删除(ADR-109)：入职只建登录账号，权限只来自全员基础包与所在部门配置。
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
         when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0007");
 
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> service.onboard(request(center.getId(), null, null, "IGNORED")));
+        service.onboard(request(center.getId(), null, null, "IGNORED"));
 
-        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
-        assertEquals("账号角色不存在: employee", error.getMessage());
-        verify(userRepo, never()).save(any(UserAccount.class));
-    }
-
-    private void stubEmployeeRole() {
-        Role employee = new Role();
-        employee.setId(UUID.randomUUID());
-        employee.setCode("employee");
-        employee.setName("员工");
-        when(roleRepo.findByCodeIn(any())).thenReturn(List.of(employee));
+        ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
+        verify(userRepo).save(account.capture());
+        assertEquals("13800000000", account.getValue().getLoginAccount());
+        assertFalse(account.getValue().isSuperAdmin());
     }
 
     private void stubCustomPositionLock() {
@@ -309,6 +291,6 @@ class EmployeeOnboardingServiceTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                new OnboardingRequest.Account(List.of(), null));
+                new OnboardingRequest.Account(null));
     }
 }

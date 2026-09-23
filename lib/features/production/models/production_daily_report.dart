@@ -270,6 +270,7 @@ class ProductionDailyReportDetail {
     this.surplusReturnRequested = false,
     this.departmentName,
     this.workerNames = const [],
+    this.allowedActions = const {},
   });
 
   final String id;
@@ -280,6 +281,14 @@ class ProductionDailyReportDetail {
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
+
+  /// 当前账号对这张日报能做的动作(服务端按权限码 + 对象范围 + 状态 + 车间直送审核权
+  /// 一次算好)；按钮只按它显隐，页面不再本地拼权限。目前只下发 [approveAction]。
+  final Set<String> allowedActions;
+
+  static const approveAction = 'APPROVE';
+
+  bool get canApprove => allowedActions.contains(approveAction);
 
   /// 整张日报的生产参与人员；不证明行级贡献或计件工资归属。
   final List<String> workerIds;
@@ -363,6 +372,10 @@ class ProductionDailyReportDetail {
             ?.map((e) => e?.toString() ?? '')
             .toList() ??
         const [],
+    allowedActions: {
+      for (final action in (json['allowedActions'] as List? ?? const []))
+        if (action is String) action,
+    },
   );
 }
 

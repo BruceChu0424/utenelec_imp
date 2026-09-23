@@ -101,7 +101,6 @@
   "visitorApplyPlate": "车牌号",
   "visitorApplyPlateHint": "请输入车牌号",
   "visitorApplyHost": "接待人",
-  "visitorApplyDept": "接待部门",
   "visitorApplyVisitTime": "计划到访时间",
   "visitorApplySubmit": "提交预约",
   "visitorApplySubmitting": "提交中…",
@@ -1671,9 +1670,10 @@
   "visitorColVisitorName": "访客姓名",
   "visitorColHostDepartment": "接待人部门",
   "visitorApplySubmittingOverlay": "正在提交访客申请，请勿重复提交或离开本页。",
-  "visitorApplyDeptHint": "请选择接待部门",
   "visitorApplyHostHint": "请选择被访人",
   "visitorApplyHostSheetTitle": "选择被访人",
+  "visitorApplyHostSearchEmpty": "输入被访人姓名搜索",
+  "visitorApplyHostSearchHint": "至少输入 2 个字，最多显示 5 位同事",
   "visitorSettingsPortalTag": "{app} · 访客端",
   "@visitorSettingsPortalTag": {
     "placeholders": {

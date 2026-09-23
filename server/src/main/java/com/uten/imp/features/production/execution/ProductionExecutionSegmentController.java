@@ -90,22 +90,4 @@ public class ProductionExecutionSegmentController {
             @Valid @RequestBody BatchStartRequest request) {
         return service.batchStart(planId, request);
     }
-
-    @PostMapping("/{segmentId}/cancel")
-    @PreAuthorize("hasAuthority('production_execution:cancel')")
-    public ExecutionSegmentView cancel(
-            @PathVariable UUID planId,
-            @PathVariable UUID segmentId,
-            @Valid @RequestBody SegmentTransitionRequest request) {
-        return service.cancel(planId, segmentId, request);
-    }
-
-    @PostMapping("/{segmentId}/reverse")
-    @PreAuthorize("hasAuthority('production_execution:reverse')")
-    public ExecutionSegmentView reverse(
-            @PathVariable UUID planId,
-            @PathVariable UUID segmentId,
-            @Valid @RequestBody SegmentTransitionRequest request) {
-        return service.reverse(planId, segmentId, request);
-    }
 }

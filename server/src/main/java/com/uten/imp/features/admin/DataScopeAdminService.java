@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -41,6 +42,7 @@ public class DataScopeAdminService {
     private final AdminUserSupport support;
     private final SecurityContextCurrentUser currentUser;
     private final DataScopeCasGuard casGuard;
+    private final PermissionChangeAudit changeAudit;
 
     /** 某用户在某范围的授权归属人列表（员工 id）。 */
     @Transactional(readOnly = true)
@@ -61,7 +63,11 @@ public class DataScopeAdminService {
                 .setParameter("uid", userId).setParameter("scope", scope), UUID.class);
     }
 
-    /** 整体替换某用户在某范围的授权归属人。 */
+    /**
+     * 保存某用户在某范围的授权归属人(期望的完整集合，服务端按差量落库)。
+     * 只删本次取消的、只插本次新增的；没有改动时 0 行写入、0 行审计，
+     * 有改动时记一条带 added/removed 的 user_data_scope_change 业务事件。
+     */
     @Transactional
     public void setDataScopes(UUID userId, String scope, List<UUID> ownerEmployeeIds,
                               List<UUID> expectedOwnerEmployeeIds) {
@@ -73,15 +79,32 @@ public class DataScopeAdminService {
         casGuard.lockAndVerify(userId, scope, expectedOwnerEmployeeIds);
         lockOwnersAndRecipient(
                 target.getEmployeeId(), userId, requestedOwnerIds, !requestedOwnerIds.isEmpty());
-        em.createNativeQuery("DELETE FROM user_data_scopes WHERE user_id = :uid AND scope = :scope")
-                .setParameter("uid", userId).setParameter("scope", scope).executeUpdate();
-        for (UUID empId : requestedOwnerIds) {
+        Set<UUID> current = new LinkedHashSet<>(getDataScopes(userId, scope));
+        Set<UUID> added = new LinkedHashSet<>(requestedOwnerIds);
+        added.removeAll(current);
+        Set<UUID> removed = new LinkedHashSet<>(current);
+        removed.removeAll(requestedOwnerIds);
+        if (added.isEmpty() && removed.isEmpty()) {
+            return;
+        }
+        // 取消的行，以及新增负责人名下复职前留下的旧代次行(主键相同，先清再插)。
+        Set<UUID> cleared = new LinkedHashSet<>(removed);
+        cleared.addAll(added);
+        em.createNativeQuery("DELETE FROM user_data_scopes"
+                        + " WHERE user_id = :uid AND scope = :scope AND owner_employee_id IN (:owners)")
+                .setParameter("uid", userId).setParameter("scope", scope)
+                .setParameter("owners", cleared).executeUpdate();
+        for (UUID empId : added) {
             em.createNativeQuery(
                             "INSERT INTO user_data_scopes (user_id, scope, owner_employee_id, created_by) VALUES (:uid, :scope, :eid, :by)")
                     .setParameter("uid", userId).setParameter("scope", scope)
                     .setParameter("eid", empId).setParameter("by", currentUser.id().orElse(null))
                     .executeUpdate();
         }
+        changeAudit.record("user_data_scope_change", "users", userId.toString(),
+                added.stream().map(UUID::toString).toList(),
+                removed.stream().map(UUID::toString).toList(),
+                Map.of("scope", scope));
     }
 
     private static List<UUID> normalizeOwnerIds(List<UUID> ownerEmployeeIds) {

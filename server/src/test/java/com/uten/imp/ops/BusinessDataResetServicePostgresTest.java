@@ -219,8 +219,8 @@ class BusinessDataResetServicePostgresTest {
         // V636 +2（委外回厂短交案件头/事件）：296→298。
         assertThat(result.clearedTableCount()).isEqualTo(298);
         // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
-        // V665 preserves GL report line bindings (report configuration, ADR-112): 102→103.
-        assertThat(result.preservedTableCount()).isEqualTo(103);
+        // V665 保留总账附表行绑定(ADR-112) +1, V655 删除角色体系四张 PRESERVE 表(ADR-109) -4: 102→99。
+        assertThat(result.preservedTableCount()).isEqualTo(99);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）

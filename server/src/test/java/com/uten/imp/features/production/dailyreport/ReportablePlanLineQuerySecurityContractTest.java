@@ -25,7 +25,9 @@ class ReportablePlanLineQuerySecurityContractTest {
                 .contains("fn_execution_material_output_capacity(segment.id, TRUE)")
                 .contains("execution_segment_id IN (")
                 .contains("var readScope = access.scope()")
-                .contains("p.maker_id IS NULL")
+                // ADR-109：没有负责人的计划只对全量范围可见，不再有「maker 为空即可见」分支。
+                .doesNotContain("p.maker_id IS NULL")
+                .contains("ownerPredicate = \"1=0\"")
                 .contains("p.maker_id IN (")
                 .contains("workshopAssignmentPredicate()")
                 .contains("production_execution:view")

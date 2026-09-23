@@ -1354,7 +1354,9 @@ public class StockDocService {
 
     private StockDocDetail issueAfterPrelock(UUID id,StockDocIssueRequest req,
                                             FulfillmentMutationLocks.Guard mutationGuard) {
-        return issueAfterPrelock(id, req, mutationGuard, false);
+        issueLocked(id, req, mutationGuard, false);
+        // 仓库发料是用户动作，回显详情走正常的读范围判定。
+        return detail(id);
     }
 
     /**
@@ -1364,9 +1366,9 @@ public class StockDocService {
      * 再要一次申请就回到了用户要砍掉的那一步。其余校验(计划已审、逐行唯一执行工单
      * 映射、申请余量、库存非负、台账守恒)一条不少。
      */
-    private StockDocDetail issueAfterPrelock(UUID id,StockDocIssueRequest req,
-                                            FulfillmentMutationLocks.Guard mutationGuard,
-                                            boolean workshopDirectTransfer) {
+    private void issueLocked(UUID id,StockDocIssueRequest req,
+                            FulfillmentMutationLocks.Guard mutationGuard,
+                            boolean workshopDirectTransfer) {
         tx.bind();
         StockDocument d = requireDrawForIssue(id);
         if (!workshopDirectTransfer) {
@@ -1388,7 +1390,7 @@ public class StockDocService {
         req=canonicalIssueRequest(req,items);
         var materialLines=issueMaterialLines(d,items,req);
         if (productionMaterialLedger.isIssueReplay(d.getId(),d.getWarehouseId(),materialLines,req.getIdempotencyKey(),null)) {
-            return detail(id);
+            return;
         }
         mutationGuard.verifyUnchanged();
         Map<UUID,BigDecimal> effectiveForDirect=workshopDirectTransfer?effectiveDrawQuantities(items):Map.of();
@@ -1413,7 +1415,7 @@ public class StockDocService {
                         d.getId(), d.getWarehouseId(),
                         materialLines,
                         req.getIdempotencyKey(), currentUser.requireId());
-        if (posted.replayed()) return detail(id);
+        if (posted.replayed()) return;
         validateIssueRequest(items, req, false);
         OffsetDateTime ts = OffsetDateTime.now();
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
@@ -1435,7 +1437,6 @@ public class StockDocService {
         // unrelated rows on the same document.
         chainNotice.notifyProductionDrawIssued(
                 d.getId(), req.getIdempotencyKey());
-        return detail(id);
     }
 
     /**
@@ -1653,7 +1654,9 @@ public class StockDocService {
                 approveDocumentAfterPrelock(drawId, false, true, null,
                         FinishedInLane.WORKSHOP_DIRECT_TRANSFER);
             }
-            issueAfterPrelock(
+            // 车间直送的自动投入是内部步骤，调用方从不使用回显的详情(原先算完即丢)；
+            // 不再多做一次按读范围装配详情的查询。
+            issueLocked(
                     drawId, request, lockProductionDocuments(List.of(drawId)), true);
         }
     }

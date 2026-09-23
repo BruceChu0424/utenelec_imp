@@ -132,7 +132,8 @@ class SecurityPermissionMigrationTest {
                         'authorization:manage',
                         'finance_asset:edit',
                         'finance_post:execute',
-                        'finance_shipment_audit'
+                        -- V655(ADR-109) 把 finance_shipment_audit 原地改名为查看码并拆出动作码。
+                        'sales_shipment_finance:view'
                     )
                     """));
             assertEquals(1, scalarLong(statement, """
@@ -381,6 +382,8 @@ class SecurityPermissionMigrationTest {
 
     @Test
     void databaseRejectsDepartmentWideAuditPermissions() throws Exception {
+        // V655(ADR-109)：两条只认审计码的旧守卫换成按 grant_policy 判定的通用守卫，
+        // 审计码是 INDIVIDUAL_ONLY，部门授权同样被拒，报错文案随之改为通用口径。
         for (String permissionCode : List.of("audit_log:view", "audit_log:export")) {
             SQLException insertFailure = assertThrows(
                     SQLException.class,
@@ -395,7 +398,7 @@ class SecurityPermissionMigrationTest {
                             """,
                             permissionCode));
             assertTrue(insertFailure.getMessage()
-                    .contains("审计权限仅允许个人授权"));
+                    .contains("该权限只能逐人授予，不能配置给整个部门"));
 
             SQLException updateFailure = assertThrows(
                     SQLException.class,
@@ -413,7 +416,7 @@ class SecurityPermissionMigrationTest {
                             """,
                             permissionCode));
             assertTrue(updateFailure.getMessage()
-                    .contains("审计权限仅允许个人授权"));
+                    .contains("该权限只能逐人授予，不能配置给整个部门"));
         }
     }
 

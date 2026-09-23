@@ -27,7 +27,8 @@ class DataScopeOwnerCandidateSqlContractTest {
                 mock(TxSessionVars.class),
                 mock(AdminUserSupport.class),
                 mock(SecurityContextCurrentUser.class),
-                mock(DataScopeCasGuard.class));
+                mock(DataScopeCasGuard.class),
+                mock(PermissionChangeAudit.class));
 
         for (String scope : List.of(
                 "goods", "client", "sales", "finance", "purchase",

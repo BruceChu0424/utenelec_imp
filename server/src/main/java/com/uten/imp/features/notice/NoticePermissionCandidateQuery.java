@@ -36,14 +36,11 @@ final class NoticePermissionCandidateQuery {
 
     static final String SHAPE_SQL = """
             WITH expected(relation_name,column_name,kind) AS (VALUES
-                ('permissions','id','uuid'),('permissions','code','text'),('permissions','active','bool'),
+                ('permissions','id','uuid'),('permissions','code','text'),('permissions','baseline','bool'),
                 ('departments','id','uuid'),('departments','parent_id','uuid'),
                 ('department_permissions','department_id','uuid'),('department_permissions','permission_id','uuid'),
                 ('users','id','uuid'),('users','employee_id','uuid'),('users','is_super_admin','bool'),
                 ('users','is_deleted','bool'),('users','status','text'),
-                ('roles','id','uuid'),('roles','code','text'),
-                ('role_permissions','role_id','uuid'),('role_permissions','permission_id','uuid'),
-                ('user_roles','user_id','uuid'),('user_roles','role_id','uuid'),
                 ('employees','id','uuid'),('employees','department_id','uuid'),
                 ('employee_secondary_departments','employee_id','uuid'),('employee_secondary_departments','department_id','uuid'),
                 ('user_permission_overrides','user_id','uuid'),('user_permission_overrides','permission_id','uuid'),
@@ -67,7 +64,7 @@ final class NoticePermissionCandidateQuery {
 
     static final String SQL = """
             WITH RECURSIVE requested AS MATERIALIZED (
-                SELECT id FROM permissions WHERE code IN (:codes) AND active=TRUE
+                SELECT id, baseline FROM permissions WHERE code IN (:codes)
             ), delegated_departments(id) AS (
                 SELECT allocation.department_id FROM department_permissions allocation
                 JOIN requested permission ON permission.id=allocation.permission_id
@@ -78,14 +75,7 @@ final class NoticePermissionCandidateQuery {
                 SELECT account.id FROM users account WHERE account.is_super_admin=TRUE
                 UNION
                 SELECT account.id FROM users account WHERE EXISTS (
-                    SELECT 1 FROM roles role
-                    JOIN role_permissions allocation ON allocation.role_id=role.id
-                    JOIN requested permission ON permission.id=allocation.permission_id
-                    WHERE role.code='employee')
-                UNION
-                SELECT assignment.user_id FROM user_roles assignment
-                JOIN role_permissions allocation ON allocation.role_id=assignment.role_id
-                JOIN requested permission ON permission.id=allocation.permission_id
+                    SELECT 1 FROM requested permission WHERE permission.baseline)
                 UNION
                 SELECT account.id FROM users account
                 JOIN employees employee ON employee.id=account.employee_id

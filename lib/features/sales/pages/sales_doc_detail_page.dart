@@ -186,7 +186,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         d.canManageWarehouseWork &&
         ref
             .read(currentPermissionsProvider)
-            .contains(Perm.salesShipmentWarehouseWork);
+            .contains(Perm.warehouseSalesOutboundExecute);
   }
 
   bool get _shipmentEditLockedByFinanceAudit =>
@@ -921,7 +921,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                                     (permissions.contains(_cfg.listPerm) ||
                                         (_cfg.type.isShipment &&
                                             permissions.contains(
-                                              Perm.financeShipmentAudit,
+                                              Perm.salesShipmentFinanceView,
                                             ) &&
                                             (_detail!
                                                     .shipmentWorkflow

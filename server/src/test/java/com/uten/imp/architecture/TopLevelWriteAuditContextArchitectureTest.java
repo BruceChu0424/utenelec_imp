@@ -126,11 +126,11 @@ class TopLevelWriteAuditContextArchitectureTest {
         assertBefore(GL, "public void removeExpenseDoc(",
                 "tx.bind();", "removeAutoProjection(");
 
-        assertBefore(MRP, "public MrpGenerateResult generate(UUID planId)",
-                "tx.bind();", "generateInternal(");
+        // 旧的「按计划一键生成采购/委外申请」入口已随 ADR-109 删除，
+        // MrpService 剩下的顶层写入口是执行包内的自制子计划生成。
         assertBefore(MRP,
-                "public MrpGenerateResult generate(UUID planId, String strategy)",
-                "tx.bind();", "generateInternal(");
+                "public List<GenerateSubplansRequest.Created> generateSelfMadeSubplansForPackage(",
+                "tx.bind();", "lockPlan(");
         assertBefore(PLANNING_PACKAGE, "public PlanningPackageResult confirm(",
                 "tx.bind();", "executionCommand.confirm(");
         assertBefore(PLANNING_PACKAGE,

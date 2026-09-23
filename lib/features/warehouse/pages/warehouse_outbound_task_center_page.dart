@@ -53,7 +53,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     final superAdmin = ref.watch(isSuperAdminProvider);
     bool can(String code) => superAdmin || permissions.contains(code);
 
-    final canSales = can(Perm.salesShipmentWarehouseWork);
+    final canSales = can(Perm.warehouseSalesOutboundView);
     final canSubcontract = can(Perm.subcontractOutboundView);
     final canSubcontractHistory = can(
       Perm.warehouseSubcontractOutboundHistoryView,

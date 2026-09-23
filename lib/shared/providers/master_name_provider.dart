@@ -519,15 +519,12 @@ class MasterNameService extends MasterDictionaryService {
 String masterDataSessionCacheKey(SessionState session) {
   final user = session.user;
   final permissions = [...?user?.permissions]..sort();
-  final roles = user?.roles.map((role) => role.name).toList() ?? <String>[];
-  roles.sort();
   return <Object?>[
     session.status.name,
     user?.id,
     user?.employeeId,
     user?.name,
     user?.superAdmin,
-    roles.join(','),
     permissions.join(','),
   ].join('|');
 }

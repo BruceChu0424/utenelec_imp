@@ -83,7 +83,6 @@ class _ReviewerSession extends SessionNotifier {
       id: 'reviewer-user',
       code: 'QA001',
       name: '张三',
-      roles: [],
       employeeId: 'reviewer-employee',
     ),
   );

@@ -303,8 +303,7 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         PermissionResolver.AuthorizationSnapshot snapshot =
                 permissionResolver.authorizationSnapshot(userId, employeeId, true);
         AuthUser authUser = new AuthUser(
-                userId, employeeId, "qrc-" + suffix,
-                snapshot.roles(), snapshot.permissions(), false, true, true);
+                userId, employeeId, "qrc-" + suffix, snapshot.permissions(), false, true, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                         authUser, null, authUser.getAuthorities()));

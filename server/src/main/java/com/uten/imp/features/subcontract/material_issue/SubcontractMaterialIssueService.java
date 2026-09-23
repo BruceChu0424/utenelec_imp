@@ -66,6 +66,8 @@ public class SubcontractMaterialIssueService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
     private static final String OUTBOUND_EXECUTE = "subcontract_outbound:execute";
+    /** 仓库委外出仓池的读取门槛(系统池草稿按岗位放行，不按个人归属)。 */
+    private static final String OUTBOUND_VIEW = "subcontract_outbound:view";
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（发料无金额列，仅日期可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate");
@@ -96,15 +98,24 @@ public class SubcontractMaterialIssueService {
      */
     private Set<UUID> requireIssueWritable(SubcontractMaterialIssue r, String actionAuthority) {
         Set<UUID> planItemIds = planItemIds(r.getId());
-        if (r.getMakerId() != null) {
+        if (r.getOwnerPool() == null) {
             access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
-        } else if (!access.hasAuthority(actionAuthority)) {
+        } else if (!access.hasAuthority(OUTBOUND_VIEW) || !access.hasAuthority(actionAuthority)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少委外材料出仓单操作权限");
         }
         if (!planItemIds.isEmpty() && !access.hasAuthority(OUTBOUND_EXECUTE)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少委外出仓执行权限");
         }
         return planItemIds;
+    }
+
+    /** 个人归属按对象范围判定；系统池草稿只对持委外出仓查看权的人可见(越权 404)。 */
+    private void requireIssueReadable(SubcontractMaterialIssue r) {
+        if (r.getOwnerPool() == null) {
+            access.requireReadable(r.getMakerId(), "委外材料出仓单不存在");
+        } else if (!access.hasAuthority(OUTBOUND_VIEW)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "委外材料出仓单不存在");
+        }
     }
 
     private Set<UUID> planItemIds(UUID issueId) {
@@ -121,12 +132,16 @@ public class SubcontractMaterialIssueService {
     public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
+        boolean outboundPool = access.hasAuthority(OUTBOUND_VIEW);
         Specification<SubcontractMaterialIssue> spec = (Root<SubcontractMaterialIssue> root,
                                                         jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
+            Predicate owned = access.readablePredicate(root, cb, "makerId", readScope);
+            ps.add(outboundPool
+                    ? cb.or(owned, cb.equal(root.get("ownerPool"), SubcontractMaterialIssue.POOL_WAREHOUSE_OUTBOUND))
+                    : owned);
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(SubcontractGoodsKeyword.predicate(
                         cb, q, root, SubcontractMaterialIssueItem.class, "issueId", f.keyword()));
@@ -148,28 +163,9 @@ public class SubcontractMaterialIssueService {
     @Transactional(readOnly = true)
     public MaterialIssueDetail detail(UUID id) {
         SubcontractMaterialIssue r = requireIssue(id);
-        access.requireReadable(r.getMakerId(), "委外材料出仓单不存在");
+        requireIssueReadable(r);
         List<MaterialIssueItemDto> items = itemRepo.findByIssueIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(r, items);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('subcontract_material_issue:create')")
-    public MaterialIssueDetail create(MaterialIssueSaveRequest req) {
-        tx.bind();
-        lockIssueRequest(null,req).verifyUnchanged();
-        // 计划挂接单只能由计划服务生成；旧通用新建端点不得占用/伪造计划行。
-        canonicalizePlanLines(req.getItems(), Set.of(), false);
-        SubcontractMaterialIssue r = new SubcontractMaterialIssue();
-        applyHeader(req, r);
-        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
-        canonicalizeMaker(r);
-        r.setStatus(STATUS_DRAFT);
-        issueRepo.save(r);
-        List<MaterialIssueItemDto> items = saveItems(r, req.getItems());
-        planService.reserveDraft(r.getId(), r.getWarehouseId());
-        applyTotals(r, items);
         return toDetail(r, items);
     }
 

@@ -166,7 +166,7 @@ class ExpenseClaimChainPostgresTest {
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status) VALUES(?,?,?,'test-not-used',false,false,'active')",user,employee,login);
         return new Actor(user,employee,login);
     }
-    private void login(Actor actor,String... permissions){var user=new AuthUser(actor.user(),actor.employee(),actor.login(),Set.of(),Set.of(permissions),false,true,false);
+    private void login(Actor actor,String... permissions){var user=new AuthUser(actor.user(),actor.employee(),actor.login(),Set.of(permissions),false,true,false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));}
     record Actor(UUID user,UUID employee,String login) {}
 }

@@ -54,7 +54,7 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         assertThrows(ApiException.class,()->shipments.transitionWarehouseWork(draft.getId(),outbound));
         assertThrows(ApiException.class,()->warehouse.detail(draft.getId()));
         ReflectionTestUtils.invokeMethod(fixture,"confirmShipmentFinance",draft.getId());
-        UUID warehouseUser=fixture.createUserWithPerms(w,"physical-picker","sales_shipment:warehouse-work");fixture.loginAs(warehouseUser);
+        UUID warehouseUser=fixture.createUserWithPerms(w,"physical-picker","warehouse_sales_outbound:view", "warehouse_sales_outbound:execute");fixture.loginAs(warehouseUser);
         var task=warehouse.detail(draft.getId());
         // 小类行计数与 /count 同源同数(同库里可能有别的用例留下的待出库单, 只断言一致性、包含本单与后面的增减量).
         var countsBefore=warehouse.counts();assertEquals(countsBefore.get("PENDING_PICK").longValue(),warehouse.pendingCount());assertTrue(countsBefore.get("PENDING_PICK")>=1L);

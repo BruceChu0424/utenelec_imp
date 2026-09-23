@@ -44,6 +44,7 @@ class VisitorRequestValidationTest {
     private VisitorApplicationMapper mapper;
     private TxSessionVars tx;
     private SecurityContextCurrentUser currentUser;
+    private VisitorHostEligibility hostEligibility;
     private VisitorApplicationService service;
     private UUID visitorId;
     private VisitorAccount account;
@@ -57,6 +58,7 @@ class VisitorRequestValidationTest {
         mapper = mock(VisitorApplicationMapper.class);
         tx = mock(TxSessionVars.class);
         currentUser = mock(SecurityContextCurrentUser.class);
+        hostEligibility = mock(VisitorHostEligibility.class);
         service = new VisitorApplicationService(
                 appRepo,
                 stepRepo,
@@ -65,7 +67,8 @@ class VisitorRequestValidationTest {
                 mapper,
                 tx,
                 mock(HrNoticeService.class),
-                currentUser);
+                currentUser,
+                hostEligibility);
 
         visitorId = UUID.randomUUID();
         account = new VisitorAccount();
@@ -148,11 +151,30 @@ class VisitorRequestValidationTest {
 
         Employee host = eligibleHost(hostId);
         when(employeeRepo.findById(hostId)).thenReturn(Optional.of(host));
+        when(hostEligibility.isEligible(hostId)).thenReturn(true);
         ApiException mismatch = assertThrows(
                 ApiException.class,
                 () -> service.submit(request(
                         hostId, UUID.randomUUID(), false, null, visitAt, null)));
         assertEquals(ErrorCode.VALIDATION_FAILED, mismatch.getCode());
+        assertEquals("接待人与接待部门不匹配，请重新选择", mismatch.getMessage());
+    }
+
+    /** security-08：在职但不在可对外接待白名单里的员工，拿猜到的编号也挂不上申请。 */
+    @Test
+    void submitRejectsACurrentEmployeeOutsideTheHostWhitelist() {
+        UUID hostId = UUID.randomUUID();
+        when(employeeRepo.findById(hostId)).thenReturn(Optional.of(eligibleHost(hostId)));
+        when(hostEligibility.isEligible(hostId)).thenReturn(false);
+
+        ApiException rejected = assertThrows(
+                ApiException.class,
+                () -> service.submit(request(
+                        hostId, null, false, null, OffsetDateTime.now().plusHours(1), null)));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, rejected.getCode());
+        assertEquals("接待人不存在或当前不可接待", rejected.getMessage());
+        verify(appRepo, org.mockito.Mockito.never()).save(any());
     }
 
     @Test
@@ -160,6 +182,7 @@ class VisitorRequestValidationTest {
         UUID hostId = UUID.randomUUID();
         when(employeeRepo.findById(hostId))
                 .thenReturn(Optional.of(eligibleHost(hostId)));
+        when(hostEligibility.isEligible(hostId)).thenReturn(true);
         OffsetDateTime visitAt = OffsetDateTime.now().plusHours(1);
 
         VisitorApplyRequest request = new VisitorApplyRequest(
@@ -188,6 +211,7 @@ class VisitorRequestValidationTest {
         Employee host = eligibleHost(hostId);
         UUID departmentId = host.getDepartment().getId();
         when(employeeRepo.findById(hostId)).thenReturn(Optional.of(host));
+        when(hostEligibility.isEligible(hostId)).thenReturn(true);
         when(tx.encrypt(any())).thenAnswer(invocation ->
                 "encrypted:" + invocation.getArgument(0));
         when(appRepo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));

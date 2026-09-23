@@ -27,7 +27,8 @@ class DataScopeHistoricalOwnerCandidateTest {
                 List.<Object[]>of(new Object[]{owner, "离职业务员", "E009", "resigned", 7L}));
         DataScopeAdminService service = new DataScopeAdminService(
                 em, mock(TxSessionVars.class), mock(AdminUserSupport.class),
-                mock(SecurityContextCurrentUser.class), mock(DataScopeCasGuard.class));
+                mock(SecurityContextCurrentUser.class), mock(DataScopeCasGuard.class),
+                mock(PermissionChangeAudit.class));
 
         List<Map<String, Object>> rows = service.ownerCandidates("sales");
 

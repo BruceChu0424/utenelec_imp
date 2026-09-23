@@ -38,7 +38,7 @@ class _Session extends SessionNotifier {
   void change(String id) => state = _state(id);
   static SessionState _state(String id) => SessionState(
     status: AuthStatus.authenticated,
-    user: AppUser(id: id, code: id, name: id, roles: const []),
+    user: AppUser(id: id, code: id, name: id),
   );
 }
 

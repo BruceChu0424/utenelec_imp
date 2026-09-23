@@ -9,7 +9,10 @@ import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.department.staffpermission.dto.BatchSetStaffPermissionsRequest;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.admin.PermissionChangeAudit;
+import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
+import com.uten.imp.features.rbac.PermissionGrantPolicyCatalog;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.UserPermissionOverride;
@@ -38,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,6 +62,7 @@ class PagePermissionWorkspaceServiceTest {
     @Mock private PermissionResolver permissionResolver;
     @Mock private OrganizationPermissionManagementScopeService managementScope;
     @Captor private ArgumentCaptor<List<UserPermissionOverride>> savedOverrides;
+    @Mock private PermissionChangeAudit changeAudit;
 
     private PagePermissionWorkspaceService service;
 
@@ -75,13 +80,18 @@ class PagePermissionWorkspaceServiceTest {
                 currentUser,
                 tx,
                 permissionResolver,
-                new PermissionDelegationPolicy(),
+                new PermissionDelegationPolicy(PermissionGrantPolicyCatalog.fixed(Map.of(
+                        "goods:edit", Set.of(GrantPolicy.NORMAL),
+                        "goods:export", Set.of(GrantPolicy.NORMAL),
+                        "stock:view", Set.of(GrantPolicy.NORMAL),
+                        "stock:balance:adjust", Set.of(GrantPolicy.INDIVIDUAL_ONLY)))),
                 PermissionSurfaceRegistryTestFixture.registry(Map.of(
                         "basic.goods", Set.of("goods:edit", "goods:export"),
                         "warehouse.stock-balance",
                         Set.of("stock:view", "stock:balance:adjust"))),
                 new PagePermissionDelegationFeatureGate(true),
-                managementScope);
+                managementScope,
+                changeAudit);
     }
 
     @Test
@@ -193,7 +203,9 @@ class PagePermissionWorkspaceServiceTest {
         assertEquals(
                 "查看当前库存余额",
                 detail.permissions().getFirst().description());
-        assertThat(detail.permissions()).allMatch(state -> state.assignable());
+        // 超管在页面上写的是中央个人覆盖：个人专属码同样可以逐人授予(只有超管专属码不行)。
+        assertThat(detail.permissions())
+                .allMatch(state -> !state.grantPolicy().contains("SUPERADMIN_ONLY"));
     }
 
     @Test
@@ -318,6 +330,13 @@ class PagePermissionWorkspaceServiceTest {
         }
         assertEquals(8L, inactiveEdit.getRowVersion());
         verify(refreshTokenRepo).revokeAllByUserId(targetUserId);
+        // 一次保存一条语义化业务事件(中央覆盖：grant:码)。
+        // 条目顺序不是契约(事件里会排序落库)，按集合比对。
+        verify(changeAudit).record(eq("user_permission_override_change"), eq("users"),
+                eq(targetUserId.toString()),
+                argThat(added -> java.util.Set.copyOf(added)
+                        .equals(java.util.Set.of("grant:goods:export", "grant:goods:edit"))),
+                argThat(java.util.Collection::isEmpty), any());
     }
 
     private static PermissionResolver.PermBreakdown breakdown(
@@ -345,7 +364,6 @@ class PagePermissionWorkspaceServiceTest {
                 userId,
                 employeeId,
                 "tester",
-                Set.of(),
                 Set.of(),
                 false,
                 true,

@@ -295,7 +295,6 @@ class OrganizationPermissionManagementScopeServiceTest {
                 employeeId,
                 "leader",
                 Set.of(),
-                Set.of(),
                 false,
                 true,
                 superAdmin);

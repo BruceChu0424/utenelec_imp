@@ -108,6 +108,6 @@ class ProductionFqcAttachmentAccessPolicyTest {
             when(query.getResultList()).thenReturn(List.of(id));
             assertEquals("PRODUCTION_QUALITY_INSPECTION", policy.ownerType());
         }
-        AuthUser user() { return new AuthUser(actor, actor, "quality", Set.of(), Set.copyOf(permissions), false, true, false); }
+        AuthUser user() { return new AuthUser(actor, actor, "quality", Set.copyOf(permissions), false, true, false); }
     }
 }

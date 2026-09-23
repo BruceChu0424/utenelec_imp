@@ -132,7 +132,6 @@ const _profile = UserProfile(
   id: 'user-id',
   loginAccount: 'admin',
   name: '管理员',
-  roles: <String>['admin'],
   permissions: <String>['dashboard:view'],
   superAdmin: true,
 );
@@ -188,7 +187,6 @@ class _OverlappingLoginAuthRepository implements AuthRepository {
         id: call == 1 ? 'first-id' : 'second-id',
         loginAccount: loginAccount,
         name: call == 1 ? '第一用户' : '第二用户',
-        roles: const <String>['admin'],
         permissions: const <String>['dashboard:view'],
         superAdmin: true,
       ),

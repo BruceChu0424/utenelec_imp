@@ -13,7 +13,6 @@ import '../../core/security/secure_storage.dart';
 import '../../features/admin/repositories/impersonation_repository.dart';
 import '../../features/auth/models/auth_session.dart';
 import '../../features/auth/repositories/auth_repository.dart';
-import '../models/role.dart';
 import '../models/user.dart';
 
 enum AuthStatus { unauthenticated, authenticated, mustChangePassword }
@@ -595,17 +594,11 @@ class SessionNotifier extends Notifier<SessionState> {
     id: profile.id,
     code: profile.code ?? profile.loginAccount,
     name: profile.name ?? profile.loginAccount,
-    roles: profile.roles.map(_toRole).toList(),
     department: profile.department,
     position: profile.position,
     permissions: profile.permissions,
     superAdmin: profile.superAdmin,
     employeeId: profile.employeeId,
-  );
-
-  static Role _toRole(String code) => Role.values.firstWhere(
-    (role) => role.name == code,
-    orElse: () => Role.employee,
   );
 }
 

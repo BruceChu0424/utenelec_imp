@@ -97,11 +97,9 @@ class StaffAuthorityResolverTest {
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
         PermissionResolver.AuthorizationSnapshot temporarilyInvalid =
-                new PermissionResolver.AuthorizationSnapshot(
-                        Set.of("employee"), Set.of(), true);
+                new PermissionResolver.AuthorizationSnapshot(Set.of(), true);
         PermissionResolver.AuthorizationSnapshot restored =
-                new PermissionResolver.AuthorizationSnapshot(
-                        Set.of("employee"), Set.of("sales_order:view"), true);
+                new PermissionResolver.AuthorizationSnapshot(Set.of("sales_order:view"), true);
         when(delegate.authorizationSnapshot(userId, employeeId, false))
                 .thenReturn(temporarilyInvalid, restored);
 
@@ -116,7 +114,6 @@ class StaffAuthorityResolverTest {
 
     private PermissionResolver.AuthorizationSnapshot snapshot(String permission) {
         return new PermissionResolver.AuthorizationSnapshot(
-                Set.of("employee"),
                 Set.of(permission));
     }
 }

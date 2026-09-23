@@ -117,7 +117,7 @@ class VisitorAdmissionPolicyTest {
         var service = new VisitorApplicationService(applications, mock(VisitorApprovalStepRepository.class),
                 accounts, mock(EmployeeRepository.class), mock(VisitorApplicationMapper.class),
                 mock(TxSessionVars.class), mock(HrNoticeService.class),
-                mock(SecurityContextCurrentUser.class));
+                mock(SecurityContextCurrentUser.class), mock(VisitorHostEligibility.class));
         assertThat(service.loadForUpdate(app.getId())).isSameAs(app);
         var ordered = inOrder(applications, accounts);
         ordered.verify(applications).findIdentityById(app.getId());

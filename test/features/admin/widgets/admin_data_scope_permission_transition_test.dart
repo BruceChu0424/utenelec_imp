@@ -51,7 +51,6 @@ void main() {
                       loginAccount: '13800000000',
                       status: 'active',
                       mustChangePassword: false,
-                      roles: [],
                       remoteAccess: false,
                       employeeName: '张三',
                     ),

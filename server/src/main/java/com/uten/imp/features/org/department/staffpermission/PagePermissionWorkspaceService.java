@@ -19,6 +19,8 @@ import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionSt
 import com.uten.imp.features.org.department.staffpermission.dto.StaffDelegationResultDto;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.admin.PermissionChangeAudit;
+import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.ManagerPermissionDelegation;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationId;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
@@ -78,6 +80,7 @@ public class PagePermissionWorkspaceService {
     private final PermissionSurfaceRegistry surfaceRegistry;
     private final PagePermissionDelegationFeatureGate featureGate;
     private final OrganizationPermissionManagementScopeService managementScopeService;
+    private final PermissionChangeAudit changeAudit;
 
     /**
      * 会话快照里的「可委派页面」(ADR-108): 当前主体能打开「本页权限设置」的全部页面 key。
@@ -215,7 +218,6 @@ public class PagePermissionWorkspaceService {
                         : permissionResolver.breakdownsOf(targetAccount);
 
         List<Permission> catalog = permissionRepo.findByCodeIn(surfacePermissions).stream()
-                .filter(Permission::isActive)
                 .sorted(permissionOrder())
                 .toList();
         Set<UUID> enabledHistorical = delegations.stream()
@@ -399,15 +401,23 @@ public class PagePermissionWorkspaceService {
         Map<String, Permission> permissionByCode = permissionRepo
                 .findByCodeIn(codes).stream()
                 .collect(Collectors.toMap(Permission::getCode, Function.identity()));
+        Set<String> enabledCodes = changes.stream()
+                .filter(BatchSetStaffPermissionsRequest.Change::enabled)
+                .map(BatchSetStaffPermissionsRequest.Change::code)
+                .collect(Collectors.toSet());
         for (String code : codes) {
             Permission permission = permissionByCode.get(code);
             if (permission == null) {
                 throw new ApiException(ErrorCode.BUSINESS, "权限不存在: " + code);
             }
-            if (!permission.isActive() || !permission.isAssignable()) {
+            // 只校验「新增授予」：负责人委派的开启在 applyManagerDelegations 里按授权策略判定，
+            // 超管中央加授不能授出超管专属码；关闭委派、收回一律允许(ADR-109 差量口径)。
+            if (actor.isSuperAdmin()
+                    && enabledCodes.contains(code)
+                    && !GrantPolicy.individuallyGrantable(permission.grantPolicies())) {
                 throw new ApiException(
                         ErrorCode.BUSINESS,
-                        "权限已停用或不可再分配: " + code);
+                        "这项权限只随超级管理员身份生效，不能单独授予：" + permission.getName());
             }
         }
 
@@ -420,6 +430,7 @@ public class PagePermissionWorkspaceService {
         String settingMode = actor.isSuperAdmin()
                 ? CENTRAL_OVERRIDE : MANAGER_DELEGATION;
         Map<String, Long> resultVersions = new LinkedHashMap<>();
+        Set<String> changedCodes = new LinkedHashSet<>();
         boolean changedAny;
 
         if (actor.isSuperAdmin()) {
@@ -428,7 +439,8 @@ public class PagePermissionWorkspaceService {
                     targetAccount,
                     changes,
                     permissionByCode,
-                    resultVersions);
+                    resultVersions,
+                    changedCodes);
         } else {
             DelegationSnapshot snapshot = new DelegationSnapshot(
                     targetAccount.getPermissionDelegationGeneration(),
@@ -453,10 +465,12 @@ public class PagePermissionWorkspaceService {
                     changes,
                     permissionByCode,
                     snapshot,
-                    resultVersions);
+                    resultVersions,
+                    changedCodes);
         }
         if (changedAny) {
             refreshTokenRepo.revokeAllByUserId(targetAccount.getId());
+            recordChange(actor, targetAccount, departmentId, surfaceKey, changes, changedCodes);
         }
 
         Set<String> effective = actor.isSuperAdmin()
@@ -480,7 +494,8 @@ public class PagePermissionWorkspaceService {
             UserAccount targetAccount,
             List<BatchSetStaffPermissionsRequest.Change> changes,
             Map<String, Permission> permissionByCode,
-            Map<String, Long> resultVersions) {
+            Map<String, Long> resultVersions,
+            Set<String> changedCodes) {
         List<UserPermissionOverrideId> ids = changes.stream()
                 .map(change -> new UserPermissionOverrideId(
                         targetAccount.getId(),
@@ -523,6 +538,7 @@ public class PagePermissionWorkspaceService {
             row.setAuthoritySource("SUPER_ADMIN_CONFIRMED");
             row.setSourceActorUserId(actorAccount.getId());
             changed.add(row);
+            changedCodes.add(change.code());
             resultVersions.put(change.code(), row.getRowVersion());
         }
         if (!changed.isEmpty()) {
@@ -541,7 +557,8 @@ public class PagePermissionWorkspaceService {
             List<BatchSetStaffPermissionsRequest.Change> changes,
             Map<String, Permission> permissionByCode,
             DelegationSnapshot snapshot,
-            Map<String, Long> resultVersions) {
+            Map<String, Long> resultVersions,
+            Set<String> changedCodes) {
         List<ManagerPermissionDelegationId> ids = changes.stream()
                 .map(change -> new ManagerPermissionDelegationId(
                         targetAccount.getId(),
@@ -625,12 +642,49 @@ public class PagePermissionWorkspaceService {
             row.setUpdatedAt(now);
             row.setUpdatedBy(actorAccount.getId());
             changed.add(row);
+            changedCodes.add(code);
             resultVersions.put(code, row.getRowVersion());
         }
         if (!changed.isEmpty()) {
             delegationRepo.saveAllAndFlush(changed);
         }
         return !changed.isEmpty();
+    }
+
+    /**
+     * 一次页面授权保存只记一条业务事件(有改动时)：超管在页面上写的是中央个人覆盖
+     * (条目 grant:码 / revoke:码)，负责人写的是页面委派(开启进 added、关闭进 removed)。
+     */
+    private void recordChange(
+            AuthUser actor,
+            UserAccount targetAccount,
+            UUID departmentId,
+            String surfaceKey,
+            List<BatchSetStaffPermissionsRequest.Change> changes,
+            Set<String> changedCodes) {
+        List<String> added = new ArrayList<>();
+        List<String> removed = new ArrayList<>();
+        for (BatchSetStaffPermissionsRequest.Change change : changes) {
+            if (!changedCodes.contains(change.code())) {
+                continue;
+            }
+            if (actor.isSuperAdmin()) {
+                added.add((change.enabled() ? "grant:" : "revoke:") + change.code());
+            } else if (change.enabled()) {
+                added.add(change.code());
+            } else {
+                removed.add(change.code());
+            }
+        }
+        changeAudit.record(
+                actor.isSuperAdmin()
+                        ? "user_permission_override_change"
+                        : "manager_permission_delegation_change",
+                "users",
+                targetAccount.getId().toString(),
+                added,
+                removed,
+                Map.of("surfaceKey", surfaceKey, "departmentId", departmentId.toString()));
     }
 
     private List<BatchSetStaffPermissionsRequest.Change> normalizeChanges(
@@ -946,8 +1000,7 @@ public class PagePermissionWorkspaceService {
                 permission.getName(),
                 normalizedActionType(permission.getActionType()),
                 permission.getDescription(),
-                permission.isAssignable(),
-                permission.isBulkAssignable(),
+                permission.grantPolicies().stream().map(Enum::name).toList(),
                 permission.getSensitivity(),
                 actor.isSuperAdmin() || actorEffective.contains(code),
                 baseEffective,
@@ -966,8 +1019,8 @@ public class PagePermissionWorkspaceService {
             PermissionResolver.PermissionBreakdowns targetBreakdowns,
             ManagerPermissionDelegation delegation) {
         String code = permission.getCode();
-        if (!permission.isAssignable()) {
-            return new Editability(false, "该权限不可再分配");
+        if (!GrantPolicy.individuallyGrantable(permission.grantPolicies())) {
+            return new Editability(false, "这项权限只随超级管理员身份生效");
         }
         if (targetAccount == null) {
             return new Editability(false, "尚未开通登录账号");

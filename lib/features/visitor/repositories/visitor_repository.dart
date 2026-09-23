@@ -46,38 +46,14 @@ class VisitorApplicationDetail {
   final List<VisitorApprovalStep> steps;
 }
 
+/// 访客可选的接待人：服务端只下发可对外接待员工的 id 和姓名，不带部门(security-08)。
 class EmployeeDirItem {
-  const EmployeeDirItem({
-    required this.id,
-    required this.name,
-    this.departmentName,
-  });
+  const EmployeeDirItem({required this.id, required this.name});
   final String id;
   final String name;
-  final String? departmentName;
   factory EmployeeDirItem.fromJson(Map<String, dynamic> j) => EmployeeDirItem(
     id: (j['id'] ?? '').toString(),
     name: (j['name'] ?? '').toString(),
-    departmentName: j['departmentName'] as String?,
-  );
-}
-
-class DeptDirItem {
-  const DeptDirItem({
-    required this.id,
-    required this.name,
-    this.level,
-    this.parentId,
-  });
-  final String id;
-  final String name;
-  final String? level;
-  final String? parentId;
-  factory DeptDirItem.fromJson(Map<String, dynamic> j) => DeptDirItem(
-    id: (j['id'] ?? '').toString(),
-    name: (j['name'] ?? '').toString(),
-    level: j['level'] as String?,
-    parentId: j['parentId'] == null ? null : (j['parentId']).toString(),
   );
 }
 
@@ -97,11 +73,9 @@ abstract class VisitorRepository {
   Future<List<VisitorApplication>> activeApplications();
   Future<VisitorApplicationDetail> getApplication(String id);
   Future<VisitorApplication> submit(Map<String, dynamic> body);
-  Future<List<EmployeeDirItem>> directoryEmployees({
-    String? departmentId,
-    String? keyword,
-  });
-  Future<List<DeptDirItem>> directoryDepartments();
+
+  /// 按姓名搜接待人(先搜再选)：至少 2 个字，服务端最多回 5 人；不提供部门树或按部门列举。
+  Future<List<EmployeeDirItem>> searchHosts(String keyword);
 }
 
 class DioVisitorRepository implements VisitorRepository {
@@ -210,26 +184,20 @@ class DioVisitorRepository implements VisitorRepository {
   }
 
   @override
-  Future<List<EmployeeDirItem>> directoryEmployees({
-    String? departmentId,
-    String? keyword,
-  }) async {
-    final q = <String, dynamic>{};
-    if (departmentId != null) q['departmentId'] = departmentId;
-    if (keyword != null && keyword.isNotEmpty) q['keyword'] = keyword;
+  Future<List<EmployeeDirItem>> searchHosts(String keyword) async {
+    final text = keyword.trim();
+    // 不足 2 个字不发请求(服务端同样拒绝)，避免空关键字翻出名册。
+    if (text.runes.length < minHostKeywordLength) return const [];
     final list = await _api.getList(
       ApiEndpoints.visitorDirectoryEmployees,
-      query: q.isEmpty ? null : q,
+      query: {'keyword': text},
     );
     return list.map(EmployeeDirItem.fromJson).toList();
   }
-
-  @override
-  Future<List<DeptDirItem>> directoryDepartments() async {
-    final list = await _api.getList(ApiEndpoints.visitorDirectoryDepartments);
-    return list.map(DeptDirItem.fromJson).toList();
-  }
 }
+
+/// 搜接待人的最少字数(与服务端同口径)。
+const minHostKeywordLength = 2;
 
 final visitorRepositoryProvider = Provider<VisitorRepository>((ref) {
   return DioVisitorRepository(

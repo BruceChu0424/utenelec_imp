@@ -9,7 +9,6 @@ import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * 已认证主体（放 SecurityContext）。支持两类主体：
@@ -17,10 +16,10 @@ import java.util.stream.Stream;
  *   <li>STAFF：员工/HR/保安/管理层（账号密码登录，users 表）</li>
  *   <li>VISITOR：访客（手机号验证码登录，visitor_accounts 表）</li>
  * </ul>
- * authorities = 功能权限 ∪ ROLE_角色；首登强制改密时仅授 CHANGE_PASSWORD。
+ * authorities = 功能权限(服务端当场按权限目录合成)；首登强制改密时仅授 CHANGE_PASSWORD。
+ * 角色体系已删除(ADR-109)，不再有 ROLE_* 权威。
  *
- * <p>superAdmin：TRUE 时绕过 role_permissions 缺漏，permissions 已是全量，
- * 不必依赖具体 role/rolePermission 映射。
+ * <p>superAdmin：TRUE 时 permissions 已是全部目录码(含超管专属码)。
  */
 @Getter
 public class AuthUser implements UserDetails {
@@ -31,7 +30,6 @@ public class AuthUser implements UserDetails {
     private final UUID visitorId;           // 仅 visitor
     private final String loginAccount;      // staff=登录账号 / visitor=访客号（JWT 不携带手机号）
     private final String visitorNo;         // 仅 visitor
-    private final Set<String> roles;
     private final Set<String> permissions;
     private final boolean mustChangePassword;
     private final boolean accountNonLocked;
@@ -41,25 +39,25 @@ public class AuthUser implements UserDetails {
 
     /** 员工构造（含 superAdmin 标记）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
-                    Set<String> roles, Set<String> permissions,
+                    Set<String> permissions,
                     boolean mustChangePassword, boolean accountNonLocked,
                     boolean superAdmin) {
-        this(id, employeeId, loginAccount, roles, permissions,
+        this(id, employeeId, loginAccount, permissions,
                 mustChangePassword, accountNonLocked, superAdmin, false, null);
     }
 
     /** 员工构造（模拟身份：impersonatedBy 为发起模拟的 admin userId，非 null 时触发只读守卫）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
-                    Set<String> roles, Set<String> permissions,
+                    Set<String> permissions,
                     boolean mustChangePassword, boolean accountNonLocked,
                     boolean superAdmin, boolean remoteAccess, UUID impersonatedBy) {
         this(id, SubjectType.STAFF, employeeId, null, loginAccount, null,
-                roles, permissions, mustChangePassword, accountNonLocked, superAdmin, remoteAccess, impersonatedBy);
+                permissions, mustChangePassword, accountNonLocked, superAdmin, remoteAccess, impersonatedBy);
     }
 
     private AuthUser(UUID id, SubjectType subjectType, UUID employeeId, UUID visitorId,
                      String loginAccount, String visitorNo,
-                     Set<String> roles, Set<String> permissions,
+                     Set<String> permissions,
                      boolean mustChangePassword, boolean accountNonLocked, boolean superAdmin,
                      boolean remoteAccess, UUID impersonatedBy) {
         this.id = id;
@@ -68,7 +66,6 @@ public class AuthUser implements UserDetails {
         this.visitorId = visitorId;
         this.loginAccount = loginAccount;
         this.visitorNo = visitorNo;
-        this.roles = roles;
         this.permissions = permissions;
         this.mustChangePassword = mustChangePassword;
         this.accountNonLocked = accountNonLocked;
@@ -80,7 +77,7 @@ public class AuthUser implements UserDetails {
     /** 访客主体工厂。 */
     public static AuthUser visitor(UUID visitorId, String visitorAccount, String visitorNo, Set<String> permissions) {
         return new AuthUser(visitorId, SubjectType.VISITOR, null, visitorId, visitorAccount, visitorNo,
-                Set.of(), permissions, false, true, false, false, null);
+                permissions, false, true, false, false, null);
     }
 
     public boolean isVisitor() {
@@ -97,10 +94,9 @@ public class AuthUser implements UserDetails {
         if (mustChangePassword) {
             return Set.of(new SimpleGrantedAuthority("CHANGE_PASSWORD"));
         }
-        return Stream.concat(
-                permissions.stream().map(SimpleGrantedAuthority::new),
-                roles.stream().map(r -> new SimpleGrantedAuthority("ROLE_" + r))
-        ).collect(Collectors.toSet());
+        return permissions.stream()
+                .map(SimpleGrantedAuthority::new)
+                .collect(Collectors.toSet());
     }
 
     @Override public String getUsername() { return loginAccount; }

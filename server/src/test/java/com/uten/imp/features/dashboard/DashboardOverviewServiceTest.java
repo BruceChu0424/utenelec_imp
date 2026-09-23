@@ -141,7 +141,7 @@ class DashboardOverviewServiceTest {
         when(user.getPermissions()).thenReturn(Set.of(
                 "account:view",
                 "ar_ap_ledger:view",
-                "dashboard:finance-sensitive:view"));
+                "dashboard:finance_sensitive:view"));
 
         DashboardOverviewDto result = service.overview();
 
@@ -159,7 +159,7 @@ class DashboardOverviewServiceTest {
     void financeUserSeesFinanceCategoriesButNotInspectionActivities()
             throws Exception {
         when(user.getPermissions())
-                .thenReturn(Set.of("dashboard:finance-sensitive:view"));
+                .thenReturn(Set.of("dashboard:finance_sensitive:view"));
         stubPolicyRows(
                 policyRow("TAX"),
                 policyRow("EXPORT"),

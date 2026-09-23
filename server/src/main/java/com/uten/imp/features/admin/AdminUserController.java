@@ -2,7 +2,8 @@ package com.uten.imp.features.admin;
 
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.admin.dto.PermissionDto;
+import com.uten.imp.features.admin.dto.PermissionBulkScopeDto;
+import com.uten.imp.features.admin.dto.PermissionChangeDto;
 import com.uten.imp.features.admin.dto.PermissionOverridesDto;
 import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
 import com.uten.imp.features.admin.dto.UserSummary;
@@ -24,7 +25,6 @@ import java.util.UUID;
 public class AdminUserController {
 
     private final UserAccountAdminService userAccountAdmin;
-    private final RoleAdminService roleAdmin;
     private final PermissionOverrideAdminService permissionOverrideAdmin;
     private final DataScopeAdminService dataScopeAdmin;
 
@@ -111,16 +111,8 @@ public class AdminUserController {
 
     public record RemoteAccessBody(@NotNull Boolean remoteAccess) {}
 
-
-    // 角色体系已下线（ADR-011）：角色分配相关端点（/users/{id}/roles、/roles、
-    // /department-roles、/departments/{id}/roles）已移除，权限只走
-    // 部门配置（AdminPermissionController）+ 个人覆盖（下方端点）。
-
-    @GetMapping("/permissions")
-    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
-    public List<PermissionDto> permissions() {
-        return roleAdmin.listPermissions();
-    }
+    // 角色体系已删除(ADR-109)：权限只走全员基础包 + 部门配置(AdminPermissionController)
+    // + 个人覆盖(下方端点)+ 负责人页面委派。
 
     @GetMapping("/users/{id}/permission-overrides")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
@@ -128,13 +120,23 @@ public class AdminUserController {
         return permissionOverrideAdmin.getPermissionOverrides(id);
     }
 
+    /** 保存个人覆盖(期望的完整集合，服务端按差量落库)。 */
     @PutMapping("/users/{id}/permission-overrides")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
-    public void setPermissionOverrides(
+    public PermissionChangeDto setPermissionOverrides(
             @PathVariable UUID id, @Valid @RequestBody PermissionOverridesDto req) {
-        permissionOverrideAdmin.setPermissionOverrides(id,
+        return permissionOverrideAdmin.setPermissionOverrides(id,
                 req.grants() == null ? List.of() : req.grants(),
                 req.revokes() == null ? List.of() : req.revokes());
+    }
+
+    /** 个人「全部授权 / 本模块 / 本组」：服务端按授权策略过滤后补齐。 */
+    @PutMapping("/users/{id}/permission-overrides/grant-all")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public PermissionChangeDto grantAllToUser(
+            @PathVariable UUID id, @Valid @RequestBody(required = false) PermissionBulkScopeDto scope) {
+        return permissionOverrideAdmin.grantAll(id,
+                scope == null ? PermissionBulkScopeDto.everything() : scope);
     }
 
     // ===== 数据范围授权（客户/货品等模块「能看哪些负责人数据」的只读中间档） =====

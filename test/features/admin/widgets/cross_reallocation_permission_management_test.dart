@@ -7,6 +7,7 @@ import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_department_perm_view.dart';
 import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/auth/permission_grant_policy.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -49,7 +50,10 @@ void main() {
       expect(tester.widget<Switch>(permissionSwitch(_cross)).value, isFalse);
 
       tester.widget<Switch>(permissionSwitch(_cross)).onChanged!(true);
-      await tester.pump();
+      // CROSS 不随批量：逐项打开时先弹单项确认。
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认授权'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('保存更改'));
       await tester.pumpAndSettle();
 
@@ -92,7 +96,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 220));
       expect(tester.widget<Switch>(permissionSwitch(_cross)).value, isFalse);
       tester.widget<Switch>(permissionSwitch(_cross)).onChanged!(true);
-      await tester.pump();
+      // CROSS 不随批量：逐项打开时先弹单项确认。
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认授权'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('保存更改'));
       await tester.pumpAndSettle();
 
@@ -146,15 +153,24 @@ void main() {
       await tester.pumpWidget(_userSubject(repository, preferences));
       await tester.pumpAndSettle();
 
+      // 「全部授权」只把范围交给服务端(ADR-109)：带不带 CROSS 由服务端按授权策略决定，
+      // 前端不再维护排除名单。
       await tester.tap(find.text('全部授权'));
-      await tester.pump();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认授权'));
+      await tester.pumpAndSettle();
+
+      expect(repository.grantAllScopes, [PermissionBulkScope.everything]);
+      expect(repository.overrideUpdates, isEmpty);
 
       await tester.enterText(searchField(), _cross);
       await tester.pump(const Duration(milliseconds: 220));
       expect(tester.widget<Switch>(permissionSwitch(_cross)).value, isFalse);
-      expect(tester.widget<Switch>(permissionSwitch(_cross)).value, isFalse);
+      // 不随批量的码仍可逐项授予(先弹单项确认)。
       tester.widget<Switch>(permissionSwitch(_cross)).onChanged!(true);
-      await tester.pump();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认授权'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('保存更改'));
       await tester.pumpAndSettle();
 
@@ -222,7 +238,6 @@ Widget _userSubject(
           currentEmployee: true,
           status: 'active',
           mustChangePassword: false,
-          roles: [],
           remoteAccess: false,
           employeeName: '计划员',
           departmentId: 'dept-plan',
@@ -255,6 +270,11 @@ List<PermissionCatalogGroup> get _catalog => const [
         name: '跨物料分析让料与优先补齐',
         module: '生产管理',
         category: '物料分析',
+        // 与 V655 目录一致：不随批量、负责人不能转授。
+        grantPolicy: PermissionGrantPolicy({
+          PermissionGrantPolicy.nonDelegable,
+          PermissionGrantPolicy.bulkExcluded,
+        }),
       ),
     ],
   ),
@@ -299,6 +319,28 @@ class _PermissionRepositoryFake implements AdminRepository {
   bool catalogError;
   final List<Set<String>> departmentUpdates = [];
   final List<_OverrideUpdate> overrideUpdates = [];
+  final List<PermissionBulkScope> grantAllScopes = [];
+
+  /// 模拟服务端「全部授权」：只带上目录里可批量授予的码，写成个人加授。
+  @override
+  Future<PermissionChange> grantAllToUser(
+    String userId,
+    PermissionBulkScope scope,
+  ) async {
+    grantAllScopes.add(scope);
+    final bulk = {
+      for (final group in catalog)
+        for (final permission in group.permissions)
+          if (permission.grantPolicy.bulkEligible) permission.code,
+    };
+    final added = bulk.difference(_effectivePermissions.effective.toSet());
+    _effectivePermissions = _effective(
+      department: _effectivePermissions.departmentPermissions.toSet(),
+      grants: {..._effectivePermissions.grants, ...added},
+      revokes: _effectivePermissions.revokes.toSet(),
+    );
+    return PermissionChange(added: added.toList(), removed: const []);
+  }
 
   @override
   Future<List<DepartmentNode>> departmentTree() async => [
@@ -322,12 +364,17 @@ class _PermissionRepositoryFake implements AdminRepository {
       _departmentPermissions.toList();
 
   @override
-  Future<void> updateDepartmentPermissions(
+  Future<PermissionChange> updateDepartmentPermissions(
     String departmentId,
     List<String> permissionCodes,
   ) async {
+    final before = _departmentPermissions;
     _departmentPermissions = permissionCodes.toSet();
     departmentUpdates.add({..._departmentPermissions});
+    return PermissionChange(
+      added: _departmentPermissions.difference(before).toList(),
+      removed: before.difference(_departmentPermissions).toList(),
+    );
   }
 
   @override
@@ -335,7 +382,7 @@ class _PermissionRepositoryFake implements AdminRepository {
       _effectivePermissions;
 
   @override
-  Future<void> updateUserPermOverrides(
+  Future<PermissionChange> updateUserPermOverrides(
     String userId, {
     required List<String> grants,
     required List<String> revokes,
@@ -346,6 +393,7 @@ class _PermissionRepositoryFake implements AdminRepository {
       grants: grants.toSet(),
       revokes: revokes.toSet(),
     );
+    return PermissionChange(added: [...grants], removed: [...revokes]);
   }
 
   @override

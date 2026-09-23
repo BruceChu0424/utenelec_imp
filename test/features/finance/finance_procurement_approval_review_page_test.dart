@@ -74,12 +74,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
 class _FinanceReviewerSessionNotifier extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
-    user: AppUser(
-      id: 'finance-reviewer',
-      code: 'FIN001',
-      name: '财务李四',
-      roles: [],
-    ),
+    user: AppUser(id: 'finance-reviewer', code: 'FIN001', name: '财务李四'),
   );
 }
 

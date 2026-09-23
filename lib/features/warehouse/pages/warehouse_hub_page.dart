@@ -10,8 +10,8 @@
 //   原「库存余额」「出入库流水」两卡下线）+ 货架目视化清单。
 // 仓库报表：明细 / 汇总（不变）。
 //
-// 卡片统一 UtenHubCard；显隐仍走 permission_by_path 同一份 any/all 契约（canOpen），
-// 与路由守卫一致。计数口径（准则 14-徽章与计数口径）：
+// 卡片统一 UtenHubCard；显隐只走 hub_catalog 登记的落点 + 路由守卫同一份 any/all 契约
+// (hubCardAllowed，ADR-109)，页面里不再写 perms.contains。计数口径(准则 14-徽章与计数口径)：
 //   · 四张任务中心卡挂右上角红色待办徽章（卡面数字 = 卡内各分段之和）。
 //   · 黄色「进行中」徽章(ADR-100)只给「品质部检查结果」一张: 等待检查结果的收货单
 //     货已收进来、结论在品质部手上, 仓库这一档还没完结但也不用动手。三张方向任务中心
@@ -39,7 +39,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
-import '../../../core/router/permission_by_path.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -63,17 +63,11 @@ class WarehouseHubPage extends ConsumerWidget {
     );
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    // 权限门控（V305）：卡片按权限点显隐，权限管理授权后才可见。
+    // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /warehouse 入口守卫同源)。
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
-    bool can(String code) => isSuperAdmin || perms.contains(code);
-    bool canOpen(String location) {
-      if (isSuperAdmin) return true;
-      final requiredAny = requiredAnyPermFor(location);
-      final requiredAll = requiredAllPermsFor(location);
-      return (requiredAny == null || requiredAny.any(perms.contains)) &&
-          requiredAll.every(perms.contains);
-    }
+    bool canOpen(String location) =>
+        hubCardAllowed(RouteName.warehouse, location, perms, isSuperAdmin);
 
     // 任务中心卡：三张方向任务中心 + 品质部检查结果（角标 = 内部分段待办之和）。
     final taskEntries =
@@ -114,8 +108,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   badge: const WarehouseDrawTaskBadge(showLabel: true),
                   progressBadge: null,
                 ),
-              if (can(Perm.warehouseIqcStockInView) ||
-                  can(Perm.warehouseIqcReturnView))
+              if (canOpen(RouteName.warehouseQualityResults))
                 (
                   icon: Icons.fact_check_outlined,
                   label: '品质部检查结果',
@@ -146,7 +139,7 @@ class WarehouseHubPage extends ConsumerWidget {
         )
         .toList(growable: false);
     final linkedDocEntries = _warehouseLinkedDocEntries
-        .where((e) => can(e.$5))
+        .where((e) => canOpen(e.$4))
         .toList();
 
     final stockQueryEntries = <_StockQueryEntry>[
@@ -357,22 +350,20 @@ class _StockQueryEntry {
   final String location;
 }
 
-/// 仓库 hub 单据区保留的特殊单据入口（图标/标题/副标题/路由/所需权限点）。
+/// 仓库 hub 单据区保留的特殊单据入口(图标/标题/副标题/路由)；可见性按路由守卫。
 /// 采购/委外收货历史与出仓历史已并入任务中心，这里只留无法按方向归并的两类。
-const _warehouseLinkedDocEntries = <(IconData, String, String, String, String)>[
+const _warehouseLinkedDocEntries = <(IconData, String, String, String)>[
   (
     Icons.undo_outlined,
     '委外成品退货单',
     '回厂成品退回委外商的实物历史',
     RouteName.warehouseSubcontractFinishedReturnHistory,
-    Perm.warehouseSubcontractFinishedReturnHistoryView,
   ),
   (
     Icons.delete_sweep_outlined,
     '委外损耗单',
     '实物损耗数量、重量与原因历史',
     RouteName.warehouseSubcontractWasteHistory,
-    Perm.warehouseSubcontractWasteHistoryView,
   ),
 ];
 

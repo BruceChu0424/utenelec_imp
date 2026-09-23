@@ -71,9 +71,13 @@ class FinanceDocumentAccessPolicyTest {
     }
 
     @Test
-    void legacyOwnerlessDocumentIsReadOnlyWithoutGlobalAccess() {
+    void ownerlessDocumentIsHiddenWithoutGlobalAccessAndNeverDirectlyWritable() {
+        // ADR-109 / security-18：没有负责人的单据不再公共可读；看全部可读，但谁都不能直接写。
         scope(false, Set.of());
+        assertFalse(policy.canRead(null));
+        assertFalse(policy.canWrite(null));
 
+        scope(true, Set.of());
         assertTrue(policy.canRead(null));
         assertFalse(policy.canWrite(null));
     }

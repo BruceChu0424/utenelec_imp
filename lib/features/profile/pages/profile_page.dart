@@ -31,7 +31,6 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/models/role.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../department/providers/my_department_providers.dart';
@@ -993,10 +992,8 @@ class _HeroCard extends StatelessWidget {
     );
   }
 
-  /// 把角色渲染成紧贴名字的 chip。
-  ///
-  /// - superAdmin：实心 teal「ADMIN」徽章，最优先
-  /// - 普通角色：≤2 个全展示；>2 显示前 2 +「+N」折叠
+  /// 名字旁的身份 chip：只有超级管理员显示实心 teal「ADMIN」徽章
+  /// (角色体系已删除，普通员工不再显示角色标签)。
   List<Widget> _buildRoleChips(AppUser user, ThemeData theme) {
     final chips = <Widget>[];
 
@@ -1012,57 +1009,11 @@ class _HeroCard extends StatelessWidget {
       );
     }
 
-    const maxNormalRoles = 2;
-    final roles = user.roles;
-    final showRoles = roles.length > maxNormalRoles
-        ? roles.take(maxNormalRoles).toList()
-        : roles;
-    for (final r in showRoles) {
-      chips.add(
-        _RoleChip(
-          label: r.displayNameZh,
-          icon: _iconForRole(r),
-          outline: true,
-          theme: theme,
-        ),
-      );
-    }
-    if (roles.length > maxNormalRoles) {
-      chips.add(
-        _RoleChip(
-          label: '+${roles.length - maxNormalRoles}',
-          outline: true,
-          theme: theme,
-          muted: true,
-        ),
-      );
-    }
     return chips;
-  }
-
-  IconData _iconForRole(Role role) {
-    switch (role) {
-      case Role.admin:
-        return Icons.admin_panel_settings_rounded;
-      case Role.hr:
-        return Icons.badge_rounded;
-      case Role.finance:
-        return Icons.account_balance_rounded;
-      case Role.lab:
-        return Icons.science_rounded;
-      case Role.production:
-        return Icons.factory_rounded;
-      case Role.manager:
-        return Icons.supervisor_account_rounded;
-      case Role.security:
-        return Icons.shield_rounded;
-      case Role.employee:
-        return Icons.person_rounded;
-    }
   }
 }
 
-/// 角色徽章：支持实心（superAdmin）/ 描边（普通角色）/ 静音（折叠 +N）
+/// 身份徽章：只剩超级管理员的实心「ADMIN」(角色体系已删除)。
 class _RoleChip extends StatelessWidget {
   const _RoleChip({
     required this.label,
@@ -1070,43 +1021,25 @@ class _RoleChip extends StatelessWidget {
     this.icon,
     this.background,
     this.foreground,
-    this.outline = false,
-    this.muted = false,
   });
 
   final String label;
   final IconData? icon;
   final Color? background;
   final Color? foreground;
-  final bool outline;
-  final bool muted;
   final ThemeData theme;
 
   @override
   Widget build(BuildContext context) {
-    final fg =
-        foreground ??
-        (muted
-            ? theme.colorScheme.onSurfaceVariant
-            : theme.colorScheme.primary);
-    final bg =
-        background ??
-        (outline ? theme.colorScheme.surfaceContainer : Colors.transparent);
-
-    final borderSide = outline
-        ? BorderSide(color: theme.colorScheme.outlineVariant)
-        : BorderSide.none;
+    final fg = foreground ?? theme.colorScheme.primary;
+    final bg = background ?? Colors.transparent;
 
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: icon != null ? UtenSpacing.s8 : UtenSpacing.s12,
         vertical: 3,
       ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: UtenRadius.smAll,
-        border: outline ? Border.fromBorderSide(borderSide) : null,
-      ),
+      decoration: BoxDecoration(color: bg, borderRadius: UtenRadius.smAll),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

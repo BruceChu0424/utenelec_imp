@@ -25,9 +25,7 @@ import '../../../core/utils/id_card_utils.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../department/widgets/uten_department_picker.dart';
 import '../models/visitor_application.dart';
-import '../providers/visitor_providers.dart';
 import '../repositories/visitor_repository.dart';
 
 class VisitorApplyPage extends ConsumerStatefulWidget {
@@ -45,8 +43,6 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
   final _plateCtl = TextEditingController();
 
   bool _hasVehicle = false;
-  String? _deptId;
-  String? _deptName;
   String? _hostId;
   DateTime? _visitTime;
   bool _submitting = false;
@@ -217,7 +213,6 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
         'hasVehicle': _hasVehicle,
         'plateNo': _hasVehicle ? plate : null,
         'hostEmployeeId': _hostId,
-        'hostDepartmentId': _deptId,
         'plannedVisitAt': ChinaDateTime.wallTimeToUtc(
           _visitTime!,
         ).toIso8601String(),
@@ -238,8 +233,6 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    // 接待部门树（访客 token 目录接口，经 treeOverride 喂给共享部门选择器）。
-    final deptTree = ref.watch(visitorDirectoryDepartmentTreeProvider);
 
     return Scaffold(
       appBar: UtenAppBar(title: l10n.visitorApplyTitle, showBackButton: true),
@@ -331,36 +324,18 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                             icon: Icons.people_outline_rounded,
                           ),
                           const SizedBox(height: UtenSpacing.s12),
-                          UtenDepartmentPicker(
-                            mode: UtenDepartmentPickerMode.single,
-                            treeOverride: deptTree.valueOrNull ?? const [],
-                            enabled: deptTree.hasValue,
-                            label: l10n.visitorApplyDept,
-                            hint: l10n.visitorApplyDeptHint,
-                            onChanged: (sel) => setState(() {
-                              // 换部门后接待人候选变化，清空已选接待人。
-                              _deptId = sel.isEmpty ? null : sel.first.id;
-                              _deptName = sel.isEmpty ? null : sel.first.name;
-                              _hostId = null;
-                            }),
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
+                          // 接待人只能按姓名先搜再选(至少 2 个字、最多 5 人、只列可对外接待的员工)，
+                          // 不提供部门树、结果不带部门，外部账号翻不出公司名册。
                           UtenEmployeePicker(
-                            // 部门变化时重建，清空已选接待人（与 _deptId 联动）。
-                            key: ValueKey(_deptId),
                             loader: (kw) async {
                               final list = await ref
                                   .read(visitorRepositoryProvider)
-                                  .directoryEmployees(
-                                    departmentId: _deptId,
-                                    keyword: kw,
-                                  );
+                                  .searchHosts(kw ?? '');
                               return [
                                 for (final e in list)
                                   UtenEmployeePickerItem(
                                     id: e.id,
                                     name: e.name,
-                                    departmentName: e.departmentName,
                                   ),
                               ];
                             },
@@ -368,7 +343,8 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                             required: true,
                             hint: l10n.visitorApplyHostHint,
                             sheetTitle: l10n.visitorApplyHostSheetTitle,
-                            departmentName: _deptName,
+                            emptyMessage: l10n.visitorApplyHostSearchEmpty,
+                            emptyDescription: l10n.visitorApplyHostSearchHint,
                             onChanged: (item) =>
                                 setState(() => _hostId = item?.id),
                           ),

@@ -14,7 +14,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
-import '../../../core/router/permission_by_path.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -109,14 +109,14 @@ class BasicDataHubPage extends ConsumerWidget {
                 color: _C.green,
               ),
             ]
-            .where((resource) {
-              if (superAdmin) return true;
-              final requiredAny = requiredAnyPermFor(resource.location);
-              final requiredAll = requiredAllPermsFor(resource.location);
-              return (requiredAny == null ||
-                      requiredAny.any(permissions.contains)) &&
-                  requiredAll.every(permissions.contains);
-            })
+            .where(
+              (resource) => hubCardAllowed(
+                RouteName.basicinfo,
+                resource.location,
+                permissions,
+                superAdmin,
+              ),
+            )
             .toList(growable: false);
     return Scaffold(
       appBar: UtenAppBar(title: l10n.basicDataHubTitle, showBackButton: true),

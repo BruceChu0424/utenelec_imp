@@ -893,8 +893,7 @@ class DataHandoverPostgresTest {
                 "SELECT login_account FROM users WHERE id=?",
                 String.class, staff.userId());
         AuthUser principal = new AuthUser(
-                staff.userId(), staff.employeeId(), login,
-                Set.of(), Set.of(), false, true, false);
+                staff.userId(), staff.employeeId(), login, Set.of(), false, true, false);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                         principal, null, principal.getAuthorities()));
@@ -933,8 +932,7 @@ class DataHandoverPostgresTest {
         PermissionResolver.AuthorizationSnapshot snapshot =
                 permissionResolver.authorizationSnapshot(userId, employeeId, superAdmin);
         AuthUser principal = new AuthUser(
-                userId, employeeId, (String) user.get("login_account"),
-                snapshot.roles(), snapshot.permissions(),
+                userId, employeeId, (String) user.get("login_account"), snapshot.permissions(),
                 false, "active".equals(user.get("status")), superAdmin);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(

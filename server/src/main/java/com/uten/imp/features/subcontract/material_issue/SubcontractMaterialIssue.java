@@ -54,6 +54,17 @@ public class SubcontractMaterialIssue extends SoftDeletableEntity {
     @Column(name = "maker_id")
     private UUID makerId;
 
+    /**
+     * 系统池归属(V656)：系统按委外订货财务批准自动生成的发料草稿没有个人归属人，
+     * 显式归入 {@link #POOL_WAREHOUSE_OUTBOUND}，由持委外出仓查看权的人可读、持出仓执行权的人可办；
+     * 为空表示按 maker_id 个人归属。空归属不再等于全员可读。
+     */
+    @Column(name = "owner_pool")
+    private String ownerPool;
+
+    /** 仓库委外出仓池。 */
+    public static final String POOL_WAREHOUSE_OUTBOUND = "WAREHOUSE_SUBCONTRACT_OUTBOUND";
+
     @Column(name = "approver_id")
     private UUID approverId;
 

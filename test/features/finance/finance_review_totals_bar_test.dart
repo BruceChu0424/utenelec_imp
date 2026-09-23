@@ -189,12 +189,7 @@ Future<void> _pumpProcurementReview(
 class _ReviewerSessionNotifier extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
-    user: AppUser(
-      id: 'finance-reviewer',
-      code: 'FIN001',
-      name: '财务李四',
-      roles: [],
-    ),
+    user: AppUser(id: 'finance-reviewer', code: 'FIN001', name: '财务李四'),
   );
 }
 

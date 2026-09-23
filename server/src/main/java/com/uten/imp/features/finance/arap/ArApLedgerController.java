@@ -28,7 +28,9 @@ import java.util.UUID;
  *   <li>GET /api/finance/ar-ap/{id} → 详情</li>
  * </ul>
  *
- * <p>权限：{@code ar_ap_ledger:view}（种子化，view 给所有部门）。
+ * <p>权限：台账汇总的是全公司应收应付余额，没有按客户 / 供应商归属裁剪的口径，
+ * 因此除 {@code ar_ap_ledger:view} 外还必须持有全量范围码 {@code finance:view:all}
+ * (与应付结算同一门槛，security-18 / permissions-14)；单独授出台账查看码不会越权。
  */
 @RestController
 @RequestMapping("/api/finance/ar-ap")
@@ -39,7 +41,7 @@ public class ArApLedgerController {
     private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ar_ap_ledger:view')")
+    @PreAuthorize("hasAuthority('ar_ap_ledger:view') and hasAuthority('finance:view:all')")
     public PageResponse<ArApLedgerListItem> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String direction,
@@ -64,7 +66,7 @@ public class ArApLedgerController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ar_ap_ledger:view')")
+    @PreAuthorize("hasAuthority('ar_ap_ledger:view') and hasAuthority('finance:view:all')")
     public ArApLedgerDetail detail(@PathVariable UUID id) {
         ArApLedgerDetail result = queryService.detail(id);
         String documentNo = result.getBillNo();

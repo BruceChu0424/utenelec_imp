@@ -186,7 +186,6 @@ class SecurityCorsAuditIntegrationTest {
                 .thenReturn(Optional.of(accountState));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
-                        Set.of("employee"),
                         Set.of("employee:view")));
 
         MockHttpServletRequest request = new MockHttpServletRequest(

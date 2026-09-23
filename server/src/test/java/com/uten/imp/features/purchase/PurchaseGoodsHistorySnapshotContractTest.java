@@ -118,9 +118,11 @@ class PurchaseGoodsHistorySnapshotContractTest {
         assertThat(facade)
                 .contains("purchasegoodssnapshot.master_at_approval")
                 .contains("item.setgoodssnapshotlockedat(snapshotlockedat)");
+        // ADR-109：MRP「按计划一键生成采购申请」入口已删除，系统生成采购申请只剩上面这一个写入口；
+        // MrpService 不能再自己写采购申请明细(否则会绕开快照)。
         assertThat(mrp)
-                .contains("purchasegoodssnapshot.master_at_save")
-                .contains("it.setgoodssnapshotsource(goodssnapshot.source())");
+                .doesNotContain("purchaserequestitem")
+                .doesNotContain("purchasegoodssnapshot");
     }
 
     @Test

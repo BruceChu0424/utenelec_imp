@@ -148,8 +148,7 @@ class StockDocumentAttachmentAccessPolicyTest {
     }
 
     private static AuthUser user(String... permissions) {
-        return new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "warehouse-user",
-                Set.of(), Set.of(permissions), false, true, false);
+        return new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "warehouse-user", Set.of(permissions), false, true, false);
     }
 
     private static void denied(ErrorCode code, Runnable action) {

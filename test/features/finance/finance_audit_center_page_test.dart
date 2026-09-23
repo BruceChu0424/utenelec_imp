@@ -27,7 +27,7 @@ void main() {
     await tester.pumpWidget(
       _app(const FinanceAuditCenterPage(), const {
         Perm.salesOrderFinanceView,
-        Perm.financeShipmentAudit,
+        Perm.salesShipmentFinanceView,
       }),
     );
     await tester.pumpAndSettle();

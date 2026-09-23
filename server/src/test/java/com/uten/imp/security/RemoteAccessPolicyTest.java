@@ -62,8 +62,7 @@ class RemoteAccessPolicyTest {
         RemoteAccessGuardFilter filter = new RemoteAccessGuardFilter(
                 objectMapper, mock(AuditService.class), policy);
         AuthUser staff = new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), "E001",
-                Set.of(), Set.of(), false, true, false, false, null);
+                UUID.randomUUID(), UUID.randomUUID(), "E001", Set.of(), false, true, false, false, null);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(staff, null, staff.getAuthorities()));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/me");

@@ -31,6 +31,7 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -47,6 +48,10 @@ class SalesHubPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final perms = ref.watch(currentPermissionsProvider);
+    final superAdmin = ref.watch(isSuperAdminProvider);
+    // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /sales 入口守卫同源，ADR-109)。
+    bool canOpen(String location) =>
+        hubCardAllowed(RouteName.sales, location, perms, superAdmin);
 
     // 任务中心：订单进度查询（财务驳回待修正 + 未读完工提醒同源徽章）。
     // 黄徽章 = 在途订单数(待排产 + 生产中 + 出货待财审 + 等仓库出货): 这批单还在
@@ -57,7 +62,6 @@ class SalesHubPage extends ConsumerWidget {
         label: l10n.salesHubTaskOrderProgress,
         description: l10n.salesHubTaskOrderProgressSub,
         location: RouteName.salesOrderProgress,
-        listPerm: Perm.salesOrderView,
         badge: const SalesProgressBadge(),
         progressBadge: UtenInProgressBadge(
           count: ref.watch(
@@ -66,16 +70,16 @@ class SalesHubPage extends ConsumerWidget {
           showLabel: true,
         ),
       ),
-    ].where((e) => perms.contains(e.listPerm)).toList();
+    ].where((e) => canOpen(e.location)).toList();
 
     final docEntries = <_Entry>[
-      _Entry.fromCfg(SalesDocConfig.quote, l10n),
-      _Entry.fromCfg(SalesDocConfig.order, l10n),
-      _Entry.fromCfg(SalesDocConfig.shipment, l10n),
-      _Entry.fromCfg(SalesDocConfig.customerShipment, l10n),
-      _Entry.fromCfg(SalesDocConfig.otherShipment, l10n),
-      _Entry.fromCfg(SalesDocConfig.returnDoc, l10n),
-    ].where((e) => perms.contains(e.listPerm)).toList();
+      _Entry.fromCfg(SalesDocConfig.quote, l10n, canOpen),
+      _Entry.fromCfg(SalesDocConfig.order, l10n, canOpen),
+      _Entry.fromCfg(SalesDocConfig.shipment, l10n, canOpen),
+      _Entry.fromCfg(SalesDocConfig.customerShipment, l10n, canOpen),
+      _Entry.fromCfg(SalesDocConfig.otherShipment, l10n, canOpen),
+      _Entry.fromCfg(SalesDocConfig.returnDoc, l10n, canOpen),
+    ].where((e) => canOpen(e.location)).toList();
 
     final reportEntries = <_Entry>[
       _Entry(
@@ -83,16 +87,14 @@ class SalesHubPage extends ConsumerWidget {
         label: l10n.salesHubReportDetail,
         description: l10n.hubSubDetailPerItem,
         location: SalesRoutePath.reportDetail,
-        listPerm: SalesPerm.reportView,
       ),
       _Entry(
         icon: Icons.bar_chart_outlined,
         label: l10n.salesHubReportSummary,
         description: l10n.hubSubSummaryPerDoc,
         location: SalesRoutePath.reportSummary,
-        listPerm: SalesPerm.reportView,
       ),
-    ].where((e) => perms.contains(e.listPerm)).toList();
+    ].where((e) => canOpen(e.location)).toList();
 
     // 稀缺仲裁：主管查看货品预留占用、释放低优先级现货预留（让单）。仅持让单权限者可见。
     final scarcityEntries = <_Entry>[
@@ -101,9 +103,8 @@ class SalesHubPage extends ConsumerWidget {
         label: l10n.salesHubScarcity,
         description: l10n.salesHubScarcitySub,
         location: RouteName.salesScarcity,
-        listPerm: Perm.salesOrderReallocate,
       ),
-    ].where((e) => perms.contains(e.listPerm)).toList();
+    ].where((e) => canOpen(e.location)).toList();
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -217,7 +218,6 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
-    required this.listPerm,
     this.badge,
     this.progressBadge,
   });
@@ -227,14 +227,21 @@ class _Entry {
   /// 草稿占的是 [badge]（卡片右上角浮层）而不是标题右侧的 labelSuffix：销售这几张
   /// 单据卡本身没有别的待办徽章，右上角空着——用户要的就是这个位置。只有像采购收货
   /// 那样已被「待收货」占掉 badge 的卡，草稿才退到标题行内（一个槽塞两个红点读不懂）。
-  _Entry.fromCfg(SalesDocConfig cfg, AppLocalizations l10n)
-    : icon = cfg.icon,
+  ///
+  /// 「新建页带历史列表」的单据只对能新建的人落到新建页；只能查看的人落到列表页
+  /// (两个落点都登记在 hub_catalog，守卫各自生效)。
+  _Entry.fromCfg(
+    SalesDocConfig cfg,
+    AppLocalizations l10n,
+    bool Function(String location) canOpen,
+  ) : icon = cfg.icon,
       label = _salesDocTitle(cfg.type, l10n),
       description = _salesDocSubtitle(cfg.type, l10n),
-      location = cfg.skipListOnCreate
+      location =
+          cfg.skipListOnCreate &&
+              canOpen(SalesRoutePath.docNew(cfg.type.pathSegment))
           ? SalesRoutePath.docNew(cfg.type.pathSegment)
           : SalesRoutePath.list(cfg.type.pathSegment),
-      listPerm = cfg.listPerm,
       // 销售出货卡: 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21)。
       badge = cfg.draftKind == null
           ? null
@@ -253,7 +260,6 @@ class _Entry {
   final String label;
   final String description;
   final String location;
-  final String listPerm;
 
   /// 右上角红色徽章（订单进度关注数 / 单据草稿数；null=无）。只放「需要我处理」的数。
   final Widget? badge;

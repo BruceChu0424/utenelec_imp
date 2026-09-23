@@ -84,12 +84,11 @@ class PurchaseReportUuidReferenceContractTest {
                 .contains("organizationreferences.findactiveemployee(applicantemployeeid)")
                 .contains(".map(organizationreferenceport.employeereference::departmentid)")
                 .doesNotContain("em.find(employee.class, applicantemployeeid)");
+        // ADR-109：MRP「按计划一键生成采购申请」的旧写入口已删除，采购申请只剩上面的生产门面一个
+        // 系统写入口；MrpService 不能再自己拼申请人 / 部门引用。
         assertThat(legacyMrp)
-                .contains("uuid applicantemployeeid = currentuser.requireemployeeid()")
-                .contains("r.setapplicantid(applicantemployeeid)")
-                .contains("organizationreferences.findactiveemployee(applicantemployeeid)")
-                .contains(".ifpresent(r::setdepartmentid)")
-                .doesNotContain("r.setapplicantid(currentuser.requireid())");
+                .doesNotContain("r.setapplicantid(")
+                .doesNotContain("r.setdepartmentid(");
     }
 
     @Test

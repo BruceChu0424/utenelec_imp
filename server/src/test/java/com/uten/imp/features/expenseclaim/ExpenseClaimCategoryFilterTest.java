@@ -56,8 +56,7 @@ class ExpenseClaimCategoryFilterTest {
         var currentUser = mock(SecurityContextCurrentUser.class);
         UUID employeeId = UUID.randomUUID();
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
-                UUID.randomUUID(), employeeId, "tester",
-                Set.of(), Set.of("expense:apply"), false, true, false)));
+                UUID.randomUUID(), employeeId, "tester", Set.of("expense:apply"), false, true, false)));
         ExpenseClaimService service = service(repo, currentUser);
 
         PageResponse<ExpenseClaimDto> page = service.listMine(
@@ -85,8 +84,7 @@ class ExpenseClaimCategoryFilterTest {
         var repo = mock(ExpenseClaimRepository.class);
         var currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), "tester",
-                Set.of(), Set.of("expense:apply"), false, true, false)));
+                UUID.randomUUID(), UUID.randomUUID(), "tester", Set.of("expense:apply"), false, true, false)));
         ExpenseClaimService service = service(repo, currentUser);
 
         assertThatThrownBy(() -> service.listMine(

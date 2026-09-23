@@ -44,7 +44,6 @@ void main() {
                   loginAccount: '13800000000',
                   status: 'disabled',
                   mustChangePassword: false,
-                  roles: [],
                   remoteAccess: false,
                 ),
                 effectiveAsync: AsyncValue.data(

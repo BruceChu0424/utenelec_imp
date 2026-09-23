@@ -6,7 +6,6 @@ import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibilit
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -263,7 +262,6 @@ class ChainNoticeProductionWorkshopScopeTest {
                 notices,
                 users,
                 permissions,
-                mock(UserRoleRepository.class),
                 jdbc,
                 mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),

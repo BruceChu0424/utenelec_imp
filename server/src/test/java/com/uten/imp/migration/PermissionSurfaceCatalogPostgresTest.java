@@ -105,8 +105,9 @@ class PermissionSurfaceCatalogPostgresTest {
             // V455 retired the zero-reference mrp codes (generate_draw /
             // generate_finished_in); V470 把 dispatch/start 从本面下架（工作台
             // 不再广告手动派工/开工）；V543 把停用的 execution cancel/reverse 与
-            // mrp generate_purchase 从本面下架，9 = execution 2 + package 4 + material 3。
-            assertEquals(9, scalarLong(statement, """
+            // mrp generate_purchase 从本面下架；V655(ADR-109)把计划页真实存在的
+            // 「派工」按钮码 dispatch 补挂回来：10 = execution 3 + package 4 + material 3。
+            assertEquals(10, scalarLong(statement, """
                     select count(*)
                     from permission_surface_permissions link
                     join permission_surfaces surface
@@ -121,9 +122,11 @@ class PermissionSurfaceCatalogPostgresTest {
                           or permission.code like 'production_material:%'
                       )
                     """));
-            // V470 下架后 production.plan 不再挂 dispatch/start。
-            assertEquals(0, linkCount(
+            // V655：页面权限面只挂页面上真实有按钮的码，dispatch 补挂、start 仍不挂。
+            assertEquals(1, linkCount(
                     statement, "production.plan", "production_execution:dispatch"));
+            assertEquals(0, linkCount(
+                    statement, "production.plan", "production_execution:start"));
             // V543：生产面下架五个停用码；我的车间任务面补齐真实按钮三码。
             assertEquals(0, scalarLong(statement, """
                     select count(*)
@@ -146,10 +149,12 @@ class PermissionSurfaceCatalogPostgresTest {
                     statement, "production.workshop-tasks", "production_material:settle"));
             assertEquals(1, linkCount(
                     statement, "production.workshop-tasks", "production_material:reverse"));
-            // V543：`*:view:all` 是对象范围码，退出批量三档。
+            // V543：`*:view:all` 是对象范围码，退出批量三档；V655 起由 grant_policy 表达。
             assertEquals(0, scalarLong(statement, """
                     select count(*) from permissions
-                    where active and code like '%:view:all' and bulk_assignable
+                    where code like '%:view:all'
+                      and not (grant_policy && array['BULK_EXCLUDED','INDIVIDUAL_ONLY',
+                                                     'SUPERADMIN_ONLY']::text[])
                     """));
             assertEquals(0, scalarLong(statement, """
                     select count(*)
@@ -162,31 +167,30 @@ class PermissionSurfaceCatalogPostgresTest {
                       and (permission.code = 'production_plan:view:all'
                            or permission.code like 'production_planning_package:%'
                            or permission.code in (
-                               'production_plan:delete', 'production_plan:batchDelete',
+                               'production_plan:delete',
                                'production_plan:reverse', 'production_plan:flags',
                                'production_execution:overview',
                                'production_execution:assign',
                                'production_execution:dispatch',
-                               'mould:create', 'mould:delete', 'mould:status')
-                           or permission.active = false)
+                               'mould:create', 'mould:delete', 'mould:status'))
                     """));
             assertEquals(1, linkCount(
                     statement, "production.plan", "production_material:close"));
-            assertEquals(1, scalarLong(statement, """
+            // V655：停用即删除，目录里不再有软停用码。
+            assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from permissions
                     where code = 'production:view'
-                      and active = false
-                      and assignable = false
                     """));
             assertEquals(0, linkCount(
                     statement, "production.plan", "production:view"));
             assertEquals(0, linkCount(
                     statement, "production.hub", "production:view"));
-            assertEquals(1, linkCount(
+            // V486 停用委外准备中心；V655 删除它的两个停用码(面本身停用、不再装载)。
+            assertEquals(0, linkCount(
                     statement, "subcontract.preparation",
                     "subcontract_preparation:view"));
-            assertEquals(1, linkCount(
+            assertEquals(0, linkCount(
                     statement, "subcontract.preparation",
                     "subcontract_preparation:start"));
             assertEquals(1, linkCount(
@@ -226,27 +230,33 @@ class PermissionSurfaceCatalogPostgresTest {
                     """));
 
 
+            // 启用中的页面权限面必须至少挂一个码；停用面(V486 委外准备中心、V493 待审收件台)
+            // 的码已在 V655 随「停用即删除」一并删掉，停用面不装载、不可委派。
             assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from permission_surfaces surface
-                    where not (surface.surface_key = 'reviews.inbox' and surface.enabled = false)
+                    where surface.enabled
                       and not exists (
                         select 1
                         from permission_surface_permissions link
                         where link.surface_id = surface.id
                     )
                     """));
-            // V493 deliberately retires exactly this surface and its links.
-            // All other surfaces, including inactive legacy surfaces, must
-            // still pass the zero-unmapped guard above.
             assertEquals(1, scalarLong(statement, """
                     select count(*) from permission_surfaces
                     where surface_key='reviews.inbox' and enabled=false
                     """));
             assertEquals(0, linkCount(statement, "reviews.inbox", "review_inbox:view"));
-            assertEquals(1, scalarLong(statement, """
+            assertEquals(0, scalarLong(statement, """
                     select count(*) from permissions
-                    where code='review_inbox:view' and active=false and assignable=false
+                    where code='review_inbox:view'
+                    """));
+            // V655：页面权限面只允许指向能在页面上授出的码(非超管专属)。
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from permission_surface_permissions link
+                    join permissions permission on permission.id = link.permission_id
+                    where 'SUPERADMIN_ONLY' = any(permission.grant_policy)
                     """));
         }
     }
@@ -292,9 +302,8 @@ class PermissionSurfaceCatalogPostgresTest {
                 "production_material:close",
                 "production_material:reverse",
                 "production_material:settle",
+                "production_execution:dispatch",
                 "production_plan:approve",
-                "production_plan:batchApprove",
-                "production_plan:batchDelete",
                 "production_plan:delete",
                 "production_plan:edit",
                 "production_plan:flags",
@@ -319,8 +328,11 @@ class PermissionSurfaceCatalogPostgresTest {
         assertFalse(registry.isKnown("quality.lab-test"));
         // V456: quality.inspection 旧面退役，能力并入 task-center 专属面（严格超集）。
         assertFalse(registry.isKnown("quality.inspection"));
-        assertEquals(Set.of("account:support", "authorization:manage"),
+        // V655：超管专属的授权管理码不挂页面权限面(任何入口都授不出去)，只剩账号支持。
+        assertEquals(Set.of("account:support"),
                 registry.permissionsFor("admin.permission-console"));
+        assertFalse(registry.isKnown("admin.system-settings"),
+                "系统设置面只挂了超管专属码，摘完后停用，不再出现页面内授权入口");
         assertEquals(Set.of("audit_log:view"),
                 registry.permissionsFor("admin.audit-center"));
         assertEquals(Set.of(

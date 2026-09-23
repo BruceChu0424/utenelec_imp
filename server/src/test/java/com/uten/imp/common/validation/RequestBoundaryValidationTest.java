@@ -9,7 +9,6 @@ import com.uten.imp.common.web.GlobalExceptionHandler;
 import com.uten.imp.features.admin.AdminUserController;
 import com.uten.imp.features.admin.DataScopeAdminService;
 import com.uten.imp.features.admin.PermissionOverrideAdminService;
-import com.uten.imp.features.admin.RoleAdminService;
 import com.uten.imp.features.admin.UserAccountAdminService;
 import com.uten.imp.features.admin.dto.DepartmentPermissionsDto;
 import com.uten.imp.features.admin.dto.PermissionOverridesDto;
@@ -269,20 +268,6 @@ class RequestBoundaryValidationTest {
                                         "degree", "school", "major", null, null)),
                         null),
                 "educations");
-        assertHasSizeViolation(
-                new OnboardingRequest(
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        new OnboardingRequest.Account(
-                                Collections.nCopies(
-                                        RequestLimits.EMPLOYEE_NESTED_ITEMS + 1, "employee"),
-                                "account")),
-                "account.roles");
 
         assertHasSizeViolation(
                 recordWithCollection(
@@ -327,7 +312,6 @@ class RequestBoundaryValidationTest {
         DataScopeAdminService dataScopeService = mock(DataScopeAdminService.class);
         AdminUserController controller = new AdminUserController(
                 mock(UserAccountAdminService.class),
-                mock(RoleAdminService.class),
                 mock(PermissionOverrideAdminService.class),
                 dataScopeService);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)

@@ -71,20 +71,6 @@ class ProductionPlanningPackageServiceTest {
     }
 
     @Test
-    void legacyDerivedWritesCannotMixWithExecutionSegments() {
-        assertThatThrownBy(() ->
-                MrpService.requireNoMixedExecutionModel(1, "领料单"))
-                .isInstanceOf(ApiException.class)
-                .extracting(error -> ((ApiException) error).getCode())
-                .isEqualTo(ErrorCode.CONFLICT);
-    }
-
-    @Test
-    void legacyDerivedWritesRemainAvailableForModelZeroPlans() {
-        MrpService.requireNoMixedExecutionModel(0, "领料单");
-    }
-
-    @Test
     void permitsConfirmationWhenNoLegacyExecutionFactsExist() {
         ProductionExecutionPackageCommandService
                 .requireNoLegacyExecutionFacts(

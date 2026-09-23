@@ -503,12 +503,36 @@ public class ProductionWorkshopDirectTransferService {
                 "DT-ISSUE-" + resolved.demandId());
     }
 
-    private void requireAuthority() {
-        boolean allowed = currentUser.get()
+    /**
+     * 只读预检(日报详情 allowedActions 用，permissions-15)：当前用户能否审核这些行里的车间直送——
+     * 直送审核码 + 每个出料工单的车间成员资格，与 {@link #executeForApprovedReport} 同一把尺子。
+     * 没有直送行时恒为真。
+     */
+    public boolean canApproveDirectTransfers(List<ProductionDailyReportItem> items) {
+        List<UUID> segments = items.stream()
+                .filter(item -> "WORKSHOP".equals(item.getDestination()))
+                .map(ProductionDailyReportItem::getExecutionSegmentId)
+                .distinct()
+                .toList();
+        if (segments.isEmpty()) return true;
+        if (!holdsAuthority()) return false;
+        for (UUID segmentId : segments) {
+            // 工单已失效时预检只是不给按钮，真正审核时写路径会报明原因。
+            if (segmentId == null || !Boolean.TRUE.equals(workshopMembership(segmentId))) return false;
+        }
+        return true;
+    }
+
+    private boolean holdsAuthority() {
+        return currentUser.get()
                 .map(user -> user.isSuperAdmin()
                         || user.getAuthorities().stream().anyMatch(grant ->
                                 "production_direct_transfer:approve".equals(grant.getAuthority())))
                 .orElse(false);
+    }
+
+    private void requireAuthority() {
+        boolean allowed = holdsAuthority();
         if (!allowed) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
@@ -518,19 +542,26 @@ public class ProductionWorkshopDirectTransferService {
 
     /** 车间归属按执行段的车间部门与负责人判定，与开工/报工/确认用料同一把尺子。 */
     private void requireWorkshopMember(UUID executionSegmentId) {
+        Boolean member = workshopMembership(executionSegmentId);
+        if (member == null) throw conflict("执行工单不存在或已失效");
+        if (!member) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN, "只能办理本人所属、兼职、负责或管理车间的生产任务");
+        }
+    }
+
+    /** 当前用户是否该执行工单所属车间的成员；工单不存在或已失效时返回 null。 */
+    private Boolean workshopMembership(UUID executionSegmentId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT workshop_department_id, responsible_employee_id
                         FROM production_execution_segments
                         WHERE id = :segmentId AND is_deleted = FALSE
                         """).setParameter("segmentId", executionSegmentId));
-        if (rows.size() != 1) throw conflict("执行工单不存在或已失效");
+        if (rows.size() != 1) return null;
         Object[] row = rows.getFirst();
-        if (!membership.isWorkshopMember(
+        return membership.isWorkshopMember(
                 (UUID) row[0], (UUID) row[1],
-                currentUser.employeeId().orElse(null))) {
-            throw new ApiException(
-                    ErrorCode.FORBIDDEN, "只能办理本人所属、兼职、负责或管理车间的生产任务");
-        }
+                currentUser.employeeId().orElse(null));
     }
 
     private static BigDecimal decimal(Object value) {

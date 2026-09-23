@@ -135,9 +135,10 @@ class _DepartmentOrgChartDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 打印就是查看(permissions-06)：能看员工名册的人就能打印，不另设只在前端生效的码。
     final canExport = ref
         .watch(currentPermissionsProvider)
-        .contains(Perm.employeeExport);
+        .contains(Perm.employeeView);
     // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
     return SelectionArea(
       child: Dialog(

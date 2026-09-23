@@ -47,14 +47,6 @@ class RdTaskRepository {
     );
     return RdTaskRow.fromJson(json);
   }
-
-  Future<RdTaskRow> assign(String id, String? employeeId) async {
-    final json = await _api.post(
-      ApiEndpoints.rdTaskAssign(id),
-      body: {'assigneeEmployeeId': ?employeeId},
-    );
-    return RdTaskRow.fromJson(json);
-  }
 }
 
 final rdTaskRepositoryProvider = Provider<RdTaskRepository>(

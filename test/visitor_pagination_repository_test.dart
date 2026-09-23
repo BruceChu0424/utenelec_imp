@@ -96,6 +96,33 @@ void main() {
       );
     },
   );
+  // security-08 / permissions-13：访客只能按姓名先搜再选接待人(至少 2 个字、服务端最多回 5 人、
+  // 只列可对外接待的员工)，不再下发部门树，结果不带部门；不足 2 个字不发请求。
+  test(
+    'host search needs two characters and never lists by department',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = DioVisitorRepository(
+        _api((request) {
+          requests.add(request);
+          return [
+            {'id': 'e1', 'name': '王小明'},
+          ];
+        }),
+        SecureStorage(const FlutterSecureStorage()),
+      );
+
+      expect(await repository.searchHosts(''), isEmpty);
+      expect(await repository.searchHosts(' 王 '), isEmpty);
+      expect(requests, isEmpty);
+
+      final hosts = await repository.searchHosts('王小');
+      expect(requests.single.path, '/visitor/directory/employees');
+      expect(requests.single.queryParameters, {'keyword': '王小'});
+      expect(hosts.single.name, '王小明');
+    },
+  );
+
   test('blacklist endpoints hit canonical paths with reason body', () async {
     final requests = <RequestOptions>[];
     final repository = VisitorStaffRepository(

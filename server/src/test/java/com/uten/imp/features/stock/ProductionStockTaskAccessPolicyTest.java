@@ -54,8 +54,7 @@ class ProductionStockTaskAccessPolicyTest {
 
     private static AuthUser staff(UUID employeeId, boolean superAdmin) {
         return new AuthUser(
-                UUID.randomUUID(), employeeId, "warehouse-test",
-                Set.of(), Set.of("stock_doc:view"),
+                UUID.randomUUID(), employeeId, "warehouse-test", Set.of("stock_doc:view"),
                 false, true, superAdmin);
     }
 }

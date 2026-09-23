@@ -1581,7 +1581,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     }
 
     private boolean canViewAllCases() {
-        return has("procurement_iqc_rejection:view_all")
+        return has("procurement_iqc_rejection:view:all")
                 || has("procurement_iqc_rejection:record_return")
                 || has("procurement_iqc_rejection:confirm_credit")
                 || has("procurement_iqc_rejection:close_no_credit")

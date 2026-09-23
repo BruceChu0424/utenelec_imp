@@ -92,10 +92,16 @@ class DocumentActionPermissionContractTest {
     @Test
     void standardLifecycleUsesOneExactActionAtControllerAndService() {
         for (StandardDocument document : STANDARD_DOCUMENTS) {
-            assertGate(document.controller(), "create",
-                    documentAuthority(document, "create"));
-            assertGate(document.service(), "create",
-                    documentAuthority(document, "create"));
+            if ("subcontract_material_issue".equals(document.prefix())) {
+                // ADR-109：委外材料出仓单只由发料计划生成，手工新建端点与权限码已删除。
+                assertNoPublicMethod(document.controller(), "create");
+                assertNoPublicMethod(document.service(), "create");
+            } else {
+                assertGate(document.controller(), "create",
+                        documentAuthority(document, "create"));
+                assertGate(document.service(), "create",
+                        documentAuthority(document, "create"));
+            }
             assertGate(document.controller(), "update",
                     documentAuthority(document, "edit"));
             assertGate(document.service(), "update",
@@ -209,19 +215,15 @@ class DocumentActionPermissionContractTest {
                 "recheckMaterial", "batchStart")) {
             assertWorkshopActionGate(execution, action);
         }
-        assertExactGateRejectsLegacy(
-                execution, "cancel", "production_execution:cancel");
-        assertExactGateRejectsLegacy(
-                execution, "reverse", "production_execution:reverse");
+        // ADR-109：执行段取消 / 红冲、MRP 一键生成采购申请与整树展开的停用码及端点已删除。
+        assertNoPublicMethod(execution, "cancel");
+        assertNoPublicMethod(execution, "reverse");
 
         Class<?> mrp = type("com.uten.imp.features.production.mrp.MrpController");
-        assertExactGateRejectsLegacy(
-                mrp, "generate", "production_mrp:generate_purchase");
+        assertNoPublicMethod(mrp, "generate");
+        assertNoPublicMethod(mrp, "generatePlanningPackageFullTree");
         assertExactGateRejectsLegacy(
                 mrp, "generatePlanningPackage",
-                "production_planning_package:generate");
-        assertExactGateRejectsLegacy(
-                mrp, "generatePlanningPackageFullTree",
                 "production_planning_package:generate");
         assertExactGateRejectsLegacy(
                 mrp, "savePlanningDraft",
@@ -257,15 +259,14 @@ class DocumentActionPermissionContractTest {
 
 
     @Test
-    void legacySingleRoutesStayActionGatedWhileBatchServiceIsAuthoritative() {
-        assertGate(type("com.uten.imp.features.purchase.order.PurchaseOrderController"),
-                "approve", authority("finance_order_approval:approve"));
-        assertGate(type("com.uten.imp.features.purchase.order.PurchaseOrderController"),
-                "reject", authority("finance_order_approval:reject"));
-        assertGate(type("com.uten.imp.features.subcontract.order.SubcontractOrderController"),
-                "approve", authority("finance_order_approval:approve"));
-        assertGate(type("com.uten.imp.features.subcontract.order.SubcontractOrderController"),
-                "reject", authority("finance_order_approval:reject"));
+    void legacySingleRoutesAreDeletedWhileBatchServiceIsAuthoritative() {
+        // ADR-109：订货单上固定报错的单张审批 / 驳回入口已删除，财务审批只走批量服务。
+        for (String controller : List.of(
+                "com.uten.imp.features.purchase.order.PurchaseOrderController",
+                "com.uten.imp.features.subcontract.order.SubcontractOrderController")) {
+            assertNoPublicMethod(type(controller), "approve");
+            assertNoPublicMethod(type(controller), "reject");
+        }
         Class<?> service = type(
                 "com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService");
         assertGate(service,
@@ -401,6 +402,14 @@ class DocumentActionPermissionContractTest {
         assertThat(authorize(method, "production_plan:edit").isGranted())
                 .as(type.getSimpleName() + "." + methodName + " legacy edit")
                 .isFalse();
+    }
+
+    private static void assertNoPublicMethod(Class<?> type, String methodName) {
+        assertThat(Arrays.stream(type.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                .map(Method::getName))
+                .as(type.getSimpleName() + "." + methodName + " 已删除")
+                .doesNotContain(methodName);
     }
 
     private static void assertWorkshopActionGate(Class<?> type, String methodName) {

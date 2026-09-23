@@ -498,7 +498,7 @@ class AccountPostingReversalPostgresTest {
                 permissions.add(document + ":" + action);
             }
         }
-        AuthUser user = new AuthUser(userId, employeeId, login, Set.of(), Set.copyOf(permissions), false, true, true);
+        AuthUser user = new AuthUser(userId, employeeId, login, Set.copyOf(permissions), false, true, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }

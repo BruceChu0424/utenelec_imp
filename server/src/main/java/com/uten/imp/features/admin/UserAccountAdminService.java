@@ -16,7 +16,6 @@ import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.org.employee.EmployeeSensitive;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
@@ -58,7 +57,6 @@ public class UserAccountAdminService {
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
     private final RefreshTokenRepository refreshTokenRepo;
-    private final UserRoleRepository userRoleRepo;
     private final PasswordEncoder passwordEncoder;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final TxSessionVars tx;
@@ -111,7 +109,6 @@ public class UserAccountAdminService {
     private UserSummary toSummary(UserAccount user) {
         Employee employee = empRepo.findById(user.getEmployeeId()).orElse(null);
         Department department = employee == null ? null : employee.getDepartment();
-        List<String> roles = userRoleRepo.findRoleCodesByUserId(user.getId());
         return new UserSummary(
                 user.getId(),
                 employee == null ? null : employee.getId(),
@@ -126,7 +123,6 @@ public class UserAccountAdminService {
                 user.getStatus(),
                 user.isMustChangePassword(),
                 user.getLastLoginAt(),
-                roles,
                 user.isRemoteAccess(),
                 user.getTempPasswordExpiresAt());
     }

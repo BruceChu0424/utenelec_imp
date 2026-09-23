@@ -1,9 +1,11 @@
 // 路由 → 所需权限点映射（路由守卫用）。仅未列出的已知自助路径按登录访问。
-// 文档：docs/05-架构/全局机制.md §1.4
+// 文档：docs/05-架构/权限体系总设计.md(ADR-109 工作台权限管理总设计)
 //
 // 路由使用 requiredAnyPermFor() 表达任一权限，使用 requiredAllPermsFor() 表达全部权限。
+// 模块首页(hub)不在这里手写清单：hub 守卫 = hub_catalog 里子卡守卫的并集。
 import '../../shared/auth/document_permission_set.dart';
 import '../../shared/auth/permissions.dart';
+import 'hub_catalog.dart';
 import 'route_names.dart';
 
 String? _documentRouteAuthority(
@@ -68,9 +70,13 @@ bool _isAnalysisSalesOrderPath(String routePath) {
 
 /// 返回某路径所需的权限点列表（任一满足即可）；不需要权限返回 null。
 ///
-/// 这是路由守卫与工作台显隐共用的唯一数据源。
-List<String>? requiredAnyPermFor(String location) {
-  final routePath = Uri.tryParse(location)?.path ?? location.split('?').first;
+/// 这是路由守卫与工作台显隐共用的唯一数据源。查询参数不参与判定(卡片落点常带
+/// `?orderType=` 之类的参数，带参数的路径必须和不带参数的走同一条守卫)。
+List<String>? requiredAnyPermFor(String rawLocation) {
+  final location = hubCardPath(rawLocation);
+  final routePath = location;
+  // hub：子卡守卫的并集(真正的放行判定在 route_access_policy：任一子卡可进即可进)。
+  if (isHubLocation(location)) return hubUnionRequiredAny(location);
   // 账号支持可进入员工账号列表；只有超级管理员能看到并修改授权部分。
   if (location == RouteName.adminPermissions) {
     return const [Perm.accountSupport, Perm.authorizationManage];
@@ -122,11 +128,6 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/payroll/review') {
     return const [Perm.payrollReview, Perm.payrollPublish];
   }
-  // V459 我的待审收件台：本码只控页面可达；section 内容按各域
-  // 「部门（主/兼职）× 职责权限码」资格在后端过滤。
-  if (location == RouteName.reviewsInbox) {
-    return null; // Retired page: redirects to the permission-filtered dashboard.
-  }
   if (location == '/payroll/generate') return const [Perm.payrollGenerate];
   if (location == '/payroll/slip' || location.startsWith('/payroll/slip/')) {
     return const [Perm.payrollViewSelf, Perm.payrollViewAll];
@@ -142,7 +143,7 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.financeAudits) {
     return const [
       Perm.salesOrderFinanceView,
-      Perm.financeShipmentAudit,
+      Perm.salesShipmentFinanceView,
       Perm.financeOrderApprovalView,
       Perm.procurementIqcRejectionView,
     ];
@@ -154,7 +155,7 @@ List<String>? requiredAnyPermFor(String location) {
   }
   if (routePath == RouteName.financeSalesShipmentAudit ||
       location.startsWith('${RouteName.financeSalesShipmentAudit}/')) {
-    return const [Perm.financeShipmentAudit];
+    return const [Perm.salesShipmentFinanceView];
   }
   if (location == RouteName.financeArrivalExceptions ||
       location.startsWith('${RouteName.financeArrivalExceptions}/')) {
@@ -212,39 +213,12 @@ List<String>? requiredAnyPermFor(String location) {
       location.startsWith('${RouteName.hrTaskCenter}/')) {
     return const [Perm.employeeView];
   }
-  // 采购管理（PMC 运营部；view 全员、edit 归 PMC）
-  if (location == RouteName.purchase) {
-    // hub：任一采购单据 view 即可见
-    return const [
-      Perm.purchaseRequestView,
-      Perm.purchaseOrderView,
-      Perm.purchaseReceiptView,
-      Perm.purchaseReturnView,
-    ];
-  }
   if (location == RouteName.purchaseReport ||
       location.startsWith('${RouteName.purchaseReport}/')) {
     return const [Perm.purchaseReportView];
   }
   // 库存查询（余额 + 流水）
   if (location.startsWith('/stock/')) return const [Perm.stockView];
-  // 仓库管理（8 单据，stock_doc:view 全员 / edit 归 PMC）
-  if (location == RouteName.warehouse) {
-    return const [
-      Perm.stockDocView,
-      Perm.warehouseInboundView,
-      Perm.salesShipmentWarehouseWork,
-      Perm.warehousePurchaseReceiptHistoryView,
-      Perm.warehouseSubcontractReceiptHistoryView,
-      Perm.warehouseSubcontractOutboundHistoryView,
-      Perm.subcontractOutboundView,
-      Perm.warehouseSubcontractFinishedReturnHistoryView,
-      Perm.warehouseSubcontractMaterialReturnHistoryView,
-      Perm.warehouseSubcontractWasteHistoryView,
-      Perm.warehouseIqcReturnView,
-      Perm.warehouseIqcStockInView,
-    ];
-  }
   if (routePath == RouteName.warehousePurchaseReceiptHistory ||
       routePath.startsWith('${RouteName.warehousePurchaseReceiptHistory}/')) {
     return const [Perm.warehousePurchaseReceiptHistoryView];
@@ -293,7 +267,7 @@ List<String>? requiredAnyPermFor(String location) {
   }
   if (routePath == RouteName.warehouseSalesOutbound ||
       routePath.startsWith('${RouteName.warehouseSalesOutbound}/')) {
-    return const [Perm.salesShipmentWarehouseWork];
+    return const [Perm.warehouseSalesOutboundView];
   }
   // 待检处置任务中心 + 单据处置页：IQC 或 FQC 任一查看权限即可进入
   //（2026-09-01 FQC 并入待检处置；处置/决定动作仍由页面内各自动作权限把关）。
@@ -373,7 +347,7 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.warehouseOutboundTasks ||
       location.startsWith('${RouteName.warehouseOutboundTasks}/')) {
     return const [
-      Perm.salesShipmentWarehouseWork,
+      Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
       Perm.stockDocView,
     ];
@@ -423,23 +397,7 @@ List<String>? requiredAnyPermFor(String location) {
       location.startsWith('/webinquiry/')) {
     return const [Perm.webinquiryView];
   }
-  // 基础资料：hub 按任一主档查看权限放行；详情页使用对应主档权限。
-  // 列表须与 hub 卡片（basic_data_hub_page）一一对应——漏码=持码用户看不到入口。
-  if (location == RouteName.basicinfo) {
-    return const [
-      Perm.goodsView,
-      Perm.mouldView,
-      Perm.clientView,
-      Perm.supplierView,
-      Perm.colorView,
-      Perm.unitView,
-      Perm.currencyView,
-      Perm.warehouseView,
-      Perm.accountView,
-      Perm.paymentStyleView,
-      Perm.settlementMethodView,
-    ];
-  }
+  // 基础资料：hub 守卫由 hub_catalog 子卡并集得出；详情页使用对应主档权限。
   if (location == '${RouteName.basicinfoGoods}/new') {
     return const [Perm.goodsCreate];
   }
@@ -476,7 +434,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.settlementMethodView];
   }
 
-  // 出货财务审核复用只读出货列表/详情：finance_shipment_audit 可查看并审核，
+  // 出货财务审核与仓库销售出库复用只读出货列表/详情(各自的查看码)，
   // 但绝不放开 /new 或 /edit；这些路径仍走下方单据 create/edit 权限。
   final salesSegments = routePath.split('/');
   final isShipmentList = routePath == '/sales/shipments';
@@ -490,22 +448,12 @@ List<String>? requiredAnyPermFor(String location) {
   if (isShipmentList || isShipmentDetail) {
     return const [
       Perm.salesShipmentView,
-      Perm.financeShipmentAudit,
-      Perm.salesShipmentWarehouseWork,
+      Perm.salesShipmentFinanceView,
+      Perm.warehouseSalesOutboundView,
     ];
   }
 
   // ===== 销售管理（综合营销部；sales_<quote|order|shipment|other_shipment|return>:view/edit）=====
-  if (location == RouteName.sales) {
-    // hub：任一销售单据 view 即可见
-    return const [
-      Perm.salesQuoteView,
-      Perm.salesOrderView,
-      Perm.salesShipmentView,
-      Perm.salesOtherShipmentView,
-      Perm.salesReturnView,
-    ];
-  }
   if (location == RouteName.salesReport ||
       location.startsWith('${RouteName.salesReport}/')) {
     return const [Perm.salesReportView];
@@ -527,18 +475,6 @@ List<String>? requiredAnyPermFor(String location) {
   }
 
   // ===== 委外管理（综合营销部；subcontract_<...>:view/edit）=====
-  if (location == RouteName.subcontract) {
-    return const [
-      Perm.subcontractInquiryView,
-      Perm.subcontractApplicationView,
-      Perm.subcontractOrderView,
-      Perm.subcontractReceiptView,
-      Perm.subcontractMaterialIssueView,
-      Perm.subcontractReturnView,
-      Perm.subcontractMaterialReturnView,
-      Perm.subcontractWasteView,
-    ];
-  }
   // ADR-098 委外回厂短交判定：案件是订货单事实，看页面 = 看委外订货；判定另有权限点。
   if (location == RouteName.subcontractShortDeliveries) {
     return const [Perm.subcontractOrderView];
@@ -548,20 +484,11 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.subcontractReportView];
   }
   // /subcontract/preparations 旧深链已由路由重定向到 /subcontract（2026-09-05
-  // 准备中心退役）。守卫沿用 hub 同款权限：无委外查看权限的用户与直达 hub
+  // 准备中心退役)。守卫沿用 hub 同款并集：无委外入口的用户与直达 hub
   // 一样进 access-denied，不会 404；持权用户由重定向落到 hub。
   if (location.startsWith('/subcontract/')) {
     if (routePath == RouteName.subcontractPreparations) {
-      return const [
-        Perm.subcontractInquiryView,
-        Perm.subcontractApplicationView,
-        Perm.subcontractOrderView,
-        Perm.subcontractReceiptView,
-        Perm.subcontractMaterialIssueView,
-        Perm.subcontractReturnView,
-        Perm.subcontractMaterialReturnView,
-        Perm.subcontractWasteView,
-      ];
+      return hubUnionRequiredAny(RouteName.subcontract);
     }
     // V436 新出仓流不允许从历史发料页空白新建。
     if (routePath == '/subcontract/material-issues/new') {
@@ -579,19 +506,6 @@ List<String>? requiredAnyPermFor(String location) {
   }
 
   // ===== 生产管理（生产部）=====
-  if (location == RouteName.production) {
-    // hub：任一生产 view 即可见
-    return const [
-      Perm.productionPlanView,
-      Perm.productionDailyReportView,
-      Perm.productionReportView,
-      Perm.productionWhereUsedView,
-      Perm.productionMaterialAnalysisView,
-      Perm.productionMaterialAnalysisCreate,
-      Perm.productionMaterialAnalysisRefresh,
-      Perm.productionPlanEdit,
-    ];
-  }
   if (location.startsWith('/production/reports')) {
     return const [Perm.productionReportView];
   }
@@ -646,28 +560,7 @@ List<String>? requiredAnyPermFor(String location) {
     return authority == null ? const [] : [authority];
   }
 
-  // ===== 钱流管理（财税部；finance_<...>:view/edit + ar_ap_ledger/finance_reconciliation）=====
-  if (location == RouteName.finance) {
-    // hub：任一钱流单据 view 即可见
-    return const [
-      Perm.expenseApprove,
-      Perm.expensePay,
-      Perm.expenseSettings,
-      Perm.financeReceiptView,
-      Perm.financePaymentView,
-      Perm.financeExpenseView,
-      Perm.financeOtherIncomeView,
-      Perm.financeBankTransferView,
-      Perm.financeReportView,
-      Perm.financeAssetView,
-      Perm.arApLedgerView,
-      Perm.financeReconciliationView,
-      Perm.accountView,
-      Perm.financeOrderApprovalView,
-      Perm.salesOrderFinanceView,
-      Perm.financeShipmentAudit,
-    ];
-  }
+  // ===== 钱流管理(财税部；finance_<...>:view/edit + ar_ap_ledger)=====
   if (location == RouteName.financeArAp) {
     return const [Perm.arApLedgerView];
   }
@@ -709,11 +602,21 @@ List<String>? requiredAnyPermFor(String location) {
   return null;
 }
 
+/// hub 守卫(任一满足)：子卡守卫的并集，按首次出现顺序去重。
+List<String> hubUnionRequiredAny(String hub) {
+  final union = <String>{};
+  for (final child in hubCardLocations[hubCardPath(hub)] ?? const <String>[]) {
+    union.addAll(requiredAnyPermFor(child) ?? const <String>[]);
+  }
+  return union.toList(growable: false);
+}
+
 /// Returns permissions that must all be present for a route.
 ///
 /// Most routes use [requiredAnyPermFor]. This second contract is reserved for
 /// compound operations where one permission must not imply another.
-List<String> requiredAllPermsFor(String location) {
+List<String> requiredAllPermsFor(String rawLocation) {
+  final location = hubCardPath(rawLocation);
   if ({
     RouteName.productionDrawRequest,
     RouteName.productionBatchDraw,
@@ -750,6 +653,11 @@ List<String> requiredAllPermsFor(String location) {
       Perm.accountBalanceView,
       Perm.accountFlowView,
     ];
+  }
+
+  // 应收应付台账汇总全公司余额，服务端要求全量财务范围(security-18)。
+  if (location == RouteName.financeArAp) {
+    return const [Perm.arApLedgerView, Perm.financeViewAll];
   }
 
   // 分类树与右侧主档是一个页面：两侧读取权限必须同时成立。
@@ -807,7 +715,7 @@ List<String> requiredAllPermsFor(String location) {
   );
   if (salesView != null) return [salesView];
 
-  final uri = Uri.tryParse(location);
+  final uri = Uri.tryParse(rawLocation);
   if (uri?.path == '/subcontract/orders/new' &&
       uri!.queryParameters.containsKey('applicationItemIds')) {
     return const [

@@ -7,7 +7,6 @@ import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibilit
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -60,7 +59,7 @@ class WorkshopArrivalEvidencePostgresTest {
         org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort> provider=mock(org.springframework.beans.factory.ObjectProvider.class);
         when(provider.getObject()).thenReturn(readiness);
         var service=new ChainNoticeService(mock(NoticeService.class),mock(UserAccountRepository.class),mock(PermissionResolver.class),
-                mock(UserRoleRepository.class),db,mock(BusinessEventPublisher.class),mock(RdTaskService.class),
+                db,mock(BusinessEventPublisher.class),mock(RdTaskService.class),
                 mock(FinanceReviewerEligibilityPort.class),mock(SalesOrderFinanceConfirmerEligibility.class),null,provider);
         UUID plan=UUID.randomUUID(),analysis=UUID.randomUUID(),material=UUID.randomUUID(),pack=UUID.randomUUID(),
                 segment=UUID.randomUUID(),demand=UUID.randomUUID(),warehouse=UUID.randomUUID(),goods=UUID.randomUUID(),
@@ -106,7 +105,7 @@ class WorkshopArrivalEvidencePostgresTest {
 
     @Test void finishedDirectAndIqcEvidenceBecomeInvalidAfterTheirRealSourceReverses() {
         var service=new ChainNoticeService(mock(NoticeService.class),mock(UserAccountRepository.class),mock(PermissionResolver.class),
-                mock(UserRoleRepository.class),db,mock(BusinessEventPublisher.class),mock(RdTaskService.class),
+                db,mock(BusinessEventPublisher.class),mock(RdTaskService.class),
                 mock(FinanceReviewerEligibilityPort.class),mock(SalesOrderFinanceConfirmerEligibility.class));
         UUID doc=UUID.randomUUID(),report=UUID.randomUUID(),transfer=UUID.randomUUID(),receipt=UUID.randomUUID(),
                 batch=UUID.randomUUID(),inspection=UUID.randomUUID();

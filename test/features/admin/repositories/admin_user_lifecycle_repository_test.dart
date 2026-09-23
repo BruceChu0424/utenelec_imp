@@ -22,7 +22,6 @@ void main() {
                   'employeeId': 'employee-1',
                   'loginAccount': '13800000000',
                   'status': 'disabled',
-                  'roles': <String>[],
                   'remoteAccess': false,
                   'employeeStatus': 'resigned',
                   'currentEmployee': false,

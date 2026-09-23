@@ -30,6 +30,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -54,129 +55,119 @@ class SubcontractHubPage extends ConsumerWidget {
     ref.onPageResume(RouteName.subcontract, () => refreshBadges(ref));
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    // 权限门控（V305）：无对应 view 权限的卡片不显示（权限管理授权后可见）。
+    // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /subcontract 入口守卫同源，ADR-109)。
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
-    bool can(String code) => isSuperAdmin || perms.contains(code);
-    final taskEntries = <_Entry>[
-      if (can(Perm.subcontractApplicationView))
-        _Entry(
-          icon: Icons.precision_manufacturing_outlined,
-          label: l10n.subcontractHubTaskCenter,
-          description: l10n.subcontractHubTaskCenterSub,
-          location: RouteName.operationsSubcontractWorkbench,
-          badge: const SubcontractTaskBadge(showLabel: true),
-          // 黄=任务中心「进行中」段(已下单、发料在外加工、等财务/等回厂);
-          // 红=待处理与要本部门动手的两类异常。同一张单两枚都算得上不是双计。
-          progressBadge: UtenInProgressBadge(
-            count: ref.watch(
-              badgeEntryInProgressProvider(BadgeEntry.subcontractTaskCenter),
-            ),
-            showLabel: true,
+    bool canOpen(String location) =>
+        hubCardAllowed(RouteName.subcontract, location, perms, isSuperAdmin);
+    List<_Entry> visible(List<_Entry> entries) =>
+        entries.where((entry) => canOpen(entry.location)).toList();
+    final taskEntries = visible([
+      _Entry(
+        icon: Icons.precision_manufacturing_outlined,
+        label: l10n.subcontractHubTaskCenter,
+        description: l10n.subcontractHubTaskCenterSub,
+        location: RouteName.operationsSubcontractWorkbench,
+        badge: const SubcontractTaskBadge(showLabel: true),
+        // 黄=任务中心「进行中」段(已下单、发料在外加工、等财务/等回厂);
+        // 红=待处理与要本部门动手的两类异常。同一张单两枚都算得上不是双计。
+        progressBadge: UtenInProgressBadge(
+          count: ref.watch(
+            badgeEntryInProgressProvider(BadgeEntry.subcontractTaskCenter),
           ),
+          showLabel: true,
         ),
+      ),
       // ADR-098 回厂短交判定：徽章与任务中心 /count 里的「回厂短交待判定」同数展示，
       // 不登记为徽章入口(同一件事只数一次)。
       // 同理不挂黄：容差内待结案 / 分批等待中的案子挂的都是已在任务中心
       // IN_PROGRESS 里的订货单，页内分段照常显示黄数，卡面不再数第二遍。
-      if (can(Perm.subcontractOrderView))
-        _Entry(
-          icon: Icons.rule_folder_outlined,
-          label: '回厂短交判定',
-          description: '回厂数量少于订货量：判定分批到货继续等，还是接受损耗结案',
-          location: RouteName.subcontractShortDeliveries,
-          badge: const SubcontractShortDeliveryBadge(showLabel: true),
+      _Entry(
+        icon: Icons.rule_folder_outlined,
+        label: '回厂短交判定',
+        description: '回厂数量少于订货量：判定分批到货继续等，还是接受损耗结案',
+        location: RouteName.subcontractShortDeliveries,
+        badge: const SubcontractShortDeliveryBadge(showLabel: true),
+      ),
+      _Entry(
+        icon: Icons.assignment_return_outlined,
+        label: l10n.subcontractHubReturnVendor,
+        description: l10n.hubSubPendingReturnQty,
+        location: procurementReturnTasksLocation(
+          ProcurementInboundOrderType.subcontract,
         ),
-      if (can(Perm.supplierReturnTaskView))
-        _Entry(
-          icon: Icons.assignment_return_outlined,
-          label: l10n.subcontractHubReturnVendor,
-          description: l10n.hubSubPendingReturnQty,
-          location: procurementReturnTasksLocation(
-            ProcurementInboundOrderType.subcontract,
-          ),
-          badge: const ProcurementArrivalReturnBadge(
-            orderType: ProcurementInboundOrderType.subcontract,
-            showLabel: true,
-          ),
+        badge: const ProcurementArrivalReturnBadge(
+          orderType: ProcurementInboundOrderType.subcontract,
+          showLabel: true,
         ),
-    ];
+      ),
+    ]);
     // 2026-09-06 收口：计划委外申请卡并入「委外任务中心」（待处理段含待生产
     // 合成行+进度弹窗）；回厂与品质跟踪卡退役（进度在任务中心/订货详情查看）。
     // 委外页不放仓库/品质动作入口——登记回厂在仓储模块预计到货办理。
-    final docEntries = <_Entry>[
-      if (can(Perm.subcontractOrderView))
-        _Entry(
-          icon: Icons.shopping_bag_outlined,
-          label: '委外订货',
-          description: '订货、财务审批与全链路进度（含回厂 IQC）',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.order.pathSegment,
-          ),
-          // 本人待自审草稿数（与新建页「草稿」按钮同源）。本卡没有别的待办
-          // 徽章，草稿就占右上角 badge 槽——用户要的正是这个位置。
-          // 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21; 退回件的待办累加由
-          // 委外任务中心 FINANCE_REJECTED 承担, 卡面只是同数展示)。
-          badge: const UtenDraftBadge(
-            kind: DraftDocKind.subcontractOrder,
-            withFinanceRejected: true,
-          ),
+    final docEntries = visible([
+      _Entry(
+        icon: Icons.shopping_bag_outlined,
+        label: '委外订货',
+        description: '订货、财务审批与全链路进度（含回厂 IQC）',
+        location: SubcontractRoute.list(SubcontractDocConfig.order.pathSegment),
+        // 本人待自审草稿数（与新建页「草稿」按钮同源）。本卡没有别的待办
+        // 徽章，草稿就占右上角 badge 槽——用户要的正是这个位置。
+        // 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21; 退回件的待办累加由
+        // 委外任务中心 FINANCE_REJECTED 承担, 卡面只是同数展示)。
+        badge: const UtenDraftBadge(
+          kind: DraftDocKind.subcontractOrder,
+          withFinanceRejected: true,
         ),
-      if (can(Perm.subcontractReturnView))
-        _Entry(
-          icon: Icons.undo_outlined,
-          label: '成品退回',
-          description: '退回委外成品并反向应付',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.returnDoc.pathSegment,
-          ),
-          // 同上：无其它待办徽章，草稿独占 badge 槽。
-          badge: const UtenDraftBadge(kind: DraftDocKind.subcontractReturn),
+      ),
+      _Entry(
+        icon: Icons.undo_outlined,
+        label: '成品退回',
+        description: '退回委外成品并反向应付',
+        location: SubcontractRoute.list(
+          SubcontractDocConfig.returnDoc.pathSegment,
         ),
-      if (can(Perm.subcontractMaterialReturnView))
-        _Entry(
-          icon: Icons.assignment_return_outlined,
-          label: '余料退回',
-          description: '委外商处余料登记入库',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.materialReturn.pathSegment,
-          ),
-          badge: const UtenDraftBadge(
-            kind: DraftDocKind.subcontractMaterialReturn,
-          ),
+        // 同上：无其它待办徽章，草稿独占 badge 槽。
+        badge: const UtenDraftBadge(kind: DraftDocKind.subcontractReturn),
+      ),
+      _Entry(
+        icon: Icons.assignment_return_outlined,
+        label: '余料退回',
+        description: '委外商处余料登记入库',
+        location: SubcontractRoute.list(
+          SubcontractDocConfig.materialReturn.pathSegment,
         ),
-      if (can(Perm.subcontractWasteView))
-        _Entry(
-          icon: Icons.gavel_outlined,
-          label: '损耗与责任',
-          description: '损耗、索赔与责任处理',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.waste.pathSegment,
-          ),
-          badge: const UtenDraftBadge(kind: DraftDocKind.subcontractWaste),
+        badge: const UtenDraftBadge(
+          kind: DraftDocKind.subcontractMaterialReturn,
         ),
-    ];
-    final legacyEntries = <_Entry>[
-      if (can(Perm.subcontractMaterialIssueView))
-        _Entry(
-          icon: Icons.history_rounded,
-          label: '历史 BOM 子件发料',
-          description: 'V304 历史单据查看与红冲',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.materialIssue.pathSegment,
-          ),
+      ),
+      _Entry(
+        icon: Icons.gavel_outlined,
+        label: '损耗与责任',
+        description: '损耗、索赔与责任处理',
+        location: SubcontractRoute.list(SubcontractDocConfig.waste.pathSegment),
+        badge: const UtenDraftBadge(kind: DraftDocKind.subcontractWaste),
+      ),
+    ]);
+    final legacyEntries = visible([
+      _Entry(
+        icon: Icons.history_rounded,
+        label: '历史 BOM 子件发料',
+        description: 'V304 历史单据查看与红冲',
+        location: SubcontractRoute.list(
+          SubcontractDocConfig.materialIssue.pathSegment,
         ),
-    ];
-    final reportEntries = <_Entry>[
+      ),
+    ]);
+    final reportEntries = visible([
       for (final k in SubcontractReportKind.values)
-        if (can(Perm.subcontractReportView))
-          _Entry(
-            icon: k.icon,
-            label: _subcontractReportTitle(k, l10n),
-            description: _subcontractReportSubtitle(k, l10n),
-            location: k.route,
-          ),
-    ];
+        _Entry(
+          icon: k.icon,
+          label: _subcontractReportTitle(k, l10n),
+          description: _subcontractReportSubtitle(k, l10n),
+          location: k.route,
+        ),
+    ]);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.subcontractHubTitle,

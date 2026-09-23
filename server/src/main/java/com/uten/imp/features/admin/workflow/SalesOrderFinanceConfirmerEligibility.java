@@ -87,7 +87,6 @@ public class SalesOrderFinanceConfirmerEligibility
                             WHERE perm.code = 'sales_order_finance:confirm'
                               AND po.effect = 'grant'
                               AND po.active = TRUE
-                              AND perm.active = TRUE
                         )
                     )
                   AND u.is_deleted = FALSE

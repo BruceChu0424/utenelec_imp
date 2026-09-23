@@ -3,7 +3,6 @@ import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/models/role.dart';
 import 'package:uten_imp/shared/models/user.dart';
 
 void main() {
@@ -40,17 +39,11 @@ void main() {
     });
 
     test('ordinary employee deep links are redirected by the route guard', () {
-      const ordinary = AppUser(
-        id: 'employee-1',
-        code: 'E001',
-        name: '普通员工',
-        roles: [Role.employee],
-      );
+      const ordinary = AppUser(id: 'employee-1', code: 'E001', name: '普通员工');
       const auditor = AppUser(
         id: 'auditor-1',
         code: 'A001',
         name: '审计员',
-        roles: [Role.employee],
         permissions: [Perm.auditLogView],
       );
 
@@ -81,13 +74,11 @@ void main() {
         id: 'employee-404',
         code: 'E404',
         name: 'Employee',
-        roles: [Role.employee],
       );
       const superAdmin = AppUser(
         id: 'super-404',
         code: 'S404',
         name: 'Super admin',
-        roles: [Role.admin],
         superAdmin: true,
       );
       const unknownLocations = [
@@ -127,13 +118,11 @@ void main() {
         id: 'employee-approval',
         code: 'E101',
         name: '普通员工',
-        roles: [Role.employee],
       );
       const superAdmin = AppUser(
         id: 'super-approval',
         code: 'S101',
         name: 'Super admin',
-        roles: [Role.admin],
         superAdmin: true,
       );
       expect(requiredAnyPermFor('/finance/procurement-approvals'), const [

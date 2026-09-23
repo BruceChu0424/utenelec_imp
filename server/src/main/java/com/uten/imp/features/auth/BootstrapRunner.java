@@ -1,12 +1,9 @@
 package com.uten.imp.features.auth;
 
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.BootstrapProperties;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.auth.model.*;
-import com.uten.imp.features.rbac.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -23,8 +20,8 @@ import org.springframework.util.StringUtils;
  * <ul>
  *   <li>{@code users.is_super_admin = true}（字段）</li>
  *   <li>不设置 position（INSERT 不写）</li>
- *   <li>不依赖 role_permissions 是否齐全——PermissionResolver.permsOf() 在 isSuperAdmin=true 时
- *       直接返回 permissions 表全量</li>
+ *   <li>不挂任何角色(角色体系已删除，ADR-109)——PermissionResolver.permsOf() 在
+ *       isSuperAdmin=true 时直接返回全部目录码</li>
  * </ul>
  * 登录账号取自 root 管理的 {@code uten.bootstrap.admin-login}；源码不保存真实账号默认值；
  * 密码取自 BOOTSTRAP_ADMIN_PASSWORD，Argon2id 哈希入库，must_change_password=true。
@@ -40,8 +37,6 @@ public class BootstrapRunner implements ApplicationRunner {
 
     private final UserAccountRepository userRepo;
     private final EmployeeRepository employeeRepo;
-    private final RoleRepository roleRepo;
-    private final UserRoleRepository userRoleRepo;
     private final PasswordEncoder passwordEncoder;
     private final BootstrapProperties props;
 
@@ -77,12 +72,6 @@ public class BootstrapRunner implements ApplicationRunner {
         user.setFailedAttempts(0);
         user.setSuperAdmin(true);  // ← 关键：标记超级管理员
         userRepo.save(user);
-
-        Role adminRole = roleRepo.findByCode("admin")
-                .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "未找到 admin 角色"));
-        UserRole ur = new UserRole();
-        ur.setId(new UserRoleId(user.getId(), adminRole.getId()));
-        userRoleRepo.save(ur);
 
         log.warn("已创建引导超管账号 [{}](is_super_admin=true，不设置职务)—— 首次登录必须修改密码(一次性密码请尽快轮换)",
                 props.getAdminLogin());

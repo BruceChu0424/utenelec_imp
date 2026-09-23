@@ -34,6 +34,10 @@ class _DailyReportApi extends ApiClient {
 
   int serverStatus = 0;
   int detailReads = 0;
+
+  /// 服务端是否还允许当前账号审核这张草稿(permissions-15：权限码 + 对象范围 +
+  /// 车间直送审核权由服务端一次算好，随详情下发 allowedActions)。
+  bool approvable = true;
   final requestedPaths = <String>[];
   final approveKeys = <String>[];
   int rowVersion = 0;
@@ -46,6 +50,7 @@ class _DailyReportApi extends ApiClient {
     'createdAt': '2026-09-22T05:49:19+08:00',
     'status': serverStatus,
     'rowVersion': rowVersion,
+    'allowedActions': <String>[if (serverStatus == 0 && approvable) 'APPROVE'],
     'departmentName': '六车间',
     'workerIds': <String>['emp-1'],
     'workerNames': <String>['王小明'],
@@ -101,12 +106,13 @@ class _DailyReportApi extends ApiClient {
 Future<(_DailyReportApi, List<String>)> _pump(
   WidgetTester tester, {
   required Object? Function(_DailyReportApi server) onApprove,
+  bool approvable = true,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final api = _DailyReportApi(onApprove: onApprove);
+  final api = _DailyReportApi(onApprove: onApprove)..approvable = approvable;
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final container = ProviderContainer(
@@ -162,6 +168,16 @@ Future<void> _tapApprove(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('持审核码但服务端不允许(缺车间直送审核权)：不画审核按钮', (tester) async {
+    await _pump(tester, onApprove: (server) => null, approvable: false);
+
+    expect(
+      find.widgetWithText(UtenButton, '审核'),
+      findsNothing,
+      reason: '按钮只看服务端下发的 allowedActions，不能让人点了才被拒',
+    );
+  });
+
   testWidgets('审核拿到 200：按钮换成红冲，且不再多发一次详情请求', (tester) async {
     final (api, notices) = await _pump(
       tester,

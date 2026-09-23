@@ -780,8 +780,10 @@ public class SalesReportService {
         }
         int safeLimit = Math.min(Math.max(1, limit), 2000);
         var ownerScope = accessPolicy.scope();
-        var scopedOwners = accessPolicy.nativeReadScopeWithLegacySentinel(
-                "owner_employee_id", "salesOwners", NIL, ownerScope);
+        // 物化视图把空归属存成 NIL 哨兵；哨兵不会出现在可见归属人集合里，
+        // 所以无归属行只对全量范围可见(与单据列表同一口径，permissions-10)。
+        var scopedOwners = accessPolicy.nativeReadScope(
+                "owner_employee_id", "salesOwners", ownerScope);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, client_id, currency_id,
                        SUM(qty_sum) AS qty,

@@ -104,6 +104,6 @@ class FinanceAssetAttachmentAccessPolicyTest {
                     : configuration.financeAssetAttachmentAccessPolicy(em, authorization, prices);
             assertEquals(deferred ? "FINANCE_DEFERRED_EXPENSE" : "FINANCE_ASSET", policy.ownerType());
         }
-        AuthUser user() { return new AuthUser(actor, actor, "asset", Set.of(), Set.copyOf(permissions), false, true, false); }
+        AuthUser user() { return new AuthUser(actor, actor, "asset", Set.copyOf(permissions), false, true, false); }
     }
 }

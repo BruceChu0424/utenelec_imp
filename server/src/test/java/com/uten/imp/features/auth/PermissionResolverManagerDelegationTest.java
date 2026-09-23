@@ -13,10 +13,9 @@ import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
-import com.uten.imp.features.rbac.RolePermissionRepository;
-import com.uten.imp.features.rbac.RoleRepository;
+import com.uten.imp.features.rbac.GrantPolicy;
+import com.uten.imp.features.rbac.PermissionGrantPolicyCatalog;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.PermissionDelegationPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,10 +48,7 @@ class PermissionResolverManagerDelegationTest {
 
     private static final String CODE = "sales_order:view";
 
-    @Mock private UserRoleRepository userRoleRepo;
-    @Mock private RolePermissionRepository rolePermissionRepo;
     @Mock private PermissionRepository permissionRepo;
-    @Mock private RoleRepository roleRepo;
     @Mock private DepartmentPermissionRepository departmentPermissionRepo;
     @Mock private UserPermissionOverrideRepository overrideRepo;
     @Mock private EmployeeRepository employeeRepo;
@@ -66,16 +62,13 @@ class PermissionResolverManagerDelegationTest {
     @BeforeEach
     void setUp() {
         resolver = resolverWithGate(true);
-        when(roleRepo.findByCode("employee")).thenReturn(Optional.empty());
+        when(permissionRepo.findBaselineCodes()).thenReturn(List.of());
         lenient().when(secondaryDeptRepo.findDepartmentIdsByEmployeeId(any())).thenReturn(List.of());
     }
 
     private PermissionResolver resolverWithGate(boolean enabled) {
         return new PermissionResolver(
-                userRoleRepo,
-                rolePermissionRepo,
                 permissionRepo,
-                roleRepo,
                 departmentPermissionRepo,
                 overrideRepo,
                 employeeRepo,
@@ -83,7 +76,8 @@ class PermissionResolverManagerDelegationTest {
                 userAccountRepo,
                 departmentRepo,
                 managerDelegationRepo,
-                new PermissionDelegationPolicy(),
+                new PermissionDelegationPolicy(PermissionGrantPolicyCatalog.fixed(
+                        Map.of(CODE, Set.of(GrantPolicy.NORMAL)))),
                 PermissionSurfaceRegistryTestFixture.registry(
                                 Map.of("sales.order", Set.of(CODE))),
                 new PagePermissionDelegationFeatureGate(enabled));
@@ -190,7 +184,7 @@ class PermissionResolverManagerDelegationTest {
         assertTrue(breakdowns.full().managerGrants().isEmpty());
         assertTrue(breakdowns.base().effective()
                 .equals(breakdowns.full().effective()));
-        verify(roleRepo, times(1)).findByCode("employee");
+        verify(permissionRepo, times(1)).findBaselineCodes();
         verify(departmentPermissionRepo, times(1))
                 .findPermissionCodesByDepartmentIdsWithAncestors(
                         List.of(department.getId()));
@@ -293,9 +287,6 @@ class PermissionResolverManagerDelegationTest {
         grantorAccount.setSuperAdmin(true);
         grantorAccount.setPermissionDelegationGeneration(21L);
         grantorAccount.setAuthVersion(22L);
-        Permission permission = new Permission();
-        permission.setCode(CODE);
-
         when(employeeRepo.findById(targetEmployee.getId()))
                 .thenReturn(Optional.of(targetEmployee));
         when(userAccountRepo.findById(targetAccount.getId()))
@@ -308,7 +299,7 @@ class PermissionResolverManagerDelegationTest {
                 .thenReturn(List.of());
         when(overrideRepo.findCodeAndEffectByUserId(grantorAccount.getId()))
                 .thenReturn(List.of());
-        when(permissionRepo.findAllByActiveTrue()).thenReturn(List.of(permission));
+        when(permissionRepo.findAllCodes()).thenReturn(List.of(CODE));
         when(managerDelegationRepo.currentAuthorizationEpoch()).thenReturn(24L);
 
         ManagerPermissionDelegationRepository.EnabledDelegationCandidate candidate =

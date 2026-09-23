@@ -184,7 +184,6 @@ class ProductionMaterialReadAccessPolicyTest {
     private static AuthUser staff(
             UUID employeeId, Set<String> permissions) {
         return new AuthUser(
-                UUID.randomUUID(), employeeId, "material-read-test",
-                Set.of(), permissions, false, true, false);
+                UUID.randomUUID(), employeeId, "material-read-test", permissions, false, true, false);
     }
 }

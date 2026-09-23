@@ -6,7 +6,6 @@ import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -158,7 +157,6 @@ class ProcurementIqcStockInNoticeTest {
                 notice,
                 users,
                 permissions,
-                mock(UserRoleRepository.class),
                 jdbc,
                 mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),

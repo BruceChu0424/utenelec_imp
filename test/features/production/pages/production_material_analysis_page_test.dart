@@ -4572,6 +4572,66 @@ void main() {
     },
   );
 
+  // ADR-104：追加并入了还没开工的原计划(同一单号)时, 结果弹层不能说「已生成」——
+  // 标题、计划单副标题都要说清「并入 + 本次追加多少」, 打印键随审核态照旧。
+  testWidgets(
+    'merged append result names the original plan and the appended quantity',
+    (tester) async {
+      final firstRound = _planReadyChildAnalysisJson();
+      final secondRound = _planReadyChildAnalysisJson(readyNowQty: 1);
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        analysisJson: firstRound,
+        billDate: '2026-08-09',
+        deliveryDate: '2026-08-12',
+        departmentId: 'workshop-1',
+        workshopName: '装配一车间',
+        workerId: 'worker-1',
+        responseOverride: (request) {
+          if (request.path.endsWith('/issue-plans')) {
+            return {
+              'analysis': secondRound,
+              'plans': [
+                {
+                  'planId': 'plan-1',
+                  'planNo': 'PP-20260809-001',
+                  'status': 'DRAFT',
+                  'mergedIntoExisting': true,
+                  'appendedQty': 3,
+                },
+              ],
+            };
+          }
+          return null;
+        },
+      );
+
+      await _openBucketDetail(tester, 'workshop');
+      await _tapBucketRowCheckbox(tester, '自制组件 A(备料任务)');
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
+      );
+      await _enterCascadeSeedQty(tester, 'make-path-1', '3');
+      await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
+      await _submitIssuePage(tester);
+
+      expect(find.text('追加已并入原生产计划'), findsOneWidget);
+      expect(find.text('生产计划已生成'), findsNothing);
+      expect(find.textContaining('PP-20260809-001'), findsOneWidget);
+      expect(find.text('待审核 · 本次追加 3 已并入原计划'), findsOneWidget);
+      expect(find.text('查看计划'), findsOneWidget);
+      await tester.tap(find.text('留在物料分析'));
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets(
     'supply notify quantity defaults to residual and supports partial top-up',
     (tester) async {

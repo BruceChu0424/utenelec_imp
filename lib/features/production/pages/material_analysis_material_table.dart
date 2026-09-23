@@ -1921,6 +1921,10 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 用户亲手撤过勾的行：父行再改量也不替他勾回来，直到他自己再勾上 / 再填数。
   final Set<String> _tableUserDeselectedKeys = {};
 
+  /// 亲手填了数却勾不上的行, 已经当场说过的原因(键 = 行 key)：同一行同一原因只说一次,
+  /// 逐位敲数不刷屏; 原因变了(比如刚指了车间还缺负责人)再说一次。
+  final Map<String, String> _tableTypedBlockedNotices = {};
+
   /// 系统预填过的文本快照：轮询刷新只回填「用户没动过」的格子，
   /// 已经被人改过的一律保留，不让后台刷新吃掉手输的数。
   final Map<String, String> _tableSeededQtyTexts = {};
@@ -2298,6 +2302,13 @@ abstract class _MaterialAnalysisMaterialTableState
     if (analysis == null) return;
     var selectionChanged = false;
     for (final group in _analysisIndexes(analysis).groupsByKey.values) {
+      // 用户亲手填过数的行由 _recordTableTypedQty 定勾选：有数就勾。这里不能再拿它
+      // 另一格(没碰过的那格)去按「回填值 = 权威值」把刚替他勾上的勾撤掉——顶层已排满
+      // 的行追加时正是这样：追加格有数、下单格回填 0 = 权威 0，一进这个循环就被撤勾
+      // (2026-09-22 用户实机「顶层填了追加数, 子层都勾上了, 顶层自己没勾」)。
+      if (_tableUserTypedQty.containsKey(group.representative.materialLineId)) {
+        continue;
+      }
       for (final append in const [false, true]) {
         final value = _reseedTableQtyCell(group, append: append);
         if (value == null || !autoSelect) continue;
@@ -2339,6 +2350,36 @@ abstract class _MaterialAnalysisMaterialTableState
     if (controller.text != next) controller.text = next;
     _tableSeededQtyTexts[seededKey] = next;
     return value;
+  }
+
+  /// 亲手填了数却勾不上的行(缺车间 / 负责人、已排满、缺权限……)：当场把原因说出来。
+  ///
+  /// 数量格只要有下达权限就是开着的, 「这一行为什么下不了单」原本只藏在格子的悬浮说明里
+  /// ——顶层追加时「子层都勾上了、顶层自己没勾」就是这么来的(2026-09-22 用户实机)：
+  /// 顶层缺生产车间 / 负责人的学习默认值, 填了数、子层照带, 自己却静静地勾不上。
+  void _noticeTableTypedRowBlocked(_MaterialGroup group) {
+    final reason = _tableIssueBlockedReason(group);
+    if (reason == null) return;
+    if (_tableTypedBlockedNotices[group.key] == reason) return;
+    _tableTypedBlockedNotices[group.key] = reason;
+    final name =
+        group.representative.goodsName ??
+        group.representative.goodsCode ??
+        '这一行';
+    context.appWarning('「$name」填了数但本次还下不了单：$reason');
+  }
+
+  /// 车间 / 负责人指好之后, 亲手填过数的行立刻替他勾上——填数在前、指派在后是主表上
+  /// 最自然的顺序, 不能让人再回去把数删掉重填一遍才勾得上。
+  void _reselectTypedRowAfterAssignment(_MaterialGroup group) {
+    final typed = _tableUserTypedQty[group.representative.materialLineId];
+    if (typed == null || typed <= 0) return;
+    _tableTypedBlockedNotices.remove(group.key);
+    if (_autoSelectTableGroup(group, select: true)) {
+      _scheduleTableEstimateRebuild();
+    } else if (!_selectedMaterialGroupKeys.contains(group.key)) {
+      _noticeTableTypedRowBlocked(group);
+    }
   }
 
   /// 替用户勾上 / 撤掉一行(父行改量带出来的、或他亲手填了数的)。返回勾选集有没有变。
@@ -2517,6 +2558,11 @@ abstract class _MaterialAnalysisMaterialTableState
     // 所以先把「撤过勾」的记号抹掉)，清成空 / 0 就把替他勾的那个勾撤掉。
     if (total > 0) _tableUserDeselectedKeys.remove(group.key);
     final selectionChanged = _autoSelectTableGroup(group, select: total > 0);
+    if (total > 0 && !_selectedMaterialGroupKeys.contains(group.key)) {
+      _noticeTableTypedRowBlocked(group);
+    } else if (total <= 0) {
+      _tableTypedBlockedNotices.remove(group.key);
+    }
     if (!_tableGroupHasChildren(group)) {
       if (selectionChanged) _scheduleTableEstimateRebuild();
       return;
@@ -3061,6 +3107,7 @@ abstract class _MaterialAnalysisMaterialTableState
       _tableWorkshopDraft[group.key] = (id: selection.id, name: selection.name);
       // 换车间必须把负责人草稿清掉：留着上一个车间的人是最容易漏掉的错派。
       _tableWorkerDraft.remove(group.key);
+      _reselectTypedRowAfterAssignment(group);
     });
   }
 
@@ -3097,6 +3144,7 @@ abstract class _MaterialAnalysisMaterialTableState
     if (picked == null || !mounted) return;
     setState(() {
       _tableWorkerDraft[group.key] = (id: picked.id, name: picked.name);
+      _reselectTypedRowAfterAssignment(group);
     });
   }
 
@@ -3745,9 +3793,17 @@ abstract class _MaterialAnalysisMaterialTableState
             .where((group) => _tableIssueTarget(group).viaWorkshop)
             .toList(growable: false);
         if (workshop.isNotEmpty) {
+          _lastIssuedPlans = const [];
           final ok = await _issueMaterialTableWorkshopBatch(workshop, pending);
+          // ADR-104：追加并入了还没开工的原计划(同一单号)时如实说出来，免得用户去
+          // 生产计划列表找一张不存在的新单。
+          final merged = _lastIssuedPlans
+              .where((plan) => plan.mergedIntoExisting)
+              .length;
           steps.add((
-            label: '下达车间(第 $level 层，${workshop.length} 行)',
+            label:
+                '下达车间(第 $level 层，${workshop.length} 行'
+                '${merged > 0 ? '，其中 $merged 张并入原计划' : ''})',
             ok: ok,
             note: ok ? null : haltNote,
           ));

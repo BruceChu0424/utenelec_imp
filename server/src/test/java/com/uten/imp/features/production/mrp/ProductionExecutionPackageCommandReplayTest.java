@@ -59,7 +59,7 @@ class ProductionExecutionPackageCommandReplayTest {
                 mock(ProductionPlanningRequestValidator.class);
         ProductionExecutionPackageCommandService command = spy(
                 new ProductionExecutionPackageCommandService(
-                        em, null, ledger, null, null, null, null, null,
+                        em, null, ledger, null, null, null, null, null, null,
                         null, null, null, null, null,
                         mock(TxSessionVars.class), null, validator,
                         mock(com.uten.imp.features.notice.ChainNoticeService.class),

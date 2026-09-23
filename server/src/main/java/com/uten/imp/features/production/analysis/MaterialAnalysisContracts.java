@@ -898,6 +898,11 @@ public final class MaterialAnalysisContracts {
             List<GeneratedPlan> plans) {
     }
 
+    /**
+     * @param mergedIntoExisting ADR-104：本行追加并入了一张已有的未开工计划(同一单号)，
+     *                           而不是新建；此时 {@code appendedQty} 是并入的追加量
+     *                           (幂等重放只知道并入过、不知道当时的量，为 null)。
+     */
     public record GeneratedPlan(
             UUID planId,
             String planNo,
@@ -906,7 +911,21 @@ public final class MaterialAnalysisContracts {
             UUID packageId,
             List<UUID> segmentIds,
             List<UUID> drawIds,
-            List<GeneratedDraw> drawDocuments) {
+            List<GeneratedDraw> drawDocuments,
+            boolean mergedIntoExisting,
+            BigDecimal appendedQty) {
+
+        public GeneratedPlan(UUID planId, String planNo, String status, UUID planningDraftId,
+                UUID packageId, List<UUID> segmentIds, List<UUID> drawIds,
+                List<GeneratedDraw> drawDocuments) {
+            this(planId, planNo, status, planningDraftId, packageId, segmentIds, drawIds,
+                    drawDocuments, false, null);
+        }
+
+        public GeneratedPlan merged(BigDecimal appendedQty) {
+            return new GeneratedPlan(planId, planNo, status, planningDraftId, packageId,
+                    segmentIds, drawIds, drawDocuments, true, appendedQty);
+        }
     }
 
     /** 随计划包自动生成的物料提货单（领料单 DRAW 草稿）：id + 可读单号。 */

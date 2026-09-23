@@ -2264,6 +2264,8 @@ class ProductionGeneratedPlanRef {
     this.segmentIds = const [],
     this.drawIds = const [],
     this.drawDocuments = const [],
+    this.mergedIntoExisting = false,
+    this.appendedQty,
   });
 
   final String planId;
@@ -2278,6 +2280,12 @@ class ProductionGeneratedPlanRef {
   /// 随计划包自动生成的物料提货单（领料单）可读列表；待审核计划为空。
   final List<ProductionGeneratedDrawRef> drawDocuments;
 
+  /// ADR-104：本行追加并入了一张已有的、还没开工的计划(同一单号), 不是新建。
+  final bool mergedIntoExisting;
+
+  /// 并入的追加量; 幂等重放只知道并入过、不知道当时的量, 为空。
+  final double? appendedQty;
+
   factory ProductionGeneratedPlanRef.fromJson(Map<String, dynamic> json) =>
       ProductionGeneratedPlanRef(
         planId: _string(json['planId']) ?? '',
@@ -2290,6 +2298,8 @@ class ProductionGeneratedPlanRef {
           json['drawDocuments'],
           ProductionGeneratedDrawRef.fromJson,
         ),
+        mergedIntoExisting: json['mergedIntoExisting'] == true,
+        appendedQty: _double(json['appendedQty']),
       );
 }
 

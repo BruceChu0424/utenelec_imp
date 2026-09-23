@@ -88,6 +88,17 @@ abstract class _MaterialAnalysisPlanActionsState
     }
   }
 
+  /// ADR-104：并入原计划的行在计划单旁说清「本次追加多少并进去了」。
+  static String _mergedPlanNote(ProductionGeneratedPlanRef plan) {
+    if (!plan.mergedIntoExisting) return '';
+    final qty = plan.appendedQty;
+    if (qty == null) return ' · 本次追加已并入原计划';
+    final text = qty == qty.roundToDouble()
+        ? qty.toInt().toString()
+        : qty.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+    return ' · 本次追加 $text 已并入原计划';
+  }
+
   Future<void> _showGeneratedPlans(
     List<ProductionGeneratedPlanRef> plans,
   ) async {
@@ -105,7 +116,9 @@ abstract class _MaterialAnalysisPlanActionsState
           final printable = _isGeneratedPlanPrintable(plan);
           return AlertDialog(
             title: Text(
-              approved && plan.drawDocuments.isNotEmpty
+              plan.mergedIntoExisting
+                  ? '追加已并入原生产计划'
+                  : approved && plan.drawDocuments.isNotEmpty
                   ? '计划单与提货单已生成'
                   : approved
                   ? '生产计划已审核下达'
@@ -121,7 +134,10 @@ abstract class _MaterialAnalysisPlanActionsState
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.assignment_turned_in_outlined),
                     title: Text('生产计划单 ${plan.planNo ?? plan.planId}'),
-                    subtitle: Text(approved ? '已审核下达' : '待审核'),
+                    subtitle: Text(
+                      '${approved ? '已审核下达' : '待审核'}'
+                      '${_mergedPlanNote(plan)}',
+                    ),
                   ),
                   if (plan.drawDocuments.isNotEmpty) ...[
                     const Divider(height: UtenSpacing.s16),
@@ -230,7 +246,10 @@ abstract class _MaterialAnalysisPlanActionsState
                 leading: const Icon(Icons.assignment_turned_in_outlined),
                 title: Text(plan.planNo ?? plan.planId),
                 subtitle: Text(
-                  plan.status == 'APPROVED'
+                  plan.mergedIntoExisting
+                      ? '${plan.status == 'APPROVED' ? '已审核下达' : '待审核'}'
+                            '${_mergedPlanNote(plan)}'
+                      : plan.status == 'APPROVED'
                       ? plan.drawDocuments.isNotEmpty
                             ? '已审核下达 · 提货单 ${plan.drawDocuments.length} 张'
                             : '已审核下达 · 本批无需领料'

@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
@@ -798,6 +799,47 @@ void main() {
       tester.widget<Checkbox>(_productCheckbox('product-1')).value,
       isTrue,
     );
+  });
+
+  testWidgets('顶层填了追加数却缺生产车间勾不上：当场说原因，不重复刷屏', (tester) async {
+    // 2026-09-22 用户实机「我填数字的这层(顶层)默认是没有选中的」的另一种真因：数量格只要有
+    // 下达权限就是开着的, 顶层没有车间学习默认值时填了数、子层照带, 自己却静静地勾不上,
+    // 原因只藏在悬浮说明里。
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).first as Map;
+        product['issuedPlanQty'] = 2000;
+        product['canSchedule'] = false;
+        product['canIssueSurplus'] = true;
+        product['remainingQty'] = 0;
+        product['latestPlanId'] = 'plan-1';
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+    );
+    await tester.enterText(_appendQty('m-root'), '1000');
+    await tester.pump();
+    await _settleRebuild(tester);
+    expect(
+      tester.widget<Checkbox>(_productCheckbox('product-1')).value,
+      isFalse,
+    );
+    expect(_rowChecked(tester, 'm-6'), isTrue);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionMaterialAnalysisPage)),
+    );
+    bool blockedNotice(AppNotification notice) =>
+        notice.message.contains('填了数但本次还下不了单') &&
+        notice.message.contains('生产车间');
+    expect(container.read(appNotificationProvider).where(blockedNotice), hasLength(1));
+    // 再改一位数：同一行同一原因不再说第二遍。
+    await tester.enterText(_appendQty('m-root'), '1200');
+    await tester.pump();
+    await _settleRebuild(tester);
+    expect(container.read(appNotificationProvider).where(blockedNotice), hasLength(1));
   });
 
   testWidgets('采购行填得比当时需求多：累计已下单 = 归需求份 + 公共备货份', (tester) async {

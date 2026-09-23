@@ -435,7 +435,10 @@ class BusinessDataResetSqlContractTest {
                 // V644 审核生产日报幂等键: 命令账本加 command_kind 一列并换一把唯一键,
                 // 不加表 (V643 跳号, V644 594→595)。
                 .contains("(644, 595)")
-                .contains("V507/469、V508/470及V511至V644完整目录");
+                // V645 追加自制并入未开工的生产计划 (ADR-104): 四个判定函数 + 一条对账触发器
+                // + 锚点补丁三个身份守卫, 不加表 (V645 595→596)。
+                .contains("(645, 596)")
+                .contains("V507/469、V508/470及V511至V645完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

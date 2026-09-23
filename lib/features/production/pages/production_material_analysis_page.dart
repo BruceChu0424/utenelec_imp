@@ -221,6 +221,10 @@ abstract class _MaterialAnalysisPageBase
   );
 
   bool _planSubmissionApproveNow = false;
+
+  /// 最近一次「下达车间」的返回结果(ADR-104：主表分段提交是 silent 的，靠它把
+  /// 「并入原计划 N 张」写进分段回报)。
+  List<ProductionGeneratedPlanRef> _lastIssuedPlans = const [];
   MaterialSupplyRoute? _notifyingRoute;
   int _candidatePageNo = 1;
   final int _candidatePageSize = 100;

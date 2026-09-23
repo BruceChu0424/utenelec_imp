@@ -75,7 +75,7 @@ class MaterialAnalysisCommandBatchLookupTest {
     private static MaterialAnalysisCommandService service(EntityManager em) {
         return new MaterialAnalysisCommandService(
                 em, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
                 org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
     }

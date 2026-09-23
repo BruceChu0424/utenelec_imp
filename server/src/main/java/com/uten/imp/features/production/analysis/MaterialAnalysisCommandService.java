@@ -22,6 +22,7 @@ import com.uten.imp.features.production.mrp.ProductionPlanningDraftView;
 import com.uten.imp.features.production.mrp.ProductionPlanningPackageService;
 import com.uten.imp.features.production.plan.ProductionPlan;
 import com.uten.imp.features.production.plan.ProductionPlanService;
+import com.uten.imp.features.production.plan.ProductionPlanItem;
 import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
@@ -73,6 +74,8 @@ public class MaterialAnalysisCommandService {
     private final ProductionPlanService planService;
     private final ProductionPlanningPackageService planningPackages;
     private final ProductionPlanningDraftService planningDrafts;
+    private final com.uten.imp.features.production.mrp.ProductionExecutionPackageCommandService
+            executionPackages;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
@@ -902,8 +905,11 @@ public class MaterialAnalysisCommandService {
                 request.idempotencyKey(), requestHash);
         if (replay != null) {
             List<UUID> planIds = replayIds(replay.payload(), "planIds");
+            Set<UUID> mergedPlanIds = new HashSet<>(replayIds(replay.payload(), "mergedPlanIds"));
             return new GenerateResult(analysisService.detailInternal(analysisId, false), true,
-                    planIds.stream().map(this::generatedPlan).toList());
+                    planIds.stream().map(this::generatedPlan)
+                            .map(plan -> mergedPlanIds.contains(plan.planId()) ? plan.merged(null) : plan)
+                            .toList());
         }
         mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
@@ -1082,6 +1088,16 @@ public class MaterialAnalysisCommandService {
                         line.workshopName(), line.workerId(), line.teamDepartmentId(),
                         line.productNo());
                 validatePlanSchedule(quantity, defaults);
+                // ADR-104：同一分析行已有一张还没开工的计划(草稿, 或已审核但车间没领料没开工)
+                // 时, 追加量并进那张计划——同一单号、明细加量、关联行加量, 已审核的在同一个
+                // 计划包里另起一段。开工了的计划照旧另立新单(用户口径 2026-09-22)。
+                GrowablePlan growable = growablePlanFor(
+                        analysisId, lineId, quantity.departmentId(), request.approveNow());
+                if (growable != null) {
+                    generated.add(growPlan(analysisId, product, growable, quantity, defaults,
+                            demandQty, surplusQty, request));
+                    continue;
+                }
                 PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults, surplusQty);
                 ProductionPlanningDraftView draft = savePlanningDraft(
                         analysisId, product, plan, quantity, defaults, request.warehouseId());
@@ -1105,9 +1121,141 @@ public class MaterialAnalysisCommandService {
             analysisService.refreshWithAnchorGrowth(analysisId, Map.of(), typedOutputByMaterialLine);
         }
         recordCommand(analysisId, OP_GENERATE, request.idempotencyKey(), requestHash,
-                Map.of("planIds", generated.stream().map(GeneratedPlan::planId).toList()));
+                Map.of("planIds", generated.stream().map(GeneratedPlan::planId).toList(),
+                        "mergedPlanIds", generated.stream()
+                                .filter(GeneratedPlan::mergedIntoExisting)
+                                .map(GeneratedPlan::planId).toList()));
         return new GenerateResult(analysisService.detailInternal(analysisId, false), false,
                 List.copyOf(generated));
+    }
+
+    /** ADR-104：可并入的既有计划(见 {@link #growablePlanFor})。 */
+    private record GrowablePlan(
+            UUID planId, String billNo, short status, UUID linkId, UUID planItemId,
+            BigDecimal itemQty, BigDecimal submittedQty, BigDecimal surplusQty,
+            UUID salesOrderItemId) {
+    }
+
+    /**
+     * 同一分析行最近一张仍可并入的计划：库侧谓词 {@code fn_material_analysis_plan_growable}
+     * (草稿或已审核、恰一条明细且累计全 0、没有报工/拆批、每段仍 WAITING/READY、备料单仍是
+     * 未审核未发料的草稿)，再加两条应用侧口径——请求指定了生产车间时车间必须一致(换车间
+     * = 另一张单)；没有「立即审核」的请求只并入草稿计划，不能把追加量悄悄并进一张已审核的
+     * 计划绕过审核。找不到返回 null，由调用方照旧新建。
+     */
+    private GrowablePlan growablePlanFor(
+            UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow) {
+        String sql = """
+                SELECT plan.id, plan.bill_no, plan.status, link.id, item.id, item.qty,
+                       link.submitted_qty, COALESCE(link.public_surplus_qty, 0), item.sales_order_item_id
+                FROM production_plans plan
+                JOIN production_material_analysis_plan_links link
+                  ON link.plan_id = plan.id
+                 AND link.analysis_id = plan.material_analysis_id
+                 AND link.analysis_item_id = plan.material_analysis_item_id
+                 AND link.allocation_status IN ('SUBMITTED', 'APPROVED')
+                JOIN production_plan_items item
+                  ON item.plan_id = plan.id AND item.is_deleted = FALSE
+                WHERE plan.material_analysis_id = :analysisId
+                  AND plan.material_analysis_item_id = :analysisLineId
+                  AND fn_material_analysis_plan_growable(plan.id)
+                """
+                + (approveNow ? "" : "  AND plan.status = 0\n")
+                + (departmentId == null ? "" : "  AND plan.department_id = :departmentId\n")
+                + """
+                ORDER BY link.created_at DESC, plan.id DESC
+                LIMIT 1
+                FOR UPDATE OF plan, link, item
+                """;
+        var query = em.createNativeQuery(sql)
+                .setParameter("analysisId", analysisId)
+                .setParameter("analysisLineId", analysisLineId);
+        if (departmentId != null) query.setParameter("departmentId", departmentId);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
+        if (rows.isEmpty()) return null;
+        Object[] row = rows.getFirst();
+        return new GrowablePlan((UUID) row[0], Objects.toString(row[1], null),
+                ((Number) row[2]).shortValue(), (UUID) row[3], (UUID) row[4],
+                decimalOf(row[5]), decimalOf(row[6]), decimalOf(row[7]), (UUID) row[8]);
+    }
+
+    private static BigDecimal decimalOf(Object value) {
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+    }
+
+    /**
+     * ADR-104 并入追加：计划明细与关联行只增不减地改大(V645 放行；关联行触发器顺手把分析行的
+     * submitted/approved 与版本推进)；草稿计划重排预排草案(立即审核时整张审核)，已审核计划先把
+     * 销售分摊容量扩大，再在同一个计划包里另起一段。
+     */
+    private GeneratedPlan growPlan(
+            UUID analysisId, ProductView product, GrowablePlan target, PlanQuantity quantity,
+            PlanScheduleDefaults defaults, BigDecimal demandQty, BigDecimal surplusQty,
+            IssueWorkshopPlansRequest request) {
+        BigDecimal added = quantity.qty();
+        int items = em.createNativeQuery("""
+                        UPDATE production_plan_items
+                        SET qty = qty + CAST(:added AS numeric),
+                            updated_at = now(), updated_by = :actorId
+                        WHERE id = :itemId AND plan_id = :planId AND is_deleted = FALSE
+                          AND qty = CAST(:expectedQty AS numeric)
+                        """)
+                .setParameter("added", added)
+                .setParameter("actorId", currentUser.requireId())
+                .setParameter("itemId", target.planItemId())
+                .setParameter("planId", target.planId())
+                .setParameter("expectedQty", target.itemQty())
+                .executeUpdate();
+        if (items != 1) {
+            throw conflict("「" + product.goodsName() + "」原计划 " + target.billNo()
+                    + " 的数量已变化，请刷新后重试");
+        }
+        int links = em.createNativeQuery("""
+                        UPDATE production_material_analysis_plan_links
+                        SET submitted_qty = submitted_qty + CAST(:demandQty AS numeric),
+                            public_surplus_qty = COALESCE(public_surplus_qty, 0) + CAST(:surplusQty AS numeric)
+                        WHERE id = :linkId AND plan_id = :planId
+                          AND submitted_qty = CAST(:expectedSubmitted AS numeric)
+                          AND COALESCE(public_surplus_qty, 0) = CAST(:expectedSurplus AS numeric)
+                        """)
+                .setParameter("demandQty", demandQty)
+                .setParameter("surplusQty", surplusQty)
+                .setParameter("linkId", target.linkId())
+                .setParameter("planId", target.planId())
+                .setParameter("expectedSubmitted", target.submittedQty())
+                .setParameter("expectedSurplus", target.surplusQty())
+                .executeUpdate();
+        if (links != 1) {
+            throw conflict("「" + product.goodsName() + "」原计划 " + target.billNo()
+                    + " 的关联数量已变化，请刷新后重试");
+        }
+        ProductionPlanItem managedItem = em.find(ProductionPlanItem.class, target.planItemId());
+        if (managedItem != null) em.refresh(managedItem);
+        if (target.status() == 0) {
+            planningDrafts.supersedeActive(target.planId(), "物料分析追加数量并入后重排分段");
+            PlanDetail plan = planService.detail(target.planId());
+            ProductionPlanningDraftView draft = savePlanningDraft(
+                    analysisId, product, plan, quantity, defaults, request.warehouseId());
+            PlanningPackageResult applied = null;
+            if (request.approveNow()) {
+                planService.approve(plan.getId());
+                applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
+                        conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+            }
+            return toGenerated(plan, draft, applied).merged(added);
+        }
+        if (target.salesOrderItemId() != null && demandQty.signum() > 0) {
+            planService.growAnalysisPlanSalesAllocation(
+                    target.planId(), target.planItemId(), demandQty);
+        }
+        executionPackages.appendSegment(target.planId(),
+                new com.uten.imp.features.production.mrp.ProductionExecutionPackageCommandService
+                        .AppendSegmentRequest(
+                        target.planItemId(), added,
+                        target.salesOrderItemId() != null ? demandQty : BigDecimal.ZERO,
+                        itemBillDate(quantity, defaults), itemDeliveryDate(quantity, defaults),
+                        quantity.departmentId(), quantity.teamDepartmentId(), quantity.workerId()));
+        return generatedPlan(target.planId()).merged(added);
     }
 
     /**

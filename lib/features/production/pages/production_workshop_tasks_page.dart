@@ -2011,6 +2011,15 @@ class _ProductionWorkshopTasksPageState
       value: (task) => UtenGoodsAttributeCell.text(task.productColorName),
       cellBuilder: (_, task) => UtenGoodsAttributeCell(task.productColorName),
     ),
+    // 2026-09-23 用户口径：产品数量紧跟颜色——看完「哪个产品、什么颜色」就看
+    // 「做多少」，再往右才是订单 / 工单 / 车间。
+    MasterColumnDef(
+      key: 'qty',
+      label: '产品数量',
+      width: 130,
+      type: 'number',
+      value: (task) => '${task.plannedQty} ${task.productUnitName ?? ''}',
+    ),
     MasterColumnDef(
       key: 'order',
       label: '关联订单',
@@ -2028,13 +2037,6 @@ class _ProductionWorkshopTasksPageState
       label: '生产车间',
       width: 170,
       value: (task) => task.workshopName,
-    ),
-    MasterColumnDef(
-      key: 'qty',
-      label: '产品数量',
-      width: 130,
-      type: 'number',
-      value: (task) => '${task.plannedQty} ${task.productUnitName ?? ''}',
     ),
     if (status == 'IN_PROGRESS')
       MasterColumnDef(

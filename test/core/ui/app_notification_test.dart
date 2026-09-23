@@ -494,6 +494,81 @@ void main() {
     expect(dismissals, 1);
   });
 
+  // 2026-09-22 用户反馈「已下达的顶部弹窗应该隔一会自动关闭, 现在会一直显示」：
+  // 桌面端 / 网页端窗口只是没焦点(inactive)时横幅仍看得见, 计时必须照走。
+  testWidgets('unfocused window keeps counting down and dismisses', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    var dismissals = 0;
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Align(
+            alignment: Alignment.topCenter,
+            child: AppNotificationHost(),
+          ),
+        ),
+      ),
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    container
+        .read(appNotificationProvider.notifier)
+        .showMessage(
+          '窗口没焦点也要走',
+          duration: const Duration(milliseconds: 200),
+          onDismissed: () => dismissals++,
+        );
+    await tester.pump();
+    expect(find.text('窗口没焦点也要走'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 201));
+    await tester.pump(const Duration(milliseconds: 221));
+    expect(find.text('窗口没焦点也要走'), findsNothing);
+    expect(dismissals, 1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+  });
+
+  // 真正看不见(hidden / paused)才停表, 而且停表有上限: 回不来也不能永远挂着。
+  testWidgets('hidden app pauses the countdown but only up to the hold cap', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    var dismissals = 0;
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Align(
+            alignment: Alignment.topCenter,
+            child: AppNotificationHost(),
+          ),
+        ),
+      ),
+    );
+    container
+        .read(appNotificationProvider.notifier)
+        .showMessage(
+          '看不见才停表',
+          duration: const Duration(milliseconds: 200),
+          onDismissed: () => dismissals++,
+        );
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('看不见才停表'), findsOneWidget);
+    expect(dismissals, 0);
+    await tester.pump(const Duration(seconds: 26));
+    await tester.pump(const Duration(milliseconds: 221));
+    expect(find.text('看不见才停表'), findsNothing);
+    expect(dismissals, 1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+  });
+
   testWidgets('small screen with large text shows one bounded banner', (
     tester,
   ) async {

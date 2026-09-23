@@ -472,6 +472,63 @@ public class ProductionPlanService {
         TreeSet<UUID> ids = new TreeSet<>();
         allocations.stream().map(PlanAllocation::orderItemId).forEach(ids::add);
         if (ids.isEmpty()) return Map.of();
+        Map<UUID, LockedOrderItem> locked = lockSourceOrderItems(ids);
+        lockAndRevalidatePrebuiltLinks(allocations);
+        validateAllocationCapacity(allocations, locked);
+        return locked;
+    }
+
+    /**
+     * ADR-104 并入追加：已审核、未开工的物料分析计划就地加量后，销售侧同步扩容——
+     * 订单行 planned_qty / chain_status 与 plan_order_item_links 容量各加「归本需求」的那一份
+     * (公共备货份不进订单侧，与审核时同口径)；「排产量 ≤ 订单未满足」照旧校验。
+     * 纯公共备货计划(原本没有排产关联)此时补建一条关联。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void growAnalysisPlanSalesAllocation(UUID planId, UUID planItemId, BigDecimal delta) {
+        if (delta == null || delta.signum() <= 0) return;
+        ProductionPlan plan = requirePlanForUpdate(planId);
+        if (plan.getStatus() == null || plan.getStatus() != STATUS_APPROVED
+                || plan.getMaterialAnalysisId() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "只有已审核的物料分析计划才能同步扩大销售分摊");
+        }
+        ProductionPlanItem item = itemRepo.findById(planItemId)
+                .filter(value -> planId.equals(value.getPlanId()))
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "计划明细不存在"));
+        em.refresh(item);
+        if (item.getSalesOrderItemId() == null) return;
+        List<PlanOrderItemLink> links = linkRepo.findActiveByPlanItemIds(List.of(planItemId));
+        if (links.size() > 1 || (links.size() == 1
+                && !item.getSalesOrderItemId().equals(links.getFirst().getOrderItemId()))) {
+            throw new ApiException(ErrorCode.CONFLICT, "计划明细单值销售来源与预建分摊不一致");
+        }
+        PlanOrderItemLink link = links.isEmpty() ? null : links.getFirst();
+        if (link != null) {
+            em.lock(link, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            em.refresh(link);
+        }
+        PlanAllocation allocation = new PlanAllocation(
+                item, item.getSalesOrderItemId(), delta, link);
+        Map<UUID, LockedOrderItem> locked =
+                lockSourceOrderItems(new TreeSet<>(List.of(item.getSalesOrderItemId())));
+        validateAllocationCapacity(List.of(allocation), locked);
+        MaterialDecision material = materialDecision(planId);
+        short chain = material == MaterialDecision.READY ? CHAIN_PLANNED : CHAIN_WAIT_MATERIAL;
+        applyAllocation(allocation, locked.get(allocation.orderItemId()), chain);
+        if (link == null) {
+            PlanOrderItemLink created = new PlanOrderItemLink();
+            created.setPlanItemId(planItemId);
+            created.setOrderItemId(item.getSalesOrderItemId());
+            created.setAllocatedQty(delta);
+            linkRepo.save(created);
+        } else {
+            link.setAllocatedQty(requirePositiveAllocation(link.getAllocatedQty()).add(delta));
+            linkRepo.save(link);
+        }
+        linkRepo.flush();
+    }
+
+    private Map<UUID, LockedOrderItem> lockSourceOrderItems(TreeSet<UUID> ids) {
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
@@ -545,8 +602,11 @@ public class ProductionPlanService {
             locked.put(orderItemId, new LockedOrderItem(
                     (UUID) row[7], (UUID) row[8], (UUID) row[9], unitRate, remaining));
         }
-        lockAndRevalidatePrebuiltLinks(allocations);
+        return locked;
+    }
 
+    private void validateAllocationCapacity(
+            List<PlanAllocation> allocations, Map<UUID, LockedOrderItem> locked) {
         Map<UUID, BigDecimal> requestedByOrderItem = new HashMap<>();
         for (PlanAllocation allocation : allocations) {
             LockedOrderItem orderItem = locked.get(allocation.orderItemId());
@@ -564,7 +624,6 @@ public class ProductionPlanService {
                         "排产量超过订单未满足需求(剩余可排 " + qtyText(remaining) + ")");
             }
         }
-        return locked;
     }
 
     /** 销售头/行锁定后再锁并刷新预建 links，禁止使用发现阶段的陈旧分摊。 */

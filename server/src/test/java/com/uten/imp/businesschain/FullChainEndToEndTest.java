@@ -1487,8 +1487,19 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        assertTrue(hasSegmentStatus(second.plans().getFirst().planId(),"WAITING"));
-        assertTrue(second.plans().getFirst().drawIds().isEmpty());
+        // ADR-104：第一批 READY 但备料单还是草稿、没发料没开工 → 第二批并进同一张计划, 另起一段;
+        // 那段等料 WAITING、没有自己的备料单; 原来 READY 那段不动。
+        UUID mergedPlan=second.plans().getFirst().planId();
+        assertEquals(first.plans().getFirst().planId(),mergedPlan);
+        assertTrue(second.plans().getFirst().mergedIntoExisting());
+        assertTrue(hasSegmentStatus(mergedPlan,"READY"));
+        assertTrue(hasSegmentStatus(mergedPlan,"WAITING"));
+        assertEquals(2,count("select count(*) from production_execution_segments where plan_id=? and is_deleted=false",mergedPlan));
+        assertEquals(0,count("""
+                select count(*) from production_planning_package_documents document
+                join production_execution_segments segment on segment.id=document.execution_segment_id
+                where segment.plan_id=? and segment.status='WAITING' and document.document_type='DRAW'
+                """,mergedPlan));
         var materialView=second.analysis().flatMaterials().stream()
                 .filter(row -> row.goodsId().equals(material) && row.level()==1).findFirst().orElseThrow();
         assertEquals(0,new BigDecimal("20").compareTo(materialView.requiredQty()));

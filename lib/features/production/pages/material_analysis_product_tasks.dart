@@ -987,12 +987,25 @@ abstract class _MaterialAnalysisProductTasksState
       refreshAfterProductionPlanGenerated(ref);
       final plans = result.plans;
       final approved = plans.any((plan) => plan.status == 'APPROVED');
+      _lastIssuedPlans = plans;
       if (silent) return true;
+      // ADR-104：追加并入了还没开工的原计划(同一单号)时不说「已生成」——那会让人去找
+      // 一张不存在的新单。全部并入 / 部分并入 / 全部新建三种口径分开说。
+      final mergedCount = plans.where((plan) => plan.mergedIntoExisting).length;
+      final allMerged = plans.isNotEmpty && mergedCount == plans.length;
       context.appSuccess(
-        approved
+        allMerged
+            ? (approved
+                  ? '追加数量已并入原生产计划单，车间按同一张计划继续'
+                  : '追加数量已并入原生产计划草稿，待审核')
+            : approved
             ? plans.any((plan) => plan.drawDocuments.isNotEmpty)
                   ? '生产计划已审核下达，物料提货单已生成'
+                  : mergedCount > 0
+                  ? '生产计划已审核下达；其中 $mergedCount 张是并入原计划'
                   : '生产计划已审核下达；当前待料，齐套后自动生成提货单'
+            : mergedCount > 0
+            ? '生产计划已生成并提交审批；其中 $mergedCount 张是并入原计划草稿'
             : '生产计划已生成并提交审批',
       );
       await _showGeneratedPlans(plans);

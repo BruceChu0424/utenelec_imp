@@ -17,6 +17,7 @@ import com.uten.imp.features.production.fulfillment.ProductionExecutionSegmentRe
 import com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService;
 import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
 import com.uten.imp.features.production.fulfillment.ProductionPlanningPackage;
+import com.uten.imp.features.production.fulfillment.ProductionPlanningPackageRepository;
 import com.uten.imp.features.production.fulfillment.ProductionSubcontractApplicationCoordinator;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
 import com.uten.imp.features.stock.StockDocument;
@@ -30,9 +31,11 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -54,6 +57,7 @@ public class ProductionExecutionPackageCommandService {
     private final ProductionExecutionPlanningService planning;
     private final ProductionFulfillmentLedgerService ledger;
     private final ProductionExecutionSegmentRepository segmentRepo;
+    private final ProductionPlanningPackageRepository packageRepo;
     private final ProductionMaterialAllocationFacade stockAllocation;
     private final ProductionPurchaseRequestFacade purchaseFacade;
     private final ProductionSubcontractApplicationCoordinator
@@ -197,48 +201,7 @@ public class ProductionExecutionPackageCommandService {
         persistSalesAllocations(segmentDrafts);
 
         List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
-                new ArrayList<>();
-        for (SegmentDraft segment : segmentDrafts) {
-            for (CompleteKitAllocator.MaterialAllocation material
-                    : segment.proposal().materials()) {
-                CompleteKitAllocator.MaterialUsage usage =
-                        materialUsage(segment, material);
-                boolean exactSnapshot = ProductionMaterialDemand
-                        .REQUIREMENT_MODE_EXACT_SNAPSHOT.equals(
-                                material.requirementMode());
-                if (exactSnapshot != usage.requiresExactSnapshot()) {
-                    throw conflict("执行分段物料计量模式与冻结 BOM 规则不一致");
-                }
-                demandDrafts.add(
-                        new ProductionFulfillmentLedgerService.DemandDraft(
-                                segment.segment().getId(),
-                                segment.segment().getSourcePlanItemId(),
-                                material.goodsId(),
-                                material.colorId(),
-                                material.unitId(),
-                                material.perProductQty(),
-                                material.requiredQty(),
-                                segment.segment().getPlanBeginDate(),
-                                material.supplyRoute(),
-                                segment.segment().getId() + ":"
-                                        + material.goodsId() + ":"
-                                        + Objects.toString(
-                                                material.colorId(), "NONE"),
-                                exactSnapshot
-                                        ? ProductionMaterialDemand
-                                                .REQUIREMENT_MODE_EXACT_SNAPSHOT
-                                        : ProductionMaterialDemand
-                                                .REQUIREMENT_MODE_LINEAR,
-                                exactSnapshot
-                                        ? segment.segment().getPlannedQty()
-                                        : null,
-                                exactSnapshot
-                                        ? usage.requirementFingerprint(
-                                                segment.proposal().line()
-                                                        .productUnitRate())
-                                        : null));
-            }
-        }
+                demandDrafts(segmentDrafts);
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
                 ? List.of()
                 : ledger.createDemands(begin.planningPackage(), demandDrafts);
@@ -438,6 +401,210 @@ public class ProductionExecutionPackageCommandService {
                 drawResults);
     }
 
+    /**
+     * ADR-104：把追加量并入一张已审核、仍未开工的物料分析计划——在它唯一的 CONFIRMED
+     * 计划包里另起一段(数量 = 本次追加量)，冻结该段自己的物料需求与耗用规则；原执行段、
+     * 原预留、原备料单一字不动(与拆批同形态：追加只落新行)。新段与刚审核的计划同形态：
+     * 有料就 WAITING、等车间确认路线后按齐套提升；无料(DIRECT_MAKE)直接 READY。
+     *
+     * <p>调用方须先把计划明细 qty 与关联行改大(V645 放行)，销售来源的计划还要先把
+     * plan_order_item_links 容量改大；这里只把「归本需求」那一份分摊给新段，不改任何既有行。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public AppendedSegment appendSegment(UUID planId, AppendSegmentRequest request) {
+        if (request == null || request.planItemId() == null
+                || request.qty() == null || request.qty().signum() <= 0) {
+            throw conflict("并入追加的数量必须大于零");
+        }
+        BigDecimal qty;
+        try {
+            qty = request.qty().setScale(4, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ex) {
+            throw conflict("并入追加的数量最多保留四位小数");
+        }
+        tx.bind();
+        var sourceGuard = mutationFootprint.beginPlan(planId, List.of());
+        UUID prelockedAnalysisId =
+                preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
+        PlanHeader plan = lockPlan(planId);
+        if (plan.materialAnalysisId() == null
+                || !Objects.equals(prelockedAnalysisId, plan.materialAnalysisId())) {
+            throw conflict("只有物料分析生成、来源未变化的生产计划才能并入追加");
+        }
+        ProductionPlanningPackage planningPackage = packageRepo.lockConfirmedByPlan(planId)
+                .orElseThrow(() -> conflict("生产计划没有生效的计划包，不能并入追加"));
+        if (planningPackage.getExecutionModelVersion() == null
+                || planningPackage.getExecutionModelVersion() != 1) {
+            throw conflict("旧模型的计划包不能并入追加");
+        }
+        sourceGuard.verifyUnchanged();
+        ProductionExecutionPlanningService.Snapshot locked =
+                planning.lockedSnapshot(planId, planningPackage.getWarehouseId(), Map.of());
+        CompleteKitAllocator.ProductLine base = locked.productLines().stream()
+                .filter(line -> request.planItemId().equals(line.sourcePlanItemId()))
+                .findFirst()
+                .orElseThrow(() -> conflict("计划明细的 BOM 快照不可用，不能并入追加"));
+        stockAllocation.lockMaterialDimensions(base.materials().stream()
+                .map(material -> new ProductionPurchaseRequestFacade.MaterialDimension(
+                        material.goodsId(), material.colorId()))
+                .distinct()
+                .sorted()
+                .map(dimension -> new ProductionMaterialAllocationFacade.MaterialDimension(
+                        dimension.goodsId(), dimension.colorId()))
+                .toList());
+        CompleteKitAllocator.ProductLine line = new CompleteKitAllocator.ProductLine(
+                base.sourcePlanItemId(), base.lineNo(), base.productGoodsId(),
+                base.productColorId(), base.productUnitId(), base.productUnitRate(), qty,
+                request.planBeginDate() != null ? request.planBeginDate() : base.planBeginDate(),
+                request.planEndDate() != null ? request.planEndDate() : base.planEndDate(),
+                request.workshopDepartmentId() != null
+                        ? request.workshopDepartmentId() : base.defaultWorkshopDepartmentId(),
+                request.teamDepartmentId() != null
+                        ? request.teamDepartmentId() : base.defaultTeamDepartmentId(),
+                request.responsibleEmployeeId() != null
+                        ? request.responsibleEmployeeId() : base.defaultResponsibleEmployeeId(),
+                base.productCode(), base.productName(), base.priority(), base.materials(),
+                base.bomFingerprint(), base.zeroMaterialReason(), base.zeroMaterialAnalysisId(),
+                base.zeroMaterialExceptionReason(), base.zeroMaterialAuthorizedBy());
+        List<CompleteKitAllocator.MaterialAllocation> materials = line.materials().stream()
+                .map(usage -> {
+                    BigDecimal required = usage.required(qty, line.productUnitRate());
+                    return new CompleteKitAllocator.MaterialAllocation(
+                            usage.goodsId(), usage.colorId(), usage.unitId(),
+                            usage.perProductQty(), required, BigDecimal.ZERO,
+                            BigDecimal.ZERO, required, usage.supplyRoute(),
+                            usage.requiresExactSnapshot()
+                                    ? ProductionMaterialDemand.REQUIREMENT_MODE_EXACT_SNAPSHOT
+                                    : ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR);
+                })
+                .toList();
+        String status = materials.isEmpty()
+                ? ProductionExecutionSegment.STATUS_READY
+                : ProductionExecutionSegment.STATUS_WAITING;
+        CompleteKitAllocator.SegmentAllocation proposal =
+                new CompleteKitAllocator.SegmentAllocation(
+                        "APPEND:" + UUID.randomUUID(), line, status, qty, materials, true);
+        int segmentNo = ((Number) em.createNativeQuery("""
+                        SELECT COALESCE(MAX(segment_no), 0) + 1
+                        FROM production_execution_segments
+                        WHERE package_id = :packageId
+                        """)
+                .setParameter("packageId", planningPackage.getId())
+                .getSingleResult()).intValue();
+        SegmentDraft draft = persistSegment(planningPackage, proposal, segmentNo);
+        segmentRepo.flush();
+        persistAppendedSalesAllocation(draft, request.salesAllocatedQty());
+        List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
+                demandDrafts(List.of(draft));
+        List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
+                ? List.of()
+                : ledger.createDemands(planningPackage, demandDrafts);
+        freezeConsumptionRules(List.of(draft), demands);
+        ledger.refreshDemandStatuses(
+                demands.stream().map(ProductionMaterialDemand::getId).toList());
+        workshopPreferences.learnFromConfirmedSegments(
+                List.of(draft.segment()), currentUser.requireEmployeeId());
+        return new AppendedSegment(
+                planningPackage.getId(), draft.segment().getId(),
+                draft.segment().getSegmentCode(), status);
+    }
+
+    /** 并入追加时新段的销售分摊：归本需求那一份切给新段，容量由调用方先改大。 */
+    private void persistAppendedSalesAllocation(SegmentDraft draft, BigDecimal salesAllocatedQty) {
+        if (salesAllocatedQty == null || salesAllocatedQty.signum() <= 0) {
+            return;
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT link.id, link.order_item_id
+                                FROM plan_order_item_links link
+                                WHERE link.plan_item_id = :planItemId
+                                  AND link.is_deleted = FALSE
+                                ORDER BY link.id
+                                FOR UPDATE OF link
+                                """)
+                        .setParameter("planItemId", draft.segment().getSourcePlanItemId()));
+        if (rows.size() != 1) {
+            throw conflict("并入追加的销售来源计划必须恰有一条排产关联");
+        }
+        em.createNativeQuery("""
+                        INSERT INTO execution_segment_sales_allocations(
+                            execution_segment_id, plan_order_item_link_id,
+                            sales_order_item_id, allocated_qty, created_by)
+                        VALUES (:segmentId, :linkId, :orderItemId, :quantity, :createdBy)
+                        """)
+                .setParameter("segmentId", draft.segment().getId())
+                .setParameter("linkId", rows.getFirst()[0])
+                .setParameter("orderItemId", rows.getFirst()[1])
+                .setParameter("quantity", salesAllocatedQty)
+                .setParameter("createdBy", currentUser.requireId())
+                .executeUpdate();
+    }
+
+    private List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts(
+            List<SegmentDraft> segmentDrafts) {
+        List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
+                new ArrayList<>();
+        for (SegmentDraft segment : segmentDrafts) {
+            for (CompleteKitAllocator.MaterialAllocation material
+                    : segment.proposal().materials()) {
+                CompleteKitAllocator.MaterialUsage usage =
+                        materialUsage(segment, material);
+                boolean exactSnapshot = ProductionMaterialDemand
+                        .REQUIREMENT_MODE_EXACT_SNAPSHOT.equals(
+                                material.requirementMode());
+                if (exactSnapshot != usage.requiresExactSnapshot()) {
+                    throw conflict("执行分段物料计量模式与冻结 BOM 规则不一致");
+                }
+                demandDrafts.add(
+                        new ProductionFulfillmentLedgerService.DemandDraft(
+                                segment.segment().getId(),
+                                segment.segment().getSourcePlanItemId(),
+                                material.goodsId(),
+                                material.colorId(),
+                                material.unitId(),
+                                material.perProductQty(),
+                                material.requiredQty(),
+                                segment.segment().getPlanBeginDate(),
+                                material.supplyRoute(),
+                                segment.segment().getId() + ":"
+                                        + material.goodsId() + ":"
+                                        + Objects.toString(
+                                                material.colorId(), "NONE"),
+                                exactSnapshot
+                                        ? ProductionMaterialDemand
+                                                .REQUIREMENT_MODE_EXACT_SNAPSHOT
+                                        : ProductionMaterialDemand
+                                                .REQUIREMENT_MODE_LINEAR,
+                                exactSnapshot
+                                        ? segment.segment().getPlannedQty()
+                                        : null,
+                                exactSnapshot
+                                        ? usage.requirementFingerprint(
+                                                segment.proposal().line()
+                                                        .productUnitRate())
+                                        : null));
+            }
+        }
+        return demandDrafts;
+    }
+
+    /** 并入追加(ADR-104)的输入：目标计划明细 + 追加量 + 归本需求的销售分摊份 + 新段的排产指派。 */
+    public record AppendSegmentRequest(
+            UUID planItemId,
+            BigDecimal qty,
+            BigDecimal salesAllocatedQty,
+            LocalDate planBeginDate,
+            LocalDate planEndDate,
+            UUID workshopDepartmentId,
+            UUID teamDepartmentId,
+            UUID responsibleEmployeeId) {
+    }
+
+    public record AppendedSegment(
+            UUID packageId, UUID segmentId, String segmentCode, String status) {
+    }
+
     /** Legacy/manual plans let the package own supply generation. */
     static boolean packageOwnsSupply(UUID materialAnalysisId) {
         return materialAnalysisId == null;
@@ -467,47 +634,54 @@ public class ProductionExecutionPackageCommandService {
         for (CompleteKitAllocator.SegmentAllocation proposal
                 : allocation.segments()) {
             no++;
-            ProductionExecutionSegment segment =
-                    new ProductionExecutionSegment();
-            segment.setPackageId(planningPackage.getId());
-            segment.setPlanId(planningPackage.getPlanId());
-            segment.setSourcePlanItemId(
-                    proposal.line().sourcePlanItemId());
-            segment.setSegmentNo(no);
-            segment.setSegmentCode(masterCodeService.nextCode(
-                    MasterCodePrefix.PRODUCTION_EXECUTION_SEGMENT));
-            segment.setClientSegmentKey(proposal.clientSegmentKey());
-            segment.setProductGoodsId(
-                    proposal.line().productGoodsId());
-            segment.setProductColorId(
-                    proposal.line().productColorId());
-            segment.setProductUnitId(
-                    proposal.line().productUnitId());
-            segment.setProductUnitRate(
-                    proposal.line().productUnitRate());
-            segment.setPlannedQty(proposal.plannedQty());
-            freezeMaterialRequirementShape(segment, proposal);
-            segment.setStatus(proposal.status());
-            segment.setAutoPromoteWhenReady(
-                    proposal.autoPromoteWhenReady());
-            segment.setWorkshopDepartmentId(
-                    proposal.line().defaultWorkshopDepartmentId());
-            segment.setTeamDepartmentId(
-                    proposal.line().defaultTeamDepartmentId());
-            segment.setResponsibleEmployeeId(
-                    proposal.line().defaultResponsibleEmployeeId());
-            segment.setPlanBeginDate(proposal.line().planBeginDate());
-            segment.setPlanEndDate(proposal.line().planEndDate());
-            segment.setBomFingerprint(
-                    proposal.line().bomFingerprint().toLowerCase());
-            segment.setIdempotencyKey(
-                    planningPackage.getId() + ":SEG:"
-                            + proposal.clientSegmentKey());
-            segmentRepo.save(segment);
-            result.add(new SegmentDraft(segment, proposal));
+            result.add(persistSegment(planningPackage, proposal, no));
         }
         segmentRepo.flush();
         return List.copyOf(result);
+    }
+
+    private SegmentDraft persistSegment(
+            ProductionPlanningPackage planningPackage,
+            CompleteKitAllocator.SegmentAllocation proposal,
+            int segmentNo) {
+        ProductionExecutionSegment segment =
+                new ProductionExecutionSegment();
+        segment.setPackageId(planningPackage.getId());
+        segment.setPlanId(planningPackage.getPlanId());
+        segment.setSourcePlanItemId(
+                proposal.line().sourcePlanItemId());
+        segment.setSegmentNo(segmentNo);
+        segment.setSegmentCode(masterCodeService.nextCode(
+                MasterCodePrefix.PRODUCTION_EXECUTION_SEGMENT));
+        segment.setClientSegmentKey(proposal.clientSegmentKey());
+        segment.setProductGoodsId(
+                proposal.line().productGoodsId());
+        segment.setProductColorId(
+                proposal.line().productColorId());
+        segment.setProductUnitId(
+                proposal.line().productUnitId());
+        segment.setProductUnitRate(
+                proposal.line().productUnitRate());
+        segment.setPlannedQty(proposal.plannedQty());
+        freezeMaterialRequirementShape(segment, proposal);
+        segment.setStatus(proposal.status());
+        segment.setAutoPromoteWhenReady(
+                proposal.autoPromoteWhenReady());
+        segment.setWorkshopDepartmentId(
+                proposal.line().defaultWorkshopDepartmentId());
+        segment.setTeamDepartmentId(
+                proposal.line().defaultTeamDepartmentId());
+        segment.setResponsibleEmployeeId(
+                proposal.line().defaultResponsibleEmployeeId());
+        segment.setPlanBeginDate(proposal.line().planBeginDate());
+        segment.setPlanEndDate(proposal.line().planEndDate());
+        segment.setBomFingerprint(
+                proposal.line().bomFingerprint().toLowerCase());
+        segment.setIdempotencyKey(
+                planningPackage.getId() + ":SEG:"
+                        + proposal.clientSegmentKey());
+        segmentRepo.save(segment);
+        return new SegmentDraft(segment, proposal);
     }
 
     static void freezeMaterialRequirementShape(

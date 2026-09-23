@@ -366,13 +366,15 @@ class MaterialWorkshopAnchorEndToEndTest {
         var second=commands.issueWorkshopPlans(c.analysis(),request);
         var replay=commands.issueWorkshopPlans(c.analysis(),request);
         assertTrue(replay.replayed());assertEquals(second.plans().getFirst().planId(),replay.plans().getFirst().planId());
-        assertQuotaAndPlans(c,anchor,"10000",2);
+        // ADR-104：第一张已审核但没开工, 第二批并进同一张(6000→10000 归需求 + 6000 公共), 全分析仍一张计划。
+        assertTrue(second.plans().getFirst().mergedIntoExisting());assertTrue(replay.plans().getFirst().mergedIntoExisting());
+        assertQuotaAndPlans(c,anchor,"10000",1);
         qty("0",product(analyses.detail(c.analysis()),anchor).remainingQty());
         // 需求全部转计划后该行不再可排产（canSchedule 资格闸，早于数量校验）：
         // V577 放开的是「本批数量可以超出剩余需求」，不是「已办结的任务行还能再下达」。
         // 纯粹为了多备货的生产属于另立备货任务，不从已办结的子件行复活。
         assertThrows(ApiException.class,()->issue(c,material,"1","new-key-after-full",true));
-        assertQuotaAndPlans(c,anchor,"10000",2);
+        assertQuotaAndPlans(c,anchor,"10000",1);
     }
 
     @Test void equalGoodsOnTwoBomPathsHaveDistinctAnchorsAndLegacyActionIsNotCountedTwice(){
@@ -388,7 +390,8 @@ class MaterialWorkshopAnchorEndToEndTest {
         qty("10000",product(view,secondAnchor).requestedQty());qty("6000",product(view,secondAnchor).remainingQty());
         assertEquals(1,count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route='MAKE'",c.analysis()));
         assertThrows(ApiException.class,()->issue(c,first,"1","cannot-use-sibling-quota",true));
-        assertEquals(3,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        // ADR-104：legacy 路径的两批(6000 + 4000)并成一张没开工的计划, 另一条路径自己一张——共两张。
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
         qty("10000",product(analyses.detail(c.analysis()),legacyAnchor).requestedQty());
     }
 
@@ -406,7 +409,8 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals(1,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=? AND NOT is_deleted",c.analysis()));
     }
 
-    @Test void explicitSourceIncreaseAddsOnlyTheNewQuotaAndNeverChangesExistingPlanQuantities(){
+    /** ADR-104 修订：来源增量本身不动任何计划; 随后按新增配额下达时, 没开工的原计划就地并入(明细 10000→15000)。 */
+    @Test void explicitSourceIncreaseAddsOnlyTheNewQuotaAndGrowsTheUnstartedPlanInPlace(){
         Case c=create("anchor-source-growth",false);UUID material=c.materials().getFirst();
         var first=issue(c,material,"10000","original-demand",true);
         UUID anchor=material(first.analysis(),material).planAnchorAnalysisLineId();
@@ -422,8 +426,13 @@ class MaterialWorkshopAnchorEndToEndTest {
                 "SELECT sum(qty) FROM production_plan_items WHERE plan_id=?",BigDecimal.class,first.plans().getFirst().planId())));
         qty("15000",product(analyses.preview(request),anchor).requestedQty());
         qty("15000",product(analyses.detail(c.analysis()),anchor).requestedQty());
-        issue(c,material,"5000","new-source-delta",true);
-        assertQuotaAndPlans(c,anchor,"15000",2);
+        var delta=issue(c,material,"5000","new-source-delta",true);
+        assertTrue(delta.plans().getFirst().mergedIntoExisting());
+        assertEquals(first.plans().getFirst().planId(),delta.plans().getFirst().planId());
+        assertQuotaAndPlans(c,anchor,"15000",1);
+        assertEquals(0,new BigDecimal("15000").compareTo(db.queryForObject(
+                "SELECT sum(qty) FROM production_plan_items WHERE plan_id=?",BigDecimal.class,first.plans().getFirst().planId())));
+        assertEquals(2,count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",first.plans().getFirst().planId()));
         assertThrows(ApiException.class,()->issue(c,material,"1","source-growth-full",true));
     }
 
@@ -465,13 +474,33 @@ class MaterialWorkshopAnchorEndToEndTest {
         qty("8000",product(admitted,anchor).requestedQty());qty("2000",product(admitted,anchor).remainingQty());
         assertEquals(oldPlans,frozenPlans(c.analysis()));assertEquals(before,nonPlanningFacts(c));
 
-        issue(c,material,"2000","child-extra",true);
-        issueProduct(c,root,"2000","root-extra");
+        // ADR-104：两张原计划都没开工, 增额各并进原计划(6000→8000)——计划头与计划包不改写、
+        // 原执行段与原物料需求一字不动, 只多一段与它自己的需求; 全分析仍两张计划。
+        Map<UUID,String> oldSegments=new LinkedHashMap<>();
+        for(UUID segment:db.queryForList("SELECT s.id FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? ORDER BY s.id",UUID.class,c.analysis()))
+            oldSegments.put(segment,rows("production_execution_segments","id=?",segment));
+        Map<UUID,String> oldDemands=new LinkedHashMap<>();
+        for(UUID demand:db.queryForList("SELECT d.id FROM production_material_demands d JOIN production_plans p ON p.id=d.plan_id WHERE p.material_analysis_id=? ORDER BY d.id",UUID.class,c.analysis()))
+            oldDemands.put(demand,rows("production_material_demands","id=?",demand));
+        var childExtra=issue(c,material,"2000","child-extra",true);
+        var rootExtra=issueProduct(c,root,"2000","root-extra");
+        assertTrue(childExtra.plans().getFirst().mergedIntoExisting());assertTrue(rootExtra.plans().getFirst().mergedIntoExisting());
+        assertEquals(childPlan.plans().getFirst().planId(),childExtra.plans().getFirst().planId());
+        assertEquals(rootPlan.plans().getFirst().planId(),rootExtra.plans().getFirst().planId());
         qty("0",product(analyses.detail(c.analysis()),root).remainingQty());
         assertThrows(ApiException.class,()->issueProduct(c,root,"1","root-after-full"));
-        assertEquals(4,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
         Map<String,String> after=frozenPlans(c.analysis());
-        oldPlans.forEach((key,value)->assertEquals(value,after.get(key),"原计划及包未改写: "+key));
+        oldPlans.forEach((key,value)->{
+            if(key.endsWith("/header")||key.endsWith("/production_planning_packages"))
+                assertEquals(value,after.get(key),"原计划头及计划包未改写: "+key);
+        });
+        oldSegments.forEach((id,row)->assertEquals(row,rows("production_execution_segments","id=?",id),"原执行段一字不动: "+id));
+        oldDemands.forEach((id,row)->assertEquals(row,rows("production_material_demands","id=?",id),"原物料需求一字不动: "+id));
+        for(UUID plan:List.of(childPlan.plans().getFirst().planId(),rootPlan.plans().getFirst().planId())){
+            qty("8000",db.queryForObject("SELECT sum(qty) FROM production_plan_items WHERE plan_id=?",BigDecimal.class,plan));
+            assertEquals(2,count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",plan));
+        }
         assertEquals(before,nonPlanningFacts(c));
     }
 
@@ -568,11 +597,13 @@ class MaterialWorkshopAnchorEndToEndTest {
                 UUID.class, c.analysis());
         assertThrows(ApiException.class, () -> commands.cancelAction(c.analysis(), surplusAction,
                 cancel(second.analysis(), "blocked")), "Public-only actions also protect actual plan output");
+        // ADR-104：两批都是草稿、都没开工, 第二批并进第一张草稿——只有一张计划可删。
+        assertTrue(second.plans().getFirst().mergedIntoExisting());
+        assertEquals(first.plans().getFirst().planId(), second.plans().getFirst().planId());
         plans.delete(second.plans().getFirst().planId());
         commands.cancelAction(c.analysis(), surplusAction, cancel(analyses.detail(c.analysis()), "surplus"));
         qty("10000", db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
                 BigDecimal.class, c.analysis()));
-        plans.delete(first.plans().getFirst().planId());
         UUID original = db.queryForObject("SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND requested_qty>0",
                 UUID.class, c.analysis());
         commands.cancelAction(c.analysis(), original, cancel(analyses.detail(c.analysis()), "original"));
@@ -613,7 +644,10 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals(second.plans().getFirst().planId(), replay.plans().getFirst().planId());
         qty(required, db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
                 BigDecimal.class, c.analysis()));
-        assertEquals(2, count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?", c.analysis()));
+        // ADR-104：前置自制那张计划没开工, 第二批并进同一张。
+        assertTrue(second.plans().getFirst().mergedIntoExisting());
+        assertEquals(first.plans().getFirst().planId(), second.plans().getFirst().planId());
+        assertEquals(1, count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?", c.analysis()));
     }
 
     /** 同一批自制候选二次下达：走既有锚点（不新建子件行），只消费剩余配额，计划数累加。 */
@@ -629,10 +663,12 @@ class MaterialWorkshopAnchorEndToEndTest {
         AnalysisView second=analyses.detail(c.analysis());
         assertEquals(anchors,List.of(material(second,a).planAnchorAnalysisLineId(),material(second,b).planAnchorAnalysisLineId()));
         assertEquals(2,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
-        assertEquals(4,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        // ADR-104：两个锚点各自的第二批并进各自没开工的第一张——两张计划、各两段。
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(4,count("SELECT count(*) FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? AND s.is_deleted=FALSE",c.analysis()));
         for(UUID anchor:anchors){qty("10000",product(second,anchor).requestedQty());qty("0",product(second,anchor).remainingQty());}
         assertThrows(ApiException.class,()->commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),second,c.world(),"third",line(a,"1"))));
-        assertEquals(4,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
     }
 
     /**

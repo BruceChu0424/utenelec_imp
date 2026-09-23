@@ -495,6 +495,11 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
   /// 悬停暂停的硬上限：再久也要收（见 [_scheduleAutoDismiss]）。
   static const int _hoverHoldCapMs = 8000;
 
+  /// 真正看不见（最小化 / 切到后台 / 退到系统）时暂停计时的硬上限：回到前台
+  /// 再久也不能让一条「已下达」永远挂在顶上（2026-09-22 用户反馈「顶部弹窗应该
+  /// 隔一会自动关闭，现在会一直显示」）。
+  static const int _hiddenHoldCapMs = 30000;
+
   Timer? _autoDismissTimer;
   bool _dismissing = false;
   bool _actionTriggered = false;
@@ -544,24 +549,30 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _scheduleAutoDismiss();
-    } else {
-      _autoDismissTimer?.cancel();
-      _autoDismissTimer = null;
-    }
+    _scheduleAutoDismiss();
   }
+
+  /// 窗口只是没焦点（桌面端点到别的窗口、网页端点到别的标签页旁的工具栏）时
+  /// 横幅仍然看得见，计时照走；只有真正看不见（最小化、切到后台、退到系统）
+  /// 才暂停。原来把 `inactive` 也当后台停表，Windows / Web 上只要用户边看
+  /// 别的窗口边等，这条横幅就一直挂着不走。
+  static bool _visibleUnder(AppLifecycleState? lifecycle) =>
+      lifecycle == null ||
+      lifecycle == AppLifecycleState.resumed ||
+      lifecycle == AppLifecycleState.inactive;
 
   /// 重排自动消失计时：悬停中或正在收起则暂停，否则按「到达时刻 + 停留时长」
   /// 的**剩余时间**计时（2026-09-02 独立计时口径）——树结构重排导致的重新挂载
   /// 不会重置整条生命周期；剩余不足 1.5s 时至少留 1.5s 阅读宽限，避免刚挂载
-  /// 或悬停读完就被抽走。
+  /// 或悬停读完就被抽走。看不见时的暂停也有上限 [_hiddenHoldCapMs]。
   void _scheduleAutoDismiss() {
     _autoDismissTimer?.cancel();
-    final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (!widget.autoDismissEnabled ||
-        _dismissing ||
-        (lifecycle != null && lifecycle != AppLifecycleState.resumed)) {
+    if (!widget.autoDismissEnabled || _dismissing) return;
+    if (!_visibleUnder(WidgetsBinding.instance.lifecycleState)) {
+      _autoDismissTimer = Timer(
+        const Duration(milliseconds: _hiddenHoldCapMs),
+        _dismiss,
+      );
       return;
     }
     if (_hovering) {

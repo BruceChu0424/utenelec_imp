@@ -94,12 +94,16 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         qty("500",material(after,t.parentLine()).netShortageQty());
         // 孙层的计划产出量 = max(需求, 自家锚点已下达)：需求已随父件放到 1500，再把锚点余下 500 排掉也不再变。
         qty("1500",material(after,t.childLine()).plannedOutputQty());
-        commands.issueWorkshopPlans(t.analysis(),issue(after,t,"anchor-rest",new IssueWorkshopPlansRequest.IssuePlanLine(anchor,new BigDecimal("500"))));
+        var rest=commands.issueWorkshopPlans(t.analysis(),issue(after,t,"anchor-rest",new IssueWorkshopPlansRequest.IssuePlanLine(anchor,new BigDecimal("500"))));
         AnalysisView done=analyses.detail(t.analysis());
         qty("0",product(done,anchor).remainingQty());qty("1500",material(done,t.childLine()).plannedOutputQty());
         qty("0",material(done,t.parentLine()).netShortageQty());
         qty("1500",material(done,t.parentLine()).plannedOutputQty());
-        assertEquals(3,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        // ADR-104：锚点那张计划已审核但车间没领料没开工, 余下 500 并进同一张(1000→1500), 不另立;
+        // 顶层 1500 那张是另一个分析行的计划——全分析共两张。
+        assertTrue(rest.plans().getFirst().mergedIntoExisting());
+        qty("1500",db.queryForObject("SELECT item.qty FROM production_plan_items item JOIN production_plans plan ON plan.id=item.plan_id WHERE plan.material_analysis_item_id=? AND item.is_deleted=FALSE",BigDecimal.class,anchor));
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
     }
 
     @Test void issuePreviewRunsTheRealCommandThenRollsBackEverything() {
@@ -300,16 +304,18 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         // 不声明 publicSurplusOnly 照旧 409(重复点击不能悄悄多建计划)；声明后按纯公共备货产出放行。
         assertThrows(com.uten.imp.common.web.ApiException.class,()->commands.issueWorkshopPlans(t.analysis(),
                 issue(anchored,t,"anchor-surplus-implicit",new IssueWorkshopPlansRequest.IssuePlanLine(anchor,new BigDecimal("200")))));
-        commands.issueWorkshopPlans(t.analysis(),issue(anchored,t,"anchor-surplus",
+        var surplus=commands.issueWorkshopPlans(t.analysis(),issue(anchored,t,"anchor-surplus",
                 new IssueWorkshopPlansRequest.IssuePlanLine(null,anchor,new BigDecimal("200"),null,null,null,null,null,null,null,Boolean.TRUE)));
+        // ADR-104：原计划没开工, 纯公共备货的 200 并进同一张——关联行 1000/200 同一行, 不另立。
+        assertTrue(surplus.plans().getFirst().mergedIntoExisting());
         Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=? ORDER BY created_at DESC LIMIT 1",
                 (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},t.analysis(),anchor);
-        qty("0",(BigDecimal)link[0]);qty("200",(BigDecimal)link[1]);
+        qty("1000",(BigDecimal)link[0]);qty("200",(BigDecimal)link[1]);
         AnalysisView after=analyses.detail(t.analysis());
         // 锚点需求不变(仍 1000)，已下达计划量 1200；子件按锚点计划产出量 1200 展开。
         qty("1000",product(after,anchor).requestedQty());qty("1200",product(after,anchor).issuedPlanQty());
         qty("1200",material(after,t.parentLine()).plannedOutputQty());qty("1200",material(after,t.childLine()).requiredQty());
-        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
         // 下游引用带「申请明细仍未订货」的当前数量：采购件下 600 后可就地改大；订货后为空。
         AnalysisView notified=commands.notifySupply(t.analysis(),notify(after,t,"buy-600","600"));
         var reference=material(notified,t.buyLine()).downstreamReferences().stream().filter(r->"BUY".equals(r.route())).findFirst().orElseThrow();
@@ -349,21 +355,200 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         BigDecimal plannedBefore=db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem);
         UUID fullPlan=db.queryForObject("SELECT plan_id FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=?",UUID.class,view.analysisId(),rootItem);
         String approvedStatus=db.queryForObject("SELECT status FROM production_plans WHERE id=?",String.class,fullPlan);
-        // 再追加 4: 纯公共备货 + 立即审核, 必须放行。
-        commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(planned.version(),planned.fingerprint(),
+        // 再追加 4: 纯公共备货 + 立即审核, 必须放行。ADR-104：第一张没开工, 并进同一张(10 归需求 + 4 公共)。
+        var surplus=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(planned.version(),planned.fingerprint(),
                 "planned-sales-surplus-"+order,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,rootItem,new BigDecimal("4"),null,null,workshop,null,worker,null,null,Boolean.TRUE))));
-        UUID surplusPlan=db.queryForObject("SELECT plan_id FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=? AND plan_id<>? ORDER BY created_at DESC LIMIT 1",
-                UUID.class,view.analysisId(),rootItem,fullPlan);
+        assertTrue(surplus.plans().getFirst().mergedIntoExisting());
+        assertEquals(fullPlan,surplus.plans().getFirst().planId());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,view.analysisId()));
         Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE plan_id=?",
-                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},surplusPlan);
-        qty("0",(BigDecimal)link[0]);qty("4",(BigDecimal)link[1]);
-        // 与第一张一样审核通过; 纯公共备货不进订单侧: 订单行 planned_qty 不动、这张计划没有销售分摊。
-        assertEquals(approvedStatus,db.queryForObject("SELECT status FROM production_plans WHERE id=?",String.class,surplusPlan));
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},fullPlan);
+        qty("10",(BigDecimal)link[0]);qty("4",(BigDecimal)link[1]);
+        qty("14",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,fullPlan));
+        // 审核态不变; 纯公共备货不进订单侧: 订单行 planned_qty 不动、排产关联容量仍是 10、新段没有销售分摊。
+        assertEquals(approvedStatus,db.queryForObject("SELECT status FROM production_plans WHERE id=?",String.class,fullPlan));
         qty(plannedBefore.toPlainString(),db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
-        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM plan_order_item_links link JOIN production_plan_items item ON item.id=link.plan_item_id WHERE item.plan_id=? AND link.is_deleted=FALSE",
-                Integer.class,surplusPlan));
+        qty("10",db.queryForObject("SELECT SUM(link.allocated_qty) FROM plan_order_item_links link JOIN production_plan_items item ON item.id=link.plan_item_id WHERE item.plan_id=? AND link.is_deleted=FALSE",
+                BigDecimal.class,fullPlan));
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",Integer.class,fullPlan));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM execution_segment_sales_allocations allocation JOIN production_execution_segments segment ON segment.id=allocation.execution_segment_id WHERE segment.plan_id=? AND segment.segment_no=2",
+                Integer.class,fullPlan));
         qty("14",product(analyses.detail(view.analysisId()),rootItem).issuedPlanQty());
+    }
+
+    /**
+     * ADR-104(2026-09-22 用户口径「自制的追加, 生产车间没有去领料开工的前提下应该自动合并;
+     * 已经开始执行了就创建新的单据」)：同一锚点第二次下达, 原计划已审核但车间没领料没开工 →
+     * 并入原计划(同一单号、明细加量、关联行加量、计划包里多一段), 不另立新单。
+     */
+    @Test void appendingOnAnApprovedNotStartedPlanGrowsThatPlanInsteadOfCreatingAnother() {
+        Tree t=seed("merge-append");
+        AnalysisView before=analyses.detail(t.analysis());
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(before,t,"first-600",candidate(t.parentLine(),"600")));
+        assertFalse(first.plans().getFirst().mergedIntoExisting());
+        UUID planId=first.plans().getFirst().planId();
+        AnalysisView anchored=analyses.detail(t.analysis());
+        UUID anchor=material(anchored,t.parentLine()).planAnchorAnalysisLineId();
+        qty("400",product(anchored,anchor).remainingQty());
+        var request=issue(anchored,t,"second-400",candidate(t.parentLine(),"400"));
+        var second=commands.issueWorkshopPlans(t.analysis(),request);
+        assertEquals(1,second.plans().size());
+        assertEquals(planId,second.plans().getFirst().planId());
+        assertTrue(second.plans().getFirst().mergedIntoExisting());
+        qty("400",second.plans().getFirst().appendedQty());
+        assertEquals("APPROVED",second.plans().getFirst().status());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        qty("1000",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,planId));
+        Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty,allocation_status FROM production_material_analysis_plan_links WHERE plan_id=?",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2),rs.getString(3)},planId);
+        qty("1000",(BigDecimal)link[0]);qty("0",(BigDecimal)link[1]);assertEquals("APPROVED",link[2]);
+        // 计划包里两段(600 + 400): 原段一字不动, 新段 WAITING 且自带冻结的物料需求(子件 C 用量 1)。
+        List<Object[]> segments=db.query("SELECT planned_qty,status,segment_no FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE ORDER BY segment_no",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getString(2),rs.getInt(3)},planId);
+        assertEquals(2,segments.size());
+        qty("600",(BigDecimal)segments.get(0)[0]);qty("400",(BigDecimal)segments.get(1)[0]);
+        assertEquals("WAITING",segments.get(1)[1]);assertEquals(2,segments.get(1)[2]);
+        qty("400",db.queryForObject("SELECT SUM(demand.required_qty) FROM production_material_demands demand JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id WHERE segment.plan_id=? AND segment.segment_no=2 AND demand.is_deleted=FALSE",BigDecimal.class,planId));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_planning_packages WHERE plan_id=? AND status='CONFIRMED' AND is_deleted=FALSE",Integer.class,planId));
+        AnalysisView after=analyses.detail(t.analysis());
+        qty("1000",product(after,anchor).issuedPlanQty());qty("0",product(after,anchor).remainingQty());
+        qty("1000",product(after,anchor).approvedQty());
+        assertEquals(planId,product(after,anchor).latestPlanId());
+        // 幂等重放: 同一把键回同一张计划、仍标记并入。
+        var replay=commands.issueWorkshopPlans(t.analysis(),request);
+        assertTrue(replay.replayed());assertEquals(planId,replay.plans().getFirst().planId());
+        assertTrue(replay.plans().getFirst().mergedIntoExisting());
+        // 排满后再追加 200 纯公共备货: 仍并入同一张, 关联行 1000/200, 三段; 子件需求按 1200 展开。
+        var surplus=commands.issueWorkshopPlans(t.analysis(),issue(after,t,"surplus-200",
+                new IssueWorkshopPlansRequest.IssuePlanLine(null,anchor,new BigDecimal("200"),null,null,null,null,null,null,null,Boolean.TRUE)));
+        assertTrue(surplus.plans().getFirst().mergedIntoExisting());
+        Object[] grown=db.queryForObject("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE plan_id=?",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},planId);
+        qty("1000",(BigDecimal)grown[0]);qty("200",(BigDecimal)grown[1]);
+        qty("1200",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,planId));
+        assertEquals(3,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",Integer.class,planId));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        AnalysisView done=analyses.detail(t.analysis());
+        qty("1200",product(done,anchor).issuedPlanQty());
+        qty("1200",material(done,t.childLine()).requiredQty());
+    }
+
+    /** ADR-104：车间已经去领料(备料单已审核发料)的计划一字不动, 追加另立新单(用户口径「已经开始执行了就创建新的单据」)。 */
+    @Test void appendingAfterTheWorkshopStartedProductionCreatesANewPlan() {
+        Tree t=seed("merge-started");
+        // 自制父件 P 只用采购件 C: 先把 C 备足, 第一批下达、确认齐套路线后就 READY 并带备料单。
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,5000)",t.world().warehouseId(),t.world().goodsC());
+        AnalysisView before=analyses.detail(t.analysis());
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(before,t,"first-600",candidate(t.parentLine(),"600")));
+        UUID planId=first.plans().getFirst().planId();
+        fixture.confirmAllUnconfirmedFullKitRoutes();
+        assertTrue(db.queryForObject("SELECT bool_and(status='READY') FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",Boolean.class,planId));
+        // 车间申请领料、仓库审核发料 = 已经开始执行。
+        List<UUID> draws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);
+        assertFalse(draws.isEmpty(),"READY 段确认路线后应带备料单");
+        fixture.requestWorkshopDraws("merge-started-"+planId,draws);
+        var stockDocs=(com.uten.imp.features.stock.StockDocService)ReflectionTestUtils.getField(fixture,"stockDocService");
+        fixture.loginAs(t.world().superAdminUserId());
+        for(UUID draw:draws){
+            com.uten.imp.features.stock.dto.StockDocIssueRequest issue=ReflectionTestUtils.invokeMethod(
+                    fixture,"drawIssueRequest",draw,"merge-started-issue-"+draw,"ADR-104 已领料",null);
+            stockDocs.approveAndIssue(draw,issue);
+        }
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM stock_documents WHERE id IN (SELECT document_id FROM production_planning_package_documents WHERE document_type='DRAW' AND package_id IN (SELECT id FROM production_planning_packages WHERE plan_id=?)) AND status=0",Integer.class,planId));
+        AnalysisView started=analyses.detail(t.analysis());
+        UUID anchor=material(started,t.parentLine()).planAnchorAnalysisLineId();
+        var second=commands.issueWorkshopPlans(t.analysis(),issue(started,t,"second-400",candidate(t.parentLine(),"400")));
+        assertFalse(second.plans().getFirst().mergedIntoExisting());
+        assertNotEquals(planId,second.plans().getFirst().planId());
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        qty("600",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,planId));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",Integer.class,planId));
+        qty("1000",product(analyses.detail(t.analysis()),anchor).issuedPlanQty());
+    }
+
+    /**
+     * ADR-104：草稿计划(没带「立即审核」)追加只并入草稿——同一张草稿加量、预排草案重排、仍待审核;
+     * 之后带「立即审核」的追加把整张(含此前草稿量)一起审核落地。没带审核的追加不会并进已审核的计划。
+     */
+    @Test void appendingOnADraftPlanGrowsTheDraftAndALaterApprovedAppendApprovesItAsOne() {
+        Tree t=seed("merge-draft");
+        AnalysisView before=analyses.detail(t.analysis());
+        var first=commands.issueWorkshopPlans(t.analysis(),new IssueWorkshopPlansRequest(before.version(),before.fingerprint(),
+                "planned-issue-"+t.analysis()+"-draft-600",t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),false,
+                List.of(candidate(t.parentLine(),"600"))));
+        UUID planId=first.plans().getFirst().planId();assertEquals("DRAFT",first.plans().getFirst().status());
+        AnalysisView drafted=analyses.detail(t.analysis());
+        UUID anchor=material(drafted,t.parentLine()).planAnchorAnalysisLineId();
+        qty("600",product(drafted,anchor).submittedQty());
+        var second=commands.issueWorkshopPlans(t.analysis(),new IssueWorkshopPlansRequest(drafted.version(),drafted.fingerprint(),
+                "planned-issue-"+t.analysis()+"-draft-400",t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),false,
+                List.of(candidate(t.parentLine(),"400"))));
+        assertEquals(planId,second.plans().getFirst().planId());assertTrue(second.plans().getFirst().mergedIntoExisting());
+        assertEquals("DRAFT",second.plans().getFirst().status());
+        qty("1000",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,planId));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_planning_drafts WHERE plan_id=? AND status='ACTIVE'",Integer.class,planId));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_planning_drafts WHERE plan_id=? AND status='SUPERSEDED'",Integer.class,planId));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_planning_packages WHERE plan_id=? AND is_deleted=FALSE",Integer.class,planId));
+        AnalysisView grown=analyses.detail(t.analysis());
+        qty("1000",product(grown,anchor).submittedQty());qty("0",product(grown,anchor).approvedQty());
+        // 带「立即审核」再追加 200 纯公共备货: 并入同一张草稿并整张审核——包按 1200 落地, 关联行 1000/200。
+        var third=commands.issueWorkshopPlans(t.analysis(),issue(grown,t,"draft-approve-200",
+                new IssueWorkshopPlansRequest.IssuePlanLine(null,anchor,new BigDecimal("200"),null,null,null,null,null,null,null,Boolean.TRUE)));
+        assertEquals(planId,third.plans().getFirst().planId());assertTrue(third.plans().getFirst().mergedIntoExisting());
+        assertEquals("APPROVED",third.plans().getFirst().status());
+        qty("1200",db.queryForObject("SELECT SUM(planned_qty) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,planId));
+        Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty,allocation_status FROM production_material_analysis_plan_links WHERE plan_id=?",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2),rs.getString(3)},planId);
+        qty("1000",(BigDecimal)link[0]);qty("200",(BigDecimal)link[1]);assertEquals("APPROVED",link[2]);
+        AnalysisView approved=analyses.detail(t.analysis());
+        qty("1000",product(approved,anchor).approvedQty());qty("1200",product(approved,anchor).issuedPlanQty());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+    }
+
+    /**
+     * ADR-104：销售来源的顶层追加归需求的量并入同一张已审核计划时, 订单侧同步扩容——
+     * 排产关联容量与订单行 planned_qty 各加归需求份, 新段分摊到这份; 换车间追加 = 另一张单。
+     */
+    @Test void salesRootAppendGrowsThePlanItsOrderAllocationAndPlannedQtyUnlessTheWorkshopDiffers() {
+        var w=fixture.seedWorld("planned-sales-merge");
+        UUID order=fixture.createApprovedOrder(w,w.goodsA(),"10","100");
+        UUID orderItem=ReflectionTestUtils.invokeMethod(fixture,"orderItemId",order);
+        fixture.loginAs(w.superAdminUserId());
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"planned-sales-merge-preview-"+order,
+                List.of(new PreviewItem("SALES_ORDER_ITEM",orderItem,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal("10")))));
+        UUID rootItem=view.products().getFirst().analysisLineId();
+        ReflectionTestUtils.invokeMethod(fixture,"confirmRootMakeRoute",view.analysisId(),analyses.detail(view.analysisId()));
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","planned-sales-merge");
+        UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId");
+        UUID worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        AnalysisView confirmed=analyses.detail(view.analysisId());
+        var first=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(confirmed.version(),confirmed.fingerprint(),
+                "planned-sales-merge-6-"+order,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,rootItem,new BigDecimal("6"),null,null,workshop,null,worker,null,null))));
+        UUID planId=first.plans().getFirst().planId();
+        UUID planItem=db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",UUID.class,planId);
+        qty("6",db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
+        AnalysisView planned=analyses.detail(view.analysisId());
+        var second=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(planned.version(),planned.fingerprint(),
+                "planned-sales-merge-4-"+order,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,rootItem,new BigDecimal("4"),null,null,workshop,null,worker,null,null))));
+        assertEquals(planId,second.plans().getFirst().planId());assertTrue(second.plans().getFirst().mergedIntoExisting());
+        qty("10",db.queryForObject("SELECT allocated_qty FROM plan_order_item_links WHERE plan_item_id=? AND is_deleted=FALSE",BigDecimal.class,planItem));
+        qty("10",db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
+        qty("4",db.queryForObject("SELECT allocation.allocated_qty FROM execution_segment_sales_allocations allocation JOIN production_execution_segments segment ON segment.id=allocation.execution_segment_id WHERE segment.plan_id=? AND segment.segment_no=2",BigDecimal.class,planId));
+        qty("10",product(analyses.detail(view.analysisId()),rootItem).approvedQty());
+        // 换一个车间追加 2(纯公共备货): 车间不同 = 另一张单。
+        Object other=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","planned-sales-merge-other");
+        UUID otherWorkshop=ReflectionTestUtils.invokeMethod(other,"workshopId");
+        UUID otherWorker=ReflectionTestUtils.invokeMethod(other,"workerId");
+        AnalysisView full=analyses.detail(view.analysisId());
+        var third=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(full.version(),full.fingerprint(),
+                "planned-sales-merge-other-"+order,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,rootItem,new BigDecimal("2"),null,null,otherWorkshop,null,otherWorker,null,null,Boolean.TRUE))));
+        assertFalse(third.plans().getFirst().mergedIntoExisting());assertNotEquals(planId,third.plans().getFirst().planId());
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,view.analysisId()));
+        qty("10",db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
     }
 
     /** 根(自制) -> S(委外, 有自制子层) -> {C(自制), D(采购)}。 */
@@ -412,10 +597,11 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         // 台账跟量到 1200；追加那笔全记公共备货，需求侧一分不多占。
         qty("1200",db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",BigDecimal.class,t.analysis()));
         qty("0",material(after,t.subLine()).additionalSupplyRecommendedQty());
-        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        // ADR-104：前置自制那张计划没开工, 追加并进同一张——关联行 1000/200 同一行。
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
         Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=? ORDER BY created_at DESC LIMIT 1",
                 (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},t.analysis(),anchor);
-        qty("0",(BigDecimal)link[0]);qty("200",(BigDecimal)link[1]);
+        qty("1000",(BigDecimal)link[0]);qty("200",(BigDecimal)link[1]);
     }
 
     private static IssueWorkshopPlansRequest.IssuePlanLine candidate(UUID material,String qty) {

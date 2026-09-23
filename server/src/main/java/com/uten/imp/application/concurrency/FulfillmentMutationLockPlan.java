@@ -61,6 +61,29 @@ public record FulfillmentMutationLockPlan(
         }
     }
 
+    /**
+     * 嵌套命令对已持有预锁的「声明」: 只列调用方手里已知的 id, 不跑任何发现 SQL,
+     * 覆盖检查纯在内存里做(ADR-107)。空声明表示调用方没有可声明的已知 id。
+     */
+    public static FulfillmentMutationLockPlan declared(Collection<CommercialSource> sources,
+            Collection<InventoryDimension> inventory, Collection<UUID> analyses) {
+        return new FulfillmentMutationLockPlan(nonNull(sources), nonNull(inventory), Set.of(),
+                nonNull(analyses), "declared");
+    }
+
+    private static <T> Set<T> nonNull(Collection<T> values) {
+        return values == null ? Set.of() : values.stream().filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    public static FulfillmentMutationLockPlan declaredAnalyses(Collection<UUID> analyses) {
+        return declared(Set.of(), Set.of(), analyses);
+    }
+
+    public static FulfillmentMutationLockPlan nothingDeclared() {
+        return declared(Set.of(), Set.of(), Set.of());
+    }
+
     public static FulfillmentMutationLockPlan merge(
             String fingerprint, Collection<FulfillmentMutationLockPlan> parts) {
         Set<CommercialSource> sources = new HashSet<>();

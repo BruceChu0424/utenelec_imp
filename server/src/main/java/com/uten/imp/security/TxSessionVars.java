@@ -2,6 +2,7 @@ package com.uten.imp.security;
 
 import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditDeviceContext;
+import com.uten.imp.common.concurrency.SavepointSnapshots;
 import com.uten.imp.config.props.CryptoProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
@@ -21,8 +22,12 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.Session;
+import org.springframework.core.Ordered;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 事务会话变量 + 指定高风险、非计算型 PII 的 pgcrypto 加解密 + HMAC。
@@ -34,7 +39,9 @@ import org.hibernate.Session;
  * 解密按版本从密钥环取密钥（保留旧密钥即可解密历史密文，轮换不丢数据）。
  * 密钥以<b>绑定参数</b>传入 pgcrypto（非 SQL 字面量、不进查询日志），不再依赖会话变量。
  *
- * <p>{@link #bind()} 仅绑定审计 actor（app.actor_id，供审计触发器读取）。
+ * <p>{@link #bind()} 仅绑定审计 actor(app.actor_id，供审计触发器读取)。每个读写事务开始时由
+ * {@link TransactionAuditActorBinder} 自动绑定一次, 业务代码漏写也不会丢审计操作人; 同一事务、
+ * 同一身份、同一请求再调用只做内存比较, 不再往返数据库(ADR-107)。{@link #bindActor} 换人时照常重绑。
  */
 @Component
 public class TxSessionVars {
@@ -62,13 +69,11 @@ public class TxSessionVars {
      * that identity from leaking to another transaction on the pooled connection.
      */
     public void bind() {
-        Map<String, String> values = new LinkedHashMap<>();
-        currentUser.get().ifPresent(user -> {
-            values.put("app.actor_id", user.getId().toString());
-            values.put("app.actor_account", truncate(user.getLoginAccount(), 200));
-        });
-        bindRequestMetadata(values);
-        setConfigs(values);
+        // 没有账号 id 的主体(例如测试替身)只补请求元数据, 不绑空操作人。
+        var user = currentUser.get().filter(value -> value.getId() != null);
+        String actorId = user.map(value -> value.getId().toString()).orElse(null);
+        String actorAccount = user.map(value -> truncate(value.getLoginAccount(), 200)).orElse(null);
+        bindIdentity(actorId, actorAccount);
     }
 
     public void bindActor(UUID actorId) {
@@ -76,15 +81,101 @@ public class TxSessionVars {
     }
 
     public void bindActor(UUID actorId, String actorAccount) {
-        Map<String, String> values = new LinkedHashMap<>();
         if (actorId != null || actorAccount != null && !actorAccount.isBlank()) {
             // Identity fields form a pair. A UUID-only rebind must not inherit
             // the previous actor's account label from this same transaction.
-            values.put("app.actor_id", actorId == null ? "" : actorId.toString());
-            values.put("app.actor_account", actorAccount == null ? "" : truncate(actorAccount, 200));
+            bindIdentity(actorId == null ? "" : actorId.toString(),
+                    actorAccount == null ? "" : truncate(actorAccount, 200));
+        } else {
+            bindIdentity(null, null);
+        }
+    }
+
+    /**
+     * actorId 为 null 表示不改身份(沿用本事务已绑定的系统操作人), 只补请求元数据。
+     * 本事务已按同一身份、同一请求绑定过就直接返回。
+     */
+    private void bindIdentity(String actorId, String actorAccount) {
+        HttpServletRequest request = AuditRequestContext.currentRequest();
+        String requestId = request == null ? null : AuditRequestContext.ensureRequestId(request).toString();
+        Binding binding = Binding.current();
+        if (binding != null && binding.covers(actorId, actorAccount, requestId)) return;
+        Map<String, String> values = new LinkedHashMap<>();
+        if (actorId != null) {
+            values.put("app.actor_id", actorId);
+            values.put("app.actor_account", actorAccount);
         }
         bindRequestMetadata(values);
         setConfigs(values);
+        if (binding != null) binding.record(actorId, actorAccount, requestId);
+    }
+
+    /**
+     * 本事务已发出的审计会话变量。set_config(..., true) 随事务结束失效、随回滚到保存点撤销,
+     * 这里的记录跟着同步: 挂起时解绑、恢复时重绑、回滚到保存点时还原到保存点前的值。
+     */
+    static final class Binding implements TransactionSynchronization {
+        private static final Object RESOURCE = new Object();
+        private record Snapshot(boolean actorBound, String actorId, String actorAccount, String requestId) {}
+        private final SavepointSnapshots<Snapshot> savepoints = new SavepointSnapshots<>();
+        private boolean actorBound;
+        private String actorId;
+        private String actorAccount;
+        private String requestId;
+
+        static Binding current() {
+            if (!TransactionSynchronizationManager.isSynchronizationActive()
+                    || !TransactionSynchronizationManager.isActualTransactionActive()) return null;
+            Binding binding = (Binding) TransactionSynchronizationManager.getResource(RESOURCE);
+            if (binding == null) {
+                binding = new Binding();
+                TransactionSynchronizationManager.bindResource(RESOURCE, binding);
+                TransactionSynchronizationManager.registerSynchronization(binding);
+            }
+            return binding;
+        }
+
+        boolean covers(String wantedActor, String wantedAccount, String wantedRequest) {
+            boolean identity = wantedActor == null
+                    || actorBound && wantedActor.equals(actorId) && Objects.equals(wantedAccount, actorAccount);
+            boolean request = wantedRequest == null || wantedRequest.equals(requestId);
+            // 两样都不需要时(无登录、无请求)原本就不发任何语句。
+            return identity && request;
+        }
+
+        void record(String boundActor, String boundAccount, String boundRequest) {
+            if (boundActor != null) {
+                actorBound = true;
+                actorId = boundActor;
+                actorAccount = boundAccount;
+            }
+            if (boundRequest != null) requestId = boundRequest;
+        }
+
+        @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
+        @Override public void savepoint(Object savepoint) {
+            savepoints.record(savepoint, new Snapshot(actorBound, actorId, actorAccount, requestId));
+        }
+        @Override public void savepointRollback(Object savepoint) {
+            Snapshot retained = savepoints.rollback(savepoint);
+            actorBound = retained != null && retained.actorBound();
+            actorId = retained == null ? null : retained.actorId();
+            actorAccount = retained == null ? null : retained.actorAccount();
+            requestId = retained == null ? null : retained.requestId();
+        }
+        @Override public void suspend() {
+            if (TransactionSynchronizationManager.getResource(RESOURCE) == this) {
+                TransactionSynchronizationManager.unbindResource(RESOURCE);
+            }
+        }
+        @Override public void resume() {
+            TransactionSynchronizationManager.bindResource(RESOURCE, this);
+        }
+        @Override public void afterCompletion(int status) {
+            if (TransactionSynchronizationManager.getResource(RESOURCE) == this) {
+                TransactionSynchronizationManager.unbindResource(RESOURCE);
+            }
+        }
     }
 
     /**

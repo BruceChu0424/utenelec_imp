@@ -35,7 +35,9 @@ import static org.junit.jupiter.api.Assertions.*;
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false", "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000"})
+        "uten.inventory.value-work-initial-delay-ms=3600000",
+        // 量的是生产配置: 关掉测试默认打开的嵌套足迹诊断(ADR-107)。
+        "uten.concurrency.verify-nested-footprint=false"})
 @Import(ProductionJdbcMeasurement.Configuration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners = WarehouseIqcBatchScalePostgresTest.Cleanup.class,

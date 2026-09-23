@@ -284,20 +284,9 @@ public class StockService {
         OffsetDateTime ts = req.transactionDate() != null ? req.transactionDate() : OffsetDateTime.now();
 
         StockMovement m = new StockMovement();
-        if(reservedMovementId!=null){
-            var prior=movementRepo.findById(reservedMovementId);
-            if(prior.isPresent()){
-                StockMovement old=prior.get();
-                if(Objects.equals(old.getSourceDocType(),req.sourceDocType())&&Objects.equals(old.getSourceDocId(),req.sourceDocId())
-                        &&Objects.equals(old.getSourceItemId(),req.sourceItemId())&&Objects.equals(old.getGoodsId(),req.goodsId())
-                        &&Objects.equals(old.getColorId(),req.colorId())&&Objects.equals(old.getWarehouseId(),req.warehouseId())
-                        &&old.getDirection()==req.direction()&&old.getMovementType()==req.movementType()&&old.getQty().compareTo(req.qty())==0
-                        &&Objects.equals(old.getUnitId(),req.unitId())&&Objects.equals(old.getActualWeightUnitId(),req.weightUnitId())
-                        &&sameDecimal(old.getUnitRate(),req.unitRate())&&sameDecimal(old.getWeight(),req.weight()))return old.getId();
-                throw new ApiException(ErrorCode.CONFLICT,"预留库存流水UUID对应不同来源或数量，不能覆盖");
-            }
-            m.setId(reservedMovementId);
-        }
+        // 预留流水 UUID 由调用方当场随机生成(IQC 入库行先登记它, 延迟外键在提交时核对);
+        // 撞上已存在的主键只可能是编码错误, 交给主键唯一约束拒绝, 不再为它先按主键查一次(ADR-107)。
+        if(reservedMovementId!=null)m.setId(reservedMovementId);
         m.setTransactionDate(ts);
         m.setMovementType(req.movementType());
         m.setSourceDocType(req.sourceDocType());
@@ -340,5 +329,4 @@ public class StockService {
         return m.getId();
     }
 
-    private static boolean sameDecimal(BigDecimal a,BigDecimal b){return a==null?b==null:b!=null&&a.compareTo(b)==0;}
 }

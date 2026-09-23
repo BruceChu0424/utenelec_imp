@@ -24,9 +24,22 @@ spring:
       connection-timeout: ${UTEN_DB_CONNECTION_TIMEOUT_MS:10000}
       idle-timeout: ${UTEN_DB_IDLE_TIMEOUT_MS:600000}
       max-lifetime: ${UTEN_DB_MAX_LIFETIME_MS:1800000}
+      # 连接借出超过这个时长还没还回池子就打一条带调用栈的告警(连接泄漏/超长事务诊断)。
+      leak-detection-threshold: ${UTEN_DB_LEAK_DETECTION_MS:120000}
       # OLTP plans can overestimate nested BOM/view costs and spend seconds in
       # JIT compilation. Apply only to application connections, not the cluster.
-      connection-init-sql: SET jit = ${uten.database.jit-enabled:false}
+      # 服务端截止时间(ADR-107): 锁等待、单条语句、事务内空闲都有上限, 排队不再无限占住连接。
+      # 数值见下方 uten.database.*; 真正的长任务(报表刷新、业务数据清空)在自己的事务里用
+      # SET LOCAL 显式放宽, Flyway 迁移走独立的非池化连接不受这里约束。
+      connection-init-sql: >-
+        SET jit = ${uten.database.jit-enabled:false};
+        SET lock_timeout = '${uten.database.lock-timeout:10s}';
+        SET statement_timeout = '${uten.database.statement-timeout:60s}';
+        SET idle_in_transaction_session_timeout = '${uten.database.idle-in-transaction-session-timeout:120s}'
+  transaction:
+    # 事务总时长上限(ADR-107): 小于客户端 45 秒放弃等待的时间, 保证「界面报超时」时服务端也已回滚,
+    # 不会出现界面报失败、库里却已提交。需要更长的后台任务在自己的事务上显式声明超时。
+    default-timeout: ${UTEN_TX_DEFAULT_TIMEOUT:40s}
   jpa:
     hibernate:
       ddl-auto: validate          # schema 由 Flyway 管理
@@ -44,6 +57,10 @@ spring:
         default_schema: public
   flyway:
     enabled: true
+    # 迁移用独立的非池化连接(同一库、同一账号), 不继承连接池的语句/锁等待截止时间(ADR-107)。
+    url: ${spring.datasource.url}
+    user: ${spring.datasource.username}
+    password: ${spring.datasource.password}
     locations: classpath:db/migration
     baseline-on-migrate: ${UTEN_FLYWAY_BASELINE_ON_MIGRATE:false}
     clean-disabled: true
@@ -80,6 +97,17 @@ server:
 uten:
   database:
     jit-enabled: ${UTEN_DB_JIT:false}
+    # 应用连接的数据库侧截止时间(ADR-107)。lock_timeout: 等行锁/表锁/咨询锁的上限;
+    # statement_timeout: 单条语句上限; idle_in_transaction_session_timeout: 事务开着却不发语句的上限。
+    lock-timeout: ${UTEN_DB_LOCK_TIMEOUT:10s}
+    statement-timeout: ${UTEN_DB_STATEMENT_TIMEOUT:60s}
+    idle-in-transaction-session-timeout: ${UTEN_DB_IDLE_IN_TX_TIMEOUT:120s}
+    # 报表物化视图刷新这类长后台任务在自己的事务里放宽到的单条语句上限。
+    long-work-statement-timeout: ${UTEN_DB_LONG_WORK_STATEMENT_TIMEOUT:15min}
+  concurrency:
+    # 履约预锁诊断开关(ADR-107): 打开后嵌套命令也重跑自己的来源发现, 证明它要动的都在最外层预锁里。
+    # 生产关闭(嵌套只核对声明的已知 id); 测试类路径 config/application.yml 默认打开。
+    verify-nested-footprint: ${UTEN_VERIFY_NESTED_FOOTPRINT:false}
   deployment:
     # 部署站点：local（公司内网，默认）/ cloud（阿里云，仅 remote_access 授权账号可访问）。
     site: ${UTEN_DEPLOYMENT_SITE:local}

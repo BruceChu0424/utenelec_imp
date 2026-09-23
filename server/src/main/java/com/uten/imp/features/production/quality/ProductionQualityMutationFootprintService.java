@@ -43,10 +43,10 @@ public class ProductionQualityMutationFootprintService {
         return locks.acquire(() -> discover(Kind.AUTHORIZATION,List.of(authorizationId),createsAnalysis));
     }
     public void requireInspection(UUID inspectionId) {
-        locks.requireCovered(discover(Kind.INSPECTION,List.of(inspectionId),false));
+        locks.requireDiscoveredCovered(() -> discover(Kind.INSPECTION,List.of(inspectionId),false));
     }
     public void requireAuthorization(UUID authorizationId) {
-        locks.requireCovered(discover(Kind.AUTHORIZATION,List.of(authorizationId),false));
+        locks.requireDiscoveredCovered(() -> discover(Kind.AUTHORIZATION,List.of(authorizationId),false));
     }
 
     private FulfillmentMutationLockPlan discover(Kind kind,List<UUID> ids,boolean createsAnalysis) {
@@ -54,7 +54,7 @@ public class ProductionQualityMutationFootprintService {
         if(kind==Kind.REPORT) {
             for(var row:rows("""
                     SELECT report.id,item.id,COALESCE(plan_item.plan_id,segment.plan_id),item.goods_id,item.color_id,
-                           item.fqc_recovery_authorization_id,md5(to_jsonb(report)::text),md5(to_jsonb(item)::text)
+                           item.fqc_recovery_authorization_id,report.xmin::text,item.xmin::text
                     FROM production_daily_reports report LEFT JOIN production_daily_report_items item
                       ON item.report_id=report.id AND item.is_deleted=FALSE
                     LEFT JOIN production_plan_items plan_item ON plan_item.id=item.plan_item_id
@@ -69,7 +69,7 @@ public class ProductionQualityMutationFootprintService {
             // when it belongs to another analysis in the same workshop.
             for(var row:rows("""
                     SELECT item.id,demand.id,receiving.plan_id,demand.goods_id,demand.color_id,
-                           md5(to_jsonb(demand)::text),md5(to_jsonb(receiving)::text)
+                           demand.xmin::text,receiving.xmin::text
                     FROM production_daily_report_items item
                     JOIN production_material_demands demand ON demand.id=item.direct_transfer_demand_id
                     JOIN production_execution_segments receiving ON receiving.id=demand.execution_segment_id
@@ -82,7 +82,7 @@ public class ProductionQualityMutationFootprintService {
             // Reversing the source report cancels only its actual, still-live
             // recovery authorizations; do not expand unrelated matching SKUs.
             for(var row:rows("""
-                    SELECT recovery_auth.id,md5(to_jsonb(recovery_auth)::text)
+                    SELECT recovery_auth.id,recovery_auth.xmin::text
                     FROM production_fqc_recovery_authorizations recovery_auth
                     JOIN production_daily_report_items item ON item.id=recovery_auth.source_report_item_id
                     WHERE item.report_id IN (:ids) AND NOT EXISTS (
@@ -90,7 +90,7 @@ public class ProductionQualityMutationFootprintService {
                     ORDER BY recovery_auth.id
                     """,ids)) {result.row("report-recovery",row);result.authorization((UUID)row[0]);}
             for(var row:rows("""
-                    SELECT inspection.id,md5(to_jsonb(inspection)::text)
+                    SELECT inspection.id,inspection.xmin::text
                     FROM production_fqc_inspections inspection WHERE inspection.source_report_id IN (:ids)
                     ORDER BY inspection.id
                     """,ids)) result.row("report-inspection",row);
@@ -99,7 +99,7 @@ public class ProductionQualityMutationFootprintService {
             // 新建并确认一张 FINISHED_IN，落仓唤醒与父需求必须现在就进预锁集合。
             for(var row:rows("""
                     SELECT inspection.id,COALESCE(item.plan_id,segment.plan_id),inspection.goods_id,inspection.color_id,
-                           md5(to_jsonb(inspection)::text),inspection.source_plan_item_id,
+                           inspection.xmin::text,inspection.source_plan_item_id,
                            CASE WHEN registration.stock_in_before_inspection
                                 THEN inspection.warehouse_id END
                     FROM production_fqc_inspections inspection
@@ -123,8 +123,8 @@ public class ProductionQualityMutationFootprintService {
         if(!result.authorizations.isEmpty()) {
             for(var row:rows("""
                     SELECT recovery_auth.id,COALESCE(item.plan_id,segment.plan_id),recovery_auth.warehouse_id,
-                           recovery_auth.goods_id,recovery_auth.color_id,md5(to_jsonb(recovery_auth)::text),
-                           task.id,md5(to_jsonb(task)::text)
+                           recovery_auth.goods_id,recovery_auth.color_id,recovery_auth.xmin::text,
+                           task.id,task.xmin::text
                     FROM production_fqc_recovery_authorizations recovery_auth
                     LEFT JOIN production_plan_items item ON item.id=recovery_auth.source_plan_item_id
                     LEFT JOIN production_execution_segments segment ON segment.id=recovery_auth.execution_segment_id
@@ -135,7 +135,7 @@ public class ProductionQualityMutationFootprintService {
                 if(createsAnalysis&&row[2]!=null&&row[3]!=null)result.manualRoots.add(new WarehouseDimension((UUID)row[2],(UUID)row[3],(UUID)row[4]));
             }
             for(var row:rows("""
-                    SELECT link.id,link.material_analysis_id,md5(to_jsonb(link)::text)
+                    SELECT link.id,link.material_analysis_id,link.xmin::text
                     FROM production_fqc_replenishment_analysis_links link WHERE link.authorization_id IN (:ids)
                     ORDER BY link.id
                     """,result.authorizations)) {result.row("recovery-analysis",row);result.analyses.add((UUID)row[1]);}

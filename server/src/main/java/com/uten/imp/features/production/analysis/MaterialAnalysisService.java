@@ -1203,7 +1203,9 @@ public class MaterialAnalysisService {
     }
 
     AnalysisHeader lockHeader(UUID analysisId) {
-        var guard = mutationLocks.acquire(() -> mutationFootprints.forAnalyses(List.of(analysisId)));
+        // ADR-107: 嵌套在已持有预锁的命令里时只在内存里确认本分析已在集合内, 不再重跑发现。
+        var guard = mutationLocks.acquire(FulfillmentMutationLockPlan.declaredAnalyses(List.of(analysisId)),
+                () -> mutationFootprints.forAnalyses(List.of(analysisId)));
         AnalysisHeader header=readHeader(analysisId,true);
         guard.verifyUnchanged();
         return header;
@@ -1211,8 +1213,7 @@ public class MaterialAnalysisService {
 
     /** Already-held A permits an immutable command replay before rejecting a stale write fingerprint. */
     AnalysisHeader headerAfterPrelock(UUID analysisId) {
-        mutationLocks.requireCovered(new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(),
-                Set.of(analysisId),"analysis-header-read"));
+        mutationLocks.requireAnalysesCovered(List.of(analysisId));
         return readHeader(analysisId,true);
     }
 

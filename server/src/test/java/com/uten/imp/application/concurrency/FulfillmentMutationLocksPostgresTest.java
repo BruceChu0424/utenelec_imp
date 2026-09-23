@@ -46,6 +46,7 @@ class FulfillmentMutationLocksPostgresTest {
     static EntityManagerFactory factory;
     static EntityManager em;
     static TransactionTemplate transactions;
+    static JpaTransactionManager manager;
     static FulfillmentMutationLocks locks;
     static InventoryMutationLock inventory;
     static SalesMutationFootprintService sales;
@@ -59,15 +60,8 @@ class FulfillmentMutationLocksPostgresTest {
         jdbc.execute("CREATE TABLE sales_order_items(id uuid PRIMARY KEY,order_id uuid NOT NULL REFERENCES sales_orders(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false)");
         jdbc.execute("CREATE TABLE sales_shipments(id uuid PRIMARY KEY,revision int NOT NULL DEFAULT 0,is_deleted boolean NOT NULL DEFAULT false)");
         jdbc.execute("CREATE TABLE sales_shipment_items(id uuid PRIMARY KEY,shipment_id uuid NOT NULL REFERENCES sales_shipments(id),order_item_id uuid REFERENCES sales_order_items(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false)");
+        // 新建来源登记只凭本事务行版本(xmin)判定, 不依赖审计日志(db-schema-02): 这里刻意没有审计表和触发器。
         jdbc.execute("CREATE TABLE production_material_analyses(id uuid PRIMARY KEY)");
-        jdbc.execute("CREATE TABLE audit_log(target_type text,target_id text,action text,event_source text,before jsonb)");
-        jdbc.execute("""
-                CREATE FUNCTION test_insert_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
-                INSERT INTO audit_log(target_type,target_id,action,event_source,before)
-                  VALUES (TG_TABLE_NAME,NEW.id::text,'insert','database',NULL); RETURN NEW; END $$
-                """);
-        jdbc.execute("CREATE TRIGGER test_sales_insert AFTER INSERT ON sales_orders FOR EACH ROW EXECUTE FUNCTION test_insert_audit()");
-        jdbc.execute("CREATE TRIGGER test_analysis_insert AFTER INSERT ON production_material_analyses FOR EACH ROW EXECUTE FUNCTION test_insert_audit()");
         var bean = new LocalContainerEntityManagerFactoryBean();
         bean.setDataSource(ds); bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         bean.setJpaDialect(new com.uten.imp.support.NativeSavepointJpaDialect());
@@ -75,7 +69,7 @@ class FulfillmentMutationLocksPostgresTest {
         var props = new Properties(); props.setProperty("hibernate.hbm2ddl.auto","none");
         bean.setJpaProperties(props); bean.afterPropertiesSet(); factory = bean.getObject();
         em = SharedEntityManagerCreator.createSharedEntityManager(factory);
-        var manager = new JpaTransactionManager(factory);
+        manager = new JpaTransactionManager(factory);
         manager.setNestedTransactionAllowed(true);
         transactions = new TransactionTemplate(manager);
         inventory = new InventoryMutationLock(em);
@@ -140,8 +134,9 @@ class FulfillmentMutationLocksPostgresTest {
             }));
             assertTrue(holderReady.await(5,TimeUnit.SECONDS));
             var instrumented=new FulfillmentMutationLocks(em,new FulfillmentInventoryMutationAdapter(inventory)) {
-                @Override public Guard acquire(java.util.function.Supplier<FulfillmentMutationLockPlan> discover) {
-                    return super.acquire(() -> {var plan=discover.get(); discovered.countDown();return plan;});
+                @Override public Guard acquire(FulfillmentMutationLockPlan declared,
+                        java.util.function.Supplier<FulfillmentMutationLockPlan> discover) {
+                    return super.acquire(declared,() -> {var plan=discover.get(); discovered.countDown();return plan;});
                 }
             };
             var waiter=workers.submit(() -> transactions.executeWithoutResult(tx -> {
@@ -252,7 +247,7 @@ class FulfillmentMutationLocksPostgresTest {
         });
     }
 
-    @Test void newRowsRequirePriorExpectationAndSameTransactionInsertAudit() {
+    @Test void newRowsRequirePriorExpectationAndThisTransactionsRowVersion() {
         UUID warehouse=UUID.randomUUID(); UUID analysis=UUID.randomUUID(); UUID newOrder=UUID.randomUUID();
         var empty=new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(warehouse),Set.of(),"new-rows");
         var source=new CommercialSource(CommercialType.SALES_ORDER,newOrder);
@@ -272,7 +267,11 @@ class FulfillmentMutationLocksPostgresTest {
         });
     }
 
-    @Test void concurrentInsertThenUpsertDoesNotMasqueradeAsAnOwnNewSource() {
+    /**
+     * 期望新建之后别的事务抢先提交了同一 UUID: 约定的普通 INSERT 撞主键唯一约束失败, 整笔回滚,
+     * 根本走不到登记——不需要审计日志做证据(db-schema-02)。upsert 不是受支持的新建方式。
+     */
+    @Test void concurrentInsertOfTheExpectedUuidIsRejectedByThePlainInsert() {
         UUID id=UUID.randomUUID(); var source=new CommercialSource(CommercialType.SALES_ORDER,id);
         var empty=new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(),Set.of(),"collision");
         transactions.executeWithoutResult(tx -> {
@@ -283,12 +282,227 @@ class FulfillmentMutationLocksPostgresTest {
                 assertTrue(independent.getAutoCommit());
                 insert.setObject(1,id); insert.executeUpdate();
             } catch (java.sql.SQLException error) { throw new AssertionError(error); }
-            em.createNativeQuery("INSERT INTO sales_orders(id) VALUES (:id) ON CONFLICT(id) DO UPDATE SET revision=1")
-                    .setParameter("id",id).executeUpdate();
-            assertThrows(ApiException.class,()->locks.registerCreatedSource(source));
+            assertThrows(jakarta.persistence.PersistenceException.class,()->em.createNativeQuery(
+                    "INSERT INTO sales_orders(id) VALUES (:id)").setParameter("id",id).executeUpdate());
             tx.setRollbackOnly();
         });
         assertEquals(0,jdbc.queryForObject("SELECT revision FROM sales_orders WHERE id=?",Integer.class,id));
+    }
+
+    /** ADR-107: 嵌套 acquire 不再跑发现, 只按声明的已知 id 在内存里查覆盖; 超出是结构性缺口, 不重跑。 */
+    @Test void nestedAcquireChecksDeclaredIdsInMemoryWithoutDiscovery() {
+        var f=fixture(); var outside=fixture();
+        var discoveries=new java.util.concurrent.atomic.AtomicInteger();
+        transactions.executeWithoutResult(tx -> {
+            locks.acquire(()->{discoveries.incrementAndGet();return plan(f);}).verifyUnchanged();
+            assertEquals(2,discoveries.get(),"One discovery plus one post-lock version recheck");
+            var nested=locks.acquire(plan(f),()->{throw new AssertionError("nested discovery must not run");});
+            nested.verifyUnchanged();
+            assertEquals(2,discoveries.get(),"The transaction verifies its prefix exactly once");
+            var gap=assertThrows(FulfillmentSourceConflictException.class,
+                    ()->locks.acquire(plan(outside),()->{throw new AssertionError("nested discovery must not run");}));
+            assertFalse(gap.retryable(),"A declared id outside the prelock is a coding gap, never retried");
+            var callback=assertThrows(FulfillmentSourceConflictException.class,()->locks.requireCovered(plan(outside)));
+            assertFalse(callback.retryable());
+        });
+    }
+
+    /** 取锁的守卫复核一次后, 再复核、嵌套 acquire 都不再读库。 */
+    @Test void ownerRechecksOnceAndNestedAcquiresNeverRediscover() {
+        var f=fixture();
+        var discoveries=new java.util.concurrent.atomic.AtomicInteger();
+        transactions.executeWithoutResult(tx -> {
+            var outer=locks.acquire(()->{discoveries.incrementAndGet();return plan(f);});
+            assertEquals(1,discoveries.get(),"The owner may still return an immutable replay before rechecking");
+            outer.verifyUnchanged(); outer.verifyUnchanged();
+            locks.acquire(plan(f),()->{throw new AssertionError("nested discovery must not run");}).verifyUnchanged();
+            assertEquals(2,discoveries.get());
+        });
+    }
+
+    /**
+     * 取锁的命令从没复核就写了、再进入嵌套命令(只为给嵌套出库预锁的入口): 第一个嵌套 acquire 替它做一次
+     * 锁后覆盖复核——只要求重读的足迹仍落在已持有集合内, 不把自己的写入误判成来源变化; 之后不再读库。
+     */
+    @Test void unverifiedOwnerIsCoverageRecheckedByTheFirstNestedAcquireAfterItsOwnWrites() {
+        var f=fixture(); var other=fixture();
+        var discoveries=new java.util.concurrent.atomic.AtomicInteger();
+        transactions.executeWithoutResult(tx -> {
+            locks.acquire(()->{discoveries.incrementAndGet();return plan(f);});
+            em.createNativeQuery("UPDATE sales_orders SET revision=revision+1 WHERE id=:id").setParameter("id",f.order).executeUpdate();
+            locks.acquire(()->{throw new AssertionError("nested discovery must not run");}).verifyUnchanged();
+            locks.acquire(plan(f),()->{throw new AssertionError("nested discovery must not run");}).verifyUnchanged();
+            assertEquals(2,discoveries.get(),"One coverage recheck for the whole transaction");
+        });
+        var grown=new java.util.concurrent.atomic.AtomicBoolean();
+        var drift=assertThrows(FulfillmentSourceConflictException.class,()->transactions.executeWithoutResult(tx -> {
+            locks.acquire(()->grown.getAndSet(true)?withOrder(plan(f),other):plan(f));
+            locks.acquire(()->{throw new AssertionError("nested discovery must not run");});
+        }));
+        assertTrue(drift.retryable(),"A footprint that grew after the pre-read is transient drift, re-run from scratch");
+    }
+
+    private static FulfillmentMutationLockPlan withOrder(FulfillmentMutationLockPlan plan,Fixture extra) {
+        var sources=new java.util.HashSet<>(plan.commercialSources());
+        sources.add(new CommercialSource(CommercialType.SALES_ORDER,extra.order));
+        return new FulfillmentMutationLockPlan(sources,plan.inventoryDimensions(),plan.mainWarehouseIds(),plan.analysisIds(),"grown");
+    }
+
+    /**
+     * ADR-107 + 评审: 主仓协调锁仍在数据库锁管理器里排队(不再轮询), 等待上限就是连接上的 lock_timeout;
+     * 到点拿不到回可重跑冲突和大白话提示。只读预览取共享锁, 预览之间互不排队, 与写命令互斥。
+     */
+    @Test void mainWarehouseLockQueuesUpToLockTimeoutAndReadOnlyPreviewsShareIt() throws Exception {
+        UUID warehouse=UUID.randomUUID();
+        var planned=new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(warehouse),Set.of(),"warehouse-only");
+        String key="MATERIAL-ANALYSIS-WAREHOUSE:"+warehouse;
+        try (var holder=jdbc.getDataSource().getConnection()) {
+            try (var lock=holder.prepareStatement("SELECT pg_advisory_lock_shared(hashtextextended(?,0))")) {
+                lock.setString(1,key); lock.executeQuery().close();
+            }
+            transactions.executeWithoutResult(tx -> {
+                lockTimeout("300ms");
+                locks.useSharedWarehouseLocksForReadOnlyPreview();
+                locks.acquire(()->planned).verifyUnchanged();
+            });
+            long started=System.nanoTime();
+            var busy=assertThrows(FulfillmentSourceConflictException.class,
+                    ()->transactions.executeWithoutResult(tx -> { lockTimeout("300ms"); locks.acquire(()->planned); }));
+            long waitedMillis=(System.nanoTime()-started)/1_000_000L;
+            assertTrue(busy.retryable());
+            assertEquals(FulfillmentMutationLocks.WAREHOUSE_BUSY_MESSAGE,busy.getMessage());
+            assertTrue(waitedMillis>=250&&waitedMillis<5_000,"Bounded by lock_timeout instead of queueing forever: "+waitedMillis);
+            try (var unlock=holder.prepareStatement("SELECT pg_advisory_unlock_shared(hashtextextended(?,0))")) {
+                unlock.setString(1,key); unlock.executeQuery().close();
+            }
+            transactions.executeWithoutResult(tx -> locks.acquire(()->planned).verifyUnchanged());
+        }
+    }
+
+    /**
+     * 预锁阶段排在别人后面超过 lock_timeout(订货单行锁、库存维度锁同理): 本命令还没写任何东西,
+     * 回可重跑冲突和大白话提示, 交给最外层事务边界在重跑预算内再排一次队, 而不是裸的锁超时 409。
+     */
+    @Test void prefixRowLockTimeoutIsARetryableBusyConflict() throws Exception {
+        var f=fixture();
+        try (var holder=jdbc.getDataSource().getConnection()) {
+            holder.setAutoCommit(false);
+            try (var lock=holder.prepareStatement("SELECT id FROM sales_orders WHERE id=? FOR UPDATE")) {
+                lock.setObject(1,f.order); lock.executeQuery().close();
+            }
+            var busy=assertThrows(FulfillmentSourceConflictException.class,
+                    ()->transactions.executeWithoutResult(tx -> { lockTimeout("300ms"); locks.acquire(()->plan(f)); }));
+            assertTrue(busy.retryable());
+            assertEquals(FulfillmentMutationLocks.SOURCE_BUSY_MESSAGE,busy.getMessage());
+            holder.rollback();
+        }
+        transactions.executeWithoutResult(tx -> locks.acquire(()->plan(f)).verifyUnchanged());
+    }
+
+    /** 评审补充: 前一个写命令持主仓锁约 3 秒, 同仓第二个写命令排队等到它提交后成功, 不回 409。 */
+    @Test void secondWarehouseWriterQueuesBehindAThreeSecondHolderAndSucceeds() throws Exception {
+        UUID warehouse=UUID.randomUUID();
+        var planned=new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(warehouse),Set.of(),"warehouse-queue");
+        var held=new CountDownLatch(1);
+        try(var workers=Executors.newFixedThreadPool(2)) {
+            var holder=workers.submit(() -> transactions.executeWithoutResult(tx -> {
+                lockTimeout("10s");
+                locks.acquire(()->planned).verifyUnchanged();
+                held.countDown();
+                sleep(3_000);
+            }));
+            assertTrue(held.await(5,TimeUnit.SECONDS));
+            long started=System.nanoTime();
+            var waiter=workers.submit(() -> transactions.executeWithoutResult(tx -> {
+                lockTimeout("10s");
+                locks.acquire(()->planned).verifyUnchanged();
+            }));
+            waiter.get(15,TimeUnit.SECONDS);
+            long waitedMillis=(System.nanoTime()-started)/1_000_000L;
+            holder.get(5,TimeUnit.SECONDS);
+            assertTrue(waitedMillis>=2_500,"The second writer queued behind the holder: "+waitedMillis);
+        }
+    }
+
+    /**
+     * 评审补充: 前一个命令持有订货单约 3.5 秒后把发货行改挂到另一张订单并提交; 本命令排队等锁后发现
+     * 来源变了——等锁时间不算进重跑预算, 最外层事务边界替它重跑一次, 重新预读新订单后成功。
+     */
+    @Test void conflictDetectedAfterAThreeSecondQueueIsReRunByTheCommandBoundary() throws Exception {
+        var old=fixture(); var replacement=fixture(); UUID shipment=UUID.randomUUID(); UUID line=UUID.randomUUID();
+        jdbc.update("INSERT INTO sales_shipments(id) VALUES (?)",shipment);
+        jdbc.update("INSERT INTO sales_shipment_items(id,shipment_id,order_item_id,goods_id) VALUES (?,?,?,?)",line,shipment,old.item,old.goods);
+        var command=new ShipmentCommand();
+        var proxyFactory=new org.springframework.aop.framework.ProxyFactory(command);
+        proxyFactory.setProxyTargetClass(true);
+        proxyFactory.addAdvice(new FulfillmentSourceConflictRetryInterceptor());
+        proxyFactory.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(
+                (org.springframework.transaction.TransactionManager) manager,
+                new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var proxy=(ShipmentCommand) proxyFactory.getProxy();
+        var holderReady=new CountDownLatch(1);
+        try(var workers=Executors.newFixedThreadPool(2)) {
+            var holder=workers.submit(() -> transactions.executeWithoutResult(tx -> {
+                em.createNativeQuery("SELECT id FROM sales_orders WHERE id=:id FOR UPDATE").setParameter("id",old.order).getSingleResult();
+                holderReady.countDown();
+                sleep(3_500);
+                em.createNativeQuery("UPDATE sales_shipment_items SET order_item_id=:replacement,goods_id=:goods WHERE id=:id")
+                        .setParameter("replacement",replacement.item).setParameter("goods",replacement.goods).setParameter("id",line).executeUpdate();
+            }));
+            assertTrue(holderReady.await(5,TimeUnit.SECONDS));
+            long started=System.nanoTime();
+            var waiter=workers.submit(() -> proxy.touch(shipment));
+            waiter.get(20,TimeUnit.SECONDS);
+            long elapsedMillis=(System.nanoTime()-started)/1_000_000L;
+            holder.get(5,TimeUnit.SECONDS);
+            assertEquals(2,command.attempts.get(),"The queued attempt conflicted once and the boundary re-ran it");
+            assertTrue(elapsedMillis>=3_000,"The first attempt really waited behind the holder: "+elapsedMillis);
+            assertEquals(1,jdbc.queryForObject("SELECT revision FROM sales_shipments WHERE id=?",Integer.class,shipment));
+        }
+    }
+
+    /** A command boundary like a production @Transactional service method (retry advice outside the transaction). */
+    static class ShipmentCommand {
+        final java.util.concurrent.atomic.AtomicInteger attempts=new java.util.concurrent.atomic.AtomicInteger();
+        @org.springframework.transaction.annotation.Transactional
+        public void touch(UUID shipment) {
+            attempts.incrementAndGet();
+            sales.lockShipment(shipment,List.of());
+            em.createNativeQuery("UPDATE sales_shipments SET revision=revision+1 WHERE id=:id").setParameter("id",shipment).executeUpdate();
+        }
+    }
+
+    /**
+     * 评审补充: 生产配置下嵌套 acquire 只查声明的 id; 打开诊断开关(测试环境默认打开)后, 嵌套 acquire
+     * 还会重跑自己的发现, 没声明却超出预锁的足迹也会被拦下(可重跑, 记 WARN)。
+     */
+    @Test void verificationSwitchRediscoversUndeclaredNestedFootprints() {
+        var f=fixture(); var outside=fixture();
+        var verifying=new FulfillmentMutationLocks(em,new FulfillmentInventoryMutationAdapter(inventory),true);
+        transactions.executeWithoutResult(tx -> {
+            locks.acquire(()->plan(f)).verifyUnchanged();
+            locks.acquire(()->plan(outside)).verifyUnchanged(); // production: nothing declared, nothing checked
+        });
+        transactions.executeWithoutResult(tx -> {
+            verifying.acquire(()->plan(f)).verifyUnchanged();
+            verifying.acquire(()->plan(f)).verifyUnchanged();
+            var gap=assertThrows(FulfillmentSourceConflictException.class,()->verifying.acquire(()->plan(outside)));
+            assertTrue(gap.retryable(),"A rediscovered footprint may have drifted: re-run, not a coding verdict");
+            tx.setRollbackOnly();
+        });
+        transactions.executeWithoutResult(tx -> {
+            locks.acquire(()->plan(f)).verifyUnchanged();
+            var drift=assertThrows(FulfillmentSourceConflictException.class,()->locks.requireDiscoveredCovered(()->plan(outside)));
+            assertTrue(drift.retryable(),"Rediscovery-based callback checks stay retryable");
+            tx.setRollbackOnly();
+        });
+    }
+
+    private static void lockTimeout(String value) {
+        em.createNativeQuery("SELECT set_config('lock_timeout',:value,true)").setParameter("value",value).getSingleResult();
+    }
+    private static void sleep(long millis) {
+        try { Thread.sleep(millis); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new AssertionError(e); }
     }
 
     static void take(Fixture f,boolean salesCommand) {

@@ -60,6 +60,14 @@ class MaterializedViewRefreshSchedulerTest {
         verify(refreshStatement, times(MaterializedViewRefreshScheduler.REPORT_VIEWS.size()))
                 .execute(anyString());
         verify(preparedStatement, times(2)).executeQuery();
+        // ADR-107: 每张视图在自己的短事务里放宽单条语句上限, 提交后恢复自动提交。
+        int views = MaterializedViewRefreshScheduler.REPORT_VIEWS.size();
+        verify(connection, times(views)).prepareStatement("SELECT set_config('statement_timeout', ?, true)");
+        verify(preparedStatement, times(views)).setString(1,
+                MaterializedViewRefreshScheduler.DEFAULT_LONG_WORK_STATEMENT_TIMEOUT);
+        verify(preparedStatement, times(views)).execute();
+        verify(connection, times(views)).setAutoCommit(false);
+        verify(connection, times(views)).commit();
     }
 
     @Test

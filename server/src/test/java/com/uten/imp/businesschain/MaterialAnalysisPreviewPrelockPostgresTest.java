@@ -42,7 +42,9 @@ import static org.mockito.Mockito.*;
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
-        "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+        "uten.bootstrap.admin-password=HarnessAdminPass-1!",
+        // 量的是生产配置: 关掉测试默认打开的嵌套足迹诊断(ADR-107)。
+        "uten.concurrency.verify-nested-footprint=false"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class MaterialAnalysisPreviewPrelockPostgresTest {
     @DynamicPropertySource
@@ -77,9 +79,10 @@ class MaterialAnalysisPreviewPrelockPostgresTest {
         assertTrue(after.products().stream().allMatch(row -> row.requestedQty().compareTo(new BigDecimal("5")) == 0));
         assertTrue(after.flatMaterials().stream().filter(row -> row.level() == 0)
                 .allMatch(row -> row.requiredQty().compareTo(new BigDecimal("5")) == 0));
+        // ADR-107: the outermost preview prelock runs one discovery and one post-lock version recheck;
+        // the nested refresh only checks, in memory, that its analysis is inside that prelock.
         verify(target(), times(2)).forPreview(any(), any(), any(), any(), any());
-        // refreshLocked retains its own discovery and post-lock revalidation.
-        verify(target(), times(2)).forAnalyses(List.of(before.analysisId()));
+        verify(target(), never()).forAnalyses(List.of(before.analysisId()));
         assertEquals(0, jdbc.queryForObject("select count(*) from production_plans where material_analysis_id=?",
                 Integer.class, before.analysisId()));
     }

@@ -44,7 +44,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false", "uten.policy-intelligence.enabled=false",
-        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false"})
+        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
+        // 量的是生产配置: 关掉测试默认打开的嵌套足迹诊断(ADR-107)。
+        "uten.concurrency.verify-nested-footprint=false"})
 // Default failure-only printing still eagerly formats and retains every large
 // successful response. Measure real MockMvc bytes without that test-only copy.
 @AutoConfigureMockMvc(print = org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint.NONE)
@@ -150,7 +152,17 @@ class ProductionMaterialAnalysisScalePostgresTest {
         try {
             var jobs = java.util.stream.IntStream.range(0, 2).mapToObj(n -> workers.submit(() -> {
                 factory.login(scenario);
-                try { assertTrue(start.await(30, TimeUnit.SECONDS)); return commands.issueWorkshopPlans(analysisId, issue); }
+                try {
+                    assertTrue(start.await(30, TimeUnit.SECONDS));
+                    // ADR-107 服务端截止时间: 排在一个很慢的同键命令后面超过等锁上限(含服务端重排一次)时,
+                    // 回可重跑 409「请稍后再试」; 用户再点一次必须按幂等键重放, 绝不第二次提交。
+                    for (int attempt = 1; ; attempt++) {
+                        try { return commands.issueWorkshopPlans(analysisId, issue); }
+                        catch (com.uten.imp.application.concurrency.FulfillmentSourceConflictException busy) {
+                            if (!busy.retryable() || attempt >= 5) throw busy;
+                        }
+                    }
+                }
                 finally { SecurityContextHolder.clearContext(); }
             })).toList();
             start.countDown();

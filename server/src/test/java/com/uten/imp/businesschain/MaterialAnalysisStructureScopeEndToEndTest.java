@@ -55,7 +55,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(properties = {"spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false", "uten.policy-intelligence.enabled=false",
-        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false"})
+        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
+        // 量的是生产配置: 关掉测试默认打开的嵌套足迹诊断(ADR-107)。
+        "uten.concurrency.verify-nested-footprint=false"})
 @Import(ProductionJdbcMeasurement.Configuration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners = MaterialAnalysisStructureScopeEndToEndTest.Cleanup.class,
@@ -207,10 +209,11 @@ class MaterialAnalysisStructureScopeEndToEndTest {
         ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
         try { plans.approve(generated.plans().getFirst().planId()); }
         finally { ProductionJdbcMeasurement.end(); }
-        long materialReads = sample.explainCandidates.values().stream()
-                .filter(query -> query.sql().contains("SELECT material.id,material.goods_id,material.color_id,md5("))
-                .mapToLong(query -> sample.fingerprints.get(query.fingerprint())).sum();
-        assertTrue(materialReads >= 4, "Standalone approval must keep both original acquire/verify pairs");
+        long materialReads = staticMaterialReads(sample);
+        // ADR-107: one outermost discovery plus one post-lock version recheck; the nested analysis
+        // refresh no longer repeats its own acquire/verify pair, and no whole-row hash is computed.
+        assertEquals(2, materialReads, "Standalone approval: one outermost discovery and one version recheck");
+        assertEquals(0, sample.md5Statements, "Post-lock recheck compares row versions, never whole-row hashes");
         var otherScenario = factory.anotherSalesOrder(scenario);
         AnalysisView other = previewAndRoute(otherScenario);
         UUID otherMaterial = materialId(other, other.products().getFirst().analysisLineId());
@@ -396,7 +399,7 @@ class MaterialAnalysisStructureScopeEndToEndTest {
             assertTrue(before.stream().anyMatch(row->row.get(6)==null),"The fixture contains real nullable color values");
             jdbc.update("UPDATE production_material_analyses SET version=version+1 WHERE id=?",first.analysisId());
             var after=assertHeaderRowsMatchLegacy(ids);
-            assertNotEquals(before,after,"A later discovery must observe the new header hash");
+            assertNotEquals(before,after,"A later discovery must observe the new header row version");
             jdbc.update("UPDATE production_material_analysis_items SET is_deleted=TRUE WHERE analysis_id=?",second.analysisId());
             var emptyHeader=assertHeaderRowsMatchLegacy(ids);
             assertTrue(emptyHeader.stream().anyMatch(row->second.analysisId().equals(row.getFirst())&&row.get(3)==null),
@@ -426,21 +429,21 @@ class MaterialAnalysisStructureScopeEndToEndTest {
             }
         });
         var old=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT analysis.id,fn_warehouse_main_id(analysis.warehouse_id),md5(to_jsonb(analysis)::text),
-                       item.id,sale.order_id,item.goods_id,item.color_id,md5(to_jsonb(item)::text)
+                SELECT analysis.id,fn_warehouse_main_id(analysis.warehouse_id),analysis.xmin::text,
+                       item.id,sale.order_id,item.goods_id,item.color_id,item.xmin::text
                 FROM production_material_analyses analysis
                 LEFT JOIN production_material_analysis_items item ON item.analysis_id=analysis.id AND item.is_deleted=FALSE
                 LEFT JOIN sales_order_items sale ON sale.id=item.sales_order_item_id AND item.source_type='SALES_ORDER_ITEM'
                 WHERE analysis.id IN (:ids) AND analysis.is_deleted=FALSE ORDER BY analysis.id,item.id
                 """).setParameter("ids",ids));
         var expected=old.stream().map(java.util.Arrays::asList).toList();
-        assertEquals(expected,actual,"All IDs, nulls, hashes, rows and ordering must stay exactly equal");
+        assertEquals(expected,actual,"All IDs, nulls, row versions, rows and ordering must stay exactly equal");
         return actual;
     }
 
     private static long staticMaterialReads(ProductionJdbcMeasurement.Sample sample) {
         return sample.explainCandidates.values().stream()
-                .filter(query -> query.sql().contains("SELECT material.id,material.goods_id,material.color_id,md5("))
+                .filter(query -> query.sql().contains("SELECT material.id,material.goods_id,material.color_id,material.xmin"))
                 .mapToLong(query -> sample.fingerprints.get(query.fingerprint())).sum();
     }
 

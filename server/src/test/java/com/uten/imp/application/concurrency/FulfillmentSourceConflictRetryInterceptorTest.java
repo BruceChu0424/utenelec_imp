@@ -120,6 +120,56 @@ class FulfillmentSourceConflictRetryInterceptorTest {
         assertEquals(FulfillmentSourceConflictRetryInterceptor.MAX_ATTEMPTS - 1, pauses.size());
     }
 
+    /** ADR-107: 第一次冲突之后的重跑累计超过预算就停, 慢命令不会被放大成几倍时长。 */
+    @Test
+    void retryableConflictStopsOnceTheRetryBudgetIsSpent() throws Throwable {
+        long[] now = {0};
+        var budgeted = new FulfillmentSourceConflictRetryInterceptor(pauses::add, () -> now[0]);
+        FakeInvocation invocation = new FakeInvocation(new Target(), method(Target.class, "command"), () -> {
+            now[0] += 6_000_000_000L; // every attempt takes six seconds
+            throw new FulfillmentSourceConflictException("来源集合在预读后变化", true);
+        });
+        assertThrows(FulfillmentSourceConflictException.class, () -> budgeted.invoke(invocation));
+        assertEquals(3, invocation.proceeds,
+                "first conflict at 6 s starts the 10 s retry budget; 6 s spent: re-run; 12 s spent: give up");
+        assertEquals(2, pauses.size());
+    }
+
+    /**
+     * 评审补充: 前一个命令持锁 4 秒, 本命令排队等锁后才发现来源变了——等锁的时间不算进重跑预算,
+     * 服务端照样替用户重跑一次并成功(2026-09-21 引入自动重跑要解决的正是这种情形)。
+     */
+    @Test
+    void aFirstAttemptThatQueuedBehindALongLockHolderIsStillReRun() throws Throwable {
+        long[] now = {0};
+        var budgeted = new FulfillmentSourceConflictRetryInterceptor(pauses::add, () -> now[0]);
+        int[] attempts = {0};
+        FakeInvocation invocation = new FakeInvocation(new Target(), method(Target.class, "command"), () -> {
+            if (++attempts[0] == 1) {
+                now[0] += 4_000_000_000L; // queued four seconds behind the committing holder
+                throw new FulfillmentSourceConflictException("来源集合在预读后变化", true);
+            }
+            now[0] += 300_000_000L;
+            return "ok";
+        });
+        assertEquals("ok", budgeted.invoke(invocation));
+        assertEquals(2, invocation.proceeds);
+    }
+
+    /** 命令开始已过 30 秒不再发起新的一次: 再跑大概率在客户端 45 秒放弃之后才提交, 界面会误报失败。 */
+    @Test
+    void noNewAttemptStartsTooCloseToTheClientDeadline() throws Throwable {
+        long[] now = {0};
+        var budgeted = new FulfillmentSourceConflictRetryInterceptor(pauses::add, () -> now[0]);
+        FakeInvocation invocation = new FakeInvocation(new Target(), method(Target.class, "command"), () -> {
+            now[0] += 31_000_000_000L;
+            throw new FulfillmentSourceConflictException("来源集合在预读后变化", true);
+        });
+        assertThrows(FulfillmentSourceConflictException.class, () -> budgeted.invoke(invocation));
+        assertEquals(1, invocation.proceeds);
+        assertTrue(pauses.isEmpty());
+    }
+
     @Test
     void nestedCallInsideAnActiveTransactionIsNeverReRun() throws Throwable {
         TransactionSynchronizationManager.setActualTransactionActive(true);

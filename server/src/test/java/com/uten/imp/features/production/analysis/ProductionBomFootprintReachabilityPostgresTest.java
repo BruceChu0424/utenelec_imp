@@ -43,17 +43,19 @@ class ProductionBomFootprintReachabilityPostgresTest {
                 SELECT id AS goods_id FROM goods WHERE id IN (:rootIds)
             ), expansion AS (
                 SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
-                       1 AS depth,md5(bom::text) AS snapshot
+                       1 AS depth,bom.row_version AS snapshot
                 FROM roots JOIN LATERAL (
-                    SELECT edge.* FROM goods_bom_items edge
+                    SELECT edge.id,edge.component_goods_id,edge.color_id,edge.xmin::text AS row_version
+                    FROM goods_bom_items edge
                     WHERE edge.goods_id=roots.goods_id AND edge.is_deleted=FALSE OFFSET 0
                 ) bom ON TRUE
                 JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
                 UNION
                 SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),
-                       parent.depth+1,md5(bom::text)
+                       parent.depth+1,bom.row_version
                 FROM expansion parent JOIN LATERAL (
-                    SELECT edge.* FROM goods_bom_items edge
+                    SELECT edge.id,edge.component_goods_id,edge.color_id,edge.xmin::text AS row_version
+                    FROM goods_bom_items edge
                     WHERE edge.goods_id=parent.component_goods_id AND edge.is_deleted=FALSE OFFSET 0
                 ) bom ON TRUE
                 JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
@@ -80,9 +82,10 @@ class ProductionBomFootprintReachabilityPostgresTest {
                 SELECT DISTINCT goods_id FROM reachable WHERE depth<10
             )
             SELECT DISTINCT bom.id,bom.component_goods_id,
-                   COALESCE(bom.color_id,goods.color_id) AS color_id,md5(bom::text) AS snapshot
+                   COALESCE(bom.color_id,goods.color_id) AS color_id,bom.row_version AS snapshot
             FROM parents JOIN LATERAL (
-                SELECT edge.* FROM goods_bom_items edge
+                SELECT edge.id,edge.component_goods_id,edge.color_id,edge.xmin::text AS row_version
+                FROM goods_bom_items edge
                 WHERE edge.goods_id=parents.goods_id AND edge.is_deleted=FALSE OFFSET 0
             ) bom ON TRUE
             JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
@@ -182,7 +185,7 @@ class ProductionBomFootprintReachabilityPostgresTest {
 
     private List<Row> assertEquivalent(List<UUID> roots) throws Exception {
         List<Row> expected=rows(EDGE_FRONTIER,roots);
-        assertEquals(expected,rows(GOODS_FRONTIER,roots),"Candidate must retain every ordered edge, color and full-row hash");
+        assertEquals(expected,rows(GOODS_FRONTIER,roots),"Candidate must retain every ordered edge, color and row version");
         assertEquals(expected,rows(productionSql(),roots),"The current production query must retain reference semantics");
         String difference="""
                 WITH original_rows AS (%s), candidate_rows AS (%s)

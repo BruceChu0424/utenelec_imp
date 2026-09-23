@@ -3,7 +3,6 @@ package com.uten.imp.application.concurrency;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialSource;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension;
 import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import org.springframework.core.Ordered;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -12,6 +11,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /** Transaction ownership evidence; never a JVM-wide mutex. */
 public final class FulfillmentLockState {
@@ -30,7 +30,10 @@ public final class FulfillmentLockState {
         return state;
     }
 
-    /** Called by the existing inventory mutex before issuing any advisory lock. */
+    /**
+     * Called by the existing inventory mutex before issuing any advisory lock. 维度来自调用方读库的结果,
+     * 可能随别的事务变化, 超出预锁按可重跑冲突处理。
+     */
     public static void beforeInventoryLocks(Collection<InventoryDimension> dimensions) {
         State state = current(true);
         if (state == null) return; // Direct non-Spring test construction has no transaction scope.
@@ -45,6 +48,25 @@ public final class FulfillmentLockState {
     static ApiException conflict(String internalReason) {
         LOG.debug("Fulfillment mutation source conflict: {}", internalReason);
         return new FulfillmentSourceConflictException(internalReason, false);
+    }
+
+    /**
+     * 调用方<b>声明的已知 id</b>超出本事务已持有的预锁集合: 这是足迹声明漏了东西(编码缺陷),
+     * 同一请求重跑多少遍结果都一样, 不重跑, 记 ERROR 让它暴露出来(ADR-107)。
+     */
+    static ApiException coverageGap(String internalReason) {
+        LOG.error("Fulfillment prelock coverage gap (structural, not retried): {}", internalReason);
+        return new FulfillmentSourceConflictException(internalReason, false);
+    }
+
+    /**
+     * <b>重新发现</b>得到的足迹超出已持有集合: 可能是编码缺陷, 也可能是预读之后别的事务改了
+     * 依赖图里不拿锁的部分(例如给产品加了一个硬门槛子件)。事务整体回滚后可重跑; 记 WARN 留下缺少的 id,
+     * 同一请求反复重跑仍缺, 拦截器放弃时还会再记一次。
+     */
+    static ApiException discoveredCoverageGap(String internalReason) {
+        LOG.warn("Fulfillment prelock coverage gap found by rediscovery (retryable): {}", internalReason);
+        return new FulfillmentSourceConflictException(internalReason, true);
     }
 
     /**
@@ -68,14 +90,26 @@ public final class FulfillmentLockState {
         boolean prepared;
         boolean inventoryEntered;
         boolean closed;
+        /** 本事务唯一一次完整预读得到的计划; 锁后复核拿它比对。 */
+        FulfillmentMutationLockPlan prefixPlan;
+        Supplier<FulfillmentMutationLockPlan> prefixDiscovery;
+        /** 锁后复核(逐行版本相等)已做过: 之后再调复核不读库(自己的写入会改变行版本)。 */
+        boolean prefixVerified;
+        /** 锁后复核或嵌套入口的锁后覆盖复核已做过其一。 */
+        boolean prefixRechecked;
+        /** 只读可用量的预览事务(整笔回滚): 主仓协调锁取共享模式, 预览之间互不排队。 */
+        boolean sharedWarehouseLocks;
         private record Snapshot(Set<CommercialSource> sources, Set<InventoryDimension> inventory,
                 Set<UUID> warehouses, Set<UUID> analyses, Set<CommercialSource> expectedNewSources,
-                Set<UUID> expectedNewAnalyses, boolean prepared, boolean inventoryEntered) {}
+                Set<UUID> expectedNewAnalyses, boolean prepared, boolean inventoryEntered,
+                FulfillmentMutationLockPlan prefixPlan, Supplier<FulfillmentMutationLockPlan> prefixDiscovery,
+                boolean prefixVerified, boolean prefixRechecked, boolean sharedWarehouseLocks) {}
         @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
         @Override public void savepoint(Object savepoint) {
             savepoints.record(savepoint, new Snapshot(Set.copyOf(sources), Set.copyOf(inventory),
                     Set.copyOf(warehouses), Set.copyOf(analyses), Set.copyOf(expectedNewSources),
-                    Set.copyOf(expectedNewAnalyses), prepared, inventoryEntered));
+                    Set.copyOf(expectedNewAnalyses), prepared, inventoryEntered,
+                    prefixPlan, prefixDiscovery, prefixVerified, prefixRechecked, sharedWarehouseLocks));
         }
         @Override public void savepointRollback(Object savepoint) {
             Snapshot retained = savepoints.rollback(savepoint);
@@ -83,6 +117,11 @@ public final class FulfillmentLockState {
             expectedNewSources.clear(); expectedNewAnalyses.clear();
             prepared = retained != null && retained.prepared();
             inventoryEntered = retained != null && retained.inventoryEntered();
+            prefixPlan = retained == null ? null : retained.prefixPlan();
+            prefixDiscovery = retained == null ? null : retained.prefixDiscovery();
+            prefixVerified = retained != null && retained.prefixVerified();
+            prefixRechecked = retained != null && retained.prefixRechecked();
+            sharedWarehouseLocks = retained != null ? retained.sharedWarehouseLocks() : sharedWarehouseLocks;
             if (retained != null) {
                 sources.addAll(retained.sources()); inventory.addAll(retained.inventory());
                 warehouses.addAll(retained.warehouses()); analyses.addAll(retained.analyses());
@@ -109,6 +148,7 @@ public final class FulfillmentLockState {
             closed = true;
             sources.clear(); inventory.clear(); warehouses.clear(); analyses.clear();
             expectedNewSources.clear(); expectedNewAnalyses.clear();
+            prefixPlan = null; prefixDiscovery = null;
             savepoints.clear();
         }
     }

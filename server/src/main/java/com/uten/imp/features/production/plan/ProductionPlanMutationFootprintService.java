@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.plan;
 
+import com.uten.imp.application.concurrency.FulfillmentDiscoveryRound;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialSource;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialType;
@@ -23,7 +24,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/** Directed plan and generated-child footprint. Does not infer responsibility from open PO totals. */
+/**
+ * Directed plan and generated-child footprint. Does not infer responsibility from open PO totals.
+ *
+ * <p>ADR-107: 行快照只取 {@code (id, xmin)}; 事务已持有完整预锁时(例如一次下达里逐张建计划),
+ * 不再为每张计划重跑发现, 只在内存里确认请求行的库存维度已在预锁集合内。</p>
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional(propagation = Propagation.MANDATORY)
@@ -42,7 +48,9 @@ public class ProductionPlanMutationFootprintService {
     public FulfillmentMutationLocks.Guard beginPlan(UUID id, Collection<RequestedLine> requested) {
         List<UUID> ids=id==null?List.of():List.of(id);
         List<RequestedLine> lines=requested==null?List.of():List.copyOf(requested);
-        var guard=locks.acquire(() -> discoverPlans(ids,lines));
+        var declared=FulfillmentMutationLockPlan.declared(Set.of(),lines.stream().filter(line->line.goodsId()!=null)
+                .map(line->new InventoryDimension(line.goodsId(),line.colorId())).toList(),Set.of());
+        var guard=locks.acquire(declared,() -> discoverPlans(ids,lines));
         if(!ids.isEmpty()) {
             List<?> found=em.createNativeQuery("SELECT id FROM production_plans WHERE id IN (:ids) ORDER BY id FOR UPDATE")
                     .setParameter("ids",ids).getResultList();
@@ -78,6 +86,11 @@ public class ProductionPlanMutationFootprintService {
     private FulfillmentMutationLockPlan discoverPlans(Collection<UUID> requestedIds, Collection<RequestedLine> requested) {
         List<UUID> ids=requestedIds==null?List.of():requestedIds.stream().filter(java.util.Objects::nonNull)
                 .distinct().sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+        List<RequestedLine> lines=requested==null?List.of():List.copyOf(requested);
+        return FulfillmentDiscoveryRound.memo("production.plans",List.of(ids,lines),()->planFootprint(ids,lines));
+    }
+
+    private FulfillmentMutationLockPlan planFootprint(List<UUID> ids, List<RequestedLine> requested) {
         var sources=new LinkedHashSet<CommercialSource>();
         var inventory=new LinkedHashSet<InventoryDimension>();
         var analyses=new LinkedHashSet<UUID>();
@@ -100,7 +113,7 @@ public class ProductionPlanMutationFootprintService {
                     """).setParameter("rootIds",ids),UUID.class);
             for(var row:rows("""
                     SELECT plan.id,plan.material_analysis_id,item.id,item.goods_id,item.color_id,item.sales_order_item_id,
-                           md5(to_jsonb(plan)::text),md5(to_jsonb(item)::text)
+                           plan.xmin::text,item.xmin::text
                     FROM production_plans plan LEFT JOIN production_plan_items item ON item.plan_id=plan.id AND item.is_deleted=FALSE
                     WHERE plan.id IN (:ids) AND plan.is_deleted=FALSE ORDER BY plan.id,item.id
                     """,planIds)) {
@@ -111,12 +124,12 @@ public class ProductionPlanMutationFootprintService {
                 if(row[5]!=null)salesItems.add((UUID)row[5]);
             }
             for(var row:rows("""
-                    SELECT link.id,link.order_item_id,md5(to_jsonb(link)::text)
+                    SELECT link.id,link.order_item_id,link.xmin::text
                     FROM plan_order_item_links link JOIN production_plan_items item ON item.id=link.plan_item_id
                     WHERE item.plan_id IN (:ids) AND link.is_deleted=FALSE ORDER BY link.id
                     """,planIds)) {parts.add("sales-allocation:"+java.util.Arrays.toString(row));salesItems.add((UUID)row[1]);}
             for(var row:rows("""
-                    SELECT document.id,document.document_type,document.document_id,md5(to_jsonb(document)::text)
+                    SELECT document.id,document.document_type,document.document_id,document.xmin::text
                     FROM production_planning_packages package JOIN production_planning_package_documents document ON document.package_id=package.id
                     WHERE package.plan_id IN (:ids) AND package.status='CONFIRMED' AND package.is_deleted=FALSE ORDER BY document.id
                     """,planIds)) {
@@ -125,18 +138,18 @@ public class ProductionPlanMutationFootprintService {
                 if("SUBCONTRACT_APPLICATION".equals(row[1]))sources.add(new CommercialSource(CommercialType.SUBCONTRACT_APPLICATION,(UUID)row[2]));
             }
             for(var row:rows("""
-                    SELECT generation.id,request.id,md5(to_jsonb(generation)::text)
+                    SELECT generation.id,request.id,generation.xmin::text
                     FROM mrp_generations generation JOIN purchase_requests request ON request.id=generation.request_id
                     WHERE generation.plan_id IN (:ids) AND generation.is_deleted=FALSE AND request.is_deleted=FALSE AND request.status<>-1
                     ORDER BY generation.id
                     """,planIds)) {parts.add("generated-request:"+java.util.Arrays.toString(row));sources.add(new CommercialSource(CommercialType.PURCHASE_REQUEST,(UUID)row[1]));}
             for(var row:rows("""
-                    SELECT demand.id,demand.goods_id,demand.color_id,md5(to_jsonb(demand)::text)
+                    SELECT demand.id,demand.goods_id,demand.color_id,demand.xmin::text
                     FROM production_material_demands demand WHERE demand.plan_id IN (:ids) AND demand.is_deleted=FALSE
                     ORDER BY demand.id
                     """,planIds)) {parts.add("demand:"+java.util.Arrays.toString(row));add(inventory,(UUID)row[1],(UUID)row[2]);}
             for(var row:rows("""
-                    SELECT peg.id,peg.supply_type,COALESCE(purchase.order_id,subcontract.order_id,request.request_id,application.application_id),md5(to_jsonb(peg)::text)
+                    SELECT peg.id,peg.supply_type,COALESCE(purchase.order_id,subcontract.order_id,request.request_id,application.application_id),peg.xmin::text
                     FROM production_material_supply_pegs peg JOIN production_material_demands demand ON demand.id=peg.demand_id
                     LEFT JOIN purchase_order_items purchase ON purchase.id=peg.supply_item_id AND peg.supply_type='PURCHASE_ORDER_ITEM'
                     LEFT JOIN subcontract_order_items subcontract ON subcontract.id=peg.supply_item_id AND peg.supply_type='SUBCONTRACT_ORDER_ITEM'
@@ -159,7 +172,7 @@ public class ProductionPlanMutationFootprintService {
         }
         if(!salesItems.isEmpty()) {
             List<Object[]> rows=rows("""
-                    SELECT item.id,item.order_id,item.goods_id,item.color_id,md5(to_jsonb(item)::text),md5(to_jsonb(sale)::text)
+                    SELECT item.id,item.order_id,item.goods_id,item.color_id,item.xmin::text,sale.xmin::text
                     FROM sales_order_items item JOIN sales_orders sale ON sale.id=item.order_id
                     WHERE item.id IN (:ids) ORDER BY item.id
                     """,salesItems);
@@ -169,12 +182,12 @@ public class ProductionPlanMutationFootprintService {
         if(!roots.isEmpty())for(var row:rows("""
                 WITH RECURSIVE tree AS (
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
-                           ARRAY[bom.goods_id,bom.component_goods_id] AS path,1 AS depth,md5(to_jsonb(bom)::text) AS snapshot
+                           ARRAY[bom.goods_id,bom.component_goods_id] AS path,1 AS depth,bom.xmin::text AS snapshot
                     FROM goods_bom_items bom JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
                     WHERE bom.goods_id IN (:ids) AND bom.is_deleted=FALSE AND bom.hard_gate=TRUE AND bom.control_stage IN ('START','ASSEMBLY','FINISH')
                     UNION ALL
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),parent.path||bom.component_goods_id,
-                           parent.depth+1,md5(to_jsonb(bom)::text)
+                           parent.depth+1,bom.xmin::text
                     FROM tree parent JOIN goods_bom_items bom ON bom.goods_id=parent.component_goods_id AND bom.is_deleted=FALSE
                     JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
                     WHERE parent.depth<10 AND NOT bom.component_goods_id=ANY(parent.path)
@@ -182,7 +195,7 @@ public class ProductionPlanMutationFootprintService {
                 ) SELECT DISTINCT id,component_goods_id,color_id,snapshot FROM tree ORDER BY id,component_goods_id,color_id
                 """,roots)) {parts.add("bom:"+java.util.Arrays.toString(row));add(inventory,(UUID)row[1],(UUID)row[2]);}
         if(!analyses.isEmpty())for(var row:rows("""
-                SELECT id,goods_id,color_id,md5(to_jsonb(reservation)::text) FROM stock_reservations reservation
+                SELECT id,goods_id,color_id,reservation.xmin::text FROM stock_reservations reservation
                 WHERE owner_type='PREPLAN_ANALYSIS' AND owner_id IN (:ids) AND is_deleted=FALSE AND release_reason='TRANSFERRED_TO_PLAN'
                 ORDER BY id
                 """,analyses)) {parts.add("transferred-reservation:"+java.util.Arrays.toString(row));add(inventory,(UUID)row[1],(UUID)row[2]);}

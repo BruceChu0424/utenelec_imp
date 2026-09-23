@@ -57,17 +57,20 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.policy-intelligence.enabled=false", "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
-        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!",
+        // 量的是生产配置: 关掉测试默认打开的嵌套足迹诊断(ADR-107)。
+        "uten.concurrency.verify-nested-footprint=false"})
 @org.springframework.context.annotation.Import(ProductionJdbcMeasurement.Configuration.class)
 class WorkshopDirectTransferBatchEndToEndTest {
 
     /**
-     * 一行车间直送审核的语句预算(2026-09-22 实测 490 条, 留一点余量)。
+     * 一行车间直送审核的语句预算(2026-09-22 实测 490 条; 2026-09-23 ADR-107 预锁只发现一轮、
+     * 锁后只比行版本、会话变量每事务只绑一次之后实测 385 条, 预算取实测 +10%)。
      *
      * <p>这个数字是拿来挡回归的，不是拿来抬的：抬它之前先跑这条用例看剖面，
      * 确认多出来的语句是新做的事而不是又一遍重复的读。
      */
-    private static final int APPROVE_STATEMENTS_BUDGET = 520;
+    private static final int APPROVE_STATEMENTS_BUDGET = 424;
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -151,6 +154,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                             + " label=" + sample.labelsByFingerprint.get(entry.getKey())));
         }
         assertEquals(1, sample.commits, "审核必须是一笔事务，剖面才有意义");
+        assertEquals(0, sample.md5Statements, "预锁锁后复核只比行版本, 不再对整行做哈希(ADR-107)");
         assertTrue(sample.logicalStatements <= APPROVE_STATEMENTS_BUDGET,
                 "一行直送审核用了 " + sample.logicalStatements
                         + " 条语句，超出预算 " + APPROVE_STATEMENTS_BUDGET

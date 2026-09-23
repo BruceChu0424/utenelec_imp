@@ -25,6 +25,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_notification_badge.dart'
+    show UtenBadgeScale;
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_drag_reorder_list.dart';
 import '../../../components/layout/uten_lazy_mount.dart';
@@ -739,58 +741,56 @@ class _ModuleTile extends StatelessWidget {
         // comingSoon 的卡片先不跳转（对应页面待开发，入口见 item.location）：
         //   onTap: () => goFrom(context, item.location),
         onTap: comingSoon ? null : () => goFrom(context, item.location),
-        child: Stack(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                vertical: UtenSpacing.s16,
-                horizontal: UtenSpacing.s12,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(
+            vertical: UtenSpacing.s16,
+            horizontal: UtenSpacing.s12,
+          ),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: UtenRadius.lgAll,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.1),
+                  borderRadius: UtenRadius.mdAll,
+                ),
+                child: Icon(item.icon, color: accent, size: 19),
               ),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: UtenRadius.lgAll,
-                border: Border.all(color: theme.colorScheme.outlineVariant),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.1),
-                      borderRadius: UtenRadius.mdAll,
-                    ),
-                    child: Icon(item.icon, color: accent, size: 19),
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(
+                child: Text(
+                  comingSoon ? '$label(功能规划接入中)' : label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: comingSoon
+                        ? theme.colorScheme.onSurfaceVariant
+                        : null,
                   ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  Expanded(
-                    child: Text(
-                      comingSoon ? '$label(功能规划接入中)' : label,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: comingSoon
-                            ? theme.colorScheme.onSurfaceVariant
-                            : null,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (item.badge != WorkbenchBadgeKind.none)
-              Positioned(
-                top: UtenSpacing.s4,
-                right: UtenSpacing.s4,
-                // 延迟挂载角标：首帧不构建 badge → 不 watch 计数 provider →
-                // 不在首帧发起请求 / 启动 60s 轮询；首帧绘制后再并行拉取。
-                child: UtenLazyMount(
-                  builder: (_) => WorkbenchCardBadge(kind: item.badge),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-          ],
+              // 计数徽章与图标、名字同一行, 在这一行最右边(2026-09-23 用户口径:
+              // 不再浮在卡片右上角), 放大 1.25 倍更醒目。延迟挂载: 首帧不构建
+              // 徽章, 首帧绘制后再读徽章汇总。
+              if (item.badge != WorkbenchBadgeKind.none) ...[
+                const SizedBox(width: UtenSpacing.s8),
+                UtenBadgeScale(
+                  scale: 1.25,
+                  child: UtenLazyMount(
+                    builder: (_) => WorkbenchCardBadge(kind: item.badge),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

@@ -25,6 +25,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import 'uten_notification_badge.dart' show UtenBadgeScale;
 
 class UtenInProgressBadge extends StatelessWidget {
   const UtenInProgressBadge({
@@ -48,11 +49,19 @@ class UtenInProgressBadge extends StatelessWidget {
     if (count <= 0) return const SizedBox.shrink();
 
     final label = count > 99 ? '99+' : count.toString();
+    final scale = UtenBadgeScale.of(context);
+    // 字号档: 桌面/平板由根部整体缩放(UtenDisplayZoomBox)连同徽章一起放大; 手机只放大
+    // 文字(textScaler), 药丸高度与内边距也要跟着同一倍数放大, 否则数字撑破徽章。
+    final textGrow = MediaQuery.textScalerOf(context).scale(10) / 10;
+    final grow = scale * textGrow;
+    final size = this.size * grow;
 
     return SizedBox(
       height: size,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: showLabel ? 8 : (size / 4)),
+        padding: EdgeInsets.symmetric(
+          horizontal: showLabel ? 8 * grow : (size / 4),
+        ),
         constraints: BoxConstraints(minWidth: size),
         decoration: BoxDecoration(
           // 亮琥珀实底 + 深棕字(2026-09-22 用户口径「黄更黄、偏亮」)。
@@ -68,7 +77,7 @@ class UtenInProgressBadge extends StatelessWidget {
           style: TextStyle(
             // 亮琥珀底上是深棕字不是白字, 与 UtenColors.warningStrong 配套。
             color: UtenColors.onWarningStrong,
-            fontSize: showLabel ? 11 : 10,
+            fontSize: (showLabel ? 11 : 10) * scale,
             fontWeight: FontWeight.w800,
           ),
         ),

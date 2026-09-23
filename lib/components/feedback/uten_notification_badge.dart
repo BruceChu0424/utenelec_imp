@@ -9,6 +9,23 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 
+/// 徽章放大系数: 包在卡片的徽章位外面, 其下所有红/黄计数徽章(含草稿、品质、委外任务等
+/// 基于 [UtenNotificationBadge] / UtenInProgressBadge 的派生徽章)按同一系数放大高度、
+/// 内边距与字号, 不必逐个调用点改 size。工作台卡片与各模块 hub 卡片用不同系数
+/// (2026-09-23 用户口径: 徽章挪到图标那一行最右边, 并放大、醒目)。
+class UtenBadgeScale extends InheritedWidget {
+  const UtenBadgeScale({super.key, required this.scale, required super.child});
+
+  final double scale;
+
+  static double of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<UtenBadgeScale>()?.scale ??
+      1.0;
+
+  @override
+  bool updateShouldNotify(UtenBadgeScale oldWidget) => oldWidget.scale != scale;
+}
+
 class UtenNotificationBadge extends StatelessWidget {
   const UtenNotificationBadge({
     super.key,
@@ -26,11 +43,19 @@ class UtenNotificationBadge extends StatelessWidget {
     if (count <= 0) return const SizedBox.shrink();
 
     final label = count > 99 ? '99+' : count.toString();
+    final scale = UtenBadgeScale.of(context);
+    // 字号档: 桌面/平板由根部整体缩放(UtenDisplayZoomBox)连同徽章一起放大; 手机只放大
+    // 文字(textScaler), 药丸高度与内边距也要跟着同一倍数放大, 否则数字撑破徽章。
+    final textGrow = MediaQuery.textScalerOf(context).scale(10) / 10;
+    final grow = scale * textGrow;
+    final size = this.size * grow;
 
     return SizedBox(
       height: size,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: showLabel ? 8 : (size / 4)),
+        padding: EdgeInsets.symmetric(
+          horizontal: showLabel ? 8 * grow : (size / 4),
+        ),
         constraints: BoxConstraints(minWidth: size),
         decoration: BoxDecoration(
           // 徽章有自己的实底色, 不吃 colorScheme.error(2026-09-22 用户口径
@@ -48,7 +73,7 @@ class UtenNotificationBadge extends StatelessWidget {
             // 实底是固定的深红, 字就得是固定的白 —— 跟着 colorScheme.onError 走的话
             // 深色模式下可能换成深色, 压在这块固定红底上会读不清。
             color: Colors.white,
-            fontSize: showLabel ? 11 : 10,
+            fontSize: (showLabel ? 11 : 10) * scale,
             fontWeight: FontWeight.w700,
           ),
         ),

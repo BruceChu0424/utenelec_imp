@@ -88,6 +88,24 @@ void main() {
       expect(cascadeScaleOne(server, 0.5).residual, 100);
       expect(cascadeScaleOne(server, 2).residual, 1600);
     });
+
+    test('多下过的子件按不封顶的覆盖量算：父件追加时它一颗都不缺', () {
+      // 需求 1000、还需安排 0(服务端封顶)。父件抬到 1.2 倍 → 需求 1200。
+      final server = _qty(1000, 0);
+      // 只看封顶值：以为覆盖 1000，会错报还缺 200。
+      expect(cascadeScaleOne(server, 1.2).residual, 200);
+      // 实际已下 2000：仍被盖住，还需安排 0(用户口径「之前已经下单了 2000 就不用追加」)。
+      expect(cascadeScaleOne(server, 1.2, coveredFloor: 2000).residual, 0);
+      // 刚好下够 1000：父件追加 200 就缺 200(「父组件追加 200, 子组件也自动追加 200」)。
+      expect(cascadeScaleOne(server, 1.2, coveredFloor: 1000).residual, 200);
+      // 多下了一点(1100)：只缺 100。
+      expect(cascadeScaleOne(server, 1.2, coveredFloor: 1100).residual, 100);
+      // 不封顶值比服务端封顶值小(调用方漏算的覆盖来源)：仍按封顶值兜底。
+      expect(
+        cascadeScaleOne(_qty(1000, 600), 2, coveredFloor: 100).residual,
+        1600,
+      );
+    });
   });
 
   group('比例', () {
@@ -220,6 +238,35 @@ void main() {
         ),
         1000,
       );
+    });
+
+    test('父件追加时子件按不封顶的覆盖量算：刚好下够的缺多少填多少，多下过的一颗都不缺', () {
+      // P 已下达 1000(还需安排 0)再追加 200 → 产出 1200 = 1.2 倍。
+      // C1 刚好下够(需求 1000/已下 1000)，C2 多下了(需求 1000/已下 2000)——快照里两行
+      // 的还需安排都是 0，只看封顶值分不出谁多下了。
+      final rows = cascadeScaleSubtree(
+        preorder: [
+          _row(
+            'P',
+            0,
+            _qty(1000, 0),
+            userTyped: 200,
+            committed: 1000,
+            baselineOutput: 1000,
+          ),
+          _row('C1', 1, _qty(1000, 0), committed: 1000),
+          _row('C2', 1, _qty(1000, 0), committed: 2000),
+        ],
+        rootIndex: 0,
+        rootFactor: 1.2,
+        committedOutput: const {'P': 1000, 'C1': 1000, 'C2': 2000},
+        coveredOutput: const {'C1': 1000, 'C2': 2000},
+      );
+      expect(rows.map((r) => r.key), ['C1', 'C2']);
+      expect(rows[0].scaled.required, closeTo(1200, 0.0001));
+      expect(rows[0].displayQty, closeTo(200, 0.0001));
+      expect(rows[1].scaled.required, closeTo(1200, 0.0001));
+      expect(rows[1].displayQty, 0);
     });
 
     test('没有输入框的上下文行把父行的比例原样传下去', () {

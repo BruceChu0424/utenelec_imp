@@ -757,25 +757,6 @@ abstract class _MaterialAnalysisSupplyActionsState
     ));
   }
 
-  /// 这个产品行在当前快照里还有没有下层（= 点下达会不会把人带进
-  /// 「父件 + 下层一起下单」整页）。只看 BOM 形状，供按钮文案使用；真正的
-  /// 进页判定仍由 `_pendingChildCascadeRows` 一处给出。
-  bool _productHasCascadeChildren(ProductionMaterialAnalysisProduct product) {
-    final analysis = _analysis;
-    if (analysis == null) return false;
-    final root = _rootSupplyMaterialOf(product);
-    if (root != null) return _analysisMaterialHasChildren(root);
-    final indexes = _analysisIndexes(analysis);
-    return indexes
-                .productsById[product.analysisLineId]
-                ?.hasProductionMaterialChildren ==
-            true ||
-        (indexes.materialsByProduct[product.analysisLineId]?.any(
-              (node) => !node.isRootSupply && node.level == 1,
-            ) ??
-            false);
-  }
-
   List<_SupplyNotificationTarget> _notificationTargetsForGroups(
     Iterable<_MaterialGroup> groups,
   ) {

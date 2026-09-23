@@ -45,11 +45,8 @@ void main() {
         // 2026-09-15 已下达段对齐「下达车间」：缺口列退役，行的数量事实只剩
         // 需求量(10)与下达数量(4，无行动快照=分摊合计兜底)。
         final demand = find.descendant(of: first, matching: find.text('10'));
-        // ADR-099：有下达权限时已下达行给「追加量」输入框，已下的量改成旁注。
-        final issued = find.descendant(
-          of: first,
-          matching: find.textContaining('已下 4'),
-        );
+        // 2026-09-22 起桶表只读：已下的量在「下达数量」列里(4)，追加量进页填。
+        final issued = find.descendant(of: first, matching: find.text('4'));
         final demandBefore = tester.widget<Text>(demand).style?.color;
         final issuedBefore = tester.widget<Text>(issued).style?.color;
 
@@ -191,37 +188,32 @@ void main() {
     );
     await tester.tap(header);
     await tester.pumpAndSettle();
-    final selectedQuantity = tester.widget<TextField>(
-      find.byKey(
-        const ValueKey('material-analysis-bucket-submit-qty-action-partial'),
-      ),
-    );
-    // 2026-09-13 全站表格选中口径：选中行不再给输入框垫浅底/改字色——
-    // 输入框走全站默认样式（白底 + 常态字色），选中前后完全一致。
-    expect(selectedQuantity.style?.color, isNot(Colors.white));
-    expect(selectedQuantity.decoration?.suffixStyle?.color, isNull);
-    expect(selectedQuantity.decoration?.hintStyle?.color, isNull);
-    expect(selectedQuantity.decoration?.fillColor, isNull);
-    expect(selectedQuantity.decoration?.filled, isNull);
+    // 2026-09-22 起外层桶表只读：没有任何输入框，数量在「核对并下单」页里填。
+    expect(find.byType(TextField), findsNothing);
     expect(
       find.byKey(const Key('material-analysis-bucket-action-buy')),
       findsOneWidget,
     );
     await _filter(tester, '已下达 (2)');
-    // ADR-099 父层级追加：已下达行仍可勾选；下达数量格改为「追加量」输入框，
-    // 默认空、旁注已下的量；按钮改叫「追加采购」。
+    // ADR-099 父层级追加：已下达行仍可勾选；桶表只显示已下达量，追加量进页填；
+    // 按钮改叫「追加采购」，省略号 = 还要过一页。
     expect(find.byType(Checkbox), findsWidgets);
-    expect(find.text('追加采购(0)'), findsOneWidget);
-    final append = find.byKey(
-      const ValueKey('material-analysis-bucket-submit-qty-action-complete'),
-    );
-    // 追加量默认就写 0（0 = 本次不追加）。
-    expect(tester.widget<TextField>(append).controller!.text, '0');
-    expect(find.text('已下 10'), findsOneWidget);
+    expect(find.text('追加采购(0)…'), findsOneWidget);
+    expect(find.text('下达数量'), findsOneWidget);
     expect(requests.where((request) => request.method != 'GET'), isEmpty);
-    await tester.enterText(append, '5');
     await _tapRowCheckbox(tester, '已完成采购物料');
-    await tester.tap(find.text('追加采购(1)'));
+    await tester.tap(find.text('追加采购(1)…'));
+    await tester.pumpAndSettle();
+    // 追加量默认就写 0(0 = 本次不追加)，在页里改成 5。
+    final append = find.byKey(
+      const ValueKey('material-analysis-child-cascade-qty-material-complete'),
+    );
+    expect(tester.widget<TextField>(append).controller!.text, '0');
+    await tester.enterText(append, '5');
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('material-analysis-child-cascade-submit')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('supply-submit-confirm')));
     await tester.pumpAndSettle();
@@ -262,8 +254,8 @@ void main() {
       await tester.tap(header);
       await tester.pumpAndSettle();
       expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
-      final fields = tester.widgetList<TextField>(find.byType(TextField));
-      expect(fields, isNotEmpty);
+      // 2026-09-22 起外层桶表只读：数量 / 车间 / 负责人都在进页之后填。
+      expect(find.byType(TextField), findsNothing);
 
       await _filter(tester, '需处理 (1)');
       expect(find.textContaining('结构待修复产品'), findsOneWidget);

@@ -651,6 +651,14 @@ abstract class _MaterialAnalysisMaterialTableState
     setState(() {
       _selectedMaterialGroupKeys.removeAll(removals);
       _selectedMaterialGroupKeys.addAll(additions);
+      // 亲手撤掉的勾，父行改量的自动勾选不再替他勾回来；亲手勾上 / 撤掉的都
+      // 不再算「替他勾的」。
+      _tableUserDeselectedKeys
+        ..addAll(removals)
+        ..removeAll(additions);
+      _tableAutoSelectedKeys
+        ..removeAll(removals)
+        ..removeAll(additions);
     });
   }
 
@@ -712,7 +720,11 @@ abstract class _MaterialAnalysisMaterialTableState
             : const Checkbox(value: false, onChanged: null),
         selectionSummaryCount: _selectedMaterialGroupKeys.length,
         onClearSelection: () {
-          if (!_busy) setState(_selectedMaterialGroupKeys.clear);
+          if (_busy) return;
+          setState(() {
+            _selectedMaterialGroupKeys.clear();
+            _tableAutoSelectedKeys.clear();
+          });
         },
         selectedIds: {
           ..._selectedMaterialGroupKeys,
@@ -1928,8 +1940,16 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 且带客户端分页，挂在行上会翻一页就丢一次用户填的数。
   final Map<String, TextEditingController> _tableOrderQtyControllers = {};
 
-  /// 行内「追加下单」输入(键同上)。已下达的行填这里，填 0 = 本次不动它。
+  /// 行内「追加下单」输入(键同上)。已下达的行填这里，填 0 = 本次不动它；
+  /// 预填 = 这一行此刻的缺口(还需安排)，父行追加把缺口抬起来时跟着回填。
   final Map<String, TextEditingController> _tableAppendQtyControllers = {};
+
+  /// 父行改量 / 亲手填数时**替用户勾上**的行(键 = [_MaterialGroup.key])。
+  /// 只有这里记着的行会在数量回落到 0 时自动撤勾——用户亲手勾的不动。
+  final Set<String> _tableAutoSelectedKeys = {};
+
+  /// 用户亲手撤过勾的行：父行再改量也不替他勾回来，直到他自己再勾上 / 再填数。
+  final Set<String> _tableUserDeselectedKeys = {};
 
   /// 系统预填过的文本快照：轮询刷新只回填「用户没动过」的格子，
   /// 已经被人改过的一律保留，不让后台刷新吃掉手输的数。
@@ -2012,6 +2032,8 @@ abstract class _MaterialAnalysisMaterialTableState
     _disposeMaterialTableInputs();
     _tableSeededQtyTexts.clear();
     _tableUserTypedQty.clear();
+    _tableAutoSelectedKeys.clear();
+    _tableUserDeselectedKeys.clear();
     _tableCascadePreview = null;
     _tableCascadePreviewTyped = const {};
     _tableEstimatedQty.clear();
@@ -2122,10 +2144,15 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 可认领 300 时填 700 只换来「认领 300 + 新单 400 = 700」, 对着 1000 仍差 300,
   /// 每一行都少下一个认领量。这是 2026-09-22 对抗复查抓出来的真缺陷。
   ///
-  /// 父行改量之后取当场换算的估算值，服务端那份重算回来再整体覆盖。
-  double _tableGroupResidual(_MaterialGroup group) => group.paths.fold<double>(
+  /// 父行改量之后取当场换算的估算值，服务端那份重算回来再整体覆盖；
+  /// [authoritative] = 只看权威快照(不看模拟快照与估算)，自动勾选拿它当基线。
+  double _tableGroupResidual(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) => group.paths.fold<double>(
     0,
-    (sum, material) => sum + _tableShownQty(material).residual,
+    (sum, material) =>
+        sum + _tableShownQty(material, authoritative: authoritative).residual,
   );
 
   /// 这一类行必须整批接管：要先自制目标件的委外。
@@ -2190,12 +2217,16 @@ abstract class _MaterialAnalysisMaterialTableState
     });
   }
 
+  /// 「追加下单」格：预填 = 这一行此刻的缺口(还需安排)。缺口为 0 的行就是 0
+  /// (用户口径 2026-09-21：勾着不动 = 本次不下它，要追加才改成正数；0 是合法值，
+  /// 不是「没填」)。父行追加把这一行的缺口抬起来时，没被人动过的格子跟着回填新
+  /// 缺口(见 [_reseedTableQtyInputs])——用户口径 2026-09-22「父组件追加 200，
+  /// 子组件追加那里也自动追加 200；子组件之前多下了的就不用追加」。
   TextEditingController _tableAppendQtyController(_MaterialGroup group) =>
       _tableAppendQtyControllers.putIfAbsent(group.key, () {
-        // 用户口径 2026-09-21：追加默认就写 0——勾着不动 = 本次不下它，
-        // 要追加才改成正数。0 是合法值，不是「没填」。
-        _tableSeededQtyTexts['APPEND|${group.key}'] = '0';
-        return TextEditingController(text: '0');
+        final seeded = _qty(_tableGroupResidual(group));
+        _tableSeededQtyTexts['APPEND|${group.key}'] = seeded;
+        return TextEditingController(text: seeded);
       });
 
   /// 新快照回来后把系统预填值刷新一遍，但只覆盖「仍等于旧预填值」的格子。
@@ -2203,29 +2234,94 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 这是主表铺开输入框之后必须补的一课：轮询与 409 恢复都会整树换快照，
   /// 不做这一步，用户填了一屏的数会被后台刷新静默吃掉。
   @override
-  void _reseedMaterialTableQtyInputs() {
+  void _reseedMaterialTableQtyInputs() =>
+      _reseedTableQtyInputs(autoSelect: false);
+
+  /// 把系统预填值刷新一遍，但只覆盖「仍等于旧预填值」的格子——下单格与追加格
+  /// 都是。
+  ///
+  /// [autoSelect] = 这次回填是父行改量带出来的(敲键当场换算 / 服务端那份预览
+  /// 回来)：被换算到的行回填后有数就替用户勾上、回落到 0 就撤掉替他勾的那个勾
+  /// (用户口径 2026-09-22「有数值的都自动选中；子组件之前已经下单了 2000 那么
+  /// 子组件就不用追加了」)。权威快照的例行刷新(轮询 / 别人下达后)不自动勾——
+  /// 那不是这位用户的决定，勾选集必须只反映他自己的动作。
+  void _reseedTableQtyInputs({required bool autoSelect}) {
     final analysis = _analysis;
     if (analysis == null) return;
+    var selectionChanged = false;
     for (final group in _analysisIndexes(analysis).groupsByKey.values) {
-      final controller = _tableOrderQtyControllers[group.key];
-      if (controller == null) continue;
-      final seededKey = 'ORDER|${group.key}';
-      // 一旦发现这一格与上次系统预填值不同，就**永久**判给用户：把 seed 键删掉，
-      // 以后任何一次刷新都不再覆盖它。
-      //
-      // 原先是「不覆盖但把 seed 写成新值」，那样只要系统算出的新预填值某一次
-      // 恰好等于用户手填的数，这一格就被重新归类成「系统预填」，下一次刷新就把
-      // 它冲掉。宿主页的 _refreshSystemSeededPlanBatchQty 早就是 remove 这个写法，
-      // 这里漏了。2026-09-22 对抗复查抓出来的真缺陷。
-      if (controller.text != _tableSeededQtyTexts[seededKey]) {
-        _tableSeededQtyTexts.remove(seededKey);
-        continue;
+      for (final append in const [false, true]) {
+        final value = _reseedTableQtyCell(group, append: append);
+        if (value == null || !autoSelect) continue;
+        // 这一格的数是不是父行改量带出来的：与**权威快照**的还需安排不同才算。
+        // 按快照本来就预填着数、没被改量碰到的行不能因为别处改了一个父件就被
+        // 勾上；父行清空、数回落到快照值的行，替他勾的那个勾也要撤掉。
+        final baseline = _tableGroupResidual(group, authoritative: true);
+        final driven = (value - baseline).abs() > 0.0001;
+        if (_autoSelectTableGroup(group, select: driven && value > 0.0001)) {
+          selectionChanged = true;
+        }
       }
-      final next = _qty(_tableGroupResidual(group));
-      // 没变就不写：每次赋值都会通知那个 TextField 重建，一屏几十个格子白跑。
-      if (controller.text != next) controller.text = next;
-      _tableSeededQtyTexts[seededKey] = next;
     }
+    if (selectionChanged) _scheduleTableEstimateRebuild();
+  }
+
+  /// 回填一格的系统预填值；用户自己的格子返回 null，否则返回回填后的数。
+  ///
+  /// 一旦发现这一格与上次系统预填值不同，就**永久**判给用户：把 seed 键删掉，
+  /// 以后任何一次刷新都不再覆盖它。
+  ///
+  /// 原先是「不覆盖但把 seed 写成新值」，那样只要系统算出的新预填值某一次
+  /// 恰好等于用户手填的数，这一格就被重新归类成「系统预填」，下一次刷新就把
+  /// 它冲掉。宿主页的 _refreshSystemSeededPlanBatchQty 早就是 remove 这个写法，
+  /// 这里漏了。2026-09-22 对抗复查抓出来的真缺陷。
+  double? _reseedTableQtyCell(_MaterialGroup group, {required bool append}) {
+    final controller = append
+        ? _tableAppendQtyControllers[group.key]
+        : _tableOrderQtyControllers[group.key];
+    if (controller == null) return null;
+    final seededKey = '${append ? 'APPEND' : 'ORDER'}|${group.key}';
+    if (controller.text != _tableSeededQtyTexts[seededKey]) {
+      _tableSeededQtyTexts.remove(seededKey);
+      return null;
+    }
+    final value = _tableGroupResidual(group);
+    final next = _qty(value);
+    // 没变就不写：每次赋值都会通知那个 TextField 重建，一屏几十个格子白跑。
+    if (controller.text != next) controller.text = next;
+    _tableSeededQtyTexts[seededKey] = next;
+    return value;
+  }
+
+  /// 替用户勾上 / 撤掉一行(父行改量带出来的、或他亲手填了数的)。返回勾选集有没有变。
+  ///
+  /// 只撤本方法自己勾上的行；用户亲手撤过勾的行不再替他勾回来。不可勾的行
+  /// (缺权限 / 这一行本次下不了单)一律不碰。
+  bool _autoSelectTableGroup(_MaterialGroup group, {required bool select}) {
+    final key = group.key;
+    if (select) {
+      if (_selectedMaterialGroupKeys.contains(key) ||
+          _tableUserDeselectedKeys.contains(key) ||
+          !_canSelectMaterialRows ||
+          _tableIssueBlockedReason(group) != null) {
+        return false;
+      }
+      _selectedMaterialGroupKeys.add(key);
+      _tableAutoSelectedKeys.add(key);
+      return true;
+    }
+    if (!_tableAutoSelectedKeys.remove(key)) return false;
+    return _selectedMaterialGroupKeys.remove(key);
+  }
+
+  /// 依赖估算 / 勾选但不逐格监听的东西(还缺数量底色、表头筛选桶、底部按钮、
+  /// 勾选框)停手 200ms 后一次性刷新，不在每一拍敲键上整页重建。
+  void _scheduleTableEstimateRebuild() {
+    _tableEstimateRebuild?.cancel();
+    _tableEstimateRebuild = Timer(const Duration(milliseconds: 200), () {
+      _tableEstimateRebuild = null;
+      if (mounted) setState(() {});
+    });
   }
 
   /// 随估算值当场变的只读数字格：只订阅 [_tableEstimateTick]，父行敲一下这一格
@@ -2250,15 +2346,14 @@ abstract class _MaterialAnalysisMaterialTableState
     return typed + 0.0001 < _tableGroupResidual(group);
   }
 
-  /// 「追加下单」格：0 是合法值(本次不追加)；空 / 不是数 / 负数是错；父行改大之后
-  /// 这一行又有了还需安排量时，填的追加量小于它也冒红——那就是缺的那部分。
+  /// 「追加下单」格：0 是合法值(本次不追加)，填多少都行；只有空 / 不是数 / 负数
+  /// 才冒红。已下达的行追加的是**额外**的量，不拿它跟还需安排比——用户口径
+  /// 2026-09-22「下单后追加的填多少都应该可以，不用冒红」(此前追加量小于还需
+  /// 安排也描红，等于逼人每次追加都至少补齐缺口)。
   bool _tableAppendQtyInvalid(_MaterialGroup group) {
     final text = _tableAppendQtyControllers[group.key]?.text.trim() ?? '';
     final typed = double.tryParse(text);
-    if (text.isEmpty || typed == null || !typed.isFinite || typed < 0) {
-      return true;
-    }
-    return typed + 0.0001 < _tableGroupResidual(group);
+    return text.isEmpty || typed == null || !typed.isFinite || typed < 0;
   }
 
   /// 权威快照一到就让父子联动的模拟快照作废(ADR-102)。
@@ -2353,19 +2448,22 @@ abstract class _MaterialAnalysisMaterialTableState
     } else {
       _tableUserTypedQty[lineId] = total;
     }
-    if (!_tableGroupHasChildren(group)) return;
-    // 敲一下当场变：先按比例把它下面每一层换算好并回填预填值，再去抖要服务端
-    // 那份权威重算。叶子行改量到不了这里。
+    // 亲手填了数的行就是要下的行：有数就替他勾上(亲手填数比之前撤过的勾更新，
+    // 所以先把「撤过勾」的记号抹掉)，清成空 / 0 就把替他勾的那个勾撤掉。
+    if (total > 0) _tableUserDeselectedKeys.remove(group.key);
+    final selectionChanged = _autoSelectTableGroup(group, select: total > 0);
+    if (!_tableGroupHasChildren(group)) {
+      if (selectionChanged) _scheduleTableEstimateRebuild();
+      return;
+    }
+    // 敲一下当场变：先按比例把它下面每一层换算好并回填预填值(有数的子行顺手
+    // 勾上)，再去抖要服务端那份权威重算。叶子行改量到不了这里。
     _recomputeTableEstimates();
-    _reseedMaterialTableQtyInputs();
+    _reseedTableQtyInputs(autoSelect: true);
     // 不整页 setState：只让订阅了 tick 的格子(需要数量 / 还缺数量 / 红框)重建，
     // 其余依赖估算的东西停手 200ms 后一次刷新。
     _tableEstimateTick.value++;
-    _tableEstimateRebuild?.cancel();
-    _tableEstimateRebuild = Timer(const Duration(milliseconds: 200), () {
-      _tableEstimateRebuild = null;
-      if (mounted) setState(() {});
-    });
+    _scheduleTableEstimateRebuild();
     _tableCascadeDebounce?.cancel();
     _tableCascadeDebounce = Timer(
       const Duration(milliseconds: 300),
@@ -2393,7 +2491,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _tableCascadePreviewTyped = const {};
         _recomputeTableEstimates();
       });
-      _reseedMaterialTableQtyInputs();
+      _reseedTableQtyInputs(autoSelect: true);
       return;
     }
     // 记下这一趟是按哪份填数要的：回来时它就是新的换算分母。
@@ -2434,9 +2532,9 @@ abstract class _MaterialAnalysisMaterialTableState
         // 才跳到新数字。
         _recomputeTableEstimates();
       });
-      // 子层的数字变了，没被人动过的「下单数量」格要跟着回填——否则父行改成
-      // 1500、子行「还缺数量」如期变成 750，可提交的却还是改量前的 500。
-      _reseedMaterialTableQtyInputs();
+      // 子层的数字变了，没被人动过的「下单数量 / 追加下单」格要跟着回填——否则
+      // 父行改成 1500、子行「还缺数量」如期变成 750，可提交的却还是改量前的 500。
+      _reseedTableQtyInputs(autoSelect: true);
     } catch (_) {
       // 重算失败不打断填数：退回按权威快照换算的估算值，并停掉预览态。
       if (!mounted || generation != _tableCascadeGeneration) return;
@@ -2445,7 +2543,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _tableCascadePreviewTyped = const {};
         _recomputeTableEstimates();
       });
-      _reseedMaterialTableQtyInputs();
+      _reseedTableQtyInputs(autoSelect: true);
     } finally {
       if (mounted && generation == _tableCascadeGeneration) {
         setState(() => _tableCascadePreviewing = false);
@@ -2456,10 +2554,11 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 展示用的物料行：有预览时取预览里的同一行(子层数量已按父行新量展开)。
   /// 找不到就退回权威快照那一行——预览只能让数字更新，不能让行消失。
   ProductionMaterialAnalysisMaterial _tablePreviewed(
-    ProductionMaterialAnalysisMaterial material,
-  ) {
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) {
     final preview = _tableCascadePreview;
-    if (preview == null) return material;
+    if (preview == null || authoritative) return material;
     for (final candidate in preview.materials) {
       if (candidate.materialLineId == material.materialLineId) return candidate;
     }
@@ -2467,8 +2566,11 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 服务端那份快照(模拟优先、否则权威)给这一行的三个数——当场换算的**分母**。
-  _TableQty _tablePreviewedQty(ProductionMaterialAnalysisMaterial material) {
-    final shown = _tablePreviewed(material);
+  _TableQty _tablePreviewedQty(
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) {
+    final shown = _tablePreviewed(material, authoritative: authoritative);
     return (
       required: shown.requiredQty,
       residual: shown.additionalSupplyRecommendedQty,
@@ -2478,9 +2580,14 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 这一行此刻该显示的三个数：有当场换算的估算值就用它，否则用服务端那份快照。
   /// 「需要数量」「还缺数量」「下单数量」三列都从这里读，父行改量之后一起变。
-  _TableQty _tableShownQty(ProductionMaterialAnalysisMaterial material) =>
-      _tableEstimatedQty[material.materialLineId] ??
-      _tablePreviewedQty(material);
+  /// [authoritative] = 只要权威快照那份(自动勾选判「数是不是改量带出来的」用)。
+  _TableQty _tableShownQty(
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) => authoritative
+      ? _tablePreviewedQty(material, authoritative: true)
+      : _tableEstimatedQty[material.materialLineId] ??
+            _tablePreviewedQty(material);
 
   // ---------------- 敲一下当场变(与级联页共用 material_cascade_math) ----------------
 
@@ -2549,6 +2656,7 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final inputs = <CascadeScaleInput>[];
     final committed = <String, double>{};
+    final covered = <String, double>{};
     for (var index = 0; index < preorder.length; index++) {
       final row = _tableScaleInputOf(
         preorder[index],
@@ -2557,6 +2665,7 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       inputs.add(row.input);
       committed[row.input.key] = row.committed;
+      covered[row.input.key] = row.covered;
     }
     for (var index = 0; index < inputs.length; index++) {
       if (depths[index] != 0) continue;
@@ -2577,6 +2686,7 @@ abstract class _MaterialAnalysisMaterialTableState
         rootIndex: index,
         rootFactor: factor,
         committedOutput: committed,
+        coveredOutput: covered,
       )) {
         final snapshot = _tablePreviewedQty(preorder[result.index]);
         // 下达时会自动认领的公共在途是个池子，与父行数量无关：净数 = 毛数 − 它。
@@ -2592,13 +2702,20 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 喂给共用件的一行：服务端快照的三个数 + 用户亲手填的数 + 分母，外加这一行
-  /// 已下达的量(分子分母都要含它，见 [_tablePlannedOutput])。
-  ({CascadeScaleInput input, double committed}) _tableScaleInputOf(
+  /// 已下达的量(分子分母都要含它，见 [_tablePlannedOutput])与**不封顶**的覆盖量
+  /// (已分配现货 + 已下达 / 在途)。
+  ///
+  /// 覆盖量为什么要单独算：服务端的「还需安排」封顶在 0，子件之前只需 1000 却下了
+  /// 2000 时快照里看不出多下的 1000；父件追加 200 把它的需求抬到 1200，按封顶值算
+  /// 会说它还缺 200，实际一颗都不缺(用户口径 2026-09-22)。
+  ({CascadeScaleInput input, double committed, double covered})
+  _tableScaleInputOf(
     ProductionMaterialAnalysisMaterial material,
     _MaterialAnalysisIndexes indexes, {
     required int depth,
   }) {
     final group = indexes.groupsByLine[material.materialLineId];
+    final previewed = _tablePreviewed(material);
     final snapshot = _tablePreviewedQty(material);
     final server = (
       required: snapshot.required,
@@ -2606,7 +2723,14 @@ abstract class _MaterialAnalysisMaterialTableState
       suggested: snapshot.residual,
     );
     final committed = group == null ? 0.0 : _tableGroupIssuedQty(group);
+    // 现货那一份读服务端明写的两个分配量(本批分到的合格现货 + 精确绑定的到货)，
+    // 不用「需求 − 缺口」倒推——倒推会把安全库存保护等别的口径也算成现货。
+    // 这是估算：漏算的覆盖来源由 cascadeScaleOne 里与服务端封顶值取大兜底，
+    // 剩下的误差 300ms 后服务端那份预览整体覆盖。
+    final covered =
+        previewed.allocatedAvailableQty + previewed.exactPeggedQty + committed;
     return (
+      covered: covered,
       input: (
         key: material.materialLineId,
         depth: depth,
@@ -3551,6 +3675,8 @@ abstract class _MaterialAnalysisMaterialTableState
         _tableAppendQtyControllers[key]?.text = '0';
         _tableSeededQtyTexts['APPEND|$key'] = '0';
         _selectedMaterialGroupKeys.remove(key);
+        _tableAutoSelectedKeys.remove(key);
+        _tableUserDeselectedKeys.remove(key);
         // 已经落库的量必须从「用户亲手填的数」里摘掉：服务端那一侧是**加进**
         // 计划产出量，留着它下一次重算就把刚下达的量再加一遍；而且
         // _hasUnsubmittedMaterialTableInput 会永远为真，45 秒轮询再也不跑。

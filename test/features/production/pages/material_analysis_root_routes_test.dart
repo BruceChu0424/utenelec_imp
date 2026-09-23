@@ -140,14 +140,9 @@ void main() {
       expect(find.text('自制组件 1'), findsNothing);
       expect(find.text('自制组件 2'), findsOneWidget);
       expect(find.text('来源自制件 2'), findsNothing);
-      final row = find
-          .ancestor(of: find.text('自制组件 2'), matching: find.byType(Row))
-          .first;
-      final quantity = find.descendant(
-        of: row,
-        matching: find.byType(TextField),
-      );
-      expect(tester.widget<TextField>(quantity).controller!.text, '4000');
+      // 2026-09-22 起外层桶表只读：没有数量框，数量进「核对并下单」页再看。
+      final row = _frozenRowOf('自制组件 2');
+      expect(find.byType(TextField), findsNothing);
       await tester.tap(
         find.descendant(of: row, matching: find.byType(Checkbox)),
       );
@@ -177,6 +172,20 @@ void main() {
         find.byKey(const Key('material-analysis-bucket-action-ready')),
       );
       await tester.pumpAndSettle();
+      // 进「父件 + 下层一起下单」页：数量默认 = 剩余需求 4000，车间由学习默认带出；
+      // 来源节点下挂着的采购原料也展开为下层行(默认勾上)，一键下单先父件后采购。
+      expect(
+        tester.widget<TextField>(_cascadeSeedQty()).controller!.text,
+        '4000',
+      );
+      await tester.tap(
+        find.byKey(const Key('material-analysis-child-cascade-submit')),
+      );
+      await tester.pumpAndSettle();
+      if (find.text('一键下单').evaluate().isNotEmpty) {
+        await tester.tap(find.text('一键下单'));
+        await tester.pumpAndSettle();
+      }
       final issue = harness.requests.singleWhere(
         (request) => request.path.endsWith('/issue-plans'),
       );
@@ -411,20 +420,12 @@ void main() {
       );
       await _openBucket(tester, 'workshop');
       expect(find.text('根产品 1'), findsOneWidget);
-      // 2026-09-05 顶层与子层同构：顶层行的类型也显示「自制候选」。
-      expect(find.text('自制候选'), findsWidgets);
+      // 2026-09-22 起桶表只留 8 列，「类型」列退役(顶层与子层同构，一律自制候选)。
       expect(
         find.byKey(const Key('material-analysis-bucket-create-tasks')),
         findsNothing,
       );
-      final productRow = find
-          .ancestor(of: find.text('根产品 1'), matching: find.byType(Row))
-          .first;
-      final quantity = find.descendant(
-        of: productRow,
-        matching: find.byType(TextField),
-      );
-      expect(tester.widget<TextField>(quantity).controller!.text, '10');
+      final productRow = _frozenRowOf('根产品 1');
       // 2026-09-06 统一流程词表：未下达的自制任务显示第一步「等待下达车间」，
       // 不区分下层齐套（齐套与否由计划审批后的执行段 WAITING/READY 自动判断）。
       expect(find.text('等待下达车间'), findsWidgets);
@@ -435,6 +436,15 @@ void main() {
       expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
       await tester.tap(
         find.byKey(const Key('material-analysis-bucket-action-ready')),
+      );
+      await tester.pumpAndSettle();
+      // 2026-09-22 起数量在「核对并下单」页里：默认 = 剩余需求 10，点「下单」提交。
+      expect(
+        tester.widget<TextField>(_cascadeSeedQty()).controller!.text,
+        '10',
+      );
+      await tester.tap(
+        find.byKey(const Key('material-analysis-child-cascade-submit')),
       );
       await tester.pumpAndSettle();
       final issueRequest = harness.requests.singleWhere(
@@ -768,6 +778,10 @@ Future<_Harness> _pump(
           }
           harness.data['version'] = (harness.data['version'] as int) + 1;
           harness.data['fingerprint'] = 'b' * 64;
+          result = harness.data;
+        } else if (request.path.endsWith('/issue-plans/preview')) {
+          // 2026-09-22 起下达车间一律进「父件 + 下层一起下单」页，进页前按本批
+          // 数量向服务端要一份预览；本 harness 不算量，原样回当前快照。
           result = harness.data;
         } else if (request.path.endsWith('/issue-plans')) {
           result = {
@@ -1123,3 +1137,16 @@ Finder _frozenRowOf(String text) {
       .ancestor(of: find.text(text).first, matching: find.byType(Row))
       .first;
 }
+
+/// 「核对并下单」页里树顶那一行的数量框(2026-09-22 起外层桶表只读，数量只在
+/// 这里填)；一次只进一行时它就是第一个。
+Finder _cascadeSeedQty() => find
+    .byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'material-analysis-child-cascade-qty-',
+          ),
+    )
+    .first;

@@ -273,27 +273,6 @@ abstract class _MaterialAnalysisPageBase
     _systemSeededBatchQtyTexts[product.analysisLineId] = text;
   }
 
-  /// Bucket rows are rebuilt when their full-screen table opens. Preserve any
-  /// quantity already typed on the host; otherwise default to the remaining
-  /// demand (ADR-71：齐套拆批由执行段完成，计划默认全量剩余需求).
-  String _planBatchDraftText(ProductionMaterialAnalysisProduct product) {
-    _refreshSystemSeededPlanBatchQty(product);
-    final existing = _batchQtyControllers[product.analysisLineId]?.text.trim();
-    return existing?.isNotEmpty == true
-        ? existing!
-        : _qty(product.remainingQty);
-  }
-
-  void _rememberPlanBatchQty(String analysisLineId, String value) {
-    _systemSeededBatchQtyTexts.remove(analysisLineId);
-    final controller = _batchQtyControllers[analysisLineId];
-    if (controller == null || controller.text == value) return;
-    controller.value = TextEditingValue(
-      text: value,
-      selection: TextSelection.collapsed(offset: value.length),
-    );
-  }
-
   void _refreshSystemSeededPlanBatchQty(
     ProductionMaterialAnalysisProduct product,
   ) {

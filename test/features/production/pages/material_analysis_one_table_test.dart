@@ -26,6 +26,13 @@ const _permissions = {
   Perm.productionMaterialAnalysisCrossReallocate,
 };
 
+/// 已下达的行要追加(还需安排为 0 却再下)属超量, 勾选 / 提交都要超量权限
+/// (服务端 allowedActions 也要带 OVER_SUPPLY, 见 _pump 的 overSupply)。
+const _overSupplyPermissions = {
+  ..._permissions,
+  Perm.productionMaterialAnalysisOverSupply,
+};
+
 /// 提交单元身份：`NODE|<actionGroupKey>|<materialLineId>`。
 String _groupKey(String line) => 'NODE|a-$line|$line';
 
@@ -44,6 +51,37 @@ Finder _issueButton(String line) =>
 
 bool _enabled(WidgetTester tester, Finder finder) =>
     tester.widget<InkWell>(finder).onTap != null;
+
+/// 这一行的勾选框此刻勾没勾(行必须有勾选框, 没有就直接失败)。
+bool _rowChecked(WidgetTester tester, String line) =>
+    tester
+        .widget<Checkbox>(
+          find.descendant(
+            of: find.byKey(ValueKey('material-table-row-$line')),
+            matching: find.byType(Checkbox),
+          ),
+        )
+        .value ==
+    true;
+
+Finder _rowCheckbox(String line) => find.descendant(
+  of: find.byKey(ValueKey('material-table-row-$line')),
+  matching: find.byType(Checkbox),
+);
+
+/// 敲键后停手 200ms 那次整页刷新(勾选框 / 底部按钮 / 底色都在那一拍才变)。
+/// pumpAndSettle 只等有帧要画, 不等定时器, 所以要明确推过 200ms; 悬浮的批量
+/// 按钮组随后还要一两帧才落位, 再 settle 一次。
+Future<void> _settleRebuild(WidgetTester tester) async {
+  await tester.pump(const Duration(milliseconds: 250));
+  await tester.pumpAndSettle();
+}
+
+/// 去抖 300ms 后服务端那趟预览回来并装上(同样是定时器驱动, 要明确推时间)。
+Future<void> _settlePreview(WidgetTester tester) async {
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pumpAndSettle();
+}
 
 /// 数量框此刻是不是被 RequiredCellFrame 描了红边(它把红边交给最近那层 Theme 的
 /// inputDecorationTheme 来画)。
@@ -303,13 +341,126 @@ void main() {
     await tester.enterText(_orderQty('m-pc'), '2100');
     await tester.pump();
     expect(_framedRed(tester, _orderQty('m-pc')), isFalse);
-    // 追加格：0 合法不红，清空才红。
+    // 追加格：填多少都行(追加的是额外的量, 不跟还需安排比)，0 也合法；清空 / 负数才红。
     expect(_framedRed(tester, _appendQty('m-p')), isFalse);
+    await tester.enterText(_appendQty('m-p'), '1');
+    await tester.pump();
+    expect(_framedRed(tester, _appendQty('m-p')), isFalse);
+    await tester.enterText(_appendQty('m-p'), '0');
+    await tester.pump();
+    expect(_framedRed(tester, _appendQty('m-p')), isFalse);
+    await tester.enterText(_appendQty('m-p'), '-1');
+    await tester.pump();
+    expect(_framedRed(tester, _appendQty('m-p')), isTrue);
     await tester.enterText(_appendQty('m-p'), '');
     await tester.pump();
     expect(_framedRed(tester, _appendQty('m-p')), isTrue);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('父件追加带动已下过单的子件：刚好下够的子件追加格自动填上新缺口并替他勾上', (tester) async {
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
+    // 子件之前刚好下够(需求 1000 = 现货 200 + 已订 800)：缺口 0，追加格 0，没勾。
+    expect(_qtyText(tester, _appendQty('m-qc1')), '0');
+    expect(_rowChecked(tester, 'm-qc1'), isFalse);
+
+    // 父件(已下 1000)追加 200 → 1.2 倍 → 子件需求 1200、还缺 200：那一拍追加格就是 200，
+    // 不等服务端(用户口径「父组件追加 200, 子组件追加那里也自动追加 200」)。
+    await tester.enterText(_appendQty('m-q'), '200');
+    await tester.pump();
+    expect(previews, isEmpty);
+    expect(_qtyText(tester, _appendQty('m-qc1')), '200');
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.byKey(const ValueKey('material-analysis-net-shortage-m-qc1')),
+          )
+          .message,
+      contains('还要另外下 200'),
+    );
+    // 停手 200ms 后那次整页刷新：有数的行替他勾上(亲手填数的父件也勾上)，
+    // 底部「下单(2)」。
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-qc1'), isTrue);
+    expect(_rowChecked(tester, 'm-q'), isTrue);
+    expect(find.text('下单(2)'), findsOneWidget);
+    // 服务端那份回来(按 200 展开)：追加格与勾选都保持。
+    await _settlePreview(tester);
+    expect(previews, hasLength(1));
+    expect(_qtyText(tester, _appendQty('m-qc1')), '200');
+    expect(_rowChecked(tester, 'm-qc1'), isTrue);
+
+    // 父件清空追加 → 子件回落到 0，替他勾的那个勾撤掉，父件自己也撤掉。
+    await tester.enterText(_appendQty('m-q'), '');
+    await tester.pump();
+    expect(_qtyText(tester, _appendQty('m-qc1')), '0');
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-qc1'), isFalse);
+    expect(_rowChecked(tester, 'm-q'), isFalse);
+    expect(find.text('下单(2)'), findsNothing);
+    await _settlePreview(tester);
+  });
+
+  testWidgets('多下过的子件在父件追加时一颗都不缺：追加格保持 0、不替他勾', (tester) async {
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
+    expect(_qtyText(tester, _appendQty('m-rc')), '0');
+    // 子件需求 1000 → 1200，但它之前订了 2400(现货另有 200)，仍全被盖住——
+    // 服务端封顶的还需安排看不出多下的那 1400，页面按不封顶的覆盖量算。
+    await tester.enterText(_appendQty('m-r'), '200');
+    await tester.pump();
+    expect(find.text('1200'), findsOneWidget);
+    expect(_qtyText(tester, _appendQty('m-rc')), '0');
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-rc'), isFalse);
+    expect(_rowChecked(tester, 'm-r'), isTrue);
+    expect(find.text('下单(1)'), findsOneWidget);
+    await _settlePreview(tester);
+    expect(previews, hasLength(1));
+    expect(_qtyText(tester, _appendQty('m-rc')), '0');
+    // 追加到 1700 才开始缺：需求 2700 − 覆盖 2600 = 100(从模拟快照起算比例)。
+    await tester.enterText(_appendQty('m-r'), '1700');
+    await tester.pump();
+    expect(_qtyText(tester, _appendQty('m-rc')), '100');
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-rc'), isTrue);
+    expect(find.text('下单(2)'), findsOneWidget);
+    // 服务端那份回来(同一口径)：保持。
+    await _settlePreview(tester);
+    expect(previews, hasLength(2));
+    expect(_qtyText(tester, _appendQty('m-rc')), '100');
+    expect(_rowChecked(tester, 'm-rc'), isTrue);
+  });
+
+  testWidgets('子件追加格亲手填过就不跟父件走；亲手撤过的勾父件再改也不替他勾回来', (tester) async {
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
+    await tester.enterText(_appendQty('m-qc1'), '50');
+    await _settleRebuild(tester);
+    // 亲手填了数 = 要下的行：勾上。
+    expect(_rowChecked(tester, 'm-qc1'), isTrue);
+    // 亲手撤掉。
+    await tester.tap(_rowCheckbox('m-qc1'));
+    await tester.pumpAndSettle();
+    expect(_rowChecked(tester, 'm-qc1'), isFalse);
+
+    await tester.enterText(_appendQty('m-q'), '200');
+    await tester.pump();
+    // 亲手填的 50 保留(父件把缺口抬到 200 也不覆盖)，勾也不替他勾回来；
+    // 「还缺数量」照实说它缺 200。
+    expect(_qtyText(tester, _appendQty('m-qc1')), '50');
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.byKey(const ValueKey('material-analysis-net-shortage-m-qc1')),
+          )
+          .message,
+      contains('还要另外下 200'),
+    );
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-qc1'), isFalse);
+    await _settlePreview(tester);
+    expect(_qtyText(tester, _appendQty('m-qc1')), '50');
+    expect(_rowChecked(tester, 'm-qc1'), isFalse);
   });
 
   testWidgets('物料办理：有别的计划锁着的量才可调拨，没有就置灰并说明', (tester) async {
@@ -416,7 +567,10 @@ final List<Map<String, dynamic>> previews = [];
 Future<void> _pump(
   WidgetTester tester, {
   Set<String> permissions = _permissions,
-  Size size = const Size(1800, 1200),
+  // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
+  // 排在后面的行(以及别的用例 mutate 追加的行)的输入框会找不到。
+  Size size = const Size(1800, 1800),
+  bool overSupply = false,
 }) async {
   previews.clear();
   await tester.pumpWidget(const SizedBox.shrink());
@@ -426,7 +580,7 @@ Future<void> _pump(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  var data = _analysis();
+  var data = _analysis(overSupply: overSupply);
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -465,10 +619,36 @@ Future<void> _pump(
             for (final raw in (scaled['flatMaterials'] as List)) {
               final material = raw as Map<String, dynamic>;
               if (material['materialLineId'] != 'm-pc') continue;
+              // 模拟快照里这一行「没有覆盖量」：需求 = 缺口 = 还需安排, 现货分配也
+              // 清零, 四个数自洽(页面按现货分配 + 已下达算不封顶的覆盖量)。
               material['requiredQty'] = parent;
+              material['shortageQty'] = parent;
+              material['demandSupplyGapQty'] = parent;
+              material['allocatedAvailableQty'] = 0;
               material['netShortageQty'] = parent;
               material['additionalSupplyRecommendedQty'] = parent;
             }
+          }
+          // 父件二 / 三的追加带动**已下过单**的子件(服务端口径: 需求按父件产出量
+          // 展开, 还需安排 = 需求 − 覆盖, 封顶 0): 刚好下够的子件覆盖 1000(现货 200 +
+          // 已订 800), 多下过的覆盖 2600(现货 200 + 已订 2400)。
+          for (final raw in (scaled['flatMaterials'] as List)) {
+            final material = raw as Map<String, dynamic>;
+            final line = material['materialLineId'] as String;
+            final appended = switch (line) {
+              'm-qc1' => typed['m-q'],
+              'm-rc' => typed['m-r'],
+              _ => null,
+            };
+            if (appended == null) continue;
+            final covered = line == 'm-qc1' ? 1000.0 : 2600.0;
+            final required = 1000 + appended;
+            final residual = required - covered;
+            material['requiredQty'] = required;
+            material['additionalSupplyRecommendedQty'] = residual > 0
+                ? residual
+                : 0.0;
+            material['netShortageQty'] = residual > 0 ? residual : 0.0;
           }
           result = scaled;
         } else if (request.path.endsWith('/notify')) {
@@ -530,7 +710,8 @@ Future<void> _pump(
 }
 
 /// 三行物料刚好铺满三种形态：未确认路线 / 已确认未下达 / 已下达。
-Map<String, dynamic> _analysis() => {
+/// [overSupply] = 服务端也放行超量(已下达的行追加要它)。
+Map<String, dynamic> _analysis({bool overSupply = false}) => {
   'analysisId': 'analysis-1',
   'version': 3,
   'fingerprint': 'a' * 64,
@@ -542,6 +723,7 @@ Map<String, dynamic> _analysis() => {
     'CONFIRM_ROUTES',
     'NOTIFY_SUPPLY',
     'CROSS_REALLOCATE',
+    if (overSupply) 'OVER_SUPPLY',
   ],
   'products': [
     {
@@ -586,6 +768,7 @@ Map<String, dynamic> _analysis() => {
       // V581 我方供料的单一子件件：直接外发、不建前置自制任务，所以追加格可填。
       subcontractOutboundForm: 'COMPONENT_OUTBOUND',
       netShortageQty: 0,
+      stockQty: 0,
       downstream: [
         {
           'actionId': 'act-p',
@@ -603,6 +786,78 @@ Map<String, dynamic> _analysis() => {
       netShortageQty: 600,
       level: 2,
       parentLine: 'm-p',
+    ),
+    // 已下达的委外父件二 + 一个**刚好下够**的采购子件(需求 1000 = 现货 200 + 已订
+    // 800)：父件追加时子件的追加格要自动填上新缺口(用户口径 2026-09-22)。
+    _material(
+      line: 'm-q',
+      name: '已下达父件二',
+      confirmed: 'SUBCONTRACT',
+      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
+      netShortageQty: 0,
+      stockQty: 0,
+      downstream: [
+        {
+          'actionId': 'act-q',
+          'route': 'SUBCONTRACT',
+          'status': 'REQUESTED',
+          'documentNo': 'SC-0002',
+          'allocatedQty': 1000,
+        },
+      ],
+    ),
+    _material(
+      line: 'm-qc1',
+      name: '下够了的子件',
+      confirmed: 'BUY',
+      netShortageQty: 0,
+      level: 2,
+      parentLine: 'm-q',
+      downstream: [
+        {
+          'actionId': 'act-qc1',
+          'route': 'BUY',
+          'status': 'REQUESTED',
+          'documentNo': 'PR-0002',
+          'allocatedQty': 800,
+        },
+      ],
+    ),
+    // 已下达的委外父件三 + 一个**多下过**的采购子件(需求 1000，现货 200 之外还订了
+    // 2400)：父件追加 200 时它一颗都不缺，追加格保持 0。
+    _material(
+      line: 'm-r',
+      name: '已下达父件三',
+      confirmed: 'SUBCONTRACT',
+      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
+      netShortageQty: 0,
+      stockQty: 0,
+      downstream: [
+        {
+          'actionId': 'act-r',
+          'route': 'SUBCONTRACT',
+          'status': 'REQUESTED',
+          'documentNo': 'SC-0003',
+          'allocatedQty': 1000,
+        },
+      ],
+    ),
+    _material(
+      line: 'm-rc',
+      name: '多下了的子件',
+      confirmed: 'BUY',
+      netShortageQty: 0,
+      level: 2,
+      parentLine: 'm-r',
+      downstream: [
+        {
+          'actionId': 'act-rc',
+          'route': 'BUY',
+          'status': 'REQUESTED',
+          'documentNo': 'PR-0003',
+          'allocatedQty': 2400,
+        },
+      ],
     ),
     _material(
       line: 'm-2',
@@ -676,6 +931,8 @@ Map<String, dynamic> _material({
   List<Map<String, dynamic>> downstream = const [],
   String? parentLine,
   String? subcontractOutboundForm,
+  // 本批分到的合格现货(默认 200)；已下达的父件给 0 = 「下了 1000 刚好覆盖需求 1000」。
+  double stockQty = 200,
 }) => {
   'subcontractOutboundForm': ?subcontractOutboundForm,
   'materialLineId': line,
@@ -693,10 +950,10 @@ Map<String, dynamic> _material({
   'level': level,
   'path': ['智能多功能插座', name],
   'requiredQty': 1000,
-  'allocatedAvailableQty': 200,
-  'availableQty': 200,
-  'shortageQty': 800,
-  'demandSupplyGapQty': 800,
+  'allocatedAvailableQty': stockQty,
+  'availableQty': stockQty,
+  'shortageQty': 1000 - stockQty,
+  'demandSupplyGapQty': 1000 - stockQty,
   'inboundQty': inboundQty,
   'additionalSupplyRecommendedQty': grossQty ?? netShortageQty,
   'netShortageQty': netShortageQty,

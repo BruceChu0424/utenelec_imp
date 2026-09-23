@@ -108,6 +108,8 @@ abstract class _MaterialAnalysisChildCascadeState
     return {
       for (final seed in seeds)
         if (seedPending &&
+            // 采购件没有下层，它填多少不带动任何人，不必为它跑一趟服务端重算。
+            seed.channel != _CascadeParentChannel.buyDirect &&
             seed.materialLineId != null &&
             !simulated.contains(seed.materialLineId) &&
             seed.batchQty > 0 &&
@@ -229,10 +231,14 @@ abstract class _MaterialAnalysisChildCascadeState
       seed.departmentId = defaults.departmentId;
       seed.departmentName = defaults.departmentName;
       seed.workshopAutofilled = true;
-      final manager = managers[defaults.departmentId];
-      seed.workerId = defaults.workerId ?? manager?.id;
-      seed.workerName = defaults.workerName ?? manager?.name;
-      seed.workerAutofilled = seed.workerId != null;
+      // 负责人只在空着时补：排产下钻带来的显式路线种子负责人优先于学习记忆
+      // (与原下达车间计划表「显式路线种子 > 学习记忆 > 车间主管」同一优先级)。
+      if (seed.workerId?.isNotEmpty != true) {
+        final manager = managers[defaults.departmentId];
+        seed.workerId = defaults.workerId ?? manager?.id;
+        seed.workerName = defaults.workerName ?? manager?.name;
+        seed.workerAutofilled = seed.workerId != null;
+      }
     }
   }
 
@@ -374,20 +380,23 @@ abstract class _MaterialAnalysisChildCascadeState
         isSeed: true,
         seed: seed,
       ));
-      walk(
-        parentId: entry.value.parentId,
-        depth: 1,
-        seedLabel: seed.label,
-        scopeAnalysisLineId: entry.value.parentId == null
-            ? seed.analysisLineId
-            : null,
-        ancestors: {?entry.value.parentId},
-      );
-      // 这条种子一个下层都没展开出来：树顶那行独自留着只是噪音。
-      if (nodes.length == before + 1) {
-        nodes.removeLast();
-        treeIndex--;
+      // 采购件整件买进来，BOM 上的下层不归我方备料，不往下钻。
+      if (seed.channel != _CascadeParentChannel.buyDirect) {
+        walk(
+          parentId: entry.value.parentId,
+          depth: 1,
+          seedLabel: seed.label,
+          scopeAnalysisLineId: entry.value.parentId == null
+              ? seed.analysisLineId
+              : null,
+          ancestors: {?entry.value.parentId},
+        );
       }
+      // 2026-09-22 起树顶行**一定保留**：三个桶的外层表改成只读清单后，数量、
+      // 车间、负责人只能在本页填——一个下层都没有的种子(采购件、叶子委外件、
+      // 追加行)也要在这里有自己的那一行，否则它没地方填数。原先「树顶独自留着
+      // 只是噪音」的剪枝退役。
+      assert(nodes.length >= before + 1);
     }
     _cascadeRowLimitHit = rowLimitHit;
     _cascadeDepthLimitHit = depthLimitHit;
@@ -700,20 +709,32 @@ abstract class _MaterialAnalysisChildCascadeState
     if (!mounted) return none;
     // 车间通道的种子都带上了车间才能预览；否则先按当前快照展开，级联页里
     // 选了车间后再向服务端要一份预览。
-    final previewable = seeds
-        .where((seed) => seed.needsWorkshop)
-        .every((seed) => seed.departmentId?.isNotEmpty == true);
+    //
+    // 一个下层都没有的种子(采购件、叶子委外件、没有生产性子件的自制件)不预览：
+    // 预览算的是「下达之后下层变成多少」，没有下层就没有东西可算，白跑一趟
+    // 服务端(2026-09-22 起这类行也进页，不能让它们各背一次 1-7 秒的往返)。
+    // 有没有下层只看 BOM 形状，按当前快照展开一遍就知道。
+    final previewable =
+        seeds
+            .where((seed) => seed.needsWorkshop)
+            .every((seed) => seed.departmentId?.isNotEmpty == true) &&
+        _cascadeNodes(seeds, _analysis!).any((node) => !node.isSeed);
     final view = previewable ? await _previewCascadeView(seeds) : _analysis;
     if (view == null || !mounted) return none;
     final nodes = _cascadeNodes(seeds, view);
     final hasChildNode = nodes.any((node) => !node.isSeed);
     if (!hasChildNode) {
-      // 没有下层但树顶要在页里填车间/负责人（已下达段追加、委外桶进来的行）：
+      // 没有下层：2026-09-22 起三个桶一律进页(数量 / 车间 / 负责人只在页里填)，
       // 只带树顶行进页，一键下单时按树顶输入提交父件。
       if (keepUnselectable) {
         return (
           rows: _materializeCascadeRows(nodes, view, _analysisIndexes(view)),
-          note: 'BOM 上没有需要本次一起办的生产性子件，本次只需为父件填车间/负责人',
+          note:
+              seeds.every(
+                (seed) => seed.channel == _CascadeParentChannel.buyDirect,
+              )
+              ? null
+              : 'BOM 上没有需要本次一起办的生产性子件，本次只下达所选行',
           view: view,
         );
       }
@@ -952,12 +973,18 @@ abstract class _MaterialAnalysisChildCascadeState
         return results;
       }
     }
-    // 3) 采购 4) 直接外发委外：行内数量交给既有的裁决 / 分批 / 幂等链路；
+    // 3) 直接外发委外 4) 采购：行内数量交给既有的裁决 / 分批 / 幂等链路；
     //    服务端先自动认领公共在途、再看原申请能不能就地追加，最后才新单。
     //    放在车间之后：它们的服务端余量随父件的计划一起长大，父件还没下达时
-    //    按新数量填的采购量会被当成超量。直接外发的委外还要更靠后——它一下达，
-    //    我方供料的那颗子件就转由委外申请负责，子件行的需求会归零。
-    for (final kind in [_CascadeKind.buy, _CascadeKind.subcontractLeaf]) {
+    //    按新数量填的采购量会被当成超量。
+    //
+    //    **采购必须放最后**(2026-09-22 实机纠正)：直接外发的委外件可能带着我方供料
+    //    的子件(V581)，那颗子件的需求跟着委外件的计划产出量走——委外 5000 一下达，
+    //    子件需求就从 2000 抬到 5000。采购若先发，子件按屏幕上确认过的 5000 下单时，
+    //    服务端当时的需求还是 2000，多出的 3000 被记成公共备货；随后委外把需求抬到
+    //    5000，子件行就留下 3000 的幽灵缺口且不可认领。原注释「委外一下达子件需求
+    //    归零」在现网不成立。所以父先子后：委外先把需求定住，采购最后一次。
+    for (final kind in [_CascadeKind.subcontractLeaf, _CascadeKind.buy]) {
       final batch = rows
           .where((row) => row.kind == kind)
           .toList(growable: false);

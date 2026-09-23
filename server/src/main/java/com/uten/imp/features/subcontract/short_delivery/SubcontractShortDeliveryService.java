@@ -72,19 +72,23 @@ public class SubcontractShortDeliveryService
     static final String DECISION_WAIT = "WAIT_MORE";
     static final String DECISION_ACCEPT = "ACCEPT_LOSS";
 
-    /** 有效状态：分批等待过了预计到齐日视同待判定(逾期)。 */
+    /** 有效状态：尚未进入容差的分批等待过了预计到齐日才重新待判定。 */
     static final String EFFECTIVE_STATUS_SQL = """
             CASE WHEN c.status = 'WAITING_MORE' AND c.expected_complete_by < CURRENT_DATE
+                      AND c.severity <> 'WITHIN_TOLERANCE'
                  THEN 'PENDING_OWNER' ELSE c.status END""";
     /** 待判定(红)：低于允许下限的两档待判定, 或分批等待过了预计到齐日。 */
     static final String PENDING_PREDICATE = """
             ((c.status = 'PENDING_OWNER' AND c.severity IN ('SEVERE', 'BELOW_FLOOR'))
-             OR (c.status = 'WAITING_MORE' AND c.expected_complete_by < CURRENT_DATE))""";
+             OR (c.status = 'WAITING_MORE' AND c.expected_complete_by < CURRENT_DATE
+                 AND c.severity <> 'WITHIN_TOLERANCE'))""";
     /** 容差内待结案(中性)：容差内 / 未设允许损耗的短交, 不急但要有人结案。 */
-    static final String TOLERANT_PREDICATE =
-            "(c.status = 'PENDING_OWNER' AND c.severity IN ('WITHIN_TOLERANCE', 'UNSET_TOLERANCE'))";
-    static final String WAITING_PREDICATE =
-            "(c.status = 'WAITING_MORE' AND c.expected_complete_by >= CURRENT_DATE)";
+    static final String TOLERANT_PREDICATE = """
+            ((c.status = 'PENDING_OWNER' AND c.severity IN ('WITHIN_TOLERANCE', 'UNSET_TOLERANCE'))
+             OR (c.status = 'WAITING_MORE' AND c.severity = 'WITHIN_TOLERANCE'))""";
+    static final String WAITING_PREDICATE = """
+            (c.status = 'WAITING_MORE' AND c.expected_complete_by >= CURRENT_DATE
+             AND c.severity <> 'WITHIN_TOLERANCE')""";
     static final String HISTORY_PREDICATE =
             "c.status IN ('ACCEPTED_LOSS', 'COMPLETED', 'CANCELED')";
 
@@ -117,8 +121,9 @@ public class SubcontractShortDeliveryService
                         AND plan.is_deleted = FALSE
                        WHERE plan_item.order_item_id = oi.id
                          AND plan_item.is_deleted = FALSE
-                         AND plan_item.issued_qty
-                             < LEAST(plan_item.planned_qty, plan_item.prepared_qty)
+                         -- 备齐的是当前可发批次, 不是总发料承诺。前置生产只做完并发出首批时,
+                         -- 不能按 prepared_qty 把余下还没做完的计划量当作已全部发完。
+                         AND plan_item.issued_qty < plan_item.planned_qty
                    ) AS material_fully_issued
             FROM subcontract_order_items oi
             JOIN subcontract_orders order_doc ON order_doc.id = oi.order_id
@@ -208,6 +213,8 @@ public class SubcontractShortDeliveryService
      * <p>ADR-101 把关联口径从「同一张订货单」收到「同一行订货明细」：一张委外单多个货品时,
      * 一行短交不该把同单其它已经足额到齐的货一起冻在待入库——那与「分批发货、分批入库」
      * 直接冲突, 仓库会看到一批完全正常的货莫名其妙上不了架。
+     * 案件程度是登记时审计快照；补足批次红冲或 IQC 退回后可能失效，因此入库闸按
+     * 订货明细的实时净回厂量与冻结允许损耗重新核对，不改写原决定或已结案终态。
      */
     @Override
     @Transactional(readOnly = true)
@@ -218,19 +225,26 @@ public class SubcontractShortDeliveryService
                        c.goods_name_snapshot AS goods_name,
                        c.goods_code_snapshot AS goods_code,
                        unit.name AS unit_name,
-                       c.ordered_qty, c.delivered_qty, c.shortfall_qty,
+                       oi.qty AS ordered_qty, current_return.delivered_qty,
+                       GREATEST(oi.qty-current_return.delivered_qty,0) AS shortfall_qty,
                        (c.status = 'WAITING_MORE') AS overdue_wait
                 FROM subcontract_receipt_items receipt_item
-                JOIN subcontract_order_items order_item ON order_item.id = receipt_item.order_item_id
-                JOIN subcontract_orders order_doc ON order_doc.id = order_item.order_id
+                JOIN subcontract_order_items oi ON oi.id = receipt_item.order_item_id
+                JOIN subcontract_orders order_doc ON order_doc.id = oi.order_id
                 JOIN subcontract_short_delivery_cases c
                   ON c.order_item_id = receipt_item.order_item_id
                 LEFT JOIN units unit ON unit.id = c.unit_id
+                CROSS JOIN LATERAL (SELECT %s AS delivered_qty) current_return
                 WHERE receipt_item.receipt_id = ?
                   AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
-                  AND %s
+                  AND current_return.delivered_qty < oi.qty
+                  AND ((c.status='PENDING_OWNER' AND oi.allowed_loss_pct IS NOT NULL
+                        AND current_return.delivered_qty < ROUND(oi.qty*(100-oi.allowed_loss_pct)/100,4))
+                       OR (c.status='WAITING_MORE' AND c.expected_complete_by<CURRENT_DATE
+                           AND (oi.allowed_loss_pct IS NULL OR current_return.delivered_qty
+                                < ROUND(oi.qty*(100-oi.allowed_loss_pct)/100,4))))
                 ORDER BY goods_name
-                """.formatted(PENDING_PREDICATE), receiptId);
+                """.formatted(DELIVERED_SQL), receiptId);
         if (rows.isEmpty()) return null;
         Map<String, Object> first = rows.getFirst();
         String unit = first.get("unit_name") == null ? "" : " " + first.get("unit_name");
@@ -735,6 +749,7 @@ public class SubcontractShortDeliveryService
         List<Object[]> due = jdbc.query("""
                 SELECT id, version FROM subcontract_short_delivery_cases c
                 WHERE c.status = 'WAITING_MORE' AND c.expected_complete_by < ?
+                  AND c.severity <> 'WITHIN_TOLERANCE'
                 ORDER BY c.expected_complete_by, c.id
                 """, (rs, n) -> new Object[]{rs.getObject(1, UUID.class), rs.getLong(2)}, businessDate);
         for (Object[] row : due) {
@@ -764,7 +779,8 @@ public class SubcontractShortDeliveryService
                    color.name, unit.name, c.receipt_id, c.receipt_bill_no_snapshot,
                    c.ordered_qty, c.allowed_loss_pct, c.floor_qty, c.delivered_qty, c.shortfall_qty, c.shortfall_pct,
                    c.severity, c.status, %s AS effective_status,
-                   (c.status = 'WAITING_MORE' AND c.expected_complete_by < CURRENT_DATE) AS overdue,
+                   (c.status = 'WAITING_MORE' AND c.expected_complete_by < CURRENT_DATE
+                    AND c.severity <> 'WITHIN_TOLERANCE') AS overdue,
                    c.decision, c.expected_complete_by, c.decision_note, c.arrival_count,
                    c.owner_employee_id, c.decided_by_employee_id, c.detected_at, c.last_evaluated_at,
                    c.decided_at, c.closed_at, c.loss_qty, c.loss_pct, c.waste_id, waste.bill_no, c.version
@@ -926,6 +942,11 @@ public class SubcontractShortDeliveryService
         snapshot.put("acknowledgedByWarehouse", acknowledged);
         snapshot.put("waitingMoreActive", waitingActive);
         appendEvent(open.id(), "REDETECTED", actorUser, actorEmployee, snapshot);
+        // 后续批次已达到约定下限时不再需要催货或重新判定。保留 WAIT_MORE 的原始日期与决定，
+        // 等 IQC 合格入库再自动核销损耗；即使原日期已过，也不能用旧逾期状态挡住这次入库。
+        if (SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE.equals(severity)) {
+            publishResolved(open.id(), open.version() + 1, "WITHIN_TOLERANCE");
+        }
         // 已判定分批到货且未过预计日：只刷新数字, 不再打扰; 其余情况低于下限就再通知一次。
         if (!waitingActive && SubcontractShortDeliveryPolicy.isBelowFloor(severity)) {
             publishDetected(open.id(), open.version() + 1);

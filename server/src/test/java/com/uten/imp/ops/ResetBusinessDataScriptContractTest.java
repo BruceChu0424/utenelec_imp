@@ -70,14 +70,14 @@ class ResetBusinessDataScriptContractTest {
         // V590 废弃车间偏好表（搬进货品表）：379→378、PRESERVE 99→98。
         // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送来源/历史隔离，V617 +1 保留设置：V618 +1 收仓确认，V619 +8 保管溯源：395表，CLEAR296/PRESERVE99。
         // V624/V626/V627 retain original import-source evidence across business resets.
-        // V636 +2 委外回厂短交案件/事件(ADR-098): 400 表, CLEAR 296→298。
-        assertThat(policy).hasSize(400);
+        // V646/V647 add subcontract custody and execution growth ledgers: 402 tables, 300 CLEAR.
+        assertThat(policy).hasSize(402);
         assertThat(policy).containsEntry("legacy_subcontract_order_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("legacy_finance_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("legacy_procurement_receipt_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("expense_claim_settings", "PRESERVE");
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(298);
+                .isEqualTo(300);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_items", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_cancellations", "CLEAR");
@@ -386,7 +386,9 @@ class ResetBusinessDataScriptContractTest {
                 // V645 追加自制并入未开工的生产计划 (ADR-104): 四个判定函数 + 一条对账触发器
                 // + 锚点补丁三个身份守卫, 不加表 (595→596)。
                 .contains("(645, 596)")
-                .contains("V507/469、V508/470及V511至V645完整目录")
+                .contains("(646, 597)")
+                .contains("(647, 598)")
+                .contains("V507/469、V508/470及V511至V647完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

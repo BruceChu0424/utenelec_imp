@@ -65,16 +65,26 @@ class MaterialAnalysisOneTableContractTest {
         // 2026-09-22 起三列都经 _tableShownQty(估算 → 模拟快照 → 权威)读数, 「还需安排」
         // 那一项(residual)仍派生自毛口径 additionalSupplyRecommendedQty; 2026-09-23 起已下过
         // 单的自制行(含顶层)改读锚点产品的剩余可排量(_tableAnchorResidual), 其余行不变。
+        // 2026-09-23 同日两个函数都加了 authoritative 命名参数(只看权威快照, 自动勾选拿它当
+        // 基线)并一路透传, 下面钉的原文随之更新; 守的不变量一字未动: 残量累加 .residual 不是
+        // .net, residual 回落到毛量, net 取 netShortageQty。
         assertThat(table).contains(
-                "double _tableGroupResidual(_MaterialGroup group) => group.paths.fold<double>(\n"
+                "  double _tableGroupResidual(\n"
+                        + "    _MaterialGroup group, {\n"
+                        + "    bool authoritative = false,\n"
+                        + "  }) => group.paths.fold<double>(\n"
                         + "    0,\n"
-                        + "    (sum, material) => sum + _tableShownQty(material).residual,\n"
+                        + "    (sum, material) =>\n"
+                        + "        sum + _tableShownQty(material, authoritative: authoritative).residual,\n"
                         + "  );");
         assertThat(table).contains(
-                "_tableAnchorResidual(material) ??\n"
+                "_tableAnchorResidual(material, authoritative: authoritative) ??\n"
                         + "          shown.additionalSupplyRecommendedQty,");
         assertThat(table).contains("net: shown.netShortageQty,");
+        // 残量累加不许改成净数(新旧两种签名都禁)。
         assertThat(table).doesNotContain("sum + _tableShownQty(material).net,\n  );");
+        assertThat(table).doesNotContain(
+                "sum + _tableShownQty(material, authoritative: authoritative).net,\n  );");
 
         // 跨计划调拨与公共在途认领也会投影进 downstreamReferences，算成「已下单」
         // 会让这一行的下单格被锁死、批量下单静默跳过它。

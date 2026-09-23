@@ -198,10 +198,8 @@ class _SubcontractShortDeliveryPageState
         : '案件已更新';
     if (mounted) context.appSuccess(decided);
     ref.invalidate(subcontractShortDeliveryCountProvider);
-    ref.invalidate(subcontractTaskCountProvider);
-    // 判定会把订货单挪出/挪进任务中心的「进行中」(结案即离场), 黄数字跟着一起重拉,
-    // 否则要等 60s 才跟上红数字(ADR-100)。
-    ref.read(subcontractTaskInProgressCountProvider.notifier).refresh();
+    // 同一次响应刷新红黄两枚徽章，结案后的数量同步跟上。
+    ref.read(subcontractTaskCountsProvider.notifier).refresh();
     await _load();
   }
 

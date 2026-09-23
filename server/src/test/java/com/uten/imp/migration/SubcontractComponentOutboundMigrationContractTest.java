@@ -49,6 +49,14 @@ class SubcontractComponentOutboundMigrationContractTest {
     }
 
     @Test
+    void forwardRuleUsesOneImmediateInputAndAllowsThatInputToHaveItsOwnManufacturingBom() throws Exception {
+        String sql=Files.readString(resolve(Path.of("src/main/resources/db/migration/V646__subcontract_component_exact_stock_handoff.sql")),StandardCharsets.UTF_8);
+        String predicate=sql.substring(sql.indexOf("CREATE OR REPLACE FUNCTION fn_subcontract_sole_component_goods"),sql.indexOf("COMMENT ON FUNCTION fn_subcontract_sole_component_goods"));
+        assertThat(predicate).contains("edge.consumption_basis='PER_UNIT'","edge.control_stage IN ('START','ASSEMBLY','FINISH')","edge.qty>0", "sibling.goods_id=p_goods_id", ")=1");
+        assertThat(predicate).doesNotContain("grand.component_goods_id", "grand.goods_id", "NOT EXISTS");
+    }
+
+    @Test
     void everyExistingGuardKnowsTheNewFlowMode() throws Exception {
         String sql = migration();
         assertThat(sql)

@@ -64,7 +64,7 @@ class ProductionExecutionPackageCommandReplayTest {
                         mock(TxSessionVars.class), null, validator,
                         mock(com.uten.imp.features.notice.ChainNoticeService.class),
                         mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
-                        org.mockito.Mockito.mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS)));
+                        org.mockito.Mockito.mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS), null));
         PlanningPackageResult replay = new PlanningPackageResult(
                 packageId, ProductionPlanningPackage.STATUS_CONFIRMED, true,
                 List.of(), null, null, null, List.of(), List.of());

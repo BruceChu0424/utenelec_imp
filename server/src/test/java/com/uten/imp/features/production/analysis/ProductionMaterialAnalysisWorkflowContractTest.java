@@ -159,7 +159,7 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // 车间侧 WAITING→READY 自动提升。
         assertThat(commands).contains("candidateRoutesByMaterialLine(preArrange)");
         assertThat(commands).contains("只有自制路线的物料才能直接下达车间");
-        assertThat(commands).contains("无自制子层、或只有一个叶子子件（直接发子件给委外商）的委外件");
+        assertThat(commands).contains("无自制子层、或只有一个直属子件（直接发子件给委外商）的委外件");
         // V581：单一叶子子件的委外件同样不进车间（仓库直接发那个子件）。
         assertThat(commands).contains("soleComponentSubcontractGoodsIds(subcontractCandidateGoods)");
         assertThat(commands).contains(

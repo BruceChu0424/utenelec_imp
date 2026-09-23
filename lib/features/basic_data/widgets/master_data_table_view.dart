@@ -2202,9 +2202,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     TextStyle textStyle,
   ) {
     final column = widget.columns[columnIndex];
-    // 选中行整行淡绿底（primaryContainer 35%，与新建销售出货单的编辑网格同款，
-    // 2026-09-13 全站统一口径），文字保持常态深色——语义底色（cellColor）在选中
-    // 行上让位给统一选中色，保证选中行读作一个整体。
+    // 选中行整行青绿实底（utenTableSelectedRowColor，与编辑网格同款，2026-09-13
+    // 全站统一口径、2026-09-22 加深），文字保持常态深色——语义底色（cellColor）在
+    // 选中行上让位给统一选中色，保证选中行读作一个整体。
     final cellColor = selected ? null : column.cellColor?.call(context, item);
     final Color? onCellColor = cellColor == null
         ? null
@@ -2248,12 +2248,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     } else {
       selected = identical(item, _selectedItem);
     }
-    // 行底色：调用方可按行数据着色（货品按状态）；选中统一淡绿底（primaryContainer
-    // 35%，与新建销售出货单的编辑网格同款，2026-09-13 全站统一口径）——文字与
-    // 网格线保持常态色，行内输入框也无需再为选中态做任何变色适配。
+    // 行底色：调用方可按行数据着色（货品按状态）；选中统一青绿实底
+    // （utenTableSelectedRowColor，与编辑网格同款；2026-09-13 全站统一口径，
+    // 2026-09-22 用户口径「看不清是否选中」加深）——文字与网格线保持常态色，
+    // 行内输入框也无需再为选中态做任何变色适配。
     final base = widget.rowColor?.call(item);
     final Color rowBg = selected
-        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
+        ? utenTableSelectedRowColor(theme)
         : (base ?? Colors.transparent);
     final lineColor = theme.colorScheme.outline;
     final textStyle = theme.textTheme.bodySmall ?? const TextStyle();
@@ -2313,7 +2314,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ),
     );
     final row = DecoratedBox(
-      // 行间横线：逐行分隔；选中行用白色横线与深绿底搭配。
+      // 行间横线：逐行分隔；选中行也用常态横线（底色由下面的 ColoredBox 统一给）。
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: lineColor, width: 0.5)),
       ),

@@ -1,5 +1,19 @@
 # ER 草图
 
+## 2026-09-23 未领料原工单追加(V647 / ADR-104)
+
+```mermaid
+erDiagram
+    PRODUCTION_MATERIAL_ANALYSIS_ITEM ||--o{ PRODUCTION_MATERIAL_ANALYSIS_PLAN_LINK : "同一分析行的数量归属"
+    PRODUCTION_PLAN ||--o| PRODUCTION_MATERIAL_ANALYSIS_PLAN_LINK : "计划数量对账"
+    PRODUCTION_PLAN ||--o{ PRODUCTION_EXECUTION_SEGMENT : "原计划和ZX工单继续使用"
+    PRODUCTION_EXECUTION_SEGMENT ||--o{ PRODUCTION_EXECUTION_SEGMENT_GROWTH_EVENT : "不可变原位增长证据"
+    PRODUCTION_EXECUTION_SEGMENT ||--o{ PRODUCTION_MATERIAL_DEMAND : "冻结规则累计计量"
+    PRODUCTION_MATERIAL_DEMAND ||--o{ STOCK_RESERVATION : "保留已有覆盖后只补差额"
+```
+
+增长事件不产生新执行段，不改变已有需求与实际叶仓来源。已提交领料或有执行事实后，追加另建计划/工单。事件表按业务事实归 `CLEAR`，全局审计仍保留；具体合同见 [ADR-104](../99-决策记录-ADR/ADR-104-追加自制并入未开工的生产计划.md)。
+
 <!-- SALES-V300-CURRENT -->
 ## 2026-08-18 客户收货地址簿与财务驳回（V300）
 

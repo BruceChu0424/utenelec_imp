@@ -244,7 +244,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertTrue(rowsSql.contains("component.available_qty AS component_available_qty"));
         assertTrue(rowsSql.contains("waiting_item.flow_mode = 'COMPONENT_OUTBOUND'"));
         assertTrue(rowsSql.contains(FulfillmentWorkbenchQueryService.COMPONENT_STOCK_AVAILABLE_SQL
-                .formatted("waiting_item.goods_id", "waiting_item.color_id")));
+                .formatted("NULL::uuid", "waiting_item.order_item_id")));
+        assertTrue(rowsSql.contains(FulfillmentWorkbenchQueryService.COMPONENT_STOCK_AVAILABLE_SQL
+                .formatted("sole_item.id", "NULL::uuid")));
         // 锁行留在「待处理」段: 分段筛选按 task_status, 与采购同一句 SQL; 分桶只顺带数在等子件的行数.
         assertFalse(rowsSql.contains("display_stage IS DISTINCT FROM 'WAITING_COMPONENT_STOCK'"));
         assertTrue(rowsSql.contains("OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)"));
@@ -293,8 +295,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         Query statuses = mock(Query.class);
         Query exceptions = mock(Query.class);
         Query pending = mock(Query.class);
+        Query sources = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
+                .thenReturn(rows, sources, summary, statuses, exceptions, pending);
         when(pending.getSingleResult()).thenReturn(0L);
         UUID documentId = UUID.randomUUID();
         Object[] wide = java.util.Arrays.copyOf(

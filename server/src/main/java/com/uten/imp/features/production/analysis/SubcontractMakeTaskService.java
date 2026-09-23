@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
+import com.uten.imp.application.port.SubcontractTaskSource;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.common.web.ApiException;
@@ -65,7 +66,8 @@ public class SubcontractMakeTaskService {
             String workshopStatus,
             List<String> allowedActions,
             java.time.Instant updatedAt,
-            UUID preparationItemId) {
+            UUID preparationItemId,
+            List<SubcontractTaskSource> sources) {
     }
 
     public record TaskPageRequest(
@@ -129,6 +131,14 @@ public class SubcontractMakeTaskService {
         // （production_execution_segments.plan_id → production_plans.material_analysis_item_id）；
         // 仅列表查询挂 LATERAL（每页 20 行），计数查询不挂，避免大表全量展开。
         String listFrom = baseFrom + """
+                LEFT JOIN production_material_analysis_materials source_material
+                  ON source_material.id = task.analysis_material_id
+                 AND source_material.analysis_id = task.analysis_id
+                LEFT JOIN production_material_analysis_items source_item
+                  ON source_item.id = source_material.analysis_item_id
+                 AND source_item.analysis_id = task.analysis_id
+                LEFT JOIN goods source_goods ON source_goods.id = source_item.goods_id
+                LEFT JOIN sales_order_items source_sale ON source_sale.id = source_item.sales_order_item_id
                 LEFT JOIN LATERAL (
                     SELECT COUNT(*) AS total,
                            COUNT(*) FILTER (WHERE seg.status = 'WAITING') AS waiting,
@@ -167,7 +177,10 @@ public class SubcontractMakeTaskService {
                        task.preparation_item_id,
                        COALESCE(workshop.total, 0),
                        COALESCE(workshop.waiting, 0),
-                       COALESCE(workshop.working, 0), analysis.maker_id
+                       COALESCE(workshop.working, 0), analysis.maker_id,
+                       source_item.id, source_item.source_type,
+                       COALESCE(source_sale.bill_no, source_item.source_ref), source_sale.line_no,
+                       source_goods.code, source_goods.name, item.requested_qty
                 """ + listFrom + where
                 + " ORDER BY task.updated_at DESC NULLS LAST, task.id");
         if (!access.hasAuthority("subcontract_application:view")) {
@@ -217,9 +230,28 @@ public class SubcontractMakeTaskService {
                         ? allowedActions(decimal(row[15]), Objects.toString(row[18], ""))
                         : List.of(),
                 row[19] == null ? null : toInstant(row[19]),
-                (UUID) row[20])).toList();
+                (UUID) row[20], taskSources(row))).toList();
         return new PageResponse<>(content, page, size, total,
                 (int) Math.ceil((double) total / size));
+    }
+
+    private static List<SubcontractTaskSource> taskSources(Object[] row) {
+        if (row[25] == null || row[31] == null) return List.of();
+        BigDecimal total = decimal(row[12]);
+        BigDecimal demand = total.min(decimal(row[31]));
+        var sources = new java.util.ArrayList<SubcontractTaskSource>();
+        if (demand.signum() > 0) sources.add(new SubcontractTaskSource(
+                (UUID) row[25], Objects.toString(row[26], ""), Objects.toString(row[27], ""),
+                row[28] == null ? null : ((Number) row[28]).intValue(),
+                Objects.toString(row[29], ""), Objects.toString(row[30], ""),
+                Objects.toString(row[5], ""), Objects.toString(row[6], ""), demand,
+                Objects.toString(row[10], "")));
+        BigDecimal surplus = total.subtract(demand);
+        if (surplus.signum() > 0) sources.add(new SubcontractTaskSource(
+                null, "PUBLIC_STOCK", "", null, "", "",
+                Objects.toString(row[5], ""), Objects.toString(row[6], ""), surplus,
+                Objects.toString(row[10], "")));
+        return List.copyOf(sources);
     }
 
     /**

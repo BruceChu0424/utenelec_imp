@@ -1003,8 +1003,12 @@ class MaterialAnalysisServiceBehaviorTest {
         UUID ownerMaterialId = UUID.randomUUID();
         UUID siblingMaterialId = UUID.randomUUID();
         Query exactRows = query(Collections.singletonList(
-                new Object[]{ownerMaterialId, bd("10")}));
-        when(em.createNativeQuery(anyString())).thenReturn(exactRows);
+                new Object[]{ownerMaterialId, bd("6")}));
+        Query custodyRows = query(Collections.singletonList(new Object[]{UUID.randomUUID(),ownerMaterialId,
+                UUID.randomUUID(),"owned-child",UUID.randomUUID(),null,UUID.randomUUID(),UUID.randomUUID(),bd("4")}));
+        when(em.createNativeQuery(anyString())).thenAnswer(call ->
+                call.getArgument(0,String.class).contains("FROM subcontract_component_stock_handoffs")
+                        ? custodyRows : exactRows);
         MaterialAnalysisService service = service(
                 em, mock(ProductionDocumentAccessPolicy.class));
 
@@ -2376,7 +2380,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 // ADR-099：可认领公共在途、计划产出量
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 // ADR-102：还缺数量(扣掉可认领公共在途后的展示量)
-                BigDecimal.ZERO);
+                BigDecimal.ZERO, bd("100"));
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

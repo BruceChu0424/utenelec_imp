@@ -72,9 +72,9 @@ class _FakeOperationsWorkbenchRepository
   }
 
   @override
-  Future<int> subcontractTaskCount() async {
+  Future<({int pending, int inProgress})> subcontractTaskCounts() async {
     calls.hit('subcontract');
-    return 6;
+    return (pending: 6, inProgress: 2);
   }
 
   @override

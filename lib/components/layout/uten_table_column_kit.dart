@@ -27,6 +27,17 @@ import '../buttons/uten_button.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import 'uten_drag_reorder_list.dart';
 
+/// 全站表格「选中行」底色（MasterDataTableView / UtenEditableGrid 共用，2026-09-22）。
+///
+/// 只有这一处取色：两张表的选中行、以及钉住它的用例都从这里拿。选中行保持常态
+/// 字色与常态网格线，行内输入框不需要为选中态做任何变色适配（2026-09-13 口径不变，
+/// 只是底色从几乎看不见的 primaryContainer 35% 改成低饱和青灰绿实底——亮薄荷
+/// teal200 试过一轮，用户「晃眼睛」——见 [UtenColors.tableSelectedRow]）。
+Color utenTableSelectedRowColor(ThemeData theme) =>
+    theme.brightness == Brightness.dark
+    ? UtenColors.tableSelectedRowDark
+    : UtenColors.tableSelectedRow;
+
 /// 列头「标签 + ⓘ 说明」（MasterDataTableView / UtenEditableGrid 共用，2026-09-10）。
 ///
 /// 全站列级通用说明（数量/单价/币种/税率等对所有行相同的口径）统一放列头 ⓘ，

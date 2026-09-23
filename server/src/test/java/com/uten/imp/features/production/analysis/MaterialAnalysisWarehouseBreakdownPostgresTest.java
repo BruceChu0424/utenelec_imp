@@ -211,7 +211,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
             when(material.dimension()).thenReturn(new MaterialAnalysisService.MaterialDimension(goods,null,UNIT));materials.add(material);
         }
         MaterialAnalysisService service=mock(MaterialAnalysisService.class,CALLS_REAL_METHODS);ReflectionTestUtils.setField(service,"em",em);
-        ReflectionTestUtils.invokeMethod(service,"warehouseBreakdown",ANALYSIS,materials,new MaterialAnalysisService.SharedFutureIndex(Map.of()),Map.of());
+        ReflectionTestUtils.invokeMethod(service,"warehouseBreakdown",ANALYSIS,materials,new MaterialAnalysisService.SharedFutureIndex(Map.of()),Map.of(),Map.of());
         assertNotNull(captured.get());return captured.get();
     }
 

@@ -5,6 +5,7 @@
 // Flutter client never derives availability from inventory fields.
 
 import '../../../shared/models/progress_ratio.dart';
+import '../../../shared/models/subcontract_task_source.dart';
 import 'material_analysis_projection.dart';
 
 enum MaterialSupplyRoute {
@@ -307,6 +308,7 @@ class SubcontractMakeTask {
     this.workshopStatus,
     this.allowedActions = const {},
     this.updatedAt,
+    this.sources = const [],
   });
 
   final String taskId;
@@ -318,6 +320,7 @@ class SubcontractMakeTask {
   final String? preparationItemId;
   final String? analysisStatus;
   final String? itemSourceRef;
+  final List<SubcontractTaskSource> sources;
   final String? goodsId;
   final String? goodsCode;
   final String? goodsName;
@@ -369,6 +372,7 @@ class SubcontractMakeTask {
         preparationItemId: _string(json['preparationItemId']),
         analysisStatus: _string(json['analysisStatus']),
         itemSourceRef: _string(json['itemSourceRef']),
+        sources: SubcontractTaskSource.listFromJson(json['sources']),
         goodsId: _string(json['goodsId']),
         goodsCode: _string(json['goodsCode']),
         goodsName: _string(json['goodsName']),
@@ -1059,6 +1063,7 @@ class ProductionMaterialAnalysisMaterial {
     this.actionGroupKey,
     this.materialKey,
     this.requiredQty = 0,
+    this.sourceRequiredQty,
     this.perProductQty = 0,
     this.bomQty,
     this.parentPerProductQty,
@@ -1180,7 +1185,13 @@ class ProductionMaterialAnalysisMaterial {
   /// Stable server-side identity of this BOM node's business action.
   final String? actionGroupKey;
   final String? materialKey;
+
+  /// Actual preparation requirement, including material for additional output.
   final double requiredQty;
+
+  /// Original admitted sales/plan demand expanded through the exact BOM rules.
+  /// Missing on older servers; zero is a real baseline, not a missing value.
+  final double? sourceRequiredQty;
   final double perProductQty;
 
   /// Frozen direct BOM edge. Cumulative averages cannot reproduce package rounding.
@@ -1353,6 +1364,7 @@ class ProductionMaterialAnalysisMaterial {
     bomQty: _double(json['bomQty']),
     parentPerProductQty: _double(json['parentPerProductQty']),
     requiredQty: _double(json['requiredQty']) ?? 0,
+    sourceRequiredQty: _double(json['sourceRequiredQty']),
     availableQty: _double(json['availableQty']) ?? 0,
     allocatedAvailableQty: _double(json['allocatedAvailableQty']) ?? 0,
     exactPeggedQty: _double(json['exactPeggedQty']) ?? 0,

@@ -48,11 +48,15 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
 
     private Tree seed(String tag) { return seed(tag,null,"1000"); }
     private Tree seed(String tag,UUID warehouse,String qty) {
+        return seed(tag,warehouse,qty,false);
+    }
+    private Tree seed(String tag,UUID warehouse,String qty,boolean fixedBatch) {
         var w=fixture.seedWorld("planned-qty-"+tag);fixture.loginAs(w.superAdminUserId());
         UUID root=UUID.randomUUID(),parent=UUID.randomUUID();
         fixture.insertGoods(root,"PQ-ROOT-"+root,"计划量成品","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(parent,"PQ-P-"+parent,"计划量自制父件","自制",w.unitId(),w.unitLegacy());
         fixture.insertBom(root,parent,"1");fixture.insertBom(parent,w.goodsC(),"1");fixture.insertBom(root,w.goodsD(),"1");
+        if(fixedBatch) db.update("UPDATE goods_bom_items SET qty=10,consumption_basis='FIXED_BATCH',basis_output_qty=100,allow_partial_package=FALSE WHERE goods_id=? AND component_goods_id=?",parent,w.goodsC());
         db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),w.goodsC(),w.goodsD());
         UUID scope=warehouse==null?w.warehouseId():warehouse;
         AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,scope,"planned-preview-"+tag+"-"+root,
@@ -62,6 +66,41 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                         .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.goodsId().equals(parent)||m.goodsId().equals(root)?"MAKE":"BUY",null)).toList()));
         return new Tree(w,view.analysisId(),root,parent,view.products().getFirst().analysisLineId(),
                 line(view,parent),line(view,w.goodsC()),line(view,w.goodsD()));
+    }
+
+    @Test void sourceDemandStaysFixedThroughOverOrderPreviewAppendAndReload() {
+        Tree t=seed("fixed-source-required");
+        AnalysisView before=analyses.detail(t.analysis());
+        before.flatMaterials().forEach(line -> qty("1000",line.sourceRequiredQty()));
+        var firstRequest=issue(before,t,"root-3000",
+                new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("3000")));
+        AnalysisView preview=commands.previewIssuePlans(t.analysis(),previewOf(firstRequest));
+        preview.flatMaterials().forEach(line -> qty("1000",line.sourceRequiredQty()));
+        qty("3000",material(preview,t.childLine()).requiredQty());
+        qty("1000",product(analyses.detail(t.analysis()),t.rootLine()).requestedQty());
+
+        var first=commands.issueWorkshopPlans(t.analysis(),firstRequest);
+        UUID plan=first.plans().getFirst().planId();
+        UUID originalTask=segmentId(plan);
+        String originalCode=segmentCode(originalTask);
+        AnalysisView ordered=analyses.detail(t.analysis());
+        ordered.flatMaterials().forEach(line -> qty("1000",line.sourceRequiredQty()));
+        qty("3000",material(ordered,t.childLine()).requiredQty());
+
+        var append=issue(ordered,t,"append-1000",
+                new IssueWorkshopPlansRequest.IssuePlanLine(null,t.rootLine(),new BigDecimal("1000"),
+                        null,null,null,null,null,null,null,Boolean.TRUE));
+        var result=commands.issueWorkshopPlans(t.analysis(),append);
+        assertTrue(result.plans().getFirst().mergedIntoExisting());
+        assertSameTask(plan,originalTask,originalCode,"4000");
+        AnalysisView reloaded=analyses.detail(t.analysis());
+        reloaded.flatMaterials().forEach(line -> qty("1000",line.sourceRequiredQty()));
+        qty("1000",product(reloaded,t.rootLine()).requestedQty());
+        qty("4000",material(reloaded,t.parentLine()).requiredQty());
+        qty("4000",material(reloaded,t.childLine()).requiredQty());
+        qty("4000",material(reloaded,t.buyLine()).requiredQty());
+        assertTrue(commands.issueWorkshopPlans(t.analysis(),append).replayed());
+        analyses.detail(t.analysis()).flatMaterials().forEach(line -> qty("1000",line.sourceRequiredQty()));
     }
 
     @Test void topOverQuantityIssueScalesChildrenByPlannedOutputAndGrowsTheMakeAnchorQuota() {
@@ -89,6 +128,9 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         qty("1500",material(after,t.buyLine()).additionalSupplyRecommendedQty());
         // 既有自制锚点的配额自动跟到 1500：车间桶里还能再排 500，不用重新建锚。
         qty("1500",product(after,anchor).requestedQty());qty("500",product(after,anchor).remainingQty());
+        qty("1000",material(after,t.parentLine()).sourceRequiredQty());
+        qty("1000",material(after,t.childLine()).sourceRequiredQty());
+        qty("1000",material(after,t.buyLine()).sourceRequiredQty());
         assertTrue(product(after,anchor).canSchedule());
         // 需求涨到 1500、计划只归了 1000: 还缺 500, 与锚点余量同口径。
         qty("500",material(after,t.parentLine()).netShortageQty());
@@ -354,6 +396,8 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         qty("10",product(planned,rootItem).issuedPlanQty());
         BigDecimal plannedBefore=db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem);
         UUID fullPlan=db.queryForObject("SELECT plan_id FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=?",UUID.class,view.analysisId(),rootItem);
+        UUID originalSegment=segmentId(fullPlan);
+        String originalCode=segmentCode(originalSegment);
         String approvedStatus=db.queryForObject("SELECT status FROM production_plans WHERE id=?",String.class,fullPlan);
         // 再追加 4: 纯公共备货 + 立即审核, 必须放行。ADR-104：第一张没开工, 并进同一张(10 归需求 + 4 公共)。
         var surplus=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(planned.version(),planned.fingerprint(),
@@ -366,21 +410,20 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                 (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},fullPlan);
         qty("10",(BigDecimal)link[0]);qty("4",(BigDecimal)link[1]);
         qty("14",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,fullPlan));
-        // 审核态不变; 纯公共备货不进订单侧: 订单行 planned_qty 不动、排产关联容量仍是 10、新段没有销售分摊。
+        // 公共备货只放大原工单产量，销售订单与原工单的需求分摊仍为 10。
         assertEquals(approvedStatus,db.queryForObject("SELECT status FROM production_plans WHERE id=?",String.class,fullPlan));
         qty(plannedBefore.toPlainString(),db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
         qty("10",db.queryForObject("SELECT SUM(link.allocated_qty) FROM plan_order_item_links link JOIN production_plan_items item ON item.id=link.plan_item_id WHERE item.plan_id=? AND link.is_deleted=FALSE",
                 BigDecimal.class,fullPlan));
-        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",Integer.class,fullPlan));
-        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM execution_segment_sales_allocations allocation JOIN production_execution_segments segment ON segment.id=allocation.execution_segment_id WHERE segment.plan_id=? AND segment.segment_no=2",
-                Integer.class,fullPlan));
+        assertSameTask(fullPlan,originalSegment,originalCode,"14");
+        qty("10",db.queryForObject("SELECT SUM(allocated_qty) FROM execution_segment_sales_allocations WHERE execution_segment_id=?",BigDecimal.class,originalSegment));
         qty("14",product(analyses.detail(view.analysisId()),rootItem).issuedPlanQty());
     }
 
     /**
      * ADR-104(2026-09-22 用户口径「自制的追加, 生产车间没有去领料开工的前提下应该自动合并;
      * 已经开始执行了就创建新的单据」)：同一锚点第二次下达, 原计划已审核但车间没领料没开工 →
-     * 并入原计划(同一单号、明细加量、关联行加量、计划包里多一段), 不另立新单。
+     * 并入原计划及原车间工单，同一工单 ID/编号累计加量，冻结需求同步增量。
      */
     @Test void appendingOnAnApprovedNotStartedPlanGrowsThatPlanInsteadOfCreatingAnother() {
         Tree t=seed("merge-append");
@@ -388,6 +431,9 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         var first=commands.issueWorkshopPlans(t.analysis(),issue(before,t,"first-600",candidate(t.parentLine(),"600")));
         assertFalse(first.plans().getFirst().mergedIntoExisting());
         UUID planId=first.plans().getFirst().planId();
+        UUID originalSegment=segmentId(planId);
+        String originalCode=segmentCode(originalSegment);
+        UUID originalDemand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,originalSegment);
         AnalysisView anchored=analyses.detail(t.analysis());
         UUID anchor=material(anchored,t.parentLine()).planAnchorAnalysisLineId();
         qty("400",product(anchored,anchor).remainingQty());
@@ -403,13 +449,11 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty,allocation_status FROM production_material_analysis_plan_links WHERE plan_id=?",
                 (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2),rs.getString(3)},planId);
         qty("1000",(BigDecimal)link[0]);qty("0",(BigDecimal)link[1]);assertEquals("APPROVED",link[2]);
-        // 计划包里两段(600 + 400): 原段一字不动, 新段 WAITING 且自带冻结的物料需求(子件 C 用量 1)。
-        List<Object[]> segments=db.query("SELECT planned_qty,status,segment_no FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE ORDER BY segment_no",
-                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getString(2),rs.getInt(3)},planId);
-        assertEquals(2,segments.size());
-        qty("600",(BigDecimal)segments.get(0)[0]);qty("400",(BigDecimal)segments.get(1)[0]);
-        assertEquals("WAITING",segments.get(1)[1]);assertEquals(2,segments.get(1)[2]);
-        qty("400",db.queryForObject("SELECT SUM(demand.required_qty) FROM production_material_demands demand JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id WHERE segment.plan_id=? AND segment.segment_no=2 AND demand.is_deleted=FALSE",BigDecimal.class,planId));
+        assertSameTask(planId,originalSegment,originalCode,"1000");
+        assertEquals("WAITING",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,originalSegment));
+        assertNull(db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?",String.class,originalSegment),"追加不能替车间确认生产路线");
+        assertEquals(originalDemand,db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,originalSegment));
+        qty("1000",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,originalDemand));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_planning_packages WHERE plan_id=? AND status='CONFIRMED' AND is_deleted=FALSE",Integer.class,planId));
         AnalysisView after=analyses.detail(t.analysis());
         qty("1000",product(after,anchor).issuedPlanQty());qty("0",product(after,anchor).remainingQty());
@@ -419,7 +463,9 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         var replay=commands.issueWorkshopPlans(t.analysis(),request);
         assertTrue(replay.replayed());assertEquals(planId,replay.plans().getFirst().planId());
         assertTrue(replay.plans().getFirst().mergedIntoExisting());
-        // 排满后再追加 200 纯公共备货: 仍并入同一张, 关联行 1000/200, 三段; 子件需求按 1200 展开。
+        assertSameTask(planId,originalSegment,originalCode,"1000");
+        qty("1000",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,originalDemand));
+        // 连续追加 200 公共备货仍是原工单 1200，不产生第三张工单。
         var surplus=commands.issueWorkshopPlans(t.analysis(),issue(after,t,"surplus-200",
                 new IssueWorkshopPlansRequest.IssuePlanLine(null,anchor,new BigDecimal("200"),null,null,null,null,null,null,null,Boolean.TRUE)));
         assertTrue(surplus.plans().getFirst().mergedIntoExisting());
@@ -427,11 +473,179 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                 (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},planId);
         qty("1000",(BigDecimal)grown[0]);qty("200",(BigDecimal)grown[1]);
         qty("1200",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND is_deleted=FALSE",BigDecimal.class,planId));
-        assertEquals(3,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",Integer.class,planId));
+        assertSameTask(planId,originalSegment,originalCode,"1200");
+        qty("1200",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,originalDemand));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
         AnalysisView done=analyses.detail(t.analysis());
         qty("1200",product(done,anchor).issuedPlanQty());
         qty("1200",material(done,t.childLine()).requiredQty());
+        qty("1000",material(done,t.childLine()).sourceRequiredQty());
+    }
+
+    @Test void appendPreviewRollsBackOriginalTaskDemandAndCommandFacts() {
+        Tree t=seed("append-preview");
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"first-600",candidate(t.parentLine(),"600")));
+        UUID plan=first.plans().getFirst().planId();
+        UUID segment=segmentId(plan);
+        String code=segmentCode(segment),before=taskExecutionFacts(segment);
+        AnalysisView view=analyses.detail(t.analysis());
+        var request=issue(view,t,"preview-400",candidate(t.parentLine(),"400"));
+        AnalysisView preview=commands.previewIssuePlans(t.analysis(),previewOf(request));
+        UUID anchor=material(preview,t.parentLine()).planAnchorAnalysisLineId();
+        qty("1000",product(preview,anchor).issuedPlanQty());
+        assertSameTask(plan,segment,code,"600");
+        assertEquals(before,taskExecutionFacts(segment));
+        qty("600",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,plan));
+        assertEquals(view.version(),analyses.detail(t.analysis()).version());
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_commands WHERE analysis_id=? AND idempotency_key=?",Integer.class,t.analysis(),request.idempotencyKey()));
+        var applied=commands.issueWorkshopPlans(t.analysis(),request);
+        assertFalse(applied.replayed());assertTrue(applied.plans().getFirst().mergedIntoExisting());
+        assertSameTask(plan,segment,code,"1000");
+    }
+
+    @Test void drawRequestWithoutWarehouseIssueAlreadyStartsExecutionAndRequiresANewPlan() {
+        Tree t=seed("append-request-only");
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,5000)",t.world().warehouseId(),t.world().goodsC());
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"first-600",candidate(t.parentLine(),"600")));
+        UUID planId=first.plans().getFirst().planId();
+        UUID originalSegment=segmentId(planId);
+        String originalCode=segmentCode(originalSegment);
+        fixture.confirmAllUnconfirmedFullKitRoutes();
+        List<UUID> draws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);
+        assertFalse(draws.isEmpty());
+        fixture.requestWorkshopDraws("request-only-"+planId,draws);
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='DRAW_REQUEST'",Integer.class,originalSegment));
+        for(UUID draw:draws) {
+            assertEquals(0,db.queryForObject("SELECT status FROM stock_documents WHERE id=?",Integer.class,draw));
+            qty("0",db.queryForObject("SELECT COALESCE(SUM(issued_qty),0) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",BigDecimal.class,draw));
+        }
+        String frozen=taskExecutionFacts(originalSegment);
+        fixture.loginAs(t.world().superAdminUserId());
+        var second=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"second-400",candidate(t.parentLine(),"400")));
+        assertFalse(second.plans().getFirst().mergedIntoExisting());
+        assertNotEquals(planId,second.plans().getFirst().planId());
+        assertSameTask(planId,originalSegment,originalCode,"600");
+        assertEquals(frozen,taskExecutionFacts(originalSegment),"提交领料申请后原工单及需求不可改写");
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+    }
+
+    @Test void preparedDraftDrawAndReservationsGrowOnlyTheUnrequestedOriginalTask() {
+        Tree t=seed("append-prepared");
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,5000)",t.world().warehouseId(),t.world().goodsC());
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"first-600",candidate(t.parentLine(),"600")));
+        UUID planId=first.plans().getFirst().planId();
+        UUID originalSegment=segmentId(planId);
+        String originalCode=segmentCode(originalSegment);
+        fixture.confirmAllUnconfirmedFullKitRoutes();
+        UUID demand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,originalSegment);
+        List<UUID> draws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);
+        assertFalse(draws.isEmpty());
+        UUID draw=draws.getFirst();
+        String drawNo=db.queryForObject("SELECT bill_no FROM stock_documents WHERE id=?",String.class,draw);
+        List<UUID> reservations=db.queryForList("SELECT id FROM stock_reservations WHERE demand_id=? AND NOT is_deleted",UUID.class,demand);
+        assertFalse(reservations.isEmpty());
+        qty("600",reservedQty(demand));
+        var request=issue(analyses.detail(t.analysis()),t,"second-400",candidate(t.parentLine(),"400"));
+        var second=commands.issueWorkshopPlans(t.analysis(),request);
+        assertTrue(second.plans().getFirst().mergedIntoExisting());
+        assertSameTask(planId,originalSegment,originalCode,"1000");
+        assertEquals("READY",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,originalSegment));
+        qty("1000",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
+        qty("1000",reservedQty(demand));
+        assertTrue(db.queryForList("SELECT id FROM stock_reservations WHERE demand_id=? AND NOT is_deleted",UUID.class,demand).containsAll(reservations));
+        List<UUID> afterDraws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);
+        assertEquals(draws,afterDraws,"未申请领料时同仓追加复用原备料单");
+        assertEquals(drawNo,db.queryForObject("SELECT bill_no FROM stock_documents WHERE id=?",String.class,draw));
+        qty("1000",db.queryForObject("SELECT SUM(qty) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",BigDecimal.class,draw));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='DRAW_REQUEST'",Integer.class,originalSegment));
+        var replay=commands.issueWorkshopPlans(t.analysis(),request);
+        assertTrue(replay.replayed());
+        assertSameTask(planId,originalSegment,originalCode,"1000");
+        qty("1000",reservedQty(demand));
+        qty("1000",db.queryForObject("SELECT SUM(qty) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",BigDecimal.class,draw));
+        qty("5000",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,t.world().warehouseId(),t.world().goodsC()));
+        // A later append has a new growth event, not the route confirmation or
+        // previous append's notice identity. Neither notification may roll it back.
+        AnalysisView current=analyses.detail(t.analysis());
+        UUID anchor=material(current,t.parentLine()).planAnchorAnalysisLineId();
+        var next=issue(current,t,"third-200",
+                new IssueWorkshopPlansRequest.IssuePlanLine(null,anchor,new BigDecimal("200"),
+                        null,null,null,null,null,null,null,Boolean.TRUE));
+        assertTrue(commands.issueWorkshopPlans(t.analysis(),next).plans().getFirst().mergedIntoExisting());
+        assertSameTask(planId,originalSegment,originalCode,"1200");
+        qty("1200",reservedQty(demand));
+        qty("1200",db.queryForObject("SELECT SUM(qty) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",BigDecimal.class,draw));
+        assertEquals(draws,ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId));
+        assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_growth_events WHERE execution_segment_id=?",Integer.class,originalSegment));
+        assertTrue(commands.issueWorkshopPlans(t.analysis(),next).replayed());
+        assertSameTask(planId,originalSegment,originalCode,"1200");
+        qty("1200",reservedQty(demand));
+        qty("5000",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,t.world().warehouseId(),t.world().goodsC()));
+        qty("1000",material(analyses.detail(t.analysis()),t.childLine()).sourceRequiredQty());
+    }
+
+    @Test void continuousReadyTaskKeepsItsRouteAndPartialPreparationWhenAppended() {
+        Tree t=seed("append-continuous");
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","append-continuous");
+        UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId");
+        UUID worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"first-600",
+                new IssueWorkshopPlansRequest.IssuePlanLine(t.parentLine(),null,new BigDecimal("600"),null,null,workshop,null,worker,null,null)));
+        UUID planId=first.plans().getFirst().planId(),segment=segmentId(planId);
+        String code=segmentCode(segment);
+        // 首次下达时零库存产生一张等待工单；随后到一部分料，再由车间选择持续生产。
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,100)",t.world().warehouseId(),t.world().goodsC());
+        var execution=(com.uten.imp.features.production.execution.ProductionExecutionSegmentService)ReflectionTestUtils.getField(fixture,"executionSegmentService");
+        Long version=db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);
+        execution.confirmRoute(planId,segment,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(version,"append-continuous-route-"+segment,"CONTINUOUS"));
+        assertEquals("READY",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,segment));
+        UUID demand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,segment);
+        qty("100",reservedQty(demand));
+        List<UUID> draws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);
+        assertFalse(draws.isEmpty());
+        var second=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"second-400",candidate(t.parentLine(),"400")));
+        assertTrue(second.plans().getFirst().mergedIntoExisting());
+        assertSameTask(planId,segment,code,"1000");
+        assertEquals("CONTINUOUS",db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?",String.class,segment));
+        assertEquals("READY",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,segment));
+        assertEquals(Boolean.TRUE,db.queryForObject("SELECT continuous_supply FROM production_execution_segments WHERE id=?",Boolean.class,segment));
+        qty("1000",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
+        qty("100",reservedQty(demand));
+        assertEquals(draws,ReflectionTestUtils.<List<UUID>>invokeMethod(fixture,"currentPlanDrawIds",planId));
+        qty("100",db.queryForObject("SELECT SUM(qty) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",BigDecimal.class,draws.getFirst()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='DRAW_REQUEST'",Integer.class,segment));
+    }
+
+    @Test void repeatedAppendRecalculatesTheFrozenNonLinearCurveAtTheCumulativeOutput() {
+        Tree t=seed("append-fixed-curve",null,"1000",true);
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"first-50",candidate(t.parentLine(),"50")));
+        UUID planId=first.plans().getFirst().planId();
+        UUID originalSegment=segmentId(planId);
+        String originalCode=segmentCode(originalSegment);
+        UUID demand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,originalSegment);
+        qty("10",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE production_execution_segments SET planned_qty=planned_qty+1 WHERE id=?",originalSegment));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE production_material_demands SET required_qty=required_qty+1 WHERE id=?",demand));
+        commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"second-25",candidate(t.parentLine(),"25")));
+        assertSameTask(planId,originalSegment,originalCode,"75");
+        qty("10",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
+        // 主档随后改成每批 99：刷新当前分析后，已有工单仍沿首次下达冻结的每批 10。
+        db.update("UPDATE goods_bom_items SET qty=99 WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",t.parent(),t.world().goodsC());
+        AnalysisView beforeRefresh=analyses.detail(t.analysis());
+        AnalysisView refreshed=analyses.preview(new PreviewRequest(t.analysis(),beforeRefresh.version(),beforeRefresh.fingerprint(),
+                t.world().warehouseId(),"frozen-curve-refresh-"+t.analysis(),
+                List.of(new PreviewItem("OTHER",null,t.root(),null,t.world().unitId(),"planned-source-append-fixed-curve-"+t.root(),"计划量单一入口",BusinessTime.today().plusDays(10),new BigDecimal("1000")))));
+        List<RouteDecision> reconfirm=refreshed.flatMaterials().stream().filter(MaterialView::actionable)
+                        .filter(m->!Boolean.TRUE.equals(m.sourceConfirmed()))
+                        .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.goodsId().equals(t.parent())||m.goodsId().equals(t.root())?"MAKE":"BUY",null)).toList();
+        if(!reconfirm.isEmpty()) analyses.saveRoutes(t.analysis(),new RouteRequest(refreshed.version(),refreshed.fingerprint(),"frozen-curve-routes-"+t.analysis(),reconfirm));
+        commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"third-75",candidate(t.parentLine(),"75")));
+        assertSameTask(planId,originalSegment,originalCode,"150");
+        qty("20",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
+        qty("150",db.queryForObject("SELECT required_for_product_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE production_execution_segments SET material_snapshot_product_qty=material_snapshot_product_qty+1 WHERE id=?",originalSegment));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE production_material_demands SET required_qty=required_qty+1 WHERE id=?",demand));
+        assertSameTask(planId,originalSegment,originalCode,"150");
     }
 
     /** ADR-104：车间已经去领料(备料单已审核发料)的计划一字不动, 追加另立新单(用户口径「已经开始执行了就创建新的单据」)。 */
@@ -508,7 +722,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
 
     /**
      * ADR-104：销售来源的顶层追加归需求的量并入同一张已审核计划时, 订单侧同步扩容——
-     * 排产关联容量与订单行 planned_qty 各加归需求份, 新段分摊到这份; 换车间追加 = 另一张单。
+     * 排产关联容量、订单行 planned_qty 和原工单分摊各加归需求份; 换车间追加 = 另一张单。
      */
     @Test void salesRootAppendGrowsThePlanItsOrderAllocationAndPlannedQtyUnlessTheWorkshopDiffers() {
         var w=fixture.seedWorld("planned-sales-merge");
@@ -536,7 +750,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         assertEquals(planId,second.plans().getFirst().planId());assertTrue(second.plans().getFirst().mergedIntoExisting());
         qty("10",db.queryForObject("SELECT allocated_qty FROM plan_order_item_links WHERE plan_item_id=? AND is_deleted=FALSE",BigDecimal.class,planItem));
         qty("10",db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
-        qty("4",db.queryForObject("SELECT allocation.allocated_qty FROM execution_segment_sales_allocations allocation JOIN production_execution_segments segment ON segment.id=allocation.execution_segment_id WHERE segment.plan_id=? AND segment.segment_no=2",BigDecimal.class,planId));
+        qty("10",db.queryForObject("SELECT allocation.allocated_qty FROM execution_segment_sales_allocations allocation JOIN production_execution_segments segment ON segment.id=allocation.execution_segment_id WHERE segment.plan_id=? AND segment.segment_no=1",BigDecimal.class,planId));
         qty("10",product(analyses.detail(view.analysisId()),rootItem).approvedQty());
         // 换一个车间追加 2(纯公共备货): 车间不同 = 另一张单。
         Object other=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","planned-sales-merge-other");
@@ -743,6 +957,17 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                         .map(m->m.goodsId()+"/"+m.goodsName()+"/"+m.nodeRole()+"/"+m.sourceConfirmed()).toList()));
     }
     private static MaterialView material(AnalysisView view,UUID line) { return view.flatMaterials().stream().filter(m->m.materialLineId().equals(line)).findFirst().orElseThrow(); }
+    private UUID segmentId(UUID plan) { return db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,plan); }
+    private String segmentCode(UUID segment) { return db.queryForObject("SELECT segment_code FROM production_execution_segments WHERE id=?",String.class,segment); }
+    private void assertSameTask(UUID plan,UUID segment,String code,String quantity) {
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",Integer.class,plan));
+        assertEquals(segment,segmentId(plan));assertEquals(code,segmentCode(segment));
+        qty(quantity,db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,segment));
+    }
+    private BigDecimal reservedQty(UUID demand) { return db.queryForObject("SELECT COALESCE(SUM(qty-released_qty),0) FROM stock_reservations WHERE demand_id=? AND NOT is_deleted",BigDecimal.class,demand); }
+    private String taskExecutionFacts(UUID segment) {
+        return db.queryForObject("SELECT jsonb_build_array(to_jsonb(s),(SELECT jsonb_agg(to_jsonb(d) ORDER BY d.id) FROM production_material_demands d WHERE d.execution_segment_id=s.id))::text FROM production_execution_segments s WHERE s.id=?",String.class,segment);
+    }
     private static ProductView product(AnalysisView view,UUID line) { return view.products().stream().filter(p->p.analysisLineId().equals(line)).findFirst().orElseThrow(); }
     private static void qty(String expected,BigDecimal actual) { assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(actual),"expected "+expected+", actual "+actual); }
 }

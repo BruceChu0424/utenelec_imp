@@ -4375,6 +4375,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     : !"PENDING_OWNER".equals(status) && !"WAITING_MORE".equals(status)) {
                 return;
             }
+            // Outbox 可能在补货登记之后才投递；已达到约定下限就不再重建旧催货行动卡。
+            if ("WITHIN_TOLERANCE".equals(str(shortCase.get("severity")))) {
+                resolveReviewNotices(SUBCONTRACT_SHORT_DELIVERY_AGGREGATE, caseId, "WITHIN_TOLERANCE");
+                return;
+            }
             String orderNo = str(shortCase.get("order_bill_no_snapshot"));
             String goods = java.util.stream.Stream.of(
                             str(shortCase.get("goods_name")), str(shortCase.get("goods_code")),

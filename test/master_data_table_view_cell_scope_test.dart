@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
@@ -62,16 +63,14 @@ void main() {
         await tester.tap(find.text('First'));
         await tester.pumpAndSettle();
         expect(scopes['First']!.selected, isTrue);
-        // 2026-09-13 全站表格选中口径：选中行淡绿底（primaryContainer 35%，
-        // 与新建销售出货单的编辑网格同款）+ 常态字色——不再深绿底白字，
-        // 行内自绘内容无需随选中态变色。
+        // 2026-09-13 全站表格选中口径：选中行青绿底（utenTableSelectedRowColor，
+        // 与编辑网格同款；2026-09-22 从 primaryContainer 35% 加深成实底）+ 常态
+        // 字色——不再深绿底白字，行内自绘内容无需随选中态变色。
         final bodyColor = theme.textTheme.bodySmall!.color;
         expect(scopes['First']!.foregroundColor, bodyColor);
         expect(textColors['First'], bodyColor);
         expect(iconColors['First'], bodyColor);
-        final selectedTint = theme.colorScheme.primaryContainer.withValues(
-          alpha: 0.35,
-        );
+        final selectedTint = utenTableSelectedRowColor(theme);
         expect(
           find.byWidgetPredicate(
             (widget) => widget is ColoredBox && widget.color == selectedTint,

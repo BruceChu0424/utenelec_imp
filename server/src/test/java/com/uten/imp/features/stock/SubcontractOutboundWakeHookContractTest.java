@@ -31,15 +31,16 @@ class SubcontractOutboundWakeHookContractTest {
                 .contains("wakeOutboundAfterStockIn(")
                 .doesNotContain("catch (");
         assertOrdered(stock, "upsertBalance(", "wakeOutboundAfterStockIn(");
-        // 叫醒只许在写完余额之后的那个 DIR_IN 分支里: 分支开头 → 叫醒 → 分支结束 return m.getId(),
-        // 中间不能先 return(否则就不是「每笔入库都叫醒」)。
+        // Register only inbound dimensions, then wake before the same transaction commits.
         int branch = stock.lastIndexOf("if (req.direction() == DIR_IN) {");
-        int wake = stock.indexOf("wakeOutboundAfterStockIn(");
+        int wake = stock.indexOf("enqueueSubcontractWake(new");
         assertThat(branch).isGreaterThan(stock.indexOf("upsertBalance("));
         assertThat(wake).isGreaterThan(branch);
         assertThat(stock.substring(branch, wake)).doesNotContain("return ");
         assertThat(stock.indexOf("return m.getId();", wake)).isGreaterThan(wake);
-        assertThat(stock.indexOf("wakeOutboundAfterStockIn(", wake + 1)).isEqualTo(-1);
+        assertThat(stock).contains("void beforeCommit(boolean readOnly)");
+        int delivery = stock.indexOf("wakeOutboundAfterStockIn(");
+        assertThat(stock.indexOf("wakeOutboundAfterStockIn(", delivery + 1)).isEqualTo(-1);
     }
 
     @Test

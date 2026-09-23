@@ -44,6 +44,10 @@ Finder _orderQty(String line) =>
     find.byKey(ValueKey('material-analysis-order-qty-${_groupKey(line)}'));
 Finder _appendQty(String line) =>
     find.byKey(ValueKey('material-analysis-append-qty-${_groupKey(line)}'));
+Finder _sourceRequired(String rowKey) =>
+    find.byKey(ValueKey('material-analysis-source-required-$rowKey'));
+String _sourceRequiredText(WidgetTester tester, String rowKey) =>
+    tester.widget<Text>(_sourceRequired(rowKey)).data!;
 Finder _transferButton(String line) => find.byKey(
   ValueKey('material-analysis-handle-transfer-${_groupKey(line)}'),
 );
@@ -155,6 +159,89 @@ bool _framedRed(WidgetTester tester, Finder field) {
 }
 
 void main() {
+  testWidgets('需要数量保留显式零，旧响应缺基线时不拿动态备料量冒充', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _fixtureMaterial(data, 'm-2')
+          ..['sourceRequiredQty'] = 0
+          ..['requiredQty'] = 2500;
+        _fixtureMaterial(data, 'm-3')
+          ..remove('sourceRequiredQty')
+          ..['requiredQty'] = 3000;
+        return data;
+      },
+    );
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '0');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-3'), '—');
+  });
+
+  testWidgets('纯来源产品用原始请求量，已排满的自制锚点仍显示来源物料基线', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _withIssuedMakeRow(data);
+        final product = (data['products'] as List).first as Map;
+        product
+          ..['rootMaterialLineId'] = null
+          ..['requestedQty'] = 1000
+          ..['remainingQty'] = 0;
+        (data['flatMaterials'] as List).removeWhere(
+          (raw) => (raw as Map)['materialLineId'] == 'm-root',
+        );
+        _fixtureMaterial(data, 'm-7')['sourceRequiredQty'] = 300;
+        return data;
+      },
+    );
+    expect(_sourceRequiredText(tester, 'PRODUCT|product-1'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-7'), '300');
+    expect(_sourceRequired('PRODUCT|anchor-7'), findsNothing);
+  });
+
+  testWidgets('按物料汇总累加各路径原始需要量，不累加放大的实际备料量', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        final original = _fixtureMaterial(data, 'm-2')
+          ..['sourceRequiredQty'] = 300
+          ..['requiredQty'] = 6000;
+        (data['flatMaterials'] as List).add({
+          ...original,
+          'materialLineId': 'm-2-copy',
+          'nodeKey': 'n-m-2-copy',
+          'actionGroupKey': 'a-m-2-copy',
+          'sourceRequiredQty': 500,
+          'requiredQty': 9000,
+        });
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    expect(_sourceRequiredText(tester, 'AGGREGATE|g-m-2|本色|unit-1'), '800');
+  });
+
+  testWidgets('提交返回和重新打开的快照备料量增长时，原始需要数量保持不变', (tester) async {
+    Map<String, dynamic>? persisted;
+    await _pump(
+      tester,
+      afterWrite: (data) {
+        _fixtureMaterial(data, 'm-2')['requiredQty'] = 2500;
+        persisted = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+        return data;
+      },
+    );
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000');
+    await _check(tester, _rowCheckbox('m-2'));
+    await _submitSelected(tester);
+    expect(persisted, isNotNull);
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000');
+    await _pump(tester, mutate: (_) => persisted!);
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000');
+  });
+
   testWidgets('列定稿为 15 列，四列新增列都在表头里', (tester) async {
     await _pump(tester);
     expect(find.text('表头设置 15/15'), findsOneWidget);
@@ -263,8 +350,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
-    // 「还缺数量」与「下单数量」预填同源；「需要数量」列现在读的也是这份重算
-    // 快照(原先它直读权威快照，同一行会出现「需要 1000 / 还缺 1500」的矛盾)。
+    // 原始需要量保持 1000；追加产出的实际备料仍驱动缺口和下单预填。
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000');
     expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 1500'));
     expect(_qtyText(tester, _orderQty('m-pc')), '1500');
   });
@@ -298,8 +385,8 @@ void main() {
     await tester.pump();
     expect(previews, isEmpty);
     // 估算：父件已下 1000、再追加 1500 → 产出 2500 = 2.5 倍；子件需求 1000 → 2500，
-    // 已覆盖的 400 是不变量，还需安排 2100。三列一起变。
-    expect(find.text('2500'), findsOneWidget);
+    // 已覆盖的 400 是不变量，还需安排 2100；原始需要数量仍为 1000。
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000');
     expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 2100'));
     expect(_qtyText(tester, _orderQty('m-pc')), '2100');
 
@@ -307,6 +394,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(previews, hasLength(1));
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000');
     expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 1500'));
     expect(_qtyText(tester, _orderQty('m-pc')), '1500');
   });
@@ -469,7 +557,7 @@ void main() {
     // 服务端封顶的还需安排看不出多下的那 1400，页面按不封顶的覆盖量算。
     await tester.enterText(_appendQty('m-r'), '200');
     await tester.pump();
-    expect(find.text('1200'), findsOneWidget);
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-rc'), '1000');
     expect(_qtyText(tester, _appendQty('m-rc')), '0');
     await _settleRebuild(tester);
     expect(_rowChecked(tester, 'm-rc'), isFalse);
@@ -834,12 +922,18 @@ void main() {
     bool blockedNotice(AppNotification notice) =>
         notice.message.contains('填了数但本次还下不了单') &&
         notice.message.contains('生产车间');
-    expect(container.read(appNotificationProvider).where(blockedNotice), hasLength(1));
+    expect(
+      container.read(appNotificationProvider).where(blockedNotice),
+      hasLength(1),
+    );
     // 再改一位数：同一行同一原因不再说第二遍。
     await tester.enterText(_appendQty('m-root'), '1200');
     await tester.pump();
     await _settleRebuild(tester);
-    expect(container.read(appNotificationProvider).where(blockedNotice), hasLength(1));
+    expect(
+      container.read(appNotificationProvider).where(blockedNotice),
+      hasLength(1),
+    );
   });
 
   testWidgets('采购行填得比当时需求多：累计已下单 = 归需求份 + 公共备货份', (tester) async {
@@ -1108,6 +1202,7 @@ Future<void> _pump(
   Size size = const Size(1800, 1800),
   bool overSupply = false,
   Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
+  Map<String, dynamic> Function(Map<String, dynamic> data)? afterWrite,
   List<Map<String, dynamic>> defaultWorkshops = const [],
   // 真下达 / 通知在服务端要跑几秒; 给假后端一个延迟, 段间的 300ms 去抖才有机会露馅。
   int delayMs = 0,
@@ -1134,6 +1229,7 @@ Future<void> _pump(
     final version = (data['version'] as int) + 1;
     data['version'] = version;
     data['fingerprint'] = '$version'.padLeft(64, 'b');
+    if (afterWrite != null) data = afterWrite(data);
     return data;
   }
 
@@ -1869,6 +1965,7 @@ Map<String, dynamic> _material({
   'level': level,
   'path': ['智能多功能插座', name],
   'requiredQty': 1000,
+  'sourceRequiredQty': 1000,
   'allocatedAvailableQty': stockQty,
   'availableQty': stockQty,
   'shortageQty': 1000 - stockQty,

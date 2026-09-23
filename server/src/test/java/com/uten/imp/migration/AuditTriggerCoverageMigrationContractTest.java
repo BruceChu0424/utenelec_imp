@@ -246,6 +246,8 @@ class AuditTriggerCoverageMigrationContractTest {
                     Map.entry("expense_claim_settings", 617),
                     Map.entry("subcontract_short_delivery_cases", 636),
                     Map.entry("subcontract_short_delivery_case_events", 636),
+                    Map.entry("subcontract_component_stock_handoffs", 646),
+                    Map.entry("production_execution_segment_growth_events", 647),
                     Map.entry("legacy_subcontract_order_import_sources", 624),
                     Map.entry("legacy_finance_import_sources", 626),
                     Map.entry("legacy_procurement_receipt_import_sources", 627),

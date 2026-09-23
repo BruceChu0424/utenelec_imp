@@ -44,7 +44,7 @@ class ProductionExecutionPackageCommandStatusTest {
                         null, null, null, null, null, tx, null, validator,
                         mock(com.uten.imp.features.notice.ChainNoticeService.class),
                         mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
-                        org.mockito.Mockito.mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                        org.mockito.Mockito.mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class, org.mockito.Mockito.RETURNS_DEEP_STUBS), null);
 
         assertThatThrownBy(() -> command.confirm(
                 UUID.randomUUID(), new GeneratePlanningPackageRequest()))

@@ -19,6 +19,7 @@ com/uten/imp/migration/GoodsOrderPolicyMigrationContractTest.java
 com/uten/imp/migration/GoodsOwningWarehouseMigrationContractTest.java
 com/uten/imp/migration/ManagerPermissionDelegationMigrationContractTest.java
 com/uten/imp/migration/MasterCodeLifetimeReservationMigrationContractTest.java
+com/uten/imp/migration/MaterialAnalysisPlanGrowthMigrationContractTest.java
 com/uten/imp/migration/MeasurementCaptureLearningMigrationContractTest.java
 com/uten/imp/migration/OrderItemSourceMergeMigrationContractTest.java
 com/uten/imp/migration/PermissionCatalogActionTaxonomyMigrationContractTest.java

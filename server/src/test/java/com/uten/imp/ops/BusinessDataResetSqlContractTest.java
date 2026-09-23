@@ -64,6 +64,8 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_material_return_request_cancellations", 560),
             Map.entry("subcontract_short_delivery_cases", 636),
             Map.entry("subcontract_short_delivery_case_events", 636),
+            Map.entry("subcontract_component_stock_handoffs", 646),
+            Map.entry("production_execution_segment_growth_events", 647),
             Map.entry("production_execution_segment_splits", 561),
             Map.entry("preplan_reallocation_make_supplements", 568),
             Map.entry("preplan_future_supply_transfers", 569),
@@ -248,7 +250,9 @@ class BusinessDataResetSqlContractTest {
                 "V624__legacy_subcontract_settlement_provenance.sql",
                 "V626__legacy_finance_source_provenance.sql",
                 "V627__legacy_receipt_consideration_provenance.sql",
-                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql")) {
+                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql",
+                "V646__subcontract_component_exact_stock_handoff.sql",
+                "V647__material_analysis_execution_growth_in_place.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }
@@ -438,7 +442,9 @@ class BusinessDataResetSqlContractTest {
                 // V645 追加自制并入未开工的生产计划 (ADR-104): 四个判定函数 + 一条对账触发器
                 // + 锚点补丁三个身份守卫, 不加表 (V645 595→596)。
                 .contains("(645, 596)")
-                .contains("V507/469、V508/470及V511至V645完整目录");
+                .contains("(646, 597)")
+                .contains("(647, 598)")
+                .contains("V507/469、V508/470及V511至V647完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

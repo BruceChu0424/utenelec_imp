@@ -277,11 +277,29 @@ public final class MaterialAnalysisContracts {
         }
     }
 
+    /**
+     * 取消分析 / 撤回供给任务 / 撤回根产品交接共用的请求体。
+     * <p>原因选填(2026-09-22 用户口径「取消分析的原因不用必填」)：留空落审计时记
+     * {@link #DEFAULT_REASON}；填了就去首尾空白后至少 2 字——与库级 CHECK
+     * (production_material_analysis_cancel_chk / preplan_supply_action_cancel_chk 的
+     * length(btrim(cancellation_reason)) >= 2)同口径, 由 {@code @Pattern} 在入口挡住,
+     * 不让 1 个字的原因走到库里变成 500。所有消费方一律取 {@link #effectiveReason()}。
+     */
     public record CancelRequest(
             @NotNull @JsonAlias("expectedVersion") Long version,
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
-            @NotBlank @Size(min = 2, max = 1000) String reason) {
+            @Size(max = 1000)
+            @Pattern(regexp = "(?s)\\s*|\\s*\\S.*\\S\\s*", message = "原因留空或至少 2 个字")
+            String reason) {
+
+        public static final String DEFAULT_REASON = "未填写原因";
+
+        /** 落库 / 进指纹 / 写审计用的原因：空白 → {@link #DEFAULT_REASON}，否则去首尾空白。 */
+        public String effectiveReason() {
+            String trimmed = reason == null ? "" : reason.strip();
+            return trimmed.isEmpty() ? DEFAULT_REASON : trimmed;
+        }
     }
 
     /**
@@ -749,7 +767,12 @@ public final class MaterialAnalysisContracts {
              * <p>务必与 {@link #shortageQty} 区分: shortageQty 是物理缺口, 同时
              * 是 actionable / 让料候选 / 入库齐套三处的判据, 口径不动。
              */
-            BigDecimal netShortageQty) {
+            BigDecimal netShortageQty,
+            /**
+             * 原始销售/计划汇总需求按本节点 BOM 规则展开的数量。
+             * 不随下单、追加、到货、库存占用或车间执行变化；实际备料仍使用 requiredQty。
+             */
+            BigDecimal sourceRequiredQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

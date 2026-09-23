@@ -8,7 +8,7 @@ enum _MaterialTableRowKind {
   orphan,
 }
 
-/// 主表一行此刻该显示的三个数：需要数量 / 本次要覆盖的量(毛) / 还缺数量(净)。
+/// 实际备料的三个动态数：备料需求 / 本次要覆盖的量(毛) / 还缺数量(净)。
 /// 来源按优先级：页面当场换算的估算值 → 服务端模拟快照 → 权威快照。
 typedef _TableQty = ({double required, double residual, double net});
 
@@ -1273,9 +1273,15 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 100,
       type: 'number',
       value: (row) => _qty(_materialTableRequiredQty(row)),
-      // 父行敲一下这一格自己重建(订阅估算 tick)，整页不动。
-      cellBuilder: (_, row) =>
-          _materialTableLiveQtyCell(() => _materialTableRequiredQty(row)),
+      info:
+          '原始销售订单或计划汇总需求按 BOM 展开的数量。下单、追加和备料不会改变这一列；'
+          '追加产量所需的实际备料另算，并计入「还缺数量」和下单预填。',
+      cellBuilder: (_, row) => Text(
+        _qty(_materialTableRequiredQty(row)),
+        key: ValueKey('material-analysis-source-required-${row.key}'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
     ),
     // ADR-102：这一列是服务端派生的净口径，客户端不做任何减法。
     MasterColumnDef(
@@ -1783,24 +1789,33 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
-  /// 「需要数量」：本批要用多少。
-  ///
-  /// 与「还缺数量」走**同一份快照**：父行改量之后有一份服务端算好的模拟快照时，
-  /// 两列都读它。少了这一句，同一行会出现「需要 1000 / 还缺 2000」这种自相
-  /// 矛盾的组合——一列跟着父行变了，另一列还停在权威快照上。
-  double? _materialTableRequiredQty(_MaterialTableRow row) => row.contextOnly
-      ? null
-      : row.material?.isRootSupply == true
-      ? _tableShownQty(row.material!).required
-      : row.product?.remainingQty ??
-            (row.aggregate != null
-                ? row.aggregate!.paths.fold<double>(
-                    0,
-                    (sum, material) => sum + _tableShownQty(material).required,
-                  )
-                : row.material == null
-                ? null
-                : _tableShownQty(row.material!).required);
+  /// 原始需求只读正式快照中的来源基线，不参与输入估算或模拟备料快照。
+  /// 旧服务端缺失基线时显示横杠，不能拿动态备料量冒充原始需求。
+  double? _materialTableRequiredQty(_MaterialTableRow row) {
+    if (row.contextOnly) return null;
+    final aggregate = row.aggregate;
+    if (aggregate != null) {
+      if (aggregate.paths.any(
+        (material) => material.sourceRequiredQty == null,
+      )) {
+        return null;
+      }
+      return aggregate.paths.fold<double>(
+        0,
+        (sum, material) => sum + material.sourceRequiredQty!,
+      );
+    }
+    final product = row.product;
+    if (_isEmbeddedMakeChildProduct(product)) {
+      final analysis = _analysis;
+      if (analysis == null) return null;
+      return _analysisIndexes(
+        analysis,
+      ).materialsByAnchorProduct[product!.analysisLineId]?.sourceRequiredQty;
+    }
+    if (row.material != null) return row.material!.sourceRequiredQty;
+    return product?.requestedQty;
+  }
 
   /// 「可用数量」：该物料此刻在所选仓库还能动用的现货。
   ///
@@ -1958,7 +1973,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 7 秒，光等它主表上就是「改了没反应」。只覆盖展示与预填，提交仍按权威快照。
   final Map<String, _TableQty> _tableEstimatedQty = {};
 
-  /// 「敲一下当场变」只通知**依赖估算值的那几个格子**自己重建(需要数量 / 还缺数量 /
+  /// 「敲一下当场变」只通知**依赖估算值的那几个格子**自己重建(还缺数量 /
   /// 下单数量的红框)，不整页 setState。实测(debug, 300 行)整页重建一帧 260-450ms，
   /// 而只重绘输入框那一帧 13-20ms——整页重建就是「速度不够快」的全部成本。
   /// 依赖估算但不逐格监听的东西(还缺数量的底色、表头筛选桶、底部按钮)由
@@ -2413,15 +2428,6 @@ abstract class _MaterialAnalysisMaterialTableState
     });
   }
 
-  /// 随估算值当场变的只读数字格：只订阅 [_tableEstimateTick]，父行敲一下这一格
-  /// 自己重建，整页不动。
-  Widget _materialTableLiveQtyCell(double? Function() value) =>
-      ValueListenableBuilder<int>(
-        valueListenable: _tableEstimateTick,
-        builder: (_, _, _) =>
-            Text(_qty(value()), maxLines: 1, overflow: TextOverflow.ellipsis),
-      );
-
   /// 「下单数量」格此刻是不是填错了 / 填少了(用户口径 2026-09-22「数量填的不对的
   /// 或者缺的都要输入框冒红……父类下了 1000，子类需要 1000，输入小于 1000 就冒红，
   /// 一输入就冒红直到输入正确」)：空 / 不是数 / 不大于 0 / 小于这一行此刻的
@@ -2571,7 +2577,7 @@ abstract class _MaterialAnalysisMaterialTableState
     // 勾上)，再去抖要服务端那份权威重算。叶子行改量到不了这里。
     _recomputeTableEstimates();
     _reseedTableQtyInputs(autoSelect: true);
-    // 不整页 setState：只让订阅了 tick 的格子(需要数量 / 还缺数量 / 红框)重建，
+    // 不整页 setState：只让订阅了 tick 的格子(还缺数量 / 红框)重建，
     // 其余依赖估算的东西停手 200ms 后一次刷新。
     _tableEstimateTick.value++;
     _scheduleTableEstimateRebuild();
@@ -2721,7 +2727,7 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 这一行此刻该显示的三个数：有当场换算的估算值就用它，否则用服务端那份快照。
-  /// 「需要数量」「还缺数量」「下单数量」三列都从这里读，父行改量之后一起变。
+  /// 「还缺数量」「下单数量」从这里读；「需要数量」另读原始来源基线。
   /// [authoritative] = 只要权威快照那份(自动勾选判「数是不是改量带出来的」用)。
   _TableQty _tableShownQty(
     ProductionMaterialAnalysisMaterial material, {
@@ -4711,6 +4717,8 @@ abstract class _MaterialAnalysisMaterialTableState
     if (analysis == null || !_canRevokeRootOutput || _busy) return false;
     final reason = await _promptCancellationReason(
       _l10n.materialRevokeRootStock,
+      confirmLabel: '确认撤回',
+      dismissLabel: '暂不撤回',
     );
     if (!mounted || reason == null) return false;
     final key = businessIdempotencyKey(
@@ -4718,6 +4726,8 @@ abstract class _MaterialAnalysisMaterialTableState
       '${analysis.analysisId}|$eventId|${analysis.version}|${analysis.fingerprint}|$reason',
     );
     setState(() => _cancellingAction = true);
+    // 与取消分析同款的页面级遮罩(只跟网络段)。
+    bucketActionBusyMessage.value = '正在撤回现货交接';
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
@@ -4727,6 +4737,7 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: key,
             reason: reason,
           );
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       setState(() {
         _cancellingAction = false;
@@ -4735,6 +4746,7 @@ abstract class _MaterialAnalysisMaterialTableState
       context.appSuccess(_l10n.materialRootOutputReversed);
       return true;
     } catch (error) {
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
@@ -5048,14 +5060,29 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
-  Future<String?> _promptCancellationReason(String title) => showDialog<String>(
+  /// 原因选填(2026-09-22 用户口径「弹窗原因不用必填」)：留空服务端记「未填写原因」；
+  /// 填了就至少 2 字(库级 CHECK 同口径)。原来必填时空着点确认只在输入框旁冒一个
+  /// 小提示、不发请求也不出遮罩, 用户看成「点了没效果」。
+  ///
+  /// 两个按钮的文案由调用方给：关闭键不能叫「取消」——标题就是「取消物料分析」时,
+  /// 「取消」与「确认取消」并排, 点到关闭键就是弹窗一关什么都没发生(同日实机
+  /// 「原因填写了, 点了没反应」, 审计里当天没有一条取消请求到过服务端)。
+  Future<String?> _promptCancellationReason(
+    String title, {
+    required String confirmLabel,
+    required String dismissLabel,
+  }) => showDialog<String>(
     context: context,
     builder: (_) => MaterialRequiredReasonDialog(
       title: title,
       fieldKey: const Key('material-analysis-cancel-reason'),
       initialValue: '',
-      info: '原因会写入审计记录；取消后不得把已发生的仓库或执行事实静默抹除。',
-      confirmLabel: '确认取消',
+      requireReason: false,
+      info:
+          '原因选填，会写入审计记录，留空记为「未填写原因」；'
+          '取消后不得把已发生的仓库或执行事实静默抹除。',
+      confirmLabel: confirmLabel,
+      dismissLabel: dismissLabel,
       minReasonLength: 2,
     ),
   );
@@ -5063,13 +5090,21 @@ abstract class _MaterialAnalysisMaterialTableState
   Future<void> _cancelCurrentAnalysis() async {
     final analysis = _analysis;
     if (analysis == null || !_canCancelAnalysis || _busy) return;
-    final reason = await _promptCancellationReason('取消物料分析');
+    final reason = await _promptCancellationReason(
+      '取消物料分析',
+      confirmLabel: '确认取消分析',
+      dismissLabel: '暂不取消',
+    );
     if (reason == null || !mounted) return;
     final idempotencyKey = businessIdempotencyKey(
       'material-analysis-cancel',
       '${analysis.analysisId}|${analysis.version}|${analysis.fingerprint}|$reason',
     );
     setState(() => _cancellingAnalysis = true);
+    // 页面级遮罩(2026-09-22 用户口径「点确认取消没有加载弹窗」)：原来只有右上角
+    // 图标里一个 20px 转圈, 看不出在办。遮罩只跟网络段, 收到响应先撤再做别的——
+    // 挂着不撤会盖住后面的冲突恢复弹窗。
+    bucketActionBusyMessage.value = '正在取消物料分析';
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
@@ -5078,6 +5113,7 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
+      bucketActionBusyMessage.value = null;
       if (!mounted) return;
       setState(() {
         _cancellingAnalysis = false;
@@ -5085,6 +5121,7 @@ abstract class _MaterialAnalysisMaterialTableState
       });
       context.appSuccess('物料分析已取消');
     } catch (error) {
+      bucketActionBusyMessage.value = null;
       if (!mounted) return;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
@@ -5110,6 +5147,8 @@ abstract class _MaterialAnalysisMaterialTableState
     final sharedClaim = _isSharedFutureClaimAction(actionId);
     final reason = await _promptCancellationReason(
       sharedClaim ? '撤回公共认领（不撤回原采购 / 委外单）' : '撤回供给任务',
+      confirmLabel: '确认撤回',
+      dismissLabel: '暂不撤回',
     );
     if (reason == null || !mounted) return false;
     final idempotencyKey = businessIdempotencyKey(
@@ -5117,6 +5156,8 @@ abstract class _MaterialAnalysisMaterialTableState
       '${analysis.analysisId}|$actionId|${analysis.version}|${analysis.fingerprint}|$reason',
     );
     setState(() => _cancellingAction = true);
+    // 与取消分析同款的页面级遮罩(只跟网络段)。
+    bucketActionBusyMessage.value = sharedClaim ? '正在撤回公共认领' : '正在撤回供给任务';
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
@@ -5126,6 +5167,7 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       setState(() {
         _cancellingAction = false;
@@ -5136,6 +5178,7 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return true;
     } catch (error) {
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       if (await _recoverLatestAnalysisAfterConflict(
         error,

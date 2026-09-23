@@ -1,6 +1,6 @@
 # 老库数据迁移 · 总索引
 
-> **当前正式目录：V645/596 (2026-09-23)**。V645 让追加自制并进还没开工的生产计划(ADR-104): 新增 fn_material_analysis_plan_growable 等四个判定函数与一条「计划明细 qty(+封顶) = 关联行归需求 + 公共备货」的提交时对账触发器, 锚点补丁计划明细身份守卫 / 计划关联行数量同步触发器 / 生产供给来源守卫, 只在计划仍未开工时放开只增不减的改量; 不加表不加列。V644 把 V409 的「创建命令账本」升级为「日报命令账本」(审核接口要求幂等键)。
+> **当前正式目录：V647/598 (2026-09-23)**。V647 将未提交领料的自制追加直接加到原 ZX 工单，保留冻结用料规则和旧预留，只补新增缺口并记录不可变增长事件。V646 为单一子件委外增加精确库存归属交接，任务中心和发料使用本产品的子件权益，新增不可变交接记录及对称恢复守卫。V645 让追加自制并进还没开工的生产计划(ADR-104): 新增 fn_material_analysis_plan_growable 等四个判定函数与一条「计划明细 qty(+封顶) = 关联行归需求 + 公共备货」的提交时对账触发器, 锚点补丁计划明细身份守卫 / 计划关联行数量同步触发器 / 生产供给来源守卫, 只在计划仍未开工时放开只增不减的改量; 不加表不加列。V644 把 V409 的「创建命令账本」升级为「日报命令账本」(审核接口要求幂等键)。
 >
 > 本页的版本表示源码目录，不表示公司数据库已安装。最新候选验证与目标安装事实见[全站性能与稳定性验收](../99-项目治理/2026-09-12-全站性能与稳定性验收.md)；前轮业务链与旧库恢复证据见[2026-09-07统一验收](../99-项目治理/2026-09-07-全平台本地审计与整改验收.md)。
 >
@@ -17,7 +17,9 @@
 
 | 说明 | 迁移 | 本次变化 |
 | --- | --- | --- |
-| [230](230-V645追加自制并入未开工的生产计划.md) | V645 | 追加自制并进还没开工的生产计划(ADR-104)：新增 `fn_material_analysis_plan_growable`、`fn_is_material_analysis_plan_item_growth`、`fn_is_material_analysis_plan_link_growth`、`fn_is_material_analysis_plan_item_supply_growth` 四个判定函数与 `trg_check_material_analysis_plan_item_link_qty` 对账触发器；锚点补丁 `fn_guard_material_analysis_plan_item_identity`、`fn_sync_material_analysis_plan_link_qty`、`fn_guard_production_supply_source_item`，只在计划仍未开工时放开计划明细 qty / 关联行 submitted_qty·public_surplus_qty 只增不减。不加表不加列；追加量在同一个 CONFIRMED 计划包里另起一段，原段一字不动 |
+| [232](232-V647未领料车间工单原位追加.md) | V647 | 追加直接增长原执行段，保留原 ZX、需求身份与冻结耗用规则；累计计量、只补预留/DRAW 差额；新增不可变增长事件；已提交领料即阻断合并，保留齐套/持续准备及实际开工门槛 |
+| [231](231-V646委外子件精确库存交接.md) | V646 | 精确产品子节点到委外发料的预留交接；公共与本产品库存统一查询，草稿撤回恢复原权益，来源红冲与取消守卫，不改历史库存 |
+| [230](230-V645追加自制并入未开工的生产计划.md) | V645 | 新增计划可增长判据与提交时数量对账，放开未执行计划明细及分析关联行只增不减；该版另建执行段的历史实现已由 V647 修正，旧迁移原字节保留 |
 | [229](229-V642委外回厂守卫计入财务批准的自带料.md) | V642 | 只锚点补丁 `fn_assert_subcontract_target_outbound_receipt`：把「财务已批准的委外商自带料」(`procurement_arrival_exceptions.approved_excess_qty`，`RECEIPT_ADJUSTED` + 批准决定) 从守恒台账里摘出去，回厂超过我方供料能做出来的数量时不再硬拒，改由 ADR-019 落到货异常并通知财务确认价格与归属(货不入库、不立应付)；额度自钳位，没有财务批准时两道守卫一个字节不放松；V638 的 `PREPARED_OUTBOUND` 合计与 V581 激活条件由迁移内断言钉死；不加表、不加列、不动触发器 |
 | [228](228-V644审核生产日报幂等键.md) | V644 | `production_daily_report_commands` 加 `command_kind` 一列(CREATE/APPROVE/REVERSE，存量默认 CREATE)，原 `UNIQUE(report_id)` 换成 `UNIQUE(report_id, command_kind)`。不加表；审核接口自此要求幂等键，同键重发原样回放已审详情而不是撞状态闸门，状态闸门本身不放宽、只把错误码从 400 改成 409。V643 留给并行会话 |
 | [227](227-V641我方供料委外件放开公共超量.md) | V641 | 只锚点补丁两个函数：`fn_guard_preplan_public_surplus_shape` 删掉「SUBCONTRACT 公共超量必须不是单一叶子子件」那一段(V589 留下的最后半条)、`fn_preplan_direct_overorder_capacity` 删掉「委外件有 BOM 恒返 0」那一条。不加表、不加列、不动触发器、不改数据；服务端同批撤掉 `notifySupplyInternal` 里同口径的可读拒绝，客户端不再把这类行的超量输入拦在本地。**数据库这一处是预备性的**——`PreplanPublicSupplyCaptureService.candidates` 对委外路线写死了「有活动 BOM 就排除」，这类件放开前后都走不到那道触发器、也不会撞 23514，改它只是不让同一口径的三份拷贝里留一份相反的 |

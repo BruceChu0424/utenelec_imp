@@ -48,6 +48,20 @@ class SubcontractMakeTaskReadAccessTest {
         assertThat(rows.getItems().getFirst().allowedActions()).containsExactly("NOTIFY_SUBCONTRACT");
     }
 
+    @Test
+    void preparationSourceKeepsOriginalProductAndSeparatesPublicOverproduction() {
+        Fixture f = fixture(Set.of("subcontract_application:view"), false);
+        var task = f.service.task(UUID.randomUUID());
+        assertThat(task.sources()).hasSize(2);
+        assertThat(task.sources().getFirst().productCode()).isEqualTo("ORIGINAL-PRODUCT");
+        assertThat(task.sources().getFirst().sourceNo()).isEqualTo("SO-ORIGINAL");
+        assertThat(task.sources().getFirst().sourceLineNo()).isEqualTo(2);
+        assertThat(task.sources().getFirst().quantity()).isEqualByComparingTo("4");
+        assertThat(task.sources().get(1).sourceType()).isEqualTo("PUBLIC_STOCK");
+        assertThat(task.sources().get(1).quantity()).isEqualByComparingTo("6");
+        verify(f.em, times(2)).createNativeQuery(anyString());
+    }
+
     private Fixture fixture(Set<String> permissions, boolean writable) {
         var current = mock(SecurityContextCurrentUser.class);
         var user = new AuthUser(UUID.randomUUID(), reader, "reader", Set.of(), permissions, false, true, false);
@@ -64,11 +78,14 @@ class SubcontractMakeTaskReadAccessTest {
         when(count.getSingleResult()).thenReturn(1L);
         when(rows.setFirstResult(anyInt())).thenReturn(rows);
         when(rows.setMaxResults(anyInt())).thenReturn(rows);
-        Object[] row = new Object[25];
+        Object[] row = new Object[32];
         row[0] = UUID.randomUUID(); row[1] = UUID.randomUUID(); row[2] = "CONFIRMED";
         row[4] = UUID.randomUUID(); row[12] = BigDecimal.TEN; row[13] = BigDecimal.TEN;
         row[14] = BigDecimal.ZERO; row[15] = BigDecimal.TEN; row[16] = BigDecimal.TEN;
         row[18] = "ACTIVE"; row[21] = 1L; row[22] = 0L; row[23] = 1L; row[24] = maker;
+        row[25] = UUID.randomUUID(); row[26] = "SALES_ORDER_ITEM"; row[27] = "SO-ORIGINAL";
+        row[28] = 2; row[29] = "ORIGINAL-PRODUCT"; row[30] = "Original product";
+        row[31] = new BigDecimal("4");
         when(rows.getResultList()).thenReturn(java.util.Collections.singletonList(row));
         return new Fixture(new SubcontractMakeTaskService(em, mock(MaterialAnalysisService.class),
                 access, null, null, current), em, count, rows);

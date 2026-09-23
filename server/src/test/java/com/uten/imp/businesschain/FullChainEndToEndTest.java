@@ -1450,7 +1450,7 @@ class FullChainEndToEndTest {
     }
 
     @Test
-    void materialAnalysis_splitFixedBatchesKeepTheSecondBatchWaitingWithoutDuplicateStock() {
+    void materialAnalysis_unstartedFixedBatchAppendKeepsOneTaskAndReusesItsPreparedStock() {
         World w=seedWorld("fixed-batch-split");
         UUID product=UUID.randomUUID();
         UUID material=UUID.randomUUID();
@@ -1479,6 +1479,12 @@ class FullChainEndToEndTest {
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
         assertTrue(hasSegmentStatus(first.plans().getFirst().planId(),"READY"));
+        UUID originalSegment=jdbc.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,first.plans().getFirst().planId());
+        String originalCode=jdbc.queryForObject("SELECT segment_code FROM production_execution_segments WHERE id=?",String.class,originalSegment);
+        UUID originalDemand=jdbc.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,originalSegment);
+        List<UUID> originalDraws=currentPlanDrawIds(first.plans().getFirst().planId());
+        assertFalse(originalDraws.isEmpty());
+        List<UUID> originalReservations=jdbc.queryForList("SELECT id FROM stock_reservations WHERE demand_id=? AND NOT is_deleted ORDER BY id",UUID.class,originalDemand);
         view=analysisService.detail(analysisId);
         GenerateResult second=analysisCommandService.issueWorkshopPlans(analysisId,
                 new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"fixed-batch-second",
@@ -1487,24 +1493,26 @@ class FullChainEndToEndTest {
 
         // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
         confirmAllUnconfirmedFullKitRoutes();
-        // ADR-104：第一批 READY 但备料单还是草稿、没发料没开工 → 第二批并进同一张计划, 另起一段;
-        // 那段等料 WAITING、没有自己的备料单; 原来 READY 那段不动。
+        // 未申请领料时 50+50 并成原工单 100；固定批次需求按累计 100 计算，仍只需 10。
         UUID mergedPlan=second.plans().getFirst().planId();
         assertEquals(first.plans().getFirst().planId(),mergedPlan);
         assertTrue(second.plans().getFirst().mergedIntoExisting());
         assertTrue(hasSegmentStatus(mergedPlan,"READY"));
-        assertTrue(hasSegmentStatus(mergedPlan,"WAITING"));
-        assertEquals(2,count("select count(*) from production_execution_segments where plan_id=? and is_deleted=false",mergedPlan));
-        assertEquals(0,count("""
-                select count(*) from production_planning_package_documents document
-                join production_execution_segments segment on segment.id=document.execution_segment_id
-                where segment.plan_id=? and segment.status='WAITING' and document.document_type='DRAW'
-                """,mergedPlan));
+        assertFalse(hasSegmentStatus(mergedPlan,"WAITING"));
+        assertEquals(1,count("select count(*) from production_execution_segments where plan_id=? and is_deleted=false",mergedPlan));
+        assertEquals(originalSegment,jdbc.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,mergedPlan));
+        assertEquals(originalCode,jdbc.queryForObject("SELECT segment_code FROM production_execution_segments WHERE id=?",String.class,originalSegment));
+        assertEquals(0,new BigDecimal("100").compareTo(bigDecimalFor("SELECT planned_qty FROM production_execution_segments WHERE id=?",originalSegment)));
+        assertEquals(0,new BigDecimal("10").compareTo(bigDecimalFor("SELECT required_qty FROM production_material_demands WHERE id=?",originalDemand)));
+        assertEquals(originalDraws,currentPlanDrawIds(mergedPlan));
+        assertEquals(originalReservations,jdbc.queryForList("SELECT id FROM stock_reservations WHERE demand_id=? AND NOT is_deleted ORDER BY id",UUID.class,originalDemand));
+        assertEquals(0,new BigDecimal("10").compareTo(bigDecimalFor("SELECT SUM(qty-released_qty) FROM stock_reservations WHERE demand_id=? AND NOT is_deleted",originalDemand)));
+        assertEquals(0,new BigDecimal("10").compareTo(bigDecimalFor("SELECT SUM(qty) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",originalDraws.getFirst())));
         var materialView=second.analysis().flatMaterials().stream()
                 .filter(row -> row.goodsId().equals(material) && row.level()==1).findFirst().orElseThrow();
-        assertEquals(0,new BigDecimal("20").compareTo(materialView.requiredQty()));
+        assertEquals(0,new BigDecimal("10").compareTo(materialView.requiredQty()));
         assertEquals(0,new BigDecimal("10").compareTo(materialView.allocatedAvailableQty()));
-        assertEquals(0,new BigDecimal("10").compareTo(materialView.shortageQty()));
+        assertEquals(0,BigDecimal.ZERO.compareTo(materialView.shortageQty()));
         assertEquals("PARTIALLY_PLANNED",second.analysis().status());
     }
 

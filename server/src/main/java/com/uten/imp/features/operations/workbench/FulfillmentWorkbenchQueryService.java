@@ -1,5 +1,6 @@
 package com.uten.imp.features.operations.workbench;
 
+import com.uten.imp.application.port.SubcontractTaskSource;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -59,26 +60,23 @@ public class FulfillmentWorkbenchQueryService {
                       AND ((short_case.status = 'PENDING_OWNER'
                             AND short_case.severity IN ('SEVERE', 'BELOW_FLOOR'))
                            OR (short_case.status = 'WAITING_MORE'
+                               AND short_case.severity <> 'WITHIN_TOLERANCE'
                                AND short_case.expected_complete_by < CURRENT_DATE)))""";
     static final String SHORT_DELIVERY_TOLERANT_EXISTS = """
             EXISTS (SELECT 1 FROM subcontract_short_delivery_cases tolerant_case
                     WHERE tolerant_case.order_id = %s
-                      AND tolerant_case.status = 'PENDING_OWNER'
-                      AND tolerant_case.severity IN ('WITHIN_TOLERANCE', 'UNSET_TOLERANCE'))""";
+                      AND ((tolerant_case.status = 'PENDING_OWNER'
+                            AND tolerant_case.severity IN ('WITHIN_TOLERANCE', 'UNSET_TOLERANCE'))
+                           OR (tolerant_case.status = 'WAITING_MORE'
+                               AND tolerant_case.severity = 'WITHIN_TOLERANCE')))""";
     /**
-     * ADR-103 路线 B (只有一个子层物料的委外件) 的锁判据, 全系统唯一口径——与
-     * SubcontractMaterialPlanService.countTasks / draftLineCappedByStock 的 SQL 逐字同口径:
-     * 子件 (goods_id, color_id) 在作业叶仓 (排除已删 / 不良品仓 / 线边仓) 的可动用合计;
-     * 合计 > 0 即解锁, 否则锁. 两个 %s 依次是子件 goods_id / color_id 表达式.
+     * 单一子件委外使用公共合格库存与该申请精确子节点的到货权益。
+     * 申请、建单和发料共用数据库函数，不能把已经锁给本产品的料误判成缺货。
+     * 两个 %s 分别为申请明细、订货明细；不适用的一项传 NULL::uuid。
      */
     static final String COMPONENT_STOCK_AVAILABLE_SQL = """
-            (SELECT COALESCE(SUM(GREATEST(sa.available_qty, 0)), 0)
-             FROM v_stock_available sa
-             JOIN warehouses w ON w.id = sa.warehouse_id
-             WHERE sa.goods_id = %s
-               AND sa.color_id IS NOT DISTINCT FROM %s
-               AND NOT w.is_deleted AND NOT w.is_defective AND NOT w.is_line_side
-               AND fn_warehouse_is_operational_leaf(w.id))""";
+            (SELECT COALESCE(SUM(component_stock.available_qty), 0)
+             FROM fn_subcontract_component_available_stock(%s, %s) component_stock)""";
     /**
      * ADR-103: 一张委外申请里「单一子件」明细 (fn_subcontract_sole_component_goods 为真) 且还有
      * 未下单量的行, 一行一明细, 带该明细子件的可动用合计. BOM 边取法与
@@ -100,7 +98,7 @@ public class FulfillmentWorkbenchQueryService {
               AND NOT sole_item.is_deleted
               AND COALESCE(sole_item.qty, 0) > COALESCE(sole_item.ordered_qty, 0)
               AND fn_subcontract_sole_component_goods(sole_item.goods_id)""".formatted(
-            COMPONENT_STOCK_AVAILABLE_SQL.formatted("sole_edge.component_goods_id", "sole_edge.color_id"), "%s");
+            COMPONENT_STOCK_AVAILABLE_SQL.formatted("sole_item.id", "NULL::uuid"), "%s");
 
     /**
      * 仓库待领任务的单据归组行（一行=一张 DRAW 领料单；未挂单的行退回行级）。
@@ -346,6 +344,7 @@ public class FulfillmentWorkbenchQueryService {
                         .map(FulfillmentWorkbenchQueryService::mapRow)
                         .map(this::applyActionAccess)
                         .toList();
+        if ("SUBCONTRACT".equals(department)) items = enrichApplicationSources(items);
 
         Query summaryQuery = em.createNativeQuery("""
                 SELECT COUNT(*),
@@ -698,6 +697,7 @@ public class FulfillmentWorkbenchQueryService {
                            EXISTS (SELECT 1 FROM subcontract_short_delivery_cases waiting_case
                                    WHERE waiting_case.order_id = base.action_doc_id
                                      AND waiting_case.status = 'WAITING_MORE'
+                                     AND waiting_case.severity <> 'WITHIN_TOLERANCE'
                                      AND waiting_case.expected_complete_by >= CURRENT_DATE) AS waiting_more,
                            EXISTS (SELECT 1 FROM subcontract_order_items received_item
                                    WHERE received_item.order_id = base.action_doc_id
@@ -721,7 +721,7 @@ public class FulfillmentWorkbenchQueryService {
                 ) progress ON TRUE
                 """.formatted(SHORT_DELIVERY_PENDING_EXISTS.formatted("base.action_doc_id"),
                         SHORT_DELIVERY_TOLERANT_EXISTS.formatted("base.action_doc_id"),
-                        COMPONENT_STOCK_AVAILABLE_SQL.formatted("waiting_item.goods_id", "waiting_item.color_id")) : "";
+                        COMPONENT_STOCK_AVAILABLE_SQL.formatted("NULL::uuid", "waiting_item.order_item_id")) : "";
         // ADR-100：采购侧的执行状态就是 task_status 本身(等待财务审核 / 财务已通过 /
         // 财务已退回三档), 下面的 ELSE 分支已经把它落进 display_stage —— 采购与委外因此
         // 共用同一列做状态列、表头筛选与排序, 采购不另算一遍。
@@ -890,7 +890,68 @@ public class FulfillmentWorkbenchQueryService {
                 stringArray(row[33]), row.length > 34 ? offsetDateTime(row[34]) : null,
                 row.length > 35 && Boolean.TRUE.equals(row[35]),
                 row.length > 36 ? (String) row[36] : null,
-                row.length > 37 && row[37] != null ? new BigDecimal(row[37].toString()) : null);
+                row.length > 37 && row[37] != null ? new BigDecimal(row[37].toString()) : null,
+                List.of());
+    }
+
+    /** Only the visible application IDs on this page are expanded, in one bounded query. */
+    private List<FulfillmentTaskRow> enrichApplicationSources(List<FulfillmentTaskRow> items) {
+        List<UUID> applicationIds = items.stream()
+                .filter(row -> row.actionDocCanView() && !row.actionDocRestricted())
+                .filter(row -> "SUBCONTRACT_APPLICATION".equals(row.actionDocType()))
+                .map(FulfillmentTaskRow::actionDocId).filter(java.util.Objects::nonNull).distinct().toList();
+        if (applicationIds.isEmpty()) return items;
+        Query query = em.createNativeQuery("""
+                WITH visible_items AS (
+                    SELECT item.id, item.application_id
+                    FROM subcontract_application_items item
+                    WHERE item.application_id IN (:applicationIds) AND NOT item.is_deleted
+                ), source_rows AS (
+                    SELECT item.application_id, origin.id AS origin_id, origin.source_type,
+                           COALESCE(sale.bill_no, origin.source_ref, '') AS source_no,
+                           sale.line_no, product.code AS product_code, product.name AS product_name,
+                           material_goods.code AS material_code, material_goods.name AS material_name,
+                           allocation.allocated_qty AS quantity, unit.name AS unit_name
+                    FROM visible_items item
+                    JOIN preplan_supply_action_allocations allocation ON allocation.external_item_id = item.id
+                    JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                     AND action.status <> 'CANCELLED' AND action.route = 'SUBCONTRACT'
+                    JOIN production_material_analysis_materials material ON material.id = allocation.analysis_material_id
+                     AND material.analysis_id = allocation.analysis_id
+                    JOIN production_material_analysis_items origin ON origin.id = material.analysis_item_id
+                     AND origin.analysis_id = material.analysis_id
+                    JOIN goods product ON product.id = origin.goods_id
+                    JOIN goods material_goods ON material_goods.id = action.goods_id
+                    LEFT JOIN sales_order_items sale ON sale.id = origin.sales_order_item_id
+                    LEFT JOIN units unit ON unit.id = action.unit_id
+                    UNION ALL
+                    SELECT item.application_id, NULL::uuid, 'PUBLIC_STOCK', '', NULL::integer, '', '',
+                           material_goods.code, material_goods.name, action.public_surplus_qty, unit.name
+                    FROM visible_items item
+                    JOIN preplan_supply_actions action ON action.public_surplus_external_item_id = item.id
+                     AND action.status <> 'CANCELLED' AND action.route = 'SUBCONTRACT'
+                     AND action.public_surplus_qty > 0
+                    JOIN goods material_goods ON material_goods.id = action.goods_id
+                    LEFT JOIN units unit ON unit.id = action.unit_id
+                )
+                SELECT application_id, origin_id, source_type, source_no, line_no,
+                       product_code, product_name, material_code, material_name, SUM(quantity), unit_name
+                FROM source_rows
+                GROUP BY application_id, origin_id, source_type, source_no, line_no,
+                         product_code, product_name, material_code, material_name, unit_name
+                ORDER BY application_id, product_code, source_no, line_no, material_code
+                """);
+        query.setParameter("applicationIds", applicationIds);
+        Map<UUID, List<SubcontractTaskSource>> sources = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            sources.computeIfAbsent((UUID) row[0], ignored -> new java.util.ArrayList<>())
+                    .add(new SubcontractTaskSource((UUID) row[1], (String) row[2], (String) row[3],
+                            row[4] == null ? null : ((Number) row[4]).intValue(),
+                            (String) row[5], (String) row[6], (String) row[7], (String) row[8],
+                            decimal(row[9]), (String) row[10]));
+        }
+        return items.stream().map(row -> row.withSources(
+                sources.getOrDefault(row.actionDocId(), List.of()))).toList();
     }
 
     /** text[] 聚合列（归组行的明细 id 集合）→ 不可变字符串列表；空值回空表。 */
@@ -969,7 +1030,7 @@ public class FulfillmentWorkbenchQueryService {
                 row.goodsCount(), row.openLineCount(),
                 restricted ? List.of() : row.actionItemIds(), row.issuedAt(),
                 !restricted && row.canCreateOrder(), row.displayStage(),
-                row.componentAvailableQty());
+                row.componentAvailableQty(), restricted ? List.of() : row.sources());
     }
 
     private static BigDecimal decimal(Object value) {

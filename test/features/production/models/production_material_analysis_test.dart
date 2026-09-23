@@ -2,6 +2,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 
 void main() {
+  test(
+    'source demand is independent of preparation and preserves missing or zero',
+    () {
+      final original = ProductionMaterialAnalysisMaterial.fromJson({
+        'materialLineId': 'source-demand',
+        'requiredQty': 2500,
+        'sourceRequiredQty': 1000,
+      });
+      expect(original.sourceRequiredQty, 1000);
+      expect(original.requiredQty, 2500);
+      expect(
+        ProductionMaterialAnalysisMaterial.fromJson({
+          'materialLineId': 'source-zero',
+          'requiredQty': 2500,
+          'sourceRequiredQty': 0,
+        }).sourceRequiredQty,
+        0,
+      );
+      expect(
+        ProductionMaterialAnalysisMaterial.fromJson({
+          'materialLineId': 'legacy',
+          'requiredQty': 2500,
+        }).sourceRequiredQty,
+        isNull,
+      );
+    },
+  );
+
   test('legacy leaf figures do not invent a main warehouse safety budget', () {
     final material = ProductionMaterialAnalysisMaterial.fromJson({
       'materialLineId': 'legacy',

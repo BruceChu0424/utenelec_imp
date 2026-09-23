@@ -1,5 +1,6 @@
 package com.uten.imp.features.operations.workbench;
 
+import com.uten.imp.application.port.SubcontractTaskSource;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -57,7 +58,20 @@ public record FulfillmentTaskRow(
          * ADR-103 路线 B: 单一子件委外申请行的子件可动用合计(多明细取 MIN, 给「可发数量」提示);
          * 普通委外件 / 多子件先自制的委外件 / 非申请行为 null。
          */
-        BigDecimal componentAvailableQty) {
+        BigDecimal componentAvailableQty,
+        List<SubcontractTaskSource> sources) {
+
+    public FulfillmentTaskRow withSources(List<SubcontractTaskSource> value) {
+        return new FulfillmentTaskRow(
+                department, taskId, packageId, planId, planNo, warehouseId, warehouseName,
+                goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName,
+                supplyRoute, requiredQty, allocatedQty, fulfilledQty, supplyPeggedQty, openQty,
+                taskStatus, needDate, expectedDate, exceptionCode, updatedAt,
+                actionDocType, actionDocId, actionDocNo, actionDocItemId, actionDocStatus,
+                actionDocCanView, actionDocCanEdit, actionDocRestricted, goodsCount, openLineCount,
+                actionItemIds, issuedAt, canCreateOrder, displayStage, componentAvailableQty,
+                List.copyOf(value));
+    }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */
     public boolean isDocumentGrouped() {

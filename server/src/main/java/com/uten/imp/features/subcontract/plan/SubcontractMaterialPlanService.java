@@ -90,6 +90,18 @@ public class SubcontractMaterialPlanService
               AND
             """ + " " + OPERATIONAL_LEAF_WAREHOUSE_PREDICATE + "\n";
 
+    /** The component branch includes only this order's exact child entitlements. */
+    private static final String PLAN_ITEM_AVAILABLE_STOCK = """
+            SELECT owned.warehouse_id, owned.goods_id, owned.color_id, owned.available_qty
+            FROM fn_subcontract_component_available_stock(NULL::uuid, pi.order_item_id) owned
+            WHERE pi.flow_mode = 'COMPONENT_OUTBOUND'
+            UNION ALL
+            SELECT sa.warehouse_id, sa.goods_id, sa.color_id, sa.available_qty
+            """ + QUALIFIED_AVAILABLE_STOCK_SOURCE + """
+              AND pi.flow_mode = 'DIRECT_OUTBOUND'
+              AND sa.goods_id = pi.goods_id AND sa.color_id IS NOT DISTINCT FROM pi.color_id
+            """;
+
     /**
      * 该流向发出去的是**子件**而不是订货目标件：V304 历史 LEGACY 行与
      * V581 的 COMPONENT_OUTBOUND 共用这一物理形态（父件=目标件、goods=子件、
@@ -139,7 +151,7 @@ public class SubcontractMaterialPlanService
     /**
      * 计划行待插草案。{@code goodsId/colorId/unitId/plannedBaseQty} 描述的是
      * **实际要发出去的那件东西**：目标件流向发目标件本身；V581 的
-     * {@code COMPONENT_OUTBOUND} 发的是目标件那唯一的叶子子件，此时
+     * {@code COMPONENT_OUTBOUND} 发的是目标件那唯一的直属子件，此时
      * {@code parentGoodsId/parentColorId} 才是订货目标件，{@code bomUnitQty}
      * 记「每 1 个目标件订货单位消耗多少子件基本量」。
      */
@@ -291,6 +303,18 @@ public class SubcontractMaterialPlanService
                       AND pi.preparation_status = 'READY_OUTBOUND'
                       AND pi.goods_id = CAST(? AS uuid)
                       AND pi.color_id IS NOT DISTINCT FROM CAST(? AS uuid)
+                      -- A reversal restores ownership but intentionally leaves
+                      -- re-dispatch to the warehouse's explicit regenerate action.
+                      -- Historical reversals never suppress a later normal receipt.
+                      AND NOT EXISTS (
+                          SELECT 1 FROM subcontract_material_issue_items reversed_item
+                          JOIN stock_movements reversed_movement
+                            ON reversed_movement.source_item_id = reversed_item.id
+                           AND reversed_movement.source_doc_type = 'SUBCONTRACT_MATERIAL_ISSUE'
+                           AND reversed_movement.direction = 1
+                           AND reversed_movement.xmin::text::numeric =
+                               mod(pg_current_xact_id()::text::numeric, 4294967296)
+                          WHERE reversed_item.plan_item_id = pi.id)
                       AND LEAST(pi.planned_qty, pi.prepared_qty) - pi.issued_qty - COALESCE((
                             SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii
                             JOIN subcontract_material_issues i ON i.id = ii.issue_id
@@ -314,7 +338,7 @@ public class SubcontractMaterialPlanService
         Set<UUID> draftedPlanItems = new LinkedHashSet<>();
         for (Object[] plan : plans.values()) {
             createDraftForPlan((UUID) plan[1], Objects.toString(plan[2], null),
-                    (UUID) plan[3], (LocalDate) plan[4], actorUser, draftedPlanItems);
+                    (UUID) plan[3], (LocalDate) plan[4], actorUser, draftedPlanItems, waitingLines);
         }
         // 只给「这一次真排进草稿」的行发通知：同一张计划里别的行可能还在等自己的料，
         // 每来一批货就把它们全刷一遍提醒，等于把通知做成噪音。
@@ -406,7 +430,7 @@ public class SubcontractMaterialPlanService
     }
 
     /**
-     * ADR-103 路线 B 锁 (建单/改单/送审/批准四层同锁): 目标件只有一个叶子子件
+     * ADR-103 路线 B 锁 (建单/改单/送审/批准四层同锁): 目标件只有一个直属子件
      * (COMPONENT_OUTBOUND 行) 时, 发给委外商的是那颗子件, 子件在作业叶仓里的合格可动用量
      * 合计 <= 0 即锁——一次 409 逐行列出哪张委外件在等哪颗子件。判据与 countTasks /
      * draftLineCappedByStock 共用 {@link #QUALIFIED_AVAILABLE_STOCK_SOURCE}, 不另写一份。
@@ -432,9 +456,9 @@ public class SubcontractMaterialPlanService
         Set<String> reported = new LinkedHashSet<>();
         List<PendingLine> locked = new ArrayList<>();
         for (PendingLine line : componentLines) {
-            String dimension = line.goodsId() + "|" + Objects.toString(line.colorId(), "");
+            String dimension = line.orderItemId() + "|" + line.goodsId() + "|" + Objects.toString(line.colorId(), "");
             BigDecimal available = availableByDimension.computeIfAbsent(dimension,
-                    ignored -> qualifiedAvailableTotal(line.goodsId(), line.colorId()));
+                    ignored -> qualifiedAvailableTotal(line.orderItemId()));
             if (available.signum() > 0) {
                 continue;
             }
@@ -479,15 +503,13 @@ public class SubcontractMaterialPlanService
      * 逐仓取 available_qty > 0 的行再在 Java 里求和, 与 draftLineCappedByStock 选仓那条查询
      * 同源同形 (SELECT warehouse_id, qty), 聚焦单测按同一段 SQL 片段路由。
      */
-    private BigDecimal qualifiedAvailableTotal(UUID goodsId, UUID colorId) {
+    private BigDecimal qualifiedAvailableTotal(UUID orderItemId) {
         List<Object[]> rows = jdbc.query("""
                 SELECT sa.warehouse_id, GREATEST(COALESCE(sa.available_qty, 0), 0)
-                """ + QUALIFIED_AVAILABLE_STOCK_SOURCE + """
-                  AND sa.goods_id = CAST(? AS uuid)
-                  AND sa.color_id IS NOT DISTINCT FROM CAST(? AS uuid)
+                FROM fn_subcontract_component_available_stock(NULL::uuid, CAST(? AS uuid)) sa
                 """,
                 (rs, rowNum) -> new Object[]{rs.getObject(1, UUID.class), rs.getBigDecimal(2)},
-                goodsId, colorId);
+                orderItemId);
         BigDecimal total = BigDecimal.ZERO;
         for (Object[] row : rows) {
             total = total.add(decimal(row[1]).max(BigDecimal.ZERO));
@@ -637,7 +659,7 @@ public class SubcontractMaterialPlanService
                 }
                 continue;
             }
-            // V581：目标件只有一个叶子子件时不先自制，直接把那个子件发给委外商，
+            // V581：目标件只有一个直属子件时不先自制，直接把那个子件发给委外商，
             // 委外商加工后交回目标件。整条订货明细只出一条 COMPONENT 行——不做
             // 「先吃目标件现货 DIRECT + 余量另走」的拆分：回厂消费按货色分组
             // 逐组扣满，混行会两组都扣不够而把单据永久卡死（V581 迁移里另有
@@ -1845,7 +1867,7 @@ public class SubcontractMaterialPlanService
                        plan_item.preparation_warehouse_id,
                        plan_item.bom_has_children_snapshot,
                        plan_item.preparation_bom_fingerprint,
-                       plan_item.parent_goods_id
+                       plan_item.parent_goods_id, plan_item.order_item_id
                 FROM subcontract_material_issue_items issue_item
                 JOIN subcontract_material_issues issue
                   ON issue.id = issue_item.issue_id
@@ -1879,7 +1901,7 @@ public class SubcontractMaterialPlanService
                 }
             } else if ("COMPONENT_OUTBOUND".equals(flowMode)) {
                 // V581：指纹记的是**目标件**的 BOM（本行 goods_id 已经是子件），
-                // 且指纹覆盖不到「子件后来自己长出 BOM」——必须再判一次唯一叶子子件。
+                // 再判一次直属投入形态；子件自身的制造 BOM 不改变外发物身份。
                 UUID parentGoodsId = (UUID) row[10];
                 BomSnapshot currentBom = currentBomSnapshot(parentGoodsId);
                 SoleComponent sole = soleOutboundComponent(parentGoodsId);
@@ -1887,7 +1909,7 @@ public class SubcontractMaterialPlanService
                         || !Objects.equals(row[9], currentBom.fingerprint())
                         || sole == null || !goodsId.equals(sole.goodsId())) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外目标件 BOM 已在审批后变化（不再是「只有一个叶子子件」，或子件已换），"
+                            "委外目标件 BOM 已在审批后变化（不再是「只有一个直属子件」，或子件已换），"
                                     + "必须受控重评准备路线，禁止按旧结构发料");
                 }
             }
@@ -1941,8 +1963,34 @@ public class SubcontractMaterialPlanService
                       AND supply_type = 'STOCK_BALANCE'
                       AND status = 0 AND consumed_qty = 0
                       AND is_deleted = FALSE
+                      AND (source_doc_id = :issueId OR NOT EXISTS (
+                          SELECT 1 FROM subcontract_material_issues live_draft
+                          WHERE live_draft.id = stock_reservations.source_doc_id
+                            AND live_draft.status = 0 AND NOT live_draft.is_deleted))
                     """).setParameter("actorId", actorId)
+                    .setParameter("issueId", issueId)
                     .setParameter("planItemId", planItemId).executeUpdate();
+            BigDecimal ownedTake = BigDecimal.ZERO;
+            if ("COMPONENT_OUTBOUND".equals(flowMode)) {
+                BigDecimal available = decimal(em.createNativeQuery("""
+                        SELECT COALESCE(SUM(available_qty), 0)
+                        FROM fn_subcontract_component_available_stock(NULL::uuid, CAST(:orderItemId AS uuid))
+                        WHERE warehouse_id = :warehouseId
+                        """).setParameter("orderItemId", row[11])
+                        .setParameter("warehouseId", warehouseId).getSingleResult());
+                if (available.compareTo(qty) < 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "待发子件在该仓的本单专属与公共可动用库存不足，请等子件采购/生产入库后再发料");
+                }
+                ownedTake = decimal(em.createNativeQuery("""
+                        SELECT fn_subcontract_take_component_entitlements(
+                            CAST(:planItemId AS uuid), CAST(:issueId AS uuid),
+                            CAST(:warehouseId AS uuid), :qty, CAST(:actorId AS uuid))
+                        """).setParameter("planItemId", planItemId)
+                        .setParameter("issueId", issueId).setParameter("warehouseId", warehouseId)
+                        .setParameter("qty", qty).setParameter("actorId", actorId).getSingleResult());
+            }
+            BigDecimal publicQty = qty.subtract(ownedTake);
             List<Object[]> balances = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
                             SELECT balance.id, available.available_qty
@@ -1956,7 +2004,7 @@ public class SubcontractMaterialPlanService
                               AND balance.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                             """).setParameter("warehouseId", warehouseId)
                     .setParameter("goodsId", goodsId).setParameter("colorId", colorId));
-            if (balances.isEmpty() || decimal(balances.getFirst()[1]).compareTo(qty) < 0) {
+            if (balances.isEmpty() || decimal(balances.getFirst()[1]).compareTo(publicQty) < 0) {
                 // V581：COMPONENT 发的是子件，缺的也是子件——这正是「等子件采购
                 // 入库后仓库才发得出去」那道天然门禁，文案要说清缺的是哪件东西。
                 throw new ApiException(ErrorCode.CONFLICT,
@@ -1977,6 +2025,7 @@ public class SubcontractMaterialPlanService
                     .executeUpdate();
             if (warehouseUpdated != 1) throw new ApiException(ErrorCode.CONFLICT,
                     "委外目标件出仓任务已变化，请刷新后重试");
+            if (publicQty.signum() == 0) continue;
             em.createNativeQuery("""
                     INSERT INTO stock_reservations(
                         id, order_item_id, goods_id, color_id, warehouse_id,
@@ -1994,7 +2043,7 @@ public class SubcontractMaterialPlanService
                         :actorId, :actorId)
                     """).setParameter("id", UUID.randomUUID())
                     .setParameter("goodsId", goodsId).setParameter("colorId", colorId)
-                    .setParameter("warehouseId", warehouseId).setParameter("qty", qty)
+                    .setParameter("warehouseId", warehouseId).setParameter("qty", publicQty)
                     .setParameter("issueId", issueId).setParameter("planItemId", planItemId)
                     .setParameter("balanceId", balances.getFirst()[0])
                     .setParameter("key", "SC-OUT-DRAFT:" + issueItemId)
@@ -2041,10 +2090,13 @@ public class SubcontractMaterialPlanService
                     WHERE owner_type = 'SUBCONTRACT_OUTBOUND'
                       AND owner_id = :planItemId AND warehouse_id = :warehouseId
                       AND status = 0 AND is_deleted = FALSE
+                      AND (supply_type <> 'STOCK_BALANCE'
+                           OR source_doc_type = 'SUBCONTRACT_OUTBOUND_DRAFT' AND source_doc_id = :issueId)
                     ORDER BY CASE WHEN supply_type = 'PRODUCTION_FINISHED_IN' THEN 0 ELSE 1 END,
                              created_at, id
                     FOR UPDATE
                     """).setParameter("planItemId", planItemId)
+                    .setParameter("issueId", issueId)
                     .setParameter("warehouseId", warehouseId).getResultList();
             for (Object[] reservation : reservations) {
                 if (remaining.signum() <= 0) break;
@@ -2113,6 +2165,10 @@ public class SubcontractMaterialPlanService
                     """).setParameter("actorId", actorId).setParameter("id", allocation[0])
                     .executeUpdate();
         }
+        // The physical reversal restores the issued material; relinquish the old
+        // issue's replaceable reservations in the same transaction. Component
+        // bridge triggers return exact ownership to its original product node.
+        releaseDraftReservations(issueId);
     }
 
     // ==================== 仓库出仓工作台 ====================
@@ -2287,11 +2343,10 @@ public class SubcontractMaterialPlanService
                         GROUP BY ii.plan_item_id
                     ) draft_qty ON draft_qty.plan_item_id = pi.id
                     LEFT JOIN LATERAL (
-                        SELECT COALESCE(SUM(GREATEST(sa.available_qty, 0)), 0) AS available_qty
-                """ + QUALIFIED_AVAILABLE_STOCK_SOURCE + """
-                          AND pi.flow_mode IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
-                          AND sa.goods_id = pi.goods_id
-                          AND sa.color_id IS NOT DISTINCT FROM pi.color_id
+                        SELECT COALESCE(SUM(GREATEST(candidate.available_qty, 0)), 0) AS available_qty
+                        FROM (
+                """ + PLAN_ITEM_AVAILABLE_STOCK + """
+                        ) candidate
                     ) stock ON TRUE
                     WHERE pi.is_deleted = FALSE
                     GROUP BY pi.plan_id
@@ -2369,10 +2424,9 @@ public class SubcontractMaterialPlanService
                                WHERE ii.plan_item_id = pi.id
                                  AND i.status = 0 AND i.is_deleted = FALSE)
                            OR EXISTS (
-                               SELECT 1
-                """ + QUALIFIED_AVAILABLE_STOCK_SOURCE + """
-                                 AND sa.goods_id = pi.goods_id
-                                 AND sa.color_id IS NOT DISTINCT FROM pi.color_id)))
+                               SELECT 1 FROM (
+                """ + PLAN_ITEM_AVAILABLE_STOCK + """
+                               ) candidate WHERE candidate.available_qty > 0)))
                 """, Long.class);
         return count == null ? 0 : count;
     }
@@ -2407,10 +2461,9 @@ public class SubcontractMaterialPlanService
                                WHERE ii.plan_item_id = pi.id
                                  AND i.status = 0 AND i.is_deleted = FALSE)
                            OR EXISTS (
-                               SELECT 1
-                """ + QUALIFIED_AVAILABLE_STOCK_SOURCE + """
-                                 AND sa.goods_id = pi.goods_id
-                                 AND sa.color_id IS NOT DISTINCT FROM pi.color_id)))
+                               SELECT 1 FROM (
+                """ + PLAN_ITEM_AVAILABLE_STOCK + """
+                               ) candidate WHERE candidate.available_qty > 0)))
                 """, Long.class);
         return count == null ? 0 : count;
     }
@@ -2460,9 +2513,9 @@ public class SubcontractMaterialPlanService
                     SELECT w.id AS warehouse_id, w.name AS warehouse_name,
                            GREATEST(COALESCE(sa.available_qty, 0), 0) AS available_qty
                     FROM warehouses w
-                    LEFT JOIN v_stock_available sa
-                      ON sa.warehouse_id = w.id AND sa.goods_id = pi.goods_id
-                     AND sa.color_id IS NOT DISTINCT FROM pi.color_id
+                    LEFT JOIN LATERAL (
+                """ + PLAN_ITEM_AVAILABLE_STOCK + """
+                    ) sa ON sa.warehouse_id = w.id
                     WHERE pi.flow_mode IN ('DIRECT_OUTBOUND','COMPONENT_OUTBOUND')
                       AND NOT w.is_deleted
                       AND (w.id = pi.preparation_warehouse_id
@@ -2776,7 +2829,15 @@ public class SubcontractMaterialPlanService
     private DraftCreation createDraftForPlan(UUID planId, String orderBillNo, UUID supplierId,
                                              LocalDate deliverDate, UUID actorUser,
                                              Set<UUID> draftedPlanItems) {
+        return createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser,
+                draftedPlanItems, null);
+    }
+
+    private DraftCreation createDraftForPlan(UUID planId, String orderBillNo, UUID supplierId,
+                                             LocalDate deliverDate, UUID actorUser,
+                                             Set<UUID> draftedPlanItems, Set<UUID> eligiblePlanItems) {
         List<Object[]> pending = remainingLines(planId).stream()
+                .filter(row -> eligiblePlanItems == null || eligiblePlanItems.contains((UUID) row[0]))
                 .filter(row -> decimal(row[8]).signum() > 0)
                 .toList();
         if (pending.isEmpty()) {
@@ -2847,7 +2908,20 @@ public class SubcontractMaterialPlanService
         UUID colorId = (UUID) row[9];
         UUID warehouseId = (UUID) row[10];
         BigDecimal available;
-        if (warehouseId == null) {
+        if ("COMPONENT_OUTBOUND".equals(flowMode)) {
+            List<Object[]> best = jdbc.query("""
+                    SELECT sa.warehouse_id, GREATEST(COALESCE(sa.available_qty, 0), 0)
+                    FROM fn_subcontract_component_available_stock(NULL::uuid, CAST(? AS uuid)) sa
+                    JOIN warehouses w ON w.id = sa.warehouse_id
+                    WHERE sa.available_qty > 0
+                      AND (CAST(? AS uuid) IS NULL OR sa.warehouse_id = CAST(? AS uuid))
+                    ORDER BY sa.available_qty DESC, w.code LIMIT 1
+                    """, (rs, rowNum) -> new Object[]{rs.getObject(1, UUID.class), rs.getBigDecimal(2)},
+                    row[1], warehouseId, warehouseId);
+            if (best.isEmpty()) return null;
+            extended[12] = best.getFirst()[0];
+            available = decimal(best.getFirst()[1]);
+        } else if (warehouseId == null) {
             // ADR-103: 选仓与锁判据共用同一段 QUALIFIED_AVAILABLE_STOCK_SOURCE。
             List<Object[]> best = jdbc.query("""
                     SELECT sa.warehouse_id, GREATEST(COALESCE(sa.available_qty, 0), 0)
@@ -2983,7 +3057,7 @@ public class SubcontractMaterialPlanService
     }
 
     /**
-     * V581：目标件是否「只有一个叶子子件」。是则委外直接发那个子件，不先自制。
+     * V581：目标件是否「只有一个直属子件」。是则委外直接发那个子件，不先自制。
      *
      * <p>判据与迁移 V581 的 {@code fn_guard_subcontract_target_quantity_basis_insert}
      * COMPONENT 分支逐字同口径，任一条不满足返回 {@code null}（回落既有
@@ -2993,7 +3067,7 @@ public class SubcontractMaterialPlanService
      *   <li>该边 {@code consumption_basis='PER_UNIT'}——PER_PACKAGE/FIXED_BATCH 带取整，
      *       压不成一个标量冻结单耗；</li>
      *   <li>该边 {@code control_stage} 是真实投入阶段（SHIP/REFERENCE 只是参考料）；</li>
-     *   <li>该子件自身没有活动 BOM 边（真正的一层）。</li>
+     *   <li>子件可由采购或自制取得，其自身 BOM 不限制直属外发形态。</li>
      * </ol>
      */
     private SoleComponent soleOutboundComponent(UUID goodsId) {
@@ -3085,7 +3159,7 @@ public class SubcontractMaterialPlanService
     private record BomSnapshot(boolean hasChildren, String fingerprint) {
     }
 
-    /** V581：目标件唯一的叶子子件（发外物），{@code bomQty} 是每 1 个目标件基本单位的单耗。 */
+    /** V581：目标件唯一的直属子件（发外物），{@code bomQty} 是每 1 个目标件基本单位的单耗。 */
     private record SoleComponent(UUID goodsId, UUID colorId, UUID unitId,
                                  BigDecimal bomQty) {
     }

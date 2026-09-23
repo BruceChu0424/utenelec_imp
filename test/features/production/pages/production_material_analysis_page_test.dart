@@ -120,7 +120,87 @@ void main() {
     );
   }
 
-  testWidgets('cancelling analysis validates the reason and submits once', (
+  testWidgets(
+    'cancelling analysis: reason is optional, a blank reason submits with the '
+    'page busy overlay, a one-character reason is rejected',
+    (tester) async {
+      final cancelGate = Completer<void>();
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        seeded: false,
+        analysisId: 'analysis-1',
+        permissions: const {Perm.productionMaterialAnalysisCancel},
+        allowedActions: const ['CANCEL_ANALYSIS'],
+        responseOverride: (request) async {
+          if (!request.path.endsWith('/cancel')) return null;
+          await cancelGate.future;
+          return _analysisJson(const ['VIEW'])..['status'] = 'CANCELLED';
+        },
+      );
+      await tester.tap(find.byKey(const Key('material-analysis-cancel')));
+      await tester.pumpAndSettle();
+      expect(find.text('取消物料分析'), findsOneWidget);
+      // 关闭键叫「暂不取消」而不是「取消」：标题就是「取消…」, 两个「取消」并排
+      // 点错哪个都像没反应(2026-09-22 实机)。
+      expect(find.text('暂不取消'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, '取消'), findsNothing);
+      final field = find.byKey(const Key('material-analysis-cancel-reason'));
+
+      // 填了就至少 2 字(库级 CHECK 同口径)：一个字不发请求, 弹窗留着。
+      await tester.enterText(field, '改');
+      await tester.tap(find.text('确认取消分析'));
+      await tester.pumpAndSettle();
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/cancel')),
+        isEmpty,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFieldHintIcon &&
+              widget.errorMessage == '原因至少填写 2 个字符',
+        ),
+        findsOneWidget,
+      );
+
+      // 2026-09-22 用户口径「原因不用必填」：留空直接发请求, 不再提示「请填写原因」;
+      // 请求期间整页挂「正在取消物料分析」遮罩(原来只有图标里一个小转圈)。
+      await tester.enterText(field, '');
+      await tester.tap(find.text('确认取消分析'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFieldHintIcon && widget.errorMessage == '请填写原因',
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('material-analysis-action-busy')),
+        findsOneWidget,
+      );
+      expect(find.text('正在取消物料分析'), findsOneWidget);
+
+      cancelGate.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-analysis-action-busy')),
+        findsNothing,
+      );
+      final request = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/cancel'),
+      );
+      expect((request.data as Map)['reason'], '');
+      expect(find.byKey(const Key('material-analysis-cancel')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('cancelling analysis sends a typed reason trimmed, once', (
     tester,
   ) async {
     final harness = await _pumpPage(
@@ -136,30 +216,9 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('material-analysis-cancel')));
     await tester.pumpAndSettle();
-    expect(find.text('取消物料分析'), findsOneWidget);
-    await tester.tap(find.text('确认取消'));
-    await tester.pumpAndSettle();
-    expect(
-      harness.requests.where((request) => request.path.endsWith('/cancel')),
-      isEmpty,
-    );
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is UtenFieldHintIcon && widget.errorMessage == '请填写原因',
-      ),
-      findsOneWidget,
-    );
     final field = find.byKey(const Key('material-analysis-cancel-reason'));
-    await tester.enterText(field, '改');
-    await tester.tap(find.text('确认取消'));
-    await tester.pumpAndSettle();
-    expect(
-      harness.requests.where((request) => request.path.endsWith('/cancel')),
-      isEmpty,
-    );
     await tester.enterText(field, '  重新安排需求  ');
-    await tester.tap(find.text('确认取消'));
+    await tester.tap(find.text('确认取消分析'));
     await tester.pumpAndSettle();
     final request = harness.requests.singleWhere(
       (request) => request.path.endsWith('/cancel'),
@@ -6089,7 +6148,7 @@ void main() {
         find.byKey(const Key('material-analysis-cancel-reason')),
         '原供给终检失败，撤回未实收认领',
       );
-      await tester.tap(find.text('确认取消'));
+      await tester.tap(find.text('确认撤回'));
       await tester.pumpAndSettle();
       final request = harness.requests.singleWhere(
         (request) => request.path.endsWith('/actions/claim-1/cancel'),

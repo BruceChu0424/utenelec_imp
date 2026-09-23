@@ -43,7 +43,7 @@ void refreshGlobalBadges(WidgetRef ref) {
   ref.read(productionPendingCountProvider.notifier).refresh();
   ref.read(productionWorkshopTaskCountProvider.notifier).refresh();
   ref.read(purchaseTaskCountProvider.notifier).refresh();
-  ref.read(subcontractTaskCountProvider.notifier).refresh();
+  ref.read(subcontractTaskCountsProvider.notifier).refresh();
   ref.read(rdTaskCountProvider.notifier).refresh();
   ref.read(visitorPendingCountProvider.notifier).refresh();
   ref.read(visitorHostPendingCountProvider.notifier).refresh();
@@ -56,7 +56,6 @@ void refreshGlobalBadges(WidgetRef ref) {
   // StateNotifierProvider 是重建而不是重拉。
   ref.read(productionExecutionInProgressCountProvider.notifier).refresh();
   ref.read(purchaseTaskInProgressCountProvider.notifier).refresh();
-  ref.read(subcontractTaskInProgressCountProvider.notifier).refresh();
   ref.read(rdTaskInProgressCountProvider.notifier).refresh();
   ref.read(visitorHostCountsProvider.notifier).refresh();
   ref.read(visitorApprovalOngoingCountProvider.notifier).refresh();

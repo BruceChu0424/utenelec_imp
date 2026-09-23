@@ -43,6 +43,7 @@ import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
+import '../providers/subcontract_task_count_provider.dart';
 import '../widgets/subcontract_short_delivery_badge.dart';
 import '../widgets/subcontract_task_badge.dart';
 
@@ -53,6 +54,7 @@ class SubcontractHubPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // 返回即刷新：回到本 hub 时重拉「待退回供应商」任务数。
     ref.onPageResume(RouteName.subcontract, () {
+      ref.read(subcontractTaskCountsProvider.notifier).refresh();
       ref.invalidate(
         procurementArrivalReturnCountProvider(
           ProcurementInboundOrderType.subcontract,

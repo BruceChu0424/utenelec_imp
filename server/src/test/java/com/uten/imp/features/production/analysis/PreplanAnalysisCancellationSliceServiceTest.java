@@ -145,6 +145,9 @@ class PreplanAnalysisCancellationSliceServiceTest {
             if (statement.contains("status IN ('OPEN', 'PARTIAL')")) {
                 return openRelations;
             }
+            if (statement.contains("FROM subcontract_component_stock_handoffs handoff")) {
+                return openRelations;
+            }
             if (statement.contains(
                     "SET released_qty = released_qty + :releaseQty")) {
                 return sliceUpdate;

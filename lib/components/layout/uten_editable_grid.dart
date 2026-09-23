@@ -2398,8 +2398,10 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
         contentPadding: UtenEditableGridCellSpec.contentPadding,
       ),
     );
+    // 选中行青绿实底（utenTableSelectedRowColor，与 MasterDataTableView 同款；
+    // 2026-09-22 从几乎看不见的 primaryContainer 35% 加深），字色 / 网格线不变。
     final rowBg = isSelected
-        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
+        ? utenTableSelectedRowColor(theme)
         : (rowTint ??
               (isOdd ? theme.colorScheme.surfaceContainerLowest : null));
     final Widget selectionCheckbox = renderSelectionBox

@@ -834,12 +834,18 @@ void main() {
     bool blockedNotice(AppNotification notice) =>
         notice.message.contains('填了数但本次还下不了单') &&
         notice.message.contains('生产车间');
-    expect(container.read(appNotificationProvider).where(blockedNotice), hasLength(1));
+    expect(
+      container.read(appNotificationProvider).where(blockedNotice),
+      hasLength(1),
+    );
     // 再改一位数：同一行同一原因不再说第二遍。
     await tester.enterText(_appendQty('m-root'), '1200');
     await tester.pump();
     await _settleRebuild(tester);
-    expect(container.read(appNotificationProvider).where(blockedNotice), hasLength(1));
+    expect(
+      container.read(appNotificationProvider).where(blockedNotice),
+      hasLength(1),
+    );
   });
 
   testWidgets('采购行填得比当时需求多：累计已下单 = 归需求份 + 公共备货份', (tester) async {

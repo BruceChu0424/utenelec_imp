@@ -452,6 +452,13 @@ abstract class _MaterialAnalysisPageBase
     );
   }
 
+  /// 页面级长动作遮罩的副标题：取消分析 / 撤回任务不是「批量处理所选行」，
+  /// 文案要对得上正在做的事。
+  String _actionBusyDescription(String message) =>
+      message.startsWith('正在取消') || message.startsWith('正在撤回')
+      ? '收到服务端结果后自动按最新事实刷新分析。'
+      : '同一事务内批量处理所选行，完成后自动刷新。';
+
   bool get _canAdjustPriorities =>
       _canReallocate &&
       (_analysis?.allowedActions.contains('REALLOCATE') ?? false);
@@ -1813,7 +1820,7 @@ class _ProductionMaterialAnalysisPageState
                           'material-analysis-action-busy',
                         ),
                         title: message,
-                        description: '同一事务内批量处理所选行，完成后自动刷新。',
+                        description: _actionBusyDescription(message),
                       ),
                     )
                   : const SizedBox.shrink(),

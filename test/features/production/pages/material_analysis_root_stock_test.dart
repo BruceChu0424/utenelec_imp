@@ -148,17 +148,12 @@ void main() {
       await tester.ensureVisible(revoke);
       await tester.tap(revoke);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('确认取消'));
-      await tester.pumpAndSettle();
-      expect(
-        harness.revocations,
-        isEmpty,
-        reason: 'Stock-output revoke still requires a reason.',
-      );
+      // 2026-09-22 起原因选填(留空服务端记「未填写原因」, 见下一用例);
+      // 这里填一个, 钉住撤回走取消契约、原因原样上送。
       final reason = find.byKey(const Key('material-analysis-cancel-reason'));
       expect(reason, findsOneWidget);
       await tester.enterText(reason, '原订单调整，撤回未拣货现货');
-      await tester.tap(find.text('确认取消'));
+      await tester.tap(find.text('确认撤回'));
       await tester.pumpAndSettle();
       final request = harness.revocations.single;
       expect(
@@ -181,6 +176,38 @@ void main() {
         find.byKey(const ValueKey('material-root-output-revoke-event-1')),
         findsNothing,
       );
+    },
+  );
+
+  testWidgets(
+    'root stock revoke accepts a blank reason (server records the default)',
+    (tester) async {
+      final harness = await _pump(
+        tester,
+        _analysis(
+          requiredQty: 0,
+          allocated: 0,
+          actionable: false,
+          output: _output(qty: 10),
+        ),
+      );
+      await _openRootDetails(tester);
+      final revoke = find.byKey(
+        const ValueKey('material-root-output-revoke-event-1'),
+      );
+      await tester.ensureVisible(revoke);
+      await tester.tap(revoke);
+      await tester.pumpAndSettle();
+      // 原因留空直接确认：请求照发, reason 为空串, 服务端落「未填写原因」。
+      await tester.tap(find.text('确认撤回'));
+      await tester.pumpAndSettle();
+      final request = harness.revocations.single;
+      expect(
+        request.path,
+        '/production/material-analyses/analysis/root-outputs/event-1/revoke',
+      );
+      expect((request.data as Map)['reason'], '');
+      expect(tester.takeException(), isNull);
     },
   );
 

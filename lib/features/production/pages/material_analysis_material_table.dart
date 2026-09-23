@@ -4711,6 +4711,8 @@ abstract class _MaterialAnalysisMaterialTableState
     if (analysis == null || !_canRevokeRootOutput || _busy) return false;
     final reason = await _promptCancellationReason(
       _l10n.materialRevokeRootStock,
+      confirmLabel: '确认撤回',
+      dismissLabel: '暂不撤回',
     );
     if (!mounted || reason == null) return false;
     final key = businessIdempotencyKey(
@@ -4718,6 +4720,8 @@ abstract class _MaterialAnalysisMaterialTableState
       '${analysis.analysisId}|$eventId|${analysis.version}|${analysis.fingerprint}|$reason',
     );
     setState(() => _cancellingAction = true);
+    // 与取消分析同款的页面级遮罩(只跟网络段)。
+    bucketActionBusyMessage.value = '正在撤回现货交接';
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
@@ -4727,6 +4731,7 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: key,
             reason: reason,
           );
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       setState(() {
         _cancellingAction = false;
@@ -4735,6 +4740,7 @@ abstract class _MaterialAnalysisMaterialTableState
       context.appSuccess(_l10n.materialRootOutputReversed);
       return true;
     } catch (error) {
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
@@ -5048,14 +5054,29 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
-  Future<String?> _promptCancellationReason(String title) => showDialog<String>(
+  /// 原因选填(2026-09-22 用户口径「弹窗原因不用必填」)：留空服务端记「未填写原因」；
+  /// 填了就至少 2 字(库级 CHECK 同口径)。原来必填时空着点确认只在输入框旁冒一个
+  /// 小提示、不发请求也不出遮罩, 用户看成「点了没效果」。
+  ///
+  /// 两个按钮的文案由调用方给：关闭键不能叫「取消」——标题就是「取消物料分析」时,
+  /// 「取消」与「确认取消」并排, 点到关闭键就是弹窗一关什么都没发生(同日实机
+  /// 「原因填写了, 点了没反应」, 审计里当天没有一条取消请求到过服务端)。
+  Future<String?> _promptCancellationReason(
+    String title, {
+    required String confirmLabel,
+    required String dismissLabel,
+  }) => showDialog<String>(
     context: context,
     builder: (_) => MaterialRequiredReasonDialog(
       title: title,
       fieldKey: const Key('material-analysis-cancel-reason'),
       initialValue: '',
-      info: '原因会写入审计记录；取消后不得把已发生的仓库或执行事实静默抹除。',
-      confirmLabel: '确认取消',
+      requireReason: false,
+      info:
+          '原因选填，会写入审计记录，留空记为「未填写原因」；'
+          '取消后不得把已发生的仓库或执行事实静默抹除。',
+      confirmLabel: confirmLabel,
+      dismissLabel: dismissLabel,
       minReasonLength: 2,
     ),
   );
@@ -5063,13 +5084,21 @@ abstract class _MaterialAnalysisMaterialTableState
   Future<void> _cancelCurrentAnalysis() async {
     final analysis = _analysis;
     if (analysis == null || !_canCancelAnalysis || _busy) return;
-    final reason = await _promptCancellationReason('取消物料分析');
+    final reason = await _promptCancellationReason(
+      '取消物料分析',
+      confirmLabel: '确认取消分析',
+      dismissLabel: '暂不取消',
+    );
     if (reason == null || !mounted) return;
     final idempotencyKey = businessIdempotencyKey(
       'material-analysis-cancel',
       '${analysis.analysisId}|${analysis.version}|${analysis.fingerprint}|$reason',
     );
     setState(() => _cancellingAnalysis = true);
+    // 页面级遮罩(2026-09-22 用户口径「点确认取消没有加载弹窗」)：原来只有右上角
+    // 图标里一个 20px 转圈, 看不出在办。遮罩只跟网络段, 收到响应先撤再做别的——
+    // 挂着不撤会盖住后面的冲突恢复弹窗。
+    bucketActionBusyMessage.value = '正在取消物料分析';
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
@@ -5078,6 +5107,7 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
+      bucketActionBusyMessage.value = null;
       if (!mounted) return;
       setState(() {
         _cancellingAnalysis = false;
@@ -5085,6 +5115,7 @@ abstract class _MaterialAnalysisMaterialTableState
       });
       context.appSuccess('物料分析已取消');
     } catch (error) {
+      bucketActionBusyMessage.value = null;
       if (!mounted) return;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
@@ -5110,6 +5141,8 @@ abstract class _MaterialAnalysisMaterialTableState
     final sharedClaim = _isSharedFutureClaimAction(actionId);
     final reason = await _promptCancellationReason(
       sharedClaim ? '撤回公共认领（不撤回原采购 / 委外单）' : '撤回供给任务',
+      confirmLabel: '确认撤回',
+      dismissLabel: '暂不撤回',
     );
     if (reason == null || !mounted) return false;
     final idempotencyKey = businessIdempotencyKey(
@@ -5117,6 +5150,8 @@ abstract class _MaterialAnalysisMaterialTableState
       '${analysis.analysisId}|$actionId|${analysis.version}|${analysis.fingerprint}|$reason',
     );
     setState(() => _cancellingAction = true);
+    // 与取消分析同款的页面级遮罩(只跟网络段)。
+    bucketActionBusyMessage.value = sharedClaim ? '正在撤回公共认领' : '正在撤回供给任务';
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
@@ -5126,6 +5161,7 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       setState(() {
         _cancellingAction = false;
@@ -5136,6 +5172,7 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return true;
     } catch (error) {
+      bucketActionBusyMessage.value = null;
       if (!mounted) return false;
       if (await _recoverLatestAnalysisAfterConflict(
         error,

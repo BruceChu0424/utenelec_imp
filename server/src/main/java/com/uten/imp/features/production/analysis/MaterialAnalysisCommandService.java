@@ -1445,7 +1445,7 @@ public class MaterialAnalysisCommandService {
         }
         String hash=PlanningPackageFingerprint.sha256(List.of("ROOT_OUTPUT_REVOKE",
                 analysisId.toString(),eventId.toString(),Long.toString(request.version()),
-                request.fingerprint(),request.reason()));
+                request.fingerprint(),request.effectiveReason()));
         if (commandReplay(analysisId,"ROOT_OUTPUT_REVOKE",request.idempotencyKey(),hash)!=null) {
             return analysisService.detailInternal(analysisId,false);
         }
@@ -1455,7 +1455,7 @@ public class MaterialAnalysisCommandService {
             throw conflict("物料分析或交接状态已变化，请刷新后再撤回");
         }
         mutationGuard.verifyUnchanged();
-        rootSupply.revokeExistingOutput(analysisId,eventId,request.reason());
+        rootSupply.revokeExistingOutput(analysisId,eventId,request.effectiveReason());
         analysisService.refreshLocked(analysisId);
         recordCommand(analysisId,"ROOT_OUTPUT_REVOKE",request.idempotencyKey(),hash,Map.of("eventId",eventId));
         return analysisService.detailInternal(analysisId,false);
@@ -1486,7 +1486,7 @@ public class MaterialAnalysisCommandService {
         }
         String hash = PlanningPackageFingerprint.sha256(List.of(
                 OP_CANCEL_ACTION, analysisId.toString(), actionId.toString(),
-                Long.toString(request.version()), request.fingerprint(), request.reason()));
+                Long.toString(request.version()), request.fingerprint(), request.effectiveReason()));
         CommandReplay replay = commandReplay(analysisId, OP_CANCEL_ACTION,
                 request.idempotencyKey(), hash);
         if (replay != null) {
@@ -1494,7 +1494,7 @@ public class MaterialAnalysisCommandService {
         }
         mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
-        List<UUID> cancelledActionIds = cancelActionLocked(analysisId, actionId, request.reason());
+        List<UUID> cancelledActionIds = cancelActionLocked(analysisId, actionId, request.effectiveReason());
         analysisService.refreshLocked(analysisId);
         recordCommand(analysisId, OP_CANCEL_ACTION, request.idempotencyKey(), hash,
                 Map.of("actionIds", cancelledActionIds));
@@ -1509,7 +1509,7 @@ public class MaterialAnalysisCommandService {
         requireWritable(header, "只能取消本人负责的物料分析");
         String hash = PlanningPackageFingerprint.sha256(List.of(
                 OP_CANCEL_ANALYSIS, analysisId.toString(), Long.toString(request.version()),
-                request.fingerprint(), request.reason()));
+                request.fingerprint(), request.effectiveReason()));
         CommandReplay replay = commandReplay(analysisId, OP_CANCEL_ANALYSIS,
                 request.idempotencyKey(), hash);
         if (replay != null) {
@@ -1539,12 +1539,12 @@ public class MaterialAnalysisCommandService {
                 FOR UPDATE
                 """).setParameter("id", analysisId).getResultList();
         for (UUID actionId : actionIds) {
-            cancelActionLocked(analysisId, actionId, request.reason());
+            cancelActionLocked(analysisId, actionId, request.effectiveReason());
         }
         // 兜底清扫：自制备料入库绑定的预留锚点是生产计划行（不在行动外部明细上），
         // 连同其它遗留生效预留一并释放回公共现货池（V298）。
         analysisPeg.releaseForAnalysis(
-                analysisId, request.reason(), request.idempotencyKey());
+                analysisId, request.effectiveReason(), request.idempotencyKey());
         em.createNativeQuery("""
                 UPDATE production_material_analyses
                 SET status = 'CANCELLED', cancelled_by = :actorId,
@@ -1554,7 +1554,7 @@ public class MaterialAnalysisCommandService {
                 WHERE id = :id
                 """)
                 .setParameter("actorId", currentUser.requireId())
-                .setParameter("reason", request.reason().strip())
+                .setParameter("reason", request.effectiveReason())
                 .setParameter("id", analysisId)
                 .executeUpdate();
         recordCommand(analysisId, OP_CANCEL_ANALYSIS, request.idempotencyKey(), hash,

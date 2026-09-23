@@ -17,6 +17,7 @@ class MaterialRequiredReasonDialog extends StatefulWidget {
     required this.initialValue,
     required this.info,
     required this.confirmLabel,
+    this.dismissLabel,
     this.requireReason = true,
     this.reasonLabel,
     this.minReasonLength = 1,
@@ -28,6 +29,11 @@ class MaterialRequiredReasonDialog extends StatefulWidget {
   final String initialValue;
   final String info;
   final String confirmLabel;
+
+  /// 关闭键文案。默认「取消」；标题本身就是「取消 / 撤回」某事时**必须**传
+  /// 一个不含「取消」的文案(如「暂不取消」「暂不撤回」)——2026-09-22 用户实机
+  /// 「点了确认取消没反应」, 弹窗里「取消」与「确认取消」并排, 点错哪个都像没反应。
+  final String? dismissLabel;
   final bool requireReason;
   final String? reasonLabel;
   final int minReasonLength;
@@ -103,7 +109,7 @@ class _MaterialRequiredReasonDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text(l10n.commonCancel),
+          child: Text(widget.dismissLabel ?? l10n.commonCancel),
         ),
         FilledButton(
           onPressed: () {

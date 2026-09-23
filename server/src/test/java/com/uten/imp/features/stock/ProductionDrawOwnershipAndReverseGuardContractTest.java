@@ -34,7 +34,9 @@ class ProductionDrawOwnershipAndReverseGuardContractTest {
                 "private UUID addDrawItem(");
         assertThat(readinessDraw)
                 .contains("document.setWorkerId(responsibleEmployeeId);")
-                .contains("document.setMakerId(actor.employeeId());")
+                // 系统补偿建的领料单不再空归属(ADR-109: 空归属不再全员可读), 归到计划/工单的负责人。
+                .contains("document.setMakerId(actor.employeeId() != null")
+                .contains("systemDrawOwner(planId, responsibleEmployeeId)")
                 .doesNotContain("? currentUser.requireEmployeeId()");
         assertThat(readiness)
                 .contains("new PromotionActor(currentUser.requireId(), currentUser.requireEmployeeId())")

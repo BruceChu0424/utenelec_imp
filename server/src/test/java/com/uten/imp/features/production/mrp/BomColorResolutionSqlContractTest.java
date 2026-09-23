@@ -37,7 +37,7 @@ class BomColorResolutionSqlContractTest {
     void planAndOrderMrpNormalizeZeroAtTheSeedAndEveryRecursiveLevel()
             throws Exception {
         assertMrpColorContract(staticSql("MRP_SQL"));
-        assertMrpColorContract(staticSql("MRP_ORDER_SQL"));
+        // MRP_ORDER_SQL 随订单级 MRP 预览端点一起删除(ADR-109 清理死端点), 只剩计划级 MRP。
     }
 
     @Test

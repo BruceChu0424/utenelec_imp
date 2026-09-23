@@ -281,10 +281,12 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     fixture.unitId(), fixture.userId(), fixture.userId()));
             assertEquals("55000", insertFailure.getSQLState());
 
+            // V645(ADR-104) 起未开工计划允许只增不减的改量先过身份守卫, 再由提交时对账
+            // 「计划明细数量 = 关联行归需求 + 公共备货」拒绝没有关联行支撑的增量(23514)。
             PSQLException updateFailure = assertThrows(PSQLException.class, () -> update(
                     connection, "UPDATE production_plan_items SET qty=5 WHERE plan_id=?",
                     fixture.planId()));
-            assertEquals("55000", updateFailure.getSQLState());
+            assertEquals("23514", updateFailure.getSQLState());
 
             PSQLException deleteFailure = assertThrows(PSQLException.class, () -> update(
                     connection, "DELETE FROM production_plan_items WHERE plan_id=?",

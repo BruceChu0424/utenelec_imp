@@ -18,7 +18,8 @@ class MasterReferenceJoinPrecedenceContractTest {
     void onlineWritersRequireCanonicalUuidRelationshipsWithoutLegacyLookup()
             throws Exception {
         String mrp = source("production/mrp/MrpService.java");
-        assertStrictColorJoin(mrp, 3);
+        // 订单级 MRP 预览 SQL 已随死端点删除(ADR-109), 计划级 MRP 余 2 处。
+        assertStrictColorJoin(mrp, 2);
         assertStrictUnitJoin(mrp, "u", "g.unit_id", 1);
 
         String execution = source(

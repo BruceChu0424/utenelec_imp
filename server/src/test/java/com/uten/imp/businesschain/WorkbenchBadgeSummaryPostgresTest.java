@@ -387,7 +387,9 @@ class WorkbenchBadgeSummaryPostgresTest {
                         + " | legacy: requests=%d statements=%d jdbcMillis=%.1f wallMillis=%.1f%n",
                 summary.logicalStatements, summary.jdbcNanos / 1e6, summaryNanos / 1e6,
                 ORIGINAL_ENDPOINTS.size(), legacy.logicalStatements, legacy.jdbcNanos / 1e6, legacyNanos / 1e6);
-        assertThat(summary.logicalStatements)
+        // 本测试类的测试配置注入了一个必然失败的来源(select 1 / 0, 验证出错来源不拖垮整份汇总),
+        // 汇总会执行它一次而逐个端点的旧轮询不会, 比较时扣掉这一条。
+        assertThat(summary.logicalStatements - 1)
                 .as("一次汇总的语句数不超过原来逐个端点之和(汇总额外只有保存点)")
                 .isLessThanOrEqualTo(legacy.logicalStatements);
         assertThat(summary.logicalStatements).as("语句预算").isLessThanOrEqualTo(90);

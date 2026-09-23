@@ -6,6 +6,7 @@ import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.profilechange.dto.ProfileChangeDto;
 import com.uten.imp.application.port.HrNoticePort;
+import com.uten.imp.features.auth.StepUpService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class ProfileChangeSubmitService {
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
     private final HrNoticePort hrNotice;
+    private final StepUpService stepUp;
 
     /**
      * 提交修改申请。一次请求里 direct 字段立即生效，review 字段进 pending 批次。
@@ -61,6 +63,12 @@ public class ProfileChangeSubmitService {
             ProfileChangeRequest p = existing.get();
             return new ProfileChangeDto.SubmitResponse(
                     p.getBatchId(), List.of(p.getId()), 1);
+        }
+        // 姓名、户籍地址、手机号 (即登录账号) 改动走 HR 审核, 提交前必须重新输入登录密码 (ADR-110):
+        // 服务端权威校验, 不再只靠前端先问密码; 凭证在本事务内核销, 提交失败回滚时一并恢复。
+        if (req.changes().stream().anyMatch(ch -> ch != null
+                && ProfileFieldPolicy.REQUIRES_REVIEW.contains(ch.fieldCode()))) {
+            stepUp.consumeFromCurrentRequest(user);
         }
 
         Employee emp = employeeRepo.findById(employeeId)

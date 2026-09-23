@@ -305,9 +305,6 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
   static const _confirmPhrase = '清空业务数据';
 
   final TextEditingController _controller = TextEditingController();
-
-  /// 本次操作重新输入的登录密码(服务端核对，空闲会话不能直接清库)。
-  final TextEditingController _passwordController = TextEditingController();
   bool _running = false;
   bool _awaitingConfirmation = false;
   bool _checkingFiles = true;
@@ -370,7 +367,6 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
   @override
   void dispose() {
     _controller.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
@@ -379,7 +375,6 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
   // （「N 项业务文件将一并删除」）。此前「blocking>0 或预览失败永远灰」导致内网无法清空。
   bool get _confirmed =>
       _controller.text.trim() == _confirmPhrase &&
-      _passwordController.text.isNotEmpty &&
       !_checkingFiles &&
       !_previewForbidden &&
       !_awaitingConfirmation &&
@@ -396,7 +391,7 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
     try {
       final result = await ref
           .read(systemTestRepositoryProvider)
-          .resetBusinessData(password: _passwordController.text);
+          .resetBusinessData();
       if (!mounted) return;
       ref.invalidate(pendingBusinessDataResetProvider);
       Navigator.of(context).pop();
@@ -543,29 +538,6 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   hintText: '清空业务数据',
-                  isDense: true,
-                ),
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _submit(),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '再输入一次你的登录密码：',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              TextField(
-                key: const Key('system-test-clear-password-input'),
-                controller: _passwordController,
-                enabled: !_running,
-                obscureText: true,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: '登录密码',
                   isDense: true,
                 ),
                 onChanged: (_) => setState(() {}),

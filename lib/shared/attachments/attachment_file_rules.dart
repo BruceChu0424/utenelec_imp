@@ -13,8 +13,27 @@
 
 import 'package:flutter/material.dart';
 
-/// 单文件上限（与后端 `uten.storage.max-bytes` 默认 25MB 一致）。
+/// 单文件上限的兜底默认值（后端 `uten.storage.max-bytes` 出厂 25MB）。
+/// 运行时以 /api/settings/public 下发的 attachmentMaxBytes 为准，见 [AttachmentLimits]。
 const int kAttachmentMaxFileBytes = 25 * 1024 * 1024;
+
+/// 运行时附件上限：登录后每次拉公共设置都会同步服务端部署配置的真实上限，
+/// 客户端预检与服务端最终裁决用同一个数，不再出现「前端放行、服务端拒收」。
+abstract final class AttachmentLimits {
+  static int _maxFileBytes = kAttachmentMaxFileBytes;
+
+  /// 当前生效的单文件上限字节数。
+  static int get maxFileBytes => _maxFileBytes;
+
+  /// 同步服务端下发的上限；非正数视为无效，保持原值。
+  static void apply(int bytes) {
+    if (bytes > 0) _maxFileBytes = bytes;
+  }
+
+  /// 测试用：恢复兜底默认值。
+  @visibleForTesting
+  static void reset() => _maxFileBytes = kAttachmentMaxFileBytes;
+}
 
 /// 新建单据保存前暂存的合计上限：Web 端 `PlatformFile.bytes` 常驻内存，
 /// 超过即提示先保存单据再补传。
@@ -340,6 +359,13 @@ String? _normalizeContentType(String? contentType) {
           .trim()
           .toLowerCase();
   return base.isEmpty ? null : base;
+}
+
+/// 上限文案：整 MB 显示为「25MB」，否则按 [formatAttachmentSize]。
+String formatAttachmentLimit(int bytes) {
+  const mb = 1024 * 1024;
+  if (bytes >= mb && bytes % mb == 0) return '${bytes ~/ mb}MB';
+  return formatAttachmentSize(bytes);
 }
 
 String formatAttachmentSize(int bytes) {

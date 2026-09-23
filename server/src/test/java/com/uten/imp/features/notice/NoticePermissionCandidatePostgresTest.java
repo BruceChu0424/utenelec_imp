@@ -34,7 +34,7 @@ class NoticePermissionCandidatePostgresTest {
         query = new NoticePermissionCandidateQuery(jdbc);
         jdbc.execute("""
                 DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                CREATE TABLE permissions(id uuid PRIMARY KEY,code text,baseline boolean NOT NULL DEFAULT false);
+                CREATE TABLE permissions(id uuid PRIMARY KEY,code text,baseline boolean NOT NULL DEFAULT false,high_risk boolean NOT NULL DEFAULT false);
                 CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid,is_super_admin boolean,is_deleted boolean,status text);
                 CREATE TABLE employees(id uuid PRIMARY KEY,department_id uuid);
                 CREATE TABLE departments(id uuid PRIMARY KEY,parent_id uuid);

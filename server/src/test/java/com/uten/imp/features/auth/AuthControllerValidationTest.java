@@ -69,7 +69,7 @@ class AuthControllerValidationTest {
         when(snapshots.current()).thenThrow(new IllegalStateException("组织树数据异常"));
         AuthController controller = new AuthController(
                 mock(LoginService.class), mock(PasswordService.class), tokenIssuer,
-                mock(SecurityContextCurrentUser.class), snapshots);
+                mock(StepUpService.class), mock(SecurityContextCurrentUser.class), snapshots);
 
         AuthController.MeResponse response = controller.me();
 
@@ -85,7 +85,7 @@ class AuthControllerValidationTest {
         when(snapshots.current()).thenReturn(snapshot);
         AuthController controller = new AuthController(
                 mock(LoginService.class), mock(PasswordService.class), tokenIssuer,
-                mock(SecurityContextCurrentUser.class), snapshots);
+                mock(StepUpService.class), mock(SecurityContextCurrentUser.class), snapshots);
 
         assertThat(controller.me().session()).isSameAs(snapshot);
     }
@@ -97,6 +97,7 @@ class AuthControllerValidationTest {
                 mock(LoginService.class),
                 mock(PasswordService.class),
                 tokenIssuer,
+                mock(StepUpService.class),
                 currentUser,
                 mock(SessionSnapshotService.class));
     }

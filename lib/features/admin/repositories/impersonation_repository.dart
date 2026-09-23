@@ -12,11 +12,10 @@ class ImpersonationRepository {
 
   final ApiClient _api;
 
-  Future<ImpersonationModeResult> enter(String password) async {
-    final json = await _api.post(
-      ApiEndpoints.adminImpersonationEnter,
-      body: <String, String>{'password': password},
-    );
+  /// 进入切换人模式：服务端要求再认证 (统一密码框由网络层弹出，ADR-110)，
+  /// 成功后签发限时模式凭证，窗口内切换不同目标不必再输密码。
+  Future<ImpersonationModeResult> enter() async {
+    final json = await _api.post(ApiEndpoints.adminImpersonationEnter);
     return ImpersonationModeResult.fromJson(json);
   }
 

@@ -1,10 +1,11 @@
 package com.uten.imp.features.admin.impersonation;
 
-import com.uten.imp.features.admin.impersonation.dto.ImpersonationEnterRequest;
 import com.uten.imp.features.admin.impersonation.dto.ImpersonationModeResponse;
 import com.uten.imp.features.admin.impersonation.dto.ImpersonationStartRequest;
 import com.uten.imp.features.admin.impersonation.dto.ImpersonationStartResponse;
 import com.uten.imp.features.admin.impersonation.dto.ImpersonationTargetDto;
+import com.uten.imp.security.RequiresStepUp;
+import com.uten.imp.security.StepUpExempt;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -23,7 +24,8 @@ import java.util.List;
  *
  * <ul>
  *   <li>{@code POST /enter}、{@code POST /start}：由 admin token 调用，要求
- *       {@code authorization:manage and principal.superAdmin}。</li>
+ *       {@code authorization:manage and principal.superAdmin}。进入切换人要求再认证
+ *       ({@link RequiresStepUp}, 与其它敏感操作共用失败计数); 窗口内凭模式凭证切换不同目标。</li>
  *   <li>{@code POST /end}：由模拟 token 调用（主体=目标，非超管），故不加 superAdmin 守卫；
  *       服务内按 {@code impersonatedBy} 判定，非模拟时幂等。</li>
  * </ul>
@@ -45,17 +47,20 @@ public class ImpersonationController {
 
     @PostMapping("/enter")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
-    public ImpersonationModeResponse enter(@Valid @RequestBody ImpersonationEnterRequest req) {
-        return service.enter(req.password());
+    @RequiresStepUp
+    public ImpersonationModeResponse enter() {
+        return service.enter();
     }
 
     @PostMapping("/start")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    @StepUpExempt("凭进入切换人时再认证换得的模式凭证 (绑定本人与本会话、限时), 窗口内切换不同目标不必再输密码")
     public ImpersonationStartResponse start(@Valid @RequestBody ImpersonationStartRequest req) {
         return service.start(req.targetEmployeeId(), req.modeToken());
     }
 
     @PostMapping("/end")
+    @StepUpExempt("退出切换人只会收回临时视角, 不扩大任何权限")
     public ResponseEntity<Void> end() {
         service.end();
         return ResponseEntity.noContent().build();

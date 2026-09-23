@@ -7,18 +7,15 @@ import 'package:uten_imp/features/admin/repositories/system_setting_repository.d
 void main() {
   const changes = [(key: 'lockout_minutes', value: '20', expectedValue: '15')];
   test(
-    'settings batch uses one body-only password and includes the expected value',
+    'settings batch carries no password (server step-up, ADR-110) and includes the expected value',
     () async {
       final api = _Api([
         {'key': 'lockout_minutes', 'value': '20'},
       ]);
-      final result = await DioSystemSettingRepository(
-        api,
-      ).updateBatch(changes, 'confirmed');
+      final result = await DioSystemSettingRepository(api).updateBatch(changes);
       expect(result.single.value, '20');
       expect(api.path, ApiEndpoints.adminSystemSettings);
       expect(api.body, {
-        'password': 'confirmed',
         'changes': [
           {'key': 'lockout_minutes', 'value': '20', 'expectedValue': '15'},
         ],
@@ -35,9 +32,7 @@ void main() {
         ],
       ]) {
         await expectLater(
-          DioSystemSettingRepository(
-            _Api(response),
-          ).updateBatch(changes, 'confirmed'),
+          DioSystemSettingRepository(_Api(response)).updateBatch(changes),
           throwsFormatException,
         );
       }

@@ -48,7 +48,6 @@ class _RetentionSettingRepository implements SystemSettingRepository {
   @override
   Future<List<SystemSettingEntry>> updateBatch(
     List<({String key, String value, String expectedValue})> changes,
-    String password,
   ) async => _settings;
   static const _settings = <SystemSettingEntry>[
     SystemSettingEntry(
@@ -77,11 +76,4 @@ class _RetentionSettingRepository implements SystemSettingRepository {
 
   @override
   Future<List<SystemSettingEntry>> list() async => _settings;
-
-  @override
-  Future<SystemSettingEntry> update(
-    String key,
-    String value,
-    String password,
-  ) async => _settings.firstWhere((entry) => entry.key == key);
 }

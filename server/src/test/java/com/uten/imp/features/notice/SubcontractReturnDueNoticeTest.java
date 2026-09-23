@@ -1,5 +1,7 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
@@ -32,10 +34,19 @@ import static org.mockito.Mockito.when;
 
 class SubcontractReturnDueNoticeTest {
 
+    /** 系统设置「委外回厂预警提前天数」, 这里故意用非默认值证明扫描窗口按设置走 (audit-retention-settings-12)。 */
+    private static final int DUE_DAYS = 5;
+
+    private static SubcontractReturnDueScheduler scheduler(JdbcTemplate jdbc, BusinessEventPublisher outbox) {
+        SystemSettingsService settings = mock(SystemSettingsService.class);
+        when(settings.readInt(SystemSettingKey.SUBCONTRACT_RETURN_DUE_DAYS)).thenReturn(DUE_DAYS);
+        return new SubcontractReturnDueScheduler(jdbc, outbox, settings);
+    }
+
     @Test
     void schedulerSkipsUnissuedAndFullyReturnedEvenIfIqcIsPending() {
         LocalDate today = BusinessTime.today();
-        LocalDate deadline = today.plusDays(SubcontractReturnDueScheduler.DUE_DAYS);
+        LocalDate deadline = today.plusDays(DUE_DAYS);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
         Map<String, Object> neverOutbound = row(
@@ -46,7 +57,7 @@ class SubcontractReturnDueNoticeTest {
         when(jdbc.queryForList(anyString(), eq(deadline)))
                 .thenReturn(List.of(neverOutbound, fullyReturnedPendingIqc));
 
-        new SubcontractReturnDueScheduler(jdbc, outbox).scan();
+        scheduler(jdbc, outbox).scan();
 
         verifyNoInteractions(outbox);
     }
@@ -54,7 +65,7 @@ class SubcontractReturnDueNoticeTest {
     @Test
     void schedulerUsesStableOrderAndBusinessDatePublishOnceKeyForBothFlows() {
         LocalDate today = BusinessTime.today();
-        LocalDate deadline = today.plusDays(SubcontractReturnDueScheduler.DUE_DAYS);
+        LocalDate deadline = today.plusDays(DUE_DAYS);
         UUID newOrder = UUID.randomUUID();
         UUID legacyOrder = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
@@ -66,20 +77,20 @@ class SubcontractReturnDueNoticeTest {
                         row(newOrder, today.plusDays(2), 1, "2", 0),
                         row(legacyOrder, today.minusDays(1), 1, "0", 1)));
 
-        new SubcontractReturnDueScheduler(jdbc, outbox).scan();
+        scheduler(jdbc, outbox).scan();
 
         verify(outbox).publishOnce(
                 SubcontractReturnDueScheduler.EVENT_SUBCONTRACT_RETURN_DUE,
                 "SUBCONTRACT_ORDER",
                 newOrder,
-                Map.of("businessDate", today.toString()),
+                Map.of("businessDate", today.toString(), "dueDays", DUE_DAYS),
                 SubcontractReturnDueScheduler.EVENT_SUBCONTRACT_RETURN_DUE
                         + ':' + newOrder + ':' + today);
         verify(outbox).publishOnce(
                 SubcontractReturnDueScheduler.EVENT_SUBCONTRACT_RETURN_DUE,
                 "SUBCONTRACT_ORDER",
                 legacyOrder,
-                Map.of("businessDate", today.toString()),
+                Map.of("businessDate", today.toString(), "dueDays", DUE_DAYS),
                 SubcontractReturnDueScheduler.EVENT_SUBCONTRACT_RETURN_DUE
                         + ':' + legacyOrder + ':' + today);
     }
@@ -87,7 +98,7 @@ class SubcontractReturnDueNoticeTest {
     @Test
     void staleClosedHeaderDoesNotHideAuthoritativeNetUnreturnedQuantity() {
         LocalDate today = BusinessTime.today();
-        LocalDate deadline = today.plusDays(SubcontractReturnDueScheduler.DUE_DAYS);
+        LocalDate deadline = today.plusDays(DUE_DAYS);
         UUID orderId = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
@@ -100,13 +111,13 @@ class SubcontractReturnDueNoticeTest {
                         && !sql.contains("order_header.fulfill")),
                 eq(deadline))).thenReturn(List.of(staleHeader));
 
-        new SubcontractReturnDueScheduler(jdbc, outbox).scan();
+        scheduler(jdbc, outbox).scan();
 
         verify(outbox).publishOnce(
                 eq(SubcontractReturnDueScheduler.EVENT_SUBCONTRACT_RETURN_DUE),
                 eq("SUBCONTRACT_ORDER"),
                 eq(orderId),
-                eq(Map.of("businessDate", today.toString())),
+                eq(Map.of("businessDate", today.toString(), "dueDays", DUE_DAYS)),
                 eq(SubcontractReturnDueScheduler.EVENT_SUBCONTRACT_RETURN_DUE
                         + ':' + orderId + ':' + today));
     }
@@ -119,10 +130,10 @@ class SubcontractReturnDueNoticeTest {
         Map<String, Object> settledAtSupplier = row(
                 UUID.randomUUID(), today.minusDays(2), 1, "0", 0);
         settledAtSupplier.put("material_returned_or_wasted", true);
-        when(jdbc.queryForList(anyString(), eq(today.plusDays(3))))
+        when(jdbc.queryForList(anyString(), eq(today.plusDays(DUE_DAYS))))
                 .thenReturn(List.of(settledAtSupplier));
 
-        new SubcontractReturnDueScheduler(jdbc, outbox).scan();
+        scheduler(jdbc, outbox).scan();
 
         verifyNoInteractions(outbox);
     }
@@ -137,7 +148,7 @@ class SubcontractReturnDueNoticeTest {
         returned.put("pending_iqc_lines", 1L);
         when(jdbc.queryForList(
                 contains("approved_outbound_lines"),
-                eq(today.plusDays(3)),
+                eq(today.plusDays(DUE_DAYS)),
                 eq(orderId))).thenReturn(List.of(returned));
         ChainNoticeService service = service(
                 notice,
@@ -148,7 +159,7 @@ class SubcontractReturnDueNoticeTest {
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SUBCONTRACT_RETURN_DUE,
                 orderId,
-                new ObjectMapper().createObjectNode());
+                dueDaysPayload());
 
         verifyNoInteractions(notice);
         verify(jdbc, never()).queryForList(
@@ -172,7 +183,7 @@ class SubcontractReturnDueNoticeTest {
         due.put("maker_id", orderMakerEmployee);
         when(jdbc.queryForList(
                 contains("approved_outbound_lines"),
-                eq(today.plusDays(3)),
+                eq(today.plusDays(DUE_DAYS)),
                 eq(orderId))).thenReturn(List.of(due));
         when(jdbc.queryForList(
                 contains("preplan_supply_action_allocations allocation"),
@@ -192,7 +203,7 @@ class SubcontractReturnDueNoticeTest {
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SUBCONTRACT_RETURN_DUE,
                 orderId,
-                new ObjectMapper().createObjectNode());
+                dueDaysPayload());
 
         for (UUID recipient : List.of(orderMakerUser, analysisMakerUser)) {
             verify(notice).publishForUser(
@@ -221,7 +232,7 @@ class SubcontractReturnDueNoticeTest {
         due.put("maker_id", makerEmployee);
         when(jdbc.queryForList(
                 contains("approved_outbound_lines"),
-                eq(today.plusDays(3)),
+                eq(today.plusDays(DUE_DAYS)),
                 eq(orderId))).thenReturn(List.of(due));
         when(jdbc.queryForList(
                 contains("preplan_supply_action_allocations allocation"),
@@ -234,7 +245,7 @@ class SubcontractReturnDueNoticeTest {
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SUBCONTRACT_RETURN_DUE,
                 orderId,
-                new ObjectMapper().createObjectNode());
+                dueDaysPayload());
 
         verifyNoInteractions(notice);
     }
@@ -254,6 +265,27 @@ class SubcontractReturnDueNoticeTest {
         row.put("new_unreturned_base", new BigDecimal(newUnreturnedBase));
         row.put("legacy_unreturned_lines", legacyUnreturnedLines);
         return row;
+    }
+
+    /** 调度器发出的事件自带扫描窗口天数; 投递时按同一窗口复核, 不再读写死常量。 */
+    private static com.fasterxml.jackson.databind.node.ObjectNode dueDaysPayload() {
+        return new ObjectMapper().createObjectNode().put("dueDays", DUE_DAYS);
+    }
+
+    @Test
+    void eventWithoutDueDaysIsDroppedInsteadOfGuessingAWindow() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        ChainNoticeService service = service(
+                notice, mock(UserAccountRepository.class), jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_SUBCONTRACT_RETURN_DUE,
+                UUID.randomUUID(),
+                new ObjectMapper().createObjectNode());
+
+        verifyNoInteractions(notice);
+        verifyNoInteractions(jdbc);
     }
 
     private static ChainNoticeService service(

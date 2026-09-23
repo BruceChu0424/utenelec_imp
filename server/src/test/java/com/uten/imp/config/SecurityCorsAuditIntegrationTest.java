@@ -7,8 +7,6 @@ import com.uten.imp.audit.UserOperationAuditInterceptor;
 import com.uten.imp.config.props.SecurityProperties;
 import com.uten.imp.config.props.DeploymentProperties;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.visitor.VisitorAccountRepository;
 import com.uten.imp.security.ExportRateLimitInterceptor;
 import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.JwtService;
@@ -106,9 +104,7 @@ class SecurityCorsAuditIntegrationTest {
     @MockitoBean
     private JwtService jwtService;
     @MockitoBean
-    private UserAccountRepository userRepo;
-    @MockitoBean
-    private VisitorAccountRepository visitorRepo;
+    private com.uten.imp.features.auth.AuthSessionService sessions;
     @MockitoBean
     private StaffAuthorityResolver staffAuthorityResolver;
 
@@ -172,18 +168,15 @@ class SecurityCorsAuditIntegrationTest {
         UUID employeeId = UUID.randomUUID();
         when(jwtService.parse("valid-token"))
                 .thenReturn(claims(userId));
-        UserAccountRepository.AccountState accountState =
-                org.mockito.Mockito.mock(UserAccountRepository.AccountState.class);
-        when(accountState.getEmployeeId()).thenReturn(employeeId);
-        when(accountState.getLoginAccount()).thenReturn("E1001");
-        when(accountState.getStatus()).thenReturn("active");
-        when(accountState.isDeleted()).thenReturn(false);
-        when(accountState.isMustChangePassword()).thenReturn(false);
-        when(accountState.isSuperAdmin()).thenReturn(false);
-        when(accountState.getAuthVersion()).thenReturn(7L);
-        when(accountState.getAuthorizationEpoch()).thenReturn(11L);
-        when(userRepo.findAccountStateById(userId))
-                .thenReturn(Optional.of(accountState));
+        java.time.Instant now = java.time.Instant.parse("2026-09-23T02:00:00Z");
+        when(sessions.now()).thenReturn(now);
+        // ADR-110: 过滤器用一条 SQL 读账号状态与服务端会话。
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(
+                new com.uten.imp.features.auth.AuthSessionService.StaffState(
+                        employeeId, "E1001", "active", false, false, false, false, 7L, 11L,
+                        new com.uten.imp.features.auth.AuthSessionService.SessionFacts(
+                                now.minusSeconds(10), now.plusSeconds(86_400), null),
+                        "30")));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
                         Set.of("employee:view")));
@@ -211,12 +204,15 @@ class SecurityCorsAuditIntegrationTest {
                 longThat(value -> value >= 0));
     }
 
+    private static final UUID SESSION = UUID.randomUUID();
+
     private static Claims claims(UUID userId) {
         return Jwts.claims()
                 .subject(userId.toString())
                 .add("typ", "staff")
                 .add("av", 7L)
                 .add("ae", 11L)
+                .add("sid", SESSION.toString())
                 .build();
     }
 

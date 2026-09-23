@@ -14,7 +14,6 @@ import com.uten.imp.config.props.DeploymentProperties;
 import com.uten.imp.features.auth.model.RefreshToken;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.visitor.VisitorAccountRepository;
 import com.uten.imp.security.ExportRateLimitInterceptor;
 import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.JwtService;
@@ -104,7 +103,9 @@ class AuthLogoutSecurityIntegrationTest {
     @MockitoBean
     private UserAccountRepository userRepo;
     @MockitoBean
-    private VisitorAccountRepository visitorRepo;
+    private AuthSessionService sessions;
+    @MockitoBean
+    private StepUpService stepUpService;
     @MockitoBean
     private StaffAuthorityResolver staffAuthorityResolver;
     @MockitoBean
@@ -155,6 +156,8 @@ class AuthLogoutSecurityIntegrationTest {
                 .andExpect(content().string(""));
 
         verify(refreshTokenService).revoke(token, null);
+        // ADR-110: 服务端会话同时吊销, 这个会话签发的访问令牌下一次请求即 401。
+        verify(sessions).revoke(token.getSessionId(), AuthSessionService.REASON_LOGOUT);
         verify(auditService).logExplicit(
                 token.getUserId(),
                 null,

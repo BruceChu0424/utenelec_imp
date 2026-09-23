@@ -33,7 +33,8 @@ class ClientOwnerlessGrantVisibilityContractTest {
                 .contains("clientAccessPolicy.readablePredicate");
         assertThat(section(service, "public ExportPayload export(",
                 "public ClientFacets facets(UUID categoryId)"))
-                .contains("PageResponse<ClientListItem> page = list(f");
+                // 导出按系统设置的行数上限分页收集, 每一页仍走 list(f, ...) 的同一对象口径。
+                .contains("list(f, p, size, sort, order)");
         assertThat(section(service, "public ClientFacets facets(UUID categoryId,",
                 "private void requireReadable"))
                 .contains("clientAccessPolicy.nativeReadScope");

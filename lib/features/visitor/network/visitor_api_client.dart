@@ -6,6 +6,7 @@ import '../../../core/audit/device_audit_store.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/network/connection_recovery.dart';
+import '../../../core/network/interceptors/automatic_request_interceptor.dart';
 import '../../../core/network/interceptors/device_audit_interceptor.dart';
 import '../../../core/network/interceptors/safe_request_retry_interceptor.dart';
 import '../../../core/network/interceptors/visitor_auth_interceptor.dart';
@@ -26,6 +27,8 @@ final visitorApiProvider = Provider<ApiClient>((ref) {
 
   final dio = Dio(buildApiBaseOptions(baseUrl));
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
+  // 与员工同口径：访客没在操作时发出的请求不续期服务端会话 (ADR-110)。
+  dio.interceptors.add(const AutomaticRequestInterceptor());
   dio.interceptors.add(
     VisitorAuthInterceptor(
       storage: storage,

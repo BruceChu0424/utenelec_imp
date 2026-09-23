@@ -136,13 +136,22 @@ class SecurityPermissionMigrationTest {
                         'sales_shipment_finance:view'
                     )
                     """));
-            assertEquals(1, scalarLong(statement, """
+            // V660 (ADR-110): 账号支持能拿到他人的明文临时密码, 改为只能个人点名授权,
+            // 行政与人力资源部原有的部门级授予随迁移删除。
+            assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from department_permissions dp
                     join departments d on d.id = dp.department_id
                     join permissions p on p.id = dp.permission_id
                     where d.code = 'DEPT_HR'
                       and p.code = 'account:support'
+                    """));
+            // 「只能个人点名授权」由授权策略唯一事实源表达 (grant_policy, ADR-109), 同时是高危码:
+            // 持有者的临时密码只能由超管发放 (high_risk, ADR-110)。
+            assertTrue(scalarBoolean(statement, """
+                    select grant_policy = array['INDIVIDUAL_ONLY']::text[] and high_risk
+                    from permissions
+                    where code = 'account:support'
                     """));
             assertEquals(0, scalarLong(statement, """
                     select count(*)
@@ -353,7 +362,8 @@ class SecurityPermissionMigrationTest {
             // 权限表整行审计, 且数据库不再替写入方补算风险等级(分类只在写入时算一次)。
             assertEquals(2, scalarLong(statement, """
                     select count(*) from pg_trigger
-                    where tgrelid = 'role_permissions'::regclass
+                    -- 角色四表已随 V655(ADR-109) 删除, 权限目录本身按 FULL 清单整行审计(INSERT/DELETE + UPDATE 两个触发器)。
+                    where tgrelid = 'permissions'::regclass
                       and not tgisinternal
                       and tgfoid = 'public.fn_audit()'::regprocedure
                     """));
@@ -384,7 +394,8 @@ class SecurityPermissionMigrationTest {
     void databaseRejectsDepartmentWideAuditPermissions() throws Exception {
         // V655(ADR-109)：两条只认审计码的旧守卫换成按 grant_policy 判定的通用守卫，
         // 审计码是 INDIVIDUAL_ONLY，部门授权同样被拒，报错文案随之改为通用口径。
-        for (String permissionCode : List.of("audit_log:view", "audit_log:export")) {
+        // V660(ADR-110) 起账号支持同为 INDIVIDUAL_ONLY，部门级写入同样由通用守卫拒绝。
+        for (String permissionCode : List.of("audit_log:view", "audit_log:export", "account:support")) {
             SQLException insertFailure = assertThrows(
                     SQLException.class,
                     () -> executeDepartmentPermissionWrite(
@@ -612,7 +623,8 @@ class SecurityPermissionMigrationTest {
                 try (Statement statement = connection.createStatement()) {
                     statement.executeUpdate("""
                             update system_settings
-                            set label = label || '(测试)'
+                            -- V646 起 UPDATE 只存变化键, 没有变化不写行审计; V659 起元数据列已删, 改值本身
+                            set value = '99999'
                             where key = 'export_max_rows'
                             """);
                     assertTrue(scalarBoolean(statement, """

@@ -5,6 +5,7 @@ import com.uten.imp.common.util.ChinaMobileNumber;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -41,14 +42,14 @@ public class VisitorSmsIssuanceTransaction {
         OffsetDateTime now = OffsetDateTime.now();
         smsRepo.findTopByPhoneOrderByCreatedAtDesc(canonicalPhone).ifPresent(last -> {
             if (last.getCreatedAt().isAfter(now.minusSeconds(
-                    settings.readInt("sms_send_interval_seconds", 60)))) {
+                    settings.readInt(SystemSettingKey.SMS_SEND_INTERVAL_SECONDS)))) {
                 throw new ApiException(ErrorCode.SMS_RATE_LIMITED);
             }
         });
         long todayCount = smsRepo.countByPhoneAndCreatedAtAfter(
                 canonicalPhone,
                 BusinessTime.startOfDay(BusinessTime.today()));
-        if (todayCount >= settings.readInt("sms_daily_limit", 10)) {
+        if (todayCount >= settings.readInt(SystemSettingKey.SMS_DAILY_LIMIT)) {
             throw new ApiException(ErrorCode.SMS_RATE_LIMITED);
         }
 
@@ -59,7 +60,7 @@ public class VisitorSmsIssuanceTransaction {
         entity.setScene(scene);
         entity.setAttempts(0);
         entity.setExpiresAt(now.plusMinutes(
-                settings.readInt("sms_code_ttl_minutes", 5)));
+                settings.readInt(SystemSettingKey.SMS_CODE_TTL_MINUTES)));
         smsRepo.save(entity);
         return new Issuance(entity.getId());
     }

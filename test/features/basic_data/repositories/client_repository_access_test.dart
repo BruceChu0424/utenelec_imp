@@ -182,7 +182,11 @@ void main() {
       ApiClient(dio),
     ).search('客户', size: 100, selectableOnly: true);
 
-    expect(captured.path, '/master/clients');
+    // 关键字会匹配手机号，只走 POST /search 请求体 (security-19)；分页与筛选口径不变。
+    expect(captured.method, 'POST');
+    expect(captured.path, '/master/clients/search');
+    expect(captured.data, {'keyword': '客户'});
+    expect(captured.queryParameters.containsKey('keyword'), isFalse);
     expect(captured.queryParameters['excludeLegacyFinanceStub'], isTrue);
     expect(captured.queryParameters['selectableOnly'], isTrue);
     expect(captured.queryParameters['size'], 100);

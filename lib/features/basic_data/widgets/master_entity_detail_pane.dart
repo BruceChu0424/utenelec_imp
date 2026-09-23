@@ -80,6 +80,7 @@ class MasterPaneExport {
     required this.label,
     this.extraQuery = const {},
     this.inCard = false,
+    this.contactSensitiveInBody = false,
   });
 
   final String title;
@@ -88,6 +89,10 @@ class MasterPaneExport {
   final String label;
   final Map<String, dynamic> extraQuery;
   final bool inCard;
+
+  /// 客户/供应商(security-19, ADR-110)：搜索关键字(会匹配手机号)与手机/电话/银行账号的筛选值
+  /// 只随导出请求体的 `sensitiveFilter` 发送，不进 URL 查询串(反向代理访问日志会整行记下查询串)。
+  final bool contactSensitiveInBody;
 }
 
 /// 明细区对页面暴露的操作面(页面的特有动作经它刷新列表、读选中、跑批量命令)。
@@ -672,14 +677,26 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     };
   }
 
+  bool get _contactSensitiveInBody =>
+      _c.export?.contactSensitiveInBody ?? false;
+
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
     'categoryId': widget.categoryId,
     ...?_c.export?.extraQuery,
-    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    if (!_contactSensitiveInBody && _keyword.trim().isNotEmpty)
+      'keyword': _keyword.trim(),
     ...masterFilterQueryParams(_filters),
     if (_sortKey != null) 'sort': _sortKey,
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
   };
+
+  /// 导出请求体里的敏感检索值(仅 [MasterPaneExport.contactSensitiveInBody])：
+  /// 搜索关键字与手机/电话/银行账号筛选值只走请求体，不进 URL。
+  Map<String, dynamic> get _exportBody {
+    if (!_contactSensitiveInBody) return const {};
+    final sensitive = contactSensitiveFilterBody(_filters, keyword: _keyword);
+    return sensitive.isEmpty ? const {} : {'sensitiveFilter': sensitive};
+  }
 
   /// 打印预览：按当前分类/筛选口径拉全量(上限 2000 行)，列/格式化与表格一致。
   Future<UtenPrintTable> _printLoader() async {
@@ -705,6 +722,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         exportPermission: export.permission,
         exportReport: '',
         exportQuery: _exportQuery,
+        exportBody: _exportBody,
         exportFilename: export.title,
         type: large ? UtenButtonType.primary : UtenButtonType.tonal,
         size: large ? UtenButtonSize.large : UtenButtonSize.small,
@@ -714,6 +732,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         requiredPermission: export.permission,
         report: '',
         queryParams: _exportQuery,
+        bodyParams: _exportBody,
         filename: export.title,
         label: export.label,
         type: large ? UtenButtonType.primary : UtenButtonType.secondary,

@@ -25,6 +25,11 @@ spring:
     password: ${UTEN_DB_PASSWORD}
 
 uten:
+  deployment:
+    # 生产不继承 application.yml 的整段私网默认值 (security-17): 必须由部署环境显式配置公司
+    # 实际网段 (deploy/setup/phase3-runtime.sh 生成的 server.env 已包含该项); 未配置即启动失败,
+    # 仍含整段 10/8、172.16/12、192.168/16 时启动告警。云端站点不使用本项。
+    local-allowed-cidrs: ${UTEN_LOCAL_ALLOWED_CIDRS:}
   jwt:
     # 即使不同环境误用了同一密钥，也拒绝跨环境 token。
     issuer: ${UTEN_JWT_ISSUER}

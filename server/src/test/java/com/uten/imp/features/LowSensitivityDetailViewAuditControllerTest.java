@@ -281,7 +281,8 @@ class LowSensitivityDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 audit,
                 currentUser,
-                recorder);
+                recorder,
+                mock(com.uten.imp.application.port.ExportLimitPort.class));
     }
 
     private CurrencyController currencyController(CurrencyService service) {
@@ -291,6 +292,7 @@ class LowSensitivityDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 audit,
                 currentUser,
-                recorder);
+                recorder,
+                mock(com.uten.imp.application.port.ExportLimitPort.class));
     }
 }

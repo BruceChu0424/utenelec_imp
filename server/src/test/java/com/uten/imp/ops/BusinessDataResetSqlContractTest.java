@@ -111,7 +111,10 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_workshop_material_custody_handoffs", 619),
             Map.entry("production_workshop_custody_handoff_reversals", 619),
             Map.entry("production_workshop_custody_reverse_preparations", 619),
-            Map.entry("production_workshop_return_preplan_events", 619));
+            Map.entry("production_workshop_return_preplan_events", 619),
+            // V658 服务端会话与再认证失败计数 (ADR-110)：清空业务数据本就全员下线, 会话随之清空。
+            Map.entry("auth_sessions", 658),
+            Map.entry("auth_step_up_states", 658));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -256,6 +259,7 @@ class BusinessDataResetSqlContractTest {
                 "V626__legacy_finance_source_provenance.sql",
                 "V627__legacy_receipt_consideration_provenance.sql",
                 "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql",
+                "V658__auth_sessions_and_step_up.sql",
                 "V665__finance_report_line_bindings.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
@@ -447,7 +451,23 @@ class BusinessDataResetSqlContractTest {
                 // V645 追加自制并入未开工的生产计划 (ADR-104): 四个判定函数 + 一条对账触发器
                 // + 锚点补丁三个身份守卫, 不加表 (V645 595→596)。
                 .contains("(645, 596)")
-                .contains("V507/469、V508/470及V511至V645完整目录");
+                .contains("(646, 597)")
+                .contains("(647, 598)")
+                .contains("(648, 599)")
+                .contains("(649, 600)")
+                .contains("(655, 601)")
+                .contains("(656, 602)")
+                .contains("(657, 603)")
+                .contains("(658, 604)")
+                .contains("(659, 605)")
+                .contains("(660, 606)")
+                .contains("(661, 607)")
+                .contains("(662, 608)")
+                .contains("(664, 609)")
+                .contains("(665, 610)")
+                .contains("(666, 611)")
+                // 迁移头 V666 / 611 张 (V650至V654、V663 跳号)。
+                .contains("V507/469、V508/470及V511至V666完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

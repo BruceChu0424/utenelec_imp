@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.report;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.asset.FixedAssetService;
@@ -334,7 +335,7 @@ class FinanceReportObjectScopeTest {
     private static Fixture fixture(EntityManager em, FinanceDocumentAccessPolicy access,
                                    List<CapturedQuery> queries) {
         SystemSettingsService settings = mock(SystemSettingsService.class);
-        when(settings.readInt(anyString(), anyInt())).thenAnswer(invocation -> invocation.getArgument(1));
+        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(100_000);
         FinanceStatementService statementService = mock(FinanceStatementService.class);
         FinanceCostService costService = mock(FinanceCostService.class);
         GlReportService glReportService = mock(GlReportService.class);

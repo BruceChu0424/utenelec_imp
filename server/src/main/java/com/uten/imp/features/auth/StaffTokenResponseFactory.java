@@ -46,27 +46,17 @@ public class StaffTokenResponseFactory {
     }
 
     @Transactional(readOnly = true)
-    public TokenResponse build(UserAccount user, String rawRefresh) {
-        return build(user, rawRefresh, null);
-    }
-
-    @Transactional(readOnly = true)
     public TokenResponse build(
             UserAccount user,
             String rawRefresh,
             UUID sessionId) {
         UUID userId = user.getId();
         AuthorizationSnapshot snapshot = stableAuthorizationSnapshot(userId);
-        String access = sessionId == null
-                ? jwtService.issueAccess(
-                        userId,
-                        snapshot.authVersion(),
-                        snapshot.authorizationEpoch())
-                : jwtService.issueAccess(
-                        userId,
-                        snapshot.authVersion(),
-                        snapshot.authorizationEpoch(),
-                        sessionId);
+        String access = jwtService.issueAccess(
+                userId,
+                snapshot.authVersion(),
+                snapshot.authorizationEpoch(),
+                sessionId);
         return new TokenResponse(
                 access,
                 rawRefresh,
@@ -88,11 +78,6 @@ public class StaffTokenResponseFactory {
      *（模拟窗口到期即退模拟，杜绝长留）。{@code stableAuthorizationSnapshot} 同样会拒绝未激活 / 已删账号。
      */
     @Transactional(readOnly = true)
-    public TokenResponse buildImpersonation(UserAccount target, UUID adminUserId, Instant expiresAt) {
-        return buildImpersonation(target, adminUserId, expiresAt, null);
-    }
-
-    @Transactional(readOnly = true)
     public TokenResponse buildImpersonation(
             UserAccount target,
             UUID adminUserId,
@@ -100,20 +85,13 @@ public class StaffTokenResponseFactory {
             UUID sessionId) {
         UUID targetId = target.getId();
         AuthorizationSnapshot snapshot = stableAuthorizationSnapshot(targetId);
-        String access = sessionId == null
-                ? jwtService.issueImpersonationAccess(
-                        targetId,
-                        snapshot.authVersion(),
-                        snapshot.authorizationEpoch(),
-                        adminUserId,
-                        expiresAt)
-                : jwtService.issueImpersonationAccess(
-                        targetId,
-                        snapshot.authVersion(),
-                        snapshot.authorizationEpoch(),
-                        adminUserId,
-                        expiresAt,
-                        sessionId);
+        String access = jwtService.issueImpersonationAccess(
+                targetId,
+                snapshot.authVersion(),
+                snapshot.authorizationEpoch(),
+                adminUserId,
+                expiresAt,
+                sessionId);
         long ttlSeconds = Math.max(1, Duration.between(Instant.now(), expiresAt).getSeconds());
         return new TokenResponse(
                 access,

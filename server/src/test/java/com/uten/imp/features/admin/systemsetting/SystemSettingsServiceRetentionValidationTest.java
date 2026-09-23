@@ -2,18 +2,17 @@ package com.uten.imp.features.admin.systemsetting;
 
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
-import com.uten.imp.features.auth.model.UserAccount;
-import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,7 +35,13 @@ class SystemSettingsServiceRetentionValidationTest {
             "lockout_threshold,1001,1 至 1000",
             "lockout_minutes,525601,1 至 525600",
             "export_rate_limit_per_minute,10001,1 至 10000",
-            "session_idle_timeout_minutes,525601,1 至 525600"
+            "session_idle_timeout_minutes,525601,1 至 525600",
+            "password_min_length,7,8 至 64",
+            "temp_password_ttl_hours,169,1 至 168",
+            "impersonation_window_minutes,121,1 至 120",
+            "jwt_refresh_ttl_days,31,1 至 30",
+            "badge_poll_seconds,14,15 至 600",
+            "delivery_due_warning_days,31,1 至 30"
     })
     void dangerousRetentionAndExportValuesAreRejected(
             String key,
@@ -44,38 +49,21 @@ class SystemSettingsServiceRetentionValidationTest {
             String expectedMessage) {
         SystemSettingRepository repository = mock(SystemSettingRepository.class);
         AuditService audit = mock(AuditService.class);
-        PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
-        UserAccountRepository userRepository = mock(UserAccountRepository.class);
         SystemSettingsService service = new SystemSettingsService(
-                repository, audit, passwordEncoder, userRepository,
-                mock(TxSessionVars.class));
+                repository, audit, mock(TxSessionVars.class));
         UUID actorId = UUID.randomUUID();
-        UserAccount actor = new UserAccount();
-        actor.setSuperAdmin(true);
-        actor.setPasswordHash("hash");
         SystemSetting setting = new SystemSetting();
         setting.setKey(key);
         setting.setValue("6");
-        setting.setValueType("int");
-        setting.setCategory("audit");
-        setting.setLabel("测试设置");
-        when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
-        when(passwordEncoder.matches("password", "hash")).thenReturn(true);
-        when(repository.findAllForUpdate(java.util.List.of(key))).thenReturn(java.util.List.of(setting));
+        when(repository.findAllForUpdate(anyCollection())).thenReturn(List.of(setting));
 
         ApiException error = assertThrows(
                 ApiException.class,
-                () -> service.write(
-                        key, value, "password", actorId, "admin"));
+                () -> service.writeBatch(new SystemSettingDto.BatchUpdate(List.of(
+                        new SystemSettingDto.Change(key, value, "6"))), actorId, "admin"));
 
-        assertTrue(error.getMessage().contains(expectedMessage));
+        assertTrue(error.getMessage().contains(expectedMessage), error.getMessage());
         verify(repository, never()).save(setting);
-        verify(audit, never()).logExplicit(
-                actorId,
-                "admin",
-                "update_system_setting",
-                "system_settings",
-                key,
-                "success");
+        verify(audit, never()).logCommitted(any(), any(), any(), any(), any(), any());
     }
 }

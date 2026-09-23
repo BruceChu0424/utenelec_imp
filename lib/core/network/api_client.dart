@@ -16,8 +16,10 @@ import 'data_write_revision.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
 import 'interceptors/auth_interceptor.dart';
+import 'interceptors/automatic_request_interceptor.dart';
 import 'interceptors/device_audit_interceptor.dart';
 import 'interceptors/safe_request_retry_interceptor.dart';
+import 'interceptors/step_up_interceptor.dart';
 import 'interceptors/write_deadline_interceptor.dart';
 import 'network_policy.dart';
 
@@ -425,6 +427,8 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   // 最先挂：后面的重试/刷新都复用同一份 RequestOptions，截止时间要先矫正好。
   dio.interceptors.add(const WriteDeadlineInterceptor());
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
+  // 用户没在操作时发出的请求 (轮询/定时刷新) 声明为自动请求，服务端不据此续期会话 (ADR-110)。
+  dio.interceptors.add(const AutomaticRequestInterceptor());
   dio.interceptors.add(
     AuthInterceptor(
       storage: storage,
@@ -432,6 +436,8 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       dioFactory: auditedDioFactory,
     ),
   );
+  // 敏感操作被要求再认证 (403 REAUTH_REQUIRED) 时弹统一密码框、带凭证重发一次 (ADR-110)。
+  dio.interceptors.add(StepUpInterceptor(dio));
   dio.interceptors.add(SafeRequestRetryInterceptor(dio, recovery: recovery));
   // 写请求成功推进本端写修订号: 「返回即刷新」据此判断数据变没变(ADR-108)。
   dio.interceptors.add(

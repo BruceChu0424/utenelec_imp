@@ -36,6 +36,7 @@ Future<void> showUtenPrintPreview({
   String? exportEndpoint,
   String? exportReport,
   Map<String, dynamic>? exportQuery,
+  Map<String, dynamic>? exportBody,
   String? exportFilename,
   String? exportPermission,
 }) {
@@ -48,6 +49,7 @@ Future<void> showUtenPrintPreview({
       exportEndpoint: exportEndpoint,
       exportReport: exportReport,
       exportQuery: exportQuery,
+      exportBody: exportBody,
       exportFilename: exportFilename,
       exportPermission: exportPermission,
     ),
@@ -64,6 +66,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
     this.exportEndpoint,
     this.exportReport,
     this.exportQuery,
+    this.exportBody,
     this.exportFilename,
     this.exportPermission,
     this.label = '预览打印',
@@ -77,6 +80,9 @@ class UtenPrintPreviewButton extends StatelessWidget {
   final String? exportEndpoint;
   final String? exportReport;
   final Map<String, dynamic>? exportQuery;
+
+  /// 不能进 URL 的导出筛选值 (随导出密码放请求体)。
+  final Map<String, dynamic>? exportBody;
   final String? exportFilename;
   final String? exportPermission;
 
@@ -102,6 +108,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
         exportEndpoint: exportEndpoint,
         exportReport: exportReport,
         exportQuery: exportQuery,
+        exportBody: exportBody,
         exportFilename: exportFilename,
         exportPermission: exportPermission,
       ),
@@ -118,6 +125,7 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
     this.exportEndpoint,
     this.exportReport,
     this.exportQuery,
+    this.exportBody,
     this.exportFilename,
     this.exportPermission,
   });
@@ -128,6 +136,9 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
   final String? exportEndpoint;
   final String? exportReport;
   final Map<String, dynamic>? exportQuery;
+
+  /// 不能进 URL 的导出筛选值 (随导出密码放请求体)。
+  final Map<String, dynamic>? exportBody;
   final String? exportFilename;
   final String? exportPermission;
 
@@ -288,6 +299,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                         endpoint: widget.exportEndpoint!,
                         report: widget.exportReport ?? '',
                         queryParams: widget.exportQuery ?? const {},
+                        bodyParams: widget.exportBody ?? const {},
                         filename: widget.exportFilename ?? widget.title,
                         requiredPermission: widget.exportPermission,
                         label: '下载Excel', // TODO(l10n): 补 arb

@@ -58,6 +58,26 @@ class ProductionSecretStrengthSafetyGateTest {
         assertThrows(IllegalStateException.class, () -> gate(environment).validate());
     }
 
+    /** security-16: 官网询盘推送密钥留空=功能关闭可以启动; 一旦配置必须是 32 字节以上的非占位强密钥。 */
+    @Test
+    void websiteIngestTokenIsOptionalButMustBeStrongWhenConfigured() {
+        MockEnvironment disabled = safeEnvironment("prod");
+        disabled.setProperty("uten.website.inquiry-ingest-token", "");
+        assertDoesNotThrow(() -> gate(disabled).validate());
+
+        MockEnvironment strong = safeEnvironment("prod");
+        strong.setProperty("uten.website.inquiry-ingest-token", "w".repeat(40));
+        assertDoesNotThrow(() -> gate(strong).validate());
+
+        MockEnvironment weak = safeEnvironment("cloud");
+        weak.setProperty("uten.website.inquiry-ingest-token", "short-ingest-token");
+        assertThrows(IllegalStateException.class, () -> gate(weak).validate());
+
+        MockEnvironment placeholder = safeEnvironment("prod");
+        placeholder.setProperty("uten.website.inquiry-ingest-token", "REPLACE-ME-" + "x".repeat(40));
+        assertThrows(IllegalStateException.class, () -> gate(placeholder).validate());
+    }
+
     @Test
     void ignoresNonProductionProfiles() {
         MockEnvironment environment = new MockEnvironment();

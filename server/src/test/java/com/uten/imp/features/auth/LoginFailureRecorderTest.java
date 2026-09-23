@@ -1,5 +1,6 @@
 package com.uten.imp.features.auth;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -45,7 +46,7 @@ class LoginFailureRecorderTest {
     @Test
     void transactionIsIndependentFromTheThrowingLoginFlow() throws Exception {
         Method method = LoginFailureRecorder.class
-                .getMethod("record", UUID.class, String.class);
+                .getMethod("record", UUID.class, String.class, String.class);
         Transactional transactional = method.getAnnotation(Transactional.class);
 
         assertNotNull(transactional);
@@ -57,10 +58,10 @@ class LoginFailureRecorderTest {
         UserAccount account = account("active", 2);
         when(userRepo.findByIdForUpdate(account.getId()))
                 .thenReturn(Optional.of(account));
-        when(settings.readInt("lockout_threshold", 5)).thenReturn(3);
-        when(settings.readInt("lockout_minutes", 15)).thenReturn(20);
+        when(settings.readInt(SystemSettingKey.LOCKOUT_THRESHOLD)).thenReturn(3);
+        when(settings.readInt(SystemSettingKey.LOCKOUT_MINUTES)).thenReturn(20);
 
-        recorder.record(account.getId(), account.getLoginAccount());
+        recorder.record(account.getId(), account.getLoginAccount(), "bad_password");
 
         verify(tx).bindActor(account.getId(), account.getLoginAccount());
         assertEquals(3, account.getFailedAttempts());
@@ -82,7 +83,7 @@ class LoginFailureRecorderTest {
         when(userRepo.findByIdForUpdate(account.getId()))
                 .thenReturn(Optional.of(account));
 
-        recorder.record(account.getId(), account.getLoginAccount());
+        recorder.record(account.getId(), account.getLoginAccount(), "bad_password");
 
         assertEquals(11, account.getFailedAttempts());
         assertEquals("disabled", account.getStatus());

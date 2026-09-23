@@ -10,6 +10,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.account.dto.AccountDetail;
 import com.uten.imp.features.master.account.dto.AccountCurrencySummary;
@@ -165,7 +166,7 @@ public class AccountService {
      * accountType 用枚举值（BANK/CASH/...），与 DB 列一致，便于二次处理；不解析为中文。
      */
     @Transactional(readOnly = true)
-    public ExportPayload export(AccountQueryFilter f, String sort, String order) {
+    public ExportPayload export(AccountQueryFilter f, String sort, String order, int maxRows) {
         boolean showBalance = hasAuthority("account:balance:view");
         List<ExportColumn> cols = new ArrayList<>();
         cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
@@ -181,37 +182,25 @@ public class AccountService {
             cols.add(new ExportColumn("balanceFloor", "余额警戒线", ExportColumn.MONEY));
         }
         cols.add(new ExportColumn("status", "状态", ExportColumn.TEXT));
-        List<Map<String, Object>> rows = new ArrayList<>();
-        int pageSize = 100;
-        int maxPages = 1000;
-        long total = -1;
-        for (int p = 1; p <= maxPages; p++) {
-            PageResponse<AccountListItem> page = list(f, p, pageSize, sort, order);
-            if (total < 0) total = page.getTotal();
-            for (AccountListItem a : page.getItems()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("code", a.getCode());
-                row.put("name", a.getName());
-                row.put("bankAccountNo", a.getBankAccountNo());
-                row.put("accountType", accountTypeLabel(a.getAccountType()));
-                if (showBalance) {
-                    row.put("initBalance", a.getInitBalance());
-                    row.put("receiptsTotal", a.getReceiptsTotal());
-                    row.put("paymentsTotal", a.getPaymentsTotal());
-                    row.put("adjustmentsTotal", a.getAdjustmentsTotal());
-                    row.put("balanceCurrent", a.getBalanceCurrent());
-                    row.put("balanceFloor", a.getBalanceFloor());
-                }
-                row.put("status", a.getStatus());
-                rows.add(row);
-            }
-            if (page.getItems().size() < pageSize) break;
-            if (rows.size() >= total) break;
-            if (p == maxPages && rows.size() < total) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
-            }
-        }
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size, sort, order), a -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", a.getCode());
+                    row.put("name", a.getName());
+                    row.put("bankAccountNo", a.getBankAccountNo());
+                    row.put("accountType", accountTypeLabel(a.getAccountType()));
+                    if (showBalance) {
+                        row.put("initBalance", a.getInitBalance());
+                        row.put("receiptsTotal", a.getReceiptsTotal());
+                        row.put("paymentsTotal", a.getPaymentsTotal());
+                        row.put("adjustmentsTotal", a.getAdjustmentsTotal());
+                        row.put("balanceCurrent", a.getBalanceCurrent());
+                        row.put("balanceFloor", a.getBalanceFloor());
+                    }
+                    row.put("status", a.getStatus());
+                    return row;
+                });
         return new ExportPayload(cols, rows, rows.size());
     }
 

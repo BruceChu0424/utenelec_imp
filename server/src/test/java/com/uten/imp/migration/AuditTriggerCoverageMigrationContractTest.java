@@ -214,9 +214,12 @@ class AuditTriggerCoverageMigrationContractTest {
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
             new NoneGroup("technical",
-                    "技术元数据、计数器、凭证与迁移控制: 不是业务数据, 或含凭证不应被复制",
+                    "技术元数据、计数器、凭证、登录会话运行态与迁移控制: 不是业务数据, 或含凭证不应被复制"
+                            + "(auth_sessions/auth_step_up_states 是会话与再认证失败计数, 登录、登出、"
+                            + "再认证成功/失败与会话吊销另有显式安全事件, V658)",
                     Set.of(
-                        "audit_log", "audit_log_archive", "authorization_state",
+                        "audit_log", "audit_log_archive", "auth_sessions", "auth_step_up_states",
+                        "authorization_state",
                         "business_document_sequences", "category_master_code_sequences",
                         "doc_number_sequences", "flyway_schema_history",
                         "legacy_migration_checkpoints", "legacy_migration_reconciliation_items",

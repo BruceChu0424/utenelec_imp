@@ -8,6 +8,7 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiError;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.security.BoundedPasswordEncoder;
 import com.uten.imp.security.ImpersonationWriteGuardFilter;
 import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.LocalNetworkGuardFilter;
@@ -138,10 +139,17 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** Argon2id 密码哈希（OWASP 参数：内存 19456 KiB、迭代 2、并行 1、盐 16、哈希 32 字节）。 */
+    /**
+     * Argon2id 密码哈希（OWASP 参数：内存 19456 KiB、迭代 2、并行 1、盐 16、哈希 32 字节）,
+     * 外包进程级并发闸门: 同时最多 CPU 核数个哈希, 排队超过 1 秒返回 503 (ADR-110)。
+     * 全部 matches/encode 都经过这一个 Bean, 没有绕开闸门的第二条路。
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new Argon2PasswordEncoder(16, 32, 1, 19456, 2);
+        return new BoundedPasswordEncoder(
+                new Argon2PasswordEncoder(16, 32, 1, 19456, 2),
+                Math.max(1, Runtime.getRuntime().availableProcessors()),
+                1_000L);
     }
 
     /**
@@ -212,10 +220,13 @@ public class SecurityConfig {
                 "Content-Type",
                 "Accept",
                 "X-Uten-Attachment-Upload-Token",
+                com.uten.imp.security.StepUpInterceptor.HEADER,
+                com.uten.imp.security.AutomaticRequestPolicy.HEADER,
                 AuditDeviceContext.HEADER_CLIENT_EVENT_ID,
                 AuditDeviceContext.HEADER_DEVICE_CONTEXT));
         cfg.setExposedHeaders(List.of(
                 "Content-Disposition",
+                "Retry-After",
                 AuditRequestContext.RESPONSE_REQUEST_ID_HEADER,
                 AuditDeviceContext.HEADER_CLIENT_EVENT_ID));
         // Authentication is carried only in an explicit Bearer header, never cookies.

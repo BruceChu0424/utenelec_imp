@@ -143,16 +143,13 @@ void main() {
           });
         final repository = _repo(dio, journal);
         await expectLater(
-          repository.resetBusinessData(password: 'pw'),
+          repository.resetBusinessData(),
           throwsA(isA<BusinessDataResetPendingException>()),
         );
         final pending = await journal.read(_server, _operator);
         expect(pending?.id, sentAttempt);
         await expectLater(
-          _repo(
-            dio,
-            BusinessDataResetJournal(store),
-          ).resetBusinessData(password: 'pw'),
+          _repo(dio, BusinessDataResetJournal(store)).resetBusinessData(),
           throwsA(isA<BusinessDataResetPendingException>()),
         );
         expect(calls, 1);
@@ -210,12 +207,12 @@ void main() {
       });
       final repository = _repo(dio, journal);
       await expectLater(
-        repository.resetBusinessData(password: 'pw'),
+        repository.resetBusinessData(),
         throwsA(isA<BusinessDataResetPendingException>()),
       );
       expect(await journal.read(_server, _operator), isNotNull);
       await expectLater(
-        repository.resetBusinessData(password: 'pw'),
+        repository.resetBusinessData(),
         throwsA(isA<BusinessDataResetPendingException>()),
       );
       expect(posts, 1);
@@ -424,20 +421,20 @@ void main() {
         });
       final repository = _repo(dio, journal);
       await expectLater(
-        repository.resetBusinessData(password: 'pw'),
+        repository.resetBusinessData(),
         throwsA(
           isA<ApiException>().having((error) => error.code, 'code', 'CONFLICT'),
         ),
       );
       expect(await journal.read(_server, _operator), isNull);
       await expectLater(
-        repository.resetBusinessData(password: 'pw'),
+        repository.resetBusinessData(),
         throwsA(isA<ApiException>()),
       );
       expect(calls, 2);
       scope.failWrites = true;
       await expectLater(
-        repository.resetBusinessData(password: 'pw'),
+        repository.resetBusinessData(),
         throwsA(
           isA<ApiException>().having(
             (error) => error.code,
@@ -462,21 +459,9 @@ void main() {
         startedAt: DateTime.utc(2026, 9, 12),
       );
       await journal.save(other);
-      Object? sentBody;
       final dio = Dio(BaseOptions(baseUrl: _server))
-        ..httpClientAdapter = _Adapter((request) {
-          sentBody = request.data;
-          return (200, _success);
-        });
-      expect(
-        (await _repo(
-          dio,
-          journal,
-        ).resetBusinessData(password: 'pw')).clearedRows,
-        697,
-      );
-      // 本次密码只随请求体发给服务端核对(permissions-14)，不落本地待确认记录。
-      expect((sentBody as Map)['password'], 'pw');
+        ..httpClientAdapter = _Adapter((request) => (200, _success));
+      expect((await _repo(dio, journal).resetBusinessData()).clearedRows, 697);
       expect(await journal.read(_server, _operator), isNull);
       expect((await journal.read(_server, 'other-user'))?.id, 'other');
     },

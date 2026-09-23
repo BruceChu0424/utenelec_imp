@@ -214,6 +214,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
         endpoint: '/master/suppliers/export',
         permission: Perm.supplierExport,
         label: '导出供应商', // TODO(l10n): 补 arb
+        contactSensitiveInBody: true,
       ),
       onCreate: _showSupplierCreate,
       onOpen: (pane, s) => _showSupplierDetail(pane, s.id),

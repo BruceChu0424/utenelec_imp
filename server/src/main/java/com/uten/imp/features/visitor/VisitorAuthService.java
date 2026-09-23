@@ -9,6 +9,7 @@ import com.uten.imp.common.util.ChinaMobileNumber;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SmsProperties;
+import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
 import com.uten.imp.security.JwtService;
@@ -48,6 +49,7 @@ public class VisitorAuthService {
     private final LoginRateLimiter rateLimiter;
     private final MasterCodeService masterCodes;
     private final VisitorAccountCreationLock accountCreationLock;
+    private final AuthSessionService sessions;
 
     public VisitorAuthDto.SendCodeResponse sendCode(String phoneRaw, String ip) {
         String phone;
@@ -225,6 +227,8 @@ public class VisitorAuthService {
             return;
         }
         refreshService.revoke(token.get(), null);
+        // 会话同时吊销: 该会话签发的访问令牌下一次请求即失效 (ADR-110)。
+        sessions.revoke(token.get().getSessionId(), AuthSessionService.REASON_LOGOUT);
         audit.logCommitted(token.get().getVisitorAccountId(), null,
                 "visitor_logout", "visitor_refresh_tokens",
                 token.get().getId().toString(), "success",

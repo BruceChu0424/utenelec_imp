@@ -12,6 +12,9 @@ abstract final class ApiEndpoints {
   /// 工作台徽章汇总: 全站红黄徽章、通知未读数与页内分段细数一次带回(ADR-108)。
   static const workbenchBadges = '/workbench/badges';
 
+  /// 敏感操作再认证：输入登录密码换一次性凭证 (ADR-110)。
+  static const authStepUp = '/auth/step-up';
+
   // 货品×业务场景计量采集偏好；只读解析必须批量，避免明细行 N+1。
   static const measurementProfilesResolveBatch =
       '/measurement/profiles/resolve-batch';
@@ -311,6 +314,9 @@ abstract final class ApiEndpoints {
 
   // 客户主档（基础资料 / master-data）—— 分类下客户分页 + 详情 + 字段 facet
   static const clients = '/master/clients';
+
+  /// 客户列表 (手机/电话/银行账号筛选值走请求体，不进 URL)。
+  static const clientsSearch = '$clients/search';
   static const clientsFacets = '$clients/facets';
   static const clientsDict = '$clients/dict';
   static const clientsAccessCandidates = '$clients/access-candidates';
@@ -331,6 +337,9 @@ abstract final class ApiEndpoints {
 
   // 供应商主档（基础资料 / master-data）—— 分类下供应商分页 + 详情 + 字段 facet
   static const suppliers = '/master/suppliers';
+
+  /// 供应商列表 (手机/电话/银行账号筛选值走请求体，不进 URL)。
+  static const suppliersSearch = '$suppliers/search';
   static const suppliersFacets = '$suppliers/facets';
   static String supplier(String id) => '/master/suppliers/$id';
 
@@ -570,7 +579,6 @@ abstract final class ApiEndpoints {
   static String securityBlacklistById(String id) => '/security/blacklist/$id';
 
   // 个人信息修改
-  static const authVerifyPassword = '/auth/verify-password';
   static const profileMyChanges = '/profile/me/changes';
   static const hrProfileChanges = '/hr/profile-changes';
 

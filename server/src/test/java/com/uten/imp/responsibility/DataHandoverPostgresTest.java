@@ -112,7 +112,8 @@ class DataHandoverPostgresTest {
             departing.setStatus("disabled");
             departing.setRemoteAccess(false);
             departing.setMustChangePassword(true);
-            departing.setTempPasswordExpiresAt(null);
+            // 与离职流程同口径 (ADR-110): 旧密码立即作废, 不再写「永不过期」
+            departing.setTempPasswordExpiresAt(OffsetDateTime.now());
             departure.getTransaction().commit();
 
             staleAccount.setRemoteAccess(true);
@@ -140,7 +141,8 @@ class DataHandoverPostgresTest {
         assertEquals("disabled", finalState.get("status"));
         assertEquals(false, finalState.get("remote_access"));
         assertEquals(true, finalState.get("must_change_password"));
-        assertEquals(null, finalState.get("temp_password_expires_at"));
+        // ADR-110: 离职即让旧密码作废 (临时密码已过期), 不再是「必须改密却永不过期」
+        assertExpiredCredential(finalState.get("temp_password_expires_at"));
         assertEquals(1L, ((Number) finalState.get("version")).longValue());
     }
 
@@ -386,7 +388,7 @@ class DataHandoverPostgresTest {
                 source.userId());
         assertEquals(false, account.get("remote_access"));
         assertEquals(true, account.get("must_change_password"));
-        assertEquals(null, account.get("temp_password_expires_at"));
+        assertExpiredCredential(account.get("temp_password_expires_at"));
         assertEquals(1, count("select count(*) from employee_offboarding_events where request_id=? and status='COMPLETED'",
                 requestId));
         // ADR-105: 离职事件账是只追加、带操作人的事件表(NONE), 行本身即留痕, 不再复制进审计,
@@ -451,6 +453,12 @@ class DataHandoverPostgresTest {
                 source.userId()));
         assertEquals(true, jdbc.queryForObject(
                 "select must_change_password from users where id=?", Boolean.class, source.userId()));
+        // 复职不复活旧密码 (含从未改过的初始密码): 仍是已过期的临时凭据, 由账号支持重新发放
+        assertExpiredCredential(jdbc.queryForObject(
+                "select temp_password_expires_at from users where id=?", Object.class, source.userId()));
+        assertEquals(0, count("""
+                select count(*) from auth_sessions where user_id=? and revoked_at is null
+                """, source.userId()));
         assertEquals(false, jdbc.queryForObject(
                 "select remote_access from users where id=?", Boolean.class, source.userId()));
         assertThrows(ApiException.class, () -> employees.offboard(source.employeeId(), request));
@@ -763,6 +771,14 @@ class DataHandoverPostgresTest {
                 SELECT count(*) FROM user_data_scopes
                 WHERE user_id=? AND scope='goods'
                 """, recipient.userId()));
+    }
+
+    private static void assertExpiredCredential(Object expiresAt) {
+        org.junit.jupiter.api.Assertions.assertNotNull(expiresAt, "临时密码必须有过期时间");
+        java.time.OffsetDateTime at = expiresAt instanceof java.time.OffsetDateTime odt
+                ? odt : ((java.sql.Timestamp) expiresAt).toInstant().atOffset(java.time.ZoneOffset.UTC);
+        org.junit.jupiter.api.Assertions.assertFalse(
+                at.isAfter(java.time.OffsetDateTime.now().plusSeconds(1)), "旧密码应已作废: " + at);
     }
 
     private Staff staff(

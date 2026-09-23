@@ -4,8 +4,8 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.uten.imp.features.auth.dto.ChangePasswordRequest;
 import com.uten.imp.features.auth.dto.LoginRequest;
 import com.uten.imp.features.auth.dto.RefreshRequest;
+import com.uten.imp.features.auth.dto.StepUpRequest;
 import com.uten.imp.features.auth.dto.TokenResponse;
-import com.uten.imp.features.auth.dto.VerifyPasswordRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 认证接口（/api/auth）：登录/刷新/登出/改密/当前用户/二次密码确认。 */
+/** 认证接口（/api/auth）：登录/刷新/登出/改密/当前用户/敏感操作再认证。 */
 @Slf4j
 @RestController
 @RequestMapping("/api/auth")
@@ -27,6 +27,7 @@ public class AuthController {
     private final LoginService loginService;
     private final PasswordService passwordService;
     private final TokenIssuer tokenIssuer;
+    private final StepUpService stepUpService;
     private final SecurityContextCurrentUser currentUser;
     private final SessionSnapshotService sessionSnapshots;
 
@@ -85,12 +86,12 @@ public class AuthController {
     }
 
     /**
-     * 二次确认密码（不改密；用于“修改个人信息/手机/姓名”等敏感动作前的校验）。
-     * 200 OK 表示密码正确；401 BAD_CREDENTIALS 表示密码错误。该操作不计入
-     * 登录失败次数，但仍记录显式安全审计。
+     * 敏感操作再认证: 输入当前登录密码, 换取本会话专用、5 分钟、一次性的凭证 (ADR-110)。
+     * 之后把凭证放进请求头 X-Uten-Step-Up 调用标了 {@code @RequiresStepUp} 的接口。
+     * 输错 422 REAUTH_FAILED; 连续输错达上限 429 REAUTH_LOCKED 并吊销当前会话。
      */
-    @PostMapping("/verify-password")
-    public void verifyPassword(@Valid @RequestBody VerifyPasswordRequest req) {
-        passwordService.verifyPassword(req.password());
+    @PostMapping("/step-up")
+    public StepUpService.Grant stepUp(@Valid @RequestBody StepUpRequest req) {
+        return stepUpService.issue(req.password());
     }
 }

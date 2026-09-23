@@ -3,6 +3,7 @@ package com.uten.imp.security;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import io.github.bucket4j.Bucket;
 import org.springframework.stereotype.Component;
 
@@ -36,7 +37,7 @@ public class ExportRateLimiter {
     /** 消费 1 个令牌；不足抛 RATE_LIMITED。userId 为 null（未认证）则放行交由鉴权处理。 */
     public void check(UUID userId) {
         if (userId == null) return;
-        int cur = Math.max(1, settings.readInt("export_rate_limit_per_minute", 10));
+        int cur = Math.max(1, settings.readInt(SystemSettingKey.EXPORT_RATE_LIMIT_PER_MINUTE));
         if (buckets.size() > MAX_BUCKETS) {
             buckets.clear();
         }

@@ -5,6 +5,7 @@ import com.uten.imp.features.admin.dto.EffectivePermissionsDto;
 import com.uten.imp.features.admin.dto.PermissionBulkScopeDto;
 import com.uten.imp.features.admin.dto.PermissionCatalogDto;
 import com.uten.imp.features.admin.dto.PermissionChangeDto;
+import com.uten.imp.security.RequiresStepUp;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -45,14 +46,16 @@ public class AdminPermissionController {
 
     /** 保存某部门的直配权限点(期望的完整集合，服务端按差量落库)。 */
     @PutMapping("/departments/{departmentId}/permissions")
+    @RequiresStepUp
     public PermissionChangeDto setDepartmentPermissions(@PathVariable UUID departmentId,
                                                         @Valid @RequestBody DepartmentPermissionsDto req) {
         return departmentPermissionAdmin.setDepartmentPermissions(departmentId,
                 req.permissions() == null ? List.of() : req.permissions());
     }
 
-    /** 部门「全部授权 / 本模块 / 本组」：服务端按授权策略过滤后补齐。 */
+    /** 部门「全部授权 / 本模块 / 本组」：服务端按授权策略过滤后补齐。与逐项保存同一道再认证门(ADR-110)。 */
     @PutMapping("/departments/{departmentId}/permissions/grant-all")
+    @RequiresStepUp
     public PermissionChangeDto grantAllToDepartment(@PathVariable UUID departmentId,
                                                     @Valid @RequestBody(required = false) PermissionBulkScopeDto scope) {
         return departmentPermissionAdmin.grantAll(departmentId,
@@ -65,8 +68,9 @@ public class AdminPermissionController {
         return departmentPermissionAdmin.baseline();
     }
 
-    /** 保存全员基础包(期望的完整集合，服务端按差量落库)。 */
+    /** 保存全员基础包(期望的完整集合，服务端按差量落库)。影响全体在职员工，同样要求再认证(ADR-110)。 */
     @PutMapping("/permission-baseline")
+    @RequiresStepUp
     public PermissionChangeDto setBaseline(@Valid @RequestBody DepartmentPermissionsDto req) {
         return departmentPermissionAdmin.setBaseline(
                 req.permissions() == null ? List.of() : req.permissions());

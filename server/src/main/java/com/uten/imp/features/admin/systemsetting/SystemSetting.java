@@ -15,10 +15,10 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * 系统设置项（运行时可配的安全/业务策略阈值）。
+ * 系统设置的当前值 (一行一个设置项)。
  *
- * <p>key 为主键（如 {@code lockout_minutes}）；value 统一存字符串，按 {@link #valueType} 解析。
- * 密钥/部署类配置不在本表（见迁移注释）。
+ * <p>类型、默认值、取值范围、分组、名称与说明只登记在 {@link SystemSettingKey}; 本表只存值与
+ * 最后修改人/时间 (ADR-110)。密钥/部署类配置不在本表。</p>
  */
 @Entity
 @Table(name = "system_settings")
@@ -26,7 +26,7 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class SystemSetting {
+class SystemSetting {
 
     @Id
     @Column(name = "key")
@@ -34,24 +34,6 @@ public class SystemSetting {
 
     @Column(nullable = false)
     private String value;
-
-    @Column(name = "value_type", nullable = false)
-    private String valueType = "int";
-
-    @Column(nullable = false)
-    private String category;
-
-    @Column(nullable = false)
-    private String label;
-
-    @Column
-    private String description;
-
-    @Column
-    private String unit;
-
-    @Column(name = "sort_order", nullable = false)
-    private int sortOrder;
 
     // PostgreSQL DEFAULT/BEFORE UPDATE trigger owns the value. Hibernate reads
     // it from the mutation result so a flushed DTO never exposes a stale time.

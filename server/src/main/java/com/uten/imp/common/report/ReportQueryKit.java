@@ -4,6 +4,7 @@ import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -147,8 +148,8 @@ public final class ReportQueryKit {
      * 经 total/exportColumns/rows 三个取数函数适配，exportColumns 返回 null 表示无列——与原
      * {@code r.columns() != null} 判断等价）。
      *
-     * @param maxRows 导出内存安全上限（各服务原 inline 读 {@code settings.readInt("export_max_rows", 100000)}；
-     *                由调用方解析后传入，本类不依赖 SystemSettingsService，保持 common 不反向依赖 features）
+     * @param maxRows 导出行数上限 (系统设置 export_max_rows, 调用方经 ExportLimitPort 读取后传入;
+     *                本类不依赖系统设置模块, 保持 common 不反向依赖 features)
      */
     public static <T> ExportPayload paginateAll(int maxRows,
                                                 BiFunction<Integer, Integer, T> loader,
@@ -162,8 +163,8 @@ public final class ReportQueryKit {
         while (page <= 2000) {
             T r = loader.apply(page, size);
             if (page == 1 && total.applyAsLong(r) > maxRows) {
-                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
+                // 导出行数上限 (系统设置 export_max_rows)：超限要求收窄筛选/分批，防 OOM。
+                throw tooManyRows(maxRows);
             }
             if (cols == null) {
                 List<ExportColumn> first = exportColumns.apply(r);
@@ -176,5 +177,37 @@ public final class ReportQueryKit {
             page++;
         }
         return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
+    }
+    /**
+     * 主档导出的分页收集 (每页 100 行, 与列表接口的页大小上限一致): 首页 total 超过
+     * {@code maxRows} 直接拒绝; 导出过程中行数增长越过上限同样拒绝, 不产出半截文件。
+     * 2026-09-23 从货品/客户/供应商/账户/币种五份复制的循环收敛 (audit-retention-settings-11)。
+     */
+    public static <T> List<Map<String, Object>> collectPages(
+            int maxRows,
+            BiFunction<Integer, Integer, PageResponse<T>> loader,
+            Function<T, Map<String, Object>> mapper) {
+        final int size = 100;
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int page = 1; ; page++) {
+            PageResponse<T> r = loader.apply(page, size);
+            if (page == 1 && r.getTotal() > maxRows) {
+                throw tooManyRows(maxRows);
+            }
+            for (T item : r.getItems()) {
+                rows.add(mapper.apply(item));
+            }
+            if (rows.size() > maxRows) {
+                throw tooManyRows(maxRows);
+            }
+            if (r.getItems().size() < size || rows.size() >= r.getTotal()) {
+                return rows;
+            }
+        }
+    }
+
+    private static ApiException tooManyRows(int maxRows) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED,
+                "导出数据超过 " + maxRows + " 行上限 (系统设置「导出行数上限」)，请收窄筛选条件或分批导出");
     }
 }

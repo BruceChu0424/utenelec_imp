@@ -1,6 +1,7 @@
 package com.uten.imp.security;
 
 import com.uten.imp.config.props.JwtProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -11,6 +12,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -46,27 +48,22 @@ public class JwtService {
      * after the authorization stamps are validated on every request. This keeps request
      * headers bounded and prevents a signed-but-stale permission snapshot from being used.
      */
-    public String issueAccess(UUID userId, long authVersion, long authorizationEpoch) {
-        return issueAccess(userId, authVersion, authorizationEpoch, null);
-    }
-
     public String issueAccess(
             UUID userId,
             long authVersion,
             long authorizationEpoch,
             UUID sessionId) {
+        // 每个访问令牌都必须挂在一条服务端会话上: 过滤器按 sid 查吊销/空闲/绝对期限 (ADR-110)。
+        Objects.requireNonNull(sessionId, "sessionId");
         Instant now = Instant.now();
-        Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
-        var token = Jwts.builder()
+        Instant exp = now.plusSeconds(getAccessTtlSeconds());
+        return Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(userId.toString())
                 .claim("av", authVersion)
                 .claim("ae", authorizationEpoch)
-                .claim("typ", "staff");
-        if (sessionId != null) {
-            token.claim("sid", sessionId.toString());
-        }
-        return token
+                .claim("typ", "staff")
+                .claim("sid", sessionId.toString())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
@@ -80,17 +77,6 @@ public class JwtService {
      * 额外的 {@code imp} claim 记录真实操作人（admin），供只读守卫与审计区分。过期时间由调用方
      * 按「模拟窗口」封顶，短于普通 access token 也可。
      */
-    public String issueImpersonationAccess(UUID targetUserId, long authVersion, long authorizationEpoch,
-                                           UUID adminUserId, Instant expiresAt) {
-        return issueImpersonationAccess(
-                targetUserId,
-                authVersion,
-                authorizationEpoch,
-                adminUserId,
-                expiresAt,
-                null);
-    }
-
     public String issueImpersonationAccess(
             UUID targetUserId,
             long authVersion,
@@ -98,19 +84,18 @@ public class JwtService {
             UUID adminUserId,
             Instant expiresAt,
             UUID sessionId) {
+        // sid 是发起模拟的超管自己的会话: 超管退出登录或空闲超时, 模拟令牌随之失效。
+        Objects.requireNonNull(sessionId, "sessionId");
         Instant now = Instant.now();
         Instant exp = expiresAt.isBefore(now) ? now.plusSeconds(1) : expiresAt;
-        var token = Jwts.builder()
+        return Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(targetUserId.toString())
                 .claim("av", authVersion)
                 .claim("ae", authorizationEpoch)
                 .claim("typ", "staff")
-                .claim("imp", adminUserId.toString());
-        if (sessionId != null) {
-            token.claim("sid", sessionId.toString());
-        }
-        return token
+                .claim("imp", adminUserId.toString())
+                .claim("sid", sessionId.toString())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
@@ -118,44 +103,41 @@ public class JwtService {
     }
 
     /**
-     * 模拟模式凭证（proof that the admin recently re-confirmed their password）。
-     * 自包含、无状态：{@code typ=impersonation-mode}、{@code sub=adminId}、签名 + 过期。
-     * 限时窗口内凭它在 /start 反复切换不同目标，无需再输密码。
+     * 模拟模式凭证 (proof that the admin recently passed step-up re-authentication)。
+     * 自包含: {@code typ=impersonation-mode}、{@code sub=adminId}、{@code sid=签发时的会话}、签名 + 过期。
+     * 限时窗口内凭它在 /start 反复切换不同目标, 无需再输密码; 换了会话 (重新登录) 即作废。
      */
-    public String issueModeToken(UUID adminUserId, Instant expiresAt) {
+    public String issueModeToken(UUID adminUserId, UUID sessionId, Instant expiresAt) {
+        Objects.requireNonNull(sessionId, "sessionId");
         Instant now = Instant.now();
         Instant exp = expiresAt.isBefore(now) ? now.plusSeconds(1) : expiresAt;
         return Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(adminUserId.toString())
                 .claim("typ", "impersonation-mode")
+                .claim("sid", sessionId.toString())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
                 .compact();
     }
 
-    /** 模拟模式窗口时长（秒），默认 15 分钟，可在 system_settings.impersonation_window_minutes 调整。 */
+    /** 模拟模式窗口时长 (秒), 系统设置「切换人窗口」。 */
     public long getImpersonationWindowSeconds() {
-        return settings.readLong("impersonation_window_minutes", 15) * 60;
+        return settings.readLong(SystemSettingKey.IMPERSONATION_WINDOW_MINUTES) * 60;
     }
 
     /** 访客访问 JWT（typ=visitor，subject=visitorId）。 */
-    public String issueVisitorAccess(UUID visitorId, String visitorNo, String avatarSeed,
-                                     Set<String> permissions) {
-        return issueVisitorAccess(
-                visitorId, visitorNo, avatarSeed, permissions, null);
-    }
-
     public String issueVisitorAccess(
             UUID visitorId,
             String visitorNo,
             String avatarSeed,
             Set<String> permissions,
             UUID sessionId) {
+        Objects.requireNonNull(sessionId, "sessionId");
         Instant now = Instant.now();
-        Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
-        var token = Jwts.builder()
+        Instant exp = now.plusSeconds(getAccessTtlSeconds());
+        return Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(visitorId.toString())
                 .claim("typ", "visitor")
@@ -164,11 +146,8 @@ public class JwtService {
                 .claim("acc", visitorNo)
                 .claim("vno", visitorNo)
                 .claim("avs", avatarSeed)
-                .claim("perms", permissions);
-        if (sessionId != null) {
-            token.claim("sid", sessionId.toString());
-        }
-        return token
+                .claim("perms", permissions)
+                .claim("sid", sessionId.toString())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
@@ -185,6 +164,6 @@ public class JwtService {
     }
 
     public long getAccessTtlSeconds() {
-        return settings.readLong("jwt_access_ttl_minutes", 15) * 60;
+        return settings.readLong(SystemSettingKey.JWT_ACCESS_TTL_MINUTES) * 60;
     }
 }

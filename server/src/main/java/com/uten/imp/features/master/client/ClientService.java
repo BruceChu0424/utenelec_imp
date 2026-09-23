@@ -23,6 +23,7 @@ import com.uten.imp.features.master.client.dto.FacetBucket;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import com.uten.imp.features.master.clientcategory.ClientCategoryRepository;
 import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -240,7 +241,7 @@ public class ClientService {
      * 覆盖前端表格的业务列；默认结账方式按 UUID 批量解析名称，总监无对应列。
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ExportPayload export(ClientQueryFilter f, String sort, String order) {
+    public ExportPayload export(ClientQueryFilter f, String sort, String order, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
                 new ExportColumn("name", "客户简称", ExportColumn.TEXT),
@@ -266,48 +267,36 @@ public class ClientService {
                 new ExportColumn("creditFloor", "铺底额", ExportColumn.MONEY),
                 new ExportColumn("website", "网址", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
-        List<Map<String, Object>> rows = new ArrayList<>();
-        int pageSize = 100;
-        int maxPages = 1000;
-        long total = -1;
-        for (int p = 1; p <= maxPages; p++) {
-            PageResponse<ClientListItem> page = list(f, p, pageSize, sort, order);
-            if (total < 0) total = page.getTotal();
-            for (ClientListItem m : page.getItems()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("code", m.getCode());
-                row.put("name", m.getName());
-                row.put("fullName", m.getFullName());
-                row.put("defaultSettlementMethodName", m.getDefaultSettlementMethodName());
-                row.put("clientXz", m.getClientXz());
-                row.put("tday", m.getTday());
-                row.put("region", m.getRegion());
-                row.put("placeId", m.getPlaceId());
-                row.put("empId", m.getEmpId());
-                row.put("legalPerson", m.getLegalPerson());
-                row.put("linkman", m.getLinkman());
-                row.put("mobile", m.getMobile());
-                row.put("phone", m.getPhone());
-                row.put("phone2", m.getPhone2());
-                row.put("fax", m.getFax());
-                row.put("postcode", m.getPostcode());
-                row.put("address", m.getAddress());
-                row.put("bank", m.getBank());
-                row.put("bankAccount", m.getBankAccount());
-                row.put("taxId", m.getTaxId());
-                row.put("credit", m.getCredit());
-                row.put("creditFloor", m.getCreditFloor());
-                row.put("website", m.getWebsite());
-                row.put("status", m.getStatus());
-                rows.add(row);
-            }
-            if (page.getItems().size() < pageSize) break;
-            if (rows.size() >= total) break;
-            if (p == maxPages && rows.size() < total) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
-            }
-        }
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", m.getCode());
+                    row.put("name", m.getName());
+                    row.put("fullName", m.getFullName());
+                    row.put("defaultSettlementMethodName", m.getDefaultSettlementMethodName());
+                    row.put("clientXz", m.getClientXz());
+                    row.put("tday", m.getTday());
+                    row.put("region", m.getRegion());
+                    row.put("placeId", m.getPlaceId());
+                    row.put("empId", m.getEmpId());
+                    row.put("legalPerson", m.getLegalPerson());
+                    row.put("linkman", m.getLinkman());
+                    row.put("mobile", m.getMobile());
+                    row.put("phone", m.getPhone());
+                    row.put("phone2", m.getPhone2());
+                    row.put("fax", m.getFax());
+                    row.put("postcode", m.getPostcode());
+                    row.put("address", m.getAddress());
+                    row.put("bank", m.getBank());
+                    row.put("bankAccount", m.getBankAccount());
+                    row.put("taxId", m.getTaxId());
+                    row.put("credit", m.getCredit());
+                    row.put("creditFloor", m.getCreditFloor());
+                    row.put("website", m.getWebsite());
+                    row.put("status", m.getStatus());
+                    return row;
+                });
         return new ExportPayload(cols, rows, rows.size());
     }
 

@@ -2,7 +2,10 @@ package com.uten.imp.security;
 
 import com.uten.imp.config.props.DeploymentProperties;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 import java.net.InetAddress;
@@ -11,18 +14,57 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Fail-closed source-network policy for the on-premises API. */
+/**
+ * Fail-closed source-network policy for the on-premises API.
+ *
+ * <p>prod profile (security-17, ADR-110): application-prod.yml 不给默认网段, 部署环境
+ * 必须显式配置 {@code UTEN_LOCAL_ALLOWED_CIDRS} (部署脚本 phase3 已生成该项), 未配置即启动失败;
+ * 配置里含整段 RFC1918 私网 (/8、/12、/16) 或更宽的网段时启动告警, 提示收窄到公司实际网段。</p>
+ */
+@Slf4j
 @Component
-@RequiredArgsConstructor
 public class LocalNetworkAccessPolicy {
 
+    private static final List<String> WHOLE_PRIVATE_BLOCKS = List.of(
+            "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16");
+
     private final DeploymentProperties deployment;
+    private final Environment environment;
     private volatile List<CidrBlock> allowedCidrs;
+
+    @Autowired
+    public LocalNetworkAccessPolicy(DeploymentProperties deployment, Environment environment) {
+        this.deployment = deployment;
+        this.environment = environment;
+    }
+
+    public LocalNetworkAccessPolicy(DeploymentProperties deployment) {
+        this(deployment, null);
+    }
 
     @PostConstruct
     void validateConfiguration() {
         if (isLocalSite()) {
             allowedCidrs = parseCidrs(deployment.getLocalAllowedCidrs());
+            if (environment != null && environment.acceptsProfiles(Profiles.of("prod"))) {
+                warnWhenBroad(allowedCidrs);
+            }
+        }
+    }
+
+    /** 覆盖整段私网或更宽的规则只告警不拒绝: 已有部署不因此起不来, 但运维每次启动都会看到。 */
+    private static void warnWhenBroad(List<CidrBlock> rules) {
+        List<CidrBlock> whole = WHOLE_PRIVATE_BLOCKS.stream().map(CidrBlock::parse).toList();
+        for (CidrBlock rule : rules) {
+            boolean coversWholeBlock = whole.stream().anyMatch(block ->
+                    rule.network().length == block.network().length
+                            && rule.prefixBits() <= block.prefixBits()
+                            && rule.contains(block.firstAddress()));
+            if (coversWholeBlock) {
+                log.warn("本地来源网段 uten.deployment.local-allowed-cidrs 含整段私网 {}/{}，"
+                                + "生产环境应收窄到公司实际网段 (安全策略 §3.6)",
+                        CidrBlock.format(rule.network()), rule.prefixBits());
+            }
         }
     }
 
@@ -143,6 +185,22 @@ public class LocalNetworkAccessPolicy {
                 throw invalid(value, null);
             }
             return new CidrBlock(network, prefix);
+        }
+
+        private InetAddress firstAddress() {
+            try {
+                return InetAddress.getByAddress(network);
+            } catch (UnknownHostException impossible) {
+                throw new IllegalStateException(impossible);
+            }
+        }
+
+        private static String format(byte[] address) {
+            try {
+                return InetAddress.getByAddress(address).getHostAddress();
+            } catch (UnknownHostException impossible) {
+                return "?";
+            }
         }
 
         private boolean contains(InetAddress candidate) {

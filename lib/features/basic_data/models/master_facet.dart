@@ -56,6 +56,8 @@ List<MasterFacetBucket> masterDictionaryFacets(Map<String, String> entries) {
 /// };
 /// ```
 Map<String, dynamic> masterFilterQueryParams(Map<String, String?> filters) {
+  // 客户/供应商的手机、电话、银行账号筛选值只走请求体 (见 contactSensitiveFilterBody)。
+  filters = withoutContactSensitiveValues(filters);
   final query = <String, dynamic>{};
   final nullFields = <String>[];
   filters.forEach((k, v) {
@@ -68,3 +70,38 @@ Map<String, dynamic> masterFilterQueryParams(Map<String, String?> filters) {
   if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
   return query;
 }
+
+/// 客户/供应商列表里的手机、电话、银行账号筛选值属于个人/资金敏感信息：
+/// 只能放在 POST 请求体里，不能进 URL 查询串 (反向代理访问日志会整行记下查询串)。
+/// 搜索框关键字会匹配手机号，同样只走请求体 (见 [contactSensitiveFilterBody] 的 keyword)。
+const Set<String> kContactSensitiveFilterKeys = {
+  'mobile',
+  'phone',
+  'phone2',
+  'bankAccount',
+};
+
+/// 取出要放进请求体的敏感检索值：搜索框关键字 + 敏感列筛选值。
+/// 「筛为空」哨兵只暴露字段名，仍随 nullFields 走查询串。
+Map<String, String> contactSensitiveFilterBody(
+  Map<String, String?> filters, {
+  String? keyword,
+}) => {
+  if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+  for (final entry in filters.entries)
+    if (kContactSensitiveFilterKeys.contains(entry.key) &&
+        entry.value != null &&
+        entry.value != kMasterFilterNullValue &&
+        entry.value!.trim().isNotEmpty)
+      entry.key: entry.value!,
+};
+
+/// 去掉敏感筛选值后的筛选表 (敏感字段的「筛为空」哨兵保留)。
+Map<String, String?> withoutContactSensitiveValues(
+  Map<String, String?> filters,
+) => {
+  for (final entry in filters.entries)
+    if (!kContactSensitiveFilterKeys.contains(entry.key) ||
+        entry.value == kMasterFilterNullValue)
+      entry.key: entry.value,
+};

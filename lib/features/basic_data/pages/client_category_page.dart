@@ -226,6 +226,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         endpoint: '/master/clients/export',
         permission: Perm.clientExport,
         label: '导出客户', // TODO(l10n): 补 arb
+        contactSensitiveInBody: true,
       ),
       onCreate: (pane) {
         _pane = pane;

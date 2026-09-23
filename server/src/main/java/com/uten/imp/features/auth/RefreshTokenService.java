@@ -1,8 +1,6 @@
 package com.uten.imp.features.auth;
 
 import com.uten.imp.common.util.HashUtil;
-import com.uten.imp.config.props.JwtProperties;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.model.RefreshToken;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import org.springframework.stereotype.Service;
@@ -15,6 +13,9 @@ import java.util.UUID;
 
 /**
  * 不透明刷新令牌：生成 256bit 随机串，只存 sha256 哈希。轮换 + 重用检测见 {@link TokenIssuer#refresh}。
+ *
+ * <p>每次登录先在 auth_sessions 开一条服务端会话 (ADR-110), 刷新令牌的过期时间就是会话的绝对期限:
+ * 轮换只换令牌, 不延长期限。</p>
  */
 @Service
 public class RefreshTokenService {
@@ -22,13 +23,11 @@ public class RefreshTokenService {
     private static final SecureRandom RNG = new SecureRandom();
 
     private final RefreshTokenRepository repo;
-    private final JwtProperties props;
-    private final SystemSettingsService settings;
+    private final AuthSessionService sessions;
 
-    public RefreshTokenService(RefreshTokenRepository repo, JwtProperties props, SystemSettingsService settings) {
+    public RefreshTokenService(RefreshTokenRepository repo, AuthSessionService sessions) {
         this.repo = repo;
-        this.props = props;
-        this.settings = settings;
+        this.sessions = sessions;
     }
 
     public record IssuedRefreshToken(
@@ -40,15 +39,18 @@ public class RefreshTokenService {
 
     /** Starts one new login session and issues its first refresh token. */
     public IssuedRefreshToken issueNewSession(UUID userId, String deviceInfo) {
-        return issueInSession(userId, deviceInfo, UUID.randomUUID());
+        AuthSessionService.OpenedSession session = sessions.openStaffSession(userId);
+        return issueInSession(userId, deviceInfo, session.sid(), session.absoluteExpiresAt());
     }
 
-    /** Rotates within an existing server-authoritative login session. */
+    /** Rotates within an existing server-authoritative login session; never extends it. */
     public IssuedRefreshToken issueInSession(
             UUID userId,
             String deviceInfo,
-            UUID sessionId) {
+            UUID sessionId,
+            OffsetDateTime sessionExpiresAt) {
         Objects.requireNonNull(sessionId, "sessionId");
+        Objects.requireNonNull(sessionExpiresAt, "sessionExpiresAt");
         String raw = rawToken();
         RefreshToken t = new RefreshToken();
         t.setUserId(userId);
@@ -56,7 +58,7 @@ public class RefreshTokenService {
         t.setDeviceInfo(deviceInfo);
         t.setTokenHash(HashUtil.sha256(raw));
         t.setIssuedAt(OffsetDateTime.now());
-        t.setExpiresAt(OffsetDateTime.now().plusDays(settings.readLong("jwt_refresh_ttl_days", 7)));
+        t.setExpiresAt(sessionExpiresAt);
         repo.save(t);
         return new IssuedRefreshToken(raw, t.getId(), sessionId, t.getExpiresAt());
     }

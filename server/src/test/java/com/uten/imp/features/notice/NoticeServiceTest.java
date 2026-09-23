@@ -3,8 +3,8 @@ package com.uten.imp.features.notice;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
-import com.uten.imp.features.admin.systemsetting.SystemSetting;
-import com.uten.imp.features.admin.systemsetting.SystemSettingRepository;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
 import com.uten.imp.features.notice.NoticeBlessingRepository.NoticeBlessingRow;
@@ -61,7 +61,6 @@ class NoticeServiceTest {
     private SecurityContextCurrentUser currentUser;
     private NoticeAudienceService audienceService;
     private SystemSettingsService systemSettings;
-    private SystemSettingRepository settingRepo;
     private NoticeService service;
     private ReviewNoticeAudience reviewAudience;
     private UUID userId;
@@ -81,7 +80,6 @@ class NoticeServiceTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         audienceService = mock(NoticeAudienceService.class);
         systemSettings = mock(SystemSettingsService.class);
-        settingRepo = mock(SystemSettingRepository.class);
         reviewAudience = mock(ReviewNoticeAudience.class);
         when(reviewAudience.workshopScope(any())).thenReturn(ReviewNoticeAudience.WorkshopScope.NONE);
         when(reviewAudience.eligibleEvents(any())).thenReturn(ReviewNoticeCatalog.events());
@@ -112,7 +110,6 @@ class NoticeServiceTest {
                 audienceService,
                 mock(TxSessionVars.class),
                 systemSettings,
-                settingRepo,
                 mock(com.uten.imp.audit.AuditService.class),
                 claims,
                 nameLookup, reviewAudience);
@@ -994,6 +991,7 @@ class NoticeServiceTest {
                 blessingRow(b1, "张三", "生日快乐", otherUser),
                 blessingRow(b2, "我", "同祝", userId)));
         when(blessRepo.countByNoticeId(noticeId)).thenReturn(2L);
+        stubVisibleBroadcast(noticeId);
 
         NoticeService.BlessingPage p = service.listBlessings(noticeId, 0, 50);
         assertEquals(2L, p.count());
@@ -1010,11 +1008,51 @@ class NoticeServiceTest {
                 ackerRow("张三", t),
                 ackerRow("李四", t)));
         when(ackRepository.countByIdNoticeId(noticeId)).thenReturn(2L);
+        stubVisibleBroadcast(noticeId);
 
         NoticeService.AcknowledgerPage p = service.listAcknowledgers(noticeId, 8);
         assertEquals(2L, p.count());
         assertEquals(2, p.items().size());
         assertEquals("张三", p.items().get(0).name());
+    }
+
+    /** security-15: 回执人/祝福列表与详情同口径, 非受众按 UUID 取不到任何姓名。 */
+    @Test
+    void acknowledgersAndBlessingsOfAnotherUsersNoticeAre404() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setAudienceScope("selected");
+        notice.setAudienceUserId(UUID.randomUUID());
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+
+        ApiException acks = assertThrows(ApiException.class,
+                () -> service.listAcknowledgers(noticeId, 8));
+        ApiException blessings = assertThrows(ApiException.class,
+                () -> service.listBlessings(noticeId, 0, 20));
+
+        assertEquals(ErrorCode.NOT_FOUND, acks.getCode());
+        assertEquals(ErrorCode.NOT_FOUND, blessings.getCode());
+        verify(ackRepository, never()).findRecentAcknowledgers(any(), anyInt());
+        verify(blessRepo, never()).findPage(any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void acknowledgersOfUnknownNoticeAre404() {
+        UUID noticeId = UUID.randomUUID();
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.empty());
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.listAcknowledgers(noticeId, 8));
+
+        assertEquals(ErrorCode.NOT_FOUND, error.getCode());
+    }
+
+    private void stubVisibleBroadcast(UUID noticeId) {
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
     }
 
     @Test
@@ -1132,10 +1170,10 @@ class NoticeServiceTest {
     @Test
     void getCelebrationSettingsReadsThreeKeys() {
         // V600：auto_enabled 代码默认值改 false（存量为 true 的库由迁移翻回）。
-        when(systemSettings.readBool("celebration.auto_enabled", false)).thenReturn(true);
-        when(systemSettings.readString("celebration.auto_types", "birthday,anniversary"))
+        when(systemSettings.readBool(SystemSettingKey.CELEBRATION_AUTO_ENABLED)).thenReturn(true);
+        when(systemSettings.readString(SystemSettingKey.CELEBRATION_AUTO_TYPES))
                 .thenReturn("birthday");
-        when(systemSettings.readString("celebration.publisher_name", "公司"))
+        when(systemSettings.readString(SystemSettingKey.CELEBRATION_PUBLISHER_NAME))
                 .thenReturn("人力资源部");
 
         var dto = service.getCelebrationSettings();
@@ -1152,40 +1190,13 @@ class NoticeServiceTest {
     }
 
     @Test
-    void setCelebrationAutoEnabledFlipsRowAndAudits() {
-        SystemSetting row = celebrationAutoSetting("true");
-        when(settingRepo.findAllForUpdate(List.of("celebration.auto_enabled")))
-                .thenReturn(List.of(row));
-
+    void setCelebrationAutoEnabledDelegatesToTheSingleSettingsWritePath() {
         var dto = service.setCelebrationAutoEnabled(false, userId, "hr");
 
-        assertEquals("false", row.getValue());
-        assertEquals(userId, row.getUpdatedBy());
-        verify(settingRepo).save(row);
-        verify(settingRepo).flush();
+        // audit-retention-settings-10: 不再直连设置仓库, 与管理页共用校验、行锁与审计。
+        verify(systemSettings).writeDelegated(SystemSettingKey.CELEBRATION_AUTO_ENABLED,
+                "false", userId, "hr", "notice_celebration_auto_toggle");
         assertFalse(dto.autoEnabled());
-    }
-
-    @Test
-    void setCelebrationAutoEnabledSkipsWriteWhenUnchanged() {
-        SystemSetting row = celebrationAutoSetting("true");
-        when(settingRepo.findAllForUpdate(List.of("celebration.auto_enabled")))
-                .thenReturn(List.of(row));
-
-        service.setCelebrationAutoEnabled(true, userId, "hr");
-
-        verify(settingRepo, never()).save(any());
-    }
-
-    private static SystemSetting celebrationAutoSetting(String value) {
-        SystemSetting s = new SystemSetting();
-        s.setKey("celebration.auto_enabled");
-        s.setValue(value);
-        s.setValueType("bool");
-        s.setCategory("business");
-        s.setLabel("庆典通知自动发布");
-        s.setSortOrder(320);
-        return s;
     }
 
     // =========================== 庆典体验：我的今日 / 一键批量祝福 ===========================

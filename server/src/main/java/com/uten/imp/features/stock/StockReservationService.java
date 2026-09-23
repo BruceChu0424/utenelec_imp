@@ -3,6 +3,8 @@ package com.uten.imp.features.stock;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -32,18 +34,21 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockReservationService {
 
-    /**
-     * 预留持有宽限期（天）：交货日过后再容忍 N 天才视为"逾期持有"。
-     * hold_until 为 NULL 的预留，其持有截止 = 订单交货日 + 本宽限（动态算，免回填、交期改后跟随）。
-     * 销售订单详情逾期天数计算（SalesOrderService）与过期扫描调度器（ReservationHoldScheduler）
-     * 共用此常量，保证口径一致。对齐 SAP OMBN 保留期"按需求日期"语义。
-     */
-    public static final int HOLD_GRACE_DAYS = 7;
-
     private final StockReservationRepository reservationRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final InventoryMutationLock inventoryLock;
+    private final SystemSettingsService settings;
+
+    /**
+     * 预留持有宽限期 (天): 交货日过后再容忍 N 天才视为"逾期持有"。
+     * hold_until 为 NULL 的预留, 其持有截止 = 订单交货日 + 本宽限 (动态算, 免回填、交期改后跟随)。
+     * 读系统设置「预留超期提醒天数」, 销售订单详情逾期天数 (SalesOrderService) 与过期扫描调度器
+     * (ReservationHoldScheduler) 读同一个设置, 保证口径一致。对齐 SAP OMBN 保留期"按需求日期"语义。
+     */
+    public int holdGraceDays() {
+        return settings.readInt(SystemSettingKey.RESERVATION_HOLD_GRACE_DAYS);
+    }
 
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void lockInventory(Collection<InventoryKey> keys) {

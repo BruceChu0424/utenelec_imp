@@ -1906,7 +1906,7 @@ public class SalesOrderService {
         if (goodsId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "货品必填");
         }
-        int grace = StockReservationService.HOLD_GRACE_DAYS;
+        int grace = reservationService.holdGraceDays();
         List<ScarceStockReservationView> out = new ArrayList<>();
         for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT r.id, r.order_item_id, o.id, o.bill_no, g.code,

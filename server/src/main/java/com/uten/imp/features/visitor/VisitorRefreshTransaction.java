@@ -3,6 +3,7 @@ package com.uten.imp.features.visitor;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.auth.AuthSessionService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,13 +18,16 @@ public class VisitorRefreshTransaction {
     private final VisitorRefreshTokenRepository tokenRepo;
     private final VisitorRefreshTokenService tokenService;
     private final VisitorAccountRepository accountRepo;
+    private final AuthSessionService sessions;
 
     public VisitorRefreshTransaction(VisitorRefreshTokenRepository tokenRepo,
                                      VisitorRefreshTokenService tokenService,
-                                     VisitorAccountRepository accountRepo) {
+                                     VisitorAccountRepository accountRepo,
+                                     AuthSessionService sessions) {
         this.tokenRepo = tokenRepo;
         this.tokenService = tokenService;
         this.accountRepo = accountRepo;
+        this.sessions = sessions;
     }
 
     public record Outcome(boolean reuseDetected,
@@ -55,11 +59,18 @@ public class VisitorRefreshTransaction {
         VisitorRefreshToken token = tokenRepo
                 .findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        // 与员工同口径: 会话已吊销/超绝对期限/空闲超时一律不能再换新令牌 (ADR-110)。
+        AuthSessionService.Verdict session = sessions.lockAndEvaluateForRefresh(
+                token.getSessionId(), null, token.getVisitorAccountId());
         if (token.getRevokedAt() != null) {
+            // 与员工同口径: 只有已被轮换出新令牌的旧令牌再次出现才算重放。
+            if (token.getReplacedBy() == null || session != AuthSessionService.Verdict.ACTIVE) {
+                throw new ApiException(ErrorCode.UNAUTHORIZED);
+            }
             return Outcome.reuse(
                     token.getVisitorAccountId(), token.getId(), token.getSessionId());
         }
-        if (!token.isValid()) {
+        if (!token.isValid() || session != AuthSessionService.Verdict.ACTIVE) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
@@ -71,7 +82,8 @@ public class VisitorRefreshTransaction {
 
         VisitorRefreshTokenService.IssuedRefreshToken replacement =
                 tokenService.issueInSession(
-                        account.getId(), deviceInfo, token.getSessionId());
+                        account.getId(), deviceInfo, token.getSessionId(),
+                        token.getExpiresAt());
         tokenService.revoke(token, replacement.tokenId());
         return Outcome.rotated(
                 account,

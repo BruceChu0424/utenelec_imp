@@ -5,6 +5,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -33,6 +34,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,6 +80,7 @@ public class EmployeeCommandService {
     private final EmployeeLoginAccountSync loginAccountSync;
     private final DataHandoverService dataHandoverService;
     private final EmployeeSecondaryDepartmentRepository secondaryDeptRepo;
+    private final AuthSessionService sessions;
 
     // ===== 更新 =====
     /** 编辑员工档案：状态机收口——离职/复职禁止在此直改，必须走 /offboard、/rehire 以保证账号冻结与任职轨迹闭环；每次保存递增 version，使在途申请审批时 409 防丢更新。 */
@@ -393,9 +396,12 @@ public class EmployeeCommandService {
             account.setStatus("disabled");
             account.setRemoteAccess(false);
             account.setMustChangePassword(true);
-            account.setTempPasswordExpiresAt(null);
+            // 旧密码随离职立即作废 (ADR-110): 复职后由账号支持重新发放临时密码, 旧密码 (含从未改过的
+            // 初始密码) 不会随复职复活。库触发器同样不允许「必须改密却永不过期」的凭据 (写空即按已过期落库)。
+            account.setTempPasswordExpiresAt(OffsetDateTime.now());
             userRepo.save(account);
             refreshTokenRepo.revokeAllByUserId(account.getId());
+            sessions.revokeAllForUser(account.getId(), AuthSessionService.REASON_ACCOUNT_STATUS);
         });
         dataHandoverService.completeOffboarding(req.requestId(), handoverSummary);
     }
@@ -514,14 +520,16 @@ public class EmployeeCommandService {
         e.setVersion(e.getVersion() + 1);   // 乐观锁：复职也是档案变更
         empRepo.save(e);
 
-        // 新任职不恢复旧个人授权/外网能力；旧密码仅可进入强制改密流程。
+        // 新任职不恢复旧个人授权/外网能力；旧密码保持作废 (离职时已置过期)，需由账号支持
+        // 重置后把新的临时密码交给员工 (ADR-110)。
         if (lockedAccount != null) {
             lockedAccount.setStatus("active");
             lockedAccount.setRemoteAccess(false);
             lockedAccount.setMustChangePassword(true);
-            lockedAccount.setTempPasswordExpiresAt(null);
+            lockedAccount.setTempPasswordExpiresAt(OffsetDateTime.now());
             userRepo.save(lockedAccount);
             refreshTokenRepo.revokeAllByUserId(lockedAccount.getId());
+            sessions.revokeAllForUser(lockedAccount.getId(), AuthSessionService.REASON_ACCOUNT_STATUS);
         }
     }
 

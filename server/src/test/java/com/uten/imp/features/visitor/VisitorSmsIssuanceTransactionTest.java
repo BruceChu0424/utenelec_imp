@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.security.TxSessionVars;
@@ -47,9 +48,9 @@ class VisitorSmsIssuanceTransactionTest {
                 .thenReturn(Optional.empty());
         when(repository.countByPhoneAndCreatedAtAfter(eq("13800138000"), any()))
                 .thenReturn(0L);
-        when(settings.readInt("sms_send_interval_seconds", 60)).thenReturn(60);
-        when(settings.readInt("sms_daily_limit", 10)).thenReturn(10);
-        when(settings.readInt("sms_code_ttl_minutes", 5)).thenReturn(5);
+        when(settings.readInt(SystemSettingKey.SMS_SEND_INTERVAL_SECONDS)).thenReturn(60);
+        when(settings.readInt(SystemSettingKey.SMS_DAILY_LIMIT)).thenReturn(10);
+        when(settings.readInt(SystemSettingKey.SMS_CODE_TTL_MINUTES)).thenReturn(5);
     }
 
     @Test

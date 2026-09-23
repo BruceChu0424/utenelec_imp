@@ -28,6 +28,12 @@ class ArchitectureBoundaryTest {
     private static final Path FEATURE_SOURCE = MAIN_SOURCE.resolve("features");
     private static final Pattern FEATURE_IMPORT = Pattern.compile(
             "(?m)^import\\s+com\\.uten\\.imp\\.features\\.([a-zA-Z0-9_]+)\\.");
+    private static final Pattern ADMIN_CONTROLLER = Pattern.compile(
+            "(?m)^@RequestMapping\\(\"/api/admin");
+    private static final Pattern WRITE_MAPPING = Pattern.compile(
+            "^@(Post|Put|Patch|Delete)Mapping\\b");
+    private static final Pattern STEP_UP_EXEMPT = Pattern.compile(
+            "@StepUpExempt\\(\"([^\"]*)\"");
     private static final Pattern REPOSITORY_DEPENDENCY = Pattern.compile(
             "(?m)^import\\s+.*Repository;\\s*$|private\\s+final\\s+[\\w.]*Repository\\s+\\w+\\s*;");
 
@@ -271,6 +277,176 @@ class ArchitectureBoundaryTest {
 
     private static String stripComments(String source) {
         return source.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("(?m)//.*$", "");
+    }
+
+    /**
+     * ADR-110: /api/admin/** 下的每个写端点 (POST/PUT/PATCH/DELETE) 必须显式声明再认证
+     * ({@code @RequiresStepUp}) 或写明理由的豁免 ({@code @StepUpExempt("...")})。
+     * 新增管理端写接口时忘记考虑再认证会直接变红。
+     */
+    @Test
+    void adminWriteEndpointsDeclareStepUpOrReasonedExemption() throws IOException {
+        List<String> violations = new ArrayList<>();
+        int checked = 0;
+        for (Path file : javaFiles(MAIN_SOURCE)) {
+            String source = Files.readString(file);
+            if (!ADMIN_CONTROLLER.matcher(source).find()) {
+                continue;
+            }
+            String[] lines = source.split("\\R");
+            for (int i = 0; i < lines.length; i++) {
+                if (!WRITE_MAPPING.matcher(lines[i].strip()).find()) {
+                    continue;
+                }
+                checked++;
+                String block = annotationBlock(lines, i);
+                Matcher exempt = STEP_UP_EXEMPT.matcher(block);
+                boolean reasoned = exempt.find() && !exempt.group(1).isBlank();
+                if (!block.contains("@RequiresStepUp") && !reasoned) {
+                    violations.add(relative(file) + ":" + (i + 1) + " " + lines[i].strip());
+                }
+            }
+        }
+        assertTrue(checked > 0, "没有找到任何 /api/admin 写端点, 扫描规则失效");
+        List<String> found = violations;
+        assertTrue(found.isEmpty(),
+                () -> "/api/admin/** 写端点必须带 @RequiresStepUp 或 @StepUpExempt(\"理由\") (ADR-110):\n"
+                        + String.join("\n", found));
+    }
+
+    /** ADR-110 点名的高危操作必须要求再认证 (防止有人把注解换成豁免)。 */
+    @Test
+    void highRiskAuthorizationWritesRequireStepUp() throws IOException {
+        Map<String, List<String>> required = Map.of(
+                "features/admin/AdminUserController.java", List.of(
+                        "\"/users/{id}/reset-password\"", "\"/users/{id}/super-admin\"",
+                        "\"/users/{id}/remote-access\"", "\"/users/{id}/permission-overrides\"",
+                        "\"/users/{id}/permission-overrides/grant-all\"",
+                        "\"/users/{id}/data-scopes\""),
+                "features/admin/AdminPermissionController.java", List.of(
+                        "\"/departments/{departmentId}/permissions\"",
+                        "\"/departments/{departmentId}/permissions/grant-all\"",
+                        "\"/permission-baseline\""),
+                "features/admin/impersonation/ImpersonationController.java", List.of("\"/enter\""),
+                "features/admin/systemsetting/SystemSettingController.java", List.of("@PutMapping"),
+                "features/admin/systemtest/SystemTestController.java", List.of(
+                        "\"/business-data/reset\"", "\"/business-data/attachments/prepare\""));
+        List<String> missing = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : required.entrySet()) {
+            String[] lines = Files.readString(MAIN_SOURCE.resolve(entry.getKey())).split("\\R");
+            for (String marker : entry.getValue()) {
+                boolean seen = false;
+                for (int i = 0; i < lines.length; i++) {
+                    String line = lines[i].strip();
+                    boolean matches = WRITE_MAPPING.matcher(line).find()
+                            && (line.equals(marker) || line.contains(marker + ")"));
+                    if (!matches) {
+                        continue;
+                    }
+                    seen = true;
+                    if (!annotationBlock(lines, i).contains("@RequiresStepUp")) {
+                        missing.add(entry.getKey() + " " + marker);
+                    }
+                }
+                if (!seen) {
+                    missing.add(entry.getKey() + " 找不到 " + marker);
+                }
+            }
+        }
+        assertTrue(missing.isEmpty(),
+                () -> "以下高危写操作必须 @RequiresStepUp (ADR-110):\n" + String.join("\n", missing));
+    }
+
+    /**
+     * ADR-110: 响应里带明文临时密码的接口 (重置密码、补开账号、入职开号) 不限于 /api/admin 前缀,
+     * 同样必须 {@code @RequiresStepUp} 或写明理由的 {@code @StepUpExempt}。凭据类型按 DTO 源码自动识别
+     * (记录组件里有 temporaryPassword), 新增返回明文凭据的接口会直接变红。
+     */
+    @Test
+    void endpointsReturningPlaintextCredentialsDeclareStepUp() throws IOException {
+        Pattern credentialRecord = Pattern.compile(
+                "(?s)public\\s+record\\s+(\\w+)\\s*\\(([^)]*)\\)");
+        Set<String> credentialTypes = new HashSet<>();
+        for (Path file : javaFiles(MAIN_SOURCE)) {
+            Matcher record = credentialRecord.matcher(Files.readString(file));
+            while (record.find()) {
+                if (record.group(2).matches("(?s).*\\bString\\s+temporaryPassword\\b.*")) {
+                    credentialTypes.add(record.group(1));
+                }
+            }
+        }
+        assertTrue(credentialTypes.containsAll(Set.of("TemporaryPasswordResponse", "EmployeeOnboardingResult")),
+                () -> "凭据 DTO 识别规则失效: " + credentialTypes);
+
+        List<String> violations = new ArrayList<>();
+        int checked = 0;
+        for (Path file : javaFiles(MAIN_SOURCE)) {
+            if (!file.getFileName().toString().endsWith("Controller.java")) {
+                continue;
+            }
+            String[] lines = Files.readString(file).split("\\R");
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i].strip();
+                boolean returnsCredential = credentialTypes.stream().anyMatch(type ->
+                        line.startsWith("public " + type + " ")
+                                || line.startsWith("public ResponseEntity<" + type + "> "));
+                if (!returnsCredential) {
+                    continue;
+                }
+                checked++;
+                String annotations = annotationsAbove(lines, i);
+                Matcher exempt = STEP_UP_EXEMPT.matcher(annotations);
+                boolean reasoned = exempt.find() && !exempt.group(1).isBlank();
+                if (!annotations.contains("@RequiresStepUp") && !reasoned) {
+                    violations.add(relative(file) + ":" + (i + 1) + " " + line);
+                }
+            }
+        }
+        assertTrue(checked >= 3, "没有找到返回明文凭据的接口, 扫描规则失效");
+        assertTrue(violations.isEmpty(),
+                () -> "返回明文临时密码的接口必须 @RequiresStepUp 或 @StepUpExempt(\"理由\") (ADR-110):\n"
+                        + String.join("\n", violations));
+    }
+
+    /** 方法签名所在行之上的整组注解 (含跨行的注解参数)。 */
+    private static String annotationsAbove(String[] lines, int signatureLine) {
+        int start = signatureLine;
+        while (start > 0) {
+            String previous = lines[start - 1].strip();
+            if (previous.startsWith("@") || previous.startsWith("//") || previous.startsWith("+")
+                    || previous.startsWith("\"") || previous.startsWith("*") || previous.startsWith("/**")) {
+                start--;
+            } else {
+                break;
+            }
+        }
+        StringBuilder block = new StringBuilder();
+        for (int i = start; i <= signatureLine; i++) {
+            block.append(lines[i]).append('\n');
+        }
+        return block.toString();
+    }
+
+    /** 从写映射注解所在行向上、向下扩到同一方法的整组注解 (到方法签名为止)。 */
+    private static String annotationBlock(String[] lines, int mappingLine) {
+        int start = mappingLine;
+        while (start > 0) {
+            String previous = lines[start - 1].strip();
+            if (previous.startsWith("@") || previous.startsWith("//") || previous.startsWith("*")
+                    || previous.startsWith("/**") || previous.startsWith("\"")) {
+                start--;
+            } else {
+                break;
+            }
+        }
+        StringBuilder block = new StringBuilder();
+        for (int i = start; i < lines.length; i++) {
+            block.append(lines[i]).append('\n');
+            if (i > mappingLine && lines[i].strip().startsWith("public ")) {
+                break;
+            }
+        }
+        return block.toString();
     }
 
     private List<Path> javaFiles(Path root) throws IOException {

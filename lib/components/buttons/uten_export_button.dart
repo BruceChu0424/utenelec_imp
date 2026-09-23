@@ -18,12 +18,14 @@ import 'uten_button.dart';
 /// [report] 报表 key（与后端 GET 路径一致，如 'order/detail' / 'expediting'）。
 /// [queryParams] 过滤 + 排序参数（不含 page/size；与列表 _load 的 query 一致）。
 /// [filename] 下载文件名（不含扩展名；按钮自动追加 .xlsx）。
+/// [bodyParams] 不能进 URL 的筛选值(如客户/供应商的手机、银行账号)，随导出密码一起放请求体。
 class UtenExportButton extends ConsumerStatefulWidget {
   const UtenExportButton({
     super.key,
     required this.endpoint,
     required this.report,
     required this.queryParams,
+    this.bodyParams = const {},
     this.filename,
     this.requiredPermission,
     this.enabled = true,
@@ -35,6 +37,7 @@ class UtenExportButton extends ConsumerStatefulWidget {
   final String endpoint;
   final String report;
   final Map<String, dynamic> queryParams;
+  final Map<String, dynamic> bodyParams;
   final String? filename;
 
   /// 导出所需权限；未持有时不渲染按钮。后端仍是最终授权边界。
@@ -76,7 +79,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
           .read(apiClientProvider)
           .downloadBytes(
             widget.endpoint,
-            body: {'password': password},
+            body: {...widget.bodyParams, 'password': password},
             query: {'report': widget.report, ...widget.queryParams},
           );
       final name = '${widget.filename ?? 'export_${widget.report}'}.xlsx';

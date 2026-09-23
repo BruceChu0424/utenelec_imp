@@ -47,9 +47,6 @@ abstract interface class ProfileChangeRepository {
     String action,
     String? comment,
   );
-
-  /// 密码二次确认（仅校验，不改密）。
-  Future<void> verifyPassword(String password);
 }
 
 class SubmitProfileChangeRequest {
@@ -202,14 +199,6 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
       body: {'action': action, 'comment': ?comment},
     );
     return ProfileChangeBatch.fromJson(json);
-  }
-
-  @override
-  Future<void> verifyPassword(String password) async {
-    await api.post(
-      ApiEndpoints.authVerifyPassword,
-      body: {'password': password},
-    );
   }
 }
 

@@ -2,12 +2,11 @@ package com.uten.imp.features.admin.systemtest;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.auth.PasswordService;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.RequiresStepUp;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,13 +23,14 @@ import java.util.UUID;
  *
  * <p>清空业务数据是破坏性测试操作，五重门禁缺一不可：</p>
  * <ol>
- *   <li>运行开关 {@code uten.features.business-data-reset-enabled}——仅 dev /
- *       internal-test profile 开启，生产与云端 fail closed（403 拒绝）；</li>
+ *   <li>运行开关 {@code uten.features.business-data-reset-enabled}——dev / internal-test profile 开启;
+ *       公司内网服务器 (prod profile) 按 2026-09-12 用户测试期决定也开启, 启动时告警提示;
+ *       云端站点无论开关如何一律拒绝 (见 {@link BusinessDataResetFeatureGate})；</li>
  *   <li>数据库确认的超级管理员本人，且持目录码 {@code system:business_data_reset}
  *       (SUPERADMIN_ONLY，管理页可见、任何入口都授不出去；ADR-109)；</li>
+ *   <li>再认证: 本次重新输入登录密码换取一次性凭证 ({@link RequiresStepUp}, ADR-110)，
+ *       空闲会话不能直接清库；输错计入再认证失败次数并审计，与改系统设置、改权限同一道门；</li>
  *   <li>请求体确认口令必须逐字等于「清空业务数据」，防误触；</li>
- *   <li>本次输入本人登录密码(与改系统设置同一门槛，permissions-14)，空闲会话不能直接清库；
- *       复用 {@link PasswordService#verifyPassword}，输错写 verify_password_failed 审计；</li>
  *   <li>服务端排水闸（见 {@link BusinessDataResetService}）保证清空期间无并发业务写。</li>
  * </ol>
  */
@@ -46,30 +46,25 @@ public class SystemTestController {
     private final BusinessDataResetService businessDataResetService;
     private final SecurityContextCurrentUser currentUser;
     private final BusinessAttachmentResetPreparationService attachmentPreparation;
-    private final PasswordService passwordService;
-
-    /** 与系统设置的密码确认同一长度上限。 */
-    static final int MAX_PASSWORD_LENGTH = 256;
 
     public record PrepareAttachmentsRequest(@NotBlank String confirm,
-            @NotBlank String database, @NotBlank String fingerprint,
-            @NotBlank @Size(max = MAX_PASSWORD_LENGTH) String password) {}
+            @NotBlank String database, @NotBlank String fingerprint) {}
 
     @GetMapping("/business-data/attachments/preview")
     public com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Preview previewAttachments() {
         return attachmentPreparation.preview(currentUser.requireId());
     }
 
-    /** 提前分批删除测试业务附件：与清空业务数据同一门槛(超管专属码 + 本次密码)，物理删除不可恢复。 */
+    /** 提前分批删除测试业务附件：与清空业务数据同一门槛(超管专属码 + 再认证)，物理删除不可恢复。 */
     @PostMapping("/business-data/attachments/prepare")
     @PreAuthorize("principal.superAdmin and hasAuthority('system:business_data_reset')")
+    @RequiresStepUp
     public com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Preview prepareAttachments(
             @Valid @RequestBody PrepareAttachmentsRequest request) {
         if (!"清理测试业务附件".equals(request.confirm())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请逐字输入「清理测试业务附件」");
         }
         AuthUser operator = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-        passwordService.verifyPassword(request.password());
         return attachmentPreparation.prepare(operator.getId(), operator.getLoginAccount(),
                 new com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Confirmation(
                         request.database(), request.fingerprint()));
@@ -88,15 +83,13 @@ public class SystemTestController {
         return businessDataResetService.lastResult(currentUser.requireId(), attemptId);
     }
 
-    public record ResetBusinessDataRequest(
-            @NotBlank String confirm,
-            @NotBlank @Size(max = MAX_PASSWORD_LENGTH) String password,
-            UUID attemptId) {
+    public record ResetBusinessDataRequest(@NotBlank String confirm, UUID attemptId) {
     }
 
     /** 清空业务数据（保留基础资料/人事/权限，业务表从 1 重新编号，全员下线重登）。 */
     @PostMapping("/business-data/reset")
     @PreAuthorize("principal.superAdmin and hasAuthority('system:business_data_reset')")
+    @RequiresStepUp
     public BusinessDataResetService.Result resetBusinessData(
             @Valid @RequestBody ResetBusinessDataRequest request) {
         if (!CONFIRM_PHRASE.equals(request.confirm())) {
@@ -106,7 +99,6 @@ public class SystemTestController {
         }
         AuthUser operator = currentUser.get().orElseThrow(
                 () -> new ApiException(ErrorCode.UNAUTHORIZED, "请先登录"));
-        passwordService.verifyPassword(request.password());
         return businessDataResetService.reset(operator.getId(), operator.getLoginAccount(), request.attemptId());
     }
 }

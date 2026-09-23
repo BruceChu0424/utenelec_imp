@@ -1405,7 +1405,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并生成一次性临时密码(身份证后 6 位)；首次登录必须修改密码。'**
+  /// **'提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并由系统随机生成一次性临时密码(只显示一次，限时有效)；首次登录必须修改密码。'**
   String get employeeOnboardNote;
 
   /// No description provided for @employeeOnboardCodeAutoNote.
@@ -1669,7 +1669,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeProvisionConfirm.
   ///
   /// In zh, this message translates to:
-  /// **'将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？'**
+  /// **'将为该员工开通登录账号：账号默认为手机号，初始密码由系统随机生成(只显示一次，限时有效)，首次登录需修改。是否继续？'**
   String get employeeProvisionConfirm;
 
   /// No description provided for @employeeTransferTitle.
@@ -1723,7 +1723,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeRehireBody.
   ///
   /// In zh, this message translates to:
-  /// **'复职后员工状态将恢复为「在职」，其登录账号将重新启用(需重新登录)。'**
+  /// **'复职后员工状态将恢复为「在职」，登录账号重新启用。离职时原密码已作废，需请账号支持人员为其重置密码，并把新的临时密码当面交给员工。'**
   String get employeeRehireBody;
 
   /// No description provided for @employeeRehireSuccess.
@@ -5284,8 +5284,8 @@ abstract class AppLocalizations {
   /// No description provided for @attachmentUploadFormatsHint.
   ///
   /// In zh, this message translates to:
-  /// **'支持图片 / PDF / Office / zip / txt，单个不超过 25MB'**
-  String get attachmentUploadFormatsHint;
+  /// **'支持图片 / PDF / Office / zip / txt，单个不超过 {maxSize}'**
+  String attachmentUploadFormatsHint(String maxSize);
 
   /// No description provided for @attachmentUploadedFile.
   ///

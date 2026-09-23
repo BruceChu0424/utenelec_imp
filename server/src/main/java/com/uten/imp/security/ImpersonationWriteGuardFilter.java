@@ -34,10 +34,13 @@ import java.util.UUID;
 public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
 
     private static final Set<String> WRITE_METHODS = Set.of("POST", "PUT", "PATCH", "DELETE");
-    // 模拟期间仍需放行的写端点：退出模拟、登出（登出前应已退模拟，此处兜底不硬拦）。
+    // 模拟期间仍需放行的写端点：退出模拟、登出（登出前应已退模拟，此处兜底不硬拦）;
+    // 以及把敏感筛选值放进请求体的只读查询 (客户/供应商列表, security-19)。
     private static final Set<String> WRITABLE_WHITELIST = Set.of(
             "/api/admin/impersonation/end",
-            "/api/auth/logout");
+            "/api/auth/logout",
+            "/api/master/clients/search",
+            "/api/master/suppliers/search");
 
     private final ObjectMapper objectMapper;
     private final AuditService auditService;

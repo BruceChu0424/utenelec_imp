@@ -34,14 +34,10 @@ class _FakeRepository implements SystemTestRepository {
   ApiException? previewError;
   ApiException? preparationError;
   BusinessAttachmentResetPreview? submittedPreview;
-  String? submittedPreparePassword;
   BusinessDataResetLastResult lastResult = BusinessDataResetLastResult.none;
   ApiException? lastResultError;
   int lastResultCalls = 0;
   BusinessDataResetAttempt? pending;
-
-  /// 最近一次清空请求带上的本次密码(permissions-14：清库前重新输入登录密码)。
-  String? lastPassword;
 
   @override
   Future<BusinessAttachmentResetPreview> previewBusinessAttachments() async {
@@ -57,22 +53,17 @@ class _FakeRepository implements SystemTestRepository {
 
   @override
   Future<BusinessAttachmentResetPreview> prepareBusinessAttachments(
-    BusinessAttachmentResetPreview preview, {
-    required String password,
-  }) async {
+    BusinessAttachmentResetPreview preview,
+  ) async {
     filePrepareCalls++;
     submittedPreview = preview;
-    submittedPreparePassword = password;
     if (preparationError != null) throw preparationError!;
     return files ?? preview;
   }
 
   @override
-  Future<BusinessDataResetResult> resetBusinessData({
-    required String password,
-  }) async {
+  Future<BusinessDataResetResult> resetBusinessData() async {
     calls++;
-    lastPassword = password;
     if (error != null) {
       if (isBusinessDataResetOutcomeUncertain(error!)) {
         pending ??= BusinessDataResetAttempt(
@@ -161,16 +152,7 @@ Future<void> _expandAndOpenDialog(WidgetTester tester) async {
   // 整卡点击直接弹确认窗（卡片上没有按钮）
   await tester.tap(find.byKey(const Key('system-test-clear-data-card')));
   await tester.pumpAndSettle();
-  // 清库前必须再输入一次登录密码(permissions-14)；各用例默认先填好，
-  // 专门的用例单独验证「没填密码不发请求」。
-  await tester.enterText(
-    find.byKey(const Key('system-test-clear-password-input')),
-    _operatorPassword,
-  );
-  await tester.pump();
 }
-
-const _operatorPassword = 'operator-password';
 
 Future<void> _typePhraseAndSubmit(WidgetTester tester) async {
   await tester.enterText(
@@ -217,9 +199,6 @@ void main() {
     // 2026-09-09 口径：业务文件由清空流程自动一并删除，blocking 只是提示，
     // 确认按钮保持可点（此前被 blocking>0 锁死导致内网无法清空）。
     expect(find.textContaining('将随本次清空一并删除'), findsOneWidget);
-    // 弹窗多了本次密码输入框，按钮可能在可滚动区外，先滚到可见。
-    await tester.ensureVisible(find.text('先分批清理附件（可选）'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('先分批清理附件（可选）'));
     await tester.pumpAndSettle();
     expect(find.text('合同原件.pdf'), findsOneWidget);
@@ -232,21 +211,10 @@ void main() {
     expect(repository.filePrepareCalls, 0);
     await tester.enterText(input, '清理测试业务附件');
     await tester.pump();
-    // 删除附件同样要本次密码：只输口令不输密码，按钮不可点。
-    await tester.tap(submit);
-    expect(repository.filePrepareCalls, 0);
-    final password = find.byKey(
-      const Key('business-attachment-prepare-password'),
-    );
-    await tester.ensureVisible(password);
-    await tester.enterText(password, 'my-login-password');
-    await tester.pump();
-    await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
     expect(repository.filePrepareCalls, 1);
     expect(repository.submittedPreview!.fingerprint, 'reviewed-objects');
-    expect(repository.submittedPreparePassword, 'my-login-password');
     expect(repository.calls, 0);
     expect(find.textContaining('1 项业务文件'), findsOneWidget);
     repository.files = const BusinessAttachmentResetPreview(
@@ -322,9 +290,6 @@ void main() {
     );
     // 「重新核对附件」可重试：开关打开后预览成功即放行
     repository.previewError = null;
-    // 弹窗多了本次密码输入框，按钮可能在可滚动区外，先滚到可见。
-    await tester.ensureVisible(find.text('重新核对附件'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('重新核对附件'));
     await tester.pumpAndSettle();
     expect(repository.previewCalls, 2);
@@ -624,38 +589,5 @@ void main() {
     expect(repository.calls, 1);
     expect(notifier.logouts, 1);
     expect(find.text('登录页'), findsOneWidget);
-  });
-
-  testWidgets('口令对了但没填本次密码：不发清空请求；填了密码才随请求发出', (tester) async {
-    final repository = _FakeRepository(result: _okResult);
-    await _pump(
-      tester,
-      superAdmin: true,
-      repository: repository,
-      notifier: _TestSessionNotifier(),
-    );
-    await _expandAndOpenDialog(tester);
-    await tester.enterText(
-      find.byKey(const Key('system-test-clear-password-input')),
-      '',
-    );
-    await tester.enterText(
-      find.byKey(const Key('system-test-clear-confirm-input')),
-      '清空业务数据',
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('system-test-clear-confirm-submit')));
-    await tester.pumpAndSettle();
-    expect(repository.calls, 0);
-
-    await tester.enterText(
-      find.byKey(const Key('system-test-clear-password-input')),
-      _operatorPassword,
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('system-test-clear-confirm-submit')));
-    await tester.pumpAndSettle();
-    expect(repository.calls, 1);
-    expect(repository.lastPassword, _operatorPassword);
   });
 }

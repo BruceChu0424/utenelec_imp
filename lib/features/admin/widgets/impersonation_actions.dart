@@ -1,4 +1,5 @@
-// 模拟身份（admin「切换人」）：密码确认弹窗 + 目标选择器 + 切换流程编排。
+// 模拟身份（admin「切换人」）：目标选择器 + 切换流程编排。
+// 进入切换人要求再认证，由网络层弹统一的「重新输入密码」框 (ADR-110)，本文件不再自带密码框。
 // 触发自工作台页头「切换人」与模拟横幅「切换」。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,8 +7,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -19,7 +18,7 @@ import '../models/impersonation.dart';
 import '../repositories/impersonation_repository.dart';
 
 /// 「切换人」入口编排：
-/// 1) 未进模拟模式 → 弹密码框 → enterImpersonationMode；
+/// 1) 未进模拟模式 → enterImpersonationMode (服务端要求再认证，统一密码框)；
 /// 2) 打开目标选择器（始终以 admin 凭证加载）；
 /// 3) 选中 → startImpersonation → 回工作台看目标视角。
 Future<void> openSwitchPerson(BuildContext context, WidgetRef ref) async {
@@ -27,12 +26,8 @@ Future<void> openSwitchPerson(BuildContext context, WidgetRef ref) async {
   final session = ref.read(sessionProvider);
 
   if (!session.isImpersonationModeActive) {
-    final pwd = await showImpersonationPasswordDialog(context);
-    if (pwd == null || pwd.isEmpty) return;
     try {
-      await ref
-          .read(sessionProvider.notifier)
-          .enterImpersonationMode(password: pwd);
+      await ref.read(sessionProvider.notifier).enterImpersonationMode();
     } on ApiException catch (e) {
       if (context.mounted) {
         context.appError(
@@ -61,79 +56,6 @@ Future<void> openSwitchPerson(BuildContext context, WidgetRef ref) async {
     }
   } catch (_) {
     if (context.mounted) context.appError(l10n.impersonationStartFailed);
-  }
-}
-
-/// 密码确认弹窗（二次密码，ADR-013）。返回明文密码或 null（取消）。
-Future<String?> showImpersonationPasswordDialog(BuildContext context) async {
-  final l10n = AppLocalizations.of(context);
-  final controller = TextEditingController();
-  String? errorText;
-  try {
-    return await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) {
-          void confirm() {
-            final pwd = controller.text;
-            if (pwd.isEmpty) {
-              setState(() => errorText = l10n.impersonationWrongPassword);
-              return;
-            }
-            Navigator.pop(ctx, pwd);
-          }
-
-          return AlertDialog(
-            title: Row(
-              children: [
-                const Icon(Icons.swap_horiz_rounded),
-                const SizedBox(width: 8),
-                Text(l10n.impersonationEnterPasswordTitle),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.impersonationEnterPasswordHint,
-                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  obscureText: true,
-                  autofocus: true,
-                  decoration: UtenInputDecoration(
-                    InputDecoration(
-                      labelText: l10n.impersonationPasswordLabel,
-                      error: utenFieldError(errorText),
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  onChanged: (_) {
-                    if (errorText != null) setState(() => errorText = null);
-                  },
-                  onSubmitted: (_) => confirm(),
-                ),
-              ],
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(l10n.commonCancel),
-              ),
-              FilledButton(onPressed: confirm, child: Text(l10n.commonConfirm)),
-            ],
-          );
-        },
-      ),
-    );
-  } finally {
-    controller.dispose();
   }
 }
 

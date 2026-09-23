@@ -35,12 +35,18 @@ class SecurityDefaultsTest {
                         "Content-Type",
                         "Accept",
                         "X-Uten-Attachment-Upload-Token",
+                        // ADR-110: 敏感操作的一次性再认证凭证随请求头发送。
+                        "X-Uten-Step-Up",
+                        // ADR-110: 用户已有一段时间没操作时发出的请求 (轮询/定时刷新) 不续期会话。
+                        "X-Uten-Automatic",
                         "X-Uten-Operation-Id",
                         "X-Uten-Audit-Context"),
                 configuration.getAllowedHeaders());
         assertEquals(
                 java.util.List.of(
                         "Content-Disposition",
+                        // 密码哈希闸门满时 503 带 Retry-After, 前端据此稍后重试。
+                        "Retry-After",
                         "X-Uten-Audit-Request-Id",
                         "X-Uten-Operation-Id"),
                 configuration.getExposedHeaders());

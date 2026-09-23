@@ -3,7 +3,7 @@ package com.uten.imp.features.auth;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.dto.ChangePasswordRequest;
 import com.uten.imp.features.auth.model.*;
@@ -35,15 +35,17 @@ class PasswordHistorySettingsTest {
         UserAccount user = new UserAccount();
         user.setId(UUID.randomUUID());
         user.setPasswordHash("hash");
-        when(current.requireId()).thenReturn(user.getId());
+        when(current.get()).thenReturn(Optional.of(new AuthUser(user.getId(), UUID.randomUUID(),
+                "E1", java.util.Set.of(), false, true, false, false, null,
+                UUID.randomUUID())));
         when(users.findById(user.getId())).thenReturn(Optional.of(user));
-        when(encoder.matches("CurrentPassword!", "hash")).thenReturn(true);
-        PasswordService service = new PasswordService(users, history,
-                mock(RefreshTokenRepository.class), encoder, mock(PasswordPolicy.class),
-                mock(SecurityProperties.class), mock(SystemSettingsService.class), current,
-                mock(AuditService.class), mock(TokenIssuer.class), mock(TxSessionVars.class));
+        SystemSettingsService settings = mock(SystemSettingsService.class);
+        when(settings.readInt(SystemSettingKey.PASSWORD_MIN_LENGTH)).thenReturn(8);
+        PasswordService service = new PasswordService(users, history, encoder,
+                new PasswordPolicy(settings), settings, current, mock(StepUpService.class),
+                mock(PasswordChangeTransaction.class));
         ApiException error = assertThrows(ApiException.class, () -> service.changePassword(
-                new ChangePasswordRequest("CurrentPassword!", "CurrentPassword!")));
+                new ChangePasswordRequest("CurrentPassword1!", "CurrentPassword1!")));
         assertEquals(ErrorCode.PASSWORD_REUSE, error.getCode());
         verify(users, never()).save(any());
         verifyNoInteractions(history);

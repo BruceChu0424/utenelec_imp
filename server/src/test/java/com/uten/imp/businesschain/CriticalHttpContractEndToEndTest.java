@@ -68,8 +68,6 @@ class CriticalHttpContractEndToEndTest {
     private static final String ADMIN_NEW_PASSWORD = fixtureSecret(
             "UTEN_TEST_HTTP_ADMIN_NEW_PASSWORD", "HttpAdminPass-2!");
     private static final String EMPLOYEE_LOGIN = "138" + "0".repeat(8);
-    private static final String EMPLOYEE_INITIAL_PASSWORD = fixtureSecret(
-            "UTEN_TEST_HTTP_EMPLOYEE_INITIAL_PASSWORD", "31002X");
     private static final String EMPLOYEE_NEW_PASSWORD = fixtureSecret(
             "UTEN_TEST_HTTP_EMPLOYEE_NEW_PASSWORD", "EmployeePass-3!");
 
@@ -153,22 +151,25 @@ class CriticalHttpContractEndToEndTest {
         assertStatus(created, 200);
         JsonNode credential = json(created);
         assertEquals(EMPLOYEE_LOGIN, credential.path("loginAccount").asText());
-        assertEquals(EMPLOYEE_INITIAL_PASSWORD, credential.path("temporaryPassword").asText());
+        // ADR-110: 初始密码是系统随机高熵临时密码 (不再由身份证后 6 位推导), 只在本次响应出现一次。
+        String employeeInitialPassword = credential.path("temporaryPassword").asText();
+        assertTrue(employeeInitialPassword.length() >= 20);
+        assertFalse(employeeInitialPassword.contains("31002X"));
 
-        JsonNode initialEmployee = login(EMPLOYEE_LOGIN, EMPLOYEE_INITIAL_PASSWORD);
+        JsonNode initialEmployee = login(EMPLOYEE_LOGIN, employeeInitialPassword);
         assertTrue(initialEmployee.path("mustChangePassword").asBoolean());
         String initialEmployeeToken = initialEmployee.path("accessToken").asText();
 
-        HttpResponse<byte[]> blockedVerification = request(
+        HttpResponse<byte[]> blockedStepUp = request(
                 "POST",
-                "/api/auth/verify-password",
-                objectMapper.writeValueAsBytes(java.util.Map.of("password", EMPLOYEE_INITIAL_PASSWORD)),
+                "/api/auth/step-up",
+                objectMapper.writeValueAsBytes(java.util.Map.of("password", employeeInitialPassword)),
                 initialEmployeeToken);
-        assertStatus(blockedVerification, 403);
-        assertEquals("PASSWORD_CHANGE_REQUIRED", json(blockedVerification).path("code").asText());
+        assertStatus(blockedStepUp, 403);
+        assertEquals("PASSWORD_CHANGE_REQUIRED", json(blockedStepUp).path("code").asText());
 
         JsonNode changedEmployee = changePassword(
-                initialEmployeeToken, EMPLOYEE_INITIAL_PASSWORD, EMPLOYEE_NEW_PASSWORD);
+                initialEmployeeToken, employeeInitialPassword, EMPLOYEE_NEW_PASSWORD);
         assertFalse(changedEmployee.path("mustChangePassword").asBoolean());
         String employeeToken = changedEmployee.path("accessToken").asText();
         HttpResponse<byte[]> employeeMe = request("GET", "/api/auth/me", null, employeeToken);

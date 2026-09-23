@@ -1,7 +1,9 @@
 package com.uten.imp.features.auth;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.dto.ChangePasswordRequest;
 import com.uten.imp.features.auth.dto.TokenResponse;
@@ -9,6 +11,7 @@ import com.uten.imp.features.auth.model.PasswordHistoryRepository;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.PasswordPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -19,89 +22,132 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 改密三段式 (ADR-110): 原密码走共享失败计数的再认证校验, 新哈希在事务外算好,
+ * 短写事务加行锁复核后才落库、吊销全部旧会话并开新会话。
+ */
 class PasswordAccessInvalidationTest {
 
-    @Test
-    void passwordChangeFlushesThenBumpsAndReloadsBeforeIssuingReplacementToken() {
-        UserAccountRepository users = mock(UserAccountRepository.class);
-        PasswordHistoryRepository history = mock(PasswordHistoryRepository.class);
-        RefreshTokenRepository refreshTokens = mock(RefreshTokenRepository.class);
-        PasswordEncoder encoder = mock(PasswordEncoder.class);
-        PasswordPolicy policy = mock(PasswordPolicy.class);
-        SystemSettingsService settings = mock(SystemSettingsService.class);
-        SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
-        AuditService audit = mock(AuditService.class);
-        TokenIssuer tokenIssuer = mock(TokenIssuer.class);
-        TxSessionVars tx = mock(TxSessionVars.class);
+    private final UserAccountRepository users = mock(UserAccountRepository.class);
+    private final PasswordHistoryRepository history = mock(PasswordHistoryRepository.class);
+    private final RefreshTokenRepository refreshTokens = mock(RefreshTokenRepository.class);
+    private final PasswordEncoder encoder = mock(PasswordEncoder.class);
+    private final SystemSettingsService settings = mock(SystemSettingsService.class);
+    private final SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+    private final AuditService audit = mock(AuditService.class);
+    private final TokenIssuer tokenIssuer = mock(TokenIssuer.class);
+    private final AuthSessionService sessions = mock(AuthSessionService.class);
+    private final StepUpService stepUp = mock(StepUpService.class);
+    private final UUID sessionId = UUID.randomUUID();
+
+    private PasswordService service() {
+        PasswordChangeTransaction transaction = new PasswordChangeTransaction(
+                users, history, refreshTokens, sessions, tokenIssuer, audit, mock(TxSessionVars.class));
+        return new PasswordService(users, history, encoder, new PasswordPolicy(settings),
+                settings, currentUser, stepUp, transaction);
+    }
+
+    private UserAccount currentAccount() {
         UserAccount user = new UserAccount();
         user.setLoginAccount("E1001");
         user.setPasswordHash("old-hash");
         user.setMustChangePassword(true);
+        AuthUser principal = new AuthUser(user.getId(), UUID.randomUUID(), "E1001", Set.of(),
+                true, true, false, false, null, sessionId);
+        when(currentUser.get()).thenReturn(Optional.of(principal));
+        when(settings.readInt(SystemSettingKey.PASSWORD_MIN_LENGTH)).thenReturn(8);
+        when(settings.readInt(SystemSettingKey.PASSWORD_HISTORY_SIZE)).thenReturn(5);
+        return user;
+    }
+
+    @Test
+    void passwordChangeHashesOutsideTheWriteTransactionThenBumpsRevokesAndReissues() {
+        UserAccount user = currentAccount();
         UserAccount refreshedUser = new UserAccount();
         refreshedUser.setId(user.getId());
         refreshedUser.setLoginAccount("E1001");
         refreshedUser.setPasswordHash("new-hash");
-        refreshedUser.setMustChangePassword(false);
         refreshedUser.setAuthVersion(1);
-        TokenResponse replacement = new TokenResponse(
-                "access",
-                "refresh",
-                900,
-                false,
-                null);
-
-        when(currentUser.requireId()).thenReturn(user.getId());
+        TokenResponse replacement = new TokenResponse("access", "refresh", 900, false, null);
         when(users.findById(user.getId()))
-                .thenReturn(java.util.Optional.of(user))
-                .thenReturn(java.util.Optional.of(refreshedUser));
-        when(encoder.matches("old-password", "old-hash")).thenReturn(true);
-        when(settings.readInt("password_history_size", 5)).thenReturn(5);
+                .thenReturn(Optional.of(user))
+                .thenReturn(Optional.of(refreshedUser));
+        when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
         when(history.findRecent(user.getId(), 5)).thenReturn(List.of());
-        when(encoder.encode("new-password")).thenReturn("new-hash");
-        when(users.save(user)).thenReturn(user);
+        when(encoder.encode("new-password-1")).thenReturn("new-hash");
         when(users.bumpAuthVersion(user.getId())).thenReturn(1);
-        when(tokenIssuer.issueTokensAfterPasswordChange(refreshedUser))
-                .thenReturn(replacement);
+        when(tokenIssuer.issueTokensAfterPasswordChange(refreshedUser)).thenReturn(replacement);
 
-        PasswordService service = new PasswordService(
-                users,
-                history,
-                refreshTokens,
-                encoder,
-                policy,
-                mock(SecurityProperties.class),
-                settings,
-                currentUser,
-                audit,
-                tokenIssuer,
-                tx);
-
-        TokenResponse actual = service.changePassword(new ChangePasswordRequest(
-                "old-password",
-                "new-password"));
+        TokenResponse actual = service().changePassword(
+                new ChangePasswordRequest("old-password", "new-password-1"));
 
         assertEquals(replacement, actual);
         assertEquals("new-hash", user.getPasswordHash());
         assertFalse(user.isMustChangePassword());
         assertNotNull(user.getLastPasswordChangedAt());
-        InOrder order = inOrder(users, refreshTokens, tokenIssuer);
+        InOrder order = inOrder(stepUp, encoder, users, refreshTokens, sessions, tokenIssuer);
+        // 原密码经共享失败计数的再认证校验 (错了 422, 连错暂停并踢会话)
+        order.verify(stepUp).verifyPassword(user.getId(), "E1001", "old-password", sessionId,
+                StepUpService.Purpose.CHANGE_PASSWORD);
+        order.verify(encoder).encode("new-password-1");
+        order.verify(users).findByIdForUpdate(user.getId());
         order.verify(users).save(user);
         order.verify(users).bumpAuthVersion(user.getId());
         order.verify(refreshTokens).revokeAllByUserId(user.getId());
-        order.verify(users).findById(user.getId());
+        order.verify(sessions).revokeAllForUser(user.getId(), AuthSessionService.REASON_PASSWORD_CHANGED);
         order.verify(tokenIssuer).issueTokensAfterPasswordChange(refreshedUser);
-        assertEquals(1, refreshedUser.getAuthVersion());
-        assertFalse(refreshedUser.isMustChangePassword());
+    }
+
+    @Test
+    void wrongOldPasswordStopsBeforeAnyHashingOrWrite() {
+        UserAccount user = currentAccount();
+        when(users.findById(user.getId())).thenReturn(Optional.of(user));
+        org.mockito.Mockito.doThrow(new ApiException(ErrorCode.REAUTH_FAILED, "原密码不正确"))
+                .when(stepUp).verifyPassword(any(), any(), any(), any(), any());
+
+        ApiException error = assertThrows(ApiException.class, () -> service().changePassword(
+                new ChangePasswordRequest("bad-old", "new-password-1")));
+
+        // 422 而不是 401: 前端不会把它当登录过期去刷新重放, 一次输错只算一次。
+        assertEquals(ErrorCode.REAUTH_FAILED, error.getCode());
+        assertEquals(422, error.getCode().getHttpStatus());
+        verify(encoder, never()).encode(any());
+        verify(users, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    void passwordChangedConcurrentlyIsAConflictNotASilentOverwrite() {
+        UserAccount user = currentAccount();
+        UserAccount changedElsewhere = new UserAccount();
+        changedElsewhere.setId(user.getId());
+        changedElsewhere.setPasswordHash("reset-by-admin");
+        when(users.findById(user.getId())).thenReturn(Optional.of(user));
+        when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(changedElsewhere));
+        when(history.findRecent(user.getId(), 5)).thenReturn(List.of());
+        when(encoder.encode("new-password-1")).thenReturn("new-hash");
+
+        ApiException error = assertThrows(ApiException.class, () -> service().changePassword(
+                new ChangePasswordRequest("old-password", "new-password-1")));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(users, never()).save(any());
+        verify(sessions, never()).revokeAllForUser(any(), any());
     }
 
     @Test

@@ -77,7 +77,9 @@ class EmployeePiiExtraProtectionMigrationContractTest {
                 .contains("if (cipher == null || cipher.isblank()) { return null;");
         assertThat(onboarding)
                 .contains("if (isblank(loginaccount))")
-                .contains("if (isblank(temporarypassword))");
+                // ADR-110: 初始密码改为系统随机生成, 不再由证件号推导, 也就不存在「推不出密码」的分支。
+                .contains("temporarypasswordgenerator.generate()")
+                .doesNotContain("lastsix(");
         assertThat(writer)
                 .contains("if (idnumber == null || idnumber.isblank())")
                 .contains("chinamobilenumber.normalize(phone)")

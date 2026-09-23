@@ -24,6 +24,8 @@ import 'shared/providers/locale_provider.dart';
 import 'shared/providers/session_provider.dart';
 import 'shared/providers/session_rehydrate_gate.dart';
 import 'shared/providers/theme_provider.dart';
+import 'shared/widgets/reauth_dialog.dart';
+import 'shared/widgets/user_activity_tracker.dart';
 
 String _notificationSessionKey(SessionState session) =>
     '${session.status.name}|${session.user?.id ?? ''}|'
@@ -103,6 +105,10 @@ class UtenApp extends ConsumerWidget {
             children: [
               // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
               const NoticeRouteReadBridge(),
+              // 敏感操作再认证宿主 (不渲染)：服务端要求重新输入密码时弹统一密码框 (ADR-110)。
+              const StepUpPromptHost(),
+              // 人为输入采集 (不渲染)：用户没在操作时发出的请求不续期服务端会话 (ADR-110)。
+              const UserActivityTracker(),
               // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，
               // 不再等 60s 轮询/手动刷新（清空业务数据后的重进即新数据）。
               const SessionRehydrateGate(),

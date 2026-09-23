@@ -117,6 +117,8 @@ public final class MigrationRehearsalSupport {
             // 有在途单时才增行；空库与合成库为 0 行)。
             "sales_shipment_warehouse_events",
             "supplier_categories",
+            // V659 按 SystemSettingKey 登记补齐 7 个设置行 (ON CONFLICT DO NOTHING, 不改已有值; ADR-110)。
+            "system_settings",
             "user_permission_overrides");
 
     private MigrationRehearsalSupport() {

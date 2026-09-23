@@ -44,7 +44,8 @@ class VisitorAuthServicePhoneNormalizationTest {
                 mock(AuditService.class),
                 rateLimiter,
                 mock(MasterCodeService.class),
-                mock(VisitorAccountCreationLock.class));
+                mock(VisitorAccountCreationLock.class),
+                mock(com.uten.imp.features.auth.AuthSessionService.class));
     }
 
     @Test

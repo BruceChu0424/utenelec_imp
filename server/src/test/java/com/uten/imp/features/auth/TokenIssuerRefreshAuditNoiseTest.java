@@ -68,6 +68,7 @@ class TokenIssuerRefreshAuditNoiseTest {
                 refresh,
                 mock(StaffRefreshCompromiseService.class),
                 responses,
-                audit);
+                audit,
+                mock(AuthSessionService.class));
     }
 }

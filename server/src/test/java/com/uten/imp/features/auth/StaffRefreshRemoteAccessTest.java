@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -31,11 +32,15 @@ class StaffRefreshRemoteAccessTest {
         RefreshTokenService tokenService = mock(RefreshTokenService.class);
         DeploymentProperties deployment = new DeploymentProperties();
         deployment.setSite("cloud");
+        AuthSessionService sessions = mock(AuthSessionService.class);
+        when(sessions.lockAndEvaluateForRefresh(any(), any(), any()))
+                .thenReturn(AuthSessionService.Verdict.ACTIVE);
         StaffRefreshTransaction transaction = new StaffRefreshTransaction(
                 users,
                 tokens,
                 tokenService,
-                new RemoteAccessPolicy(deployment));
+                new RemoteAccessPolicy(deployment),
+                sessions);
 
         String rawToken = "valid-refresh-token";
         UserAccount account = new UserAccount();
@@ -66,8 +71,12 @@ class StaffRefreshRemoteAccessTest {
         RefreshTokenService tokenService = mock(RefreshTokenService.class);
         DeploymentProperties deployment = new DeploymentProperties();
         deployment.setSite("cloud");
+        // 远程访问开关同时吊销了会话: 仍返回明确的「未授权外网访问」, 不当成令牌被盗。
+        AuthSessionService sessions = mock(AuthSessionService.class);
+        when(sessions.lockAndEvaluateForRefresh(any(), any(), any()))
+                .thenReturn(AuthSessionService.Verdict.REVOKED);
         StaffRefreshTransaction transaction = new StaffRefreshTransaction(
-                users, tokens, tokenService, new RemoteAccessPolicy(deployment));
+                users, tokens, tokenService, new RemoteAccessPolicy(deployment), sessions);
 
         String rawToken = "revoked-by-remote-toggle";
         UserAccount account = new UserAccount();

@@ -47,11 +47,13 @@ class PendingUploadReport {
 
 class PendingAttachmentController extends ChangeNotifier {
   PendingAttachmentController({
-    this.maxFileBytes = kAttachmentMaxFileBytes,
+    int? maxFileBytes,
     this.maxTotalBytes = kPendingAttachmentMaxTotalBytes,
-  });
+  }) : _fileLimitOverride = maxFileBytes;
 
-  final int maxFileBytes;
+  /// 显式指定时用指定值 (测试)；否则跟随服务端下发的运行时上限。
+  final int? _fileLimitOverride;
+  int get maxFileBytes => _fileLimitOverride ?? AttachmentLimits.maxFileBytes;
   final int maxTotalBytes;
   final List<PendingAttachment> _items = [];
   bool _flushing = false;

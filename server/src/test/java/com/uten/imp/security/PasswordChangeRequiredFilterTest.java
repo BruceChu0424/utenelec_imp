@@ -44,7 +44,8 @@ class PasswordChangeRequiredFilterTest {
     @CsvSource({
             "POST, /api/auth/change-password",
             "POST, /api/auth/logout",
-            "GET, /api/auth/me"
+            "GET, /api/auth/me",
+            "GET, /api/settings/public"
     })
     void firstLoginUserCanOnlyReachTheCompletionFlow(String method, String path)
             throws Exception {
@@ -60,7 +61,8 @@ class PasswordChangeRequiredFilterTest {
     @ParameterizedTest
     @CsvSource({
             "GET, /api/dashboard/overview",
-            "POST, /api/auth/verify-password",
+            "POST, /api/auth/step-up",
+            "POST, /api/settings/public",
             "GET, /api/auth/change-password",
             "POST, /api/auth/me",
             "POST, /api/auth/change-password/"

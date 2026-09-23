@@ -43,13 +43,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class EmployeeOnboardingServiceTest {
 
-    @Test
-    void temporaryPasswordRequiresAtLeastSixIdCardCharacters() {
-        assertEquals("", EmployeeOnboardingService.lastSix("12345"));
-        assertEquals("123456", EmployeeOnboardingService.lastSix("123456"));
-        assertEquals("31002X", EmployeeOnboardingService.lastSix("11010519491231002X"));
-    }
-
     @Mock private EmployeeRepository empRepo;
     @Mock private EmployeeSensitiveRepository sensitiveRepo;
     @Mock private EmployeePiiWriter piiWriter;
@@ -69,6 +62,9 @@ class EmployeeOnboardingServiceTest {
     @Mock private SecurityContextCurrentUser currentUser;
     @Mock private EmployeeQueryService queryService;
     @Mock private EmployeeSensitiveWritePolicy sensitiveWritePolicy;
+    @Mock private com.uten.imp.security.TemporaryPasswordGenerator temporaryPasswordGenerator;
+    @Mock private com.uten.imp.features.admin.systemsetting.SystemSettingsService settings;
+    @Mock private com.uten.imp.features.auth.CredentialIssuancePolicy credentialIssuance;
     @Mock private Query positionNameLockQuery;
 
     @InjectMocks
@@ -93,27 +89,34 @@ class EmployeeOnboardingServiceTest {
     }
 
     @Test
-    void onboardingUsesIdCardLastSixAndStoresOnlyTheEncodedPassword() {
+    void onboardingIssuesRandomExpiringTemporaryPasswordNotDerivedFromIdCard() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
         when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0006");
-        when(passwordEncoder.encode("31002X")).thenReturn("argon2-encoded");
+        when(temporaryPasswordGenerator.generate()).thenReturn("Rand0m-Temp!Value-20");
+        when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
+                .thenReturn(72);
+        when(passwordEncoder.encode("Rand0m-Temp!Value-20")).thenReturn("argon2-encoded");
 
         EmployeeOnboardingResult result = service.onboard(request(
                 center.getId(), null, null, "IGNORED", "身份证", "11010519491231002X"));
 
         ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
         verify(userRepo).save(account.capture());
-        verify(passwordEncoder).encode("31002X");
-        assertEquals("31002X", result.temporaryPassword());
+        // security-01: 初始密码不再由身份证后 6 位推导, 随机高熵 + 72 小时过期 + 首登必改
+        verify(passwordEncoder, never()).encode("31002X");
+        assertEquals("Rand0m-Temp!Value-20", result.temporaryPassword());
         assertEquals("argon2-encoded", account.getValue().getPasswordHash());
-        assertFalse(account.getValue().getPasswordHash().contains("31002X"));
         assertTrue(account.getValue().isMustChangePassword());
         assertEquals("active", account.getValue().getStatus());
+        assertTrue(account.getValue().getTempPasswordExpiresAt().isAfter(
+                java.time.OffsetDateTime.now().plusHours(71)));
+        assertTrue(account.getValue().getTempPasswordExpiresAt().isBefore(
+                java.time.OffsetDateTime.now().plusHours(73)));
     }
 
     @Test
-    void laterAccountProvisioningUsesTheSameIdCardLastSixRule() {
+    void provisionedAccountHasRandomExpiringTemporaryPassword() {
         Employee employee = new Employee();
         employee.setStatus("active");
         EmployeeSensitive sensitive = new EmployeeSensitive();
@@ -124,18 +127,51 @@ class EmployeeOnboardingServiceTest {
         when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.empty());
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000001");
-        when(tx.decrypt("id-cipher")).thenReturn("11010519491231002X");
-        when(passwordEncoder.encode("31002X")).thenReturn("argon2-provisioned");
+        when(temporaryPasswordGenerator.generate()).thenReturn("Rand0m-Provisioned!20");
+        when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
+                .thenReturn(72);
+        when(passwordEncoder.encode("Rand0m-Provisioned!20")).thenReturn("argon2-provisioned");
 
         EmployeeOnboardingResult result = service.provisionAccount(employee.getId());
 
         ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
         verify(userRepo).save(account.capture());
-        verify(passwordEncoder).encode("31002X");
-        assertEquals("31002X", result.temporaryPassword());
+        // 身份证号不再参与开号 (不解密证件号)
+        verify(tx, never()).decrypt("id-cipher");
+        assertEquals("Rand0m-Provisioned!20", result.temporaryPassword());
         assertEquals("13800000001", result.loginAccount());
         assertEquals("argon2-provisioned", account.getValue().getPasswordHash());
         assertTrue(account.getValue().isMustChangePassword());
+        assertTrue(account.getValue().getTempPasswordExpiresAt().isAfter(
+                java.time.OffsetDateTime.now().plusHours(71)));
+        // 与重置密码同一道闸: 按新账号的有效权限判定是否只有超管能开 (ADR-110)
+        verify(credentialIssuance).requireCanIssueCredentials(account.getValue());
+    }
+
+    @Test
+    void provisioningAHighRiskEmployeeByNonSuperAdminIsRefused() {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setEmployeeId(employee.getId());
+        sensitive.setPhoneEnc("phone-cipher");
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.empty());
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+        when(tx.decrypt("phone-cipher")).thenReturn("13800000002");
+        when(temporaryPasswordGenerator.generate()).thenReturn("Rand0m-Provisioned!21");
+        when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
+                .thenReturn(72);
+        when(passwordEncoder.encode("Rand0m-Provisioned!21")).thenReturn("argon2-provisioned");
+        org.mockito.Mockito.doThrow(new ApiException(ErrorCode.FORBIDDEN, "只有超级管理员能开通"))
+                .when(credentialIssuance).requireCanIssueCredentials(any(UserAccount.class));
+
+        ApiException refused = assertThrows(ApiException.class,
+                () -> service.provisionAccount(employee.getId()));
+
+        // 抛错即整个事务回滚 (开号不落库), 明文临时密码不会交出去
+        assertEquals(ErrorCode.FORBIDDEN, refused.getCode());
+        verify(queryService, never()).detail(employee.getId());
     }
 
     @Test

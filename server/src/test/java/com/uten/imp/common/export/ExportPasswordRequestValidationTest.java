@@ -61,7 +61,9 @@ class ExportPasswordRequestValidationTest {
         for (Class<?> controller : controllers) {
             for (var method : controller.getDeclaredMethods()) {
                 for (Parameter parameter : method.getParameters()) {
-                    if (parameter.getType() == ExportPasswordRequest.class) {
+                    // 客户/供应商导出的请求体还带手机/电话/银行账号筛选 (security-19), 同样必须 @Valid。
+                    if (parameter.getType() == ExportPasswordRequest.class
+                            || parameter.getType() == com.uten.imp.features.master.dto.ContactExportRequest.class) {
                         endpoints++;
                         assertTrue(
                                 parameter.isAnnotationPresent(Valid.class),

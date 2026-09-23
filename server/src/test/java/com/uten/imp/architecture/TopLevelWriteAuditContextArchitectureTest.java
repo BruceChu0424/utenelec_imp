@@ -37,8 +37,9 @@ class TopLevelWriteAuditContextArchitectureTest {
             "com/uten/imp/features/auth/LoginFailureRecorder.java";
     private static final String PROFILE_REVIEW =
             "com/uten/imp/features/profileChange/ProfileChangeReviewService.java";
+    /** ADR-110: 登录的写路径 (清失败计数、签发会话、登录审计) 在事务外校验密码之后的短写事务里。 */
     private static final String LOGIN =
-            "com/uten/imp/features/auth/LoginService.java";
+            "com/uten/imp/features/auth/StaffLoginTransaction.java";
     private static final String VISITOR_LOGIN =
             "com/uten/imp/features/visitor/VisitorAuthService.java";
 
@@ -83,8 +84,11 @@ class TopLevelWriteAuditContextArchitectureTest {
         assertBefore(NOTICE, "public int deleteForCurrentUser(",
                 "tx.bind();", "stateRepo.saveAll(");
 
-        assertBefore(SETTINGS, "public SystemSettingDto write(",
-                "tx.bindActor(actorId, actorAccount);", "repo.save(");
+        // ADR-110: 设置只剩批量保存与业务代写两条写路, 都在逐项 apply (内部 repo.save) 前绑定操作人。
+        assertBefore(SETTINGS, "public List<SystemSettingDto> writeBatch(",
+                "tx.bindActor(actorId, actorAccount);", "apply(key, row,");
+        assertBefore(SETTINGS, "public void writeDelegated(",
+                "tx.bindActor(actorId, actorAccount);", "apply(key, row,");
 
         assertBefore(SUGGESTION, "public SuggestionDto submit(",
                 "tx.bind();", "suggestionRepo.save(");
@@ -155,18 +159,17 @@ class TopLevelWriteAuditContextArchitectureTest {
                 "tx.bindActor(reviewerId, reviewer.getLoginAccount());",
                 "employeeRepo.save(");
 
-        assertBefore(LOGIN, "public TokenResponse login(",
-                "tx.bindActor(user.getId(), user.getLoginAccount());",
-                "failureRecorder.record(");
-        assertBefore(LOGIN, "public TokenResponse login(",
+        // 失败计数的操作人绑定在 LoginFailureRecorder 自己的独立事务里 (见上方 LOGIN_FAILURE 断言);
+        // 登录编排 LoginService 不再持有事务, 成功态写入集中在 StaffLoginTransaction.complete。
+        assertBefore(LOGIN, "public TokenResponse complete(",
                 "tx.bindActor(user.getId(), user.getLoginAccount());",
                 "userRepo.save(");
         String successfulLoginAudit =
                 "audit.logCommitted(user.getId(), user.getLoginAccount(),";
-        assertBefore(LOGIN, "public TokenResponse login(",
+        assertBefore(LOGIN, "public TokenResponse complete(",
                 "TokenResponse response = tokenIssuer.issueTokens(user);",
                 successfulLoginAudit);
-        assertBefore(LOGIN, "public TokenResponse login(",
+        assertBefore(LOGIN, "public TokenResponse complete(",
                 "TokenResponse response = tokenIssuer.issueTokens(user);",
                 "return response;");
 

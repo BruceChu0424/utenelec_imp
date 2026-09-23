@@ -33,7 +33,6 @@ void main() {
       await tester.tap(find.text(_confirmLabel).last);
       await tester.pumpAndSettle();
 
-      expect(profileChanges.verifyPasswordCalls, 0);
       expect(profileChanges.submitCalls, 0);
       expect(find.text('profile-home'), findsOneWidget);
       expect(find.text(_passwordLabel), findsNothing);
@@ -55,15 +54,11 @@ void main() {
 
     await tester.tap(find.text(_confirmLabel).last);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text(_passwordLabel), findsWidgets);
-
-    await tester.enterText(find.byType(EditableText).last, 'correct-password');
-    await tester.tap(find.text(_confirmLabel).last);
-    await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    expect(profileChanges.verifyPasswordCalls, 1);
+    // ADR-110: 页面不再自己问密码; 需要再认证时由服务端回 403 REAUTH_REQUIRED,
+    // 网络层弹统一的再认证框 (见 step_up_interceptor_test)。页面直接提交。
+    expect(find.text(_passwordLabel), findsNothing);
     expect(profileChanges.submitCalls, 1);
     final changes = profileChanges.lastRequest!.changes;
     expect(changes, hasLength(1));
@@ -101,7 +96,6 @@ void main() {
           .isNotEmpty,
       isTrue,
     );
-    expect(profileChanges.verifyPasswordCalls, 0);
     expect(profileChanges.submitCalls, 0);
     expect(find.text(_passwordLabel), findsNothing);
     expect(find.byType(ProfileEditPage), findsOneWidget);
@@ -127,7 +121,6 @@ void main() {
       await tester.tap(find.text(_confirmLabel).last);
       await tester.pumpAndSettle();
 
-      expect(profileChanges.verifyPasswordCalls, 0);
       expect(profileChanges.submitCalls, 0);
       expect(find.text('profile-home'), findsOneWidget);
     },
@@ -143,7 +136,6 @@ void main() {
       await tester.tap(find.text(_confirmLabel).last);
       await tester.pumpAndSettle();
 
-      expect(profileChanges.verifyPasswordCalls, 0);
       expect(profileChanges.submitCalls, 0);
       expect(find.text('profile-home'), findsOneWidget);
     },
@@ -288,14 +280,8 @@ class _ProfileEmployeeRepository extends Fake
 
 class _RecordingProfileChangeRepository extends Fake
     implements ProfileChangeRepository {
-  int verifyPasswordCalls = 0;
   int submitCalls = 0;
   SubmitProfileChangeRequest? lastRequest;
-
-  @override
-  Future<void> verifyPassword(String password) async {
-    verifyPasswordCalls += 1;
-  }
 
   @override
   Future<SubmitProfileChangeResponse> submit(

@@ -117,8 +117,12 @@ class AuditServiceTransactionContractTest {
     @Test
     void employeeAndVisitorLoginLogoutSuccessUseTheRollbackCoupledWriter()
             throws Exception {
+        // ADR-110: 登录成功态在短写事务 StaffLoginTransaction 里提交; 失败证据仍在 LoginService (REQUIRES_NEW)。
         String staffLogin = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/auth/LoginService.java"),
+                StandardCharsets.UTF_8)
+                + Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/auth/StaffLoginTransaction.java"),
                 StandardCharsets.UTF_8);
         String visitorAuth = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/visitor/VisitorAuthService.java"),
@@ -155,17 +159,23 @@ class AuditServiceTransactionContractTest {
             org.junit.jupiter.api.Assertions.assertTrue(source.contains(entry.getValue()),
                     entry.getKey());
         }
+        // ADR-110: 改密成功在短写事务 PasswordChangeTransaction 里提交; 原密码校验改由 StepUpService
+        // 统一计数, 失败证据 change_password_failed 由 Purpose.CHANGE_PASSWORD 的审计名 + "_failed" 组成。
         String password = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/auth/PasswordService.java"),
+                "src/main/java/com/uten/imp/features/auth/PasswordChangeTransaction.java"),
                 StandardCharsets.UTF_8);
         org.junit.jupiter.api.Assertions.assertTrue(
                 password.contains("audit.logCommitted(")
                         && password.contains("\"change_password\""));
         org.junit.jupiter.api.Assertions.assertTrue(
                 password.contains("issueTokensAfterPasswordChange"));
+        String stepUp = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/auth/StepUpService.java"),
+                StandardCharsets.UTF_8);
         org.junit.jupiter.api.Assertions.assertTrue(
-                password.contains("audit.logExplicit")
-                        && password.contains("change_password_failed"));
+                stepUp.contains("audit.logExplicit")
+                        && stepUp.contains("CHANGE_PASSWORD(\"change_password\")")
+                        && stepUp.contains("purpose.auditName + \"_failed\""));
     }
 
     @Test

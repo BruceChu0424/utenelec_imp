@@ -23,11 +23,4 @@ public interface VisitorAccountRepository extends JpaRepository<VisitorAccount, 
             order by v.blockedAt desc nulls last, v.updatedAt desc
             """)
     Page<VisitorAccount> findBlacklisted(Pageable pageable);
-
-    /** JwtAuthFilter 逐请求状态复查用的闭投影（只取 status 列）。 */
-    interface AccountState {
-        String getStatus();
-    }
-
-    Optional<AccountState> findAccountStateById(UUID id);
 }

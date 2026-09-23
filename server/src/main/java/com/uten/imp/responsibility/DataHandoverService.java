@@ -652,7 +652,8 @@ public class DataHandoverService {
                         SELECT count(*) FROM users
                         WHERE employee_id=:source AND is_deleted=false
                           AND (remote_access=true OR must_change_password=false
-                               OR temp_password_expires_at IS NOT NULL)
+                               OR temp_password_expires_at IS NULL
+                               OR temp_password_expires_at > now())
                         """, source.id()), DataHandoverAction.RELEASE);
 
         if (requiresTarget) {
@@ -1422,14 +1423,19 @@ public class DataHandoverService {
                 .executeUpdate();
     }
 
+    /**
+     * 离职账号加固: 关外网、旧密码立即作废 (必须改密且临时密码已过期)。复职后要由账号支持
+     * 重新发放临时密码才能登录, 旧密码 (含从未改过的初始密码) 不会随复职复活 (ADR-110)。
+     */
     private int hardenDepartingAccount(UUID sourceEmployeeId) {
         return em.createNativeQuery("""
                         UPDATE users
                         SET remote_access=false, must_change_password=true,
-                            temp_password_expires_at=NULL
+                            temp_password_expires_at=now()
                         WHERE employee_id=:source AND is_deleted=false
                           AND (remote_access=true OR must_change_password=false
-                               OR temp_password_expires_at IS NOT NULL)
+                               OR temp_password_expires_at IS NULL
+                               OR temp_password_expires_at > now())
                         """)
                 .setParameter("source", sourceEmployeeId)
                 .executeUpdate();

@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V645；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V666；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -390,6 +390,9 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('production_workshop_direct_transfer_items', 'CLEAR'),
 ('production_workshop_direct_transfer_reversals', 'CLEAR'),
 ('production_workshop_direct_transfers', 'CLEAR'),
+-- V658 服务端会话与再认证失败计数：清空业务数据即全员下线，会话一并清空。
+('auth_sessions', 'CLEAR'),
+('auth_step_up_states', 'CLEAR'),
 ('stock_reservations', 'CLEAR'),
 ('subcontract_application_items', 'CLEAR'),
 ('subcontract_applications', 'CLEAR'),
@@ -1165,10 +1168,40 @@ BEGIN
         -- V644 审核生产日报的幂等键: 命令账本加 command_kind 一列并把 UNIQUE(report_id) 换成 (report_id, command_kind), 不加表; V642、V643 跳号, 本迁移 594→595。
         (644, 595),
         -- V645 追加自制并入未开工的生产计划(ADR-104): 四个判定函数 + 一条对账触发器 + 锚点补丁三个身份守卫, 不加表; 本迁移 595→596。
-        (645, 596)
+        (645, 596),
+        -- V646 行级审计改为显式三清单 (ADR-105): 只换审计函数与触发器, 不加表; 本迁移 596→597。
+        (646, 597),
+        -- V647 审计表按月分区、只追加 (ADR-105): audit_log/audit_log_archive 原地改为分区父表, 不加业务表; 本迁移 597→598。
+        (647, 598),
+        -- V648 审核/红冲/驳回时间落在单据自己的列上 (ADR-105): 只加列, 不加表; 本迁移 598→599。
+        (648, 599),
+        -- V649 production_plan_costs 由按年分区改为普通单表 (ADR-105): 表名不变, 不加表; 本迁移 599→600。
+        (649, 600),
+        -- V655 权限目录单一事实源 (ADR-109): 删角色体系四张 PRESERVE 表 (PRESERVE 102→98), V650-V654 跳号; 本迁移 600→601。
+        (655, 601),
+        -- V656 单据空归属不再全员可读、系统草稿显式声明归属池 (ADR-109): 只加列与回填, 不加表; 本迁移 601→602。
+        (656, 602),
+        -- V657 可对外接待的员工白名单=接待访客权限 (ADR-109): 只改权限码与授权策略, 不加表; 本迁移 602→603。
+        (657, 603),
+        -- V658 服务端会话与再认证 (ADR-110): 新增 auth_sessions/auth_step_up_states 两张 CLEAR 表 (CLEAR 298→300); 本迁移 603→604。
+        (658, 604),
+        -- V659 系统设置单一登记 (ADR-110): system_settings 删元数据列、补登记项行, 不加表; 本迁移 604→605。
+        (659, 605),
+        -- V660 账号支持只能个人授权 + 临时密码限时 + 高危权限标记 (ADR-110): 只改授权策略/触发器/加列, 不加表; 本迁移 605→606。
+        (660, 606),
+        -- V661 主档删除引用保护 (ADR-111): 只加守卫触发器, 不加表; 本迁移 606→607。
+        (661, 607),
+        -- V662 分类删除与往分类里加东西的并发闸 (ADR-111): 只加守卫, 不加表; 本迁移 607→608。
+        (662, 608),
+        -- V664 金额只由服务端精确派生 (ADR-112): 金额列改无精度 NUMERIC + 精确性检查, 不加表; V663 跳号; 本迁移 608→609。
+        (664, 609),
+        -- V665 总账附表行绑定 (ADR-112): 新增 finance_report_line_bindings 一张 PRESERVE 表 (PRESERVE 98→99); 本迁移 609→610。
+        (665, 610),
+        -- V666 到货超量异常金额快照改为精确列 (ADR-112): 只改列类型, 不加表; 本迁移 610→611。
+        (666, 611)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V645完整目录(V544、V576、V604、V633、V635、V637、V639、V643 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V666完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V650至V654、V663 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1333,7 +1366,10 @@ BEGIN
             ('production_workshop_material_custody_handoffs', 619),
             ('production_workshop_custody_handoff_reversals', 619),
             ('production_workshop_custody_reverse_preparations', 619),
-            ('production_workshop_return_preplan_events', 619)
+            ('production_workshop_return_preplan_events', 619),
+            -- V658 服务端登录会话与再认证失败计数 (ADR-110): 清空业务数据即全员下线, 会话一并清空。
+            ('auth_sessions', 658),
+            ('auth_step_up_states', 658)
     ) AS required(table_name, introduced_version)
     WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
         IS DISTINCT FROM (applied_max_version >= required.introduced_version);
@@ -1342,7 +1378,7 @@ BEGIN
     END IF;
     SELECT count(*) INTO current_operational_table_count
     FROM reset_business_table_policy
-    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals','expense_claim_invoices','expense_claim_events','production_daily_report_target_events','production_daily_report_material_release_events','production_workshop_direct_source_allocations','production_workshop_direct_source_events','production_workshop_direct_legacy_anomalies','production_material_return_receiving_confirmations','production_workshop_material_return_slices','production_workshop_material_custody_preparations','production_workshop_material_custody_moves','production_workshop_material_custody_reversals','production_workshop_material_custody_handoffs','production_workshop_custody_handoff_reversals','production_workshop_custody_reverse_preparations','production_workshop_return_preplan_events','subcontract_short_delivery_cases','subcontract_short_delivery_case_events');
+    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals','expense_claim_invoices','expense_claim_events','production_daily_report_target_events','production_daily_report_material_release_events','production_workshop_direct_source_allocations','production_workshop_direct_source_events','production_workshop_direct_legacy_anomalies','production_material_return_receiving_confirmations','production_workshop_material_return_slices','production_workshop_material_custody_preparations','production_workshop_material_custody_moves','production_workshop_material_custody_reversals','production_workshop_material_custody_handoffs','production_workshop_custody_handoff_reversals','production_workshop_custody_reverse_preparations','production_workshop_return_preplan_events','subcontract_short_delivery_cases','subcontract_short_delivery_case_events','auth_sessions','auth_step_up_states');
 
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
     -- V579 新增客户/供应商联系方式·地址·跟进记录三张子表(PRESERVE 96→99，
@@ -1356,7 +1392,10 @@ BEGIN
        OR (applied_max_version BETWEEN 617 AND 623 AND preserve_count <> 99)
        OR (applied_max_version BETWEEN 624 AND 625 AND preserve_count <> 100)
        OR (applied_max_version = 626 AND preserve_count <> 101)
-       OR (applied_max_version >= 627 AND preserve_count <> 102)
+       OR (applied_max_version BETWEEN 627 AND 654 AND preserve_count <> 102)
+       -- V655 删角色体系四张 PRESERVE 表(102→98, ADR-109)；V665 新增总账附表行绑定(98→99, ADR-112)。
+       OR (applied_max_version BETWEEN 655 AND 664 AND preserve_count <> 98)
+       OR (applied_max_version >= 665 AND preserve_count <> 99)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

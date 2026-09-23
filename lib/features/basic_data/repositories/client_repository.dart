@@ -86,17 +86,17 @@ class DioClientRepository implements ClientRepository {
       'categoryId': categoryId,
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty)
-        'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
       'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
       'selectableOnly': selectableOnly,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
-    // 其余按 字段=值 发送。
+    // 其余按 字段=值 发送。搜索关键字 (会匹配手机号) 与手机/电话/银行账号的筛选值
+    // 不进 URL，改走 POST /search 请求体 (security-19)。
+    final sensitive = contactSensitiveFilterBody(filters, keyword: keyword);
     final nullFields = <String>[];
-    filters.forEach((k, v) {
+    withoutContactSensitiveValues(filters).forEach((k, v) {
       if (v == kMasterFilterNullValue) {
         nullFields.add(k);
       } else {
@@ -105,7 +105,13 @@ class DioClientRepository implements ClientRepository {
     });
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
-    final json = await api.get(ApiEndpoints.clients, query: query);
+    final json = sensitive.isEmpty
+        ? await api.get(ApiEndpoints.clients, query: query)
+        : await api.post(
+            ApiEndpoints.clientsSearch,
+            query: query,
+            body: sensitive,
+          );
     return PagedResult.fromJson(json, ClientListItem.fromJson);
   }
 
@@ -117,17 +123,20 @@ class DioClientRepository implements ClientRepository {
     bool excludeLegacyFinanceStub = true,
     bool selectableOnly = false,
   }) async {
-    // 后端 categoryId 可空：不传即全库搜索。
-    final json = await api.get(
-      ApiEndpoints.clients,
-      query: {
-        'page': page,
-        'size': size,
-        'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
-        'selectableOnly': selectableOnly,
-        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-      },
-    );
+    // 后端 categoryId 可空：不传即全库搜索。关键字会匹配手机号，只走 POST /search 请求体。
+    final query = {
+      'page': page,
+      'size': size,
+      'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+      'selectableOnly': selectableOnly,
+    };
+    final json = keyword.trim().isEmpty
+        ? await api.get(ApiEndpoints.clients, query: query)
+        : await api.post(
+            ApiEndpoints.clientsSearch,
+            query: query,
+            body: {'keyword': keyword.trim()},
+          );
     return PagedResult.fromJson(json, ClientListItem.fromJson);
   }
 

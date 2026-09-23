@@ -45,6 +45,69 @@ Finder _issueButton(String line) =>
 bool _enabled(WidgetTester tester, Finder finder) =>
     tester.widget<InkWell>(finder).onTap != null;
 
+/// 物料行首列的勾选框(顶层产品行的 key 是 material-bom-product-<产品行 id>)。
+Finder _rowCheckbox(String line) => find.descendant(
+  of: find.byKey(ValueKey('material-table-row-$line')),
+  matching: find.byType(Checkbox),
+);
+Finder _productCheckbox(String product) => find.descendant(
+  of: find.byKey(ValueKey('material-bom-product-$product')),
+  matching: find.byType(Checkbox),
+);
+
+/// 勾上一行：直接拨勾选框的 onChanged——吸顶表头与视口高度会让个别行的勾选框在
+/// 测试里点不着，而这里要验的是勾选之后的编排，不是点击命中。
+Future<void> _check(WidgetTester tester, Finder checkbox) async {
+  tester.widget<Checkbox>(checkbox).onChanged!(true);
+  // 拨完先出一帧：勾选框的回调捕获的是各自构建时的选中集，连拨两下不出帧，
+  // 第二下会拿旧集合把第一下撤掉——那是测试写法的坑，不是页面的。
+  await tester.pump();
+}
+
+/// 「下单(N)」→ 确认框里点「下达」，等编排跑完；期间发出的请求记在 [requests]。
+Future<void> _submitSelected(WidgetTester tester) async {
+  requests.clear();
+  await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+  );
+  // 假后端可能按 delayMs 延迟应答, 期间没有动画帧, pumpAndSettle 会提前返回;
+  // 先把假时钟推够几段的量, 再等落定。
+  for (var i = 0; i < 40; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  await tester.pumpAndSettle();
+}
+
+/// 编排里真正落库的那些请求(采购/委外 notify、车间 issue-plans)，按发出顺序。
+List<({String method, String path, Map<String, dynamic>? body})> _submits() => [
+  for (final request in requests)
+    if (request.path.endsWith('/notify') ||
+        request.path.endsWith('/issue-plans'))
+      request,
+];
+
+/// 某段 notify 请求里某个操作组送出的数量。
+double? _qtyOf(
+  ({String method, String path, Map<String, dynamic>? body}) request,
+  String actionGroupKey,
+) {
+  for (final raw in (request.body?['quantities'] as List? ?? const [])) {
+    final quantity = raw as Map;
+    if (quantity['actionGroupKey'] == actionGroupKey) {
+      return (quantity['qty'] as num).toDouble();
+    }
+  }
+  return null;
+}
+
+/// 已下达行「下单数量」格的锁定提示：累计已下单多少。
+Finder _issuedTooltip(String qty) => find.byWidgetPredicate(
+  (widget) =>
+      widget is Tooltip && widget.message?.startsWith('累计已下单 $qty。') == true,
+);
+
 /// 数量框此刻是不是被 RequiredCellFrame 描了红边(它把红边交给最近那层 Theme 的
 /// inputDecorationTheme 来画)。
 bool _framedRed(WidgetTester tester, Finder field) {
@@ -396,6 +459,314 @@ void main() {
     expect(_issueButton('m-5'), findsNothing);
   });
 
+  testWidgets('全选下单的提交顺序：父先子后——直接外发委外父件先于它的采购子件，采购最后一次', (tester) async {
+    await _pump(tester, mutate: _withSubcontractPair, delayMs: 350);
+    // 委外父件(直接外发、我方供料)有下层：改量会去抖要一次服务端重算。
+    await tester.enterText(_orderQty('m-s'), '700');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews, hasLength(1));
+    for (final line in const ['m-2', 'm-sc', 'm-s']) {
+      await _check(tester, _rowCheckbox(line));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('下单(3)'), findsOneWidget);
+    await _submitSelected(tester);
+    // 原来是「采购 → 委外」：子件按父件新数量填的量先到，服务端当成超出当时需求的
+    // 公共备货；父件的委外申请随后把子件需求抬上去，子件行留下一截认不回来的缺口。
+    final submits = _submits();
+    expect(submits.map((request) => request.body?['target']), [
+      'SUBCONTRACT',
+      'BUY',
+    ]);
+    expect(submits.first.body?['actionGroupKeys'], ['a-m-s']);
+    expect(_qtyOf(submits.first, 'a-m-s'), 700);
+    expect(
+      submits.last.body?['actionGroupKeys'],
+      unorderedEquals(['a-m-2', 'a-m-sc']),
+    );
+    // 子件按父件填的 700 换算(还需安排 800 → 700)，父件落地后照样送 700，不翻倍。
+    expect(_qtyOf(submits.last, 'a-m-2'), 500);
+    expect(_qtyOf(submits.last, 'a-m-sc'), 700);
+    // 提交期间与提交之后都不再补发层级预览：填过的数已随下达交还系统。
+    // 假后端每段等 350ms，300ms 的去抖若没被挡住早就发出去了。
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews, hasLength(1));
+    expect(
+      requests.where((request) => request.path.endsWith('/preview')),
+      isEmpty,
+    );
+    // 成功的行勾选撤掉。
+    expect(find.text('下单(0)'), findsOneWidget);
+  });
+
+  testWidgets('顶层自制行下过单后：下单数量锁死显示计划总量、改填追加；再全选下单不会把它当新计划重下', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).first as Map;
+        product['issuedPlanQty'] = 2000;
+        product['canSchedule'] = false;
+        product['canIssueSurplus'] = true;
+        product['remainingQty'] = 0;
+        product['latestPlanId'] = 'plan-1';
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
+    );
+    // 顶层产品行自己就是排产对象，计划挂在它身上而不是锚点：已下过单 = 锁死。
+    // 原来这里读 planAnchorAnalysisLineId(顶层恒为空)，顶层下了 2000 的计划照旧
+    // 给一个可填的「下单数量」，再全选下单就把它当新计划重下、服务端 409 整批停在
+    // 第一步(2026-09-23 用户实机)。
+    expect(_orderQty('m-root'), findsNothing);
+    expect(_issuedTooltip('2000'), findsOneWidget);
+    expect(_qtyText(tester, _appendQty('m-root')), '0');
+    // 勾上它和一条采购行一起下单：追加 0 = 本次不动它，只会发采购那一段。
+    await _check(tester, _productCheckbox('product-1'));
+    await _check(tester, _rowCheckbox('m-2'));
+    await tester.pumpAndSettle();
+    expect(find.text('下单(2)'), findsOneWidget);
+    await _submitSelected(tester);
+    final submits = _submits();
+    expect(submits.map((request) => request.path.split('/').last), ['notify']);
+    expect(submits.single.body?['target'], 'BUY');
+  });
+
+  testWidgets('采购行填得比当时需求多：累计已下单 = 归需求份 + 公共备货份', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        // act-3 分摊到本行 300，另有 200 记在同一条行动的公共备货份上。
+        ((data['supplyActions'] as List).first as Map)['publicSurplusQty'] =
+            200;
+        return data;
+      },
+    );
+    // 申请明细上就是 500。只显示 300 的话，用户实机看到的就是
+    // 「我填了 5000 怎么只下了 2000」(需求 2000 + 公共 3000)。
+    expect(_issuedTooltip('500'), findsOneWidget);
+  });
+
+  testWidgets('叶子行填数后下单：提交后不再补发层级预览，填的数交还系统', (tester) async {
+    await _pump(tester);
+    await tester.enterText(_orderQty('m-2'), '450');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    // 叶子行改量不惊动服务端。
+    expect(previews, isEmpty);
+    await _check(tester, _rowCheckbox('m-2'));
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    final submits = _submits();
+    expect(submits, hasLength(1));
+    final quantities = submits.single.body?['quantities'] as List;
+    expect((quantities.single as Map)['actionGroupKey'], 'a-m-2');
+    expect((quantities.single as Map)['qty'], 450);
+    // 原来下达成功后 _applyAnalysis 会带着这行填的数去抖发一次 preview(服务端是
+    // 「已下达 + 本次填的」，等于把刚下达的量再加一遍)；现在填的数已交还系统，
+    // 一次都不发；这一行落库后锁成累计已下单 450、追加格回 0。
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews, isEmpty);
+    expect(_orderQty('m-2'), findsNothing);
+    expect(_issuedTooltip('450'), findsOneWidget);
+    expect(_qtyText(tester, _appendQty('m-2')), '0');
+    expect(find.text('下单(0)'), findsOneWidget);
+  });
+
+  testWidgets('已下达的自制行：还能下多少按锚点剩余可排量，排满即 0；排满且不能追加公共备货时不可勾', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) => _withIssuedMakeRow(data),
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+    );
+    // 服务端给物料行的 additionalSupplyRecommendedQty 不扣已下达的自制计划(还是 2000)，
+    // 照它走会把已排满的行显示成「还需安排 2000」、追加格 0 恒红。
+    expect(_orderQty('m-7'), findsNothing);
+    expect(_issuedTooltip('2000'), findsOneWidget);
+    expect(_qtyText(tester, _appendQty('m-7')), '0');
+    expect(_framedRed(tester, _appendQty('m-7')), isFalse);
+    expect(tester.widget<Checkbox>(_rowCheckbox('m-7')).onChanged, isNotNull);
+
+    // 锚点排满又不能再追加公共备货产出：勾了也只会吃服务端 409，直接不给勾——路线
+    // 也已锁死，于是这一行剩下的是表格给不可勾选行的那个灰勾选框(onChanged 为空)。
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) => _withIssuedMakeRow(data, canIssueSurplus: false),
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+    );
+    expect(tester.widget<Checkbox>(_rowCheckbox('m-7')).onChanged, isNull);
+  });
+
+  testWidgets('车间行 + 委外父件 + 采购子件一起下：issue-plans → 委外 notify → 采购 notify', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return _withSubcontractPair(data);
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+      delayMs: 350,
+    );
+    for (final line in const ['m-6', 'm-s', 'm-sc']) {
+      await _check(tester, _rowCheckbox(line));
+    }
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    final submits = _submits();
+    expect(submits.map((request) => request.path.split('/').last), [
+      'issue-plans',
+      'notify',
+      'notify',
+    ]);
+    final planLines = submits.first.body?['lines'] as List;
+    expect((planLines.single as Map)['materialLineId'], 'm-6');
+    expect((planLines.single as Map)['qty'], 400);
+    expect(submits[1].body?['target'], 'SUBCONTRACT');
+    expect(submits[2].body?['target'], 'BUY');
+    expect(previews, isEmpty);
+    expect(find.text('下单(0)'), findsOneWidget);
+  });
+
+  testWidgets('顶层已下达后追加：走产品行 planDrafts 且声明纯公共备货', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).first as Map;
+        product['issuedPlanQty'] = 2000;
+        product['canSchedule'] = false;
+        product['canIssueSurplus'] = true;
+        product['remainingQty'] = 0;
+        product['latestPlanId'] = 'plan-1';
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
+    );
+    await tester.enterText(_appendQty('m-root'), '300');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await _check(tester, _productCheckbox('product-1'));
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    final submits = _submits();
+    expect(submits.map((request) => request.path.split('/').last), [
+      'issue-plans',
+    ]);
+    final line = (submits.single.body?['lines'] as List).single as Map;
+    expect(line['analysisLineId'], 'product-1');
+    expect(line['materialLineId'], isNull);
+    expect(line['qty'], 300);
+    expect(line['publicSurplusOnly'], isTrue);
+    // 落库后追加格回 0、勾选撤掉、填的数交还系统。
+    expect(_qtyText(tester, _appendQty('m-root')), '0');
+    expect(find.text('下单(0)'), findsOneWidget);
+  });
+
+  testWidgets('父行手填 + 已排满子行追加：第二段仍按权威锚点判纯公共备货，不被段间估算带偏', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) => _withIssuedMakeRow(data),
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-7']),
+    );
+    // 顶层多填(600 → 1500)，已排满的自制子件追加 500 做纯公共备货。
+    await tester.enterText(_orderQty('m-root'), '1500');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.enterText(_appendQty('m-7'), '500');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await _check(tester, _productCheckbox('product-1'));
+    await _check(tester, _rowCheckbox('m-7'));
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    final submits = _submits();
+    expect(submits.map((request) => request.path.split('/').last), [
+      'issue-plans',
+      'issue-plans',
+    ]);
+    final rootLine = (submits.first.body?['lines'] as List).single as Map;
+    expect(rootLine['analysisLineId'], 'product-1');
+    expect(rootLine['qty'], 1500);
+    // 第一段落地后快照里顶层已下 1500，而顶层填的 1500 还挂在 typedOutputs 上——原来
+    // 这一刻的重估会把子树翻倍，m-7 的还需安排被估成正数，纯公共备货就被判成 false，
+    // 服务端 409「当前分析需求已全部转入生产计划」整批停下(2026-09-23 对抗复查)。
+    final childLine = (submits.last.body?['lines'] as List).single as Map;
+    expect(childLine['materialLineId'], 'm-7');
+    expect(childLine['qty'], 500);
+    expect(childLine['publicSurplusOnly'], isTrue);
+  });
+
+  testWidgets('车间段失败：后面的采购段不发，勾选保留，之后填数仍会去抖发预览', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return _withSubcontractPair(data);
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+      failOn: const {'/issue-plans': 409},
+    );
+    await _check(tester, _rowCheckbox('m-6'));
+    await _check(tester, _rowCheckbox('m-2'));
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    expect(_submits().map((request) => request.path.split('/').last), [
+      'issue-plans',
+    ]);
+    // 停在第一段：勾选一个都不撤，让人改了再试。
+    expect(find.text('下单(2)'), findsOneWidget);
+    // 编排的忙标志已复位：再填一个带下层的行，300ms 后照常去抖发预览。
+    await tester.enterText(_orderQty('m-s'), '700');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(previews, hasLength(1));
+  });
+
+  testWidgets('下过生产计划的自制行(含顶层)：供应方式锁死，不再给下拉', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).first as Map;
+        product['issuedPlanQty'] = 2000;
+        product['canSchedule'] = false;
+        product['canIssueSurplus'] = true;
+        product['remainingQty'] = 0;
+        product['latestPlanId'] = 'plan-1';
+        return _withIssuedMakeRow(data);
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+    );
+    // 原来锁路线只认采购 / 委外的下游申请(notifiedTargets)，自制计划不在里面：
+    // 顶层与自制子件下了计划，「供应方式」下拉照旧可改(2026-09-23 用户实机)。
+    expect(
+      find.byKey(const ValueKey('material-route-dropdown-m-root')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('material-route-dropdown-m-7')),
+      findsNothing,
+    );
+    // 没下过计划的自制行照旧可改。
+    expect(
+      find.byKey(const ValueKey('material-route-dropdown-m-6')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('还缺数量的悬浮说明接住了退役三列的事实', (tester) async {
     await _pump(tester);
     final tooltip = tester.widget<Tooltip>(
@@ -413,12 +784,25 @@ void main() {
 /// 本次 pump 期间发出的每一份「下达预览」请求体，供断言 typedOutputs。
 final List<Map<String, dynamic>> previews = [];
 
+/// 本次 pump 期间发出的每一个请求(方法 / 路径 / 请求体)，供断言提交顺序。
+final List<({String method, String path, Map<String, dynamic>? body})>
+requests = [];
+
+/// [mutate] 在夹具上做用例专属的改动(加行、改产品)；[defaultWorkshops] 是
+/// GET default-workshops 的返回(goodsId → 车间 / 负责人学习记忆)。
 Future<void> _pump(
   WidgetTester tester, {
   Set<String> permissions = _permissions,
   Size size = const Size(1800, 1200),
+  Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
+  List<Map<String, dynamic>> defaultWorkshops = const [],
+  // 真下达 / 通知在服务端要跑几秒; 给假后端一个延迟, 段间的 300ms 去抖才有机会露馅。
+  int delayMs = 0,
+  // 路径后缀 → 状态码: 命中的请求直接拒绝, 用来验分段编排「失败即停」。
+  Map<String, int> failOn = const {},
 }) async {
   previews.clear();
+  requests.clear();
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
   tester.view.physicalSize = size;
@@ -426,11 +810,29 @@ Future<void> _pump(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  var data = _analysis();
+  var data = jsonDecode(jsonEncode(_analysis())) as Map<String, dynamic>;
+  if (mutate != null) data = mutate(data);
+  // 真下达 / 通知之后服务端会换版本与指纹；夹具照样推一版，否则页面把
+  // 「版本没动」当成「这次一条都没下」。
+  Map<String, dynamic> bumped() {
+    data = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+    final version = (data['version'] as int) + 1;
+    data['version'] = version;
+    data['fingerprint'] = '$version'.padLeft(64, 'b');
+    return data;
+  }
+
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
+        requests.add((
+          method: request.method,
+          path: request.path,
+          body: request.data is Map
+              ? (request.data as Map).cast<String, dynamic>()
+              : null,
+        ));
         Object result = <Object>[];
         if (request.path == '/master/warehouses/dict') {
           result = [
@@ -448,7 +850,7 @@ Future<void> _pump(
             'qtyByMaterialLineId': {'m-2': 120},
           };
         } else if (request.path.endsWith('/default-workshops')) {
-          result = <String, dynamic>{};
+          result = defaultWorkshops;
         } else if (request.path.endsWith('/issue-plans/preview')) {
           // 回滚式预览：按请求里 typedOutputs 把子层需求放大(与服务端「子件按
           // 父件计划产出量展开」同一口径)，并记下这次送了什么供断言。
@@ -460,19 +862,34 @@ Future<void> _pump(
                   .toDouble(),
           };
           final scaled = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
-          final parent = typed['m-p'];
-          if (parent != null) {
+          for (final pair in const [('m-p', 'm-pc'), ('m-s', 'm-sc')]) {
+            final parent = typed[pair.$1];
+            if (parent == null) continue;
             for (final raw in (scaled['flatMaterials'] as List)) {
               final material = raw as Map<String, dynamic>;
-              if (material['materialLineId'] != 'm-pc') continue;
+              if (material['materialLineId'] != pair.$2) continue;
               material['requiredQty'] = parent;
               material['netShortageQty'] = parent;
               material['additionalSupplyRecommendedQty'] = parent;
             }
           }
           result = scaled;
+        } else if (request.path.endsWith('/issue-plans')) {
+          if (await _rejectIfConfigured(request, handler, failOn, delayMs)) {
+            return;
+          }
+          _applyIssuePlansToFixture(data, request.data as Map<String, dynamic>);
+          result = {
+            'analysis': bumped(),
+            'replayed': false,
+            'plans': <Object>[],
+          };
         } else if (request.path.endsWith('/notify')) {
-          result = data;
+          if (await _rejectIfConfigured(request, handler, failOn, delayMs)) {
+            return;
+          }
+          _applyNotifyToFixture(data, request.data as Map<String, dynamic>);
+          result = bumped();
         } else if (request.path == '/production/material-analyses/analysis-1') {
           result = data;
         } else if (request.path.endsWith('/routes') &&
@@ -663,6 +1080,211 @@ Map<String, dynamic> _analysis() => {
   ],
 };
 
+/// 一对「直接外发委外父件 + 我方供料采购子件」，都还没下过单(提交顺序用例)。
+Map<String, dynamic> _withSubcontractPair(Map<String, dynamic> data) {
+  (data['flatMaterials'] as List)
+    ..add(
+      _material(
+        line: 'm-s',
+        name: '待外发委外父件',
+        confirmed: 'SUBCONTRACT',
+        subcontractOutboundForm: 'COMPONENT_OUTBOUND',
+        netShortageQty: 800,
+      ),
+    )
+    ..add(
+      _material(
+        line: 'm-sc',
+        name: '委外父件的采购子件',
+        confirmed: 'BUY',
+        netShortageQty: 800,
+        level: 2,
+        parentLine: 'm-s',
+      ),
+    );
+  return data;
+}
+
+/// 这些货品的车间 / 负责人学习记忆(GET default-workshops 的返回形状)。
+List<Map<String, dynamic>> _workshopDefaultsFor(List<String> goodsIds) => [
+  for (final goodsId in goodsIds)
+    {
+      'goodsId': goodsId,
+      'departmentId': 'ws-1',
+      'departmentName': '装配一车间',
+      'responsibleEmployeeId': 'w-1',
+      'responsibleEmployeeName': '张三',
+    },
+];
+
+/// 命中 [failOn] 的请求按配置的状态码拒绝(先等 [delayMs]), 返回是否已拒绝。
+Future<bool> _rejectIfConfigured(
+  RequestOptions request,
+  RequestInterceptorHandler handler,
+  Map<String, int> failOn,
+  int delayMs,
+) async {
+  if (delayMs > 0) {
+    await Future<void>.delayed(Duration(milliseconds: delayMs));
+  }
+  final status = failOn.entries
+      .where((entry) => request.path.endsWith(entry.key))
+      .map((entry) => entry.value)
+      .firstOrNull;
+  if (status == null) return false;
+  handler.reject(
+    DioException(
+      requestOptions: request,
+      type: DioExceptionType.badResponse,
+      response: Response<dynamic>(
+        requestOptions: request,
+        statusCode: status,
+        data: {'message': '夹具按配置拒绝'},
+      ),
+    ),
+  );
+  return true;
+}
+
+Map<String, dynamic> _fixtureMaterial(Map<String, dynamic> data, String line) =>
+    (data['flatMaterials'] as List).cast<Map<String, dynamic>>().firstWhere(
+      (material) => material['materialLineId'] == line,
+    );
+
+double _num(Object? value) => (value as num?)?.toDouble() ?? 0;
+
+/// 像服务端那样把一次 notify 写回快照: 需求份 = min(填数, 还需安排), 多出的记公共备货份;
+/// 本行挂上下游申请引用, 还需安排 / 还缺随之减少。
+void _applyNotifyToFixture(
+  Map<String, dynamic> data,
+  Map<String, dynamic> body,
+) {
+  final route = body['target'] as String;
+  for (final raw in (body['quantities'] as List? ?? const [])) {
+    final quantity = raw as Map;
+    final key = quantity['actionGroupKey'] as String?;
+    if (key == null || !key.startsWith('a-')) continue;
+    final line = key.substring(2);
+    final material = _fixtureMaterial(data, line);
+    final qty = _num(quantity['qty']);
+    final residual = _num(material['additionalSupplyRecommendedQty']);
+    final demand = qty < residual ? qty : residual;
+    final actionId = 'act-$line-${requests.length}';
+    // 夹具行的列表可能是 const, 一律换成新列表而不是就地 add。
+    material['downstreamReferences'] = [
+      ...(material['downstreamReferences'] as List? ?? const []),
+      {
+        'actionId': actionId,
+        'route': route,
+        'status': 'CREATED',
+        'documentNo': 'REQ-$line',
+        'allocatedQty': demand,
+        'growableLineQty': qty,
+      },
+    ];
+    material['additionalSupplyRecommendedQty'] = residual - demand;
+    material['netShortageQty'] = residual - demand;
+    data['supplyActions'] = [
+      ...(data['supplyActions'] as List? ?? const []),
+      {
+        'actionId': actionId,
+        'route': route,
+        'operationType': 'SUPPLY',
+        'requestedQty': demand,
+        'publicSurplusQty': qty - demand,
+      },
+    ];
+  }
+}
+
+/// 像服务端那样把一次 issue-plans 写回快照: 顶层行累加到产品行自己的计划, 候选行建
+/// (或增量)锚点子件行; 排满即 canSchedule=false、余量 0。
+void _applyIssuePlansToFixture(
+  Map<String, dynamic> data,
+  Map<String, dynamic> body,
+) {
+  final products = (data['products'] as List).cast<Map<String, dynamic>>();
+  for (final raw in (body['lines'] as List? ?? const [])) {
+    final line = raw as Map;
+    final qty = _num(line['qty']);
+    final surplusOnly = line['publicSurplusOnly'] == true;
+    final analysisLineId = line['analysisLineId'] as String?;
+    final materialLineId = line['materialLineId'] as String?;
+    Map<String, dynamic> product;
+    if (analysisLineId != null) {
+      product = products.firstWhere(
+        (p) => p['analysisLineId'] == analysisLineId,
+      );
+    } else {
+      final material = _fixtureMaterial(data, materialLineId!);
+      final anchorId = 'anchor-$materialLineId';
+      material['planAnchorAnalysisLineId'] = anchorId;
+      product = products.firstWhere(
+        (p) => p['analysisLineId'] == anchorId,
+        orElse: () {
+          final created = <String, dynamic>{
+            'analysisLineId': anchorId,
+            'sourceType': 'MAKE_COMPONENT',
+            'parentAnalysisLineId': 'product-1',
+            'goodsId': material['goodsId'],
+            'goodsCode': material['goodsCode'],
+            'goodsName': material['goodsName'],
+            'requestedQty': _num(material['additionalSupplyRecommendedQty']),
+            'remainingQty': _num(material['additionalSupplyRecommendedQty']),
+            'issuedPlanQty': 0,
+            'canSchedule': true,
+            'canIssueSurplus': true,
+            'unitName': '个',
+          };
+          products.add(created);
+          return created;
+        },
+      );
+    }
+    final remaining = _num(product['remainingQty']);
+    final demand = surplusOnly ? 0.0 : (qty < remaining ? qty : remaining);
+    product['issuedPlanQty'] = _num(product['issuedPlanQty']) + qty;
+    product['remainingQty'] = remaining - demand;
+    product['canSchedule'] = remaining - demand > 0;
+    product['canIssueSurplus'] = true;
+    product['latestPlanId'] = 'plan-${requests.length}';
+  }
+}
+
+/// 一条已建锚点且计划排满(需求 2000 全部转入计划)的自制行。
+Map<String, dynamic> _withIssuedMakeRow(
+  Map<String, dynamic> data, {
+  bool canIssueSurplus = true,
+}) {
+  (data['flatMaterials'] as List).add(
+    _material(
+      line: 'm-7',
+      name: '已排满的自制件',
+      confirmed: 'MAKE',
+      netShortageQty: 2000,
+      planAnchorAnalysisLineId: 'anchor-7',
+    ),
+  );
+  (data['allowedActions'] as List).add('GENERATE_PLAN');
+  (data['products'] as List).add({
+    'analysisLineId': 'anchor-7',
+    'sourceType': 'MAKE_COMPONENT',
+    'parentAnalysisLineId': 'product-1',
+    'goodsId': 'g-m-7',
+    'goodsCode': 'M-m-7',
+    'goodsName': '已排满的自制件',
+    'requestedQty': 2000,
+    'submittedQty': 0,
+    'approvedQty': 2000,
+    'remainingQty': 0,
+    'issuedPlanQty': 2000,
+    'canSchedule': false,
+    'canIssueSurplus': canIssueSurplus,
+    'unitName': '个',
+  });
+  return data;
+}
+
 Map<String, dynamic> _material({
   required String line,
   required String name,
@@ -676,8 +1298,10 @@ Map<String, dynamic> _material({
   List<Map<String, dynamic>> downstream = const [],
   String? parentLine,
   String? subcontractOutboundForm,
+  String? planAnchorAnalysisLineId,
 }) => {
   'subcontractOutboundForm': ?subcontractOutboundForm,
+  'planAnchorAnalysisLineId': ?planAnchorAnalysisLineId,
   'materialLineId': line,
   'analysisLineId': 'product-1',
   'nodeRole': nodeRole,

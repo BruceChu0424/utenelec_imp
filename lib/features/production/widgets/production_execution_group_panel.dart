@@ -10,11 +10,11 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_execution_workbench.dart';
 import '../models/production_material_analysis.dart';
-import '../providers/production_execution_group_count_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import '../widgets/production_flow_stage_cell.dart';
-import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/nav_helpers.dart';
 
 /// Planning-facing ongoing list: one row per outer analysis/root plan.
 ///
@@ -35,6 +35,9 @@ class ProductionExecutionGroupPanel extends ConsumerStatefulWidget {
 
 class _ProductionExecutionGroupPanelState
     extends ConsumerState<ProductionExecutionGroupPanel> {
+  /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
+  String? _hostLocation;
+
   List<ProductionExecutionWorkbenchGroup> _items = const [];
   int _page = 1;
   int _totalPages = 0;
@@ -76,8 +79,6 @@ class _ProductionExecutionGroupPanelState
         _page = result.page;
         _totalPages = result.totalPages;
       });
-      // 大类行「进行中 N」计数与列表同源，随本列表加载一并刷新。
-      ref.invalidate(productionExecutionGroupCountProvider);
     } catch (_) {
       if (mounted && generation == _loadGeneration) {
         setState(() => _error = '生产任务加载失败，请重试');
@@ -111,7 +112,8 @@ class _ProductionExecutionGroupPanelState
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(listRefreshTickProvider(productionExecutionRefreshKey), (_, _) {
+    _hostLocation ??= currentLocationOr(context, '');
+    ref.onListRefresh(_hostLocation!, productionExecutionRefreshKey, () {
       if (!_opening) _load();
     });
     return Padding(

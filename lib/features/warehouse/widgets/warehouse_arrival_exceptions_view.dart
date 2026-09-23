@@ -23,10 +23,10 @@ import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../providers/procurement_inbound_count_providers.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
   const WarehouseArrivalExceptionsView({
@@ -331,7 +331,6 @@ class _WarehouseArrivalExceptionsViewState
         _result = result;
         _loading = false;
       });
-      ref.invalidate(warehouseArrivalExceptionCountProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -523,8 +522,8 @@ class _WarehouseArrivalExceptionsViewState
                 : const Key('warehouse-arrival-exception-search'),
             // 2026-09-21(ADR-100): 这一段原本叫「进行中」且不带任何数字, 两处都不对。
             //  · 它装的是**未结案的到货异常**, 正是仓库要去处理的那批
-            //    (与 hub 卡「到货异常」红徽章、TodoEntry.warehouseArrivalException
-            //    同一个 provider), 按三形态口径是红色待办, 不是黄色在办;
+            //    (与 hub 卡「到货异常」红徽章、入库任务中心入口的到货异常来源
+            //    是徽章汇总里同一个事实数), 按三形态口径是红色待办, 不是黄色在办;
             //    留着「进行中」这个名字会和全平台新立的「黄=进行中=不用你动手」
             //    撞语义, 所以改叫「待处理」, 名字与颜色对上。
             //  · 父分类(入库任务中心「到货异常」)有红徽章, 子分段必须有数
@@ -533,13 +532,11 @@ class _WarehouseArrivalExceptionsViewState
               UtenFilterSegment(
                 value: false,
                 label: '待处理',
-                // 不能用 .value: riverpod 的这个 getter 在 error 态会把异常重新抛出,
-                // 而本 provider 直接打网络。计数接口一次 500 或超时, 整页就会被错误视图
-                // 替换掉——列表其实已经取回来了, 用户却只能刷新重来。valueOrNull 在
-                // 加载中与失败时都只是不渲染这个数字, 列表照常可用(全仓其余取法同此)。
-                count: ref
-                    .watch(warehouseArrivalExceptionCountProvider)
-                    .valueOrNull,
+                // 随徽章汇总带回(ADR-108); 汇总未到/无权时为 null, 只是不渲染这个数字,
+                // 列表照常可用。
+                count: ref.watch(
+                  badgeFactOrNullProvider(BadgeFact.warehouseArrivalException),
+                ),
                 countForm: UtenSegmentCountForm.actionable,
               ),
               const UtenFilterSegment(value: true, label: '历史'),

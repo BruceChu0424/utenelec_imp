@@ -589,9 +589,6 @@ class _Gateway implements WarehouseQualityResultGateway {
   }
 
   @override
-  Future<WarehouseQualityTypeCounts> typeCounts() async =>
-      WarehouseQualityTypeCounts.empty;
-  @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,

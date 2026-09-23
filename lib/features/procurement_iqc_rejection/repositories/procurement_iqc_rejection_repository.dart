@@ -137,12 +137,3 @@ final procurementIqcRejectionRepositoryProvider =
     Provider<ProcurementIqcRejectionRepository>(
       (ref) => ProcurementIqcRejectionRepository(ref.watch(apiClientProvider)),
     );
-
-final procurementIqcRejectionOpenCountProvider = FutureProvider<int>((
-  ref,
-) async {
-  final counts = await ref
-      .watch(procurementIqcRejectionRepositoryProvider)
-      .counts(const ProcurementIqcRejectionFilter());
-  return counts.open;
-});

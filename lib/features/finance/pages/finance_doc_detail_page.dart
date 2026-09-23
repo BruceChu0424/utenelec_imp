@@ -43,6 +43,7 @@ import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
 import '../widgets/finance_status_badge.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 
 class FinanceDocDetailPage extends ConsumerStatefulWidget {
   const FinanceDocDetailPage({
@@ -101,7 +102,6 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   };
 
   Future<void> _load() async {
-    ref.invalidate(documentScopeCapabilityProvider(DocumentDataScope.finance));
     setState(() {
       _loading = true;
       _error = null;
@@ -413,9 +413,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       DocumentScopeWriteNotice(
         capability: scopeCapability,
         ownerEmployeeId: _detail!.makerId,
-        onRetry: () => ref.invalidate(
-          documentScopeCapabilityProvider(DocumentDataScope.finance),
-        ),
+        onRetry: () => ref.read(sessionSnapshotProvider.notifier).refresh(),
       ),
       // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
       // SelectionArea（准则 §3.4），无需再单独包。

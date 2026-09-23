@@ -5,9 +5,12 @@ abstract final class ApiEndpoints {
   static const authRefresh = '/auth/refresh';
   static const authLogout = '/auth/logout';
   static const authChangePassword = '/auth/change-password';
+
+  /// 当前用户资料 + 会话快照(可委派页面 / 单据范围写能力 / 用户偏好, ADR-108)。
   static const authMe = '/auth/me';
-  static String documentScopeCapability(String scope) =>
-      '/auth/me/document-scopes/${Uri.encodeComponent(scope)}';
+
+  /// 工作台徽章汇总: 全站红黄徽章、通知未读数与页内分段细数一次带回(ADR-108)。
+  static const workbenchBadges = '/workbench/badges';
 
   // 货品×业务场景计量采集偏好；只读解析必须批量，避免明细行 N+1。
   static const measurementProfilesResolveBatch =
@@ -32,8 +35,6 @@ abstract final class ApiEndpoints {
   // 批量决定由 caseId + expectedVersion 精确绑定并整批原子提交。
   static const financeProcurementApprovalTasks =
       '/finance/procurement-approvals/tasks';
-  static const financeProcurementApprovalCount =
-      '/finance/procurement-approvals/count';
   static const financeProcurementApprovalTypeCounts =
       '/finance/procurement-approvals/type-counts';
   static const financeProcurementApprovalBatchApprove =
@@ -59,14 +60,10 @@ abstract final class ApiEndpoints {
 
   // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
-  static const warehouseInboundExpectationCount =
-      '/warehouse/inbound/expectations/count';
   static const warehouseInboundExpectationTypeCounts =
       '/warehouse/inbound/expectations/type-counts';
   static const warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
-  static const warehouseArrivalExceptionCount =
-      '/warehouse/inbound/arrival-exceptions/count';
   static const warehouseArrivalExceptionBatchStockIn =
       '/warehouse/inbound/arrival-exceptions/batch-stock-in';
   static const warehouseIqcStockIns = '/warehouse/iqc-stock-ins';
@@ -92,8 +89,6 @@ abstract final class ApiEndpoints {
   // 品质部检查结果合并页（原 IQC 合格待入库 + IQC 不合格实物退回）：
   // 按收货单聚合 等待检查结果/全部合格待入库/部分合格/全部不合格需退回/已完结。
   static const warehouseQualityResults = '/warehouse/quality-results';
-  static const warehouseQualityResultTypeCounts =
-      '$warehouseQualityResults/type-counts';
   static const warehouseQualityResultStatusCounts =
       '$warehouseQualityResults/status-counts';
   static String warehouseQualityResultDetail(
@@ -104,8 +99,6 @@ abstract final class ApiEndpoints {
       '${Uri.encodeComponent(receiptId.trim())}';
   static const productionFinishedInboundTasks =
       '/warehouse/production-finished-in/tasks';
-  static const productionFinishedInboundTaskCount =
-      '/warehouse/production-finished-in/tasks/count';
   static const productionFinishedInboundBatchConfirm =
       '/stock/docs/finished-in/confirm-batch';
   static String productionFinishedArrivalRegistration(String reportId) =>
@@ -130,8 +123,6 @@ abstract final class ApiEndpoints {
   static String productionFinishedArrivalReverse(String registrationId) =>
       '/warehouse/production-finished-in/arrival-registrations/$registrationId/reverse';
   static const productionQualityInspections = '/production/quality-inspections';
-  static const productionQualityInspectionCount =
-      '/production/quality-inspections/count';
   static const productionQualityInspectionCapability =
       '/production/quality-inspections/capability';
   static const productionQualityInspectionPassAll =
@@ -170,8 +161,6 @@ abstract final class ApiEndpoints {
   // 仓库在此看任务、拣货、审核出仓（编辑/审核走既有 /subcontract/material-issues 端点）。
   static const warehouseSubcontractOutboundTasks =
       '/warehouse/subcontract-outbound/tasks';
-  static const warehouseSubcontractOutboundTaskCount =
-      '/warehouse/subcontract-outbound/tasks/count';
   static String warehouseSubcontractOutboundTask(String planId) =>
       '/warehouse/subcontract-outbound/tasks/$planId';
   static String warehouseSubcontractOutboundDraft(String planId) =>
@@ -180,8 +169,6 @@ abstract final class ApiEndpoints {
       '/warehouse/subcontract-outbound/tasks/$planId/close';
   static const procurementInspectionPendingReceipts =
       '/procurement/inspection/pending-receipts';
-  static const procurementInspectionPendingCount =
-      '/procurement/inspection/pending-count';
   static const procurementInspectionRecords = '/procurement/inspection/records';
   static String procurementInspectionRecord(String recordId) =>
       '$procurementInspectionRecords/$recordId';
@@ -205,12 +192,8 @@ abstract final class ApiEndpoints {
   ) => '/procurement/inspection/$receiptType/$receiptId/decide-batch';
   static const procurementArrivalExceptionTasks =
       '/procurement/arrival-exceptions/tasks';
-  static const procurementArrivalExceptionTaskCount =
-      '/procurement/arrival-exceptions/count';
   static const financeArrivalExceptionTasks =
       '/finance/procurement-arrival-exceptions/tasks';
-  static const financeArrivalExceptionCount =
-      '/finance/procurement-arrival-exceptions/count';
   static String procurementArrivalException(String id) =>
       '/procurement/arrival-exceptions/$id';
   static String financeArrivalException(String id) =>
@@ -232,7 +215,6 @@ abstract final class ApiEndpoints {
 
   // HR 任务中心（转正/生日/周年/新入职动态提醒 + 软认领 ADR-021）
   static const hrTaskSummary = '/org/hr-tasks/summary';
-  static const hrTaskCount = '/org/hr-tasks/count';
   static const hrTaskClaims = '/org/hr-tasks/claims';
   static String hrTaskClaim(String taskType, String employeeId) =>
       '/org/hr-tasks/claims/$taskType/$employeeId';
@@ -253,8 +235,6 @@ abstract final class ApiEndpoints {
   static const myDepartmentRoster = '/my-department/roster';
 
   // 部门主管管理本部门员工权限（问题 #20）
-  static const departmentStaffPermissionCapability =
-      '/department-staff-permissions/capability';
   static const departmentStaffPermissionManagedDepartments =
       '/department-staff-permissions/managed-departments';
   static const departmentStaffPermissionStaff =
@@ -265,7 +245,6 @@ abstract final class ApiEndpoints {
 
   // 工程研发部任务中心（rd_tasks）
   static const rdTasks = '/rd-tasks';
-  static const rdTaskCount = '$rdTasks/count';
   static String rdTaskResolve(String id) => '$rdTasks/$id/resolve';
   static String rdTaskAssign(String id) => '$rdTasks/$id/assign';
 
@@ -569,9 +548,6 @@ abstract final class ApiEndpoints {
   /// HR 审批列表表头筛选桶（状态/接待人部门，2026-09-10）。
   static const visitorApprovalFacets = '/visitor-approval/facets';
   static const visitorApprovalAsHost = '/visitor-approval/as-host';
-  static const visitorApprovalPendingCount = '/visitor-approval/pending-count';
-  static const visitorApprovalHostPendingCount =
-      '/visitor-approval/host-pending-count';
   static String visitorApprovalById(String id) => '/visitor-approval/$id';
   static String visitorApprovalAction(String id) =>
       '/visitor-approval/$id/action';
@@ -591,23 +567,22 @@ abstract final class ApiEndpoints {
 
   /// HR 队列表头筛选桶（部门），status 与列表分段同口径（2026-09-10）。
   static const hrProfileChangesFacets = '/hr/profile-changes/facets';
-  static const hrProfileChangesPendingCount =
-      '/hr/profile-changes/pending-count';
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
   static String hrProfileChangeReview(String id) =>
       '/hr/profile-changes/$id/review';
 
-  // 用户偏好（任意 key-value；工作台布局等）
-  static const userPreferences = '/user/preferences';
+  // 用户偏好(任意 key-value；工作台布局等)。读取整表随会话快照 /auth/me 带回，
+  // 这里只剩单键写入(ADR-108)。
   static String userPreference(String key) => '/user/preferences/$key';
 
   // 通知（广播 + 每用户已读/删除状态；后端 features/notice/NoticeController）
   static const notices = '/notices';
   static const noticeArrivals = '/notices/arrivals';
   static String notice(String id) => '/notices/$id';
-  static const noticesUnreadCount = '/notices/unread-count';
   static const noticesReadAll = '/notices/read-all';
-  static const noticesUnreadCountBySource = '/notices/unread-count-by-source';
+
+  /// 未读索引(判定用轻量列 + 摘要): 摘要随徽章汇总带回, 对不上时才拉(ADR-108)。
+  static const noticesUnreadIndex = '/notices/unread-index';
   static const noticesReadBySource = '/notices/read-by-source';
 
   /// 按站内办理路由批量已读（业务动作完成/打开单据后清对应通知）。
@@ -664,15 +639,9 @@ abstract final class ApiEndpoints {
   // 单据号预览（新建页占位显示；不消耗序列，并发时可能差1以保存后为准）
   static const docNumberPeek = '/doc-number/peek';
 
-  // 跨模块草稿计数（hub 单据卡徽章 + 新建页「草稿(N)」入口按钮；
-  // 后端 features/documents/DocumentDraftCountController，按 *:view + 对象范围收敛）
-  static const documentDraftCounts = '/documents/drafts/count';
-
-  // 单据列表页分段计数 + 三类单据「财务已退回」张数(2026-09-21, 同一控制器;
-  // 前端 lib/shared/providers/document_status_counts_provider.dart)
+  // 单据列表页分段计数(2026-09-21; 前端 lib/shared/providers/document_status_counts_provider.dart)。
+  // 跨模块草稿数与三类「财务已退回」张数随徽章汇总带回(ADR-108)。
   static const documentStatusCounts = '/documents/status-counts';
-  static const documentFinanceRejectedCounts =
-      '/documents/finance-rejected/count';
 
   // 系统测试（工作台「系统测试」区，仅超管+本地/内网测试环境可用；
   // 后端 features/admin/systemtest/SystemTestController）

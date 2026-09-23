@@ -24,7 +24,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../operations_workbench/models/operations_workbench.dart';
 import '../../production/models/production_material_analysis.dart';
 import '../../production/widgets/subcontract_make_task_tile.dart';
-import '../providers/subcontract_task_count_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class _ProgressStep {
   const _ProgressStep(this.label, {this.done = false, this.current = false});
@@ -267,7 +267,7 @@ class _ProgressDialogBody extends ConsumerWidget {
                       mt,
                     );
                     if (!notified || !context.mounted) return;
-                    ref.invalidate(subcontractTaskCountProvider);
+                    refreshBadges(ref);
                     await onNotified?.call();
                     if (context.mounted) Navigator.of(context).pop();
                   },

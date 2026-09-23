@@ -22,7 +22,7 @@ import '../../profile/models/profile_change_request.dart';
 import '../../profile/providers/profile_change_providers.dart';
 import '../../profile/repositories/profile_change_repository.dart';
 import '../../profile/widgets/profile_change_diff_row.dart';
-import '../../../shared/auth/pending_review_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class HrProfileChangeDetailPage extends ConsumerStatefulWidget {
   const HrProfileChangeDetailPage({super.key, required this.batchId});
@@ -243,7 +243,7 @@ class _HrProfileChangeDetailPageState
       if (!context.mounted) return;
       ref.invalidate(hrProfileChangesProvider);
       ref.invalidate(hrProfileChangeDetailProvider);
-      ref.read(pendingReviewCountProvider.notifier).refresh();
+      refreshBadges(ref);
       context.appSuccess(l10n.profileChangeApproveSuccess);
       context.pop();
     } on ApiException catch (e) {
@@ -316,7 +316,7 @@ class _HrProfileChangeDetailPageState
       if (!context.mounted) return;
       ref.invalidate(hrProfileChangesProvider);
       ref.invalidate(hrProfileChangeDetailProvider);
-      ref.read(pendingReviewCountProvider.notifier).refresh();
+      refreshBadges(ref);
       context.appSuccess(l10n.profileChangeRejectSuccess);
       context.pop();
     } on ApiException catch (e) {

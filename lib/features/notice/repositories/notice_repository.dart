@@ -28,6 +28,99 @@ class NoticeArrivalPage {
   final bool hasMore;
 }
 
+/// 未读索引项: 判定「打开页面要不要自动已读」「到达横幅有没有漏」用的轻量列(无正文)。
+class NoticeUnreadItem {
+  const NoticeUnreadItem({
+    required this.id,
+    required this.publishedAt,
+    this.actionRoute,
+    this.sourceEvent,
+    this.pendingArrival = false,
+  });
+
+  factory NoticeUnreadItem.fromJson(Map<String, dynamic> json) =>
+      NoticeUnreadItem(
+        id: json['id'] as String? ?? '',
+        publishedAt:
+            DateTime.tryParse(json['publishedAt'] as String? ?? '')?.toUtc() ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        actionRoute: json['actionRoute'] as String?,
+        sourceEvent: json['sourceEvent'] as String?,
+        pendingArrival: json['pendingArrival'] as bool? ?? false,
+      );
+
+  final String id;
+  final DateTime publishedAt;
+  final String? actionRoute;
+  final String? sourceEvent;
+
+  /// 仍应弹到达横幅(未读、未确认弹窗、未办结、稍后已到期)。
+  final bool pendingArrival;
+}
+
+/// 当前用户全部可见未读通知的索引 + 服务端摘要(ADR-108)。
+///
+/// 摘要随工作台徽章汇总每分钟带回; 与这里的 [digest] 对不上才重拉本索引。
+class NoticeUnreadIndex {
+  const NoticeUnreadIndex({
+    required this.unreadCount,
+    required this.digest,
+    required this.items,
+    this.requestedAt,
+  });
+
+  factory NoticeUnreadIndex.fromJson(Map<String, dynamic> json) =>
+      NoticeUnreadIndex(
+        unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
+        digest: (json['digest'] as num?)?.toInt() ?? 0,
+        items: [
+          for (final item in json['items'] as List<dynamic>? ?? const [])
+            if (item is Map<String, dynamic>) NoticeUnreadItem.fromJson(item),
+        ],
+      );
+
+  final int unreadCount;
+  final int digest;
+  final List<NoticeUnreadItem> items;
+
+  /// 本端发出这次索引请求的时刻: 此后才到达/确认的通知不在索引里, 对账时不能据此剔除。
+  final DateTime? requestedAt;
+
+  /// 索引里最新一条的发布时间(比它更新的通知, 这份索引无从判断)。
+  DateTime? get latestPublishedAt =>
+      items.isEmpty ? null : items.last.publishedAt;
+
+  NoticeUnreadIndex stampedAt(DateTime at) => NoticeUnreadIndex(
+    unreadCount: unreadCount,
+    digest: digest,
+    items: items,
+    requestedAt: at,
+  );
+
+  /// 有 action_route 恰好指向 [route] 的未读通知。
+  bool hasRoute(String route) => items.any((item) => item.actionRoute == route);
+
+  /// 有来自 [events] 任一业务事件的未读通知。
+  bool hasSourceEvent(Iterable<String> events) {
+    final wanted = events.toSet();
+    return items.any(
+      (item) => item.sourceEvent != null && wanted.contains(item.sourceEvent),
+    );
+  }
+
+  /// 去掉本端已置读的条目(服务端摘要随后会变, 下一轮自然对齐)。
+  NoticeUnreadIndex without(bool Function(NoticeUnreadItem item) test) {
+    final kept = items.where((item) => !test(item)).toList(growable: false);
+    if (kept.length == items.length) return this;
+    return NoticeUnreadIndex(
+      unreadCount: unreadCount - (items.length - kept.length),
+      digest: digest,
+      items: kept,
+      requestedAt: requestedAt,
+    );
+  }
+}
+
 abstract interface class NoticeRepository {
   /// 当前用户可见通知列表（置顶优先 + 时间倒序）
   Future<List<Notice>> list({bool? onlyUnread});
@@ -47,11 +140,8 @@ abstract interface class NoticeRepository {
   /// 全部标记已读
   Future<void> markAllRead();
 
-  /// 未读数（Dashboard 角标）
-  Future<int> unreadCount();
-
-  /// 按业务事件来源统计未读数（如销售订单完工提醒徽章）。
-  Future<int> unreadCountBySource(List<String> events);
+  /// 未读索引(判定用轻量列 + 摘要；未读数本身随徽章汇总带回，ADR-108)。
+  Future<NoticeUnreadIndex> unreadIndex();
 
   /// 按业务事件来源批量标记已读（如打开进度页清空完工徽章）。返回实际置读条数。
   Future<int> markReadBySource(List<String> events);
@@ -217,19 +307,9 @@ class DioNoticeRepository implements NoticeRepository {
   }
 
   @override
-  Future<int> unreadCount() async {
-    final json = await _api.get(ApiEndpoints.noticesUnreadCount);
-    return (json['count'] as num?)?.toInt() ?? 0;
-  }
-
-  @override
-  Future<int> unreadCountBySource(List<String> events) async {
-    if (events.isEmpty) return 0;
-    final json = await _api.get(
-      ApiEndpoints.noticesUnreadCountBySource,
-      query: {'events': events.join(',')},
-    );
-    return (json['count'] as num?)?.toInt() ?? 0;
+  Future<NoticeUnreadIndex> unreadIndex() async {
+    final json = await _api.get(ApiEndpoints.noticesUnreadIndex);
+    return NoticeUnreadIndex.fromJson(json);
   }
 
   @override

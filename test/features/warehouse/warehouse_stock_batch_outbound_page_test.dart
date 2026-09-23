@@ -15,11 +15,11 @@ import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_stock_doc_segment.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_stock_outbound_detail_table.dart';
-import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../helpers/document_scope_fixture.dart';
 
 class _Names extends MasterNameService {
   _Names() : super(ApiClient(Dio()));
@@ -43,17 +43,6 @@ class _Names extends MasterNameService {
   String warehouse(String? id) => '轨道车间';
   @override
   String unit(String? id) => '件';
-}
-
-class _Scope implements DocumentScopeCapabilityRepository {
-  const _Scope();
-  @override
-  Future<DocumentScopeCapability> current(DocumentDataScope scope) async =>
-      DocumentScopeCapability(
-        scope: scope.apiValue,
-        writeAll: false,
-        writableOwnerIds: const {'me'},
-      );
 }
 
 class _Repo extends StockDocRepository {
@@ -167,9 +156,7 @@ Future<void> _pump(
         }),
         sharedPreferencesProvider.overrideWithValue(prefs),
         masterNameServiceProvider.overrideWithValue(_Names()),
-        documentScopeCapabilityRepositoryProvider.overrideWithValue(
-          const _Scope(),
-        ),
+        documentScopeOverride(owners: const {'me'}),
         stockDocRepositoryProvider(repo.type).overrideWithValue(repo),
       ],
       child: MaterialApp(

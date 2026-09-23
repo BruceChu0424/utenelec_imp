@@ -45,18 +45,15 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
-import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 import '../widgets/production_fqc_dialogs.dart';
 import 'quality_batch_approval_page.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class QualityPendingDisposalPage extends ConsumerStatefulWidget {
   const QualityPendingDisposalPage({super.key});
@@ -235,8 +232,6 @@ class _QualityPendingDisposalPageState
       };
       _selectedIds.removeWhere((id) => !currentIds.contains(id));
     });
-    ref.invalidate(procurementInspectionPendingCountProvider);
-    ref.invalidate(productionFqcPendingCountProvider);
   }
 
   void _applySearch(String value) {
@@ -375,8 +370,7 @@ class _QualityPendingDisposalPageState
       extra: sheet,
     );
     if (!mounted) return;
-    ref.invalidate(productionFqcPendingCountProvider);
-    ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+    refreshBadges(ref);
     await _load();
   }
 
@@ -388,8 +382,7 @@ class _QualityPendingDisposalPageState
       extra: inspection,
     );
     if (!mounted) return;
-    ref.invalidate(productionFqcPendingCountProvider);
-    ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+    refreshBadges(ref);
     await _load();
   }
 
@@ -1211,9 +1204,8 @@ class _ProcurementInspectionDetailPageState
         _selectedItemIds = const {};
       });
       await _load();
-      ref.invalidate(procurementInspectionPendingCountProvider);
-      // 打源头 type-counts: 仓库侧的红黄两支都是它的派生, 失效派生不重发请求。
-      ref.invalidate(warehouseQualityResultTypeCountsProvider);
+      // 徽章汇总重拉一次: 品质待检与仓库「品质部检查结果」红黄两数随之更新。
+      refreshBadges(ref);
       if (mounted) {
         UtenNotify.success(
           context,

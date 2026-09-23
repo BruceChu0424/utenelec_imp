@@ -17,6 +17,8 @@ import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 
 void main() {
   test('models parse bounded backend workspace DTO shapes', () {
@@ -535,11 +537,15 @@ Widget _actionApp({required bool canManage, bool superAdmin = false}) {
   return ProviderScope(
     overrides: [
       isSuperAdminProvider.overrideWithValue(superAdmin),
-      pageDelegationCapabilityProvider.overrideWith(
-        (ref, surfaceKey) async => PageDelegationCapability(
-          surfaceKey: surfaceKey,
-          superAdmin: superAdmin,
-          canManage: canManage,
+      // 可委派页面随会话快照(/auth/me)一次带回(ADR-108), 不再逐页请求 capability。
+      sessionSnapshotProvider.overrideWith(
+        () => _FixedSnapshot(
+          SessionSnapshot(
+            delegableSurfaceKeys: {
+              if (canManage)
+                pagePermissionScopeFor('/sales/orders')!.surfaceKey,
+            },
+          ),
         ),
       ),
     ],
@@ -588,14 +594,6 @@ class _FakePagePermissionRepository
   final List<String?> requestedDepartments = [];
   final List<String> detailEmployeeIds = [];
   List<PagePermissionChange> savedChanges = const [];
-
-  @override
-  Future<PageDelegationCapability> capability(String surfaceKey) async =>
-      PageDelegationCapability(
-        surfaceKey: surfaceKey,
-        superAdmin: false,
-        canManage: true,
-      );
 
   @override
   Future<List<ManagedPermissionDepartment>> managedDepartments(
@@ -780,3 +778,12 @@ PagePermissionEmployeeDetail _detail(
     ),
   ],
 );
+
+class _FixedSnapshot extends SessionSnapshotNotifier {
+  _FixedSnapshot(this._snapshot);
+
+  final SessionSnapshot _snapshot;
+
+  @override
+  Future<SessionSnapshot?> build() async => _snapshot;
+}

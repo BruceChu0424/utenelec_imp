@@ -228,7 +228,8 @@ class WorkshopNoticeScopePostgresTest {
         assertThat(notices.findVisibleArrivalsAfter(actor.user(),Instant.EPOCH,id(0),scope,PageRequest.of(0,1)))
                 .extracting(Notice::getId).containsExactly(target.getId());
         assertThat(notices.countVisibleUnread(actor.user(),scope)).isEqualTo(1);
-        assertThat(notices.countUnreadBySourceEvents(actor.user(),List.of(EVENT),scope)).isEqualTo(1);
+        assertThat(notices.findUnreadIndexRows(actor.user(),scope))
+                .extracting(NoticeRepository.UnreadIndexRow::getId).containsExactly(target.getId());
         assertThat(notices.findPendingTodos(actor.user(),scope,PageRequest.of(0,1))).extracting(Notice::getId).containsExactly(target.getId());
         assertThat(notices.countPendingTodos(actor.user(),scope)).isEqualTo(1);
         assertThat(notices.findVisiblePendingReviews(actor.user(),List.of(EVENT),scope,PageRequest.of(0,1)))

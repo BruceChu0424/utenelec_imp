@@ -58,6 +58,7 @@ import '../widgets/plan_order_import_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../widgets/production_grid_columns.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
   const ProductionPlanEditPage({super.key, this.id});
@@ -555,7 +556,7 @@ class _ProductionPlanEditPageState
       context.appSuccess('已保存');
       // 草稿计数即时刷新：生产两页不走 bumpListRefresh（它们用 context.replace
       // 直达详情，没有 B 类列表要 bump），所以在这里单独失效一次。
-      ref.invalidate(draftCountsProvider);
+      refreshBadges(ref);
       context.replace('/production/plans/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

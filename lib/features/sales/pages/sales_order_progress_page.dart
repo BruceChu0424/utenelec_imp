@@ -145,7 +145,7 @@ class _SalesOrderProgressPageState
     super.initState();
     // 打开即清完工徽章（已读语义）；并拉阶段计数（徽章，全量口径）。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      markSalesCompletionSeen(ref);
+      markSalesCompletionSeen(context);
       _loadStageCounts();
     });
   }

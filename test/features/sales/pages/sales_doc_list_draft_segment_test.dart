@@ -56,7 +56,7 @@ Future<_RecordingApi> _pumpOrderList(
           SalesMasterNameService(api),
         ),
         currentPermissionsProvider.overrideWithValue(const <String>{}),
-        draftCountsProvider.overrideWith((ref) async => counts),
+        draftCountsProvider.overrideWith((ref) => counts),
       ],
       child: MaterialApp.router(routerConfig: router),
     ),

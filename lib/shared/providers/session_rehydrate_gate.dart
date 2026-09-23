@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/network/connection_recovery.dart';
+import '../../core/router/page_resume_provider.dart';
 import '../../features/dashboard/providers/workbench_refresh.dart';
 import '../providers/session_provider.dart';
 
@@ -19,6 +21,15 @@ class SessionRehydrateGate extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 断网恢复: 网络层不再重建(ADR-108), 只请当前可见页重拉一次; 徽章汇总自己也会补拉。
+    ref.listen<int>(
+      connectionRecoveryProvider.select((state) => state.recoveryEpoch),
+      (previous, next) {
+        if (next > (previous ?? 0)) {
+          ref.read(pageRefreshRequestProvider.notifier).state++;
+        }
+      },
+    );
     ref.listen(sessionProvider.select((s) => s.user?.id), (previous, next) {
       final wasLoggedOut = previous == null;
       final nowLoggedIn = next != null;

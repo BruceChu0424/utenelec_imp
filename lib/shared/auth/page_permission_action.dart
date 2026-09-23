@@ -5,13 +5,15 @@ import 'package:go_router/go_router.dart';
 import '../../components/buttons/uten_app_bar_action_button.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/router/route_names.dart';
-import 'page_permission_delegation_repository.dart';
+import 'session_snapshot_provider.dart';
 import 'page_permission_scope.dart';
 
 /// 业务页右上角统一“权限设置”入口。
 ///
-/// 超级管理员与普通负责人均由服务端 capability（含发布门禁）终审；普通员工
-/// 是否为负责人只基于 departments.manager_id 与组织树，前端职位文字不参与授权。
+/// 是否显示读会话快照的「可委派页面」(ADR-108): 服务端按发布门禁 + 负责人/超管资格
+/// 一次算好随 /auth/me 带回, 本组件同步判断, 不再每进一个页面现拉一次 capability,
+/// 首帧就出按钮。普通员工是否为负责人只基于 departments.manager_id 与组织树, 前端
+/// 职位文字不参与授权; 进入权限设置页后的每个写操作仍由服务端逐条终审。
 class PagePermissionAction extends ConsumerWidget {
   const PagePermissionAction({super.key, this.scope});
 
@@ -22,16 +24,15 @@ class PagePermissionAction extends ConsumerWidget {
     final resolved = scope ?? _scopeFromRouter(context);
     if (resolved == null) return const SizedBox.shrink();
 
-    final capability = ref.watch(
-      pageDelegationCapabilityProvider(resolved.surfaceKey),
+    final canManage = ref.watch(
+      sessionSnapshotProvider.select(
+        (snapshot) =>
+            snapshot.valueOrNull?.canDelegate(resolved.surfaceKey) ?? false,
+      ),
     );
-    return capability.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => const SizedBox.shrink(),
-      data: (value) => value.canManage
-          ? _PagePermissionButton(scope: resolved)
-          : const SizedBox.shrink(),
-    );
+    return canManage
+        ? _PagePermissionButton(scope: resolved)
+        : const SizedBox.shrink();
   }
 }
 

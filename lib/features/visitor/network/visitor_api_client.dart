@@ -13,7 +13,7 @@ import '../../../core/network/network_policy.dart';
 import '../../../core/security/secure_storage.dart';
 
 final visitorApiProvider = Provider<ApiClient>((ref) {
-  ref.watch(connectionRecoveryProvider.select((state) => state.recoveryEpoch));
+  // 与员工端同一口径: 断网恢复不重建 Dio(ADR-108)。
   final recovery = ref.read(connectionRecoveryProvider.notifier);
   final storage = ref.watch(secureStorageProvider);
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);

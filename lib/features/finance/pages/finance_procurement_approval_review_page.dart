@@ -43,8 +43,8 @@ import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
-import '../providers/finance_procurement_approval_count_provider.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class FinanceProcurementApprovalReviewPage extends ConsumerStatefulWidget {
   const FinanceProcurementApprovalReviewPage({super.key, required this.caseId});
@@ -259,7 +259,7 @@ class _FinanceProcurementApprovalReviewPageState
           ], remark: remark);
       if (!mounted) return;
       context.appSuccess('已通过 $widgetSafeBillNo，仓库预计到货任务已生成');
-      ref.invalidate(financeProcurementApprovalCountProvider);
+      refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -371,7 +371,7 @@ class _FinanceProcurementApprovalReviewPageState
           ], reason);
       if (!mounted) return;
       context.appSuccess('已驳回 $widgetSafeBillNo，制单人将收到修正通知');
-      ref.invalidate(financeProcurementApprovalCountProvider);
+      refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

@@ -27,19 +27,15 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/production_fqc_pending_count_provider.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 返回即刷新：处置完待检单回到本页时角标立即重拉（不等下一轮 60s 轮询）。
-    ref.onPageResume(RouteName.qualityTaskCenter, () {
-      ref.invalidate(procurementInspectionPendingCountProvider);
-      ref.invalidate(productionFqcPendingCountProvider);
-    });
+    // 返回即刷新：处置完待检单回到本页时按需重拉徽章汇总(ADR-108)。
+    ref.onPageResume(RouteName.qualityTaskCenter, () => refreshBadges(ref));
     final theme = Theme.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
@@ -188,8 +184,8 @@ class _QualityEntry {
 
 /// 待检处置合并角标：IQC 待检收货单张数 + FQC 待检任务数（红色圆数字徽章）。
 ///
-/// 与工作台「品质任务中心」卡角标同口径：任一来源失败显示可辨识的异常图标、
-/// 任一来源仍在加载时不展示半程合计——不把「未知」伪装成真实 0。
+/// 与工作台「品质任务中心」卡角标同口径(品质容器，服务端算好的和，ADR-108)：
+/// 某一类本次没算出时显示可辨识的异常图标、汇总还没到时不展示——不把「未知」伪装成 0。
 /// 逻辑与 dashboard/widgets/quality_inspection_pending_badge.dart 一致
 ///（quality→dashboard 无依赖边，组件留各自副本）。
 class _QualityDisposalPendingBadge extends ConsumerWidget {
@@ -199,9 +195,18 @@ class _QualityDisposalPendingBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final iqc = ref.watch(procurementInspectionPendingCountProvider);
-    final fqc = ref.watch(productionFqcPendingCountProvider);
-    if (iqc.hasError || fqc.hasError) {
+    final state = ref.watch(
+      badgeSummaryProvider.select(
+        (s) => (
+          s.loaded,
+          s.isStale(BadgeEntry.qualityIqcPending) ||
+              s.isStale(BadgeEntry.qualityFqcPending),
+          s.moduleTodo(BadgeModule.quality),
+        ),
+      ),
+    );
+    if (!state.$1) return const SizedBox.shrink();
+    if (state.$2) {
       return Tooltip(
         message: '品质待检数量加载失败，请进入待检处置后重试',
         child: Icon(
@@ -213,12 +218,6 @@ class _QualityDisposalPendingBadge extends ConsumerWidget {
         ),
       );
     }
-    if (iqc.isLoading || fqc.isLoading) {
-      return const SizedBox.shrink();
-    }
-    return UtenNotificationBadge(
-      count: (iqc.valueOrNull ?? 0) + (fqc.valueOrNull ?? 0),
-      showLabel: showLabel,
-    );
+    return UtenNotificationBadge(count: state.$3, showLabel: showLabel);
   }
 }

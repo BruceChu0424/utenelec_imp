@@ -70,9 +70,6 @@ class _FakeVisitorStaffRepository extends Fake
     actionCalls.add({'id': id, 'action': action, 'rejectReason': rejectReason});
     return _application(id, VisitorApplicationStatus.rejected);
   }
-
-  @override
-  Future<int> pendingCount() async => 0;
 }
 
 VisitorApplication _application(String id, VisitorApplicationStatus status) =>

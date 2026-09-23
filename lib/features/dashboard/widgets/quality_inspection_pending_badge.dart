@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_notification_badge.dart';
-import '../../../shared/providers/production_fqc_pending_count_provider.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../../shared/badges/badge_registry.dart';
 
-/// Combined IQC + production FQC badge without turning load failures into 0.
+/// 品质任务中心红徽章 = IQC 待检收货单 + FQC 待检行(品质容器, 服务端算好的和)。
+///
+/// 某一类本次没算出(服务端 staleEntries)时显示异常图标, 不把半截合计当真数;
+/// 汇总还没到过时不展示。
 class QualityInspectionPendingBadge extends ConsumerWidget {
   const QualityInspectionPendingBadge({
     super.key,
@@ -18,9 +20,18 @@ class QualityInspectionPendingBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final iqc = ref.watch(procurementInspectionPendingCountProvider);
-    final fqc = ref.watch(productionFqcPendingCountProvider);
-    if (iqc.hasError || fqc.hasError) {
+    final state = ref.watch(
+      badgeSummaryProvider.select(
+        (s) => (
+          s.loaded,
+          s.isStale(BadgeEntry.qualityIqcPending) ||
+              s.isStale(BadgeEntry.qualityFqcPending),
+          s.moduleTodo(BadgeModule.quality),
+        ),
+      ),
+    );
+    if (!state.$1) return const SizedBox.shrink();
+    if (state.$2) {
       return Tooltip(
         message: '品质待检数量加载失败，请进入品质任务中心后重试',
         child: Icon(
@@ -32,12 +43,8 @@ class QualityInspectionPendingBadge extends ConsumerWidget {
         ),
       );
     }
-    // 任一来源仍在加载时总数尚未收敛；不把另一个已返回值伪装成最终合计。
-    if (iqc.isLoading || fqc.isLoading) {
-      return const SizedBox.shrink();
-    }
     return UtenNotificationBadge(
-      count: (iqc.valueOrNull ?? 0) + (fqc.valueOrNull ?? 0),
+      count: state.$3,
       size: size,
       showLabel: showLabel,
     );

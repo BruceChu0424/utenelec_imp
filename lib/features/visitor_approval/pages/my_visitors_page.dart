@@ -34,6 +34,7 @@ import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
 import '../providers/visitor_pending_count_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 单次批量上限：逐条循环单条 API，超过则提示分批（无后端批量端点）。
 const int kMyVisitorsBatchLimit = 50;
@@ -76,8 +77,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       setState(() => _page = 1);
       ref.invalidate(myAsHostProvider);
       // 确认后回到 pending（HR 待办）或 rejected，两个徽章都要刷新
-      ref.read(visitorHostPendingCountProvider.notifier).refresh();
-      ref.read(visitorPendingCountProvider.notifier).refresh();
+      refreshBadges(ref);
       context.appSuccess(
         confirmed ? l10n.myVisitorsConfirmDone : l10n.myVisitorsRejectDone,
       );
@@ -202,8 +202,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       context.appError(l10n.myVisitorsBatchIncomplete(failures.first));
     }
     ref.invalidate(myAsHostProvider);
-    ref.read(visitorHostPendingCountProvider.notifier).refresh();
-    ref.read(visitorPendingCountProvider.notifier).refresh();
+    refreshBadges(ref);
   }
 
   List<Widget> _batchActions(

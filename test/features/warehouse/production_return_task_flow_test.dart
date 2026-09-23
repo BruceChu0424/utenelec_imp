@@ -8,14 +8,15 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
-import 'package:uten_imp/features/warehouse/providers/production_draw_count_provider.dart';
-import 'package:uten_imp/features/warehouse/providers/production_return_count_provider.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
-import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+import '../../helpers/document_scope_fixture.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 class _Repository extends StockDocRepository {
   _Repository() : super(ApiClient(Dio()), StockDocType.wdraw);
@@ -87,22 +88,6 @@ class _Names extends MasterNameService {
   String unit(String? id) => '件';
 }
 
-class _Count extends WarehouseProductionReturnCountNotifier {
-  _Count(int count) : super(load: () async => count, allowed: false) {
-    state = AsyncData(count);
-  }
-}
-
-class _Scope implements DocumentScopeCapabilityRepository {
-  @override
-  Future<DocumentScopeCapability> current(DocumentDataScope scope) async =>
-      DocumentScopeCapability(
-        scope: scope.apiValue,
-        writeAll: true,
-        writableOwnerIds: const {},
-      );
-}
-
 Future<void> _pump(
   WidgetTester tester,
   _Repository repository, {
@@ -130,12 +115,14 @@ Future<void> _pump(
           StockDocType.wdraw,
         ).overrideWithValue(repository),
         masterNameServiceProvider.overrideWithValue(_Names()),
-        documentScopeCapabilityRepositoryProvider.overrideWithValue(_Scope()),
-        warehouseProductionDrawPendingCountProvider.overrideWith(
-          (ref) async => 0,
-        ),
-        warehouseProductionReturnPendingCountProvider.overrideWith(
-          (ref) => _Count(repository.approvals > 0 ? 0 : 1),
+        documentScopeOverride(writeAll: true),
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            facts: {
+              BadgeFact.productionDraw: 0,
+              BadgeFact.productionReturn: repository.approvals > 0 ? 0 : 1,
+            },
+          ),
         ),
       ],
       child: MaterialApp(
@@ -157,7 +144,7 @@ Future<void> _pump(
 
 void main() {
   test(
-    'warehouse count and formal return filter use dedicated source-scoped contracts',
+    'formal return filter uses the dedicated source-scoped list contract',
     () async {
       final requests = <RequestOptions>[];
       final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'));
@@ -169,28 +156,21 @@ void main() {
               Response<dynamic>(
                 requestOptions: request,
                 statusCode: 200,
-                data: request.path.endsWith('/count')
-                    ? {'count': 2}
-                    : {
-                        'items': <Object>[],
-                        'page': 1,
-                        'size': 20,
-                        'total': 0,
-                        'totalPages': 0,
-                      },
+                data: {
+                  'items': <Object>[],
+                  'page': 1,
+                  'size': 20,
+                  'total': 0,
+                  'totalPages': 0,
+                },
               ),
             );
           },
         ),
       );
       final repository = StockDocRepository(ApiClient(dio), StockDocType.wdraw);
-      expect(await repository.pendingProductionReturnCount(), 2);
       await repository.list(
         filter: const StockDocFilter(status: 0, productionReturnRequests: true),
-      );
-      expect(
-        requests.first.path,
-        '/stock/production-materials/return-requests/warehouse/count',
       );
       expect(requests.last.queryParameters['docType'], 'WDRAW');
       expect(requests.last.queryParameters['productionReturnRequests'], isTrue);

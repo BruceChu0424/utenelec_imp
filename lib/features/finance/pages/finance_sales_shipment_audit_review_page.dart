@@ -37,7 +37,6 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
-import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../sales/config/sales_doc_config.dart';
@@ -45,6 +44,7 @@ import '../../sales/models/sales_doc.dart';
 import '../../sales/providers/master_name_provider.dart';
 import '../../sales/repositories/sales_repository.dart';
 import '../../sales/widgets/shipment_finance_change_summary.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class FinanceSalesShipmentAuditReviewPage extends ConsumerStatefulWidget {
   const FinanceSalesShipmentAuditReviewPage({super.key, required this.id});
@@ -245,7 +245,7 @@ class _FinanceSalesShipmentAuditReviewPageState
   /// 决策完成后的落点：从工作台 push 进来 → 带 true 返回值 pop，列表刷新；
   /// 深链/路由栈空 → 跳回出货财务审核工作台（勿裸 pop，见 v2026.09.03-1 事故）。
   void _closeAfterDecision() {
-    ref.invalidate(salesShipmentFinanceCountProvider);
+    refreshBadges(ref);
     bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.shipment).refreshKey);
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {

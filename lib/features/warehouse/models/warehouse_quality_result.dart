@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'warehouse_iqc_stock_in.dart'
     show
         WarehouseInboundAllocation,
@@ -85,6 +86,16 @@ class WarehouseQualityTypeCounts {
   int get actionableTotal => _sum(actionable);
 
   int get inProgressTotal => _sum(inProgress);
+
+  // 值相等: 徽章汇总每分钟换一份新对象, 数没变时不让页内分段重建。
+  @override
+  bool operator ==(Object other) =>
+      other is WarehouseQualityTypeCounts &&
+      mapEquals(other.actionable, actionable) &&
+      mapEquals(other.inProgress, inProgress);
+
+  @override
+  int get hashCode => Object.hash(actionableTotal, inProgressTotal);
 
   factory WarehouseQualityTypeCounts.fromJson(Map<String, dynamic> json) =>
       WarehouseQualityTypeCounts(

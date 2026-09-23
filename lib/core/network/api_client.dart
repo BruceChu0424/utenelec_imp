@@ -12,6 +12,7 @@ import '../security/secure_storage.dart';
 import 'api_base_url.dart';
 import 'server_config.dart';
 import 'connection_recovery.dart';
+import 'data_write_revision.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
 import 'interceptors/auth_interceptor.dart';
@@ -405,10 +406,11 @@ class ApiClient {
 }
 
 /// 全局 API 客户端 Provider。
+///
+/// Dio 实例在会话内保持稳定(ADR-108): 断网恢复不再重建它——此前约 93 个 watch 本
+/// provider 的仓库/名称服务会随之整体重建、字典缓存全丢、全站重拉。恢复后只让当前
+/// 可见页重拉一次(见 SessionRehydrateGate 对 pageRefreshRequestProvider 的推进)。
 final apiClientProvider = Provider<ApiClient>((ref) {
-  // Rebuild watched repositories only after a fully disconnected client has
-  // reached the server again. Ordinary responses do not churn the Dio graph.
-  ref.watch(connectionRecoveryProvider.select((state) => state.recoveryEpoch));
   final recovery = ref.read(connectionRecoveryProvider.notifier);
   final storage = ref.watch(secureStorageProvider);
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
@@ -431,5 +433,9 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     ),
   );
   dio.interceptors.add(SafeRequestRetryInterceptor(dio, recovery: recovery));
+  // 写请求成功推进本端写修订号: 「返回即刷新」据此判断数据变没变(ADR-108)。
+  dio.interceptors.add(
+    DataWriteRevisionInterceptor((options) => recordDataWrite(ref, options)),
+  );
   return ApiClient(dio);
 });

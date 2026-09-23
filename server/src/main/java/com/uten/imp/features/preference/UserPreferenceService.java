@@ -2,6 +2,7 @@ package com.uten.imp.features.preference;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.UserPreferenceReadPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AuthUser;
@@ -23,7 +24,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class UserPreferenceService {
+public class UserPreferenceService implements UserPreferenceReadPort {
 
     /** 与 user_preferences.pref_key VARCHAR(100) 一致。 */
     static final int MAX_KEY_LENGTH = 100;
@@ -35,9 +36,10 @@ public class UserPreferenceService {
     private final ObjectMapper objectMapper;
     private final TxSessionVars tx;
 
-    /** 当前用户全部偏好：key → 任意 JSON value。 */
+    /** 当前用户全部偏好：key → 任意 JSON value(随会话快照 /api/auth/me 一次带回，ADR-108)。 */
+    @Override
     @Transactional(readOnly = true)
-    public Map<String, JsonNode> all() {
+    public Map<String, JsonNode> currentUserPreferences() {
         UUID userId = requireStaffId();
         Map<String, JsonNode> result = new LinkedHashMap<>();
         for (UserPreference pref : repo.findByIdUserId(userId)) {

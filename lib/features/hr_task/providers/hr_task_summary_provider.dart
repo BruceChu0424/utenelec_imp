@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/hr_task_summary.dart';
 import '../repositories/hr_task_repository.dart';
-import 'hr_task_count_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 final hrTaskSummaryProvider =
     AsyncNotifierProvider<HrTaskSummaryNotifier, HrTaskSummary>(
@@ -22,7 +22,7 @@ class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
     state = await AsyncValue.guard(
       () => ref.read(hrTaskRepositoryProvider).summary(),
     );
-    await ref.read(hrTaskCountProvider.notifier).refresh();
+    await ref.read(badgeSummaryProvider.notifier).refresh();
   }
 
   /// 静默重取（保操作后不打断页面结构）。
@@ -31,6 +31,6 @@ class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
       () => ref.read(hrTaskRepositoryProvider).summary(),
     );
     if (next.hasValue) state = next;
-    await ref.read(hrTaskCountProvider.notifier).refresh();
+    await ref.read(badgeSummaryProvider.notifier).refresh();
   }
 }

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,55 +7,9 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
-import 'package:uten_imp/features/subcontract/providers/subcontract_task_count_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
-  test(
-    'subcontract badge uses authoritative server count above 100 with no preparation list download',
-    () async {
-      final requests = <String>[];
-      final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'))
-        ..interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (request, handler) {
-              requests.add(request.path);
-              handler.resolve(
-                Response(
-                  requestOptions: request,
-                  data: {'count': 257},
-                  statusCode: 200,
-                ),
-              );
-            },
-          ),
-        );
-      final container = ProviderContainer(
-        overrides: [
-          currentPermissionsProvider.overrideWithValue({
-            Perm.subcontractApplicationView,
-          }),
-          isSuperAdminProvider.overrideWithValue(false),
-          masterDataSessionKeyProvider.overrideWithValue('test-account'),
-          apiClientProvider.overrideWithValue(ApiClient(dio)),
-        ],
-      );
-      addTearDown(container.dispose);
-      final loaded = Completer<int>();
-      final subscription = container.listen(subcontractTaskCountProvider, (
-        _,
-        value,
-      ) {
-        if (value > 0 && !loaded.isCompleted) loaded.complete(value);
-      });
-      addTearDown(subscription.close);
-      await loaded.future.timeout(const Duration(seconds: 5));
-      expect(container.read(subcontractTaskCountProvider), 257);
-      expect(requests, ['/operations/workbench/subcontract/count']);
-    },
-  );
-
   testWidgets(
     'over 100 preparation rows share the existing pager and later-page detail uses exact task id',
     (tester) async {

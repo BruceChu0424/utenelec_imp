@@ -16,7 +16,6 @@ import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionEm
 import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionEmployeePermissionsDto.PermissionState;
 import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionStaffPageDto;
 import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionStaffPageDto.StaffSummary;
-import com.uten.imp.features.org.department.staffpermission.dto.PermissionDelegationCapabilityDto;
 import com.uten.imp.features.org.department.staffpermission.dto.StaffDelegationResultDto;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
@@ -80,18 +79,24 @@ public class PagePermissionWorkspaceService {
     private final PagePermissionDelegationFeatureGate featureGate;
     private final OrganizationPermissionManagementScopeService managementScopeService;
 
+    /**
+     * 会话快照里的「可委派页面」(ADR-108): 当前主体能打开「本页权限设置」的全部页面 key。
+     *
+     * <p>资格与原逐页 capability 端点一致——发布门禁开启且当前员工对组织树有管理权(负责人 /
+     * 超级管理员); 资格与页面无关, 所以有资格时就是全部已登记页面, 没资格时为空。
+     * 前端顶栏「权限设置」按钮改为同步读快照, 不再每进一个页面现拉一次。非内部员工返回空。
+     */
     @Transactional(readOnly = true)
-    public PermissionDelegationCapabilityDto capability(String surfaceKey) {
-        AuthUser actor = requireStaffSubject();
-        if (!featureGate.enabled()) {
-            return new PermissionDelegationCapabilityDto(
-                    surfaceKey, actor.isSuperAdmin(), false);
+    public List<String> delegableSurfaceKeys() {
+        AuthUser actor = currentUser.get().orElse(null);
+        if (actor == null
+                || actor.isVisitor()
+                || (!actor.isSuperAdmin() && actor.getEmployeeId() == null)
+                || !featureGate.enabled()
+                || !managementScopeService.hasManagementAuthority(actor)) {
+            return List.of();
         }
-        surfaceRegistry.permissionsFor(surfaceKey);
-        return new PermissionDelegationCapabilityDto(
-                surfaceKey,
-                actor.isSuperAdmin(),
-                managementScopeService.hasManagementAuthority(actor));
+        return surfaceRegistry.knownKeys().stream().sorted().toList();
     }
 
     @Transactional(readOnly = true)

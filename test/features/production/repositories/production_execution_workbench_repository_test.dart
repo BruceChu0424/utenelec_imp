@@ -119,23 +119,6 @@ void main() {
       expect(result.items.single.statusLabel, '部分已排 · 仍有待排数量');
     },
   );
-
-  test('workshop task count parses the per-status breakdown', () async {
-    late RequestOptions captured;
-    final repository = ProductionExecutionWorkbenchRepository(
-      _api((request) {
-        captured = request;
-        return {'count': 4, 'preparing': 3, 'inProgress': 1};
-      }),
-    );
-    final breakdown = await repository.workshopTaskCount();
-    expect(captured.path, '/production/workshop-tasks/count');
-    expect(breakdown.count, 4);
-    expect(breakdown.preparing, 3);
-    expect(breakdown.inProgress, 1);
-    // 「可报工」分段 2026-09-06 退役、2026-09-10 删字段：两段相加=总数。
-    expect(breakdown.preparing + breakdown.inProgress, breakdown.count);
-  });
 }
 
 ApiClient _api(Map<String, dynamic> Function(RequestOptions) response) {

@@ -153,10 +153,6 @@ Future<void> _pump(
 }
 
 class _OutboundGateway implements WarehouseSalesOutboundGateway {
-  @override
-  Future<WarehouseSalesOutboundCounts> counts() async =>
-      const WarehouseSalesOutboundCounts();
-
   final List<String?> workStatuses = <String?>[];
 
   @override

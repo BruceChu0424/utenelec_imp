@@ -20,9 +20,9 @@ import '../../../core/utils/china_datetime.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
-import '../providers/sales_completion_count_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 弹出批量发货面板；返回生成的出货单张数（null 表示取消）。
 Future<int?> showSalesBatchShipPanel(BuildContext context, WidgetRef ref) {
@@ -163,7 +163,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
           );
       if (!mounted) return;
       if (created.isEmpty) throw const FormatException('未收到开单结果');
-      ref.invalidate(salesAttentionCountProvider);
+      refreshBadges(ref);
       bumpListRefresh(ref, SalesDocConfig.shipment.refreshKey);
       bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
       Navigator.pop(context, created.length);

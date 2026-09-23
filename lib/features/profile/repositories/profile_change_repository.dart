@@ -48,9 +48,6 @@ abstract interface class ProfileChangeRepository {
     String? comment,
   );
 
-  /// HR 全局待办数（导航徽章）。
-  Future<int> hrPendingCount();
-
   /// 密码二次确认（仅校验，不改密）。
   Future<void> verifyPassword(String password);
 }
@@ -205,12 +202,6 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
       body: {'action': action, 'comment': ?comment},
     );
     return ProfileChangeBatch.fromJson(json);
-  }
-
-  @override
-  Future<int> hrPendingCount() async {
-    final json = await api.get(ApiEndpoints.hrProfileChangesPendingCount);
-    return (json['count'] as num?)?.toInt() ?? 0;
   }
 
   @override

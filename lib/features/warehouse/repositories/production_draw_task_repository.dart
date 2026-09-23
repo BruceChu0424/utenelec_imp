@@ -9,12 +9,6 @@ class ProductionDrawTaskRepository {
 
   final ApiClient api;
 
-  /// READY/PARTIAL production DRAW tasks share the server open_qty projection.
-  Future<int> pendingCount() async {
-    final json = await api.get('/operations/workbench/warehouse/count');
-    return (json['count'] as num?)?.toInt() ?? 0;
-  }
-
   /// 分状态计数（任务中心子分类徽章）：READY_TO_PICK / PARTIAL / OPEN_ANY。
   Future<Map<String, int>> statusBreakdown() async {
     final json = await api.get(

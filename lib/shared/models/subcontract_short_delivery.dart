@@ -232,6 +232,16 @@ class SubcontractShortDeliveryCounts {
         tolerant: (json['tolerant'] as num?)?.toInt() ?? 0,
         waiting: (json['waiting'] as num?)?.toInt() ?? 0,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      other is SubcontractShortDeliveryCounts &&
+      other.pending == pending &&
+      other.tolerant == tolerant &&
+      other.waiting == waiting;
+
+  @override
+  int get hashCode => Object.hash(pending, tolerant, waiting);
 }
 
 class SubcontractGoodsLossRow {

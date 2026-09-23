@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 
 import 'uten_colors.dart';
 import 'uten_tokens.dart';
+import 'uten_page_transitions.dart';
 
 ThemeData buildDarkTheme() {
   const colorScheme = ColorScheme(
@@ -58,6 +59,8 @@ ThemeData buildDarkTheme() {
     scaffoldBackgroundColor: UtenColors.darkBackground,
     canvasColor: UtenColors.darkBackground,
     visualDensity: VisualDensity.adaptivePlatformDensity,
+    // Web/桌面轻量淡入、移动端平台默认, 全部登记转场进行态(ADR-108)。
+    pageTransitionsTheme: utenPageTransitionsTheme(),
 
     textTheme: const TextTheme(
       displayLarge: TextStyle(

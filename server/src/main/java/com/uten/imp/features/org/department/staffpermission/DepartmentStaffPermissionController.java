@@ -3,7 +3,6 @@ package com.uten.imp.features.org.department.staffpermission;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.department.staffpermission.dto.ManagedDepartmentDto;
-import com.uten.imp.features.org.department.staffpermission.dto.PermissionDelegationCapabilityDto;
 import com.uten.imp.features.org.department.staffpermission.dto.SetStaffDelegationRequest;
 import com.uten.imp.features.org.department.staffpermission.dto.SetStaffOverrideRequest;
 import com.uten.imp.features.org.department.staffpermission.dto.StaffDelegationResultDto;
@@ -32,12 +31,6 @@ public class DepartmentStaffPermissionController {
 
     private final DepartmentStaffPermissionService service;
     private final PagePermissionWorkspaceService workspace;
-
-    @GetMapping("/capability")
-    public PermissionDelegationCapabilityDto capability(
-            @RequestParam String surfaceKey) {
-        return workspace.capability(surfaceKey);
-    }
 
     @GetMapping("/managed-departments")
     public List<ManagedDepartmentDto> managedDepartments(

@@ -169,9 +169,6 @@ class _WarehouseSalesOutboundWorkbenchState
         _result = result;
         _loading = false;
       });
-      // 列表口径变化后同步角标与小类行计数(确认出库会减少待办数、增加已出库数);
-      // 待办数 provider 由分组计数派生, 只失效源头这一份.
-      ref.invalidate(warehouseSalesOutboundCountsProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -404,9 +401,9 @@ class _WarehouseSalesOutboundWorkbenchState
     // 小类行计数(2026-09-20 用户口径: 父分类有红徽章, 小类也要有数):
     // 待出库 = 红徽章(等仓库动手, 与父分类「销售出库」/hub 卡同源同数);
     // 已出库 = 中性括号数(已完结, 供掂量); 历史单据不挂——已出库本身就是历史,
-    // 再挂一次是同一批单在一行里数两遍. valueOrNull: 刷新期间带住旧值,
-    // 首载/失败为 null 时两种形态都不渲染数字(不把未知伪装成 0).
-    final counts = ref.watch(warehouseSalesOutboundCountsProvider).valueOrNull;
+    // 再挂一次是同一批单在一行里数两遍. 数字随徽章汇总带回(刷新期间带住旧值),
+    // 汇总未到/无权为 null 时两种形态都不渲染数字(不把未知伪装成 0).
+    final counts = ref.watch(warehouseSalesOutboundCountsProvider);
     return UtenFilterToolbar<_SalesOutboundSeg>(
       segmentsKey: const Key('warehouse-sales-outbound-status'),
       searchKey: widget.embedded

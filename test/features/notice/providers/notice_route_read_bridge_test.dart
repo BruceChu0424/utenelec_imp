@@ -29,9 +29,6 @@ class _FakeNoticeRepository implements NoticeRepository {
   }
 
   @override
-  Future<int> unreadCount() async => 0;
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

@@ -37,17 +37,14 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
-import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
-import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
-import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../models/production_fqc_inspection.dart';
 import '../widgets/production_fqc_dialogs.dart' show fqcQtyText;
 import 'production_fqc_handling_page.dart' show fqcStorageText;
 import '../repositories/production_fqc_repository.dart';
 import '../services/quality_batch_submission.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 列表页多选结果（extra 传入）：IQC 收货单 + FQC 检查单 + 无检查单 FQC 任务。
 class QualityBatchApprovalSelection {
@@ -460,12 +457,10 @@ class _QualityBatchApprovalPageState
     var countsInvalidated = false;
     void invalidateCounts() {
       if (!mounted || countsInvalidated) return;
-      ref.invalidate(procurementInspectionPendingCountProvider);
+      refreshBadges(ref);
       // 仓库侧品质结果的红黄两个数字都从 type-counts 这一支派生, 失效只能打在
       // 源头上: 对派生 provider 调 invalidate 不会重新发请求, 徽章要等 60s 才动。
-      ref.invalidate(warehouseQualityResultTypeCountsProvider);
-      ref.invalidate(productionFqcPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      refreshBadges(ref);
       countsInvalidated = true;
     }
 

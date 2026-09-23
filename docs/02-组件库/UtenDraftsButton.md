@@ -77,7 +77,7 @@ UtenHubCard(
 
 渲染为 `UtenNotificationBadge` 红色待办数字，挂在 `UtenHubCard.badge`；`count <= 0` 或无该类型 `*:view` 权限时不渲染、不占位。
 
-销售、采购、委外、财务、生产和仓库的草稿分别在 `todo_badge_registry.dart` 登记一次，按模块累加到工作台与导航总数。历史和报表仍使用中性计数。销售财审驳回单已有独立待办来源，不重复计入草稿。
+销售、采购、委外、财务、生产和仓库的草稿分别在服务端徽章目录 `WorkbenchBadgeCatalog` 登记一个草稿入口，由汇总接口按模块算好后带回工作台与导航总数(ADR-108)；各类草稿细数读汇总事实数 `drafts.*`，不再单独请求 /documents/draft-counts。历史和报表仍使用中性计数。销售财审驳回单已有独立待办来源，不重复计入草稿。
 
 ---
 

@@ -50,7 +50,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/list_refresh_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -65,6 +64,7 @@ import '../repositories/production_material_repository.dart';
 import '../widgets/production_flow_stage_cell.dart';
 import '../widgets/production_material_settlement_sheet.dart';
 import '../widgets/workshop_task_material_table.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 一块跑批遮罩的画面: 测试锚点 key + 标题 + 说明。标题在同一次动作里可换
 /// (提交段 -> 刷新段), UtenBusyOverlay 支持帧后热更文案。
@@ -779,7 +779,6 @@ class _ProductionWorkshopTasksPageState
         _loading = false;
         _selected.clear();
       });
-      ref.read(productionWorkshopTaskCountProvider.notifier).refresh();
       return;
     }
     final requestedPage = _page;
@@ -819,7 +818,6 @@ class _ProductionWorkshopTasksPageState
             .toSet();
         _selected.removeWhere((id) => !available.contains(id));
       });
-      ref.read(productionWorkshopTaskCountProvider.notifier).refresh();
     } catch (_) {
       if (mounted && generation == _loadGeneration) {
         setState(() => _error = '车间任务加载失败，请重试');
@@ -1475,28 +1473,33 @@ class _ProductionWorkshopTasksPageState
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(listRefreshTickProvider(productionExecutionRefreshKey), (_, _) {
-      if (!_navigating && _busy == null) _load();
-    });
-    // 2026-09-12 用户口径「从子页面回来整页要自动刷新」：返回即无条件重拉；
-    // 顺手兜底清 _navigating——历史上有流程异常退出没走到 finally 时它会卡在
-    // true，右下角「批量报工」就一直点不动。各流程自己的 finally 清 False 是
-    // 幂等的，重复清无副作用。
-    ref.onPageResume(RouteName.productionWorkshopTasks, () {
-      if (mounted &&
-          (_navigating || _busy != null || _clearSelectionOnResume)) {
-        setState(() {
-          _navigating = false;
-          // 遮罩也必须在这里兜底清掉：漏清一次就是一块盖死整屏、连刷新按钮都
-          // 点不到的蒙版(它带 ModalBarrier(dismissible: false))，比卡住一个
-          // 灰按钮严重得多。
-          _busy = null;
-          if (_clearSelectionOnResume) _selected.clear();
-          _clearSelectionOnResume = false;
-        });
-      }
-      _load();
-    });
+    // 2026-09-12 用户口径「从子页面回来整页要自动刷新」：子页面里做过任何写操作
+    // (本端写修订号前进)或离开超过 30 秒就重拉(ADR-108; 纯查看后返回不再整页重拉)。
+    // 生产执行刷新信号(bumpListRefresh)在本页栈顶时立即重拉, 被盖住时留到返回再拉。
+    ref.onPageResume(
+      RouteName.productionWorkshopTasks,
+      () {
+        if (!_navigating && _busy == null) _load();
+      },
+      refreshKeys: const [productionExecutionRefreshKey],
+      // 每次返回都兜底清 _navigating——历史上有流程异常退出没走到 finally 时它会
+      // 卡在 true，右下角「批量报工」就一直点不动。各流程自己的 finally 清 False
+      // 是幂等的，重复清无副作用。
+      onReturn: () {
+        if (mounted &&
+            (_navigating || _busy != null || _clearSelectionOnResume)) {
+          setState(() {
+            _navigating = false;
+            // 遮罩也必须在这里兜底清掉：漏清一次就是一块盖死整屏、连刷新按钮都
+            // 点不到的蒙版(它带 ModalBarrier(dismissible: false))，比卡住一个
+            // 灰按钮严重得多。
+            _busy = null;
+            if (_clearSelectionOnResume) _selected.clear();
+            _clearSelectionOnResume = false;
+          });
+        }
+      },
+    );
     // Route access, report creation and server row capabilities are separate
     // gates. Watch both providers so a live grant/revoke updates actions now.
     ref.watch(currentPermissionsProvider);
@@ -1530,6 +1533,8 @@ class _ProductionWorkshopTasksPageState
                       // 同上：遮罩是这条人工自愈路径必须能解掉的东西。
                       _busy = null;
                     });
+                    // 顶部分类徽章随徽章汇总带回, 手动刷新时一并重拉。
+                    refreshBadges(ref);
                     _load();
                   },
             icon: const Icon(Icons.refresh_rounded),

@@ -8,9 +8,9 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
-import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import '../../helpers/document_scope_fixture.dart';
 
 final _drawPermissionsProvider =
     NotifierProvider<_DrawPermissions, Set<String>>(_DrawPermissions.new);
@@ -20,18 +20,6 @@ class _DrawPermissions extends Notifier<Set<String>> {
   Set<String> build() => const <String>{};
 
   void replace(Set<String> value) => state = value;
-}
-
-class _AllowAllStockDocumentScope implements DocumentScopeCapabilityRepository {
-  const _AllowAllStockDocumentScope();
-
-  @override
-  Future<DocumentScopeCapability> current(DocumentDataScope scope) async =>
-      DocumentScopeCapability(
-        scope: scope.apiValue,
-        writeAll: true,
-        writableOwnerIds: const <String>{},
-      );
 }
 
 class _DrawDetailApi extends ApiClient {
@@ -134,9 +122,7 @@ Future<ProviderContainer> _pumpDrawDetail(
       stockDocRepositoryProvider(
         StockDocType.draw,
       ).overrideWithValue(StockDocRepository(api, StockDocType.draw)),
-      documentScopeCapabilityRepositoryProvider.overrideWithValue(
-        const _AllowAllStockDocumentScope(),
-      ),
+      documentScopeOverride(writeAll: true),
     ],
   );
   addTearDown(container.dispose);

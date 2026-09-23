@@ -21,8 +21,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
-import '../providers/procurement_inbound_count_providers.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 String procurementReturnTasksLocation(ProcurementInboundOrderType orderType) {
   return Uri(
@@ -71,7 +71,6 @@ class _ProcurementReturnTasksPageState
         _result = result;
         _loading = false;
       });
-      ref.invalidate(procurementArrivalReturnCountProvider(widget.orderType));
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
@@ -185,8 +184,7 @@ class _ProcurementReturnTasksPageState
     }
     _selected.clear();
     if (!mounted) return;
-    ref.invalidate(procurementArrivalReturnCountProvider(widget.orderType));
-    ref.invalidate(warehouseArrivalExceptionCountProvider);
+    refreshBadges(ref);
     await _load(_result?.page ?? 1);
     if (!mounted) return;
     if (fail == 0) {
@@ -565,8 +563,7 @@ class _ProcurementReturnTaskDetailPageState
           );
       if (!mounted) return;
       setState(() => _task = updated);
-      ref.invalidate(procurementArrivalReturnCountProvider(updated.orderType));
-      ref.invalidate(warehouseArrivalExceptionCountProvider);
+      refreshBadges(ref);
       context.appSuccess('已记录退回供应商');
     } on ApiException catch (error) {
       if (!mounted) return;

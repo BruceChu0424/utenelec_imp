@@ -34,15 +34,6 @@ class ProductionExecutionWorkbenchRepository {
   // 它们只服务于「进行中」滑窗详情与外层直报（已下线——双击直达物料分析/计划
   // 详情，报工统一在 /production/workshop-tasks）。服务端端点保留兼容。
 
-  /// 「进行中」批次数(最外层分析/根计划), 与 [groups] 同一读取范围。
-  ///
-  /// 走专用 count 端点而不是 `groups(size: 1).total`: 常驻黄色徽章每 60s 就要问一次,
-  /// 让服务端为了一个数字再把首页行拼出来不划算(ADR-100)。
-  Future<int> groupCount() async {
-    final json = await _api.get('/production/execution-workbench/count');
-    return (json['count'] as num?)?.toInt() ?? 0;
-  }
-
   /// 本批次关联单据（采购/委外申请与订货单、本批次计划树）——
   /// 计划详情页「本批次关联单据」卡片消费。
   Future<List<ProductionExecutionWorkbenchRelatedDocument>> relatedDocuments({
@@ -108,15 +99,9 @@ class ProductionExecutionWorkbenchRepository {
       for (final item in rows) ProductionWorkshopTaskMaterial.fromJson(item),
     ];
   }
-
-  /// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段（等待物料/生产中，
-  /// 相加=总数）。旧消费者只读 count 不受影响。
-  Future<WorkshopTaskCountBreakdown> workshopTaskCount() async {
-    final json = await _api.get('/production/workshop-tasks/count');
-    return WorkshopTaskCountBreakdown.fromJson(json);
-  }
 }
 
+/// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段(等待物料/生产中，相加=总数)。
 class WorkshopTaskCountBreakdown {
   const WorkshopTaskCountBreakdown({
     this.count = 0,
@@ -128,16 +113,8 @@ class WorkshopTaskCountBreakdown {
   final int preparing;
   final int inProgress;
 
-  factory WorkshopTaskCountBreakdown.fromJson(Map<String, dynamic> json) =>
-      WorkshopTaskCountBreakdown(
-        count: (json['count'] as num?)?.toInt() ?? 0,
-        preparing: (json['preparing'] as num?)?.toInt() ?? 0,
-        inProgress: (json['inProgress'] as num?)?.toInt() ?? 0,
-      );
-
-  // 2026-09-11 值相等：60s 轮询每次都 new 一个快照，没有 == 时
-  // StateNotifier 每分钟都把「我的车间任务」整页重建一次（计数没变也重建）。
-  // 有了 == 之后 notifier 里的 `if (breakdown != state)` 才能真正拦下来。
+  // 值相等：徽章汇总每分钟换一份新对象，计数没变时不把「我的车间任务」整页重建。
+  // 数字随工作台徽章汇总带回(ADR-108)，见 productionWorkshopTaskCountProvider。
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

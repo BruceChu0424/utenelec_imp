@@ -30,7 +30,6 @@ import '../../../shared/auth/permissions.dart';
 import '../models/warehouse_iqc_return.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
-import '../providers/warehouse_quality_result_count_provider.dart';
 import '../repositories/warehouse_iqc_return_repository.dart';
 import '../repositories/warehouse_iqc_stock_in_repository.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
@@ -38,6 +37,7 @@ import '../widgets/warehouse_quality_merged_table.dart';
 import '../widgets/warehouse_quality_slice_table.dart';
 import '../widgets/warehouse_quality_stock_in_warehouse_picker.dart';
 import '../widgets/warehouse_inbound_allocation_view.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 品质检查结果详情（完整页面，非弹窗）：上方单据信息卡，随后**合并明细表**——
 /// 每个货品行一列到底：判定结果（合格绿对勾 / 不合格红禁止 / 部分合格黄警告 /
@@ -255,7 +255,7 @@ class _WarehouseQualityResultDetailPageState
           );
       if (!mounted) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
-      ref.invalidate(warehouseQualityResultTypeCountsProvider);
+      refreshBadges(ref);
       setState(() {
         _saving = false;
         _busy = null;

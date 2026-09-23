@@ -2,7 +2,8 @@
 // 文档：docs/02-组件库/UtenNotify.md §七
 //
 // - 按账号/模拟身份持久化 (publishedAt,id) 游标；首次由服务端补显未读且未确认到达的通知；
-// - 前台每 2s 增量拉取、每分钟全量待确认对账，补回晚提交游标后方的通知；
+// - 前台每 20s 按游标增量拉取(页面隐藏暂停; 徽章汇总提示有新通知时立即拉)；游标后方的
+//   遗漏由未读索引摘要驱动补拉，不再每 2s 轮询、每分钟从纪元全量对账(ADR-108)；
 // - 所有优先级均进入非阻塞顶部叠放层；重要度只改变视觉与停留时长；
 // - 同一批通知逐条跟踪真实关闭回调，点击才标注已读并跳 actionRoute。
 
@@ -17,10 +18,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
+import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/providers/app_visibility_provider.dart';
 import '../../../shared/providers/shared_providers.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 import '../repositories/notice_repository.dart';
+import 'notice_unread_index_provider.dart';
 import '../widgets/notice_detail_dialog.dart';
 import '../widgets/review_pending_dialog.dart';
 
@@ -191,21 +195,23 @@ typedef NoticeArrivalRefresh = Future<void> Function();
 final noticeArrivalRefreshProvider = Provider<NoticeArrivalRefresh>((ref) {
   return () async {
     ref.invalidate(noticeListProvider);
-    await ref.read(unreadNoticeCountProvider.notifier).refresh();
+    await ref.read(badgeSummaryProvider.notifier).refresh();
   };
 });
 
 /// 已登录员工主壳层的通知到达协调器。
 ///
-/// 每个身份先恢复持久化 cursor；首次无 cursor 时由服务端补显全部未读。单飞请求、
-/// 循环分页、周期全量对账与 identity generation 防止漏报、重复和跨会话迟到响应。
+/// 每个身份先恢复持久化 cursor；首次无 cursor 时由服务端补显全部未读。之后只按游标
+/// 增量拉取(默认 20 秒一次，页面隐藏时暂停；徽章汇总带回的最新发布时间超过游标时
+/// 立即拉一次)。游标后方的遗漏(晚提交、稍后再看到期、在别处读掉)不再每分钟从纪元
+/// 全量对账，而是由未读索引摘要驱动：摘要对不上才重拉轻量索引，据此补拉漏掉的、
+/// 剔除已不该弹的(ADR-108)。单飞请求、identity generation 防止重复和跨会话迟到响应。
 class NoticeArrivalListener extends ConsumerStatefulWidget {
   const NoticeArrivalListener({
     super.key,
     required this.identityKey,
     required this.child,
-    this.pollInterval = const Duration(seconds: 2),
-    this.fullAuditInterval = const Duration(minutes: 1),
+    this.pollInterval = const Duration(seconds: 20),
     this.onArrival,
     this.routeContext,
   });
@@ -213,7 +219,6 @@ class NoticeArrivalListener extends ConsumerStatefulWidget {
   final String identityKey;
   final Widget child;
   final Duration pollInterval;
-  final Duration fullAuditInterval;
   final NoticeArrivalDispatcher? onArrival;
   final BuildContext? Function()? routeContext;
 
@@ -224,12 +229,15 @@ class NoticeArrivalListener extends ConsumerStatefulWidget {
 
 class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     with WidgetsBindingObserver {
+  static final _epoch = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+
   Timer? _timer;
-  Timer? _fullAuditTimer;
-  bool _fullAuditDue = false;
   bool _cursorLoaded = false;
   NoticeArrivalCursor? _cursor;
   final Set<String> _deliveredIds = <String>{};
+
+  /// 本端确认送达的时刻(只在内存): 未读索引对账时, 比索引请求更晚送达的不能剔除。
+  final Map<String, DateTime> _deliveredAt = <String, DateTime>{};
   final Set<String> _queuedIds = <String>{};
   final ListQueue<Notice> _pendingArrivals = ListQueue<Notice>();
   final ListQueue<Notice> _pendingReviewArrivals = ListQueue<Notice>();
@@ -238,6 +246,14 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   int _generation = 0;
   int _requestSequence = 0;
   int? _activeRequest;
+
+  /// 送达前校验失败后的单次重试定时器。
+  Timer? _retryTimer;
+  static const _arrivalRetryDelay = Duration(seconds: 2);
+
+  /// 在途请求期间又来了一次拉取要求(索引对账 / 汇总提示有新通知): 返回后补一次。
+  NoticeArrivalCursor? _catchUpFrom;
+  bool _pollAgain = false;
   Future<void> _persistTail = Future<void>.value();
   String? _lastScheduledSnapshot;
   bool _persistDirty = false;
@@ -246,6 +262,23 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 未读索引变化(摘要对不上后重拉到的新索引) → 对账: 补拉漏掉的、剔除不该弹的。
+    ref.listenManual<NoticeUnreadIndex?>(noticeUnreadIndexProvider, (_, index) {
+      if (index != null) _reconcile(index);
+    });
+    // 徽章汇总带回的最新发布时间超过本地游标 → 有新通知, 不等下一轮立即拉。
+    ref.listenManual<int>(
+      badgeSummaryProvider.select(
+        (s) => s.fact(BadgeFact.noticesLatestPublishedAt),
+      ),
+      (_, latestMillis) {
+        final cursor = _cursor;
+        if (latestMillis <= 0 || cursor == null) return;
+        if (latestMillis > cursor.publishedAt.millisecondsSinceEpoch) {
+          unawaited(_poll());
+        }
+      },
+    );
     _startPolling();
   }
 
@@ -254,19 +287,14 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.identityKey != widget.identityKey) {
       _resetForIdentity();
-    } else {
-      if (oldWidget.pollInterval != widget.pollInterval) {
-        _startPolling();
-      }
-      if (oldWidget.fullAuditInterval != widget.fullAuditInterval) {
-        _scheduleFullAudit();
-      }
+    } else if (oldWidget.pollInterval != widget.pollInterval) {
+      _startPolling();
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (isVisibleLifecycle(state)) {
       _startPolling();
       _dispatchNext();
     } else {
@@ -274,6 +302,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       _activeRequest = null;
       _timer?.cancel();
       _timer = null;
+      _retryTimer?.cancel();
+      _retryTimer = null;
     }
   }
 
@@ -281,7 +311,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   void dispose() {
     _generation++;
     _timer?.cancel();
-    _fullAuditTimer?.cancel();
+    _retryTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -289,7 +319,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   void _startPolling() {
     _timer?.cancel();
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    if (lifecycle != null && !isVisibleLifecycle(lifecycle)) return;
     _timer = Timer.periodic(widget.pollInterval, (_) => unawaited(_poll()));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -298,21 +328,14 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     });
   }
 
-  void _scheduleFullAudit() {
-    _fullAuditTimer?.cancel();
-    _fullAuditTimer = Timer(widget.fullAuditInterval, () {
-      _fullAuditDue = true;
-    });
-  }
-
   void _resetForIdentity() {
     _generation++;
-    _fullAuditTimer?.cancel();
-    _fullAuditTimer = null;
-    _fullAuditDue = false;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _cursorLoaded = false;
     _cursor = null;
     _deliveredIds.clear();
+    _deliveredAt.clear();
     _queuedIds.clear();
     _pendingArrivals.clear();
     _pendingReviewArrivals.clear();
@@ -320,13 +343,88 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     _activeArrivals.clear();
     _lastScheduledSnapshot = null;
     _persistDirty = false;
+    _catchUpFrom = null;
+    _pollAgain = false;
     // 旧请求仍可在网络层完成，但 generation 会丢弃其结果；新身份不必等待它。
     _activeRequest = null;
     _startPolling();
   }
 
-  Future<void> _poll() async {
-    if (!mounted || widget.identityKey.isEmpty || _activeRequest != null) {
+  /// 按未读索引对账(替代原来每分钟从纪元分页的全量对账)。
+  void _reconcile(NoticeUnreadIndex index) {
+    if (!mounted || !_cursorLoaded) return;
+    final requestedAt = index.requestedAt ?? _epoch;
+    final pending = <String, NoticeUnreadItem>{
+      for (final item in index.items)
+        if (item.pendingArrival) item.id: item,
+    };
+    // 已送达记录只留仍该弹的; 索引请求之后才送达的, 索引看不见, 不能据此剔除。
+    final deliveredBefore = _deliveredIds.length;
+    _deliveredIds.removeWhere(
+      (id) =>
+          !pending.containsKey(id) &&
+          (_deliveredAt[id] ?? _epoch).isBefore(requestedAt),
+    );
+    _deliveredAt.removeWhere((id, _) => !_deliveredIds.contains(id));
+    if (_deliveredIds.length != deliveredBefore) _persistDirty = true;
+    // 排队未弹的: 已被读掉/确认/办结的不再弹; 比索引最新一条还新的, 索引无从判断, 保留。
+    final newest = index.latestPublishedAt;
+    for (final queue in [_pendingArrivals, _pendingReviewArrivals]) {
+      final kept = queue
+          .where(
+            (notice) =>
+                pending.containsKey(notice.id) ||
+                newest == null ||
+                notice.publishedAt.isAfter(newest),
+          )
+          .toList(growable: false);
+      if (kept.length != queue.length) {
+        queue
+          ..clear()
+          ..addAll(kept);
+      }
+    }
+    _queuedIds
+      ..clear()
+      ..addAll(_pendingArrivals.map((notice) => notice.id))
+      ..addAll(_pendingReviewArrivals.map((notice) => notice.id))
+      ..addAll(_activeArrivals.keys);
+    // 仍该弹、却既没送达也没在排队的: 游标后方的遗漏, 从最早一条之前补拉一次。
+    DateTime? earliest;
+    for (final item in pending.values) {
+      if (_deliveredIds.contains(item.id) || _queuedIds.contains(item.id)) {
+        continue;
+      }
+      if (earliest == null || item.publishedAt.isBefore(earliest)) {
+        earliest = item.publishedAt;
+      }
+    }
+    _schedulePersist();
+    if (earliest != null) {
+      unawaited(
+        _poll(
+          from: NoticeArrivalCursor(
+            publishedAt: earliest.subtract(const Duration(microseconds: 1)),
+            id: NoticeArrivalCursor.zeroId,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// 拉取到达 feed。[from] 非空 = 从该位置补拉(不回退主游标); 否则按主游标增量拉,
+  /// 该身份还没有游标时从头拉一遍(首次登录补显全部未读)。
+  Future<void> _poll({NoticeArrivalCursor? from}) async {
+    if (!mounted || widget.identityKey.isEmpty) return;
+    if (_activeRequest != null) {
+      if (from != null) {
+        final pendingFrom = _catchUpFrom;
+        if (pendingFrom == null || _comesAfter(pendingFrom, from)) {
+          _catchUpFrom = from;
+        }
+      } else {
+        _pollAgain = true;
+      }
       return;
     }
     final request = ++_requestSequence;
@@ -343,18 +441,21 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
         _deliveredIds
           ..clear()
           ..addAll(delivered);
+        _deliveredAt.clear();
         _lastScheduledSnapshot = stored == null
             ? null
             : _snapshotSignature(stored, delivered);
         _persistDirty = false;
         _cursorLoaded = true;
-        _fullAuditDue = true;
+        // 重启/换身份时未读索引可能早已在手(之后不会再有变化通知): 游标一就绪就
+        // 对账一次, 把上次没弹完、仍该弹的补回来。
+        final index = ref.read(noticeUnreadIndexProvider);
+        if (index != null) scheduleMicrotask(() => _reconcile(index));
       }
 
-      final fullAudit = _fullAuditDue || _cursor == null;
-      if (fullAudit) _normalAuditPending = true;
-      var cursor = fullAudit ? null : _cursor;
-      final unreadIdsThisAudit = <String>{};
+      final fullScan = from == null && _cursor == null;
+      if (fullScan) _normalAuditPending = true;
+      var cursor = from ?? _cursor;
       final seenThisPoll = <String>{};
       var discoveredAny = false;
       var pageCount = 0;
@@ -368,24 +469,21 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
           throw StateError('通知到达游标未前进');
         }
         for (final notice in page.items) {
-          if (notice.id.isEmpty) continue;
-          if (!notice.isRead) {
-            if (fullAudit) unreadIdsThisAudit.add(notice.id);
-            if (!_deliveredIds.contains(notice.id) &&
-                _queuedIds.add(notice.id) &&
-                seenThisPoll.add(notice.id)) {
-              _queueFor(notice).addLast(notice);
-              discoveredAny = true;
-            }
+          if (notice.id.isEmpty || notice.isRead) continue;
+          if (!_deliveredIds.contains(notice.id) &&
+              !_activeArrivals.containsKey(notice.id) &&
+              _queuedIds.add(notice.id) &&
+              seenThisPoll.add(notice.id)) {
+            _queueFor(notice).addLast(notice);
+            discoveredAny = true;
           }
         }
         _advanceCursor(nextCursor);
         cursor = nextCursor;
         _prioritizePendingArrivals();
-        // 增量页可以立即入顶部栈；首次登录/全量审计先拉完全部页再排序，
+        // 增量页可以立即入顶部栈；首次登录先拉完全部页再排序，
         // 让低优先级先入栈、重要/紧急最后入栈并保持在视觉最上层。
         // Reviews must not wait for every page of old unread announcements.
-        // Ordinary banners still preserve whole-audit priority ordering.
         _dispatchNext();
         if (!page.hasMore) break;
         pageCount++;
@@ -394,15 +492,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
         }
       }
 
-      if (fullAudit) {
-        final deliveredBefore = _deliveredIds.length;
-        _deliveredIds.retainAll(unreadIdsThisAudit);
-        if (_deliveredIds.length != deliveredBefore) _persistDirty = true;
-        _retainOnlyUnreadPending(unreadIdsThisAudit);
-        _fullAuditDue = false;
-        _normalAuditPending = false;
-        _scheduleFullAudit();
-      }
+      if (fullScan) _normalAuditPending = false;
       if (discoveredAny) {
         unawaited(ref.read(noticeArrivalRefreshProvider)());
       }
@@ -410,9 +500,23 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       _dispatchNext();
     } catch (_) {
       // 已成功拉到的页仍留在 pending；失败页之后不会推进。下一次轮询/切前台续取。
+      _normalAuditPending = false;
     } finally {
       _schedulePersist();
-      if (_activeRequest == request) _activeRequest = null;
+      if (_activeRequest == request) {
+        _activeRequest = null;
+        final catchUp = _catchUpFrom;
+        final again = _pollAgain;
+        _catchUpFrom = null;
+        _pollAgain = false;
+        if (mounted && generation == _generation) {
+          if (catchUp != null) {
+            unawaited(_poll(from: catchUp));
+          } else if (again) {
+            unawaited(_poll());
+          }
+        }
+      }
     }
   }
 
@@ -422,22 +526,6 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       _cursor = candidate;
       _persistDirty = true;
     }
-  }
-
-  void _retainOnlyUnreadPending(Set<String> unreadIds) {
-    for (final queue in [_pendingArrivals, _pendingReviewArrivals]) {
-      final retained = queue
-          .where((notice) => unreadIds.contains(notice.id))
-          .toList(growable: false);
-      queue
-        ..clear()
-        ..addAll(retained);
-    }
-    _queuedIds
-      ..clear()
-      ..addAll(_pendingArrivals.map((notice) => notice.id))
-      ..addAll(_pendingReviewArrivals.map((notice) => notice.id));
-    _queuedIds.addAll(_activeArrivals.keys);
   }
 
   void _prioritizePendingArrivals() {
@@ -524,8 +612,12 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     if (!_isDeliveryCurrent(identityKey, generation)) return;
     if (_activeArrivals.remove(notice.id) == null) return;
     _queueFor(notice).addLast(notice);
-    // Retry on the next foreground poll, never a tight retry loop. The cursor
-    // may advance, but this notice is not marked delivered and remains queued.
+    // 送达前校验暂时失败: 约 2 秒后单次重试(不是紧循环, 也不等 20 秒一轮的轮询);
+    // 游标可以前进, 但该条没记送达、仍在队列里。
+    _retryTimer ??= Timer(_arrivalRetryDelay, () {
+      _retryTimer = null;
+      if (_isDeliveryCurrent(identityKey, generation)) _dispatchNext();
+    });
   }
 
   void _confirmDelivered(String identityKey, int generation, String noticeId) {
@@ -535,6 +627,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     }
     _activeArrivals.remove(noticeId);
     _queuedIds.remove(noticeId);
+    _deliveredAt[noticeId] = DateTime.now();
     if (_deliveredIds.add(noticeId)) _persistDirty = true;
     _schedulePersist();
     scheduleMicrotask(() {

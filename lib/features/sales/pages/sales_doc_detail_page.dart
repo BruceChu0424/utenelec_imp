@@ -17,6 +17,8 @@
 // 顶部状态横幅（正在等待财务审核/财务已放行/财务已退回）+ 销售自己的操作
 // （编辑/取消/提交财务）。底栏操作统一右下悬浮（UtenFloatingActionGroup），
 // 处理中用全屏 UtenBusyOverlay，不再占用固定底栏。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -42,7 +44,6 @@ import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
-import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
@@ -57,6 +58,7 @@ import '../repositories/sales_repository.dart';
 import '../widgets/sales_return_quality_card.dart';
 import '../widgets/sales_status_badge.dart';
 import '../widgets/sales_plan_progress_panel.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class SalesDocDetailPage extends ConsumerStatefulWidget {
   const SalesDocDetailPage({
@@ -309,31 +311,19 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       _loading = true;
       _error = null;
     });
+    final names = ref.read(salesMasterNameServiceProvider);
+    // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
+    final dictionaries = names.ensureLoaded();
     try {
-      await ref.read(salesMasterNameServiceProvider).ensureLoaded();
       final d = await ref
           .read(salesRepositoryProvider(widget.docType))
           .detail(widget.id);
-      final goodsIds = d.items
-          .map((e) => e.goodsId)
-          .whereType<String>()
-          .toSet();
-      await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
-      // 2026-09-14：快照上线前的老单据没有 goodsCodeSnapshot，货品列只剩名称；
-      // 同页「库位号」列读的也是这份详情缓存（此前恒显示 —）。补一次货品详情，
-      // 让编号与库位都能回落到主档事实。失败不影响正文（名称已加载）。
-      await ref.read(salesMasterNameServiceProvider).loadGoodsDetails(goodsIds);
-      // 表头人员字段（业务员/发货人/分批确认登记人）按 id 解析为姓名展示。
-      await ref.read(salesMasterNameServiceProvider).loadEmployeeNames([
-        d.sellerId,
-        d.senderId,
-        d.partialShipmentConfirmedBy,
-      ]);
       if (!mounted) return;
       setState(() {
         _detail = d;
         _loading = false;
       });
+      unawaited(_resolveDisplayNames(names, d, dictionaries));
       // 销售订单（草稿可审核）认领 SALES_ORDER_APPROVE：他人审核中则禁用审核按钮。
       // 仅 UX/防碰撞层；后端 SalesOrderService.approve 守卫是正确性底线。认领失败 fail-open。
       if (_cfg.type == SalesDocType.order &&
@@ -356,6 +346,32 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         _loading = false;
       });
     }
+  }
+
+  /// 首屏之后并行补齐：字典(颜色/仓库等)、明细库位号、表头人员姓名，完成后重绘一次。
+  /// 货品名/编号优先用明细快照；库位号与业务员/发货人/确认登记人姓名服务端详情暂未下发，
+  /// 由客户端补查(一次批量货品查询 + 按需的人员查询)。
+  Future<void> _resolveDisplayNames(
+    SalesMasterNameService names,
+    SalesDocDetail d,
+    Future<void> dictionaries,
+  ) async {
+    try {
+      await Future.wait([
+        dictionaries,
+        names.loadGoodsDetails(
+          d.items.map((e) => e.goodsId).whereType<String>(),
+        ),
+        names.loadEmployeeNames([
+          if (_cfg.hasSeller) d.sellerId,
+          if (_cfg.hasSender) d.senderId,
+          d.partialShipmentConfirmedBy,
+        ]),
+      ]);
+    } catch (_) {
+      // 名称补齐失败只影响占位符，不影响正文。
+    }
+    if (mounted && identical(_detail, d)) setState(() {});
   }
 
   Future<void> _approve() async => _doAction(
@@ -562,7 +578,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .confirmShipmentSales(widget.id, workflow.revision);
       if (!mounted) return;
       context.appSuccess('销售已确认，已提交财务审核');
-      ref.invalidate(salesShipmentFinanceCountProvider);
+      refreshBadges(ref);
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {

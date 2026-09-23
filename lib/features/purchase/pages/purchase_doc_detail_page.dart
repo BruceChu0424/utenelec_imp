@@ -7,6 +7,8 @@
 // 2026-09-09 折叠头+表内滚改版（与货品资料页统一）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（表头卡/横幅/附件），表头顶到
 // 页面顶部后再滚明细表内部；附件等小卡并入折叠头尾部（随头部一起收起）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/historical_receipt_totals.dart';
@@ -47,6 +49,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../widgets/purchase_status_badge.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 
 class PurchaseDocDetailPage extends ConsumerStatefulWidget {
   const PurchaseDocDetailPage({
@@ -285,29 +288,19 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   );
 
   Future<void> _load() async {
-    if (widget.docType != PurchaseDocType.request) {
-      ref.invalidate(
-        documentScopeCapabilityProvider(DocumentDataScope.purchase),
-      );
-    }
     setState(() {
       _loading = true;
       _error = null;
     });
+    final names = ref.read(masterNameServiceProvider);
+    // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
+    final dictionaries = names.ensureLoaded();
     try {
-      await ref.read(masterNameServiceProvider).ensureLoaded();
       final d = await ref
           .read(purchaseRepositoryProvider(widget.docType))
           .detail(widget.id);
-      final goodsIds = d.items
-          .map((e) => e.goodsId)
-          .whereType<String>()
-          .toSet();
-      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      // 明细身份列要显示货品编号：名称可能来自搜索缓存（只有名称没有编号），
-      // 再补一次详情才拿得到 code/库位号。
-      await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
       if (!mounted) return;
+      unawaited(_resolveDisplayNames(names, d, dictionaries));
       setState(() {
         _detail = d;
         _selectedRequestItemIds.retainAll({
@@ -329,6 +322,26 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         _loading = false;
       });
     }
+  }
+
+  /// 首屏之后并行补齐字典与明细货品名/编号/库位号(采购明细服务端暂未随单下发货品
+  /// 展示字段，由一次批量货品查询补齐)，完成后重绘一次。
+  Future<void> _resolveDisplayNames(
+    MasterNameService names,
+    PurchaseDocDetail d,
+    Future<void> dictionaries,
+  ) async {
+    try {
+      await Future.wait([
+        dictionaries,
+        names.loadGoodsDetails(
+          d.items.map((e) => e.goodsId).whereType<String>(),
+        ),
+      ]);
+    } catch (_) {
+      // 名称补齐失败只影响占位符，不影响正文。
+    }
+    if (mounted && identical(_detail, d)) setState(() {});
   }
 
   Future<void> _approveDocument() async {
@@ -683,11 +696,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                               DocumentScopeWriteNotice(
                                 capability: scopeCapability,
                                 ownerEmployeeId: _detail!.makerId,
-                                onRetry: () => ref.invalidate(
-                                  documentScopeCapabilityProvider(
-                                    DocumentDataScope.purchase,
-                                  ),
-                                ),
+                                onRetry: () => ref
+                                    .read(sessionSnapshotProvider.notifier)
+                                    .refresh(),
                               ),
                             // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
                             // SelectionArea（准则 §3.4），无需再单独包。

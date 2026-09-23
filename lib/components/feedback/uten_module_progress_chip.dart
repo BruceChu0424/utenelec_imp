@@ -6,8 +6,8 @@
 //   · 「进行中 N」(黄) 回答「我手上还有多少在跑」——不用我动手, 但没完。
 //
 // 与红色那枚同款形态(36dp 最小高度 + UtenRadius.control 圆角 + 悬停说明 +
-// 0 不渲染), 只换配色与文案; 数字由 in_progress_badge_registry 按模块求和得出,
-// 页面里不手写加法。见 docs/00-项目准则/14-徽章与计数口径.md。
+// 0 不渲染), 只换配色与文案; 数字是徽章汇总里本模块容器的黄数(服务端求和, ADR-108,
+// 读 badgeModuleInProgressProvider), 页面里不手写加法。见 docs/00-项目准则/14-徽章与计数口径.md。
 
 import 'package:flutter/material.dart';
 

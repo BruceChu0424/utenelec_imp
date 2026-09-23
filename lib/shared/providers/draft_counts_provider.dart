@@ -1,29 +1,21 @@
 // 跨模块草稿（status=0）计数：hub 单据卡红色徽章 [UtenDraftBadge] 与新建页
 // 「草稿」入口按钮 [UtenDraftsButton] 的唯一数据源。
 //
-// 后端 GET /api/documents/drafts/count 一次返回 21 类单据的草稿数，每类都已按
-// 当前用户的 *:view 权限 + 该模块的对象级归属范围收敛；无权限的类型固定返回 0。
-// 口径「草稿 = 待自审的新建/修订草稿」：销售订货单额外排除财务驳回单
-//（驳回件已在销售关注徽章的 REJECTED 桶计数，不双计）。
+// 21 类单据的草稿数随工作台徽章汇总(GET /api/workbench/badges，ADR-108)一次带回，
+// 事实数键 `drafts.<类型>`；每类都已按当前用户的 *:view 权限 + 该模块的对象级归属范围
+// 收敛，无权限的类型为 0。口径「草稿 = 待自审的新建/修订草稿」：销售订货单额外排除
+// 财务驳回单(驳回件已在销售关注徽章的 REJECTED 桶计数，不双计)。
 //
-// 【呈现形态 · 2026-09-11 口径反转】草稿改走**红底白字徽章**（[UtenDraftBadge]）
-// 并**逐级累加**到 hub 卡与工作台模块卡。此前按「浏览型计数」渲染中性括号且不累加，
-// 当日用户明确推翻：草稿是必须由本人处理完的活，看不见就会忘。累加实现唯一入口仍是
-// todo_badge_registry.dart（模块级 `TodoEntry.*Drafts`）。见
+// 【呈现形态 · 2026-09-11 口径反转】草稿走**红底白字徽章**([UtenDraftBadge])并**逐级
+// 累加**到 hub 卡与工作台模块卡——模块级合计由服务端目录(*Drafts 入口)算好。见
 // docs/00-项目准则/14-徽章与计数口径.md §草稿。
 //
-// 60s 自轮询 + 权限自卫（一个 *:view 都没有就不发请求），范式同
-// sales_completion_count_provider.dart；refreshGlobalBadges 里 invalidate 即时刷新。
-
-import 'dart:async';
+// 此前本文件自带 60s 轮询；现在不单独发请求，写操作成功后经 bumpListRefresh 触发汇总重拉。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/network/api_client.dart';
-import '../../core/network/api_endpoints.dart';
 import '../auth/permissions.dart';
-
-const _pollInterval = Duration(seconds: 60);
+import '../badges/badge_registry.dart';
 
 /// 深链预选草稿段的约定：`<列表路径>?status=draft`。
 ///
@@ -245,26 +237,11 @@ class DraftCounts {
   ]);
 }
 
-/// 跨模块草稿计数（60s 轮询 + 权限自卫）。
-// 徽章计数 provider 一律**常驻**（不 autoDispose）——2026-09-11 用户反馈：
-// 仓库/品质的徽章「进页面要等一会才出现」「冒出来又消失又冒出来」，而采购点进去就有。
-// 差别不在后端快慢，在生命周期：采购是常驻 StateNotifier，这些是 autoDispose，
-// 离开页面即销毁、回来从零 loading，而 todo_badge_registry 把 loading 记成 0。
-// 常驻后 invalidateSelf 刷新期间 AsyncValue 会带住旧值（见 registry 的 valueOrNull），
-// 徽章不再闪；没人看时定时器不再续期，也不会空转发请求。
-final draftCountsProvider = FutureProvider<DraftCounts>((ref) async {
-  final permissions = ref.watch(currentPermissionsProvider);
-  final superAdmin = ref.watch(isSuperAdminProvider);
-  // 一个单据查看权限都没有的账号（如纯访客/仅 HR）不发请求。
-  final anyVisible =
-      superAdmin ||
-      DraftDocKind.values.any((kind) => permissions.contains(kind.viewPerm));
-  if (!anyVisible) return DraftCounts.empty;
-
-  final timer = Timer(_pollInterval, ref.invalidateSelf);
-  ref.onDispose(timer.cancel);
-  final json = await ref
-      .watch(apiClientProvider)
-      .get(ApiEndpoints.documentDraftCounts);
-  return DraftCounts.fromJson(json);
+/// 跨模块草稿计数(取自工作台徽章汇总，不单独请求)。
+final draftCountsProvider = Provider<DraftCounts>((ref) {
+  final facts = ref.watch(badgeSummaryProvider.select((s) => s.facts));
+  return DraftCounts.fromJson({
+    for (final kind in DraftDocKind.values)
+      kind.name: facts[BadgeFact.draft(kind.name)] ?? 0,
+  });
 });

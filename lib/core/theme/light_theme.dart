@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 
 import 'uten_colors.dart';
 import 'uten_tokens.dart';
+import 'uten_page_transitions.dart';
 
 ThemeData buildLightTheme() {
   // 浅色模式交互主色：统一使用深色模式下的 teal（青绿）系绿
@@ -61,6 +62,8 @@ ThemeData buildLightTheme() {
     scaffoldBackgroundColor: UtenColors.background,
     canvasColor: UtenColors.background,
     visualDensity: VisualDensity.adaptivePlatformDensity,
+    // Web/桌面轻量淡入、移动端平台默认, 全部登记转场进行态(ADR-108)。
+    pageTransitionsTheme: utenPageTransitionsTheme(),
 
     // ===== 文字系统（Material type roles）=====
     textTheme: const TextTheme(

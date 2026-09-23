@@ -27,8 +27,8 @@ public final class ReviewNoticeCatalog {
             Map.entry("SALES_SHIPMENT_PENDING_PICK",new Entry("SALES_SHIPMENT",null)),
             Map.entry("SALES_SHIPMENT_FINANCE_REJECTED",new Entry("SALES_SHIPMENT",null)),
             Map.entry("DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED",new Entry("SALES_SHIPMENT",null)),
-            // P0 三线（V459 批次接线；事件名与 ChainNoticeService 现有常量一致，
-            // 保证 unread-count-by-source 等既有统计口径不变）：
+            // P0 三线(V459 批次接线；事件名与 ChainNoticeService 现有常量一致，
+            // 保证按来源事件统计的既有口径不变)：
             // 销售订单审核后 → 财务确认（V294/V300，SalesOrderFinanceConfirmer 资格池）
             Map.entry(
                     "SALES_ORDER_PENDING_FINANCE_CONFIRM",

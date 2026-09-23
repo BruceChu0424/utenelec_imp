@@ -14,6 +14,7 @@ import '../../../core/utils/currency_display.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
+import '../../../shared/providers/master_dictionary_repository.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/repositories/payment_style_repository.dart';
@@ -64,9 +65,19 @@ class FinanceCurrencyReference {
 }
 
 class FinanceNameService extends ChangeNotifier {
-  FinanceNameService(this.api, this._paymentStyleRepo);
+  /// [dictionaries] 缺省时用一份私有仓库(测试); 正式环境传入会话级共享仓库, 客户/供应商/
+  /// 币种/账户字典与其它名称服务共用一份(ADR-108)。
+  FinanceNameService(
+    this.api,
+    this._paymentStyleRepo, [
+    MasterDictionaryRepository? dictionaries,
+  ]) : _dictionaries = dictionaries ?? MasterDictionaryRepository(api) {
+    _invalidations = _dictionaries.invalidations.listen(_onInvalidated);
+  }
   final ApiClient api;
   final PaymentStyleRepository _paymentStyleRepo;
+  final MasterDictionaryRepository _dictionaries;
+  late final StreamSubscription<String> _invalidations;
   Map<String, FinanceCurrencyReference> _currencyReferences = {};
 
   Map<String, String> _clients = {};
@@ -101,7 +112,7 @@ class FinanceNameService extends ChangeNotifier {
     // 各 dict 独立加载、独立容错：单个端点失败不影响其它。
     Future<Map<String, String>> loadDict(String dictUrl) async {
       try {
-        final list = await api.getList(dictUrl);
+        final list = await _dictionaries.load(dictUrl);
         return {
           for (final e in list)
             (e['id'] as String): ((e['name'] ?? '') as String),
@@ -138,7 +149,7 @@ class FinanceNameService extends ChangeNotifier {
   Future<Map<String, FinanceCurrencyReference>>
   _loadCurrencyReferences() async {
     try {
-      final list = await api.getList(ApiEndpoints.currenciesDict);
+      final list = await _dictionaries.load(ApiEndpoints.currenciesDict);
       final refs = <String, FinanceCurrencyReference>{};
       for (final item in list) {
         final id = item['id'] as String;
@@ -159,7 +170,7 @@ class FinanceNameService extends ChangeNotifier {
 
   Future<_FinanceAccountDictionaries> _loadAccounts() async {
     try {
-      final list = await api.getList(AccountEndpoints.dict);
+      final list = await _dictionaries.load(AccountEndpoints.dict);
       final names = <String, String>{};
       final entries = <String, String>{};
       final currencies = <String, String>{};
@@ -217,8 +228,20 @@ class FinanceNameService extends ChangeNotifier {
     }
   }
 
+  /// 本实例主动作废账户字典后的在途重取期间, 忽略自己触发的那次作废通知(避免整体重载)。
+  bool _refreshingAccounts = false;
+
   Future<void> _refreshAccounts() async {
-    final accounts = await _loadAccounts();
+    // 打开另一张钱流单据时, 账户币种是金额口径的权威来源: 绕过会话缓存重取一次;
+    // 仓库作废同时让其它名称服务手里的账户字典一起刷新。
+    _refreshingAccounts = true;
+    _dictionaries.invalidate(AccountEndpoints.dict);
+    final _FinanceAccountDictionaries accounts;
+    try {
+      accounts = await _loadAccounts();
+    } finally {
+      _refreshingAccounts = false;
+    }
     _accounts = accounts.names;
     _accountEntries = accounts.entries;
     _accountCurrencies = accounts.currencies;
@@ -325,9 +348,28 @@ class FinanceNameService extends ChangeNotifier {
       ? map[id]!
       : '—';
 
+  /// 本端改了客户/供应商/币种/账户: 已加载过就整体重取并通知页面重建。
+  void _onInvalidated(String key) {
+    const watched = {
+      ApiEndpoints.clientsDict,
+      ApiEndpoints.suppliersDict,
+      ApiEndpoints.currenciesDict,
+      AccountEndpoints.dict,
+    };
+    if (_disposed || _load == null || !watched.contains(key)) return;
+    if (_refreshingAccounts && key == AccountEndpoints.dict) return;
+    _load = null;
+    unawaited(
+      ensureLoaded().then((_) {
+        if (!_disposed) notifyListeners();
+      }),
+    );
+  }
+
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_invalidations.cancel());
     super.dispose();
   }
 }
@@ -357,6 +399,7 @@ final financeNameServiceProvider = ChangeNotifierProvider<FinanceNameService>((
   final service = FinanceNameService(
     ref.watch(apiClientProvider),
     ref.watch(paymentStyleRepositoryProvider),
+    ref.watch(masterDictionaryRepositoryProvider),
   );
   ref.listen<int>(paymentStyleRevisionProvider, (_, _) {
     unawaited(service.refreshLoadedStyleCategories());

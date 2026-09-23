@@ -38,9 +38,9 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
-import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderReviewPage({
@@ -244,7 +244,7 @@ class _FinanceSalesOrderReviewPageState
           );
       if (!mounted) return;
       context.appSuccess('已确认通过，计划部已可接手排产');
-      ref.invalidate(salesOrderFinanceConfirmationCountProvider);
+      refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -392,7 +392,7 @@ class _FinanceSalesOrderReviewPageState
           );
       if (!mounted) return;
       context.appSuccess('已驳回，归属销售将收到修正通知');
-      ref.invalidate(salesOrderFinanceConfirmationCountProvider);
+      refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

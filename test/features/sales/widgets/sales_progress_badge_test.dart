@@ -1,33 +1,37 @@
+// 销售「订单进度查询」红徽章: 数字 = 徽章汇总的 salesAttention 入口(未解决财务驳回 +
+// 可分批发货待开单, 服务端算好, ADR-108); 阅读完工提醒只置通知已读, 不改变待办数。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/sales/widgets/sales_progress_badge.dart';
 import 'package:uten_imp/features/sales/providers/sales_completion_count_provider.dart';
-import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/features/sales/widgets/sales_progress_badge.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../../helpers/badge_summary_fixture.dart';
 
 void main() {
   testWidgets(
     'reading completion messages keeps unprocessed shippable orders in badge',
     (tester) async {
-      final api = _AttentionApi();
+      final api = _ReadApi();
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             apiClientProvider.overrideWithValue(api),
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.salesOrderView,
-            }),
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(entries: {BadgeEntry.salesAttention: (5, 0)}),
+            ),
           ],
           child: MaterialApp(
             home: Scaffold(
-              body: Consumer(
-                builder: (context, ref, _) => Column(
+              body: Builder(
+                builder: (context) => Column(
                   children: [
                     const SalesProgressBadge(showLabel: true),
                     TextButton(
-                      onPressed: () => markSalesCompletionSeen(ref),
+                      onPressed: () => markSalesCompletionSeen(context),
                       child: const Text('阅读进度通知'),
                     ),
                   ],
@@ -45,57 +49,31 @@ void main() {
       expect(find.text('5'), findsOneWidget);
     },
   );
-  testWidgets(
-    'sales attention badge sums unresolved rejects and shippable orders once',
-    (tester) async {
-      final api = _AttentionApi();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            apiClientProvider.overrideWithValue(api),
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.salesOrderView,
-            }),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(
-              body: Center(child: SalesProgressBadge(showLabel: true)),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
 
-      expect(find.text('5'), findsOneWidget);
-      expect(find.byTooltip('销售待关注 5 项'), findsOneWidget);
-    },
-  );
-
-  testWidgets('order work badge does not depend on notice availability', (
+  testWidgets('sales attention badge shows the server-summed count once', (
     tester,
   ) async {
-    await _pumpBadge(tester, _AttentionApi(failNotices: true));
+    await _pumpBadge(tester, 5);
     expect(find.text('5'), findsOneWidget);
+    expect(find.byTooltip('销售待关注 5 项'), findsOneWidget);
   });
 
-  testWidgets(
-    'unavailable order work count is not replaced by notification count',
-    (tester) async {
-      await _pumpBadge(tester, _AttentionApi(failStages: true));
-      expect(find.text('2'), findsNothing);
-      expect(find.text('0'), findsNothing);
-    },
-  );
+  testWidgets('no attention items: badge is not rendered (never a 0)', (
+    tester,
+  ) async {
+    await _pumpBadge(tester, 0);
+    expect(find.byType(Tooltip), findsNothing);
+    expect(find.text('0'), findsNothing);
+  });
 }
 
-Future<void> _pumpBadge(WidgetTester tester, ApiClient api) async {
+Future<void> _pumpBadge(WidgetTester tester, int count) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        apiClientProvider.overrideWithValue(api),
-        currentPermissionsProvider.overrideWithValue(const {
-          Perm.salesOrderView,
-        }),
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(entries: {BadgeEntry.salesAttention: (count, 0)}),
+        ),
       ],
       child: const MaterialApp(
         home: Scaffold(
@@ -107,12 +85,9 @@ Future<void> _pumpBadge(WidgetTester tester, ApiClient api) async {
   await tester.pumpAndSettle();
 }
 
-class _AttentionApi extends ApiClient {
-  _AttentionApi({this.failNotices = false, this.failStages = false})
-    : super(Dio());
+class _ReadApi extends ApiClient {
+  _ReadApi() : super(Dio());
 
-  final bool failNotices;
-  final bool failStages;
   int readMarks = 0;
 
   @override
@@ -123,22 +98,6 @@ class _AttentionApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path.contains('read-by-source')) readMarks++;
-    return const {};
-  }
-
-  @override
-  Future<Map<String, dynamic>> get(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    if (path == '/notices/unread-count-by-source') {
-      if (failNotices) throw StateError('notice count unavailable');
-      return const {'count': 2};
-    }
-    if (path == '/sales/orders/progress/stage-counts') {
-      if (failStages) throw StateError('stage count unavailable');
-      return const {'REJECTED': 3, 'PENDING': 1, 'SHIPPABLE': 2};
-    }
-    return const <String, dynamic>{};
+    return const {'count': 1};
   }
 }

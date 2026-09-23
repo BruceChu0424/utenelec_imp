@@ -46,13 +46,17 @@ void main() {
     expect(captured.connectTimeout, const Duration(minutes: 10));
   });
 
-  test('读请求保持快速失败：它由安全重试兜底，不需要放宽建连上限', () async {
+  test('读请求同样放宽(ADR-108)：慢查询不能在 15 秒被掐断再重试放大', () async {
+    // 旧契约「读请求保持 15 秒快速失败、由安全重试兜底」已作废: Web 上无 body 的 GET
+    // 没有上传进度, 15 秒建连计时器会在服务端还在算时 abort, 重试只会把慢查询再跑两遍,
+    // 最后误判断网。现在所有方法的建连上限都跟随接收超时。
     late RequestOptions captured;
     final dio = _dio(enabled: true, onSend: (options) => captured = options);
 
     await dio.get<dynamic>('/production/daily-reports/dr-1');
 
-    expect(captured.connectTimeout, apiConnectTimeout);
+    expect(captured.connectTimeout, captured.receiveTimeout);
+    expect(captured.connectTimeout, isNot(apiConnectTimeout));
   });
 
   test('非 Web 平台不改：那里 connectTimeout 是真正的 socket 建连超时', () async {

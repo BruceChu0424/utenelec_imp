@@ -3,7 +3,10 @@
 // 设计目标（plans/witty-imagining-reef.md Workstream B1）：
 // - 灭"重绘风暴"：行 model 持有 TextEditingController/ValueNotifier（跨重建存活，绝不在
 //   build 里 new）；金额单元与表尾合计用 ValueListenableBuilder 订阅通知器，
-//   敲一个字只重绘那一格 + 合计，不重绘行/表/页。表级 ChangeNotifier 仅在增删行时触发。
+//   敲一个字只重绘那一格 + 合计，不重绘行/表/页。表体只订阅「行集变化」
+//   ([UtenEditableGridController.rowsListenable])；勾选只通知「选中集变化」
+//   ([UtenEditableGridController.selectionListenable])，每行单独订阅、只重建选中态
+//   真变了的行(ADR-108)。controller 自身的 notifyListeners 两类都发，宿主照旧可听。
 // - sticky 表头（页面上滑把表头顶到视口顶才吸附，随表体尾部推出，不原地固定）+ 横向滚动；
 //   表体 content-tall：横滚条走共用 UtenHScrollArea——内容不超高时在最后一行下方、
 //   紧贴末行下方（约 1px 空隙）；超高时钉视口底，随拖随用（与散装表同一份实现，改一处全部生效）。
@@ -283,13 +286,38 @@ class _RequiredCellFrameState extends State<RequiredCellFrame> {
 }
 
 /// 行列表 + 合计通知器的持有者。所有改行操作走这里（[rows] 私有），
-/// 自动 dispose 被删行；表级 [notifyListeners] 仅在增删行时触发（驱动行数重绘）。
+/// 自动 dispose 被删行。[notifyListeners] 在行集或选中集变化时都触发(宿主据此刷新
+/// 计数/按钮)；表格内部分开订阅 [rowsListenable] 与 [selectionListenable]，
+/// 勾选一行不再整表重建。
 class UtenEditableGridController<T extends EditableGridRow>
     extends ChangeNotifier {
   UtenEditableGridController({List<T>? initial})
     : _rows = List.of(initial ?? const []);
 
   final List<T> _rows;
+  final _GridSignal _rowsSignal = _GridSignal();
+  final _GridSignal _selectionSignal = _GridSignal();
+  int _rowsRevision = 0;
+
+  /// 行集变化(增删/替换/换行)通知：表体与自动加宽只订阅它。
+  Listenable get rowsListenable => _rowsSignal;
+
+  /// 选中集变化通知：每行的勾选框/选中底色与表头全选格单独订阅它。
+  Listenable get selectionListenable => _selectionSignal;
+
+  /// 行集修订号(每次行集变化 +1)，表头筛选结果按它缓存。
+  int get rowsRevision => _rowsRevision;
+
+  void _rowsChanged() {
+    _rowsRevision++;
+    _rowsSignal.fire();
+    notifyListeners();
+  }
+
+  void _selectionChanged() {
+    _selectionSignal.fire();
+    notifyListeners();
+  }
 
   List<T> get rows => List.unmodifiable(_rows);
   int get length => _rows.length;
@@ -299,26 +327,26 @@ class UtenEditableGridController<T extends EditableGridRow>
   void addRow(T row) {
     _rows.add(row);
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   void addRows(Iterable<T> rows) {
     _rows.addAll(rows);
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   void insertAt(int i, T row) {
     _rows.insert(i, row);
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   void removeAt(int i) {
     _rows[i].dispose();
     _rows.removeAt(i);
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   /// 批量删除（按对象身份，删除前 dispose）。用于批量模式多选删除。
@@ -333,7 +361,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     if (kill.isEmpty) return;
     _rows.removeWhere(kill.contains);
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   /// 移除所有满足 [test] 的行（删前 dispose）。「从上游引入」前清掉占位空白行用：
@@ -351,7 +379,7 @@ class UtenEditableGridController<T extends EditableGridRow>
       ..clear()
       ..addAll(rows);
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   /// 视图级换行（**不 dispose**）：行对象与其控制器归调用方所有，用于
@@ -363,7 +391,7 @@ class UtenEditableGridController<T extends EditableGridRow>
       ..clear()
       ..addAll(rows);
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   void clear() {
@@ -372,7 +400,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     }
     _rows.clear();
     _total.reattachTo(_rows);
-    notifyListeners();
+    _rowsChanged();
   }
 
   // ======================= 多选 / 复制粘贴 =======================
@@ -391,7 +419,7 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   void toggleSelect(T row) {
     if (!_selected.add(row)) _selected.remove(row);
-    notifyListeners();
+    _selectionChanged();
   }
 
   /// 批量置选/取消一组行（行级门控 + controller 模式的表头全选用）；其余行不动。
@@ -404,7 +432,7 @@ class UtenEditableGridController<T extends EditableGridRow>
         changed = _selected.remove(row) || changed;
       }
     }
-    if (changed) notifyListeners();
+    if (changed) _selectionChanged();
   }
 
   void selectAll() {
@@ -413,7 +441,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     } else {
       _selected.addAll(_rows);
     }
-    notifyListeners();
+    _selectionChanged();
   }
 
   /// 行菜单打开前的选中归位：该行已在选中集 → 不动（保留多选，菜单作用于整组）；
@@ -423,14 +451,14 @@ class UtenEditableGridController<T extends EditableGridRow>
     _selected
       ..clear()
       ..add(row);
-    notifyListeners();
+    _selectionChanged();
   }
 
   /// 清空全部选中。上下文菜单中的动作完成后统一调用，避免操作对象继续残留高亮。
   void clearSelection() {
     if (_selected.isEmpty) return;
     _selected.clear();
-    notifyListeners();
+    _selectionChanged();
   }
 
   /// 复制选中行到缓冲（克隆快照；旧缓冲先 dispose）。
@@ -462,6 +490,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     if (_selected.isEmpty) return;
     final victims = _selected.toList();
     _selected.clear();
+    _selectionSignal.fire();
     removeRows(victims);
   }
 
@@ -480,8 +509,65 @@ class UtenEditableGridController<T extends EditableGridRow>
       r.dispose();
     }
     _total.dispose();
+    _rowsSignal.dispose();
+    _selectionSignal.dispose();
     super.dispose();
   }
+}
+
+/// 单行选中态订阅：选中集变化时只在本行选中态真变了才重建本行(ADR-108)。
+class _RowSelectionListener extends StatefulWidget {
+  const _RowSelectionListener({
+    required this.listenable,
+    required this.isSelected,
+    required this.builder,
+  });
+
+  final Listenable listenable;
+  final bool Function() isSelected;
+  final Widget Function(bool isSelected) builder;
+
+  @override
+  State<_RowSelectionListener> createState() => _RowSelectionListenerState();
+}
+
+class _RowSelectionListenerState extends State<_RowSelectionListener> {
+  late bool _selected = widget.isSelected();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.listenable.addListener(_onSelectionChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RowSelectionListener oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.listenable, widget.listenable)) {
+      oldWidget.listenable.removeListener(_onSelectionChanged);
+      widget.listenable.addListener(_onSelectionChanged);
+    }
+    _selected = widget.isSelected();
+  }
+
+  @override
+  void dispose() {
+    widget.listenable.removeListener(_onSelectionChanged);
+    super.dispose();
+  }
+
+  void _onSelectionChanged() {
+    final next = widget.isSelected();
+    if (next != _selected) setState(() => _selected = next);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(_selected);
+}
+
+/// 表格内部用的无值通知器(行集 / 选中集两路信号)。
+class _GridSignal extends ChangeNotifier {
+  void fire() => notifyListeners();
 }
 
 /// 聚合各行金额通知器：增删行时重连（reattachTo）；任一行金额变化→重求和→通知。
@@ -945,8 +1031,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _applyInitialColumnSettings();
     // 挂各行自动加宽监听（初始行已带内容时首帧即量宽撑列）。
     _rewireAutoGrowListeners();
-    // 增删行改变表体高度 → sticky 表头位置需重算。
-    widget.controller.addListener(_onControllerChanged);
+    // 增删行改变表体高度 → sticky 表头位置需重算。只听行集变化：勾选由各行
+    // 与表头全选格自己订阅，不整表重建。
+    widget.controller.rowsListenable.addListener(_onControllerChanged);
     _scheduleStickyUpdate();
   }
 
@@ -985,8 +1072,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
     // 行控制器换实例 → 重挂监听（增删行驱动 sticky 位置重算 + 自动加宽绑到新行集）。
     if (!identical(oldWidget.controller, widget.controller)) {
-      oldWidget.controller.removeListener(_onControllerChanged);
-      widget.controller.addListener(_onControllerChanged);
+      oldWidget.controller.rowsListenable.removeListener(_onControllerChanged);
+      widget.controller.rowsListenable.addListener(_onControllerChanged);
+      _visibleRowsAll = null; // 可见行缓存按旧控制器修订号记的，作废。
       _autoGrowDirty = true;
       _rewireAutoGrowListeners(force: true);
     }
@@ -1167,7 +1255,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void _onControllerChanged() {
     if (!mounted) return;
     // 行集变化（增删/替换/粘贴）→ 拆线重挂自动加宽监听 + 标记整体重算列宽 +
-    // 撤掉已失效的表头筛选值；仅选择变化的通知不动行集，三个操作都跳过。
+    // 撤掉已失效的表头筛选值(本监听只挂在 rowsListenable 上，勾选不会进来)。
     if (_rewireAutoGrowListeners()) {
       _autoGrowDirty = true;
       _pruneColumnFilters();
@@ -1366,7 +1454,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void dispose() {
     _pagePos?.removeListener(_onPagePosChanged);
-    widget.controller.removeListener(_onControllerChanged);
+    widget.controller.rowsListenable.removeListener(_onControllerChanged);
     for (final u in _autoGrowUnsubs) {
       u();
     }
@@ -1408,7 +1496,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 表头全选 checkbox 的格子内容（批量模式表头首列；读写由 controller 或外部
   /// 受控回调驱动）。外层由 [UtenFrozenLeadingColumn] 钉在视口左缘。
-  Widget _selectAllHeaderCell(ThemeData theme) {
+  Widget _selectAllHeaderCell(ThemeData theme) => ListenableBuilder(
+    // 勾选不整表重建：全选格自己订阅选中集。
+    listenable: widget.controller.selectionListenable,
+    builder: (context, _) => _selectAllHeaderCellContent(theme),
+  );
+
+  Widget _selectAllHeaderCellContent(ThemeData theme) {
     final targets = _selectableRows();
     final selected = _rowIsSelected;
     final all = targets.isNotEmpty && targets.every(selected);
@@ -1432,9 +1526,45 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 当前可见（未被筛掉）的行——全选作用于眼前所见。
   List<T> _selectableRows() {
     final test = widget.canSelectRow;
-    var rows = widget.controller.rows;
-    rows = _filterRows(rows);
+    final rows = _visibleRows();
     return test == null ? rows : rows.where(test).toList();
+  }
+
+  // 表头筛选结果缓存：行集修订号 + 列集合 + 筛选值都没变就复用上次结果
+  // (勾选、表头全选格、操作条都要读可见行，不再每次重跑整表筛选)。
+  int? _visibleRowsRevision;
+  String? _visibleRowsFilterKey;
+  List<EditableGridColumn<T>>? _visibleRowsColumns;
+  List<T>? _visibleRowsAll;
+  List<T> _visibleRowsCache = const [];
+
+  /// 当前行集的全部行(按行集修订号缓存，避免每次读都复制一份)。
+  List<T> _allRows() {
+    final controller = widget.controller;
+    if (_visibleRowsAll == null ||
+        _visibleRowsRevision != controller.rowsRevision) {
+      _visibleRowsAll = controller.rows;
+      _visibleRowsRevision = controller.rowsRevision;
+      _visibleRowsFilterKey = null;
+    }
+    return _visibleRowsAll!;
+  }
+
+  /// 表头筛选后的可见行(按行集修订号 + 列集合 + 筛选值缓存)。
+  List<T> _visibleRows() {
+    final all = _allRows();
+    final filterKey = _columnFilters.entries
+        .where((entry) => entry.value != null)
+        .map((entry) => '${entry.key}\u0000${entry.value}')
+        .join('\u0001');
+    if (_visibleRowsFilterKey == filterKey &&
+        identical(_visibleRowsColumns, widget.columns)) {
+      return _visibleRowsCache;
+    }
+    _visibleRowsFilterKey = filterKey;
+    _visibleRowsColumns = widget.columns;
+    _visibleRowsCache = _filterRows(all);
+    return _visibleRowsCache;
   }
 
   // ======================= 表头筛选（filterValueOf，2026-09-05） =======================
@@ -1603,14 +1733,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
                   child: SizedBox(
                     width: total,
                     child: ListenableBuilder(
-                      listenable: widget.controller,
+                      // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。
+                      listenable: widget.controller.rowsListenable,
                       builder: (context, _) {
-                        final all = widget.controller.rows;
+                        final all = _allRows();
                         if (all.isEmpty) {
                           return _EmptyRows(message: widget.emptyMessage);
                         }
                         // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
-                        final rows = _filterRows(all);
+                        final rows = _visibleRows();
                         _publishHiddenByFilter(all, rows);
                         if (rows.isEmpty) {
                           return const _EmptyRows(message: '没有符合表头筛选条件的行');
@@ -1746,41 +1877,46 @@ class _UtenEditableGridState<T extends EditableGridRow>
         widget._inlineRemoveColumn &&
         widget.selectionEnabled &&
         (widget.canSelectRow?.call(row) ?? true);
-    final cell = _DataRow<T>(
-      index: i,
-      row: row,
-      columns: widget.columns,
-      columnIndices: visibleColumnIndices,
-      widths: _widths,
-      showSelect: widget._showSelect,
-      // 门控为 false 时整格不画方框(只留空位对齐)，不是画一个灰框。
-      renderSelectionBox: widget.showRowSelection?.call(row) ?? true,
-      isSelected: _rowIsSelected(row),
-      onSelect: _rowOnSelect(row),
-      rowTint: widget.rowColor?.call(row),
-      showDelete: widget._showRowActionColumn,
-      deleteColWidth: _deleteColWidth,
-      divider: divider,
-      // 行内移出的确认框由 _confirmBatchDelete 统一弹（文案与批量一致），
-      // 这里不再叠一层「删除后不可撤销」。
-      confirmDelete: inlineRemove ? false : widget.confirmDelete,
-      deleteConfirmLabel: widget.deleteConfirmLabel,
-      deleteIcon: inlineRemove
-          ? Icons.remove_circle_outline_rounded
-          : Icons.close_rounded,
-      deleteTooltip: inlineRemove ? widget.removeRowsActionLabel : '删除该行',
-      onDelete:
-          widget.showRowDelete &&
-              !inlineRemove &&
-              (widget.canDeleteRow?.call(row) ?? true)
-          ? () => widget.onDeleteRow == null
-                ? widget.controller.removeAt(i)
-                : widget.onDeleteRow!(row, i)
-          : (inlineRemove
-                ? () => _confirmBatchDelete(context, victims: [row])
-                : null),
-      // 行首勾选列横滚时钉在视口左缘（与表头全选格同款）。
-      frozenSelectionScroll: _bodyH,
+    // 选中态单行订阅：勾选只重建选中态真变了的那一行。
+    final cell = _RowSelectionListener(
+      listenable: widget.controller.selectionListenable,
+      isSelected: () => _rowIsSelected(row),
+      builder: (isSelected) => _DataRow<T>(
+        index: i,
+        row: row,
+        columns: widget.columns,
+        columnIndices: visibleColumnIndices,
+        widths: _widths,
+        showSelect: widget._showSelect,
+        // 门控为 false 时整格不画方框(只留空位对齐)，不是画一个灰框。
+        renderSelectionBox: widget.showRowSelection?.call(row) ?? true,
+        isSelected: isSelected,
+        onSelect: _rowOnSelect(row),
+        rowTint: widget.rowColor?.call(row),
+        showDelete: widget._showRowActionColumn,
+        deleteColWidth: _deleteColWidth,
+        divider: divider,
+        // 行内移出的确认框由 _confirmBatchDelete 统一弹(文案与批量一致)，
+        // 这里不再叠一层「删除后不可撤销」。
+        confirmDelete: inlineRemove ? false : widget.confirmDelete,
+        deleteConfirmLabel: widget.deleteConfirmLabel,
+        deleteIcon: inlineRemove
+            ? Icons.remove_circle_outline_rounded
+            : Icons.close_rounded,
+        deleteTooltip: inlineRemove ? widget.removeRowsActionLabel : '删除该行',
+        onDelete:
+            widget.showRowDelete &&
+                !inlineRemove &&
+                (widget.canDeleteRow?.call(row) ?? true)
+            ? () => widget.onDeleteRow == null
+                  ? widget.controller.removeAt(i)
+                  : widget.onDeleteRow!(row, i)
+            : (inlineRemove
+                  ? () => _confirmBatchDelete(context, victims: [row])
+                  : null),
+        // 行首勾选列横滚时钉在视口左缘(与表头全选格同款)。
+        frozenSelectionScroll: _bodyH,
+      ),
     );
     // 纯勾选模式（selectable 且非编辑）：点行身任意非输入区 = 切换选中，与
     // MasterDataTableView「单击行选中」契约统一（2026-09-05，物料分析车间计划表

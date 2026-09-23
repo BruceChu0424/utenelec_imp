@@ -9,12 +9,14 @@ void main() {
   test(
     'finished inbound queue is recoverable and refreshed after stock actions',
     () {
-      final provider = File(
-        'lib/features/warehouse/providers/'
-        'production_finished_inbound_task_count_provider.dart',
+      // ADR-108: 待点收数随徽章汇总带回(入库任务中心入口), 口径登记在服务端目录。
+      final catalog = File(
+        'server/src/main/java/com/uten/imp/features/workbench/badge/'
+        'WorkbenchBadgeCatalog.java',
       ).readAsStringSync();
-      final globalRefresh = File(
-        'lib/shared/badges/todo_badge_registry.dart',
+      final sources = File(
+        'server/src/main/java/com/uten/imp/features/warehouse/'
+        'WarehouseWorkbenchBadgeSources.java',
       ).readAsStringSync();
       final moduleBadge = File(
         'lib/features/dashboard/widgets/module_badge_sum.dart',
@@ -26,27 +28,22 @@ void main() {
         'lib/features/warehouse/pages/stock_doc_detail_page.dart',
       ).readAsStringSync();
 
-      expect(provider, contains('Perm.stockDocView'));
-      expect(provider, contains('.pendingCount()'));
-      expect(
-        globalRefresh,
-        contains('warehouseProductionFinishedInboundPendingCountProvider'),
-      );
-      // 2026-09-11：计数源登记在待办徽章注册表，工作台模块卡按 BadgeModule 委托求和，
-      // 不再逐个 watch provider（docs/00-项目准则/14-徽章与计数口径.md）。
+      expect(catalog, contains('"finishedInbound.count"'));
+      expect(sources, contains('new Source("finishedInbound"'));
+      // 工作台模块卡按容器取服务端算好的和, 不在前端逐个求和。
       expect(moduleBadge, contains('BadgeModule.warehouse'));
       // 2026-09-01 重组：hub 卡角标由 WarehouseInboundTaskBadge（入库任务中心）
-      // 汇总渲染；独立任务页路由保留（深链），入口改为 /warehouse/tasks/inbound。
+      // 渲染；独立任务页路由保留(深链)，入口改为 /warehouse/tasks/inbound。
       expect(warehouseHub, contains('WarehouseInboundTaskBadge'));
       expect(
         File(
           'lib/features/warehouse/widgets/warehouse_task_center_badges.dart',
         ).readAsStringSync(),
-        contains('warehouseProductionFinishedInboundPendingCountProvider'),
+        contains('BadgeEntry.warehouseInboundCenter'),
       );
       expect(
         RegExp(
-          r'warehouseProductionFinishedInboundPendingCountProvider',
+          r'refreshBadges\(ref\)|bumpListRefresh\(',
         ).allMatches(stockDetail).length,
         greaterThanOrEqualTo(3),
         reason:

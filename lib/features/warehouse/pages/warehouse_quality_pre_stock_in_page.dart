@@ -34,12 +34,12 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
-import '../providers/warehouse_quality_result_count_provider.dart';
 import '../repositories/warehouse_iqc_stock_in_repository.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_slice_table.dart'
     show warehouseQualityQuantity;
 import '../widgets/warehouse_quality_stock_in_warehouse_picker.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseQualityPreStockInPage extends ConsumerStatefulWidget {
   const WarehouseQualityPreStockInPage({
@@ -174,7 +174,7 @@ class _WarehouseQualityPreStockInPageState
           );
       if (!mounted) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
-      ref.invalidate(warehouseQualityResultTypeCountsProvider);
+      refreshBadges(ref);
       final replayed = result.replayedLineCount;
       context.appSuccess(
         '已先入库上架 ${result.stockedLineCount} 行'

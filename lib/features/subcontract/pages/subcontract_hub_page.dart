@@ -5,15 +5,15 @@
 // V53 仅是历史默认授权；现行入口按每个页面权限与个人/部门显式配置逐卡显隐。
 //
 // 计数口径（准则 14-徽章与计数口径）：任务中心 / 待退回供应商 / 各单据草稿都是
-// 「必须由我处理」的待办，一律挂红色徽章并逐级累加（见
-// shared/badges/todo_badge_registry.dart，草稿于 2026-09-11 由中性括号改为徽章）；
+// 「必须由我处理」的待办，一律挂红色徽章并逐级累加(入口口径在服务端徽章目录
+// WorkbenchBadgeCatalog, ADR-108；草稿于 2026-09-11 由中性括号改为徽章)；
 // 报表与历史兼容卡无计数。
 //
 // ADR-100(2026-09-21): 右上角再并一枚黄色「进行中」徽章(黄左红右), 回答「我手上还有
 // 多少在跑」。委外只有「委外任务中心」一张卡登记黄色(= 任务中心「进行中」段);
 // 「回厂短交判定」卡**刻意不挂黄** —— 短交案件只挂在已回厂/在途的 FINANCE_APPROVED
 // 订货单上, 那些单已经全在任务中心的 IN_PROGRESS 里, 再数一遍就是同一条黄链内的
-// 双计(见 shared/badges/in_progress_badge_registry.dart 末尾的「已知重叠」);
+// 双计(见准则 14-徽章与计数口径「已知重叠」);
 // 其余单据卡与报表区同样不挂。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,30 +35,23 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
-import '../../../shared/badges/in_progress_badge_registry.dart';
-import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 import '../widgets/subcontract_short_delivery_badge.dart';
 import '../widgets/subcontract_task_badge.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class SubcontractHubPage extends ConsumerWidget {
   const SubcontractHubPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 返回即刷新：回到本 hub 时重拉「待退回供应商」任务数。
-    ref.onPageResume(RouteName.subcontract, () {
-      ref.invalidate(
-        procurementArrivalReturnCountProvider(
-          ProcurementInboundOrderType.subcontract,
-        ),
-      );
-    });
+    // 返回即刷新：回到本 hub 时按需重拉徽章汇总(本端写过数据或超过 30 秒，
+    // ADR-108)；本页全部卡片角标都在这一份汇总里。
+    ref.onPageResume(RouteName.subcontract, () => refreshBadges(ref));
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     // 权限门控（V305）：无对应 view 权限的卡片不显示（权限管理授权后可见）。
@@ -76,15 +69,14 @@ class SubcontractHubPage extends ConsumerWidget {
           // 黄=任务中心「进行中」段(已下单、发料在外加工、等财务/等回厂);
           // 红=待处理与要本部门动手的两类异常。同一张单两枚都算得上不是双计。
           progressBadge: UtenInProgressBadge(
-            count: inProgressEntryCount(
-              InProgressEntry.subcontractTaskCenter,
-              ref.watch,
+            count: ref.watch(
+              badgeEntryInProgressProvider(BadgeEntry.subcontractTaskCenter),
             ),
             showLabel: true,
           ),
         ),
       // ADR-098 回厂短交判定：徽章与任务中心 /count 里的「回厂短交待判定」同数展示，
-      // 不登记进 todo_badge_registry（同一件事只数一次）。
+      // 不登记为徽章入口(同一件事只数一次)。
       // 同理不挂黄：容差内待结案 / 分批等待中的案子挂的都是已在任务中心
       // IN_PROGRESS 里的订货单，页内分段照常显示黄数，卡面不再数第二遍。
       if (can(Perm.subcontractOrderView))
@@ -199,10 +191,12 @@ class SubcontractHubPage extends ConsumerWidget {
           // 页面里不要再手写加法。AppBar 的 actions 行是 stretch 对齐，
           // 故包一层 Center 让徽章垂直居中；0 时组件自身不渲染。
           UtenModuleProgressChip(
-            count: inProgressModuleCount(BadgeModule.subcontract, ref.watch),
+            count: ref.watch(
+              badgeModuleInProgressProvider(BadgeModule.subcontract),
+            ),
           ),
           UtenModuleTodoChip(
-            count: todoModuleCount(BadgeModule.subcontract, ref.watch),
+            count: ref.watch(badgeModuleTodoProvider(BadgeModule.subcontract)),
           ),
         ],
       ),

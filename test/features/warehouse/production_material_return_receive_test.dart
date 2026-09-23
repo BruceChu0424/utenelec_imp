@@ -11,9 +11,9 @@ import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/production_material_return_receive_dialog.dart';
-import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import '../../helpers/document_scope_fixture.dart';
 
 const _warehouses = [
   WarehouseDictEntry(id: 'main', name: '主仓', isAccountable: false),
@@ -105,16 +105,6 @@ class _Api extends ApiClient {
   }
 }
 
-class _Scope implements DocumentScopeCapabilityRepository {
-  @override
-  Future<DocumentScopeCapability> current(DocumentDataScope scope) async =>
-      DocumentScopeCapability(
-        scope: scope.apiValue,
-        writeAll: false,
-        writableOwnerIds: const {},
-      );
-}
-
 Future<void> _openReceived(
   WidgetTester tester,
   _Api api, {
@@ -135,7 +125,7 @@ Future<void> _openReceived(
       stockDocRepositoryProvider(
         StockDocType.wdraw,
       ).overrideWithValue(StockDocRepository(api, StockDocType.wdraw)),
-      documentScopeCapabilityRepositoryProvider.overrideWithValue(_Scope()),
+      documentScopeOverride(),
     ],
   );
   addTearDown(container.dispose);
@@ -319,9 +309,7 @@ void main() {
             stockDocRepositoryProvider(
               StockDocType.wdraw,
             ).overrideWithValue(StockDocRepository(api, StockDocType.wdraw)),
-            documentScopeCapabilityRepositoryProvider.overrideWithValue(
-              _Scope(),
-            ),
+            documentScopeOverride(),
           ],
         );
         addTearDown(container.dispose);

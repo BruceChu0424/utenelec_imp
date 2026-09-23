@@ -30,18 +30,10 @@ class _WarehouseDocumentHistoryListPageState
   String? _myLocation;
   int _refreshTick = 0;
 
-  /// onPageResume 首次触发是「进入本页」的导航结算，不是返回——跳过一次，
-  /// 避免进入即重复拉取（首次加载已在视图 initState 完成）。
-  bool _resumeArmed = false;
-
   @override
   Widget build(BuildContext context) {
     _myLocation ??= currentLocationOr(context, widget.type.listPath());
     ref.onPageResume(_myLocation!, () {
-      if (!_resumeArmed) {
-        _resumeArmed = true;
-        return;
-      }
       setState(() => _refreshTick++);
     });
     return Scaffold(

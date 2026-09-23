@@ -91,9 +91,6 @@ class _FakeProfileChangeRepository extends Fake
       submittedAt: DateTime(2026, 9, 9),
     );
   }
-
-  @override
-  Future<int> hrPendingCount() async => 0;
 }
 
 Widget _app(_FakeProfileChangeRepository repo, SharedPreferences preferences) =>

@@ -27,8 +27,8 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
-import '../providers/finance_procurement_approval_count_provider.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 订货审批任务中心（采购/委外订货的财务审核队列）。
 ///
@@ -227,7 +227,6 @@ class _FinanceProcurementApprovalTasksPageState
           }
         }
       });
-      ref.invalidate(financeProcurementApprovalCountProvider);
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
@@ -494,7 +493,7 @@ class _FinanceProcurementApprovalTasksPageState
       if (!mounted) return;
       context.appSuccess(okMsg);
       setState(_clearSelectionState);
-      ref.invalidate(financeProcurementApprovalCountProvider);
+      refreshBadges(ref);
       await _load(_result?.page ?? 1);
     } on ApiException catch (e) {
       if (mounted) context.appError('整批未提交：${e.message}');

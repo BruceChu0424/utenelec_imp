@@ -108,7 +108,6 @@ class _ProcurementIqcRejectionListPageState
         _counts = values[1] as ProcurementIqcRejectionCounts;
         _loading = false;
       });
-      ref.invalidate(procurementIqcRejectionOpenCountProvider);
     } on ApiException catch (error) {
       if (!mounted || requestId != _requestId) return;
       setState(() {

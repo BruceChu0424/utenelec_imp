@@ -1,22 +1,13 @@
-// 生产部待排产数量 Provider（工作台「生产管理」卡片红色数字徽章用）。
+// 生产部待排产数量(工作台「生产管理」卡片红色数字徽章用)。
 //
 // 口径 = 调度工作台待排产行数：已审订单行的**待排产缺口 > 0**
 // (= 剩余未排量 − 活动物料分析已承接量，ADR-088 的 PENDING_NEED_SQL)。
-// 服务端徽标 SQL 与列表/facets 共用同一份 WHERE，数字与点进去看到的行数不会漂移；
-// 做过物料分析并被全量承接的行不再计入本徽章，改在「进行中」按分析批次跟踪。
-// 后端 GET /production/schedule/pending-count 返回 {count, urgent, overdue}。
-// 默认 60s 轮询一次；无 production_plan:view 权限时返回 0（不渲染徽章）。
-// 范式同 lib/shared/auth/pending_review_provider.dart（HR 待办徽章）。
-
-import 'dart:async';
+// 服务端徽标 SQL 与列表/facets 共用同一份 WHERE，数字与点进去看到的行数不会漂移。
+// 随工作台徽章汇总一次带回(ADR-108, 原端点 /production/schedule/pending-count 同一口径),
+// 不单独轮询; 无 production_plan:view 权限时为 0(不渲染徽章)。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../../../shared/auth/permissions.dart';
-import '../../../shared/auth/session_epoch_provider.dart';
-import '../repositories/production_repository.dart';
-
-const Duration _kPendingPollInterval = Duration(seconds: 60);
+import '../../../shared/badges/badge_registry.dart';
 
 /// 生产待排产计数（count=待排产行数，urgent=其中 ≤3 天/含逾期行数，overdue=已逾期行数）。
 class ProductionPendingCount {
@@ -24,67 +15,23 @@ class ProductionPendingCount {
   final int count;
   final int urgent;
   final int overdue;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProductionPendingCount &&
+      other.count == count &&
+      other.urgent == urgent &&
+      other.overdue == overdue;
+
+  @override
+  int get hashCode => Object.hash(count, urgent, overdue);
 }
 
-/// 有 production_plan:view 权限时 60s 轮询待排产数；其它角色返回 0。
-/// count 为 0 时徽章不渲染。
-final productionPendingCountProvider =
-    StateNotifierProvider<
-      ProductionPendingCountNotifier,
-      ProductionPendingCount
-    >((ref) {
-      // 登录会话重建门（2026-09-10）：纪元变化时整个 Notifier 从零重建、用新会话权限重拉，
-      // 清空业务数据后重登无需手动刷新（见 workbench_refresh.rehydrateGlobalState）。
-      ref.watch(sessionEpochProvider);
-      final notifier = ProductionPendingCountNotifier(ref);
-      notifier.start();
-      ref.onDispose(notifier.stop);
-      return notifier;
-    });
-
-class ProductionPendingCountNotifier
-    extends StateNotifier<ProductionPendingCount> {
-  ProductionPendingCountNotifier(this.ref)
-    : super(const ProductionPendingCount(0, 0));
-
-  final Ref ref;
-  Timer? _timer;
-
-  void start() {
-    _tick();
-    _timer = Timer.periodic(_kPendingPollInterval, (_) => _tick());
-  }
-
-  void stop() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  Future<void> _tick() async {
-    // 仅在有生产计划查看权限时拉取；普通用户静默返回 0。
-    final allowed =
-        ref
-            .read(currentPermissionsProvider)
-            .contains(Perm.productionPlanView) ||
-        ref.read(isSuperAdminProvider);
-    if (!allowed) {
-      state = const ProductionPendingCount(0, 0);
-      return;
-    }
-    try {
-      final r = await ref
-          .read(productionPlanRepositoryProvider)
-          .schedulePendingCount();
-      state = ProductionPendingCount(
-        r['count'] ?? 0,
-        r['urgent'] ?? 0,
-        r['overdue'] ?? 0,
-      );
-    } catch (_) {
-      // 网络/服务异常时保留旧值，避免徽章闪烁
-    }
-  }
-
-  /// 立即刷新（排产 / 审核动作完成后调用）。
-  Future<void> refresh() => _tick();
-}
+/// 待排产计数(取自徽章汇总)。
+final productionPendingCountProvider = Provider<ProductionPendingCount>((ref) {
+  return ProductionPendingCount(
+    ref.watch(badgeFactProvider(BadgeFact.productionScheduleCount)),
+    ref.watch(badgeFactProvider(BadgeFact.productionScheduleUrgent)),
+    ref.watch(badgeFactProvider(BadgeFact.productionScheduleOverdue)),
+  );
+});

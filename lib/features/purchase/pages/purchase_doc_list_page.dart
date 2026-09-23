@@ -39,7 +39,6 @@ import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
-import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../widgets/purchase_status_badge.dart'
@@ -340,19 +339,14 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         : ref.watch(documentStatusCountsProvider(statusScope)).valueOrNull;
     // 条件表达式里直接写 `? statusCounts?[key]` 会被 Dart 解析器当成两个 `?`, 走局部函数。
     int? bucket(String key) => statusCounts?[key];
-    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
-    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
-    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
-      _reload();
-      _loadBadge();
-    });
-    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
-    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
+    // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
+    // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_myLocation!, () {
       _reload(null, true);
       _loadBadge();
-    });
+    }, refreshKeys: [_cfg.refreshKey]);
     final isRequest = widget.docType == PurchaseDocType.request;
     final approvedLabel = isRequest ? '计划已下达' : '已审';
     final seg = _seg;

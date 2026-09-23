@@ -117,6 +117,8 @@ class AuthLogoutSecurityIntegrationTest {
     private StaffRefreshCompromiseService compromiseService;
     @MockitoBean
     private StaffTokenResponseFactory responseFactory;
+    @MockitoBean
+    private SessionSnapshotService sessionSnapshots;
 
     @BeforeEach
     void setUp() {

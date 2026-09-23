@@ -5,21 +5,23 @@
 //   B 类：本地 State + repository 直拉（无 provider 可 invalidate）。
 // B 类列表被 push 进的详情/编辑页修改后，返回时本地 State 仍停在旧数据。
 //
-// 机制：列表页 ref.listen(listRefreshTickProvider(key)) 收到 tick 变化就 _load()；
+// 机制(2026-09-23 ADR-108)：列表页把 key 交给 `ref.onPageResume(..., refreshKeys: [key])`；
 // 详情/编辑页在「数据可能变更的操作」成功后（保存/审核/删除/弹窗确认）bump 对应 key。
-// 纯查看返回不 bump（数据没变，省请求）——满足「不留老数据」又不做多余请求。
+// 列表页就在栈顶时收到即重拉；被详情页盖着时只记下(本端写修订号已前进)，返回转场
+// 结束后再拉一次——此前 tick 与返回各拉一次，一次保存要重拉两遍。
+// 纯查看返回不 bump(数据没变，省请求)。
 // key 由各模块约定（如 'purchase:order'、'goods'），列表页与其详情/编辑页必须用同一 key。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'draft_counts_provider.dart';
-import 'document_status_counts_provider.dart';
+import '../../core/network/data_write_revision.dart';
+import '../badges/badge_registry.dart';
 
 /// B 类列表页的刷新信号（按 key family）。值为单调递增的 tick。
 ///
 /// 列表页用法（build 内）：
 /// ```
-/// ref.listen(listRefreshTickProvider(myKey), (_, __) => _load(_pageNum));
+/// ref.onPageResume(_myLocation!, () => _load(_pageNum), refreshKeys: [myKey]);
 /// ```
 /// 操作方用法（保存/审核/删除成功后）：
 /// ```
@@ -29,18 +31,15 @@ final listRefreshTickProvider = StateProvider.family<int, String>(
   (ref, key) => 0,
 );
 
-/// 操作成功后调用：bump 对应列表 key 的 tick，触发监听该 key 的列表页重拉。
+/// 操作成功后调用：bump 对应列表 key 的 tick，并推进本端写修订号(返回即刷新据此判断
+/// 数据变没变)。
 ///
-/// **同时立刻失效跨模块草稿计数**（2026-09-11）：用户原话「我没有审核、退出了，
-/// 这个草稿就立马记录了，同时有徽章显示」。本函数是全部单据编辑页保存/审核/删除
-/// 成功后的唯一公共钩子，挂在这里就不用每个页面各记一次——漏一个页面，用户就要
-/// 等下一轮 60 秒轮询才看得到自己刚存的草稿。
-///
-/// 计数端点已合并成一次往返（见后端 DocumentDraftCountQueryService.counts），
-/// 因此这里无条件失效的代价是一条廉价查询；没人在看时 invalidate 是空操作。
+/// **同时立刻重拉徽章汇总**(2026-09-11 起草稿计入徽章，用户原话「我没有审核、退出了，
+/// 这个草稿就立马记录了，同时有徽章显示」)：本函数是全部单据编辑页保存/审核/删除
+/// 成功后的唯一公共钩子，草稿数、财务已退回数与各入口待办都随汇总一次带回；
+/// 同一帧里多处调用由汇总单飞合并成一个请求。
 void bumpListRefresh(WidgetRef ref, String key) {
   ref.read(listRefreshTickProvider(key).notifier).state++;
-  ref.invalidate(draftCountsProvider);
-  // 财务退回/重提也走同一钩子: 三类单据「财务已退回」张数立即重取(hub 卡徽章 + 销售待办)。
-  ref.invalidate(financeRejectedCountsProvider);
+  ref.read(dataWriteRevisionProvider.notifier).state++;
+  refreshBadges(ref);
 }

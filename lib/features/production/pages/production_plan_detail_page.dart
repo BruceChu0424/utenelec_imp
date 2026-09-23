@@ -58,6 +58,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 
 class ProductionPlanDetailPage extends ConsumerStatefulWidget {
   const ProductionPlanDetailPage({
@@ -217,30 +218,21 @@ class _ProductionPlanDetailPageState
   Future<void> _load() async {
     if (!mounted) return;
     final planId = widget.id;
-    ref.invalidate(
-      documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
-    );
     setState(() {
       _loading = true;
       _error = null;
     });
+    final names = ref.read(masterNameServiceProvider);
+    // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
+    final dictionaries = names.ensureLoaded();
     try {
-      await ref.read(masterNameServiceProvider).ensureLoaded();
       final d = await ref.read(productionPlanRepositoryProvider).detail(planId);
-      final goodsIds = d.items
-          .map((e) => e.goodsId)
-          .whereType<String>()
-          .toSet();
-      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      await ref.read(masterNameServiceProvider).loadEmployeeNames([
-        d.sellerId,
-        d.workerId,
-      ]);
       if (!mounted || widget.id != planId) return;
       setState(() {
         _detail = d;
         _loading = false;
       });
+      unawaited(_resolveDisplayNames(names, d, dictionaries));
       unawaited(_loadRelatedDocuments(d.materialAnalysisId));
       await _loadSubplans(planId: planId);
     } on ApiException catch (e) {
@@ -256,6 +248,29 @@ class _ProductionPlanDetailPageState
         _loading = false;
       });
     }
+  }
+
+  /// 首屏之后并行补齐字典与明细货品名(计划明细服务端暂未随单下发货品名)；
+  /// 计划负责人/跟单员姓名服务端随单已给，只有缺名的才按 id 补查。完成后重绘一次。
+  Future<void> _resolveDisplayNames(
+    MasterNameService names,
+    ProductionPlanDetail d,
+    Future<void> dictionaries,
+  ) async {
+    bool missing(String? name) => (name ?? '').trim().isEmpty;
+    try {
+      await Future.wait([
+        dictionaries,
+        names.loadGoodsNames(d.items.map((e) => e.goodsId).whereType<String>()),
+        names.loadEmployeeNames([
+          if (missing(d.workerName)) d.workerId,
+          if (missing(d.sellerName)) d.sellerId,
+        ]),
+      ]);
+    } catch (_) {
+      // 名称补齐失败只影响占位符，不影响正文。
+    }
+    if (mounted && identical(_detail, d)) setState(() {});
   }
 
   /// 本批次关联单据（懒加载，失败静默——卡片显示引导重试）。
@@ -1125,11 +1140,9 @@ class _ProductionPlanDetailPageState
                         DocumentScopeWriteNotice(
                           capability: scopeCapability,
                           ownerEmployeeId: _detail!.makerId,
-                          onRetry: () => ref.invalidate(
-                            documentScopeCapabilityProvider(
-                              DocumentDataScope.productionPlan,
-                            ),
-                          ),
+                          onRetry: () => ref
+                              .read(sessionSnapshotProvider.notifier)
+                              .refresh(),
                         ),
                         // ① 摘要区。
                         _summaryHeroCard(theme, names),
@@ -1838,16 +1851,11 @@ class _ProductionPlanDetailPageState
     return <_KV>[
       _KV('单据日期', d.billDate),
       if ((d.fStyle ?? '').isNotEmpty) _KV('生产类型', d.fStyle),
+      // 姓名优先用服务端随单给的，缺了才退回按 id 补查的结果。
       if (d.workerId != null || (d.workerName ?? '').isNotEmpty)
-        _KV(
-          '计划负责人',
-          d.workerId != null ? names.employee(d.workerId) : d.workerName,
-        ),
+        _KV('计划负责人', names.employeeOr(d.workerName, d.workerId)),
       if (d.sellerId != null || (d.sellerName ?? '').isNotEmpty)
-        _KV(
-          '跟单员',
-          d.sellerId != null ? names.employee(d.sellerId) : d.sellerName,
-        ),
+        _KV('跟单员', names.employeeOr(d.sellerName, d.sellerId)),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),

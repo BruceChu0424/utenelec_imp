@@ -57,6 +57,7 @@ import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';
 import '../widgets/production_report_surplus_return_dialog.dart';
 import '../widgets/reportable_plan_line_picker.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
   const ProductionDailyReportEditPage({
@@ -1340,7 +1341,7 @@ class _ProductionDailyReportEditPageState
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       // 同生产计划单：本页不走 bumpListRefresh，草稿计数在这里单独失效。
-      ref.invalidate(draftCountsProvider);
+      refreshBadges(ref);
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdReportId = d.id);
         await _finishCreatedReport(d.id);

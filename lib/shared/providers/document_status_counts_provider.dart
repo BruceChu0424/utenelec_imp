@@ -1,5 +1,5 @@
 // 单据列表页分段计数(GET /documents/status-counts?kind=...) + 三类单据「财务已退回」张数
-// (GET /documents/finance-rejected/count)。
+// (随工作台徽章汇总带回, ADR-108)。
 //
 // 2026-09-21 用户口径: 「父分类有红色通知徽章, 子分类也要有数字」——hub 单据卡挂了红徽章
 // (草稿 / 财务已退回)的列表页, 状态分段一律带数: 草稿与财务已退回是红徽章(等本人动手),
@@ -7,16 +7,13 @@
 // 有自己的分段与徽章(后端草稿口径同步收紧, 见 DocumentDraftCountQueryService)。
 //
 // 计数与列表同一对象级读范围, 一次请求带回该类型全部桶; 分桶键见 [DocumentStatusBucket]。
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../auth/permissions.dart';
+import '../badges/badge_registry.dart';
 import 'draft_counts_provider.dart';
-
-const _pollInterval = Duration(seconds: 60);
 
 /// 分桶键(与后端 DocumentStatusCountQueryService 逐字一致)。
 abstract final class DocumentStatusBucket {
@@ -50,9 +47,9 @@ class DocumentStatusScope {
   int get hashCode => Object.hash(kind, shipmentKind, docType);
 }
 
-/// 列表页分段计数: 桶键 → 张数。autoDispose——只在列表页打开期间 60s 轮询, 列表重拉/
-/// 写操作成功后由页面 `ref.invalidate(documentStatusCountsProvider(scope))` 立即重取;
-/// 无该类型 *:view 权限不发请求(返回空表, 分段不渲染数字)。
+/// 列表页分段计数: 桶键 → 张数。autoDispose——只在列表页打开期间存活; 不再自带 60s 轮询
+/// (ADR-108), 列表重拉时由页面 `ref.invalidate(documentStatusCountsProvider(scope))` 与列表
+/// 同步重取; 无该类型 *:view 权限不发请求(返回空表, 分段不渲染数字)。
 final documentStatusCountsProvider = FutureProvider.autoDispose
     .family<Map<String, int>, DocumentStatusScope>((ref, scope) async {
       final permissions = ref.watch(currentPermissionsProvider);
@@ -60,8 +57,6 @@ final documentStatusCountsProvider = FutureProvider.autoDispose
           !permissions.contains(scope.kind.viewPerm)) {
         return const {};
       }
-      final timer = Timer(_pollInterval, ref.invalidateSelf);
-      ref.onDispose(timer.cancel);
       final json = await ref
           .watch(apiClientProvider)
           .get(
@@ -87,15 +82,6 @@ class FinanceRejectedCounts {
     this.subcontractOrder = 0,
   });
 
-  factory FinanceRejectedCounts.fromJson(Map<String, dynamic> json) {
-    int read(String key) => (json[key] as num?)?.toInt() ?? 0;
-    return FinanceRejectedCounts(
-      salesShipment: read('salesShipment'),
-      purchaseOrder: read('purchaseOrder'),
-      subcontractOrder: read('subcontractOrder'),
-    );
-  }
-
   static const empty = FinanceRejectedCounts();
 
   final int salesShipment;
@@ -116,38 +102,29 @@ class FinanceRejectedCounts {
     DraftDocKind.purchaseOrder,
     DraftDocKind.subcontractOrder,
   };
+
+  // 值相等: 汇总每分钟换一份新对象, 数没变时不让 hub 卡徽章重建。
+  @override
+  bool operator ==(Object other) =>
+      other is FinanceRejectedCounts &&
+      other.salesShipment == salesShipment &&
+      other.purchaseOrder == purchaseOrder &&
+      other.subcontractOrder == subcontractOrder;
+
+  @override
+  int get hashCode =>
+      Object.hash(salesShipment, purchaseOrder, subcontractOrder);
 }
 
-/// 三类单据的「财务已退回」张数(hub 单据卡徽章 = 草稿 + 财务已退回; 销售出货退回件经
-/// [salesShipmentFinanceRejectedCountProvider] 登记进销售待办累加)。
-// 徽章计数 provider 一律**常驻**(不 autoDispose)并自带 60s 轮询——与 draftCountsProvider
-// 同款: 离开页面不销毁, 刷新期间带住旧值, 徽章不闪; bumpListRefresh / invalidateTodoBadgeCaches
-// 在写操作成功后主动失效。
-final financeRejectedCountsProvider = FutureProvider<FinanceRejectedCounts>((
-  ref,
-) async {
-  final permissions = ref.watch(currentPermissionsProvider);
-  final anyVisible =
-      ref.watch(isSuperAdminProvider) ||
-      FinanceRejectedCounts.kinds.any(
-        (kind) => permissions.contains(kind.viewPerm),
-      );
-  if (!anyVisible) return FinanceRejectedCounts.empty;
-  final timer = Timer(_pollInterval, ref.invalidateSelf);
-  ref.onDispose(timer.cancel);
-  final json = await ref
-      .watch(apiClientProvider)
-      .get(ApiEndpoints.documentFinanceRejectedCounts);
-  return FinanceRejectedCounts.fromJson(json);
-});
-
-/// 销售出货「财务已退回」张数 = TodoEntry.salesShipmentFinanceRejected 的计数源。
+/// 三类单据的「财务已退回」张数(hub 单据卡徽章 = 草稿 + 财务已退回)。
 ///
-/// 由 [financeRejectedCountsProvider] 派生(同一次请求), 失效要打在源头; 采购/委外订货的
-/// 退回件已由各自任务中心的 FINANCE_REJECTED 计入待办, 不再另行登记(同一件活只数一次)。
-final salesShipmentFinanceRejectedCountProvider = FutureProvider<int>((
-  ref,
-) async {
-  final counts = await ref.watch(financeRejectedCountsProvider.future);
-  return counts.salesShipment;
+/// 取自工作台徽章汇总(事实数键 `financeRejected.<类型>`, ADR-108), 不单独请求;
+/// 销售出货退回件已由服务端目录登记进销售待办(salesShipmentFinanceRejected 入口)。
+final financeRejectedCountsProvider = Provider<FinanceRejectedCounts>((ref) {
+  final facts = ref.watch(badgeSummaryProvider.select((s) => s.facts));
+  return FinanceRejectedCounts(
+    salesShipment: facts[BadgeFact.financeRejected('salesShipment')] ?? 0,
+    purchaseOrder: facts[BadgeFact.financeRejected('purchaseOrder')] ?? 0,
+    subcontractOrder: facts[BadgeFact.financeRejected('subcontractOrder')] ?? 0,
+  );
 });

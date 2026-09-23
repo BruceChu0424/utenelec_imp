@@ -439,6 +439,76 @@ void main() {
       expect(expirations, 1);
     });
   });
+
+  // ADR-108 / perf-frontend-09: 访问令牌临近过期(剩余 ≤ 60 秒)时, 请求发出前单飞提前刷新,
+  // 不再每 15 分钟先吃一轮 401 再重放。
+  group('AuthInterceptor proactive refresh', () {
+    late SecureStorage storage;
+
+    setUp(() {
+      FlutterSecureStorage.setMockInitialValues({});
+      storage = SecureStorage(const FlutterSecureStorage());
+    });
+
+    test('isNearExpiry counts the token lifetime from first sight', () {
+      final token = _jwt(iat: 1000, exp: 1900); // 15 分钟寿命
+      final seen = DateTime(2026, 9, 23, 8);
+      expect(AuthInterceptor.isNearExpiry(token, now: seen), isFalse);
+      expect(
+        AuthInterceptor.isNearExpiry(
+          token,
+          now: seen.add(const Duration(minutes: 13)),
+        ),
+        isFalse,
+      );
+      expect(
+        AuthInterceptor.isNearExpiry(
+          token,
+          now: seen.add(const Duration(minutes: 14, seconds: 1)),
+        ),
+        isTrue,
+      );
+      // 解析不了的令牌交给 401 兜底, 不提前刷新。
+      expect(AuthInterceptor.isNearExpiry('not-a-jwt'), isFalse);
+    });
+
+    test(
+      'a near-expiry token is refreshed before the request, with no 401',
+      () async {
+        final nearExpiry = _jwt(iat: 1000, exp: 1030); // 寿命 30 秒, 首见即临近
+        await storage.saveTokens(
+          accessToken: nearExpiry,
+          refreshToken: 'old-refresh',
+        );
+        var refreshes = 0;
+        final protectedHeaders = <String?>[];
+        final dio = _staffDio(storage, (request) {
+          if (request.path == '/auth/refresh') {
+            refreshes++;
+            return _jsonResponse(request, 200, {
+              'accessToken': 'fresh-access',
+              'refreshToken': 'new-refresh',
+            });
+          }
+          protectedHeaders.add(request.headers['Authorization'] as String?);
+          return _jsonResponse(request, 200, {'ok': true});
+        });
+
+        final response = await dio.get<dynamic>('/protected');
+
+        expect(response.data, {'ok': true});
+        expect(refreshes, 1);
+        expect(protectedHeaders, ['Bearer fresh-access']);
+      },
+    );
+  });
+}
+
+/// 测试用 JWT(只有 payload 有意义; 签名段随便填)。
+String _jwt({required int iat, required int exp}) {
+  String part(Object value) =>
+      base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+  return '${part({'alg': 'HS256'})}.${part({'iat': iat, 'exp': exp})}.sig';
 }
 
 typedef _Responder =

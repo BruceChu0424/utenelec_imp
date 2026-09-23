@@ -14,22 +14,10 @@ import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
-import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
-
-class _AllowAllStockDocumentScope implements DocumentScopeCapabilityRepository {
-  const _AllowAllStockDocumentScope();
-
-  @override
-  Future<DocumentScopeCapability> current(DocumentDataScope scope) async =>
-      DocumentScopeCapability(
-        scope: scope.apiValue,
-        writeAll: true,
-        writableOwnerIds: const <String>{},
-      );
-}
+import '../../helpers/document_scope_fixture.dart';
 
 class _DrawDetailApi extends ApiClient {
   _DrawDetailApi({required this.status, required this.issuedQty})
@@ -124,9 +112,7 @@ Future<_DrawDetailApi> _pumpDrawDetail(
         stockDocRepositoryProvider(
           StockDocType.draw,
         ).overrideWithValue(StockDocRepository(api, StockDocType.draw)),
-        documentScopeCapabilityRepositoryProvider.overrideWithValue(
-          const _AllowAllStockDocumentScope(),
-        ),
+        documentScopeOverride(writeAll: true),
         // 附件清单走共享 provider；本测试只验证详情页的常驻区与门控，不打网络。
         businessAttachmentsProvider.overrideWith(
           (ref, owner) async => const <Attachment>[],

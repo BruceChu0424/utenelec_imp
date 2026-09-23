@@ -11,13 +11,15 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_order_confirmation_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_order_review_page.dart';
-import 'package:uten_imp/features/finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import 'package:uten_imp/features/finance/repositories/sales_order_finance_confirmation_repository.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
 import '../../helpers/finance_claim_fixture.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 class _FakeConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
@@ -183,8 +185,10 @@ Future<GoRouter> _pumpPage(
         taskClaimRepositoryProvider.overrideWithValue(
           claims ?? FinanceClaimFixture(),
         ),
-        salesOrderFinanceConfirmationCountProvider.overrideWith(
-          (ref) async => repository.items.length,
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            facts: {BadgeFact.salesOrderFinance: repository.items.length},
+          ),
         ),
         salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
           repository,
@@ -217,8 +221,8 @@ Future<void> _pumpReview(
           Perm.salesOrderFinanceConfirm,
         }),
         sessionProvider.overrideWith(_FinanceSessionNotifier.new),
-        salesOrderFinanceConfirmationCountProvider.overrideWith(
-          (ref) async => 0,
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(facts: {BadgeFact.salesOrderFinance: 0}),
         ),
         salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
           repository ?? _FakeConfirmationRepository([], reviewValue: review),
@@ -697,8 +701,8 @@ void main() {
             Perm.salesOrderFinanceConfirm,
           }),
           sessionProvider.overrideWith(_FinanceSessionNotifier.new),
-          salesOrderFinanceConfirmationCountProvider.overrideWith(
-            (ref) async => 0,
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(facts: {BadgeFact.salesOrderFinance: 0}),
           ),
           salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
             repository,

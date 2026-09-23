@@ -29,13 +29,14 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
-import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
+import '../../../core/router/page_resume_provider.dart';
 
 /// 销售订货单财务确认工作台（V294 闸门，V300 驳回，批量确认）。
 ///
@@ -66,6 +67,9 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
 
 class _FinanceSalesOrderConfirmationPageState
     extends ConsumerState<FinanceSalesOrderConfirmationPage> {
+  /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
+  String? _hostLocation;
+
   static const int _maxBatchSize = 100;
 
   SalesOrderFinancePendingPage? _result;
@@ -159,7 +163,8 @@ class _FinanceSalesOrderConfirmationPageState
           _rejectedCount = result.total;
         }
       });
-      ref.invalidate(salesOrderFinanceConfirmationCountProvider);
+      // 分段计数与列表同源, 随列表加载一并失效(页内专用, 不连带整份徽章汇总)。
+      ref.invalidate(salesOrderFinanceQueueCountProvider);
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
@@ -470,7 +475,7 @@ class _FinanceSalesOrderConfirmationPageState
         context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
         final page = _result?.page ?? 1;
         setState(_clearSelectionState);
-        ref.invalidate(salesOrderFinanceConfirmationCountProvider);
+        refreshBadges(ref);
         await _load(page);
       } on ApiException catch (error) {
         if (mounted) {
@@ -503,10 +508,10 @@ class _FinanceSalesOrderConfirmationPageState
   @override
   Widget build(BuildContext context) {
     final returnPath = _returnPath;
-    ref.listen(listRefreshTickProvider('finance:sales-order:$returnPath'), (
-      _,
-      _,
-    ) {
+    // 审核页确认/驳回成功 bump 的信号: 本队列就在栈顶时立即重拉, 被审核页盖着时
+    // 留给返回时的刷新(ADR-108)。
+    _hostLocation ??= currentLocationOr(context, returnPath);
+    ref.onListRefresh(_hostLocation!, 'finance:sales-order:$returnPath', () {
       if (mounted) _refreshCurrent();
     });
     final permissions = ref.watch(currentPermissionsProvider);

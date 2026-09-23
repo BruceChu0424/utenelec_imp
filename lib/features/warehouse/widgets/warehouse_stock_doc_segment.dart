@@ -27,12 +27,13 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../pages/warehouse_stock_batch_outbound_page.dart';
+import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/nav_helpers.dart';
 
 /// 状态小类分段值：真实单据状态（status 非空）或历史单据哨兵。
 class _StockSegSeg {
@@ -82,6 +83,9 @@ class WarehouseStockDocSegment extends ConsumerStatefulWidget {
 
 class _WarehouseStockDocSegmentState
     extends ConsumerState<WarehouseStockDocSegment> {
+  /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
+  String? _hostLocation;
+
   final _list = PagedListController<StockDocListItem>();
   final Set<String> _selectedIds = {};
 
@@ -309,10 +313,10 @@ class _WarehouseStockDocSegmentState
         AppLocalizationsZh();
     ref.watch(currentPermissionsProvider);
     ref.watch(masterNameServiceProvider);
-    // 详情/编辑页保存、审核、红冲成功都会 bump 本 docType 的 tick，据此重拉。
-    ref.listen(listRefreshTickProvider(widget.docType.refreshKey), (_, _) {
-      _reload();
-    });
+    // 详情/编辑页保存、审核、红冲成功都会 bump 本 docType 的 tick：宿主任务中心就在
+    // 栈顶时据此重拉；被详情页盖着时由宿主返回时的刷新带着重拉(ADR-108)。
+    _hostLocation ??= currentLocationOr(context, '');
+    ref.onListRefresh(_hostLocation!, widget.docType.refreshKey, _reload);
     final showIssueStatus = widget.docType == StockDocType.draw;
     final isReturn = widget.docType == StockDocType.wdraw;
     final seg = _seg;

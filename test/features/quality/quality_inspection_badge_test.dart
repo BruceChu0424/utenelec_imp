@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -15,13 +15,14 @@ import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dar
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/features/quality/pages/quality_task_center_page.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
-import 'package:uten_imp/features/warehouse/providers/procurement_inbound_count_providers.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
-import 'package:uten_imp/shared/providers/production_fqc_pending_count_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   testWidgets('workbench quality badge shows a positive pending count', (
@@ -53,41 +54,33 @@ void main() {
     expect(find.text('0'), findsNothing);
   });
 
-  for (final iqcResolvesFirst in [true, false]) {
-    testWidgets(
-      'quality total waits for ${iqcResolvesFirst ? 'FQC' : 'IQC'} before showing a number',
-      (tester) async {
-        final pending = Completer<int>();
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              procurementInspectionPendingCountProvider.overrideWith(
-                (ref) async => iqcResolvesFirst ? 4 : pending.future,
-              ),
-              productionFqcPendingCountProvider.overrideWith(
-                (ref) async => iqcResolvesFirst ? pending.future : 2,
-              ),
-            ],
-            child: const MaterialApp(
-              home: Scaffold(
-                body: WorkbenchCardBadge(
-                  kind: WorkbenchBadgeKind.qualityInspection,
-                ),
-              ),
+  testWidgets('quality total = IQC + FQC, summed once by the server', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              entries: {
+                BadgeEntry.qualityIqcPending: (4, 0),
+                BadgeEntry.qualityFqcPending: (2, 0),
+              },
             ),
           ),
-        );
-        await tester.pump();
-        await tester.pump();
-
-        expect(find.text('4'), findsNothing);
-        expect(find.text('2'), findsNothing);
-        pending.complete(iqcResolvesFirst ? 2 : 4);
-        await tester.pumpAndSettle();
-        expect(find.text('6'), findsOneWidget);
-      },
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: WorkbenchCardBadge(
+              kind: WorkbenchBadgeKind.qualityInspection,
+            ),
+          ),
+        ),
+      ),
     );
-  }
+    await tester.pumpAndSettle();
+    expect(find.text('6'), findsOneWidget);
+  });
 
   testWidgets('quality count failure is not presented as a real zero', (
     tester,
@@ -95,8 +88,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          procurementInspectionPendingCountProvider.overrideWith(
-            (ref) => Future<int>.error(StateError('offline')),
+          // 服务端这次没算出 IQC 待检(来源异常): 显示异常图标, 不把半截合计当真数。
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(stale: {BadgeEntry.qualityIqcPending}),
           ),
         ],
         child: const MaterialApp(
@@ -116,27 +110,6 @@ void main() {
     );
     expect(find.text('0'), findsNothing);
   });
-
-  test(
-    'quality pending provider does not request without view permission',
-    () async {
-      final repository = _FakeInspectionRepository(pendingCountValue: 5);
-      final container = ProviderContainer(
-        overrides: [
-          currentPermissionsProvider.overrideWithValue(const <String>{}),
-          isSuperAdminProvider.overrideWithValue(false),
-          procurementInspectionRepositoryProvider.overrideWithValue(repository),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      expect(
-        await container.read(procurementInspectionPendingCountProvider.future),
-        0,
-      );
-      expect(repository.pendingCountCalls, 0);
-    },
-  );
 
   testWidgets('quality task entry carries its return path to inspection', (
     tester,
@@ -163,8 +136,8 @@ void main() {
             Perm.procurementInspectionView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
-          procurementInspectionPendingCountProvider.overrideWith(
-            (ref) async => 0,
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(facts: {BadgeFact.iqcPending: 0}),
           ),
         ],
         child: _routerApp(router),
@@ -222,48 +195,61 @@ void main() {
     expect(find.text('已返回品质任务中心'), findsOneWidget);
   });
 
-  testWidgets('returning to quality task center refreshes its pending badge', (
-    tester,
-  ) async {
-    final repository = _FakeInspectionRepository(pendingCountValue: 1);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          currentPermissionsProvider.overrideWithValue({
-            Perm.procurementInspectionView,
-          }),
-          isSuperAdminProvider.overrideWithValue(false),
-          procurementInspectionRepositoryProvider.overrideWithValue(repository),
-        ],
-        child: const MaterialApp(home: QualityTaskCenterPage()),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(repository.pendingCountCalls, 1);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets(
+    'returning to quality task center refreshes badges only after a write',
+    (tester) async {
+      final summary = FixedBadgeSummaryNotifier(
+        badgeSummaryFixture(entries: {BadgeEntry.qualityIqcPending: (1, 0)}),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue({
+              Perm.procurementInspectionView,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+            badgeSummaryProvider.overrideWith(() => summary),
+          ],
+          child: const MaterialApp(home: QualityTaskCenterPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1'), findsOneWidget);
 
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(QualityTaskCenterPage)),
-    );
-    container.read(pageResumeProvider.notifier).state = (
-      location: RouteName.warehouseInspections,
-      tick: 1,
-    );
-    await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(QualityTaskCenterPage)),
+      );
+      Future<void> goAwayAndBack(int tick) async {
+        container.read(pageResumeProvider.notifier).state = (
+          location: RouteName.warehouseInspections,
+          tick: tick,
+        );
+        await tester.pump();
+        container.read(pageResumeProvider.notifier).state = (
+          location: RouteName.qualityTaskCenter,
+          tick: tick + 1,
+        );
+        await tester.pumpAndSettle();
+      }
 
-    repository.pendingCountValue = 2;
-    container.read(pageResumeProvider.notifier).state = (
-      location: RouteName.qualityTaskCenter,
-      tick: 2,
-    );
-    await tester.pumpAndSettle();
+      // 只看了一眼就返回(期间本端没有写操作、未满 30 秒): 不重拉。
+      await goAwayAndBack(1);
+      expect(summary.refreshCalls, 0);
 
-    expect(repository.pendingCountCalls, 2);
-    expect(find.text('2'), findsOneWidget);
+      // 处置页里提交了一笔(网络层推进写修订号)再返回: 重拉一次, 新数随汇总到达。
+      container.read(dataWriteRevisionProvider.notifier).state++;
+      await goAwayAndBack(3);
+      expect(summary.refreshCalls, 1);
+      summary.emit(
+        badgeSummaryFixture(entries: {BadgeEntry.qualityIqcPending: (2, 0)}),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('2'), findsOneWidget);
 
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
-  });
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
 
   testWidgets('task center lists pending receipts as table rows', (
     tester,
@@ -569,11 +555,11 @@ void main() {
 
       // 2026-09-05 提交报告（decide-batch）后仍要刷新仓库队列角标
       //（合并页可办计数：待入库+需退回）；旧单行/批量合格双入口已收敛为单按钮。
-      // 2026-09-21 起失效改打源头 type-counts: 合并页的红黄两支都是它的派生,
-      // 打派生只会拿回缓存、不重发请求, 表现就是办完一单徽章要等 60s 才动。
+      // 2026-09-23 起(ADR-108)红黄两数随徽章汇总带回: 提交后立即重拉汇总一次,
+      // 不等 60s 轮询。
       expect(
         RegExp(
-          r'ref\.invalidate\(warehouseQualityResultTypeCountsProvider\)',
+          r'await _load\(\);\s*//[^\n]*\n\s*refreshBadges\(ref\);',
         ).allMatches(source),
         hasLength(1),
       );
@@ -612,19 +598,6 @@ void main() {
     expect(find.text('CJ20260822000001'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-
-  test('global badge refresh includes the quality pending provider', () {
-    // 2026-09-11：登录/返回工作台的角标刷新由待办徽章注册表统一负责
-    // （工作台只剩一行 invalidateTodoBadgeCaches(ref)），契约目标随之搬家。
-    final source = File(
-      'lib/shared/badges/todo_badge_registry.dart',
-    ).readAsStringSync();
-
-    expect(
-      source,
-      contains('ref.invalidate(procurementInspectionPendingCountProvider);'),
-    );
-  });
 }
 
 /// 双击指定表格行（两次点按间隔 50ms，落在 350ms 手动双击判定窗内）——
@@ -643,8 +616,10 @@ Future<void> _pumpWorkbenchBadge(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        procurementInspectionPendingCountProvider.overrideWith(
-          (ref) async => count,
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            entries: {BadgeEntry.qualityIqcPending: (count, 0)},
+          ),
         ),
       ],
       child: const MaterialApp(
@@ -864,25 +839,16 @@ Widget _routerApp(GoRouter router) {
 
 class _FakeInspectionRepository implements ProcurementInspectionRepository {
   _FakeInspectionRepository({
-    this.pendingCountValue = 0,
     List<PendingInspectionReceipt> receipts = const [],
     List<ProcurementInspectionItem> inspectionItems = const [],
   }) : receipts = List.of(receipts),
        inspectionItems = List.of(inspectionItems);
 
-  int pendingCountValue;
-  int pendingCountCalls = 0;
   final List<PendingInspectionReceipt> receipts;
   final List<ProcurementInspectionItem> inspectionItems;
   final List<_DispositionCall> disposeCalls = [];
   final List<_BatchPassCall> batchPassCalls = [];
   final List<_DecideBatchCall> decideBatchCalls = [];
-
-  @override
-  Future<int> pendingCount() async {
-    pendingCountCalls += 1;
-    return pendingCountValue;
-  }
 
   @override
   Future<List<PendingInspectionReceipt>> pendingReceipts() async => receipts;

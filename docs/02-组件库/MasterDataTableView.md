@@ -369,3 +369,11 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 豁免只影响按钮与空态说明里的「N 个表头筛选生效」计数，不影响过滤本身。
 回归用例：`test/features/basic_data/master_table_external_filter_keys_test.dart`。
+
+## 列宽量宽缓存(2026-09-23，ADR-108)
+
+- 自动列宽按**列 key** 缓存量宽结果: 表头只量一次, 单元格值按字符串去重, 只量前 30 行(原 100 行)。
+- 数据刷新(翻页/筛选/排序/静默重拉, 包括同一份数据换了新的 List 实例)**不在当帧重量**: 帧后只补量新出现的值,
+  超出当前宽度才加宽, **列宽只增不减**(静默刷新时列宽不跳); 手工拖过的列不动。
+- 换一套列(列 key 序列变化)或字号档变化时才全量重算。`shrinkWrap` 设计不变。
+- 测试钩子 `debugMasterTableMeasureTextCount`; 回归: `test/master_data_table_view_width_cache_test.dart`。

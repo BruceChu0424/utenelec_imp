@@ -24,9 +24,6 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
 
   @override
   Future<HrTaskSummary> summary() async => summaryValue;
-
-  @override
-  Future<int> count() async => 0;
 }
 
 class _FakeEmployeeRepository extends Fake implements EmployeeRepository {

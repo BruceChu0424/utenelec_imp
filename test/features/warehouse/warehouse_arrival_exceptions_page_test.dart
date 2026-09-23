@@ -172,11 +172,6 @@ class _ArrivalExceptionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    // 「待处理」分段的红徽章数与 hub 卡同源(ADR-100: 父有红徽章, 子分段必有数),
-    // 所以页面会多拉一次这个轻量 count —— 它是全量口径, 不随搜索/表头筛选变。
-    if (path == ApiEndpoints.warehouseArrivalExceptionCount) {
-      return const {'count': 1};
-    }
     if (path != ApiEndpoints.warehouseArrivalExceptions) {
       throw StateError('Unexpected GET $path');
     }

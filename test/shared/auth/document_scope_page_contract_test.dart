@@ -17,7 +17,12 @@ void main() {
       expect(source, contains('documentOwnerCanWrite'));
       expect(source, contains('DocumentScopeWriteNotice'));
       expect(source, contains('onRetry:'));
-      expect(source, contains('ref.invalidate'));
+      // ADR-108: 写能力来自会话快照, 重试 = 重取快照; 详情加载不再作废能力重拉。
+      expect(source, contains('sessionSnapshotProvider.notifier'));
+      expect(
+        source,
+        isNot(contains('ref.invalidate(documentScopeCapabilityProvider')),
+      );
     }
   });
 

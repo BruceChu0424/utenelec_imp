@@ -254,10 +254,10 @@ void main() {
         RouteName.adminServerStatus,
       );
       expect(find.byType(ServerStatusPage), findsOneWidget);
-      // 2 次 = 页面自己拉一次 + 工作台那张卡的告警徽章拉一次（2026-09-11 新增）。
-      // 两者共用同一个只读端点，服务端有 15s 采样缓存，多这一次是 HTTP 往返而已；
-      // 数字钉死在 2，多出第三次（比如谁又加了一个轮询源）会立刻被这里拦下。
-      expect(repository.calls, 2);
+      // 1 次 = 页面自己拉一次。工作台那张卡的告警徽章(2026-09-11 新增)自 2026-09-23 起
+      // 随徽章汇总带回(ADR-108), 不再单独请求这个端点; 数字钉死在 1, 谁再加一个轮询源
+      // 会立刻被这里拦下。
+      expect(repository.calls, 1);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -459,7 +459,7 @@ void main() {
 
   // 2026-09-12 用户反馈：「运行总览的动画要等好一会才出现」。根因是快照只存在页面
   // State 里，每次进页面都从 null 起步，总览环必须等一整趟请求回来才有读数。
-  // 现在页面与工作台徽章共用 serverStatusSnapshotCacheProvider。
+  // 现在页面把快照写进 serverStatusSnapshotCacheProvider，下次进页面第一帧先用。
   testWidgets('进页面第一帧就用共享缓存画出总览，不等自己那趟请求回来', (tester) async {
     await withClock(Clock.fixed(sampledAt), () async {
       final pending = Completer<ServerStatusSnapshot>();
@@ -506,7 +506,7 @@ void main() {
     });
   });
 
-  testWidgets('页面自己拉到的快照会回写共享缓存，供下次进页面与工作台徽章复用', (tester) async {
+  testWidgets('页面自己拉到的快照会回写缓存，供下次进页面第一帧复用', (tester) async {
     await withClock(Clock.fixed(sampledAt), () async {
       final repository = _Repository(() async => _withExtras(sampledAt));
       final container = await _pump(tester, repository);

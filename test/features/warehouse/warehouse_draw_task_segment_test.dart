@@ -60,9 +60,6 @@ class _FakeRepository extends ProductionDrawTaskRepository {
   int get total => pages.values.fold(0, (sum, items) => sum + items.length);
 
   @override
-  Future<int> pendingCount() async => total;
-
-  @override
   Future<Map<String, int>> statusBreakdown() async {
     final error = countsError;
     if (error != null) throw error;

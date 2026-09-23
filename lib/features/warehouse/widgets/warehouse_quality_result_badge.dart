@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_notification_badge.dart';
-import '../providers/warehouse_quality_result_count_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
+/// 品质部检查结果卡的红徽章: 轮到仓库动手的任务数(徽章入口, 随汇总带回)。
 class WarehouseQualityResultBadge extends ConsumerWidget {
   const WarehouseQualityResultBadge({
     super.key,
@@ -16,12 +17,15 @@ class WarehouseQualityResultBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(warehouseQualityResultPendingCountProvider);
-    return count.when(
-      data: (value) =>
-          UtenNotificationBadge(count: value, size: size, showLabel: showLabel),
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => Tooltip(
+    const entry = BadgeEntry.warehouseQualityResult;
+    final state = ref.watch(
+      badgeSummaryProvider.select(
+        (s) => (s.loaded, s.isStale(entry), s.entryTodo(entry)),
+      ),
+    );
+    if (!state.$1) return const SizedBox.shrink();
+    if (state.$2) {
+      return Tooltip(
         message: '品质检查结果待办数量加载失败，请进入任务页重试',
         child: Icon(
           Icons.sync_problem_outlined,
@@ -30,7 +34,12 @@ class WarehouseQualityResultBadge extends ConsumerWidget {
           color: Theme.of(context).colorScheme.error,
           semanticLabel: '品质检查结果待办数量加载失败，请进入任务页重试',
         ),
-      ),
+      );
+    }
+    return UtenNotificationBadge(
+      count: state.$3,
+      size: size,
+      showLabel: showLabel,
     );
   }
 }

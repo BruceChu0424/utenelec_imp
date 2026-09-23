@@ -41,7 +41,7 @@ class ProductionLegacyWriteControllerTest {
                 .doesNotContain(
                         "/{id}/mrp/generate-subplan",
                         "/{id}/mrp/generate-subplans",
-                        // V655 / ADR-109：从未开启的 MRP 直接生成与整树确认入口已删除。
+                        // V677 / ADR-109：从未开启的 MRP 直接生成与整树确认入口已删除。
                         "/{id}/mrp/generate",
                         "/{id}/mrp/generate-planning-package-full-tree");
     }

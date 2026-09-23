@@ -193,7 +193,7 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                         """, fixture.warehouseId(), analysisId, analysisItemId,
                         fixture.actorUserId(), fixture.planItemId());
                 setReplica(connection, false);
-                // V650: 只改 updated_at 不再排延迟校验；把一个相关列改过去再改回来(终态不变)来排队。
+                // V674: 只改 updated_at 不再排延迟校验；把一个相关列改过去再改回来(终态不变)来排队。
                 execute(connection, """
                         UPDATE production_material_analysis_items
                         SET requested_qty = requested_qty + 1 WHERE id = ?
@@ -550,7 +550,7 @@ class SubcontractTargetOutboundPreparationPostgresTest {
     }
 
     /**
-     * V650: 延迟校验只在相关列真变了时排队，只改 updated_at 不再触发。把 source 改过去再改回来：
+     * V674: 延迟校验只在相关列真变了时排队，只改 updated_at 不再触发。把 source 改过去再改回来：
      * 终态与原行一字不差，却让预留上的延迟校验各排一次(走 _upd 那条触发器)。
      */
     private static void touchReservationRelevantColumn(Connection connection, UUID reservationId)

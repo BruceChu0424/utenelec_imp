@@ -366,7 +366,7 @@ public class UserAccountAdminService {
         support.requireSuperAdminToggle(user, superAdmin);
         user.setSuperAdmin(superAdmin);
         if (!superAdmin && user.isMustChangePassword() && user.getTempPasswordExpiresAt() == null) {
-            // 只有超管的初始密码可以不设过期 (引导管理员, V660); 降为普通账号后与所有临时凭据同口径:
+            // 只有超管的初始密码可以不设过期 (引导管理员, V682); 降为普通账号后与所有临时凭据同口径:
             // 还没改过的初始密码立即作废, 需由账号支持重新发放 (库触发器 trg_users_temp_password_expiry 同样兜底)。
             user.setTempPasswordExpiresAt(OffsetDateTime.now());
         }

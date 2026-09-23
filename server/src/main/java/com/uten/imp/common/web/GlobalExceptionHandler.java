@@ -233,7 +233,7 @@ public class GlobalExceptionHandler {
             if (detail != null && detail.contains("Original material receipt has later actual stock consumption")) {
                 return "本次收仓之后已有依赖其成本的出库，请先处理对应后续出库，再撤回收仓";
             }
-            // ADR-111 主档完整性兜底(V661/V662)：服务端正常路径会先给出列明细的原因，这里只在
+            // ADR-111 主档完整性兜底(V683/V684)：服务端正常路径会先给出列明细的原因，这里只在
             // 并发或旁路写入撞上数据库闸时出现，给一句能照着做的话，不回显库内细节。
             String masterGuard = masterIntegrityMessage(detail);
             if (masterGuard != null) return masterGuard;
@@ -263,7 +263,7 @@ public class GlobalExceptionHandler {
         return "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
     }
 
-    /** V661/V662 主档触发器(23514)的大白话；不是这几条就返回 null 交给通用文案。 */
+    /** V683/V684 主档触发器(23514)的大白话；不是这几条就返回 null 交给通用文案。 */
     private static String masterIntegrityMessage(String detail) {
         if (detail == null) return null;
         if (detail.contains("goods is still a component of an active BOM")) {

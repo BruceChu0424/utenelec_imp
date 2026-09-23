@@ -112,7 +112,7 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_workshop_custody_handoff_reversals", 619),
             Map.entry("production_workshop_custody_reverse_preparations", 619),
             Map.entry("production_workshop_return_preplan_events", 619),
-            // V658 服务端会话与再认证失败计数 (ADR-110)：清空业务数据本就全员下线, 会话随之清空。
+            // V680 服务端会话与再认证失败计数 (ADR-110)：清空业务数据本就全员下线, 会话随之清空。
             Map.entry("auth_sessions", 658),
             Map.entry("auth_step_up_states", 658));
 
@@ -129,7 +129,7 @@ class BusinessDataResetSqlContractTest {
             "party_activity_records", 579,
             "party_addresses", 579,
             "party_contact_methods", 579,
-            // V665 总账附表行绑定(ADR-112): 报表配置随科目/部门主档保留。
+            // V686 总账附表行绑定(ADR-112): 报表配置随科目/部门主档保留。
             "finance_report_line_bindings", 665);
 
     /**
@@ -138,7 +138,7 @@ class BusinessDataResetSqlContractTest {
      */
     private static final Map<String, Integer> REMOVED_RESET_TABLES = Map.of(
             "production_goods_workshop_preferences", 590,
-            // V655 / ADR-109：角色体系删除，四张角色表从清单两侧同时移除。
+            // V677 / ADR-109：角色体系删除，四张角色表从清单两侧同时移除。
             "roles", 655,
             "user_roles", 655,
             "role_permissions", 655,
@@ -259,8 +259,8 @@ class BusinessDataResetSqlContractTest {
                 "V626__legacy_finance_source_provenance.sql",
                 "V627__legacy_receipt_consideration_provenance.sql",
                 "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql",
-                "V658__auth_sessions_and_step_up.sql",
-                "V665__finance_report_line_bindings.sql")) {
+                "V680__auth_sessions_and_step_up.sql",
+                "V686__finance_report_line_bindings.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }
@@ -469,8 +469,8 @@ class BusinessDataResetSqlContractTest {
                 .contains("(664, 612)")
                 .contains("(665, 613)")
                 .contains("(666, 614)")
-                // 迁移头 V666 / 614 张 (V653至V654、V663 跳号)。
-                .contains("V507/469、V508/470及V511至V666完整目录");
+                // 迁移头 V687 / 614 张 (V653至V654、V663 跳号)。
+                .contains("V507/469、V508/470及V511至V687完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
@@ -493,7 +493,7 @@ class BusinessDataResetSqlContractTest {
                 .contains("RAISE EXCEPTION 'V579 cannot extend business_data_reset policy safely'")
                 .contains("(''party_contact_methods'', ''PRESERVE'')");
         assertThat(extensionSql)
-                .contains("RAISE EXCEPTION 'V665 cannot extend business-data reset policy safely'")
+                .contains("RAISE EXCEPTION 'V686 cannot extend business-data reset policy safely'")
                 .contains("(''finance_report_line_bindings'', ''PRESERVE'')");
         // V590：整表废弃走「读已安装定义 + 锚点替换删除」补丁；锚点单行无换行，
         // 不受迁移文件 CRLF/LF 差异影响（V588 教训）。

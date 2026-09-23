@@ -1045,7 +1045,7 @@ migrate_subcontract () {
 # 生产模块：F_Plan / F_PlanItem / F_PlanCostItem / F_DateReport / F_DateReportItem。
 # 依赖：主档 + V51 sales_order_items / sales_order_cost_items（销售必须先迁，
 #   跨模块 FK 映射 sales_order_item_id；F_PlanItem.S_OrderID 经 legacy_id 子查询映射）。
-# production_plan_costs 为普通单表(V649)；只读遗留快照，只有本导入会话(app.legacy_import='on')能写。
+# production_plan_costs 为普通单表(V673)；只读遗留快照，只有本导入会话(app.legacy_import='on')能写。
 migrate_production () {
     echo "→ [生产模块] 复制 CSV（5 个）..."
     for f in production_plans production_plan_items production_plan_costs \

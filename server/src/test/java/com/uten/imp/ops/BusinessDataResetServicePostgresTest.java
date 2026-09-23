@@ -217,10 +217,10 @@ class BusinessDataResetServicePostgresTest {
         // V590 废弃车间偏好表（数据搬进货品表随 goods 保留）：PRESERVE 99→98。
         // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送分配/流水/历史隔离：V618 +1 收仓确认，V619 +8 保管溯源：280→296。
         // V636 +2（委外回厂短交案件头/事件）：296→298。
-        // V658 +2(服务端登录会话、再认证失败计数；清库后所有人重新登录)：298→300。
+        // V680 +2(服务端登录会话、再认证失败计数；清库后所有人重新登录)：298→300。
         assertThat(result.clearedTableCount()).isEqualTo(300);
         // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
-        // V665 保留总账附表行绑定(ADR-112) +1, V655 删除角色体系四张 PRESERVE 表(ADR-109) -4: 102→99。
+        // V686 保留总账附表行绑定(ADR-112) +1, V677 删除角色体系四张 PRESERVE 表(ADR-109) -4: 102→99。
         assertThat(result.preservedTableCount()).isEqualTo(99);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，

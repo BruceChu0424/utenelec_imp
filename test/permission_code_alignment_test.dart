@@ -78,7 +78,7 @@ void main() {
       ).allMatches(permSource)) {
         declared.add(match.group(1)!);
       }
-      // 无冒号的模块级码也纳入前端声明集合(V655 起目录码一律带冒号，这里只是兜底)。
+      // 无冒号的模块级码也纳入前端声明集合(V677 起目录码一律带冒号，这里只是兜底)。
       for (final match in RegExp(
         r"static const \w+\s*=\s*'([a-z0-9_]+)'",
       ).allMatches(permSource)) {

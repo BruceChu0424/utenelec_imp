@@ -34,7 +34,7 @@ import static com.uten.imp.features.sales.order.dto.OrderProgressTimelineEvent.R
  *
  * <p>每一环都尽量带「责任人 + 发生时间」：制单/审核/确认人取单据自身 *_by 列（员工经
  * {@link EmployeeNameResolver#nameOf} 解析为实际姓名，兼容 users.id 历史数据)；审核/红冲/驳回的时间点读单据
- * 自身的 approved_at / reversed_at / rejected_at 列(V648 起由命令写入，ADR-105 规定业务逻辑不读审计日志)。
+ * 自身的 approved_at / reversed_at / rejected_at 列(V672 起由命令写入，ADR-105 规定业务逻辑不读审计日志)。
  *
  * <p>展示顺序（服务端排好，前端直接渲染）：已发生事件（DONE/CURRENT/REJECTED）按发生时间倒序、
  * 无时间的当前阶段置顶；PENDING 占位按业务顺序垫底。只读接口，归属校验与 detail 同口径。

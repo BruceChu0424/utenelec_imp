@@ -219,7 +219,7 @@ public class MouldCategoryService {
         repo.saveAll(nodes);
     }
 
-    /** 锁住子树分类行后再读一遍子树(V662)，口径同 MaterialCategoryService.lockedSubtree。 */
+    /** 锁住子树分类行后再读一遍子树(V684)，口径同 MaterialCategoryService.lockedSubtree。 */
     private List<MouldCategory> lockedSubtree(UUID rootId) {
         List<MouldCategory> nodes = repo.findSubtree(rootId);
         for (int attempt = 0; attempt < 3 && !nodes.isEmpty(); attempt++) {

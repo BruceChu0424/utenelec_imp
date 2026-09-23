@@ -83,7 +83,7 @@ class NoticePermissionCandidatePostgresTest {
         assertTrue(candidates().isEmpty());
         jdbc.update("UPDATE user_permission_overrides SET effect='legacy-non-revoke-expression'");
         assertEquals(Set.of(personal), candidates(), "unknown non-revoke grant must remain over-selected");
-        // 停用即删除(V655)：码从目录删除后不再有任何候选。
+        // 停用即删除(V677)：码从目录删除后不再有任何候选。
         jdbc.update("DELETE FROM permissions");
         assertTrue(candidates().isEmpty());
     }

@@ -18,11 +18,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 热表触发器卫生契约(ADR-106 / V650)：在真实 Flyway 迁移到头的库上验证触发器的起跳条件。
+ * 热表触发器卫生契约(ADR-106 / V674)：在真实 Flyway 迁移到头的库上验证触发器的起跳条件。
  *
  * <ul>
  *   <li>热表上的延迟约束触发器凡是对 UPDATE 起跳的，必须带 WHEN(只在相关列真变了时排队)；</li>
- *   <li>V650 重建的 38 条 ENABLE ALWAYS 守卫(含 _upd 变体)仍是 ALWAYS；</li>
+ *   <li>V674 重建的 38 条 ENABLE ALWAYS 守卫(含 _upd 变体)仍是 ALWAYS；</li>
  *   <li>单号取号函数只挂 INSERT；UPDATE 由列级 WHEN 守卫接管，且每张表都有；</li>
  *   <li>被同表覆盖校验完全包含的三条采购来源溯源触发器不能再装回来；</li>
  *   <li>收付款类别引用方取共享锁、层级/状态变更方取排他锁。</li>
@@ -40,10 +40,10 @@ class HotTableTriggerHygieneContractTest {
             """;
 
     /**
-     * V650 重建的触发器里必须是 ENABLE ALWAYS 的全部 38 条(表.触发器)：V645 时为 ALWAYS 的 27 条原名，
+     * V674 重建的触发器里必须是 ENABLE ALWAYS 的全部 38 条(表.触发器)：V645 时为 ALWAYS 的 27 条原名，
      * 加上从它们拆出的 11 条 _upd 变体。写死清单而不是拿变体和原名互比——两条一起丢了 ALWAYS 时互比照样相等。
      */
-    private static final List<String> ALWAYS_GUARDS_REBUILT_BY_V650 = List.of(
+    private static final List<String> ALWAYS_GUARDS_REBUILT_BY_V674 = List.of(
             "production_execution_segments.trg_00_material_snapshot_product_qty",
             "production_execution_segments.trg_00_material_snapshot_product_qty_upd",
             "production_execution_segments.trg_final_report_target_change",
@@ -114,15 +114,15 @@ class HotTableTriggerHygieneContractTest {
     void rebuiltGuardsKeepEnableAlways() throws SQLException {
         // DROP + CREATE resets ENABLE ALWAYS to ORIGIN; guards that must fire even under
         // session_replication_role=replica have to keep that mode on the original and every _upd variant.
-        String names = String.join(",", ALWAYS_GUARDS_REBUILT_BY_V650.stream().map(name -> "'" + name + "'").toList());
+        String names = String.join(",", ALWAYS_GUARDS_REBUILT_BY_V674.stream().map(name -> "'" + name + "'").toList());
         assertThat(strings("""
                 SELECT c.relname || '.' || t.tgname
                 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
                 WHERE NOT t.tgisinternal AND t.tgenabled = 'A' AND c.relname || '.' || t.tgname IN (%s)
                 ORDER BY 1
                 """.formatted(names)))
-                .as("V650 重建的 ALWAYS 守卫(含 _upd 变体)必须全部仍是 ALWAYS，复制角色下的维护写入才仍被拦住")
-                .containsExactlyInAnyOrderElementsOf(ALWAYS_GUARDS_REBUILT_BY_V650);
+                .as("V674 重建的 ALWAYS 守卫(含 _upd 变体)必须全部仍是 ALWAYS，复制角色下的维护写入才仍被拦住")
+                .containsExactlyInAnyOrderElementsOf(ALWAYS_GUARDS_REBUILT_BY_V674);
         assertThat(strings("""
                 SELECT c.relname || '.' || variant.tgname || ' ' || variant.tgenabled::text || '<>' || original.tgenabled::text
                 FROM pg_trigger variant

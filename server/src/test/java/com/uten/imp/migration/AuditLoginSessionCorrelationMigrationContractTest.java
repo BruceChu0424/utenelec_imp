@@ -46,7 +46,7 @@ class AuditLoginSessionCorrelationMigrationContractTest {
         assertTrue(source.contains("FROM fn_audit_retention_run()"));
         assertFalse(source.contains("INSERT INTO audit_log_archive"));
         String migration = Files.readString(Path.of(
-                "src/main/resources/db/migration/V647__audit_log_monthly_partitions_append_only.sql"),
+                "src/main/resources/db/migration/V671__audit_log_monthly_partitions_append_only.sql"),
                 StandardCharsets.UTF_8).toLowerCase(java.util.Locale.ROOT);
         // 归档表按在线表 LIKE 建, 列(含 session_id)与在线表完全同形, 分区才能原样 ATTACH。
         assertTrue(migration.contains("public.audit_log_archive (like public.audit_log including defaults"));

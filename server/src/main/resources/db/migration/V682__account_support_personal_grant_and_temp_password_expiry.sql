@@ -1,9 +1,9 @@
--- V660 账号支持改为个人点名授权 + 存量临时密码置为过期 (ADR-110; security-01/02)
+-- V682 账号支持改为个人点名授权 + 存量临时密码置为过期 (ADR-110; security-01/02)
 --
 -- 1) account:support 可以重置任意非超管账号的密码并拿到明文临时密码, 原先整个
 --    「行政与人力资源部」都有。改为只能个人点名授予:
 --    - 删除全部部门级授予 (负责人委派同样删除);
---    - 授权策略 permissions.grant_policy (V655 起的唯一事实源, ADR-109) 改为 INDIVIDUAL_ONLY:
+--    - 授权策略 permissions.grant_policy (V677 起的唯一事实源, ADR-109) 改为 INDIVIDUAL_ONLY:
 --      不进部门矩阵、不可委派、不随批量, 只能由超管在「个人授权」里点名配置;
 --      部门侧由服务 (GrantPolicy) 与通用守卫 fn_guard_permission_grant_policy 双重拒绝,
 --      不再单独维护按码写死的守卫函数。
@@ -26,7 +26,7 @@ USING permissions p
 WHERE dp.permission_id = p.id
   AND p.code = 'account:support';
 
--- V655 已把 account:support 标为 NON_DELEGABLE, 正常不会有委派行; 仍显式清掉, 保证与新策略一致。
+-- V677 已把 account:support 标为 NON_DELEGABLE, 正常不会有委派行; 仍显式清掉, 保证与新策略一致。
 DELETE FROM manager_permission_delegations delegation
 USING permissions p
 WHERE delegation.permission_id = p.id
@@ -42,7 +42,7 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM permissions
         WHERE code = 'account:support' AND grant_policy = ARRAY['INDIVIDUAL_ONLY']::TEXT[]) THEN
-        RAISE EXCEPTION 'V660 account:support must exist and be INDIVIDUAL_ONLY';
+        RAISE EXCEPTION 'V682 account:support must exist and be INDIVIDUAL_ONLY';
     END IF;
 END;
 $$;

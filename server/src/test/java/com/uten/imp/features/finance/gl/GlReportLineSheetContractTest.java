@@ -46,7 +46,7 @@ class GlReportLineSheetContractTest {
     @Test
     void defaultNamesOnlyTargetConfigurableStyleLines() throws Exception {
         String migration = Files.readString(Path.of(
-                "src/main/resources/db/migration/V665__finance_report_line_bindings.sql"));
+                "src/main/resources/db/migration/V686__finance_report_line_bindings.sql"));
         String values = migration.substring(migration.indexOf("FROM (VALUES"), migration.indexOf(") AS defaults"));
         Set<String> keys = new TreeSet<>();
         var matcher = java.util.regex.Pattern.compile("\\('([A-Z_]+)', '").matcher(values);

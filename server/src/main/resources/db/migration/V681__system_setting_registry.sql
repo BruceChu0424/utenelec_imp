@@ -1,4 +1,4 @@
--- V659 系统设置单一登记 (ADR-110; audit-retention-settings-09/11/12)
+-- V681 系统设置单一登记 (ADR-110; audit-retention-settings-09/11/12)
 --
 -- 背景: 设置项的键、类型、默认值、取值范围、说明、是否公开分散在迁移、服务、各调用方和前端四处,
 -- 默认值与库值不一致 (jwt_access_ttl_minutes 代码默认 15 / 种子 480 / 回改 15; refresh 7 / 1),

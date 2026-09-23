@@ -23,7 +23,7 @@ def shipped_block(marker):
 MIGRATION_ROOT = HERE.parent.parent / "server" / "src" / "main" / "resources" / "db" / "migration"
 AUDIT_SEAL_FUNCTION = re.search(
     r"CREATE FUNCTION public\.fn_audit_seal_privileges\(.*?\n\$\$;",
-    (MIGRATION_ROOT / "V647__audit_log_monthly_partitions_append_only.sql").read_text(encoding="utf-8"),
+    (MIGRATION_ROOT / "V671__audit_log_monthly_partitions_append_only.sql").read_text(encoding="utf-8"),
     re.S).group()
 
 

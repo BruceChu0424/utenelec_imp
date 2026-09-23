@@ -85,7 +85,7 @@ class ProcurementQtyChangeMigrationPostgresTest {
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword());
              Statement statement = connection.createStatement()) {
-            // V655(ADR-109)：目录只剩活码、授权策略由 grant_policy 表达。
+            // V677(ADR-109)：目录只剩活码、授权策略由 grant_policy 表达。
             assertEquals(2, scalar(statement, """
                     select count(*) from permissions
                     where code in ('purchase_order:change_qty',
@@ -101,7 +101,7 @@ class ProcurementQtyChangeMigrationPostgresTest {
                         ('purchase.order', 'purchase_order:change_qty'),
                         ('subcontract.order', 'subcontract_order:change_qty'))
                     """));
-            // V486 登记时零授权；V655 起「批准后改量」与「提交财务」同口径默认发放：
+            // V486 登记时零授权；V677 起「批准后改量」与「提交财务」同口径默认发放：
             // 持有提交财务的部门恰好也持有改量，没有别的部门、没有个人/委派授权。
             assertEquals(0, scalar(statement, """
                     select count(*) from (
@@ -127,7 +127,7 @@ class ProcurementQtyChangeMigrationPostgresTest {
                     where permission.code in ('purchase_order:change_qty',
                                    'subcontract_order:change_qty')
                     """));
-            // 委外准备中心两个停用码：V655 起停用即删除。
+            // 委外准备中心两个停用码：V677 起停用即删除。
             assertEquals(0, scalar(statement, """
                     select count(*) from permissions
                     where code in ('subcontract_preparation:view',

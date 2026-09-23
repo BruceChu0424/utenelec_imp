@@ -71,8 +71,8 @@ class ResetBusinessDataScriptContractTest {
         // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送来源/历史隔离，V617 +1 保留设置：V618 +1 收仓确认，V619 +8 保管溯源：395表，CLEAR296/PRESERVE99。
         // V624/V626/V627 retain original import-source evidence across business resets.
         // V636 +2 委外回厂短交案件/事件(ADR-098): 400 表, CLEAR 296→298。
-        // V658 +2 服务端会话/再认证失败计数(ADR-110, 清库后全员重新登录; CLEAR 298→300)。
-        // V665 +1 总账附表行绑定(ADR-112, 报表配置随主档保留), V655 -4 角色体系四张表(ADR-109): 399 表, PRESERVE 99。
+        // V680 +2 服务端会话/再认证失败计数(ADR-110, 清库后全员重新登录; CLEAR 298→300)。
+        // V686 +1 总账附表行绑定(ADR-112, 报表配置随主档保留), V677 -4 角色体系四张表(ADR-109): 399 表, PRESERVE 99。
         assertThat(policy).hasSize(399);
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
         assertThat(policy).containsEntry("auth_sessions", "CLEAR");
@@ -110,7 +110,7 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("party_contact_methods", "PRESERVE");
         assertThat(policy).containsEntry("party_addresses", "PRESERVE");
         assertThat(policy).containsEntry("party_activity_records", "PRESERVE");
-        // V655(ADR-109)：删除角色体系四张 PRESERVE 表，102→98。
+        // V677(ADR-109)：删除角色体系四张 PRESERVE 表，102→98。
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(99);
 
@@ -411,8 +411,8 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(664, 612)")
                 .contains("(665, 613)")
                 .contains("(666, 614)")
-                // 迁移头 V666 / 614 张 (V653至V654、V663 跳号)。
-                .contains("V507/469、V508/470及V511至V666完整目录")
+                // 迁移头 V687 / 614 张 (V653至V654、V663 跳号)。
+                .contains("V507/469、V508/470及V511至V687完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

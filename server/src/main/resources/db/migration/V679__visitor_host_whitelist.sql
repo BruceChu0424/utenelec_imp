@@ -1,5 +1,5 @@
 -- =====================================================================
--- V657：可对外接待的员工白名单 = 接待访客权限(ADR-109 §3.9)
+-- V679：可对外接待的员工白名单 = 接待访客权限(ADR-109 §3.9)
 -- =====================================================================
 -- 背景(security-08 / permissions-13)：访客账号靠短信验证码自助注册，搜索接待人时
 --   原先能搜到全部在职员工。白名单与「能确认本人来访」本来就是同一件事：
@@ -49,13 +49,13 @@ ON CONFLICT DO NOTHING;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM permissions WHERE code = 'visitor:host_confirm' AND NOT baseline) THEN
-        RAISE EXCEPTION 'V657 visitor host permission must exist outside the baseline package';
+        RAISE EXCEPTION 'V679 visitor host permission must exist outside the baseline package';
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM department_permissions allocation
         JOIN permissions permission ON permission.id = allocation.permission_id
         WHERE permission.code = 'visitor:host_confirm') THEN
-        RAISE EXCEPTION 'V657 at least one department must host external visitors';
+        RAISE EXCEPTION 'V679 at least one department must host external visitors';
     END IF;
 END;
 $$;

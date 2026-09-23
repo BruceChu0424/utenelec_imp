@@ -1,4 +1,4 @@
--- V647 (ADR-105) 审计表按月分区、只追加, 留存改为分区 DDL。
+-- V671 (ADR-105) 审计表按月分区、只追加, 留存改为分区 DDL。
 --
 -- audit_log 与 audit_log_archive 改为 PARTITION BY RANGE(created_at) 的按月分区表(北京时间月界),
 -- 主键含 created_at。在线期满的月分区整区 DETACH 后 ATTACH 到归档表, 归档期满整区 DROP,
@@ -460,7 +460,7 @@ DO $verify_copy$
 BEGIN
     IF (SELECT count(*) FROM public.audit_log) + (SELECT count(*) FROM public.audit_log_archive)
        <> (SELECT count(*) FROM public.audit_log_v646) + (SELECT count(*) FROM public.audit_log_archive_v646) THEN
-        RAISE EXCEPTION 'V647 audit history copy lost rows' USING ERRCODE = '55000';
+        RAISE EXCEPTION 'V671 audit history copy lost rows' USING ERRCODE = '55000';
     END IF;
 END;
 $verify_copy$;

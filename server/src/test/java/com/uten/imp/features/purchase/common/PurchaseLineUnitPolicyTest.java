@@ -56,7 +56,7 @@ class PurchaseLineUnitPolicyTest {
         assertEquals(0, BigDecimal.ONE.compareTo(resolved.unitRate()));
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
-        // V651: the basis lock is the same FOR KEY SHARE a foreign-key check takes, on every goods row.
+        // V675: the basis lock is the same FOR KEY SHARE a foreign-key check takes, on every goods row.
         assertTrue(sql.getAllValues().getFirst().contains("FOR KEY SHARE"));
         assertTrue(!sql.getAllValues().getFirst().contains("quantity_unit_locked"));
         assertTrue(sql.getValue().contains("u.id = g.unit_id"));

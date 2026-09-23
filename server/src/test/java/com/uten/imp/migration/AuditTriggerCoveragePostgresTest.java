@@ -47,7 +47,7 @@ class AuditTriggerCoveragePostgresTest {
                 .locations("classpath:db/migration").target("645").load().migrate();
         db = new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
         // 升级前的历史: 在线表一行带完整手机号的操作人, 一行未认证登录失败的原始输入;
-        // 旧归档一行三年前的记录。V647 必须原样搬迁并一次性脱敏账号。
+        // 旧归档一行三年前的记录。V671 必须原样搬迁并一次性脱敏账号。
         db.update("""
                 INSERT INTO audit_log(actor_id, actor_account, action, target_type, target_id, result, event_source)
                 VALUES (?, '13800138000', 'update', 'colors', 'history-online', 'success', 'database'),
@@ -206,7 +206,7 @@ class AuditTriggerCoveragePostgresTest {
                         """.formatted(ACTOR));
                 statement.execute("INSERT INTO users(id, employee_id, login_account, password_hash, status)"
                         + " VALUES(gen_random_uuid(), '" + ACTOR + "', '13600001234', 'unused', 'active')");
-                // 角色表已随 V655(ADR-109) 删除, 授权类高风险分类改由账号表验证。
+                // 角色表已随 V677(ADR-109) 删除, 授权类高风险分类改由账号表验证。
                 assertEquals("high|authorization", scalar(statement,
                         "SELECT risk_level || '|' || event_category FROM audit_log WHERE target_type='users' AND action='insert'"));
                 assertEquals("*******1234", scalar(statement,

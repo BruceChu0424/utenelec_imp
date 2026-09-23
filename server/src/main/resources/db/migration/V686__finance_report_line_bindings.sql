@@ -1,4 +1,4 @@
--- V665 (ADR-112 / overhaul-gap-03): 总账附表与经营损益表的「报表行 → 取数来源」映射改为配置。
+-- V686 (ADR-112 / overhaul-gap-03): 总账附表与经营损益表的「报表行 → 取数来源」映射改为配置。
 --
 -- 原来报表按 Java 里写死的科目名(ps.name IN ('房租', ...))取数, 科目一改名就悄悄漏算;
 -- 人工与折旧等没有科目名的行直接写 NULL。现在:
@@ -122,7 +122,7 @@ DECLARE definition TEXT; anchor TEXT := '(''stock_movements'', ''CLEAR'')';
 BEGIN
     SELECT pg_get_functiondef('business_data_reset()'::regprocedure) INTO definition;
     IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
-        RAISE EXCEPTION 'V665 cannot extend business-data reset policy safely';
+        RAISE EXCEPTION 'V686 cannot extend business-data reset policy safely';
     END IF;
     EXECUTE replace(definition,anchor,anchor || E',\n            (''finance_report_line_bindings'', ''PRESERVE'')');
 END;

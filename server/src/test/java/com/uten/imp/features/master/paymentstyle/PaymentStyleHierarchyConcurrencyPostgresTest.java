@@ -167,7 +167,7 @@ class PaymentStyleHierarchyConcurrencyPostgresTest {
     }
 
     /**
-     * V650/ADR-106: reference writers take the hierarchy key in shared mode, so two open
+     * V674/ADR-106: reference writers take the hierarchy key in shared mode, so two open
      * transactions referencing the same style never queue on each other, while a hierarchy
      * change (exclusive) still waits for both and then sees both committed references.
      */

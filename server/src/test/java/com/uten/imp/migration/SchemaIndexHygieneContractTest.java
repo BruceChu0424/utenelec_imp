@@ -19,21 +19,21 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 索引卫生契约(ADR-106 / V652)：在真实 Flyway 迁移到头的库上验证三条规则。
+ * 索引卫生契约(ADR-106 / V676)：在真实 Flyway 迁移到头的库上验证三条规则。
  *
  * <ol>
  *   <li><b>没有冗余索引</b>：同表、同访问方法、同部分谓词、同表达式，键列(连同算子类、排序规则、排序选项)
  *       是另一索引的前缀、INCLUDE 列也已被对方携带的普通索引一律算冗余；支撑约束的索引不算，唯一索引只在
  *       对方是同列唯一索引、且对方的空值规则不比它宽(NULLS NOT DISTINCT 只能被 NULLS NOT DISTINCT 覆盖)时
- *       才算。与 V652 删索引用的是同一条 SQL。</li>
+ *       才算。与 V676 删索引用的是同一条 SQL。</li>
  *   <li><b>热点关联列有领头索引</b>：指向估值图(stock_value_*)、物料需求、库存预留、计划明细、总账凭证的
  *       外键，都要有以外键列开头的索引(部分索引也算：这些反查都带着同样的过滤条件)。</li>
- *   <li><b>货品数量来源列有可用的领头索引</b>：V651 改单位时按需 EXISTS，未使用的货品要查遍全部来源，
+ *   <li><b>货品数量来源列有可用的领头索引</b>：V675 改单位时按需 EXISTS，未使用的货品要查遍全部来源，
  *       不能退化成全表扫描。探针是「列 = 货品」，所以不带条件的索引和只带「该列 IS NOT NULL」条件的
  *       部分索引都算(等值探针必然满足这个条件)，其它条件的部分索引不算。</li>
  * </ol>
  *
- * <p>另外钉住 V651 按需检查单位引用的两条并发前提(来源列都有不可延迟外键、带行条件的来源只追加)，并在一笔回滚
+ * <p>另外钉住 V675 按需检查单位引用的两条并发前提(来源列都有不可延迟外键、带行条件的来源只追加)，并在一笔回滚
  * 事务里用样本表自检规则 1、3 的判定本身。
  *
  * <p>白名单只收「有意保留」且写明原因的条目；新迁移再加出冗余索引或热点外键漏建索引会当场红。
@@ -41,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SchemaIndexHygieneContractTest {
 
-    /** 与 V652 同一条前缀覆盖 SQL。 */
+    /** 与 V676 同一条前缀覆盖 SQL。 */
     static final String REDUNDANT_INDEXES = """
             WITH idx AS (
                 SELECT i.indexrelid, i.indrelid, i.indisunique,
@@ -203,7 +203,7 @@ class SchemaIndexHygieneContractTest {
     @Test
     void everyGoodsQuantitySourceColumnHasAProbeableLeadingIndex() throws SQLException {
         assertThat(strings(GOODS_QUANTITY_SOURCES_WITHOUT_PROBE_INDEX))
-                .as("改单位时按需检查数量引用(V651)：每个来源货品列都要有等值探针用得上的领头索引"
+                .as("改单位时按需检查数量引用(V675)：每个来源货品列都要有等值探针用得上的领头索引"
                         + "(不带条件，或只带「该列 IS NOT NULL」)")
                 .isEmpty();
     }
@@ -248,7 +248,7 @@ class SchemaIndexHygieneContractTest {
     }
 
     /**
-     * V651 的并发前提：改单位守卫对货品行取 FOR UPDATE，靠的是「一行变成数量引用」必经外键检查(对货品行取
+     * V675 的并发前提：改单位守卫对货品行取 FOR UPDATE，靠的是「一行变成数量引用」必经外键检查(对货品行取
      * FOR KEY SHARE)。所以每个来源货品列都要有指向货品的不可延迟外键；带行条件的来源只能是只追加表
      * (已有行不能被 UPDATE 成「已使用」)。新加来源不满足时先在这里红。
      */

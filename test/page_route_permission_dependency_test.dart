@@ -495,7 +495,7 @@ void main() {
       'historical material issue create path is a view-only guidance page',
       () {
         const location = '/subcontract/material-issues/new';
-        // 手工新建发料单的码已随 V655 删除(服务端端点一并删除)，这里只留查看引导页。
+        // 手工新建发料单的码已随 V677 删除(服务端端点一并删除)，这里只留查看引导页。
         expect(requiredAnyPermFor(location), const [
           Perm.subcontractMaterialIssueView,
         ]);

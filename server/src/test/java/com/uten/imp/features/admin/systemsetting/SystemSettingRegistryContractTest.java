@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * 系统设置单一登记的契约 (ADR-110; audit-retention-settings-09): 全新库跑完全部迁移后,
  * {@code system_settings} 的行集合 = {@link SystemSettingKey} 枚举集合, 种子值 = 枚举默认值,
- * 表里只剩值列 (元数据不再有第二份)。顺带锁住同批迁移的账号安全口径 (V658/V660)。
+ * 表里只剩值列 (元数据不再有第二份)。顺带锁住同批迁移的账号安全口径 (V680/V682)。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SystemSettingRegistryContractTest {
@@ -86,11 +86,11 @@ class SystemSettingRegistryContractTest {
                 JOIN permissions p ON p.id = dp.permission_id
                 WHERE p.code = 'account:support'
                 """, Integer.class));
-        // 只能个人点名授权由授权策略唯一事实源表达 (V660 置 grant_policy = {INDIVIDUAL_ONLY}, ADR-109)
+        // 只能个人点名授权由授权策略唯一事实源表达 (V682 置 grant_policy = {INDIVIDUAL_ONLY}, ADR-109)
         assertThat(jdbc.queryForObject(
                 "SELECT grant_policy = ARRAY['INDIVIDUAL_ONLY']::text[] FROM permissions WHERE code = 'account:support'",
                 Boolean.class)).isTrue();
-        // 部门级授予在数据库边界同样被拒 (V655 按 grant_policy 判定的通用守卫)
+        // 部门级授予在数据库边界同样被拒 (V677 按 grant_policy 判定的通用守卫)
         DataAccessException rejected = assertThrows(DataAccessException.class, () -> jdbc.update("""
                 INSERT INTO department_permissions (department_id, permission_id)
                 SELECT d.id, p.id FROM departments d, permissions p

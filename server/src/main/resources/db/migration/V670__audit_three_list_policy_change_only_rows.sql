@@ -1,4 +1,4 @@
--- V646 (ADR-105) 行级审计改为显式三清单: FULL 整行 / COLUMN_SCOPED 只审关键列 / NONE 不审。
+-- V670 (ADR-105) 行级审计改为显式三清单: FULL 整行 / COLUMN_SCOPED 只审关键列 / NONE 不审。
 --
 -- 取代 V169 起「除技术白名单外全表必审、审计触发器不许带 WHEN/列清单」的规则
 -- (V184/V530/V572 的全表补挂 sweep 从此不再有后继)。三张清单与每条理由的唯一登记处是
@@ -12,7 +12,7 @@
 --   3. 分类只算一次: 删掉 trg_audit_classify/fn_audit_classify, 数据库行事件按清单登记的
 --      事件类型直接赋值, 其余事件由 Java 侧 AuditClassifier 在写入时赋值。
 --   4. 审计里的登录账号只存脱敏值(保留后 4 位), 行快照里的 login_account 同样脱敏。
--- 已有审计行不改写(V647 迁表时一次性脱敏账号)。
+-- 已有审计行不改写(V671 迁表时一次性脱敏账号)。
 
 -- ---------------------------------------------------------------------------
 -- 账号脱敏: 形如手机号/证件号的账号只保留后 4 位; 系统任务名等非号码原样保留。
@@ -142,7 +142,7 @@ BEGIN
                  AND t.tgfoid IN ('public.fn_audit()'::regprocedure,
                                   'public.fn_audit_redacted()'::regprocedure,
                                   'public.fn_audit_classify_row()'::regprocedure)) THEN
-        RAISE EXCEPTION 'V646 could not remove every legacy audit trigger' USING ERRCODE = '55000';
+        RAISE EXCEPTION 'V670 could not remove every legacy audit trigger' USING ERRCODE = '55000';
     END IF;
 END;
 $drop_legacy_audit$;
@@ -541,12 +541,12 @@ BEGIN
            OR t.tgenabled <> 'A'
            OR (t.tgname = left('trg_audit_upd_' || c.relname, 63) AND t.tgqual IS NULL));
     IF v_bad IS NOT NULL THEN
-        RAISE EXCEPTION 'V646 audit triggers have an unexpected shape: %', v_bad USING ERRCODE = '55000';
+        RAISE EXCEPTION 'V670 audit triggers have an unexpected shape: %', v_bad USING ERRCODE = '55000';
     END IF;
     IF (SELECT count(DISTINCT t.tgrelid) FROM pg_trigger t
         WHERE NOT t.tgisinternal AND t.tgparentid = 0
           AND t.tgfoid = 'public.fn_audit()'::regprocedure) <> 184 THEN
-        RAISE EXCEPTION 'V646 expected 180 FULL + 4 COLUMN_SCOPED audited tables' USING ERRCODE = '55000';
+        RAISE EXCEPTION 'V670 expected 180 FULL + 4 COLUMN_SCOPED audited tables' USING ERRCODE = '55000';
     END IF;
 END;
 $verify_audit_lists$;

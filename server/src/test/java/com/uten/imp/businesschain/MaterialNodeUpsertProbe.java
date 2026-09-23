@@ -69,7 +69,7 @@ final class MaterialNodeUpsertProbe {
     }
 
     /**
-     * V650/ADR-106: the exact-peg identity guard fires only when an identity column really changes.
+     * V674/ADR-106: the exact-peg identity guard fires only when an identity column really changes.
      * A genuine control-stage change or re-activation goes through the real ON CONFLICT update
      * (asserted by the caller) without paying for the identity guard.
      */

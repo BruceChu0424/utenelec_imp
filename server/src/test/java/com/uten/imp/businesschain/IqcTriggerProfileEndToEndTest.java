@@ -65,8 +65,8 @@ class IqcTriggerProfileEndToEndTest {
 
     /**
      * 预算(触发器函数调用总数，含审计触发器 fn_audit / fn_audit_classify_row)。2026-09-23 同一剖面实测
-     * (ADR-106 §三)：提交报告 V645 1023 次 → V652 808 次，整单合格 507 → 383，两单 14 行确认入库 2729 → 2191。
-     * 预算在 V652 实测值上留约 8% 余量。
+     * (ADR-106 §三)：提交报告 V645 1023 次 → V676 808 次，整单合格 507 → 383，两单 14 行确认入库 2729 → 2191。
+     * 预算在 V676 实测值上留约 8% 余量。
      */
     private static final long DECIDE_BATCH_BUDGET = 870;
     private static final long PASS_BATCH_BUDGET = 415;

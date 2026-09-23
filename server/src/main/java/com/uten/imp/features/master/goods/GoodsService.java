@@ -807,7 +807,7 @@ public class GoodsService {
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
         Goods g = requireGoods(id);
         requireWritable(g);
-        // 基本单位是否已被数量引用：按需现查一次(V651)，拦截、写入与回显共用。
+        // 基本单位是否已被数量引用：按需现查一次(V675)，拦截、写入与回显共用。
         boolean quantityUnitInUse = repo.quantityUnitInUse(g.getId());
         GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, quantityUnitInUse);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。

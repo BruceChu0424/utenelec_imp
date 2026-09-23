@@ -7,7 +7,7 @@ import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Fast API guard; V651 independently enforces the same rule under row locking. */
+/** Fast API guard; V675 independently enforces the same rule under row locking. */
 final class GoodsQuantityUnitPolicy {
     private GoodsQuantityUnitPolicy() {}
 

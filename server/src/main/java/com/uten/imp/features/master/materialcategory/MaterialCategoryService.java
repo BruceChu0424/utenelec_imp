@@ -256,7 +256,7 @@ public class MaterialCategoryService {
     }
 
     /**
-     * 锁住子树分类行后再读一遍子树(V662)：锁之前刚提交的子分类也要带上，锁之后的新增子分类/
+     * 锁住子树分类行后再读一遍子树(V684)：锁之前刚提交的子分类也要带上，锁之后的新增子分类/
      * 货品会在触发器里等本事务提交、再看到分类已删而被拒。几轮内仍在变就让用户刷新重试。
      */
     private List<MaterialCategory> lockedSubtree(UUID rootId) {

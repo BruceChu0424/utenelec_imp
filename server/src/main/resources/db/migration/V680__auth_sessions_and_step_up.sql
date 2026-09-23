@@ -1,4 +1,4 @@
--- V658 服务端会话 + 敏感操作再认证 (ADR-110; security-04/05/09, audit-retention-settings-02)
+-- V680 服务端会话 + 敏感操作再认证 (ADR-110; security-04/05/09, audit-retention-settings-02)
 --
 -- 背景: 「自动退出登录」只在前端计时, 登出不作废 access token, refresh 滑动续期没有上限;
 -- 二次密码确认是独立的「对/错」接口, 无限次可试。会话的权威状态不在服务端。
@@ -83,13 +83,13 @@ DECLARE
 BEGIN
     SELECT pg_get_functiondef('business_data_reset()'::regprocedure) INTO definition;
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle) <> 1 THEN
-        RAISE EXCEPTION 'V658 cannot extend business_data_reset policy safely';
+        RAISE EXCEPTION 'V680 cannot extend business_data_reset policy safely';
     END IF;
     FOREACH table_name IN ARRAY ARRAY['auth_sessions', 'auth_step_up_states'] LOOP
         IF to_regclass(format('public.%I',table_name)) IS NULL
            OR position(format('(%L, %L)',table_name,'CLEAR') IN definition)>0
            OR position(format('(%L, %L)',table_name,'PRESERVE') IN definition)>0 THEN
-            RAISE EXCEPTION 'V658 reset policy source missing or already classified: %', table_name;
+            RAISE EXCEPTION 'V680 reset policy source missing or already classified: %', table_name;
         END IF;
     END LOOP;
     EXECUTE replace(definition,needle,needle || addition);

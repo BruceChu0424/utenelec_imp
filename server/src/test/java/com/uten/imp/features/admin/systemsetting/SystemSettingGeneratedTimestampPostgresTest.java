@@ -34,7 +34,7 @@ class SystemSettingGeneratedTimestampPostgresTest {
         var dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        // Match the V659 value-only shape (metadata lives in SystemSettingKey) and the V72 trigger.
+        // Match the V681 value-only shape (metadata lives in SystemSettingKey) and the V72 trigger.
         jdbc.execute("""
                 CREATE TABLE system_settings (
                     key text PRIMARY KEY, value text NOT NULL,

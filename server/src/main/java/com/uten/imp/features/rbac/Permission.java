@@ -15,7 +15,7 @@ import java.util.Set;
 /**
  * 权限点（如 employee:view / payroll:generate）。
  *
- * <p>目录里的每一行都是活码：停用即删除(V655 起没有「软停用」)。怎么授只看
+ * <p>目录里的每一行都是活码：停用即删除(V677 起没有「软停用」)。怎么授只看
  * {@link #grantPolicy}(ADR-109 授权策略唯一事实源)，谁都有只看 {@link #baseline}。
  */
 @Getter

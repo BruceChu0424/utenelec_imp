@@ -117,7 +117,7 @@ public final class MigrationRehearsalSupport {
             // 有在途单时才增行；空库与合成库为 0 行)。
             "sales_shipment_warehouse_events",
             "supplier_categories",
-            // V659 按 SystemSettingKey 登记补齐 7 个设置行 (ON CONFLICT DO NOTHING, 不改已有值; ADR-110)。
+            // V681 按 SystemSettingKey 登记补齐 7 个设置行 (ON CONFLICT DO NOTHING, 不改已有值; ADR-110)。
             "system_settings",
             "user_permission_overrides");
 
@@ -158,7 +158,7 @@ public final class MigrationRehearsalSupport {
         Set<String> intentionallyDropped = Set.of(
                 // V590 车间偏好表废弃删除，学习数据搬进货品表随 goods 保留。
                 "production_goods_workshop_preferences",
-                // V655(ADR-109) 角色体系四张表删除：全员基础包平移到 permissions.baseline，
+                // V677(ADR-109) 角色体系四张表删除：全员基础包平移到 permissions.baseline，
                 // 通知受众改按部门子树 + 权限码。
                 "roles", "user_roles", "role_permissions", "department_roles");
         Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());

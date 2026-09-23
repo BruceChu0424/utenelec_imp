@@ -1,4 +1,4 @@
--- V649 (ADR-105) production_plan_costs 由 34 个按年分区改为普通单表。
+-- V673 (ADR-105) production_plan_costs 由 34 个按年分区改为普通单表。
 --
 -- 这张表是老系统 F_PlanCostItem 的只读快照(约 136 万行), 只有遗留导入写入、只有
 -- ProductionWhereUsedQueryService 按 goods_id 读取(不带日期时无法分区裁剪)。按年分区是按
@@ -6,7 +6,7 @@
 --   · 主键回到 (id), 老系统编号唯一键回到 (legacy_id), 父子行终于可以建自引用外键;
 --   · 索引只留反查用的部分覆盖索引 + 外键检查需要的几条;
 --   · 语句级守卫: 只有遗留导入会话(app.legacy_import='on')能写, 清空业务数据走 TRUNCATE 不受影响。
--- 行审计按 V646 清单为 NONE(遗留只读数据由导入对账脚本核对)。
+-- 行审计按 V670 清单为 NONE(遗留只读数据由导入对账脚本核对)。
 
 ALTER TABLE public.production_plan_costs RENAME TO production_plan_costs_v648;
 
@@ -45,7 +45,7 @@ BEGIN
         v_definition := replace(v_trigger.definition,
             ' ON public.production_plan_costs_v648 ', ' ON public.production_plan_costs ');
         IF v_definition = v_trigger.definition THEN
-            RAISE EXCEPTION 'V649 cannot retarget trigger %', v_trigger.tgname USING ERRCODE = '55000';
+            RAISE EXCEPTION 'V673 cannot retarget trigger %', v_trigger.tgname USING ERRCODE = '55000';
         END IF;
         EXECUTE v_definition;
         IF v_trigger.tgenabled = 'A' THEN

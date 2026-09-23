@@ -177,7 +177,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         SubcontractMaterialIssue document = new SubcontractMaterialIssue();
         document.setId(issueId);
         document.setStatus((short) 0);
-        // 计划生成的发料草稿没有个人归属人，显式属于仓库委外出仓池(V656)。
+        // 计划生成的发料草稿没有个人归属人，显式属于仓库委外出仓池(V678)。
         document.setMakerId(null);
         document.setOwnerPool(SubcontractMaterialIssue.POOL_WAREHOUSE_OUTBOUND);
         document.setWarehouseId(UUID.randomUUID());

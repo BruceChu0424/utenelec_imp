@@ -78,6 +78,6 @@ class WarehouseIqcReturnPostgresTest {
                   AND sensitivity='SENSITIVE_COMMERCIAL'
                   AND 'BULK_EXCLUDED' = ANY(grant_policy)
                 """, Integer.class),
-                "V655 起「不随全部授权」由 grant_policy 表达(原 bulk_assignable=false 平移)");
+                "V677 起「不随全部授权」由 grant_policy 表达(原 bulk_assignable=false 平移)");
     }
 }

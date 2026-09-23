@@ -154,7 +154,7 @@ class PermissionGrantPolicyContractTest {
         JdbcTemplate db = PermissionCatalogTestSupport.database();
         assertThat(db.queryForList("SELECT code FROM permissions WHERE baseline ORDER BY code", String.class))
                 .contains("notice:read", "expense:apply", "profile:edit:self")
-                // V657：接待访客是对外接待白名单，不再人人有份。
+                // V679：接待访客是对外接待白名单，不再人人有份。
                 .doesNotContain("visitor:apply", "visitor:view", "visitor:host_confirm");
         for (String table : List.of("roles", "user_roles", "role_permissions", "department_roles")) {
             assertThat(db.queryForObject("SELECT to_regclass(?) IS NULL", Boolean.class, table))

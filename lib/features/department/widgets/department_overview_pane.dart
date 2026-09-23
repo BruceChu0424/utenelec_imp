@@ -390,7 +390,7 @@ class _DepartmentOverviewPaneState
                   onDelete: widget.onDelete,
                   extraActions: [
                     // 打印花名册就是查看员工名册(permissions-06)：与员工列表同一门槛，
-                    // 旧的「打印导出」码只在前端生效，已随 V655 删除。
+                    // 旧的「打印导出」码只在前端生效，已随 V677 删除。
                     if (widget.canViewEmployees)
                       MasterDetailCardAction(
                         icon: Icons.print_outlined,

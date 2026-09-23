@@ -15,7 +15,7 @@ public final class GoodsQuantityBasisLocks {
         if (ids.isEmpty()) return;
         // FOR KEY SHARE is exactly what the source row's foreign-key check takes, so
         // concurrent writers of the same goods never queue on each other. It still
-        // conflicts with the unit-change guard's FOR UPDATE (V651): if the unit edit
+        // conflicts with the unit-change guard's FOR UPDATE (V675): if the unit edit
         // wins, normalization reads the new committed unit; if this writer wins, the
         // edit waits for its commit and then sees the new quantity reference.
         em.createNativeQuery("""

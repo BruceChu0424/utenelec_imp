@@ -1,9 +1,9 @@
--- V652 ADR-106 索引卫生：删掉被前缀覆盖/与唯一约束重复的冗余索引，给真实热点关联列补领头索引
+-- V676 ADR-106 索引卫生：删掉被前缀覆盖/与唯一约束重复的冗余索引，给真实热点关联列补领头索引
 --
 -- 背景(审计 db-schema-14 / db-schema-15)：迁移逐次追加索引，从没做过全局去重——单号/旧库主键普通索引
 -- 与同列唯一约束重复、分类树 *_parent 被 *_parent_sort 覆盖、同一定义建了两遍……每条都白白增加写入开销。
 -- 另一方面，估值图、需求、预留、计划明细、总账凭证的反查列(触发器守恒校验与服务查询正按这些列回查
--- 子表)没有领头索引，数据量上来就退化成全表扫描；V651 改为改单位时按需查数量来源，各来源货品列也要
+-- 子表)没有领头索引，数据量上来就退化成全表扫描；V675 改为改单位时按需查数量来源，各来源货品列也要
 -- 有领头索引。
 --
 -- 冗余判定(与 SchemaIndexHygieneContractTest 同一条 SQL)：同表、同访问方法、同部分谓词、同表达式，
@@ -161,7 +161,7 @@ CREATE INDEX idx_finance_asset_posting_lines_voucher_id ON finance_asset_posting
 CREATE INDEX idx_finance_asset_posting_runs_voucher_id ON finance_asset_posting_runs (voucher_id);
 CREATE INDEX idx_gl_vouchers_reversed_by_voucher_id ON gl_vouchers (reversed_by_voucher_id);
 
--- 三、货品数量来源的货品列领头索引(V651 改单位时按需 EXISTS，未使用的货品要查遍全部来源)
+-- 三、货品数量来源的货品列领头索引(V675 改单位时按需 EXISTS，未使用的货品要查遍全部来源)
 CREATE INDEX idx_inbound_expectation_items_goods_id ON inbound_expectation_items (goods_id);
 CREATE INDEX idx_measurement_capture_evidence_goods_id ON measurement_capture_evidence (goods_id);
 CREATE INDEX idx_measurement_capture_line_snapshots_goods_id ON measurement_capture_line_snapshots (goods_id);

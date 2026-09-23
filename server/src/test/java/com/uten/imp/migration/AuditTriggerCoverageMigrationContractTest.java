@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 行级审计三清单契约(ADR-105, V646 起)。
+ * 行级审计三清单契约(ADR-105, V670 起)。
  *
  * <p>每张 public 业务表必须且只能归入一类, 每条带理由:
  * <ul>
@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>COLUMN_SCOPED: 只审计人为决定的列, 派生列变化不留行审计;</li>
  *   <li>NONE: 不挂行级审计(派生投影、队列、编号预留、只追加流水、遗留只读数据、技术表)。</li>
  * </ul>
- * 废除 V169 起「除技术白名单外全表必审、审计触发器不许带 WHEN/列清单」的规则。V646 按本清单
+ * 废除 V169 起「除技术白名单外全表必审、审计触发器不许带 WHEN/列清单」的规则。V670 按本清单
  * 挂/拆触发器; 之后新建的表必须在这里登记, 属于 FULL/COLUMN_SCOPED 的由建表迁移调用
  * {@code fn_audit_track_table} 挂审计, 不许手写 CREATE TRIGGER trg_audit_*。
  * 真库上的触发器形态由 {@link AuditTriggerCoveragePostgresTest} 按同一清单核对。
@@ -42,9 +42,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    static final int POLICY_BASELINE_VERSION = 646;
+    static final int POLICY_BASELINE_VERSION = 670;
     static final Path POLICY_BASELINE =
-            MIGRATION_ROOT.resolve("V646__audit_three_list_policy_change_only_rows.sql");
+            MIGRATION_ROOT.resolve("V670__audit_three_list_policy_change_only_rows.sql");
     private static final Pattern MIGRATION_FILE = Pattern.compile("^V(\\d+)__.+\\.sql$");
     private static final String IDENT =
             "(?:\"?public\"?\\s*\\.\\s*)?\"?([a-z_][a-z0-9_]*)\"?";
@@ -82,7 +82,7 @@ class AuditTriggerCoverageMigrationContractTest {
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
             new FullGroup("authorization", "authorization", false,
-                    "账号、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值(角色四表已随 V655 删除)",
+                    "账号、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值(角色四表已随 V677 删除)",
                     Set.of(
                         "client_visibility_grants", "department_permissions",
                         "manager_permission_delegations",
@@ -216,7 +216,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("technical",
                     "技术元数据、计数器、凭证、登录会话运行态与迁移控制: 不是业务数据, 或含凭证不应被复制"
                             + "(auth_sessions/auth_step_up_states 是会话与再认证失败计数, 登录、登出、"
-                            + "再认证成功/失败与会话吊销另有显式安全事件, V658)",
+                            + "再认证成功/失败与会话吊销另有显式安全事件, V680)",
                     Set.of(
                         "audit_log", "audit_log_archive", "auth_sessions", "auth_step_up_states",
                         "authorization_state",
@@ -392,7 +392,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "stock_value_legacy_balance_cases")));
 
     /**
-     * 「ledger」组只收只追加的表: 应用代码与 V646 之后的迁移里不许出现对它们的 UPDATE, 下面逐条写明的
+     * 「ledger」组只收只追加的表: 应用代码与 V670 之后的迁移里不许出现对它们的 UPDATE, 下面逐条写明的
      * 一次性完成回填除外(带状态/空值守卫, 只发生一次, 人的决定在插入行里)。会被人工改状态的表不能放进
      * ledger, 应归 COLUMN_SCOPED 或 FULL(例如物料改挪记录)。
      */
@@ -529,16 +529,16 @@ class AuditTriggerCoverageMigrationContractTest {
                 }
             }
         }
-        // 基线之后新建的 FULL 表由各自建表迁移调用 fn_audit_track_table 登记(见下一个用例), 不在 V646 里。
+        // 基线之后新建的 FULL 表由各自建表迁移调用 fn_audit_track_table 登记(见下一个用例), 不在 V670 里。
         Map<String, Integer> created = liveTableVersions();
         Map<String, String> baselineFull = new LinkedHashMap<>(fullTables());
         baselineFull.keySet().removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
         Set<String> baselineRedacted = new HashSet<>(redactedFullTables());
         baselineRedacted.removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
-        // V646 之后被整表删除的(如 V655 删除的角色四表)在 V646 登记过, 但不再出现在清单里。
+        // V670 之后被整表删除的(如 V677 删除的角色四表)在 V670 登记过, 但不再出现在清单里。
         declaredFull.keySet().removeIf(t -> !created.containsKey(t));
         declaredRedacted.removeIf(t -> !created.containsKey(t));
-        assertEquals(baselineFull, declaredFull, "V646 FULL calls must equal the FULL list and categories");
+        assertEquals(baselineFull, declaredFull, "V670 FULL calls must equal the FULL list and categories");
         assertEquals(baselineRedacted, declaredRedacted, "Payroll-class redaction flags must match");
 
         Map<String, ScopedTable> declaredScoped = new LinkedHashMap<>();
@@ -550,11 +550,11 @@ class AuditTriggerCoverageMigrationContractTest {
                 columns.add(column.group(1));
             }
             ScopedTable expected = scopedTables().get(scoped.group(1));
-            assertTrue(expected != null, scoped.group(1) + " is scoped in V646 but not listed");
+            assertTrue(expected != null, scoped.group(1) + " is scoped in V670 but not listed");
             declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
                     Boolean.parseBoolean(scoped.group(5)), columns, expected.reason()));
         }
-        assertEquals(scopedTables(), declaredScoped, "V646 COLUMN_SCOPED calls must equal the list");
+        assertEquals(scopedTables(), declaredScoped, "V670 COLUMN_SCOPED calls must equal the list");
 
         String normalized = sql.replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
         assertTrue(normalized.contains("when (old.* is distinct from new.*)"),
@@ -700,7 +700,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "create function fn_guard_production_material_analysis_borrow_mutation")
                         && sql.contains("new.status not in ('active', 'revoked')")
                         && sql.contains("deferrable initially deferred"),
-                "V289 keeps the borrow lifecycle guards; its audit sweep is superseded by V646");
+                "V289 keeps the borrow lifecycle guards; its audit sweep is superseded by V670");
         assertTrue(fullTables().containsKey("production_material_analysis_borrows"),
                 "A human borrow decision stays fully audited");
     }

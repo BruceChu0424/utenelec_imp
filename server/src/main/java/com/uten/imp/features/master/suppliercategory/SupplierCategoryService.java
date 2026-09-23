@@ -184,7 +184,7 @@ public class SupplierCategoryService {
         tx.bind();
         SupplierCategory c = requireCategory(id);
         rejectSystemCategoryMutation(c);
-        // 先锁分类行再查子分类与供应商(V662)：与「往分类里加供应商/子分类」的 KEY SHARE 互斥，
+        // 先锁分类行再查子分类与供应商(V684)：与「往分类里加供应商/子分类」的 KEY SHARE 互斥，
         // 查完到提交之间不会有人再挂进来。
         repo.lockForDelete(List.of(id));
         if (!repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).isEmpty()) {

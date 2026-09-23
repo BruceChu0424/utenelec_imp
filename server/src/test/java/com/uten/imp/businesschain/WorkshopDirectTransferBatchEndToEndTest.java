@@ -75,7 +75,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
     /**
      * 一行车间直送审核里触发器函数的调用预算(ADR-106)。统计口径：pg_stat_user_functions 里
      * 返回 trigger 的函数调用次数之和。2026-09-23 实测：V645 为 600 次(延迟校验 282 次)，
-     * V650-V652 后为 416 次(延迟校验 170 次；总数里 160 次是审计触发器 fn_audit / fn_audit_classify_row)。
+     * V674-V676 后为 416 次(延迟校验 170 次；总数里 160 次是审计触发器 fn_audit / fn_audit_classify_row)。
      */
     private static final long APPROVE_TRIGGER_CALLS_BUDGET = 450;
     @DynamicPropertySource
@@ -230,8 +230,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * 直送审核的触发器调用剖面(ADR-106)。
      *
      * <p>只在这一笔审核事务里打开 track_functions，统计各触发器函数被调了几次，同时拿
-     * ProductionJdbcMeasurement 的提交耗时。V650 给热表的约束/守卫触发器补了「相关列真变了」
-     * 的 WHEN 条件、删掉了被包含的重复校验，V651 撤掉了 52 张表上的货品单位锁语句级触发器；
+     * ProductionJdbcMeasurement 的提交耗时。V674 给热表的约束/守卫触发器补了「相关列真变了」
+     * 的 WHEN 条件、删掉了被包含的重复校验，V675 撤掉了 52 张表上的货品单位锁语句级触发器；
      * 这里把调用总数钉住，谁把无关更新又接回校验上要先在这里红一次。
      */
     @Test
@@ -261,7 +261,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
     }
 
     /**
-     * V650 收窄的负向回归(ADR-106)：拿一条真实直送链的单据、预留、执行段、计划明细、分析行、估值节点，
+     * V674 收窄的负向回归(ADR-106)：拿一条真实直送链的单据、预留、执行段、计划明细、分析行、估值节点，
      * 每类收窄各做两件事——改了相关列照样被拒；只改无关列时对应校验函数一次都不被调用。
      * 每个探针都在自己的事务里做完就回滚，不留任何痕迹。
      */

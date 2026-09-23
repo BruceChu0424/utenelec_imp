@@ -270,7 +270,7 @@ List<PermissionCatalogGroup> get _catalog => const [
         name: '跨物料分析让料与优先补齐',
         module: '生产管理',
         category: '物料分析',
-        // 与 V655 目录一致：不随批量、负责人不能转授。
+        // 与 V677 目录一致：不随批量、负责人不能转授。
         grantPolicy: PermissionGrantPolicy({
           PermissionGrantPolicy.nonDelegable,
           PermissionGrantPolicy.bulkExcluded,

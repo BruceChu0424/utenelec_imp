@@ -1,4 +1,4 @@
--- V650 ADR-106 热表约束/守卫触发器只对「相关列真变了」起跳；单号不可变改列级；收付款类别引用改共享锁
+-- V674 ADR-106 热表约束/守卫触发器只对「相关列真变了」起跳；单号不可变改列级；收付款类别引用改共享锁
 --
 -- 背景(审计 db-schema-06 / perf-production-exec-02 / perf-warehouse-quality-06 / perf-material-analysis-14 /
 -- perf-production-exec-11 / db-schema-08)：预留、单据头/明细、计划明细、执行段、分析三表、估值图等热表上的
@@ -48,14 +48,14 @@ BEGIN
         'fn_enforce_system_posting_style_role()'] LOOP
         SELECT pg_get_functiondef(target::regprocedure) INTO definition;
         IF definition IS NULL THEN
-            RAISE EXCEPTION 'V650 payment style reference function % missing', target USING ERRCODE = '23514';
+            RAISE EXCEPTION 'V674 payment style reference function % missing', target USING ERRCODE = '23514';
         END IF;
         normalized := replace(definition, E'\r\n', E'\n');
         anchor := CASE WHEN target = 'fn_guard_payment_style_reference()'
             THEN 'PERFORM pg_advisory_xact_lock(hashtextextended(''PAYMENT_STYLE_HIERARCHY'', 0));'
             ELSE E'PERFORM pg_advisory_xact_lock(\n        hashtextextended(''PAYMENT_STYLE_HIERARCHY'', 0));' END;
         IF (length(normalized) - length(replace(normalized, anchor, ''))) / length(anchor) <> 1 THEN
-            RAISE EXCEPTION 'V650 payment style reference function % shape changed', target USING ERRCODE = '23514';
+            RAISE EXCEPTION 'V674 payment style reference function % shape changed', target USING ERRCODE = '23514';
         END IF;
         patched := replace(normalized, anchor,
             replace(anchor, 'pg_advisory_xact_lock(', 'pg_advisory_xact_lock_shared('));
@@ -123,7 +123,7 @@ DECLARE
         || E'    END IF;\n\n';
     comment_anchor TEXT := E'    -- The UPDATE branch returns first so unchanged non-canonical history remains\n'
         || E'    -- editable, and controlled legacy imports retain their exact snapshot.\n';
-    comment_replacement TEXT := E'    -- UPDATEs never reach this function (V650 immutable guard), so unchanged\n'
+    comment_replacement TEXT := E'    -- UPDATEs never reach this function (V674 immutable guard), so unchanged\n'
         || E'    -- non-canonical history remains editable; controlled legacy imports retain\n'
         || E'    -- their exact snapshot.\n';
     anchor TEXT;
@@ -131,12 +131,12 @@ BEGIN
     SELECT pg_get_functiondef('fn_reserve_business_document_identifier()'::regprocedure)
     INTO definition;
     IF definition IS NULL THEN
-        RAISE EXCEPTION 'V650 business document identifier function missing' USING ERRCODE = '23514';
+        RAISE EXCEPTION 'V674 business document identifier function missing' USING ERRCODE = '23514';
     END IF;
     normalized := replace(definition, E'\r\n', E'\n');
     FOREACH anchor IN ARRAY ARRAY[declare_anchor, update_anchor, comment_anchor] LOOP
         IF (length(normalized) - length(replace(normalized, anchor, ''))) / length(anchor) <> 1 THEN
-            RAISE EXCEPTION 'V650 business document identifier function shape changed' USING ERRCODE = '23514';
+            RAISE EXCEPTION 'V674 business document identifier function shape changed' USING ERRCODE = '23514';
         END IF;
     END LOOP;
     patched := replace(replace(replace(normalized, declare_anchor, ''), update_anchor, ''),

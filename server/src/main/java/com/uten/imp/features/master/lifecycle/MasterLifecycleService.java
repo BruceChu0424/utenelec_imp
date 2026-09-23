@@ -244,7 +244,7 @@ public class MasterLifecycleService {
     private int softDelete(MasterEntityKind kind, List<UUID> ids) {
         if (ids.isEmpty()) return 0;
         if (kind == MasterEntityKind.GOODS) {
-            // 父件删除，它自己的组装清单随之失效；先删 BOM 行，数据库守卫(V661)才不会把
+            // 父件删除，它自己的组装清单随之失效；先删 BOM 行，数据库守卫(V683)才不会把
             // 「同批一起删的父件」误当成还在用组件的有效父件。
             em.createNativeQuery("UPDATE goods_bom_items SET is_deleted = TRUE, deleted_at = now(), "
                             + "updated_at = now(), updated_by = " + ACTOR

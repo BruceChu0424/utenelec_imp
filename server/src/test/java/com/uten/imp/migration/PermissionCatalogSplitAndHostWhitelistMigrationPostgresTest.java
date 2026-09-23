@@ -20,11 +20,11 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * V655 / V657(ADR-109)在真实升级路径上的授权平移：
+ * V677 / V679(ADR-109)在真实升级路径上的授权平移：
  * <ul>
  *   <li>出货财审、仓库销售出库拆码时，负责人页面委派与部门授权、个人覆盖一样按原持有者平移，
  *       委派过原码的员工迁移后仍能放行 / 退回 / 反审(评审发现：只平移了三张表、漏了委派)；</li>
- *   <li>V657 把接待访客从全员基础包改成对外接待白名单：不可由负责人转授、默认部门持有。</li>
+ *   <li>V679 把接待访客从全员基础包改成对外接待白名单：不可由负责人转授、默认部门持有。</li>
  * </ul>
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -44,7 +44,7 @@ class PermissionCatalogSplitAndHostWhitelistMigrationPostgresTest {
 
     @Test
     void splitCodesCarryManagerDelegationsAndHostPermissionBecomesAWhitelist() throws IOException {
-        migrateTo(latestVersionBefore(655));
+        migrateTo(latestVersionBefore(677));
         JdbcTemplate db = new JdbcTemplate(new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         UUID finance = db.queryForObject("SELECT id FROM departments WHERE code = 'DEPT_FIN'", UUID.class);
@@ -63,7 +63,7 @@ class PermissionCatalogSplitAndHostWhitelistMigrationPostgresTest {
                     """, target, finance, grantor, code);
         }
 
-        migrateTo("655");
+        migrateTo("677");
 
         List<Map<String, Object>> carried = db.queryForList("""
                 SELECT permission.code, delegation.enabled, delegation.granted_by_user_id,
@@ -111,7 +111,7 @@ class PermissionCatalogSplitAndHostWhitelistMigrationPostgresTest {
         config.load().migrate();
     }
 
-    /** V655 之前目录里最后一个迁移版本(合并定号后中间可能插入别的迁移，不写死)。 */
+    /** V677 之前目录里最后一个迁移版本(合并定号后中间可能插入别的迁移，不写死)。 */
     private static String latestVersionBefore(int version) throws IOException {
         Pattern name = Pattern.compile("V(\\d+)__.*\\.sql");
         return Arrays.stream(new org.springframework.core.io.support.PathMatchingResourcePatternResolver()

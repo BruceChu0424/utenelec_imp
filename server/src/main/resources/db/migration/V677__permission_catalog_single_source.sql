@@ -1,5 +1,5 @@
 -- =====================================================================
--- V655：权限目录单一事实源(ADR-109)
+-- V677：权限目录单一事实源(ADR-109)
 -- =====================================================================
 -- 背景(2026-09-23 全平台整改 permissions-01/02/03/05/06/07/09/11/12/14)：
 --   「一个码能怎么授」此前写了 5 份：permissions.assignable / bulk_assignable、
@@ -38,7 +38,7 @@
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM roles WHERE code = 'employee') THEN
-        RAISE EXCEPTION 'V655 requires the legacy employee role to seed permissions.baseline';
+        RAISE EXCEPTION 'V677 requires the legacy employee role to seed permissions.baseline';
     END IF;
 END;
 $$;
@@ -315,7 +315,7 @@ BEGIN
     JOIN departments department ON department.id = grant_row.department_id
     WHERE permission.grant_policy && ARRAY['INDIVIDUAL_ONLY', 'SUPERADMIN_ONLY']::TEXT[];
     IF conflicting IS NOT NULL THEN
-        RAISE EXCEPTION 'V655 department matrix still holds individual-only/super-admin-only codes: %', conflicting;
+        RAISE EXCEPTION 'V677 department matrix still holds individual-only/super-admin-only codes: %', conflicting;
     END IF;
 END;
 $$;
@@ -482,7 +482,7 @@ BEGIN
         '(''roles'', ''PRESERVE''),',
         '(''user_roles'', ''PRESERVE''),'] LOOP
         IF position(needle IN definition) = 0 THEN
-            RAISE EXCEPTION 'V655 cannot drop retired role policy row % from business_data_reset', needle;
+            RAISE EXCEPTION 'V677 cannot drop retired role policy row % from business_data_reset', needle;
         END IF;
         definition := replace(definition, needle, '');
     END LOOP;
@@ -502,7 +502,7 @@ BEGIN
     WHERE code LIKE '%:view:all'
       AND NOT (grant_policy @> ARRAY['BULK_EXCLUDED', 'NON_DELEGABLE']::TEXT[]);
     IF offending IS NOT NULL THEN
-        RAISE EXCEPTION 'V655 company-wide scope codes must be bulk-excluded and non-delegable: %', offending;
+        RAISE EXCEPTION 'V677 company-wide scope codes must be bulk-excluded and non-delegable: %', offending;
     END IF;
 
     SELECT string_agg(code, ', ' ORDER BY code) INTO offending
@@ -513,11 +513,11 @@ BEGIN
                    'visitor:apply', 'visitor:view',
                    'visitor:check-in', 'visitor:host-confirm', 'procurement_iqc_rejection:view_all');
     IF offending IS NOT NULL THEN
-        RAISE EXCEPTION 'V655 retired or renamed codes still present: %', offending;
+        RAISE EXCEPTION 'V677 retired or renamed codes still present: %', offending;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM permissions WHERE baseline) THEN
-        RAISE EXCEPTION 'V655 baseline package must not be empty';
+        RAISE EXCEPTION 'V677 baseline package must not be empty';
     END IF;
 END;
 $$;

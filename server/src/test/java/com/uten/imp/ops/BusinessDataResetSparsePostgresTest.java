@@ -32,7 +32,7 @@ class BusinessDataResetSparsePostgresTest {
     static void migrate() throws SQLException {
         Flyway.configure().dataSource(jdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
-        // V649 起 production_plan_costs 是普通单表, 清单里已没有分区的清空表; 分区路径仍是重置函数的合同。
+        // V673 起 production_plan_costs 是普通单表, 清单里已没有分区的清空表; 分区路径仍是重置函数的合同。
         // 在这个一次性测试库里把这张 CLEAR 表换成同名的三列按年分区探针(提交后才有真实的分区文件,
         // 同一事务新建的表截断时 PostgreSQL 会原地清空、不换文件节点), 继续钉住分区叶子的行为。
         // 探针先以测试专用名建出再改名顶替, 已在 FixtureSchemaDriftGuardPostgresTest 登记为测试私有关系。

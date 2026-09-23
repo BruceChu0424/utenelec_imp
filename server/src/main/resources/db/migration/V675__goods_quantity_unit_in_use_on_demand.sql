@@ -1,4 +1,4 @@
--- V651 ADR-106 货品基本单位「已被数量引用则不能改」改为改单位时按需检查
+-- V675 ADR-106 货品基本单位「已被数量引用则不能改」改为改单位时按需检查
 --
 -- 背景(审计 db-schema-13 / perf-warehouse-quality-13)：V498 在 52 张数量来源表上各挂了
 -- INSERT / UPDATE 两个语句级触发器(共 104 个)，每条写入语句都带过渡表跑一段动态 SQL，
@@ -9,7 +9,7 @@
 -- 做法：删掉 104 个触发器、置位函数和 goods.quantity_unit_locked 列。「是否已被数量引用」
 -- 改由 fn_goods_quantity_unit_in_use 在需要时现查：沿用 V498 的来源清单
 -- fn_goods_quantity_reference_sources()(同一个事实源，含取消、红冲、软删的历史行)，
--- 拼成一条 UNION ALL 的 EXISTS，命中第一行即止；各来源货品列的领头索引由 V652 补齐。
+-- 拼成一条 UNION ALL 的 EXISTS，命中第一行即止；各来源货品列的领头索引由 V676 补齐。
 -- 货品改单位守卫 fn_guard_goods_quantity_unit 只在单位真的变化时起跳：
 --   1. 先对本货品行加 FOR UPDATE，等正在写引用的事务结束——外键检查与
 --      GoodsQuantityBasisLocks 都对货品行持 FOR KEY SHARE，二者互斥；

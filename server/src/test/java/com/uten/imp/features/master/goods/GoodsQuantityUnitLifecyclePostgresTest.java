@@ -22,8 +22,8 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * Real V498 catalog + V651 on-demand usage check, rollback and concurrent first-use against PostgreSQL.
- * V651 dropped the 104 statement triggers and goods.quantity_unit_locked: "used" is now computed by
+ * Real V498 catalog + V675 on-demand usage check, rollback and concurrent first-use against PostgreSQL.
+ * V675 dropped the 104 statement triggers and goods.quantity_unit_locked: "used" is now computed by
  * fn_goods_quantity_unit_in_use when a unit actually changes.
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -75,7 +75,7 @@ class GoodsQuantityUnitLifecyclePostgresTest {
         jdbc.update("INSERT INTO goods_image_references VALUES (?, 'photo.png')", METADATA_ONLY);
         jdbc.execute(sql);
         try (var in = Objects.requireNonNull(GoodsQuantityUnitLifecyclePostgresTest.class.getResourceAsStream(
-                "/db/migration/V651__goods_quantity_unit_in_use_on_demand.sql"))) {
+                "/db/migration/V675__goods_quantity_unit_in_use_on_demand.sql"))) {
             jdbc.execute(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
         var factory = new LocalContainerEntityManagerFactoryBean();
@@ -136,7 +136,7 @@ class GoodsQuantityUnitLifecyclePostgresTest {
     }
 
     @Test void softDeletedOrCancelledReferencesKeepTheUnitWhileRemovedDraftLinesReleaseIt() {
-        // V651: "used" is read from the quantity sources at change time. Soft-deleted or cancelled
+        // V675: "used" is read from the quantity sources at change time. Soft-deleted or cancelled
         // history still exists and keeps the basis. A draft line reassigned to other goods, or really
         // removed, leaves no quantity behind for the original goods, so its unit may change again
         // (ADR-106 §2.3, replaces V498's "once used, locked forever").

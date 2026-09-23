@@ -48,7 +48,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void masterIntegrityGuardsHavePlainLanguageMessagesForBothAdapters() {
-        // ADR-111 V661/V662：旁路写入或并发撞上数据库闸时，不能落成「数据已被其他操作更新」。
+        // ADR-111 V683/V684：旁路写入或并发撞上数据库闸时，不能落成「数据已被其他操作更新」。
         var handler = new GlobalExceptionHandler();
         var cases = java.util.Map.of(
                 "ERROR: goods is still a component of an active BOM and cannot be soft-deleted\n  Detail: secret",

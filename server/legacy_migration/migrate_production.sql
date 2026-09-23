@@ -1,12 +1,12 @@
 -- =====================================================================
 -- 生产模块迁移：F_Plan / F_PlanItem / F_PlanCostItem / F_DateReport(+Item)
---   -> production_plans / production_plan_items / production_plan_costs (普通单表, V649)
+--   -> production_plans / production_plan_items / production_plan_costs (普通单表, V673)
 --      / production_daily_reports(+items)
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --production
 -- 前提：V32-V43 主档（goods/colors/units/suppliers/currencies/warehouses）
 --       + V51 sales_order_items + sales_order_cost_items（销售模块必须先迁，跨模块依赖）
---       + V55 生产表已建(production_plan_costs 自 V649 起为普通单表，只允许 app.legacy_import='on' 的导入会话写入)。
+--       + V55 生产表已建(production_plan_costs 自 V673 起为普通单表，只允许 app.legacy_import='on' 的导入会话写入)。
 -- 顺序：production_plans -> production_plan_items -> production_plan_costs
 --   （FK 链：costs.bill_item_id 经 plan_items.legacy_id 映射 -> 必须先迁 plan_items）。
 -- 重载：按 FK 逆序 DELETE 五张表；
@@ -346,7 +346,7 @@ END $$;
 -- parent_legacy_id -> 新 UUID(legacy_id 全表唯一；父子 bill_date 必一致，设计不变式)。
 --   顶层行 parent_legacy_id = 0 不回填（保持 NULL）。
 --   查不到父行（父 legacy 不在结果集）也保持 NULL，校验段报告。
--- V649 起单表 PK = (id)，parent_id 有自引用外键兜底。
+-- V673 起单表 PK = (id)，parent_id 有自引用外键兜底。
 UPDATE production_plan_costs c SET parent_id = p.id
 FROM production_plan_costs p
 WHERE c.parent_legacy_id <> 0

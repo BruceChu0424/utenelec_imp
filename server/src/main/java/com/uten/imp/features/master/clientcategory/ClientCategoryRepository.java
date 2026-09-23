@@ -89,7 +89,7 @@ public interface ClientCategoryRepository extends JpaRepository<ClientCategory, 
     int rebuildSubtreeHierarchy(@Param("rootId") UUID rootId);
 
     /**
-     * 删除分类前按 id 顺序锁住这些分类行(ADR-111/V662)：与「往分类里加主档/子分类」触发器里的
+     * 删除分类前按 id 顺序锁住这些分类行(ADR-111/V684)：与「往分类里加主档/子分类」触发器里的
      * FOR KEY SHARE 互斥——锁之前已提交的都能被随后的检查读到，锁之后的新增等本事务提交后被拒。
      */
     @Query(value = """

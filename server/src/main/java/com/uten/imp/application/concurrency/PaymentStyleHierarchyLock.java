@@ -12,7 +12,7 @@ import jakarta.persistence.EntityManager;
  * <p>Referencing writes (receipts, GL entries, expenses, accounts, assets ...) only need the
  * hierarchy to stay still while they validate a style, so they take the key in <b>shared</b> mode
  * and never queue on each other. Hierarchy/status changes take it <b>exclusively</b> and wait for
- * every in-flight reference (V650 moved the database reference guards to the same shared mode).
+ * every in-flight reference (V674 moved the database reference guards to the same shared mode).
  */
 public final class PaymentStyleHierarchyLock {
 

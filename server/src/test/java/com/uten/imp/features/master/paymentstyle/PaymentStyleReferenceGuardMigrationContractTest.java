@@ -132,7 +132,7 @@ class PaymentStyleReferenceGuardMigrationContractTest {
             guardedReferences.add(explicitGuards.group(1) + "." + explicitGuards.group(2));
         }
         String v665 = Files.readString(serverPath(
-                "src/main/resources/db/migration/V665__finance_report_line_bindings.sql"));
+                "src/main/resources/db/migration/V686__finance_report_line_bindings.sql"));
         explicitGuards = EXPLICIT_GUARD.matcher(v665);
         while (explicitGuards.find()) {
             guardedReferences.add(explicitGuards.group(1) + "." + explicitGuards.group(2));

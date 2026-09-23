@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ol>
  *   <li>被有效 BOM 引用的货品删不掉，报错点名父件；父件删除连带软删自己的 BOM 行；</li>
  *   <li>同批删父件+组件按不动点放行，父件被单据挡住时组件跟着挡住；</li>
- *   <li>绕过服务直接 UPDATE 被 V661 触发器拒绝(货品/颜色/单位)；</li>
+ *   <li>绕过服务直接 UPDATE 被 V683 触发器拒绝(货品/颜色/单位)；</li>
  *   <li>物料分析 BOM 校验报错列出具体行；</li>
  *   <li>批量启停 100 条：一个事务、固定条数语句，逐条版本校验；</li>
  *   <li>组件粘贴整批原子：中途一行成环，全部不写；分类级联删除同样受保护。</li>
@@ -228,7 +228,7 @@ class MasterDataIntegrityEndToEndTest {
     @Test
     void materialAnalysisBomErrorListsTheOffendingRowsAndHowToFixThem() {
         var w = world("bom-error");
-        // 模拟 V661 之前留下的脏数据：组件已删、却还挂在有效 BOM 上(事故原样)。
+        // 模拟 V683 之前留下的脏数据：组件已删、却还挂在有效 BOM 上(事故原样)。
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
             db.execute("SET LOCAL session_replication_role = replica");
             db.update("UPDATE goods SET is_deleted = TRUE WHERE id = ?", w.goodsD());
@@ -477,7 +477,7 @@ class MasterDataIntegrityEndToEndTest {
         assertThat(sample[0].logicalStatements).isLessThanOrEqualTo(4);
     }
 
-    // ---- 10) 分类删除与「往分类里挪货品」互斥(V662) -------------------------------------------
+    // ---- 10) 分类删除与「往分类里挪货品」互斥(V684) -------------------------------------------
 
     @Test
     void movingGoodsIntoACategoryBeingDeletedWaitsAndIsRejected() throws Exception {

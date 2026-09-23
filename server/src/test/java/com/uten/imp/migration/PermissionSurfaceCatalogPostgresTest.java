@@ -105,7 +105,7 @@ class PermissionSurfaceCatalogPostgresTest {
             // V455 retired the zero-reference mrp codes (generate_draw /
             // generate_finished_in); V470 把 dispatch/start 从本面下架（工作台
             // 不再广告手动派工/开工）；V543 把停用的 execution cancel/reverse 与
-            // mrp generate_purchase 从本面下架；V655(ADR-109)把计划页真实存在的
+            // mrp generate_purchase 从本面下架；V677(ADR-109)把计划页真实存在的
             // 「派工」按钮码 dispatch 补挂回来：10 = execution 3 + package 4 + material 3。
             assertEquals(10, scalarLong(statement, """
                     select count(*)
@@ -122,7 +122,7 @@ class PermissionSurfaceCatalogPostgresTest {
                           or permission.code like 'production_material:%'
                       )
                     """));
-            // V655：页面权限面只挂页面上真实有按钮的码，dispatch 补挂、start 仍不挂。
+            // V677：页面权限面只挂页面上真实有按钮的码，dispatch 补挂、start 仍不挂。
             assertEquals(1, linkCount(
                     statement, "production.plan", "production_execution:dispatch"));
             assertEquals(0, linkCount(
@@ -149,7 +149,7 @@ class PermissionSurfaceCatalogPostgresTest {
                     statement, "production.workshop-tasks", "production_material:settle"));
             assertEquals(1, linkCount(
                     statement, "production.workshop-tasks", "production_material:reverse"));
-            // V543：`*:view:all` 是对象范围码，退出批量三档；V655 起由 grant_policy 表达。
+            // V543：`*:view:all` 是对象范围码，退出批量三档；V677 起由 grant_policy 表达。
             assertEquals(0, scalarLong(statement, """
                     select count(*) from permissions
                     where code like '%:view:all'
@@ -176,7 +176,7 @@ class PermissionSurfaceCatalogPostgresTest {
                     """));
             assertEquals(1, linkCount(
                     statement, "production.plan", "production_material:close"));
-            // V655：停用即删除，目录里不再有软停用码。
+            // V677：停用即删除，目录里不再有软停用码。
             assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from permissions
@@ -186,7 +186,7 @@ class PermissionSurfaceCatalogPostgresTest {
                     statement, "production.plan", "production:view"));
             assertEquals(0, linkCount(
                     statement, "production.hub", "production:view"));
-            // V486 停用委外准备中心；V655 删除它的两个停用码(面本身停用、不再装载)。
+            // V486 停用委外准备中心；V677 删除它的两个停用码(面本身停用、不再装载)。
             assertEquals(0, linkCount(
                     statement, "subcontract.preparation",
                     "subcontract_preparation:view"));
@@ -231,7 +231,7 @@ class PermissionSurfaceCatalogPostgresTest {
 
 
             // 启用中的页面权限面必须至少挂一个码；停用面(V486 委外准备中心、V493 待审收件台)
-            // 的码已在 V655 随「停用即删除」一并删掉，停用面不装载、不可委派。
+            // 的码已在 V677 随「停用即删除」一并删掉，停用面不装载、不可委派。
             assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from permission_surfaces surface
@@ -251,7 +251,7 @@ class PermissionSurfaceCatalogPostgresTest {
                     select count(*) from permissions
                     where code='review_inbox:view'
                     """));
-            // V655：页面权限面只允许指向能在页面上授出的码(非超管专属)。
+            // V677：页面权限面只允许指向能在页面上授出的码(非超管专属)。
             assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from permission_surface_permissions link
@@ -328,7 +328,7 @@ class PermissionSurfaceCatalogPostgresTest {
         assertFalse(registry.isKnown("quality.lab-test"));
         // V456: quality.inspection 旧面退役，能力并入 task-center 专属面（严格超集）。
         assertFalse(registry.isKnown("quality.inspection"));
-        // V655：超管专属的授权管理码不挂页面权限面(任何入口都授不出去)，只剩账号支持。
+        // V677：超管专属的授权管理码不挂页面权限面(任何入口都授不出去)，只剩账号支持。
         assertEquals(Set.of("account:support"),
                 registry.permissionsFor("admin.permission-console"));
         assertFalse(registry.isKnown("admin.system-settings"),

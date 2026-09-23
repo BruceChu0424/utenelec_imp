@@ -40,7 +40,7 @@ import java.util.UUID;
  *
  * <p>说明：
  * <ul>
- *   <li>roles / user_roles / role_permissions / department_roles 四张表已随 V655 删除，
+ *   <li>roles / user_roles / role_permissions / department_roles 四张表已随 V677 删除，
  *       权限只有上面这一套来源。</li>
  *   <li>部门配置向上生效：在「综合营销部」配的权限，销售一~四组等下级部门员工自动获得；
  *       子部门也可以单独追加配置。与 ADR-007 的"仅直属"决策不同，此处是向上读取配置，

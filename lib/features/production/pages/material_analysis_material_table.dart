@@ -3187,10 +3187,15 @@ abstract class _MaterialAnalysisMaterialTableState
       return '你没有「下达采购 / 委外」的权限，请找管理员开通';
     }
     if (target.viaWorkshop) {
-      final workshop = _tableWorkshopFor(group);
-      if (workshop.id == null) return '先在「生产车间」列里指定本次交给哪个车间';
-      if (_tableWorkerFor(group).id == null) {
-        return '先在「负责人」列里指定本次谁负责';
+      // 生产车间 / 负责人跟路线走(用户口径 2026-09-22「变成采购、委外就不需要生产
+      // 车间了」)：只有自制行在主表上要求指派；要先自制目标件的委外走 ARRANGE 段时
+      // 车间按学习默认带给服务端, 没有就由服务端按排产方案落车间, 不在这里拦。
+      if (route == MaterialSupplyRoute.make) {
+        final workshop = _tableWorkshopFor(group);
+        if (workshop.id == null) return '先在「生产车间」列里指定本次交给哪个车间';
+        if (_tableWorkerFor(group).id == null) {
+          return '先在「负责人」列里指定本次谁负责';
+        }
       }
     } else if (!_isExecutableSupplyGroup(
       group,
@@ -3548,8 +3553,13 @@ abstract class _MaterialAnalysisMaterialTableState
 
   // ------------------------- 生产车间 / 负责人 -------------------------
 
+  /// 「生产车间 / 负责人」两列跟**路线**走(用户口径 2026-09-22「路线改变后对应的
+  /// 生产车间、负责人就要清空, 除非变回原来的路线——变成采购、委外就不需要生产车间
+  /// 了」)：只有自制行显示并要求指派, 采购 / 委外一律横杠。草稿按提交单元记着不删,
+  /// 改回自制那一刻原来选的车间 / 负责人就回来。要先自制目标件的委外走 ARRANGE 段时,
+  /// 车间由学习默认 / 服务端排产方案兜底, 不在主表上露出来。
   bool _tableAssignable(_MaterialGroup? group) =>
-      group != null && _tableIssueTarget(group).viaWorkshop;
+      group != null && _draftRoute(group) == MaterialSupplyRoute.make;
 
   String? _materialTableProductionWorkshopText(_MaterialTableRow row) {
     final group = _tableEditableGroup(row);

@@ -603,6 +603,21 @@ void main() {
       ),
       findsWidgets,
     );
+    // 生产车间 / 负责人跟路线走：委外行两格横杠、不要求指派, 行照样可勾；
+    // 自制行(m-6)才有指派格。
+    expect(
+      find.byKey(ValueKey('material-analysis-workshop-${_groupKey('m-u')}')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(ValueKey('material-analysis-worker-${_groupKey('m-u')}')),
+      findsNothing,
+    );
+    expect(_rowCheckbox('m-u'), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('material-analysis-workshop-${_groupKey('m-6')}')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('顶层行不再是一排横杠：调拨按钮、下单数量、还缺数量都在', (tester) async {

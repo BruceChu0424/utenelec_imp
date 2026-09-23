@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -20,6 +21,7 @@ import org.springframework.web.context.request.async.AsyncRequestNotUsableExcept
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.transaction.TransactionTimedOutException;
 
 import java.util.List;
 import java.sql.SQLException;
@@ -29,10 +31,21 @@ import java.sql.SQLException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** PostgreSQL 等锁超时(lock_timeout)。 */
+    static final String LOCK_NOT_AVAILABLE = "55P03";
+    /** PostgreSQL 语句被取消(statement_timeout / 事务剩余时间用尽)。 */
+    static final String QUERY_CANCELED = "57014";
+    /** PostgreSQL 检测到死锁, 本事务被选为牺牲者。 */
+    static final String DEADLOCK_DETECTED = "40P01";
+    static final String LOCK_BUSY_MESSAGE = "有人正在处理相关单据，本次操作未生效，请稍后再试";
+    static final String TIMED_OUT_MESSAGE = "本次操作处理时间过长已自动取消，没有生效，请稍后再试";
+    static final String DEADLOCK_MESSAGE = "与他人同时处理相关单据发生冲突，本次操作未生效，请稍后再试";
+
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiError> handleApi(ApiException ex) {
-        return ResponseEntity.status(ex.getCode().getHttpStatus())
-                .body(ApiError.of(ex.getCode(), ex.getMessage(), ex.getFieldErrors()));
+        var response = ResponseEntity.status(ex.getCode().getHttpStatus());
+        if (ex.retryable()) response.header(HttpHeaders.RETRY_AFTER, "1");
+        return response.body(ApiError.of(ex.getCode(), ex.getMessage(), ex.getFieldErrors()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -149,14 +162,52 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of(ErrorCode.CONFLICT, "该记录已被他人修改，请刷新后重试"));
     }
 
+    /**
+     * 服务端截止时间(ADR-107): 等锁超时、语句/事务超时被取消、死锁牺牲。事务已整体回滚、什么都没生效,
+     * 统一回可重跑的 409(带 Retry-After), 前端提示稍后再试, 不再落成裸 500 或无限排队。
+     */
     @ExceptionHandler({
             org.springframework.dao.PessimisticLockingFailureException.class,
+            org.springframework.dao.QueryTimeoutException.class,
             jakarta.persistence.PessimisticLockException.class,
-            jakarta.persistence.LockTimeoutException.class})
-    public ResponseEntity<ApiError> handlePessimisticLock(Exception ex) {
-        return ResponseEntity.status(409)
-                .body(ApiError.of(
-                        ErrorCode.CONFLICT, "并发操作占用，请刷新后重试"));
+            jakarta.persistence.LockTimeoutException.class,
+            jakarta.persistence.QueryTimeoutException.class,
+            TransactionTimedOutException.class})
+    public ResponseEntity<ApiError> handleDatabaseDeadline(Exception ex) {
+        String message = deadlineMessage(ex);
+        return retryableConflict(ex, message != null ? message : LOCK_BUSY_MESSAGE);
+    }
+
+    private ResponseEntity<ApiError> retryableConflict(Exception ex, String message) {
+        log.warn("Database deadline reached, request rolled back: {} sqlState={}",
+                ex.getClass().getSimpleName(), sqlState(ex));
+        return ResponseEntity.status(409).header(HttpHeaders.RETRY_AFTER, "1")
+                .body(ApiError.of(ErrorCode.CONFLICT, message));
+    }
+
+    /** 沿异常链找 PostgreSQL 截止时间类 SQLState; 不是这几类返回 null。 */
+    static String deadlineMessage(Throwable root) {
+        int depth = 0;
+        for (Throwable cause = root; cause != null && depth < 16; cause = cause.getCause(), depth++) {
+            if (cause instanceof TransactionTimedOutException) return TIMED_OUT_MESSAGE;
+            if (cause instanceof SQLException sql && sql.getSQLState() != null) {
+                switch (sql.getSQLState()) {
+                    case LOCK_NOT_AVAILABLE: return LOCK_BUSY_MESSAGE;
+                    case QUERY_CANCELED: return TIMED_OUT_MESSAGE;
+                    case DEADLOCK_DETECTED: return DEADLOCK_MESSAGE;
+                    default: break;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String sqlState(Throwable root) {
+        int depth = 0;
+        for (Throwable cause = root; cause != null && depth < 16; cause = cause.getCause(), depth++) {
+            if (cause instanceof SQLException sql && sql.getSQLState() != null) return sql.getSQLState();
+        }
+        return "none";
     }
 
     /** Known business conflicts have actionable messages; database details remain private. */
@@ -213,6 +264,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleOther(Exception ex) {
+        // Hibernate/JPA 在 @Service 里抛出的原生异常类型各不相同, 按根因 SQLState 统一识别截止时间类。
+        String deadline = deadlineMessage(ex);
+        if (deadline != null) return retryableConflict(ex, deadline);
         log.error("未处理异常", ex);
         return ResponseEntity.status(500).body(ApiError.of(ErrorCode.INTERNAL, null));
     }

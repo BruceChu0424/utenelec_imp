@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.application.concurrency.FulfillmentDiscoveryRound;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialSource;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialType;
@@ -27,6 +28,9 @@ import java.util.stream.Collectors;
  * Directed callback footprint, never a transitive closure of every matching SKU.
  * All queries are reads without FOR UPDATE. The coordinator locks their result;
  * the owning command then locks execution rows and verifies this read again.
+ *
+ * <p>ADR-107: 行快照只取 {@code (id, xmin)} 行版本, 不对整行做哈希; 在一轮发现里各入口按参数
+ * 只读一次, 分析展开推迟到本轮末尾对并集做一次(见 {@link FulfillmentDiscoveryRound})。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -38,6 +42,10 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
     @Override
     public FulfillmentMutationLockPlan forStockDocuments(Collection<UUID> rawIds) {
         List<UUID> ids = ids(rawIds);
+        return FulfillmentDiscoveryRound.memo("production.stock-documents", ids, () -> stockDocumentFootprint(ids));
+    }
+
+    private FulfillmentMutationLockPlan stockDocumentFootprint(List<UUID> ids) {
         var result = new Footprint();
         result.parts.add("stock-documents:" + ids);
         if (ids.isEmpty()) return result.build();
@@ -46,7 +54,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT document.id,document.warehouse_id,document.to_warehouse_id,document.doc_type,
                        item.id,item.goods_id,item.color_id,item.upstream_item_id,
-                       md5(to_jsonb(document)::text),md5(to_jsonb(item)::text),
+                       document.xmin::text,item.xmin::text,
                        EXISTS(SELECT 1 FROM warehouses line_side
                               WHERE line_side.id=document.warehouse_id AND line_side.is_line_side)
                 FROM stock_documents document LEFT JOIN stock_document_items item
@@ -71,7 +79,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         // completed before this command reopens them. Do not scan old completed
         // analyses merely because they once used the same goods.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT link.id,plan.id,plan.material_analysis_id,md5(to_jsonb(link)::text)
+                SELECT link.id,plan.id,plan.material_analysis_id,link.xmin::text
                 FROM plan_draw_links link JOIN production_plans plan ON plan.id=link.plan_id
                 WHERE link.draw_id IN (:ids) AND link.is_deleted=FALSE AND plan.is_deleted=FALSE
                 ORDER BY link.id
@@ -80,7 +88,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         }
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT reservation.id,reservation.owner_id,reservation.goods_id,reservation.color_id,
-                       md5(to_jsonb(reservation)::text)
+                       reservation.xmin::text
                 FROM stock_reservations reservation
                 WHERE reservation.source_doc_type='PRODUCTION_INBOUND' AND reservation.source_doc_id IN (:ids)
                   AND reservation.owner_type='PREPLAN_ANALYSIS' AND reservation.is_deleted=FALSE
@@ -93,7 +101,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         // nodes. Historical/manual inputs need not exist in the current BOM.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT input.input_node_id,pool.goods_id,pool.color_id,
-                       fn_warehouse_main_id(pool.warehouse_id),md5(to_jsonb(input)::text)
+                       fn_warehouse_main_id(pool.warehouse_id),input.xmin::text
                 FROM stock_document_items item
                 JOIN stock_movements movement ON movement.source_doc_type='STOCK_DOC'
                   AND movement.source_doc_id=item.doc_id AND movement.source_item_id=item.id AND movement.direction=1
@@ -111,7 +119,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         if (!planItems.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
-                           link.id,linked_sale.order_id,md5(to_jsonb(item)::text),md5(to_jsonb(link)::text)
+                           link.id,linked_sale.order_id,item.xmin::text,link.xmin::text
                     FROM production_plan_items item
                     LEFT JOIN sales_order_items sales_item ON sales_item.id=item.sales_order_item_id
                     LEFT JOIN plan_order_item_links link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
@@ -134,7 +142,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                       AND demand.execution_segment_id IS NOT NULL
                 )
                 SELECT demand.id,demand.goods_id,demand.color_id,plan.material_analysis_id,
-                       md5(to_jsonb(demand)::text)
+                       demand.xmin::text
                 FROM affected_segments source JOIN production_material_demands demand
                   ON demand.execution_segment_id=source.execution_segment_id AND demand.is_deleted=FALSE
                   AND demand.status NOT IN ('RELEASED','REVERSED')
@@ -157,13 +165,19 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
 
     @Override
     public AnalysisStructureScope openAnalysisStructureScope(UUID analysisId) {
+        // 分析在本事务预锁时已整体展开并通过锁后复核, 这里只在内存里确认它仍在已持有集合内。
         return MaterialAnalysisStructureScope.open(em, analysisId,
-                () -> readAnalysisStructure(Set.of(analysisId)),
-                () -> mutationLocks.requireCovered(forAnalyses(List.of(analysisId))));
+                () -> readAnalysisStructure(List.of(analysisId)),
+                () -> mutationLocks.requireAnalysesCovered(List.of(analysisId)));
     }
 
     @Override
     public FulfillmentMutationLockPlan forSharedFutureClaim(UUID analysisId) {
+        return FulfillmentDiscoveryRound.memo("production.shared-future-claim", analysisId,
+                () -> sharedFutureClaimFootprint(analysisId));
+    }
+
+    private FulfillmentMutationLockPlan sharedFutureClaimFootprint(UUID analysisId) {
         var result = new Footprint();
         result.analysis(analysisId);
         // A new claim will reference an existing request/application. Discover
@@ -211,7 +225,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         List<UUID> sales = ids(salesItemIds), subcontract = ids(subcontractItemIds), warehouses = ids(warehouseIds);
         if (!sales.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,item.order_id,item.goods_id,item.color_id,
-                       md5(to_jsonb(item)::text),md5(to_jsonb(header)::text)
+                       item.xmin::text,header.xmin::text
                 FROM sales_order_items item JOIN sales_orders header ON header.id=item.order_id
                 WHERE item.id IN (:ids) ORDER BY item.id
                 """).setParameter("ids",sales))) {
@@ -220,7 +234,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         }
         if (!subcontract.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,item.order_id,item.goods_id,item.color_id,source.id,application.application_id,
-                       md5(to_jsonb(item)::text),md5(to_jsonb(source)::text)
+                       item.xmin::text,source.xmin::text
                 FROM subcontract_order_items item
                 LEFT JOIN subcontract_order_item_sources source ON source.order_item_id=item.id
                 LEFT JOIN subcontract_application_items application ON application.id=source.application_item_id
@@ -242,28 +256,37 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
     @Override
     public FulfillmentMutationLockPlan forInventoryChange(
             Collection<WarehouseDimension> changedDimensions, Collection<UUID> exactAnalysisIds) {
-        var result = new Footprint(); ids(exactAnalysisIds).forEach(result::analysis);
+        List<UUID> exact = ids(exactAnalysisIds);
         List<WarehouseDimension> changed = changedDimensions == null ? List.of() : changedDimensions.stream()
                 .filter(Objects::nonNull).filter(d -> d.goodsId()!=null && d.warehouseId()!=null).distinct().toList();
-        changed.forEach(d -> result.inventory(d.goodsId(), d.colorId()));
-        addWakeupTargets(result, changed); expandAnalyses(result); return result.build();
+        return FulfillmentDiscoveryRound.memo("production.inventory-change", List.of(sortedDimensions(changed), exact), () -> {
+            var result = new Footprint(); exact.forEach(result::analysis);
+            changed.forEach(d -> result.inventory(d.goodsId(), d.colorId()));
+            addWakeupTargets(result, changed); expandAnalyses(result); return result.build();
+        });
     }
 
     @Override
     public FulfillmentMutationLockPlan forFutureFinishedInbound(
             Collection<WarehouseDimension> shelvedDimensions, Collection<UUID> planItemIds) {
-        var result = new Footprint();
         List<WarehouseDimension> changed = shelvedDimensions == null ? List.of()
                 : shelvedDimensions.stream().filter(Objects::nonNull)
                         .filter(d -> d.goodsId() != null && d.warehouseId() != null).distinct().toList();
         List<UUID> items = ids(planItemIds);
+        return FulfillmentDiscoveryRound.memo("production.future-finished-inbound",
+                List.of(sortedDimensions(changed), items), () -> futureFinishedInboundFootprint(changed, items));
+    }
+
+    private FulfillmentMutationLockPlan futureFinishedInboundFootprint(
+            List<WarehouseDimension> changed, List<UUID> items) {
+        var result = new Footprint();
         result.parts.add("future-finished-in:" + changed + ":" + items);
         changed.forEach(d -> result.inventory(d.goodsId(), d.colorId()));
         if (!items.isEmpty()) {
             // 与 forStockDocuments 的 plan-sales 同口径：入库会回写计划进度与销售归属。
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
-                           link.id,linked_sale.order_id,md5(to_jsonb(item)::text),md5(to_jsonb(link)::text)
+                           link.id,linked_sale.order_id,item.xmin::text,link.xmin::text
                     FROM production_plan_items item
                     LEFT JOIN sales_order_items sales_item ON sales_item.id=item.sales_order_item_id
                     LEFT JOIN plan_order_item_links link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
@@ -284,7 +307,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                           AND peg.status<>'REVERSED' AND demand.execution_segment_id IS NOT NULL
                     )
                     SELECT demand.id,demand.goods_id,demand.color_id,plan.material_analysis_id,
-                           md5(to_jsonb(demand)::text)
+                           demand.xmin::text
                     FROM affected_segments source JOIN production_material_demands demand
                       ON demand.execution_segment_id=source.execution_segment_id AND demand.is_deleted=FALSE
                       AND demand.status NOT IN ('RELEASED','REVERSED')
@@ -300,19 +323,28 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
 
     private void addWakeupTargets(Footprint result, Collection<WarehouseDimension> changed) {
         if (changed.isEmpty()) return;
-        List<WarehouseDimension> dimensions = changed.stream().distinct()
-                .sorted(Comparator.comparing(WarehouseDimension::toString)).toList();
+        List<WarehouseDimension> dimensions = sortedDimensions(changed);
         dimensions.forEach(d -> result.parts.add("changed-supply:" + d));
-        // Before the first stock-in no ORIGIN/reservation exists yet. The
-        // procurement footprint supplies its exact commercial analysis IDs;
-        // the requested physical warehouse must already be locked as well.
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id,fn_warehouse_main_id(id) FROM warehouses WHERE id IN (:ids) ORDER BY id
-                """).setParameter("ids", dimensions.stream().map(WarehouseDimension::warehouseId).distinct().toList()))) {
+        WakeupTargets targets = FulfillmentDiscoveryRound.memo("production.wakeup-targets", dimensions,
+                () -> readWakeupTargets(dimensions));
+        for (Object[] row : targets.warehouses()) {
             result.row("changed-warehouse", row);
             if (row[1]!=null) result.warehouses.add((UUID)row[1]);
         }
-        String warehouses = dimensions.stream().map(d -> d.warehouseId().toString()).collect(Collectors.joining(","));
+        targets.analyses().forEach(result::analysis);
+    }
+
+    private record WakeupTargets(List<Object[]> warehouses, List<UUID> analyses) {}
+
+    private WakeupTargets readWakeupTargets(List<WarehouseDimension> dimensions) {
+        // Before the first stock-in no ORIGIN/reservation exists yet. The
+        // procurement footprint supplies its exact commercial analysis IDs;
+        // the requested physical warehouse must already be locked as well.
+        List<Object[]> warehouses = List.copyOf(NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,fn_warehouse_main_id(id) FROM warehouses WHERE id IN (:ids) ORDER BY id
+                """).setParameter("ids", dimensions.stream().map(WarehouseDimension::warehouseId).distinct().toList())));
+        var analyses = new ArrayList<UUID>();
+        String warehouseList = dimensions.stream().map(d -> d.warehouseId().toString()).collect(Collectors.joining(","));
         String goods = dimensions.stream().map(d -> d.goodsId().toString()).collect(Collectors.joining(","));
         String colors = dimensions.stream().map(d -> Objects.toString(d.colorId(), "")).collect(Collectors.joining(","));
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -335,16 +367,33 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                             "analysis.id", "material.id", "d.warehouse_id", "d.goods_id", "d.color_id") + """
                         ))
                 ORDER BY analysis.id
-                """).setParameter("warehouses", warehouses).setParameter("goods", goods).setParameter("colors", colors))) {
-            result.analysis((UUID) row[0]);
+                """).setParameter("warehouses", warehouseList).setParameter("goods", goods).setParameter("colors", colors))) {
+            analyses.add((UUID) row[0]);
         }
+        return new WakeupTargets(warehouses, List.copyOf(analyses));
     }
 
+    /**
+     * 分析的来源、供给动作、表头、结构与预留。在一轮发现里推迟到末尾对全部分析的并集只展开一次;
+     * 轮外(直接调用)当场展开。
+     */
     private void expandAnalyses(Footprint result) {
         if (result.analyses.isEmpty()) return;
-        Set<UUID> analyses = Set.copyOf(result.analyses);
+        if (FulfillmentDiscoveryRound.deferAnalysisExpansion(result.analyses, this::analysisExpansion)) return;
+        expandNow(result, Set.copyOf(result.analyses));
+    }
+
+    /** 本轮收尾的并集展开: 只给出来源、库存维度与主仓, 分析 id 本身由各足迹决定。 */
+    private FulfillmentMutationLockPlan analysisExpansion(Set<UUID> analyses) {
+        var expansion = new Footprint();
+        expandNow(expansion, analyses);
+        return new FulfillmentMutationLockPlan(expansion.sources, expansion.inventory, expansion.warehouses,
+                Set.of(), CanonicalFingerprint.sha256(expansion.parts));
+    }
+
+    private void expandNow(Footprint result, Set<UUID> analyses) {
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT source.id,item.order_id,md5(to_jsonb(item)::text),md5(to_jsonb(orders)::text)
+                SELECT source.id,item.order_id,item.xmin::text,orders.xmin::text
                 FROM production_material_analysis_items source JOIN subcontract_order_items item ON source.source_ref='SC-ORDER:'||item.id::text
                 JOIN subcontract_orders orders ON orders.id=item.order_id
                 WHERE source.analysis_id IN(:ids) AND source.source_type='SUBCONTRACT_PREPARATION' AND source.is_deleted=FALSE ORDER BY source.id
@@ -354,7 +403,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         // current operation is initiated from the analysis page.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT action.id,action.external_document_type,
-                       COALESCE(request.id,application.id),md5(to_jsonb(action)::text)
+                       COALESCE(request.id,application.id),action.xmin::text
                 FROM preplan_supply_actions action
                 LEFT JOIN purchase_requests request ON action.external_document_type='PURCHASE_REQUEST'
                   AND request.id=action.external_document_id
@@ -374,12 +423,12 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH analysis_headers AS MATERIALIZED (
                     SELECT analysis.id,fn_warehouse_main_id(analysis.warehouse_id) AS main_warehouse_id,
-                           md5(to_jsonb(analysis)::text) AS snapshot
+                           analysis.xmin::text AS snapshot
                     FROM production_material_analyses analysis
                     WHERE analysis.id IN (:ids) AND analysis.is_deleted=FALSE
                 )
                 SELECT analysis.id,analysis.main_warehouse_id,analysis.snapshot,
-                       item.id,sale.order_id,item.goods_id,item.color_id,md5(to_jsonb(item)::text)
+                       item.id,sale.order_id,item.goods_id,item.color_id,item.xmin::text
                 FROM analysis_headers analysis
                 LEFT JOIN production_material_analysis_items item ON item.analysis_id=analysis.id AND item.is_deleted=FALSE
                 LEFT JOIN sales_order_items sale ON sale.id=item.sales_order_item_id AND item.source_type='SALES_ORDER_ITEM'
@@ -389,10 +438,10 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             result.sales((UUID) row[4]); result.inventory((UUID) row[5], (UUID) row[6]);
         }
         var structure = MaterialAnalysisStructureScope.current(em, analyses);
-        if (structure == null) structure = readAnalysisStructure(analyses);
+        if (structure == null) structure = readAnalysisStructure(ids(analyses));
         appendStructure(result, structure);
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT reservation.id,reservation.goods_id,reservation.color_id,md5(to_jsonb(reservation)::text),
+                SELECT DISTINCT reservation.id,reservation.goods_id,reservation.color_id,reservation.xmin::text,
                        fn_warehouse_main_id(reservation.warehouse_id)
                 FROM stock_reservations reservation
                 WHERE reservation.is_deleted=FALSE AND reservation.status=0
@@ -416,7 +465,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         // their actual warehouses in the same directed mutation lock plan.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT reservation.id,reservation.goods_id,reservation.color_id,
-                       fn_warehouse_main_id(reservation.warehouse_id),md5(to_jsonb(reservation)::text)
+                       fn_warehouse_main_id(reservation.warehouse_id),reservation.xmin::text
                 FROM stock_reservations reservation
                 WHERE NOT reservation.is_deleted AND reservation.status=0 AND reservation.qty>reservation.released_qty
                   AND reservation.supply_type='PRODUCTION_FINISHED_IN'
@@ -446,11 +495,9 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
      * it does not enumerate every repeated incoming edge. Business path validation
      * and exact quantities stay in MaterialAnalysisService.
      *
-     * These whole-row hashes are ephemeral Guard equality checks within the
-     * same MANDATORY transaction/connection and fixed schema. Composite output
-     * retains every value and PostgreSQL's null/escaping boundaries without
-     * repeatedly rendering JSON field names. It is not a persisted analysis
-     * fingerprint or schema signature; session formatting must remain fixed.
+     * Each row carries its xmin row version: any committed or own UPDATE of the
+     * row changes it, so the post-lock recheck compares versions instead of
+     * hashing whole rows (ADR-107). It is not a persisted analysis fingerprint.
      */
     private void addCurrentBom(Footprint result, Collection<UUID> roots) {
         for (var row : readCurrentBom(roots)) {
@@ -458,9 +505,14 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         }
     }
 
-    private MaterialAnalysisStructureScope.Snapshot readAnalysisStructure(Collection<UUID> analyses) {
+    private MaterialAnalysisStructureScope.Snapshot readAnalysisStructure(List<UUID> analyses) {
+        return FulfillmentDiscoveryRound.memo("production.analysis-structure", analyses,
+                () -> readAnalysisStructureNow(analyses));
+    }
+
+    private MaterialAnalysisStructureScope.Snapshot readAnalysisStructureNow(List<UUID> analyses) {
         var materials = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT material.id,material.goods_id,material.color_id,md5(material::text)
+                SELECT material.id,material.goods_id,material.color_id,material.xmin::text
                 FROM production_material_analysis_materials material
                 WHERE material.analysis_id IN (:ids) AND material.active=TRUE ORDER BY material.id
                 """).setParameter("ids", analyses)).stream().map(MaterialAnalysisStructureScope.Row::from).toList();
@@ -482,6 +534,11 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
 
     private List<MaterialAnalysisStructureScope.Row> readCurrentBom(Collection<UUID> roots) {
         if (roots.isEmpty()) return List.of();
+        List<UUID> ordered = ids(roots);
+        return FulfillmentDiscoveryRound.memo("production.current-bom", ordered, () -> readCurrentBomNow(ordered));
+    }
+
+    private List<MaterialAnalysisStructureScope.Row> readCurrentBomNow(List<UUID> roots) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH RECURSIVE roots AS (
                     SELECT id AS goods_id FROM goods WHERE id IN (:rootIds)
@@ -499,14 +556,19 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                     SELECT DISTINCT goods_id FROM reachable WHERE depth<10
                 )
                 SELECT DISTINCT bom.id,bom.component_goods_id,
-                       COALESCE(bom.color_id,goods.color_id) AS color_id,md5(bom::text) AS snapshot
+                       COALESCE(bom.color_id,goods.color_id) AS color_id,bom.row_version AS snapshot
                 FROM parents JOIN LATERAL (
-                    SELECT edge.* FROM goods_bom_items edge
+                    SELECT edge.id,edge.component_goods_id,edge.color_id,edge.xmin::text AS row_version
+                    FROM goods_bom_items edge
                     WHERE edge.goods_id=parents.goods_id AND edge.is_deleted=FALSE OFFSET 0
                 ) bom ON TRUE
                 JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
                 ORDER BY id,component_goods_id,color_id
                 """).setParameter("rootIds", roots)).stream().map(MaterialAnalysisStructureScope.Row::from).toList();
+    }
+
+    private static List<WarehouseDimension> sortedDimensions(Collection<WarehouseDimension> dimensions) {
+        return dimensions.stream().distinct().sorted(Comparator.comparing(WarehouseDimension::toString)).toList();
     }
 
     private static List<UUID> ids(Collection<UUID> values) {

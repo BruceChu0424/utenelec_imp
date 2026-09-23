@@ -97,13 +97,51 @@ class GlobalExceptionHandlerTest {
         var failure = new org.springframework.dao.CannotAcquireLockException(
                 "deadlock detected: secret SQL");
 
-        ResponseEntity<ApiError> response = handler.handlePessimisticLock(failure);
+        ResponseEntity<ApiError> response = handler.handleDatabaseDeadline(failure);
 
         assertEquals(409, response.getStatusCode().value());
         assertNotNull(response.getBody());
         assertEquals("CONFLICT", response.getBody().getCode());
-        assertEquals("并发操作占用，请刷新后重试", response.getBody().getMessage());
+        assertEquals(GlobalExceptionHandler.LOCK_BUSY_MESSAGE, response.getBody().getMessage());
+        assertEquals("1", response.getHeaders().getFirst("Retry-After"));
         assertFalse(response.getBody().getMessage().contains("secret SQL"));
+    }
+
+    /** ADR-107: 服务端截止时间三类 SQLState, 不论被哪层异常包着, 都回可重跑的 409 与中文提示。 */
+    @Test
+    void databaseDeadlineStatesBecomeRetryableConflictsWhateverWrapsThem() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        var cases = java.util.Map.of(
+                "55P03", GlobalExceptionHandler.LOCK_BUSY_MESSAGE,
+                "57014", GlobalExceptionHandler.TIMED_OUT_MESSAGE,
+                "40P01", GlobalExceptionHandler.DEADLOCK_MESSAGE);
+        cases.forEach((state, message) -> {
+            var sql = new java.sql.SQLException("canceling statement: secret SQL", state);
+            var hibernate = new org.hibernate.exception.GenericJDBCException("could not execute", sql);
+            var jpa = new jakarta.persistence.PersistenceException("wrapped", hibernate);
+            ResponseEntity<ApiError> response = handler.handleOther(jpa);
+            assertEquals(409, response.getStatusCode().value(), state);
+            assertEquals(message, response.getBody().getMessage(), state);
+            assertEquals("1", response.getHeaders().getFirst("Retry-After"), state);
+            assertFalse(response.getBody().getMessage().contains("secret"));
+        });
+        var timedOut = handler.handleDatabaseDeadline(
+                new org.springframework.transaction.TransactionTimedOutException("deadline was ..."));
+        assertEquals(GlobalExceptionHandler.TIMED_OUT_MESSAGE, timedOut.getBody().getMessage());
+        var other = handler.handleOther(new IllegalStateException("boom"));
+        assertEquals(500, other.getStatusCode().value(), "非截止时间类异常仍是 500");
+    }
+
+    @Test
+    void retryableBusinessConflictCarriesRetryAfterButOrdinaryConflictDoesNot() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        var retryable = handler.handleApi(new com.uten.imp.application.concurrency.FulfillmentSourceConflictException(
+                "warehouse busy", true, "有人正在处理同一仓库的单据，请稍后再试"));
+        assertEquals(409, retryable.getStatusCode().value());
+        assertEquals("1", retryable.getHeaders().getFirst("Retry-After"));
+        assertEquals("有人正在处理同一仓库的单据，请稍后再试", retryable.getBody().getMessage());
+        var ordinary = handler.handleApi(new ApiException(ErrorCode.CONFLICT, "单据已变化"));
+        assertEquals(null, ordinary.getHeaders().getFirst("Retry-After"));
     }
 
     @Test

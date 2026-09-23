@@ -128,6 +128,48 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     }
 
     /**
+     * ADR-107 评审补充：下达车间预览真实跑一遍下达(建计划、审核、写预留)再整体回滚, 主仓协调锁改取
+     * 共享模式后, 同一主仓两份分析的预览会同时写。两边反复同时预览：都成功、不互相等死或死锁,
+     * 库里一行不留。
+     */
+    @Test void concurrentIssuePreviewsInTheSameMainWarehouseBothSucceedAndLeaveNothing() throws Exception {
+        Tree a=seed("parallel-preview-a");
+        UUID warehouse=a.world().warehouseId();
+        Tree b=seed("parallel-preview-b",warehouse,"1000");
+        AnalysisView beforeA=analyses.detail(a.analysis()),beforeB=analyses.detail(b.analysis());
+        try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            for(int round=0;round<3;round++) {
+                var start=new java.util.concurrent.CyclicBarrier(2);
+                String key="parallel-"+round;
+                var left=workers.submit(()->previewAs(a,beforeA,warehouse,key,start));
+                var right=workers.submit(()->previewAs(b,beforeB,warehouse,key,start));
+                qty("1500",material(left.get(90,java.util.concurrent.TimeUnit.SECONDS),a.parentLine()).requiredQty());
+                qty("1500",material(right.get(90,java.util.concurrent.TimeUnit.SECONDS),b.parentLine()).requiredQty());
+            }
+        }
+        for(var pair:List.of(java.util.Map.entry(a,beforeA),java.util.Map.entry(b,beforeB))) {
+            Tree t=pair.getKey();
+            assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+            assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_plan_links WHERE analysis_id=?",Integer.class,t.analysis()));
+            AnalysisView after=analyses.detail(t.analysis());
+            assertEquals(pair.getValue().version(),after.version());assertEquals(pair.getValue().fingerprint(),after.fingerprint());
+            qty("1000",material(after,t.parentLine()).requiredQty());
+        }
+    }
+
+    private AnalysisView previewAs(Tree t,AnalysisView view,UUID warehouse,String key,java.util.concurrent.CyclicBarrier start) throws Exception {
+        fixture.loginAs(t.world().superAdminUserId());
+        try {
+            start.await(30,java.util.concurrent.TimeUnit.SECONDS);
+            return commands.previewIssuePlans(t.analysis(),new PreviewIssuePlansRequest(view.version(),view.fingerprint(),
+                    "planned-issue-"+t.analysis()+"-"+key,warehouse,BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                    List.of(new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))),List.of()));
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    /**
      * 2026-09-21 用户口径「我修改下面某个层级的父件数量, 它的子层级也要对应地改」：
      * 层级表上任意一行填的数量都按计划产出量带动它自己的子层, 而它自己的需求量
      * 一个字节不动(那是祖先决定的)。预览整体回滚, 库里一行不留。

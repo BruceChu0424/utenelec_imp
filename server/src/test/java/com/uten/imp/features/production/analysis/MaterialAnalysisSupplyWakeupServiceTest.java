@@ -28,12 +28,11 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         var locks = com.uten.imp.support.FulfillmentMutationLockTestSupport.locks();
         var footprints = mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class);
         UUID target = UUID.randomUUID();
-        var needed = new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan(
-                java.util.Set.of(),java.util.Set.of(),java.util.Set.of(),java.util.Set.of(target),"callback-target");
-        when(footprints.forAnalyses(List.of(target))).thenReturn(needed);
+        // ADR-107: the wakeup target was expanded and verified by the transaction prefix; the
+        // callback only checks, in memory, that the analysis is covered - no second discovery.
         doThrow(new com.uten.imp.common.web.ApiException(
                 com.uten.imp.common.web.ErrorCode.CONFLICT,"source changed"))
-                .when(locks).requireCovered(needed);
+                .when(locks).requireAnalysesCovered(List.of(target));
         routeQueries(em,query(List.<Object[]>of(new Object[]{target,UUID.randomUUID()})));
         var service = new MaterialAnalysisSupplyWakeupService(em,analysis,locks,footprints,
                 org.mockito.Mockito.mock(com.uten.imp.features.notice.ChainNoticeService.class));
@@ -41,8 +40,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> service.afterPurchaseReceiptApproved(UUID.randomUUID()));
 
-        verify(footprints).forAnalyses(List.of(target));
-        verify(locks).requireCovered(needed);
+        verify(locks).requireAnalysesCovered(List.of(target));
+        verifyNoInteractions(footprints);
         verifyNoInteractions(analysis);
     }
 

@@ -437,6 +437,9 @@ public class BusinessDataResetService {
         // commit together, before the caller releases the drain gate.
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        // 清空整库是真正的长任务: 事务上限与下面 SET LOCAL statement_timeout 同为 30 分钟,
+        // 不受全局 40 秒默认事务上限约束(ADR-107)。
+        transaction.setTimeout(30 * 60);
         try {
             return transaction.execute(status -> {
                 Connection connection = DataSourceUtils.getConnection(dataSource);

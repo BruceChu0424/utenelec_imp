@@ -11,6 +11,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.lang.reflect.Method;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.LongSupplier;
 
 /**
  * 履约互斥守卫瞬时冲突的统一自动重跑(2026-09-21 用户实测: 品质「批量审批」4 条并行通道同时
@@ -25,12 +26,24 @@ import java.util.concurrent.ThreadLocalRandom;
  * 「新请求使用新事实」的含义, 只是不再要客户端来做。嵌套调用(已有事务)一律不重跑, 交给外层。
  * 结构性冲突(预锁顺序/归属错误)不重跑, 原样 409。</p>
  *
- * <p>重跑上限 {@value #MAX_ATTEMPTS} 次, 间隔按次数递增并带随机抖动, 让同批并行命令错开;
- * 超过上限仍返回原 409, 客户端既有的幂等重试照旧兜底。</p>
+ * <p>重跑上限 {@value #MAX_ATTEMPTS} 次, 间隔按次数递增并带随机抖动, 让同批并行命令错开。
+ * 时长有两道预算(ADR-107):</p>
+ * <ul>
+ *   <li>重跑预算 {@value #RETRY_BUDGET_MILLIS} ms <b>从第一次冲突开始</b>计: 第一次执行(含排队等锁)
+ *       是命令本来就要花的时间, 恰恰是「等锁期间别人先提交、来源变了」这种要重跑的情形, 不能算进重跑的账;
+ *       之后的重跑(含它们各自的等锁)累计超过预算就停, 慢命令不会被放大成几倍时长。</li>
+ *   <li>命令从开始算已过 {@value #LATEST_RETRY_START_MILLIS} ms 不再发起新的一次: 客户端 45 秒放弃等待,
+ *       再跑一遍大概率在它放弃之后才提交, 界面会误报失败而库里已成功。</li>
+ * </ul>
+ * <p>超过上限或预算返回原 409(带 Retry-After)。客户端不会自动重发业务写请求, 用户看到提示后自行重新提交。</p>
  */
 public final class FulfillmentSourceConflictRetryInterceptor implements MethodInterceptor {
 
     public static final int MAX_ATTEMPTS = 5;
+    /** 第一次冲突之后, 重跑(含其等锁)累计可用的时长。 */
+    public static final long RETRY_BUDGET_MILLIS = 10_000;
+    /** 命令开始后超过这个时长不再发起新的一次(客户端 45 秒放弃等待)。 */
+    public static final long LATEST_RETRY_START_MILLIS = 30_000;
     private static final org.slf4j.Logger LOG =
             org.slf4j.LoggerFactory.getLogger(FulfillmentSourceConflictRetryInterceptor.class);
 
@@ -41,13 +54,19 @@ public final class FulfillmentSourceConflictRetryInterceptor implements MethodIn
     }
 
     private final Sleeper sleeper;
+    private final LongSupplier nanoClock;
 
     public FulfillmentSourceConflictRetryInterceptor() {
         this(Thread::sleep);
     }
 
     FulfillmentSourceConflictRetryInterceptor(Sleeper sleeper) {
+        this(sleeper, System::nanoTime);
+    }
+
+    FulfillmentSourceConflictRetryInterceptor(Sleeper sleeper, LongSupplier nanoClock) {
         this.sleeper = sleeper;
+        this.nanoClock = nanoClock;
     }
 
     @Override
@@ -57,14 +76,21 @@ public final class FulfillmentSourceConflictRetryInterceptor implements MethodIn
                 || !startsOwnTransaction(invocation)) {
             return invocation.proceed();
         }
+        long started = nanoClock.getAsLong();
+        long firstConflict = 0;
         for (int attempt = 1; ; attempt++) {
             try {
                 return proxied.invocableClone().proceed();
             } catch (FulfillmentSourceConflictException conflict) {
-                if (!conflict.retryable() || attempt >= MAX_ATTEMPTS) {
+                long now = nanoClock.getAsLong();
+                if (attempt == 1) firstConflict = now;
+                long elapsedMillis = (now - started) / 1_000_000L;
+                long retryingMillis = (now - firstConflict) / 1_000_000L;
+                if (!conflict.retryable() || attempt >= MAX_ATTEMPTS || retryingMillis >= RETRY_BUDGET_MILLIS
+                        || elapsedMillis >= LATEST_RETRY_START_MILLIS) {
                     if (conflict.retryable()) {
-                        LOG.warn("Fulfillment source conflict not resolved after {} attempts: {} ({})",
-                                attempt, describe(invocation), conflict.internalReason());
+                        LOG.warn("Fulfillment source conflict not resolved after {} attempts / {} ms: {} ({})",
+                                attempt, elapsedMillis, describe(invocation), conflict.internalReason());
                     }
                     throw conflict;
                 }

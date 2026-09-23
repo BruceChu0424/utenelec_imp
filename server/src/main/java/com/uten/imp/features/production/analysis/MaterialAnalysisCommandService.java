@@ -1046,8 +1046,9 @@ public class MaterialAnalysisCommandService {
         List<GeneratedPlan> generated = new ArrayList<>();
         // Plan linking and approval change sources, plans and reservations, but
         // do not rewrite this analysis's material/BOM projection. Verify those
-        // two static slices at both batch boundaries; every nested dynamic
-        // discovery and prelock coverage check still runs before each write.
+        // two static slices at both batch boundaries. ADR-107: the outermost
+        // command ran its one discovery and one row-version recheck up front;
+        // each nested command here only checks its declared ids in memory.
         try (var structure = mutationFootprints.openAnalysisStructureScope(analysisId)) {
             for (Map.Entry<UUID, IssueWorkshopPlansRequest.IssuePlanLine> entry
                     : lineByAnalysisLine.entrySet()) {
@@ -1285,6 +1286,8 @@ public class MaterialAnalysisCommandService {
         for (PreviewIssuePlansRequest.TypedOutput typed : request.typedOutputs()) {
             typedOutputs.merge(typed.materialLineId(), typed.qty(), BigDecimal::add);
         }
+        // 整笔回滚的只读预览: 主仓协调锁取共享模式, 预览之间不再互相排队(ADR-107)。
+        mutationLocks.useSharedWarehouseLocksForReadOnlyPreview();
         GenerateResult result = issueWorkshopPlansInternal(
                 analysisId, request.toIssueRequest(), Map.copyOf(typedOutputs));
         if (result.replayed()) {
@@ -1568,7 +1571,9 @@ public class MaterialAnalysisCommandService {
      * 计划生成与合格入库不会形成 action->inventory / inventory->action 反序。
      */
     com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockAnalysisInventoryDimensions(UUID analysisId) {
-        return mutationLocks.acquire(() -> mutationFootprints.forAnalyses(List.of(analysisId)));
+        return mutationLocks.acquire(
+                com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.declaredAnalyses(List.of(analysisId)),
+                () -> mutationFootprints.forAnalyses(List.of(analysisId)));
     }
 
     /**
@@ -1583,7 +1588,8 @@ public class MaterialAnalysisCommandService {
      * 同主仓一旦存在可认领的公共在途, 下达车间与「父件+下层一起下单」的预览必挂。</p>
      */
     com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockAnalysisWithClaimableShared(UUID analysisId) {
-        return mutationLocks.acquire(() -> {
+        return mutationLocks.acquire(
+                com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.declaredAnalyses(List.of(analysisId)), () -> {
             var own = mutationFootprints.forAnalyses(List.of(analysisId));
             var claimable = mutationFootprints.forSharedFutureClaim(analysisId);
             return com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.merge(

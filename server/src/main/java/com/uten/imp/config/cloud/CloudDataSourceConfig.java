@@ -24,6 +24,15 @@ public class CloudDataSourceConfig {
 
     @Value("${uten.database.jit-enabled:false}")
     private boolean jitEnabled;
+    // 与普通连接池同一套服务端截止时间(ADR-107), 见 application.yml 的 uten.database.*。
+    @Value("${uten.database.lock-timeout:10s}")
+    private String lockTimeout = "10s";
+    @Value("${uten.database.statement-timeout:60s}")
+    private String statementTimeout = "60s";
+    @Value("${uten.database.idle-in-transaction-session-timeout:120s}")
+    private String idleInTransactionTimeout = "120s";
+    @Value("${spring.datasource.hikari.leak-detection-threshold:120000}")
+    private long leakDetectionThreshold = 120_000;
 
     @Bean("primaryDataSource")
     public DataSource primaryDataSource(CloudDbProperties props) {
@@ -61,12 +70,25 @@ public class CloudDataSourceConfig {
         ds.setConnectionTimeout(5_000);
         ds.setValidationTimeout(5_000);
         // Match the ordinary application pool; no cluster-wide setting changes.
-        ds.setConnectionInitSql("SET jit = " + jitEnabled);
+        ds.setConnectionInitSql("SET jit = " + jitEnabled
+                + "; SET lock_timeout = '" + duration("uten.database.lock-timeout", lockTimeout) + "'"
+                + "; SET statement_timeout = '" + duration("uten.database.statement-timeout", statementTimeout) + "'"
+                + "; SET idle_in_transaction_session_timeout = '"
+                + duration("uten.database.idle-in-transaction-session-timeout", idleInTransactionTimeout) + "'");
+        ds.setLeakDetectionThreshold(leakDetectionThreshold);
         ds.addDataSourceProperty("connectTimeout", "5");
         ds.addDataSourceProperty("socketTimeout", "5");
         ds.addDataSourceProperty("tcpKeepAlive", "true");
         ds.setReadOnly("replica".equals(pool));
         return ds;
+    }
+
+    /** 只接受「数字 + 可选单位」的时长写法, 配置值不会被当成 SQL 片段拼进初始化语句。 */
+    static String duration(String property, String value) {
+        if (value == null || !value.strip().matches("[0-9]{1,9} *(us|ms|s|min|h|d)?")) {
+            throw new IllegalStateException(property + " must be a PostgreSQL duration such as 10s or 2min");
+        }
+        return value.strip();
     }
 
     private static void requireNonBlank(String property, String value) {

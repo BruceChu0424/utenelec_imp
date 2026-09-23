@@ -1,5 +1,6 @@
 package com.uten.imp.common.concurrency;
 
+import com.uten.imp.application.concurrency.FulfillmentDiscoveryRound;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialSource;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialType;
@@ -14,7 +15,12 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
-/** Directed read-only procurement sources. Never acquires a lock or walks from extra stock keys to other orders. */
+/**
+ * Directed read-only procurement sources. Never acquires a lock or walks from extra stock keys to other orders.
+ *
+ * <p>ADR-107: 行快照只取 {@code (id, xmin)} 行版本; 同一轮发现里订货单、来源明细、单据足迹与目标 BOM
+ * 按参数只读一次(见 {@link FulfillmentDiscoveryRound})。</p>
+ */
 @Component
 @RequiredArgsConstructor
 @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
@@ -35,6 +41,11 @@ public class ProcurementMutationFootprint {
 
     /** Receipt approval/reversal or IQC state/stock-in: only changed source dimensions seed wakeups. */
     public FulfillmentMutationLockPlan receipts(Collection<ReceiptRef> refs) {
+        List<ReceiptRef> snapshot=List.copyOf(refs);
+        return FulfillmentDiscoveryRound.memo("procurement.receipts",snapshot,()->receiptFootprint(snapshot));
+    }
+
+    private FulfillmentMutationLockPlan receiptFootprint(List<ReceiptRef> refs) {
         var own=new Discovery();
         Set<OrderRef> orders=new LinkedHashSet<>();
         Set<ProductionMutationFootprintPort.WarehouseDimension> changed=new LinkedHashSet<>();
@@ -47,7 +58,7 @@ public class ProcurementMutationFootprint {
             }
             for(Object[] row:rows("""
                     SELECT h.id,h.warehouse_id,i.id,i.goods_id,i.color_id,oi.order_id,
-                           md5(to_jsonb(h)::text),md5(to_jsonb(i)::text),inspection.id,md5(to_jsonb(inspection)::text),inspection.status,
+                           h.xmin::text,i.xmin::text,inspection.id,inspection.xmin::text,inspection.status,
                            inspection.pre_stocked_warehouse_id
                     FROM %1$s_receipts h LEFT JOIN %1$s_receipt_items i ON i.receipt_id=h.id AND i.is_deleted=FALSE
                     LEFT JOIN %1$s_order_items oi ON oi.id=i.order_item_id
@@ -66,7 +77,7 @@ public class ProcurementMutationFootprint {
                     changed.add(new ProductionMutationFootprintPort.WarehouseDimension((UUID)row[11],(UUID)row[3],(UUID)row[4]));
             }
             for(Object[] row:rows("""
-                    SELECT id,owner_id,goods_id,color_id,md5(to_jsonb(reservation)::text)
+                    SELECT id,owner_id,goods_id,color_id,reservation.xmin::text
                     FROM stock_reservations reservation WHERE source_doc_id=:id AND source_doc_type=:sourceType
                       AND owner_type='PREPLAN_ANALYSIS' AND is_deleted=FALSE ORDER BY id
                     """,Map.of("id",ref.id(),"sourceType",ref.type()+"_RECEIPT"))) {
@@ -74,7 +85,7 @@ public class ProcurementMutationFootprint {
             }
             for(Object[] row:rows("""
                     SELECT stock.id,stock.inspection_item_id,stock.warehouse_id,stock.goods_id,stock.color_id,
-                           inspection.status,md5(to_jsonb(stock)::text)
+                           inspection.status,stock.xmin::text
                     FROM procurement_iqc_stock_in_batch_items stock
                     JOIN procurement_iqc_stock_in_batches batch ON batch.id=stock.batch_id
                     JOIN procurement_inspection_items inspection ON inspection.id=stock.inspection_item_id
@@ -88,6 +99,22 @@ public class ProcurementMutationFootprint {
             }
         }
         return physical(own,orders,changed);
+    }
+
+    /** 收货单的已知声明: 明细引用的订货单与明细货品维度; 只读一次明细, 不展开依赖图(ADR-107)。 */
+    public FulfillmentMutationLockPlan receiptDeclaration(String type,UUID id) {
+        Set<CommercialSource> sources=new LinkedHashSet<>();
+        Set<InventoryDimension> inventory=new LinkedHashSet<>();
+        CommercialType orderType=type.equals("PURCHASE")?CommercialType.PURCHASE_ORDER:CommercialType.SUBCONTRACT_ORDER;
+        for(Object[] row:rows("""
+                SELECT DISTINCT oi.order_id,i.goods_id,i.color_id
+                FROM %1$s_receipt_items i LEFT JOIN %1$s_order_items oi ON oi.id=i.order_item_id
+                WHERE i.receipt_id=:id AND i.is_deleted=FALSE
+                """.formatted(prefix(type)),Map.of("id",id))) {
+            if(row[0]!=null)sources.add(new CommercialSource(orderType,(UUID)row[0]));
+            if(row[1]!=null)inventory.add(new InventoryDimension((UUID)row[1],(UUID)row[2]));
+        }
+        return FulfillmentMutationLockPlan.declared(sources,inventory,Set.of());
     }
 
     public ReceiptRef stockInReceipt(String type,UUID receiptId,Collection<UUID> passEventIds) {
@@ -115,13 +142,17 @@ public class ProcurementMutationFootprint {
 
     /** Supplier product returns alter the actual return warehouse, while keeping exact original order provenance. */
     public FulfillmentMutationLockPlan productReturn(String type,UUID id) {
+        return FulfillmentDiscoveryRound.memo("procurement.product-return",List.of(type,id),()->productReturnFootprint(type,id));
+    }
+
+    private FulfillmentMutationLockPlan productReturnFootprint(String type,UUID id) {
         String prefix=prefix(type); var own=new Discovery();
         own.parts.add("product-return:"+type+":"+id);
         Set<OrderRef> orders=new LinkedHashSet<>();
         Set<ProductionMutationFootprintPort.WarehouseDimension> changed=new LinkedHashSet<>();
         for(Object[] row:rows("""
                 SELECT h.id,h.warehouse_id,i.id,i.goods_id,i.color_id,oi.order_id,
-                       md5(to_jsonb(h)::text),md5(to_jsonb(i)::text),md5(to_jsonb(ri)::text),md5(to_jsonb(receipt)::text)
+                       h.xmin::text,i.xmin::text,ri.xmin::text,receipt.xmin::text
                 FROM %1$s_returns h LEFT JOIN %1$s_return_items i ON i.return_id=h.id AND i.is_deleted=FALSE
                 LEFT JOIN %1$s_receipt_items ri ON ri.id=i.receipt_item_id
                 LEFT JOIN %1$s_receipts receipt ON receipt.id=ri.receipt_id
@@ -142,7 +173,7 @@ public class ProcurementMutationFootprint {
         var own=new Discovery();Set<OrderRef> orders=new LinkedHashSet<>();
         for(Object[] row:rows("""
                 SELECT waste.id,item.id,item.goods_id,item.color_id,issue.order_item_id,target.order_id,
-                    target.goods_id,target.color_id,md5(to_jsonb(waste)::text),md5(to_jsonb(item)::text),md5(to_jsonb(issue)::text)
+                    target.goods_id,target.color_id,waste.xmin::text,item.xmin::text,issue.xmin::text
                 FROM subcontract_wastes waste JOIN subcontract_waste_items item ON item.waste_id=waste.id AND NOT item.is_deleted
                 JOIN subcontract_material_issue_items issue ON issue.id=item.material_issue_item_id
                 JOIN subcontract_order_items target ON target.id=issue.order_item_id WHERE waste.id=:id ORDER BY item.id
@@ -158,7 +189,7 @@ public class ProcurementMutationFootprint {
         Set<UUID> orderItems=new LinkedHashSet<>(); requestedOrderItems.stream().filter(Objects::nonNull).forEach(orderItems::add);
         List<UUID> original=originalItemIds.stream().filter(Objects::nonNull).distinct().toList();
         var parts=new ArrayList<String>();
-        if(!original.isEmpty())for(Object[] row:rows("SELECT id,order_item_id,md5(to_jsonb(item)::text) FROM "
+        if(!original.isEmpty())for(Object[] row:rows("SELECT id,order_item_id,item.xmin::text FROM "
                 +(materials?"subcontract_material_issue_items":prefix(type)+"_receipt_items")
                 +" item WHERE id IN (:ids) ORDER BY id",Map.of("ids",original))) {
             if(row[1]!=null)orderItems.add((UUID)row[1]);parts.add(Arrays.toString(row));
@@ -190,6 +221,10 @@ public class ProcurementMutationFootprint {
     /** Original and newly requested source items are both discovered before any source is locked. */
     public FulfillmentMutationLockPlan sourceItems(CommercialType type,Collection<UUID> rawIds) {
         var ids=rawIds.stream().filter(Objects::nonNull).distinct().sorted(Comparator.comparing(UUID::toString)).toList();
+        return FulfillmentDiscoveryRound.memo("procurement.source-items",List.of(type,ids),()->sourceItemFootprint(type,ids));
+    }
+
+    private FulfillmentMutationLockPlan sourceItemFootprint(CommercialType type,List<UUID> ids) {
         var own=new Discovery();own.parts.add("source-items:"+type+":"+ids);
         if(ids.isEmpty())return finish(own);
         String table,header,parent,procurementType;
@@ -202,7 +237,7 @@ public class ProcurementMutationFootprint {
         }
         Set<OrderRef> orderRefs=new LinkedHashSet<>();
         for(Object[] row:rows("""
-                SELECT i.id,h.id,h.warehouse_id,i.goods_id,i.color_id,md5(to_jsonb(i)::text),md5(to_jsonb(h)::text)
+                SELECT i.id,h.id,h.warehouse_id,i.goods_id,i.color_id,i.xmin::text,h.xmin::text
                 FROM %s i JOIN %s h ON h.id=i.%s WHERE i.id IN (:ids) ORDER BY i.id
                 """.formatted(table,header,parent),Map.of("ids",ids))) {
             own.row("requested-source",row);own.source(type,(UUID)row[1]);own.warehouse((UUID)row[2]);
@@ -210,7 +245,7 @@ public class ProcurementMutationFootprint {
             if(parent.equals("order_id"))orderRefs.add(new OrderRef(procurementType,(UUID)row[1]));
         }
         if(!parent.equals("order_id"))for(Object[] row:rows("""
-                SELECT allocation.id,action.analysis_id,md5(to_jsonb(allocation)::text),md5(to_jsonb(action)::text)
+                SELECT allocation.id,action.analysis_id,allocation.xmin::text,action.xmin::text
                 FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id
                 WHERE allocation.external_item_id IN (:ids) AND action.route=:route ORDER BY allocation.id
                 """,Map.of("ids",ids,"route",procurementType.equals("PURCHASE")?"BUY":"SUBCONTRACT"))) {
@@ -221,6 +256,11 @@ public class ProcurementMutationFootprint {
     }
 
     private FulfillmentMutationLockPlan materialDocument(UUID id,boolean returning) {
+        return FulfillmentDiscoveryRound.memo("procurement.material-document",List.of(id,returning),
+                ()->materialDocumentFootprint(id,returning));
+    }
+
+    private FulfillmentMutationLockPlan materialDocumentFootprint(UUID id,boolean returning) {
         var own=new Discovery(); own.parts.add("material:"+returning+":"+id);
         Set<OrderRef> orders=new LinkedHashSet<>();
         Set<ProductionMutationFootprintPort.WarehouseDimension> changed=new LinkedHashSet<>();
@@ -231,7 +271,7 @@ public class ProcurementMutationFootprint {
         String orderItem=returning?"COALESCE(i.order_item_id,original.order_item_id)":"i.order_item_id";
         for(Object[] row:rows("""
                 SELECT h.id,h.warehouse_id,i.id,i.goods_id,i.color_id,oi.order_id,
-                       md5(to_jsonb(h)::text),md5(to_jsonb(i)::text)
+                       h.xmin::text,i.xmin::text
                 FROM %s h LEFT JOIN %s i ON i.%s=h.id AND i.is_deleted=FALSE
                 %s LEFT JOIN subcontract_order_items oi ON oi.id=%s
                 WHERE h.id=:id ORDER BY i.id
@@ -244,7 +284,7 @@ public class ProcurementMutationFootprint {
     }
 
     public FulfillmentMutationLockPlan iqcCase(UUID caseId) {
-        List<Object[]> rows=rows("SELECT receipt_type,receipt_id,inspection_item_id,md5(to_jsonb(c)::text) FROM procurement_iqc_rejection_cases c WHERE id=:id",Map.of("id",caseId));
+        List<Object[]> rows=rows("SELECT receipt_type,receipt_id,inspection_item_id,c.xmin::text FROM procurement_iqc_rejection_cases c WHERE id=:id",Map.of("id",caseId));
         if(rows.isEmpty())return orders(List.of());
         Object[] row=rows.getFirst();
         var receipt=receipts(List.of(new ReceiptRef((String)row[0],(UUID)row[1],Set.of((UUID)row[2]))));
@@ -270,9 +310,13 @@ public class ProcurementMutationFootprint {
     }
 
     public FulfillmentMutationLockPlan orders(Collection<OrderRef> orders) {
-        var result=new Discovery();
         List<OrderRef> requested=orders.stream().filter(Objects::nonNull).distinct()
                 .sorted(Comparator.comparing(OrderRef::type).thenComparing(ref->ref.id().toString())).toList();
+        return FulfillmentDiscoveryRound.memo("procurement.orders",requested,()->orderFootprint(requested));
+    }
+
+    private FulfillmentMutationLockPlan orderFootprint(List<OrderRef> requested) {
+        var result=new Discovery();
         result.parts.add("orders:"+requested);
         for(String type:List.of("PURCHASE","SUBCONTRACT")) {
             List<UUID> ids=requested.stream().filter(ref->type.equals(ref.type())).map(OrderRef::id).toList();
@@ -292,7 +336,7 @@ public class ProcurementMutationFootprint {
         Set<UUID> itemIds=new LinkedHashSet<>(),sourceIds=new LinkedHashSet<>(),goodsIds=new LinkedHashSet<>();
         for(Object[] row:rows("""
                 SELECT h.id,h.warehouse_id,i.id,i.goods_id,i.color_id,i.%2$s,
-                       md5(to_jsonb(h)::text),md5(to_jsonb(i)::text)
+                       h.xmin::text,i.xmin::text
                 FROM %1$s_orders h LEFT JOIN %1$s_order_items i ON i.order_id=h.id AND i.is_deleted=FALSE
                 WHERE h.id IN (:ids) ORDER BY h.id,i.id
                 """.formatted(prefix,sourceColumn),Map.of("ids",ids))) {
@@ -304,7 +348,7 @@ public class ProcurementMutationFootprint {
         }
         if(itemIds.isEmpty())return;
         for(Object[] row:rows("""
-                SELECT s.id,s.%2$s,md5(to_jsonb(s)::text)
+                SELECT s.id,s.%2$s,s.xmin::text
                 FROM %1$s_order_item_sources s WHERE s.order_item_id IN (:ids) ORDER BY s.id
                 """.formatted(prefix,sourceColumn),Map.of("ids",itemIds))) {
             result.row("source-allocation",row); sourceIds.add((UUID)row[1]); // zero anchors remain restorable sources
@@ -312,7 +356,7 @@ public class ProcurementMutationFootprint {
         if(!sourceIds.isEmpty()) {
             for(Object[] row:rows("""
                     SELECT item.id,h.id,h.warehouse_id,item.goods_id,item.color_id,
-                           md5(to_jsonb(item)::text),md5(to_jsonb(h)::text)
+                           item.xmin::text,h.xmin::text
                     FROM %1$s_%2$s_items item JOIN %1$s_%2$ss h ON h.id=item.%2$s_id
                     WHERE item.id IN (:ids) ORDER BY item.id
                     """.formatted(prefix,sourceType),Map.of("ids",sourceIds))) {
@@ -320,7 +364,7 @@ public class ProcurementMutationFootprint {
                 result.inventory((UUID)row[3],(UUID)row[4]);
             }
             for(Object[] row:rows("""
-                    SELECT allocation.id,action.analysis_id,md5(to_jsonb(allocation)::text),md5(to_jsonb(action)::text)
+                    SELECT allocation.id,action.analysis_id,allocation.xmin::text,action.xmin::text
                     FROM preplan_supply_action_allocations allocation
                     JOIN preplan_supply_actions action ON action.id=allocation.action_id
                     WHERE allocation.external_item_id IN (:ids) AND action.route=:route ORDER BY allocation.id
@@ -338,7 +382,7 @@ public class ProcurementMutationFootprint {
                     WHERE peg.supply_type=:supplyType AND peg.supply_item_id IN (:ids) AND peg.status<>'REVERSED'
                 )
                 SELECT DISTINCT demand.id,demand.goods_id,demand.color_id,demand.plan_id,plan.material_analysis_id,
-                       md5(to_jsonb(demand)::text)
+                       demand.xmin::text
                 FROM affected JOIN production_material_demands demand
                   ON demand.execution_segment_id=affected.execution_segment_id OR demand.id=affected.id
                 JOIN production_plans plan ON plan.id=demand.plan_id
@@ -350,7 +394,7 @@ public class ProcurementMutationFootprint {
         addPlanSales(result,planIds);
         if(type.equals("SUBCONTRACT")) {
             for(Object[] row:rows("""
-                    SELECT source.id,source.analysis_id,analysis.warehouse_id,md5(to_jsonb(source)::text)
+                    SELECT source.id,source.analysis_id,analysis.warehouse_id,source.xmin::text
                     FROM production_material_analysis_items source JOIN production_material_analyses analysis ON analysis.id=source.analysis_id
                     JOIN subcontract_order_items item ON source.source_ref='SC-ORDER:'||item.id::text
                     WHERE item.order_id IN(:ids) AND source.source_type='SUBCONTRACT_PREPARATION'
@@ -359,7 +403,7 @@ public class ProcurementMutationFootprint {
                     """,Map.of("ids",ids))){result.row("direct-subcontract-preparation",row);result.analysis((UUID)row[1]);result.warehouse((UUID)row[2]);}
             for(Object[] row:rows("""
                     SELECT pi.id,pi.goods_id,pi.color_id,pi.preparation_analysis_id,
-                           pi.preparation_warehouse_id,md5(to_jsonb(pi)::text)
+                           pi.preparation_warehouse_id,pi.xmin::text
                     FROM subcontract_material_plan_items pi JOIN subcontract_material_plans plan ON plan.id=pi.plan_id
                     WHERE plan.order_id IN (:ids) AND pi.is_deleted=FALSE ORDER BY pi.id
                     """,Map.of("ids",ids))) {
@@ -375,7 +419,7 @@ public class ProcurementMutationFootprint {
     private void addPlanSales(Discovery result,Set<UUID> planIds) {
         if(planIds.isEmpty())return;
         for(Object[] row:rows("""
-                SELECT item.id,direct.order_id,link.id,linked.order_id,md5(to_jsonb(item)::text),md5(to_jsonb(link)::text)
+                SELECT item.id,direct.order_id,link.id,linked.order_id,item.xmin::text,link.xmin::text
                 FROM production_plan_items item
                 LEFT JOIN sales_order_items direct ON direct.id=item.sales_order_item_id
                 LEFT JOIN plan_order_item_links link ON link.plan_item_id=item.id AND link.is_deleted=FALSE
@@ -389,39 +433,50 @@ public class ProcurementMutationFootprint {
 
     private void addTargetBom(Discovery result,Set<UUID> goodsIds) {
         if(goodsIds.isEmpty())return;
-        for(Object[] row:rows("""
+        List<UUID> roots=goodsIds.stream().sorted(Comparator.comparing(UUID::toString)).toList();
+        for(Object[] row:FulfillmentDiscoveryRound.memo("procurement.target-bom",roots,()->List.copyOf(readTargetBom(roots)))) {
+            result.row("target-bom",row); result.inventory((UUID)row[1],(UUID)row[2]);
+        }
+    }
+
+    private List<Object[]> readTargetBom(List<UUID> goodsIds) {
+        return rows("""
                 WITH RECURSIVE tree AS (
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
-                           ARRAY[bom.goods_id,bom.component_goods_id] AS path,1 AS depth,md5(to_jsonb(bom)::text) AS snapshot
+                           ARRAY[bom.goods_id,bom.component_goods_id] AS path,1 AS depth,bom.xmin::text AS snapshot
                     FROM goods_bom_items bom JOIN goods ON goods.id=bom.component_goods_id
                     WHERE bom.goods_id IN (:ids) AND bom.is_deleted=FALSE AND goods.is_deleted=FALSE
                     UNION ALL
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),
-                           tree.path||bom.component_goods_id,tree.depth+1,md5(to_jsonb(bom)::text)
+                           tree.path||bom.component_goods_id,tree.depth+1,bom.xmin::text
                     FROM tree JOIN goods_bom_items bom ON bom.goods_id=tree.component_goods_id
                     JOIN goods ON goods.id=bom.component_goods_id
                     WHERE tree.depth<10 AND NOT bom.component_goods_id=ANY(tree.path)
                       AND bom.is_deleted=FALSE AND goods.is_deleted=FALSE
                 ) SELECT DISTINCT id,component_goods_id,color_id,snapshot FROM tree ORDER BY id,component_goods_id,color_id
-                """,Map.of("ids",goodsIds))) {
-            result.row("target-bom",row); result.inventory((UUID)row[1],(UUID)row[2]);
-        }
+                """,Map.of("ids",goodsIds));
     }
 
     private FulfillmentMutationLockPlan finish(Discovery result) {
-        if(!result.warehouseLeaves.isEmpty())for(Object[] row:rows("""
-                WITH RECURSIVE ancestry AS (
-                    SELECT id,parent_id,ARRAY[id] AS path FROM warehouses WHERE id IN (:ids) AND is_deleted=FALSE
-                    UNION ALL SELECT w.id,w.parent_id,child.path||w.id FROM ancestry child
-                    JOIN warehouses w ON w.id=child.parent_id AND w.is_deleted=FALSE WHERE NOT w.id=ANY(child.path)
-                ) SELECT DISTINCT id,parent_id FROM ancestry ORDER BY id
-                """,Map.of("ids",result.warehouseLeaves))) {
+        List<UUID> leaves=result.warehouseLeaves.stream().sorted(Comparator.comparing(UUID::toString)).toList();
+        if(!leaves.isEmpty())for(Object[] row:FulfillmentDiscoveryRound.memo("procurement.warehouse-path",leaves,
+                ()->List.copyOf(readWarehousePath(leaves)))) {
             result.row("warehouse-path",row); if(row[1]==null)result.warehouses.add((UUID)row[0]);
         }
         var productionPlan=production.forAnalyses(result.analyses);
         result.parts.add("production:"+productionPlan.fingerprint());
         return FulfillmentMutationLockPlan.merge(CanonicalFingerprint.sha256(result.parts),List.of(productionPlan,
                 new FulfillmentMutationLockPlan(result.sources,result.inventory,result.warehouses,result.analyses,"procurement")));
+    }
+
+    private List<Object[]> readWarehousePath(List<UUID> leaves) {
+        return rows("""
+                WITH RECURSIVE ancestry AS (
+                    SELECT id,parent_id,ARRAY[id] AS path FROM warehouses WHERE id IN (:ids) AND is_deleted=FALSE
+                    UNION ALL SELECT w.id,w.parent_id,child.path||w.id FROM ancestry child
+                    JOIN warehouses w ON w.id=child.parent_id AND w.is_deleted=FALSE WHERE NOT w.id=ANY(child.path)
+                ) SELECT DISTINCT id,parent_id FROM ancestry ORDER BY id
+                """,Map.of("ids",leaves));
     }
 
     private List<Object[]> rows(String sql,Map<String,?> parameters) {

@@ -335,11 +335,14 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         String planFootprint=source("features/production/plan/ProductionPlanMutationFootprintService.java");
 
         assertThat(commands).contains("lockAnalysisInventoryDimensions(analysisId);");
-        assertThat(commands).contains("mutationLocks.acquire(() -> mutationFootprints.forAnalyses(List.of(analysisId)))");
+        // ADR-107: the analysis prefix still discovers forAnalyses on the first acquire; nested calls
+        // only check the declared analysis in memory.
+        assertThat(commands).contains("FulfillmentMutationLockPlan.declaredAnalyses(List.of(analysisId)),\n"
+                + "                () -> mutationFootprints.forAnalyses(List.of(analysisId)))");
         assertThat(analysisFootprint).contains("FROM stock_reservations reservation");
         assertThat(analysisFootprint.replaceAll("\\s+", "")).contains("reservation.owner_type='PREPLAN_ANALYSIS'", "reservation.status=0");
         assertThat(plans).contains("mutationFootprint.lockPlan(id, requested);");
-        assertThat(planFootprint.indexOf("locks.acquire(() -> discoverPlans(ids,lines))"))
+        assertThat(planFootprint.indexOf("locks.acquire(declared,() -> discoverPlans(ids,lines))"))
                 .isGreaterThan(0).isLessThan(planFootprint.indexOf("SELECT id FROM production_plans WHERE id IN (:ids) ORDER BY id FOR UPDATE"));
         assertThat(planFootprint).contains("production.forAnalyses(analyses)");
 

@@ -111,6 +111,10 @@ class FixtureSchemaDriftGuardPostgresTest {
             "financial_unsupported_fixture",
             // 货品删除守卫的外键引用方桩（迁移目录里没有图片引用表）。
             "goods_image_references",
+            // ADR-107 行版本语义探针(ProductionFootprintRowVersionPostgresTest)与
+            // BaseEntity 新建判定探针实体(BaseEntityPersistablePostgresTest), 都不是业务表。
+            "version_probe",
+            "persistable_probe",
             // BusinessIdentifierRegistryMigrationContractTest 里对迁移 SQL 做
             // contains 断言时，字面量拼接出的伪表名（不是真的建表语句）。
             "upper");

@@ -22,7 +22,8 @@ import org.springframework.jdbc.datasource.DelegatingDataSource;
 final class ProductionJdbcMeasurement {
     private static final ThreadLocal<Sample> ACTIVE = new ThreadLocal<>();
     private static final Map<String, QueryMetadata> METADATA = new java.util.concurrent.ConcurrentHashMap<>();
-    private record QueryMetadata(String fingerprint, String label, boolean explainable) {}
+    private record QueryMetadata(String fingerprint, String label, boolean explainable,
+                                 boolean md5, boolean setConfig) {}
 
     static final class Sample {
         long jdbcCalls;
@@ -35,6 +36,9 @@ final class ProductionJdbcMeasurement {
         long rollbackNanos;
         long instrumentationNanos;
         int maxPreparedParameterIndex;
+        /** 预锁复核口径: 整行哈希快照语句与会话变量绑定语句各发了几条(ADR-107 前后对比)。 */
+        long md5Statements;
+        long setConfigStatements;
         final Map<String, Long> fingerprints = new LinkedHashMap<>();
         final Map<String, Long> nanosByFingerprint = new LinkedHashMap<>();
         final Map<String, Long> maxNanosByFingerprint = new LinkedHashMap<>();
@@ -55,6 +59,8 @@ final class ProductionJdbcMeasurement {
             result.put("instrumentationMillis", instrumentationNanos / 1_000_000.0);
             result.put("sqlAffectedRows", affectedRowsByFingerprint);
             result.put("sqlZeroDmlCalls", zeroDmlCallsByFingerprint);
+            result.put("md5Statements", md5Statements);
+            result.put("setConfigStatements", setConfigStatements);
             return result;
         }
     }
@@ -83,7 +89,7 @@ final class ProductionJdbcMeasurement {
                 || normalized.startsWith("with analysis_headers as materialized")
                 || normalized.startsWith("with recursive roots(") && normalized.contains("from goods_bom_items edge")
                 || normalized.startsWith("with recursive roots as") && (normalized.contains("from expansion") || normalized.contains("from parents"))
-                || normalized.contains("select material.id,material.goods_id,material.color_id,md5(")
+                || normalized.contains("select material.id,material.goods_id,material.color_id,material.xmin")
                 || normalized.startsWith("select") && normalized.contains("from production_material_analyses analysis")
                 && (normalized.startsWith("select count(*)") || normalized.startsWith("select analysis.id"))
                 && !normalized.contains("for update");
@@ -96,7 +102,24 @@ final class ProductionJdbcMeasurement {
         return sample;
     }
 
-    static void end() { ACTIVE.remove(); }
+    /** 结束当前采样, 并打一行摘要(只含计数与耗时, 不含 SQL 与参数), 供前后对比收集。 */
+    static void end() {
+        Sample sample = ACTIVE.get();
+        ACTIVE.remove();
+        if (sample == null) return;
+        System.out.println("JDBC-MEASURE " + caller() + " statements=" + sample.logicalStatements
+                + " md5=" + sample.md5Statements + " setConfig=" + sample.setConfigStatements
+                + " commits=" + sample.commits + " jdbcMillis=" + Math.round(sample.jdbcNanos / 1_000_000.0)
+                + " commitMillis=" + Math.round(sample.commitNanos / 1_000_000.0));
+    }
+
+    private static String caller() {
+        return StackWalker.getInstance().walk(frames -> frames
+                .filter(frame -> frame.getClassName().endsWith("Test"))
+                .map(frame -> frame.getClassName().substring(frame.getClassName().lastIndexOf('.') + 1)
+                        + "#" + frame.getMethodName())
+                .findFirst().orElse("unknown"));
+    }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class Configuration {
@@ -187,6 +210,8 @@ final class ProductionJdbcMeasurement {
                     : args != null && args.length > 0 && args[0] instanceof String text ? text : "statement-batch";
             QueryMetadata current = metadata[0] == null ? metadata(sql) : metadata[0];
             String fingerprint = current.fingerprint();
+            if (current.md5()) sample.md5Statements += batch ? queued[0] : 1;
+            if (current.setConfig()) sample.setConfigStatements += batch ? queued[0] : 1;
             sample.fingerprints.merge(fingerprint, 1L, Long::sum);
             sample.labelsByFingerprint.putIfAbsent(fingerprint, current.label());
             if (explainable) sample.explainCandidates.putIfAbsent(fingerprint,
@@ -219,7 +244,9 @@ final class ProductionJdbcMeasurement {
         String normalized = sql.replaceAll("\\s+", " ").trim();
         String fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(normalized.getBytes(StandardCharsets.UTF_8))).substring(0, 16);
-        var created = new QueryMetadata(fingerprint, queryLabel(normalized), explainCandidate(normalized));
+        String lower = normalized.toLowerCase(java.util.Locale.ROOT);
+        var created = new QueryMetadata(fingerprint, queryLabel(normalized), explainCandidate(normalized),
+                lower.contains("md5("), lower.contains("set_config("));
         // Test instrumentation only: bounded SQL-shape metadata, never values,
         // results, identities or transaction state. Bindings stay sample-local.
         if (METADATA.size() < 2048) METADATA.putIfAbsent(sql, created);

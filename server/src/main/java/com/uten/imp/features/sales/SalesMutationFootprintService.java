@@ -71,7 +71,12 @@ public class SalesMutationFootprintService {
     private FulfillmentMutationLocks.Guard begin(Document kind, UUID id, Collection<RequestedLine> requested, Collection<UUID> orderItems) {
         List<RequestedLine> proposed = requested == null ? List.of() : List.copyOf(requested);
         List<UUID> selected = orderItems == null ? List.of() : List.copyOf(orderItems);
-        var guard = locks.acquire(() -> discover(kind, id, proposed, selected));
+        // ADR-107: 嵌套在已持有预锁的命令里时, 手里已知的订单与请求维度只在内存里核对覆盖。
+        var declaredInventory = new LinkedHashSet<InventoryDimension>();
+        proposed.forEach(line -> add(declaredInventory, line.goodsId(), line.colorId()));
+        var declared = FulfillmentMutationLockPlan.declared(kind == Document.ORDER && id != null
+                ? Set.of(new CommercialSource(CommercialType.SALES_ORDER, id)) : Set.of(), declaredInventory, Set.of());
+        var guard = locks.acquire(declared, () -> discover(kind, id, proposed, selected));
         // Physical document heads are execution objects: never put them ahead of S/I.
         if (id != null && kind != Document.ORDER) {
             List<?> found = em.createNativeQuery("SELECT id FROM " + kind.header + " WHERE id=:id FOR UPDATE")
@@ -101,7 +106,7 @@ public class SalesMutationFootprintService {
             String shipmentColumn = kind==Document.RETURN ? "item.out_item_id" : "CAST(NULL AS uuid)";
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
                     "SELECT document.id,item.id,item.goods_id,item.color_id," + orderColumn + ","
-                    + shipmentColumn + ",md5(to_jsonb(document)::text),md5(to_jsonb(item)::text) FROM "
+                    + shipmentColumn + ",document.xmin::text,item.xmin::text FROM "
                     + kind.header + " document LEFT JOIN " + kind.items + " item ON item." + kind.parent
                     + "=document.id AND item.is_deleted=FALSE WHERE document.id=:id ORDER BY item.id")
                     .setParameter("id",id))) {
@@ -114,7 +119,7 @@ public class SalesMutationFootprintService {
         if (!shipmentItems.isEmpty()) {
             List<Object[]> shipmentRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.order_item_id,item.goods_id,item.color_id,
-                           md5(to_jsonb(item)::text),md5(to_jsonb(shipment)::text)
+                           item.xmin::text,shipment.xmin::text
                     FROM sales_shipment_items item JOIN sales_shipments shipment ON shipment.id=item.shipment_id
                     WHERE item.id IN (:ids) ORDER BY item.id
                     """).setParameter("ids",sorted(shipmentItems)));
@@ -130,7 +135,7 @@ public class SalesMutationFootprintService {
         if (!orderItems.isEmpty()) {
             List<Object[]> orderRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.order_id,item.goods_id,item.color_id,
-                           md5(to_jsonb(item)::text),md5(to_jsonb(document)::text)
+                           item.xmin::text,document.xmin::text
                     FROM sales_order_items item JOIN sales_orders document ON document.id=item.order_id
                     WHERE item.id IN (:ids) ORDER BY item.id
                     """).setParameter("ids",sorted(orderItems)));

@@ -1,40 +1,6 @@
 # 手写 fixture 相对真实迁移 schema 的已知缺列债务（文件#表.列）。
 # 只缩不涨：迁移加列后 fixture 未跟、或已补齐的列回退，都会在这里之外新增条目并让守卫红。
 # 重新生成：UTEN_RUN_DB_TESTS=true UTEN_REGEN_FIXTURE_BASELINE=true
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.actor_account
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.actor_id
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.after
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.app_build
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.app_version
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.client_event_at
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.client_event_id
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.created_at
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_browser
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_capture_status
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_form_factor
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_installation_id
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_is_physical
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_locale
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_manufacturer
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_model
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_name
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_os_version
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_platform
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_profile_hash
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_time_zone
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.device_time_zone_offset_minutes
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.duration_ms
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.event_category
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.http_method
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.http_path
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.id
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.ip
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.request_id
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.result
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.risk_level
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.session_id
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.status_code
-com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.user_agent
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#production_material_analyses.analyzed_at
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#production_material_analyses.cancellation_reason
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#production_material_analyses.cancelled_at

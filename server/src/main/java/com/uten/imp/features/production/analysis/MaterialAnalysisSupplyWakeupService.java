@@ -205,8 +205,8 @@ public class MaterialAnalysisSupplyWakeupService {
 
     private void refreshTargets(List<AnalysisTarget> targets) {
         if (!targets.isEmpty()) {
-            mutationLocks.requireCovered(mutationFootprints.forAnalyses(
-                    targets.stream().map(AnalysisTarget::analysisId).toList()));
+            // 被唤醒的分析在本事务预锁时已整体展开并复核过, 这里只在内存里确认覆盖(ADR-107)。
+            mutationLocks.requireAnalysesCovered(targets.stream().map(AnalysisTarget::analysisId).toList());
         }
         for (AnalysisTarget target : targets) {
             materialAnalysisService.refreshLocked(target.analysisId());

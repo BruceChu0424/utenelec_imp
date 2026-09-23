@@ -19,6 +19,7 @@ public final class FulfillmentMutationLockTestSupport {
     public static FulfillmentMutationLocks locks() {
         var locks = mock(FulfillmentMutationLocks.class);
         when(locks.acquire(any())).thenReturn(mock(FulfillmentMutationLocks.Guard.class));
+        when(locks.acquire(any(), any())).thenReturn(mock(FulfillmentMutationLocks.Guard.class));
         return locks;
     }
 

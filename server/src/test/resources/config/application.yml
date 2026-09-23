@@ -1,0 +1,6 @@
+# 只在测试类路径上生效(打包的应用不含本文件), 优先级高于 src/main/resources/application.yml。
+uten:
+  concurrency:
+    # ADR-107: 全部 Spring Boot 真库用例里, 嵌套命令也重跑自己的来源发现并要求落在最外层预锁内,
+    # 让全链路用例持续证明「嵌套足迹被预锁覆盖」。量语句数的用例在自己的 properties 里关掉, 量的是生产配置。
+    verify-nested-footprint: true

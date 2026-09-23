@@ -3,6 +3,7 @@ package com.uten.imp.features.reporting;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -48,6 +49,9 @@ public class MaterializedViewRefreshScheduler {
     private static final int MAX_ERROR_LENGTH = 2000;
 
     private static final String ACQUIRE_LOCK_SQL = "SELECT pg_try_advisory_lock(?)";
+    /** 只在本次刷新的事务内放宽单条语句上限(应用连接默认 60 秒, ADR-107)。 */
+    private static final String RELAX_STATEMENT_TIMEOUT_SQL = "SELECT set_config('statement_timeout', ?, true)";
+    static final String DEFAULT_LONG_WORK_STATEMENT_TIMEOUT = "15min";
     private static final String RELEASE_LOCK_SQL = "SELECT pg_advisory_unlock(?)";
     private static final String MARK_RUNNING_SQL = """
             INSERT INTO report_materialized_view_refresh_state
@@ -81,16 +85,29 @@ public class MaterializedViewRefreshScheduler {
     private final DataSource dataSource;
     private final Clock clock;
     private final String instanceId;
+    private final String longWorkStatementTimeout;
 
     @Autowired
+    public MaterializedViewRefreshScheduler(DataSource dataSource,
+            @Value("${uten.database.long-work-statement-timeout:" + DEFAULT_LONG_WORK_STATEMENT_TIMEOUT + "}")
+            String longWorkStatementTimeout) {
+        this(dataSource, Clock.systemUTC(), resolveInstanceId(), longWorkStatementTimeout);
+    }
+
     public MaterializedViewRefreshScheduler(DataSource dataSource) {
-        this(dataSource, Clock.systemUTC(), resolveInstanceId());
+        this(dataSource, DEFAULT_LONG_WORK_STATEMENT_TIMEOUT);
     }
 
     MaterializedViewRefreshScheduler(DataSource dataSource, Clock clock, String instanceId) {
+        this(dataSource, clock, instanceId, DEFAULT_LONG_WORK_STATEMENT_TIMEOUT);
+    }
+
+    MaterializedViewRefreshScheduler(DataSource dataSource, Clock clock, String instanceId,
+            String longWorkStatementTimeout) {
         this.dataSource = dataSource;
         this.clock = clock;
         this.instanceId = instanceId;
+        this.longWorkStatementTimeout = longWorkStatementTimeout;
     }
 
     @Scheduled(
@@ -134,11 +151,7 @@ public class MaterializedViewRefreshScheduler {
         Instant startedAt = clock.instant();
         try {
             markRunning(connection, viewName);
-            try (Statement statement = connection.createStatement()) {
-                // V625 gives this fixed entry only the required maintenance
-                // authority; the application no longer needs view ownership.
-                statement.execute("SELECT public.refresh_" + viewName + "()");
-            }
+            refreshWithinRelaxedDeadline(connection, viewName);
             long durationMillis = elapsedMillis(startedAt);
             markSuccess(connection, viewName, durationMillis);
             return true;
@@ -147,6 +160,35 @@ public class MaterializedViewRefreshScheduler {
             markFailureSafely(connection, viewName, durationMillis, exception);
             log.error("Failed to refresh materialized view {}", viewName, exception);
             return false;
+        }
+    }
+
+    /**
+     * 大数据量下一次刷新可能超过应用连接默认的单条语句上限, 在它自己的短事务里用
+     * {@code set_config(..., true)} 放宽; 事务结束即恢复, 不会把放宽的设置带回连接池。
+     */
+    private void refreshWithinRelaxedDeadline(Connection connection, String viewName) throws SQLException {
+        connection.setAutoCommit(false);
+        try {
+            try (PreparedStatement relax = connection.prepareStatement(RELAX_STATEMENT_TIMEOUT_SQL)) {
+                relax.setString(1, longWorkStatementTimeout);
+                relax.execute();
+            }
+            try (Statement statement = connection.createStatement()) {
+                // V625 gives this fixed entry only the required maintenance
+                // authority; the application no longer needs view ownership.
+                statement.execute("SELECT public.refresh_" + viewName + "()");
+            }
+            connection.commit();
+        } catch (SQLException | RuntimeException failure) {
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
+        } finally {
+            connection.setAutoCommit(true);
         }
     }
 

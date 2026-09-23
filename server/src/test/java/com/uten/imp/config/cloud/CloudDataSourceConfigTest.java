@@ -52,8 +52,8 @@ class CloudDataSourceConfigTest {
             assertEquals("5", primary.getDataSourceProperties().getProperty("connectTimeout"));
             assertEquals("5", primary.getDataSourceProperties().getProperty("socketTimeout"));
             assertEquals("true", primary.getDataSourceProperties().getProperty("tcpKeepAlive"));
-            assertEquals("SET jit = false", primary.getConnectionInitSql());
-            assertEquals("SET jit = false", replica.getConnectionInitSql());
+            assertEquals("SET jit = false; SET lock_timeout = '10s'; SET statement_timeout = '60s'; SET idle_in_transaction_session_timeout = '120s'", primary.getConnectionInitSql());
+            assertEquals("SET jit = false; SET lock_timeout = '10s'; SET statement_timeout = '60s'; SET idle_in_transaction_session_timeout = '120s'", replica.getConnectionInitSql());
         }
     }
 
@@ -62,9 +62,20 @@ class CloudDataSourceConfigTest {
         org.springframework.test.util.ReflectionTestUtils.setField(config, "jitEnabled", true);
         try (HikariDataSource primary = (HikariDataSource) config.primaryDataSource(configuredProperties());
              HikariDataSource replica = (HikariDataSource) config.replicaDataSource(configuredProperties())) {
-            assertEquals("SET jit = true", primary.getConnectionInitSql());
-            assertEquals("SET jit = true", replica.getConnectionInitSql());
+            assertEquals("SET jit = true; SET lock_timeout = '10s'; SET statement_timeout = '60s'; SET idle_in_transaction_session_timeout = '120s'", primary.getConnectionInitSql());
+            assertEquals("SET jit = true; SET lock_timeout = '10s'; SET statement_timeout = '60s'; SET idle_in_transaction_session_timeout = '120s'", replica.getConnectionInitSql());
         }
+    }
+
+    /** ADR-107: 云端主/副池与普通连接池同一套服务端截止时间, 配置值只能是时长写法。 */
+    @Test
+    void cloudPoolsCarryTheSameServerSideDeadlinesAndRejectNonDurationValues() {
+        try (HikariDataSource primary = (HikariDataSource) config.primaryDataSource(configuredProperties())) {
+            assertEquals(120_000, primary.getLeakDetectionThreshold());
+        }
+        org.springframework.test.util.ReflectionTestUtils.setField(config, "lockTimeout", "5s'; DROP TABLE users; --");
+        assertThrows(IllegalStateException.class, () -> config.primaryDataSource(configuredProperties()));
+        assertEquals("2min", CloudDataSourceConfig.duration("x", " 2min "));
     }
 
     private CloudDbProperties configuredProperties() {

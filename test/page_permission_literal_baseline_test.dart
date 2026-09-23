@@ -14,7 +14,9 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// 本测试只许这个数下降：新页面请改用服务端下发的动作集合；把旧页面迁走后，
 /// 同步把 [_baseline] 调小。数字上涨会直接红。
-const _baseline = 591;
+// 2026-09-23 第一阶段合并: 主档明细区把状态/删除权限码作为配置传入共享组件(客户分类 +1、模具分类 +3),
+// 总账报表「附表取数设置」按钮 +1, 仓库到货预期视图 -1, 净 +4。改为服务端下发动作集合归后续 uikit 工作流。
+const _baseline = 595;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

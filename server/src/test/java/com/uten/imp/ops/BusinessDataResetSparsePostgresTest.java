@@ -29,9 +29,21 @@ class BusinessDataResetSparsePostgresTest {
     private Connection connection;
 
     @BeforeAll
-    static void migrate() {
+    static void migrate() throws SQLException {
         Flyway.configure().dataSource(jdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
+        // V649 起 production_plan_costs 是普通单表, 清单里已没有分区的清空表; 分区路径仍是重置函数的合同。
+        // 在这个一次性测试库里把这张 CLEAR 表换成同名的三列按年分区探针(提交后才有真实的分区文件,
+        // 同一事务新建的表截断时 PostgreSQL 会原地清空、不换文件节点), 继续钉住分区叶子的行为。
+        // 探针先以测试专用名建出再改名顶替, 已在 FixtureSchemaDriftGuardPostgresTest 登记为测试私有关系。
+        try (Connection setup = DriverManager.getConnection(jdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            setup.createStatement().execute("DROP TABLE production_plan_costs");
+            setup.createStatement().execute("CREATE TABLE reset_probe_partitioned_costs (id uuid NOT NULL, bill_date date NOT NULL,"
+                    + " legacy_id integer, PRIMARY KEY (id, bill_date)) PARTITION BY RANGE (bill_date)");
+            setup.createStatement().execute("ALTER TABLE reset_probe_partitioned_costs RENAME TO production_plan_costs");
+            setup.createStatement().execute("CREATE TABLE production_plan_costs_2026 PARTITION OF production_plan_costs"
+                    + " FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')");
+        }
     }
 
     @BeforeEach

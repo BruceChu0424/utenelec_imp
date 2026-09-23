@@ -1,202 +1,354 @@
 package com.uten.imp.migration;
 
-import com.uten.imp.application.port.InventoryOpeningPort.Opening;
-import com.uten.imp.application.port.InventoryOpeningPort.OpeningValue;
-import com.uten.imp.application.port.InventoryValuationPort.EventContext;
-import com.uten.imp.application.port.InventoryValuationPort.PoolKey;
-import com.uten.imp.features.stock.InventoryKey;
-import com.uten.imp.features.stock.InventoryMutationLock;
-import com.uten.imp.features.stock.valuation.InventoryOpeningService;
-import jakarta.persistence.EntityManagerFactory;
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.SharedEntityManagerCreator;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
-import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
+
+import java.sql.Connection;
 import java.sql.DriverManager;
-import java.time.OffsetDateTime;
-import java.util.*;
-import static org.junit.jupiter.api.Assertions.*;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
 
-/** Nonempty forward upgrade, real value evidence, and fail-closed audit DDL. */
-@EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * 真库核对行级审计三清单(ADR-105): 触发器形态逐表等于
+ * {@link AuditTriggerCoverageMigrationContractTest} 的清单, fn_audit 只记变化、忽略易变列、
+ * 遗留导入旁路、账号脱敏, 审计表按月分区且只追加; 升级时历史审计原样搬进分区表。
+ */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AuditTriggerCoveragePostgresTest {
-    private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
-    private static final UUID USER=UUID.randomUUID(),EMPLOYEE=UUID.randomUUID(),WAREHOUSE=UUID.randomUUID(),UNIT=UUID.randomUUID();
+
+    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final UUID ACTOR = UUID.randomUUID();
     private static JdbcTemplate db;
-    private static EntityManagerFactory emf;
-    private static TransactionTemplate transactions;
-    private static InventoryMutationLock mutex;
-    private static InventoryOpeningService openings;
-    private static String migration,oldBusiness,oldAudit,oldValidTriggers;
-    private static OpeningValue oldOpening;
+    private static long historyBefore;
 
-    @BeforeAll static void start() throws Exception {
+    @BeforeAll
+    static void start() {
         DB.start();
-        Flyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
-                .locations("classpath:db/migration").target("529").load().migrate();
-        var source=new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());db=new JdbcTemplate(source);
-        db.update("INSERT INTO units(id,code,name) VALUES(?,?,'piece')",UNIT,"AUDIT-UNIT-"+UNIT);
-        db.update("INSERT INTO warehouses(id,code,name) VALUES(?,?,'audit fixture warehouse')",WAREHOUSE,"AUDIT-WH-"+WAREHOUSE);
-        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',(SELECT id FROM departments WHERE code='WS_ZHUSU' AND NOT is_deleted),DATE '2026-01-01','active','regular')",EMPLOYEE,"AUDIT-EMP-"+EMPLOYEE,"audit source employee");
-        db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status) VALUES(?,?,?,'test-only-unused-password','active')",USER,EMPLOYEE,"audit-source-"+USER);
-        var factory=new LocalContainerEntityManagerFactoryBean();factory.setDataSource(source);
-        factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());factory.setPackagesToScan("com.uten.imp.features.common.taskclaim");
-        Properties properties=new Properties();properties.setProperty("hibernate.hbm2ddl.auto","none");factory.setJpaProperties(properties);factory.afterPropertiesSet();
-        emf=factory.getObject();var em=SharedEntityManagerCreator.createSharedEntityManager(emf);
-        transactions=new TransactionTemplate(new JpaTransactionManager(emf));mutex=new InventoryMutationLock(em);
-        openings=new InventoryOpeningService(new NamedParameterJdbcTemplate(source),mutex);
-        oldOpening=openPending();
-        assertEquals(0,db.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='stock_value_openings' AND target_id=?",Integer.class,oldOpening.eventId().toString()));
-        oldBusiness=db.queryForObject("SELECT to_jsonb(opening)::text FROM stock_value_openings opening WHERE event_id=?",String.class,oldOpening.eventId());
-        oldAudit=auditSnapshot();oldValidTriggers=validTriggerSnapshot();
-        migration=Files.readString(Path.of("src/main/resources/db/migration/V530__refresh_audit_trigger_coverage.sql"));
-        Flyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()).locations("classpath:db/migration").load().migrate();
-    }
-    @AfterAll static void stop(){if(emf!=null)emf.close();DB.stop();}
-
-    @Test void upgradePreservesOldFactsAndAuditAndDoesNotDuplicateValidTriggers(){
-        assertEquals(oldBusiness,db.queryForObject("SELECT to_jsonb(opening)::text FROM stock_value_openings opening WHERE event_id=?",String.class,oldOpening.eventId()));
-        assertEquals(oldAudit,auditSnapshotBeforeUpgrade());
-        assertEquals(0,db.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='stock_value_openings' AND target_id=?",Integer.class,oldOpening.eventId().toString()),"no historical audit backfill");
-        // V590 整表废弃 production_goods_workshop_preferences，其 trg_audit_* 随表删除：
-        // 这是唯一被显式豁免的旧触发器（按名字点名，其它丢失仍然算红）。
-        String expectedSurvivingTriggers=db.queryForObject(
-                "SELECT COALESCE(jsonb_agg(value ORDER BY (value->>'oid')::oid),'[]'::jsonb)::text"
-                        +" FROM jsonb_array_elements(?::jsonb) e"
-                        +" WHERE value->>'name' <> 'trg_audit_production_goods_workshop_preferences'",
-                String.class,oldValidTriggers);
-        assertEquals(expectedSurvivingTriggers,validOldTriggerSnapshot());
-        for(String table:List.of("procurement_order_source_revisions","procurement_order_source_revision_allocations","procurement_order_source_revision_peg_changes",
-                "stock_value_pools","stock_value_events","stock_value_nodes","stock_value_edges","stock_value_jobs","stock_value_tasks","stock_value_node_revisions","stock_value_postings",
-                "stock_value_openings","stock_value_legacy_balance_cases","stock_value_legacy_balance_case_events","stock_value_acquisition_sources","stock_value_position_transfers",
-                "stock_value_production_cost_objects","stock_value_production_cost_inputs","stock_value_production_cost_outputs","stock_value_production_cost_revisions",
-                "stock_value_production_cost_tasks","stock_value_production_cost_shares","stock_value_production_cost_dirty","production_material_movement_links",
-                "procurement_receipt_consideration_parts","procurement_iqc_quality_consideration_parts","procurement_iqc_funding_slices","procurement_iqc_credit_documents",
-                "procurement_iqc_credit_case_allocations","procurement_iqc_credit_slices","procurement_iqc_stock_consideration_parts","procurement_iqc_funding_settlements",
-                "procurement_iqc_consideration_reversals","procurement_iqc_consideration_review_approvals","subcontract_receipt_material_consumptions")){
-            assertEquals(1,db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid=?::regclass AND NOT tgisinternal AND tgname LIKE 'trg_audit%' AND tgtype=29 AND tgenabled IN('O','A') AND tgnargs=0 AND tgqual IS NULL AND tgattr=''::int2vector AND tgfoid IN('public.fn_audit()'::regprocedure,'public.fn_audit_redacted()'::regprocedure)",Integer.class,table),table);
-        }
-        for(String table:List.of("notices","notice_user_states","notice_acknowledgments","notice_blessings","notice_celebration_subjects","business_outbox","attachment_object_outbox","account_flow_monthly_summaries","production_daily_report_commands","production_fqc_release_commands","warehouse_arrival_registration_commands","production_material_analysis_commands","master_code_sequences"))
-            assertEquals(0,db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid=?::regclass AND NOT tgisinternal AND tgname LIKE 'trg_audit%'",Integer.class,table),table);
+        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+                .locations("classpath:db/migration").target("645").load().migrate();
+        db = new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
+        // 升级前的历史: 在线表一行带完整手机号的操作人, 一行未认证登录失败的原始输入;
+        // 旧归档一行三年前的记录。V647 必须原样搬迁并一次性脱敏账号。
+        db.update("""
+                INSERT INTO audit_log(actor_id, actor_account, action, target_type, target_id, result, event_source)
+                VALUES (?, '13800138000', 'update', 'colors', 'history-online', 'success', 'database'),
+                       (NULL, 'Secret#Typed', 'login_failed', 'users', NULL, 'account_not_found', 'business')
+                """, ACTOR);
+        db.update("""
+                INSERT INTO audit_log_archive(id, actor_account, action, target_type, target_id, result,
+                                              event_source, created_at, risk_level, event_category)
+                VALUES (9000000001, '13900139000', 'insert', 'goods', 'history-archived', 'success',
+                        'database', now() - interval '36 months', 'low', 'data_change')
+                """);
+        historyBefore = db.queryForObject(
+                "SELECT (SELECT count(*) FROM audit_log) + (SELECT count(*) FROM audit_log_archive)", Long.class);
+        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+                .locations("classpath:db/migration").load().migrate();
     }
 
-    @Test void realValueWriteKeepsStableEventIdentityAndOriginalActorWithoutAFakeWorkerSession(){
-        OpeningValue value=openPending();
-        var audit=db.queryForMap("SELECT actor_id,\"after\"->>'event_id' event_id,\"after\"->>'observed_recorded_value' amount,jsonb_exists(\"after\",'before_balance') raw_snapshot FROM audit_log WHERE target_type='stock_value_openings' AND target_id=? AND action='insert'",value.eventId().toString());
-        assertNull(audit.get("actor_id"),"there is no authenticated worker session; do not invent an executor");
-        assertEquals(value.eventId().toString(),audit.get("event_id"));assertEquals(0,new BigDecimal(audit.get("amount").toString()).compareTo(new BigDecimal("84")));
-        assertEquals(false,audit.get("raw_snapshot"));
-        assertEquals(USER.toString(),db.queryForObject("SELECT \"after\"->>'actor_user_id' FROM audit_log WHERE target_type='stock_value_events' AND target_id=? AND action='insert'",String.class,value.eventId().toString()));
-        assertEquals(false,db.queryForObject("SELECT jsonb_exists(\"after\",'request_payload') FROM audit_log WHERE target_type='stock_value_events' AND target_id=? AND action='insert'",Boolean.class,value.eventId().toString()));
-        assertEquals(USER,db.queryForObject("SELECT event.actor_user_id FROM stock_value_openings opening JOIN stock_value_events event ON event.id=opening.event_id WHERE opening.event_id=?",UUID.class,value.eventId()));
-        String first=db.queryForObject("SELECT fn_audit_primary_key_identity('stock_value_production_cost_outputs'::regclass,jsonb_build_object('execution_segment_id',?::uuid,'source_node_id',?::uuid,'qty_base',1))",String.class,UUID.fromString("00000000-0000-0000-0000-000000000001"),value.sourceCostNodeId());
-        String second=db.queryForObject("SELECT fn_audit_primary_key_identity('stock_value_production_cost_outputs'::regclass,jsonb_build_object('execution_segment_id',?::uuid,'source_node_id',?::uuid,'qty_base',9))",String.class,UUID.fromString("00000000-0000-0000-0000-000000000001"),value.sourceCostNodeId());
-        assertEquals(first,second);assertTrue(first.contains("execution_segment_id")&&first.contains("source_node_id"));
+    @AfterAll
+    static void stop() {
+        DB.stop();
     }
 
-    @Test void currentSweepRepairsMissingAuditAndReplaysWithoutDuplicateRows() throws Exception {
-        try(var connection=connection();var statement=connection.createStatement()){
-            connection.setAutoCommit(false);
-            try{statement.execute("DROP TRIGGER trg_audit_stock_value_tasks ON stock_value_tasks");statement.execute(migration);statement.execute(migration);
-                try(var rows=statement.executeQuery("SELECT count(*) FROM pg_trigger WHERE tgrelid='stock_value_tasks'::regclass AND tgname LIKE 'trg_audit%' AND tgtype=29 AND tgenabled='A'")){rows.next();assertEquals(1,rows.getInt(1));}
-            }finally{connection.rollback();}
-        }
+    @Test
+    void upgradeMovesHistoryIntoMonthlyPartitionsAndMasksAccounts() {
+        long after = db.queryForObject(
+                "SELECT (SELECT count(*) FROM audit_log WHERE target_id LIKE 'history-%' OR action='login_failed')"
+                        + " + (SELECT count(*) FROM audit_log_archive)", Long.class);
+        assertTrue(after >= 3, "history rows survive the partition conversion");
+        assertTrue(db.queryForObject(
+                "SELECT (SELECT count(*) FROM audit_log) + (SELECT count(*) FROM audit_log_archive)", Long.class)
+                >= historyBefore);
+        assertEquals("*******8000", db.queryForObject(
+                "SELECT actor_account FROM audit_log WHERE target_id='history-online'", String.class));
+        assertNull(db.queryForObject(
+                "SELECT actor_account FROM audit_log WHERE action='login_failed' AND result='account_not_found'",
+                String.class), "an unverified non-number login input is never stored");
+        assertEquals("*******9000", db.queryForObject(
+                "SELECT actor_account FROM audit_log_archive WHERE target_id='history-archived'", String.class));
+        assertEquals("p", db.queryForObject(
+                "SELECT relkind::text FROM pg_class WHERE oid='audit_log'::regclass", String.class));
+        assertEquals("p", db.queryForObject(
+                "SELECT relkind::text FROM pg_class WHERE oid='audit_log_archive'::regclass", String.class));
+        assertEquals(4, db.queryForObject("""
+                SELECT count(*) FROM generate_series(0, 3) offset_month
+                WHERE to_regclass('public.audit_log_p' || to_char(
+                    date_trunc('month', now() AT TIME ZONE 'Asia/Shanghai') + make_interval(months => offset_month),
+                    'YYYYMM')) IS NOT NULL
+                """, Integer.class), "current month and the next three are pre-created");
+        assertEquals(Set.of("audit_log_pk", "idx_audit_log_created", "idx_audit_log_target",
+                        "idx_audit_log_request", "idx_audit_log_session", "idx_audit_log_actor"),
+                Set.copyOf(db.queryForList(
+                        "SELECT indexrelid::regclass::text FROM pg_index WHERE indrelid='audit_log'::regclass",
+                        String.class)), "only the indexes the audit pages actually use");
+        assertEquals(0, db.queryForObject(
+                "SELECT count(*) FROM pg_proc WHERE proname IN ('fn_audit_classify','fn_audit_classify_row','fn_audit_redacted')",
+                Integer.class), "classification is computed once at write time");
     }
 
-    @Test void singlePrimaryKeyIncludeUpdateKeepsTheSameAuditIdentity() throws Exception {
-        assertIncludedQuantityDoesNotChangeAuditIdentity(false);
-    }
+    @Test
+    void catalogMatchesTheThreeListsTableByTable() {
+        Map<String, String> full = AuditTriggerCoverageMigrationContractTest.fullTables();
+        Set<String> redacted = AuditTriggerCoverageMigrationContractTest.redactedFullTables();
+        var scoped = AuditTriggerCoverageMigrationContractTest.scopedTables();
+        Set<String> none = AuditTriggerCoverageMigrationContractTest.noneTables();
+        List<Map<String, Object>> triggers = db.queryForList("""
+                SELECT c.relname, t.tgname, t.tgtype, t.tgqual IS NOT NULL AS has_when, t.tgenabled::text AS enabled,
+                       t.tgnargs, encode(t.tgargs, 'escape') AS args,
+                       (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                          FROM unnest(t.tgattr) WITH ORDINALITY k(attnum, ord)
+                          JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attnum = k.attnum) AS columns
+                FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+                WHERE NOT t.tgisinternal AND t.tgparentid = 0 AND t.tgfoid = 'public.fn_audit()'::regprocedure
+                """);
+        Map<String, List<Map<String, Object>>> byTable = new HashMap<>();
+        triggers.forEach(row -> byTable.computeIfAbsent((String) row.get("relname"), ignored -> new ArrayList<>()).add(row));
 
-    @Test void compoundPrimaryKeyIncludeUpdateKeepsTheSameAuditIdentity() throws Exception {
-        assertIncludedQuantityDoesNotChangeAuditIdentity(true);
-    }
+        Set<String> tables = new TreeSet<>(db.queryForList("""
+                SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+                """, String.class));
+        Set<String> classified = new TreeSet<>(full.keySet());
+        classified.addAll(scoped.keySet());
+        classified.addAll(none);
+        assertEquals(classified, tables, "every live table is in exactly one list");
 
-    private static void assertIncludedQuantityDoesNotChangeAuditIdentity(boolean compound) throws Exception {
-        String table=compound?"audit_compound_pk_include_probe":"audit_single_pk_include_probe";
-        UUID root=UUID.randomUUID();
-        try(var connection=connection();var statement=connection.createStatement()){
-            connection.setAutoCommit(false);
-            try{
-                statement.execute("CREATE TEMP TABLE "+table+"(root_key UUID NOT NULL,slice_no INTEGER NOT NULL,quantity NUMERIC NOT NULL,PRIMARY KEY(root_key"+(compound?",slice_no":"")+") INCLUDE(quantity)) ON COMMIT DROP");
-                statement.execute("CREATE TRIGGER trg_audit_include_probe AFTER INSERT OR UPDATE OR DELETE ON "+table+" FOR EACH ROW EXECUTE FUNCTION public.fn_audit()");
-                try(var rows=statement.executeQuery("SELECT indnkeyatts,indnatts FROM pg_index WHERE indrelid='pg_temp."+table+"'::regclass AND indisprimary")){
-                    assertTrue(rows.next());assertEquals(compound?2:1,rows.getInt(1));assertEquals(compound?3:2,rows.getInt(2));
-                }
-                statement.execute("INSERT INTO "+table+" VALUES('"+root+"',2,1)");
-                statement.execute("UPDATE "+table+" SET quantity=9");
-                statement.execute("DELETE FROM "+table);
-                try(var query=connection.prepareStatement("SELECT action,target_id,\"before\"->>'quantity',\"after\"->>'quantity',CASE WHEN ? THEN target_id::jsonb=jsonb_build_object('root_key',?::uuid,'slice_no',2) ELSE target_id=? END AS expected_identity FROM audit_log WHERE target_type=? ORDER BY id")){
-                    query.setBoolean(1,compound);query.setObject(2,root);query.setString(3,root.toString());query.setString(4,table);
-                    try(var rows=query.executeQuery()){
-                        String identity=null;
-                        for(String action:List.of("insert","update","delete")){
-                            assertTrue(rows.next());assertEquals(action,rows.getString(1));assertTrue(rows.getBoolean(5),"only actual primary-key attributes identify the row");
-                            if(identity==null)identity=rows.getString(2);else assertEquals(identity,rows.getString(2),"changing an INCLUDE value must not split the audit history");
-                            if(action.equals("insert")){assertNull(rows.getString(3));assertEquals("1",rows.getString(4));}
-                            else if(action.equals("update")){assertEquals("1",rows.getString(3));assertEquals("9",rows.getString(4));}
-                            else {assertEquals("9",rows.getString(3));assertNull(rows.getString(4));}
-                        }
-                        assertFalse(rows.next());
-                    }
-                }
-            }finally{connection.rollback();}
-        }
-    }
-
-    @Test void unknownSameNameShapesAndHiddenDuplicateAuditAreRejected() throws Exception {
-        for(String ddl:List.of(
-                "CREATE TRIGGER trg_audit_stock_value_events BEFORE INSERT OR UPDATE OR DELETE ON stock_value_events FOR EACH ROW EXECUTE FUNCTION fn_audit()",
-                "CREATE TRIGGER trg_audit_stock_value_events AFTER INSERT ON stock_value_events FOR EACH ROW EXECUTE FUNCTION fn_audit()",
-                "CREATE TRIGGER trg_audit_stock_value_events AFTER INSERT OR UPDATE OR DELETE ON stock_value_events FOR EACH ROW WHEN(pg_trigger_depth()>=0) EXECUTE FUNCTION fn_audit()",
-                "CREATE TRIGGER trg_audit_stock_value_events AFTER INSERT OR UPDATE OF id OR DELETE ON stock_value_events FOR EACH ROW EXECUTE FUNCTION fn_audit()",
-                "CREATE TRIGGER trg_audit_stock_value_events AFTER INSERT OR UPDATE OR DELETE ON stock_value_events FOR EACH ROW EXECUTE FUNCTION audit_test_noop()",
-                "CREATE TRIGGER trg_audit_stock_value_events AFTER INSERT OR UPDATE OR DELETE ON stock_value_events FOR EACH ROW EXECUTE FUNCTION fn_audit(); ALTER TABLE stock_value_events DISABLE TRIGGER trg_audit_stock_value_events",
-                "CREATE TRIGGER trg_audit_stock_value_events AFTER INSERT OR UPDATE OR DELETE ON stock_value_events FOR EACH ROW EXECUTE FUNCTION fn_audit(); ALTER TABLE stock_value_events ENABLE REPLICA TRIGGER trg_audit_stock_value_events",
-                "CREATE TRIGGER trg_audit_stock_value_events AFTER INSERT OR UPDATE OR DELETE ON stock_value_events FOR EACH ROW EXECUTE FUNCTION fn_audit(); CREATE TRIGGER hidden_duplicate AFTER INSERT OR UPDATE OR DELETE ON stock_value_events FOR EACH ROW EXECUTE FUNCTION fn_audit()")){
-            try(var connection=connection();var statement=connection.createStatement()){
-                connection.setAutoCommit(false);
-                try{statement.execute("CREATE FUNCTION audit_test_noop() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN COALESCE(NEW,OLD); END $$");
-                    statement.execute("DROP TRIGGER trg_audit_stock_value_events ON stock_value_events");statement.execute(ddl);
-                    var failure=assertThrows(PSQLException.class,()->statement.execute(migration),ddl);assertEquals("55000",failure.getSQLState());
-                }finally{connection.rollback();}
+        List<String> problems = new ArrayList<>();
+        for (String table : tables) {
+            List<Map<String, Object>> rows = byTable.getOrDefault(table, List.of());
+            if (none.contains(table)) {
+                if (!rows.isEmpty()) problems.add(table + " is NONE but audited");
+                continue;
+            }
+            if (full.containsKey(table)) {
+                String args = full.get(table) + "\\000" + (redacted.contains(table) ? "redacted" : "plain") + "\\000";
+                boolean rowTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 4 | 8)
+                        && !(Boolean) row.get("has_when") && args.equals(row.get("args")) && "A".equals(row.get("enabled")));
+                boolean updateTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 16)
+                        && (Boolean) row.get("has_when") && row.get("columns") == null && args.equals(row.get("args"))
+                        && "A".equals(row.get("enabled")));
+                if (rows.size() != 2 || !rowTrigger || !updateTrigger) problems.add(table + " FULL shape " + rows);
+                continue;
+            }
+            var policy = scoped.get(table);
+            String columns = String.join(",", policy.columns());
+            boolean updateTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 16)
+                    && (Boolean) row.get("has_when") && columns.equals(row.get("columns")));
+            boolean rowTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 4 | 8));
+            if (!updateTrigger || rowTrigger != policy.insertDelete() || rows.size() != (policy.insertDelete() ? 2 : 1)) {
+                problems.add(table + " COLUMN_SCOPED shape " + rows);
             }
         }
-        try(var connection=connection();var statement=connection.createStatement()){
+        assertEquals(List.of(), problems);
+    }
+
+    @Test
+    void updatesStoreOnlyChangedKeysAndSkipNoOpOrVolatileOnlyChanges() throws SQLException {
+        UUID color = UUID.randomUUID();
+        try (Connection connection = connection()) {
             connection.setAutoCommit(false);
-            try{statement.execute("CREATE FUNCTION audit_test_noop() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN COALESCE(NEW,OLD); END $$");
-                statement.execute("DROP TRIGGER trg_audit_procurement_order_source_revision_allocations ON procurement_order_source_revision_allocations; CREATE TRIGGER trg_audit_procurement_order_source_revision_allocations AFTER INSERT ON procurement_order_source_revision_allocations FOR EACH ROW EXECUTE FUNCTION audit_test_noop()");
-                assertEquals("55000",assertThrows(PSQLException.class,()->statement.execute(migration)).getSQLState(),"the V503 exception cannot wash an unknown function");
-            }finally{connection.rollback();}
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("SELECT set_config('app.actor_id','" + ACTOR + "',true),"
+                        + " set_config('app.actor_account','13712345678',true)");
+                statement.execute("INSERT INTO colors(id, code, name) VALUES('" + color + "','AUD-C1','蓝')");
+                statement.execute("UPDATE colors SET name = name WHERE id='" + color + "'");
+                statement.execute("UPDATE colors SET updated_at = now() + interval '1 minute' WHERE id='" + color + "'");
+                statement.execute("UPDATE colors SET name = '深蓝' WHERE id='" + color + "'");
+                statement.execute("UPDATE colors SET is_deleted = TRUE, deleted_at = now() WHERE id='" + color + "'");
+                List<String> rows = new ArrayList<>();
+                try (var result = statement.executeQuery("""
+                        SELECT action || '|' || risk_level || '|' || event_category || '|' ||
+                               COALESCE("before"::text, '-') || '|' || COALESCE("after"::text, '-') || '|' || actor_account
+                        FROM audit_log WHERE target_type='colors' AND target_id='%s' ORDER BY id
+                        """.formatted(color))) {
+                    while (result.next()) rows.add(result.getString(1));
+                }
+                assertEquals(3, rows.size(), "insert, one real change and the soft delete; no-op and volatile-only updates are skipped: " + rows);
+                assertTrue(rows.get(0).startsWith("insert|low|data_change|-|") && rows.get(0).contains("\"name\": \"蓝\""));
+                assertEquals("update|low|data_change|{\"code\": \"AUD-C1\", \"name\": \"蓝\"}|{\"code\": \"AUD-C1\", \"name\": \"深蓝\"}|*******5678",
+                        rows.get(1), "only the changed key plus the locator code, no updated_at");
+                assertTrue(rows.get(2).startsWith("delete|high|data_change|") && rows.get(2).contains("\"is_deleted\": false"));
+            } finally {
+                connection.rollback();
+            }
         }
     }
 
-    private static OpeningValue openPending(){
-        UUID goods=UUID.randomUUID(),balance=UUID.randomUUID(),sourceEvent=UUID.randomUUID();
-        db.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES(?,?,'audit value source',?,(SELECT COALESCE(max(code_sequence),0)+1 FROM goods))",goods,"AUDIT-G-"+goods,UNIT);
-        db.update("INSERT INTO stock_balances(id,warehouse_id,goods_id,qty,amount_local) VALUES(?,?,?,7,84)",balance,WAREHOUSE,goods);
-        PoolKey key=new PoolKey(WAREHOUSE,goods,null);
-        return transactions.execute(status->{
-            db.execute("SELECT set_config('app.actor_id','',true)");db.execute("SELECT set_config('app.actor_account','',true)");
-            mutex.lock(new InventoryKey(goods,null));
-            EventContext context=new EventContext(sourceEvent,"INVENTORY_OPENING",balance,balance,1,USER,EMPLOYEE,"audit-opening-"+sourceEvent,OffsetDateTime.now());
-            return openings.open(new Opening(context,key,new BigDecimal("7"),new BigDecimal("84"),null,false,"原记录金额待核定；保留原事件责任人"));
-        });
+    @Test
+    void authorizationRowsAreHighRiskAndLoginAccountsAreMaskedInSnapshots() throws SQLException {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("INSERT INTO roles(code, name) VALUES('AUDIT_ROLE', '审计测试角色')");
+                assertEquals("high|authorization", scalar(statement,
+                        "SELECT risk_level || '|' || event_category FROM audit_log WHERE target_type='roles' AND action='insert'"));
+                statement.execute("""
+                        INSERT INTO employees(id, code, full_name, id_type, department_id, hire_date, status, employment_type)
+                        VALUES('%s', 'AUD-EMP', '审计员工', '其他', (SELECT id FROM departments WHERE NOT is_deleted LIMIT 1),
+                               DATE '2026-01-01', 'active', 'regular')
+                        """.formatted(ACTOR));
+                statement.execute("INSERT INTO users(id, employee_id, login_account, password_hash, status)"
+                        + " VALUES(gen_random_uuid(), '" + ACTOR + "', '13600001234', 'unused', 'active')");
+                assertEquals("*******1234", scalar(statement,
+                        "SELECT \"after\"->>'login_account' FROM audit_log WHERE target_type='users' AND action='insert'"));
+                assertEquals("0", scalar(statement,
+                        "SELECT count(*) FROM audit_log WHERE \"after\"::text LIKE '%13600001234%'"));
+            } finally {
+                connection.rollback();
+            }
+        }
     }
-    private static java.sql.Connection connection() throws Exception{return DriverManager.getConnection(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());}
-    private static String auditSnapshot(){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(audit) ORDER BY id),'[]'::jsonb)::text FROM audit_log audit",String.class);}
-    private static String auditSnapshotBeforeUpgrade(){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(audit) ORDER BY id),'[]'::jsonb)::text FROM audit_log audit WHERE id IN(SELECT (value->>'id')::bigint FROM jsonb_array_elements(?::jsonb))",String.class,oldAudit);}
-    private static String validTriggerSnapshot(){return db.queryForObject("SELECT COALESCE(jsonb_agg(jsonb_build_object('oid',t.oid,'name',t.tgname,'enabled',t.tgenabled,'function',t.tgfoid,'type',t.tgtype) ORDER BY t.oid),'[]'::jsonb)::text FROM pg_trigger t WHERE NOT t.tgisinternal AND t.tgname LIKE 'trg_audit%' AND t.tgtype=29 AND t.tgenabled IN('O','A')",String.class);}
-    private static String validOldTriggerSnapshot(){return db.queryForObject("SELECT COALESCE(jsonb_agg(jsonb_build_object('oid',t.oid,'name',t.tgname,'enabled',t.tgenabled,'function',t.tgfoid,'type',t.tgtype) ORDER BY t.oid),'[]'::jsonb)::text FROM pg_trigger t WHERE t.oid IN(SELECT (value->>'oid')::oid FROM jsonb_array_elements(?::jsonb))",String.class,oldValidTriggers);}
+
+    /** FULL 表整行与差异都经脱敏函数: 客户/供应商手机与传真、联系方式的值、车牌、证照号、询盘联系人姓名都不进审计。 */
+    @Test
+    void fullSnapshotsDropContactValuesPlatesAndCertificateNumbers() throws SQLException {
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            for (String[] probe : new String[][]{
+                    {"clients", "{\"code\":\"C1\",\"mobile\":\"13900001111\",\"fax\":\"0571-1\"}", "{\"code\": \"C1\"}"},
+                    {"suppliers", "{\"code\":\"S1\",\"mobile\":\"13900001112\"}", "{\"code\": \"S1\"}"},
+                    {"party_contact_methods", "{\"kind\":\"PHONE\",\"value\":\"13900001113\",\"is_primary\":true}",
+                            "{\"kind\": \"PHONE\", \"is_primary\": true}"},
+                    {"employee_vehicles", "{\"plate_no\":\"浙A12345\",\"plate_norm\":\"浙A12345\",\"color\":\"白\"}",
+                            "{\"color\": \"白\"}"},
+                    {"employee_credentials", "{\"type\":\"电工证\",\"cert_no\":\"T123456\"}", "{\"type\": \"电工证\"}"},
+                    {"website_inquiries", "{\"name\":\"王先生\",\"company\":\"外贸公司\"}", "{\"company\": \"外贸公司\"}"}}) {
+                assertEquals(probe[2], scalar(statement, "SELECT fn_audit_redact_row('" + probe[0] + "', '"
+                        + probe[1] + "'::jsonb)::text"), probe[0]);
+            }
+        }
+    }
+
+    @Test
+    void columnScopedPolicyRecordsOnlyTheDeclaredDecisionColumns() throws SQLException {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE public.audit_scope_probe(id uuid PRIMARY KEY, route text, derived numeric)");
+                statement.execute("SELECT fn_audit_track_table('audit_scope_probe', 'COLUMN_SCOPED', 'data_change',"
+                        + " false, ARRAY['route'], false)");
+                statement.execute("INSERT INTO audit_scope_probe VALUES('" + ACTOR + "', 'MAKE', 1)");
+                statement.execute("UPDATE audit_scope_probe SET derived = 2");
+                statement.execute("UPDATE audit_scope_probe SET route = 'BUY', derived = 3");
+                assertEquals("1", scalar(statement, "SELECT count(*) FROM audit_log WHERE target_type='audit_scope_probe'"));
+                assertEquals("{\"route\": \"BUY\"}", scalar(statement,
+                        "SELECT \"after\"::text FROM audit_log WHERE target_type='audit_scope_probe'"),
+                        "derived columns never enter the scoped audit row");
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    @Test
+    void legacyImportSessionsBypassRowAuditing() throws SQLException {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("SELECT set_config('app.legacy_import', 'on', true)");
+                statement.execute("INSERT INTO colors(code, name) VALUES('AUD-LEGACY', '老系统颜色')");
+                assertEquals("0", scalar(statement,
+                        "SELECT count(*) FROM audit_log WHERE target_type='colors' AND \"after\"->>'code'='AUD-LEGACY'"));
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    @Test
+    void auditTablesAreAppendOnly() throws SQLException {
+        for (String sql : List.of(
+                "UPDATE audit_log SET result = 'tampered'",
+                "DELETE FROM audit_log",
+                "TRUNCATE audit_log",
+                "UPDATE audit_log_archive SET result = 'tampered'",
+                "DELETE FROM audit_log_archive",
+                "TRUNCATE " + db.queryForObject("SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid=i.inhrelid"
+                        + " WHERE i.inhparent='audit_log'::regclass LIMIT 1", String.class))) {
+            try (Connection connection = connection()) {
+                connection.setAutoCommit(false);
+                try (Statement statement = connection.createStatement()) {
+                    SQLException failure = assertThrows(SQLException.class, () -> statement.execute(sql), sql);
+                    assertEquals("42501", failure.getSQLState(), sql);
+                } finally {
+                    connection.rollback();
+                }
+            }
+        }
+    }
+
+    @Test
+    void productionPlanCostsIsASingleLegacyOnlyTable() throws SQLException {
+        assertEquals("r", db.queryForObject(
+                "SELECT relkind::text FROM pg_class WHERE oid='production_plan_costs'::regclass", String.class));
+        assertEquals(0, db.queryForObject(
+                "SELECT count(*) FROM pg_inherits WHERE inhparent='production_plan_costs'::regclass", Integer.class));
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (Statement statement = connection.createStatement()) {
+                SQLException failure = assertThrows(SQLException.class,
+                        () -> statement.execute("DELETE FROM production_plan_costs"));
+                assertEquals("42501", failure.getSQLState(), "only the legacy importer writes this read-only snapshot");
+            } finally {
+                connection.rollback();
+            }
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("SELECT set_config('app.legacy_import', 'on', true)");
+                statement.execute("DELETE FROM production_plan_costs");
+            } finally {
+                connection.rollback();
+            }
+        }
+        assertFalse(db.queryForList("SELECT indexrelid::regclass::text FROM pg_index WHERE indrelid='production_plan_costs'::regclass",
+                String.class).isEmpty());
+        // 反查「哪些产品用到这个物料」(ProductionWhereUsedQueryService)只走部分覆盖索引, 不扫全表。
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("SET LOCAL enable_seqscan = off");
+                StringBuilder plan = new StringBuilder();
+                try (var rows = statement.executeQuery("""
+                        EXPLAIN SELECT master_goods_id, sum(qty), sum(pdraw_qty), min(dqty), max(bill_date)
+                        FROM production_plan_costs
+                        WHERE is_deleted = FALSE AND goods_id = '%s' AND node_class = 0
+                          AND master_goods_id IS NOT NULL
+                        GROUP BY master_goods_id
+                        """.formatted(ACTOR))) {
+                    while (rows.next()) plan.append(rows.getString(1)).append('\n');
+                }
+                assertTrue(plan.toString().contains("idx_ppc_where_used_active"), plan.toString());
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    private static String scalar(Statement statement, String sql) throws SQLException {
+        try (var result = statement.executeQuery(sql)) {
+            return result.next() ? result.getString(1) : null;
+        }
+    }
+
+    private static Connection connection() throws SQLException {
+        return DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
+    }
 }

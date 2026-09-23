@@ -1635,6 +1635,7 @@ public class SalesShipmentService {
         s.setWarehouseWorkUpdatedAt(now);
         s.setWarehouseWorkUpdatedBy(currentUser.requireEmployeeId());
         s.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        s.setApprovedAt(now);
         s.setLastDate(now);
         shipmentRepo.save(s);
         chainNotice.notifyShipmentApproved(id); // 旁路通知：发货→订单归属销售，提交后发送
@@ -2018,6 +2019,8 @@ public class SalesShipmentService {
         }
         String warehouseFromStatus = s.getWarehouseWorkStatus();
         s.setRejected(true);
+        s.setRejectedAt(OffsetDateTime.now());
+        s.setRejectedBy(currentUser.requireEmployeeId());
         s.setRejectReason(reason == null || reason.isBlank() ? "仓库备货异常" : reason.trim());
         s.setWarehouseWorkStatus(SalesShipment.WORK_CANCELLED);
         s.setWarehouseWorkUpdatedAt(OffsetDateTime.now());
@@ -2080,6 +2083,8 @@ public class SalesShipmentService {
 
         String warehouseFromStatus = s.getWarehouseWorkStatus();
         s.setStatus(STATUS_REVERSED);
+        s.setReversedAt(now);
+        s.setReversedBy(currentUser.requireEmployeeId());
         s.setWarehouseWorkStatus(SalesShipment.WORK_REVERSED);
         s.setWarehouseWorkUpdatedAt(now);
         s.setWarehouseWorkUpdatedBy(currentUser.requireEmployeeId());

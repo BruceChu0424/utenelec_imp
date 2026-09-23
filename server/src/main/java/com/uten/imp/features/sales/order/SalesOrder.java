@@ -73,6 +73,17 @@ public class SalesOrder extends SoftDeletableEntity {
     @Column(name = "approver_id")
     private UUID approverId;
 
+    /** 最近一次审核通过时间(审核命令写入; 进度时间线读它, 不再反查审计日志)。 */
+    @Column(name = "approved_at")
+    private OffsetDateTime approvedAt;
+
+    /** 红冲时间与红冲人(红冲命令写入)。 */
+    @Column(name = "reversed_at")
+    private OffsetDateTime reversedAt;
+
+    @Column(name = "reversed_by")
+    private UUID reversedBy;
+
     @Column(name = "deliver_date")
     private LocalDate deliverDate;
 

@@ -35,7 +35,8 @@ public class AuditActorDirectory {
     private EntityManager entityManager;
 
     /**
-     * @param account 登录账号（通常是手机号）
+     * @param account 登录账号的脱敏展示值(号码类只保留后 4 位, 与审计表里的 actor_account 同一口径;
+     *                列表、详情、导出都只经这里拿账号, 不会带出完整手机号)
      * @param name 员工姓名（无员工档案时为空）
      * @param departmentName 部门名（可能为空）
      * @param positionName 职位/岗位名（可能为空）
@@ -43,7 +44,11 @@ public class AuditActorDirectory {
     public record ActorProfile(
             String account, String name, String departmentName, String positionName) {
 
-        /** 列表/详情展示用："张三（13900001111）"，无姓名时退回账号。 */
+        public ActorProfile {
+            account = AuditAccountMask.mask(account);
+        }
+
+        /** 列表/详情/导出展示用："张三(*******1111)"，无姓名时退回脱敏账号。 */
         public String displayName() {
             if (name == null || name.isBlank()) {
                 return account == null || account.isBlank() ? "" : account;
@@ -291,7 +296,8 @@ public class AuditActorDirectory {
             if (actorId == null) {
                 continue;
             }
-            String account = toText(row[2]);
+            // 人员选择器同样只给脱敏账号; 按完整号码或后 4 位搜索仍在库里匹配原值。
+            String account = AuditAccountMask.mask(toText(row[2]));
             String name = toText(row[3]);
             items.add(new AuditActorOption(
                     actorId,

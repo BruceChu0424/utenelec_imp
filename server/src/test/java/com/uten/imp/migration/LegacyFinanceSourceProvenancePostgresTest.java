@@ -145,12 +145,13 @@ class LegacyFinanceSourceProvenancePostgresTest {
             UUID id=importRow(tx.db,run,"RECEIPT",s);
             assertTrue(tx.db.queryForObject("SELECT jsonb_exists(initial_state,'amount_local') FROM legacy_finance_import_sources WHERE target_id=?",Boolean.class,id));
             assertFalse(tx.db.queryForObject("SELECT jsonb_exists(fn_audit_redact_row('legacy_finance_import_sources',to_jsonb(p)),'initial_state') FROM legacy_finance_import_sources p WHERE target_id=?",Boolean.class,id));
-            assertEquals("fn_audit_redacted",tx.db.queryForObject("SELECT p.proname FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid WHERE t.tgname='trg_audit_legacy_finance_import_sources'",String.class));
-            assertEquals(1L,tx.db.queryForObject("""
+            // ADR-105: 老系统导入来源证明是只读遗留数据(NONE), 由导入对账核对, 不再逐行复制进审计;
+            // 金额原始载荷因此根本不会进入审计。
+            assertEquals(0L,tx.db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='legacy_finance_import_sources'::regclass AND tgfoid='public.fn_audit()'::regprocedure",Long.class));
+            assertEquals(0L,tx.db.queryForObject("""
                     SELECT count(*) FROM audit_log audit JOIN legacy_finance_import_sources proof
                       ON audit.target_id=proof.id::text AND audit.target_type='legacy_finance_import_sources'
-                    WHERE proof.target_id=? AND NOT jsonb_exists(audit."after",'initial_state')
-                      AND jsonb_exists(audit."after",'source_row_sha256')
+                    WHERE proof.target_id=?
                     """,Long.class,id));
         }
     }

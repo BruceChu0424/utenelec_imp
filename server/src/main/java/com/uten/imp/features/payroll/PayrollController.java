@@ -1,5 +1,7 @@
 package com.uten.imp.features.payroll;
 
+import com.uten.imp.audit.AuditedRead;
+import com.uten.imp.audit.AuditAutomaticWrite;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.DownloadContentDisposition;
@@ -37,6 +39,7 @@ public class PayrollController {
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
 
+    @AuditedRead("工资条列表含个人收入")
     @GetMapping("/slips")
     @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:view:all')")
     public PageResponse<PayrollSlipDto> listSlips(
@@ -68,6 +71,7 @@ public class PayrollController {
         return result;
     }
 
+    @AuditAutomaticWrite("打开工资条时自动记已查看状态; 下载另有显式事件")
     @PostMapping("/slips/{id}/view")
     @PreAuthorize("hasAuthority('payroll:view:self')")
     public PayrollSlipDto markViewed(@PathVariable UUID id) {
@@ -97,6 +101,7 @@ public class PayrollController {
                 .body(pdf.bytes());
     }
 
+    @AuditedRead("工资批次列表含部门收入汇总")
     @GetMapping("/batches")
     @PreAuthorize("""
             hasAnyAuthority(

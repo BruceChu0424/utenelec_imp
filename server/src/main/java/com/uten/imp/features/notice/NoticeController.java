@@ -1,5 +1,6 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.audit.AuditAutomaticWrite;
 import com.uten.imp.features.notice.NoticeService.AckResult;
 import com.uten.imp.features.notice.NoticeService.BlessResult;
 import com.uten.imp.features.notice.NoticeService.BlessingPage;
@@ -218,6 +219,7 @@ public class NoticeController {
     }
 
     /** 按业务事件来源批量标记已读（进入该事件的任务页/工作台后清对应通知）。 */
+    @AuditAutomaticWrite("打开页面时自动把对应来源的通知标为已读")
     @PostMapping("/read-by-source")
     @PreAuthorize("hasAuthority('notice:read')")
     public Map<String, Object> markReadBySource(@RequestParam List<String> events) {
@@ -225,6 +227,7 @@ public class NoticeController {
     }
 
     /** 按站内办理路由批量标记已读（业务动作完成/打开单据后清对应通知）。 */
+    @AuditAutomaticWrite("每次切换页面自动把该页面的通知标为已读")
     @PostMapping("/read-by-route")
     @PreAuthorize("hasAuthority('notice:read')")
     public Map<String, Object> markReadByRoute(@RequestParam List<String> routes) {

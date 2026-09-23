@@ -375,10 +375,12 @@ public class ProductionPlanningPackageService {
             } else {
                 em.createNativeQuery("""
                                 UPDATE production_plans
-                                SET status = -1, updated_at = now()
+                                SET status = -1, reversed_at = now(), reversed_by = :reversedBy,
+                                    updated_at = now()
                                 WHERE id = :id
                                 """)
                         .setParameter("id", id)
+                        .setParameter("reversedBy", currentUser.requireEmployeeId())
                         .executeUpdate();
             }
             em.createNativeQuery("""

@@ -80,8 +80,8 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
                       AND t.tgrelid IN('customer_open_item_offset_batches'::regclass,
                                        'customer_open_item_offsets'::regclass,
                                        'finance_receipt_source_allocations'::regclass)
-                      AND p.proname IN('fn_audit','fn_audit_redacted')
-                    """)).isEqualTo(3);
+                      AND p.proname = 'fn_audit'
+                    """)).isEqualTo(6); // ADR-105 FULL: 每表行事件 + 带 WHEN 的更新各一个
         }
         String querySource=java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentQueryService.java"));

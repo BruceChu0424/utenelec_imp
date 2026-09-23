@@ -268,6 +268,30 @@ class LegacyBootstrapCoordinatorPostgresTest {
         assertThat(scalar("SELECT count(*) FROM legacy_migration_runs")).isEqualTo(Long.toString(Long.parseLong(before) + 3));
         assertThat(scalar("SELECT md5(string_agg(id::text || ':' || legacy_id::text, ',' ORDER BY id)) FROM goods")).isEqualTo(identity);
         assertThat(scalar("SELECT count(*) FROM audit_log")).isEqualTo(history);
+        // ADR-105 (db-schema-04): 导入会话旁路数据库行审计, 一行都不逐行复制; migrate.sh 的每次运行
+        // (两次失败 + 一次成功)恰好留一条汇总事件, 结果与运行最终状态一致。V182 迁移自带的一条
+        // schema 运行记录(INCREMENTAL)不是 migrate.sh 的运行, 不在此列。
+        assertThat(scalar("""
+                SELECT count(*) FROM audit_log
+                WHERE event_source = 'database'
+                  AND created_at >= (SELECT min(started_at) FROM legacy_migration_runs
+                                     WHERE migration_mode = 'BOOTSTRAP')
+                """)).isEqualTo("0");
+        assertThat(scalar("""
+                SELECT count(*) || '|' || count(*) FILTER (WHERE summaries = 1 AND consistent = 1)
+                FROM (
+                    SELECT run.run_id, count(event.id) AS summaries,
+                           count(event.id) FILTER (WHERE event.result =
+                               CASE WHEN run.status = 'SUCCESS' THEN 'success' ELSE 'failure' END) AS consistent
+                    FROM legacy_migration_runs run
+                    LEFT JOIN audit_log event
+                      ON event.action = 'legacy_migration_run'
+                     AND event.target_type = 'legacy_migration_run'
+                     AND event.target_id = run.run_id::text
+                    WHERE run.migration_mode = 'BOOTSTRAP'
+                    GROUP BY run.run_id
+                ) per_run
+                """)).isEqualTo("3|3");
         shell("test ! -d /tmp/uten-legacy-migration.lock && test -z \"$(find /tmp -maxdepth 1 -name 'uten-legacy-keys.*.sql' -print -quit)\"");
         importedOpeningAcceptsNativeSettlementWithoutRepostingHistory();
         historicalReferenceAndOrphanBomVariant();

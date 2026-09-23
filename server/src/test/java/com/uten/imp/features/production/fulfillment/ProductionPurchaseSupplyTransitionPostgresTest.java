@@ -290,7 +290,9 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                                 connection,
                                 "select status from purchase_orders where id = ?",
                                 fixture.orderId()));
-                assertTrue(
+                // ADR-105: 挂靠转移与收货分摊是派生分配账(NONE), 留痕在红冲命令的语义事件上, 不再逐行审计。
+                assertEquals(
+                        0L,
                         count(
                                 connection,
                                 """
@@ -300,7 +302,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                                     'production_material_receipt_allocations'
                                 )
                                 """,
-                                (Object[]) null) > 0);
+                                (Object[]) null));
             }
         });
     }

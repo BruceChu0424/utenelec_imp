@@ -33,8 +33,8 @@ import static com.uten.imp.features.sales.order.dto.OrderProgressTimelineEvent.R
  * 物料准备（采购/委外下单、财务审批）→ 生产计划 → 生产 → 发货 → 结案。
  *
  * <p>每一环都尽量带「责任人 + 发生时间」：制单/审核/确认人取单据自身 *_by 列（员工经
- * {@link EmployeeNameResolver#nameOf} 解析为实际姓名，兼容 users.id 历史数据）；单据自身没有审核时间列的
- * （销售审核、计划下达、出货审核），时间点从 audit_log 的状态迁移记录补齐，查不到就只显示责任人。
+ * {@link EmployeeNameResolver#nameOf} 解析为实际姓名，兼容 users.id 历史数据)；审核/红冲/驳回的时间点读单据
+ * 自身的 approved_at / reversed_at / rejected_at 列(V648 起由命令写入，ADR-105 规定业务逻辑不读审计日志)。
  *
  * <p>展示顺序（服务端排好，前端直接渲染）：已发生事件（DONE/CURRENT/REJECTED）按发生时间倒序、
  * 无时间的当前阶段置顶；PENDING 占位按业务顺序垫底。只读接口，归属校验与 detail 同口径。
@@ -98,13 +98,13 @@ public class SalesOrderTimelineService {
             events.add(new OrderProgressTimelineEvent(
                     20, "ORDER_APPROVED", "销售审核", "审核人",
                     employeeDisplayName(order.getApproverId()),
-                    auditTransitionAt("sales_orders", order.getId(), "status", "1"), DONE,
+                    toTime(order.getApprovedAt()), DONE,
                     null, null, null, null));
         } else if (order.getStatus() == -1) {
             events.add(new OrderProgressTimelineEvent(
                     25, "ORDER_REVERSED", "订单红冲", "操作人",
-                    employeeDisplayName(order.getApproverId()),
-                    auditTransitionAt("sales_orders", order.getId(), "status", "-1"), REJECTED,
+                    employeeDisplayName(order.getReversedBy()),
+                    toTime(order.getReversedAt()), REJECTED,
                     "订单已红冲作废", null, null, null));
         } else {
             events.add(new OrderProgressTimelineEvent(
@@ -321,7 +321,7 @@ public class SalesOrderTimelineService {
     private boolean addProductionPlanEvents(UUID orderId, List<OrderProgressTimelineEvent> events) {
         List<Object[]> rows = objectRows(em.createNativeQuery("""
                 SELECT DISTINCT p.id, p.bill_no, p.status, p.is_closed,
-                       p.created_at, p.maker_id, p.approver_id
+                       p.created_at, p.maker_id, p.approver_id, p.approved_at
                 FROM production_plans p
                 WHERE p.is_deleted = FALSE AND (
                     p.id IN (
@@ -355,8 +355,7 @@ public class SalesOrderTimelineService {
             } else if (status == 1) {
                 state = DONE;
                 String approver = employeeDisplayName((UUID) row[6]);
-                OffsetDateTime approvedAt =
-                        auditTransitionAt("production_plans", planId, "status", "1");
+                OffsetDateTime approvedAt = toTime(row[7]);
                 if (approvedAt != null) at = approvedAt;
                 detail = (approver == null ? "已审核下达" : "已审核下达(审核人：" + approver + ")")
                         + (closed ? " · 已结案" : "");
@@ -412,7 +411,8 @@ public class SalesOrderTimelineService {
                        s.handed_over_by, s.rejected,
                        (COALESCE(s.finance_gate_version, 0) < 2
                         OR (s.sales_confirmed_at IS NOT NULL
-                            AND s.sales_confirmed_revision = s.review_revision)) AS sales_confirmed
+                            AND s.sales_confirmed_revision = s.review_revision)) AS sales_confirmed,
+                       s.approved_at, s.reversed_at, s.reversed_by, s.rejected_at, s.rejected_by
                 FROM sales_shipments s
                 WHERE s.source_order_id = :oid
                   AND COALESCE(s.is_deleted, FALSE) = FALSE
@@ -438,8 +438,8 @@ public class SalesOrderTimelineService {
             events.add(shipmentEvent(80, "SHIPMENT_CREATED", "销售开出货单", "发货人", maker,
                     createdAt, DONE, "出货单 " + billNo + " 已开出", shipmentId, billNo));
             if (status == -1) {
-                events.add(shipmentEvent(86, "SHIPMENT_REVERSED", "出货单红冲", "操作人", approver,
-                        auditTransitionAt("sales_shipments", shipmentId, "status", "-1"), REJECTED,
+                events.add(shipmentEvent(86, "SHIPMENT_REVERSED", "出货单红冲", "操作人",
+                        employeeDisplayName((UUID) row[18]), toTime(row[17]), REJECTED,
                         "出货单已红冲，库存与应收已冲回", shipmentId, billNo));
                 continue;
             }
@@ -448,8 +448,7 @@ public class SalesOrderTimelineService {
                     events.add(shipmentEvent(82, "SHIPMENT_FINANCE_RELEASED", "财务放行出货", "审核人",
                             auditor, auditedAt, DONE, null, shipmentId, billNo));
                 }
-                OffsetDateTime shippedAt =
-                        auditTransitionAt("sales_shipments", shipmentId, "status", "1");
+                OffsetDateTime shippedAt = toTime(row[16]);
                 if (shippedAt == null) shippedAt = row[7] != null ? toTime(row[7]) : createdAt;
                 String detail = "库存、已发数量与应收已过账";
                 if (logistics != null && !logistics.isBlank()) detail += " · 物流单号 " + logistics;
@@ -459,8 +458,9 @@ public class SalesOrderTimelineService {
                 continue;
             }
             if (warehouseRejected) {
-                events.add(shipmentEvent(82, "SHIPMENT_WAREHOUSE_REJECTED", "出货单已驳回", null, null,
-                        null, REJECTED, "仓库驳回：预留已释放，请重新开单", shipmentId, billNo));
+                events.add(shipmentEvent(82, "SHIPMENT_WAREHOUSE_REJECTED", "出货单已驳回", "驳回人",
+                        employeeDisplayName((UUID) row[20]), toTime(row[19]), REJECTED,
+                        "仓库驳回：预留已释放，请重新开单", shipmentId, billNo));
             } else if (financeRejected) {
                 events.add(shipmentEvent(82, "SHIPMENT_FINANCE_REJECTED", "财务退回出货单", null, null,
                         null, REJECTED,
@@ -510,30 +510,6 @@ public class SalesOrderTimelineService {
 
     String employeeDisplayName(UUID employeeId) {
         return nameResolver.nameOf(employeeId);
-    }
-
-    /**
-     * 单据自身没有审核时间列，从审计日志的状态迁移记录补时间点
-     * （before.status ≠ toValue 且 after.status = toValue 的最近一次 update）。
-     */
-    private OffsetDateTime auditTransitionAt(String table, UUID id, String column, String toValue) {
-        List<?> rows = em.createNativeQuery("""
-                SELECT created_at
-                FROM audit_log
-                WHERE target_type = :table
-                  AND target_id = :id
-                  AND action = 'update'
-                  AND COALESCE(before ->> :col, '') <> :val
-                  AND "after" ->> :col = :val
-                ORDER BY created_at DESC
-                LIMIT 1
-                """)
-                .setParameter("table", table)
-                .setParameter("id", id.toString())
-                .setParameter("col", column)
-                .setParameter("val", toValue)
-                .getResultList();
-        return rows.isEmpty() ? null : toTime(rows.getFirst());
     }
 
     @SuppressWarnings("unchecked")

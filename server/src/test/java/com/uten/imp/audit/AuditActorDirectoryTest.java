@@ -48,7 +48,9 @@ class AuditActorDirectoryTest {
         PageResponse<AuditActorOption> result = directory.findActors("张", 1, 20);
 
         assertEquals(2, result.getItems().size());
-        assertEquals("张三(13800000000)", result.getItems().get(0).displayName());
+        // 人员选择器只给脱敏账号(security-10), 访客编号不是号码, 原样显示。
+        assertEquals("张三(*******0000)", result.getItems().get(0).displayName());
+        assertEquals("*******0000", result.getItems().get(0).account());
         assertEquals("staff", result.getItems().get(0).actorType());
         assertEquals("李访客(V123456)", result.getItems().get(1).displayName());
         assertEquals("visitor", result.getItems().get(1).actorType());

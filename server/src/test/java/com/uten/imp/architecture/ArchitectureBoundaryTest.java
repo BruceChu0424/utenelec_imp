@@ -166,6 +166,32 @@ class ArchitectureBoundaryTest {
                         + String.join("\n", unapproved.stream().sorted().toList()));
     }
 
+    /**
+     * ADR-105: 审计日志只是留痕, 不是业务事实源(保留期到了会归档/删除, UPDATE 只存变化键)。
+     * 业务代码不得读 audit_log / audit_log_archive; 只有审计包自己和清空业务数据的回执例外。
+     */
+    @Test
+    void businessCodeNeverReadsTheAuditLog() throws IOException {
+        Pattern auditRead = Pattern.compile("(?i)\\b(?:from|join)\\s+(?:public\\.)?audit_log(?:_archive)?\\b");
+        Set<String> allowed = Set.of(
+                "features/admin/systemtest/BusinessDataResetService.java",
+                // 并发工作流改为只按 xmin 判断「本事务新建」后删除本条(createdHere 不再查审计)。
+                "application/concurrency/FulfillmentMutationLocks.java");
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(MAIN_SOURCE)) {
+            String relative = relative(file);
+            if (relative.startsWith("audit/") || allowed.contains(relative)) {
+                continue;
+            }
+            if (auditRead.matcher(Files.readString(file)).find()) {
+                violations.add(relative);
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                () -> "业务逻辑不得读取审计日志, 需要的业务时间点请落在单据自己的列上:\n"
+                        + String.join("\n", violations));
+    }
+
     private List<Path> javaFiles(Path root) throws IOException {
         try (var files = Files.walk(root)) {
             return files.filter(path -> path.toString().endsWith(".java")).toList();

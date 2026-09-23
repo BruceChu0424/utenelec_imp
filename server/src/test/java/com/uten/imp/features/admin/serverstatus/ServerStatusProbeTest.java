@@ -318,6 +318,60 @@ class ServerStatusProbeTest {
                 .contains("建议: 已连续失败 3 次以上");
     }
 
+    /**
+     * 审计归档的告警只看审计表里的持久成功记录(ADR-105): 从没成功过、成功记录过旧、本机没排上任务,
+     * 这几种「证明不了在跑」的情况都要告警; 新鲜的成功记录不告警。
+     */
+    @Test void auditRetentionWarnsWhenNeverSucceededStaleOrNotScheduledButNotWhenFresh() throws Exception {
+        var probe=probe();
+        registry.register(named("x.AuditRetentionScheduler.runScheduled"),null);
+        java.util.function.Function<List<ServerStatusProbe.JobReport>,ServerStatusProbe.JobReport> retention=
+                reports->reports.stream().filter(r->r.job().key().equals(ServerStatusProbe.AUDIT_RETENTION_JOB)).findFirst().orElse(null);
+
+        // 本次启动后还没跑过, 也从没成功过, 服务已运行 30 小时: 告警。
+        probe.watchAuditRetention(java.util.Optional::empty,()->now.minus(Duration.ofHours(30)),true);
+        var never=retention.apply(probe.jobReports(now));
+        assertThat(never.job().status()).isEqualTo("WARNING");
+        assertThat(never.headline()).isEqualTo("后台任务「审计日志归档」已超过 26 小时没有成功");
+        assertThat(never.job().detail()).contains("还没有成功归档的记录");
+
+        // 刚启动 1 小时, 还没到第一次该跑的时间: 不告警。
+        probe.watchAuditRetention(java.util.Optional::empty,()->now.minus(Duration.ofHours(1)),true);
+        assertThat(retention.apply(probe.jobReports(now)).headline()).isNull();
+
+        // 最近一次成功是 30 小时前(与本次启动后是否跑过无关): 告警。
+        probe.watchAuditRetention(()->java.util.Optional.of(now.minus(Duration.ofHours(30))),
+                ()->now.minus(Duration.ofHours(2)),true);
+        var stale=retention.apply(probe.jobReports(now));
+        assertThat(stale.job().status()).isEqualTo("WARNING");
+        assertThat(stale.job().detail()).contains("最近一次成功归档: 2026-09-09 10:00(北京时间)");
+
+        // 最近一次成功是 2 小时前: 不告警, 行上附最近成功时间。
+        probe.watchAuditRetention(()->java.util.Optional.of(now.minus(Duration.ofHours(2))),
+                ()->now.minus(Duration.ofHours(40)),true);
+        var fresh=retention.apply(probe.jobReports(now));
+        assertThat(fresh.headline()).isNull();
+        assertThat(fresh.job().detail()).contains("最近一次成功归档: 2026-09-10 14:00(北京时间)");
+    }
+
+    @Test void auditRetentionThatIsNotScheduledHereStillWarnsFromTheStoredEvidence() throws Exception {
+        var probe=probe();
+        probe.watchAuditRetention(java.util.Optional::empty,()->now.minus(Duration.ofHours(30)),true);
+        var missing=probe.jobReports(now).stream()
+                .filter(r->r.job().key().equals(ServerStatusProbe.AUDIT_RETENTION_JOB)).findFirst().orElseThrow();
+        assertThat(missing.job().status()).isEqualTo("WARNING");
+        assertThat(missing.job().detail()).contains("本机没有排上这个任务").doesNotContain("AuditRetentionScheduler");
+        assertThat(missing.headline()).isEqualTo("后台任务「审计日志归档」已超过 26 小时没有成功");
+
+        probe.watchAuditRetention(()->java.util.Optional.of(now.minus(Duration.ofHours(3))),
+                ()->now.minus(Duration.ofHours(30)),true);
+        assertThat(probe.jobReports(now)).isEmpty();
+
+        // 云端实例不负责归档, 不重复告警。
+        probe.watchAuditRetention(java.util.Optional::empty,()->now.minus(Duration.ofHours(30)),false);
+        assertThat(probe.jobReports(now)).isEmpty();
+    }
+
     private static Runnable named(String name) {
         return new Runnable() {
             @Override public void run() {}

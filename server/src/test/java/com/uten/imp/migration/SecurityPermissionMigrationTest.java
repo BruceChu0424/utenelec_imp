@@ -5,8 +5,6 @@ import com.uten.imp.audit.AuditEventInterpreter;
 import com.uten.imp.audit.AuditLog;
 import com.uten.imp.audit.AuditLogRepository;
 import com.uten.imp.audit.AuditQueryService;
-import com.uten.imp.audit.AuditRetentionScheduler;
-import com.uten.imp.audit.AuditRuntimeSettings;
 import com.uten.imp.audit.AuditSearchCriteria;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.audit.AuditSummary;
@@ -50,7 +48,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Applies the complete migration chain to a clean PostgreSQL instance and verifies the
@@ -350,76 +347,22 @@ class SecurityPermissionMigrationTest {
                           'device_capture_status', 'device_profile_hash'
                       )
                     """));
-            assertEquals("", scalarString(statement, """
-                    select coalesce(string_agg(c.relname, ',' order by c.relname), '')
-                    from pg_class c
-                    join pg_namespace n on n.oid = c.relnamespace
-                    where n.nspname = 'public'
-                      and c.relkind in ('r', 'p')
-                      and not c.relispartition
-                      and c.relname not in (
-                          'audit_log', 'audit_log_archive', 'flyway_schema_history',
-                          'spatial_ref_sys', 'authorization_state', 'doc_number_sequences', 'master_code_sequences',
-                          'category_master_code_sequences', 'business_document_sequences',
-                          'production_product_no_sequences',
-                          'report_materialized_view_refresh_state', 'password_history',
-                          'refresh_tokens', 'visitor_refresh_tokens', 'visitor_sms_codes',
-                          'notices', 'notice_user_states', 'notice_acknowledgments',
-                          'notice_blessings', 'notice_celebration_subjects',
-                          'business_outbox',
-                          'attachment_object_outbox', 'account_flow_monthly_summaries',
-                          'production_daily_report_commands',
-                          'production_fqc_release_commands',
-                          'warehouse_arrival_registration_commands',
-                          'production_material_analysis_commands'
-                      )
-                      and c.relname not like 'legacy_migration_%'
-                      and ((select count(*) from pg_trigger t where t.tgrelid=c.oid
-                              and not t.tgisinternal and t.tgname like 'trg_audit%')<>1
-                        or not exists (
-                          select 1
-                          from pg_trigger t
-                          join pg_proc p on p.oid=t.tgfoid
-                          join pg_namespace pn on pn.oid=p.pronamespace
-                          where t.tgrelid = c.oid
-                            and not t.tgisinternal
-                            and t.tgname like 'trg_audit%'
-                            and t.tgenabled in ('O','A') and t.tgtype=29
-                            and t.tgnargs=0 and t.tgqual is null and t.tgattr=''::int2vector
-                            and not t.tgdeferrable and not t.tginitdeferred and t.tgconstraint=0
-                            and t.tgoldtable is null and t.tgnewtable is null
-                            and pn.nspname='public' and p.proname in ('fn_audit','fn_audit_redacted')
-                            and t.tgfoid in('public.fn_audit()'::regprocedure,'public.fn_audit_redacted()'::regprocedure)
-                      ))
-                    """),
-                    "Every public business table must have an audit trigger");
-            statement.execute("""
+            // ADR-105: 行级审计改为三清单(FULL/COLUMN_SCOPED/NONE), 覆盖面由
+            // AuditTriggerCoveragePostgresTest 按清单逐表核对; 这里只钉两条与权限相关的事实:
+            // 权限表整行审计, 且数据库不再替写入方补算风险等级(分类只在写入时算一次)。
+            assertEquals(2, scalarLong(statement, """
+                    select count(*) from pg_trigger
+                    where tgrelid = 'role_permissions'::regclass
+                      and not tgisinternal
+                      and tgfoid = 'public.fn_audit()'::regprocedure
+                    """));
+            assertEquals("23502", sqlState(statement, """
                     insert into audit_log (
                         action, target_type, target_id, http_method, http_path,
                         result, event_source
                     ) values
-                        ('http_get', 'api/admin/permissions', 'risk-rule-read',
-                         'GET', '/api/admin/permissions', 'success', 'request'),
                         ('http_patch', 'api/admin/permissions', 'risk-rule-write',
                          'PATCH', '/api/admin/permissions', 'success', 'request')
-                    """);
-            assertEquals("low", scalarString(statement, """
-                    select risk_level from audit_log
-                    where target_id = 'risk-rule-read'
-                    """));
-            assertEquals("high", scalarString(statement, """
-                    select risk_level from audit_log
-                    where target_id = 'risk-rule-write'
-                    """));
-            statement.execute("""
-                    insert into audit_log_archive
-                    select * from audit_log
-                    where target_id = 'risk-rule-read'
-                    on conflict (id) do nothing
-                    """);
-            assertEquals("low", scalarString(statement, """
-                    select risk_level from audit_log_archive
-                    where target_id = 'risk-rule-read'
                     """));
             assertEquals(4, scalarLong(statement, """
                     select count(*)
@@ -484,19 +427,20 @@ class SecurityPermissionMigrationTest {
              Statement statement = connection.createStatement()) {
             statement.execute("""
                     insert into audit_log (
-                        action, target_type, target_id, result, event_source
+                        action, target_type, target_id, result, event_source,
+                        risk_level, event_category
                     ) values
                         ('view_audit_log_list', 'audit_log', 'trend-list',
-                         'success', 'business'),
+                         'success', 'business', 'low', 'security'),
                         ('view_audit_log_detail', 'audit_log', 'trend-detail',
-                         'success', 'business')
+                         'success', 'business', 'medium', 'security')
                     """);
         }
 
         // 旧的 AuditLogRepository.summarizeDaily 原生 SQL 已演进为
         // AuditQueryService 过滤规格 + AuditSummaryAggregation 的 JPA Criteria 聚合。
         // 这里用真实 Hibernate/PostgreSQL 执行同一读路径：Asia/Shanghai 分组、
-        // 有效风险（view_audit_log_detail 提升为中风险）与调查动作强制归 security
+        // 只读存储的风险等级与事件类型(ADR-105 起写入时由 AuditClassifier 一次算定)
         // 只在真库上能被完整验证。
         PGSimpleDataSource dataSource = new PGSimpleDataSource();
         dataSource.setUrl(POSTGRES.getJdbcUrl());
@@ -575,7 +519,7 @@ class SecurityPermissionMigrationTest {
             assertEquals(2L, total,
                     "both investigation rows must be counted in the trend window");
             assertEquals(1L, risk,
-                    "only the forced-medium-risk detail view counts as risky");
+                    "only the stored medium-risk detail view counts as risky");
         } finally {
             entityManager.close();
             entityManagerFactory.close();
@@ -631,96 +575,6 @@ class SecurityPermissionMigrationTest {
     }
 
     @Test
-    void scheduledRetentionArchivesHotRowsBeforeDeletionAndPurgesExpiredArchive()
-            throws Exception {
-        try (Connection connection = openConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute("""
-                    insert into audit_log (
-                        action, target_type, target_id, result, created_at,
-                        client_event_id, device_installation_id, device_name,
-                        device_model, device_platform, device_capture_status
-                    ) values
-                        ('update', 'retention_test', 'retention-current',
-                         'success', now() - interval '1 month',
-                         '123e4567-e89b-42d3-a456-426614174010',
-                         '123e4567-e89b-42d3-a456-426614174011',
-                         '车间平板', 'UT-PAD-1', 'android', 'present'),
-                        ('update', 'retention_test', 'retention-to-archive',
-                         'success', now() - interval '7 months',
-                         '123e4567-e89b-42d3-a456-426614174012',
-                         '123e4567-e89b-42d3-a456-426614174013',
-                         '车间平板', 'UT-PAD-1', 'android', 'present'),
-                        ('update', 'retention_test', 'retention-to-delete',
-                         'success', now() - interval '40 months',
-                         '123e4567-e89b-42d3-a456-426614174014',
-                         '123e4567-e89b-42d3-a456-426614174015',
-                         '旧设备', 'UT-OLD', 'windows', 'present');
-
-                    insert into audit_log_archive
-                    select * from audit_log
-                    where target_id = 'retention-to-delete'
-                    on conflict (id) do nothing;
-
-                    delete from audit_log
-                    where target_id = 'retention-to-delete';
-                    """);
-        }
-
-        PGSimpleDataSource dataSource = new PGSimpleDataSource();
-        dataSource.setURL(POSTGRES.getJdbcUrl());
-        dataSource.setUser(POSTGRES.getUsername());
-        dataSource.setPassword(POSTGRES.getPassword());
-        AuditRuntimeSettings settings = new AuditRuntimeSettings() {
-            @Override
-            public int exportMaxRows() {
-                return 100_000;
-            }
-
-            @Override
-            public int hotRetentionMonths() {
-                return 6;
-            }
-
-            @Override
-            public int archiveRetentionMonths() {
-                return 30;
-            }
-        };
-        AuditService audit = mock(AuditService.class);
-
-        new AuditRetentionScheduler(dataSource, settings, audit).runScheduled();
-
-        try (Connection connection = openConnection();
-             Statement statement = connection.createStatement()) {
-            assertEquals(1, scalarLong(statement, """
-                    select count(*) from audit_log
-                    where target_id = 'retention-current'
-                    """));
-            assertEquals(0, scalarLong(statement, """
-                    select count(*) from audit_log
-                    where target_id = 'retention-to-archive'
-                    """));
-            assertEquals(1, scalarLong(statement, """
-                    select count(*) from audit_log_archive
-                    where target_id = 'retention-to-archive'
-                      and device_name = '车间平板'
-                      and device_model = 'UT-PAD-1'
-                      and device_platform = 'android'
-                      and device_installation_id =
-                          '123e4567-e89b-42d3-a456-426614174013'::uuid
-                    """));
-            assertEquals(0, scalarLong(statement, """
-                    select count(*) from audit_log_archive
-                    where target_id = 'retention-to-delete'
-                    """));
-        }
-        // V424 审计降噪口径：调度保留成功属于系统管道行为，不再写显式审计事件
-        // （对齐 AuditRetentionSchedulerTest.successfulAutomaticRetentionDoesNotCreateUserActivityNoise）。
-        verifyNoInteractions(audit);
-    }
-
-    @Test
     void databaseAuditTriggerCopiesSanitizedDeviceSessionContext()
             throws Exception {
         UUID requestId = UUID.randomUUID();
@@ -755,7 +609,7 @@ class SecurityPermissionMigrationTest {
                 try (Statement statement = connection.createStatement()) {
                     statement.executeUpdate("""
                             update system_settings
-                            set description = description
+                            set label = label || '(测试)'
                             where key = 'export_max_rows'
                             """);
                     assertTrue(scalarBoolean(statement, """
@@ -1058,6 +912,15 @@ class SecurityPermissionMigrationTest {
                 connection.rollback();
                 throw exception;
             }
+        }
+    }
+
+    private static String sqlState(Statement statement, String sql) {
+        try {
+            statement.execute(sql);
+            return "";
+        } catch (java.sql.SQLException exception) {
+            return exception.getSQLState();
         }
     }
 }

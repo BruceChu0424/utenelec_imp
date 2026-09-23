@@ -648,6 +648,14 @@ BEGIN
   IF to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NOT NULL THEN
     REVOKE ALL ON FUNCTION public.fn_require_runtime_maintenance(boolean) FROM PUBLIC, uten;
   END IF;
+  -- ADR-105 (V647): audit evidence is append-only for the runtime login. The general
+  -- grants above include UPDATE/DELETE on every table and partition; seal them again so
+  -- only the owner-defined retention function can move or drop whole monthly partitions.
+  IF to_regprocedure('public.fn_audit_seal_privileges(text)') IS NOT NULL THEN
+    PERFORM public.fn_audit_seal_privileges('uten');
+    REVOKE ALL ON FUNCTION public.fn_audit_track_table(text,text,text,boolean,text[],boolean) FROM PUBLIC, uten;
+    REVOKE ALL ON FUNCTION public.fn_audit_seal_privileges(text) FROM PUBLIC, uten;
+  END IF;
 END;
 $restricted_import_acl$;
 COMMIT;

@@ -189,7 +189,7 @@ class AuditSessionControllerSecurityTest {
                         .requestAttr(
                                 AuditRequestContext.VERIFIED_ACTOR_ATTRIBUTE,
                                 new AuditRequestContext.VerifiedActor(
-                                        realAdministratorId, "real-admin"))
+                                        realAdministratorId, "real-admin", null))
                         .param("actorId", SELECTED_ACTOR_ID.toString())
                         .param("dateFrom", "2026-08-01")
                         .param("dateTo", "2026-08-01"))

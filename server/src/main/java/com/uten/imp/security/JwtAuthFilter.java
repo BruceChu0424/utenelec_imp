@@ -8,6 +8,7 @@ import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.visitor.VisitorAccountRepository;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -73,6 +74,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 subjectId = requiredSubjectId(claims);
                 sessionId = optionalSessionId(claims);
             } catch (JwtException | IllegalArgumentException ex) {
+                // 签名正确只是过期: 例行的「该刷新令牌了」, 审计不记这次 401(ADR-105)。
+                if (ex instanceof ExpiredJwtException) {
+                    AuditRequestContext.markExpiredToken(request);
+                }
                 SecurityContextHolder.clearContext();
                 chain.doFilter(request, response);
                 return;
@@ -114,14 +119,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(authUser, null, authUser.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(auth);
-            // 模拟身份时把请求级审计的真实操作人绑成 admin（impersonatedBy），保证「谁在以谁身份操作」可追溯；
-            // 目标身份由显式 impersonation_switch 审计事件记录。非模拟时绑当前主体。
-            UUID auditActorId = authUser.getImpersonatedBy() != null
-                    ? authUser.getImpersonatedBy() : authUser.getId();
-            String auditActorAccount = authUser.getImpersonatedBy() != null
-                    ? null : authUser.getLoginAccount();
+            // 模拟身份时把请求内全部审计的真实操作人绑成 admin(impersonatedBy)，并标注被模拟的账号，
+            // 保证「谁在以谁身份操作」可追溯(含业务服务显式写的下载/查看事件)。非模拟时绑当前主体。
+            boolean impersonating = authUser.getImpersonatedBy() != null;
+            UUID auditActorId = impersonating ? authUser.getImpersonatedBy() : authUser.getId();
+            String auditActorAccount = impersonating ? null : authUser.getLoginAccount();
             AuditRequestContext.bindVerifiedActor(
-                    request, auditActorId, auditActorAccount, sessionId);
+                    request, auditActorId, auditActorAccount, sessionId,
+                    impersonating ? authUser.getId() : null);
         }
         chain.doFilter(request, response);
     }

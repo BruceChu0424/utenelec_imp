@@ -388,26 +388,25 @@ class PermissionSurfaceCatalogPostgresTest {
             assertTrue(auditCount(
                     statement,
                     "permission_surface_permissions") > linkAuditBefore);
-            assertEquals(1, scalarLong(statement, """
+            // ADR-105 FULL 形态: 行事件一个 + 带 WHEN 的更新一个。
+            assertEquals(2, scalarLong(statement, """
                     select count(*)
                     from pg_trigger trigger
-                    join pg_proc function on function.oid = trigger.tgfoid
                     where trigger.tgrelid = 'permission_surfaces'::regclass
                       and trigger.tgname like 'trg_audit%%'
                       and not trigger.tgisinternal
                       and trigger.tgenabled in ('O', 'A')
-                      and function.proname in ('fn_audit', 'fn_audit_redacted')
+                      and trigger.tgfoid = 'public.fn_audit()'::regprocedure
                     """));
-            assertEquals(1, scalarLong(statement, """
+            assertEquals(2, scalarLong(statement, """
                     select count(*)
                     from pg_trigger trigger
-                    join pg_proc function on function.oid = trigger.tgfoid
                     where trigger.tgrelid =
                               'permission_surface_permissions'::regclass
                       and trigger.tgname like 'trg_audit%%'
                       and not trigger.tgisinternal
                       and trigger.tgenabled in ('O', 'A')
-                      and function.proname in ('fn_audit', 'fn_audit_redacted')
+                      and trigger.tgfoid = 'public.fn_audit()'::regprocedure
                     """));
             connection.rollback();
         }

@@ -127,12 +127,18 @@ class AuditRequestContextFilterTest {
     }
 
     @Test
-    void successfulHeartbeatIsNoiseButHeartbeatFailureIsRetained() throws Exception {
+    void writeThatNeverReachedAControllerIsKeptByTheFallback() throws Exception {
+        // ADR-105: 自动写入(心跳等)的安静由控制器方法上的 @AuditAutomaticWrite 声明,
+        // 没进到控制器的写请求没有这份声明, 兜底一律留痕。
         MockHttpServletRequest success = new MockHttpServletRequest(
                 "POST", "/api/task-claims/EXPENSE_APPROVE/abc/heartbeat");
         MockHttpServletResponse successResponse = new MockHttpServletResponse();
         filter.doFilter(success, successResponse, (req, resp) -> { });
-        verifyNoInteractions(auditService);
+        verify(auditService).logHttpOperation(
+                isNull(), isNull(), eq("POST"),
+                eq("/api/task-claims/EXPENSE_APPROVE/abc/heartbeat"),
+                eq("api/task-claims/EXPENSE_APPROVE"), eq(200),
+                longThat(value -> value >= 0));
 
         MockHttpServletRequest failed = new MockHttpServletRequest(
                 "POST", "/api/task-claims/EXPENSE_APPROVE/abc/heartbeat");

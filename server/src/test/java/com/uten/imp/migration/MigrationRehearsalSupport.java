@@ -261,8 +261,8 @@ public final class MigrationRehearsalSupport {
                           'production_material_analysis_borrows'::regclass
                   AND NOT trigger_row.tgisinternal
                   AND trigger_row.tgname LIKE 'trg_audit%'
-                  AND trigger_function.proname IN ('fn_audit', 'fn_audit_redacted')
-                """)).isEqualTo(1);
+                  AND trigger_function.proname = 'fn_audit'
+                """)).isEqualTo(2); // ADR-105 FULL: 行事件 + 带 WHEN 的更新各一个
         assertThat(scalarLong(connection, """
                 SELECT count(*)
                 FROM business_identifier_conflicts

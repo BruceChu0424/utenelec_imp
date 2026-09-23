@@ -219,12 +219,16 @@ class ExpenseClaimFullchainMigrationPostgresTest {
                 WHERE t.tgrelid='expense_claims'::regclass AND NOT t.tgisinternal
                   AND p.proname='fn_reserve_business_document_identifier' AND t.tgenabled<>'D'
                 """)).isEqualTo(1);
+        // V646(ADR-105)之前每表恰一个全表审计触发器; 之后按三清单: 报销发票是 FULL
+        // (行事件 + 带 WHEN 的更新两个触发器), 报销事件账是只追加、带操作人的事件表(NONE)。
+        boolean threeLists = number(connection,
+                "SELECT count(*) FROM flyway_schema_history WHERE version='646' AND success") > 0;
         for (String table : new String[]{"expense_claim_invoices", "expense_claim_events"}) {
             assertThat(number(connection, """
                     SELECT count(*) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
                     WHERE t.tgrelid=?::regclass AND NOT t.tgisinternal
                       AND p.proname='fn_audit' AND t.tgenabled='A'
-                    """, table)).isEqualTo(1);
+                    """, table)).isEqualTo(!threeLists ? 1 : "expense_claim_invoices".equals(table) ? 2 : 0);
             assertThat(text(connection, "SELECT pg_get_functiondef('business_data_reset()'::regprocedure)"))
                     .contains("('" + table + "', 'CLEAR')");
         }

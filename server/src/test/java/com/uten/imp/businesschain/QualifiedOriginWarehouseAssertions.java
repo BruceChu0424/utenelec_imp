@@ -74,7 +74,8 @@ final class QualifiedOriginWarehouseAssertions {
         rejected(() -> transaction.execute(status -> {
             assertEquals(1, db.update("UPDATE stock_reservations SET released_qty=released_qty+1 WHERE id=?", target));
             updated[0] = true;
-            db.execute("SET CONSTRAINTS trg_qualified_origin_target_coverage IMMEDIATE");
+            // V650: UPDATE 事件排在 _upd 这条(只在相关列真变时起跳)，两条一起立即校验。
+            db.execute("SET CONSTRAINTS trg_qualified_origin_target_coverage, trg_qualified_origin_target_coverage_upd IMMEDIATE");
             return null;
         }), "qualified target reservation requires complete same-warehouse formal provenance");
         assertTrue(updated[0], "coverage must be deferred until all forward/reverse facts are present");

@@ -31,7 +31,7 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
      * 组装清单写入前按 id 顺序对父件与组件加 KEY SHARE 锁(ADR-111)：与主档删除命令的
      * FOR UPDATE 互斥。删除先拿锁时，这里等它提交后再读到「已删除」并拒绝；这里先拿锁时，
      * 删除等本事务提交后再做引用检查、看见新 BOM 行而拒绝——两边都不会留下「有效 BOM 挂着
-     * 已删组件」。KEY SHARE 与 lockUnused 的 NO KEY UPDATE 不冲突，平时建 BOM 不串行。
+     * 已删组件」。KEY SHARE 与单位数量锁(lockForQuantityUse, 同为 KEY SHARE)不冲突，平时建 BOM 不串行。
      */
     @Query(value = """
             SELECT id FROM goods
@@ -39,4 +39,12 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
             ORDER BY id FOR KEY SHARE
             """, nativeQuery = true)
     List<UUID> lockForReference(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * 基本单位是否已被数量引用(V651，按需现查)：任一数量来源表(含取消、红冲、软删的历史行)
+     * 或组装清单引用过该货品即为 true，此时基本单位不能再改。数据库守卫用的是同一个函数。
+     */
+    @org.springframework.data.jpa.repository.Query(
+            value = "SELECT fn_goods_quantity_unit_in_use(:id)", nativeQuery = true)
+    boolean quantityUnitInUse(@org.springframework.data.repository.query.Param("id") UUID id);
 }

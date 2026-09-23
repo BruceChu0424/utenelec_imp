@@ -301,7 +301,7 @@ public class PaymentStyleService {
     }
 
     private void lockStyleHierarchy() {
-        PaymentStyleHierarchyLock.lock(em);
+        PaymentStyleHierarchyLock.lockForHierarchyChange(em);
     }
 
     private void requireSameCategory(String category, PaymentStyle parent) {

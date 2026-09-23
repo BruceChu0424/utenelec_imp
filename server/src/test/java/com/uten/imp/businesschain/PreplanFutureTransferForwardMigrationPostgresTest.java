@@ -146,7 +146,7 @@ class PreplanFutureTransferForwardMigrationPostgresTest {
                 FROM allocated JOIN business_identifier_namespaces registry USING(namespace_key)
                 """,String.class,namespace);
     }
-    private static String audit(JdbcTemplate db,OldFacts facts){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(a) ORDER BY a.id)::text,'[]') FROM audit_log a WHERE target_id IN (?,?)",String.class,facts.transfer().toString(),facts.cancel().toString());}
+    private static String audit(JdbcTemplate db,OldFacts facts){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(a) - 'on_behalf_of' ORDER BY a.id)::text,'[]') FROM audit_log a WHERE target_id IN (?,?)",String.class,facts.transfer().toString(),facts.cancel().toString());}
     private static void qty(JdbcTemplate db,String expected,String sql,Object... args){assertEquals(0,new BigDecimal(expected).compareTo(db.queryForObject(sql,BigDecimal.class,args)));}
     private record OldFacts(UUID transfer,UUID cancel,UUID sourceAction,UUID sourceAllocation,UUID targetAllocation,UUID externalItem){}
 }

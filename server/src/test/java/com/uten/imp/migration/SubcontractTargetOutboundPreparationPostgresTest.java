@@ -128,10 +128,7 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                         UPDATE subcontract_material_issue_items
                         SET updated_at = now() WHERE id = ?
                         """, fixture.issueItemId());
-                execute(connection, """
-                        UPDATE stock_reservations
-                        SET updated_at = now() WHERE id = ?
-                        """, fixture.reservationId());
+                touchReservationRelevantColumn(connection, fixture.reservationId());
                 execute(connection, """
                         UPDATE subcontract_receipt_items
                         SET updated_at = now() WHERE id = ?
@@ -140,6 +137,7 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                 assertDoesNotThrow(() -> setConstraints(connection, String.join(", ",
                         "trg_subcontract_outbound_issue_item_allocation_guard",
                         "trg_subcontract_outbound_reservation_guard",
+                        "trg_subcontract_outbound_reservation_guard_upd",
                         "trg_subcontract_target_issue_consumption_guard",
                         "trg_subcontract_target_receipt_item_guard")));
             } finally {
@@ -195,14 +193,20 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                         """, fixture.warehouseId(), analysisId, analysisItemId,
                         fixture.actorUserId(), fixture.planItemId());
                 setReplica(connection, false);
+                // V650: 只改 updated_at 不再排延迟校验；把一个相关列改过去再改回来(终态不变)来排队。
                 execute(connection, """
                         UPDATE production_material_analysis_items
-                        SET updated_at = now() WHERE id = ?
+                        SET requested_qty = requested_qty + 1 WHERE id = ?
+                        """, analysisItemId);
+                execute(connection, """
+                        UPDATE production_material_analysis_items
+                        SET requested_qty = requested_qty - 1 WHERE id = ?
                         """, analysisItemId);
 
                 SQLException rejected = assertThrows(SQLException.class, () ->
                         setConstraints(connection,
-                                "trg_subcontract_preparation_analysis_source_guard"));
+                                "trg_subcontract_preparation_analysis_source_guard, "
+                                        + "trg_subcontract_preparation_analysis_source_guard_upd"));
                 assertThat(rejected.getSQLState()).isEqualTo("23514");
                 assertThat(rejected.getMessage())
                         .contains("analysis lineage is inconsistent");
@@ -303,14 +307,12 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                 setReplica(connection, false);
                 // Capacity is valid (5 received / 5 reserved); this test must reach the lineage guard.
                 assertPreparedCapacity(connection,fixture.reservationId());
-                execute(connection, """
-                        UPDATE stock_reservations
-                        SET updated_at = now() WHERE id = ?
-                        """, fixture.reservationId());
+                touchReservationRelevantColumn(connection, fixture.reservationId());
 
                 SQLException rejected = assertThrows(SQLException.class, () ->
                         setConstraints(connection,
-                                "trg_subcontract_outbound_reservation_guard"));
+                                "trg_subcontract_outbound_reservation_guard, "
+                                        + "trg_subcontract_outbound_reservation_guard_upd"));
                 assertThat(rejected.getSQLState()).isEqualTo("23514");
                 assertThat(rejected.getMessage())
                         .contains("FINISHED_IN reservation lineage is inconsistent");
@@ -545,6 +547,16 @@ class SubcontractTargetOutboundPreparationPostgresTest {
             statement.execute("SET LOCAL session_replication_role = "
                     + (replica ? "replica" : "origin"));
         }
+    }
+
+    /**
+     * V650: 延迟校验只在相关列真变了时排队，只改 updated_at 不再触发。把 source 改过去再改回来：
+     * 终态与原行一字不差，却让预留上的延迟校验各排一次(走 _upd 那条触发器)。
+     */
+    private static void touchReservationRelevantColumn(Connection connection, UUID reservationId)
+            throws SQLException {
+        execute(connection, "UPDATE stock_reservations SET source = source + 1 WHERE id = ?", reservationId);
+        execute(connection, "UPDATE stock_reservations SET source = source - 1 WHERE id = ?", reservationId);
     }
 
     private static void setConstraints(Connection connection, String names)

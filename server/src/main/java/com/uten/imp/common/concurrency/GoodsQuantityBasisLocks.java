@@ -5,21 +5,23 @@ import java.util.Collection;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Locks mutable quantity bases before normalization, until the caller writes its source. */
+/** Locks quantity bases before normalization, until the caller writes its source. */
 public final class GoodsQuantityBasisLocks {
     private GoodsQuantityBasisLocks() {}
 
-    public static void lockUnused(EntityManager em, Collection<UUID> goodsIds) {
+    public static void lockForQuantityUse(EntityManager em, Collection<UUID> goodsIds) {
         if (goodsIds == null) return;
         var ids = goodsIds.stream().filter(Objects::nonNull).distinct().sorted().toList();
         if (ids.isEmpty()) return;
-        // A used basis is immutable, so hot goods do not serialize new business.
-        // An unused basis must be read only after this lock: if its edit wins,
-        // subsequent normalization sees the new committed UUID, not an old row.
+        // FOR KEY SHARE is exactly what the source row's foreign-key check takes, so
+        // concurrent writers of the same goods never queue on each other. It still
+        // conflicts with the unit-change guard's FOR UPDATE (V651): if the unit edit
+        // wins, normalization reads the new committed unit; if this writer wins, the
+        // edit waits for its commit and then sees the new quantity reference.
         em.createNativeQuery("""
                 SELECT id FROM goods
-                WHERE id IN (:ids) AND NOT quantity_unit_locked
-                ORDER BY id FOR NO KEY UPDATE
+                WHERE id IN (:ids)
+                ORDER BY id FOR KEY SHARE
                 """).setParameter("ids", ids).getResultList();
     }
 }

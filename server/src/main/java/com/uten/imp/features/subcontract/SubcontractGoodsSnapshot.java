@@ -39,7 +39,7 @@ public record SubcontractGoodsSnapshot(UUID goodsId, String code, String name, S
         if (ids.isEmpty()) {
             return Map.of();
         }
-        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, ids);
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, ids);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT goods.id, goods.id, goods.code, goods.name

@@ -120,6 +120,8 @@ class FixtureSchemaDriftGuardPostgresTest {
             // BaseEntity 新建判定探针实体(BaseEntityPersistablePostgresTest), 都不是业务表。
             "version_probe",
             "persistable_probe",
+            // SchemaIndexHygieneContractTest 在回滚事务里自检索引规则用的样本表(ADR-106)。
+            "index_rule_probe",
             // BusinessIdentifierRegistryMigrationContractTest 里对迁移 SQL 做
             // contains 断言时，字面量拼接出的伪表名（不是真的建表语句）。
             "upper");

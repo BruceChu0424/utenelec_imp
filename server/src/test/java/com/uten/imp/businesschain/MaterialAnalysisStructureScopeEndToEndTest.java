@@ -291,14 +291,14 @@ class MaterialAnalysisStructureScopeEndToEndTest {
                 changed.put("control_stage",stage);
                 var realChange=MaterialNodeUpsertProbe.explain(em,json,analysisId,scenario.world().superAdminUserId(),List.of(changed),true);
                 assertEquals(1,realChange.path("Plan").path("Conflicting Tuples").asInt());
-                MaterialNodeUpsertProbe.assertUpdateGuardRan(realChange);
+                MaterialNodeUpsertProbe.assertIdentityGuardSkippedForNonIdentityChange(realChange);
                 assertEquals(stage,jdbc.queryForObject("SELECT control_stage FROM production_material_analysis_materials WHERE id=?",String.class,changed.get("id")));
 
                 var inactive=rows.get(1);
                 jdbc.update("UPDATE production_material_analysis_materials SET active=FALSE WHERE id=?",inactive.get("id"));
                 var activated=MaterialNodeUpsertProbe.explain(em,json,analysisId,scenario.world().superAdminUserId(),List.of(inactive),true);
                 assertEquals(1,activated.path("Plan").path("Conflicting Tuples").asInt());
-                MaterialNodeUpsertProbe.assertUpdateGuardRan(activated);
+                MaterialNodeUpsertProbe.assertIdentityGuardSkippedForNonIdentityChange(activated);
                 assertTrue(jdbc.queryForObject("SELECT active FROM production_material_analysis_materials WHERE id=?",Boolean.class,inactive.get("id")));
                 em.createNativeQuery("SET CONSTRAINTS ALL IMMEDIATE").executeUpdate();
             } catch(java.io.IOException failure) { throw new IllegalStateException(failure); }

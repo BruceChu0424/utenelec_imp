@@ -80,7 +80,7 @@ class SalesOrderExchangeRateAuthorityTest {
     @BeforeEach
     void stubGoodsSnapshots() {
         Query basisLock = mock(Query.class);
-        lenient().when(em.createNativeQuery(contains("FOR NO KEY UPDATE"))).thenReturn(basisLock);
+        lenient().when(em.createNativeQuery(contains("FOR KEY SHARE"))).thenReturn(basisLock);
         lenient().when(basisLock.setParameter(eq("ids"), any())).thenReturn(basisLock);
         lenient().when(basisLock.getResultList()).thenReturn(List.of());
         Query goodsQuery = mock(Query.class);

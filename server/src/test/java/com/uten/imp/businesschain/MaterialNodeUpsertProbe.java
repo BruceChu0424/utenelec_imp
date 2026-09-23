@@ -68,8 +68,13 @@ final class MaterialNodeUpsertProbe {
         return ReflectionTestUtils.invokeMethod(shape,"json",rows,values);
     }
 
-    static void assertUpdateGuardRan(JsonNode plan) {
-        assertTrue(plan.path("Triggers").findValuesAsText("Trigger Name").contains("trg_guard_pma_material_exact_peg_identity"),
-                "A genuine changed/activated row must still enter the real existing identity guard");
+    /**
+     * V650/ADR-106: the exact-peg identity guard fires only when an identity column really changes.
+     * A genuine control-stage change or re-activation goes through the real ON CONFLICT update
+     * (asserted by the caller) without paying for the identity guard.
+     */
+    static void assertIdentityGuardSkippedForNonIdentityChange(JsonNode plan) {
+        assertFalse(plan.path("Triggers").findValuesAsText("Trigger Name").contains("trg_guard_pma_material_exact_peg_identity"),
+                "A non-identity change must not enter the identity guard (WHEN gates on identity columns)");
     }
 }

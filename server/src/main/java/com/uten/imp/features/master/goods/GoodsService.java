@@ -758,7 +758,7 @@ public class GoodsService {
     public GoodsDetail detail(UUID id) {
         Goods g = requireGoods(id);
         requireVisible(g);
-        return toDetail(g, colorNameOf(g), unitNameOf(g));
+        return toDetail(g, colorNameOf(g), unitNameOf(g), repo.quantityUnitInUse(g.getId()));
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:create')")
@@ -773,13 +773,13 @@ public class GoodsService {
         ensureCostWriteAllowed(req, canWriteCosts);
         GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
-        apply(req, g, canWriteCosts);
+        apply(req, g, canWriteCosts, false);   // 新货品还没有任何数量引用
         applyCodeAllocation(g, categoryCodes.allocate(
                 CategoryDrivenCodeService.MasterType.GOODS,
                 g.getCategory().getId(), req.getCode()));
         if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
-        return toDetail(g, colorNameOf(g), unitNameOf(g));
+        return toDetail(g, colorNameOf(g), unitNameOf(g), false);
     }
 
     /**
@@ -791,7 +791,7 @@ public class GoodsService {
     public UUID saveImported(GoodsSaveRequest req) {
         GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
-        apply(req, g, true);
+        apply(req, g, true, false);
         applyCodeAllocation(g, categoryCodes.allocate(
                 CategoryDrivenCodeService.MasterType.GOODS,
                 g.getCategory().getId(), req.getCode()));
@@ -807,7 +807,9 @@ public class GoodsService {
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
         Goods g = requireGoods(id);
         requireWritable(g);
-        GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req);
+        // 基本单位是否已被数量引用：按需现查一次(V651)，拦截、写入与回显共用。
+        boolean quantityUnitInUse = repo.quantityUnitInUse(g.getId());
+        GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, quantityUnitInUse);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
@@ -818,12 +820,12 @@ public class GoodsService {
         ensureCostWriteAllowed(req, canWriteCosts);
         GoodsCostValuePolicy.validateRequest(req);
         CategoryCodeAllocation currentCode = currentCodeAllocation(g);
-        apply(req, g, canWriteCosts);
+        apply(req, g, canWriteCosts, quantityUnitInUse);
         applyCodeAllocation(g, categoryCodes.allocateForUpdate(
                 CategoryDrivenCodeService.MasterType.GOODS,
                 g.getId(), g.getCategory().getId(), req.getCode(), currentCode));
         repo.save(g);
-        return toDetail(g, colorNameOf(g), unitNameOf(g));
+        return toDetail(g, colorNameOf(g), unitNameOf(g), quantityUnitInUse);
     }
 
     /**
@@ -920,7 +922,7 @@ public class GoodsService {
         OptimisticLocks.requireUpToDate(g.getVersion(), req.version());
         g.setStatus(req.status());
         repo.save(g);
-        return toDetail(g, colorNameOf(g), unitNameOf(g));
+        return toDetail(g, colorNameOf(g), unitNameOf(g), repo.quantityUnitInUse(g.getId()));
     }
 
 
@@ -1035,7 +1037,7 @@ public class GoodsService {
         goods.setCodeManaged(allocation.managed());
     }
 
-    private void apply(GoodsSaveRequest req, Goods g, boolean writeCosts) {
+    private void apply(GoodsSaveRequest req, Goods g, boolean writeCosts, boolean quantityUnitInUse) {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
         g.setShortName(req.getShortName());
@@ -1078,7 +1080,7 @@ public class GoodsService {
         applyOwningWarehouseReference(req, g);
         // Used units were checked before apply. Preserve their exact UUID and
         // legacy snapshot even if that unit is now inactive or unresolved.
-        if (req.hasUnitReference() && !g.isQuantityUnitLocked()) {
+        if (req.hasUnitReference() && !quantityUnitInUse) {
             if (clearsReference(req.getUnitId(), req.getUnitLegacyId())) {
                 g.setUnit(null);
                 g.setUnitLegacyId(null);
@@ -1160,8 +1162,8 @@ public class GoodsService {
         GoodsCostValuePolicy.validateEntity(g);
     }
 
-    private GoodsDetail toDetail(Goods g, String colorName, String unitName) {
-        if (g.isQuantityUnitLocked() && g.getUnit() != null) {
+    private GoodsDetail toDetail(Goods g, String colorName, String unitName, boolean quantityUnitInUse) {
+        if (quantityUnitInUse && g.getUnit() != null) {
             unitName = g.getUnit().getName();
         }
         UUID categoryId = g.getCategory() == null ? null : g.getCategory().getId();
@@ -1215,7 +1217,7 @@ public class GoodsService {
                 g.getSeries(), g.getStockPlace(),
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
                 g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),
-                g.isQuantityUnitLocked(), canWrite(g),
+                quantityUnitInUse, canWrite(g),
                 g.getMinOrderQty(), g.getOrderMultipleQty(),
                 owningWarehouseId, owningWarehouseName,
                 owningWorkshopId, owningWorkshopName, null, null,

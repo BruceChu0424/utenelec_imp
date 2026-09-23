@@ -222,8 +222,8 @@ class GoodsDiscountVisibilityTest {
         unit.setDeleted(true);
         goods.setUnit(unit);
         goods.setUnitLegacyId(12);
-        goods.setQuantityUnitLocked(true);
         when(goodsRepo.findById(goods.getId())).thenReturn(Optional.of(goods));
+        when(goodsRepo.quantityUnitInUse(goods.getId())).thenReturn(true);
         when(goodsRepo.save(any(Goods.class))).thenAnswer(inv -> inv.getArgument(0));
         GoodsSaveRequest request = saveRequest();
         request.setName("只改名称");

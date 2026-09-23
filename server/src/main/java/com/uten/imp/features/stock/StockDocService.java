@@ -3717,7 +3717,7 @@ public class StockDocService {
         if (line.getGoodsId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "第 " + lineNo + " 行缺少货品");
         }
-        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, List.of(line.getGoodsId()));
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, List.of(line.getGoodsId()));
         List<Object[]> goodsRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT g.is_deleted, u.id, COALESCE(u.is_deleted, true)
                 FROM goods g

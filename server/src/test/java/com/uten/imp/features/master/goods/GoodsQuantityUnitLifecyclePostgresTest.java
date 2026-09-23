@@ -21,7 +21,11 @@ import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.*;
 
-/** Real V498 DDL/DML, rollback and concurrent first-use against PostgreSQL. */
+/**
+ * Real V498 catalog + V651 on-demand usage check, rollback and concurrent first-use against PostgreSQL.
+ * V651 dropped the 104 statement triggers and goods.quantity_unit_locked: "used" is now computed by
+ * fn_goods_quantity_unit_in_use when a unit actually changes.
+ */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class GoodsQuantityUnitLifecyclePostgresTest {
     private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -70,6 +74,10 @@ class GoodsQuantityUnitLifecyclePostgresTest {
         jdbc.update("INSERT INTO warehouse_goods_place_preferences VALUES (?, 'A1')", METADATA_ONLY);
         jdbc.update("INSERT INTO goods_image_references VALUES (?, 'photo.png')", METADATA_ONLY);
         jdbc.execute(sql);
+        try (var in = Objects.requireNonNull(GoodsQuantityUnitLifecyclePostgresTest.class.getResourceAsStream(
+                "/db/migration/V651__goods_quantity_unit_in_use_on_demand.sql"))) {
+            jdbc.execute(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
         var factory = new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(ds);
         factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
@@ -127,15 +135,39 @@ class GoodsQuantityUnitLifecyclePostgresTest {
         assertThat(jdbc.queryForObject("SELECT unit_legacy_id FROM goods WHERE id=?", Integer.class, LEGACY)).isEqualTo(12);
     }
 
-    @Test void deletingOrReassigningReferencesCannotUnlockTheOriginalGoods() {
+    @Test void softDeletedOrCancelledReferencesKeepTheUnitWhileRemovedDraftLinesReleaseIt() {
+        // V651: "used" is read from the quantity sources at change time. Soft-deleted or cancelled
+        // history still exists and keeps the basis. A draft line reassigned to other goods, or really
+        // removed, leaves no quantity behind for the original goods, so its unit may change again
+        // (ADR-106 §2.3, replaces V498's "once used, locked forever").
         UUID first = goods(PIECE), next = goods(PIECE);
         jdbc.update("INSERT INTO purchase_order_items(goods_id,qty) VALUES (?,24)", first);
         jdbc.update("UPDATE purchase_order_items SET goods_id=? WHERE goods_id=?", next, first);
-        jdbc.update("DELETE FROM purchase_order_items WHERE goods_id=?", next);
-        assertBlocked(first, BOX);
+        assertThat(locked(first)).isFalse();
         assertBlocked(next, BOX);
-        assertThatThrownBy(() -> jdbc.update("UPDATE goods SET quantity_unit_locked=false WHERE id=?", first))
-                .hasMessageContaining("基本单位不能再改");
+        jdbc.update("UPDATE purchase_order_items SET is_deleted=true WHERE goods_id=?", next);
+        assertBlocked(next, BOX);
+        jdbc.update("DELETE FROM purchase_order_items WHERE goods_id=?", next);
+        assertThat(locked(next)).isFalse();
+        jdbc.update("UPDATE goods SET unit_id=? WHERE id=?", BOX, next);
+        assertThat(unit(next)).isEqualTo(BOX);
+    }
+
+    @Test void onlyARealUnitChangeRunsTheUsageCheck() throws Exception {
+        UUID id = goods(PIECE);
+        jdbc.update("INSERT INTO stock_balances(goods_id,qty) VALUES (?,5)", id);
+        try (Connection connection = ds.getConnection()) {
+            connection.setAutoCommit(false);
+            execute(connection, "SET LOCAL track_functions = 'all'");
+            long before = usageChecks(connection);
+            execute(connection, "UPDATE goods SET name='只改名称', unit_id=? WHERE id=?", PIECE, id);
+            execute(connection, "UPDATE stock_balances SET qty=qty+1 WHERE goods_id=?", id);
+            assertThat(usageChecks(connection)).isEqualTo(before);
+            SQLException rejected = org.junit.jupiter.api.Assertions.assertThrows(SQLException.class,
+                    () -> execute(connection, "UPDATE goods SET unit_id=? WHERE id=?", BOX, id));
+            assertThat(rejected.getSQLState()).isEqualTo("23514");
+            connection.rollback();
+        }
     }
 
     @Test void rolledBackFirstUseDoesNotLeaveAFalsePermanentLock() throws Exception {
@@ -263,7 +295,14 @@ class GoodsQuantityUnitLifecyclePostgresTest {
         return id;
     }
     private static UUID unit(UUID id) { return jdbc.queryForObject("SELECT unit_id FROM goods WHERE id=?", UUID.class, id); }
-    private static boolean locked(UUID id) { return Boolean.TRUE.equals(jdbc.queryForObject("SELECT quantity_unit_locked FROM goods WHERE id=?", Boolean.class, id)); }
+    private static boolean locked(UUID id) { return Boolean.TRUE.equals(jdbc.queryForObject("SELECT fn_goods_quantity_unit_in_use(?)", Boolean.class, id)); }
+    /** Calls of the usage check made by this very backend (pg_stat_get_xact_function_calls is transaction-local). */
+    private static long usageChecks(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement(); var result = statement.executeQuery(
+                "SELECT COALESCE(pg_stat_get_xact_function_calls('fn_goods_quantity_unit_in_use(uuid)'::regprocedure), 0)")) {
+            result.next(); return result.getLong(1);
+        }
+    }
     private static void assertBlocked(UUID id, UUID unit) {
         assertThatThrownBy(() -> jdbc.update("UPDATE goods SET unit_id=? WHERE id=?", unit, id))
                 .hasMessageContaining("基本单位");

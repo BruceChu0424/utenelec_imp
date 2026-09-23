@@ -3051,7 +3051,7 @@ class FullChainEndToEndTest {
                 insert into goods(id,code,name,source_type,status,code_sequence)
                 values(?,?,'未使用且缺基本单位的主档','自制','使用',(select coalesce(max(code_sequence),0)+1 from goods))
                 """,unused,"ROOT-NO-UNIT-"+unused);
-        assertEquals(0,count("select count(*) from goods where id=? and quantity_unit_locked",unused));
+        assertEquals(0,count("select count(*) from goods where id=? and fn_goods_quantity_unit_in_use(id)",unused));
         String invalidKey="root-unit-missing-"+unused;
         ApiException blocked=assertThrows(ApiException.class,() -> analysisService.preview(new PreviewRequest(
                 null,null,null,w.warehouseId(),invalidKey,
@@ -3062,7 +3062,7 @@ class FullChainEndToEndTest {
         assertEquals(0,count("select count(*) from production_material_analyses where initial_idempotency_key=?",invalidKey));
         assertEquals(0,count("select count(*) from production_material_analysis_items where goods_id=?",unused));
         assertEquals(0,count("select count(*) from production_material_analysis_materials where goods_id=?",unused));
-        assertEquals(0,count("select count(*) from goods where id=? and quantity_unit_locked",unused),"失败分析不得留下首次数量使用标记");
+        assertEquals(0,count("select count(*) from goods where id=? and fn_goods_quantity_unit_in_use(id)",unused),"失败分析不得留下任何数量引用");
     }
 
 

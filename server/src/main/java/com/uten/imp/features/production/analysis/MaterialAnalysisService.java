@@ -7249,7 +7249,7 @@ public class MaterialAnalysisService {
     }
 
     private SourceMaster manualSourceMaster(UUID goodsId, UUID colorId, UUID unitId) {
-        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, java.util.Collections.singleton(goodsId));
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, java.util.Collections.singleton(goodsId));
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT g.id, :colorId, u.id,
                        g.unit_id AS base_unit_id

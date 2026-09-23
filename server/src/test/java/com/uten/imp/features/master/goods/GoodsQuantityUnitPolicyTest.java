@@ -27,7 +27,6 @@ class GoodsQuantityUnitPolicyTest {
 
     @Test void directServiceRequestCannotBypassLockedUnitOrTouchOtherFields() {
         var goods = new Goods();
-        goods.setQuantityUnitLocked(true);
         goods.setName("原货品");
         goods.setUnit(new Unit());
         var request = new GoodsSaveRequest();
@@ -35,6 +34,7 @@ class GoodsQuantityUnitPolicyTest {
         request.setUnitId(new Unit().getId());
         var repo = mock(GoodsRepository.class);
         when(repo.findById(goods.getId())).thenReturn(Optional.of(goods));
+        when(repo.quantityUnitInUse(goods.getId())).thenReturn(true);
         var relationships = mock(GoodsMasterRelationshipResolver.class);
         var service = new GoodsService(repo, mock(MaterialCategoryRepository.class), mock(ColorRepository.class),
                 mock(UnitRepository.class), mock(MouldRepository.class), mock(TxSessionVars.class),
@@ -55,30 +55,28 @@ class GoodsQuantityUnitPolicyTest {
         goods.setUnit(unit);
         var request = new GoodsSaveRequest();
         request.setUnitId(new Unit().getId());
-        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request)).doesNotThrowAnyException();
-        goods.setQuantityUnitLocked(true);
+        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request, false)).doesNotThrowAnyException();
         request.setUnitId(unit.getId());
-        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request)).doesNotThrowAnyException();
-        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, new GoodsSaveRequest()))
+        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request, true)).doesNotThrowAnyException();
+        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, new GoodsSaveRequest(), true))
                 .doesNotThrowAnyException();
         request.setUnitId(null);
-        assertThatThrownBy(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request))
+        assertThatThrownBy(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request, true))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test void unresolvedUsedLegacyCannotBeGuessedOrHaveItsDisplaySnapshotCleared() {
         var goods = new Goods();
-        goods.setQuantityUnitLocked(true);
         goods.setUnitLegacyId(12);
         var request = new GoodsSaveRequest();
         request.setUnitId(new Unit().getId());
-        assertThatThrownBy(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request))
+        assertThatThrownBy(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request, true))
                 .hasMessageContaining("历史基本单位尚未核对");
         request.setUnitId(null);
-        assertThatThrownBy(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request))
+        assertThatThrownBy(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, request, true))
                 .hasMessageContaining("历史基本单位尚未核对");
         assertThat(goods.getUnitLegacyId()).isEqualTo(12);
-        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, new GoodsSaveRequest()))
+        assertThatCode(() -> GoodsQuantityUnitPolicy.requireUnchangedIfUsed(goods, new GoodsSaveRequest(), true))
                 .doesNotThrowAnyException();
     }
 }

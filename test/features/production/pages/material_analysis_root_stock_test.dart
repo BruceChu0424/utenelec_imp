@@ -50,11 +50,8 @@ void main() {
       expect(inactiveCheckbox, findsOneWidget);
       expect(tester.widget<Checkbox>(inactiveCheckbox).onChanged, isNull);
       await _selectAndOpenQuantity(tester);
-      // 行内默认 0（缺口已被现货覆盖），现货交接提示进总结弹窗。
-      final quantity = find.byKey(
-        const ValueKey('material-analysis-bucket-submit-qty-root-action'),
-      );
-      expect(tester.widget<TextField>(quantity).controller!.text, '0');
+      // 页里默认 0(缺口已被现货覆盖，0 = 交接现货，合法值)，现货交接提示进总结弹窗。
+      expect(tester.widget<TextField>(_seedQty()).controller!.text, '0');
       expect(find.textContaining('将优先交接已分配现货 10'), findsOneWidget);
       await tester.tap(find.byKey(const Key('supply-submit-confirm')));
       await tester.pumpAndSettle();
@@ -98,10 +95,7 @@ void main() {
         );
         await _openBuy(tester);
         await _selectAndOpenQuantity(tester);
-        final quantity = find.byKey(
-          const ValueKey('material-analysis-bucket-submit-qty-root-action'),
-        );
-        expect(tester.widget<TextField>(quantity).controller!.text, '7');
+        expect(tester.widget<TextField>(_seedQty()).controller!.text, '7');
         expect(find.text('共 1 个品种，合计 7。'), findsOneWidget);
         await tester.tap(find.byKey(const Key('supply-submit-confirm')));
         await tester.pumpAndSettle();
@@ -289,6 +283,8 @@ Future<void> _openBuy(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// 勾选根供给行 → 点「提交采购需求」→ 进「核对并下单」页(2026-09-22 起外层桶表
+/// 只读，数量只在那一页看 / 改) → 点页里的「下单」→ 弹数量确认。
 Future<void> _selectAndOpenQuantity(WidgetTester tester) async {
   final row = find.byKey(const ValueKey('row:NODE|root-action|root-line'));
   final checkbox = find.descendant(of: row, matching: find.byType(Checkbox));
@@ -299,8 +295,20 @@ Future<void> _selectAndOpenQuantity(WidgetTester tester) async {
   await tester.ensureVisible(action);
   await tester.tap(action);
   await tester.pumpAndSettle();
+  expect(
+    find.byKey(const Key('material-analysis-child-cascade-dialog')),
+    findsOneWidget,
+  );
+  await tester.tap(
+    find.byKey(const Key('material-analysis-child-cascade-submit')),
+  );
+  await tester.pumpAndSettle();
   expect(find.byKey(const Key('supply-submit-confirm-dialog')), findsOneWidget);
 }
+
+/// 「核对并下单」页里根供给行的数量框。
+Finder _seedQty() =>
+    find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-line'));
 
 Future<void> _openRootDetails(WidgetTester tester) async {
   final name = find

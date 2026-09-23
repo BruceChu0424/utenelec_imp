@@ -24,6 +24,11 @@ enum _CascadeParentChannel {
   /// 下达委外，直接外发（无子层，或 V581「只有一个叶子子件」的我方供料件）。
   /// notify 一步到位形成委外申请，可分批、可按权限超量，不需要车间。
   subcontractDirect,
+
+  /// 下达采购(2026-09-22 三个桶的外层表改成只读清单之后新增)：notify BUY 一步
+  /// 到位形成采购申请。采购件没有要一起办的下层，本页对它只是「核对 / 改数量再
+  /// 提交」；可分批、可按权限超量，不需要车间。
+  buyDirect,
 }
 
 /// 一次下达里的一行，既是下层展开的起点，也是**父件段完整的提交意图**
@@ -39,11 +44,8 @@ class _ChildCascadeSeed {
     this.materialLineId,
     this.actionGroupKey,
     this.unitName,
-    this.departmentId,
-    this.departmentName,
     this.workerId,
     this.workerName,
-    this.workshopAutofilled = false,
     this.workerAutofilled = false,
     this.groupKey,
     this.overQtyConfirmed = false,
@@ -78,8 +80,9 @@ class _ChildCascadeSeed {
   String? workerName;
 
   /// 车间 / 负责人是系统带出来的默认值（学习默认或车间主管），不是用户亲手
-  /// 选的——级联页同样要标黄提醒核对。
-  bool workshopAutofilled;
+  /// 选的——级联页同样要标黄提醒核对。车间只在进页前的学习回填 / 页里手选时
+  /// 写入(2026-09-22 起分桶页没有车间列，建种子时不再带车间)。
+  bool workshopAutofilled = false;
   bool workerAutofilled;
 
   /// 走 issue-plans 的行要填车间 / 负责人；直接外发的委外件整件发给委外商，
@@ -369,6 +372,12 @@ class _ChildCascadeRow extends EditableGridRow {
       material?.owningWarehouseName ?? product?.owningWarehouseName;
   String? get owningWarehouseIdSnapshot =>
       material?.owningWarehouseId ?? product?.owningWarehouseId;
+
+  /// 归属生产车间(V590 货品主档学习字段)的快照值，只读展示。
+  String? get owningWorkshopNameSnapshot {
+    final name = material?.owningWorkshopName ?? product?.owningWorkshopName;
+    return name?.trim().isEmpty == true ? null : name?.trim();
+  }
 
   /// 单位：树顶行的数量是**来源单位**（需求 10 箱就是 10），挂的根供给行
   /// 记的却是基本单位——树顶一律显示产品的来源单位。

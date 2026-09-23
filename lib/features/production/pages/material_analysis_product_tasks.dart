@@ -268,47 +268,6 @@ abstract class _MaterialAnalysisProductTasksState
   Color _productExecutionColor(ThemeData theme, ProductionFlowStage stage) =>
       productionFlowToneColor(theme, stage.tone);
 
-  /// Bottom-up material readiness for a product/assembly card. This controls
-  /// whether material may be issued and production may start; scheduling uses
-  /// the independent server-authored canSchedule/maxSchedulableQty pair.
-  /// When material is short, the reason is broken down by which depth-one
-  /// materials are still short and whether they are self-make
-  /// sub-assemblies (waiting on children to be built and received), procured
-  /// (BUY) or subcontracted items.
-  _ProductReadiness _productReadiness(
-    ProductionMaterialAnalysisProduct product,
-  ) {
-    if (product.readyNowQty > 0) {
-      return const _ProductReadiness(_ReadinessState.ready);
-    }
-    var make = 0, buy = 0, subcontract = 0, review = 0;
-    for (final material in _depth1MaterialsFor(product)) {
-      if (material.shortageQty <= 0) continue;
-      switch (material.confirmedRoute ?? material.sourceSuggestion) {
-        case MaterialSupplyRoute.make:
-          make++;
-        case MaterialSupplyRoute.buy:
-          buy++;
-        case MaterialSupplyRoute.subcontract:
-          subcontract++;
-        case null:
-          review++;
-      }
-    }
-    final state = make > 0
-        ? _ReadinessState.waitingMake
-        : (buy > 0 || subcontract > 0
-              ? _ReadinessState.waitingSupply
-              : _ReadinessState.waiting);
-    return _ProductReadiness(
-      state,
-      make: make,
-      buy: buy,
-      subcontract: subcontract,
-      review: review,
-    );
-  }
-
   @override
   ProductionMaterialAnalysisMaterial? _rootSupplyMaterialOf(
     ProductionMaterialAnalysisProduct product,

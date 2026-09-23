@@ -139,6 +139,11 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
 
   List<_ChildCascadeSeed> get _topSeeds => widget.seeds;
 
+  /// 树下面有没有真正的下层行。2026-09-22 起三个桶的外层表只读，采购件 / 叶子委外件
+  /// 这类没有下层的行也进本页填数——那时本页就是一张「核对并下单」表，标题、说明、
+  /// 按钮文案都不该再说「下层」。
+  bool get _hasChildRows => _allRows.any((row) => !row.isSeed);
+
   /// 这一行现在能不能指派车间 / 负责人。树顶父件段一旦提交成功就不能再改——
   /// 车间/负责人算进 issue-plans 的幂等键。
   bool _canAssignWorkshop(_ChildCascadeRow row) =>
@@ -1069,18 +1074,25 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     final noWorker = <String>[];
     final over = <String>[];
     for (final seed in _topSeeds) {
-      if (seed.batchQty <= 0 || !seed.batchQty.isFinite) {
+      // 车间通道必须大于 0；采购 / 直接外发委外允许 0——缺口已被现货覆盖的采购件
+      // 按 0 提交 = 交接已分配现货(notify 的既有语义)，追加行填 0 = 本次不追加。
+      final positiveOnly = seed.needsWorkshop;
+      if (!seed.batchQty.isFinite ||
+          seed.batchQty < 0 ||
+          (positiveOnly && seed.batchQty <= 0)) {
         badQty.add('「${seed.label}」');
         continue;
       }
       final cap = seed.maxQty;
-      // 只对**在本页被改大**的数量再确认一次：进页前那个数已经在分桶页过过
-      // 「确认超量下达」；没问过的（委外桶改走 issue-plans 的行）必须补问。
+      // 只对**在本页被改大**的数量再确认一次；没问过的(走 issue-plans 的行)必须
+      // 补问。采购 / 直接外发委外不在这里问：notify 通道自己会弹数量确认并裁决
+      // 超量(需要超量下达权限)，这里再问一遍就是两道一样的门。
       final raisedHere =
           (seed.batchQty - (_initialSeedQty[seed] ?? seed.batchQty)).abs() >
           0.0001;
       // 上限为 0（需求已全部转入计划，本批全是追加的公共备货产出）同样要确认。
-      if ((raisedHere || !seed.overQtyConfirmed) &&
+      if (seed.needsWorkshop &&
+          (raisedHere || !seed.overQtyConfirmed) &&
           cap != null &&
           seed.batchQty > cap + 0.0001) {
         over.add(
@@ -1149,6 +1161,11 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
               ? '勾选的行追加数量都是 0，本次没有要提交的内容——要下就填一个大于 0 的数量'
               : '请先勾选要下单的下层物料',
         );
+        return;
+      }
+      // 没有下层的页(采购件 / 叶子委外件 / 追加行)：本页就是核对并下单，直接提交树顶。
+      if (!_hasChildRows) {
+        await _runSegments(const [], parentOnly: true);
         return;
       }
       // 下层都已下过单（没有一行还有缺口）：不用再问，直接只下达父件。
@@ -1272,12 +1289,15 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         final ok = parentPending ? await parentSegment() : true;
         results = [
           (
-            label: '父件下达',
+            label: _hasChildRows ? '父件下达' : '下单',
             count: ok ? _topSeeds.length : 0,
             ok: ok,
             note: ok
-                ? (parentOnlyNote ?? '下层未办理：本次一行都没有勾选，下层的还需安排量留在各自的桶里')
-                : '父件未提交成功，下层未动，可直接重试',
+                ? (parentOnlyNote ??
+                      (_hasChildRows
+                          ? '下层未办理：本次一行都没有勾选，下层的还需安排量留在各自的桶里'
+                          : null))
+                : (_hasChildRows ? '父件未提交成功，下层未动，可直接重试' : '未提交成功，可直接重试'),
           ),
         ];
       } else {
@@ -1361,7 +1381,9 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         appBar: UtenAppBar(
           title: widget.parentAction == null || _parentSubmitted
               ? '继续办齐下层物料'
-              : '父件 + 下层一起下单',
+              : _hasChildRows
+              ? '父件 + 下层一起下单'
+              : '核对并下单',
           showPagePermissionAction: false,
           leading: UtenBackButton(onPressed: _running ? null : _exitPage),
           actions: [
@@ -1465,6 +1487,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                               ? '正在按本批数量重算下层…'
                               : _busy
                               ? '正在载入默认车间…'
+                              : !_hasChildRows
+                              ? '下单(${_topSeeds.length})'
                               : count == 0
                               ? '只下达父件'
                               : '一键下单($count)',
@@ -1475,14 +1499,24 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                 },
               ),
             ),
+            // 遮罩只跟宿主的**网络段**(bucketActionBusyMessage /
+            // planSubmissionProgress)走，不跟 _running 整段挂：父件段里宿主还会
+            // 弹数量确认框(采购 / 直接外发委外的 notify 通道)，_running 期间就挂
+            // 遮罩会把那个弹窗盖在转圈背后一个按钮都点不动——2026-09-22 只有采购件
+            // 的「核对并下单」页点「下单」后整页卡死就是它(遮罩契约见
+            // uten_busy_overlay_dialog_order_contract_test)。按钮禁用与
+            // 「正在下达…」文案仍跟 _running。
             AnimatedBuilder(
               animation: Listenable.merge([
                 _host.bucketActionBusyMessage,
                 _host.planSubmissionProgress,
               ]),
               builder: (context, _) {
-                if (!_running) return const SizedBox.shrink();
                 final segment = _host.bucketActionBusyMessage.value;
+                if (!_running ||
+                    (segment == null && !_host.planSubmissionProgress.value)) {
+                  return const SizedBox.shrink();
+                }
                 final generatingTitle = _host._planSubmissionApproveNow
                     ? '正在生成并审核下达'
                     : '正在生成生产计划';
@@ -1506,17 +1540,25 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   }
 
   Widget _hintCard(ThemeData theme) {
-    final seedText = _topSeeds
+    final seedLabels = _topSeeds
         .map(
           (seed) =>
               '${seed.label} ${_host._qty(seed.batchQty)}'
               '${seed.unitName?.trim().isNotEmpty == true ? ' ${seed.unitName!.trim()}' : ''}',
         )
-        .join('、');
+        .toList(growable: false);
+    // 只点前几个名字：桶表全选几百行进来时, 把所有种子拼成一段会把提示卡撑到溢出
+    // (2026-09-22 用例改写时 501 行实测 RenderFlex 溢出), 这一页的表格本身就是清单。
+    const shown = 5;
+    final seedText = seedLabels.length <= shown
+        ? seedLabels.join('、')
+        : '${seedLabels.take(shown).join('、')} 等 ${seedLabels.length} 项';
     final submitted = widget.parentAction == null || _parentSubmitted;
     final headline = submitted
         ? '已下达：$seedText。下面是它按 BOM 展开的下层，数量由服务端按本批数量算好，可以改。'
-        : '本次将下达：$seedText，以及下面按 BOM 展开的下层（数量由服务端按本批数量算好）。点「一键下单」才会真正提交。';
+        : _hasChildRows
+        ? '本次将下达：$seedText，以及下面按 BOM 展开的下层(数量由服务端按本批数量算好)。点「一键下单」才会真正提交。'
+        : '本次将下达：$seedText。这些行没有需要一起办的下层，核对数量后点「下单」才会真正提交。';
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s8),
       decoration: BoxDecoration(
@@ -1815,7 +1857,13 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         },
         cellBuilder: (context, row) => Text(
           row.isSeed
-              ? (widget.parentAction == null ? '已下达' : '本次下达')
+              ? (widget.parentAction == null
+                    ? '已下达'
+                    : switch (row.seed?.channel) {
+                        _CascadeParentChannel.buyDirect => '本次下达采购',
+                        _CascadeParentChannel.subcontractDirect => '本次下达委外',
+                        _ => '本次下达车间',
+                      })
               : switch (row.kind) {
                   _CascadeKind.buy => '下达采购',
                   _CascadeKind.subcontractLeaf => '下达委外',
@@ -1824,6 +1872,91 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           style: theme.textTheme.bodySmall,
         ),
       ),
+      // ===== 2026-09-22 从三个桶的外层表搬进来的只读信息列 =====
+      // 外层表只留身份四列 + 供应方式 / 需求量 / 缺口 / 进度，其余在这里看。
+      EditableGridColumn<_ChildCascadeRow>(
+        key: 'owningWorkshop',
+        label: '归属车间',
+        width: 120,
+        headerInfo: '这个货品归哪个生产车间生产(货品主档学习字段)，只读；本次真正指派的车间在右边「生产车间」列。',
+        filterValueOf: (row) => row.owningWorkshopNameSnapshot,
+        cellBuilder: (context, row) =>
+            Text(row.owningWorkshopNameSnapshot ?? '—'),
+      ),
+      EditableGridColumn<_ChildCascadeRow>(
+        key: 'bomPath',
+        label: 'BOM 路径',
+        width: 260,
+        cellBuilder: (context, row) {
+          final material = row.material;
+          final path = material == null ? '—' : _host._pathLabel(material);
+          return Tooltip(
+            message: path,
+            child: Text(
+              path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
+        },
+      ),
+      EditableGridColumn<_ChildCascadeRow>(
+        key: 'warehouseAvailable',
+        label: '仓库余量',
+        width: 100,
+        numeric: true,
+        headerInfo: '仓库里该物料当前还可用的现货量(不含在途)。',
+        cellBuilder: (context, row) => Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            row.material == null ? '—' : _host._qty(row.material!.availableQty),
+          ),
+        ),
+      ),
+      EditableGridColumn<_ChildCascadeRow>(
+        key: 'shortage',
+        label: '缺口',
+        width: 90,
+        numeric: true,
+        headerInfo: _host._l10n.materialPhysicalShortageHint,
+        cellBuilder: (context, row) {
+          final material = row.material;
+          if (material == null) {
+            return const Align(
+              alignment: Alignment.centerRight,
+              child: Text('—'),
+            );
+          }
+          final shortage = material.shortageQty;
+          return Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              _host._qty(shortage),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: _host._shortageTextColor(theme, shortage),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          );
+        },
+      ),
+      if (_allRows.any(
+        (row) => (row.material?.sharedFuturePendingQty ?? 0) > 0.0001,
+      ))
+        EditableGridColumn<_ChildCascadeRow>(
+          key: 'sharedFuturePending',
+          label: '公共认领未实收',
+          width: 130,
+          numeric: true,
+          headerInfo: '从公共余量认领的未实收供给；实际合格入库前不增加现货。',
+          cellBuilder: (context, row) => Align(
+            alignment: Alignment.centerRight,
+            child: Text(_host._qty(row.material?.sharedFuturePendingQty)),
+          ),
+        ),
       EditableGridColumn<_ChildCascadeRow>(
         key: 'snapshotNeed',
         label: '需求数量',
@@ -1892,9 +2025,18 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         cellBuilder: (context, row) {
           if (row.isSeed) {
             final seed = row.seed;
-            return RequiredCellFrame(
+            final field = RequiredCellFrame(
               listenable: row.qty,
-              isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+              // 车间通道 0 也红；采购 / 直接外发委外只有空、不是数、负数才红
+              // (0 = 交接现货 / 本次不追加，是合法值)。
+              isEmpty: () {
+                final text = row.qty.text.trim();
+                final value = double.tryParse(text);
+                if (text.isEmpty || value == null || !value.isFinite) {
+                  return true;
+                }
+                return value < 0 || (row.needsWorkshop && value <= 0);
+              },
               child: TextField(
                 key: ValueKey('material-analysis-child-cascade-qty-${row.id}'),
                 controller: row.qty,
@@ -1913,6 +2055,40 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
                   ),
                 ),
               ),
+            );
+            // 采购件的起订量 / 整包装抬量说明贴在输入框下方(原来长在采购桶的
+            // 数量格里，桶表只读后搬到这里)：计划员一眼看到抬到多少、富余归哪。
+            final policyHint = seed?.channel == _CascadeParentChannel.buyDirect
+                ? () {
+                    final group = _host._analysisGroupOf(row.groupKey);
+                    return group == null
+                        ? null
+                        : _host._orderPolicyHint(
+                            group,
+                            MaterialSupplyRoute.buy,
+                          );
+                  }()
+                : null;
+            if (policyHint == null) return field;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                field,
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s2),
+                  child: Text(
+                    policyHint,
+                    key: ValueKey(
+                      'material-analysis-child-cascade-order-policy-${row.id}',
+                    ),
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             );
           }
           if (!row.ownsInput) {
@@ -2081,7 +2257,9 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     if (!row.needsWorkshop) {
       return Tooltip(
         message: row.isSeed
-            ? '本行直接外发给委外商，不需要我方车间与负责人'
+            ? (row.seed?.channel == _CascadeParentChannel.buyDirect
+                  ? '本行走采购，不需要车间与负责人'
+                  : '本行直接外发给委外商，不需要我方车间与负责人')
             : (row.ownsInput
                   ? '本行走${row.kind.label}，不需要车间与负责人'
                   : '本行只作层级上下文，数量与车间都并入上面那一行'),

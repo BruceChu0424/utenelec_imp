@@ -273,27 +273,6 @@ abstract class _MaterialAnalysisPageBase
     _systemSeededBatchQtyTexts[product.analysisLineId] = text;
   }
 
-  /// Bucket rows are rebuilt when their full-screen table opens. Preserve any
-  /// quantity already typed on the host; otherwise default to the remaining
-  /// demand (ADR-71：齐套拆批由执行段完成，计划默认全量剩余需求).
-  String _planBatchDraftText(ProductionMaterialAnalysisProduct product) {
-    _refreshSystemSeededPlanBatchQty(product);
-    final existing = _batchQtyControllers[product.analysisLineId]?.text.trim();
-    return existing?.isNotEmpty == true
-        ? existing!
-        : _qty(product.remainingQty);
-  }
-
-  void _rememberPlanBatchQty(String analysisLineId, String value) {
-    _systemSeededBatchQtyTexts.remove(analysisLineId);
-    final controller = _batchQtyControllers[analysisLineId];
-    if (controller == null || controller.text == value) return;
-    controller.value = TextEditingValue(
-      text: value,
-      selection: TextSelection.collapsed(offset: value.length),
-    );
-  }
-
   void _refreshSystemSeededPlanBatchQty(
     ProductionMaterialAnalysisProduct product,
   ) {
@@ -483,7 +462,26 @@ abstract class _MaterialAnalysisPageBase
           (target) =>
               target.status != 'CANCELLED' && !target.isReversedRootOutput,
         ),
-      );
+      ) &&
+      // 自制路线下过生产计划的行同样已有未撤销的下游任务：计划在那儿，路线不能再改。
+      // 原来只认 notifiedTargets(采购 / 委外的申请)，自制计划不在里面——顶层与自制子件
+      // 下达之后「供应方式」下拉照旧可改(2026-09-23 用户实机)。
+      !group.paths.any((path) => _issuedMakePlanOf(path) != null);
+
+  /// 这一行已下达的生产计划挂在哪个产品行上：顶层是产品行自己(它本身就是排产对象)，
+  /// 其余是锚点子件行；没下过、或计划已全部撤销，返回 null。
+  ProductionMaterialAnalysisProduct? _issuedMakePlanOf(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    final anchorId = material.isRootSupply
+        ? material.analysisLineId
+        : material.planAnchorAnalysisLineId;
+    if (anchorId == null) return null;
+    final product = _analysisIndexes(analysis).productsById[anchorId];
+    return product != null && product.issuedPlanQty > 0.0001 ? product : null;
+  }
 
   /// 首列复选框的勾选门（2026-09-10 F2d）：与「确认路线(N)」计数/提交门同一谓词——
   /// 已确认且未改动的行没有可提交的决定，不给勾选框；改了下拉（脏组）才恢复。

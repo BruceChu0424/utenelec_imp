@@ -651,6 +651,14 @@ abstract class _MaterialAnalysisMaterialTableState
     setState(() {
       _selectedMaterialGroupKeys.removeAll(removals);
       _selectedMaterialGroupKeys.addAll(additions);
+      // 亲手撤掉的勾，父行改量的自动勾选不再替他勾回来；亲手勾上 / 撤掉的都
+      // 不再算「替他勾的」。
+      _tableUserDeselectedKeys
+        ..addAll(removals)
+        ..removeAll(additions);
+      _tableAutoSelectedKeys
+        ..removeAll(removals)
+        ..removeAll(additions);
     });
   }
 
@@ -712,7 +720,11 @@ abstract class _MaterialAnalysisMaterialTableState
             : const Checkbox(value: false, onChanged: null),
         selectionSummaryCount: _selectedMaterialGroupKeys.length,
         onClearSelection: () {
-          if (!_busy) setState(_selectedMaterialGroupKeys.clear);
+          if (_busy) return;
+          setState(() {
+            _selectedMaterialGroupKeys.clear();
+            _tableAutoSelectedKeys.clear();
+          });
         },
         selectedIds: {
           ..._selectedMaterialGroupKeys,
@@ -1928,8 +1940,16 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 且带客户端分页，挂在行上会翻一页就丢一次用户填的数。
   final Map<String, TextEditingController> _tableOrderQtyControllers = {};
 
-  /// 行内「追加下单」输入(键同上)。已下达的行填这里，填 0 = 本次不动它。
+  /// 行内「追加下单」输入(键同上)。已下达的行填这里，填 0 = 本次不动它；
+  /// 预填 = 这一行此刻的缺口(还需安排)，父行追加把缺口抬起来时跟着回填。
   final Map<String, TextEditingController> _tableAppendQtyControllers = {};
+
+  /// 父行改量 / 亲手填数时**替用户勾上**的行(键 = [_MaterialGroup.key])。
+  /// 只有这里记着的行会在数量回落到 0 时自动撤勾——用户亲手勾的不动。
+  final Set<String> _tableAutoSelectedKeys = {};
+
+  /// 用户亲手撤过勾的行：父行再改量也不替他勾回来，直到他自己再勾上 / 再填数。
+  final Set<String> _tableUserDeselectedKeys = {};
 
   /// 系统预填过的文本快照：轮询刷新只回填「用户没动过」的格子，
   /// 已经被人改过的一律保留，不让后台刷新吃掉手输的数。
@@ -2012,6 +2032,8 @@ abstract class _MaterialAnalysisMaterialTableState
     _disposeMaterialTableInputs();
     _tableSeededQtyTexts.clear();
     _tableUserTypedQty.clear();
+    _tableAutoSelectedKeys.clear();
+    _tableUserDeselectedKeys.clear();
     _tableCascadePreview = null;
     _tableCascadePreviewTyped = const {};
     _tableEstimatedQty.clear();
@@ -2072,18 +2094,18 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 本提交单元累计已下单量。
   ///
-  /// 两条来源不是随便选的：已建自制锚点的行，真实已下达量在锚点产品的计划总量
-  /// 上(含公共备货产出)；采购 / 直接外发委外的行在申请明细的分摊量上。
-  /// 一行只可能是其中一种，不会同时成立。
+  /// 三条来源不是随便选的：顶层自制行的计划挂在产品行自己身上(它本身就是排产对象，
+  /// 没有锚点——2026-09-23 前这里漏了它：顶层下了 2000 的计划，主表照旧给它一个可填
+  /// 的「下单数量」，再全选下单就把它当新计划重下，服务端 409 整批停在第一步)；
+  /// 其余已建自制锚点的行，真实已下达量在锚点产品的计划总量上(含公共备货产出)；
+  /// 采购 / 直接外发委外的行在申请明细上 = 归本需求的分摊量 + 同一条行动记的
+  /// 公共备货份。一行只可能是其中一种，不会同时成立。
   double _tableGroupIssuedQty(_MaterialGroup group) {
-    final material = group.representative;
     final route = _draftRoute(group);
     if (route == MaterialSupplyRoute.make) {
-      final anchorId = material.planAnchorAnalysisLineId;
-      final analysis = _analysis;
-      if (anchorId == null || analysis == null) return 0;
-      return _analysisIndexes(analysis).productsById[anchorId]?.issuedPlanQty ??
-          0;
+      final anchor = _tableMakeAnchorOf(group);
+      if (anchor == null) return 0;
+      return anchor.issuedPlanQty * _tableAnchorUnitRate(group, anchor);
     }
     var ordered = 0.0;
     for (final path in group.paths) {
@@ -2104,10 +2126,66 @@ abstract class _MaterialAnalysisMaterialTableState
         }.contains(_supplyOperationType(target.actionId))) {
           continue;
         }
-        ordered += target.allocatedQty ?? 0;
+        final allocated = target.allocatedQty ?? 0;
+        ordered += allocated;
+        // 填得比当时需求多的部分，服务端记在同一条行动的公共备货份上(V577/V589)，
+        // 申请明细上就是两者的合计。它同样是这一行下出去的单——不算的话，填 5000
+        // 下成「需求 2000 + 公共 3000」的行会显示成「累计已下单 2000」，用户实机
+        // 看到的就是「我填了 5000 怎么只下了 2000」(2026-09-23)。
+        // 一条行动可能分摊到多条物料行(各一条 allocation)，公共份按本行分摊量占行动
+        // 需求份的比例摊，几条行加起来正好是整条行动的公共份，不会每行都算一遍。
+        final action = _supplyActionOf(target.actionId);
+        if (action != null && action.publicSurplusQty > 0) {
+          final share = action.requestedQty > 0.0001
+              ? (allocated / action.requestedQty).clamp(0.0, 1.0)
+              : 1.0;
+          ordered += action.publicSurplusQty * share;
+        }
       }
     }
     return ordered;
+  }
+
+  /// 顶层产品行的计划量是来源单位(销售单位)，物料行是基本单位，两边差一个
+  /// 单位换算率；锚点子件行与物料行同单位，换算率为 1。
+  double _tableAnchorUnitRate(
+    _MaterialGroup group,
+    ProductionMaterialAnalysisProduct anchor,
+  ) => group.representative.isRootSupply ? (anchor.unitRate ?? 1) : 1;
+
+  /// 自制行的计划锚点产品：顶层自制行就是产品行自己(它本身是排产对象，没有锚点)，
+  /// 其余自制行是 planAnchorAnalysisLineId 指向的子件任务行；没建过锚点返回 null。
+  ///
+  /// 有模拟快照(父行改量后服务端算好的「下达之后」)时读它里面那一份：锚点的剩余
+  /// 可排量已随父件长大，与物料行取 [_tablePreviewed] 是同一口径。
+  /// [authoritative] = 只看权威快照(自动勾选判基线用)，与 [_tablePreviewed] 同一开关。
+  ProductionMaterialAnalysisProduct? _tableMakeAnchorOf(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    final material = group.representative;
+    final anchorId = material.isRootSupply
+        ? material.analysisLineId
+        : material.planAnchorAnalysisLineId;
+    if (anchorId == null) return null;
+    final previewed = authoritative
+        ? null
+        : _tableCascadePreview?.products
+              .where((product) => product.analysisLineId == anchorId)
+              .firstOrNull;
+    return previewed ?? _analysisIndexes(analysis).productsById[anchorId];
+  }
+
+  /// 已下过单的自制行(含顶层)的锚点产品；不是这类行返回 null。
+  ProductionMaterialAnalysisProduct? _tableIssuedMakeAnchorOf(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
+    if (_draftRoute(group) != MaterialSupplyRoute.make) return null;
+    final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
+    return anchor != null && anchor.issuedPlanQty > 0.0001 ? anchor : null;
   }
 
   /// 这一行下过单没有(下过 = 下单数量列锁死、改填追加下单列)。
@@ -2122,10 +2200,16 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 可认领 300 时填 700 只换来「认领 300 + 新单 400 = 700」, 对着 1000 仍差 300,
   /// 每一行都少下一个认领量。这是 2026-09-22 对抗复查抓出来的真缺陷。
   ///
-  /// 父行改量之后取当场换算的估算值，服务端那份重算回来再整体覆盖。
-  double _tableGroupResidual(_MaterialGroup group) => group.paths.fold<double>(
+  /// 父行改量之后取当场换算的估算值，服务端那份重算回来再整体覆盖；
+  /// [authoritative] = 只看权威快照(不看模拟快照与估算)，自动勾选拿它当基线。
+  /// 已下过单的自制行(含顶层)按锚点产品的剩余可排量，见 [_tableAnchorResidual]。
+  double _tableGroupResidual(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) => group.paths.fold<double>(
     0,
-    (sum, material) => sum + _tableShownQty(material).residual,
+    (sum, material) =>
+        sum + _tableShownQty(material, authoritative: authoritative).residual,
   );
 
   /// 这一类行必须整批接管：要先自制目标件的委外。
@@ -2140,12 +2224,18 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 分桶页写着「任何行都可填超量」，「父件 + 下层一起下单」页把用户填的数原样送进
   /// issue-plans。所以锁死自制行是引错了对象的历史惯性，不是技术约束。
   ///
-  /// 委外那一支保持原样：它确实可能落回 `notifySupply` 的整量接管。
-  bool _tableGroupWholeTakeover(_MaterialGroup group) {
-    final route = _draftRoute(group);
-    if (route != MaterialSupplyRoute.subcontract) return false;
+  /// 委外那一支只剩一种情况：**没有「下达车间」权限**时它落回 `notifySupply` 的整量
+  /// 接管。有权限的走 issue-plans 的 ARRANGE 段(与委外桶 / 级联页 `_subcontractChannelOf`
+  /// 同一口径, 2026-09-16 起)，那条路数量可改可超——2026-09-22 用户实机：把一行改成委外
+  /// 后「下单数量就定死了不能修改, 我都没有下单过」，正是这里没看权限一律锁死。
+  bool _tableGroupWholeTakeover(_MaterialGroup group) =>
+      _tableSubcontractNeedsPreparation(group) && !_canGenerate;
+
+  /// 委外行是不是「要先自制目标件再发外」的那种(有生产性下层, 且不是 V581 单一
+  /// 子件件)。快照还没到手时按「要」处理：格子只读比让人填个数再吃 400 好。
+  bool _tableSubcontractNeedsPreparation(_MaterialGroup group) {
+    if (_draftRoute(group) != MaterialSupplyRoute.subcontract) return false;
     final analysis = _analysis;
-    // 快照还没到手时按「要整批接管」处理：格子只读比让人填个数再吃 400 好。
     if (analysis == null) return true;
     return _subcontractNeedsPreparation(group.representative, analysis);
   }
@@ -2190,12 +2280,16 @@ abstract class _MaterialAnalysisMaterialTableState
     });
   }
 
+  /// 「追加下单」格：预填 = 这一行此刻的缺口(还需安排)。缺口为 0 的行就是 0
+  /// (用户口径 2026-09-21：勾着不动 = 本次不下它，要追加才改成正数；0 是合法值，
+  /// 不是「没填」)。父行追加把这一行的缺口抬起来时，没被人动过的格子跟着回填新
+  /// 缺口(见 [_reseedTableQtyInputs])——用户口径 2026-09-22「父组件追加 200，
+  /// 子组件追加那里也自动追加 200；子组件之前多下了的就不用追加」。
   TextEditingController _tableAppendQtyController(_MaterialGroup group) =>
       _tableAppendQtyControllers.putIfAbsent(group.key, () {
-        // 用户口径 2026-09-21：追加默认就写 0——勾着不动 = 本次不下它，
-        // 要追加才改成正数。0 是合法值，不是「没填」。
-        _tableSeededQtyTexts['APPEND|${group.key}'] = '0';
-        return TextEditingController(text: '0');
+        final seeded = _qty(_tableGroupResidual(group));
+        _tableSeededQtyTexts['APPEND|${group.key}'] = seeded;
+        return TextEditingController(text: seeded);
       });
 
   /// 新快照回来后把系统预填值刷新一遍，但只覆盖「仍等于旧预填值」的格子。
@@ -2203,29 +2297,94 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 这是主表铺开输入框之后必须补的一课：轮询与 409 恢复都会整树换快照，
   /// 不做这一步，用户填了一屏的数会被后台刷新静默吃掉。
   @override
-  void _reseedMaterialTableQtyInputs() {
+  void _reseedMaterialTableQtyInputs() =>
+      _reseedTableQtyInputs(autoSelect: false);
+
+  /// 把系统预填值刷新一遍，但只覆盖「仍等于旧预填值」的格子——下单格与追加格
+  /// 都是。
+  ///
+  /// [autoSelect] = 这次回填是父行改量带出来的(敲键当场换算 / 服务端那份预览
+  /// 回来)：被换算到的行回填后有数就替用户勾上、回落到 0 就撤掉替他勾的那个勾
+  /// (用户口径 2026-09-22「有数值的都自动选中；子组件之前已经下单了 2000 那么
+  /// 子组件就不用追加了」)。权威快照的例行刷新(轮询 / 别人下达后)不自动勾——
+  /// 那不是这位用户的决定，勾选集必须只反映他自己的动作。
+  void _reseedTableQtyInputs({required bool autoSelect}) {
     final analysis = _analysis;
     if (analysis == null) return;
+    var selectionChanged = false;
     for (final group in _analysisIndexes(analysis).groupsByKey.values) {
-      final controller = _tableOrderQtyControllers[group.key];
-      if (controller == null) continue;
-      final seededKey = 'ORDER|${group.key}';
-      // 一旦发现这一格与上次系统预填值不同，就**永久**判给用户：把 seed 键删掉，
-      // 以后任何一次刷新都不再覆盖它。
-      //
-      // 原先是「不覆盖但把 seed 写成新值」，那样只要系统算出的新预填值某一次
-      // 恰好等于用户手填的数，这一格就被重新归类成「系统预填」，下一次刷新就把
-      // 它冲掉。宿主页的 _refreshSystemSeededPlanBatchQty 早就是 remove 这个写法，
-      // 这里漏了。2026-09-22 对抗复查抓出来的真缺陷。
-      if (controller.text != _tableSeededQtyTexts[seededKey]) {
-        _tableSeededQtyTexts.remove(seededKey);
-        continue;
+      for (final append in const [false, true]) {
+        final value = _reseedTableQtyCell(group, append: append);
+        if (value == null || !autoSelect) continue;
+        // 这一格的数是不是父行改量带出来的：与**权威快照**的还需安排不同才算。
+        // 按快照本来就预填着数、没被改量碰到的行不能因为别处改了一个父件就被
+        // 勾上；父行清空、数回落到快照值的行，替他勾的那个勾也要撤掉。
+        final baseline = _tableGroupResidual(group, authoritative: true);
+        final driven = (value - baseline).abs() > 0.0001;
+        if (_autoSelectTableGroup(group, select: driven && value > 0.0001)) {
+          selectionChanged = true;
+        }
       }
-      final next = _qty(_tableGroupResidual(group));
-      // 没变就不写：每次赋值都会通知那个 TextField 重建，一屏几十个格子白跑。
-      if (controller.text != next) controller.text = next;
-      _tableSeededQtyTexts[seededKey] = next;
     }
+    if (selectionChanged) _scheduleTableEstimateRebuild();
+  }
+
+  /// 回填一格的系统预填值；用户自己的格子返回 null，否则返回回填后的数。
+  ///
+  /// 一旦发现这一格与上次系统预填值不同，就**永久**判给用户：把 seed 键删掉，
+  /// 以后任何一次刷新都不再覆盖它。
+  ///
+  /// 原先是「不覆盖但把 seed 写成新值」，那样只要系统算出的新预填值某一次
+  /// 恰好等于用户手填的数，这一格就被重新归类成「系统预填」，下一次刷新就把
+  /// 它冲掉。宿主页的 _refreshSystemSeededPlanBatchQty 早就是 remove 这个写法，
+  /// 这里漏了。2026-09-22 对抗复查抓出来的真缺陷。
+  double? _reseedTableQtyCell(_MaterialGroup group, {required bool append}) {
+    final controller = append
+        ? _tableAppendQtyControllers[group.key]
+        : _tableOrderQtyControllers[group.key];
+    if (controller == null) return null;
+    final seededKey = '${append ? 'APPEND' : 'ORDER'}|${group.key}';
+    if (controller.text != _tableSeededQtyTexts[seededKey]) {
+      _tableSeededQtyTexts.remove(seededKey);
+      return null;
+    }
+    final value = _tableGroupResidual(group);
+    final next = _qty(value);
+    // 没变就不写：每次赋值都会通知那个 TextField 重建，一屏几十个格子白跑。
+    if (controller.text != next) controller.text = next;
+    _tableSeededQtyTexts[seededKey] = next;
+    return value;
+  }
+
+  /// 替用户勾上 / 撤掉一行(父行改量带出来的、或他亲手填了数的)。返回勾选集有没有变。
+  ///
+  /// 只撤本方法自己勾上的行；用户亲手撤过勾的行不再替他勾回来。不可勾的行
+  /// (缺权限 / 这一行本次下不了单)一律不碰。
+  bool _autoSelectTableGroup(_MaterialGroup group, {required bool select}) {
+    final key = group.key;
+    if (select) {
+      if (_selectedMaterialGroupKeys.contains(key) ||
+          _tableUserDeselectedKeys.contains(key) ||
+          !_canSelectMaterialRows ||
+          _tableIssueBlockedReason(group) != null) {
+        return false;
+      }
+      _selectedMaterialGroupKeys.add(key);
+      _tableAutoSelectedKeys.add(key);
+      return true;
+    }
+    if (!_tableAutoSelectedKeys.remove(key)) return false;
+    return _selectedMaterialGroupKeys.remove(key);
+  }
+
+  /// 依赖估算 / 勾选但不逐格监听的东西(还缺数量底色、表头筛选桶、底部按钮、
+  /// 勾选框)停手 200ms 后一次性刷新，不在每一拍敲键上整页重建。
+  void _scheduleTableEstimateRebuild() {
+    _tableEstimateRebuild?.cancel();
+    _tableEstimateRebuild = Timer(const Duration(milliseconds: 200), () {
+      _tableEstimateRebuild = null;
+      if (mounted) setState(() {});
+    });
   }
 
   /// 随估算值当场变的只读数字格：只订阅 [_tableEstimateTick]，父行敲一下这一格
@@ -2250,15 +2409,14 @@ abstract class _MaterialAnalysisMaterialTableState
     return typed + 0.0001 < _tableGroupResidual(group);
   }
 
-  /// 「追加下单」格：0 是合法值(本次不追加)；空 / 不是数 / 负数是错；父行改大之后
-  /// 这一行又有了还需安排量时，填的追加量小于它也冒红——那就是缺的那部分。
+  /// 「追加下单」格：0 是合法值(本次不追加)，填多少都行；只有空 / 不是数 / 负数
+  /// 才冒红。已下达的行追加的是**额外**的量，不拿它跟还需安排比——用户口径
+  /// 2026-09-22「下单后追加的填多少都应该可以，不用冒红」(此前追加量小于还需
+  /// 安排也描红，等于逼人每次追加都至少补齐缺口)。
   bool _tableAppendQtyInvalid(_MaterialGroup group) {
     final text = _tableAppendQtyControllers[group.key]?.text.trim() ?? '';
     final typed = double.tryParse(text);
-    if (text.isEmpty || typed == null || !typed.isFinite || typed < 0) {
-      return true;
-    }
-    return typed + 0.0001 < _tableGroupResidual(group);
+    return text.isEmpty || typed == null || !typed.isFinite || typed < 0;
   }
 
   /// 权威快照一到就让父子联动的模拟快照作废(ADR-102)。
@@ -2278,10 +2436,24 @@ abstract class _MaterialAnalysisMaterialTableState
     _tableCascadePreview = null;
     _tableCascadePreviewTyped = const {};
     _tableCascadeGeneration++;
+    if (_tableSubmitting) {
+      // 分段提交进行中：每段成功后的新快照里已经含刚下达的量，而那些行填的数还没
+      // 来得及从 _tableUserTypedQty 摘掉——此刻重估会把「已下达 + 本次填的」再叠一遍，
+      // 整棵子树翻倍，下一段据此判纯公共备货就错(2026-09-23 对抗复查)。期间一律
+      // 只看快照，批完由 _submitMaterialTableRows 统一重估一次。
+      _tableEstimatedQty.clear();
+      return;
+    }
     // 用户填过的数还在：先按新的权威快照就地重估一遍(屏幕不闪回旧数字)，
     // 再要服务端重算一遍下层。
     _recomputeTableEstimates();
-    if (_tableUserTypedQty.isNotEmpty) {
+    // 一批提交进行中不发预览：每段成功后本方法都会被 _applyAnalysis 叫到，原来接着
+    // 就去抖发一次 preview——它带着已经落库那些行填的数(服务端是「已下达 + 本次
+    // 填的」，等于把刚下达的量再加一遍)，还与下一段真实提交撞同一把分析锁：等到
+    // 锁时来源集合已变，服务端自动重跑一次后又因版本过期 409，只换来一串冲突日志
+    // (2026-09-23 实机：一批 5 段提交伴着 4 条 409 的预览)。批完由
+    // _submitMaterialTableRows 统一决定要不要补一次。
+    if (_tableUserTypedQty.isNotEmpty && !_tableSubmitting) {
       _tableCascadeDebounce?.cancel();
       _tableCascadeDebounce = Timer(
         const Duration(milliseconds: 300),
@@ -2289,6 +2461,9 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
   }
+
+  /// 主表「下单(N)」的分段编排正在进行：期间不自动发层级预览。
+  bool _tableSubmitting = false;
 
   // ---------------- 父行改量带动子层(ADR-099 回滚式预览) ----------------
 
@@ -2353,19 +2528,22 @@ abstract class _MaterialAnalysisMaterialTableState
     } else {
       _tableUserTypedQty[lineId] = total;
     }
-    if (!_tableGroupHasChildren(group)) return;
-    // 敲一下当场变：先按比例把它下面每一层换算好并回填预填值，再去抖要服务端
-    // 那份权威重算。叶子行改量到不了这里。
+    // 亲手填了数的行就是要下的行：有数就替他勾上(亲手填数比之前撤过的勾更新，
+    // 所以先把「撤过勾」的记号抹掉)，清成空 / 0 就把替他勾的那个勾撤掉。
+    if (total > 0) _tableUserDeselectedKeys.remove(group.key);
+    final selectionChanged = _autoSelectTableGroup(group, select: total > 0);
+    if (!_tableGroupHasChildren(group)) {
+      if (selectionChanged) _scheduleTableEstimateRebuild();
+      return;
+    }
+    // 敲一下当场变：先按比例把它下面每一层换算好并回填预填值(有数的子行顺手
+    // 勾上)，再去抖要服务端那份权威重算。叶子行改量到不了这里。
     _recomputeTableEstimates();
-    _reseedMaterialTableQtyInputs();
+    _reseedTableQtyInputs(autoSelect: true);
     // 不整页 setState：只让订阅了 tick 的格子(需要数量 / 还缺数量 / 红框)重建，
     // 其余依赖估算的东西停手 200ms 后一次刷新。
     _tableEstimateTick.value++;
-    _tableEstimateRebuild?.cancel();
-    _tableEstimateRebuild = Timer(const Duration(milliseconds: 200), () {
-      _tableEstimateRebuild = null;
-      if (mounted) setState(() {});
-    });
+    _scheduleTableEstimateRebuild();
     _tableCascadeDebounce?.cancel();
     _tableCascadeDebounce = Timer(
       const Duration(milliseconds: 300),
@@ -2393,7 +2571,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _tableCascadePreviewTyped = const {};
         _recomputeTableEstimates();
       });
-      _reseedMaterialTableQtyInputs();
+      _reseedTableQtyInputs(autoSelect: true);
       return;
     }
     // 记下这一趟是按哪份填数要的：回来时它就是新的换算分母。
@@ -2434,9 +2612,9 @@ abstract class _MaterialAnalysisMaterialTableState
         // 才跳到新数字。
         _recomputeTableEstimates();
       });
-      // 子层的数字变了，没被人动过的「下单数量」格要跟着回填——否则父行改成
-      // 1500、子行「还缺数量」如期变成 750，可提交的却还是改量前的 500。
-      _reseedMaterialTableQtyInputs();
+      // 子层的数字变了，没被人动过的「下单数量 / 追加下单」格要跟着回填——否则
+      // 父行改成 1500、子行「还缺数量」如期变成 750，可提交的却还是改量前的 500。
+      _reseedTableQtyInputs(autoSelect: true);
     } catch (_) {
       // 重算失败不打断填数：退回按权威快照换算的估算值，并停掉预览态。
       if (!mounted || generation != _tableCascadeGeneration) return;
@@ -2445,7 +2623,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _tableCascadePreviewTyped = const {};
         _recomputeTableEstimates();
       });
-      _reseedMaterialTableQtyInputs();
+      _reseedTableQtyInputs(autoSelect: true);
     } finally {
       if (mounted && generation == _tableCascadeGeneration) {
         setState(() => _tableCascadePreviewing = false);
@@ -2456,10 +2634,11 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 展示用的物料行：有预览时取预览里的同一行(子层数量已按父行新量展开)。
   /// 找不到就退回权威快照那一行——预览只能让数字更新，不能让行消失。
   ProductionMaterialAnalysisMaterial _tablePreviewed(
-    ProductionMaterialAnalysisMaterial material,
-  ) {
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) {
     final preview = _tableCascadePreview;
-    if (preview == null) return material;
+    if (preview == null || authoritative) return material;
     for (final candidate in preview.materials) {
       if (candidate.materialLineId == material.materialLineId) return candidate;
     }
@@ -2467,20 +2646,59 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 服务端那份快照(模拟优先、否则权威)给这一行的三个数——当场换算的**分母**。
-  _TableQty _tablePreviewedQty(ProductionMaterialAnalysisMaterial material) {
-    final shown = _tablePreviewed(material);
+  _TableQty _tablePreviewedQty(
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) {
+    final shown = _tablePreviewed(material, authoritative: authoritative);
     return (
       required: shown.requiredQty,
-      residual: shown.additionalSupplyRecommendedQty,
+      residual:
+          _tableAnchorResidual(material, authoritative: authoritative) ??
+          shown.additionalSupplyRecommendedQty,
       net: shown.netShortageQty,
     );
   }
 
+  /// 已下过单的自制行(含顶层产品行)的「还需安排」= 锚点产品的剩余可排量(不可排产
+  /// 时为 0)；不是这类行返回 null，照旧读服务端给物料行的建议下单量。
+  ///
+  /// 服务端给物料行的 additionalSupplyRecommendedQty **不扣已下达的自制计划**(那是
+  /// internalCommittedOutputQty，契约写明「never subtract it as external finished
+  /// supply」)：锚点已排满 2000 的行它照旧给 2000。照它走，主表会把已排满的行显示成
+  /// 「还需安排 2000」、追加格 0 恒红、追加时判不出「纯公共备货」而被服务端 409——
+  /// 级联页早就是按锚点 remainingQty 算的，主表收成同一口径(2026-09-23 用户实机
+  /// 「有一部分没有成功下单」的其中一处)。
+  double? _tableAnchorResidual(
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) {
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    final group = _analysisIndexes(
+      analysis,
+    ).groupsByLine[material.materialLineId];
+    if (group == null) return null;
+    final anchor = _tableIssuedMakeAnchorOf(
+      group,
+      authoritative: authoritative,
+    );
+    if (anchor == null) return null;
+    return anchor.canSchedule
+        ? anchor.remainingQty * _tableAnchorUnitRate(group, anchor)
+        : 0;
+  }
+
   /// 这一行此刻该显示的三个数：有当场换算的估算值就用它，否则用服务端那份快照。
   /// 「需要数量」「还缺数量」「下单数量」三列都从这里读，父行改量之后一起变。
-  _TableQty _tableShownQty(ProductionMaterialAnalysisMaterial material) =>
-      _tableEstimatedQty[material.materialLineId] ??
-      _tablePreviewedQty(material);
+  /// [authoritative] = 只要权威快照那份(自动勾选判「数是不是改量带出来的」用)。
+  _TableQty _tableShownQty(
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) => authoritative
+      ? _tablePreviewedQty(material, authoritative: true)
+      : _tableEstimatedQty[material.materialLineId] ??
+            _tablePreviewedQty(material);
 
   // ---------------- 敲一下当场变(与级联页共用 material_cascade_math) ----------------
 
@@ -2549,6 +2767,7 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final inputs = <CascadeScaleInput>[];
     final committed = <String, double>{};
+    final covered = <String, double>{};
     for (var index = 0; index < preorder.length; index++) {
       final row = _tableScaleInputOf(
         preorder[index],
@@ -2557,6 +2776,7 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       inputs.add(row.input);
       committed[row.input.key] = row.committed;
+      covered[row.input.key] = row.covered;
     }
     for (var index = 0; index < inputs.length; index++) {
       if (depths[index] != 0) continue;
@@ -2577,6 +2797,7 @@ abstract class _MaterialAnalysisMaterialTableState
         rootIndex: index,
         rootFactor: factor,
         committedOutput: committed,
+        coveredOutput: covered,
       )) {
         final snapshot = _tablePreviewedQty(preorder[result.index]);
         // 下达时会自动认领的公共在途是个池子，与父行数量无关：净数 = 毛数 − 它。
@@ -2592,13 +2813,20 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 喂给共用件的一行：服务端快照的三个数 + 用户亲手填的数 + 分母，外加这一行
-  /// 已下达的量(分子分母都要含它，见 [_tablePlannedOutput])。
-  ({CascadeScaleInput input, double committed}) _tableScaleInputOf(
+  /// 已下达的量(分子分母都要含它，见 [_tablePlannedOutput])与**不封顶**的覆盖量
+  /// (已分配现货 + 已下达 / 在途)。
+  ///
+  /// 覆盖量为什么要单独算：服务端的「还需安排」封顶在 0，子件之前只需 1000 却下了
+  /// 2000 时快照里看不出多下的 1000；父件追加 200 把它的需求抬到 1200，按封顶值算
+  /// 会说它还缺 200，实际一颗都不缺(用户口径 2026-09-22)。
+  ({CascadeScaleInput input, double committed, double covered})
+  _tableScaleInputOf(
     ProductionMaterialAnalysisMaterial material,
     _MaterialAnalysisIndexes indexes, {
     required int depth,
   }) {
     final group = indexes.groupsByLine[material.materialLineId];
+    final previewed = _tablePreviewed(material);
     final snapshot = _tablePreviewedQty(material);
     final server = (
       required: snapshot.required,
@@ -2606,7 +2834,14 @@ abstract class _MaterialAnalysisMaterialTableState
       suggested: snapshot.residual,
     );
     final committed = group == null ? 0.0 : _tableGroupIssuedQty(group);
+    // 现货那一份读服务端明写的两个分配量(本批分到的合格现货 + 精确绑定的到货)，
+    // 不用「需求 − 缺口」倒推——倒推会把安全库存保护等别的口径也算成现货。
+    // 这是估算：漏算的覆盖来源由 cascadeScaleOne 里与服务端封顶值取大兜底，
+    // 剩下的误差 300ms 后服务端那份预览整体覆盖。
+    final covered =
+        previewed.allocatedAvailableQty + previewed.exactPeggedQty + committed;
     return (
+      covered: covered,
       input: (
         key: material.materialLineId,
         depth: depth,
@@ -2883,14 +3118,15 @@ abstract class _MaterialAnalysisMaterialTableState
   // ------------------------- 物料办理列 -------------------------
 
   /// 这一行的下达去向。与「父件 + 下层一起下单」页的分通道判定同源：
-  /// 自制、以及要先自制目标件的委外都走车间；其余委外与采购走外发通道。
+  /// 自制、以及要先自制目标件的委外(有「下达车间」权限时)都走车间；其余委外与采购
+  /// 走外发通道——没有权限的「要先自制」委外退回 notify 整批接管。
   ({String label, bool viaWorkshop}) _tableIssueTarget(_MaterialGroup group) {
     final route = _draftRoute(group);
     if (route == MaterialSupplyRoute.make) {
       return (label: '下达车间', viaWorkshop: true);
     }
     if (route == MaterialSupplyRoute.subcontract) {
-      return _tableGroupWholeTakeover(group)
+      return _tableSubcontractNeedsPreparation(group) && _canGenerate
           ? (label: '下达车间', viaWorkshop: true)
           : (label: '下达委外', viaWorkshop: false);
     }
@@ -2926,6 +3162,14 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final planningBlock = _planningBlockForGroup(group);
     if (planningBlock != null) return planningBlock;
+    // 已排满又不能再追加公共备货产出的自制行(含顶层产品行)：服务端 issue-plans 对
+    // 「剩余需求 0 且没声明纯公共备货」一律 409「当前分析需求已全部转入生产计划」。
+    final issuedAnchor = _tableIssuedMakeAnchorOf(group);
+    if (issuedAnchor != null &&
+        !issuedAnchor.canSchedule &&
+        !issuedAnchor.canIssueSurplus) {
+      return '这一行的生产计划已排满，当前不能再追加公共备货产出';
+    }
     // 服务端会拒的形态在这里就拦掉，别让人勾了、填了数、点了下达才吃 400。
     // 判据复用既有权威谓词的同名分支，不另造一套。
     final route = _draftRoute(group);
@@ -2943,10 +3187,15 @@ abstract class _MaterialAnalysisMaterialTableState
       return '你没有「下达采购 / 委外」的权限，请找管理员开通';
     }
     if (target.viaWorkshop) {
-      final workshop = _tableWorkshopFor(group);
-      if (workshop.id == null) return '先在「生产车间」列里指定本次交给哪个车间';
-      if (_tableWorkerFor(group).id == null) {
-        return '先在「负责人」列里指定本次谁负责';
+      // 生产车间 / 负责人跟路线走(用户口径 2026-09-22「变成采购、委外就不需要生产
+      // 车间了」)：只有自制行在主表上要求指派；要先自制目标件的委外走 ARRANGE 段时
+      // 车间按学习默认带给服务端, 没有就由服务端按排产方案落车间, 不在这里拦。
+      if (route == MaterialSupplyRoute.make) {
+        final workshop = _tableWorkshopFor(group);
+        if (workshop.id == null) return '先在「生产车间」列里指定本次交给哪个车间';
+        if (_tableWorkerFor(group).id == null) {
+          return '先在「负责人」列里指定本次谁负责';
+        }
       }
     } else if (!_isExecutableSupplyGroup(
       group,
@@ -3166,13 +3415,14 @@ abstract class _MaterialAnalysisMaterialTableState
         ),
       );
     }
-    // 整批接管的行(要先自制目标件的委外)：它可能落回 notifySupply，那条路要求
-    // 逐字等于剩余需求，给输入框只会让人填完吃 400，所以直接只读并说明原因。
-    // 自制行已于 2026-09-22 放开，理由见 _tableGroupWholeTakeover。
+    // 整批接管的行(要先自制目标件的委外、且没有「下达车间」权限)：它落回
+    // notifySupply，那条路要求逐字等于剩余需求，给输入框只会让人填完吃 400，
+    // 所以直接只读并说明原因。有权限的走 ARRANGE 段，数量照常可填。
     if (_tableGroupWholeTakeover(group)) {
       return Tooltip(
         message:
-            '这类行必须整批接管 ${_qty(_tableGroupResidual(group))}，不能多填也不能少填。'
+            '这类行要先自制目标件再发外；你没有「下达车间」权限，只能整批接管 '
+            '${_qty(_tableGroupResidual(group))}，不能多填也不能少填。'
             '本批实际生产数量在子件任务建好后的计划里填。',
         child: Text(
           _qty(_tableGroupResidual(group)),
@@ -3231,7 +3481,9 @@ abstract class _MaterialAnalysisMaterialTableState
     // 同日自制行已从整批接管里摘出去，这一格对自制行重新可填(走 publicSurplusOnly)。
     if (_tableGroupWholeTakeover(group)) {
       return Tooltip(
-        message: '这一行按整批接管提交，追加产出请在「下达车间」建好的计划里填，不在这里。',
+        message:
+            '这一行没有「下达车间」权限时按整批接管提交，追加产出请在「下达车间」'
+            '建好的计划里填，不在这里。',
         child: Text(
           '—',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -3301,8 +3553,13 @@ abstract class _MaterialAnalysisMaterialTableState
 
   // ------------------------- 生产车间 / 负责人 -------------------------
 
+  /// 「生产车间 / 负责人」两列跟**路线**走(用户口径 2026-09-22「路线改变后对应的
+  /// 生产车间、负责人就要清空, 除非变回原来的路线——变成采购、委外就不需要生产车间
+  /// 了」)：只有自制行显示并要求指派, 采购 / 委外一律横杠。草稿按提交单元记着不删,
+  /// 改回自制那一刻原来选的车间 / 负责人就回来。要先自制目标件的委外走 ARRANGE 段时,
+  /// 车间由学习默认 / 服务端排产方案兜底, 不在主表上露出来。
   bool _tableAssignable(_MaterialGroup? group) =>
-      group != null && _tableIssueTarget(group).viaWorkshop;
+      group != null && _draftRoute(group) == MaterialSupplyRoute.make;
 
   String? _materialTableProductionWorkshopText(_MaterialTableRow row) {
     final group = _tableEditableGroup(row);
@@ -3424,6 +3681,9 @@ abstract class _MaterialAnalysisMaterialTableState
 
     final pending = <_MaterialGroup, double>{};
     final blocked = <String>[];
+    // 勾了但本次没有量的行(追加留 0)：批成功后一并撤勾，否则「下单(N)」一直挂着它，
+    // _hasUnsubmittedMaterialTableInput 永真、45 秒轮询也不再跑。
+    final skipped = <String>{};
     for (final group in groups) {
       final reason = _tableIssueBlockedReason(group);
       if (reason != null) {
@@ -3433,7 +3693,10 @@ abstract class _MaterialAnalysisMaterialTableState
       final qty = _tableSubmitQtyOf(group);
       // 追加填 0 = 本次不动这一行，不进提交集合(服务端把「给了身份却不给数量」
       // 当成全量剩余下达，漏掉这一步会凭空多下一单)。
-      if (qty <= 0.0001) continue;
+      if (qty <= 0.0001) {
+        skipped.add(group.key);
+        continue;
+      }
       pending[group] = qty;
     }
     if (pending.isEmpty) {
@@ -3447,129 +3710,210 @@ abstract class _MaterialAnalysisMaterialTableState
 
     final steps = <({String label, bool ok, String? note})>[];
     final done = <String>{};
-
-    // 一、车间段：按层级自上而下逐层。
-    final workshopGroups =
-        pending.keys.where((g) => _tableIssueTarget(g).viaWorkshop).toList()
-          ..sort(
-            (a, b) => a.representative.level.compareTo(b.representative.level),
-          );
-    final byLevel = <int, List<_MaterialGroup>>{};
-    for (final group in workshopGroups) {
-      byLevel.putIfAbsent(group.representative.level, () => []).add(group);
-    }
-    for (final level in byLevel.keys.toList()..sort()) {
-      final batch = byLevel[level]!;
-      // 顶层自制与其它自制行走的是**两条不同的通道**：服务端
-      // candidateRoutesByMaterialLine 明确把 ROOT_SUPPLY 排除在候选之外(除非它
-      // 确认为委外)，顶层产品行本身就是排产对象，要按 analysisLineId 走 planDrafts。
-      // 当成候选按 materialLineId 提交的话服务端解析不出候选、整批失败。
-      final inputs = <_BucketCandidatePlanInput>[];
-      final drafts = <_BucketPlanDraft>[];
+    const haltNote = '已停在这一步，后面的段没有提交';
+    // 一段成功后：记下这些行，并把它们从「用户亲手填的数」里摘掉。服务端那一侧是
+    // **加进**计划产出量，留着它下一次重算就把刚下达的量再加一遍；而且
+    // _hasUnsubmittedMaterialTableInput 会永远为真，45 秒轮询再也不跑。
+    // 注意两套键空间：done 装的是操作组键，填数那张表按物料行 id 记。
+    void settle(List<_MaterialGroup> batch) {
       for (final group in batch) {
-        final publicSurplusOnly =
-            _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001;
-        final rootMakeLineId = _tableRootMakePlanLineId(group);
-        if (rootMakeLineId != null) {
-          drafts.add(
-            _BucketPlanDraft(
-              analysisLineId: rootMakeLineId,
-              qty: pending[group]!,
-              departmentId: _tableWorkshopFor(group).id,
-              workshopName: _tableWorkshopFor(group).name,
-              workerId: _tableWorkerFor(group).id,
-              publicSurplusOnly: publicSurplusOnly,
-            ),
-          );
-          continue;
-        }
-        inputs.add(
-          _BucketCandidatePlanInput(
-            materialLineId: group.representative.materialLineId,
-            qty: pending[group]!,
-            departmentId: _tableWorkshopFor(group).id,
-            workshopName: _tableWorkshopFor(group).name,
-            workerId: _tableWorkerFor(group).id,
-            // 锚点已无剩余需求时，本次填的全是追加的公共备货产出。
-            publicSurplusOnly: publicSurplusOnly,
-          ),
-        );
+        done.add(group.key);
+        _tableUserTypedQty.remove(group.representative.materialLineId);
       }
-      final ok = await _issueWorkshopPlans(
-        candidateInputs: inputs,
-        planDrafts: drafts,
-        silent: true,
-      );
-      steps.add((
-        label: '下达车间(第 $level 层，${batch.length} 行)',
-        ok: ok,
-        note: ok ? null : '已停在这一步，后面的段没有提交',
-      ));
-      if (!ok) break;
-      done.addAll(batch.map((group) => group.key));
     }
 
-    // 二、外发段：采购、委外各一次。
-    if (steps.every((step) => step.ok)) {
-      for (final route in const [
-        MaterialSupplyRoute.buy,
-        MaterialSupplyRoute.subcontract,
-      ]) {
-        final batch = pending.keys
+    // 提交期间不再自动发层级预览(见 _invalidateMaterialTableCascadePreview)；
+    // 正在路上的那一份也作废——它带的填数马上就有一部分落库了。
+    _tableSubmitting = true;
+    _tableCascadeDebounce?.cancel();
+    _tableCascadeGeneration++;
+    // 在路上的那份预览被代际作废后不会再走到它的 finally，预览态要在这里复位，
+    // 否则「还缺数量」悬浮一直挂着「正在重算」。
+    _tableCascadePreviewing = false;
+    try {
+      // 提交顺序 = **父先子后，跨路线**。一行的需求由它上面每一层的计划产出量决定，
+      // 含父件超出需求的公共备货产出(V577/V589「顶层做 5000，委外件就要加工 5000」)。
+      // 父件的计划 / 委外申请还没落地时，子件按父件新数量填的量会被服务端当成超出
+      // 当时需求的部分、记成公共备货；随后父件的超量把子件需求抬上去，子件行就留下
+      // 一截「已经下了却还缺」的幽灵缺口，而且认不回来(公共在途认领不含本分析自己的)。
+      // 2026-09-23 实机：委外件「E极插套(酸洗)」的我方供料子件先按采购 5000 提交，
+      // 记成需求 2000 + 公共 3000；委外 5000 随后下达把子件需求抬到 5000，子件行
+      // 留下 3000 缺口——原来「采购 → 委外」的顺序正好反了。
+      // 于是：逐层自上而下，同一层先下达车间(自制 + 需先自制的委外)、再直接外发
+      // 委外；采购件没有下层，等全部父件落地后最后一次提交。
+      final levels = {
+        for (final group in pending.keys) group.representative.level,
+      }.toList()..sort();
+      var halted = false;
+      for (final level in levels) {
+        final atLevel = pending.keys
+            .where((group) => group.representative.level == level)
+            .toList(growable: false);
+        final workshop = atLevel
+            .where((group) => _tableIssueTarget(group).viaWorkshop)
+            .toList(growable: false);
+        if (workshop.isNotEmpty) {
+          final ok = await _issueMaterialTableWorkshopBatch(workshop, pending);
+          steps.add((
+            label: '下达车间(第 $level 层，${workshop.length} 行)',
+            ok: ok,
+            note: ok ? null : haltNote,
+          ));
+          if (!ok) {
+            halted = true;
+            break;
+          }
+          settle(workshop);
+        }
+        final subcontract = atLevel
             .where(
               (group) =>
                   !_tableIssueTarget(group).viaWorkshop &&
-                  _draftRoute(group) == route,
+                  _draftRoute(group) == MaterialSupplyRoute.subcontract,
             )
             .toList(growable: false);
-        if (batch.isEmpty) continue;
-        final view = await _notifyRoute(
-          route,
-          onlyGroupKeys: batch.map((group) => group.key).toSet(),
-          qtyByActionGroupKey: {
-            for (final group in batch)
-              ?group.representative.actionGroupKey: _qty(pending[group]!),
-          },
-          silent: true,
-          allowExtra: _canOverSupply,
-        );
-        final ok = view != null;
-        steps.add((
-          label: '${route.label == "采购" ? "下达采购" : "下达委外"}(${batch.length} 行)',
-          ok: ok,
-          note: ok ? null : '已停在这一步，后面的段没有提交',
-        ));
-        if (!ok) break;
-        done.addAll(batch.map((group) => group.key));
+        if (subcontract.isNotEmpty) {
+          final ok = await _notifyMaterialTableBatch(
+            MaterialSupplyRoute.subcontract,
+            subcontract,
+            pending,
+          );
+          steps.add((
+            label: '下达委外(第 $level 层，${subcontract.length} 行)',
+            ok: ok,
+            note: ok ? null : haltNote,
+          ));
+          if (!ok) {
+            halted = true;
+            break;
+          }
+          settle(subcontract);
+        }
       }
+      if (!halted) {
+        final buy = pending.keys
+            .where(
+              (group) =>
+                  !_tableIssueTarget(group).viaWorkshop &&
+                  _draftRoute(group) == MaterialSupplyRoute.buy,
+            )
+            .toList(growable: false);
+        if (buy.isNotEmpty) {
+          final ok = await _notifyMaterialTableBatch(
+            MaterialSupplyRoute.buy,
+            buy,
+            pending,
+          );
+          steps.add((
+            label: '下达采购(${buy.length} 行)',
+            ok: ok,
+            note: ok ? null : haltNote,
+          ));
+          if (ok) settle(buy);
+        }
+      }
+    } finally {
+      _tableSubmitting = false;
     }
 
     if (!mounted) return;
     // 成功下达的行：追加格回 0、勾选撤掉；失败的保留，让人原地重试。
     setState(() {
+      if (steps.every((step) => step.ok)) {
+        _selectedMaterialGroupKeys.removeAll(skipped);
+      }
       for (final key in done) {
         _tableAppendQtyControllers[key]?.text = '0';
         _tableSeededQtyTexts['APPEND|$key'] = '0';
         _selectedMaterialGroupKeys.remove(key);
-        // 已经落库的量必须从「用户亲手填的数」里摘掉：服务端那一侧是**加进**
-        // 计划产出量，留着它下一次重算就把刚下达的量再加一遍；而且
-        // _hasUnsubmittedMaterialTableInput 会永远为真，45 秒轮询再也不跑。
-        // 注意两套键空间：done 装的是操作组键，这张表按物料行 id 记。
-        final typedKey = _analysisIndexes(
-          analysis,
-        ).groupsByKey[key]?.representative.materialLineId;
-        if (typedKey != null) _tableUserTypedQty.remove(typedKey);
+        _tableAutoSelectedKeys.remove(key);
+        _tableUserDeselectedKeys.remove(key);
+        // 下单格里用户填的数已经落库：把它交还给系统(记成当前系统预填值)，紧接着的
+        // 回填就会换成新快照的值。不交还的话这一格永远算「有未提交的手填」，
+        // 45 秒轮询再也不跑。
+        final order = _tableOrderQtyControllers[key];
+        if (order != null) _tableSeededQtyTexts['ORDER|$key'] = order.text;
       }
       // 刚落库的那批已经进了权威快照，上一份模拟快照连同它派生的预填一并作废；
-      // 没下成的行填的数还在，按权威快照就地重估。
-      _tableCascadePreview = null;
-      _tableCascadePreviewTyped = const {};
-      _tableCascadeGeneration++;
-      _recomputeTableEstimates();
+      // 没下成的行填的数还在，按权威快照就地重估，并且只在这时才补一次服务端重算。
+      _invalidateMaterialTableCascadePreview();
+      _reseedMaterialTableQtyInputs();
       // 可调拨量随下达变化，下次进主表重取。
       _tableTransferableInScope = null;
     });
     _reportMaterialTableSubmit(steps, blocked);
+  }
+
+  /// 车间段的一层：顶层自制走 planDrafts、其余候选走 candidateInputs，一次 issue-plans。
+  ///
+  /// 顶层自制与其它自制行走的是**两条不同的通道**：服务端
+  /// candidateRoutesByMaterialLine 明确把 ROOT_SUPPLY 排除在候选之外(除非它
+  /// 确认为委外)，顶层产品行本身就是排产对象，要按 analysisLineId 走 planDrafts。
+  /// 当成候选按 materialLineId 提交的话服务端解析不出候选、整批失败。
+  Future<bool> _issueMaterialTableWorkshopBatch(
+    List<_MaterialGroup> batch,
+    Map<_MaterialGroup, double> pending,
+  ) {
+    final inputs = <_BucketCandidatePlanInput>[];
+    final drafts = <_BucketPlanDraft>[];
+    for (final group in batch) {
+      // 锚点(顶层 = 产品行自己)已无剩余需求时，本次填的全是追加的公共备货产出。
+      // 自制行直接按锚点产品判(服务端同一判据 canSchedule / canIssueSurplus)，不经
+      // 估算值——估算值在分段提交期间是清空的，别的时候也可能还带着父行的比例。
+      final anchor = _tableIssuedMakeAnchorOf(group);
+      final publicSurplusOnly = anchor != null
+          ? !anchor.canSchedule && anchor.canIssueSurplus
+          : _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001;
+      final rootMakeLineId = _tableRootMakePlanLineId(group);
+      if (rootMakeLineId != null) {
+        drafts.add(
+          _BucketPlanDraft(
+            analysisLineId: rootMakeLineId,
+            qty: pending[group]!,
+            departmentId: _tableWorkshopFor(group).id,
+            workshopName: _tableWorkshopFor(group).name,
+            workerId: _tableWorkerFor(group).id,
+            publicSurplusOnly: publicSurplusOnly,
+          ),
+        );
+        continue;
+      }
+      inputs.add(
+        _BucketCandidatePlanInput(
+          materialLineId: group.representative.materialLineId,
+          qty: pending[group]!,
+          departmentId: _tableWorkshopFor(group).id,
+          workshopName: _tableWorkshopFor(group).name,
+          workerId: _tableWorkerFor(group).id,
+          publicSurplusOnly: publicSurplusOnly,
+        ),
+      );
+    }
+    return _issueWorkshopPlans(
+      candidateInputs: inputs,
+      planDrafts: drafts,
+      silent: true,
+    );
+  }
+
+  /// 外发段的一批：采购 / 直接外发委外各走既有的 _notifyRoute 链路(裁决 / 分块 /
+  /// 幂等 / 409 恢复都在那里)，成功与否以它返回的新快照为准。
+  Future<bool> _notifyMaterialTableBatch(
+    MaterialSupplyRoute route,
+    List<_MaterialGroup> batch,
+    Map<_MaterialGroup, double> pending,
+  ) async {
+    final view = await _notifyRoute(
+      route,
+      onlyGroupKeys: batch.map((group) => group.key).toSet(),
+      qtyByActionGroupKey: {
+        for (final group in batch)
+          ?group.representative.actionGroupKey: _qty(pending[group]!),
+      },
+      silent: true,
+      allowExtra: _canOverSupply,
+    );
+    return view != null;
   }
 
   Future<bool> _confirmMaterialTableSubmit(
@@ -3605,7 +3949,8 @@ abstract class _MaterialAnalysisMaterialTableState
                   '(折叠起来了，或被表头筛选挡住了)，本次不提交。',
             ],
             '',
-            '三条下达链是分段提交的，中途失败会停下并告诉你停在哪一步。',
+            '按层级父先子后分段提交(同一层先车间再委外，采购最后一次)，'
+                '中途失败会停下并告诉你停在哪一步。',
           ].join('\n'),
         ),
       ),
@@ -4396,10 +4741,15 @@ abstract class _MaterialAnalysisMaterialTableState
     ),
   );
 
-  String? _supplyOperationType(String? actionId) => _analysis?.supplyActions
-      .where((action) => action.actionId == actionId)
-      .firstOrNull
-      ?.operationType;
+  MaterialAnalysisSupplyAction? _supplyActionOf(String? actionId) =>
+      actionId == null
+      ? null
+      : _analysis?.supplyActions
+            .where((action) => action.actionId == actionId)
+            .firstOrNull;
+
+  String? _supplyOperationType(String? actionId) =>
+      _supplyActionOf(actionId)?.operationType;
 
   bool _isSharedFutureClaimAction(String? actionId) =>
       _supplyOperationType(actionId) == 'SHARED_FUTURE_CLAIM';

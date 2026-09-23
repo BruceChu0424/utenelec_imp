@@ -47,31 +47,17 @@ import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 void main() {
   testWidgets('点创建生产计划先请求下达预览再进整页，一键下单按序提交父件与下层', (tester) async {
     final harness = await _pump(tester);
-    await _openWorkshopBucket(tester);
+    // 本批数量在页里改成 20(需求 10)——超产 10。
+    await _enterCascadeFromWorkshopBucket(tester, '20');
 
-    // 本批数量改成 20（需求 10）——超产 10。
-    await tester.enterText(_bucketQty('p1'), '20');
-    await tester.pumpAndSettle();
-    await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(
-      find.byKey(const Key('material-analysis-bucket-action-ready')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认超量下达'));
-    await tester.pumpAndSettle();
-
-    // 进页前只发了一次预览请求（不落库），零真实下达。
-    expect(
-      find.byKey(const Key('material-analysis-child-cascade-dialog')),
-      findsOneWidget,
-    );
+    // 进页一次预览(按默认 10)、改成 20 再一次预览(都不落库)，零真实下达。
     expect(find.text('父件 + 下层一起下单'), findsOneWidget);
     final previews = harness.writes
         .where((r) => r.path.endsWith('/issue-plans/preview'))
         .toList();
-    expect(previews, hasLength(1));
+    expect(previews, hasLength(2));
     final previewLines =
-        (previews.single.data as Map<String, dynamic>)['lines'] as List;
+        (previews.last.data as Map<String, dynamic>)['lines'] as List;
     expect((previewLines.single as Map<String, dynamic>)['qty'], 20.0);
     expect(
       harness.writes.where((r) => r.path.endsWith('/issue-plans')),
@@ -97,10 +83,8 @@ void main() {
     expect(_qtyOf(tester, 'm-c'), '20');
     expect(_qtyOf(tester, 'm-d'), '60');
 
-    await tester.tap(
-      find.byKey(const Key('material-analysis-child-cascade-submit')),
-    );
-    await tester.pumpAndSettle();
+    // 树顶在本页改大过：一键下单先过超量确认，再到确认弹窗。
+    await _tapSubmitThroughOverQty(tester);
     await tester.tap(find.text('一键下单'));
     await tester.pumpAndSettle();
 
@@ -142,16 +126,7 @@ void main() {
 
   testWidgets('树顶父件行没有多选框，改它的数量会再要一份预览、下层跟着变', (tester) async {
     final harness = await _pump(tester);
-    await _openWorkshopBucket(tester);
-    await tester.enterText(_bucketQty('p1'), '20');
-    await tester.pumpAndSettle();
-    await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(
-      find.byKey(const Key('material-analysis-bucket-action-ready')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认超量下达'));
-    await tester.pumpAndSettle();
+    await _enterCascadeFromWorkshopBucket(tester, '20');
     expect(_qtyOf(tester, 'm-b'), '40');
 
     // 树顶行没有勾选框：勾选框只出现在表头全选 + 下层可下单行上（B、C、D 三行）。
@@ -338,10 +313,7 @@ void main() {
     expect(_qtyOf(tester, 'm-c'), '50');
     expect(_qtyOf(tester, 'm-d'), '150');
 
-    await tester.tap(
-      find.byKey(const Key('material-analysis-child-cascade-submit')),
-    );
-    await tester.pumpAndSettle();
+    await _tapSubmitThroughOverQty(tester);
     await tester.tap(find.text('一键下单'));
     await tester.pumpAndSettle();
 
@@ -451,16 +423,7 @@ void main() {
 
   testWidgets('树顶数量被清空时不按旧数量提交，而是当场拦下', (tester) async {
     final harness = await _pump(tester);
-    await _openWorkshopBucket(tester);
-    await tester.enterText(_bucketQty('p1'), '20');
-    await tester.pumpAndSettle();
-    await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(
-      find.byKey(const Key('material-analysis-bucket-action-ready')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认超量下达'));
-    await tester.pumpAndSettle();
+    await _enterCascadeFromWorkshopBucket(tester, '20');
     await tester.enterText(
       find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-1')),
       '',
@@ -484,21 +447,14 @@ void main() {
     );
   });
 
-  testWidgets('级联页表头与外面那张表一致，不多塞列', (tester) async {
+  testWidgets('级联页列 = 身份与下单列 + 从外层桶表搬进来的信息列', (tester) async {
     await _pump(tester);
-    await _openWorkshopBucket(tester);
-    await tester.enterText(_bucketQty('p1'), '20');
-    await tester.pumpAndSettle();
-    await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(
-      find.byKey(const Key('material-analysis-bucket-action-ready')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认超量下达'));
-    await tester.pumpAndSettle();
+    await _enterCascadeFromWorkshopBucket(tester, '20');
     final dialog = find.byKey(
       const Key('material-analysis-child-cascade-dialog'),
     );
+    // 2026-09-22：外层桶表只留身份四列 + 供应方式 / 需求量 / 缺口 / 进度，其余
+    // (归属车间 / BOM 路径 / 仓库余量 / 缺口)搬进这一页。
     for (final label in const [
       '物料名称',
       '编号',
@@ -506,9 +462,13 @@ void main() {
       '单位',
       '供料路线',
       '所属仓库',
+      '归属车间',
+      'BOM 路径',
       '下达去向',
       '需求数量',
       '还需安排',
+      '仓库余量',
+      '缺口',
       '下单数量',
       '生产车间',
       '负责人',
@@ -724,21 +684,19 @@ void main() {
     );
     await _openWorkshopBucket(tester);
     await _selectSegment(tester, '已下达 (1)');
-    // 已下达段的顶层行：下达数量格里给「追加量」输入框，旁注已下达量。
-    final append = find.byKey(
-      const ValueKey('material-analysis-bucket-append-qty-p1'),
-    );
-    expect(append, findsOneWidget);
-    expect(find.text('已下达 10'), findsOneWidget);
-    await tester.enterText(append, '5');
+    // 已下达段的顶层行：桶表只读，「下达数量」列显示已下达的计划量；追加量进页填。
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('下达数量'), findsOneWidget);
     await _tapRowCheckbox(tester, '成品A');
     await tester.tap(find.text('追加生产计划(1)…'));
     await tester.pumpAndSettle();
-    // 进整页前的预览按「纯公共备货产出」显式声明。
     expect(
       find.byKey(const Key('material-analysis-child-cascade-dialog')),
       findsOneWidget,
     );
+    // 追加量默认 0(本次不追加)，在页里改成 5；预览按「纯公共备货产出」显式声明。
+    expect(_qtyOf(tester, 'root-1'), '0');
+    await _setSeedQty(tester, '5');
     final previews = harness.writes
         .where((r) => r.path.endsWith('/issue-plans/preview'))
         .toList();
@@ -815,16 +773,7 @@ void main() {
 
   testWidgets('父件尚未提交时退出必须确认，确认后一个写请求都不发', (tester) async {
     final harness = await _pump(tester);
-    await _openWorkshopBucket(tester);
-    await tester.enterText(_bucketQty('p1'), '20');
-    await tester.pumpAndSettle();
-    await _tapRowCheckbox(tester, '成品A');
-    await tester.tap(
-      find.byKey(const Key('material-analysis-bucket-action-ready')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认超量下达'));
-    await tester.pumpAndSettle();
+    await _enterCascadeFromWorkshopBucket(tester, '20');
     await tester.tap(
       find.byKey(const Key('material-analysis-child-cascade-discard')),
     );
@@ -848,9 +797,6 @@ Finder _inDialog(String text) => find.descendant(
   matching: find.text(text),
 );
 
-Finder _bucketQty(String rowId) =>
-    find.byKey(ValueKey('material-analysis-bucket-qty-$rowId'));
-
 /// 改树顶数量并等那份服务端重算回来(去抖 300ms)。
 Future<void> _setSeedQty(WidgetTester tester, String qty) async {
   await tester.enterText(
@@ -861,28 +807,36 @@ Future<void> _setSeedQty(WidgetTester tester, String qty) async {
   await tester.pumpAndSettle();
 }
 
-/// 下达车间桶 → 按 [batchQty] 勾选成品A → 过超量确认 → 停在「父件 + 下层
-/// 一起下单」整页。
+/// 下达车间桶 → 勾选成品A → 进「父件 + 下层一起下单」整页 → 在树顶把本批数量
+/// 改成 [batchQty](2026-09-22 起外层桶表只读，数量只在页里填；改完等 300ms 去抖
+/// 的服务端重算回来)。超量确认改在页里点「一键下单」时才问。
 Future<void> _enterCascadeFromWorkshopBucket(
   WidgetTester tester,
   String batchQty,
 ) async {
   await _openWorkshopBucket(tester);
-  await tester.enterText(_bucketQty('p1'), batchQty);
-  await tester.pumpAndSettle();
   await _tapRowCheckbox(tester, '成品A');
   await tester.tap(
     find.byKey(const Key('material-analysis-bucket-action-ready')),
+  );
+  await tester.pumpAndSettle();
+  expect(
+    find.byKey(const Key('material-analysis-child-cascade-dialog')),
+    findsOneWidget,
+  );
+  if (batchQty != '10') await _setSeedQty(tester, batchQty);
+}
+
+/// 页里点「一键下单」：树顶在本页被改大过就先过一次超量确认，再到确认弹窗。
+Future<void> _tapSubmitThroughOverQty(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(const Key('material-analysis-child-cascade-submit')),
   );
   await tester.pumpAndSettle();
   if (find.text('确认超量下达').evaluate().isNotEmpty) {
     await tester.tap(find.text('确认超量下达'));
     await tester.pumpAndSettle();
   }
-  expect(
-    find.byKey(const Key('material-analysis-child-cascade-dialog')),
-    findsOneWidget,
-  );
 }
 
 /// 按行内文本定位整行（横滚时首列勾选框在冻结包裹层里）并点它的勾选框。

@@ -426,6 +426,15 @@ public class ProductionPlanService {
                 // planned_qty，也不建 plan_order_item_links 容量；无分析关联的
                 // 手工计划仍按整行数量分摊。
                 BigDecimal analysisSubmitted = analysisSubmittedByItem.get(item.getId());
+                // 2026-09-22：分析计划的**纯**公共备货追加(顶层已排满后再下一批, link 记
+                // submitted 0 + public_surplus 全量, ADR-099 / ADR-102 §十二)归本需求量为 0,
+                // 没有要分摊给订单行的量——跳过即可: 不建 plan_order_item_links、订单侧
+                // planned_qty 不动, 与上面「公共备货产出不进订单侧」同一口径。原来一律
+                // 409「计划明细缺少可排产的销售需求量」, 顶层追加带「立即审核」整段失败
+                // (用户实机 2026-09-22)。无分析关联的手工计划仍要求整行数量为正。
+                if (analysisSubmitted != null && analysisSubmitted.signum() == 0) {
+                    continue;
+                }
                 BigDecimal allocatedQty = analysisSubmitted != null
                         ? analysisSubmitted : planQty;
                 if (allocatedQty.signum() <= 0) {

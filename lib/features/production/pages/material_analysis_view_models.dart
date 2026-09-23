@@ -140,8 +140,6 @@ const Map<String, String> _materialStatusFacetLabels = {
   'aggregateUncovered': '未覆盖',
 };
 
-enum _ReadinessState { ready, waitingMake, waitingSupply, waiting }
-
 enum _BomViewMode {
   all('全部 BOM'),
   shortage('只看缺料'),
@@ -150,22 +148,6 @@ enum _BomViewMode {
   const _BomViewMode(this.label);
 
   final String label;
-}
-
-class _ProductReadiness {
-  const _ProductReadiness(
-    this.state, {
-    this.make = 0,
-    this.buy = 0,
-    this.subcontract = 0,
-    this.review = 0,
-  });
-
-  final _ReadinessState state;
-  final int make;
-  final int buy;
-  final int subcontract;
-  final int review;
 }
 
 class _MaterialGroup {

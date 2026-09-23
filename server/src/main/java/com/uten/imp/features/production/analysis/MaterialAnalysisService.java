@@ -4284,8 +4284,14 @@ public class MaterialAnalysisService {
                     // 本节点的计划产出量 = max(需求量, 本节点已下达的计划量)：顶层供给行
                     // 按来源行的计划产出(含公共备货产出, 换成基本单位)，其余行按自家锚点。
                     BigDecimal plannedOutput = row.requiredQty().max(anchorPlanned);
+                    // 本节点已下达自制计划里归本需求的那一份: 顶层 = 来源行自己的计划(换成
+                    // 基本单位), 其余 = 锚点的计划。只用来从「还缺数量」里扣(见 toView)。
+                    BigDecimal committedPlan = anchor == null
+                            ? BigDecimal.ZERO : anchor.committedPlanQty();
                     if (row.depth() == 0 && materialSource != null) {
                         plannedOutput = plannedOutput.max(materialSource.plannedOutputQty()
+                                .multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));
+                        committedPlan = committedPlan.max(materialSource.committedPlanQty()
                                 .multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));
                     }
                     return row.toView(
@@ -4312,7 +4318,8 @@ public class MaterialAnalysisService {
                                     ? "COMPONENT_OUTBOUND" : null,
                             plannedOutput,
                             sharedFutureDeductible(
-                                    row, subcontractBomParentGoods, soleRowDimensions));
+                                    row, subcontractBomParentGoods, soleRowDimensions),
+                            committedPlan);
                 })
                 .toList();
         Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
@@ -7924,6 +7931,12 @@ public class MaterialAnalysisService {
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
         }
 
+        /** 已下达且仍有效的计划里归本需求的那一份(不含公共备货产出)。 */
+        BigDecimal committedPlanQty() {
+            return submittedQty.add(approvedQty)
+                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+        }
+
         /** 已下达且仍有效的计划总量（归需求量 + 公共备货产出）。 */
         BigDecimal issuedPlanQty() {
             return submittedQty.add(approvedQty).add(plannedSurplusQty)
@@ -8269,7 +8282,8 @@ public class MaterialAnalysisService {
                             BigDecimal makeSupplementOpenSupply, BigDecimal sharedFuturePendingQty,
                             String subcontractOutboundForm,
                             BigDecimal plannedOutputQty,
-                            boolean sharedFutureDeductible) {
+                            boolean sharedFutureDeductible,
+                            BigDecimal committedPlanQty) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             BigDecimal demandGap = unboundDemandSupplyGap(
@@ -8293,6 +8307,20 @@ public class MaterialAnalysisService {
                     ? additionalRecommended.subtract(sharedFutureClaimable)
                             .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING)
                     : additionalRecommended;
+            // 已经排进本节点自制计划、归本需求的那一份(顶层 = 产品行自己的计划, 其余 = 锚点的
+            // 计划; 不含公共备货产出——那份不绑任何需求, 锚点余量也不因它归零)对「人还要另外
+            // 下多少」来说就不缺了。计划是内部制造承诺, 按契约不算外部成品供给——shortageQty /
+            // 齐套 / 让料三处判据不动, additionalSupplyRecommendedQty 作为转入与让料的上限也不动,
+            // 只从这个纯展示量里扣。需先自制的委外件(SUBCONTRACT_MAKE 锚点)与行动背书的自制
+            // 任务, 它们的台账 / 任务已经作为 INTERNAL 在途进了 activeFutureCoverageQty 被上面扣过
+            // 一次, 这里只扣计划超出那部分, 不扣两遍。2026-09-23 用户实机: 已排满 2000 的自制行与
+            // 下了计划的顶层照旧显示「还缺 2000 / 1000」。
+            BigDecimal internalCovered = activeFutureCoverageQty.subtract(externalFutureCoverageQty)
+                    .max(BigDecimal.ZERO);
+            netShortage = netShortage
+                    .subtract(committedPlanQty.max(BigDecimal.ZERO).subtract(internalCovered)
+                            .max(BigDecimal.ZERO))
+                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
             return new MaterialView(id, analysisItemId, nodeKey,
                     actionGroupKey(), materialKey(),
                     goodsId, goodsCode, goodsName,

@@ -108,8 +108,20 @@ double cascadePlannedOutput({
 /// 从快照重算是幂等的：中间怎么敲都不影响最终值。
 ///
 /// 已被现货 / 在途 / 已下达覆盖的那部分是不变量，只有需求等比例放大缩小。
-CascadeServerQty cascadeScaleOne(CascadeServerQty server, double factor) {
-  final covered = server.required - server.residual;
+///
+/// [coveredFloor]：这一行**不封顶**的覆盖量(现货分配 + 已下达 / 在途, 调用方按快照
+/// 算)。服务端给的「还需安排」封顶在 0，`required − residual` 看不出多下的那部分：
+/// 子件之前只需 1000 却下了 2000，父件追加 200 把需求抬到 1200 时它一颗都不缺
+/// (用户口径 2026-09-22「子组件之前已经下单了 2000 那么子组件就不用追加了」)，
+/// 按封顶的覆盖量 1000 算却会得出还缺 200。两者取大：封顶值兜住调用方漏算的
+/// 覆盖来源(公共在途认领、调拨), 不封顶值兜住多下的那部分。
+CascadeServerQty cascadeScaleOne(
+  CascadeServerQty server,
+  double factor, {
+  double coveredFloor = 0,
+}) {
+  final implied = server.required - server.residual;
+  final covered = coveredFloor > implied ? coveredFloor : implied;
   final required = server.required * factor;
   final rest = required - covered;
   final residual = rest > 0 ? rest : 0.0;
@@ -138,11 +150,15 @@ double? cascadeFactor({
 /// [committedOutput]：各行(按 key)**已经下达 / 在途**的产出量。已下过单的父件再追加时，
 /// 它下面那一层是按「已下达 + 本次填的」展开的(服务端「已下达计划量 + 本次填的量，
 /// 再与需求取大」)，分子要把它算进去、传进来的分母也得含它；不传 = 全按 0 算。
+///
+/// [coveredOutput]：各行(按 key)不封顶的覆盖量(现货分配 + 已下达 / 在途)，喂给
+/// [cascadeScaleOne] 的 `coveredFloor`；不传 = 只按服务端封顶的覆盖量算。
 List<CascadeScaleResult> cascadeScaleSubtree({
   required List<CascadeScaleInput> preorder,
   required int rootIndex,
   required double rootFactor,
   Map<String, double> committedOutput = const {},
+  Map<String, double> coveredOutput = const {},
 }) {
   if (rootIndex < 0 || rootIndex >= preorder.length) return const [];
   final rootDepth = preorder[rootIndex].depth;
@@ -156,7 +172,11 @@ List<CascadeScaleResult> cascadeScaleSubtree({
       factorByDepth[row.depth] = null;
       continue;
     }
-    final scaled = cascadeScaleOne(row.server, factor);
+    final scaled = cascadeScaleOne(
+      row.server,
+      factor,
+      coveredFloor: coveredOutput[row.key] ?? 0,
+    );
     if (!row.ownsInput) {
       factorByDepth[row.depth] = factor;
       results.add((

@@ -323,28 +323,16 @@ void main() {
         },
       );
       await _openBucketDetail(tester, 'workshop');
-      // 候选行同一张表单：默认数量=全部剩余 8，车间空待填（负责人随车间带出）。
-      final candidateRow = find
-          .ancestor(of: find.text('自制组件 A'), matching: find.byType(Row))
-          .first;
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(
-                of: candidateRow,
-                matching: find.byType(TextField),
-              ),
-            )
-            .controller
-            ?.text,
-        '8',
-      );
-      await _pickBucketRowWorkshop(tester, candidateRow, '装配一车间');
+      // 2026-09-22 起桶表只读: 勾选候选行 → 进「核对并下单」页(候选没有生产性
+      // 下层), 树顶默认数量 = 全部剩余 8, 车间空待填(负责人随车间带出)。
       await _tapBucketRowCheckbox(tester, '自制组件 A');
-      await tester.tap(
-        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.pumpAndSettle();
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
+      await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
+      await _submitIssuePage(tester);
 
       // 候选行直发：客户端只发一次 issue-plans（建子件任务在服务端同一事务里）。
       final issue = harness.requests.singleWhere(
@@ -765,24 +753,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(detailReads, 2);
       // ADR-71：本批数量默认=剩余需求 10（齐套上限不再预填，齐套拆批由
-      // 执行段 WAITING/READY 完成）。
+      // 执行段 WAITING/READY 完成)。2026-09-22 起桶表只读: 产品行「缺口」列 =
+      // 还没转入计划的剩余需求, 直接读最新快照的 10 (不是齐套 7)。
       await _openBucketDetail(tester, 'workshop');
       expect(find.text('测试产品'), findsOneWidget);
-      final refreshedRow = find
-          .ancestor(of: find.text('测试产品').first, matching: find.byType(Row))
-          .first;
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(
-                of: refreshedRow,
-                matching: find.byType(TextField),
-              ),
-            )
-            .controller
-            ?.text,
-        '10',
-      );
+      expect(_bucketShortageText(tester, '测试产品'), '10');
       await _closeBucketDetail(tester);
       await tester.drag(
         find
@@ -1228,39 +1203,19 @@ void main() {
 
       // 2026-09-04 改版口径：产品大卡片（可直接自制/齐套进度条/卡内状态栏）
       // 下线——「无子层产品不是 BOM 资料错误、可直接排产」现在体现在：两个
-      // 产品都在「可安排生产」桶里，行内默认本批数量 = 最多可生产，且因为
-      // 无物料行整棵 BOM 树不再渲染（更不会渲染资料错误态）。
+      // 产品都在「可安排生产」桶里(2026-09-22 起桶表只读: 「缺口」列 = 还没转入
+      // 计划的剩余需求 10 / 6, 都是可勾选的待下达行), 且因为无物料行整棵 BOM
+      // 树不再渲染(更不会渲染资料错误态)。
 
       await _openBucketDetail(tester, 'workshop');
       expect(find.text('测试产品'), findsOneWidget);
       expect(find.text('第二测试产品'), findsOneWidget);
-      final directRow = find
-          .ancestor(of: find.text('测试产品').first, matching: find.byType(Row))
-          .first;
-      final materialBackedRow = find
-          .ancestor(of: find.text('第二测试产品').first, matching: find.byType(Row))
-          .first;
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(of: directRow, matching: find.byType(TextField)),
-            )
-            .controller
-            ?.text,
-        '10',
-      );
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(
-                of: materialBackedRow,
-                matching: find.byType(TextField),
-              ),
-            )
-            .controller
-            ?.text,
-        '6',
-      );
+      expect(_bucketShortageText(tester, '测试产品'), '10');
+      expect(_bucketShortageText(tester, '第二测试产品'), '6');
+      expect(find.text('等待下达车间'), findsNWidgets(2));
+      await _tapBucketRowCheckbox(tester, '测试产品');
+      await _tapBucketRowCheckbox(tester, '第二测试产品');
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(2\)')), findsOneWidget);
       await _closeBucketDetail(tester);
       expect(find.byKey(const Key('material-bom-tree')), findsNothing);
       expect(find.textContaining('生产 BOM 策略'), findsNothing);
@@ -1792,9 +1747,12 @@ void main() {
     '501 selected BUY nodes notify as 500 plus 1 with refreshed CAS facts',
     (tester) async {
       var notifyResponse = 0;
+      // 2026-09-22 起 501 行一起进「核对并下单」页: 页顶提示卡把 501 个种子名
+      // 拼成一段不截断的文字, 1000 高的窗口装不下会溢出(lib 侧提示卡未按
+      // _names 截断), 本用例只验分批 / 幂等 / CAS, 给足高度绕开。
       final harness = await _pumpPage(
         tester,
-        size: const Size(1400, 1000),
+        size: const Size(1400, 1800),
         permissions: const {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
@@ -1835,11 +1793,18 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(selectAllEverything);
       await tester.pump();
-      final buyNotifyAll = find.text('提交采购需求(501)');
-      await tester.ensureVisible(buyNotifyAll);
-      await tester.tap(buyNotifyAll);
-      await tester.pumpAndSettle();
+      // 2026-09-22 起: 501 行一起进「核对并下单」页, 页里点「下单」才弹数量确认。
+      expect(find.text('提交采购需求(501)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
+      );
+      await _submitIssuePage(tester);
       await _confirmSupplyQuantityDialog(tester);
+      expect(
+        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        findsNothing,
+      );
 
       final writes = harness.requests
           .where(
@@ -1863,9 +1828,10 @@ void main() {
     'notify retry reuses the exact timed-out second chunk idempotency key',
     (tester) async {
       var notifyAttempt = 0;
+      // 窗口高度同上一用例: 501 个种子的页顶提示卡在 1000 高下会溢出。
       final harness = await _pumpPage(
         tester,
-        size: const Size(1400, 1000),
+        size: const Size(1400, 1800),
         permissions: const {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
@@ -1912,21 +1878,34 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(selectAllEverything);
       await tester.pump();
-      await tester.tap(find.text('提交采购需求(501)'));
-      await tester.pumpAndSettle();
+      expect(find.text('提交采购需求(501)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
+      );
+      await _submitIssuePage(tester);
       await _confirmSupplyQuantityDialog(tester);
 
+      // 第二分块超时: 父件段未完成, 下单页留在原地如实报告(已成功的段不重发)。
+      expect(
+        find.byKey(const Key('material-analysis-child-cascade-result')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('未提交成功，可直接重试'), findsOneWidget);
       // 超时的第二分块只剩 1 个组仍可执行（服务端已确认前 500 个）。
-      // 2026-09-04：动作完成后留在桶内刷新——先返回宿主页再重开桶核对。
+      // 离开下单页、返回宿主页再重开桶核对。
+      await _leaveIssuePage(tester);
       await _closeBucketDetail(tester);
       await _openBucketDetail(tester, 'buy');
       expect(find.textContaining('下达采购 · 1'), findsOneWidget);
       await tester.tap(_bucketHeaderCheckbox());
       await tester.pump();
-      final retryButton = find.text('提交采购需求(1)');
-      await tester.ensureVisible(retryButton);
-      await tester.tap(retryButton);
-      await tester.pumpAndSettle();
+      expect(find.text('提交采购需求(1)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
+      );
+      await _submitIssuePage(tester);
       await _confirmSupplyQuantityDialog(tester);
 
       final writes = harness.requests
@@ -1989,18 +1968,23 @@ void main() {
 
     // 2026-09-04 改版口径：产品/候选大卡片（“用于组装 X”徽标、ready/
     // waiting 分组卡）下线——自底向上的分组现在由分桶表达：自制子件在
-    // 「可安排生产」桶（类型列标注自制子件），被阻断的顶级产品在
-    // 「暂不可安排」桶，两组互不混排。父项名（用于组装 X）在真实子件行
-    // 不再展示，仅候选行保留「订单/上级」列。
+    // 「可安排生产」桶，被阻断的顶级产品在「暂不可安排」桶，两组互不混排。
+    // 2026-09-22 起桶表只读且没有类型列: 子件与顶层的区分只看名称后的红色
+    // 「顶层」小框——子件行没有, 顶级插座有。父项名(用于组装 X)在真实子件行
+    // 不再展示。
 
     await _openBucketDetail(tester, 'workshop');
     expect(find.text('自制子件A'), findsOneWidget);
-    expect(find.text('自制子件'), findsOneWidget);
+    expect(_bucketTopLevelBadge('自制子件A'), findsNothing);
+    expect(_bucketTopLevelBadge('顶级插座'), findsOneWidget);
     await _tapBucketRowCheckbox(tester, '自制子件A');
     expect(_bucketRowCheckboxValue(tester, '自制子件A'), isTrue);
     await _closeBucketDetail(tester);
+    // 被阻断的顶级产品只在「需处理」段, 子件不在那里。
     await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
     expect(find.text('顶级插座'), findsOneWidget);
+    expect(find.text('自制子件A'), findsNothing);
+    expect(_bucketTopLevelBadge('顶级插座'), findsOneWidget);
   });
 
   testWidgets(
@@ -2029,10 +2013,13 @@ void main() {
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
+      // 2026-09-22 起三个桶同一张只读 MasterDataTableView(不再是可编辑计划表),
+      // 表内不开文字框选。
       final bucketTable = find.byWidgetPredicate(
-        (widget) => widget is UtenEditableGrid<EditableGridRow>,
+        (widget) => widget is MasterDataTableView,
       );
       expect(bucketTable, findsOneWidget);
+      expect(find.byType(UtenEditableGrid<EditableGridRow>), findsNothing);
       expect(
         find.descendant(of: bucketTable, matching: find.byType(SelectionArea)),
         findsNothing,
@@ -2248,22 +2235,9 @@ void main() {
 
       await _openBucketDetail(tester, 'workshop');
       expect(find.text('第二测试产品'), findsOneWidget);
-      // ADR-71：产品行默认数量 = 剩余需求 = 6（齐套上限不再预填）。
-      final readyProductRow = find
-          .ancestor(of: find.text('第二测试产品'), matching: find.byType(Row))
-          .first;
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(
-                of: readyProductRow,
-                matching: find.byType(TextField),
-              ),
-            )
-            .controller
-            ?.text,
-        '6',
-      );
+      // ADR-71：产品行剩余需求 = 6(齐套上限不再预填)。2026-09-22 起桶表只读,
+      // 「缺口」列就是还没转入计划的剩余需求。
+      expect(_bucketShortageText(tester, '第二测试产品'), '6');
       await _closeBucketDetail(tester);
 
       await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
@@ -2343,17 +2317,25 @@ void main() {
         );
         await _openBucketDetail(tester, 'workshop');
         if (net == 2) {
-          expect(find.text('让料后补自制'), findsOneWidget);
+          // 2026-09-22 起桶表只读: 让料后补自制的候选行「需求量」就是服务端给的
+          // 净补量 2; 勾选进「下单页」后树顶默认数量同样是 2。
           final row = _frozenRowOf('待自制壳体');
-          final quantity = tester.widget<TextField>(
-            find.descendant(of: row, matching: find.byType(TextField)).first,
+          expect(
+            find.descendant(of: row, matching: find.text('2')),
+            findsWidgets,
+          );
+          await _tapBucketRowCheckbox(tester, '待自制壳体');
+          await _openIssuePageFromBucket(
+            tester,
+            'material-analysis-bucket-action-ready',
           );
           expect(
-            quantity.controller?.text,
+            _cascadeSeedQtyText(tester, 'pending-make-1'),
             '2',
             reason:
                 'must not reuse original need 8 or total priority pending 4',
           );
+          await _leaveIssuePage(tester);
         } else {
           expect(
             find.text('待自制壳体'),
@@ -2397,13 +2379,17 @@ void main() {
             : null,
       );
       await _openBucketDetail(tester, 'workshop');
-      final row = _frozenRowOf('待自制壳体');
-      await _pickBucketRowWorkshop(tester, row, '装配一车间');
+      // 2026-09-22 起: 勾选 → 进「父件 + 下层一起下单」页(下层都已覆盖、不可勾)
+      // → 树顶默认 2、选车间 → 提交只下达父件; 结果由下单页统一汇报, 成功后
+      // 下单页与下达车间桶都退回物料分析。
       await _tapBucketRowCheckbox(tester, '待自制壳体');
-      await tester.tap(
-        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.pumpAndSettle();
+      expect(_cascadeSeedQtyText(tester, 'pending-make-1'), '2');
+      await _pickCascadeWorkshop(tester, 'pending-make-1', '装配一车间');
+      await _submitIssuePage(tester);
       final issued = harness.requests.singleWhere(
         (request) => request.path.endsWith('/issue-plans'),
       );
@@ -2416,8 +2402,10 @@ void main() {
           'workerId': 'worker-1',
         },
       ]);
-      await tester.tap(find.text('留在物料分析'));
-      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        findsNothing,
+      );
       await _openBucketDetail(tester, 'workshop');
       expect(find.text('待自制壳体'), findsNothing);
       expect(find.text('让料后补自制'), findsNothing);
@@ -2508,23 +2496,18 @@ void main() {
             : null,
       );
       await _openBucketDetail(tester, 'workshop');
-      expect(find.text('让料后补自制'), findsNothing);
-      final row = _frozenRowOf('待自制壳体(自制备料)');
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(of: row, matching: find.byType(TextField)).first,
-            )
-            .controller
-            ?.text,
-        '2',
-      );
-      await _pickBucketRowWorkshop(tester, row, '装配一车间');
+      // 候选已被真实子件替代: 桶里只有子件产品行(没有第二条候选行), 它的剩余
+      // 需求 2 进「下单页」后就是树顶默认数量。
+      expect(find.text('待自制壳体'), findsNothing);
+      expect(_bucketShortageText(tester, '待自制壳体(自制备料)'), '2');
       await _tapBucketRowCheckbox(tester, '待自制壳体(自制备料)');
-      await tester.tap(
-        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.pumpAndSettle();
+      expect(_cascadeSeedQtyText(tester, 'pending-make-1'), '2');
+      await _pickCascadeWorkshop(tester, 'pending-make-1', '装配一车间');
+      await _submitIssuePage(tester);
       final request = harness.requests.singleWhere(
         (request) => request.path.endsWith('/issue-plans'),
       );
@@ -2744,7 +2727,8 @@ void main() {
       expect(find.text('确认路线(0)'), findsOneWidget);
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '共享紧固件');
-      expect(find.text('提交采购需求(1)'), findsOneWidget);
+      // 2026-09-22 起底部按钮文案带省略号: 这一下是进下单页, 不是提交。
+      expect(find.text('提交采购需求(1)…'), findsOneWidget);
       await _closeBucketDetail(tester);
       expect(
         harness.requests.where((request) => request.method == 'PUT'),
@@ -2773,7 +2757,7 @@ void main() {
       );
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '共享紧固件');
-      expect(find.text('提交采购需求(1)'), findsOneWidget);
+      expect(find.text('提交采购需求(1)…'), findsOneWidget);
       await _closeBucketDetail(tester);
       // 委外路线同样在桶详情页勾选批量下达（V458：有子层由服务端转前置自制）。
       await _openBucketDetail(tester, 'subcontract');
@@ -3660,12 +3644,16 @@ void main() {
         Perm.productionMaterialAnalysisNotify,
       },
       analysisJson: _buySelectionAnalysisJson(),
+      // 真实服务端只有真的写了东西才会重建快照(换 version / fingerprint); 版本
+      // 没动会被当成「本次没有产生任何下达」, 下单页的父件段就停在那里。
       responseOverride: (request) => request.path.endsWith('/notify')
-          ? _buySelectionNotifiedAnalysisJson()
+          ? (_buySelectionNotifiedAnalysisJson()
+              ..['version'] = 4
+              ..['fingerprint'] = 'b' * 64)
           : null,
     );
 
-    // 三态全选、行选择和批量动作统一由可采购桶的自制表格承载。
+    // 三态全选、行选择和批量动作统一由可采购桶的只读表格承载。
     await _openBucketDetail(tester, 'buy');
     final header = _bucketHeaderCheckbox();
     expect(tester.widget<Checkbox>(header).value, isFalse);
@@ -3673,18 +3661,25 @@ void main() {
     await tester.tap(header);
     await tester.pump();
     expect(tester.widget<Checkbox>(header).value, isTrue);
-    expect(find.text('提交采购需求(2)'), findsOneWidget);
+    expect(find.text('提交采购需求(2)…'), findsOneWidget);
 
     await _tapBucketRowCheckbox(tester, '采购件一');
     expect(tester.widget<Checkbox>(header).value, isNull);
-    expect(find.text('提交采购需求(1)'), findsOneWidget);
+    expect(find.text('提交采购需求(1)…'), findsOneWidget);
 
-    final buyNotify = find.text('提交采购需求(1)');
-    await tester.ensureVisible(buyNotify);
-    await tester.pump();
-    await tester.tap(buyNotify);
-    await tester.pumpAndSettle();
+    // 2026-09-22 起: 底部按钮只是进「核对并下单」页, 页里点「下单」才走 notify
+    // 通道弹数量确认; 确认后提交、刷新, 下单页自动退回本桶。
+    await _openIssuePageFromBucket(
+      tester,
+      'material-analysis-bucket-action-buy',
+    );
+    expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '8');
+    await _submitIssuePage(tester);
     await _confirmSupplyQuantityDialog(tester);
+    expect(
+      find.byKey(const Key('material-analysis-child-cascade-dialog')),
+      findsNothing,
+    );
     final request = harness.requests.singleWhere(
       (request) => request.path.endsWith('/notify'),
     );
@@ -3728,31 +3723,22 @@ void main() {
         analysisJson: _buySafetySplitAnalysisJson(),
       );
 
-      // 2026-09-05 改版口径：数量修改在分桶表格行内完成（默认=缺口−在途），
-      // 点提交只弹「品种数+合计」总结确认；安全缺口去重仍按 goods/color/unit
-      // 维度，公共补库作为固定数量并入合计。
+      // 2026-09-22 口径：数量在「核对并下单」页树顶改(默认=缺口−在途)，
+      // 页里点「下单」只弹「品种数+合计」总结确认；安全缺口去重仍按 goods/
+      // color/unit 维度，公共补库作为固定数量并入合计。
       await _openBucketDetail(tester, 'buy');
       final selectAll = _bucketHeaderCheckbox();
       await tester.tap(selectAll);
       await tester.pump();
-      // 行内默认量：两行各 8（安全补库是固定切片，不进默认输入值）。
-      expect(
-        tester
-            .widget<TextField>(
-              find.byKey(
-                const ValueKey(
-                  'material-analysis-bucket-submit-qty-buy-action-1',
-                ),
-              ),
-            )
-            .controller!
-            .text,
-        '8',
+      expect(find.text('提交采购需求(2)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
       );
-      final notifyAll = find.text('提交采购需求(2)');
-      await tester.ensureVisible(notifyAll);
-      await tester.tap(notifyAll);
-      await tester.pumpAndSettle();
+      // 树顶默认量：两行各 8(安全补库是固定切片，不进默认输入值)。
+      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '8');
+      expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '8');
+      await _submitIssuePage(tester);
 
       expect(
         find.byKey(const Key('supply-submit-confirm-dialog')),
@@ -3828,8 +3814,11 @@ void main() {
         await _openBucketDetail(tester, 'buy');
         await _tapBucketRowCheckbox(tester, '采购件一');
         await _tapBucketRowCheckbox(tester, '采购件二');
-        await tester.tap(find.text('提交采购需求(2)'));
-        await tester.pumpAndSettle();
+        await _openIssuePageFromBucket(
+          tester,
+          'material-analysis-bucket-action-buy',
+        );
+        await _submitIssuePage(tester);
         expect(find.text('共 2 个品种，合计 ${16 + budget.gap}。'), findsOneWidget);
         await _confirmSupplyQuantityDialog(tester);
         final request = harness.requests.singleWhere(
@@ -3951,7 +3940,7 @@ void main() {
   testWidgets(
     'unified tree depth>1 shortage node is actionable (bucket submit and route)',
     (tester) async {
-      await _pumpPage(
+      final harness = await _pumpPage(
         tester,
         size: const Size(1400, 1000),
         permissions: const {
@@ -3983,14 +3972,20 @@ void main() {
       );
       // Inspecting the dropdown does not write a route or supply request.
 
-      // depth>1 缺料行经分桶批量提交：详情页保持在前台完成总结确认。
+      // depth>1 缺料行经分桶批量提交：2026-09-22 起先进「核对并下单」页, 页里
+      // 点「下单」才弹总结确认; 下单页保持在前台完成确认。
       _expectBucketCount(tester, 'buy', 1);
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '外箱依赖');
-      await tester.tap(find.text('提交采购需求(1)'));
-      await tester.pumpAndSettle();
-      // 总结确认弹窗叠在分桶详情页之上：宿主页入口（不透明路由下方）不在树中，
-      // 详情页 AppBar 标题仍在——不退出回宿主页弹窗。
+      expect(find.text('提交采购需求(1)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
+      );
+      expect(find.text('核对并下单'), findsOneWidget);
+      await _submitIssuePage(tester);
+      // 总结确认弹窗叠在下单页之上：宿主页入口(不透明路由下方)不在树中，
+      // 下单页 AppBar 标题仍在——不退出回宿主页弹窗。
       expect(
         find.byKey(const Key('supply-submit-confirm-dialog')),
         findsOneWidget,
@@ -3999,10 +3994,21 @@ void main() {
         find.byKey(const Key('material-analysis-entry-buy')),
         findsNothing,
       );
-      expect(find.textContaining('下达采购 · 1'), findsOneWidget);
-      await tester.tap(find.text('取消'));
+      expect(find.text('核对并下单'), findsOneWidget);
+      await tester.tap(find.text('取消').last);
       await tester.pumpAndSettle();
-      // 取消弹窗后仍留在分桶详情页，由用户决定返回。
+      // 取消弹窗后仍留在下单页(一个 notify 都没发)，由用户决定返回；父件还没
+      // 提交, 返回要先确认「放弃本次下达」, 之后回到分桶详情页。
+      expect(
+        find.byKey(const Key('supply-submit-confirm-dialog')),
+        findsNothing,
+      );
+      expect(find.text('核对并下单'), findsOneWidget);
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
+      );
+      await _leaveIssuePage(tester);
       expect(find.textContaining('下达采购 · 1'), findsOneWidget);
       await _closeBucketDetail(tester);
     },
@@ -4079,29 +4085,17 @@ void main() {
       );
 
       await _openBucketDetail(tester, 'workshop');
-      final candidateRow = find
-          .ancestor(of: find.text('自制组件 A'), matching: find.byType(Row))
-          .first;
-      // 下层只齐套 4 也不影响下达：候选行默认数量=全部剩余 8（齐套拆分由
-      // 计划审批后的执行段 WAITING/READY 自动完成）。
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(
-                of: candidateRow,
-                matching: find.byType(TextField),
-              ),
-            )
-            .controller
-            ?.text,
-        '8',
-      );
-      await _pickBucketRowWorkshop(tester, candidateRow, '装配一车间');
+      // 下层只齐套 4 也不影响下达：勾选候选行进「核对并下单」页, 树顶默认
+      // 数量=全部剩余 8(齐套拆分由计划审批后的执行段 WAITING/READY 自动完成),
+      // 车间在页里选, 负责人随车间带出。
       await _tapBucketRowCheckbox(tester, '自制组件 A');
-      await tester.tap(
-        find.byKey(const Key('material-analysis-bucket-action-ready')),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.pumpAndSettle();
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
+      await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
+      await _submitIssuePage(tester);
 
       // 候选直发（ADR-71）：客户端只发一次 issue-plans，子件任务在服务端
       // 同一事务创建（不再有独立的 /notify 与计划预览两段式）。
@@ -4475,28 +4469,19 @@ void main() {
         },
       );
 
-      // 数量默认在「可安排生产」桶行内（2026-09-04 向导下线）：勾选行、
-      // 改数量、滑窗选车间（负责人随之带出车间经理）后直接生成。
+      // 2026-09-22 起桶表只读(2026-09-04 向导下线)：勾选行进「核对并下单」页,
+      // 在树顶改数量、滑窗选车间(负责人随之带出车间经理)后点「下单」生成。
       await _openBucketDetail(tester, 'workshop');
-      final childRow = find
-          .ancestor(of: find.text('自制组件 A(备料任务)'), matching: find.byType(Row))
-          .first;
-      final qtyField = find
-          .descendant(of: childRow, matching: find.byType(TextField))
-          .first;
-      // ADR-71：数量默认=剩余需求 8（齐套拆批由执行段完成）。
-      expect(tester.widget<TextField>(qtyField).controller?.text, '8');
       await _tapBucketRowCheckbox(tester, '自制组件 A(备料任务)');
-      await tester.enterText(qtyField, '3');
-      await tester.pump();
-      await _pickBucketRowWorkshop(tester, childRow, '装配一车间');
-      final generateButton = find.byKey(
-        const Key('material-analysis-bucket-action-ready'),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.ensureVisible(generateButton);
-      await tester.pumpAndSettle();
-      await tester.tap(generateButton);
-      await tester.pumpAndSettle();
+      // ADR-71：数量默认=剩余需求 8(齐套拆批由执行段完成)。
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
+      await _enterCascadeSeedQty(tester, 'make-path-1', '3');
+      await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
+      await _submitIssuePage(tester);
 
       expect(find.text('生产计划已生成'), findsOneWidget);
       expect(find.textContaining('PP-20260809-001'), findsOneWidget);
@@ -4583,27 +4568,35 @@ void main() {
         responseOverride: (request) {
           if (!request.path.endsWith('/notify')) return null;
           notifyCalls++;
-          return state(partial: true);
+          // 真实服务端每次真的写了东西都会换 version / fingerprint; 版本没动
+          // 会被当成「本次没有产生任何下达」, 下单页的父件段就停在那里。
+          return state(partial: true)
+            ..['version'] = 3 + notifyCalls
+            ..['fingerprint'] = 'b' * 63 + '$notifyCalls';
         },
       );
 
-      // 2026-09-05 改版口径：数量修改在桶表格行内（默认=本批缺口 8）；
-      // 点提交弹总结确认。当前账号没有超量下单权限，公共超量始终为 0。
+      // 2026-09-22 口径：数量在「核对并下单」页树顶改(默认=本批缺口 8)；
+      // 页里点「下单」弹总结确认。当前账号没有超量下单权限，公共超量始终为 0。
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '采购件一');
-      final qtyField = find.byKey(
-        const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+      expect(find.text('提交采购需求(1)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
       );
-      expect(tester.widget<TextField>(qtyField).controller!.text, '8');
-      // 行内改小成 5 实现分批。
-      await tester.enterText(qtyField, '5');
-      await tester.pump();
-      await tester.ensureVisible(find.text('提交采购需求(1)'));
-      await tester.tap(find.text('提交采购需求(1)'));
-      await tester.pumpAndSettle();
+      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '8');
+      // 树顶改小成 5 实现分批。
+      await _enterCascadeSeedQty(tester, 'buy-line-1', '5');
+      await _submitIssuePage(tester);
       expect(find.text('共 1 个品种，合计 5。'), findsOneWidget);
       await tester.tap(find.byKey(const Key('supply-submit-confirm')));
       await tester.pumpAndSettle();
+      // 提交成功: 下单页自动退回采购桶。
+      expect(
+        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        findsNothing,
+      );
 
       final first =
           harness.requests
@@ -4637,13 +4630,13 @@ void main() {
       await _tapBucketRowCheckbox(tester, '采购件一');
       expect(_bucketRowCheckboxValue(tester, '采购件一'), isTrue);
 
-      // 补交默认 = 剩余 3（新快照重算后的行内默认值），直接提交。
-      final topUpField = find.byKey(
-        const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+      // 补交默认 = 剩余 3(新快照重算后下单页树顶的默认值)，直接提交。
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
       );
-      expect(tester.widget<TextField>(topUpField).controller!.text, '3');
-      await tester.tap(find.text('提交采购需求(1)'));
-      await tester.pumpAndSettle();
+      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '3');
+      await _submitIssuePage(tester);
       expect(find.text('共 1 个品种，合计 3。'), findsOneWidget);
       await tester.tap(find.byKey(const Key('supply-submit-confirm')));
       await tester.pumpAndSettle();
@@ -4712,28 +4705,30 @@ void main() {
         },
       );
 
-      // ADR-71：可安排桶内勾选、滑窗选车间后点「创建生产计划」——单次原子
-      // 调用（有审核权限=同事务审核下达），不再有计划预览两段式。
+      // ADR-71：可安排桶内勾选 → 进「核对并下单」页、滑窗选车间后点「下单」
+      // ——单次原子调用(有审核权限=同事务审核下达)，不再有计划预览两段式。
       await _openBucketDetail(tester, 'workshop');
       await _tapBucketRowCheckbox(tester, '自制组件 A(备料任务)');
-      final approveRow = find
-          .ancestor(of: find.text('自制组件 A(备料任务)'), matching: find.byType(Row))
-          .first;
-      await _pickBucketRowWorkshop(tester, approveRow, '装配一车间');
-      final generateButton = find.byKey(
-        const Key('material-analysis-bucket-action-ready'),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.ensureVisible(generateButton);
+      await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
+      final submit = find.byKey(
+        const Key('material-analysis-child-cascade-submit'),
+      );
+      await tester.ensureVisible(submit);
       await tester.pump();
-      await tester.tap(generateButton);
+      await tester.tap(submit);
 
       // Keep the single request pending so the in-flight overlay is observable
-      // and cannot regress to a blank page.
+      // and cannot regress to a blank page. 遮罩画在最上层的下单页(跟宿主的
+      // 网络段走), 文案仍是「正在生成并审核下达」。
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
       expect(
-        find.byKey(const Key('material-analysis-plan-submission-progress')),
+        find.byKey(const Key('material-analysis-child-cascade-busy')),
         findsOneWidget,
       );
       expect(find.text('正在生成并审核下达'), findsOneWidget);
@@ -4822,24 +4817,19 @@ void main() {
         },
       );
 
-      // ADR-71：桶内单次原子下达；失败后遮罩必须清理并回显服务端错误
+      // ADR-71：单次原子下达；失败后遮罩必须清理并回显失败
       // （事务整体回滚，不会残留「已建子件、未出计划」）。
       await _openBucketDetail(tester, 'workshop');
       await _tapBucketRowCheckbox(tester, '自制组件 A(备料任务)');
-      final failRow = find
-          .ancestor(of: find.text('自制组件 A(备料任务)'), matching: find.byType(Row))
-          .first;
-      await _pickBucketRowWorkshop(tester, failRow, '装配一车间');
-      final failGenerate = find.byKey(
-        const Key('material-analysis-bucket-action-ready'),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.ensureVisible(failGenerate);
-      await tester.pumpAndSettle();
-      await tester.tap(failGenerate);
-      await tester.pumpAndSettle();
+      await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
+      await _submitIssuePage(tester);
 
       expect(
-        find.byKey(const Key('material-analysis-plan-submission-progress')),
+        find.byKey(const Key('material-analysis-child-cascade-busy')),
         findsNothing,
       );
       expect(
@@ -4848,11 +4838,25 @@ void main() {
         ),
         hasLength(1),
       );
-      // A rejected command stays in the bucket; staff can inspect and retry
-      // without navigating back into the analysis and loading the same data.
+      // A rejected command stays on the issue page with the failure spelled
+      // out; staff can inspect and retry without navigating back into the
+      // analysis and loading the same data.
       expect(
-        find.byKey(const Key('material-analysis-bucket-action-ready')),
+        find.byKey(const Key('material-analysis-child-cascade-dialog')),
         findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('material-analysis-child-cascade-result')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('未提交成功，可直接重试'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('material-analysis-child-cascade-submit')),
+            )
+            .onPressed,
+        isNotNull,
       );
       expect(tester.takeException(), isNull);
     },
@@ -4938,20 +4942,16 @@ void main() {
         },
       );
 
-      // ADR-71：桶内单次下达；51 张计划的分批与重读断言不变。
+      // ADR-71：单次下达(2026-09-22 起经「核对并下单」页)；51 张计划的分批
+      // 与重读断言不变。
       await _openBucketDetail(tester, 'workshop');
       await _tapBucketRowCheckbox(tester, '自制组件 A(备料任务)');
-      final batchRow = find
-          .ancestor(of: find.text('自制组件 A(备料任务)'), matching: find.byType(Row))
-          .first;
-      await _pickBucketRowWorkshop(tester, batchRow, '装配一车间');
-      final batchGenerate = find.byKey(
-        const Key('material-analysis-bucket-action-ready'),
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
       );
-      await tester.ensureVisible(batchGenerate);
-      await tester.pumpAndSettle();
-      await tester.tap(batchGenerate);
-      await tester.pumpAndSettle();
+      await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
+      await _submitIssuePage(tester);
 
       expect(
         find.byKey(const ValueKey('generated-plan-print-plan-draft')),
@@ -5038,28 +5038,28 @@ void main() {
     );
 
     // 2026-09-04 改版口径：产品大卡片（齐套进度条 + 「还缺 N 种物料 · 共
-    // N 条 BOM 路径」缺口摘要）下线——缺口种类/路径数摘要改在「暂不可
-    // 安排」桶详情行的「阻断摘要」列断言（同一口径：2 种缺料、3 条路径、
-    // 3 条待确认）；齐套进度条改由入口计数与树内逐节点保障进度承担。
+    // N 条 BOM 路径」缺口摘要)下线；2026-09-22 起桶表只读、「阻断摘要」列也
+    // 退役——不可创建的候选只在「需处理」段以「当前状态不可创建」标出、不给
+    // 勾选框，缺料种类 / 路径明细到主表节点详情看；齐套进度条改由入口计数与
+    // 树内逐节点保障进度承担。
     await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
-    final blockedRow = find
-        .ancestor(of: find.text('待自制壳体'), matching: find.byType(Row))
-        .first;
+    final blockedRow = _frozenRowOf('待自制壳体');
     expect(
-      find.descendant(
-        of: blockedRow,
-        matching: find.text('缺料 2 种 / 3 条路径，其中 3 条路线待确认'),
-      ),
+      find.descendant(of: blockedRow, matching: find.text('当前状态不可创建')),
       findsOneWidget,
     );
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.text('第二测试产品'), findsNothing);
     await _closeBucketDetail(tester);
     // Pending tasks keep blockers in the same route; an unrelated ready product has no blocker.
     await _openBucketDetail(tester, 'workshop');
-    final readyRow = find
-        .ancestor(of: find.text('第二测试产品'), matching: find.byType(Row))
-        .first;
+    final readyRow = _frozenRowOf('第二测试产品');
     expect(
-      find.descendant(of: readyRow, matching: find.textContaining('缺料')),
+      find.descendant(of: readyRow, matching: find.text('等待下达车间')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: readyRow, matching: find.textContaining('不可创建')),
       findsNothing,
     );
     await _closeBucketDetail(tester);
@@ -5168,7 +5168,7 @@ void main() {
       await tester.tap(_bucketHeaderCheckbox());
       await tester.pump();
       expect(find.text('已选 2 项'), findsOneWidget);
-      expect(find.text('提交采购需求(2)'), findsOneWidget);
+      expect(find.text('提交采购需求(2)…'), findsOneWidget);
       await _closeBucketDetail(tester);
     },
   );
@@ -5561,14 +5561,18 @@ void main() {
             request.path.endsWith('/claim-shared-future') ? claimed : null,
       );
       await _openBucketDetail(tester, 'buy');
-      final quantity = find.byKey(
-        const ValueKey('material-analysis-bucket-submit-qty-future-action'),
+      // 2026-09-22 起桶表只读: 认领前进「核对并下单」页, 树顶默认 = 还需安排
+      // 1000; 看完退回桶页(父件没提交要确认放弃)。
+      await _tapBucketRowCheckbox(tester, '未来物料');
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
       );
-      expect(tester.widget<TextField>(quantity).controller?.text, '1000');
-      final row = _frozenRowOf('未来物料');
-      await tester.tap(
-        find.descendant(of: row, matching: find.text('物料 / 调拨')),
-      );
+      expect(_cascadeSeedQtyText(tester, 'future-material'), '1000');
+      await _leaveIssuePage(tester);
+      // 原「物料 / 调拨」按钮搬进行菜单「物料调拨与公共在途」。
+      await _openBucketRowMenu(tester, '未来物料');
+      await tester.tap(find.text('物料调拨与公共在途'));
       await tester.pumpAndSettle();
       // 2026-09-13 起先进简化选择器，公共在途走第三个按钮。
       await tester.tap(find.byKey(const Key('transfer-launcher-claim')));
@@ -5600,13 +5604,18 @@ void main() {
       await _closeMaterialTableDetails(tester);
       await tester.tap(find.byKey(const Key('transfer-launcher-close')));
       await tester.pumpAndSettle();
+      // 认领后桶页重建行集: 剩余 100 仍可勾选下达, 下单页树顶默认跟着变成 100。
+      await _tapBucketRowCheckbox(tester, '未来物料');
+      expect(find.text('提交采购需求(1)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
+      );
       expect(
-        tester.widget<TextField>(quantity).controller?.text,
+        _cascadeSeedQtyText(tester, 'future-material'),
         '100',
         reason: 'bucket refresh must update the old 1000 default',
       );
-      await _tapBucketRowCheckbox(tester, '未来物料');
-      expect(find.text('提交采购需求(1)'), findsOneWidget);
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
@@ -5700,12 +5709,9 @@ void main() {
         },
       );
       await _openBucketDetail(tester, 'buy');
-      await tester.tap(
-        find.descendant(
-          of: _frozenRowOf('未来物料'),
-          matching: find.text('物料 / 调拨'),
-        ),
-      );
+      // 2026-09-22 起原「物料 / 调拨」按钮搬进行菜单「物料调拨与公共在途」。
+      await _openBucketRowMenu(tester, '未来物料');
+      await tester.tap(find.text('物料调拨与公共在途'));
       await tester.pumpAndSettle();
       // 2026-09-13 起先进简化选择器；在途调入走第二个按钮，弹窗自动勾选来源。
       await tester.tap(find.byKey(const Key('transfer-launcher-future')));
@@ -5756,10 +5762,13 @@ void main() {
       await tester.tap(find.text('稍后补供'));
       await tester.pumpAndSettle();
       await _closeMaterialTableDetails(tester);
-      final quantity = find.byKey(
-        const Key('material-analysis-bucket-submit-qty-future-action'),
+      // 调入后桶页重建行集: 剩余 100 仍待下达, 下单页树顶默认跟着变成 100。
+      await _tapBucketRowCheckbox(tester, '未来物料');
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
       );
-      expect(tester.widget<TextField>(quantity).controller?.text, '100');
+      expect(_cascadeSeedQtyText(tester, 'future-material'), '100');
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
@@ -5843,9 +5852,10 @@ void main() {
         },
       );
       await _openBucketDetail(tester, 'workshop');
-      final transferEntry = find.text('物料 / 调拨');
-      await tester.ensureVisible(transferEntry);
-      await tester.tap(transferEntry);
+      // 2026-09-22 起原「物料 / 调拨」按钮搬进行菜单「物料调拨与公共在途」;
+      // 产品行(柜)直达根供给行的选择器。
+      await _openBucketRowMenu(tester, '测试产品');
+      await tester.tap(find.text('物料调拨与公共在途'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('material-transfer-launcher')),
@@ -5912,20 +5922,17 @@ void main() {
         analysisJson: analysis,
       );
       await _openBucketDetail(tester, 'buy');
-      expect(
-        tester
-            .widget<TextField>(
-              find.byKey(
-                const Key('material-analysis-bucket-submit-qty-future-action'),
-              ),
-            )
-            .controller
-            ?.text,
-        '1000',
-      );
+      // 2026-09-22 起桶表只读: 全部未覆盖量 1000 仍可勾选下达, 下单页树顶默认
+      // 就是 1000; 「公共认领未实收」列搬进下单页(认领失败的 900 仍如实显示)。
       await _tapBucketRowCheckbox(tester, '未来物料');
-      expect(find.text('提交采购需求(1)'), findsOneWidget);
-      expect(find.textContaining('公共已认领未实收 900'), findsWidgets);
+      expect(find.text('提交采购需求(1)…'), findsOneWidget);
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-buy',
+      );
+      expect(_cascadeSeedQtyText(tester, 'future-material'), '1000');
+      expect(find.text('公共认领未实收'), findsOneWidget);
+      expect(find.text('900'), findsWidgets);
     },
   );
 
@@ -6008,17 +6015,22 @@ void main() {
           tester,
           route == 'MAKE' ? 'workshop' : 'subcontract',
         );
-        final row = _frozenRowOf('未来物料');
-        final quantity = find
-            .descendant(of: row, matching: find.byType(TextField))
-            .first;
-        expect(tester.widget<TextField>(quantity).controller?.text, '100');
-        expect(
-          find.descendant(of: row, matching: find.text('物料 / 调拨')),
-          findsOneWidget,
-        );
+        // 2026-09-22 起桶表只读: 行菜单里有「物料调拨与公共在途」(弹菜单会把该行
+        // 置为选中, 关掉菜单勾选态保留); 勾选进下单页后树顶默认 = 剩余 100。
         await _tapBucketRowCheckbox(tester, '未来物料');
         expect(_bucketRowCheckboxValue(tester, '未来物料'), isTrue);
+        await _openBucketRowMenu(tester, '未来物料');
+        expect(find.text('物料调拨与公共在途'), findsOneWidget);
+        await tester.tapAt(const Offset(8, 8));
+        await tester.pumpAndSettle();
+        expect(_bucketRowCheckboxValue(tester, '未来物料'), isTrue);
+        await _openIssuePageFromBucket(
+          tester,
+          route == 'MAKE'
+              ? 'material-analysis-bucket-action-ready'
+              : 'material-analysis-bucket-action-subcontract',
+        );
+        expect(_cascadeSeedQtyText(tester, 'future-material'), '100');
         expect(tester.takeException(), isNull);
       },
     );
@@ -6741,33 +6753,34 @@ void main() {
       );
       await _openBucketDetail(tester, 'workshop');
 
-      // 未选任何行：批量动作条不出现（0 计数不占位）。
-      expect(
-        find.byKey(const Key('material-analysis-bucket-action-ready')),
-        findsNothing,
+      // 未选任何行：批量动作组常驻但按钮禁用、计数 0(悬浮组与已选胶囊同框)。
+      final generate = find.byKey(
+        const Key('material-analysis-bucket-action-ready'),
       );
+      expect(generate, findsOneWidget);
+      expect(tester.widget<UtenButton>(generate).onPressed, isNull);
+      expect(find.textContaining(RegExp(r'创建生产计划.*\(0\)')), findsOneWidget);
       expect(
         find.byKey(const Key('material-analysis-bucket-create-tasks')),
         findsNothing,
       );
 
-      // 勾选可生产子件（数量默认=最多可生产）→ 生成按钮出现并计数 1。
+      // 勾选可生产子件 → 按钮可点并计数 1。
       await _tapBucketRowCheckbox(tester, '自制组件 A(备料任务)');
       expect(_bucketRowCheckboxValue(tester, '自制组件 A(备料任务)'), isTrue);
-      final generate = find.byKey(
-        const Key('material-analysis-bucket-action-ready'),
-      );
-      expect(generate, findsOneWidget);
+      expect(tester.widget<UtenButton>(generate).onPressed, isNotNull);
       expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
 
-      // 点生成：数量已默认、车间未选 → 校验拦截，不发起任何计划请求、
-      // 留在分桶页（toast 在无通知宿主的 harness 里不渲染，以请求与
-      // 页面停留为准）。
+      // 2026-09-22 起点按钮只是进「核对并下单」页；页里点「下单」：数量已默认、
+      // 车间未选 → 校验拦截，不发起任何计划请求、留在下单页(toast 在无通知
+      // 宿主的 harness 里不渲染，以请求与页面停留为准)。
+      await _openIssuePageFromBucket(
+        tester,
+        'material-analysis-bucket-action-ready',
+      );
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
       final requestCountBefore = harness.requests.length;
-      await tester.ensureVisible(generate);
-      await tester.pumpAndSettle();
-      await tester.tap(generate);
-      await tester.pumpAndSettle();
+      await _submitIssuePage(tester);
       expect(
         harness.requests
             .where((request) => request.path.contains('/issue-plans'))
@@ -6776,6 +6789,10 @@ void main() {
       );
       expect(harness.requests.length, requestCountBefore);
       expect(
+        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const Key('material-analysis-bucket-entries')),
         findsNothing,
       );
@@ -6783,8 +6800,11 @@ void main() {
   );
 
   testWidgets(
-    'ready bucket appends more rows without disposing loaded inputs',
+    'ready bucket keeps all 101 rows reachable and selectable on one page',
     (tester) async {
+      // 2026-09-22 起桶表只读且按 200 行分页: 原「先建 100 行 + 追加加载不丢
+      // 输入框」的口径退役(表里没有输入框了), 改守「101 行全在一页、都可抵达、
+      // 表头全选把 101 行一起带进下单入口」。
       final json = _analysisJson(const ['GENERATE_PLAN', 'PLAN_PREVIEW'])
         ..['products'] = [
           for (var index = 1; index <= 101; index++)
@@ -6818,19 +6838,21 @@ void main() {
       );
 
       await _openBucketDetail(tester, 'workshop');
-      expect(find.byType(TextField), findsNWidgets(100));
-
-      final showMore = find.byKey(
-        const Key('material-analysis-bucket-show-more'),
+      expect(find.textContaining('下达车间 · 101'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(
+        find.byKey(const Key('material-analysis-bucket-show-more')),
+        findsNothing,
       );
-      await tester.ensureVisible(showMore);
-      await tester.pumpAndSettle();
-      await tester.tap(showMore);
-      await tester.pumpAndSettle();
+      expect(find.text('可安排产品 1'), findsOneWidget);
+      await _scrollBucketRowVisible(tester, '可安排产品 101');
+      expect(find.text('可安排产品 101'), findsOneWidget);
+      expect(_bucketShortageText(tester, '可安排产品 101'), '1');
 
-      expect(find.byType(TextField), findsNWidgets(101));
-      await tester.enterText(find.byType(TextField).first, '0.5');
-      await tester.pump();
+      await tester.tap(_bucketHeaderCheckbox());
+      await tester.pumpAndSettle();
+      expect(find.text('已选 101 项'), findsOneWidget);
+      expect(find.text('创建生产计划(101)…'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -6923,28 +6945,23 @@ void main() {
 
       await _openBucketDetail(tester, 'workshop');
       // ADR-71：齐套列（建议首批/当前齐套/可排产上限）随「计划不管齐套」
-      // 下线；数量默认=剩余需求 1000（齐套拆批由执行段 WAITING/READY 完成）。
+      // 下线；2026-09-22 起桶表只读, 「缺口」列 = 剩余需求 1000 (不是齐套 500;
+      // 齐套拆批由执行段 WAITING/READY 完成), 整批可勾选下达。
       expect(find.text('建议首批'), findsNothing);
       expect(find.text('当前齐套'), findsNothing);
       expect(find.text('等待下达车间'), findsWidgets);
-      final productRow = find
-          .ancestor(of: find.text('测试产品').first, matching: find.byType(Row))
-          .first;
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(of: productRow, matching: find.byType(TextField)),
-            )
-            .controller
-            ?.text,
-        '1000',
-      );
+      expect(_bucketShortageText(tester, '测试产品'), '1000');
+      await _tapBucketRowCheckbox(tester, '测试产品');
+      expect(find.text('创建生产计划(1)…'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'analysis refresh preserves a planner-entered batch quantity while suggestions change',
+    'analysis refresh keeps the workshop row on remaining demand while kit suggestions change',
     (tester) async {
+      // 2026-09-22 起桶表只读: 数量只在下单页填、下单页关了就不留(原「刷新后
+      // 保留手填 333」口径退役)。改守: 刷新真的重发了预览、齐套建议变了
+      // (500/1000 → 700/1200) 桶行仍按剩余需求 1200 待下达, 齐套列不回来。
       var previewCalls = 0;
       Map<String, dynamic> state({
         required double ready,
@@ -6993,15 +7010,8 @@ void main() {
       );
 
       await _openBucketDetail(tester, 'workshop');
-      final firstRow = find
-          .ancestor(of: find.text('测试产品').first, matching: find.byType(Row))
-          .first;
-      final firstQty = find.descendant(
-        of: firstRow,
-        matching: find.byType(TextField),
-      );
-      await tester.enterText(firstQty, '333');
-      await tester.pump();
+      expect(_bucketShortageText(tester, '测试产品'), '1200');
+      expect(find.byType(TextField), findsNothing);
       await _closeBucketDetail(tester);
 
       await tester.tap(find.byTooltip('按最新库存刷新分析'));
@@ -7009,23 +7019,13 @@ void main() {
       expect(previewCalls, 2);
 
       await _openBucketDetail(tester, 'workshop');
-      final refreshedRow = find
-          .ancestor(of: find.text('测试产品').first, matching: find.byType(Row))
-          .first;
-      expect(
-        tester
-            .widget<TextField>(
-              find.descendant(
-                of: refreshedRow,
-                matching: find.byType(TextField),
-              ),
-            )
-            .controller
-            ?.text,
-        '333',
-      );
-      // ADR-71：建议首批列已下线（计划不管齐套），刷新后手填数量仍保留。
+      expect(_bucketShortageText(tester, '测试产品'), '1200');
+      expect(find.text('等待下达车间'), findsWidgets);
+      await _tapBucketRowCheckbox(tester, '测试产品');
+      expect(find.text('创建生产计划(1)…'), findsOneWidget);
+      // ADR-71：建议首批列已下线(计划不管齐套)，刷新后也不回来。
       expect(find.text('建议首批'), findsNothing);
+      expect(find.text('当前齐套'), findsNothing);
     },
   );
 
@@ -7059,20 +7059,22 @@ void main() {
 
       await _openBucketDetail(tester, 'workshop');
       // 2026-09-05 顶层与子层自制同构：服务端授权的待料产品仍可全额排产，
-      // 未下达统一「等待下达车间」（齐套由执行段自动判断）。
+      // 未下达统一「等待下达车间」(齐套由执行段自动判断)。2026-09-22 起桶表
+      // 只读: 「缺口」列 = 剩余需求 10 (readyNow 0 不压量), 行可勾选下达。
       expect(find.text('等待下达车间'), findsWidgets);
-      final productRow = find
-          .ancestor(of: find.text('测试产品').first, matching: find.byType(Row))
-          .first;
+      expect(_bucketShortageText(tester, '测试产品'), '10');
+      await _tapBucketRowCheckbox(tester, '测试产品');
+      expect(_bucketRowCheckboxValue(tester, '测试产品'), isTrue);
+      expect(find.text('创建生产计划(1)…'), findsOneWidget);
+      // 快照里没有这个产品的根供给行, 也要能进「核对并下单」页(树顶回退到产品行
+      // 本身): 2026-09-22 起下达一律进页, 进不了页就等于这类产品再也下不了单。
+      await tester.tap(find.text('创建生产计划(1)…'));
+      await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<TextField>(
-              find.descendant(of: productRow, matching: find.byType(TextField)),
-            )
-            .controller
-            ?.text,
-        '10',
+        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        findsOneWidget,
       );
+      expect(find.text('核对并下单'), findsOneWidget);
     },
   );
 
@@ -7235,23 +7237,26 @@ void main() {
       ),
     );
 
+    // 2026-09-22 起桶表只读: 起订量抬量与说明在「核对并下单」页树顶数量框下方。
     await _openBucketDetail(tester, 'buy');
-    final qty = find.byKey(
-      const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+    await _tapBucketRowCheckbox(tester, '采购件一');
+    await _openIssuePageFromBucket(
+      tester,
+      'material-analysis-bucket-action-buy',
     );
-    expect(tester.widget<TextField>(qty).controller!.text, '150');
+    expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '150');
     expect(
       find.byKey(
-        const ValueKey('material-analysis-bucket-order-policy-buy-action-1'),
+        const ValueKey(
+          'material-analysis-child-cascade-order-policy-buy-line-1',
+        ),
       ),
       findsOneWidget,
     );
     expect(find.textContaining('已按起订量与整包装抬至 150'), findsOneWidget);
     expect(find.textContaining('富余 50 归公共备货'), findsOneWidget);
 
-    await _tapBucketRowCheckbox(tester, '采购件一');
-    await tester.tap(find.text('提交采购需求(1)'));
-    await tester.pumpAndSettle();
+    await _submitIssuePage(tester);
     expect(find.text('本批需求 100 + 公共超量备货 50'), findsOneWidget);
     await tester.tap(find.byKey(const Key('supply-submit-confirm')));
     await tester.pumpAndSettle();
@@ -7286,10 +7291,12 @@ void main() {
     );
 
     await _openBucketDetail(tester, 'buy');
-    final qty = find.byKey(
-      const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+    await _tapBucketRowCheckbox(tester, '采购件一');
+    await _openIssuePageFromBucket(
+      tester,
+      'material-analysis-bucket-action-buy',
     );
-    expect(tester.widget<TextField>(qty).controller!.text, '100');
+    expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '100');
     expect(find.textContaining('低于起订量 120'), findsOneWidget);
   });
 
@@ -7308,13 +7315,17 @@ void main() {
     );
 
     await _openBucketDetail(tester, 'buy');
-    final qty = find.byKey(
-      const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+    await _tapBucketRowCheckbox(tester, '采购件一');
+    await _openIssuePageFromBucket(
+      tester,
+      'material-analysis-bucket-action-buy',
     );
-    expect(tester.widget<TextField>(qty).controller!.text, '100');
+    expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '100');
     expect(
       find.byKey(
-        const ValueKey('material-analysis-bucket-order-policy-buy-action-1'),
+        const ValueKey(
+          'material-analysis-child-cascade-order-policy-buy-line-1',
+        ),
       ),
       findsNothing,
     );
@@ -7370,16 +7381,20 @@ void main() {
     await _openBucketDetail(tester, 'buy');
     await _tapBucketRowCheckbox(tester, '采购件一');
 
-    // 行内编辑 2000（默认 500）；有超量权限允许超过缺口。
-    final qty = find.byKey(
-      const ValueKey('material-analysis-bucket-submit-qty-buy-action-1'),
+    // 2026-09-22 起在「核对并下单」页树顶编辑 2000(默认 500)；有超量权限允许
+    // 超过缺口, 提交后由 notify 通道的数量确认框裁决。
+    await _openIssuePageFromBucket(
+      tester,
+      'material-analysis-bucket-action-buy',
     );
-    expect(tester.widget<TextField>(qty).controller!.text, '500');
-    await tester.enterText(qty, '2000');
-    await tester.pump();
-    await tester.tap(find.text('提交采购需求(1)'));
-    await tester.pumpAndSettle();
+    expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '500');
+    await _enterCascadeSeedQty(tester, 'buy-line-1', '2000');
+    await _submitIssuePage(tester);
 
+    expect(
+      find.byKey(const Key('supply-submit-confirm-dialog')),
+      findsOneWidget,
+    );
     expect(find.text('共 1 个品种，合计 2000。'), findsOneWidget);
     expect(find.text('本批需求 500 + 公共超量备货 1500'), findsOneWidget);
     await tester.tap(find.byKey(const Key('supply-submit-confirm')));
@@ -8082,38 +8097,6 @@ class _FakeDepartmentRepository implements DepartmentRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// 点可安排桶计划行的「生产车间」格，在右侧滑窗里点选车间（单选点行即选定
-/// 返回）；负责人由车间经理自动带出（黄标提醒核对）。
-///
-/// 按**单元格 key** 定位，不按空态文案「点击选择」：同一行里不止一个 picker 格
-/// 用这句占位(2026-09-15 加的「所属仓库」列就排在生产车间之前)，按文案取
-/// `.first` 会点开隔壁那个面板。
-Future<void> _pickBucketRowWorkshop(
-  WidgetTester tester,
-  Finder row,
-  String workshopName,
-) async {
-  final cell = find
-      .descendant(
-        of: row,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget.key is ValueKey<String> &&
-              (widget.key as ValueKey<String>).value.startsWith(
-                'material-analysis-bucket-workshop-',
-              ),
-        ),
-      )
-      .first;
-  await tester.ensureVisible(cell);
-  await tester.pumpAndSettle();
-  await tester.tap(cell);
-  await tester.pumpAndSettle();
-  final option = find.text(workshopName).last;
-  await tester.tap(option);
-  await tester.pumpAndSettle();
-}
-
 class _TestMaterialAnalysisWarehousePrefsNotifier
     extends MaterialAnalysisWarehousePrefsNotifier {
   @override
@@ -8206,6 +8189,11 @@ ApiClient _api(
               '/production/material-analyses/analysis-1/routes' =>
                 _analysisJson(allowedActions, routeConfirmed: true),
               '/production/material-analyses/analysis-1/notify' =>
+                analysisJson ?? _analysisJson(allowedActions),
+              // 2026-09-22 起下达一律进「父件 + 下层一起下单」页: 车间通道的种子
+              // 带上车间后会向服务端要一份「下达之后」的预览(真实跑一遍再回滚);
+              // 本 harness 不算量, 原样回当前快照。
+              '/production/material-analyses/analysis-1/issue-plans/preview' =>
                 analysisJson ?? _analysisJson(allowedActions),
               '/production/material-analyses/analysis-1/allocation-priorities' =>
                 _analysisJson(allowedActions),
@@ -8711,10 +8699,17 @@ Map<String, dynamic> _planReadyChildAnalysisJson({double readyNowQty = 4}) {
       'GENERATE_PLAN',
       'PLAN_PREVIEW',
     ];
-  (json['flatMaterials']! as List<dynamic>)
-      .cast<Map<String, dynamic>>()
+  final materials = (json['flatMaterials']! as List<dynamic>)
+      .cast<Map<String, dynamic>>();
+  materials
       .singleWhere((material) => material['materialLineId'] == 'make-path-2')
       .addAll(const {'actionable': false, 'shortageQty': 0});
+  // 真实服务端给已建子件任务的物料行写持久锚点 planAnchorAnalysisLineId(V234);
+  // 2026-09-22 起子件产品行下达一律进「父件 + 下层一起下单」页, 树顶按这个锚点
+  // 反查物料行, 缺了就解析不出树顶、进不了页。
+  materials
+      .singleWhere((material) => material['materialLineId'] == 'make-path-1')
+      .addAll(const {'planAnchorAnalysisLineId': 'make-child-ready-1'});
   final child =
       (json['products']! as List<dynamic>).last as Map<String, dynamic>;
   child
@@ -9815,3 +9810,138 @@ Future<void> _resetTableHScroll(WidgetTester tester) async {
   }
   await tester.pump();
 }
+
+// ===== 2026-09-22 起分桶页只读: 数量 / 车间 / 负责人只在「下单页」里填 =====
+//
+// 三个桶(下达采购 / 下达委外 / 下达车间)的表格改成只读 MasterDataTableView,
+// 勾选行后点底部批量按钮(文案以「…」结尾)进「父件 + 下层一起下单」页(没有下层
+// 时标题「核对并下单」); 树顶(种子行)才有本批数量框与车间 / 负责人选择器。真正
+// 的提交在那一页的「下单(N) / 只下达父件 / 一键下单(N)」里: 采购 / 直接外发委外
+// 的种子走宿主 notify 通道(会弹 supply-submit-confirm-dialog 数量确认), 车间种子
+// 超量时先弹「确认超量下达车间」。
+
+/// 点桶底部的批量按钮进下单页(勾选须先做完), 断言下单页已打开。
+Future<void> _openIssuePageFromBucket(
+  WidgetTester tester,
+  String bucketActionKey,
+) async {
+  final action = find.byKey(Key(bucketActionKey));
+  await tester.ensureVisible(action);
+  await tester.pumpAndSettle();
+  await tester.tap(action);
+  await tester.pumpAndSettle();
+  expect(
+    find.byKey(const Key('material-analysis-child-cascade-dialog')),
+    findsOneWidget,
+  );
+}
+
+/// 下单页树顶(种子行)的本批数量框。[rowId] = 种子行的行 id: 物料行 / 自制候选
+/// 用它的 materialLineId; 子件产品行用它锚定的物料行 id(planAnchorAnalysisLineId
+/// 反查)。
+Finder _cascadeSeedQtyField(String rowId) =>
+    find.byKey(ValueKey('material-analysis-child-cascade-qty-$rowId'));
+
+/// 读下单页种子行数量框当前的文字。
+String _cascadeSeedQtyText(WidgetTester tester, String rowId) =>
+    tester.widget<TextField>(_cascadeSeedQtyField(rowId)).controller!.text;
+
+/// 改下单页种子行的本批数量, 并等 300ms 去抖的服务端重算(如有)回来。
+Future<void> _enterCascadeSeedQty(
+  WidgetTester tester,
+  String rowId,
+  String qty,
+) async {
+  await tester.enterText(_cascadeSeedQtyField(rowId), qty);
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pumpAndSettle();
+}
+
+/// 下单页种子行点「生产车间」格, 在滑窗里点选车间(单选点行即选定); 负责人由
+/// 车间经理自动带出(黄标提醒核对)。选完等去抖的下达预览回来。
+Future<void> _pickCascadeWorkshop(
+  WidgetTester tester,
+  String rowId,
+  String workshopName,
+) async {
+  final cell = find.byKey(
+    ValueKey('material-analysis-child-cascade-workshop-$rowId'),
+  );
+  await tester.ensureVisible(cell);
+  await tester.pumpAndSettle();
+  await tester.tap(cell);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(workshopName).last);
+  await tester.pumpAndSettle();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pumpAndSettle();
+}
+
+/// 点下单页的提交按钮('下单(N)' / '只下达父件' / '一键下单(N)'); 车间种子在本页
+/// 被改大过时顺手过一次「确认超量下达」; 有下层行但一行都没勾时页面会问
+/// 「只下达父件？」, 这里按「只下达父件」答(本文件的用例都只验证父件段)。
+Future<void> _submitIssuePage(WidgetTester tester) async {
+  final submit = find.byKey(
+    const Key('material-analysis-child-cascade-submit'),
+  );
+  await tester.ensureVisible(submit);
+  await tester.pumpAndSettle();
+  await tester.tap(submit);
+  await tester.pumpAndSettle();
+  final overQty = find.text('确认超量下达');
+  if (overQty.evaluate().isNotEmpty) {
+    await tester.tap(overQty);
+    await tester.pumpAndSettle();
+  }
+  if (find.text('只下达父件？').evaluate().isNotEmpty) {
+    await tester.tap(find.text('只下达父件').last);
+    await tester.pumpAndSettle();
+  }
+}
+
+/// 从下单页返回桶页(父件还没提交时要先确认「放弃本次下达」)。
+Future<void> _leaveIssuePage(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('返回').last);
+  await tester.pumpAndSettle();
+  final discard = find.text('放弃本次下达');
+  if (discard.evaluate().isNotEmpty) {
+    await tester.tap(discard.last);
+    await tester.pumpAndSettle();
+  }
+  expect(
+    find.byKey(const Key('material-analysis-child-cascade-dialog')),
+    findsNothing,
+  );
+}
+
+/// 桌面右键(鼠标副键)桶表某一行, 弹出行菜单(进详情页下单 / 物料调拨与公共在途 /
+/// 全链路进度)。
+Future<void> _openBucketRowMenu(WidgetTester tester, String goodsName) async {
+  await _scrollBucketRowVisible(tester, goodsName);
+  final text = find.text(goodsName).first;
+  final gesture = await tester.startGesture(
+    tester.getCenter(text),
+    kind: PointerDeviceKind.mouse,
+    buttons: kSecondaryMouseButton,
+  );
+  await gesture.up();
+  await tester.pumpAndSettle();
+}
+
+/// 只读桶表某行「缺口」格的文字(未下达段: 物料行 = 服务端物理缺口, 产品行 =
+/// 还没转入计划的剩余需求)。
+String _bucketShortageText(WidgetTester tester, String goodsName) {
+  final cell = find.descendant(
+    of: _frozenRowOf(goodsName),
+    matching: find.byKey(const Key('bucket-shortage-qty-cell')),
+  );
+  return tester
+      .widget<Text>(find.descendant(of: cell, matching: find.byType(Text)))
+      .data!;
+}
+
+/// 只读桶表某行的「顶层」红框(只有顶层成品行才挂)。
+Finder _bucketTopLevelBadge(String goodsName) => find.descendant(
+  of: _frozenRowOf(goodsName),
+  matching: find.byKey(const ValueKey('material-analysis-top-level-badge')),
+);

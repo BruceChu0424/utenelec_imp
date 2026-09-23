@@ -690,7 +690,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并生成一次性临时密码(身份证后 6 位)；首次登录必须修改密码。';
+      '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并由系统随机生成一次性临时密码(只显示一次，限时有效)；首次登录必须修改密码。';
 
   @override
   String get employeeOnboardCodeAutoNote => '工号提交后自动生成(UT 前缀，唯一递增)';
@@ -828,7 +828,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeProvisionConfirm =>
-      '将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？';
+      '将为该员工开通登录账号：账号默认为手机号，初始密码由系统随机生成(只显示一次，限时有效)，首次登录需修改。是否继续？';
 
   @override
   String get employeeTransferTitle => '员工调岗';
@@ -855,7 +855,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeRehireTitle => '确认复职？';
 
   @override
-  String get employeeRehireBody => '复职后员工状态将恢复为「在职」，其登录账号将重新启用(需重新登录)。';
+  String get employeeRehireBody =>
+      '复职后员工状态将恢复为「在职」，登录账号重新启用。离职时原密码已作废，需请账号支持人员为其重置密码，并把新的临时密码当面交给员工。';
 
   @override
   String get employeeRehireSuccess => '复职完成';
@@ -2759,8 +2760,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get serverStatusUnknown => '未知';
 
   @override
-  String get attachmentUploadFormatsHint =>
-      '支持图片 / PDF / Office / zip / txt，单个不超过 25MB';
+  String attachmentUploadFormatsHint(String maxSize) {
+    return '支持图片 / PDF / Office / zip / txt，单个不超过 $maxSize';
+  }
 
   @override
   String attachmentUploadedFile(String fileName) {

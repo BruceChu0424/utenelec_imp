@@ -17,6 +17,7 @@
 
 | 说明 | 迁移 | 本次变化 |
 | --- | --- | --- |
+| [231](231-V658至V660服务端会话再认证与设置登记.md) | V658–V660 | 服务端会话、敏感操作再认证与系统设置单一登记(ADR-110)：V658 新表 `auth_sessions`(登录会话：吊销/空闲/绝对期限的唯一权威，含一次性再认证凭证哈希)与 `auth_step_up_states`(再认证连续失败计数)，存量刷新令牌作废，两表登记清空清单 CLEAR；V659 `system_settings` 删六个元数据列(改由 `SystemSettingKey` 枚举登记)、补七个登记行、越界令牌期限收口；V660 `account:support` 改个人点名授权(删部门级授予、部门守卫触发器同时拦截)、存量无过期时间的非超管临时密码置过期 |
 | [230](230-V645追加自制并入未开工的生产计划.md) | V645 | 追加自制并进还没开工的生产计划(ADR-104)：新增 `fn_material_analysis_plan_growable`、`fn_is_material_analysis_plan_item_growth`、`fn_is_material_analysis_plan_link_growth`、`fn_is_material_analysis_plan_item_supply_growth` 四个判定函数与 `trg_check_material_analysis_plan_item_link_qty` 对账触发器；锚点补丁 `fn_guard_material_analysis_plan_item_identity`、`fn_sync_material_analysis_plan_link_qty`、`fn_guard_production_supply_source_item`，只在计划仍未开工时放开计划明细 qty / 关联行 submitted_qty·public_surplus_qty 只增不减。不加表不加列；追加量在同一个 CONFIRMED 计划包里另起一段，原段一字不动 |
 | [229](229-V642委外回厂守卫计入财务批准的自带料.md) | V642 | 只锚点补丁 `fn_assert_subcontract_target_outbound_receipt`：把「财务已批准的委外商自带料」(`procurement_arrival_exceptions.approved_excess_qty`，`RECEIPT_ADJUSTED` + 批准决定) 从守恒台账里摘出去，回厂超过我方供料能做出来的数量时不再硬拒，改由 ADR-019 落到货异常并通知财务确认价格与归属(货不入库、不立应付)；额度自钳位，没有财务批准时两道守卫一个字节不放松；V638 的 `PREPARED_OUTBOUND` 合计与 V581 激活条件由迁移内断言钉死；不加表、不加列、不动触发器 |
 | [228](228-V644审核生产日报幂等键.md) | V644 | `production_daily_report_commands` 加 `command_kind` 一列(CREATE/APPROVE/REVERSE，存量默认 CREATE)，原 `UNIQUE(report_id)` 换成 `UNIQUE(report_id, command_kind)`。不加表；审核接口自此要求幂等键，同键重发原样回放已审详情而不是撞状态闸门，状态闸门本身不放宽、只把错误码从 400 改成 409。V643 留给并行会话 |

@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.visitor.VisitorAccountRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -23,6 +22,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.HashSet;
@@ -31,7 +31,15 @@ import java.util.UUID;
 
 /**
  * Parses bearer access tokens and rebuilds the current principal from server-side
- * account and authorization state.
+ * account, authorization and session state.
+ *
+ * <p>One SQL statement per request reads the account projection together with the
+ * server-side session named by the token {@code sid} (ADR-110): a revoked session,
+ * an idle session (longer than {@code session_idle_timeout_minutes} since the last
+ * human request) or a session past its absolute lifetime is a 401. Human requests
+ * refresh {@code last_seen_at} at most once per minute; requests the client sends
+ * while its user is idle (polling, timed refreshes, heartbeats; declared by the
+ * {@link AutomaticRequestPolicy#HEADER} header) never extend a session.
  *
  * <p>Malformed, expired or explicitly invalidated credentials remain authentication
  * failures. Database and authority-resolution failures are availability failures and
@@ -50,8 +58,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private static final String SERVICE_UNAVAILABLE_MESSAGE = "认证服务暂不可用，请稍后重试";
 
     private final JwtService jwtService;
-    private final UserAccountRepository userRepo;
-    private final VisitorAccountRepository visitorRepo;
+    private final AuthSessionService sessions;
     private final StaffAuthorityResolver staffAuthorityResolver;
     private final ObjectMapper objectMapper;
     private final AuditService auditService;
@@ -78,13 +85,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 return;
             }
 
-            AuthUser authUser;
+            Resolution resolution;
             try {
-                authUser = switch (tokenType) {
-                    case "staff" -> resolveStaff(subjectId, claims);
-                    case "visitor" -> resolveVisitor(subjectId, claims);
-                    default -> null;
-                };
+                boolean automatic = AutomaticRequestPolicy.isAutomatic(request);
+                resolution = sessionId == null
+                        ? Resolution.rejected("session_missing")
+                        : switch (tokenType) {
+                            case "staff" -> resolveStaff(subjectId, sessionId, claims, automatic);
+                            case "visitor" -> resolveVisitor(subjectId, sessionId, claims, automatic);
+                            default -> Resolution.rejected("account_state_changed");
+                        };
             } catch (RuntimeException ex) {
                 // Account and permission state is server-side. An unavailable database
                 // or broken resolver is not evidence that the caller's token is invalid.
@@ -97,6 +107,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 writeServiceUnavailable(response);
                 return;
             }
+            AuthUser authUser = resolution.user();
             if (authUser == null) {
                 // Keep this branch outside the token-parsing catch. A response-serialization
                 // failure must never fall through to the protected endpoint.
@@ -104,11 +115,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 try {
                     auditService.logSecurityEvent(
                             request, null, null,
-                            "access_denied", "account_state_changed", 401);
+                            "access_denied", resolution.reason(), 401);
                 } catch (RuntimeException ignored) {
                     // Authentication rejection must remain fail-closed if the audit sink is down.
                 }
-                writeUnauthorized(response);
+                writeUnauthorized(response, resolution.reason());
                 return;
             }
             UsernamePasswordAuthenticationToken auth =
@@ -137,36 +148,25 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/visitor/auth/");
     }
 
+    /** 解析结果: 成功带主体; 失败带写进安全审计的原因。 */
+    private record Resolution(AuthUser user, String reason) {
+        static Resolution accepted(AuthUser user) {
+            return new Resolution(user, null);
+        }
+
+        static Resolution rejected(String reason) {
+            return new Resolution(null, reason);
+        }
+    }
+
     /**
      * Staff authorization is rebuilt from the current account projection. Status,
-     * employee binding, super-admin shape and authorization stamps never trust JWT
-     * copies.
+     * employee binding, super-admin shape, authorization stamps and the server-side
+     * session never trust JWT copies.
      */
-    private AuthUser resolveStaff(UUID userId, Claims claims) {
-        UserAccountRepository.AccountState user = userRepo.findAccountStateById(userId).orElse(null);
-        if (user == null || user.isDeleted() || !"active".equals(user.getStatus())) {
-            return null;
-        }
-        Long tokenAuthVersion = numericClaim(claims, "av");
-        Long tokenAuthorizationEpoch = numericClaim(claims, "ae");
-        if (tokenAuthVersion == null
-                || tokenAuthorizationEpoch == null
-                || tokenAuthVersion != user.getAuthVersion()
-                || tokenAuthorizationEpoch != user.getAuthorizationEpoch()) {
-            return null;
-        }
-        UUID employeeId = user.getEmployeeId();
-        String loginAccount = user.getLoginAccount();
-        if (employeeId == null || loginAccount == null || loginAccount.isBlank()) {
-            return null;
-        }
-        PermissionResolver.AuthorizationSnapshot authorities = staffAuthorityResolver.resolve(
-                userId,
-                employeeId,
-                user.isSuperAdmin(),
-                user.getAuthVersion(),
-                user.getAuthorizationEpoch());
-        // 模拟身份 token 携带 imp claim（admin userId）。非 null 即触发只读守卫；权限/数据范围仍按目标解析。
+    private Resolution resolveStaff(UUID userId, UUID sessionId, Claims claims, boolean automatic) {
+        // 模拟身份 token 携带 imp claim（admin userId）。非 null 即触发只读守卫；权限/数据范围仍按目标解析，
+        // 会话则是发起模拟的超管自己的会话 (超管登出或空闲超时, 模拟令牌随之失效)。
         // imp 来自签名 token，正常必为合法 UUID；异常时按"无模拟标记"处理（不抛 503）。
         String impClaim = stringClaim(claims, "imp");
         UUID impersonatedBy = null;
@@ -177,45 +177,119 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 impersonatedBy = null;
             }
         }
-        return new AuthUser(
+        UUID sessionOwner = impersonatedBy != null ? impersonatedBy : userId;
+        AuthSessionService.StaffState user =
+                sessions.loadStaff(userId, sessionId, sessionOwner).orElse(null);
+        if (user == null || user.deleted() || !"active".equals(user.status())) {
+            return Resolution.rejected("account_state_changed");
+        }
+        Long tokenAuthVersion = numericClaim(claims, "av");
+        Long tokenAuthorizationEpoch = numericClaim(claims, "ae");
+        if (tokenAuthVersion == null
+                || tokenAuthorizationEpoch == null
+                || tokenAuthVersion != user.authVersion()
+                || tokenAuthorizationEpoch != user.authorizationEpoch()) {
+            return Resolution.rejected("account_state_changed");
+        }
+        UUID employeeId = user.employeeId();
+        String loginAccount = user.loginAccount();
+        if (employeeId == null || loginAccount == null || loginAccount.isBlank()) {
+            return Resolution.rejected("account_state_changed");
+        }
+        String sessionRejection = checkSession(
+                sessionId, user.session(), user.idleTimeoutRaw(), automatic);
+        if (sessionRejection != null) {
+            return Resolution.rejected(sessionRejection);
+        }
+        PermissionResolver.AuthorizationSnapshot authorities = staffAuthorityResolver.resolve(
+                userId,
+                employeeId,
+                user.superAdmin(),
+                user.authVersion(),
+                user.authorizationEpoch());
+        return Resolution.accepted(new AuthUser(
                 userId,
                 employeeId,
                 loginAccount,
                 authorities.roles(),
                 authorities.permissions(),
-                user.isMustChangePassword(),
+                user.mustChangePassword(),
                 true,
-                user.isSuperAdmin(),
-                user.isRemoteAccess(),
-                impersonatedBy);
+                user.superAdmin(),
+                user.remoteAccess(),
+                impersonatedBy,
+                sessionId));
     }
 
-    /** Visitors are rejected when their current server-side account is not active. */
-    private AuthUser resolveVisitor(UUID visitorId, Claims claims) {
-        VisitorAccountRepository.AccountState visitor =
-                visitorRepo.findAccountStateById(visitorId).orElse(null);
-        if (visitor == null || !"active".equals(visitor.getStatus())) {
-            return null;
+    /** Visitors are rejected when their current server-side account or session is not active. */
+    private Resolution resolveVisitor(UUID visitorId, UUID sessionId, Claims claims, boolean automatic) {
+        AuthSessionService.VisitorState visitor =
+                sessions.loadVisitor(visitorId, sessionId).orElse(null);
+        if (visitor == null || !"active".equals(visitor.status())) {
+            return Resolution.rejected("account_state_changed");
         }
         String visitorAccount = stringClaim(claims, "acc");
         String visitorNo = stringClaim(claims, "vno");
         Set<String> permissions = asStringSet(claims.get("perms"));
         if (visitorAccount == null || visitorNo == null || permissions == null) {
-            return null;
+            return Resolution.rejected("account_state_changed");
         }
-        return AuthUser.visitor(visitorId, visitorAccount, visitorNo, permissions);
+        String sessionRejection = checkSession(
+                sessionId, visitor.session(), visitor.idleTimeoutRaw(), automatic);
+        if (sessionRejection != null) {
+            return Resolution.rejected(sessionRejection);
+        }
+        return Resolution.accepted(
+                AuthUser.visitor(visitorId, visitorAccount, visitorNo, permissions, sessionId));
+    }
+
+    /** 会话判定: 有效返回 null 并按需续期; 否则返回拒绝原因 (空闲超时顺手落吊销原因)。 */
+    private String checkSession(UUID sessionId,
+                                AuthSessionService.SessionFacts session,
+                                String idleTimeoutRaw,
+                                boolean automatic) {
+        Instant now = sessions.now();
+        AuthSessionService.Verdict verdict = AuthSessionService.evaluate(
+                session, AuthSessionService.idleTimeoutMinutes(idleTimeoutRaw), now);
+        switch (verdict) {
+            case ACTIVE -> {
+                if (!automatic) {
+                    sessions.touchIfDue(sessionId, session.lastSeenAt(), now);
+                }
+                return null;
+            }
+            case IDLE_EXPIRED -> {
+                sessions.revokeQuietly(sessionId, AuthSessionService.REASON_IDLE);
+                return "session_idle_timeout";
+            }
+            case ABSOLUTE_EXPIRED -> {
+                return "session_expired";
+            }
+            case REVOKED -> {
+                return "session_revoked";
+            }
+            default -> {
+                return "session_missing";
+            }
+        }
     }
 
     /** Writes the canonical ApiError wire shape for explicit credential invalidation. */
-    private void writeUnauthorized(HttpServletResponse response) throws IOException {
+    private void writeUnauthorized(HttpServletResponse response, String reason) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        String message = switch (reason == null ? "" : reason) {
+            case "session_idle_timeout" -> "长时间没有操作，已自动退出，请重新登录";
+            case "session_expired" -> "登录已超过保持时长，请重新登录";
+            case "session_revoked", "session_missing" -> "登录已失效，请重新登录";
+            default -> "账号状态或权限已变更，请重新登录";
+        };
         var body = objectMapper.createObjectNode()
                 .put("timestamp", OffsetDateTime.now().toString())
                 .put("status", ErrorCode.UNAUTHORIZED.getHttpStatus())
                 .put("code", ErrorCode.UNAUTHORIZED.name())
-                .put("message", "账号状态或权限已变更，请重新登录");
+                .put("message", message);
         response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 
@@ -251,7 +325,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private UUID optionalSessionId(Claims claims) {
         Object value = claims.get("sid");
         if (value == null) {
-            // Compatibility window for access tokens issued before V428.
+            // 没有会话的令牌一律拒绝 (调用方判定为 session_missing)。
             return null;
         }
         if (!(value instanceof String text) || text.isBlank()) {

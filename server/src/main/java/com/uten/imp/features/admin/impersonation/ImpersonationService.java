@@ -1,6 +1,5 @@
 package com.uten.imp.features.admin.impersonation;
 
-import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -20,7 +19,6 @@ import com.uten.imp.security.JwtService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +33,8 @@ import java.util.UUID;
  *
  * <p>三段式：
  * <ol>
- *   <li>{@link #enter} —— admin 重新确认密码 → 签发限时 modeToken（默认 15 分钟窗口）。</li>
+ *   <li>{@link #enter} —— admin 已通过再认证 (控制器 {@code @RequiresStepUp}) → 签发限时 modeToken
+ *       (系统设置「切换人窗口」, 绑定本人与本会话)。</li>
  *   <li>{@link #start} —— 凭 modeToken 切换到目标员工 → 签发 sub=目标 的模拟 token（带 imp=admin 标记）。
  *       模拟期间后端 {@link com.uten.imp.security.ImpersonationWriteGuardFilter} 强制只读。</li>
  *   <li>{@link #end} —— 退出模拟，审计。</li>
@@ -45,35 +44,25 @@ import java.util.UUID;
 @Service
 public class ImpersonationService {
 
-    /** 密码长度上限（防 Argon2 CPU DoS，与 LoginService 对齐）。 */
-    private static final int PASSWORD_MAX_LENGTH = 128;
-
     private final SecurityContextCurrentUser currentUser;
     private final UserAccountRepository userRepo;
-    private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final StaffTokenResponseFactory tokenFactory;
     private final AuditService audit;
     private final EmployeeQueryService employeeQueryService;
 
-    /** 进模式密码校验的时序抹平用 dummy hash（账号已知，弱反枚举，仍对齐以防侧信道）。 */
-    private final String dummyHash;
-
     public ImpersonationService(SecurityContextCurrentUser currentUser,
                                 UserAccountRepository userRepo,
-                                PasswordEncoder passwordEncoder,
                                 JwtService jwtService,
                                 StaffTokenResponseFactory tokenFactory,
                                 AuditService audit,
                                 EmployeeQueryService employeeQueryService) {
         this.currentUser = currentUser;
         this.userRepo = userRepo;
-        this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.tokenFactory = tokenFactory;
         this.audit = audit;
         this.employeeQueryService = employeeQueryService;
-        this.dummyHash = passwordEncoder.encode("dummy-impersonation-timing");
     }
 
     /** 模拟目标候选（picker）：仅活跃员工；superAdmin 调用时数据范围不受限。搜索可进一步收窄。 */
@@ -89,23 +78,15 @@ public class ImpersonationService {
                 .toList();
     }
 
-    public ImpersonationModeResponse enter(String password) {
+    /** 进入切换人: 再认证已由控制器核销, 这里签发绑定本人与本会话的限时模式凭证。 */
+    public ImpersonationModeResponse enter() {
         AuthUser admin = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-        UserAccount adminAccount = userRepo.findById(admin.getId())
-                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-
-        if (password == null || password.length() > PASSWORD_MAX_LENGTH) {
-            // 超长/空跑一次 dummy 校验抹平时序，再拒（与错密码同消息）
-            passwordEncoder.matches(password == null ? "" : password, dummyHash);
-            throw new ApiException(ErrorCode.BAD_CREDENTIALS);
+        if (admin.getSessionId() == null) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
-        if (!passwordEncoder.matches(password, adminAccount.getPasswordHash())) {
-            throw new ApiException(ErrorCode.BAD_CREDENTIALS);
-        }
-
         long windowSeconds = jwtService.getImpersonationWindowSeconds();
         Instant expiresAt = Instant.now().plusSeconds(windowSeconds);
-        String modeToken = jwtService.issueModeToken(admin.getId(), expiresAt);
+        String modeToken = jwtService.issueModeToken(admin.getId(), admin.getSessionId(), expiresAt);
         audit.logExplicit(admin.getId(), admin.getLoginAccount(),
                 "impersonation_enter", "authorization", null, "success");
         return new ImpersonationModeResponse(modeToken, windowSeconds);
@@ -135,6 +116,11 @@ public class ImpersonationService {
         if (!modeAdminId.equals(admin.getId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "模拟模式不属于当前账号");
         }
+        // 模式凭证只在签发它的那个会话里有效: 重新登录 (换会话) 后必须重新确认密码。
+        if (admin.getSessionId() == null
+                || !admin.getSessionId().toString().equals(claims.get("sid", String.class))) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "模拟模式已失效，请重新确认密码");
+        }
 
         // 2) 解析目标：拒绝超管 / 未激活 / 已删
         UserAccount target = userRepo.findByEmployeeId(targetEmployeeId)
@@ -155,7 +141,7 @@ public class ImpersonationService {
                 target,
                 admin.getId(),
                 expiresAt,
-                AuditRequestContext.currentSessionId());
+                admin.getSessionId());
 
         TokenResponse.UserProfile profile = token.user();
         ImpersonationMeta meta = new ImpersonationMeta(

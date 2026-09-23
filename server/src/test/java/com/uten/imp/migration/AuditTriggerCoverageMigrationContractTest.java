@@ -189,6 +189,8 @@ class AuditTriggerCoverageMigrationContractTest {
             Map.entry("report_materialized_view_refresh_state", "materialized-view refresh metadata"),
             Map.entry("password_history", "credential-derived security data"),
             Map.entry("refresh_tokens", "staff credential material"),
+            Map.entry("auth_sessions", "server-side session and one-time step-up credential material (V658)"),
+            Map.entry("auth_step_up_states", "credential-derived step-up failure counters (V658)"),
             Map.entry("visitor_refresh_tokens", "visitor credential material"),
             Map.entry("visitor_sms_codes", "one-time credential material"),
             Map.entry("legacy_migration_checkpoints", "legacy migration control metadata"),

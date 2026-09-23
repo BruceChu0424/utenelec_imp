@@ -702,7 +702,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a one-time password (last 6 digits of the ID number). It must be changed at first sign-in.';
+      'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a random one-time password (shown once, time-limited). It must be changed at first sign-in.';
 
   @override
   String get employeeOnboardCodeAutoNote =>
@@ -847,7 +847,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeProvisionConfirm =>
-      'This creates a login account for the employee. The account defaults to the phone number, the initial password is the last 6 digits of the ID number, and it must be changed on first login. Continue?';
+      'This creates a login account for the employee. The account defaults to the phone number, the initial password is randomly generated (shown once, time-limited), and it must be changed on first login. Continue?';
 
   @override
   String get employeeTransferTitle => 'Employee transfer';
@@ -875,7 +875,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeRehireBody =>
-      'The employee will become Active again and the login account will be re-enabled (re-login required).';
+      'The employee will become Active again and the login account will be re-enabled. The old password was voided at departure: ask account support to reset it and hand the new temporary password to the employee in person.';
 
   @override
   String get employeeRehireSuccess => 'Rehired';
@@ -2863,8 +2863,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get serverStatusUnknown => 'Unknown';
 
   @override
-  String get attachmentUploadFormatsHint =>
-      'Images / PDF / Office / zip / txt, up to 25MB per file';
+  String attachmentUploadFormatsHint(String maxSize) {
+    return 'Images / PDF / Office / zip / txt, up to $maxSize per file';
+  }
 
   @override
   String attachmentUploadedFile(String fileName) {

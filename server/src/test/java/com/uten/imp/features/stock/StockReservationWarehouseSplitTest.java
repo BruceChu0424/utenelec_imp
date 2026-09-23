@@ -63,7 +63,8 @@ class StockReservationWarehouseSplitTest {
                 .thenReturn(reservationQuery);
 
         StockReservationService service = new StockReservationService(
-                repository, tx, entityManager, inventoryLock);
+                repository, tx, entityManager, inventoryLock,
+                org.mockito.Mockito.mock(com.uten.imp.features.admin.systemsetting.SystemSettingsService.class));
 
         BigDecimal consumed = service.consumeForOrderItem(
                 orderItemId, warehouseId, new BigDecimal("4"));

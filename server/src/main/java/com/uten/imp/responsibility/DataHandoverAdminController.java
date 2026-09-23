@@ -4,6 +4,7 @@ import com.uten.imp.responsibility.dto.DataHandoverCandidatePage;
 import com.uten.imp.responsibility.dto.DataHandoverPreview;
 import com.uten.imp.responsibility.dto.DataHandoverRequest;
 import com.uten.imp.responsibility.dto.DataHandoverResult;
+import com.uten.imp.security.StepUpExempt;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,6 +47,7 @@ public class DataHandoverAdminController {
     }
 
     @PostMapping
+    @StepUpExempt("离职/调岗数据交接是人事按 employee:handover 办理的日常业务流转, 已有预览确认与交接审计, 不改授权与凭据")
     @PreAuthorize("hasAuthority('employee:handover') or (principal.superAdmin and hasAuthority('authorization:manage'))")
     public DataHandoverResult execute(@Valid @RequestBody DataHandoverRequest request) {
         return service.executeManual(request);

@@ -31,7 +31,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiError> handleApi(ApiException ex) {
-        return ResponseEntity.status(ex.getCode().getHttpStatus())
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(ex.getCode().getHttpStatus());
+        if (ex.getCode() == ErrorCode.AUTH_BUSY) {
+            // 密码哈希闸门满: 告诉客户端 1 秒后可重试, 不必当成服务故障。
+            response.header("Retry-After", "1");
+        }
+        return response
                 .body(ApiError.of(ex.getCode(), ex.getMessage(), ex.getFieldErrors()));
     }
 
@@ -71,6 +76,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ResponseEntity<ApiError> handleRouteNotFound(Exception ex) {
         return ResponseEntity.status(404).body(ApiError.of(ErrorCode.NOT_FOUND, null));
+    }
+
+    // 路径存在但方法不对 (如已删除的写接口只剩 GET)：405, 不被兜底吞成 500。
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotAllowed(
+            org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(405).body(ApiError.of(ErrorCode.METHOD_NOT_ALLOWED, null));
     }
 
     @ExceptionHandler(JsonBodyTooLargeException.class)

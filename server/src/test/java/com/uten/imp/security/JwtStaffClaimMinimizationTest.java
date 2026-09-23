@@ -1,5 +1,6 @@
 package com.uten.imp.security;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.config.props.JwtProperties;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import io.jsonwebtoken.Claims;
@@ -23,11 +24,12 @@ class JwtStaffClaimMinimizationTest {
         properties.setSecret("0123456789abcdef0123456789abcdef");
         properties.setIssuer("uten-test");
         SystemSettingsService settings = mock(SystemSettingsService.class);
-        when(settings.readLong("jwt_access_ttl_minutes", 15)).thenReturn(15L);
+        when(settings.readLong(SystemSettingKey.JWT_ACCESS_TTL_MINUTES)).thenReturn(15L);
         JwtService jwtService = new JwtService(properties, settings);
         UUID userId = UUID.randomUUID();
 
-        String token = jwtService.issueAccess(userId, 7, 11);
+        UUID sessionId = UUID.randomUUID();
+        String token = jwtService.issueAccess(userId, 7, 11, sessionId);
         Claims claims = jwtService.parse(token);
 
         assertEquals(userId.toString(), claims.getSubject());
@@ -39,7 +41,8 @@ class JwtStaffClaimMinimizationTest {
         assertNull(claims.get("roles"));
         assertNull(claims.get("perms"));
         assertNull(claims.get("mcp"));
-        assertEquals(Set.of("iss", "sub", "av", "ae", "typ", "iat", "exp"), claims.keySet());
+        // sid 是必带的会话号 (ADR-110): 过滤器按它查服务端会话的吊销/空闲/绝对期限。
+        assertEquals(Set.of("iss", "sub", "av", "ae", "typ", "sid", "iat", "exp"), claims.keySet());
         assertFalse(token.contains("employee:view"));
         assertTrue(("Bearer " + token).length() < 512,
                 "staff Authorization header must retain ample room in the 16 KiB envelope");
@@ -51,7 +54,7 @@ class JwtStaffClaimMinimizationTest {
         properties.setSecret("0123456789abcdef0123456789abcdef");
         properties.setIssuer("uten-test");
         SystemSettingsService settings = mock(SystemSettingsService.class);
-        when(settings.readLong("jwt_access_ttl_minutes", 15)).thenReturn(15L);
+        when(settings.readLong(SystemSettingKey.JWT_ACCESS_TTL_MINUTES)).thenReturn(15L);
         JwtService jwtService = new JwtService(properties, settings);
         UUID userId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();

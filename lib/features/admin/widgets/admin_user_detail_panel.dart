@@ -1375,25 +1375,25 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     }
   }
 
-  /// 设置临时密码：先弹模式选择（系统生成/自定义），再调端点，最后一次性展示明文。
+  /// 设置临时密码：先确认，再调端点 (服务端要求再认证，统一密码框)，最后一次性展示明文。
   Future<void> _openSetTemporaryPassword() async {
     final user = widget.user;
-    final choice = await showSetTemporaryPasswordDialog(
+    final confirmed = await showSetTemporaryPasswordDialog(
       context,
       displayName: user.employeeName ?? user.loginAccount,
       loginAccount: user.loginAccount,
     );
-    if (choice == null || !mounted) return;
+    if (confirmed != true || !mounted) return;
     setState(() => _acting = true);
     try {
       final temporaryPassword = await ref
           .read(adminRepositoryProvider)
-          .resetPassword(user.id, temporaryPassword: choice.customPassword);
+          .resetPassword(user.id);
       if (!mounted) return;
       widget.onAccountChanged();
       await _showTemporaryPassword(temporaryPassword);
     } on ApiException catch (e) {
-      // 透出后端强度校验等具体原因（如「临时密码需同时包含字母和数字」）。
+      // 透出后端的具体原因 (如「只有超级管理员可以重置管理员的密码」)。
       if (mounted) {
         if (e.code == 'CONFLICT') widget.onAccountChanged();
         UtenToast.error(
@@ -1425,7 +1425,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              '请立即通过安全渠道告知该员工：临时密码 72 小时内有效，'
+              '请立即通过安全渠道告知该员工：临时密码有效期默认 72 小时(系统设置可调)，'
               '员工登录后须设置新密码。关闭此窗口后，系统不会再次显示或保存这段明文。',
             ),
             const SizedBox(height: UtenSpacing.s16),

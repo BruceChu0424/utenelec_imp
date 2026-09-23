@@ -694,7 +694,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '제출 시 사번(UT 접두사)이 자동 생성되고, 휴대전화번호가 로그인 계정으로 사용되며, 1회성 비밀번호(신분증 뒤 6자리)가 발급됩니다. 최초 로그인 시 반드시 변경해야 합니다.';
+      '제출 시 사번(UT 접두사)이 자동 생성되고, 휴대전화번호가 로그인 계정으로 사용되며, 무작위 1회성 비밀번호(한 번만 표시, 유효기간 있음)가 발급됩니다. 최초 로그인 시 반드시 변경해야 합니다.';
 
   @override
   String get employeeOnboardCodeAutoNote => '사번은 제출 시 자동 생성됩니다(UT 접두사, 고유 증가)';
@@ -832,7 +832,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeProvisionConfirm =>
-      '이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호, 초기 비밀번호는 신분증 번호 마지막 6자리이며 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?';
+      '이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호, 초기 비밀번호는 무작위로 생성되며(한 번만 표시, 유효기간 있음) 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?';
 
   @override
   String get employeeTransferTitle => '부서 이동';
@@ -859,7 +859,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeRehireTitle => '재입사하시겠습니까?';
 
   @override
-  String get employeeRehireBody => '직원이 다시 재직 상태가 되고 로그인 계정이 활성화됩니다(재로그인 필요).';
+  String get employeeRehireBody =>
+      '직원이 다시 재직 상태가 되고 로그인 계정이 활성화됩니다. 퇴사 시 기존 비밀번호는 폐기되었으므로 계정 지원 담당자에게 비밀번호 재설정을 요청하고 새 임시 비밀번호를 직원에게 직접 전달하세요.';
 
   @override
   String get employeeRehireSuccess => '재입사 완료';
@@ -2798,8 +2799,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get serverStatusUnknown => '알 수 없음';
 
   @override
-  String get attachmentUploadFormatsHint =>
-      '이미지 / PDF / Office / zip / txt, 파일당 최대 25MB';
+  String attachmentUploadFormatsHint(String maxSize) {
+    return '이미지 / PDF / Office / zip / txt, 파일당 최대 $maxSize';
+  }
 
   @override
   String attachmentUploadedFile(String fileName) {

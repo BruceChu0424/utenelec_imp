@@ -8,6 +8,8 @@ import com.uten.imp.features.webinquiry.dto.IngestRequest;
 import com.uten.imp.features.webinquiry.dto.StatusUpdateRequest;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryDetail;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryListItem;
+import com.uten.imp.security.LoginRateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -45,13 +47,21 @@ public class WebsiteInquiryController {
     private final WebsiteInquiryService service;
     private final WebsiteInquiryIngestGuard ingestGuard;
     private final AuditDetailViewRecorder viewAudit;
+    private final LoginRateLimiter rateLimiter;
 
-    /** 官网服务端推送入口。密钥无效一律 401（不区分未配置/不匹配，防探测）。 */
+    /**
+     * 官网服务端推送入口。密钥无效一律 401（不区分未配置/不匹配，防探测）。
+     * 同一来源 IP 每分钟最多错 5 次, 超过后连正确密钥也先 429, 防公网暴力猜解 (security-16)。
+     */
     @PostMapping("/ingest")
     public ResponseEntity<Map<String, Object>> ingest(
             @RequestHeader(name = "X-Uten-Ingest-Token", required = false) String token,
-            @Valid @RequestBody IngestRequest request) {
+            @Valid @RequestBody IngestRequest request,
+            HttpServletRequest http) {
+        String ip = http.getRemoteAddr();
+        rateLimiter.requireNotExhausted(LoginRateLimiter.Scope.WEBSITE_INGEST_FAILURE, ip);
         if (!ingestGuard.tokenValid(token)) {
+            rateLimiter.recordFailure(LoginRateLimiter.Scope.WEBSITE_INGEST_FAILURE, ip);
             throw new ApiException(ErrorCode.UNAUTHORIZED, "invalid ingest token");
         }
         if (!ingestGuard.allow("ingest")) {

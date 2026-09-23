@@ -6,6 +6,7 @@ import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
 import com.uten.imp.features.notice.NoticeBlessingRepository.NoticeBlessingRow;
@@ -51,7 +52,7 @@ import java.util.stream.Collectors;
  * 发布需 notice:publish 权限（控制器层 @PreAuthorize）。
  *
  * <p>扩展：互动模式（acknowledge/bless）+ 庆典类型（birthday/anniversary/wedding/newborn）
- * + 自动庆典发布调度器（{@link CelebrationScheduler}）+ 庆典设置（read=all / write=超管）。
+ * + 自动庆典发布调度器（{@link CelebrationScheduler}）+ 庆典设置（读=全员; 写=系统设置页批量保存, 或 HR 代写自动开关）。
  */
 @Service
 @RequiredArgsConstructor
@@ -92,6 +93,9 @@ public class NoticeService {
             Set.of("announcement", "policy", "system", "urgent", "benefit");
     /** 庆典自动发布支持扫描的类型子集（生日/入职纪念日有可匹配的月日字段）。 */
     public static final Set<String> AUTO_CELEBRATION_TYPES = Set.of("birthday", "anniversary");
+
+    /** 账号安全提醒的来源事件 (本人不可删除, 见 {@link #deleteForCurrentUser})。 */
+    public static final String ACCOUNT_SECURITY_SOURCE_EVENT = "ACCOUNT_SECURITY_CHANGED";
 
     /** 列表/角标预览展示的最近回执人/祝福数（控制单条 NoticeDto 的查询成本）。 */
     private static final int INLINE_RECENT_LIMIT = 5;
@@ -158,7 +162,6 @@ public class NoticeService {
     private final NoticeAudienceService audienceService;
     private final TxSessionVars tx;
     private final SystemSettingsService systemSettings;
-    private final com.uten.imp.features.admin.systemsetting.SystemSettingRepository settingRepo;
     private final com.uten.imp.audit.AuditService audit;
     private final com.uten.imp.features.common.taskclaim.TaskClaimRepository taskClaimRepo;
     private final com.uten.imp.application.port.EmployeeNameLookupPort employeeNameLookup;
@@ -499,10 +502,11 @@ public class NoticeService {
         return blessRepo.countByNoticeId(id);
     }
 
-    /** 全部祝福（分页）。本人条目 mine=true，供前端高亮「我」/ 撤回按钮。 */
+    /** 全部祝福（分页）。本人条目 mine=true，供前端高亮「我」/ 撤回按钮。看不到这条通知的人一律 404。 */
     @Transactional(readOnly = true)
     public BlessingPage listBlessings(UUID id, int page, int size) {
         UUID userId = requireStaffId();
+        requireVisible(id, userId);
         int safePage = Math.max(0, page);
         int safeSize = Math.min(Math.max(1, size), 50);
         // 走带姓名投影的 native 查询（避免逐行 N+1 解析员工姓名）
@@ -519,9 +523,10 @@ public class NoticeService {
         return new BlessingPage(items, blessRepo.countByNoticeId(id));
     }
 
-    /** 全部回执人（默认前 8，前端按需翻页/展开）。 */
+    /** 全部回执人（默认前 8，前端按需翻页/展开）。看不到这条通知的人一律 404。 */
     @Transactional(readOnly = true)
     public AcknowledgerPage listAcknowledgers(UUID id, int limit) {
+        requireVisible(id, requireStaffId());
         int safeLimit = Math.min(Math.max(1, limit), 50);
         List<NoticeAcknowledgerRow> rows = ackRepo.findRecentAcknowledgers(id, safeLimit);
         List<NoticeAcknowledgerDto> items = rows.stream()
@@ -745,48 +750,11 @@ public class NoticeService {
     /** 读庆典自动发布设置（notice:read 即可读）。默认关（V600）：祝福由人事手动发布。 */
     @Transactional(readOnly = true)
     public NoticeCelebrationSettingsDto getCelebrationSettings() {
-        boolean autoEnabled = systemSettings.readBool("celebration.auto_enabled", false);
+        boolean autoEnabled = systemSettings.readBool(SystemSettingKey.CELEBRATION_AUTO_ENABLED);
         List<String> autoTypes = parseAutoTypes(
-                systemSettings.readString("celebration.auto_types", "birthday,anniversary"));
-        String publisherName = systemSettings.readString("celebration.publisher_name", "公司");
+                systemSettings.readString(SystemSettingKey.CELEBRATION_AUTO_TYPES));
+        String publisherName = systemSettings.readString(SystemSettingKey.CELEBRATION_PUBLISHER_NAME);
         return new NoticeCelebrationSettingsDto(autoEnabled, autoTypes, publisherName);
-    }
-
-    /**
-     * 写庆典自动发布设置（仅超管；控制器层 {@code authorization:manage} + 服务层二次密码校验）。
-     * 复用 {@link SystemSettingsService#write} 单键写入流程：类型校验 + 审计 + 二次密码。
-     */
-    @Transactional
-    public NoticeCelebrationSettingsDto updateCelebrationSettings(
-            Boolean autoEnabled, List<String> autoTypes, String publisherName,
-            String password, UUID actorId, String actorAccount) {
-        if (autoEnabled != null) {
-            systemSettings.write("celebration.auto_enabled",
-                    String.valueOf(autoEnabled), password, actorId, actorAccount);
-        }
-        if (autoTypes != null) {
-            // 过滤非法值 + 保序去重；空列表允许（=关闭所有自动类型）
-            List<String> safe = autoTypes.stream()
-                    .filter(s -> s != null && !s.isBlank())
-                    .map(String::trim)
-                    .filter(BLESS_TYPES::contains)
-                    .distinct()
-                    .toList();
-            systemSettings.write("celebration.auto_types",
-                    String.join(",", safe), password, actorId, actorAccount);
-        }
-        if (publisherName != null) {
-            String safe = publisherName.trim();
-            if (safe.isEmpty()) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "署名不能为空");
-            }
-            if (safe.length() > 50) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "署名过长");
-            }
-            systemSettings.write("celebration.publisher_name",
-                    safe, password, actorId, actorAccount);
-        }
-        return getCelebrationSettings();
     }
 
     /**
@@ -794,32 +762,17 @@ public class NoticeService {
      *
      * <p>2026-09-17（V600）口径：庆典祝福默认由人事手动批量发布；拥有
      * {@code notice:publish} 的人事可在生日关怀/入职周年页打开「自动发送」，
-     * 委托 {@link CelebrationScheduler} 每日代发。与
-     * {@link #updateCelebrationSettings}（authorization:manage + 二次密码，
-     * 面向系统设置管理页）不同，本方法只翻 {@code celebration.auto_enabled}
+     * 委托 {@link CelebrationScheduler} 每日代发。与系统设置管理页的批量保存
+     * （authorization:manage + 再认证）不同，本方法只翻 {@code celebration.auto_enabled}
      * 一个 bool——能手动发祝福的人即可委托系统代发同等内容，不构成提权，
-     * 故权限对齐手动批量祝福。写入走行锁 + 独立审计事件，便于回溯谁开的自动发送。
+     * 故权限对齐手动批量祝福。经 {@link SystemSettingsService#writeDelegated} 与管理页
+     * 共用同一套校验、行锁与审计 (独立事件 notice_celebration_auto_toggle), 不再直连设置仓库。
      */
     @Transactional
     public NoticeCelebrationSettingsDto setCelebrationAutoEnabled(
             boolean enabled, UUID actorId, String actorAccount) {
-        tx.bindActor(actorId, actorAccount);
-        com.uten.imp.features.admin.systemsetting.SystemSetting s = settingRepo
-                .findAllForUpdate(List.of("celebration.auto_enabled")).stream()
-                .findFirst()
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.NOT_FOUND, "设置项不存在: celebration.auto_enabled"));
-        String normalized = String.valueOf(enabled);
-        if (!normalized.equalsIgnoreCase(s.getValue())) {
-            String old = s.getValue();
-            s.setValue(normalized);
-            s.setUpdatedBy(actorId);
-            settingRepo.save(s);
-            settingRepo.flush();
-            audit.logCommitted(actorId, actorAccount,
-                    "notice_celebration_auto_toggle", "system_settings",
-                    "celebration.auto_enabled: " + old + " → " + normalized, "success");
-        }
+        systemSettings.writeDelegated(SystemSettingKey.CELEBRATION_AUTO_ENABLED,
+                String.valueOf(enabled), actorId, actorAccount, "notice_celebration_auto_toggle");
         return getCelebrationSettings();
     }
 
@@ -994,6 +947,11 @@ public class NoticeService {
                 // 待办必须先完成，不能通过删除通知绕过工作台。
                 continue;
             }
+            if (ACCOUNT_SECURITY_SOURCE_EVENT.equals(notice.getSourceEvent())) {
+                // 账号安全提醒 (密码被重置、账号被锁定/停用…) 不能删除: 拿到临时密码冒充登录的人
+                // 若能删掉它, 本人就再也看不到「有人动了我的账号」(ADR-110)。
+                continue;
+            }
             if (st.getDeletedAt() == null) {
                 st.setDeletedAt(now);
                 changed.add(st);
@@ -1020,6 +978,16 @@ public class NoticeService {
      */
     private boolean visibleTo(Notice n, UUID userId, NoticeUserState state) {
         return visibleTo(n, userId, state, visibleWorkshopNoticeIds(List.of(n), userId));
+    }
+
+    /** 子资源 (祝福/回执人) 与详情同口径: 通知不存在、不在受众内或已被本人删除一律 404。 */
+    private void requireVisible(UUID noticeId, UUID userId) {
+        Notice n = noticeRepo.findById(noticeId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "通知不存在"));
+        NoticeUserState st = stateRepo.findById(new NoticeUserStateId(noticeId, userId)).orElse(null);
+        if (!visibleTo(n, userId, st) || (st != null && st.getDeletedAt() != null)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "通知不存在");
+        }
     }
 
     private Set<UUID> visibleWorkshopNoticeIds(List<Notice> notices, UUID userId) {

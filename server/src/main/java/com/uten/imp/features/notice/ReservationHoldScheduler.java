@@ -1,5 +1,7 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -27,8 +29,8 @@ import java.util.UUID;
  * <p>每天 08:37 跑（避开 08:23 延期预警与其它整点拥堵）。扫描与发送全旁路，异常只记日志。
  *
  * <p>架构：本类在 notice 包，故意不 import stock 特性（避免 notice→stock 跨特性边，ADR-017）。
- * 宽限期本地常量，须与 {@code StockReservationService.HOLD_GRACE_DAYS} 保持同值（销售侧逾期天数
- * 计算用后者，本扫描用前者）。
+ * 宽限期读系统设置「预留超期提醒天数」(reservation_hold_grace_days), 与销售订单详情的逾期天数
+ * ({@code StockReservationService#holdGraceDays}) 读同一个设置, 口径只有一处。
  */
 @Slf4j
 @Component
@@ -36,16 +38,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReservationHoldScheduler {
 
-    /** 持有宽限期（天）：交货日过后再容忍 N 天才视为逾期持有。须与 StockReservationService.HOLD_GRACE_DAYS 同值。 */
-    private static final int HOLD_GRACE_DAYS = 7;
-
     private final JdbcTemplate jdbc;
     private final ChainNoticeService chainNotice;
+    private final SystemSettingsService settings;
 
     @Scheduled(cron = "0 37 8 * * *", zone = "Asia/Shanghai")
     public void scan() {
         try {
-            int grace = HOLD_GRACE_DAYS;
+            // 持有宽限期(天)：交货日过后再容忍 N 天才视为逾期持有。
+            int grace = settings.readInt(SystemSettingKey.RESERVATION_HOLD_GRACE_DAYS);
             // 一张订单多条预留时取最早截止；只保留截止已过的；只算 hold_until 非空或交货日非空的行
             List<Map<String, Object>> rows = jdbc.queryForList("""
                     WITH held AS (

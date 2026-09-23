@@ -10,6 +10,7 @@ import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.StepUpExempt;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -141,6 +142,7 @@ public class AuditController {
      * Raw before/after snapshots remain detail-only and are not bulk exported.
      */
     @PostMapping("/export")
+    @StepUpExempt("只读导出; 已要求个人点名授予的 audit_log:export、导出限流与导出审计")
     @PreAuthorize("hasAuthority('audit_log:view')"
             + " and hasAuthority('audit_log:export')")
     public ResponseEntity<byte[]> export(
@@ -191,6 +193,7 @@ public class AuditController {
 
     /** Records that an investigator checked this event against its local device receipt. */
     @PostMapping("/local-receipt-verifications/{clientEventId}")
+    @StepUpExempt("只读核验本机回执, 不改任何数据")
     @PreAuthorize("hasAuthority('audit_log:view')")
     public ResponseEntity<Void> verifyLocalReceipt(@PathVariable String clientEventId) {
         UUID parsedClientEventId = parseCanonicalUuid(clientEventId);

@@ -6,9 +6,17 @@
 //
 // 仅记录「最后一次活动时间 + 定时检查」，不直接登出——登出由 UI 层（IdleTimeoutGuard 弹窗）触发，
 // 保持与 sessionProvider 解耦。Timer 30s 粒度检查（_check 用秒级判定，小阈值更精确）。
+//
+// 权威判定在服务端 (ADR-110)：服务端会话按最后一次「人为请求」计空闲，到点后任何请求都 401。
+// 用户没在操作时页面发出的请求 (角标轮询、定时刷新、心跳) 由网络层声明为自动请求，服务端不续期，
+// 所以页面开着不动也会按时失效。本控制器只负责「到点主动回登录页并提示」，让人不必等到下一次
+// 点击才发现已退出。活动时间取本守卫监听到的与全局输入采集 (UserActivity，含根导航器上的弹窗)
+// 两者中较晚的一个。时间统一取 UserActivity.clock (生产即系统时钟，测试可替换)。
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/network/user_activity.dart';
 
 class IdleTimeoutState {
   const IdleTimeoutState({
@@ -38,13 +46,13 @@ class IdleTimeoutNotifier extends Notifier<IdleTimeoutState> {
   IdleTimeoutState build() {
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => _check());
     ref.onDispose(() => _timer?.cancel());
-    return IdleTimeoutState(lastActivity: DateTime.now());
+    return IdleTimeoutState(lastActivity: UserActivity.clock());
   }
 
   /// 用户活动（点击/输入/滚动）→ 续期。已超时则不续期（等用户重新登录后 reset）。
   void recordActivity() {
     if (state.timedOut) return;
-    state = state.copyWith(lastActivity: DateTime.now());
+    state = state.copyWith(lastActivity: UserActivity.clock());
   }
 
   /// 从 /api/settings/public 设置阈值（管理员改了，下次拉取生效）。
@@ -54,9 +62,11 @@ class IdleTimeoutNotifier extends Notifier<IdleTimeoutState> {
   }
 
   void _check() {
-    final last = state.lastActivity;
+    var last = state.lastActivity;
     if (last == null || state.timedOut) return;
-    final idle = DateTime.now().difference(last);
+    final globalInput = UserActivity.lastInputAt;
+    if (globalInput != null && globalInput.isAfter(last)) last = globalInput;
+    final idle = UserActivity.clock().difference(last);
     // 秒级判定（而非 inMinutes 向下取整）：让 1 分钟等小阈值在到达后下一次 30s tick 即触发，
     // 而非整数分钟取整导致最多 ~阈值+1 分钟才弹。
     if (idle.inSeconds >= state.thresholdMinutes * 60) {
@@ -67,7 +77,7 @@ class IdleTimeoutNotifier extends Notifier<IdleTimeoutState> {
   /// 重新登录后重置（恢复计时）。
   void reset() {
     state = IdleTimeoutState(
-      lastActivity: DateTime.now(),
+      lastActivity: UserActivity.clock(),
       thresholdMinutes: state.thresholdMinutes,
     );
   }

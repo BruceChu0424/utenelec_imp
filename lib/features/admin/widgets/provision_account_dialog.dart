@@ -1,9 +1,9 @@
 // 开通账号对话框（权限设置页 · 按员工）。
 //
 // 与人事-员工详情页的「开通账号」同后端端点（POST /org/employees/{id}/account，
-// account:support）：登录账号=手机号，初始密码=证件号后 6 位，首登强制改密。
-// 候选列表走 /admin/users/provision-candidates（在册未开户员工，最小信息集、
-// 不含 PII 明文、限 20 条）；缺手机号/证件号的员工置灰并提示原因。
+// account:support）：登录账号=手机号，初始密码由系统随机生成 (只显示一次、限时有效)，
+// 首登强制改密。候选列表走 /admin/users/provision-candidates（在册未开户员工，最小信息集、
+// 不含 PII 明文、限 20 条）；缺手机号的员工置灰并提示原因。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -136,7 +136,7 @@ class _ProvisionAccountDialogState
               children: [
                 Text(
                   '为还没有登录账号的在册员工补开账号。'
-                  '缺少手机号或证件号的员工无法开通，请先在员工档案中补全资料。',
+                  '缺少手机号的员工无法开通，请先在员工档案中补全手机号。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.5,

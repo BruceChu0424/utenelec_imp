@@ -373,7 +373,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 case EVENT_SUBCONTRACT_OUTBOUND_REVERSED ->
                         notifySubcontractOutboundReversed(aggregateId);
                 case EVENT_SUBCONTRACT_RETURN_DUE ->
-                        notifySubcontractReturnDue(aggregateId);
+                        notifySubcontractReturnDue(aggregateId, payload.path("dueDays").asInt(0));
                 case EVENT_MATERIAL_ANALYSIS_READY -> {
                     // Retired planner-ready event: acknowledge old queued deliveries
                     // without recreating a planner task or sending a notice.
@@ -2828,14 +2828,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      * IQC is intentionally not part of this warning; physically returned goods
      * belong to the quality queue even while inspection remains pending.
      */
-    private void notifySubcontractReturnDue(UUID orderId) {
+    private void notifySubcontractReturnDue(UUID orderId, int dueDays) {
+        if (dueDays < 1) return;   // 事件缺少窗口天数: 视为无效事件, 不按猜测的天数发提醒
         deliverAtomically(() -> {
             LocalDate today = BusinessTime.today();
             SubcontractReturnDueFacts.Snapshot order =
                     SubcontractReturnDueFacts.findCurrent(
                             jdbc,
                             orderId,
-                            today.plusDays(SubcontractReturnDueScheduler.DUE_DAYS));
+                            today.plusDays(dueDays));
             if (order == null || order.deliverDate() == null) return;
 
             Set<UUID> recipients = new LinkedHashSet<>();

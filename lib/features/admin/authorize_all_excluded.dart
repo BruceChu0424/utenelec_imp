@@ -11,7 +11,7 @@
 // 权限——一旦随「全部授权」发放，任何持 `xxx:view` 的人立即看到全公司单据。
 // 后端同步置 bulk_assignable=false；仍可按部门或逐人显式授予。
 //
-// 与后端 INDIVIDUAL_ONLY_PERMISSION_CODES（audit_log:* + account:balance:adjust，见
+// 与后端 INDIVIDUAL_ONLY_PERMISSION_CODES（audit_log:* + account:balance:adjust + account:support，见
 // DepartmentPermissionAdminService）对齐并扩展到更广的高危面。
 import '../../shared/auth/permissions.dart';
 
@@ -31,6 +31,8 @@ const Set<String> kAuthorizeAllExcluded = {
   Perm.auditLogView,
   Perm.auditLogExport,
   Perm.authorizationManage,
+  // 账号支持能拿到他人的明文临时密码：只能个人点名授予 (V660)。
+  Perm.accountSupport,
   'user:manage',
   // 敏感商务信息（V570）：售价可见性不随「一键全部授权」发放，按部门/个人显式授予。
   Perm.goodsPriceView,

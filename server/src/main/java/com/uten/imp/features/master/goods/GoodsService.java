@@ -5,6 +5,7 @@ import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.CategoryCodeAllocation;
 import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -508,7 +509,7 @@ public class GoodsService {
      * 列定义服务端权威（不信任前端传列）；过滤/排序走 TableSort 白名单（list 已接 sort/order）。
      */
     @Transactional(readOnly = true)
-    public ExportPayload export(GoodsQueryFilter f, String sort, String order) {
+    public ExportPayload export(GoodsQueryFilter f, String sort, String order, int maxRows) {
         Map<UUID, String> categoryPath = categoryPathMap();
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
@@ -535,44 +536,32 @@ public class GoodsService {
                 // 归属生产车间 (V590)：与下方 row.put 必须成对，只加一处会导出空列。
                 new ExportColumn("owningWorkshopName", "归属车间", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
-        List<Map<String, Object>> rows = new ArrayList<>();
-        int pageSize = 100;
-        int maxPages = 1000; // 10 万行硬上限，防 OOM
-        long total = -1;
-        for (int p = 1; p <= maxPages; p++) {
-            PageResponse<GoodsListItem> page = list(f, p, pageSize, sort, order);
-            if (total < 0) total = page.getTotal();
-            for (GoodsListItem g : page.getItems()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("code", g.getCode());
-                row.put("categoryPath", categoryPath.get(g.getCategoryId()));
-                row.put("series", g.getSeries());
-                row.put("model", g.getModel());
-                row.put("name", g.getName());
-                row.put("spec", g.getSpec());
-                row.put("material", g.getMaterial());
-                row.put("cNumber", g.getCNumber());
-                row.put("mouldCode", g.getMouldCode());
-                row.put("rearInsertCode", g.getRearInsertCode());
-                row.put("paper", g.getPaper());
-                row.put("colorName", g.getColorName());
-                row.put("unitName", g.getUnitName());
-                row.put("sourceType", g.getSourceType());
-                row.put("price", g.getPrice());
-                row.put("minOrderQty", g.getMinOrderQty());
-                row.put("orderMultipleQty", g.getOrderMultipleQty());
-                row.put("owningWarehouseName", g.getOwningWarehouseName());
-                row.put("owningWorkshopName", g.getOwningWorkshopName());
-                row.put("status", g.getStatus());
-                rows.add(row);
-            }
-            if (page.getItems().size() < pageSize) break;   // 末页
-            if (rows.size() >= total) break;                // 已达 total
-            if (p == maxPages && rows.size() < total) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
-            }
-        }
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size, sort, order), g -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", g.getCode());
+                    row.put("categoryPath", categoryPath.get(g.getCategoryId()));
+                    row.put("series", g.getSeries());
+                    row.put("model", g.getModel());
+                    row.put("name", g.getName());
+                    row.put("spec", g.getSpec());
+                    row.put("material", g.getMaterial());
+                    row.put("cNumber", g.getCNumber());
+                    row.put("mouldCode", g.getMouldCode());
+                    row.put("rearInsertCode", g.getRearInsertCode());
+                    row.put("paper", g.getPaper());
+                    row.put("colorName", g.getColorName());
+                    row.put("unitName", g.getUnitName());
+                    row.put("sourceType", g.getSourceType());
+                    row.put("price", g.getPrice());
+                    row.put("minOrderQty", g.getMinOrderQty());
+                    row.put("orderMultipleQty", g.getOrderMultipleQty());
+                    row.put("owningWarehouseName", g.getOwningWarehouseName());
+                    row.put("owningWorkshopName", g.getOwningWorkshopName());
+                    row.put("status", g.getStatus());
+                    return row;
+                });
         return new ExportPayload(cols, rows, rows.size());
     }
 

@@ -15,13 +15,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
-import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -48,9 +46,6 @@ class _AdminSystemSettingsPageState
   final Set<String> _dirty = {};
   bool _loading = false;
   bool _saving = false;
-
-  /// 批量保存的纯网络段（密码确认弹窗之后）：全屏加载遮罩只挂这一段。
-  bool _applying = false;
   String? _error;
   final _formKey = GlobalKey<FormState>();
 
@@ -151,18 +146,18 @@ class _AdminSystemSettingsPageState
     ];
     setState(() => _saving = true);
     try {
-      final pwd = await showDialog<String>(
-        context: context,
-        builder: (_) => _ConfirmPasswordDialog(
-          retentionChanged: keys.any((key) => key.startsWith('audit_')),
-        ),
-      );
-      if (pwd == null || pwd.isEmpty || !mounted) return;
-      // 加载遮罩只挂纯网络段（密码确认弹窗展示期间不遮）。
-      setState(() => _applying = true);
+      // 缩短审计留存会在下一次清理中永久删日志：保存前单独确认一次。
+      if (keys.any((key) => key.startsWith('audit_'))) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (_) => const _RetentionConfirmDialog(),
+        );
+        if (confirmed != true || !mounted) return;
+      }
+      // 不挂整页遮罩：服务端要求再认证时网络层会弹统一密码框 (ADR-110)，遮罩不能盖住它。
       final saved = await ref
           .read(systemSettingRepositoryProvider)
-          .updateBatch(changes, pwd);
+          .updateBatch(changes);
       if (!mounted) return;
       final byKey = {for (final entry in saved) entry.key: entry};
       setState(() {
@@ -178,18 +173,13 @@ class _AdminSystemSettingsPageState
       await _load(); // 重载拿最新 updatedAt
     } on ApiException catch (e) {
       if (!mounted) return;
-      context.appError(
-        e.message,
-      ); // 如 BAD_CREDENTIALS 密码错 / VALIDATION_FAILED 类型错
+      context.appError(e.message); // 如 CONFLICT 已被修改 / VALIDATION_FAILED 越界
     } catch (_) {
       if (!mounted) return;
       context.appError('保存失败，请稍后重试');
     } finally {
       if (mounted) {
-        setState(() {
-          _saving = false;
-          _applying = false;
-        });
+        setState(() => _saving = false);
       }
     }
   }
@@ -237,12 +227,6 @@ class _AdminSystemSettingsPageState
                       ),
                     ),
                   ),
-            // 批量保存网络段的全屏加载遮罩（密码确认弹窗期间不遮）。
-            if (_applying)
-              const UtenBusyOverlay(
-                title: '正在保存系统设置',
-                description: '正在写入设置并重载生效值，请勿重复提交或离开本页。',
-              ),
           ],
         ),
       ),
@@ -545,26 +529,12 @@ class _SettingRow extends StatelessWidget {
                             context,
                           ).systemSettingInvalidInteger;
                         }
-                        final bounds = switch (entry.key) {
-                          'jwt_access_ttl_minutes' => (5, 43200),
-                          'jwt_refresh_ttl_days' => (1, 3650),
-                          'audit_hot_retention_months' => (1, 120),
-                          'audit_archive_retention_months' => (0, 240),
-                          'export_max_rows' => (1, 100000),
-                          'session_idle_timeout_minutes' => (1, 525600),
-                          'password_history_size' => (0, 100),
-                          'login_rate_limit_per_minute' => (1, 100000),
-                          'login_ip_rate_limit_per_minute' => (1, 1000000),
-                          'lockout_threshold' => (1, 1000),
-                          'lockout_minutes' => (1, 525600),
-                          'export_rate_limit_per_minute' => (1, 10000),
-                          'sms_code_ttl_minutes' => (1, 1440),
-                          'sms_send_interval_seconds' => (1, 86400),
-                          'sms_daily_limit' => (1, 10000),
-                          _ => (1, 2147483647),
-                        };
-                        if (parsed < bounds.$1 || parsed > bounds.$2) {
-                          return '${AppLocalizations.of(context).systemSettingInvalidValue} (${bounds.$1}–${bounds.$2})';
+                        // 取值范围只认服务端登记 (列表接口随项下发)，前端不再另写一份。
+                        final min = entry.minValue;
+                        final max = entry.maxValue;
+                        if ((min != null && parsed < min) ||
+                            (max != null && parsed > max)) {
+                          return '${AppLocalizations.of(context).systemSettingInvalidValue} (${min ?? 0}–${max ?? ''})';
                         }
                         return null;
                       },
@@ -597,69 +567,32 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
-/// 二次密码确认对话框（防令牌被盗后恶意改安全策略）。
-class _ConfirmPasswordDialog extends StatefulWidget {
-  const _ConfirmPasswordDialog({required this.retentionChanged});
-
-  final bool retentionChanged;
-
-  @override
-  State<_ConfirmPasswordDialog> createState() => _ConfirmPasswordDialogState();
-}
-
-class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
-  final _ctrl = TextEditingController();
-  String? _error;
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final p = _ctrl.text;
-    if (p.isEmpty) {
-      setState(() => _error = '请输入账号密码');
-      return;
-    }
-    Navigator.of(context).pop(p);
-  }
+/// 审计留存调整的风险确认 (缩短期限会在下一次清理中永久删除历史日志)。
+/// 密码确认由服务端统一要求再认证、网络层弹统一密码框完成 (ADR-110)。
+class _RetentionConfirmDialog extends StatelessWidget {
+  const _RetentionConfirmDialog();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      icon: const Icon(Icons.lock_outline),
-      title: Text(widget.retentionChanged ? '确认审计留存修改' : '二次密码确认'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.retentionChanged
-                ? '本次包含审计留存调整。缩短期限可能在下一次 03:17 清理中永久删除历史日志且不可恢复。确认合规与备份后，请输入当前账号密码。'
-                : '为防止账号令牌被盗后恶意篡改安全策略，请输入您当前登录账号的密码以确认修改。',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 12),
-          UtenInput(
-            controller: _ctrl,
-            isPassword: true,
-            label: '账号密码',
-            errorMessage: _error,
-            autofillHints: const [AutofillHints.password],
-            onFieldSubmitted: (_) => _submit(),
-          ),
-        ],
+      icon: const Icon(Icons.warning_amber_rounded),
+      title: const Text('确认审计留存修改'),
+      content: Text(
+        '本次包含审计留存调整。缩短期限可能在下一次 03:17 清理中永久删除历史日志且不可恢复。'
+        '请确认合规与备份后再继续。',
+        style: theme.textTheme.bodySmall,
       ),
       actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(false),
           child: const Text('取消'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('确认修改')),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('继续保存'),
+        ),
       ],
     );
   }

@@ -49,12 +49,13 @@ class StaffTokenResponseFactoryTest {
         employee.setCode("E2002");
         employee.setFullName("Current User");
         when(employees.findById(currentEmployeeId)).thenReturn(Optional.of(employee));
-        when(jwt.issueAccess(detached.getId(), 7, 11)).thenReturn("small-access-token");
+        UUID sessionId = UUID.randomUUID();
+        when(jwt.issueAccess(detached.getId(), 7, 11, sessionId)).thenReturn("small-access-token");
         when(jwt.getAccessTtlSeconds()).thenReturn(900L);
 
         StaffTokenResponseFactory factory = new StaffTokenResponseFactory(
                 users, employees, jwt, permissions);
-        TokenResponse response = factory.build(detached, "refresh-token");
+        TokenResponse response = factory.build(detached, "refresh-token", sessionId);
 
         assertEquals("small-access-token", response.accessToken());
         assertEquals("refresh-token", response.refreshToken());
@@ -66,7 +67,7 @@ class StaffTokenResponseFactoryTest {
         assertFalse(response.user().superAdmin());
         assertEquals(java.util.List.of("employee", "warehouse"), response.user().roles());
         assertEquals(java.util.List.of("employee:view", "stock:view"), response.user().permissions());
-        verify(jwt).issueAccess(detached.getId(), 7, 11);
+        verify(jwt).issueAccess(detached.getId(), 7, 11, sessionId);
         verify(permissions).authorizationSnapshot(detached.getId(), currentEmployeeId, false);
     }
 

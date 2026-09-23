@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin;
 
+import com.uten.imp.application.port.AccountSecurityNoticePort;
 import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -8,6 +9,9 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -39,20 +43,19 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** 账号支持（HR）：列表、锁定/启停/解锁、随机/自定义临时密码重置、开通账号候选。 */
+/**
+ * 账号支持: 列表、锁定/启停/解锁、重置为随机临时密码、开通账号候选 (ADR-110; security-02)。
+ *
+ * <p>account:support 只能个人点名授予。重置只发系统生成的高熵临时密码 (不能自定), 明文仅在本次
+ * 响应里出现一次, 有效期按系统设置「临时密码有效期」, 首次登录必须改密; 目标持有高危权限时只有
+ * 超级管理员能重置。重置、锁定、解锁、停用、启用都给目标本人发系统通知, 并写一条语义化业务事件。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class UserAccountAdminService {
 
     /** 开通账号候选接口单次返回上限（权限页选择器用，防全量花名册外泄）。 */
     private static final int PROVISION_CANDIDATE_LIMIT = 20;
-
-    /** 管理员设置的临时密码有效期：72 小时（超时未登录使用则自动失效，需重新设置）。 */
-    private static final long TEMP_PASSWORD_TTL_HOURS = 72;
-
-    /** 自定义临时密码长度边界：下限对齐密码策略，上限防 Argon2 CPU DoS。 */
-    private static final int TEMP_PASSWORD_MIN_LENGTH = 8;
-    private static final int TEMP_PASSWORD_MAX_LENGTH = 64;
 
     private final UserAccountRepository userRepo;
     private final EmployeeRepository empRepo;
@@ -65,6 +68,9 @@ public class UserAccountAdminService {
     private final AdminUserSupport support;
     private final AdminAccountLifecycleLock accountLifecycle;
     private final AuditService auditService;
+    private final AuthSessionService sessions;
+    private final SystemSettingsService settings;
+    private final AccountSecurityNoticePort accountNotice;
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
@@ -200,7 +206,23 @@ public class UserAccountAdminService {
             user.setLockedUntil(null);
         }
         userRepo.save(user);
-        invalidateAllSessions(id);
+        invalidateAllSessions(id, AuthSessionService.REASON_ACCOUNT_STATUS);
+        String action = switch (status) {
+            case "locked" -> "account_lock";
+            case "disabled" -> "account_disable";
+            default -> "account_enable";
+        };
+        String title = switch (status) {
+            case "locked" -> "你的登录账号已被锁定";
+            case "disabled" -> "你的登录账号已被停用";
+            default -> "你的登录账号已恢复可用";
+        };
+        String body = switch (status) {
+            case "locked" -> "管理员锁定了你的登录账号，所有设备已退出登录。如非本人知情，请联系人事或系统管理员。";
+            case "disabled" -> "管理员停用了你的登录账号，所有设备已退出登录。如有疑问，请联系人事或系统管理员。";
+            default -> "管理员已恢复你的登录账号，可以重新登录使用。如非本人申请，请联系人事或系统管理员。";
+        };
+        recordAccountEvent(user, action, title, body);
     }
 
     @PreAuthorize("hasAuthority('account:support')")
@@ -221,31 +243,28 @@ public class UserAccountAdminService {
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
         userRepo.save(user);
-        invalidateAllSessions(id);
+        invalidateAllSessions(id, AuthSessionService.REASON_ACCOUNT_STATUS);
+        recordAccountEvent(user, "account_unlock", "你的登录账号已解锁",
+                "管理员解除了你账号的锁定，可以重新登录。如果你没有申请解锁，请尽快修改密码并联系系统管理员。");
     }
 
     /**
-     * Reset to a one-time-display temporary password. When {@code customTemporaryPassword}
-     * is blank, a high-entropy 20-char value is generated; otherwise the admin-chosen value
-     * must pass the same strength floor as user passwords. The plaintext is returned once,
-     * never persisted or logged; the account is forced through the password-change flow,
-     * all existing sessions are revoked, and the temporary password expires after
-     * {@value #TEMP_PASSWORD_TTL_HOURS} hours (V297).
+     * 重置为系统生成的 20 位高熵临时密码 (不能自定)。明文只在本次响应出现一次, 不落库不记日志;
+     * 账号被迫首登改密, 全部旧会话吊销, 临时密码按系统设置「临时密码有效期」过期。
+     * 目标持有高危权限时只有超级管理员能重置; 控制器入口另要求再认证。
      */
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
-    public String resetPassword(UUID id, String customTemporaryPassword) {
+    public String resetPassword(UUID id) {
         tx.bind();
         AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
         UserAccount user = locked.account();
-        support.requireAccountSupportTarget(user);
-        boolean custom = customTemporaryPassword != null && !customTemporaryPassword.isBlank();
-        String temporaryPassword = custom
-                ? validateCustomTemporaryPassword(customTemporaryPassword, user.getLoginAccount())
-                : temporaryPasswordGenerator.generate();
+        support.requirePasswordResetAllowed(user);
+        String temporaryPassword = temporaryPasswordGenerator.generate();
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setMustChangePassword(true);
-        user.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(TEMP_PASSWORD_TTL_HOURS));
+        user.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(
+                settings.readInt(SystemSettingKey.TEMP_PASSWORD_TTL_HOURS)));
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
         if (!"disabled".equals(user.getStatus())) {
@@ -253,51 +272,32 @@ public class UserAccountAdminService {
             user.setStatus("active");
         }
         userRepo.save(user);
-        invalidateAllSessions(id);
-        // 显式审计：管理员重置他人密码是安全敏感事件。绝不记录明文，只记模式与目标。
-        var actor = support.requireCurrentUser();
-        auditService.logCommitted(
-                actor.getId(),
-                actor.getLoginAccount(),
-                "password_temporary_reset",
-                "user",
-                id.toString(),
-                custom ? "success;mode=custom" : "success;mode=generated");
+        invalidateAllSessions(id, AuthSessionService.REASON_PASSWORD_RESET);
+        // 显式审计：管理员重置他人密码是安全敏感事件。绝不记录明文，只记目标。
+        recordAccountEvent(user, "password_temporary_reset", "你的登录密码已被重置",
+                "管理员为你重置了登录密码并发放了临时密码，所有设备已退出登录。"
+                        + "请用管理员当面交给你的临时密码登录并立即改成自己的密码。"
+                        + "如果你没有申请重置，请马上联系系统管理员。");
+        notifySuperAdministratorsOfDelegatedReset(locked);
         return temporaryPassword;
     }
 
     /**
-     * 自定义临时密码服务端强度校验（与改密策略同口径的下限）：
-     * 8–64 位、不含空白、必须同时含字母和数字、不得等于登录账号。
-     * 失败统一抛 PASSWORD_TOO_WEAK，并给出具体原因便于管理员修正。
+     * 账号支持人员 (非超管) 重置了别人的密码: 同时告知其他超管。目标本人所有设备已退出、也不知道新密码,
+     * 通常要等拿到临时密码后才看得到自己的提醒; 另有人知情, 冒充登录才藏不住 (security-02)。
      */
-    private static String validateCustomTemporaryPassword(String raw, String loginAccount) {
-        String value = raw.trim();
-        if (value.length() < TEMP_PASSWORD_MIN_LENGTH) {
-            throw new ApiException(
-                    ErrorCode.PASSWORD_TOO_WEAK, "临时密码至少 " + TEMP_PASSWORD_MIN_LENGTH + " 位");
+    private void notifySuperAdministratorsOfDelegatedReset(AdminAccountLifecycleLock.LockedTarget locked) {
+        var actor = support.requireCurrentUser();
+        if (actor.isSuperAdmin()) {
+            return;
         }
-        if (value.length() > TEMP_PASSWORD_MAX_LENGTH) {
-            throw new ApiException(
-                    ErrorCode.PASSWORD_TOO_WEAK, "临时密码最长 " + TEMP_PASSWORD_MAX_LENGTH + " 位");
-        }
-        boolean hasLetter = false;
-        boolean hasDigit = false;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (Character.isWhitespace(c)) {
-                throw new ApiException(ErrorCode.PASSWORD_TOO_WEAK, "临时密码不能包含空格等空白字符");
-            }
-            hasLetter |= Character.isLetter(c);
-            hasDigit |= Character.isDigit(c);
-        }
-        if (!hasLetter || !hasDigit) {
-            throw new ApiException(ErrorCode.PASSWORD_TOO_WEAK, "临时密码需同时包含字母和数字");
-        }
-        if (loginAccount != null && value.equalsIgnoreCase(loginAccount)) {
-            throw new ApiException(ErrorCode.PASSWORD_TOO_WEAK, "临时密码不能与登录账号相同");
-        }
-        return value;
+        String actorName = actor.getEmployeeId() == null ? null
+                : empRepo.findById(actor.getEmployeeId()).map(Employee::getFullName).orElse(null);
+        String targetName = locked.employee() == null ? null : locked.employee().getFullName();
+        accountNotice.notifySuperAdministrators(actor.getId(), "有员工的登录密码被重置",
+                (actorName == null ? "账号支持人员" : "账号支持人员" + actorName)
+                        + "重置了" + (targetName == null ? "一名员工" : targetName)
+                        + "的登录密码，并拿到了一次性临时密码。如果这不是员工本人申请的，请尽快核实。");
     }
 
     /**
@@ -328,11 +328,25 @@ public class UserAccountAdminService {
                         "该员工未开通账号，无法锁定/解锁"));
     }
 
-    private void invalidateAllSessions(UUID userId) {
+    private void invalidateAllSessions(UUID userId, String reason) {
         if (userRepo.bumpAuthVersion(userId) != 1) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
         refreshTokenRepo.revokeAllByUserId(userId);
+        sessions.revokeAllForUser(userId, reason);
+    }
+
+    /** 账号状态类动作: 同事务写语义化业务事件 + 通知目标本人 (失败随业务回滚)。 */
+    private void recordAccountEvent(UserAccount target, String action, String title, String body) {
+        var actor = support.requireCurrentUser();
+        auditService.logCommitted(
+                actor.getId(),
+                actor.getLoginAccount(),
+                action,
+                "user",
+                target.getId().toString(),
+                "success");
+        accountNotice.notifyAccountHolder(target.getId(), title, body);
     }
 
     /**
@@ -355,6 +369,11 @@ public class UserAccountAdminService {
         }
         support.requireSuperAdminToggle(user, superAdmin);
         user.setSuperAdmin(superAdmin);
+        if (!superAdmin && user.isMustChangePassword() && user.getTempPasswordExpiresAt() == null) {
+            // 只有超管的初始密码可以不设过期 (引导管理员, V660); 降为普通账号后与所有临时凭据同口径:
+            // 还没改过的初始密码立即作废, 需由账号支持重新发放 (库触发器 trg_users_temp_password_expiry 同样兜底)。
+            user.setTempPasswordExpiresAt(OffsetDateTime.now());
+        }
         userRepo.save(user);
         userRepo.bumpAuthVersion(id);
         // 显式审计：权限升降级是安全敏感事件，单独记一条带方向的业务事件
@@ -390,8 +409,9 @@ public class UserAccountAdminService {
         user.setRemoteAccess(remoteAccess);
         userRepo.save(user);   // BEFORE UPDATE 触发器自动 bump auth_version
         // A remote-access change is a session boundary in either direction.
-        // It invalidates access JWTs; refresh tokens require explicit family revocation.
+        // It invalidates access JWTs; refresh tokens and sessions require explicit revocation.
         refreshTokenRepo.revokeAllByUserId(id);
+        sessions.revokeAllForUser(id, AuthSessionService.REASON_REMOTE_ACCESS);
         var actor = support.requireCurrentUser();
         auditService.logCommitted(
                 actor.getId(),

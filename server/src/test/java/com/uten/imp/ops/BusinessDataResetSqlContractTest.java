@@ -111,7 +111,10 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_workshop_material_custody_handoffs", 619),
             Map.entry("production_workshop_custody_handoff_reversals", 619),
             Map.entry("production_workshop_custody_reverse_preparations", 619),
-            Map.entry("production_workshop_return_preplan_events", 619));
+            Map.entry("production_workshop_return_preplan_events", 619),
+            // V658 服务端会话与再认证失败计数 (ADR-110)：清空业务数据本就全员下线, 会话随之清空。
+            Map.entry("auth_sessions", 658),
+            Map.entry("auth_step_up_states", 658));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -248,7 +251,8 @@ class BusinessDataResetSqlContractTest {
                 "V624__legacy_subcontract_settlement_provenance.sql",
                 "V626__legacy_finance_source_provenance.sql",
                 "V627__legacy_receipt_consideration_provenance.sql",
-                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql")) {
+                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql",
+                "V658__auth_sessions_and_step_up.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }

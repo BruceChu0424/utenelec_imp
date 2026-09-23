@@ -3,7 +3,7 @@ package com.uten.imp.features.auth;
 import com.uten.imp.features.auth.dto.ChangePasswordRequest;
 import com.uten.imp.features.auth.dto.LoginRequest;
 import com.uten.imp.features.auth.dto.RefreshRequest;
-import com.uten.imp.features.auth.dto.VerifyPasswordRequest;
+import com.uten.imp.features.auth.dto.StepUpRequest;
 import com.uten.imp.features.visitor.dto.VisitorScanDto;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -25,7 +25,7 @@ class AuthenticationRequestValidationTest {
         assertFalse(validator.validate(new RefreshRequest("x".repeat(513))).isEmpty());
         assertFalse(validator.validate(new ChangePasswordRequest(
                 "old", "x".repeat(129))).isEmpty());
-        assertFalse(validator.validate(new VerifyPasswordRequest(
+        assertFalse(validator.validate(new StepUpRequest(
                 "x".repeat(129))).isEmpty());
     }
 

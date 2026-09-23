@@ -44,7 +44,9 @@ public class DepartmentPermissionAdminService {
     private static final Set<String> INDIVIDUAL_ONLY_PERMISSION_CODES = Set.of(
             "audit_log:view",
             "audit_log:export",
-            "account:balance:adjust");
+            "account:balance:adjust",
+            // V660 (ADR-110): 账号支持能拿到他人的明文临时密码, 只能个人点名授权。
+            "account:support");
 
     /**
      * 一级模块的固定显示顺序。未列出的模块（如兜底「其他」）排在最后并按名字稳定排序，

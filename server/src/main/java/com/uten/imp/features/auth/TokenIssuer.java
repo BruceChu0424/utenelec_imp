@@ -32,6 +32,7 @@ public class TokenIssuer {
     private final StaffRefreshCompromiseService compromiseService;
     private final StaffTokenResponseFactory responseFactory;
     private final AuditService audit;
+    private final AuthSessionService sessions;
 
     public TokenIssuer(UserAccountRepository userRepo,
                        RefreshTokenRepository refreshTokenRepo,
@@ -39,7 +40,8 @@ public class TokenIssuer {
                        StaffRefreshTransaction refreshTransaction,
                        StaffRefreshCompromiseService compromiseService,
                        StaffTokenResponseFactory responseFactory,
-                       AuditService audit) {
+                       AuditService audit,
+                       AuthSessionService sessions) {
         this.userRepo = userRepo;
         this.refreshTokenRepo = refreshTokenRepo;
         this.refreshTokenService = refreshTokenService;
@@ -47,6 +49,7 @@ public class TokenIssuer {
         this.compromiseService = compromiseService;
         this.responseFactory = responseFactory;
         this.audit = audit;
+        this.sessions = sessions;
     }
 
     /**
@@ -82,6 +85,10 @@ public class TokenIssuer {
      * Idempotently revoke by refresh-token possession alone. Missing, unknown and
      * already-revoked tokens are deliberately indistinguishable no-ops.
      *
+     * <p>The server-side session is revoked together with the refresh token, so the
+     * access token issued in that session stops working on its very next request
+     * instead of remaining usable until it expires (ADR-110).
+     *
      * <p>A successful revocation records the refresh-token owner as the business actor
      * and the token UUID as the target. The raw token and its hash are never included.
      * Audit runs after commit when a transaction synchronization is available, and all
@@ -104,6 +111,7 @@ public class TokenIssuer {
         UUID tokenId = token.getId();
         UUID sessionId = token.getSessionId();
         refreshTokenService.revoke(token, null);
+        sessions.revoke(sessionId, AuthSessionService.REASON_LOGOUT);
         scheduleLogoutAudit(userId, tokenId, sessionId);
     }
 

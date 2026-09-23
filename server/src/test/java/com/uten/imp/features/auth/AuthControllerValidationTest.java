@@ -61,6 +61,7 @@ class AuthControllerValidationTest {
                 mock(LoginService.class),
                 mock(PasswordService.class),
                 tokenIssuer,
+                mock(StepUpService.class),
                 currentUser);
     }
 }

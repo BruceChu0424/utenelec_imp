@@ -40,6 +40,14 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
     /** 未删除的超级管理员人数（用于「至少保留一位超管」防自锁校验）。 */
     long countBySuperAdminTrueAndDeletedFalse();
 
+    /** 在用的超级管理员 (未删除且账号正常), 账号安全事件抄送用。 */
+    @Query(value = """
+            SELECT id FROM users
+            WHERE is_super_admin AND NOT is_deleted AND status = 'active'
+            ORDER BY created_at
+            """, nativeQuery = true)
+    List<UUID> findActiveSuperAdminIds();
+
     /** Serialize concurrent login-failure increments for the same account. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from UserAccount u where u.id = :id")

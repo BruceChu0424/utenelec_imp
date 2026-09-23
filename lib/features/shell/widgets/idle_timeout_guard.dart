@@ -10,6 +10,9 @@
 //   * 监听 idleThresholdVersionProvider——超管在本机「系统设置」保存后自增该信号，立即重拉。
 //
 // 安全：超时后先清 access + refresh 与内存会话，强制重新输密码，非静默续期。
+// 权威判定在服务端 (ADR-110)：服务端会话按最后一次人为请求计空闲并拒绝超时会话；
+// 用户没在操作时发出的请求 (角标/计数轮询、定时刷新) 由网络层声明为自动请求，不算活动。
+// 本守卫只负责本机及时回登录页。
 import 'dart:async';
 
 import 'package:flutter/material.dart';

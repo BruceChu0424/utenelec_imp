@@ -6,14 +6,22 @@ import lombok.Getter;
 @Getter
 public enum ErrorCode {
 
-    BAD_CREDENTIALS(401, "账号或密码错误"),
+    BAD_CREDENTIALS(401, "账号或密码错误，多次失败将临时锁定"),
     ACCOUNT_LOCKED(401, "账号已锁定，请稍后再试"),
     ACCOUNT_DISABLED(401, "账号已停用"),
     UNAUTHORIZED(401, "未登录或会话已过期"),
     FORBIDDEN(403, "无权限访问"),
     PASSWORD_CHANGE_REQUIRED(403, "首次登录必须修改密码后才能继续"),
     REMOTE_ACCESS_DENIED(403, "该账号未授权外网(云端)访问"),
+    /** 敏感操作需要先重新输入登录密码 (再认证凭证缺失、过期、已用过或不属于本会话)。 */
+    REAUTH_REQUIRED(403, "这一步需要先重新输入登录密码确认"),
+    /** 再认证 (或改密时的原密码) 输错; 不用 401, 避免前端当成登录过期去刷新重放。 */
+    REAUTH_FAILED(422, "密码不正确"),
+    /** 再认证连续输错达到上限，暂时不能再验证密码。 */
+    REAUTH_LOCKED(429, "密码输错次数过多，请稍后再试"),
     NOT_FOUND(404, "资源不存在"),
+    /** 路径存在但不支持这种请求方式 (如已删除的写接口只剩查询)。 */
+    METHOD_NOT_ALLOWED(405, "不支持这种请求方式"),
     CONFLICT(409, "数据冲突"),
     ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待财务审核组处理"),
     SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED(409, "到货数量明显少于订货量，需仓库确认后登记并通知委外判定"),
@@ -33,6 +41,8 @@ public enum ErrorCode {
     VISITOR_BLOCKED(403, "访客账号已被限制"),
     IMPERSONATION_READ_ONLY(403, "模拟身份为只读模式，不允许写 / 审 / 删 / 导出操作"),
     PRIMARY_UNAVAILABLE(503, "云端暂不可写：本地主库不可达，恢复网络后重试"),
+    /** 同时校验密码的人太多 (密码哈希并发闸门已满), 稍后重试即可。 */
+    AUTH_BUSY(503, "登录验证的人较多，请稍后几秒再试"),
     INTERNAL(500, "服务器内部错误");
 
     private final int httpStatus;

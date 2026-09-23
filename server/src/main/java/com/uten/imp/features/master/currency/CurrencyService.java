@@ -4,6 +4,7 @@ import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -117,34 +118,22 @@ public class CurrencyService {
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（exchangeRate）。
      */
     @Transactional(readOnly = true)
-    public ExportPayload export(CurrencyQueryFilter f, String sort, String order) {
+    public ExportPayload export(CurrencyQueryFilter f, String sort, String order, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "币种名称", ExportColumn.TEXT),
                 new ExportColumn("exchangeRate", "参考汇率", ExportColumn.NUMBER),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
-        List<Map<String, Object>> rows = new ArrayList<>();
-        int pageSize = 100;
-        int maxPages = 1000;
-        long total = -1;
-        for (int p = 1; p <= maxPages; p++) {
-            PageResponse<CurrencyListItem> page = list(f, p, pageSize, sort, order);
-            if (total < 0) total = page.getTotal();
-            for (CurrencyListItem c : page.getItems()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("code", c.getCode());
-                row.put("name", c.getName());
-                row.put("exchangeRate", c.getExchangeRate());
-                row.put("status", c.getStatus());
-                rows.add(row);
-            }
-            if (page.getItems().size() < pageSize) break;
-            if (rows.size() >= total) break;
-            if (p == maxPages && rows.size() < total) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
-            }
-        }
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size, sort, order), c -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", c.getCode());
+                    row.put("name", c.getName());
+                    row.put("exchangeRate", c.getExchangeRate());
+                    row.put("status", c.getStatus());
+                    return row;
+                });
         return new ExportPayload(cols, rows, rows.size());
     }
 

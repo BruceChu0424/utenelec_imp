@@ -37,15 +37,17 @@ class RefreshTransactionBoundaryTest {
     private StaffRefreshTransaction staffRotation;
     @Mock
     private StaffRefreshCompromiseService staffCompromise;
+    @Mock
+    private AuthSessionService sessions;
 
     @Test
     void compromiseRevocationsUseIndependentTransactions() throws Exception {
         assertRequiresNew(
                 StaffRefreshCompromiseService.class
-                        .getMethod("revoke", UUID.class, UUID.class));
+                        .getMethod("revoke", UUID.class, UUID.class, UUID.class));
         assertRequiresNew(
                 VisitorRefreshCompromiseService.class
-                        .getMethod("revoke", UUID.class, UUID.class));
+                        .getMethod("revoke", UUID.class, UUID.class, UUID.class));
     }
 
     @Test
@@ -68,29 +70,34 @@ class RefreshTransactionBoundaryTest {
     @Test
     void staffCompromiseServiceRevokesFamilyAndAudits() {
         StaffRefreshCompromiseService service =
-                new StaffRefreshCompromiseService(staffTokens, audit);
+                new StaffRefreshCompromiseService(staffTokens, audit, sessions);
         UUID userId = UUID.randomUUID();
         UUID tokenId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
 
-        service.revoke(userId, tokenId);
+        service.revoke(userId, tokenId, sessionId);
 
         verify(staffTokens).revokeAllByUserId(userId);
+        // 旧令牌在有效会话里被重放 = 令牌被盗: 该员工全部服务端会话一起作废 (ADR-110)
+        verify(sessions).revokeAllForUser(userId, AuthSessionService.REASON_REFRESH_REUSE);
         verify(audit).logExplicit(userId, null, "refresh_reuse",
-                "refresh_tokens", tokenId.toString(), "reuse_detected");
+                "refresh_tokens", tokenId.toString(), "reuse_detected", sessionId);
     }
 
     @Test
     void visitorCompromiseServiceRevokesFamilyAndAudits() {
         VisitorRefreshCompromiseService service =
-                new VisitorRefreshCompromiseService(visitorTokens, audit);
+                new VisitorRefreshCompromiseService(visitorTokens, audit, sessions);
         UUID visitorId = UUID.randomUUID();
         UUID tokenId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
 
-        service.revoke(visitorId, tokenId);
+        service.revoke(visitorId, tokenId, sessionId);
 
         verify(visitorTokens).revokeAllByVisitorAccountId(visitorId);
+        verify(sessions).revokeAllForVisitor(visitorId, AuthSessionService.REASON_REFRESH_REUSE);
         verify(audit).logExplicit(visitorId, null, "visitor_refresh_reuse",
-                "visitor_refresh_token", tokenId.toString(), "reuse_detected");
+                "visitor_refresh_token", tokenId.toString(), "reuse_detected", sessionId);
     }
 
     @Test
@@ -108,7 +115,8 @@ class RefreshTransactionBoundaryTest {
                 staffRotation,
                 staffCompromise,
                 null,
-                audit);
+                audit,
+                sessions);
 
         assertThrows(ApiException.class, () -> issuer.refresh("reused"));
         verify(staffCompromise).revoke(userId, tokenId, sessionId);

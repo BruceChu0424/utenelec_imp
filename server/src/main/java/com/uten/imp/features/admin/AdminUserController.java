@@ -7,6 +7,8 @@ import com.uten.imp.features.admin.dto.PermissionOverridesDto;
 import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
 import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.admin.dto.TemporaryPasswordResponse;
+import com.uten.imp.security.RequiresStepUp;
+import com.uten.imp.security.StepUpExempt;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -17,7 +19,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-/** 用户与授权管理接口（/api/admin）：账号状态/重置密码/超管/云端访问授权/权限覆盖/数据范围。 */
+/**
+ * 用户与授权管理接口（/api/admin）：账号状态/重置密码/超管/云端访问授权/权限覆盖/数据范围。
+ * 改变授权或凭据的写操作一律要求再认证 ({@link RequiresStepUp}, ADR-110)。
+ */
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
@@ -45,42 +50,40 @@ public class AdminUserController {
     }
 
     @PostMapping("/users/{id}/lock")
+    @StepUpExempt("锁定/停用/解锁/启用是账号支持的日常止损与恢复动作; 已限个人点名授予 account:support, 并同步通知本人与写业务事件")
     @PreAuthorize("hasAuthority('account:support')")
     public void lock(@PathVariable UUID id) {
         userAccountAdmin.setStatus(id, "locked");
     }
 
     @PostMapping("/users/{id}/unlock")
+    @StepUpExempt("锁定/停用/解锁/启用是账号支持的日常止损与恢复动作; 已限个人点名授予 account:support, 并同步通知本人与写业务事件")
     @PreAuthorize("hasAuthority('account:support')")
     public void unlock(@PathVariable UUID id) {
         userAccountAdmin.unlock(id);
     }
 
     @PostMapping("/users/{id}/disable")
+    @StepUpExempt("锁定/停用/解锁/启用是账号支持的日常止损与恢复动作; 已限个人点名授予 account:support, 并同步通知本人与写业务事件")
     @PreAuthorize("hasAuthority('account:support')")
     public void disable(@PathVariable UUID id) {
         userAccountAdmin.setStatus(id, "disabled");
     }
 
     @PostMapping("/users/{id}/enable")
+    @StepUpExempt("锁定/停用/解锁/启用是账号支持的日常止损与恢复动作; 已限个人点名授予 account:support, 并同步通知本人与写业务事件")
     @PreAuthorize("hasAuthority('account:support')")
     public void enable(@PathVariable UUID id) {
         userAccountAdmin.setStatus(id, "active");
     }
 
+    /** 重置为系统生成的随机临时密码 (不能自定), 明文只在本次响应里出现一次。 */
     @PostMapping("/users/{id}/reset-password")
     @PreAuthorize("hasAuthority('account:support')")
-    public TemporaryPasswordResponse resetPassword(
-            @PathVariable UUID id, @Valid @RequestBody(required = false) ResetPasswordBody req) {
-        return new TemporaryPasswordResponse(userAccountAdmin.resetPassword(
-                id, req == null ? null : req.temporaryPassword()));
+    @RequiresStepUp
+    public TemporaryPasswordResponse resetPassword(@PathVariable UUID id) {
+        return new TemporaryPasswordResponse(userAccountAdmin.resetPassword(id));
     }
-
-    /**
-     * 设置临时密码请求体（可空）。temporaryPassword 为空时后端生成 20 位高熵随机密码；
-     * 非空时按自定义临时密码强度校验（8–64 位、含字母和数字、不得等于登录账号）。
-     */
-    public record ResetPasswordBody(@Size(max = 64) String temporaryPassword) {}
 
     /**
      * 开通账号候选：在册且尚无登录账号的员工（姓名/工号/部门 + 是否已登记手机号/证件）。
@@ -95,6 +98,7 @@ public class AdminUserController {
 
     /** 设置/取消超级管理员（仅超管；降级禁止降本人与最后一位超管）。允许多个超管。 */
     @PutMapping("/users/{id}/super-admin")
+    @RequiresStepUp
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public void setSuperAdmin(@PathVariable UUID id, @RequestBody SuperAdminBody req) {
         userAccountAdmin.setSuperAdmin(id, req == null ? false : req.superAdmin());
@@ -104,6 +108,7 @@ public class AdminUserController {
 
     /** 设置/取消云端(外网)访问授权（仅超管）。变更即时失效旧 token（触发器 bump auth_version）。 */
     @PutMapping("/users/{id}/remote-access")
+    @RequiresStepUp
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public void setRemoteAccess(@PathVariable UUID id, @Valid @RequestBody RemoteAccessBody req) {
         userAccountAdmin.setRemoteAccess(id, req.remoteAccess());
@@ -129,6 +134,7 @@ public class AdminUserController {
     }
 
     @PutMapping("/users/{id}/permission-overrides")
+    @RequiresStepUp
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public void setPermissionOverrides(
             @PathVariable UUID id, @Valid @RequestBody PermissionOverridesDto req) {
@@ -155,6 +161,7 @@ public class AdminUserController {
 
     /** 整体替换某用户在某范围的授权归属人。 */
     @PutMapping("/users/{id}/data-scopes")
+    @RequiresStepUp
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public void setDataScopes(@PathVariable UUID id, @RequestParam String scope,
                               @Valid @RequestBody DataScopesBody req) {

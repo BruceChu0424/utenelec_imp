@@ -1,6 +1,8 @@
 // Runtime setting returned by GET /admin/system-settings.
 // The API uses camelCase; valueType determines numeric, boolean or text input.
-// Identity is the immutable setting key. Labels and descriptions are metadata.
+// Identity is the immutable setting key. Labels, descriptions and the allowed
+// range come from the server-side registry (SystemSettingKey, ADR-110); the
+// client never keeps its own copy of the ranges.
 
 class SystemSettingEntry {
   const SystemSettingEntry({
@@ -13,6 +15,9 @@ class SystemSettingEntry {
     required this.unit,
     required this.sortOrder,
     required this.updatedAt,
+    this.minValue,
+    this.maxValue,
+    this.defaultValue,
   });
 
   final String key;
@@ -24,6 +29,9 @@ class SystemSettingEntry {
   final String? unit; // 单位（次/分 / 分钟 / 天 / 秒 / 行）
   final int sortOrder;
   final String? updatedAt; // 最后修改时间（ISO 字符串）
+  final int? minValue; // 数值项允许的最小值 (服务端登记)
+  final int? maxValue; // 数值项允许的最大值 (服务端登记)
+  final String? defaultValue; // 出厂默认值
 
   factory SystemSettingEntry.fromJson(Map<String, dynamic> j) =>
       SystemSettingEntry(
@@ -36,5 +44,8 @@ class SystemSettingEntry {
         unit: j['unit']?.toString(),
         sortOrder: (j['sortOrder'] as num?)?.toInt() ?? 0,
         updatedAt: j['updatedAt']?.toString(),
+        minValue: (j['minValue'] as num?)?.toInt(),
+        maxValue: (j['maxValue'] as num?)?.toInt(),
+        defaultValue: j['defaultValue']?.toString(),
       );
 }

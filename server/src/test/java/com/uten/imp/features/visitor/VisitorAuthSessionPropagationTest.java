@@ -73,7 +73,8 @@ class VisitorAuthSessionPropagationTest {
                 audit,
                 mock(LoginRateLimiter.class),
                 mock(MasterCodeService.class),
-                mock(VisitorAccountCreationLock.class));
+                mock(VisitorAccountCreationLock.class),
+                mock(com.uten.imp.features.auth.AuthSessionService.class));
 
         VisitorAuthDto.VisitorTokenResponse result = service.login(
                 "13800138000", "123456", "ua", "127.0.0.1");
@@ -121,7 +122,8 @@ class VisitorAuthSessionPropagationTest {
                 mock(AuditService.class),
                 mock(LoginRateLimiter.class),
                 mock(MasterCodeService.class),
-                mock(VisitorAccountCreationLock.class));
+                mock(VisitorAccountCreationLock.class),
+                mock(com.uten.imp.features.auth.AuthSessionService.class));
 
         VisitorAuthDto.MeResponse me = service.me();
 
@@ -155,12 +157,16 @@ class VisitorAuthSessionPropagationTest {
                 .thenReturn(Optional.of(account));
         VisitorRefreshTokenService tokenService = mock(VisitorRefreshTokenService.class);
         UUID replacementId = UUID.randomUUID();
-        when(tokenService.issueInSession(account.getId(), "new-ua", sessionId))
+        when(tokenService.issueInSession(account.getId(), "new-ua", sessionId, current.getExpiresAt()))
                 .thenReturn(new VisitorRefreshTokenService.IssuedRefreshToken(
                         "replacement", replacementId, sessionId,
-                        OffsetDateTime.now().plusDays(7)));
+                        current.getExpiresAt()));
+        com.uten.imp.features.auth.AuthSessionService sessions =
+                mock(com.uten.imp.features.auth.AuthSessionService.class);
+        when(sessions.lockAndEvaluateForRefresh(sessionId, null, current.getVisitorAccountId()))
+                .thenReturn(com.uten.imp.features.auth.AuthSessionService.Verdict.ACTIVE);
         VisitorRefreshTransaction transaction = new VisitorRefreshTransaction(
-                repository, tokenService, accounts);
+                repository, tokenService, accounts, sessions);
 
         VisitorRefreshTransaction.Outcome outcome = transaction.rotate(raw, "new-ua");
 

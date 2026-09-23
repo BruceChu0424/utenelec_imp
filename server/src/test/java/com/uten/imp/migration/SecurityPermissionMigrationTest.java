@@ -138,7 +138,9 @@ class SecurityPermissionMigrationTest {
                         'finance_shipment_audit'
                     )
                     """));
-            assertEquals(1, scalarLong(statement, """
+            // V660 (ADR-110): 账号支持能拿到他人的明文临时密码, 改为只能个人点名授权,
+            // 行政与人力资源部原有的部门级授予随迁移删除。
+            assertEquals(0, scalarLong(statement, """
                     select count(*)
                     from department_permissions dp
                     join departments d on d.id = dp.department_id
@@ -364,6 +366,8 @@ class SecurityPermissionMigrationTest {
                           'production_product_no_sequences',
                           'report_materialized_view_refresh_state', 'password_history',
                           'refresh_tokens', 'visitor_refresh_tokens', 'visitor_sms_codes',
+                          -- V658: 会话/再认证凭证机制表, 与 refresh_tokens 同口径不挂行级审计
+                          'auth_sessions', 'auth_step_up_states',
                           'notices', 'notice_user_states', 'notice_acknowledgments',
                           'notice_blessings', 'notice_celebration_subjects',
                           'business_outbox',
@@ -438,7 +442,8 @@ class SecurityPermissionMigrationTest {
 
     @Test
     void databaseRejectsDepartmentWideAuditPermissions() throws Exception {
-        for (String permissionCode : List.of("audit_log:view", "audit_log:export")) {
+        // V660 起账号支持与审计权限同口径: 部门级写入由触发器直接拒绝。
+        for (String permissionCode : List.of("audit_log:view", "audit_log:export", "account:support")) {
             SQLException insertFailure = assertThrows(
                     SQLException.class,
                     () -> executeDepartmentPermissionWrite(
@@ -452,7 +457,7 @@ class SecurityPermissionMigrationTest {
                             """,
                             permissionCode));
             assertTrue(insertFailure.getMessage()
-                    .contains("审计权限仅允许个人授权"));
+                    .contains("仅允许个人授权"));
 
             SQLException updateFailure = assertThrows(
                     SQLException.class,
@@ -470,7 +475,7 @@ class SecurityPermissionMigrationTest {
                             """,
                             permissionCode));
             assertTrue(updateFailure.getMessage()
-                    .contains("审计权限仅允许个人授权"));
+                    .contains("仅允许个人授权"));
         }
     }
 
@@ -755,7 +760,7 @@ class SecurityPermissionMigrationTest {
                 try (Statement statement = connection.createStatement()) {
                     statement.executeUpdate("""
                             update system_settings
-                            set description = description
+                            set value = value
                             where key = 'export_max_rows'
                             """);
                     assertTrue(scalarBoolean(statement, """

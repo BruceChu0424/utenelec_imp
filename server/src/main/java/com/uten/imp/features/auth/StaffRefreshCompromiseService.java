@@ -16,23 +16,21 @@ public class StaffRefreshCompromiseService {
 
     private final RefreshTokenRepository tokens;
     private final AuditService audit;
+    private final AuthSessionService sessions;
 
     public StaffRefreshCompromiseService(RefreshTokenRepository tokens,
-                                         AuditService audit) {
+                                         AuditService audit,
+                                         AuthSessionService sessions) {
         this.tokens = tokens;
         this.audit = audit;
+        this.sessions = sessions;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void revoke(UUID userId, UUID reusedTokenId) {
-        tokens.revokeAllByUserId(userId);
-        audit.logExplicit(userId, null, "refresh_reuse", "refresh_tokens",
-                reusedTokenId.toString(), "reuse_detected");
-    }
-
+    /** 旧刷新令牌在仍然有效的会话里被重放: 视为令牌被盗, 该员工全部会话与刷新令牌一起作废。 */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void revoke(UUID userId, UUID reusedTokenId, UUID sessionId) {
         tokens.revokeAllByUserId(userId);
+        sessions.revokeAllForUser(userId, AuthSessionService.REASON_REFRESH_REUSE);
         audit.logExplicit(userId, null, "refresh_reuse", "refresh_tokens",
                 reusedTokenId.toString(), "reuse_detected", sessionId);
     }

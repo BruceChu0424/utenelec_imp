@@ -188,7 +188,10 @@ class _PendingAttachmentSectionState
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      AppLocalizations.of(context).attachmentUploadFormatsHint,
+                      // 上限跟随服务端部署配置 (公共设置下发)，不写死。
+                      AppLocalizations.of(context).attachmentUploadFormatsHint(
+                        formatAttachmentLimit(AttachmentLimits.maxFileBytes),
+                      ),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),

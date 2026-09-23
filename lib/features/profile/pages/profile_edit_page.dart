@@ -7,12 +7,13 @@
 //
 // 三档字段策略：
 //   * directEdit      → 提交即生效
-//   * requiresReview  → 弹密码框二次确认 → 生成申请，HR 通过后合并
+//   * requiresReview  → 服务端要求再认证 (统一密码框) → 生成申请，HR 通过后合并
 //   * hrOnly          → 员工页只读，提示"请联系人事"（不在本页渲染）
 //
 // 提交流程：
 //   1) 收集所有 dirty 字段（按 FieldPolicyKind 分组）
-//   2) 若含 requiresReview 字段 → 弹密码框 → verify-password → 提交
+//   2) 直接提交；含 requiresReview 字段时服务端回 403 REAUTH_REQUIRED，网络层弹统一的
+//      「重新输入登录密码」框换一次性凭证后自动重发 (ADR-110，密码校验以服务端为准)
 //   3) 后端原子处理（直改立即生效，需审核进 pending 批次）
 //   4) 成功通知 → 纯直改回 /profile；含审核跳 /profile/me/changes
 //
@@ -24,7 +25,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -85,7 +85,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   bool _loading = true;
   bool _saving = false;
 
-  /// 提交的纯网络段（密码确认弹窗之后）：全屏加载遮罩只挂这一段。
+  /// 只含直改字段的提交：全屏加载遮罩 (可能弹再认证密码框的提交不挂)。
   bool _applying = false;
   bool _unbound = false;
   bool _hasEmergencyContact = false;
@@ -246,27 +246,12 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       (c) => ProfileFieldPolicy.isRequiresReview(c.fieldCode),
     );
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      // 含需审核字段时服务端会要求再认证、弹统一密码框：此时不挂整页遮罩，免得盖住弹窗。
+      _applying = !hasReview;
+    });
     try {
-      if (hasReview) {
-        final pwd = await _askPassword();
-        if (pwd == null || pwd.isEmpty) return;
-        // 加载遮罩只挂纯网络段：密码确认弹窗展示期间不能盖住弹窗。
-        setState(() => _applying = true);
-        try {
-          await ref.read(profileChangeRepositoryProvider).verifyPassword(pwd);
-        } on ApiException catch (e) {
-          if (!mounted) return;
-          context.appError(_mapVerifyError(e));
-          return;
-        } catch (_) {
-          if (!mounted) return;
-          context.appError(l10n.profileChangePasswordWrong);
-          return;
-        }
-      }
-      setState(() => _applying = true);
-
       final idem = DateTime.now().microsecondsSinceEpoch.toString();
       await ref
           .read(profileChangeRepositoryProvider)
@@ -300,21 +285,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         });
       }
     }
-  }
-
-  Future<String?> _askPassword() {
-    return showDialog<String?>(
-      context: context,
-      builder: (_) => const _ProfilePasswordConfirmationDialog(),
-    );
-  }
-
-  String _mapVerifyError(ApiException e) {
-    final l10n = AppLocalizations.of(context);
-    if (e.code == '401' || e.message.contains('密码')) {
-      return l10n.profileChangePasswordWrong;
-    }
-    return e.message;
   }
 
   String _mapSubmitError(ApiException e) {
@@ -357,7 +327,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
                   description: l10n.profileUnboundDescription,
                 )
               : _buildForm(context, l10n, theme),
-          // 提交资料修改申请网络段的全屏加载遮罩（密码确认弹窗期间不遮）。
+          // 提交资料修改的全屏加载遮罩 (可能弹再认证密码框的提交不挂)。
           if (_applying)
             UtenBusyOverlay(
               title: l10n.profileChangeEditTitle,
@@ -657,61 +627,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       }
       return null;
     };
-  }
-}
-
-class _ProfilePasswordConfirmationDialog extends StatefulWidget {
-  const _ProfilePasswordConfirmationDialog();
-
-  @override
-  State<_ProfilePasswordConfirmationDialog> createState() =>
-      _ProfilePasswordConfirmationDialogState();
-}
-
-class _ProfilePasswordConfirmationDialogState
-    extends State<_ProfilePasswordConfirmationDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return AlertDialog(
-      title: Text(l10n.profileChangePasswordLabel),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.profileChangePasswordHint,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          UtenInput(
-            label: l10n.profileChangePasswordLabel,
-            isPassword: true,
-            controller: _controller,
-          ),
-        ],
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        UtenButton(
-          type: UtenButtonType.ghost,
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.profileChangeCancel2),
-        ),
-        UtenButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: Text(l10n.profileChangeConfirm),
-        ),
-      ],
-    );
   }
 }
 

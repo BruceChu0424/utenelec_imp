@@ -2,6 +2,7 @@ package com.uten.imp.features.admin;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.auth.CredentialIssuancePolicy;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -15,10 +16,13 @@ class AdminUserSupport {
 
     private final UserAccountRepository userRepo;
     private final SecurityContextCurrentUser currentUser;
+    private final CredentialIssuancePolicy credentialIssuance;
 
-    AdminUserSupport(UserAccountRepository userRepo, SecurityContextCurrentUser currentUser) {
+    AdminUserSupport(UserAccountRepository userRepo, SecurityContextCurrentUser currentUser,
+                     CredentialIssuancePolicy credentialIssuance) {
         this.userRepo = userRepo;
         this.currentUser = currentUser;
+        this.credentialIssuance = credentialIssuance;
     }
 
     UserAccount require(UUID id) {
@@ -40,6 +44,15 @@ class AdminUserSupport {
         if (actorId.equals(target.getId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "不能对本人执行账号支持操作");
         }
+    }
+
+    /**
+     * 重置密码的额外边界: 目标持有高危权限 (权限目录 high_risk 标记) 时只有超级管理员能重置,
+     * 与补开账号同一判定 ({@link CredentialIssuancePolicy})。
+     */
+    void requirePasswordResetAllowed(UserAccount target) {
+        requireAccountSupportTarget(target);
+        credentialIssuance.requireCanIssueCredentials(target);
     }
 
     /** Authorization policy is a super-admin-only boundary, independent of JWT permission claims. */

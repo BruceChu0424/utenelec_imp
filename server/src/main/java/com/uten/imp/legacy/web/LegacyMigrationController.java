@@ -5,6 +5,7 @@ import com.uten.imp.legacy.migration.MaterialCategoryMigrator;
 import com.uten.imp.legacy.migration.MaterialCategoryMigrator.MigrationReport;
 import com.uten.imp.legacy.migration.MouldCategoryMigrator;
 import com.uten.imp.legacy.migration.SupplierCategoryMigrator;
+import com.uten.imp.security.StepUpExempt;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,24 +32,28 @@ public class LegacyMigrationController {
 
     /** 导入货品分类样例（SystemItem.ItemclassID=1）。 */
     @PostMapping("/material-category")
+    @StepUpExempt("仅 dev profile 注册的离线分类样例导入工具, 生产不存在该端点")
     public MigrationReport migrateGoods() {
         return migrator.migrateGoods();
     }
 
     /** 导入模具分类样例（SystemItem.ItemclassID=18）。 */
     @PostMapping("/mould-category")
+    @StepUpExempt("仅 dev profile 注册的离线分类样例导入工具, 生产不存在该端点")
     public MouldCategoryMigrator.MigrationReport migrateMoulds() {
         return mouldMigrator.migrateMoulds();
     }
 
     /** 导入客户分类样例（SystemItem.ItemclassID=2）。 */
     @PostMapping("/client-category")
+    @StepUpExempt("仅 dev profile 注册的离线分类样例导入工具, 生产不存在该端点")
     public ClientCategoryMigrator.MigrationReport migrateClients() {
         return clientMigrator.migrateClients();
     }
 
     /** 导入供应商分类样例（SystemItem.ItemclassID=3）。 */
     @PostMapping("/supplier-category")
+    @StepUpExempt("仅 dev profile 注册的离线分类样例导入工具, 生产不存在该端点")
     public SupplierCategoryMigrator.MigrationReport migrateSuppliers() {
         return supplierMigrator.migrateSuppliers();
     }

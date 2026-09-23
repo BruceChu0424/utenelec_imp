@@ -83,7 +83,8 @@ class SensitiveDetailViewAuditControllerTest {
         when(inquiry.sourceId()).thenReturn("WEB-001");
         when(inquiries.detail(inquiryId)).thenReturn(inquiry);
         WebsiteInquiryController inquiryController = new WebsiteInquiryController(
-                inquiries, mock(WebsiteInquiryIngestGuard.class), audit);
+                inquiries, mock(WebsiteInquiryIngestGuard.class), audit,
+                mock(com.uten.imp.security.LoginRateLimiter.class));
         assertSame(inquiry, inquiryController.detail(inquiryId));
         verify(audit).record(
                 "view_website_inquiry_detail", "website_inquiries", inquiryId,
@@ -101,7 +102,8 @@ class SensitiveDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 mock(com.uten.imp.audit.AuditService.class),
                 audit,
-                mock(SecurityContextCurrentUser.class));
+                mock(SecurityContextCurrentUser.class),
+                mock(com.uten.imp.application.port.ExportLimitPort.class));
         assertSame(client, clientController.detail(clientId));
         verify(audit).record(
                 "view_client_detail", "clients", clientId,
@@ -119,7 +121,8 @@ class SensitiveDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 mock(com.uten.imp.audit.AuditService.class),
                 audit,
-                mock(SecurityContextCurrentUser.class));
+                mock(SecurityContextCurrentUser.class),
+                mock(com.uten.imp.application.port.ExportLimitPort.class));
         assertSame(supplier, supplierController.detail(supplierId));
         verify(audit).record(
                 "view_supplier_detail", "suppliers", supplierId,
@@ -137,7 +140,8 @@ class SensitiveDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 mock(com.uten.imp.audit.AuditService.class),
                 audit,
-                mock(SecurityContextCurrentUser.class));
+                mock(SecurityContextCurrentUser.class),
+                mock(com.uten.imp.application.port.ExportLimitPort.class));
         assertSame(account, accountController.detail(accountId));
         verify(audit).record(
                 "view_account_detail", "accounts", accountId,
@@ -152,7 +156,8 @@ class SensitiveDetailViewAuditControllerTest {
         RuntimeException denied = new RuntimeException("detail denied");
         when(service.detail(id)).thenThrow(denied);
         WebsiteInquiryController controller = new WebsiteInquiryController(
-                service, mock(WebsiteInquiryIngestGuard.class), audit);
+                service, mock(WebsiteInquiryIngestGuard.class), audit,
+                mock(com.uten.imp.security.LoginRateLimiter.class));
 
         assertSame(denied, assertThrows(RuntimeException.class, () -> controller.detail(id)));
         verifyNoInteractions(audit);

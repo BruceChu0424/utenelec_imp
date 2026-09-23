@@ -48,10 +48,12 @@ abstract final class InputValidators {
     return null;
   }
 
-  /// 密码强度：≥8 位 + 字母 + 数字（与后端一致）。
-  static String? password(String? v) {
+  /// 密码强度：≥[minLength] 位 + 字母 + 数字（与后端一致）。
+  /// [minLength] 取公共设置下发的「密码最短长度」，服务端仍做最终校验。
+  static String? password(String? v, {int minLength = 8}) {
     if (v == null || v.isEmpty) return '密码不能为空';
-    if (v.length < 8) return '密码至少 8 位';
+    if (v.length < minLength) return '密码至少 $minLength 位';
+    if (v.length > 128) return '密码过长';
     if (!RegExp(r'[A-Za-z]').hasMatch(v) || !RegExp(r'\d').hasMatch(v)) {
       return '密码需同时包含字母和数字';
     }

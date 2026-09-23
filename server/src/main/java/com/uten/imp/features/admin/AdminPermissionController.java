@@ -3,6 +3,7 @@ package com.uten.imp.features.admin;
 import com.uten.imp.features.admin.dto.DepartmentPermissionsDto;
 import com.uten.imp.features.admin.dto.EffectivePermissionsDto;
 import com.uten.imp.features.admin.dto.PermissionCatalogDto;
+import com.uten.imp.security.RequiresStepUp;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -42,6 +43,7 @@ public class AdminPermissionController {
 
     /** 整体替换某部门的直配权限点。 */
     @PutMapping("/departments/{departmentId}/permissions")
+    @RequiresStepUp
     public void setDepartmentPermissions(@PathVariable UUID departmentId,
                                          @Valid @RequestBody DepartmentPermissionsDto req) {
         departmentPermissionAdmin.setDepartmentPermissions(departmentId,

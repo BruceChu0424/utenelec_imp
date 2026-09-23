@@ -126,7 +126,8 @@ class TokenIssuerLogoutAuditTest {
                 mock(StaffRefreshTransaction.class),
                 mock(StaffRefreshCompromiseService.class),
                 mock(StaffTokenResponseFactory.class),
-                audit);
+                audit,
+                mock(AuthSessionService.class));
         return new Fixture(issuer, tokens, tokenService, audit);
     }
 

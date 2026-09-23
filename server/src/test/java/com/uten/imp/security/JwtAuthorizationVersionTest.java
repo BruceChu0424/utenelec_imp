@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.visitor.VisitorAccountRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import jakarta.servlet.FilterChain;
@@ -16,6 +15,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -33,18 +33,24 @@ import static org.mockito.Mockito.when;
 
 class JwtAuthorizationVersionTest {
 
+    private static final Instant NOW = Instant.parse("2026-09-23T02:00:00Z");
+    private static final UUID SESSION = UUID.randomUUID();
+
     private final JwtService jwtService = mock(JwtService.class);
-    private final UserAccountRepository userRepo = mock(UserAccountRepository.class);
-    private final VisitorAccountRepository visitorRepo = mock(VisitorAccountRepository.class);
+    private final AuthSessionService sessions = mock(AuthSessionService.class);
     private final StaffAuthorityResolver staffAuthorityResolver = mock(StaffAuthorityResolver.class);
     private final JwtAuthFilter filter =
             new JwtAuthFilter(
                     jwtService,
-                    userRepo,
-                    visitorRepo,
+                    sessions,
                     staffAuthorityResolver,
                     new ObjectMapper(),
                     mock(AuditService.class));
+
+    @org.junit.jupiter.api.BeforeEach
+    void fixedServerClock() {
+        when(sessions.now()).thenReturn(NOW);
+    }
 
     @AfterEach
     void clearSecurityContext() {
@@ -55,8 +61,8 @@ class JwtAuthorizationVersionTest {
     void rejectsAccessTokenWhenDirectAuthorizationVersionChanged() throws Exception {
         UUID userId = UUID.randomUUID();
         when(jwtService.parse("stale-token")).thenReturn(claims(userId, 4, 9));
-        UserAccountRepository.AccountState accountState = state(5, 9);
-        when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
+        AuthSessionService.StaffState accountState = state(5, 9);
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(accountState));
 
         MockHttpServletRequest request = bearerRequest("stale-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -75,8 +81,8 @@ class JwtAuthorizationVersionTest {
     void rejectsAccessTokenWhenSharedAuthorizationEpochChanged() throws Exception {
         UUID userId = UUID.randomUUID();
         when(jwtService.parse("stale-token")).thenReturn(claims(userId, 5, 8));
-        UserAccountRepository.AccountState accountState = state(5, 9);
-        when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
+        AuthSessionService.StaffState accountState = state(5, 9);
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(accountState));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
@@ -93,12 +99,12 @@ class JwtAuthorizationVersionTest {
     void acceptsPermissionsResolvedFromCurrentServerState() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
-        UUID sessionId = UUID.randomUUID();
+        UUID sessionId = SESSION;
         when(jwtService.parse("current-token")).thenReturn(
                 claims(userId, 5, 9, sessionId));
-        UserAccountRepository.AccountState accountState =
+        AuthSessionService.StaffState accountState =
                 state(employeeId, "E1001", "active", false, false, 5, 9);
-        when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(accountState));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 5, 9))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
                         Set.of("employee"),
@@ -129,9 +135,9 @@ class JwtAuthorizationVersionTest {
     void disabledAccountFailsClosedBeforeAuthorityCache() throws Exception {
         UUID userId = UUID.randomUUID();
         when(jwtService.parse("current-token")).thenReturn(claims(userId, 5, 9));
-        UserAccountRepository.AccountState accountState =
+        AuthSessionService.StaffState accountState =
                 state(UUID.randomUUID(), "E1001", "disabled", false, false, 5, 9);
-        when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(accountState));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
@@ -148,9 +154,9 @@ class JwtAuthorizationVersionTest {
     void deletedAccountFailsClosedBeforeAuthorityCache() throws Exception {
         UUID userId = UUID.randomUUID();
         when(jwtService.parse("current-token")).thenReturn(claims(userId, 5, 9));
-        UserAccountRepository.AccountState accountState =
+        AuthSessionService.StaffState accountState =
                 state(UUID.randomUUID(), "E1001", "active", true, false, 5, 9);
-        when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(accountState));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
@@ -168,9 +174,9 @@ class JwtAuthorizationVersionTest {
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
         when(jwtService.parse("reset-token")).thenReturn(claims(userId, 6, 9));
-        UserAccountRepository.AccountState accountState =
+        AuthSessionService.StaffState accountState =
                 state(employeeId, "E1001", "active", false, true, 6, 9);
-        when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(accountState));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 6, 9))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
                         Set.of("employee"),
@@ -194,9 +200,9 @@ class JwtAuthorizationVersionTest {
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
         when(jwtService.parse("current-token")).thenReturn(claims(userId, 5, 9));
-        UserAccountRepository.AccountState accountState =
+        AuthSessionService.StaffState accountState =
                 state(employeeId, "E1001", "active", false, false, 5, 9);
-        when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(accountState));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 5, 9))
                 .thenThrow(new IllegalStateException("permission database unavailable"));
 
@@ -216,7 +222,7 @@ class JwtAuthorizationVersionTest {
     void accountProjectionFailureReturnsStructured503InsteadOf401() throws Exception {
         UUID userId = UUID.randomUUID();
         when(jwtService.parse("current-token")).thenReturn(claims(userId, 5, 9));
-        when(userRepo.findAccountStateById(userId))
+        when(sessions.loadStaff(userId, SESSION, userId))
                 .thenThrow(new IllegalStateException("account database unavailable"));
 
         MockHttpServletRequest request = bearerRequest("current-token");
@@ -242,7 +248,91 @@ class JwtAuthorizationVersionTest {
         filter.doFilter(request, response, chain);
 
         verify(chain).doFilter(request, response);
-        verifyNoInteractions(jwtService, userRepo, visitorRepo, staffAuthorityResolver);
+        verifyNoInteractions(jwtService, staffAuthorityResolver);
+        verify(sessions, never()).loadStaff(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void tokenWithoutServerSessionIsRejectedWithoutReadingAccountState() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(jwtService.parse("no-session")).thenReturn(Jwts.claims()
+                .subject(userId.toString()).add("typ", "staff").add("av", 5).add("ae", 9).build());
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(bearerRequest("no-session"), response, mock(FilterChain.class));
+
+        assertEquals(401, response.getStatus());
+        verify(sessions, never()).loadStaff(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void revokedSessionIsRejectedEvenWithUnexpiredAccessToken() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(jwtService.parse("logged-out")).thenReturn(claims(userId, 5, 9));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(state(
+                UUID.randomUUID(), "E1001", "active", false, false, 5, 9,
+                new AuthSessionService.SessionFacts(NOW.minusSeconds(10), NOW.plusSeconds(86_400),
+                        NOW.minusSeconds(5)))));
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+        filter.doFilter(bearerRequest("logged-out"), response, chain);
+
+        assertEquals(401, response.getStatus());
+        assertTrue(response.getContentAsString().contains("登录已失效"));
+        verifyNoInteractions(staffAuthorityResolver);
+    }
+
+    @Test
+    void idleSessionIsRejectedAndRevokedWithTheIdleReason() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(jwtService.parse("idle")).thenReturn(claims(userId, 5, 9));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(state(
+                UUID.randomUUID(), "E1001", "active", false, false, 5, 9,
+                new AuthSessionService.SessionFacts(NOW.minusSeconds(31 * 60), NOW.plusSeconds(86_400),
+                        null))));
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(bearerRequest("idle"), response, mock(FilterChain.class));
+
+        assertEquals(401, response.getStatus());
+        assertTrue(response.getContentAsString().contains("长时间没有操作"));
+        verify(sessions).revokeQuietly(SESSION, AuthSessionService.REASON_IDLE);
+    }
+
+    @Test
+    void humanRequestsRenewTheSessionButRequestsSentWhileTheUserIsIdleDoNot() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        when(jwtService.parse("current-token")).thenReturn(claims(userId, 5, 9));
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(
+                state(employeeId, "E1001", "active", false, false, 5, 9)));
+        when(staffAuthorityResolver.resolve(userId, employeeId, false, 5, 9))
+                .thenReturn(new PermissionResolver.AuthorizationSnapshot(Set.of(), Set.of()));
+
+        // 判定只看客户端的「用户没在操作」声明头, 与端点无关 (服务器状态这类常驻轮询同样不续期)
+        MockHttpServletRequest polling = bearerRequest("current-token");
+        polling.setMethod("GET");
+        polling.setRequestURI("/api/admin/server-status");
+        polling.addHeader(AutomaticRequestPolicy.HEADER, "1");
+        filter.doFilter(polling, new MockHttpServletResponse(), mock(FilterChain.class));
+        verify(sessions, never()).touchIfDue(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+
+        SecurityContextHolder.clearContext();
+        MockHttpServletRequest human = bearerRequest("current-token");
+        human.setMethod("GET");
+        human.setRequestURI("/api/admin/server-status");
+        filter.doFilter(human, new MockHttpServletResponse(), mock(FilterChain.class));
+        verify(sessions).touchIfDue(SESSION, NOW.minusSeconds(120), NOW);
     }
 
     private void assertStructuredServiceUnavailable(MockHttpServletResponse response)
@@ -254,7 +344,7 @@ class JwtAuthorizationVersionTest {
     }
 
     private Claims claims(UUID userId, long authVersion, long authorizationEpoch) {
-        return claims(userId, authVersion, authorizationEpoch, null);
+        return claims(userId, authVersion, authorizationEpoch, SESSION);
     }
 
     private Claims claims(
@@ -273,7 +363,7 @@ class JwtAuthorizationVersionTest {
         return builder.build();
     }
 
-    private UserAccountRepository.AccountState state(
+    private AuthSessionService.StaffState state(
             long authVersion,
             long authorizationEpoch) {
         return state(
@@ -286,7 +376,7 @@ class JwtAuthorizationVersionTest {
                 authorizationEpoch);
     }
 
-    private UserAccountRepository.AccountState state(
+    private AuthSessionService.StaffState state(
             UUID employeeId,
             String loginAccount,
             String status,
@@ -294,16 +384,27 @@ class JwtAuthorizationVersionTest {
             boolean mustChangePassword,
             long authVersion,
             long authorizationEpoch) {
-        UserAccountRepository.AccountState state = mock(UserAccountRepository.AccountState.class);
-        when(state.getEmployeeId()).thenReturn(employeeId);
-        when(state.getLoginAccount()).thenReturn(loginAccount);
-        when(state.getStatus()).thenReturn(status);
-        when(state.isDeleted()).thenReturn(deleted);
-        when(state.isMustChangePassword()).thenReturn(mustChangePassword);
-        when(state.isSuperAdmin()).thenReturn(false);
-        when(state.getAuthVersion()).thenReturn(authVersion);
-        when(state.getAuthorizationEpoch()).thenReturn(authorizationEpoch);
-        return state;
+        return state(employeeId, loginAccount, status, deleted, mustChangePassword,
+                authVersion, authorizationEpoch, activeSession());
+    }
+
+    private AuthSessionService.StaffState state(
+            UUID employeeId,
+            String loginAccount,
+            String status,
+            boolean deleted,
+            boolean mustChangePassword,
+            long authVersion,
+            long authorizationEpoch,
+            AuthSessionService.SessionFacts session) {
+        return new AuthSessionService.StaffState(employeeId, loginAccount, status,
+                mustChangePassword, false, false, deleted, authVersion, authorizationEpoch,
+                session, "30");
+    }
+
+    private static AuthSessionService.SessionFacts activeSession() {
+        return new AuthSessionService.SessionFacts(
+                NOW.minusSeconds(120), NOW.plusSeconds(86_400), null);
     }
 
     private MockHttpServletRequest bearerRequest(String token) {

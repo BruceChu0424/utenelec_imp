@@ -32,6 +32,24 @@ class UtenBusyOverlay extends StatefulWidget {
   /// 补充说明（可空）：讲清“在做什么、别做什么”。
   final String? description;
 
+  /// 全局「让位」计数：大于 0 时所有忙碌遮罩暂不绘制、不挡点击。
+  static final ValueNotifier<int> _yielding = ValueNotifier<int>(0);
+
+  /// 在 [body] 运行期间让所有忙碌遮罩让位，结束(含异常)后恢复。
+  ///
+  /// 给必须压在遮罩之上、等用户操作的全局弹窗用(如敏感操作的再认证密码框)：遮罩是
+  /// root Overlay 里的裸 OverlayEntry，Navigator 每推一个路由都会把裸 entry 重新抬到最顶层，
+  /// 盖住后弹出的对话框——请求在等密码、遮罩在等请求，整页卡死。让位期间对话框自带的
+  /// 模态屏障照样挡住底下页面。
+  static Future<T> yieldWhile<T>(Future<T> Function() body) async {
+    _yielding.value++;
+    try {
+      return await body();
+    } finally {
+      _yielding.value--;
+    }
+  }
+
   @override
   State<UtenBusyOverlay> createState() => _UtenBusyOverlayState();
 }
@@ -90,6 +108,14 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   Widget build(BuildContext context) => const SizedBox.shrink();
 
   Widget _buildOverlay(BuildContext ctx) {
+    return ValueListenableBuilder<int>(
+      valueListenable: UtenBusyOverlay._yielding,
+      builder: (context, yielding, _) =>
+          yielding > 0 ? const SizedBox.shrink() : _buildMask(context),
+    );
+  }
+
+  Widget _buildMask(BuildContext ctx) {
     final theme = Theme.of(ctx);
     return Stack(
       children: [

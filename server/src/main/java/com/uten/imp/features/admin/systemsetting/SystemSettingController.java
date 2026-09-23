@@ -1,19 +1,24 @@
 package com.uten.imp.features.admin.systemsetting;
 
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.RequiresStepUp;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import jakarta.validation.Valid;
 
 /**
- * 系统设置管理端（仅超级管理员 authorization:manage）。
+ * 系统设置管理端 (仅超级管理员 authorization:manage)。
  *
- * <p>读侧：GET 列出全部设置（按 category 分组，前端渲染表单）。
- * <p>写侧：PUT 单项更新（类型校验 + 审计，见 {@link SystemSettingsService#write}）。
+ * <p>读侧: GET 列出全部登记项 (带取值范围, 前端直接按范围校验)。
+ * <p>写侧: 只有 PUT 批量保存一条路 (期望旧值防覆盖 + 服务端范围校验 + 审计), 入口要求再认证。
  */
 @RestController
 @RequestMapping("/api/admin/system-settings")
@@ -29,13 +34,8 @@ public class SystemSettingController {
         return service.list();
     }
 
-    @PutMapping("/{key}")
-    public SystemSettingDto update(@PathVariable String key, @Valid @RequestBody SystemSettingDto.Update body) {
-        AuthUser u = currentUser.get().orElseThrow(() -> new IllegalStateException("未登录"));
-        return service.write(key, body.value(), body.password(), u.getId(), u.getLoginAccount());
-    }
-
     @PutMapping
+    @RequiresStepUp
     public List<SystemSettingDto> updateBatch(@Valid @RequestBody SystemSettingDto.BatchUpdate body) {
         AuthUser u = currentUser.get().orElseThrow(() -> new IllegalStateException("未登录"));
         return service.writeBatch(body, u.getId(), u.getLoginAccount());

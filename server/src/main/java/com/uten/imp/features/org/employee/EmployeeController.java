@@ -7,6 +7,8 @@ import com.uten.imp.features.admin.UserAccountAdminService;
 import com.uten.imp.features.org.employee.dto.*;
 import com.uten.imp.responsibility.DataHandoverService;
 import com.uten.imp.responsibility.dto.DataHandoverPreview;
+import com.uten.imp.security.RequiresStepUp;
+import com.uten.imp.security.StepUpExempt;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -68,14 +70,18 @@ public class EmployeeController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('employee:create')")
+    @StepUpExempt("入职是新员工第一次拿到账号: 人事当面把系统随机、限时有效的初始密码交给本人, "
+            + "目标是刚建的档案而不是已有账号, 不存在接管; 每办一次入职都要输一次密码会严重拖慢人事日常")
     public EmployeeOnboardingResult onboard(@Valid @RequestBody OnboardingRequest req) {
         return onboardingService.onboard(req);
     }
 
     @PostMapping("/{id}/account")
     @PreAuthorize("hasAuthority('account:support')")
+    @RequiresStepUp
     public EmployeeOnboardingResult provisionAccount(@PathVariable UUID id) {
-        // 给批量导入等「未开通账号」的存量员工补开登录账号（账号=手机号，初始密码=身份证后6位）。
+        // 给批量导入等「未开通账号」的存量员工补开登录账号（账号=手机号，初始密码=系统随机临时密码，
+        // 限时有效、首登必改）。操作人会看到明文临时密码：要求再认证，目标持有高危权限时只有超管能开 (ADR-110)。
         return onboardingService.provisionAccount(id);
     }
 

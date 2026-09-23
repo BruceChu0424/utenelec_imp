@@ -19,7 +19,7 @@ class ClientReadSnapshotContractTest {
         assertRepeatable(ClientService.class, "facets", java.util.UUID.class, boolean.class);
         assertRepeatable(ClientService.class, "export",
                 com.uten.imp.features.master.client.dto.ClientQueryFilter.class,
-                String.class, String.class);
+                String.class, String.class, int.class);
         assertRepeatable(ClientService.class, "detail", java.util.UUID.class);
         assertRepeatable(ClientAccessService.class, "get", java.util.UUID.class);
         assertRepeatable(ClientShipAddressService.class, "list", java.util.UUID.class);

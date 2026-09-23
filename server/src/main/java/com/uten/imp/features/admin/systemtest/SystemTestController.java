@@ -3,6 +3,7 @@ package com.uten.imp.features.admin.systemtest;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.RequiresStepUp;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -20,11 +21,13 @@ import java.util.UUID;
 /**
  * 工作台「系统测试」区后端入口。
  *
- * <p>清空业务数据是破坏性测试操作，四重门禁缺一不可：</p>
+ * <p>清空业务数据是破坏性测试操作，五重门禁缺一不可：</p>
  * <ol>
- *   <li>运行开关 {@code uten.features.business-data-reset-enabled}——仅 dev /
- *       internal-test profile 开启，生产与云端 fail closed（403 拒绝）；</li>
+ *   <li>运行开关 {@code uten.features.business-data-reset-enabled}——dev / internal-test profile 开启;
+ *       公司内网服务器 (prod profile) 按 2026-09-12 用户测试期决定也开启, 启动时告警提示;
+ *       云端站点无论开关如何一律拒绝 (见 {@link BusinessDataResetFeatureGate})；</li>
  *   <li>数据库确认的超级管理员本人（principal.superAdmin，@PreAuthorize 独立于前端）；</li>
+ *   <li>再认证: 重新输入登录密码换取一次性凭证 ({@link RequiresStepUp}, ADR-110)；</li>
  *   <li>请求体确认口令必须逐字等于「清空业务数据」，防误触；</li>
  *   <li>服务端排水闸（见 {@link BusinessDataResetService}）保证清空期间无并发业务写。</li>
  * </ol>
@@ -53,6 +56,7 @@ public class SystemTestController {
     }
 
     @PostMapping("/business-data/attachments/prepare")
+    @RequiresStepUp
     public com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Preview prepareAttachments(
             @Valid @RequestBody PrepareAttachmentsRequest request) {
         if (!"清理测试业务附件".equals(request.confirm())) {
@@ -83,6 +87,7 @@ public class SystemTestController {
 
     /** 清空业务数据（保留基础资料/人事/权限，业务表从 1 重新编号，全员下线重登）。 */
     @PostMapping("/business-data/reset")
+    @RequiresStepUp
     public BusinessDataResetService.Result resetBusinessData(
             @Valid @RequestBody ResetBusinessDataRequest request) {
         if (!CONFIRM_PHRASE.equals(request.confirm())) {

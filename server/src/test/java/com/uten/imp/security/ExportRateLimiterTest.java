@@ -14,10 +14,10 @@ class ExportRateLimiterTest {
 
     // stub：readInt 返回指定每分钟上限（绕过 DB），其余方法本测试不触达。
     private ExportRateLimiter limiter(int perMinute) {
-        SystemSettingsService settings =
-                new SystemSettingsService(null, null, null, null, null) {
-            @Override public int readInt(String key, int def) { return perMinute; }
-        };
+        SystemSettingsService settings = org.mockito.Mockito.mock(SystemSettingsService.class);
+        org.mockito.Mockito.when(settings.readInt(
+                com.uten.imp.features.admin.systemsetting.SystemSettingKey.EXPORT_RATE_LIMIT_PER_MINUTE))
+                .thenReturn(perMinute);
         return new ExportRateLimiter(settings);
     }
 

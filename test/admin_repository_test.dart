@@ -72,7 +72,7 @@ void main() {
     expect(captured.path, '/admin/users/user-1/reset-password');
   });
 
-  test('resetPassword forwards an admin-chosen temporary password', () async {
+  test('resetPassword never sends a caller-chosen password', () async {
     late RequestOptions captured;
     final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
     dio.interceptors.add(
@@ -83,7 +83,7 @@ void main() {
             Response<dynamic>(
               requestOptions: request,
               statusCode: 200,
-              data: {'temporaryPassword': 'Uten2026safe'},
+              data: {'temporaryPassword': 'Server-Random-Only-2026!'},
             ),
           );
         },
@@ -91,14 +91,12 @@ void main() {
     );
 
     final repository = DioAdminRepository(ApiClient(dio));
-    final password = await repository.resetPassword(
-      'user-1',
-      temporaryPassword: ' Uten2026safe ',
-    );
+    final password = await repository.resetPassword('user-1');
 
-    expect(password, 'Uten2026safe');
+    expect(password, 'Server-Random-Only-2026!');
     expect(captured.method, 'POST');
-    expect(captured.data, const {'temporaryPassword': 'Uten2026safe'});
+    // ADR-110: 临时密码只由服务端随机生成，请求体不带任何密码字段。
+    expect(captured.data, isNull);
   });
 
   test('provisionCandidates parses the minimal candidate payload', () async {
@@ -119,7 +117,8 @@ void main() {
                   'code': 'UT0001',
                   'departmentName': '生产部',
                   'hasPhone': true,
-                  'hasIdCard': true,
+                  // 初始密码改为系统随机生成后，证件号不再是开通条件。
+                  'hasIdCard': false,
                 },
                 {
                   'employeeId': 'emp-2',

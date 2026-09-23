@@ -3,6 +3,7 @@ package com.uten.imp.features.visitor;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.visitor.sms.SmsGateway;
 import com.uten.imp.features.visitor.sms.SmsSendResult;
 import lombok.RequiredArgsConstructor;
@@ -50,7 +51,7 @@ public class VisitorSmsService {
     }
 
     public int codeTtlSeconds() {
-        return settings.readInt("sms_code_ttl_minutes", 5) * 60;
+        return settings.readInt(SystemSettingKey.SMS_CODE_TTL_MINUTES) * 60;
     }
 
     static String otpMacInput(String phone, String scene, String code) {

@@ -2,6 +2,7 @@ package com.uten.imp.features.auth;
 
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.security.TxSessionVars;
@@ -36,8 +37,12 @@ public class LoginFailureRecorder {
         this.tx = tx;
     }
 
+    /**
+     * 记一次失败并按阈值加临时锁; 锁定期内的尝试 (reason=attempt_while_locked) 同样计数并顺延锁定,
+     * 让锁定期内不断试密码的人一直拿不到结果。
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void record(UUID userId, String loginAccount) {
+    public void record(UUID userId, String loginAccount, String reason) {
         tx.bindActor(userId, loginAccount);
         UserAccount user = userRepo.findByIdForUpdate(userId).orElse(null);
         if (user == null) {
@@ -56,14 +61,14 @@ public class LoginFailureRecorder {
         boolean temporaryLock = "locked".equals(user.getStatus())
                 && user.getLockedUntil() != null;
         if ((active || temporaryLock)
-                && attempts >= settings.readInt("lockout_threshold", 5)) {
+                && attempts >= settings.readInt(SystemSettingKey.LOCKOUT_THRESHOLD)) {
             user.setStatus("locked");
             user.setLockedUntil(OffsetDateTime.now()
-                    .plusMinutes(settings.readInt("lockout_minutes", 15)));
+                    .plusMinutes(settings.readInt(SystemSettingKey.LOCKOUT_MINUTES)));
         }
 
         userRepo.save(user);
         audit.logExplicit(user.getId(), loginAccount, "login_failed",
-                "users", user.getId().toString(), "bad_password");
+                "users", user.getId().toString(), reason);
     }
 }

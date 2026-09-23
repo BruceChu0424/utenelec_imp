@@ -428,9 +428,14 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   /// 导出查询参数（与 _loadSuppliers 一致，不含 page/size）。
+  /// 导出请求体里的敏感检索值 (搜索关键字与手机/电话/银行账号只走请求体，不进 URL)。
+  Map<String, dynamic> get _exportBody {
+    final sensitive = contactSensitiveFilterBody(_filters, keyword: _keyword);
+    return sensitive.isEmpty ? const {} : {'sensitiveFilter': sensitive};
+  }
+
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
     'categoryId': widget.nodeId,
-    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
     ...masterFilterQueryParams(_filters),
     if (_sortKey != null) 'sort': _sortKey,
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
@@ -932,6 +937,7 @@ class _DetailPaneState extends State<_DetailPane> {
                     exportPermission: Perm.supplierExport,
                     exportReport: '',
                     exportQuery: _exportQuery,
+                    exportBody: _exportBody,
                     exportFilename: '供应商资料',
                     type: UtenButtonType.primary,
                     size: UtenButtonSize.large,
@@ -941,6 +947,7 @@ class _DetailPaneState extends State<_DetailPane> {
                     requiredPermission: Perm.supplierExport,
                     report: '',
                     queryParams: _exportQuery,
+                    bodyParams: _exportBody,
                     filename: '供应商资料',
                     label: '导出供应商',
                     type: UtenButtonType.primary,

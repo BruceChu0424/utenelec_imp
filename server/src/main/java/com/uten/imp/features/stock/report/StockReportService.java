@@ -10,6 +10,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -404,7 +405,7 @@ public class StockReportService {
                     departmentId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表 kind: " + kind);
         };
-        return ReportQueryKit.paginateAll(settings.readInt("export_max_rows", 100000), loader,
+        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
@@ -476,7 +477,7 @@ public class StockReportService {
             return new ReportTableResponse(columns, rows, Map.of(),
                     r.getPage(), r.getSize(), r.getTotal(), r.getTotalPages());
         };
-        return ReportQueryKit.paginateAll(settings.readInt("export_max_rows", 100000), loader,
+        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),

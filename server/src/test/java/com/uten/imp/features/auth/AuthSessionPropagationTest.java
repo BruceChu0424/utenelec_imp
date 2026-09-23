@@ -109,15 +109,19 @@ class AuthSessionPropagationTest {
         RefreshTokenService tokenService = mock(RefreshTokenService.class);
         UUID replacementId = UUID.randomUUID();
         when(tokenService.issueInSession(
-                user.getId(), current.getDeviceInfo(), sessionId)).thenReturn(
+                user.getId(), current.getDeviceInfo(), sessionId, current.getExpiresAt())).thenReturn(
                 new RefreshTokenService.IssuedRefreshToken(
                         "replacement", replacementId, sessionId,
-                        OffsetDateTime.now().plusDays(7)));
+                        current.getExpiresAt()));
+        AuthSessionService sessions = mock(AuthSessionService.class);
+        when(sessions.lockAndEvaluateForRefresh(sessionId, current.getUserId(), null))
+                .thenReturn(AuthSessionService.Verdict.ACTIVE);
         StaffRefreshTransaction transaction = new StaffRefreshTransaction(
-                users, repository, tokenService, mock(RemoteAccessPolicy.class));
+                users, repository, tokenService, mock(RemoteAccessPolicy.class), sessions);
 
         StaffRefreshTransaction.Outcome outcome = transaction.rotate(raw);
 
+        // 轮换只换令牌, 过期时间仍是会话从登录起算的绝对期限 (ADR-110)
         assertEquals(sessionId, outcome.sessionId());
         assertEquals("replacement", outcome.newRefreshToken());
         verify(tokenService).revoke(current, replacementId);
@@ -134,6 +138,7 @@ class AuthSessionPropagationTest {
                 mock(StaffRefreshTransaction.class),
                 mock(StaffRefreshCompromiseService.class),
                 responses,
-                audit);
+                audit,
+                mock(AuthSessionService.class));
     }
 }

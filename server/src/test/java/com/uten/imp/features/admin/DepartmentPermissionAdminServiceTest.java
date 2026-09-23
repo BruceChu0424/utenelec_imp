@@ -74,7 +74,8 @@ class DepartmentPermissionAdminServiceTest {
     @ValueSource(strings = {
             "audit_log:view",
             "audit_log:export",
-            "account:balance:adjust"
+            "account:balance:adjust",
+            "account:support"
     })
     void individualOnlyPermissionsCannotBeGrantedToAnEntireDepartment(
             String permissionCode) {

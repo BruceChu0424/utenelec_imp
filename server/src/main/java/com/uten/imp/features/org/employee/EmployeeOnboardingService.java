@@ -6,6 +6,9 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.auth.CredentialIssuancePolicy;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
@@ -23,6 +26,7 @@ import com.uten.imp.features.rbac.UserRoleId;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.AdminGrantGuard;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -66,9 +71,12 @@ public class EmployeeOnboardingService {
     private final SecurityContextCurrentUser currentUser;
     private final EmployeeQueryService queryService;
     private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
+    private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final SystemSettingsService settings;
+    private final CredentialIssuancePolicy credentialIssuance;
 
     // ===== 入职（原子建号） =====
-    /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并按手机号+证件号后6位开号授角色。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
+    /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并以手机号开号授角色 (初始密码为系统随机临时密码)。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
     @PreAuthorize("hasAuthority('employee:create')")
     @Transactional
     public EmployeeOnboardingResult onboard(OnboardingRequest req) {
@@ -247,10 +255,8 @@ public class EmployeeOnboardingService {
             }
         }
 
-        String temporaryPassword = lastSix(normalizedIdNumber);
-        if (temporaryPassword.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号不足 6 位，无法生成初始密码");
-        }
+        // 初始密码: 系统随机高熵临时密码, 只在本次响应出现一次 (不再由身份证号推导, ADR-110)。
+        String temporaryPassword = temporaryPasswordGenerator.generate();
         List<String> roleCodes = (req.account() == null || req.account().roles() == null || req.account().roles().isEmpty())
                 ? List.of("employee") : req.account().roles();
         createAccount(e, loginAccount, temporaryPassword, roleCodes);
@@ -259,7 +265,9 @@ public class EmployeeOnboardingService {
     }
 
     // ===== 补开登录账号（批量导入等未自带账号的存量员工） =====
-    // 与入职建账号同口径：账号=手机号、初始密码=证件号后6位、Argon2id 入库、首登强制改、授 employee 角色。
+    // 与入职建账号同口径：账号=手机号、初始密码=系统随机临时密码 (限时有效)、Argon2id 入库、首登强制改、授 employee 角色。
+    // 与重置密码同一道闸 (ADR-110)：操作人会看到明文临时密码，按开号后的有效权限 (部门授权、委派) 判定，
+    // 目标持有高危权限时只有超级管理员能开通；控制器入口另要求再认证。
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public EmployeeOnboardingResult provisionAccount(UUID employeeId) {
@@ -276,29 +284,28 @@ public class EmployeeOnboardingService {
         }
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(employeeId)
                 .orElseThrow(() -> new ApiException(
-                        ErrorCode.VALIDATION_FAILED, "缺少手机号或身份证，无法开通账号"));
+                        ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号"));
 
         // 手机号存的是规范化 11 位（ChinaMobileNumber.normalize），直接作登录账号，与用户输入一致。
         String loginAccount = tx.decrypt(s.getPhoneEnc());
         if (isBlank(loginAccount)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号");
         }
-        String temporaryPassword = lastSix(tx.decrypt(s.getIdCardEnc()));
-        if (isBlank(temporaryPassword)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工身份证号缺失或不足 6 位，无法生成初始密码");
-        }
+        String temporaryPassword = temporaryPasswordGenerator.generate();
         if (userRepo.existsByLoginAccount(loginAccount)) {
             throw new ApiException(ErrorCode.CONFLICT, "该手机号已被用作其他账号的登录名，请先修改员工手机号");
         }
 
         List<String> roleCodes = List.of("employee");
-        createAccount(e, loginAccount, temporaryPassword, roleCodes);
+        UserAccount account = createAccount(e, loginAccount, temporaryPassword, roleCodes);
+        // 在同一事务里按新账号的有效权限判定; 不允许时抛错, 账号随事务回滚, 不留半开的号。
+        credentialIssuance.requireCanIssueCredentials(account);
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
     /** Creates a login account using the same credential and role rules for onboarding and later provisioning. */
-    private void createAccount(
+    private UserAccount createAccount(
             Employee employee,
             String loginAccount,
             String temporaryPassword,
@@ -325,6 +332,9 @@ public class EmployeeOnboardingService {
         user.setLoginAccount(loginAccount);
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setMustChangePassword(true);
+        // 与重置密码同口径: 临时密码限时有效 (系统设置「临时密码有效期」), 过期需重新发放。
+        user.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(
+                settings.readInt(SystemSettingKey.TEMP_PASSWORD_TTL_HOURS)));
         user.setStatus("active");
         user.setFailedAttempts(0);
         userRepo.save(user);
@@ -334,6 +344,7 @@ public class EmployeeOnboardingService {
             ur.setId(new UserRoleId(user.getId(), role.getId()));
             userRoleRepo.save(ur);
         }
+        return user;
     }
 
     static void assertHireDateNotFuture(LocalDate hireDate) {
@@ -402,13 +413,5 @@ public class EmployeeOnboardingService {
                 .getSingleResult();
     }
 
-    /** 身份证号后 6 位作为一次性临时密码；不足 6 位时拒绝开通账号。 */
-    static String lastSix(String idNumber) {
-        if (idNumber == null) {
-            return "";
-        }
-        String trimmed = idNumber.trim();
-        return trimmed.length() < 6 ? "" : trimmed.substring(trimmed.length() - 6);
-    }
 
 }

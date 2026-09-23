@@ -1,6 +1,7 @@
 package com.uten.imp.features.notice;
 
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.notice.NoticeService.CelebrationSubject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -66,16 +67,16 @@ public class CelebrationScheduler {
     public void scan() {
         try {
             // 默认关（V600）：不开自动发送时调度器空转返回，祝福由人事手动发布。
-            boolean autoEnabled = settings.readBool("celebration.auto_enabled", false);
+            boolean autoEnabled = settings.readBool(SystemSettingKey.CELEBRATION_AUTO_ENABLED);
             if (!autoEnabled) {
                 return;
             }
             List<String> autoTypes = parseAutoTypes(
-                    settings.readString("celebration.auto_types", "birthday,anniversary"));
+                    settings.readString(SystemSettingKey.CELEBRATION_AUTO_TYPES));
             if (autoTypes.isEmpty()) {
                 return;
             }
-            String publisherName = settings.readString("celebration.publisher_name", "公司");
+            String publisherName = settings.readString(SystemSettingKey.CELEBRATION_PUBLISHER_NAME);
             LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
             int month = today.getMonthValue();
             int day = today.getDayOfMonth();

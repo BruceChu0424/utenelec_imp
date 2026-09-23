@@ -36,6 +36,11 @@ public class ProductionSecretStrengthSafetyGate {
         requireSecret("uten.jwt.secret", 32);
         requireSecret("uten.crypto.pgp-master-key", 32);
         requireSecret("uten.crypto.hmac-key", 32);
+        // 官网询盘推送的共享密钥是公网 permitAll 入口的唯一认证边界: 留空=功能关闭 (拒绝全部推送),
+        // 一旦配置就必须是 32 字节以上的非占位强密钥 (security-16)。
+        if (StringUtils.hasText(environment.getProperty("uten.website.inquiry-ingest-token"))) {
+            requireSecret("uten.website.inquiry-ingest-token", 32);
+        }
     }
 
     private void requireSecret(String key, int minimumUtf8Bytes) {

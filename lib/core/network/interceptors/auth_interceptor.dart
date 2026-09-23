@@ -426,12 +426,15 @@ class AuthInterceptor extends Interceptor {
 
   /// 模拟管理端点（enter/start/targets）始终用 admin 凭证——即便正在模拟目标 A，
   /// 切换/搜索仍以 admin 身份发请求（后端按 superAdmin 放行）。
+  /// 再认证 (/auth/step-up) 同样用 admin 自己的会话：重新进入切换人时要确认的是 admin 本人的
+  /// 密码，凭证也只对 admin 的会话有效 (ADR-110)。
   /// end 不在其中：它在模拟中调用，需带模拟 token（主体=目标）。
   /// 用显式白名单（而非子串匹配），避免将来新增路径被误判为管理端点。
   static bool _isImpersonationManagementPath(String path) {
     return path.endsWith('/admin/impersonation/enter') ||
         path.endsWith('/admin/impersonation/start') ||
-        path.endsWith('/admin/impersonation/targets');
+        path.endsWith('/admin/impersonation/targets') ||
+        path.endsWith('/auth/step-up');
   }
 
   static Object? _authorizationHeader(RequestOptions options) {

@@ -27,15 +27,18 @@ public class StaffRefreshTransaction {
     private final RefreshTokenRepository tokenRepo;
     private final RefreshTokenService tokenService;
     private final RemoteAccessPolicy remoteAccessPolicy;
+    private final AuthSessionService sessions;
 
     public StaffRefreshTransaction(UserAccountRepository userRepo,
                                    RefreshTokenRepository tokenRepo,
                                    RefreshTokenService tokenService,
-                                   RemoteAccessPolicy remoteAccessPolicy) {
+                                   RemoteAccessPolicy remoteAccessPolicy,
+                                   AuthSessionService sessions) {
         this.userRepo = userRepo;
         this.tokenRepo = tokenRepo;
         this.tokenService = tokenService;
         this.remoteAccessPolicy = remoteAccessPolicy;
+        this.sessions = sessions;
     }
 
     public record Outcome(boolean reuseDetected,
@@ -68,6 +71,10 @@ public class StaffRefreshTransaction {
                 .findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
 
+        // 服务端会话是刷新的前提 (ADR-110): 已吊销 (登出/改密/停用/空闲超时…)、超过从登录起算的
+        // 绝对期限、或空闲超时的会话一律不能再换新令牌。锁住会话行, 与并发登出串行。
+        AuthSessionService.Verdict session = sessions.lockAndEvaluateForRefresh(
+                token.getSessionId(), token.getUserId(), null);
         if (token.getRevokedAt() != null) {
             // A remote-access toggle revokes the whole family. On the cloud site,
             // preserve the explicit policy response instead of misclassifying that
@@ -75,10 +82,16 @@ public class StaffRefreshTransaction {
             UserAccount revokedUser = userRepo.findById(token.getUserId())
                     .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
             remoteAccessPolicy.requireStaffAccess(revokedUser);
+            if (token.getReplacedBy() == null || session != AuthSessionService.Verdict.ACTIVE) {
+                // 只有「已被轮换出新令牌」的旧令牌再次出现才是被盗重放。整族被作废 (改登录手机号、
+                // 权限变更、远程访问变动…) 或会话本身已结束 (登出/改密/停用/空闲超时…) 时,
+                // 旧令牌只是作废凭证: 普通 401 让客户端回登录页, 不误报安全事件、不连坐其它会话。
+                throw new ApiException(ErrorCode.UNAUTHORIZED);
+            }
             return Outcome.reuse(
                     token.getUserId(), token.getId(), token.getSessionId());
         }
-        if (!token.isValid()) {
+        if (!token.isValid() || session != AuthSessionService.Verdict.ACTIVE) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
@@ -101,7 +114,8 @@ public class StaffRefreshTransaction {
 
         RefreshTokenService.IssuedRefreshToken replacement =
                 tokenService.issueInSession(
-                        user.getId(), token.getDeviceInfo(), token.getSessionId());
+                        user.getId(), token.getDeviceInfo(), token.getSessionId(),
+                        token.getExpiresAt());
         tokenService.revoke(token, replacement.tokenId());
         return Outcome.rotated(
                 user,

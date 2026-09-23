@@ -123,17 +123,12 @@ uten:
     max-candidates: ${UTEN_POLICY_INTELLIGENCE_MAX_CANDIDATES:12}
   jwt:
     # 必填：HS256 密钥（≥32 字节）。走 server/.env 的 UTEN_JWT_SECRET 或环境变量；缺省 fail-fast。
+    # 令牌有效期、登录保持时长等运行时策略只在「系统设置」登记 (SystemSettingKey), 这里不再重复。
     secret: ${UTEN_JWT_SECRET}
-    access-ttl-minutes: 15
-    refresh-ttl-days: 7
     issuer: ${UTEN_JWT_ISSUER:uten-imp-dev}
   security:
     cors-allowed-origins: ${UTEN_CORS_ORIGINS:http://localhost:53764,http://localhost:8080}
-    login-rate-limit-per-minute: 5
     export-max-concurrent: ${UTEN_EXPORT_MAX_CONCURRENT:2}
-    lockout-threshold: 5
-    lockout-minutes: 15
-    password-history-size: 5
     # 安全基线默认关闭；application-dev.yml 才为本地开发显式开启。
     swagger-enabled: ${UTEN_SWAGGER_ENABLED:false}
   crypto:
@@ -160,9 +155,6 @@ uten:
     sign-name: ${UTEN_SMS_SIGN_NAME:}
     template-code: ${UTEN_SMS_TEMPLATE_CODE:}
     endpoint: ${UTEN_SMS_ENDPOINT:dysmsapi.aliyuncs.com}
-    code-ttl-minutes: 5
-    send-interval-seconds: 60
-    daily-limit: 10
   storage:
     # 公司附件只用 internal；local 仅供开发，oss 仅历史精确只读，disabled 关闭附件服务。
     # internal 需要显式配置同一持久卷中的私有根目录。

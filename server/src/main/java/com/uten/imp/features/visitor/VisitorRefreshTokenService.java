@@ -1,8 +1,7 @@
 package com.uten.imp.features.visitor;
 
 import com.uten.imp.common.util.HashUtil;
-import com.uten.imp.config.props.JwtProperties;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.auth.AuthSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +14,7 @@ import java.util.UUID;
 /**
  * 访客不透明刷新令牌（独立于员工 RefreshTokenService）。
  * 只存 sha256(原文)；轮换 + 重用检测见 {@link VisitorAuthService#refresh}。
+ * 与员工同口径 (ADR-110): 登录先开服务端会话, 刷新令牌过期时间就是会话的绝对期限, 轮换不延长。
  */
 @Service
 @RequiredArgsConstructor
@@ -23,8 +23,7 @@ public class VisitorRefreshTokenService {
     private static final SecureRandom RNG = new SecureRandom();
 
     private final VisitorRefreshTokenRepository repo;
-    private final JwtProperties props;
-    private final SystemSettingsService settings;
+    private final AuthSessionService sessions;
 
     public record IssuedRefreshToken(
             String rawToken,
@@ -35,15 +34,18 @@ public class VisitorRefreshTokenService {
 
     /** Starts one new visitor login session and issues its first refresh token. */
     public IssuedRefreshToken issueNewSession(UUID visitorId, String deviceInfo) {
-        return issueInSession(visitorId, deviceInfo, UUID.randomUUID());
+        AuthSessionService.OpenedSession session = sessions.openVisitorSession(visitorId);
+        return issueInSession(visitorId, deviceInfo, session.sid(), session.absoluteExpiresAt());
     }
 
-    /** Rotates within an existing server-authoritative visitor session. */
+    /** Rotates within an existing server-authoritative visitor session; never extends it. */
     public IssuedRefreshToken issueInSession(
             UUID visitorId,
             String deviceInfo,
-            UUID sessionId) {
+            UUID sessionId,
+            OffsetDateTime sessionExpiresAt) {
         Objects.requireNonNull(sessionId, "sessionId");
+        Objects.requireNonNull(sessionExpiresAt, "sessionExpiresAt");
         String raw = rawToken();
         VisitorRefreshToken t = new VisitorRefreshToken();
         t.setVisitorAccountId(visitorId);
@@ -51,7 +53,7 @@ public class VisitorRefreshTokenService {
         t.setDeviceInfo(deviceInfo);
         t.setTokenHash(HashUtil.sha256(raw));
         t.setIssuedAt(OffsetDateTime.now());
-        t.setExpiresAt(OffsetDateTime.now().plusDays(settings.readLong("jwt_refresh_ttl_days", 7)));
+        t.setExpiresAt(sessionExpiresAt);
         repo.save(t);
         return new IssuedRefreshToken(raw, t.getId(), sessionId, t.getExpiresAt());
     }

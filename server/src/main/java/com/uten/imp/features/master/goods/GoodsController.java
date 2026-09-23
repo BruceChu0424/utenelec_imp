@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
@@ -60,6 +61,7 @@ public class GoodsController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
+    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('goods:view')")
@@ -181,7 +183,8 @@ public class GoodsController {
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
-                excludeStub, disabledOnly, stubOnly, null, null), sort, order);
+                excludeStub, disabledOnly, stubOnly, null, null), sort, order,
+                exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

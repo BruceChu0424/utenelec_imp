@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.report;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -32,7 +33,7 @@ class StockReportCostVisibilityTest {
     void setUp() {
         service = new StockReportService(
                 entityManager, settings, stockQueryService, costMasker);
-        when(settings.readInt("export_max_rows", 100000)).thenReturn(100000);
+        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(100000);
         when(stockQueryService.instantInventory(
                 isNull(), isNull(), anyBoolean(), isNull(),
                 anyInt(), anyInt(), isNull(), isNull()))

@@ -2,6 +2,7 @@ package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +13,8 @@ import java.util.UUID;
 /**
  * 手机号变更后的登录账号同步（ADR-021 §三）：登录账号 = 手机号，
  * 任何手机号改写（HR 编辑 / change-phone / 员工申请 HR 审批合并）都必须走这里，
- * 单事务内把 users.login_account 改为新号并吊销全部 refresh token（强制重新登录）。
+ * 单事务内把 users.login_account 改为新号，吊销全部 refresh token 与服务端会话（立即强制重新登录，
+ * 旧访问令牌下一次请求即 401, ADR-110）。
  */
 @Component
 @RequiredArgsConstructor
@@ -20,6 +22,7 @@ public class EmployeeLoginAccountSync {
 
     private final UserAccountRepository userRepo;
     private final RefreshTokenRepository refreshTokenRepo;
+    private final AuthSessionService sessions;
 
     /**
      * 同步登录账号。必须在手机号加密写入的同一事务内调用。
@@ -42,6 +45,7 @@ public class EmployeeLoginAccountSync {
             userRepo.save(account);
             // 强制重新登录：旧手机号作为登录名的会话全部失效
             refreshTokenRepo.revokeAllByUserId(account.getId());
+            sessions.revokeAllForUser(account.getId(), AuthSessionService.REASON_LOGIN_ACCOUNT_CHANGED);
         });
     }
 }

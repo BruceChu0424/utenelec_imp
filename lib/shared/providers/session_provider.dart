@@ -498,8 +498,8 @@ class SessionNotifier extends Notifier<SessionState> {
   // 全部 watch sessionProvider → 自动按目标重算；admin 真实令牌全程不动（独立 secure key）。
 
   /// 进入模拟模式：admin 重新确认密码 → 后端签发限时 modeToken（窗口内免密切换）。
-  Future<void> enterImpersonationMode({required String password}) async {
-    final mode = await _impersonationRepo.enter(password);
+  Future<void> enterImpersonationMode() async {
+    final mode = await _impersonationRepo.enter();
     await _storage.saveImpersonationModeToken(mode.modeToken);
     state = SessionState(
       status: state.status,

@@ -5,7 +5,10 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-/** 安全配置（uten.security.*）：CORS 白名单 + 登录/导出限流 + 账号锁定 + 密码历史 + HTTPS/swagger 开关。 */
+/**
+ * 安全部署配置 (uten.security.*): CORS 白名单 + HTTPS/swagger 开关。登录/导出限流、账号锁定、
+ * 密码历史等运行时策略只登记在系统设置 (SystemSettingKey)。
+ */
 @Getter
 @Setter
 @Component
@@ -14,21 +17,6 @@ public class SecurityProperties {
 
     /** CORS 允许来源（逗号分隔）。默认值与 application.yml 保持一致。 */
     private String corsAllowedOrigins = "http://localhost:53764,http://localhost:8080";
-
-    /** 登录限流：每分钟每 IP 次数。 */
-    private int loginRateLimitPerMinute = 5;
-
-    /** 导出限流：每分钟每用户次数（防被盗号/脚本短时大量导出拖库；令牌桶，per-userId）。 */
-    private int exportRateLimitPerMinute = 10;
-
-    /** 连续失败几次锁定。 */
-    private int lockoutThreshold = 5;
-
-    /** 锁定时长（分钟）。 */
-    private int lockoutMinutes = 15;
-
-    /** 改密时禁止重用的最近密码数。 */
-    private int passwordHistorySize = 5;
 
     /** 生产是否强制 HTTPS（建议由反向代理终结 TLS）。 */
     private boolean requireHttps = false;

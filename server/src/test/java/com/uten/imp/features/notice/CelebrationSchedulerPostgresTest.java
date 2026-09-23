@@ -1,5 +1,6 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeService.CelebrationSubject;
 import org.flywaydb.core.Flyway;
@@ -93,10 +94,10 @@ class CelebrationSchedulerPostgresTest {
 
         noticeService = mock(NoticeService.class);
         SystemSettingsService settings = mock(SystemSettingsService.class);
-        when(settings.readBool(anyString(), anyBoolean())).thenReturn(true);
-        when(settings.readString(eq("celebration.auto_types"), anyString()))
+        when(settings.readBool(SystemSettingKey.CELEBRATION_AUTO_ENABLED)).thenReturn(true);
+        when(settings.readString(SystemSettingKey.CELEBRATION_AUTO_TYPES))
                 .thenReturn("birthday,anniversary");
-        when(settings.readString(eq("celebration.publisher_name"), anyString()))
+        when(settings.readString(SystemSettingKey.CELEBRATION_PUBLISHER_NAME))
                 .thenReturn("公司");
         scheduler = new CelebrationScheduler(jdbc, noticeService, settings);
     }

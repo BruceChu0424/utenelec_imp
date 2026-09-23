@@ -88,6 +88,7 @@ class VisitorRefreshAuditNoiseTest {
                 audit,
                 mock(LoginRateLimiter.class),
                 mock(MasterCodeService.class),
-                mock(VisitorAccountCreationLock.class));
+                mock(VisitorAccountCreationLock.class),
+                mock(com.uten.imp.features.auth.AuthSessionService.class));
     }
 }

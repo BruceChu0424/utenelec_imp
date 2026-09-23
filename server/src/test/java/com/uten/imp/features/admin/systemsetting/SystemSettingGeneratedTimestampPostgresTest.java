@@ -34,13 +34,10 @@ class SystemSettingGeneratedTimestampPostgresTest {
         var dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        // Match the current V72 column defaults and BEFORE UPDATE trigger.
+        // Match the V659 value-only shape (metadata lives in SystemSettingKey) and the V72 trigger.
         jdbc.execute("""
                 CREATE TABLE system_settings (
                     key text PRIMARY KEY, value text NOT NULL,
-                    value_type text NOT NULL DEFAULT 'int', category text NOT NULL,
-                    label text NOT NULL, description text, unit text,
-                    sort_order integer NOT NULL DEFAULT 0,
                     updated_at timestamptz NOT NULL DEFAULT now(), updated_by uuid
                 )
                 """);
@@ -71,11 +68,11 @@ class SystemSettingGeneratedTimestampPostgresTest {
 
     @Test
     void updateReturnsTriggerTimeInManagedEntityAndDtoWithoutARefreshQuery() {
-        String key = "existing_" + UUID.randomUUID();
+        String key = SystemSettingKey.LOCKOUT_MINUTES.key();
         OffsetDateTime oldTime = OffsetDateTime.parse("2001-01-01T00:00:00Z");
         jdbc.update("""
-                INSERT INTO system_settings(key,value,value_type,category,label,updated_at)
-                VALUES (?, '15', 'int', 'security', 'Lockout minutes', ?)
+                INSERT INTO system_settings(key,value,updated_at)
+                VALUES (?, '15', ?)
                 """, key, oldTime);
         try (EntityManager em = factory.createEntityManager()) {
             em.getTransaction().begin();
@@ -90,7 +87,8 @@ class SystemSettingGeneratedTimestampPostgresTest {
                     "SELECT updated_at FROM system_settings WHERE key=:key", OffsetDateTime.class)
                     .setParameter("key", key).getSingleResult();
             assertThat(setting.getUpdatedAt().toInstant()).isEqualTo(databaseTime.toInstant());
-            assertThat(SystemSettingDto.of(setting).updatedAt().toInstant()).isEqualTo(databaseTime.toInstant());
+            assertThat(SystemSettingDto.of(SystemSettingKey.LOCKOUT_MINUTES, setting).updatedAt().toInstant())
+                    .isEqualTo(databaseTime.toInstant());
             assertThat(setting.getUpdatedAt().toInstant()).isNotEqualTo(oldTime.toInstant());
             assertThat(mutationStatements).as("update and generated value share one JDBC statement").isEqualTo(1);
             em.getTransaction().rollback();
@@ -104,8 +102,6 @@ class SystemSettingGeneratedTimestampPostgresTest {
             SystemSetting setting = new SystemSetting();
             setting.setKey("inserted_" + UUID.randomUUID());
             setting.setValue("15");
-            setting.setCategory("security");
-            setting.setLabel("Lockout minutes");
             var statistics = factory.unwrap(SessionFactory.class).getStatistics();
             statistics.clear();
             em.persist(setting);

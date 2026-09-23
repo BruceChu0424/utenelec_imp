@@ -35,10 +35,12 @@ class AdminDepartmentPermView extends ConsumerStatefulWidget {
 
 class _AdminDepartmentPermViewState
     extends ConsumerState<AdminDepartmentPermView> {
+  // 与服务端个人专属权限一致：部门侧不可勾选 (账号支持自 V660 起只能个人点名授权)。
   static const _individualOnlyPermissions = <String>{
     Perm.auditLogView,
     Perm.auditLogExport,
     Perm.accountBalanceAdjust,
+    Perm.accountSupport,
   };
 
   DeptSelection? _dept;

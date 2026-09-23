@@ -3443,6 +3443,55 @@ void main() {
     },
   );
 
+  testWidgets('五列表头只有标签：物料办理 / 编号 / 需要数量 / 还缺数量 / 下单数量 '
+      '不挂说明图标也没有筛选下拉', (tester) async {
+    final json = unconfirmedBuyChildTree()..['allowedActions'] = const ['VIEW'];
+    await _pumpPage(
+      tester,
+      size: const Size(1400, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
+      allowedActions: const ['VIEW'],
+      analysisJson: json,
+    );
+    await _materialTableRowVisible(tester, 'buy-child');
+
+    // 对照：仍有筛选桶与说明的「供应方式」列头, 箭头与 ⓘ 都在——证明下面
+    // 的「找不到」不是找错了地方。
+    final routeHeader = await _materialHeaderCell(tester, '供应方式');
+    expect(
+      find.descendant(
+        of: routeHeader,
+        matching: find.byIcon(Icons.arrow_drop_down_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: routeHeader,
+        matching: find.byType(UtenColumnHintIcon),
+      ),
+      findsOneWidget,
+    );
+
+    // 2026-09-22 用户口径：这五列的表头就只要那几个字。
+    for (final label in const ['物料办理', '编号', '需要数量', '还缺数量', '下单数量']) {
+      final header = await _materialHeaderCell(tester, label);
+      expect(
+        find.descendant(of: header, matching: find.byType(UtenColumnHintIcon)),
+        findsNothing,
+        reason: '「$label」列头不该有 ⓘ',
+      );
+      expect(
+        find.descendant(of: header, matching: find.byType(Icon)),
+        findsNothing,
+        reason: '「$label」列头不该有筛选 / 排序图标',
+      );
+    }
+  });
+
   testWidgets(
     'confirmed rows have no checkbox, header select-all only picks unconfirmed '
     'rows and a blank master source shows a review hint',
@@ -7782,6 +7831,23 @@ Future<void> _chooseRoute(WidgetTester tester, String label) =>
     _chooseMaterialRoute(tester, 'material-path-1', label);
 
 /// 点主表列头（进度 / 供应方式）打开筛选下拉，选一个桶（文案「标签 (计数)」）。
+/// 主表某一列的列头格：按标签文本在表格区域内定位, 取最近的 Container 祖先。
+/// 有筛选桶 / 说明的列头是 InkWell > Container > Row[标签, ⓘ, 箭头], 纯标签
+/// 列头是裸 Container > 标签——两种形态最近的 Container 都是这一格本身。
+/// 宽屏联动模式下列头会随表体滚出视口(offstage), 所以先 ensureVisible。
+Future<Finder> _materialHeaderCell(WidgetTester tester, String label) async {
+  final text = find
+      .descendant(
+        of: find.byKey(const Key('material-analysis-material-table-region')),
+        matching: find.text(label, skipOffstage: false),
+        skipOffstage: false,
+      )
+      .first;
+  await tester.ensureVisible(text);
+  await tester.pumpAndSettle();
+  return find.ancestor(of: text, matching: find.byType(Container)).first;
+}
+
 Future<void> _selectMaterialHeaderFilter(
   WidgetTester tester,
   String columnLabel,

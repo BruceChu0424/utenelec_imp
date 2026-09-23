@@ -1013,39 +1013,20 @@ abstract class _MaterialAnalysisMaterialTableState
   /// (路线要放行改过下拉的脏行、进度要带中文标签、两个仓库列有「未登记」沉底
   /// 规则)仍单独处理，不进这张表。
   ///
-  /// 没有筛选的列只有一个：树形的「物料名称」——它已经有关键词搜索框，
-  /// 再挂一个几百个值的下拉没有意义。
+  /// 没有筛选的列有六个：树形的「物料名称」——它已经有关键词搜索框，再挂一个
+  /// 几百个值的下拉没有意义；以及 2026-09-22 用户口径「表头就只要那几个字」的
+  /// 「物料办理 / 编号 / 需要数量 / 还缺数量 / 下单数量」——这五列不进这张表，
+  /// 列头就没有桶、没有下拉(它们的 ⓘ 也一并撤了，见 [_materialTableColumns])。
   Map<String, String? Function(_MaterialTableRow)>
   get _materialTableGenericFacetExtractors => {
-    'goodsCode': (row) => _blankFacet(_materialTableCodeText(row)),
     'colorName': (row) => _blankFacet(_materialTableColorText(row)),
     'unitName': (row) => _blankFacet(_materialTableUnitText(row)),
-    // 下面四个一律复用列自己的取值函数, 不另写一份判据。
+    // 下面两个一律复用列自己的取值函数, 不另写一份判据。
     // 2026-09-22 对抗复查: 原先各写各的, 于是「筛生产车间=二车间」会筛出一屏
-    // 生产车间列显示横杠的采购行, 「筛可下达」会筛出一屏显示「暂不可办理」的行
-    // ——筛选值与眼睛看到的对不上。
+    // 生产车间列显示横杠的采购行——筛选值与眼睛看到的对不上。
     'productionWorkshop': (row) =>
         _blankFacet(_materialTableProductionWorkshopText(row)),
     'responsible': (row) => _blankFacet(_materialTableResponsibleText(row)),
-    'handle': (row) => _blankFacet(_materialTableHandleText(row)),
-    'requiredQty': (row) {
-      final value = _materialTableRequiredQty(row);
-      if (value == null) return null;
-      return value > 0 ? '有需求' : '无需求';
-    },
-    'netShortageQty': (row) {
-      final value = _materialTableNetShortageQty(row);
-      if (value == null) return null;
-      return value > 0 ? '还缺' : '不缺';
-    },
-    // 下单数量的桶按**与控制器无关**的事实推导：控制器只在单元格真被渲染过
-    // 才建，按控制器分桶会把没翻到过的页上的行一律算成「未填」。
-    'orderQty': (row) {
-      final group = _tableEditableGroup(row);
-      if (group == null) return null;
-      if (_tableGroupIssued(group)) return '已下达(锁定)';
-      return _tableGroupResidual(group) > 0 ? '待下单' : '无需下单';
-    },
     'appendQty': (row) {
       final group = _tableEditableGroup(row);
       if (group == null || !_tableGroupIssued(group)) return null;
@@ -1159,11 +1140,11 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 通用列的筛选桶：按 [_materialTableGenericFacetExtractors] 一次算完。
-  /// 桶键即显示值，按名称排；「未指派」「未填」这类缺失态沉底。
+  /// 桶键即显示值，按名称排；「待指派」「未填追加」这类缺失态沉底。
   Map<String, List<MasterFacetBucket>> _materialTableGenericFacets(
     Iterable<_MaterialTableRow> rows,
   ) {
-    const trailing = {'未指派', '待指派', '无需下单', '未填追加', '无需求', '不缺', '暂不可办理'};
+    const trailing = {'待指派', '未填追加'};
     final counts = <String, Map<String, int>>{};
     for (final row in rows) {
       for (final entry in _materialTableGenericFacetExtractors.entries) {
@@ -1222,6 +1203,12 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 这里不给任何列开点击排序：本表是树，按列重排会把层级打散。列的顺序与
   /// 显隐仍由表头设置(拖拽换位 / 竖拖隐藏)控制，那才是用户要的「表头排序
   /// 或者添加删除」。
+  ///
+  /// 2026-09-22 用户口径：「物料办理 / 编号 / 需要数量 / 还缺数量 / 下单数量」
+  /// 五列的表头只显示那几个字——不挂 ⓘ 说明，也不出筛选下拉。列头出不出
+  /// 下拉由有没有筛选桶决定(见 [_materialTableGenericFacetExtractors])，这里
+  /// 只负责不给 info；这几列的解释仍在单元格自己的悬浮里(调拨按钮为什么灰、
+  /// 「还缺数量」怎么扣的、「下单数量」填的是要覆盖的总量)。
   List<MasterColumnDef<_MaterialTableRow>> _materialTableColumns(
     ThemeData theme,
   ) => [
@@ -1231,10 +1218,6 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 110,
       value: _materialTableHandleText,
       cellBuilderHandlesSemantics: true,
-      info:
-          '从别的计划已锁定的量里调入。没有可调拨的量或缺少调拨权限时按钮置灰，'
-          '鼠标悬停会说明是哪一种；已经调过的进度也在同一个悬浮说明里。'
-          '下单不在这一列办：填好「下单数量」后勾选行，用底部的「下单(N)」提交。',
       cellBuilder: (_, row) => _materialTableHandleCell(theme, row),
     ),
     MasterColumnDef(
@@ -1289,7 +1272,6 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _l10n.materialRequired,
       width: 100,
       type: 'number',
-      info: '按本批产品数量 × 单件用量算出的总需求量。',
       value: (row) => _qty(_materialTableRequiredQty(row)),
       // 父行敲一下这一格自己重建(订阅估算 tick)，整页不动。
       cellBuilder: (_, row) =>
@@ -1301,11 +1283,6 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _l10n.materialShortage,
       width: 112,
       type: 'number',
-      info:
-          '把公共的量都当成已占用之后，这一行还要另外下单多少。'
-          '仓库里的公共现货、以及下达时会自动认领的公共在途(含晚到来源)，'
-          '都已经在这个数里扣掉了。自制、以及要先自制目标件的委外不会自动'
-          '认领公共在途，这两类显示的是未扣的量。',
       value: (row) => _qty(_materialTableNetShortageQty(row)),
       cellBuilderHandlesSemantics: true,
       // 数字随估算 tick 当场变；底色(cellColor)由表格在整页重建时算，停手 200ms
@@ -1322,13 +1299,6 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _l10n.materialToSupply,
       width: 132,
       type: 'number',
-      info:
-          '本次要**覆盖**多少，不是「要新开多少单」。默认填的是没算公共在途的毛量，'
-          '因为下达时服务端会先从你填的这个数里认领公共在途、只为余下部分开新单——'
-          '照着左边的「还缺数量」填反而会少下一个认领量。'
-          '可以填得更多：多下的部分算公共备货，需要超量下达权限。'
-          '自制、以及要先自制目标件的委外必须整批接管，既不能多填也不能少填，所以这两类只读。'
-          '下达之后这一格锁住并改成显示累计已下单量，要再下就填右边的「追加下单」。',
       value: _materialTableOrderQtyText,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableOrderQtyCell(theme, row),

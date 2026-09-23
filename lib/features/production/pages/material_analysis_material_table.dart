@@ -2224,12 +2224,18 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 分桶页写着「任何行都可填超量」，「父件 + 下层一起下单」页把用户填的数原样送进
   /// issue-plans。所以锁死自制行是引错了对象的历史惯性，不是技术约束。
   ///
-  /// 委外那一支保持原样：它确实可能落回 `notifySupply` 的整量接管。
-  bool _tableGroupWholeTakeover(_MaterialGroup group) {
-    final route = _draftRoute(group);
-    if (route != MaterialSupplyRoute.subcontract) return false;
+  /// 委外那一支只剩一种情况：**没有「下达车间」权限**时它落回 `notifySupply` 的整量
+  /// 接管。有权限的走 issue-plans 的 ARRANGE 段(与委外桶 / 级联页 `_subcontractChannelOf`
+  /// 同一口径, 2026-09-16 起)，那条路数量可改可超——2026-09-22 用户实机：把一行改成委外
+  /// 后「下单数量就定死了不能修改, 我都没有下单过」，正是这里没看权限一律锁死。
+  bool _tableGroupWholeTakeover(_MaterialGroup group) =>
+      _tableSubcontractNeedsPreparation(group) && !_canGenerate;
+
+  /// 委外行是不是「要先自制目标件再发外」的那种(有生产性下层, 且不是 V581 单一
+  /// 子件件)。快照还没到手时按「要」处理：格子只读比让人填个数再吃 400 好。
+  bool _tableSubcontractNeedsPreparation(_MaterialGroup group) {
+    if (_draftRoute(group) != MaterialSupplyRoute.subcontract) return false;
     final analysis = _analysis;
-    // 快照还没到手时按「要整批接管」处理：格子只读比让人填个数再吃 400 好。
     if (analysis == null) return true;
     return _subcontractNeedsPreparation(group.representative, analysis);
   }
@@ -3112,14 +3118,15 @@ abstract class _MaterialAnalysisMaterialTableState
   // ------------------------- 物料办理列 -------------------------
 
   /// 这一行的下达去向。与「父件 + 下层一起下单」页的分通道判定同源：
-  /// 自制、以及要先自制目标件的委外都走车间；其余委外与采购走外发通道。
+  /// 自制、以及要先自制目标件的委外(有「下达车间」权限时)都走车间；其余委外与采购
+  /// 走外发通道——没有权限的「要先自制」委外退回 notify 整批接管。
   ({String label, bool viaWorkshop}) _tableIssueTarget(_MaterialGroup group) {
     final route = _draftRoute(group);
     if (route == MaterialSupplyRoute.make) {
       return (label: '下达车间', viaWorkshop: true);
     }
     if (route == MaterialSupplyRoute.subcontract) {
-      return _tableGroupWholeTakeover(group)
+      return _tableSubcontractNeedsPreparation(group) && _canGenerate
           ? (label: '下达车间', viaWorkshop: true)
           : (label: '下达委外', viaWorkshop: false);
     }
@@ -3403,13 +3410,14 @@ abstract class _MaterialAnalysisMaterialTableState
         ),
       );
     }
-    // 整批接管的行(要先自制目标件的委外)：它可能落回 notifySupply，那条路要求
-    // 逐字等于剩余需求，给输入框只会让人填完吃 400，所以直接只读并说明原因。
-    // 自制行已于 2026-09-22 放开，理由见 _tableGroupWholeTakeover。
+    // 整批接管的行(要先自制目标件的委外、且没有「下达车间」权限)：它落回
+    // notifySupply，那条路要求逐字等于剩余需求，给输入框只会让人填完吃 400，
+    // 所以直接只读并说明原因。有权限的走 ARRANGE 段，数量照常可填。
     if (_tableGroupWholeTakeover(group)) {
       return Tooltip(
         message:
-            '这类行必须整批接管 ${_qty(_tableGroupResidual(group))}，不能多填也不能少填。'
+            '这类行要先自制目标件再发外；你没有「下达车间」权限，只能整批接管 '
+            '${_qty(_tableGroupResidual(group))}，不能多填也不能少填。'
             '本批实际生产数量在子件任务建好后的计划里填。',
         child: Text(
           _qty(_tableGroupResidual(group)),
@@ -3468,7 +3476,9 @@ abstract class _MaterialAnalysisMaterialTableState
     // 同日自制行已从整批接管里摘出去，这一格对自制行重新可填(走 publicSurplusOnly)。
     if (_tableGroupWholeTakeover(group)) {
       return Tooltip(
-        message: '这一行按整批接管提交，追加产出请在「下达车间」建好的计划里填，不在这里。',
+        message:
+            '这一行没有「下达车间」权限时按整批接管提交，追加产出请在「下达车间」'
+            '建好的计划里填，不在这里。',
         child: Text(
           '—',
           style: theme.textTheme.bodySmall?.copyWith(

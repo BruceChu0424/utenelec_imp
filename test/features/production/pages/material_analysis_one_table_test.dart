@@ -568,6 +568,43 @@ void main() {
     expect(_appendQty('m-6'), findsNothing);
   });
 
+  testWidgets('要先自制目标件的委外行：有「下达车间」权限时下单数量可填，没有权限才整批接管只读', (tester) async {
+    // 2026-09-22 用户实机：把一行改成委外后「下单数量就定死了不能修改, 我都没有下单过」——
+    // 原来这类行不看权限一律锁死, 而有权限时它走 issue-plans 的 ARRANGE 段, 数量可改可超。
+    await _pump(tester, mutate: _withPreparationSubcontract);
+    // 默认权限没有「生成生产计划」：退回 notify 整批接管, 下单数量只读显示 800、追加横杠。
+    expect(_orderQty('m-u'), findsNothing);
+    expect(_appendQty('m-u'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-u')),
+        matching: find.text('800'),
+      ),
+      findsWidgets,
+    );
+
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return _withPreparationSubcontract(data);
+      },
+    );
+    final field = tester.widget<TextField>(_orderQty('m-u'));
+    expect(field.enabled, isTrue);
+    expect(field.controller!.text, '800');
+    // 还没下达过：追加格仍是只读的 0(不是横杠)。
+    expect(_appendQty('m-u'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-u')),
+        matching: find.text('0'),
+      ),
+      findsWidgets,
+    );
+  });
+
   testWidgets('顶层行不再是一排横杠：调拨按钮、下单数量、还缺数量都在', (tester) async {
     await _pump(tester);
     // 产品行直接承载 ROOT_SUPPLY(V478)。原来 _tableEditableGroup 对产品行一律
@@ -1335,6 +1372,30 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
     },
   ],
 };
+
+/// 一个「要先自制目标件再发外」的委外件(带一个自制子件, 不是 V581 单一子件件), 没下过单。
+Map<String, dynamic> _withPreparationSubcontract(Map<String, dynamic> data) {
+  (data['flatMaterials'] as List)
+    ..add(
+      _material(
+        line: 'm-u',
+        name: '要先自制的委外件',
+        confirmed: 'SUBCONTRACT',
+        netShortageQty: 800,
+      ),
+    )
+    ..add(
+      _material(
+        line: 'm-uc',
+        name: '委外件的自制子件',
+        confirmed: 'MAKE',
+        netShortageQty: 800,
+        level: 2,
+        parentLine: 'm-u',
+      ),
+    );
+  return data;
+}
 
 /// 一对「直接外发委外父件 + 我方供料采购子件」，都还没下过单(提交顺序用例)。
 Map<String, dynamic> _withSubcontractPair(Map<String, dynamic> data) {

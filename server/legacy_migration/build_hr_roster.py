@@ -4,7 +4,8 @@
 # HR 正式名录构建器：中山市优腾电器职工信息表.xls → data/hr_roster.csv + data/hr_managers.csv
 # ---------------------------------------------------------------------
 # 用法：python server/legacy_migration/build_hr_roster.py [xls路径]
-#   默认 xls 路径 = 仓库根目录「中山市优腾电器职工信息表.xls」。
+#   默认 xls 路径 = 环境变量 UTEN_LEGACY_INPUT_DIR 目录下的「中山市优腾电器职工信息表.xls」;
+#   含个人信息的原始表不放进代码仓库(2026-09-23 起迁到仓库外的受控目录)。
 # 产出（data/ 下，供 migrate.sh --hr-roster 使用）：
 #   hr_roster.csv    — 141 人清洗后名册（| 分隔，UTF-8，含表头）
 #   hr_managers.csv  — 部门负责人指派（dept_code, emp_code）
@@ -19,6 +20,7 @@
 # =====================================================================
 import hashlib
 import re
+import os
 import sys
 from pathlib import Path
 
@@ -27,7 +29,13 @@ import xlrd
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data"
-DEFAULT_XLS = HERE.parent.parent / "中山市优腾电器职工信息表.xls"
+HR_ROSTER_XLS_NAME = "中山市优腾电器职工信息表.xls"
+
+
+def default_xls() -> Path | None:
+    """UTEN_LEGACY_INPUT_DIR 未设置时返回 None, 由调用方提示, 不再默认去仓库根目录找。"""
+    base = os.environ.get("UTEN_LEGACY_INPUT_DIR", "").strip()
+    return Path(base) / HR_ROSTER_XLS_NAME if base else None
 UT_START = 2  # UT0001 为已删除的测试员工，不复用；从 UT0002 起编
 
 # ---------- 单元格批注（Excel cell comments，pandas 读不到，必须 xlrd 解析） ----------
@@ -133,7 +141,10 @@ def norm_phone(v) -> str:
 
 
 def main() -> int:
-    xls_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_XLS
+    xls_path = Path(sys.argv[1]) if len(sys.argv) > 1 else default_xls()
+    if xls_path is None:
+        print("✗ 请传入 xls 路径, 或设置环境变量 UTEN_LEGACY_INPUT_DIR 指向老库迁移输入目录")
+        return 2
     if not xls_path.exists():
         print(f"✗ 找不到 xls：{xls_path}")
         return 1

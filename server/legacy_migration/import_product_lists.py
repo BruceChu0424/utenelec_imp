@@ -71,8 +71,10 @@ from pathlib import Path
 import psycopg2
 import xlrd
 
-# ----- 默认路径：项目根/product lists（脚本位于 server/legacy_migration/ 下） -----
-DEFAULT_DATA_DIR = Path(__file__).resolve().parents[2] / "product lists"
+# ----- 默认路径：环境变量 UTEN_LEGACY_INPUT_DIR 下的 product lists 目录 -----
+# 原始 Excel 含业务数据, 2026-09-23 起不放在代码仓库里; 未设置变量时必须显式传 --data-dir。
+_LEGACY_INPUT_DIR = os.environ.get("UTEN_LEGACY_INPUT_DIR", "").strip()
+DEFAULT_DATA_DIR = Path(_LEGACY_INPUT_DIR) / "product lists" if _LEGACY_INPUT_DIR else None
 DEFAULT_FILES = [
     "20260409172229_1.xls",
     "20260409172229_2.xls",
@@ -163,7 +165,9 @@ def main() -> None:
                          "2026-07-31 决策：分类结构只走老树，Excel 只补字段，勿随意开启")
     ap.add_argument("--overwrite-warehouse", action="store_true",
                     help="【默认关闭】连库里已有的所属仓库一起覆盖；默认只填空，不冲掉界面上人工改过的值")
-    ap.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR), help="Excel 所在目录")
+    ap.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR) if DEFAULT_DATA_DIR else None,
+                    required=DEFAULT_DATA_DIR is None,
+                    help="Excel 所在目录(默认 $UTEN_LEGACY_INPUT_DIR/product lists)")
     ap.add_argument("--files", nargs="*", default=DEFAULT_FILES, help="文件名列表")
     args = ap.parse_args()
 

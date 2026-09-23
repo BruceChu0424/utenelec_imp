@@ -74,6 +74,9 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         AnalysisView anchored=analyses.detail(t.analysis());
         UUID anchor=material(anchored,t.parentLine()).planAnchorAnalysisLineId();
         assertNotNull(anchor);qty("1000",product(anchored,anchor).requestedQty());qty("0",product(anchored,anchor).remainingQty());
+        // 2026-09-23：锚点已排满, 物料行「还缺数量」扣掉归需求的计划量归 0; 「还需安排」按契约仍是毛缺口。
+        qty("0",material(anchored,t.parentLine()).netShortageQty());
+        qty("1000",material(anchored,t.parentLine()).additionalSupplyRecommendedQty());
         // 顶层按 1500 下达车间(超出需求 500)：一张计划、link 分账 1000 + 500。
         commands.issueWorkshopPlans(t.analysis(),issue(anchored,t,"root-over",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))));
         Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=?",
@@ -87,11 +90,14 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         // 既有自制锚点的配额自动跟到 1500：车间桶里还能再排 500，不用重新建锚。
         qty("1500",product(after,anchor).requestedQty());qty("500",product(after,anchor).remainingQty());
         assertTrue(product(after,anchor).canSchedule());
+        // 需求涨到 1500、计划只归了 1000: 还缺 500, 与锚点余量同口径。
+        qty("500",material(after,t.parentLine()).netShortageQty());
         // 孙层的计划产出量 = max(需求, 自家锚点已下达)：需求已随父件放到 1500，再把锚点余下 500 排掉也不再变。
         qty("1500",material(after,t.childLine()).plannedOutputQty());
         commands.issueWorkshopPlans(t.analysis(),issue(after,t,"anchor-rest",new IssueWorkshopPlansRequest.IssuePlanLine(anchor,new BigDecimal("500"))));
         AnalysisView done=analyses.detail(t.analysis());
         qty("0",product(done,anchor).remainingQty());qty("1500",material(done,t.childLine()).plannedOutputQty());
+        qty("0",material(done,t.parentLine()).netShortageQty());
         qty("1500",material(done,t.parentLine()).plannedOutputQty());
         assertEquals(3,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
     }

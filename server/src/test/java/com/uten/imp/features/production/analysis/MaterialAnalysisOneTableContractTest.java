@@ -25,6 +25,16 @@ class MaterialAnalysisOneTableContractTest {
 
         assertThat(service).contains("BigDecimal netShortage = sharedFutureDeductible");
         assertThat(service).contains(": additionalRecommended;");
+        // 2026-09-23：再扣掉本节点已下达自制计划里归本需求的那一份(不含公共备货产出——
+        // 那份不绑需求, 锚点余量也不因它归零), 且不与已作为 INTERNAL 在途扣过的前置自制
+        // 台账 / 自制任务重复; 只动这个纯展示量, additionalRecommended 那一行原样。
+        assertThat(service).contains("BigDecimal committedPlanQty() {");
+        assertThat(service).contains(
+                "BigDecimal internalCovered = activeFutureCoverageQty.subtract(externalFutureCoverageQty)");
+        assertThat(service).contains(
+                ".subtract(committedPlanQty.max(BigDecimal.ZERO).subtract(internalCovered)");
+        assertThat(service).contains("committedPlan = committedPlan.max(materialSource.committedPlanQty()");
+        assertThat(service).contains(".multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));");
 
         // 条件一：下达段真会自动认领。判据与那里的排除口径同源——采购恒认领；
         // 委外只有无我方供料 BOM 的纯外协件认领；自制与路线未定一律不认领。
@@ -52,13 +62,19 @@ class MaterialAnalysisOneTableContractTest {
         // 服务端下达时 demandQty = requested.min(delta) 之后再从中减掉自动认领的
         // 公共在途——认领是从用户填的那个数里切走的，不是在它之上另加。所以
         // 「下单数量」的预填与提交必须用毛口径；用净数会让每一行都少下一个认领量。
+        // 2026-09-22 起三列都经 _tableShownQty(估算 → 模拟快照 → 权威)读数, 「还需安排」
+        // 那一项(residual)仍派生自毛口径 additionalSupplyRecommendedQty; 2026-09-23 起已下过
+        // 单的自制行(含顶层)改读锚点产品的剩余可排量(_tableAnchorResidual), 其余行不变。
         assertThat(table).contains(
-                "sum + _tablePreviewed(material).additionalSupplyRecommendedQty");
-        assertThat(table).doesNotContain(
                 "double _tableGroupResidual(_MaterialGroup group) => group.paths.fold<double>(\n"
                         + "    0,\n"
-                        + "    (sum, material) => sum + _tablePreviewed(material).netShortageQty,\n"
+                        + "    (sum, material) => sum + _tableShownQty(material).residual,\n"
                         + "  );");
+        assertThat(table).contains(
+                "_tableAnchorResidual(material) ??\n"
+                        + "          shown.additionalSupplyRecommendedQty,");
+        assertThat(table).contains("net: shown.netShortageQty,");
+        assertThat(table).doesNotContain("sum + _tableShownQty(material).net,\n  );");
 
         // 跨计划调拨与公共在途认领也会投影进 downstreamReferences，算成「已下单」
         // 会让这一行的下单格被锁死、批量下单静默跳过它。

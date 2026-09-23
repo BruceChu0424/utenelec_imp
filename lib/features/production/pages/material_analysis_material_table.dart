@@ -2094,18 +2094,18 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 本提交单元累计已下单量。
   ///
-  /// 两条来源不是随便选的：已建自制锚点的行，真实已下达量在锚点产品的计划总量
-  /// 上(含公共备货产出)；采购 / 直接外发委外的行在申请明细的分摊量上。
-  /// 一行只可能是其中一种，不会同时成立。
+  /// 三条来源不是随便选的：顶层自制行的计划挂在产品行自己身上(它本身就是排产对象，
+  /// 没有锚点——2026-09-23 前这里漏了它：顶层下了 2000 的计划，主表照旧给它一个可填
+  /// 的「下单数量」，再全选下单就把它当新计划重下，服务端 409 整批停在第一步)；
+  /// 其余已建自制锚点的行，真实已下达量在锚点产品的计划总量上(含公共备货产出)；
+  /// 采购 / 直接外发委外的行在申请明细上 = 归本需求的分摊量 + 同一条行动记的
+  /// 公共备货份。一行只可能是其中一种，不会同时成立。
   double _tableGroupIssuedQty(_MaterialGroup group) {
-    final material = group.representative;
     final route = _draftRoute(group);
     if (route == MaterialSupplyRoute.make) {
-      final anchorId = material.planAnchorAnalysisLineId;
-      final analysis = _analysis;
-      if (anchorId == null || analysis == null) return 0;
-      return _analysisIndexes(analysis).productsById[anchorId]?.issuedPlanQty ??
-          0;
+      final anchor = _tableMakeAnchorOf(group);
+      if (anchor == null) return 0;
+      return anchor.issuedPlanQty * _tableAnchorUnitRate(group, anchor);
     }
     var ordered = 0.0;
     for (final path in group.paths) {
@@ -2126,10 +2126,66 @@ abstract class _MaterialAnalysisMaterialTableState
         }.contains(_supplyOperationType(target.actionId))) {
           continue;
         }
-        ordered += target.allocatedQty ?? 0;
+        final allocated = target.allocatedQty ?? 0;
+        ordered += allocated;
+        // 填得比当时需求多的部分，服务端记在同一条行动的公共备货份上(V577/V589)，
+        // 申请明细上就是两者的合计。它同样是这一行下出去的单——不算的话，填 5000
+        // 下成「需求 2000 + 公共 3000」的行会显示成「累计已下单 2000」，用户实机
+        // 看到的就是「我填了 5000 怎么只下了 2000」(2026-09-23)。
+        // 一条行动可能分摊到多条物料行(各一条 allocation)，公共份按本行分摊量占行动
+        // 需求份的比例摊，几条行加起来正好是整条行动的公共份，不会每行都算一遍。
+        final action = _supplyActionOf(target.actionId);
+        if (action != null && action.publicSurplusQty > 0) {
+          final share = action.requestedQty > 0.0001
+              ? (allocated / action.requestedQty).clamp(0.0, 1.0)
+              : 1.0;
+          ordered += action.publicSurplusQty * share;
+        }
       }
     }
     return ordered;
+  }
+
+  /// 顶层产品行的计划量是来源单位(销售单位)，物料行是基本单位，两边差一个
+  /// 单位换算率；锚点子件行与物料行同单位，换算率为 1。
+  double _tableAnchorUnitRate(
+    _MaterialGroup group,
+    ProductionMaterialAnalysisProduct anchor,
+  ) => group.representative.isRootSupply ? (anchor.unitRate ?? 1) : 1;
+
+  /// 自制行的计划锚点产品：顶层自制行就是产品行自己(它本身是排产对象，没有锚点)，
+  /// 其余自制行是 planAnchorAnalysisLineId 指向的子件任务行；没建过锚点返回 null。
+  ///
+  /// 有模拟快照(父行改量后服务端算好的「下达之后」)时读它里面那一份：锚点的剩余
+  /// 可排量已随父件长大，与物料行取 [_tablePreviewed] 是同一口径。
+  /// [authoritative] = 只看权威快照(自动勾选判基线用)，与 [_tablePreviewed] 同一开关。
+  ProductionMaterialAnalysisProduct? _tableMakeAnchorOf(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    final material = group.representative;
+    final anchorId = material.isRootSupply
+        ? material.analysisLineId
+        : material.planAnchorAnalysisLineId;
+    if (anchorId == null) return null;
+    final previewed = authoritative
+        ? null
+        : _tableCascadePreview?.products
+              .where((product) => product.analysisLineId == anchorId)
+              .firstOrNull;
+    return previewed ?? _analysisIndexes(analysis).productsById[anchorId];
+  }
+
+  /// 已下过单的自制行(含顶层)的锚点产品；不是这类行返回 null。
+  ProductionMaterialAnalysisProduct? _tableIssuedMakeAnchorOf(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
+    if (_draftRoute(group) != MaterialSupplyRoute.make) return null;
+    final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
+    return anchor != null && anchor.issuedPlanQty > 0.0001 ? anchor : null;
   }
 
   /// 这一行下过单没有(下过 = 下单数量列锁死、改填追加下单列)。
@@ -2146,6 +2202,7 @@ abstract class _MaterialAnalysisMaterialTableState
   ///
   /// 父行改量之后取当场换算的估算值，服务端那份重算回来再整体覆盖；
   /// [authoritative] = 只看权威快照(不看模拟快照与估算)，自动勾选拿它当基线。
+  /// 已下过单的自制行(含顶层)按锚点产品的剩余可排量，见 [_tableAnchorResidual]。
   double _tableGroupResidual(
     _MaterialGroup group, {
     bool authoritative = false,
@@ -2373,10 +2430,24 @@ abstract class _MaterialAnalysisMaterialTableState
     _tableCascadePreview = null;
     _tableCascadePreviewTyped = const {};
     _tableCascadeGeneration++;
+    if (_tableSubmitting) {
+      // 分段提交进行中：每段成功后的新快照里已经含刚下达的量，而那些行填的数还没
+      // 来得及从 _tableUserTypedQty 摘掉——此刻重估会把「已下达 + 本次填的」再叠一遍，
+      // 整棵子树翻倍，下一段据此判纯公共备货就错(2026-09-23 对抗复查)。期间一律
+      // 只看快照，批完由 _submitMaterialTableRows 统一重估一次。
+      _tableEstimatedQty.clear();
+      return;
+    }
     // 用户填过的数还在：先按新的权威快照就地重估一遍(屏幕不闪回旧数字)，
     // 再要服务端重算一遍下层。
     _recomputeTableEstimates();
-    if (_tableUserTypedQty.isNotEmpty) {
+    // 一批提交进行中不发预览：每段成功后本方法都会被 _applyAnalysis 叫到，原来接着
+    // 就去抖发一次 preview——它带着已经落库那些行填的数(服务端是「已下达 + 本次
+    // 填的」，等于把刚下达的量再加一遍)，还与下一段真实提交撞同一把分析锁：等到
+    // 锁时来源集合已变，服务端自动重跑一次后又因版本过期 409，只换来一串冲突日志
+    // (2026-09-23 实机：一批 5 段提交伴着 4 条 409 的预览)。批完由
+    // _submitMaterialTableRows 统一决定要不要补一次。
+    if (_tableUserTypedQty.isNotEmpty && !_tableSubmitting) {
       _tableCascadeDebounce?.cancel();
       _tableCascadeDebounce = Timer(
         const Duration(milliseconds: 300),
@@ -2384,6 +2455,9 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
   }
+
+  /// 主表「下单(N)」的分段编排正在进行：期间不自动发层级预览。
+  bool _tableSubmitting = false;
 
   // ---------------- 父行改量带动子层(ADR-099 回滚式预览) ----------------
 
@@ -2573,9 +2647,40 @@ abstract class _MaterialAnalysisMaterialTableState
     final shown = _tablePreviewed(material, authoritative: authoritative);
     return (
       required: shown.requiredQty,
-      residual: shown.additionalSupplyRecommendedQty,
+      residual:
+          _tableAnchorResidual(material, authoritative: authoritative) ??
+          shown.additionalSupplyRecommendedQty,
       net: shown.netShortageQty,
     );
+  }
+
+  /// 已下过单的自制行(含顶层产品行)的「还需安排」= 锚点产品的剩余可排量(不可排产
+  /// 时为 0)；不是这类行返回 null，照旧读服务端给物料行的建议下单量。
+  ///
+  /// 服务端给物料行的 additionalSupplyRecommendedQty **不扣已下达的自制计划**(那是
+  /// internalCommittedOutputQty，契约写明「never subtract it as external finished
+  /// supply」)：锚点已排满 2000 的行它照旧给 2000。照它走，主表会把已排满的行显示成
+  /// 「还需安排 2000」、追加格 0 恒红、追加时判不出「纯公共备货」而被服务端 409——
+  /// 级联页早就是按锚点 remainingQty 算的，主表收成同一口径(2026-09-23 用户实机
+  /// 「有一部分没有成功下单」的其中一处)。
+  double? _tableAnchorResidual(
+    ProductionMaterialAnalysisMaterial material, {
+    bool authoritative = false,
+  }) {
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    final group = _analysisIndexes(
+      analysis,
+    ).groupsByLine[material.materialLineId];
+    if (group == null) return null;
+    final anchor = _tableIssuedMakeAnchorOf(
+      group,
+      authoritative: authoritative,
+    );
+    if (anchor == null) return null;
+    return anchor.canSchedule
+        ? anchor.remainingQty * _tableAnchorUnitRate(group, anchor)
+        : 0;
   }
 
   /// 这一行此刻该显示的三个数：有当场换算的估算值就用它，否则用服务端那份快照。
@@ -3050,6 +3155,14 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final planningBlock = _planningBlockForGroup(group);
     if (planningBlock != null) return planningBlock;
+    // 已排满又不能再追加公共备货产出的自制行(含顶层产品行)：服务端 issue-plans 对
+    // 「剩余需求 0 且没声明纯公共备货」一律 409「当前分析需求已全部转入生产计划」。
+    final issuedAnchor = _tableIssuedMakeAnchorOf(group);
+    if (issuedAnchor != null &&
+        !issuedAnchor.canSchedule &&
+        !issuedAnchor.canIssueSurplus) {
+      return '这一行的生产计划已排满，当前不能再追加公共备货产出';
+    }
     // 服务端会拒的形态在这里就拦掉，别让人勾了、填了数、点了下达才吃 400。
     // 判据复用既有权威谓词的同名分支，不另造一套。
     final route = _draftRoute(group);
@@ -3548,6 +3661,9 @@ abstract class _MaterialAnalysisMaterialTableState
 
     final pending = <_MaterialGroup, double>{};
     final blocked = <String>[];
+    // 勾了但本次没有量的行(追加留 0)：批成功后一并撤勾，否则「下单(N)」一直挂着它，
+    // _hasUnsubmittedMaterialTableInput 永真、45 秒轮询也不再跑。
+    final skipped = <String>{};
     for (final group in groups) {
       final reason = _tableIssueBlockedReason(group);
       if (reason != null) {
@@ -3557,7 +3673,10 @@ abstract class _MaterialAnalysisMaterialTableState
       final qty = _tableSubmitQtyOf(group);
       // 追加填 0 = 本次不动这一行，不进提交集合(服务端把「给了身份却不给数量」
       // 当成全量剩余下达，漏掉这一步会凭空多下一单)。
-      if (qty <= 0.0001) continue;
+      if (qty <= 0.0001) {
+        skipped.add(group.key);
+        continue;
+      }
       pending[group] = qty;
     }
     if (pending.isEmpty) {
@@ -3571,131 +3690,210 @@ abstract class _MaterialAnalysisMaterialTableState
 
     final steps = <({String label, bool ok, String? note})>[];
     final done = <String>{};
-
-    // 一、车间段：按层级自上而下逐层。
-    final workshopGroups =
-        pending.keys.where((g) => _tableIssueTarget(g).viaWorkshop).toList()
-          ..sort(
-            (a, b) => a.representative.level.compareTo(b.representative.level),
-          );
-    final byLevel = <int, List<_MaterialGroup>>{};
-    for (final group in workshopGroups) {
-      byLevel.putIfAbsent(group.representative.level, () => []).add(group);
-    }
-    for (final level in byLevel.keys.toList()..sort()) {
-      final batch = byLevel[level]!;
-      // 顶层自制与其它自制行走的是**两条不同的通道**：服务端
-      // candidateRoutesByMaterialLine 明确把 ROOT_SUPPLY 排除在候选之外(除非它
-      // 确认为委外)，顶层产品行本身就是排产对象，要按 analysisLineId 走 planDrafts。
-      // 当成候选按 materialLineId 提交的话服务端解析不出候选、整批失败。
-      final inputs = <_BucketCandidatePlanInput>[];
-      final drafts = <_BucketPlanDraft>[];
+    const haltNote = '已停在这一步，后面的段没有提交';
+    // 一段成功后：记下这些行，并把它们从「用户亲手填的数」里摘掉。服务端那一侧是
+    // **加进**计划产出量，留着它下一次重算就把刚下达的量再加一遍；而且
+    // _hasUnsubmittedMaterialTableInput 会永远为真，45 秒轮询再也不跑。
+    // 注意两套键空间：done 装的是操作组键，填数那张表按物料行 id 记。
+    void settle(List<_MaterialGroup> batch) {
       for (final group in batch) {
-        final publicSurplusOnly =
-            _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001;
-        final rootMakeLineId = _tableRootMakePlanLineId(group);
-        if (rootMakeLineId != null) {
-          drafts.add(
-            _BucketPlanDraft(
-              analysisLineId: rootMakeLineId,
-              qty: pending[group]!,
-              departmentId: _tableWorkshopFor(group).id,
-              workshopName: _tableWorkshopFor(group).name,
-              workerId: _tableWorkerFor(group).id,
-              publicSurplusOnly: publicSurplusOnly,
-            ),
-          );
-          continue;
-        }
-        inputs.add(
-          _BucketCandidatePlanInput(
-            materialLineId: group.representative.materialLineId,
-            qty: pending[group]!,
-            departmentId: _tableWorkshopFor(group).id,
-            workshopName: _tableWorkshopFor(group).name,
-            workerId: _tableWorkerFor(group).id,
-            // 锚点已无剩余需求时，本次填的全是追加的公共备货产出。
-            publicSurplusOnly: publicSurplusOnly,
-          ),
-        );
+        done.add(group.key);
+        _tableUserTypedQty.remove(group.representative.materialLineId);
       }
-      final ok = await _issueWorkshopPlans(
-        candidateInputs: inputs,
-        planDrafts: drafts,
-        silent: true,
-      );
-      steps.add((
-        label: '下达车间(第 $level 层，${batch.length} 行)',
-        ok: ok,
-        note: ok ? null : '已停在这一步，后面的段没有提交',
-      ));
-      if (!ok) break;
-      done.addAll(batch.map((group) => group.key));
     }
 
-    // 二、外发段：采购、委外各一次。
-    if (steps.every((step) => step.ok)) {
-      for (final route in const [
-        MaterialSupplyRoute.buy,
-        MaterialSupplyRoute.subcontract,
-      ]) {
-        final batch = pending.keys
+    // 提交期间不再自动发层级预览(见 _invalidateMaterialTableCascadePreview)；
+    // 正在路上的那一份也作废——它带的填数马上就有一部分落库了。
+    _tableSubmitting = true;
+    _tableCascadeDebounce?.cancel();
+    _tableCascadeGeneration++;
+    // 在路上的那份预览被代际作废后不会再走到它的 finally，预览态要在这里复位，
+    // 否则「还缺数量」悬浮一直挂着「正在重算」。
+    _tableCascadePreviewing = false;
+    try {
+      // 提交顺序 = **父先子后，跨路线**。一行的需求由它上面每一层的计划产出量决定，
+      // 含父件超出需求的公共备货产出(V577/V589「顶层做 5000，委外件就要加工 5000」)。
+      // 父件的计划 / 委外申请还没落地时，子件按父件新数量填的量会被服务端当成超出
+      // 当时需求的部分、记成公共备货；随后父件的超量把子件需求抬上去，子件行就留下
+      // 一截「已经下了却还缺」的幽灵缺口，而且认不回来(公共在途认领不含本分析自己的)。
+      // 2026-09-23 实机：委外件「E极插套(酸洗)」的我方供料子件先按采购 5000 提交，
+      // 记成需求 2000 + 公共 3000；委外 5000 随后下达把子件需求抬到 5000，子件行
+      // 留下 3000 缺口——原来「采购 → 委外」的顺序正好反了。
+      // 于是：逐层自上而下，同一层先下达车间(自制 + 需先自制的委外)、再直接外发
+      // 委外；采购件没有下层，等全部父件落地后最后一次提交。
+      final levels = {
+        for (final group in pending.keys) group.representative.level,
+      }.toList()..sort();
+      var halted = false;
+      for (final level in levels) {
+        final atLevel = pending.keys
+            .where((group) => group.representative.level == level)
+            .toList(growable: false);
+        final workshop = atLevel
+            .where((group) => _tableIssueTarget(group).viaWorkshop)
+            .toList(growable: false);
+        if (workshop.isNotEmpty) {
+          final ok = await _issueMaterialTableWorkshopBatch(workshop, pending);
+          steps.add((
+            label: '下达车间(第 $level 层，${workshop.length} 行)',
+            ok: ok,
+            note: ok ? null : haltNote,
+          ));
+          if (!ok) {
+            halted = true;
+            break;
+          }
+          settle(workshop);
+        }
+        final subcontract = atLevel
             .where(
               (group) =>
                   !_tableIssueTarget(group).viaWorkshop &&
-                  _draftRoute(group) == route,
+                  _draftRoute(group) == MaterialSupplyRoute.subcontract,
             )
             .toList(growable: false);
-        if (batch.isEmpty) continue;
-        final view = await _notifyRoute(
-          route,
-          onlyGroupKeys: batch.map((group) => group.key).toSet(),
-          qtyByActionGroupKey: {
-            for (final group in batch)
-              ?group.representative.actionGroupKey: _qty(pending[group]!),
-          },
-          silent: true,
-          allowExtra: _canOverSupply,
-        );
-        final ok = view != null;
-        steps.add((
-          label: '${route.label == "采购" ? "下达采购" : "下达委外"}(${batch.length} 行)',
-          ok: ok,
-          note: ok ? null : '已停在这一步，后面的段没有提交',
-        ));
-        if (!ok) break;
-        done.addAll(batch.map((group) => group.key));
+        if (subcontract.isNotEmpty) {
+          final ok = await _notifyMaterialTableBatch(
+            MaterialSupplyRoute.subcontract,
+            subcontract,
+            pending,
+          );
+          steps.add((
+            label: '下达委外(第 $level 层，${subcontract.length} 行)',
+            ok: ok,
+            note: ok ? null : haltNote,
+          ));
+          if (!ok) {
+            halted = true;
+            break;
+          }
+          settle(subcontract);
+        }
       }
+      if (!halted) {
+        final buy = pending.keys
+            .where(
+              (group) =>
+                  !_tableIssueTarget(group).viaWorkshop &&
+                  _draftRoute(group) == MaterialSupplyRoute.buy,
+            )
+            .toList(growable: false);
+        if (buy.isNotEmpty) {
+          final ok = await _notifyMaterialTableBatch(
+            MaterialSupplyRoute.buy,
+            buy,
+            pending,
+          );
+          steps.add((
+            label: '下达采购(${buy.length} 行)',
+            ok: ok,
+            note: ok ? null : haltNote,
+          ));
+          if (ok) settle(buy);
+        }
+      }
+    } finally {
+      _tableSubmitting = false;
     }
 
     if (!mounted) return;
     // 成功下达的行：追加格回 0、勾选撤掉；失败的保留，让人原地重试。
     setState(() {
+      if (steps.every((step) => step.ok)) {
+        _selectedMaterialGroupKeys.removeAll(skipped);
+      }
       for (final key in done) {
         _tableAppendQtyControllers[key]?.text = '0';
         _tableSeededQtyTexts['APPEND|$key'] = '0';
         _selectedMaterialGroupKeys.remove(key);
         _tableAutoSelectedKeys.remove(key);
         _tableUserDeselectedKeys.remove(key);
-        // 已经落库的量必须从「用户亲手填的数」里摘掉：服务端那一侧是**加进**
-        // 计划产出量，留着它下一次重算就把刚下达的量再加一遍；而且
-        // _hasUnsubmittedMaterialTableInput 会永远为真，45 秒轮询再也不跑。
-        // 注意两套键空间：done 装的是操作组键，这张表按物料行 id 记。
-        final typedKey = _analysisIndexes(
-          analysis,
-        ).groupsByKey[key]?.representative.materialLineId;
-        if (typedKey != null) _tableUserTypedQty.remove(typedKey);
+        // 下单格里用户填的数已经落库：把它交还给系统(记成当前系统预填值)，紧接着的
+        // 回填就会换成新快照的值。不交还的话这一格永远算「有未提交的手填」，
+        // 45 秒轮询再也不跑。
+        final order = _tableOrderQtyControllers[key];
+        if (order != null) _tableSeededQtyTexts['ORDER|$key'] = order.text;
       }
       // 刚落库的那批已经进了权威快照，上一份模拟快照连同它派生的预填一并作废；
-      // 没下成的行填的数还在，按权威快照就地重估。
-      _tableCascadePreview = null;
-      _tableCascadePreviewTyped = const {};
-      _tableCascadeGeneration++;
-      _recomputeTableEstimates();
+      // 没下成的行填的数还在，按权威快照就地重估，并且只在这时才补一次服务端重算。
+      _invalidateMaterialTableCascadePreview();
+      _reseedMaterialTableQtyInputs();
       // 可调拨量随下达变化，下次进主表重取。
       _tableTransferableInScope = null;
     });
     _reportMaterialTableSubmit(steps, blocked);
+  }
+
+  /// 车间段的一层：顶层自制走 planDrafts、其余候选走 candidateInputs，一次 issue-plans。
+  ///
+  /// 顶层自制与其它自制行走的是**两条不同的通道**：服务端
+  /// candidateRoutesByMaterialLine 明确把 ROOT_SUPPLY 排除在候选之外(除非它
+  /// 确认为委外)，顶层产品行本身就是排产对象，要按 analysisLineId 走 planDrafts。
+  /// 当成候选按 materialLineId 提交的话服务端解析不出候选、整批失败。
+  Future<bool> _issueMaterialTableWorkshopBatch(
+    List<_MaterialGroup> batch,
+    Map<_MaterialGroup, double> pending,
+  ) {
+    final inputs = <_BucketCandidatePlanInput>[];
+    final drafts = <_BucketPlanDraft>[];
+    for (final group in batch) {
+      // 锚点(顶层 = 产品行自己)已无剩余需求时，本次填的全是追加的公共备货产出。
+      // 自制行直接按锚点产品判(服务端同一判据 canSchedule / canIssueSurplus)，不经
+      // 估算值——估算值在分段提交期间是清空的，别的时候也可能还带着父行的比例。
+      final anchor = _tableIssuedMakeAnchorOf(group);
+      final publicSurplusOnly = anchor != null
+          ? !anchor.canSchedule && anchor.canIssueSurplus
+          : _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001;
+      final rootMakeLineId = _tableRootMakePlanLineId(group);
+      if (rootMakeLineId != null) {
+        drafts.add(
+          _BucketPlanDraft(
+            analysisLineId: rootMakeLineId,
+            qty: pending[group]!,
+            departmentId: _tableWorkshopFor(group).id,
+            workshopName: _tableWorkshopFor(group).name,
+            workerId: _tableWorkerFor(group).id,
+            publicSurplusOnly: publicSurplusOnly,
+          ),
+        );
+        continue;
+      }
+      inputs.add(
+        _BucketCandidatePlanInput(
+          materialLineId: group.representative.materialLineId,
+          qty: pending[group]!,
+          departmentId: _tableWorkshopFor(group).id,
+          workshopName: _tableWorkshopFor(group).name,
+          workerId: _tableWorkerFor(group).id,
+          publicSurplusOnly: publicSurplusOnly,
+        ),
+      );
+    }
+    return _issueWorkshopPlans(
+      candidateInputs: inputs,
+      planDrafts: drafts,
+      silent: true,
+    );
+  }
+
+  /// 外发段的一批：采购 / 直接外发委外各走既有的 _notifyRoute 链路(裁决 / 分块 /
+  /// 幂等 / 409 恢复都在那里)，成功与否以它返回的新快照为准。
+  Future<bool> _notifyMaterialTableBatch(
+    MaterialSupplyRoute route,
+    List<_MaterialGroup> batch,
+    Map<_MaterialGroup, double> pending,
+  ) async {
+    final view = await _notifyRoute(
+      route,
+      onlyGroupKeys: batch.map((group) => group.key).toSet(),
+      qtyByActionGroupKey: {
+        for (final group in batch)
+          ?group.representative.actionGroupKey: _qty(pending[group]!),
+      },
+      silent: true,
+      allowExtra: _canOverSupply,
+    );
+    return view != null;
   }
 
   Future<bool> _confirmMaterialTableSubmit(
@@ -3731,7 +3929,8 @@ abstract class _MaterialAnalysisMaterialTableState
                   '(折叠起来了，或被表头筛选挡住了)，本次不提交。',
             ],
             '',
-            '三条下达链是分段提交的，中途失败会停下并告诉你停在哪一步。',
+            '按层级父先子后分段提交(同一层先车间再委外，采购最后一次)，'
+                '中途失败会停下并告诉你停在哪一步。',
           ].join('\n'),
         ),
       ),
@@ -4522,10 +4721,15 @@ abstract class _MaterialAnalysisMaterialTableState
     ),
   );
 
-  String? _supplyOperationType(String? actionId) => _analysis?.supplyActions
-      .where((action) => action.actionId == actionId)
-      .firstOrNull
-      ?.operationType;
+  MaterialAnalysisSupplyAction? _supplyActionOf(String? actionId) =>
+      actionId == null
+      ? null
+      : _analysis?.supplyActions
+            .where((action) => action.actionId == actionId)
+            .firstOrNull;
+
+  String? _supplyOperationType(String? actionId) =>
+      _supplyActionOf(actionId)?.operationType;
 
   bool _isSharedFutureClaimAction(String? actionId) =>
       _supplyOperationType(actionId) == 'SHARED_FUTURE_CLAIM';

@@ -288,7 +288,7 @@ abstract class _MaterialAnalysisChildCascadeState
     for (final seed in seeds) {
       final resolved = _resolveCascadeAnchor(seed, view, indexes);
       if (resolved == null) continue;
-      anchors[seed] = (parentId: resolved, order: anchors.length);
+      anchors[seed] = (parentId: resolved.parentId, order: anchors.length);
     }
     // 别的种子的展开起点：撞上就跳过——那一行是它自己那棵树的树顶，本次按
     // 它在分桶页填的数量单独下达，不在祖先树里重复列出。
@@ -403,19 +403,23 @@ abstract class _MaterialAnalysisChildCascadeState
     return nodes;
   }
 
-  /// 种子 → 展开起点（子树父节点的物料行 id；null = 顶层产品且无根供给行）。
-  /// 返回 null 表示这颗种子在 [view] 里解析不出来。
-  String? _resolveCascadeAnchor(
+  /// 种子 → 展开起点。`parentId` = 子树父节点的物料行 id；`parentId == null` =
+  /// 顶层产品且快照里没有它的根供给行, 树顶回退到产品行本身(第 1 层子件按产品作用域
+  /// 展开)。整个返回 null 才表示这颗种子在 [view] 里解析不出来。
+  ///
+  /// 2026-09-22 之前两种情况都返回 null, 没有根供给行的产品被当成「解析不出来」整颗
+  /// 跳过——三个桶表改只读、下达一律进本页后, 这类产品就再也进不了下单页(改写整页
+  /// 用例时抓出来的)。
+  ({String? parentId})? _resolveCascadeAnchor(
     _ChildCascadeSeed seed,
     ProductionMaterialAnalysisView view,
     _MaterialAnalysisIndexes indexes,
   ) {
     final materialLineId = seed.materialLineId;
     if (materialLineId != null) {
-      return indexes
-          .groupsByLine[materialLineId]
-          ?.representative
-          .materialLineId;
+      final line =
+          indexes.groupsByLine[materialLineId]?.representative.materialLineId;
+      return line == null ? null : (parentId: line);
     }
     final analysisLineId = seed.analysisLineId;
     final product = analysisLineId == null
@@ -425,9 +429,10 @@ abstract class _MaterialAnalysisChildCascadeState
     if (_isEmbeddedMakeChildProduct(product)) {
       // 锚点子件不展开自己的 BOM（ADR-071 §四）：它的料仍留在原树的来源
       // 节点下，展开起点必须回到那个节点。
-      return indexes
+      final source = indexes
           .materialsByAnchorProduct[product.analysisLineId]
           ?.materialLineId;
+      return source == null ? null : (parentId: source);
     }
     final rootId = product.rootMaterialLineId;
     final root = rootId == null
@@ -440,7 +445,7 @@ abstract class _MaterialAnalysisChildCascadeState
                     material.isRootSupply,
               )
               .firstOrNull;
-    return root?.materialLineId;
+    return (parentId: root?.materialLineId);
   }
 
   /// 展开结果 → 可提交行：同一提交单元（actionGroupKey）合并到第一处，其余

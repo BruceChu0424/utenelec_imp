@@ -620,6 +620,35 @@ void main() {
     );
   });
 
+  testWidgets('已建前置自制任务且多下过的委外子件：按锚点计划算已下达与覆盖, 父件追加时不再被算成还缺', (tester) async {
+    // 2026-09-22 用户实机：顶层追加后下单 409「当前分析需求已全部转入生产计划」——
+    // 子层里一颗要先自制的委外件之前多下了(需求 3000 的锚点排了 4000), 主表按发外申请
+    // 3000 当「已下达」, 父件追加就把它算成还缺、送去 ARRANGE 一段, 服务端按锚点判它排满。
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: _withOverIssuedAnchoredSubcontractChild,
+    );
+    // 累计已下单按锚点计划 1400(不是发外申请 1000), 追加格预填 0。
+    expect(_orderQty('m-vc'), findsNothing);
+    expect(_issuedTooltip('1400'), findsOneWidget);
+    expect(_qtyText(tester, _appendQty('m-vc')), '0');
+
+    // 父件追加 600 → 子件需求 1000 → 1600, 锚点 1400 + 现货 200 全盖住：追加格保持 0、不勾。
+    await tester.enterText(_appendQty('m-v'), '600');
+    await tester.pump();
+    expect(_qtyText(tester, _appendQty('m-vc')), '0');
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-vc'), isFalse);
+    // 追加 1000 → 需求 2000, 才缺 400。
+    await tester.enterText(_appendQty('m-v'), '1000');
+    await tester.pump();
+    expect(_qtyText(tester, _appendQty('m-vc')), '400');
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-vc'), isTrue);
+    await _settlePreview(tester);
+  });
+
   testWidgets('顶层行不再是一排横杠：调拨按钮、下单数量、还缺数量都在', (tester) async {
     await _pump(tester);
     // 产品行直接承载 ROOT_SUPPLY(V478)。原来 _tableEditableGroup 对产品行一律
@@ -1094,10 +1123,16 @@ Future<void> _pump(
             final appended = switch (line) {
               'm-qc1' => typed['m-q'],
               'm-rc' => typed['m-r'],
+              // 多下过的委外子件：锚点计划 1400 + 现货 200 盖住 1600。
+              'm-vc' => typed['m-v'],
               _ => null,
             };
             if (appended == null) continue;
-            final covered = line == 'm-qc1' ? 1000.0 : 2600.0;
+            final covered = switch (line) {
+              'm-qc1' => 1000.0,
+              'm-rc' => 2600.0,
+              _ => 1600.0,
+            };
             final required = 1000 + appended;
             final residual = required - covered;
             material['requiredQty'] = required;
@@ -1105,6 +1140,20 @@ Future<void> _pump(
                 ? residual
                 : 0.0;
             material['netShortageQty'] = residual > 0 ? residual : 0.0;
+          }
+          // 服务端「锚点配额随父件长大」：多下过的委外子件的前置自制锚点需求 = 物料
+          // 需求 − 现货 200, 剩余可排量 = 需求 − 已排 1400(封顶 0)。
+          final appendedV = typed['m-v'];
+          if (appendedV != null) {
+            for (final raw in (scaled['products'] as List)) {
+              final product = raw as Map<String, dynamic>;
+              if (product['analysisLineId'] != 'anchor-vc') continue;
+              final requested = 800 + appendedV;
+              final remaining = requested - 1400;
+              product['requestedQty'] = requested;
+              product['remainingQty'] = remaining > 0 ? remaining : 0.0;
+              product['canSchedule'] = remaining > 0;
+            }
           }
           result = scaled;
         } else if (request.path.endsWith('/issue-plans')) {
@@ -1387,6 +1436,91 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
     },
   ],
 };
+
+/// 已排满的自制父件(锚点 1000/1000) → 已建前置自制任务且**多下过**的委外子件(锚点需求 1000、
+/// 计划 1400, 发外申请 1000) → 它的自制子件(没下过)。父件追加时子件按锚点计划 1400 算覆盖。
+Map<String, dynamic> _withOverIssuedAnchoredSubcontractChild(
+  Map<String, dynamic> data,
+) {
+  (data['flatMaterials'] as List)
+    ..add(
+      _material(
+        line: 'm-v',
+        name: '已排满的自制父件',
+        confirmed: 'MAKE',
+        netShortageQty: 0,
+        stockQty: 0,
+        planAnchorAnalysisLineId: 'anchor-v',
+      ),
+    )
+    ..add(
+      _material(
+        line: 'm-vc',
+        name: '多下过的委外子件',
+        confirmed: 'SUBCONTRACT',
+        netShortageQty: 0,
+        level: 2,
+        parentLine: 'm-v',
+        planAnchorAnalysisLineId: 'anchor-vc',
+        downstream: [
+          {
+            'actionId': 'act-vc',
+            'route': 'SUBCONTRACT',
+            'status': 'IN_PROGRESS',
+            'documentNo': 'SC-0004',
+            'allocatedQty': 1000,
+          },
+        ],
+      ),
+    )
+    ..add(
+      _material(
+        line: 'm-vcc',
+        name: '委外子件的自制子件',
+        confirmed: 'MAKE',
+        netShortageQty: 800,
+        level: 3,
+        parentLine: 'm-vc',
+      ),
+    );
+  (data['allowedActions'] as List).add('GENERATE_PLAN');
+  (data['products'] as List).addAll([
+    {
+      'analysisLineId': 'anchor-v',
+      'sourceType': 'MAKE_COMPONENT',
+      'parentAnalysisLineId': 'product-1',
+      'goodsId': 'g-m-v',
+      'goodsCode': 'M-m-v',
+      'goodsName': '已排满的自制父件',
+      'requestedQty': 1000,
+      'submittedQty': 0,
+      'approvedQty': 1000,
+      'remainingQty': 0,
+      'issuedPlanQty': 1000,
+      'canSchedule': false,
+      'canIssueSurplus': true,
+      'unitName': '个',
+    },
+    {
+      'analysisLineId': 'anchor-vc',
+      'sourceType': 'SUBCONTRACT_MAKE',
+      'parentAnalysisLineId': 'product-1',
+      'goodsId': 'g-m-vc',
+      'goodsCode': 'M-m-vc',
+      'goodsName': '多下过的委外子件',
+      // 锚点需求 = 物料需求 1000 − 本批分到的现货 200; 计划 1400 = 多下了 600。
+      'requestedQty': 800,
+      'submittedQty': 0,
+      'approvedQty': 800,
+      'remainingQty': 0,
+      'issuedPlanQty': 1400,
+      'canSchedule': false,
+      'canIssueSurplus': true,
+      'unitName': '个',
+    },
+  ]);
+  return data;
+}
 
 /// 一个「要先自制目标件再发外」的委外件(带一个自制子件, 不是 V581 单一子件件), 没下过单。
 Map<String, dynamic> _withPreparationSubcontract(Map<String, dynamic> data) {

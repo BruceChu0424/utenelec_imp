@@ -2102,10 +2102,17 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 公共备货份。一行只可能是其中一种，不会同时成立。
   double _tableGroupIssuedQty(_MaterialGroup group) {
     final route = _draftRoute(group);
-    if (route == MaterialSupplyRoute.make) {
+    // 走车间通道的行(自制、要先自制目标件的委外)按锚点产品的计划总量：要先自制的委外
+    // 建过前置自制任务(SUBCONTRACT_MAKE 锚点)后, 它「已下达」的是那张计划, 不是后面
+    // 发外的委外申请——按申请明细算会把计划多下的那部分(3000 需求下了 4000)看丢,
+    // 父件一追加就把它算成还缺、再送一段 ARRANGE 吃 409(2026-09-22 用户实机
+    // 「有些子层级之前一次多下了, 这次就是不需要下」)。没建过锚点的委外照旧按申请明细。
+    if (_tableUsesMakeAnchor(group)) {
       final anchor = _tableMakeAnchorOf(group);
-      if (anchor == null) return 0;
-      return anchor.issuedPlanQty * _tableAnchorUnitRate(group, anchor);
+      if (anchor != null) {
+        return anchor.issuedPlanQty * _tableAnchorUnitRate(group, anchor);
+      }
+      if (route == MaterialSupplyRoute.make) return 0;
     }
     var ordered = 0.0;
     for (final path in group.paths) {
@@ -2178,15 +2185,23 @@ abstract class _MaterialAnalysisMaterialTableState
     return previewed ?? _analysisIndexes(analysis).productsById[anchorId];
   }
 
-  /// 已下过单的自制行(含顶层)的锚点产品；不是这类行返回 null。
+  /// 已下过单的车间通道行(自制含顶层、要先自制目标件的委外)的锚点产品；不是这类行
+  /// 返回 null。
   ProductionMaterialAnalysisProduct? _tableIssuedMakeAnchorOf(
     _MaterialGroup group, {
     bool authoritative = false,
   }) {
-    if (_draftRoute(group) != MaterialSupplyRoute.make) return null;
+    if (!_tableUsesMakeAnchor(group)) return null;
     final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
     return anchor != null && anchor.issuedPlanQty > 0.0001 ? anchor : null;
   }
+
+  /// 这一行的「已下达 / 还需安排 / 能不能再追加」是不是按计划锚点判：自制行与要先自制
+  /// 目标件的委外行(它们的下达都是 issue-plans 出计划, 锚点产品才是事实源)。与级联页
+  /// `preparationAnchor` 同一口径。
+  bool _tableUsesMakeAnchor(_MaterialGroup group) =>
+      _draftRoute(group) == MaterialSupplyRoute.make ||
+      _tableSubcontractNeedsPreparation(group);
 
   /// 这一行下过单没有(下过 = 下单数量列锁死、改填追加下单列)。
   bool _tableGroupIssued(_MaterialGroup group) =>
@@ -3169,6 +3184,13 @@ abstract class _MaterialAnalysisMaterialTableState
         !issuedAnchor.canSchedule &&
         !issuedAnchor.canIssueSurplus) {
       return '这一行的生产计划已排满，当前不能再追加公共备货产出';
+    }
+    // 已建前置自制任务的委外行只能经 ARRANGE 段追加(notify 整批接管会再建一次子件
+    // 任务)：没有「下达车间」权限就不能在这里追加。
+    if (issuedAnchor != null &&
+        _draftRoute(group) == MaterialSupplyRoute.subcontract &&
+        !_canGenerate) {
+      return '这一行已建前置自制任务，再追加要「下达车间」权限，请找管理员开通';
     }
     // 服务端会拒的形态在这里就拦掉，别让人勾了、填了数、点了下达才吃 400。
     // 判据复用既有权威谓词的同名分支，不另造一套。

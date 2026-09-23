@@ -16,14 +16,15 @@ import 'production_finished_inbound_task_count_provider.dart';
 import 'warehouse_quality_result_count_provider.dart';
 import 'warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart'
-    show warehouseSubcontractOutboundCountProvider;
+    show warehouseSubcontractOutboundTaskCountsProvider;
 
 /// 失效仓库任务中心的全部计数源（出库/入库/领料/品质结果 + 分来源预计到货）。
 /// 在写操作成功返回后调用；各 provider 按权限自卫，调用方无需按域挑拣。
 void invalidateWarehouseTaskCounts(WidgetRef ref) {
-  // 出库：销售待出库/已出库分组计数(待办数由它派生, 只失效源头) + 委外待出仓。
+  // 出库：销售待出库/已出库分组计数(待办数由它派生, 只失效源头) + 委外待出仓
+  // 红黄两数(同样一次请求派生两枚, 只失效源头)。
   ref.invalidate(warehouseSalesOutboundCountsProvider);
-  ref.invalidate(warehouseSubcontractOutboundCountProvider);
+  ref.invalidate(warehouseSubcontractOutboundTaskCountsProvider);
   // 入库：预计到货（总量 + 采购/委外分来源）+ 到货异常 + 产成品待点收。
   ref.invalidate(warehouseInboundExpectationCountProvider);
   ref.invalidate(warehouseInboundExpectationTypeCountsProvider);

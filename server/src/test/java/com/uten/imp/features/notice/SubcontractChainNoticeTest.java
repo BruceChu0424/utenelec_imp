@@ -252,7 +252,7 @@ class SubcontractChainNoticeTest {
         verify(notice).publishForUser(
                 eq(plannerId),
                 eq("待补产委外缺口：WO-SHORT-001"),
-                contains("缺口 4(基本单位)"),
+                contains("缺口 4 需按自制链补产"),
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq(taskRoute),
@@ -428,7 +428,7 @@ class SubcontractChainNoticeTest {
         verify(notice).publishForUser(
                 eq(analysisMakerUserId),
                 eq("委外供给已出仓：SO-OUT-001"),
-                contains("等待委外加工、回厂收货和 IQC"),
+                contains("等待委外加工、回厂收货和来料质检"),
                 eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(),
                 eq("/production/material-analyses/" + analysisId + "/summary"),
@@ -585,7 +585,7 @@ class SubcontractChainNoticeTest {
                 eq(ChainNoticeService.EVENT_IQC_RESOLVED));
         verify(notice).publishForUser(
                 eq(orderMakerUserId),
-                eq("委外回厂 IQC 已结案：WO-IQC-001"),
+                eq("委外回厂来料质检已结案：WO-IQC-001"),
                 argThat(text -> text.contains("同时存在不合格量")
                         && text.contains("仓库确认后才进入可用库存")
                         && !text.contains("不应泄露的委外商")
@@ -596,12 +596,162 @@ class SubcontractChainNoticeTest {
                 eq(ChainNoticeService.EVENT_IQC_RESOLVED));
         verify(notice).publishForUser(
                 eq(analysisMakerUserId),
-                eq("委外供给 IQC 已结案：SIN-001"),
+                eq("委外供给来料质检已结案：SIN-001"),
                 contains("复核不合格量"),
                 eq(ChainNoticeService.TYPE_URGENT),
                 anyString(),
                 eq("/production/material-analyses/" + analysisId + "/summary"),
                 eq(ChainNoticeService.EVENT_IQC_RESOLVED));
+    }
+
+    /** ADR-103 路线 B: 发出去的是子件、回来的是委外件, 通知要把两者分开说, 且正文不带代号。 */
+    @Test
+    void componentReadySaysWhichGoodsLeavesAndWhichComesBackWithoutCodeIdentifiers() {
+        UUID planItemId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID makerEmployeeId = UUID.randomUUID();
+        UUID makerUserId = UUID.randomUUID();
+        UUID warehouseUserId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        Map<String, Object> row = new java.util.HashMap<>();
+        row.put("plan_id", planId);
+        row.put("order_id", orderId);
+        row.put("order_bill_no", "WO-READY-002");
+        row.put("maker_id", makerEmployeeId);
+        row.put("planned_qty", new BigDecimal("10"));
+        row.put("prepared_qty", new BigDecimal("10"));
+        row.put("issued_qty", BigDecimal.ZERO);
+        row.put("goods_code", "RM-001");
+        row.put("goods_name", "子件料");
+        row.put("flow_mode", "COMPONENT_OUTBOUND");
+        row.put("parent_goods_code", "FG-100");
+        row.put("parent_goods_name", "委外成品");
+        row.put("draft_qty", new BigDecimal("4"));
+        when(jdbc.queryForList(
+                contains("item.preparation_status = 'READY_OUTBOUND'"),
+                eq(planItemId))).thenReturn(List.of(row));
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree(id)"),
+                eq(UUID.class),
+                eq("SUB_WH"))).thenReturn(List.of(warehouseUserId));
+        UserAccount warehouseUser = activeUser(warehouseUserId);
+        UserAccount maker = activeUser(makerUserId);
+        when(users.findById(warehouseUserId)).thenReturn(Optional.of(warehouseUser));
+        when(users.findByEmployeeId(makerEmployeeId)).thenReturn(Optional.of(maker));
+        when(users.findById(makerUserId)).thenReturn(Optional.of(maker));
+        when(permissions.permsOf(warehouseUser)).thenReturn(Set.of(
+                "notice:read", "subcontract_outbound:view", "subcontract_outbound:execute"));
+        ChainNoticeService service = service(
+                notice, users, permissions, jdbc,
+                mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_READY,
+                planItemId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(warehouseUserId),
+                eq("待发委外子件出仓：WO-READY-002"),
+                argThat(content -> content.contains("要发出去加工的是子件 RM-001 子件料")
+                        && content.contains("加工完交回的是 FG-100 委外成品")
+                        && content.contains("当前可发 4")
+                        && !content.contains("allowedActions")
+                        && !content.contains("基本单位")),
+                eq(ChainNoticeService.TYPE_TASK),
+                anyString(),
+                eq("/warehouse/subcontract-outbound/" + planId),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_READY));
+        verify(notice).publishForUser(
+                eq(makerUserId),
+                eq("委外子件已可发料：WO-READY-002"),
+                argThat(content -> content.contains("子件 RM-001 子件料")
+                        && content.contains("加工完交回的是 FG-100 委外成品")
+                        && !content.contains("allowedActions")
+                        && !content.contains("基本单位")),
+                eq(ChainNoticeService.TYPE_WORKFLOW),
+                anyString(),
+                eq("/subcontract/orders/" + orderId),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_READY));
+    }
+
+    @Test
+    void componentOutboundCompletedTellsWarehouseToRegisterTheParentOnReturn() {
+        UUID issueId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID orderMakerEmployeeId = UUID.randomUUID();
+        UUID orderMakerUserId = UUID.randomUUID();
+        UUID warehouseUserId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        Map<String, Object> row = new java.util.HashMap<>();
+        row.put("order_id", orderId);
+        row.put("order_bill_no", "WO-OUT-002");
+        row.put("maker_id", orderMakerEmployeeId);
+        row.put("issue_bill_no", "SO-OUT-002");
+        row.put("sends_component", Boolean.TRUE);
+        row.put("issued_base_qty", new BigDecimal("7"));
+        row.put("first_goods", "RM-001 子件料");
+        row.put("goods_count", 1L);
+        row.put("first_parent_goods", "FG-100 委外成品");
+        row.put("parent_goods_count", 1L);
+        when(jdbc.queryForList(
+                contains("SUM(issue_item.qty"),
+                eq(issueId))).thenReturn(List.of(row));
+        when(jdbc.queryForList(
+                argThat(sql -> sql.contains("FROM subcontract_material_issues issue")
+                        && sql.contains("preplan_supply_action_allocations allocation")),
+                eq(issueId))).thenReturn(List.of());
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree(id)"),
+                eq(UUID.class),
+                eq("SUB_WH"))).thenReturn(List.of(warehouseUserId));
+        UserAccount orderMaker = activeUser(orderMakerUserId);
+        UserAccount warehouseUser = activeUser(warehouseUserId);
+        when(users.findByEmployeeId(orderMakerEmployeeId))
+                .thenReturn(Optional.of(orderMaker));
+        when(users.findById(orderMakerUserId))
+                .thenReturn(Optional.of(orderMaker));
+        when(users.findById(warehouseUserId))
+                .thenReturn(Optional.of(warehouseUser));
+        when(permissions.permsOf(warehouseUser))
+                .thenReturn(Set.of("notice:read", "warehouse_inbound:view"));
+        ChainNoticeService service = service(
+                notice, users, permissions, jdbc,
+                mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_COMPLETED,
+                issueId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(orderMakerUserId),
+                eq("委外子件已发出：WO-OUT-002"),
+                argThat(content -> content.contains("发出去加工的子件 RM-001 子件料 本批已实际出仓 7")
+                        && content.contains("回厂要登记的是委外件 FG-100 委外成品")
+                        && !content.contains("IQC")
+                        && !content.contains("基本单位")),
+                eq(ChainNoticeService.TYPE_WORKFLOW),
+                anyString(),
+                eq("/subcontract/orders/" + orderId),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_COMPLETED));
+        verify(notice).publishForUser(
+                eq(warehouseUserId),
+                eq("委外预计回厂：WO-OUT-002"),
+                argThat(content -> content.contains("回厂要登记的是委外件 FG-100 委外成品")
+                        && content.contains("按委外件 FG-100 委外成品登记实际回厂")
+                        && !content.contains("基本单位")),
+                eq(ChainNoticeService.TYPE_TASK),
+                anyString(),
+                eq("/warehouse/inbound/expectations"),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_COMPLETED));
     }
 
     private static ChainNoticeService service(

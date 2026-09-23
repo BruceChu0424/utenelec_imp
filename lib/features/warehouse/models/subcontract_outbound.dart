@@ -54,6 +54,20 @@ enum SubcontractPreparationStatus {
   }
 }
 
+/// 出仓任务列表行的阶段(与服务端 tasks() 的状态桶同口径, 文案由页面按 l10n 映射)。
+///
+/// 判定顺序: 有草稿 → [draftPicking]; 服务端下发 issuableTotal 时按它:
+/// > 0 → [readyOutbound], <= 0 且有行在等子件 → [waitingComponent];
+/// 老服务端(字段缺失)回落到 ready/blocked/waitingPreparation 的纯计划口径。
+enum OutboundTaskStage {
+  draftPicking,
+  readyOutbound,
+  waitingComponent,
+  blockedPreparation,
+  waitingPreparation,
+  pendingDraft,
+}
+
 /// 待出仓任务列表行（一张 OPEN 发料计划 = 一个任务）。
 class OutboundTask {
   const OutboundTask({
@@ -72,6 +86,8 @@ class OutboundTask {
     this.readyLineCount = 0,
     this.waitingPreparationCount = 0,
     this.blockedLineCount = 0,
+    this.waitingComponentLineCount = 0,
+    this.issuableTotal,
   });
 
   final String planId;
@@ -90,12 +106,37 @@ class OutboundTask {
   final int waitingPreparationCount;
   final int blockedLineCount;
 
-  String get statusLabel {
-    if (draftId != null) return '目标件出仓草稿待拣货';
-    if (readyLineCount > 0 || readyOutboundQty > 0) return '目标件已备齐，待出仓';
-    if (blockedLineCount > 0) return '前置自制受阻';
-    if (waitingPreparationCount > 0) return '等待前置自制';
-    return '待生成目标件出仓单';
+  /// 无草稿且可发 0 却仍有余量的行数(单一子件直发, 子件还没到货)。ADR-103 §2.4。
+  final int waitingComponentLineCount;
+
+  /// 服务端算好的可发合计 = 各行 min(计划余量, 该仓合格可动用量) 之和;
+  /// null = 老服务端没下发, 回落纯计划口径。
+  final double? issuableTotal;
+
+  OutboundTaskStage get stage {
+    if (draftId != null) return OutboundTaskStage.draftPicking;
+    if (issuableTotal case final total?) {
+      if (total > 0) return OutboundTaskStage.readyOutbound;
+      if (waitingComponentLineCount > 0) {
+        return OutboundTaskStage.waitingComponent;
+      }
+    }
+    if (readyLineCount > 0 || readyOutboundQty > 0) {
+      return OutboundTaskStage.readyOutbound;
+    }
+    if (blockedLineCount > 0) return OutboundTaskStage.blockedPreparation;
+    if (waitingPreparationCount > 0) {
+      return OutboundTaskStage.waitingPreparation;
+    }
+    return OutboundTaskStage.pendingDraft;
+  }
+
+  /// 列表可勾选进批量出库的行: 有草稿, 或此刻真有可发量。
+  /// 服务端明说可发 0(等子件到货)的行勾了也只会撞 409, 直接不给勾。
+  bool get selectable {
+    if (draftId != null) return true;
+    if (issuableTotal case final total?) return total > 0;
+    return readyOutboundQty > 0 || readyLineCount > 0;
   }
 
   factory OutboundTask.fromJson(Map<String, dynamic> json) => OutboundTask(
@@ -118,6 +159,9 @@ class OutboundTask {
     waitingPreparationCount:
         (json['waitingPreparationCount'] as num?)?.toInt() ?? 0,
     blockedLineCount: (json['blockedLineCount'] as num?)?.toInt() ?? 0,
+    waitingComponentLineCount:
+        (json['waitingComponentLineCount'] as num?)?.toInt() ?? 0,
+    issuableTotal: (json['issuableTotal'] as num?)?.toDouble(),
   );
 }
 

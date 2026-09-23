@@ -27,6 +27,7 @@ class WarehouseTaskSegmentSpec {
     required this.value,
     required this.label,
     this.count,
+    this.inProgressCount,
   });
 
   final String value;
@@ -35,6 +36,11 @@ class WarehouseTaskSegmentSpec {
   /// 该分段的**待办**计数（红色徽章口径：0/null 不渲染）；无待办语义的分段
   /// （如「其它入库」这类只有草稿与历史的通用单据段）传 null，不要塞浏览数。
   final int? count;
+
+  /// 该分段的**在办**计数(黄色徽章, 画在红枚左边; 0/null 不渲染)。只在一个大类
+  /// 里同时装着「等仓库动手」和「仓库在等别人」两批活时才传(如「委外出库」的
+  /// 等子件到货任务, ADR-103), 其余分段不传。
+  final int? inProgressCount;
 }
 
 class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
@@ -159,6 +165,7 @@ class _WarehouseTaskCenterScaffoldState
                         // [WarehouseTaskSegmentSpec.count]）：卡面角标就是这些
                         // 分段之和，浏览型分段在这里传 null 而不是换形态。
                         countForm: UtenSegmentCountForm.actionable,
+                        inProgressCount: segment.inProgressCount,
                       ),
                   ],
                   selected: _segment == null ? const <String>{} : {_segment!},

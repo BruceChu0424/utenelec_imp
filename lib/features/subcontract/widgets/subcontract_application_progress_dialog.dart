@@ -5,9 +5,13 @@
 //  - 待生产合成行（SubcontractMakeTask，有子层先自制、未全部通知）：展示车间
 //    进度时间线（等待安排生产 → 生产中 → 已完工入库·待通知委外 → 已通知委外）
 //    与需求/已产/已通知账本；
-//  - 已下达申请行（WAITING_ORDER）：前置生产已完成，展示从申请到入库的
-//    全链路时间线，当前停在「待生成委外订货单」，并提供「查看申请单」深链
-//    （经路由权限与服务端对象门禁）。
+//  - 已下达申请行（WAITING_ORDER）：展示从申请到入库的全链路时间线，并提供
+//    「查看申请单」深链（经路由权限与服务端对象门禁）。步骤按路线生成 (ADR-103)：
+//    路线 A / 普通委外件 = 前置生产完成 → 计划已下达申请 → 待生成委外订货单（当前）
+//    → 财务审核 → 目标件出仓·加工商加工 → 回厂来料质检·入库结案；
+//    路线 B (单一子件直发, display_stage=WAITING_COMPONENT_STOCK / COMPONENT_STOCK_READY)
+//    没有前置生产, 多一步「等子件到货」(锁 = 当前, 顶部横幅说明; 解锁 = 已完成),
+//    「目标件出仓」改「子件出仓」, 账本多一行「子件仓内可动用」。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -75,7 +79,10 @@ class _ProgressDialogBody extends ConsumerWidget {
         : (appTask!.isDocumentGrouped
               ? appTask.goodsSummaryLabel
               : appTask.goodsName);
-    final steps = mt != null ? _makeSteps(mt) : _applicationSteps();
+    final steps = mt != null ? _makeSteps(mt) : _applicationSteps(appTask!);
+    final componentRoute =
+        appTask != null &&
+        (appTask.waitingComponentStock || appTask.componentStockReady);
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s16),
       child: Column(
@@ -172,11 +179,54 @@ class _ProgressDialogBody extends ConsumerWidget {
               ),
             ],
           ] else ...[
+            // ADR-103：路线 B 锁行顶部横幅 (与合成行阻断横幅同样式)。
+            if (appTask!.waitingComponentStock)
+              Semantics(
+                container: true,
+                liveRegion: true,
+                child: Container(
+                  key: const Key('subcontract-order-component-blocked'),
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer.withValues(
+                      alpha: 0.65,
+                    ),
+                    borderRadius: UtenRadius.mdAll,
+                    border: Border.all(
+                      color: theme.colorScheme.error.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.block_rounded, color: theme.colorScheme.error),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Text(
+                          workflowFieldText(
+                            context,
+                          ).subcontractOrderBlockedComponentStock,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onErrorContainer,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             _facts(theme, [
-              if ((appTask!.actionDocument?.number ?? '').isNotEmpty)
+              if ((appTask.actionDocument?.number ?? '').isNotEmpty)
                 ('委外申请号', appTask.actionDocument!.number),
               ('来源计划', appTask.planNo),
               ('待下单量', appTask.quantityText),
+              if (appTask.componentAvailableQty != null)
+                (
+                  '子件仓内可动用',
+                  _qty(appTask.componentAvailableQty!, appTask.unitName),
+                ),
               if ((appTask.needDate ?? '').isNotEmpty)
                 ('需求日期', appTask.needDate!),
             ]),
@@ -192,8 +242,8 @@ class _ProgressDialogBody extends ConsumerWidget {
               theme,
               color: theme.colorScheme.tertiary,
               text:
-                  '生成委外订货单后的进度（财务审核、目标件出仓、加工、回厂 IQC 与入库）'
-                  '在「委外订货与全链路」双击订货单查看。',
+                  '生成委外订货单后的进度（财务审核、${componentRoute ? '子件' : '目标件'}出仓、'
+                  '加工、回厂来料质检与入库）在「委外订货与全链路」双击订货单查看。',
             ),
           ],
           const SizedBox(height: UtenSpacing.s12),
@@ -291,14 +341,28 @@ class _ProgressDialogBody extends ConsumerWidget {
     }
   }
 
-  List<_ProgressStep> _applicationSteps() => const [
-    _ProgressStep('前置生产完成', done: true),
-    _ProgressStep('计划已下达申请', done: true),
-    _ProgressStep('待生成委外订货单', current: true),
-    _ProgressStep('财务审核'),
-    _ProgressStep('目标件出仓·加工商加工'),
-    _ProgressStep('回厂 IQC·入库结案'),
-  ];
+  /// 申请行步骤按路线生成 (ADR-103)：路线 B 没有前置生产，多一步「等子件到货」。
+  List<_ProgressStep> _applicationSteps(OperationsWorkbenchTask task) {
+    if (task.waitingComponentStock || task.componentStockReady) {
+      final ready = task.componentStockReady;
+      return [
+        const _ProgressStep('计划已下达申请', done: true),
+        _ProgressStep('等子件到货', done: ready, current: !ready),
+        _ProgressStep('待生成委外订货单', current: ready),
+        const _ProgressStep('财务审核'),
+        const _ProgressStep('子件出仓·委外商加工'),
+        const _ProgressStep('回厂来料质检·入库结案'),
+      ];
+    }
+    return const [
+      _ProgressStep('前置生产完成', done: true),
+      _ProgressStep('计划已下达申请', done: true),
+      _ProgressStep('待生成委外订货单', current: true),
+      _ProgressStep('财务审核'),
+      _ProgressStep('目标件出仓·加工商加工'),
+      _ProgressStep('回厂来料质检·入库结案'),
+    ];
+  }
 
   String _qty(num value, String? unit) {
     final text = value == value.roundToDouble()

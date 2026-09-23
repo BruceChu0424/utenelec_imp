@@ -2657,6 +2657,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subcontractOrderBlockedCancelled => '생산 작업이 취소되어 외주 주문을 할 수 없습니다.';
 
   @override
+  String get subcontractOrderBlockedComponentStock =>
+      '부품이 아직 입고되지 않아 외주 주문을 할 수 없습니다. 부품이 입고되면 작업 센터가 자동으로 잠금 해제됩니다.';
+
+  @override
   String get subcontractPlanIssuedDate => '계획 지시일';
 
   @override
@@ -3210,6 +3214,100 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundDocumentRemarkHint =>
       'These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.';
+
+  @override
+  String get warehouseSubcontractOutboundStageDraftPicking => '출고 초안 피킹 대기';
+
+  @override
+  String warehouseSubcontractOutboundStageReady(String qty) {
+    return '준비 완료·출고 대기 (출고 가능 $qty)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundStageReadyPlain => '준비 완료·출고 대기';
+
+  @override
+  String get warehouseSubcontractOutboundWaitingComponent => '부품 입고 대기';
+
+  @override
+  String get warehouseSubcontractOutboundStageBlockedPreparation =>
+      '사전 자체 제작 차단됨';
+
+  @override
+  String get warehouseSubcontractOutboundStageWaitingPreparation =>
+      '사전 자체 제작 대기';
+
+  @override
+  String get warehouseSubcontractOutboundStagePendingDraft => '출고 전표 생성 대기';
+
+  @override
+  String get warehouseSubcontractOutboundOpenPicking => '피킹 출고 열기';
+
+  @override
+  String get warehouseSubcontractOutboundBannerComponent =>
+      '부품을 출고하는 외주 품목: 부품이 입고된 후에야 출고 가능 수량이 표시됩니다. 창고는 부품을 출고하고, 외주 업체는 외주 품목을 반환합니다.';
+
+  @override
+  String warehouseSubcontractOutboundWaitingComponentStock(String qty) {
+    return '부품 입고 대기 (창고 가용 $qty)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundSuggestedWarehouse => '권장 출고 창고';
+
+  @override
+  String get warehouseSubcontractOutboundComponentEffects =>
+      '승인 후 부품이 선택한 창고에서 실제 출고되어 외주 업체에 전달됩니다. 가공 후 반환 시 외주 품목으로 등록되며 품질 검사를 거쳐야 정식 입고됩니다.';
+
+  @override
+  String get warehouseSubcontractOutboundComponentNotArrived =>
+      '부품이 아직 입고되지 않아 창고에 하나도 없습니다. 부품이 입고되면 시스템이 자동으로 초안을 보충하고 창고에 알립니다.';
+
+  @override
+  String get warehouseSubcontractOutboundWorkView => '창고 작업 보기';
+
+  @override
+  String get warehouseSubcontractOutboundBannerScope =>
+      '창고 작업 보기에는 가격과 금액이 없으며 외주 업무 편집 기능도 제공하지 않습니다.';
+
+  @override
+  String warehouseSubcontractOutboundBannerDraftPending(String billNo) {
+    return '초안 $billNo 피킹 검토 대기';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundBannerWaitingComponent =>
+      '부품 입고 대기: 부품이 입고되면 시스템이 자동으로 초안을 보충하고 알립니다';
+
+  @override
+  String warehouseSubcontractOutboundBannerIssuable(String qty) {
+    return '출고 가능 $qty';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundFactDraftNo => '출고 초안 번호';
+
+  @override
+  String get warehouseSubcontractOutboundFactLatestIssue => '최근 출고 문서';
+
+  @override
+  String warehouseSubcontractOutboundHistoryTitle(int count) {
+    return '출고 기록 ($count)';
+  }
+
+  @override
+  String warehouseSubcontractOutboundLinesTitle(int count) {
+    return '출고 명세 ($count)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundSaveDraft => '초안 저장';
+
+  @override
+  String get warehouseSubcontractOutboundApprove => '출고 승인';
+
+  @override
+  String get warehouseSubcontractOutboundClosePlan => '출고 중단';
 
   @override
   String get productionBatchTitle => 'Batch production and material request';

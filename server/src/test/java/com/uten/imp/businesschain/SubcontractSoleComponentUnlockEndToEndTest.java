@@ -1,7 +1,8 @@
 package com.uten.imp.businesschain;
 
-import com.uten.imp.application.port.SubcontractOutboundWakePort;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
@@ -31,14 +32,17 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-101 委外「只有一个叶子子件」形态的出仓段真库全链。ADR-085 §五点名的那条用例在仓库里
- * 搜不到，这一段(批准 → 派活 → 分批发料)至今没有任何端到端覆盖，本轮补上。
+ * ADR-101 + ADR-103 委外「只有一个叶子子件」形态(路线 B)的真库全链: 下单前的锁 → 批准派活
+ * → 分批发料。ADR-085 §五点名的那条用例在仓库里搜不到, 这一段至今没有任何端到端覆盖, 本轮补上。
  *
- * <p>覆盖用户口径：子件没到货就不该给仓库派活；子件入库了不管多少都解锁；只能发这么多就先发
- * 这么多，界面要直接看得到可发数量；发完第一批不会被系统自己开的第二张草稿顶回去。
+ * <p>覆盖用户口径 (ADR-103): 子件仓里一件都没有时连委外订货单都建不了 (建单/送审/批准同一把锁);
+ * 子件入库了不管多少都解锁; 只能发这么多就先发这么多, 界面要直接看得到可发数量; 发完第一批不会
+ * 被系统自己开的第二张草稿顶回去; 后续到货由库存内核 (StockService 每笔入库) 自动叫醒, 不靠任何
+ * 入库单据记得去调。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
@@ -66,7 +70,6 @@ class SubcontractSoleComponentUnlockEndToEndTest {
     @Autowired SubcontractMaterialIssueService materialIssues;
     @Autowired SubcontractMaterialPlanService materialPlans;
     @Autowired StockDocService stockDocs;
-    @Autowired org.springframework.transaction.PlatformTransactionManager txManager;
 
     FullChainEndToEndTest fixture;
 
@@ -82,7 +85,7 @@ class SubcontractSoleComponentUnlockEndToEndTest {
     }
 
     @Test
-    void childStockUnlocksWarehouseWorkAndIssuesInBatchesWithAServerSideIssuableQuantity() {
+    void childStockLocksOrderingThenUnlocksWarehouseWorkAndIssuesInBatchesWithAServerSideIssuableQuantity() {
         var w = fixture.seedWorld("sc-sole-component");
         fixture.loginAs(w.superAdminUserId());
         // 委外件 goodsE 挂唯一一条 PER_UNIT 叶子边到采购件 goodsD：每 1 个 goodsE 吃 1 个 goodsD。
@@ -96,7 +99,21 @@ class SubcontractSoleComponentUnlockEndToEndTest {
                 "SELECT fn_subcontract_sole_component_goods(?)", Boolean.class, w.goodsE())),
                 "夹具必须命中「只有一个叶子子件」判据，否则测的是别的形态");
 
-        // ① 订 10 个委外件，允许损耗 10%。子件一件都没有。
+        // ① ADR-103 路线 B 的锁: 子件仓里一件都没有, 连委外订货单都建不了, 文案要说清
+        //    哪张委外件在等哪颗子件、什么时候会自动解锁。
+        ApiException locked = assertThrows(ApiException.class,
+                () -> orders.create(orderRequest(w, "10")),
+                "子件一件都没有时不得建委外订货单 (ADR-103 建单/送审/批准同一把锁)");
+        assertEquals(ErrorCode.CONFLICT, locked.getCode());
+        assertTrue(locked.getMessage().contains("仓里还一件都没有"), locked.getMessage());
+        assertTrue(locked.getMessage().contains("入库后任务中心会自动解锁"), locked.getMessage());
+        assertEquals(0, db.queryForObject(
+                "SELECT COUNT(*) FROM subcontract_order_items WHERE goods_id=?",
+                Integer.class, w.goodsE()), "被锁的建单不能留下半张单");
+
+        // ② 子件到货 6 个(少于订货量)。按用户口径「不管数量多少就解锁」: 这时才能订 10 个委外件,
+        //    允许损耗 10%; 送审、批准同样放行。(此刻还没有委外计划, 入库内核的叫醒是空跑。)
+        receiveChildStock(w, "6");
         UUID orderId = orders.create(orderRequest(w, "10")).getId();
         UUID orderItemId = db.queryForObject(
                 "SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
@@ -106,7 +123,7 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         fixture.approvePendingFinance("SUBCONTRACT", orderId);
         fixture.loginAs(w.superAdminUserId());
 
-        // ② 批准落的是「发子件」的计划行：货品是子件、父件仍是委外件。
+        // ③ 批准落的是「发子件」的计划行：货品是子件、父件仍是委外件。
         UUID planItemId = db.queryForObject("""
                 SELECT id FROM subcontract_material_plan_items
                 WHERE order_item_id=? AND is_deleted=FALSE
@@ -118,19 +135,9 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         assertEquals(w.goodsE(), db.queryForObject(
                 "SELECT parent_goods_id FROM subcontract_material_plan_items WHERE id=?", UUID.class, planItemId));
 
-        // ③ ADR-101 的核心：子件还在采购路上时**不给仓库派活**——不建草稿、不通知。
-        assertEquals(0, draftCount(planItemId),
-                "子件一件都没有时不得生成出仓草稿；此前这里会开一张满量草稿，仓库白跑一趟");
-        OutboundPlanLine idle = outboundLine(planItemId);
-        assertEquals(0, BigDecimal.ZERO.compareTo(idle.issuableQty()),
-                "可发数量必须是确定的 0，不能是 null——null 会让客户端回落成计划余量");
-        assertEquals(0, BigDecimal.ZERO.compareTo(idle.stockAvailableQty()));
-
-        // ④ 子件到货 6 个(少于订货量)。按用户口径「不管数量多少就可以解锁、可以分批发货」。
-        receiveChildStock(w, "6");
-        wakeAfterChildStockIn(w);
-
-        assertEquals(1, draftCount(planItemId), "子件一入库就该自动出现一张能发得出去的草稿");
+        // ④ ADR-101: 批准时子件已有 6 个, 系统按此刻可动用量给仓库开一张发得出去的草稿——
+        //    量按仓里现货截断, 不是整笔计划量 10。
+        assertEquals(1, draftCount(planItemId), "子件有货时批准就该自动出现一张能发得出去的草稿");
         UUID firstDraft = draftId(planItemId);
         assertEquals(0, new BigDecimal("6").compareTo(draftQty(firstDraft)),
                 "草稿量必须按该仓此刻的可动用量截断，不是整笔计划量");
@@ -151,11 +158,11 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         assertEquals(0, draftCount(planItemId),
                 "剩余 4 个还没有料，不该再开一张发不出去的草稿");
 
-        // ⑥ 子件再到 4 个 → 再解锁一次，把剩下的发完。
+        // ⑥ 子件再到 4 个 → 再解锁一次，把剩下的发完。ADR-103: 这里**不手工叫醒**——
+        //    其它入库单审核走 StockService 的入库分支, 库存内核在同一事务里自动叫醒。
         receiveChildStock(w, "4");
-        wakeAfterChildStockIn(w);
         UUID secondDraft = draftId(planItemId);
-        assertNotNull(secondDraft, "后续到货必须能再解锁一批");
+        assertNotNull(secondDraft, "后续到货必须由库存内核自动再解锁一批, 不靠入库单据记得去调");
         assertEquals(0, new BigDecimal("4").compareTo(draftQty(secondDraft)));
         materialIssues.approve(secondDraft);
         assertEquals(0, new BigDecimal("10").compareTo(db.queryForObject(
@@ -217,18 +224,6 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         request.setItems(List.of(line));
         var doc = stockDocs.create(request);
         stockDocs.approve(doc.getId());
-    }
-
-    /**
-     * 唤醒是 {@code MANDATORY} 传播——生产里它跑在「仓库确认 IQC 合格品入库」那个事务内
-     * ({@code ProcurementIqcStockInService.confirmOne} 写完库存之后)。这里用同样的方式把它
-     * 包进一个事务，调的是同一个方法、同一个入参形状。
-     */
-    private void wakeAfterChildStockIn(FullChainEndToEndTest.World w) {
-        new org.springframework.transaction.support.TransactionTemplate(txManager).executeWithoutResult(
-                status -> materialPlans.wakeOutboundAfterStockIn(List.of(
-                        new SubcontractOutboundWakePort.StockedDimension(
-                                w.goodsD(), null, w.warehouseId()))));
     }
 
     private OutboundPlanLine outboundLine(UUID planItemId) {

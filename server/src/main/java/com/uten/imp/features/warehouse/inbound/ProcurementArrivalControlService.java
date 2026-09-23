@@ -2190,11 +2190,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         // 「禁止超量回仓」挡回去。这里把上限压到实际供料量，超出的部分照 ADR-019 落
         // PENDING_FINANCE 到货异常：货不入库、不立应付，转到货异常任务中心等财务。
         // 返修补回(replacement)不压：那是拿已退回的不合格品换回来的，本来就不占新发的料。
+        // ADR-103 §2.5：供料上限只要起作用(<=, 含相等)就按「自带料」措辞。路线 B 子件:委外件
+        // 1:1 全发时供料上限与财务批准剩余量恰好相等, 严格小于会让它永远落到
+        // 「超过财务批准可收量」那句, 财务看不出多出来的是委外商自己的料。
         BigDecimal supplied=subcontractSuppliedCapacity(orderType,row);
         boolean materialBound=false;
         if(supplied!=null){
             BigDecimal materialRemaining=nonNegative(supplied.subtract(zero(row.receivedQty())));
-            if(materialRemaining.compareTo(normal)<0){normal=materialRemaining;materialBound=true;}
+            if(materialRemaining.compareTo(normal)<=0){normal=materialRemaining;materialBound=true;}
         }
         return new ArrivalCapacity(normal,replacement,materialBound);
     }

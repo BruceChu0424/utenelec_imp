@@ -132,6 +132,15 @@ void main() {
     ]);
   });
 
+  test('仓库只登记「等待检查结果」一条(委外出库「等子件到货」不登记)', () {
+    // 出库任务中心「委外出库」的等子件到货任务(ADR-103)只画在分段上: 那些委外单
+    // 已全在委外任务中心的 IN_PROGRESS 黄数里, 仓库卡再数一遍是跨卡双计(与钱流
+    // 不登记同理)。将来谁想给仓库卡补这枚黄, 得先来改这个用例和注册表末尾那一节。
+    expect(inProgressEntriesOfModule(BadgeModule.warehouse), const [
+      InProgressEntry.warehouseQualityWaiting,
+    ]);
+  });
+
   test('全部计数源为 0 时, 容器与总数都为 0(徽章整个不渲染)', () {
     final watch = _watchReturning(0);
     for (final module in BadgeModule.values) {

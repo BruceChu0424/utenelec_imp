@@ -141,7 +141,8 @@ class SubcontractMaterialPlanServiceTest {
         service = new SubcontractMaterialPlanService(
                 em, jdbc, docNumber, issueRepo, issueItemRepo, currentUser,
                 chainNotice, inventoryLock,
-                mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class));
+                mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class),
+                mock(org.springframework.beans.factory.ObjectProvider.class));
     }
 
     @Test
@@ -574,6 +575,72 @@ class SubcontractMaterialPlanServiceTest {
         verify(issueItemRepo, never()).save(any());
         verify(chainNotice, never()).notifySubcontractOutboundReady(any());
         verify(chainNotice, never()).notifySubcontractPrepareShortage(any());
+    }
+
+    /**
+     * ADR-103 路线 B 锁：目标件只有一个叶子子件 (COMPONENT_OUTBOUND) 时, 子件在作业叶仓里
+     * 一件都没有, 送审/批准 (requireNoMakeThenShortage) 与建单/改单 (requireSoleComponentStockAvailable)
+     * 同一把锁 409, 文案大白话逐行点名委外件与子件。
+     */
+    @Test
+    void soleLeafComponentWithoutChildStockLocksSubmitAndApprovalWithPlainMessage() {
+        stageSoleComponentOrder();
+        // 子件一件都没有。
+        onHandForOutbound = BigDecimal.ZERO;
+
+        ApiException submit = assertThrows(ApiException.class,
+                () -> service.requireNoMakeThenShortage(ORDER_ID));
+        assertEquals(ErrorCode.CONFLICT, submit.getCode());
+        assertTrue(submit.getMessage().contains("仓里还一件都没有"), submit.getMessage());
+        assertTrue(submit.getMessage().contains("委外件 单一子件委外件(FG-S)"), submit.getMessage());
+        assertTrue(submit.getMessage().contains("子件 委外子件(COMP-1)"), submit.getMessage());
+        assertTrue(submit.getMessage().contains("入库后任务中心会自动解锁"), submit.getMessage());
+
+        ApiException draft = assertThrows(ApiException.class,
+                () -> service.requireSoleComponentStockAvailable(ORDER_ID));
+        assertEquals(ErrorCode.CONFLICT, draft.getCode());
+        assertTrue(draft.getMessage().contains("仓里还一件都没有"), draft.getMessage());
+        // 判据查的是子件 (goods_id=BOM 边 component_goods_id, color_id=边的颜色), 不是目标件。
+        verify(jdbc, org.mockito.Mockito.atLeastOnce()).query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM v_stock_available sa")
+                        && sql.contains("JOIN warehouses w")
+                        && sql.contains("fn_warehouse_is_operational_leaf(w.id)")),
+                ArgumentMatchers.<RowMapper<Object[]>>any(),
+                eq(COMPONENT_GOODS_ID), ArgumentMatchers.<UUID>isNull());
+    }
+
+    /** ADR-103：子件入库了 (不管多少) 就解锁——同一夹具给一点现货, 送审与建单都放行。 */
+    @Test
+    void soleLeafComponentWithAnyChildStockUnlocksSubmitAndDraft() {
+        stageSoleComponentOrder();
+        onHandForOutbound = new BigDecimal("0.5");
+
+        service.requireNoMakeThenShortage(ORDER_ID);
+        service.requireSoleComponentStockAvailable(ORDER_ID);
+
+        verify(jdbc, org.mockito.Mockito.atLeastOnce()).query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM v_stock_available sa")
+                        && sql.contains("JOIN warehouses w")),
+                ArgumentMatchers.<RowMapper<Object[]>>any(),
+                eq(COMPONENT_GOODS_ID), ArgumentMatchers.<UUID>isNull());
+    }
+
+    /** 单一子件委外件夹具：订货 10 x 换算率 2, BOM 单耗 3, 主档含父件与子件 (文案要用名称/编码)。 */
+    private void stageSoleComponentOrder() {
+        BigDecimal bomQty = new BigDecimal("3");
+        orderRows = rows(new Object[]{ORDER_ID, "EO-SOLE-LOCK", SUPPLIER_ID, null});
+        orderItemRows = rows(new Object[]{
+                SOLE_ITEM_ID, SOLE_GOODS_ID, null, new BigDecimal("10"), 1,
+                new BigDecimal("2"), DOCUMENT_UNIT_ID, null});
+        goodsRows = List.of(
+                new Object[]{SOLE_GOODS_ID, "FG-S", "单一子件委外件", SOLE_BASE_UNIT_ID, "C-01"},
+                new Object[]{COMPONENT_GOODS_ID, "COMP-1", "委外子件", COMPONENT_UNIT_ID, "C-02"});
+        bomRowsByGoods = Map.of(SOLE_GOODS_ID, rows(new Object[]{
+                UUID.randomUUID(), COMPONENT_GOODS_ID, null, bomQty}));
+        soleComponentRowsByGoods = Map.of(SOLE_GOODS_ID, rows(new Object[]{
+                COMPONENT_GOODS_ID, null, COMPONENT_UNIT_ID, bomQty}));
     }
 
     private void stubNativeQueriesBySql() {

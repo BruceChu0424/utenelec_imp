@@ -149,6 +149,182 @@ class FulfillmentWorkbenchQueryServiceTest {
         verify(countQuery).setParameter("department", "PURCHASE");
     }
 
+    /**
+     * ADR-103 路线 B: 委外红数要剔除「子件仓里一件都没有」的申请行, 判据片段与列表同一常量;
+     * 采购分支的 SQL 一个字都不能带上这段.
+     */
+    @Test
+    void subcontractPendingCountExcludesRouteBLockedApplicationsAndPurchaseStaysUntouched() {
+        EntityManager em = mock(EntityManager.class);
+        Query countQuery = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(2L);
+        FulfillmentWorkbenchQueryService service = new FulfillmentWorkbenchQueryService(
+                em, mock(FulfillmentWorkbenchAccessPolicy.class));
+
+        assertEquals(2L, service.countPending("SUBCONTRACT"));
+        assertEquals(2L, service.countPending("PURCHASE"));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(2)).createNativeQuery(sql.capture());
+        String subcontract = sql.getAllValues().getFirst();
+        assertTrue(subcontract.contains("AND NOT (decomposition.task_status = 'WAITING_ORDER'"
+                + " AND decomposition.action_doc_type = 'SUBCONTRACT_APPLICATION'"));
+        assertTrue(subcontract.contains(FulfillmentWorkbenchQueryService.APPLICATION_COMPONENT_LOCKED_EXISTS
+                .formatted("decomposition.action_doc_id")));
+        assertTrue(subcontract.contains("fn_subcontract_sole_component_goods(sole_item.goods_id)"));
+        assertTrue(subcontract.contains("fn_warehouse_is_operational_leaf(w.id)"));
+        assertTrue(subcontract.contains("NOT w.is_deleted AND NOT w.is_defective AND NOT w.is_line_side"));
+        assertTrue(subcontract.contains("COALESCE(sole_item.qty, 0) > COALESCE(sole_item.ordered_qty, 0)"));
+        String purchase = sql.getAllValues().getLast();
+        assertFalse(purchase.contains("fn_subcontract_sole_component_goods"));
+        assertFalse(purchase.contains("v_stock_available"));
+        assertFalse(purchase.contains("decomposition.action_doc_type"));
+    }
+
+    /** ADR-103: 锁行是在办 (黄), 黄数把 open_qty > 0 的锁行加进来, 与红数剔除的是同一批行. */
+    @Test
+    void subcontractInProgressCountAddsRouteBLockedApplications() {
+        EntityManager em = mock(EntityManager.class);
+        Query countQuery = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(1L);
+        FulfillmentWorkbenchQueryService service = new FulfillmentWorkbenchQueryService(
+                em, mock(FulfillmentWorkbenchAccessPolicy.class));
+
+        assertEquals(1L, service.countInProgress("SUBCONTRACT"));
+        assertEquals(1L, service.countInProgress("PURCHASE"));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(2)).createNativeQuery(sql.capture());
+        String subcontract = sql.getAllValues().getFirst();
+        assertTrue(subcontract.contains("OR (decomposition.open_qty > 0 AND (decomposition.task_status = 'WAITING_ORDER'"));
+        assertTrue(subcontract.contains("fn_subcontract_sole_component_goods(sole_item.goods_id)"));
+        assertTrue(subcontract.contains("task_status IN ('ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED')"));
+        String purchase = sql.getAllValues().getLast();
+        assertFalse(purchase.contains("fn_subcontract_sole_component_goods"));
+        assertTrue(purchase.contains("task_status IN ('ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED')"));
+    }
+
+    /**
+     * ADR-103: 委外列表行带路线 B 的三个阶段码与 component_available_qty 列, 锁行不能生成订货单;
+     * 分段计数由服务端直接出 WAITING_COMPONENT_STOCK 键并计入 IN_PROGRESS, 前端不做减法.
+     */
+    @Test
+    void subcontractRowsCarryComponentLockStagesAndStatusCountsSplitTheLockedBucket() {
+        EntityManager em = mock(EntityManager.class);
+        Query rows = mock(Query.class);
+        Query summary = mock(Query.class);
+        Query statuses = mock(Query.class);
+        Query exceptions = mock(Query.class);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(rows.getResultList()).thenReturn(List.of());
+        when(summary.getSingleResult()).thenReturn(new Object[]{3L, 0L, 3L, new BigDecimal("30")});
+        when(statuses.getResultList()).thenReturn(List.of(
+                new Object[]{"FINANCE_APPROVED", 1L},
+                new Object[]{"WAITING_COMPONENT_STOCK", 2L},
+                new Object[]{"WAITING_ORDER", 4L}));
+        when(exceptions.getResultList()).thenReturn(List.of());
+        when(pending.getSingleResult()).thenReturn(3L);
+        FulfillmentWorkbenchAccessPolicy accessPolicy = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(accessPolicy.canCreateSubcontractOrder()).thenReturn(true);
+
+        FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(em, accessPolicy)
+                .query("SUBCONTRACT", "WAITING_ORDER", "", "", null, null, 1, 20);
+
+        assertEquals(2L, page.summary().statusCounts().get("WAITING_COMPONENT_STOCK"));
+        assertEquals(4L, page.summary().statusCounts().get("WAITING_ORDER"));
+        assertEquals(3L, page.summary().statusCounts().get("IN_PROGRESS"));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(5)).createNativeQuery(sql.capture());
+        String rowsSql = sql.getAllValues().getFirst();
+        assertTrue(rowsSql.contains("'WAITING_COMPONENT_STOCK'"));
+        assertTrue(rowsSql.contains("'COMPONENT_STOCK_READY'"));
+        assertTrue(rowsSql.contains("WHEN progress.waiting_component THEN 'OUTBOUND_WAITING_COMPONENT'"));
+        assertTrue(rowsSql.contains("AND NOT COALESCE(component.locked, FALSE)) AS can_create_order"));
+        assertTrue(rowsSql.contains("component.available_qty AS component_available_qty"));
+        assertTrue(rowsSql.contains("waiting_item.flow_mode = 'COMPONENT_OUTBOUND'"));
+        assertTrue(rowsSql.contains(FulfillmentWorkbenchQueryService.COMPONENT_STOCK_AVAILABLE_SQL
+                .formatted("waiting_item.goods_id", "waiting_item.color_id")));
+        // 锁行从「申请待分解」段挪进「进行中」段, 列表筛选与分段计数同口径.
+        assertTrue(rowsSql.contains("AND display_stage IS DISTINCT FROM 'WAITING_COMPONENT_STOCK'"));
+        assertTrue(rowsSql.contains("OR display_stage = 'WAITING_COMPONENT_STOCK'))"));
+        String statusSql = sql.getAllValues().get(2);
+        assertTrue(statusSql.contains(
+                "CASE WHEN display_stage = 'WAITING_COMPONENT_STOCK' THEN display_stage ELSE task_status END"));
+    }
+
+    /** 采购列表不拼委外的子件锁, 只补一列 NULL 占位, 行映射两边同宽. */
+    @Test
+    void purchaseRowsDoNotCarryTheSubcontractComponentLock() {
+        EntityManager em = mock(EntityManager.class);
+        Query rows = mock(Query.class);
+        Query summary = mock(Query.class);
+        Query statuses = mock(Query.class);
+        Query exceptions = mock(Query.class);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(rows.getResultList()).thenReturn(List.of());
+        when(summary.getSingleResult()).thenReturn(new Object[]{0L, 0L, 0L, BigDecimal.ZERO});
+        when(statuses.getResultList()).thenReturn(List.of());
+        when(exceptions.getResultList()).thenReturn(List.of());
+        when(pending.getSingleResult()).thenReturn(0L);
+
+        FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(
+                em, mock(FulfillmentWorkbenchAccessPolicy.class))
+                .query("PURCHASE", "", "", "", null, null, 1, 20);
+
+        assertFalse(page.summary().statusCounts().containsKey("WAITING_COMPONENT_STOCK"));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(5)).createNativeQuery(sql.capture());
+        String rowsSql = sql.getAllValues().getFirst();
+        assertTrue(rowsSql.contains("NULL::numeric AS component_available_qty"));
+        assertFalse(rowsSql.contains("component.locked"));
+        assertFalse(rowsSql.contains("fn_subcontract_sole_component_goods"));
+        assertTrue(rowsSql.contains("OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)"));
+    }
+
+    /** ADR-103: 第 38 列 component_available_qty 读进行对象, 脱敏/透传两条路都不丢, 短行 (旧 34 列) 为 null. */
+    @Test
+    void componentAvailableQtyIsReadFromTheRowAndSurvivesActionCopy() {
+        EntityManager em = mock(EntityManager.class);
+        Query rows = mock(Query.class);
+        Query summary = mock(Query.class);
+        Query statuses = mock(Query.class);
+        Query exceptions = mock(Query.class);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(pending.getSingleResult()).thenReturn(0L);
+        UUID documentId = UUID.randomUUID();
+        Object[] wide = java.util.Arrays.copyOf(
+                taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", documentId, UUID.randomUUID()), 38);
+        wide[35] = Boolean.TRUE;
+        wide[36] = "COMPONENT_STOCK_READY";
+        wide[37] = new BigDecimal("7.5");
+        when(rows.getResultList()).thenReturn(List.of(
+                wide, taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", UUID.randomUUID(), UUID.randomUUID())));
+        when(summary.getSingleResult()).thenReturn(new Object[]{2L, 0L, 2L, BigDecimal.TEN});
+        when(statuses.getResultList()).thenReturn(List.of());
+        when(exceptions.getResultList()).thenReturn(List.of());
+        FulfillmentWorkbenchAccessPolicy accessPolicy = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(accessPolicy.documentAccess("SUBCONTRACT", "SUBCONTRACT_APPLICATION"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
+
+        FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(em, accessPolicy)
+                .query("SUBCONTRACT", "", "", "", null, null, 1, 20);
+
+        FulfillmentTaskRow ready = page.items().getFirst();
+        assertEquals(0, new BigDecimal("7.5").compareTo(ready.componentAvailableQty()));
+        assertEquals("COMPONENT_STOCK_READY", ready.displayStage());
+        assertTrue(ready.canCreateOrder());
+        assertEquals(null, page.items().get(1).componentAvailableQty());
+    }
+
     @Test
     void warehouseCountUsesTheFulfillmentProjectionAndOpenQuantity() {
         EntityManager em = mock(EntityManager.class);

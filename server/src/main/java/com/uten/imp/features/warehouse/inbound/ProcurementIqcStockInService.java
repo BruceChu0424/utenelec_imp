@@ -77,7 +77,6 @@ public class ProcurementIqcStockInService {
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
     private final ProductionInspectionStockInPort stockInProduction;
     private final PreplanAnalysisPegPort preplanAnalysisPeg;
-    private final com.uten.imp.application.port.SubcontractOutboundWakePort subcontractOutboundWake;
     private final ChainNoticeService chainNotice;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
     private final com.uten.imp.common.finance.ProcurementReceiptConsiderationService consideration;
@@ -495,8 +494,6 @@ public class ProcurementIqcStockInService {
 
         UUID batchId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now();
-        List<com.uten.imp.application.port.SubcontractOutboundWakePort.StockedDimension>
-                stockedDimensions = new ArrayList<>();
         em.createNativeQuery("""
                         INSERT INTO procurement_iqc_stock_in_batches(
                             id, actor_user_id, actor_employee_id,
@@ -557,14 +554,9 @@ public class ProcurementIqcStockInService {
                     type, receiptId, slice.inspectionItemId(),
                     slice.passEventId(), stockInItemId,
                     item.baseQty(), item.warehouseId());
-            stockedDimensions.add(
-                    new com.uten.imp.application.port.SubcontractOutboundWakePort.StockedDimension(
-                            slice.goodsId(), slice.colorId(), item.warehouseId()));
         }
-        // ADR-101：刚入库的这批货可能正是某张委外单在等的子件(或目标件)。库存写完之后
-        // 回头叫醒那些「等子件到货」的出仓行：按此刻的可动用量补一张发得出去的草稿并通知
-        // 仓库。幂等，已有未审草稿的行会被跳过，所以入库重放不会重复开单。
-        subcontractOutboundWake.wakeOutboundAfterStockIn(stockedDimensions);
+        // ADR-103: 「子件到货叫醒委外出仓」不在这里调——recordMovementWithId 走的是库存内核
+        // 的入库分支, 内核已经在同一事务里按每笔入库维度叫醒过了(StockService.recordMovementInternal)。
         // ADR-101：货已上架，累计回厂落在本单约定的允许损耗范围内就直接结案(损耗单 + 受控
         // 改量)，不再挂在「容差内待结案」等人点一下。必须排在 recalculateOrderClosure 之前：
         // 结案会把订货量改成实收量，关单判定要按改完的数算。

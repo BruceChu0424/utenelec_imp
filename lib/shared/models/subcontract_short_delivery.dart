@@ -379,9 +379,16 @@ String subcontractShortDeliveryEventLabel(String code) =>
       _ => code,
     };
 
-/// 任务中心「进行中」状态列的文案（display_stage）。
+/// 任务中心状态列的文案 (display_stage)。
+///
+/// ADR-103：路线 B (单一子件直发) 的申请行按子件到货锁 / 解锁两档，财务已通过的
+/// 订货单在待发料出仓之前多一档「等子件到货·待发料」；三码与路线 A 车间文案
+/// (正在等待安排生产 / 正在生产中) 同风格。
 String subcontractProgressStatusLabel(String code) =>
     switch (code.toUpperCase()) {
+      'WAITING_COMPONENT_STOCK' => '等子件到货',
+      'COMPONENT_STOCK_READY' => '子件已到货·可下单',
+      'OUTBOUND_WAITING_COMPONENT' => '等子件到货·待发料',
       'ORDER_PENDING_APPROVAL' => '等待财务审核',
       'FINANCE_REJECTED' => '财务已退回',
       'FINANCE_APPROVED' => '财务已通过',

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
@@ -53,7 +55,12 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
 
-  Widget app(Widget page, Set<String> permissions) {
+  Widget app(
+    Widget page,
+    Set<String> permissions, {
+    SubcontractOutboundTaskCounts subcontractCounts =
+        const SubcontractOutboundTaskCounts(count: 2),
+  }) {
     return ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(_FakeApi()),
@@ -71,8 +78,9 @@ void main() {
         warehouseProductionDrawPendingCountProvider.overrideWith(
           (ref) async => 3,
         ),
-        warehouseSubcontractOutboundCountProvider.overrideWith(
-          (ref) async => 2,
+        // 委外待出仓红黄两数同出一支(ADR-103): 红 = 可出仓 / 黄 = 等子件到货.
+        warehouseSubcontractOutboundTaskCountsProvider.overrideWith(
+          (ref) async => subcontractCounts,
         ),
         warehouseInboundExpectationTypeCountsProvider.overrideWith(
           (ref) async => const {'PURCHASE': 2, 'SUBCONTRACT': 1},
@@ -187,6 +195,67 @@ void main() {
     expect(find.text('(0)'), findsNothing);
     // 小类默认不选: 仍是引导占位, 不发列表请求.
     expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 61));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('outbound subcontract segment carries red and yellow badges', (
+    tester,
+  ) async {
+    // 红 0 黄 1: 委外单财务批准后子件一件没到, 红角标按 ADR-101 不计——此前分段
+    // 上什么都不显示(用户 2026-09-22 截图); 现在黄枚单独画出来, 红枚不画 0.
+    await tester.pumpWidget(
+      app(
+        const WarehouseOutboundTaskCenterPage(),
+        const {Perm.subcontractOutboundView},
+        subcontractCounts: const SubcontractOutboundTaskCounts(
+          waitingComponent: 1,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('委外出库'), findsOneWidget);
+    expect(find.byType(UtenInProgressBadge), findsOneWidget);
+    expect(find.byType(UtenNotificationBadge), findsNothing);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+
+    // 小类行「待出仓任务」与父分类同源同数: 黄枚再画一次, 仍没有红枚.
+    await tester.tap(find.text('委外出库'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('待出仓任务'), findsOneWidget);
+    expect(find.byType(UtenInProgressBadge), findsNWidgets(2));
+    expect(find.byType(UtenNotificationBadge), findsNothing);
+    expect(find.text('1'), findsNWidgets(2));
+    await tester.pump(const Duration(seconds: 61));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('outbound subcontract segment draws both badges when both > 0', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(
+        const WarehouseOutboundTaskCenterPage(),
+        const {Perm.subcontractOutboundView},
+        subcontractCounts: const SubcontractOutboundTaskCounts(
+          count: 2,
+          waitingComponent: 3,
+        ),
+      ),
+    );
+    await tester.pump();
+    // 黄左红右(与 hub 卡右上角同序), 两枚互斥不重叠.
+    expect(find.byType(UtenInProgressBadge), findsOneWidget);
+    expect(find.byType(UtenNotificationBadge), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    final yellow = tester.getTopLeft(find.byType(UtenInProgressBadge));
+    final red = tester.getTopLeft(find.byType(UtenNotificationBadge));
+    expect(yellow.dx, lessThan(red.dx));
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

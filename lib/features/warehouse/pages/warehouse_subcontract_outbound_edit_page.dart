@@ -3,34 +3,46 @@
 // 与委外模块发料单编辑页分立设计（不复用、不跳转）：
 //   - 全页无价格/金额/币种字段；
 //   - 新流只展示服务端已放行的委外目标件，不在 Flutter 判断 BOM/生产/FQC/入仓；
-//   - 本次出仓默认 = readyOutboundQty，可改小（分批出仓）；
+//   - 本次出仓默认 = 可发量 freeIssuableQty(服务端 min(计划余量, 仓内合格可动用)，
+//     老服务端回落计划余量)，可改小（分批出仓）；子件还没到货的行数量格禁用并直说原因；
 //   - 发出仓必选、经办人默认当前登录人（默认部门仓储 SUB_WH）；
 //   - 「审核出仓」确认弹明示效果：目标件出库 → 委外加工 → 回厂 IQC；
 //   - LEGACY_BOM_COMPONENT 仅保留历史 BOM 子件发料兼容；
 //   - 「不再出仓」关闭计划余量（必填原因）；无草稿时可「生成出仓草稿」。
 // 数据走既有 /api/subcontract/material-issues 端点（数据通用），草稿 maker 为空时
 // 服务端凭 subcontract_material_issue:edit 权限放行（V304 授权 SUB_WH）。
+//
+// 2026-09-22 页面骨架与「销售出库详情」统一(仓库作业页同一长相): 顶栏 title +
+// 「仓库作业视图」副标题 + 刷新; 正文 = 折叠头(状态横幅 / 事实卡 / 出仓记录折叠区 /
+// 可编辑时的出仓表单卡) + 「出仓明细 (N)」吸顶 + 明细表内滚; 动作全部收进右下
+// 悬浮动作组(保存草稿 / 审核出仓 / 不再出仓), 跑批遮罩 UtenBusyOverlay。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_grid_page_scrollbar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -103,10 +115,6 @@ class _WarehouseSubcontractOutboundEditPageState
   String? _error;
   List<SubcontractOutboundLineDraft> _lines = const [];
 
-  // 2026-09-22 全站表格滚动口径：出仓明细表表头吸顶 + 置顶后才显示页面滚动条。
-  final ScrollController _pageScroll = ScrollController();
-  final _gridPinned = ValueNotifier<bool>(false);
-
   AppLocalizations get _l10n =>
       Localizations.of<AppLocalizations>(context, AppLocalizations) ??
       AppLocalizationsZh();
@@ -120,8 +128,6 @@ class _WarehouseSubcontractOutboundEditPageState
   @override
   void dispose() {
     _remark.dispose();
-    _pageScroll.dispose();
-    _gridPinned.dispose();
     for (final line in _lines) {
       line.dispose();
     }
@@ -231,13 +237,18 @@ class _WarehouseSubcontractOutboundEditPageState
       } else {
         for (final line in detail.lines) {
           if (line.readyOutboundQty <= 0) continue;
+          // 预填可发量而不是计划余量: 单一子件分批到货时(ADR-103 §2.4)预填 5000 /
+          // 上限 300 / 红框 的组合只会让仓库以为自己填错了。
           lines.add(
             SubcontractOutboundLineDraft(
               line,
               null,
-              _fmtQty(line.readyOutboundQty),
+              _fmtQty(line.freeIssuableQty),
             ),
           );
+          // 「发出仓」预填服务端按合格可动用量算好的建议仓(ADR-101 §2.3)，
+          // 取第一条算出仓的行; 仓库仍可改。
+          warehouseId ??= line.stockWarehouseId;
         }
       }
       // 经办人默认当前登录人。
@@ -319,11 +330,14 @@ class _WarehouseSubcontractOutboundEditPageState
   Future<String?> _saveDraft({required bool silent}) async {
     final detail = _detail;
     if (detail == null) return null;
-    if (_warehouseId == null ||
-        (_warehouseId != _draftDocument?.warehouseId &&
-            !WarehouseSelection(
-              ref.read(mn.masterNameServiceProvider).warehouseHierarchy,
-            ).selectableIds.contains(_warehouseId))) {
+    // 发出仓只在写草稿时用得上; 无草稿走 regenerateDraft 由服务端按库存定仓(与批量页
+    // 一致)，子件还没到货时服务端也给不出建议仓, 不能先卡在「请选择发出仓」。
+    if (_draftId != null &&
+        (_warehouseId == null ||
+            (_warehouseId != _draftDocument?.warehouseId &&
+                !WarehouseSelection(
+                  ref.read(mn.masterNameServiceProvider).warehouseHierarchy,
+                ).selectableIds.contains(_warehouseId)))) {
       context.appError('请选择发出仓');
       return null;
     }
@@ -334,6 +348,9 @@ class _WarehouseSubcontractOutboundEditPageState
     final overMaxQty = <String>[];
     for (var index = 0; index < _lines.length; index++) {
       final e = _lines[index];
+      // 子件还没到货的行不参与校验: 它的数量格是禁用的, 补草稿时服务端按此刻库存
+      // 自己决定这行给不给量(可能全无 → 409 直说原因)。
+      if (e.waitingComponentStock) continue;
       final qty = double.tryParse(e.qty.text.trim()) ?? -1;
       final maxQty = e.maxEditableQty;
       final name = e.line.goodsName ?? e.line.goodsCode ?? '该目标件';
@@ -364,7 +381,9 @@ class _WarehouseSubcontractOutboundEditPageState
       context.appError(rowIssues.join('\n'));
       return null;
     }
-    if (items.isEmpty) {
+    // 无草稿时数量不进请求(regenerateDraft 按此刻库存建草稿)，全部行都在等子件
+    // 也放行——让服务端 409「子件还没到货…」原话告诉仓库为什么, 而不是「明细为空」。
+    if (items.isEmpty && _draftId != null) {
       context.appError('出仓明细为空');
       return null;
     }
@@ -456,17 +475,25 @@ class _WarehouseSubcontractOutboundEditPageState
     if (_saving || _confirming || _requiresReload) return;
     _writeStarted = false;
     setState(() => _confirming = true);
+    // 发的是子件(单一子件直发 / 历史 BOM 子件发料)时, 弹窗要说清楚出库的是子件、
+    // 回厂登记的是委外件——两种货号不一样, 不能再说「目标件出库」。
+    final issuesComponent = _lines.any(
+      (e) =>
+          e.line.flowMode == SubcontractOutboundFlowMode.componentOutbound ||
+          e.line.flowMode == SubcontractOutboundFlowMode.legacyBomComponent,
+    );
     final confirmed = await showUtenReviewerConfirmDialog(
       context,
       title: '审核出仓确认',
       confirmLabel: '确认出仓',
-      actionLabel: '委外目标件出仓审核',
-      responsibilityDescription: '确认后，系统将以此登录员工记录本次委外目标件出仓审核责任。',
-      message:
-          '审核后将：\n'
-          '① 已放行的委外目标件从所选仓库出库，交委外商加工；\n'
-          '② 有子层级的目标件必须已经完成前置自制、FQC 和成品入仓，本页不能绕过；\n'
-          '③ 加工完成回厂后仍需登记回仓、品质检查，合格后才正式入仓。',
+      actionLabel: issuesComponent ? '委外子件出仓审核' : '委外目标件出仓审核',
+      responsibilityDescription: '确认后，系统将以此登录员工记录本次委外出仓审核责任。',
+      message: issuesComponent
+          ? _l10n.warehouseSubcontractOutboundComponentEffects
+          : '审核后将：\n'
+                '① 已放行的委外目标件从所选仓库出库，交委外商加工；\n'
+                '② 有子层级的目标件必须已经完成前置自制、FQC 和成品入仓，本页不能绕过；\n'
+                '③ 加工完成回厂后仍需登记回仓、品质检查，合格后才正式入仓。',
     );
     if (!confirmed || !mounted) {
       if (mounted) setState(() => _confirming = false);
@@ -622,6 +649,23 @@ class _WarehouseSubcontractOutboundEditPageState
     }
   }
 
+  /// 未审草稿(status 0); 多张时取最后一张, 与 [_load] 的选法一致。
+  static OutboundDraftRef? _openDraft(OutboundTaskDetail detail) {
+    OutboundDraftRef? draft;
+    for (final d in detail.drafts) {
+      if (d.status == 0) draft = d;
+    }
+    return draft;
+  }
+
+  static String _planStatusLabel(OutboundTaskDetail detail) =>
+      switch (detail.status) {
+        'OPEN' => '出仓中',
+        'CLOSED' => '已关闭(不再出仓)',
+        'CANCELED' => '已取消(订货已红冲)',
+        _ => detail.status ?? '—',
+      };
+
   @override
   Widget build(BuildContext context) {
     if (_showAllDrafts) {
@@ -632,28 +676,43 @@ class _WarehouseSubcontractOutboundEditPageState
       );
     }
     final detail = _detail;
+    final busy = _saving || _confirming;
+    final gate = detail == null
+        ? null
+        : _PlanGate.of(detail, _lines, ref.watch(currentPermissionsProvider));
+    // 首屏骨架 / 出错 / 不存在时不挂悬浮动作组; 刷新中也收起(旧版整页换成转圈,
+    // 按钮本就不可见, 这里保持「刷新期间不能动」的口径)。
+    final ready = detail != null && !_loading && _error == null;
     return PopScope(
-      canPop: !_saving && !_confirming,
+      canPop: !busy,
       child: Scaffold(
         appBar: UtenAppBar(
           title: '委外拣货出仓',
+          subtitle: _l10n.warehouseSubcontractOutboundWorkView,
           leading: UtenBackButton(
-            onPressed: _saving || _confirming
+            onPressed: busy
                 ? null
                 : () => backTo(
                     context,
                     defaultPath: '/warehouse/subcontract-outbound',
                   ),
           ),
+          actions: [
+            UtenAppBarActionButton(
+              key: const Key('warehouse-subcontract-outbound-detail-refresh'),
+              label: '刷新',
+              icon: Icons.refresh_rounded,
+              isLoading: _loading && detail != null,
+              onPressed: _loading || busy ? null : _load,
+            ),
+          ],
         ),
         body: Stack(
           children: [
             Positioned.fill(
               child: SafeArea(
-                child: _loading
-                    ? const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      )
+                child: _loading && detail == null
+                    ? const UtenSkeletonList(itemCount: 6)
                     : _error != null
                     ? UtenEmpty.error(
                         message: _error,
@@ -663,8 +722,8 @@ class _WarehouseSubcontractOutboundEditPageState
                     : detail == null
                     ? const UtenEmpty(message: '出仓任务不存在')
                     : AbsorbPointer(
-                        absorbing: _saving || _confirming,
-                        child: _buildBody(detail),
+                        absorbing: busy || _loading,
+                        child: _buildBody(detail, gate!),
                       ),
               ),
             ),
@@ -674,297 +733,395 @@ class _WarehouseSubcontractOutboundEditPageState
               ),
           ],
         ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: !ready || gate == null || !gate.hasActions
+            ? null
+            : UtenFloatingActionGroup(
+                children: [
+                  if (gate.canEdit)
+                    UtenButton(
+                      key: const Key(
+                        'warehouse-subcontract-outbound-action-save',
+                      ),
+                      type: UtenButtonType.tonal,
+                      size: UtenButtonSize.large,
+                      icon: Icons.save_outlined,
+                      isLoading: _saving,
+                      onPressed: _saving || _requiresReload ? null : _onSave,
+                      child: Text(_l10n.warehouseSubcontractOutboundSaveDraft),
+                    ),
+                  if (gate.canApprove)
+                    UtenButton(
+                      key: const Key(
+                        'warehouse-subcontract-outbound-action-approve',
+                      ),
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.large,
+                      icon: Icons.outbound_rounded,
+                      isLoading: _saving,
+                      onPressed: _saving || _requiresReload ? null : _onApprove,
+                      child: Text(_l10n.warehouseSubcontractOutboundApprove),
+                    ),
+                  if (gate.canClose)
+                    UtenButton(
+                      key: const Key(
+                        'warehouse-subcontract-outbound-action-close',
+                      ),
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.large,
+                      icon: Icons.stop_circle_outlined,
+                      onPressed: _saving ? null : _onClosePlan,
+                      child: Text(_l10n.warehouseSubcontractOutboundClosePlan),
+                    ),
+                ],
+              ),
       ),
     );
   }
 
-  Widget _buildBody(OutboundTaskDetail detail) {
+  /// 折叠头(状态横幅 / 事实卡 / 出仓记录 / 表单卡) + 「出仓明细 (N)」吸顶 +
+  /// 明细表内滚——与销售出库详情同骨架。
+  Widget _buildBody(OutboundTaskDetail detail, _PlanGate gate) {
     final names = ref.watch(mn.masterNameServiceProvider);
-    final permissions = ref.watch(currentPermissionsProvider);
-    final openWithLines = detail.status == 'OPEN' && _lines.isNotEmpty;
-    final canExecute = permissions.contains(Perm.subcontractOutboundExecute);
-    final canEdit =
-        openWithLines &&
-        canExecute &&
-        permissions.contains(Perm.subcontractMaterialIssueEdit);
-    final canApprove =
-        canEdit && permissions.contains(Perm.subcontractMaterialIssueApprove);
-    final canClose =
-        detail.status == 'OPEN' &&
-        permissions.contains(Perm.subcontractOutboundClose);
-    return UtenGridPageScrollbar(
-      pinned: _gridPinned,
-      controller: _pageScroll,
-      child: UtenContentContainer.wide(
-        child: ListView(
-          controller: _pageScroll,
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+    return UtenContentContainer.wide(
+      child: UtenCollapsingHeaderScrollView(
+        collapsingHeader: Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _statusBanner(detail),
+              const SizedBox(height: UtenSpacing.s12),
+              _factsCard(detail),
+              if (detail.drafts.isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _historySection(detail),
+              ],
+              if (gate.canEdit) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _formCard(names),
+              ],
+              const SizedBox(height: UtenSpacing.s16),
+            ],
+          ),
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_requiresReload) ...[
-              Text(_l10n.warehouseSubcontractOutboundUncertain),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                isLoading: _loading,
-                onPressed: _saving || _loading ? null : _load,
-                child: Text(_l10n.warehouseSubcontractOutboundVerify),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            // —— 表头信息（订货单/委外商只读，防改坏来源关联）——
-            Card(
-              margin: EdgeInsets.zero,
-              child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _HeadLine(label: '委外订货单', value: detail.orderBillNo ?? '—'),
-                    _HeadLine(label: '委外商', value: detail.supplierName ?? '—'),
-                    _HeadLine(
-                      label: '计划状态',
-                      value: switch (detail.status) {
-                        'OPEN' => '出仓中',
-                        'CLOSED' => '已关闭(不再出仓)',
-                        'CANCELED' => '已取消(订货已红冲)',
-                        _ => detail.status ?? '—',
-                      },
-                    ),
-                    if (detail.closeReason != null)
-                      _HeadLine(label: '关闭原因', value: detail.closeReason!),
-                  ],
-                ),
-              ),
+            Text(
+              _l10n.warehouseSubcontractOutboundLinesTitle(_lines.length),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            if (canEdit) ...[
-              Card(
-                margin: EdgeInsets.zero,
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: UtenFormGrid(
-                    children: [
-                      UtenDateField(
-                        label: '出仓日期',
-                        required: true,
-                        value: _billDate,
-                        onChanged: (d) => setState(() => _billDate = d),
-                      ),
-                      // V476：主/子层级（父仓置灰分组，出仓落具体仓）。
-                      WarehouseHierarchyDropdown(
-                        key: ValueKey('warehouse_$_warehouseId'),
-                        entries: names.warehouseHierarchy,
-                        value: _warehouseId,
-                        labelText: '发出仓(必选)',
-                        onChanged: (v) {
-                          if (v != null) setState(() => _warehouseId = v);
-                        },
-                      ),
-                      UtenEmployeePicker(
-                        key: ValueKey('worker_$_workerId'),
-                        label: '经办人',
-                        hint: '请选择经办人',
-                        sheetTitle: '选择经办人',
-                        initial: _workerId == null
-                            ? null
-                            : _empCache[_workerId],
-                        loader: (kw) async {
-                          final deptId = (kw == null || kw.isEmpty)
-                              ? (ref
-                                        .read(departmentCodeIdMapProvider)
-                                        .valueOrNull ??
-                                    const {})['SUB_WH']
-                              : null;
-                          final res = await ref
-                              .read(employeeRepositoryProvider)
-                              .list(
-                                size: 30,
-                                search: kw,
-                                departmentId: deptId,
-                                includeSubtree: true,
-                              );
-                          return [
-                            for (final e in res.items)
-                              UtenEmployeePickerItem(
-                                id: e.id,
-                                name: e.fullName,
-                                employeeCode: e.code,
-                                departmentName: e.departmentName,
-                              ),
-                          ];
-                        },
-                        onChanged: (item) {
-                          if (item != null) _empCache[item.id] = item;
-                          setState(() => _workerId = item?.id);
-                        },
-                      ),
-                      UtenDateField(
-                        label: '交货日期',
-                        value: _deliverDate ?? ChinaDateTime.today(),
-                        onChanged: (d) => setState(() => _deliverDate = d),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            // —— 目标件（服务端已放行数量/已出仓/本次出仓；无价格字段）——
-            Card(
-              margin: EdgeInsets.zero,
-              child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '委外目标件出仓明细',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    if (_lines.isEmpty)
-                      Text(
-                        '当前没有服务端放行的可出仓目标件',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      )
-                    else
-                      SubcontractOutboundDetailTable(
-                        rows: [
-                          for (final line in _lines)
-                            SubcontractOutboundTableRow(
-                              draft: line,
-                              warehouse: names.warehouse(_warehouseId),
-                            ),
-                        ],
-                        stickyHeaderPinned: _gridPinned,
-                        editable: canEdit && !_saving,
-                        onChanged: () => setState(() {}),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            if (canEdit)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-                child: TextField(
-                  controller: _remark,
-                  maxLength: 200,
-                  decoration: const InputDecoration(
-                    labelText: '备注',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-              ),
-            if (detail.drafts.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Card(
-                margin: EdgeInsets.zero,
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '出仓记录',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      for (final d in detail.drafts)
-                        Padding(
-                          padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                          child: Row(
-                            children: [
-                              Icon(
-                                d.status == 1
-                                    ? Icons.check_circle_outline
-                                    : d.status == 0
-                                    ? Icons.pending_actions_outlined
-                                    : Icons.undo_rounded,
-                                size: 16,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: UtenSpacing.s8),
-                              Expanded(
-                                child: Text(
-                                  '${d.billNo ?? '—'} · ${_fmtQty(d.totalQty ?? 0)}'
-                                  '${d.warehouseName != null ? ' · ${d.warehouseName}' : ''}'
-                                  '${d.approverName != null ? ' · ${d.approverName}' : ''}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ),
-                              Text(
-                                switch (d.status) {
-                                  1 => '已出仓',
-                                  0 => '草稿',
-                                  _ => '已红冲',
-                                },
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s20),
-            if (canEdit || canApprove)
-              Row(
-                children: [
-                  if (canEdit)
-                    Expanded(
-                      child: UtenButton(
-                        type: UtenButtonType.tonal,
-                        icon: Icons.save_outlined,
-                        isLoading: _saving,
-                        onPressed: _saving || _requiresReload ? null : _onSave,
-                        child: const Text('保存草稿'),
-                      ),
-                    ),
-                  if (canEdit && canApprove)
-                    const SizedBox(width: UtenSpacing.s12),
-                  if (canApprove)
-                    Expanded(
-                      flex: 2,
-                      child: UtenButton(
-                        icon: Icons.outbound_rounded,
-                        type: UtenButtonType.danger,
-                        size: UtenButtonSize.large,
-                        isLoading: _saving,
-                        onPressed: _saving || _requiresReload
-                            ? null
-                            : _onApprove,
-                        child: const Text('审核出仓'),
-                      ),
+            const SizedBox(height: UtenSpacing.s8),
+            // —— 目标件(服务端已放行数量/已出仓/本次出仓; 无价格字段) ——
+            Expanded(
+              child: SubcontractOutboundDetailTable(
+                primary: true,
+                bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+                rows: [
+                  for (final line in _lines)
+                    SubcontractOutboundTableRow(
+                      draft: line,
+                      warehouse: names.warehouse(_warehouseId),
                     ),
                 ],
+                editable: gate.canEdit && !_saving,
+                onChanged: () => setState(() {}),
               ),
-            if (canClose) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Center(
-                child: TextButton.icon(
-                  onPressed: _saving ? null : _onClosePlan,
-                  icon: const Icon(Icons.stop_circle_outlined, size: 18),
-                  label: const Text('不再出仓(关闭剩余计划)'),
-                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 状态横幅: 计划状态 + 草稿 / 等子件(黄) / 可发量 + 回执待核实提示。
+  Widget _statusBanner(OutboundTaskDetail detail) {
+    final theme = Theme.of(context);
+    final l10n = _l10n;
+    final draft = _openDraft(detail);
+    final allWaiting =
+        _lines.isNotEmpty && _lines.every((e) => e.waitingComponentStock);
+    final issuable = _lines.fold<double>(
+      0,
+      (sum, e) => sum + (e.waitingComponentStock ? 0 : e.maxEditableQty),
+    );
+    final status = _planStatusLabel(detail);
+    final notes = <String>[
+      if (draft != null)
+        l10n.warehouseSubcontractOutboundBannerDraftPending(
+          draft.billNo ?? '—',
+        ),
+      if (!allWaiting && issuable > 0)
+        l10n.warehouseSubcontractOutboundBannerIssuable(_fmtQty(issuable)),
+    ];
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: '计划状态 $status。${notes.join(' ')}',
+      child: Container(
+        key: const Key('warehouse-subcontract-outbound-detail-boundary'),
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+          borderRadius: UtenRadius.lgAll,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              status,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            for (final note in notes) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                note,
+                style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
               ),
             ],
-            const SizedBox(height: UtenSpacing.s24),
+            if (allWaiting) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              _WaitingComponentNote(
+                text: l10n.warehouseSubcontractOutboundBannerWaitingComponent,
+              ),
+            ],
+            if (_requiresReload) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Wrap(
+                spacing: UtenSpacing.s12,
+                runSpacing: UtenSpacing.s8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      l10n.warehouseSubcontractOutboundUncertain,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    size: UtenButtonSize.small,
+                    isLoading: _loading,
+                    onPressed: _saving || _loading ? null : _load,
+                    child: Text(l10n.warehouseSubcontractOutboundVerify),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              l10n.warehouseSubcontractOutboundBannerScope,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 事实卡(三列 Wrap): 订货单/委外商只读, 防改坏来源关联。
+  Widget _factsCard(OutboundTaskDetail detail) {
+    final l10n = _l10n;
+    final draft = _openDraft(detail);
+    final latest = detail.drafts.where((d) => d.status == 1).lastOrNull;
+    final facts = <(String, String?)>[
+      ('委外订货单', detail.orderBillNo),
+      ('委外商', detail.supplierName),
+      ('交货日期', detail.deliverDate),
+      ('计划状态', _planStatusLabel(detail)),
+      ('关闭原因', detail.closeReason),
+      (
+        l10n.warehouseSubcontractOutboundFactDraftNo,
+        _draftDocument?.billNo ?? draft?.billNo,
+      ),
+      (
+        l10n.warehouseSubcontractOutboundFactLatestIssue,
+        latest == null ? null : _draftSummary(latest),
+      ),
+    ].where((fact) => fact.$2?.trim().isNotEmpty == true).toList();
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: UtenRadius.lgAll,
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 1080
+                ? 3
+                : constraints.maxWidth >= 640
+                ? 2
+                : 1;
+            final width =
+                (constraints.maxWidth - UtenSpacing.s12 * (columns - 1)) /
+                columns;
+            return Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s12,
+              children: [
+                for (final fact in facts)
+                  SizedBox(
+                    width: width,
+                    child: _PlanFact(label: fact.$1, value: fact.$2!),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  static String _draftSummary(OutboundDraftRef d) =>
+      '${d.billNo ?? '—'} · ${_fmtQty(d.totalQty ?? 0)}'
+      '${d.warehouseName != null ? ' · ${d.warehouseName}' : ''}'
+      '${d.approverName != null ? ' · ${d.approverName}' : ''}';
+
+  /// 出仓记录(草稿/已出仓/已红冲)折叠区, 默认收起——横幅与事实卡已给出草稿单号
+  /// 与最近出仓单, 展开只为翻历史。
+  Widget _historySection(OutboundTaskDetail detail) {
+    final theme = Theme.of(context);
+    return UtenCollapsibleSection(
+      key: const Key('warehouse-subcontract-outbound-history'),
+      title: _l10n.warehouseSubcontractOutboundHistoryTitle(
+        detail.drafts.length,
+      ),
+      initiallyExpanded: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final d in detail.drafts)
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Row(
+                children: [
+                  Icon(
+                    d.status == 1
+                        ? Icons.check_circle_outline
+                        : d.status == 0
+                        ? Icons.pending_actions_outlined
+                        : Icons.undo_rounded,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      _draftSummary(d),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  Text(
+                    switch (d.status) {
+                      1 => '已出仓',
+                      0 => '草稿',
+                      _ => '已红冲',
+                    },
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 出仓表单卡(仅可编辑时): 字段与校验逻辑不变, 只是位置进了折叠头。
+  Widget _formCard(mn.MasterNameService names) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: UtenRadius.lgAll,
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: UtenFormGrid(
+          children: [
+            UtenDateField(
+              label: '出仓日期',
+              required: true,
+              value: _billDate,
+              onChanged: (d) => setState(() => _billDate = d),
+            ),
+            // V476: 主/子层级(父仓置灰分组, 出仓落具体仓)。
+            WarehouseHierarchyDropdown(
+              key: ValueKey('warehouse_$_warehouseId'),
+              entries: names.warehouseHierarchy,
+              value: _warehouseId,
+              labelText: '发出仓(必选)',
+              onChanged: (v) {
+                if (v != null) setState(() => _warehouseId = v);
+              },
+            ),
+            UtenEmployeePicker(
+              key: ValueKey('worker_$_workerId'),
+              label: '经办人',
+              hint: '请选择经办人',
+              sheetTitle: '选择经办人',
+              initial: _workerId == null ? null : _empCache[_workerId],
+              loader: (kw) async {
+                final deptId = (kw == null || kw.isEmpty)
+                    ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+                          const {})['SUB_WH']
+                    : null;
+                final res = await ref
+                    .read(employeeRepositoryProvider)
+                    .list(
+                      size: 30,
+                      search: kw,
+                      departmentId: deptId,
+                      includeSubtree: true,
+                    );
+                return [
+                  for (final e in res.items)
+                    UtenEmployeePickerItem(
+                      id: e.id,
+                      name: e.fullName,
+                      employeeCode: e.code,
+                      departmentName: e.departmentName,
+                    ),
+                ];
+              },
+              onChanged: (item) {
+                if (item != null) _empCache[item.id] = item;
+                setState(() => _workerId = item?.id);
+              },
+            ),
+            UtenDateField(
+              label: '交货日期',
+              value: _deliverDate ?? ChinaDateTime.today(),
+              onChanged: (d) => setState(() => _deliverDate = d),
+            ),
+            TextField(
+              key: const Key('warehouse-subcontract-outbound-remark'),
+              controller: _remark,
+              maxLength: 200,
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '备注'),
+              ),
+            ),
           ],
         ),
       ),
@@ -972,8 +1129,88 @@ class _WarehouseSubcontractOutboundEditPageState
   }
 }
 
-class _HeadLine extends StatelessWidget {
-  const _HeadLine({required this.label, required this.value});
+/// 本页三个动作的权限闸(与旧版 _buildBody 内联算法一字不差)。
+class _PlanGate {
+  const _PlanGate({
+    required this.canEdit,
+    required this.canApprove,
+    required this.canClose,
+  });
+
+  factory _PlanGate.of(
+    OutboundTaskDetail detail,
+    List<SubcontractOutboundLineDraft> lines,
+    Set<String> permissions,
+  ) {
+    final openWithLines = detail.status == 'OPEN' && lines.isNotEmpty;
+    final canExecute = permissions.contains(Perm.subcontractOutboundExecute);
+    final canEdit =
+        openWithLines &&
+        canExecute &&
+        permissions.contains(Perm.subcontractMaterialIssueEdit);
+    return _PlanGate(
+      canEdit: canEdit,
+      canApprove:
+          canEdit && permissions.contains(Perm.subcontractMaterialIssueApprove),
+      canClose:
+          detail.status == 'OPEN' &&
+          permissions.contains(Perm.subcontractOutboundClose),
+    );
+  }
+
+  final bool canEdit;
+  final bool canApprove;
+  final bool canClose;
+
+  bool get hasActions => canEdit || canApprove || canClose;
+}
+
+/// 「等子件到货」黄色在办提示(准则 14: 黄 = 在办, 不是仓库该动手)。
+class _WaitingComponentNote extends StatelessWidget {
+  const _WaitingComponentNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final fg = dark ? UtenColors.warning : UtenColors.warningText;
+    return Container(
+      key: const Key('warehouse-subcontract-outbound-waiting-component'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s12,
+        vertical: UtenSpacing.s8,
+      ),
+      decoration: BoxDecoration(
+        color: dark
+            ? UtenColors.warning.withValues(alpha: 0.16)
+            : UtenColors.warningBg,
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(color: UtenColors.warning.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.hourglass_top_rounded, size: 16, color: fg),
+          const SizedBox(width: UtenSpacing.s8),
+          Flexible(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: fg,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanFact extends StatelessWidget {
+  const _PlanFact({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -981,25 +1218,34 @@ class _HeadLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: Row(
-        children: [
-          Text(
-            '$label：',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+    return Semantics(
+      label: '$label：$value',
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 64),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLowest,
+          borderRadius: UtenRadius.mdAll,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
-          Expanded(
-            child: Text(
+            const SizedBox(height: UtenSpacing.s4),
+            SelectableText(
               value,
-              style: theme.textTheme.bodySmall?.copyWith(
+              style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

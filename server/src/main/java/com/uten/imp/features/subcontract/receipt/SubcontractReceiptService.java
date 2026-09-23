@@ -312,9 +312,15 @@ public class SubcontractReceiptService {
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
                 // ③ 回厂按冻结 BOM 消费发料子件（守恒：consumed_qty += 回厂父件量×frozen_unit_qty）
+                // ADR-103 §2.5：财务在到货异常任务中心批准的那份「委外商自带料」不消费我方子件——
+                // 那不是我方发出去的料, 供应商手上根本没有这份余量, 照旧消费会在
+                // consumeIssuedMaterials 里 409 整笔回滚, 财务批准形同作废。扣的是本收货明细
+                // 自己那条异常记录的 approved_excess_qty(V201 表按 receipt_item_id 唯一, 天然逐
+                // 行落痕), 与 V642 DB 守卫从守恒台账里摘掉的正是同一批行。
                 BigDecimal replacementQty=iqcReplacementAllocation
                         .activeAllocatedQty("SUBCONTRACT",it.getId());
-                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty);
+                BigDecimal supplierOwnQty=financeApprovedSupplierOwnQty(it.getId());
+                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty).subtract(supplierOwnQty);
                 if(firstReturnQty.signum()>0){
                     consumeIssuedMaterials(it.getId(),it.getOrderItemId(),firstReturnQty,+1);
                 }
@@ -398,9 +404,12 @@ public class SubcontractReceiptService {
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
                 // 回退回厂消费（consumed_qty -= 回厂父件量×frozen_unit_qty）
+                // ADR-103 §2.5：与审核同款扣掉财务批准的自带料——整行都是自带料的收货明细审核时
+                // 没记过消费切片, 红冲不能再去找「原发料来源」(找不到会 409 把红冲拦死)。
                 BigDecimal replacementQty=iqcReplacementAllocation
                         .activeAllocatedQty("SUBCONTRACT",it.getId());
-                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty);
+                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty)
+                        .subtract(financeApprovedSupplierOwnQty(it.getId()));
                 if(firstReturnQty.signum()>0){
                     consumeIssuedMaterials(it.getId(),it.getOrderItemId(),firstReturnQty,-1);
                 }
@@ -704,6 +713,26 @@ public class SubcontractReceiptService {
                                 + "委外商自带料额度；请在到货异常任务中心先由财务确认");
             }
         }
+    }
+
+    /**
+     * ADR-103 §2.5：本收货明细已获财务批准的「委外商自带料」数量(订货单位, 与 receipt_item.qty
+     * 同口径)。procurement_arrival_exceptions 按 (order_type, receipt_item_id) 唯一, 财务判定
+     * 落在这一行的 approved_excess_qty 上, 所以不需要按订货明细累计再分摊; 红冲只回退本明细
+     * 真正记过的消费切片(reverseReceiptMaterialConsumptions), 两边自然对称。
+     * 状态与决定的过滤与 {@link #financeApprovedExcessBase} / V642 DB 守卫逐字同口径。
+     */
+    private BigDecimal financeApprovedSupplierOwnQty(UUID receiptItemId) {
+        return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(exception_row.approved_excess_qty), 0)
+                FROM procurement_arrival_exceptions exception_row
+                WHERE exception_row.order_type = 'SUBCONTRACT'
+                  AND exception_row.receipt_item_id = :receiptItemId
+                  AND exception_row.status IN (
+                      'RECEIPT_ADJUSTED', 'RECEIPT_POSTED', 'CLOSED')
+                  AND exception_row.decision IN ('APPROVE_ALL', 'APPROVE_CUSTOM')
+                  AND exception_row.approved_excess_qty > 0
+                """).setParameter("receiptItemId", receiptItemId).getSingleResult());
     }
 
     /**

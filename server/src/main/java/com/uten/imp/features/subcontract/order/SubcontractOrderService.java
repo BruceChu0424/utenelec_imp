@@ -675,8 +675,13 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
      * <p>放宽的只有属主这一条, 而且它放宽的是「谁在操作」而不是「能做什么」：这条路径不是
      * 人在改别人的单, 是系统按本单自己约定的允许损耗记一笔既成事实。数量下限、财务批准态、
      * 并发互斥锁、库存维度锁、身份守卫与审计一个不动; 调用方那一侧还另有四重前提
-     * (severity 在允许损耗内、案件处于 PENDING_OWNER、已回厂量为正、autoCloseWouldSucceed
-     * 体检通过), 人手动走判定页仍然走 {@link #changeQtyForShortDelivery} 的属主守卫。
+     * (severity 在允许损耗内、案件处于 PENDING_OWNER 或 WAITING_MORE、已回厂量为正、
+     * autoCloseWouldSucceed 体检通过), 人手动走判定页仍然走 {@link #changeQtyForShortDelivery}
+     * 的属主守卫。
+     *
+     * <p>ADR-103 §2.5 实施记录：这条路**照样开财务复核 case**。V503 守卫要求批准后改量在同一
+     * 事务里开出新的 PENDING 复核(缺了直接 23514 回滚), 系统结案与人为改量在这一点上没有区别;
+     * 财务复核的是「按约定损耗把订货量改到实收」这笔既成事实, 短交判定本身已经结束。
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public OrderDetail changeQtyForShortDeliveryBySystem(UUID id, OrderQtyChangeRequest request) {
@@ -777,6 +782,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         com.uten.imp.common.finance.ProcurementOrderClosurePolicy.recalculate(em,orderType(),
                 ((SubcontractOrderItem)changes.getFirst()[0]).getId());
         em.refresh(order);
+        // ADR-103 §2.5 实施记录：系统按约定允许损耗自动结案**照样**开财务复核 case——V503 的
+        // fn_check_procurement_source_revision 把「批准后改量必须同事务完成原数量差异账和新的
+        // 财务复核」焊进了库里(缺 PENDING 复核直接 23514 回滚), 系统结案与人为改量在这一点上
+        // 没有区别; 财务复核的是「按约定损耗把订货量改到实收」这笔既成事实。要免复核得改 V503
+        // 守卫(需迁移), 属另一次决策。
         OrderSnapshot postChange = snapshot(order, items);
         UUID caseId = reconfirmation.openReconfirmationCase(
                 postChange, changes.size());
@@ -1408,6 +1418,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private void prepareDraft(SubcontractOrder order){
         orderRepo.flush();itemRepo.flush();
         materialPlanService.lockOrderInventoryDimensions(order.getId());
+        // ADR-103 路线 B: 单一子件委外件的子件仓里一件都没有时, 建单/改单就拦下 (与送审/批准同一把锁)。
+        materialPlanService.requireSoleComponentStockAvailable(order.getId());
         var shortage=materialPlanService.draftChildrenShortageByOrderItem(order.getId());
         for(var item:itemRepo.findByOrderIdOrderByLineNoAsc(order.getId())){
             if(item.getApplicationItemId()!=null)continue;

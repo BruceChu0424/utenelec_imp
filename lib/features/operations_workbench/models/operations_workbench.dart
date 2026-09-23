@@ -293,6 +293,7 @@ class OperationsWorkbenchTask {
     this.issuedAt,
     this.canCreateOrder,
     this.displayStage,
+    this.componentAvailableQty,
   });
 
   final String taskId;
@@ -336,11 +337,22 @@ class OperationsWorkbenchTask {
 
   /// 展示阶段（服务端 display_stage，与状态列表头筛选同源）：委外订货单在财务已通过
   /// 之后细分为 待发料出仓 / 委外加工中 / 部分回厂 / 分批等待中 / 回厂短交待判定
-  /// （ADR-098）；其余等于 [taskStatus]。
+  /// (ADR-098)；委外申请行按路线 B 锁态细分为 WAITING_COMPONENT_STOCK (等子件到货，
+  /// 锁) / COMPONENT_STOCK_READY (子件已到货，解锁)，财务已通过的订货单在待发料
+  /// 之前多一档 OUTBOUND_WAITING_COMPONENT (ADR-103)；其余等于 [taskStatus]。
   final String? displayStage;
+
+  /// ADR-103：路线 B 申请行的子件在作业叶仓的合格可动用量；非路线 B 行为 null。
+  final num? componentAvailableQty;
 
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
+
+  /// ADR-103：路线 B 申请行被子件库存锁住 (黄，在办等别人到货，不可下单)。
+  bool get waitingComponentStock => displayStage == 'WAITING_COMPONENT_STOCK';
+
+  /// ADR-103：路线 B 申请行子件已到货，解锁可下单 (红，轮到委外动手)。
+  bool get componentStockReady => displayStage == 'COMPONENT_STOCK_READY';
 
   String get id => taskId;
   String get taskNo => taskId;
@@ -412,6 +424,7 @@ class OperationsWorkbenchTask {
           ? json['canCreateOrder'] as bool
           : null,
       displayStage: _optionalString(json, 'displayStage'),
+      componentAvailableQty: _optionalNumber(json, 'componentAvailableQty'),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,

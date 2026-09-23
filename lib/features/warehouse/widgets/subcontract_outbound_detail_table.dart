@@ -62,6 +62,14 @@ class SubcontractOutboundLineDraft {
         : line.freeIssuableQty + ownDraftQty;
   }
 
+  /// 发的是子件、服务端明说此刻可发 0: 子件还没到货(ADR-103 §2.4)。
+  /// 这种行数量格禁用、批量页默认不勾, 等子件入库后系统补草稿再发; 老服务端
+  /// (issuableQty 缺失)不判, 沿用纯计划口径。
+  bool get waitingComponentStock =>
+      _showsParentGoods(line.flowMode) &&
+      line.issuableQty != null &&
+      maxEditableQty <= 0;
+
   String? validate(AppLocalizations l10n) {
     if (!selected) return null;
     final quantity = double.tryParse(qty.text.trim());
@@ -129,6 +137,8 @@ class SubcontractOutboundDetailTable extends StatefulWidget {
     this.selectable = false,
     this.onRowSelected,
     this.stickyHeaderPinned,
+    this.primary = false,
+    this.bottomContentPadding = 0,
   });
   final List<SubcontractOutboundTableRow> rows;
   final bool editable;
@@ -137,6 +147,15 @@ class SubcontractOutboundDetailTable extends StatefulWidget {
 
   /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
   final ValueNotifier<bool>? stickyHeaderPinned;
+
+  /// 联动折叠模式(与 MasterDataTableView 同名口径): true 时表格自带一个拾取祖先
+  /// UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController 的竖向滚动件,
+  /// 放在 body 的 Expanded 里即可内滚; false 时随页面自己的 ListView 滚。
+  final bool primary;
+
+  /// 表格内容末尾的可滚留白(与 MasterDataTableView 同名), 悬浮动作组盖不住末行。
+  /// 仅 [primary] 模式生效。
+  final double bottomContentPadding;
   final void Function(SubcontractOutboundTableRow row, bool selected)?
   onRowSelected;
   final VoidCallback onChanged;
@@ -201,7 +220,7 @@ class _SubcontractOutboundDetailTableState
       (row) => subcontractOutboundQuantity(value(row)),
       numeric: true,
     );
-    return UtenEditableGrid<SubcontractOutboundTableRow>(
+    final grid = UtenEditableGrid<SubcontractOutboundTableRow>(
       key: const Key('subcontract-outbound-detail-table'),
       controller: _grid,
       stickyHeaderPinned: widget.stickyHeaderPinned,
@@ -222,8 +241,9 @@ class _SubcontractOutboundDetailTableState
         'warehouse',
         'quantity',
         'unit',
-        // 「仓内可动用」紧挨「本次最多」之前：上限被库存压住时，仓库一眼看出
-        // 是计划没量还是仓里没货，不用靠保存被打回来才知道。
+        // 「建议发料仓」→「仓内可动用」→「本次最多」：上限被库存压住时，仓库一眼看出
+        // 是计划没量还是仓里没货、货在哪个仓，不用靠保存被打回来才知道。
+        'suggestedWarehouse',
         'stockAvailable',
         'maximum',
         'place',
@@ -241,7 +261,7 @@ class _SubcontractOutboundDetailTableState
       ],
       selectable: widget.editable && widget.selectable,
       selectionEnabled: widget.editable,
-      canSelectRow: (row) => row.editable,
+      canSelectRow: (row) => row.editable && !row.draft.waitingComponentStock,
       selectedOf: (row) => row.draft.selected,
       onRowSelect: (row, next) {
         widget.onRowSelected?.call(row, next);
@@ -334,6 +354,17 @@ class _SubcontractOutboundDetailTableState
           l10n.warehouseSubcontractOutboundIssued,
           (row) => row.draft.line.issuedQty,
         ),
+        // 「建议发料仓」是服务端按合格可动用量算好的仓(ADR-101 §2.3 / ADR-103 §2.4)，
+        // 无草稿时拣货页「发出仓」就按它预填；有货在哪一目了然。
+        if (widget.rows.any(
+          (row) => row.draft.line.stockWarehouseName?.isNotEmpty == true,
+        ))
+          textColumn(
+            'suggestedWarehouse',
+            l10n.warehouseSubcontractOutboundSuggestedWarehouse,
+            150,
+            (row) => row.draft.line.stockWarehouseName ?? '—',
+          ),
         // 「仓内可动用」是这次能不能发得出去的真正原因，排在「本次最多」前面：
         // 上限被库存压住时，仓库不用猜是计划没量还是仓里没货。
         if (widget.rows.any((row) => row.draft.line.stockAvailableQty != null))
@@ -357,25 +388,49 @@ class _SubcontractOutboundDetailTableState
           width: 150,
           required: true,
           numeric: true,
-          textOf: (row) => row.draft.qty.text,
+          textOf: (row) => row.draft.waitingComponentStock
+              ? l10n.warehouseSubcontractOutboundWaitingComponentStock(
+                  subcontractOutboundQuantity(
+                    row.draft.line.stockAvailableQty ?? 0,
+                  ),
+                )
+              : row.draft.qty.text,
           listenableOf: (row) => row.draft.qty,
-          cellBuilder: (context, row) => RequiredCellFrame(
-            listenable: row.draft.qty,
-            isEmpty: () {
-              final value = double.tryParse(row.draft.qty.text.trim());
-              return row.draft.selected &&
-                  (value == null ||
-                      !value.isFinite ||
-                      value <= 0 ||
-                      value - row.draft.maxEditableQty > 0.0000001);
-            },
-            child: _field(
-              row,
-              row.draft.qty,
-              l10n.warehouseSubcontractOutboundQuantity,
-              'quantity',
-            ),
-          ),
+          // 子件还没到货的行: 数量格禁用、不描红, 行内直说原因——不是仓库填错了,
+          // 是货还没进来; 子件入库后系统自动补草稿。
+          cellBuilder: (context, row) => row.draft.waitingComponentStock
+              ? Text(
+                  key: ValueKey(
+                    'subcontract-outbound-${row.draft.line.planItemId}-waiting-component',
+                  ),
+                  l10n.warehouseSubcontractOutboundWaitingComponentStock(
+                    subcontractOutboundQuantity(
+                      row.draft.line.stockAvailableQty ?? 0,
+                    ),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : RequiredCellFrame(
+                  listenable: row.draft.qty,
+                  isEmpty: () {
+                    final value = double.tryParse(row.draft.qty.text.trim());
+                    return row.draft.selected &&
+                        (value == null ||
+                            !value.isFinite ||
+                            value <= 0 ||
+                            value - row.draft.maxEditableQty > 0.0000001);
+                  },
+                  child: _field(
+                    row,
+                    row.draft.qty,
+                    l10n.warehouseSubcontractOutboundQuantity,
+                    'quantity',
+                  ),
+                ),
         ),
         EditableGridColumn(
           key: 'warehouse',
@@ -442,6 +497,14 @@ class _SubcontractOutboundDetailTableState
             (row) => row.status ?? '—',
           ),
       ],
+    );
+    if (!widget.primary) return grid;
+    // 网格本身是 content-tall 的 sticky 表头网格, 自己不滚; primary 模式下包一层
+    // 拾取 PrimaryScrollController 的 ListView, 表头吸顶量位就以它为祖先视口。
+    return ListView(
+      primary: true,
+      padding: EdgeInsets.only(bottom: widget.bottomContentPadding),
+      children: [grid],
     );
   }
 

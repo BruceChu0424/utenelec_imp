@@ -1653,7 +1653,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             notifyUser(
                     makerUserId,
                     failed.signum() > 0 ? TYPE_URGENT : TYPE_WORKFLOW,
-                    "委外回厂 IQC 已结案：" + str(order.get("order_bill_no")),
+                    "委外回厂来料质检已结案：" + str(order.get("order_bill_no")),
                     result,
                     "/subcontract/orders/" + order.get("order_id"),
                     EVENT_IQC_RESOLVED);
@@ -1704,7 +1704,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             notifyUser(
                     makerUserId,
                     failed.signum() > 0 ? TYPE_URGENT : TYPE_WORKFLOW,
-                    "委外供给 IQC 已结案：" + receiptBillNo,
+                    "委外供给来料质检已结案：" + receiptBillNo,
                     result + (failed.signum() > 0
                             ? "请复核不合格量对当前可下达数量和补足需求的影响。"
                             : "请在原物料分析中查看最新可下达数量。"),
@@ -1722,7 +1722,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String receiptBillNo, BigDecimal passed, BigDecimal failed) {
         boolean hasPass = hasWarehouseIqcStockInTask(passed);
         boolean hasFail = failed != null && failed.signum() > 0;
-        return "委外进仓单 " + receiptBillNo + " 的 IQC 已结案："
+        return "委外进仓单 " + receiptBillNo + " 的来料质检已结案："
                 + (hasPass
                 ? "存在合格量" + (hasFail ? "，同时存在不合格量。" : "。")
                     + "合格量只有经仓库确认后才进入可用库存；"
@@ -2466,10 +2466,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String taskRoute = "/subcontract/orders/" + orderId;
             String taskContent = "委外订货单 " + orderNo + " 的目标件 "
                     + goods + " 仓库现货不足，缺口 " + shortage
-                    + "(基本单位) 需按自制链补产（现货部分已另行通知仓库直接出仓）。"
+                    + " 需按自制链补产(现货部分已另行通知仓库直接出仓)。"
                     + "请在委外前置自制任务队列启动物料分析，并按正常自制链完成领料、"
-                    + "生产、报工、品质检验和仓库实收入库；可执行操作以任务实时"
-                    + " allowedActions 为准。";
+                    + "生产、报工、品质检验和仓库实收入库；能做哪些操作以任务页上"
+                    + "实际显示的按钮为准。";
             Set<UUID> productionRecipients = new LinkedHashSet<>();
             productionRecipients.addAll(departmentUserIdsWithAuthorities(
                     "SUB_PLAN",
@@ -2549,9 +2549,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         + "。当前可发 " + qty(issuable)
                     : "委外订货单 " + orderNo + " 的目标件 " + goods
                         + " 当前可出仓 " + qty(issuable))
-                    + "(基本单位)。请打开委外出仓任务核对来源仓、库位和实物后拣货并"
-                    + "审核出仓；通知不代表已预留、已拣货或已出仓，可执行操作以任务"
-                    + "实时 allowedActions 为准。";
+                    + "。请打开委外出仓任务核对来源仓、库位和实物后拣货并"
+                    + "审核出仓；通知不代表已预留、已拣货或已出仓，能做哪些操作以任务页上"
+                    + "实际显示的按钮为准。";
             for (UUID warehouseUser : departmentUserIdsWithAuthorities(
                     "SUB_WH",
                     NOTICE_READ_AUTHORITY,
@@ -2598,14 +2598,23 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         deliverAtomically(() -> {
+            // ADR-103: 发子件的行(COMPONENT_OUTBOUND / LEGACY_BOM_COMPONENT)出仓的是子件、
+            // 回厂要登记的是委外件, 两者不是同一个货号; 按 flow_mode 分桶并 JOIN 父件, 文案
+            // 把「发出去的」和「回来要登记的」分开说, 免得仓库按子件登记回厂。父件优先取
+            // 计划行冻结的 parent_goods_id, 旧 LEGACY 行没回填就退到订货明细的货品。
             List<Map<String, Object>> orders = jdbc.queryForList("""
                     SELECT plan.order_id, plan.order_bill_no,
                            order_header.maker_id,
                            issue.bill_no AS issue_bill_no,
+                           (plan_item.flow_mode IN ('COMPONENT_OUTBOUND', 'LEGACY_BOM_COMPONENT'))
+                               AS sends_component,
                            SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
                                AS issued_base_qty,
                            MIN(concat_ws(' ', goods.code, goods.name)) AS first_goods,
-                           COUNT(DISTINCT plan_item.goods_id) AS goods_count
+                           COUNT(DISTINCT plan_item.goods_id) AS goods_count,
+                           MIN(concat_ws(' ', parent_goods.code, parent_goods.name))
+                               AS first_parent_goods,
+                           COUNT(DISTINCT parent_goods.id) AS parent_goods_count
                     FROM subcontract_material_issues issue
                     JOIN subcontract_material_issue_items issue_item
                       ON issue_item.issue_id = issue.id
@@ -2614,7 +2623,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                      AND plan_item.is_deleted = FALSE
                      AND plan_item.flow_mode IN (
                          'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND',
-                         'COMPONENT_OUTBOUND')
+                         'COMPONENT_OUTBOUND', 'LEGACY_BOM_COMPONENT')
                     JOIN subcontract_material_plans plan
                       ON plan.id = plan_item.plan_id
                      AND plan.is_deleted = FALSE
@@ -2623,32 +2632,43 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                      AND order_header.status = 1
                      AND order_header.is_deleted = FALSE
                     JOIN goods ON goods.id = plan_item.goods_id
+                    LEFT JOIN subcontract_order_items order_item
+                      ON order_item.id = issue_item.order_item_id
+                    LEFT JOIN goods parent_goods
+                      ON parent_goods.id = COALESCE(plan_item.parent_goods_id, order_item.goods_id)
                     WHERE issue.id = ?
                       AND issue.status = 1
                       AND issue.is_deleted = FALSE
                     GROUP BY plan.order_id, plan.order_bill_no,
-                             order_header.maker_id, issue.bill_no
-                    ORDER BY plan.order_id
+                             order_header.maker_id, issue.bill_no, sends_component
+                    ORDER BY plan.order_id, sends_component
                     """, issueId);
             for (Map<String, Object> order : orders) {
                 UUID makerUserId = subcontractMakerUserId(
                         (UUID) order.get("maker_id"));
                 UUID orderId = (UUID) order.get("order_id");
                 String orderNo = str(order.get("order_bill_no"));
-                String firstGoods = str(order.get("first_goods"));
-                long goodsCount = ((Number) order.get("goods_count")).longValue();
-                String goods = firstGoods
-                        + (goodsCount > 1 ? " 等 " + goodsCount + " 项" : "");
+                String issueNo = str(order.get("issue_bill_no"));
+                String issued = qty(bd(order.get("issued_base_qty")));
+                String goods = countedGoodsLabel(
+                        str(order.get("first_goods")), order.get("goods_count"));
+                boolean sendsComponent = Boolean.TRUE.equals(order.get("sends_component"));
+                String parentLabel = countedGoodsLabel(
+                        str(order.get("first_parent_goods")), order.get("parent_goods_count"));
+                String parent = parentLabel.isBlank() ? "委外件" : "委外件 " + parentLabel;
                 if (makerUserId != null) {
                     sendToUser(
                             makerUserId,
                             TYPE_WORKFLOW,
-                            "委外目标件已出仓：" + orderNo,
-                            "委外出仓单 " + str(order.get("issue_bill_no"))
-                                    + " 已审核，目标件 " + goods + " 已完成出仓 "
-                                    + qty(bd(order.get("issued_base_qty")))
-                                    + "(基本单位)。请在订单进度中跟进加工交期、回厂收货和"
-                                    + "IQC；通知不代表已回厂或品质已结案。",
+                            (sendsComponent ? "委外子件已发出：" : "委外目标件已出仓：") + orderNo,
+                            (sendsComponent
+                                    ? "委外出仓单 " + issueNo + " 已审核，发出去加工的子件 "
+                                        + goods + " 本批已实际出仓 " + issued
+                                        + "，加工完回厂要登记的是" + parent + "。"
+                                    : "委外出仓单 " + issueNo + " 已审核，目标件 " + goods
+                                        + " 已完成出仓 " + issued + "。")
+                                    + "请在订单进度中跟进加工交期、回厂收货和"
+                                    + "来料质检；通知不代表已回厂或品质已结案。",
                             "/subcontract/orders/" + orderId,
                             EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
                 }
@@ -2658,11 +2678,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             warehouseUser,
                             TYPE_TASK,
                             "委外预计回厂：" + orderNo,
-                            "委外出仓单 " + str(order.get("issue_bill_no"))
-                                    + " 已审核，目标件 " + goods + " 本批已真实出仓 "
-                                    + qty(bd(order.get("issued_base_qty")))
-                                    + "(基本单位)，现在可能回厂。请在预计到货任务中心登记"
-                                    + "实际回厂；通知不代表已经到货。",
+                            (sendsComponent
+                                    ? "委外出仓单 " + issueNo + " 已审核，发出去加工的子件 "
+                                        + goods + " 本批已实际出仓 " + issued
+                                        + "，加工完回厂要登记的是" + parent
+                                        + "；请在预计到货任务中心按" + parent
+                                        + "登记实际回厂，不要按子件登记"
+                                    : "委外出仓单 " + issueNo + " 已审核，目标件 " + goods
+                                        + " 本批已真实出仓 " + issued
+                                        + "，现在可能回厂。请在预计到货任务中心登记实际回厂")
+                                    + "；通知不代表已经到货。",
                             "/warehouse/inbound/expectations",
                             EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
                 }
@@ -2714,7 +2739,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         makerUserId,
                         TYPE_WORKFLOW,
                         "委外供给已出仓：" + str(analysis.get("issue_bill_no")),
-                        "委外目标件已完成审核出仓，现等待委外加工、回厂收货和 IQC。"
+                        "委外目标件已完成审核出仓，现等待委外加工、回厂收货和来料质检。"
                                 + "请在原物料分析查看该供给行动进度；本通知不代表已回厂或"
                                 + "品质已结案。",
                         "/production/material-analyses/"
@@ -2777,7 +2802,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         TYPE_URGENT,
                         "委外目标件出仓已红冲：" + orderNo,
                         "委外出仓单 " + issueNo + " 已红冲，本批目标件出仓 "
-                                + reversedQty + "(基本单位)已撤销。请重新跟进目标件准备和"
+                                + reversedQty + " 已撤销。请重新跟进目标件准备和"
                                 + "出仓；实时订单/任务投影为准。",
                         "/subcontract/orders/" + orderId,
                         EVENT_SUBCONTRACT_OUTBOUND_REVERSED);
@@ -2861,7 +2886,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String content = "委外订货单 " + order.billNo() + " " + timing
                     + "。该单已有审核通过的委外出仓，但仍有加工件尚未物理回厂。"
                     + "请跟进委外商，并在实物到厂后由仓库登记回厂。"
-                    + "本通知仅作交期提醒，不代表已回厂、IQC 已结案或订单完成；"
+                    + "本通知仅作交期提醒，不代表已回厂、来料质检已结案或订单完成；"
                     + "实际状态以订单全链路进度为准。";
             String route = "/subcontract/orders/" + orderId;
             String priority = daysLeft < 0 ? "important" : "normal";
@@ -2938,6 +2963,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                   AND item.preparation_status = 'READY_OUTBOUND'
                   AND LEAST(item.planned_qty, item.prepared_qty) > item.issued_qty
                 """, planItemId);
+    }
+
+    /** 「首个货品 + 等 N 项」汇总标签; first 为空(没 JOIN 到货品)返回空串由调用方兜底。 */
+    private static String countedGoodsLabel(String first, Object count) {
+        if (first == null || first.isBlank()) return "";
+        long n = count instanceof Number number ? number.longValue() : 1L;
+        return first.strip() + (n > 1 ? " 等 " + n + " 项" : "");
     }
 
     private static String subcontractGoodsLabel(Map<String, Object> item) {
@@ -4404,6 +4436,50 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         return number == null ? "0" : number.stripTrailingZeros().toPlainString();
     }
 
+    /**
+     * ADR-103 §2.6「到货超量待财务审核」的委外补句：多出来的是委外商自带料做出来的委外件;
+     * 路线 B(单一子件直发, COMPONENT_OUTBOUND)再点明「我方发出去的是子件 A, 回厂的是委外件 B」。
+     * 采购单或算不出超出量时返回空串, 原文案一个字不动。
+     */
+    private String subcontractSupplierOwnMaterialSentence(String orderType, UUID orderItemId,
+                                                          BigDecimal declaredQty, BigDecimal approvedRemainingQty) {
+        if (!"SUBCONTRACT".equals(orderType) || orderItemId == null || declaredQty == null) return "";
+        BigDecimal excess = declaredQty.subtract(approvedRemainingQty == null ? BigDecimal.ZERO : approvedRemainingQty);
+        if (excess.signum() <= 0) return "";
+        Map<String, Object> line = one("""
+                SELECT goods.code AS goods_code, goods.name AS goods_name,
+                       unit.name AS unit_name,
+                       component.code AS component_code, component.name AS component_name
+                FROM subcontract_order_items order_item
+                JOIN goods ON goods.id = order_item.goods_id
+                LEFT JOIN units unit ON unit.id = order_item.unit_id
+                LEFT JOIN LATERAL (
+                    SELECT component_goods.code, component_goods.name
+                    FROM subcontract_material_plan_items plan_item
+                    JOIN goods component_goods ON component_goods.id = plan_item.goods_id
+                    WHERE plan_item.order_item_id = order_item.id
+                      AND plan_item.flow_mode = 'COMPONENT_OUTBOUND'
+                      AND plan_item.is_deleted = FALSE
+                    ORDER BY plan_item.line_no, plan_item.id
+                    LIMIT 1
+                ) component ON TRUE
+                WHERE order_item.id = ?
+                """, orderItemId);
+        String target = line == null ? "委外件" : subcontractGoodsLabel(line);
+        String unit = line == null || line.get("unit_name") == null ? "" : " " + str(line.get("unit_name"));
+        StringBuilder sentence = new StringBuilder()
+                .append("多出来的 ").append(plainQty(excess)).append(unit)
+                .append(" 是委外商自带料做出来的委外件 ").append(target)
+                .append("，请确认价格与归属。");
+        if (line != null && line.get("component_code") != null) {
+            String component = (str(line.get("component_code")) + " "
+                    + str(line.get("component_name"))).strip();
+            sentence.append("我方发出去的是子件 ").append(component)
+                    .append("，回厂的是委外件 ").append(target).append("。");
+        }
+        return sentence.toString();
+    }
+
     private void notifyProcurementArrivalEvent(String eventType, UUID exceptionId) {
         deliverAtomically(() -> {
             Map<String, Object> arrival = one("""
@@ -4420,6 +4496,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                            exception.status,
                            exception.decision,
                            exception.finance_reason,
+                           exception.order_item_id,
                            return_task.qty AS return_qty,
                            return_task.status AS return_status
                     FROM procurement_arrival_exceptions exception
@@ -4440,7 +4517,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         + str(arrival.get("declared_qty"))
                         + " 超过当前财务批准剩余可收量 "
                         + str(arrival.get("approved_remaining_qty"))
-                        + "。本次未入库、未立应付；请财务持权人员到仓库到货异常任务中心审核。";
+                        + "。本次未入库、未立应付；请财务持权人员到仓库到货异常任务中心审核。"
+                        + subcontractSupplierOwnMaterialSentence(
+                                str(arrival.get("order_type")),
+                                (UUID) arrival.get("order_item_id"),
+                                bd(arrival.get("declared_qty")),
+                                bd(arrival.get("approved_remaining_qty")));
                 UUID assignee = (UUID) arrival.get("finance_assignee_user_id");
                 Set<UUID> reviewers = new LinkedHashSet<>(financeReviewerUserIds());
                 if (assignee != null) {
@@ -4743,9 +4825,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String type;
             Set<UUID> recipients;
             if (EVENT_PROCUREMENT_IQC_REJECTION_OPENED.equals(eventType)) {
-                title = "IQC不合格待处置：" + displayNo(orderNo, receiptNo);
+                title = "来料质检不合格待处置：" + displayNo(orderNo, receiptNo);
                 content = sourceLabel + goodsLabel
-                        + " 已形成独立退回/贷项任务。IQC不合格不会进入可用库存，"
+                        + " 已形成独立退回/贷项任务。来料质检不合格的货不会进入可用库存，"
                         + "实物退回与供应商贷项必须分别留痕；请在任务详情跟进。" + preStockedHint;
                 type = TYPE_TASK;
                 recipients = userIdsWithIqcViewAndAnyPermission(
@@ -4761,7 +4843,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     recipients.add(ownerUserId);
                 }
             } else if (EVENT_PROCUREMENT_IQC_REJECTION_RETURNED.equals(eventType)) {
-                title = "IQC退回已登记，待财务结案："
+                title = "来料质检不合格退回已登记，待财务结案："
                         + displayNo(orderNo, receiptNo);
                 content = sourceLabel + goodsLabel
                         + " 的实物退回证据已登记。请财务核对后选择确认供应商贷项"
@@ -4779,7 +4861,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 }
             } else if (EVENT_PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION.equals(
                     eventType)) {
-                title = "IQC财务处置异常待复核："
+                title = "来料质检不合格财务处置异常待复核："
                         + displayNo(orderNo, receiptNo);
                 content = sourceLabel + goodsLabel
                         + " 的财务动作未完成，任务仍停留在持久状态 "
@@ -4803,7 +4885,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     recipients.add(ownerUserId);
                 }
                 if (EVENT_PROCUREMENT_IQC_CREDIT_CONFIRMED.equals(eventType)) {
-                    title = "IQC供应商贷项已确认："
+                    title = "来料质检不合格供应商贷项已确认："
                             + displayNo(orderNo, receiptNo);
                     content = sourceLabel + goodsLabel
                             + " 的供应商贷项与来源应付抵销已受控确认。"
@@ -4811,14 +4893,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     type = TYPE_WORKFLOW;
                 } else if (EVENT_PROCUREMENT_IQC_REJECTION_NO_CREDIT.equals(
                         eventType)) {
-                    title = "IQC无贷项已结案："
+                    title = "来料质检不合格无贷项已结案："
                             + displayNo(orderNo, receiptNo);
                     content = sourceLabel + goodsLabel
                             + " 已按留痕原因完成无贷项结案，未生成供应商贷项或自动应付抵销。"
                             + "具体商业数据仅在持权任务详情中查看。";
                     type = TYPE_WORKFLOW;
                 } else {
-                    title = "IQC拒收处置已反向："
+                    title = "来料质检拒收处置已反向："
                             + displayNo(orderNo, receiptNo);
                     content = sourceLabel + goodsLabel
                             + " 的退回/贷项处置发生受控反向，当前持久状态 "

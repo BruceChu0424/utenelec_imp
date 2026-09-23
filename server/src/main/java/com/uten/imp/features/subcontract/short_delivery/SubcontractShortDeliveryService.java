@@ -374,8 +374,8 @@ public class SubcontractShortDeliveryService
 
     /**
      * 「接受损耗·结案」的本体：损耗单 → 案件落 ACCEPTED_LOSS → 受控改量到累计回厂量。
-     * 人工判定({@link #decide})与容差内自动结案({@link #settleAfterStockIn})共用，
-     * 权限/归属校验在各自入口做完。
+     * 人工判定({@link #decide})与容差内自动结案({@link #settleAfterStockIn} /
+     * {@link #settleAfterMaterialIssueClosed})共用，权限/归属校验在各自入口做完。
      *
      * <p>{@code systemInitiated} 区分第三步受控改量走哪条入口：人工判定是本人在操作自己
      * 负责的单, 照旧过订货单属主守卫; 容差内自动结案跑在**仓库确认入库的同一个事务**里,
@@ -411,6 +411,10 @@ public class SubcontractShortDeliveryService
                 fact.orderItemId(), fact.orderUnitRate(), shortfall, allowedShortfall,
                 fact.allowedLossPct(), cause, BusinessTime.today());
         BigDecimal lossPct = SubcontractShortDeliveryPolicy.shortfallPct(fact.orderedQty(), fact.deliveredQty());
+        // ADR-103 §2.5：WAITING_MORE 案件也走这一条 UPDATE。V636 的 CHECK 要求 status<>'WAITING_MORE'
+        // OR decision='WAIT_MORE', 以及 decision/decided_at/decided_by_* 三列同空同非空——这里把
+        // status、decision、decided_* 一起改成 ACCEPT_LOSS 那一套, 与人工「接受损耗」落库完全一致,
+        // 分批等待留下的 expected_complete_by 顺手清空(ACCEPT_LOSS 不受 WAIT_MORE 那条 CHECK 约束)。
         int changed = jdbc.update("""
                 UPDATE subcontract_short_delivery_cases
                 SET status = 'ACCEPTED_LOSS', decision = 'ACCEPT_LOSS', expected_complete_by = NULL,
@@ -429,6 +433,7 @@ public class SubcontractShortDeliveryService
                 new ProcurementApprovalContracts.OrderQtyChangeItem(
                         fact.orderItemId(), fact.deliveredQty())));
         if (systemInitiated) {
+            // 系统路径只跳过订货单属主守卫; 财务复核 case 照开(V503 守卫要求同事务开一条 PENDING 复核)。
             orderService.changeQtyForShortDeliveryBySystem(fact.orderId(), qtyChange);
         } else {
             orderService.changeQtyForShortDelivery(fact.orderId(), qtyChange);
@@ -474,6 +479,11 @@ public class SubcontractShortDeliveryService
      * <p>只自动结 WITHIN_TOLERANCE 一档：没填允许损耗(UNSET_TOLERANCE)时没有约定可依，
      * 低于下限的两档本来就要委外自己判分批还是认损耗，都保持人工。
      *
+     * <p>ADR-103 §2.5：开放案件不分 PENDING_OWNER 还是 WAITING_MORE。「分批到货」判定只是
+     * 委外说「后面还有」, 最后一批把累计送进允许损耗范围时, 与一次到齐进容差是同一件事,
+     * 用户口径「最后一批 >= 100 就可以直接入库并结束, 损耗 100」——此前 WAITING_MORE 案件
+     * 只刷数字不结案, 单子要等预计到齐日过期、调度器催人再点一次。
+     *
      * <p>同一张收货单可能一次结掉同一订货单的多行。逐行结案能走通，靠的是
      * {@code changeQtyForShortDelivery} 不再受「无在办财务复核」那道闸约束——否则第二行会被
      * 第一行自己开出来的复核 case 挡死，连它刚开的损耗单一起回滚。
@@ -489,6 +499,25 @@ public class SubcontractShortDeliveryService
                   AND COALESCE(is_deleted, FALSE) = FALSE
                 ORDER BY order_item_id
                 """, UUID.class, receiptId);
+        settleOrderItems(orderItemIds, receiptId);
+    }
+
+    /**
+     * ADR-103 §2.5「不再出仓」：出仓计划关闭后 FACT_SQL 只看 OPEN 计划, 本行即算「料已发完」,
+     * 与入库同款评估。没有 receiptId——补开的案件 receipt_id 记空(V636 该列可空), 有回厂才评。
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void settleAfterMaterialIssueClosed(Collection<UUID> orderItemIds) {
+        if (orderItemIds == null || orderItemIds.isEmpty()) return;
+        settleOrderItems(orderItemIds.stream().filter(java.util.Objects::nonNull).distinct().sorted().toList(), null);
+    }
+
+    /**
+     * 自动结案主体, {@link #settleAfterStockIn}(receiptId 非空)与
+     * {@link #settleAfterMaterialIssueClosed}(receiptId 为空)共用。
+     */
+    private void settleOrderItems(List<UUID> orderItemIds, UUID receiptId) {
         if (orderItemIds.isEmpty()) return;
         UUID actorUser = currentUser.requireId();
         UUID actorEmployee = currentUser.requireEmployeeId();
@@ -500,9 +529,9 @@ public class SubcontractShortDeliveryService
                     fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
             OpenCase open = openCases.get(fact.orderItemId());
             if (severity == null) {
-                // 到齐即完结。补开路径(settleAfterStockIn)开的案件没有「登记 → recordArrival」
-                // 替它落 COMPLETED——这里不收口，它就永远挂在「容差内待结案」(ADR-098 中性档
-                // 零通知, 没有人会被提醒)。与 recordArrival 的「累计回厂已到齐」同款收口。
+                // 到齐即完结。补开路径开的案件没有「登记 → recordArrival」替它落 COMPLETED——
+                // 这里不收口，它就永远挂在「容差内待结案」(ADR-098 中性档零通知, 没有人会被
+                // 提醒)。与 recordArrival 的「累计回厂已到齐」同款收口。
                 if (open != null) {
                     closeCase(open, STATUS_COMPLETED, "COMPLETED", actorUser, actorEmployee,
                             snapshot(fact, null, "累计回厂已到齐"));
@@ -510,13 +539,16 @@ public class SubcontractShortDeliveryService
                 continue;
             }
             if (open == null) {
+                // ADR-103：关计划那条路没有本次到货, 一件都没回厂的行不开案件——短交是「回厂比
+                // 订货少」, 没有回厂就没有可判的事, 留给下一次登记(recordArrival)按料已发完评估。
+                if (receiptId == null && fact.deliveredQty().signum() <= 0) continue;
                 // 料是在最后一批货到齐之后才发完的：登记那一刻还判不出短交，这里补开。
                 openCase(fact, receiptId, null, severity, actorUser, actorEmployee, true);
                 open = openCases(List.of(fact.orderItemId()), true).get(fact.orderItemId());
                 if (open == null) continue;
             }
             if (SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE.equals(severity)
-                    && STATUS_PENDING.equals(open.status())
+                    && (STATUS_PENDING.equals(open.status()) || STATUS_WAITING.equals(open.status()))
                     && fact.deliveredQty().signum() > 0
                     && autoCloseWouldSucceed(fact)) {
                 tolerant.add(fact);
@@ -526,12 +558,14 @@ public class SubcontractShortDeliveryService
         for (ItemFacts fact : tolerant) {
             OpenCase open = openCases(List.of(fact.orderItemId()), true).get(fact.orderItemId());
             if (open == null) continue;
+            String note = STATUS_WAITING.equals(open.status())
+                    ? "分批到货后累计回厂已进入允许损耗范围, 系统按约定的允许损耗自动结案"
+                    : "累计回厂已在本单允许损耗范围内, 系统按约定的允许损耗自动结案";
             acceptLoss(open.id(),
                     new LockedCase(open.id(), open.status(), fact.orderItemId(), fact.orderId(),
                             open.version(), open.ownerEmployeeId(),
                             SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE),
-                    fact, "累计回厂已在本单允许损耗范围内，系统按约定的允许损耗自动结案",
-                    actorUser, actorEmployee, true);
+                    fact, note, actorUser, actorEmployee, true);
         }
     }
 

@@ -44,7 +44,7 @@ void main() {
     }
     final menu = table.rowMenuBuilder!(table.items.first);
     expect(menu, hasLength(1));
-    expect((menu.single as UtenMenuItem).label, '进入目标件拣货出仓');
+    expect((menu.single as UtenMenuItem).label, '进入拣货出仓');
     expect(find.text('共 3 项 · 单击选中，双击详情'), findsOneWidget);
     expect(find.byType(Checkbox), findsNothing);
 
@@ -64,6 +64,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.taskRequests, 2);
     expect(find.text('委外出仓任务中心'), findsOneWidget);
+  });
+
+  testWidgets('等子件到货的计划显示为第三桶且不可勾选, 有可发量的显示可发合计', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _OutboundTaskApi()..componentStockRows = true;
+    final router = _router();
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(_app(api: api, router: router));
+    await tester.pumpAndSettle();
+
+    final table = _table(tester);
+    expect(
+      table.facets['status']?.map((bucket) => bucket.value),
+      containsAll(<String>[
+        'DRAFT_PICKING',
+        'READY_OUTBOUND',
+        'WAITING_COMPONENT',
+      ]),
+    );
+    expect(
+      table.facets['status']
+          ?.firstWhere((bucket) => bucket.value == 'WAITING_COMPONENT')
+          .label,
+      '等子件到货',
+    );
+    expect(find.text('等子件到货'), findsOneWidget);
+    expect(find.text('已备齐·待出仓 (可发 300)'), findsOneWidget);
+    expect(find.text('目标件已备齐，待出仓'), findsNothing);
+    final waiting = table.items.firstWhere(
+      (task) => task.stage == OutboundTaskStage.waitingComponent,
+    );
+    final ready = table.items.firstWhere(
+      (task) => task.stage == OutboundTaskStage.readyOutbound,
+    );
+    expect(table.idOf!(waiting), isNull, reason: '可发 0 的行勾了也只会撞 409');
+    expect(table.idOf!(ready), ready.planId);
+    expect(find.textContaining('子件入库后才会出现可发量'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -204,6 +244,7 @@ class _OutboundTaskApi extends ApiClient {
   final List<Map<String, dynamic>> taskQueries = [];
   int taskRequests = 0;
   bool failNext = false;
+  bool componentStockRows = false;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -231,7 +272,22 @@ class _OutboundTaskApi extends ApiClient {
         'totalPages': 1,
       };
     }
-    final items = page == 1
+    final items = componentStockRows
+        ? <Map<String, dynamic>>[
+            {
+              ..._task(1),
+              'readyOutboundQty': 5000,
+              'issuableTotal': 0,
+              'waitingComponentLineCount': 1,
+            },
+            {
+              ..._task(2),
+              'readyOutboundQty': 5000,
+              'issuableTotal': 300,
+              'waitingComponentLineCount': 0,
+            },
+          ]
+        : page == 1
         ? <Map<String, dynamic>>[_task(1, hasDraft: true), _task(2)]
         : <Map<String, dynamic>>[_task(3, hasDraft: true)];
     return {

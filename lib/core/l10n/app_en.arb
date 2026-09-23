@@ -1087,6 +1087,7 @@
   "subcontractOrderBlockedPreparation": "Preparation is not complete. Subcontract ordering is not available yet.",
   "subcontractOrderBlockedNotification": "Production is complete. Notify subcontracting before placing the order.",
   "subcontractOrderBlockedCancelled": "The production task was cancelled. Subcontract ordering is unavailable.",
+  "subcontractOrderBlockedComponentStock": "The component has not been received into stock yet. Subcontract ordering is not available; the task center unlocks automatically once the component is received.",
   "subcontractPlanIssuedDate": "Task issue date",
   "subcontractPlanIssuedDateHint": "The date planning first issued this subcontract task.",
   "subcontractOrderBlockedRefresh": "Subcontracting has been notified. Refresh the task list before ordering.",
@@ -1314,6 +1315,45 @@
   "warehouseSubcontractOutboundLineRemark": "Line notes",
   "warehouseSubcontractOutboundWarehouseSyncHint": "Defaults to the original document's actual warehouse. Changing it updates every line belonging to that document.",
   "warehouseSubcontractOutboundDocumentRemarkHint": "These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.",
+  "warehouseSubcontractOutboundStageDraftPicking": "Outbound draft awaiting picking",
+  "warehouseSubcontractOutboundStageReady": "Prepared, awaiting outbound (issuable {qty})",
+  "@warehouseSubcontractOutboundStageReady": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundStageReadyPlain": "Prepared, awaiting outbound",
+  "warehouseSubcontractOutboundWaitingComponent": "Waiting for component stock",
+  "warehouseSubcontractOutboundStageBlockedPreparation": "Preparation blocked",
+  "warehouseSubcontractOutboundStageWaitingPreparation": "Waiting for preparation",
+  "warehouseSubcontractOutboundStagePendingDraft": "Outbound document pending",
+  "warehouseSubcontractOutboundOpenPicking": "Open picking outbound",
+  "warehouseSubcontractOutboundBannerComponent": "Component-issue subcontract items: an issuable quantity appears only after the component is received into stock. The warehouse issues the component; the subcontractor returns the subcontract item.",
+  "warehouseSubcontractOutboundWaitingComponentStock": "Waiting for component stock (available {qty})",
+  "@warehouseSubcontractOutboundWaitingComponentStock": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundSuggestedWarehouse": "Suggested issue warehouse",
+  "warehouseSubcontractOutboundComponentEffects": "Approval issues the component from the selected warehouse to the subcontractor. The subcontract item is registered on return and still requires quality inspection before it is received into stock.",
+  "warehouseSubcontractOutboundComponentNotArrived": "The component has not been received yet; there is none in stock. The system adds a draft and notifies the warehouse automatically once the component is received.",
+  "warehouseSubcontractOutboundWorkView": "Warehouse work view",
+  "warehouseSubcontractOutboundBannerScope": "The warehouse work view has no prices or amounts and offers no subcontract business editing.",
+  "warehouseSubcontractOutboundBannerDraftPending": "Draft {billNo} awaits picking review",
+  "warehouseSubcontractOutboundBannerWaitingComponent": "Waiting for component stock: once the component is received, the system adds a draft and notifies you",
+  "warehouseSubcontractOutboundBannerIssuable": "Issuable {qty}",
+  "warehouseSubcontractOutboundFactDraftNo": "Outbound draft no.",
+  "warehouseSubcontractOutboundFactLatestIssue": "Latest outbound document",
+  "warehouseSubcontractOutboundHistoryTitle": "Outbound records ({count})",
+  "warehouseSubcontractOutboundLinesTitle": "Outbound lines ({count})",
+  "warehouseSubcontractOutboundSaveDraft": "Save draft",
+  "warehouseSubcontractOutboundApprove": "Approve outbound",
+  "warehouseSubcontractOutboundClosePlan": "Stop issuing",
   "productionBatchTitle": "Batch production and material request",
   "productionBatchPermission": "You do not have permission to arrange batch material requests.",
   "productionBatchSelectTask": "Select a waiting work order from workshop tasks.",

@@ -52,7 +52,9 @@ import '../../features/warehouse/providers/production_finished_inbound_task_coun
 import '../../features/warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../features/warehouse/providers/warehouse_sales_outbound_count_provider.dart';
 import '../../features/warehouse/repositories/warehouse_subcontract_outbound_repository.dart'
-    show warehouseSubcontractOutboundCountProvider;
+    show
+        warehouseSubcontractOutboundCountProvider,
+        warehouseSubcontractOutboundTaskCountsProvider;
 import '../auth/pending_review_provider.dart';
 import '../auth/permissions.dart';
 import 'badge_module.dart';
@@ -400,7 +402,8 @@ void invalidateTodoBadgeCaches(WidgetRef ref) {
   ref.invalidate(procurementIqcRejectionOpenCountProvider);
   // 销售待出库数由分组计数派生, 失效打在源头(单独失效派生 provider 不会重拉).
   ref.invalidate(warehouseSalesOutboundCountsProvider);
-  ref.invalidate(warehouseSubcontractOutboundCountProvider);
+  // 委外待出仓红数由红黄两数的源头派生(ADR-103), 同样只失效源头.
+  ref.invalidate(warehouseSubcontractOutboundTaskCountsProvider);
   ref.invalidate(warehouseInboundExpectationCountProvider);
   ref.invalidate(warehouseArrivalExceptionCountProvider);
   ref.invalidate(warehouseProductionDrawPendingCountProvider);

@@ -4,13 +4,16 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.application.port.InventoryMovementCostReference;
+import com.uten.imp.application.port.SubcontractOutboundWakePort;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -75,6 +78,12 @@ public class StockService {
     private final InventoryMutationLock inventoryLock;
     private final com.uten.imp.features.stock.valuation.StockValuationCoordinator valuation;
     private final GoodsOwningWarehouseSyncService owningWarehouseSync;
+    /**
+     * ADR-103 委外路线 B「子件到货即解锁」的唯一唤醒口: 库存内核每记一笔入库方向流水就回头
+     * 叫醒等这批货的委外出仓计划行(ADR-017 跨 feature 只经 application.port)。用 ObjectProvider
+     * 是因为纯单测手工 new 时没有委外模块; 生产环境由 SubcontractMaterialPlanService 实现。
+     */
+    private final ObjectProvider<SubcontractOutboundWakePort> subcontractOutboundWake;
 
     /**
      * Pre-locks all dimensions of a multi-line document in stable order.
@@ -321,6 +330,12 @@ public class StockService {
         // 出库/红冲不翻转；值没变不写。见 GoodsOwningWarehouseSyncService。
         if (req.direction() == DIR_IN) {
             owningWarehouseSync.syncOnInbound(req.goodsId(), req.warehouseId());
+            // ADR-103: 任何入库方向的流水(采购/委外回厂/生产完工/盘盈/退货入库, 也包括出库红冲
+            // 把货冲回仓)都算「子件到货」, 在写完余额的同一事务里叫醒等料的委外出仓行——
+            // 不再由各入库单据自己记得去调, 全系统只此一处。fail-closed: 端口抛错整笔入库回滚。
+            subcontractOutboundWake.ifAvailable(port -> port.wakeOutboundAfterStockIn(List.of(
+                    new SubcontractOutboundWakePort.StockedDimension(
+                            req.goodsId(), req.colorId(), req.warehouseId()))));
         }
         return m.getId();
     }

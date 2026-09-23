@@ -5023,6 +5023,12 @@ abstract class AppLocalizations {
   /// **'生产任务已取消，暂时不能下委外单'**
   String get subcontractOrderBlockedCancelled;
 
+  /// No description provided for @subcontractOrderBlockedComponentStock.
+  ///
+  /// In zh, this message translates to:
+  /// **'子件尚未入库，暂时不能下委外单；子件入库后任务中心会自动解锁'**
+  String get subcontractOrderBlockedComponentStock;
+
   /// No description provided for @subcontractPlanIssuedDate.
   ///
   /// In zh, this message translates to:
@@ -6012,6 +6018,156 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。'**
   String get warehouseSubcontractOutboundDocumentRemarkHint;
+
+  /// No description provided for @warehouseSubcontractOutboundStageDraftPicking.
+  ///
+  /// In zh, this message translates to:
+  /// **'出仓草稿待拣货'**
+  String get warehouseSubcontractOutboundStageDraftPicking;
+
+  /// No description provided for @warehouseSubcontractOutboundStageReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'已备齐·待出仓 (可发 {qty})'**
+  String warehouseSubcontractOutboundStageReady(String qty);
+
+  /// No description provided for @warehouseSubcontractOutboundStageReadyPlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'已备齐·待出仓'**
+  String get warehouseSubcontractOutboundStageReadyPlain;
+
+  /// No description provided for @warehouseSubcontractOutboundWaitingComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'等子件到货'**
+  String get warehouseSubcontractOutboundWaitingComponent;
+
+  /// No description provided for @warehouseSubcontractOutboundStageBlockedPreparation.
+  ///
+  /// In zh, this message translates to:
+  /// **'前置自制受阻'**
+  String get warehouseSubcontractOutboundStageBlockedPreparation;
+
+  /// No description provided for @warehouseSubcontractOutboundStageWaitingPreparation.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待前置自制'**
+  String get warehouseSubcontractOutboundStageWaitingPreparation;
+
+  /// No description provided for @warehouseSubcontractOutboundStagePendingDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'待生成出仓单'**
+  String get warehouseSubcontractOutboundStagePendingDraft;
+
+  /// No description provided for @warehouseSubcontractOutboundOpenPicking.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入拣货出仓'**
+  String get warehouseSubcontractOutboundOpenPicking;
+
+  /// No description provided for @warehouseSubcontractOutboundBannerComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'发子件的委外件: 子件入库后才会出现可发量, 仓库发的是子件, 回厂交回的是委外件。'**
+  String get warehouseSubcontractOutboundBannerComponent;
+
+  /// No description provided for @warehouseSubcontractOutboundWaitingComponentStock.
+  ///
+  /// In zh, this message translates to:
+  /// **'等子件到货 (仓内可动用 {qty})'**
+  String warehouseSubcontractOutboundWaitingComponentStock(String qty);
+
+  /// No description provided for @warehouseSubcontractOutboundSuggestedWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'建议发料仓'**
+  String get warehouseSubcontractOutboundSuggestedWarehouse;
+
+  /// No description provided for @warehouseSubcontractOutboundComponentEffects.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核后，子件从所选仓库实际出库并交委外商加工；加工完回厂登记的是委外件，仍需品质检查，合格后才正式入仓。'**
+  String get warehouseSubcontractOutboundComponentEffects;
+
+  /// No description provided for @warehouseSubcontractOutboundComponentNotArrived.
+  ///
+  /// In zh, this message translates to:
+  /// **'子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。'**
+  String get warehouseSubcontractOutboundComponentNotArrived;
+
+  /// No description provided for @warehouseSubcontractOutboundWorkView.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库作业视图'**
+  String get warehouseSubcontractOutboundWorkView;
+
+  /// No description provided for @warehouseSubcontractOutboundBannerScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。'**
+  String get warehouseSubcontractOutboundBannerScope;
+
+  /// No description provided for @warehouseSubcontractOutboundBannerDraftPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'草稿 {billNo} 待拣货审核'**
+  String warehouseSubcontractOutboundBannerDraftPending(String billNo);
+
+  /// No description provided for @warehouseSubcontractOutboundBannerWaitingComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'等子件到货: 子件入库后系统会自动补草稿并通知'**
+  String get warehouseSubcontractOutboundBannerWaitingComponent;
+
+  /// No description provided for @warehouseSubcontractOutboundBannerIssuable.
+  ///
+  /// In zh, this message translates to:
+  /// **'可发 {qty}'**
+  String warehouseSubcontractOutboundBannerIssuable(String qty);
+
+  /// No description provided for @warehouseSubcontractOutboundFactDraftNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'出仓草稿单号'**
+  String get warehouseSubcontractOutboundFactDraftNo;
+
+  /// No description provided for @warehouseSubcontractOutboundFactLatestIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近出仓单'**
+  String get warehouseSubcontractOutboundFactLatestIssue;
+
+  /// No description provided for @warehouseSubcontractOutboundHistoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'出仓记录 ({count})'**
+  String warehouseSubcontractOutboundHistoryTitle(int count);
+
+  /// No description provided for @warehouseSubcontractOutboundLinesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'出仓明细 ({count})'**
+  String warehouseSubcontractOutboundLinesTitle(int count);
+
+  /// No description provided for @warehouseSubcontractOutboundSaveDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存草稿'**
+  String get warehouseSubcontractOutboundSaveDraft;
+
+  /// No description provided for @warehouseSubcontractOutboundApprove.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核出仓'**
+  String get warehouseSubcontractOutboundApprove;
+
+  /// No description provided for @warehouseSubcontractOutboundClosePlan.
+  ///
+  /// In zh, this message translates to:
+  /// **'不再出仓'**
+  String get warehouseSubcontractOutboundClosePlan;
 
   /// No description provided for @productionBatchTitle.
   ///

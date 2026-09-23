@@ -2620,6 +2620,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get subcontractOrderBlockedCancelled => '生产任务已取消，暂时不能下委外单';
 
   @override
+  String get subcontractOrderBlockedComponentStock =>
+      '子件尚未入库，暂时不能下委外单；子件入库后任务中心会自动解锁';
+
+  @override
   String get subcontractPlanIssuedDate => '计划下达日期';
 
   @override
@@ -3152,6 +3156,98 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundDocumentRemarkHint =>
       '同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。';
+
+  @override
+  String get warehouseSubcontractOutboundStageDraftPicking => '出仓草稿待拣货';
+
+  @override
+  String warehouseSubcontractOutboundStageReady(String qty) {
+    return '已备齐·待出仓 (可发 $qty)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundStageReadyPlain => '已备齐·待出仓';
+
+  @override
+  String get warehouseSubcontractOutboundWaitingComponent => '等子件到货';
+
+  @override
+  String get warehouseSubcontractOutboundStageBlockedPreparation => '前置自制受阻';
+
+  @override
+  String get warehouseSubcontractOutboundStageWaitingPreparation => '等待前置自制';
+
+  @override
+  String get warehouseSubcontractOutboundStagePendingDraft => '待生成出仓单';
+
+  @override
+  String get warehouseSubcontractOutboundOpenPicking => '进入拣货出仓';
+
+  @override
+  String get warehouseSubcontractOutboundBannerComponent =>
+      '发子件的委外件: 子件入库后才会出现可发量, 仓库发的是子件, 回厂交回的是委外件。';
+
+  @override
+  String warehouseSubcontractOutboundWaitingComponentStock(String qty) {
+    return '等子件到货 (仓内可动用 $qty)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundSuggestedWarehouse => '建议发料仓';
+
+  @override
+  String get warehouseSubcontractOutboundComponentEffects =>
+      '审核后，子件从所选仓库实际出库并交委外商加工；加工完回厂登记的是委外件，仍需品质检查，合格后才正式入仓。';
+
+  @override
+  String get warehouseSubcontractOutboundComponentNotArrived =>
+      '子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。';
+
+  @override
+  String get warehouseSubcontractOutboundWorkView => '仓库作业视图';
+
+  @override
+  String get warehouseSubcontractOutboundBannerScope =>
+      '仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。';
+
+  @override
+  String warehouseSubcontractOutboundBannerDraftPending(String billNo) {
+    return '草稿 $billNo 待拣货审核';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundBannerWaitingComponent =>
+      '等子件到货: 子件入库后系统会自动补草稿并通知';
+
+  @override
+  String warehouseSubcontractOutboundBannerIssuable(String qty) {
+    return '可发 $qty';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundFactDraftNo => '出仓草稿单号';
+
+  @override
+  String get warehouseSubcontractOutboundFactLatestIssue => '最近出仓单';
+
+  @override
+  String warehouseSubcontractOutboundHistoryTitle(int count) {
+    return '出仓记录 ($count)';
+  }
+
+  @override
+  String warehouseSubcontractOutboundLinesTitle(int count) {
+    return '出仓明细 ($count)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundSaveDraft => '保存草稿';
+
+  @override
+  String get warehouseSubcontractOutboundApprove => '审核出仓';
+
+  @override
+  String get warehouseSubcontractOutboundClosePlan => '不再出仓';
 
   @override
   String get productionBatchTitle => '分批生产领料';

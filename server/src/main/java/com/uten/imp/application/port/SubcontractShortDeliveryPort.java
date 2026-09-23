@@ -2,6 +2,7 @@ package com.uten.imp.application.port;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -67,6 +68,17 @@ public interface SubcontractShortDeliveryPort {
      *
      * <p>用户口径：订 1000、允许损耗 10%，收到 900 以上就正常入库并结束这张单，差的那部分
      * 算损耗。低于下限的两档、以及没填允许损耗的行仍然保持人工判定。
+     *
+     * <p>ADR-103 §2.5：「分批到货」判定后的案件(WAITING_MORE)与待判定案件(PENDING_OWNER)
+     * 一视同仁——最后一批把累计送进允许损耗范围, 同样在入库那一刻自动结案。
      */
     void settleAfterStockIn(UUID receiptId);
+
+    /**
+     * ADR-103 §2.5「仓库『不再出仓』关掉余量」：出仓计划关闭即视同本行的料已全部发出,
+     * 对计划涉及的订货明细跑一次与 {@link #settleAfterStockIn} 同款的评估——已有回厂的行
+     * 补开案件 / 容差内自动结案；还没有任何回厂的行不动(下一次登记由 recordArrival 评估)。
+     * 调用方(SubcontractMaterialPlanService.closePlan)已持事务, 本方法只能在其中执行。
+     */
+    void settleAfterMaterialIssueClosed(Collection<UUID> orderItemIds);
 }

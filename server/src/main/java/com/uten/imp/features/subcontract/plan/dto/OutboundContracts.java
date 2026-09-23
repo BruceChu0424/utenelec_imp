@@ -28,7 +28,17 @@ public final class OutboundContracts {
             BigDecimal readyOutboundQty,
             int readyLineCount,
             int waitingPreparationCount,
-            int blockedLineCount) {
+            int blockedLineCount,
+            /**
+             * ADR-103: 发现货的两种流向 (DIRECT / COMPONENT) 里「有余量、没挂未审草稿、作业叶仓
+             * 里一件都没有」的行数——这些行在等子件到货, 不是轮到仓库动手。
+             */
+            long waitingComponentLineCount,
+            /**
+             * ADR-103: 此刻真能开出去的合计 (基本单位) = 发现货两流向按 min(余量, 作业叶仓合格
+             * 可动用量), 其它流向按余量; 0 且无草稿 = 整张任务在等子件到货 (WAITING_COMPONENT)。
+             */
+            BigDecimal issuableTotal) {
     }
 
     /** Server-authoritative outbound line; parent fields are legacy compatibility only. */

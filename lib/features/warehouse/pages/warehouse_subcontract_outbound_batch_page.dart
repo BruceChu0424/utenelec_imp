@@ -217,18 +217,21 @@ class _WarehouseSubcontractOutboundBatchPageState
             final existing = byPlan[line.planItemId];
             if (document != null && existing == null) continue;
             if (document == null && line.readyOutboundQty <= 0) continue;
-            lines.add(
-              SubcontractOutboundLineDraft(
-                line,
-                existing?.id,
-                subcontractOutboundQuantity(
-                  existing?.qty ?? line.readyOutboundQty,
-                ),
-                weight: existing?.weight,
-                remark: existing?.remark,
-                unitRate: existing?.unitRate,
+            // 无草稿预填可发量(服务端 min(计划余量, 仓内合格可动用)), 老服务端回落计划余量。
+            final draftLine = SubcontractOutboundLineDraft(
+              line,
+              existing?.id,
+              subcontractOutboundQuantity(
+                existing?.qty ?? line.freeIssuableQty,
               ),
+              weight: existing?.weight,
+              remark: existing?.remark,
+              unitRate: existing?.unitRate,
             );
+            // 子件还没到货的行按行放行(ADR-103 §2.4): 默认不勾、标「等子件到货」，
+            // 同单其余有货的行照常生成草稿出库。
+            if (draftLine.waitingComponentStock) draftLine.selected = false;
+            lines.add(draftLine);
           }
           if (document != null && lines.length != document.items.length) {
             for (final line in lines) {
@@ -244,9 +247,15 @@ class _WarehouseSubcontractOutboundBatchPageState
                 document?.workerId ??
                 ref.read(sessionProvider).user?.employeeId,
           );
-          if (lines.isEmpty || lines.any((line) => line.maxEditableQty <= 0)) {
+          // 只有整单一行都发不出去才整单阻断; 文案区分「子件还没到货」与「没有可出库明细」。
+          if (lines.isEmpty) {
             draft.state = SubcontractOutboundExecutionState.blocked;
             draft.error = l10n.warehouseSubcontractOutboundNoLines;
+          } else if (lines.every((line) => line.maxEditableQty <= 0)) {
+            draft.state = SubcontractOutboundExecutionState.blocked;
+            draft.error = lines.every((line) => line.waitingComponentStock)
+                ? l10n.warehouseSubcontractOutboundComponentNotArrived
+                : l10n.warehouseSubcontractOutboundNoLines;
           }
           final old = previous[document?.id];
           if (old != null &&
@@ -404,6 +413,17 @@ class _WarehouseSubcontractOutboundBatchPageState
       }
     }
     setState(() => _confirming = true);
+    // 任一单发的是子件(单一子件直发 / 历史 BOM 子件发料)时, 弹窗说清楚出库的是子件、
+    // 回厂登记的是委外件, 不再说「目标件出库」。
+    final issuesComponent = targets.any(
+      (draft) => draft.lines.any(
+        (line) =>
+            line.line.flowMode ==
+                SubcontractOutboundFlowMode.componentOutbound ||
+            line.line.flowMode ==
+                SubcontractOutboundFlowMode.legacyBomComponent,
+      ),
+    );
     try {
       final confirmed = await showUtenReviewerConfirmDialog(
         context,
@@ -413,7 +433,7 @@ class _WarehouseSubcontractOutboundBatchPageState
         responsibilityDescription:
             l10n.warehouseSubcontractOutboundConfirmResponsibility,
         message:
-            '${l10n.warehouseSubcontractOutboundSubcontractEffects}\n\n${l10n.warehouseSubcontractOutboundBatchHint}',
+            '${issuesComponent ? l10n.warehouseSubcontractOutboundComponentEffects : l10n.warehouseSubcontractOutboundSubcontractEffects}\n\n${l10n.warehouseSubcontractOutboundBatchHint}',
       );
       if (!confirmed || !mounted || !_canExecute) return;
       setState(() {
@@ -718,6 +738,8 @@ class _WarehouseSubcontractOutboundBatchPageState
                                           draft.lines.contains(row.draft),
                                     );
                                     for (final line in document.lines) {
+                                      // 等子件到货的行不跟整单联动勾选: 它此刻发不出去。
+                                      if (line.waitingComponentStock) continue;
                                       line.selected = selected;
                                     }
                                   },

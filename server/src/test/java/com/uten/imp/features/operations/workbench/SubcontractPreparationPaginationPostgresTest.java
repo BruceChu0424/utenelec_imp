@@ -48,10 +48,64 @@ class SubcontractPreparationPaginationPostgresTest {
         DB.start();
         var dataSource = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)");
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, is_deleted boolean NOT NULL DEFAULT false, auto_created boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)");
         jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
-        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text)");
+        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text, parent_id uuid, is_deleted boolean NOT NULL DEFAULT false, is_defective boolean NOT NULL DEFAULT false, is_line_side boolean NOT NULL DEFAULT false)");
+        // ADR-103 路线 B 锁判据要读的最小集: 申请明细、BOM 边、可动用库存视图、发料计划两表,
+        // 以及 V581 / V613 的两个判据函数 (桩的函数体与迁移原文逐字一致, 判据不在测试里另写一遍).
+        jdbc.execute("CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, application_id uuid, goods_id uuid, color_id uuid, qty numeric, ordered_qty numeric DEFAULT 0, is_deleted boolean NOT NULL DEFAULT false)");
+        jdbc.execute("CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid, qty numeric NOT NULL DEFAULT 1, consumption_basis text NOT NULL DEFAULT 'PER_UNIT', control_stage text NOT NULL DEFAULT 'START', is_deleted boolean NOT NULL DEFAULT false)");
+        jdbc.execute("CREATE TABLE stock_balances(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric)");
+        jdbc.execute("CREATE VIEW v_stock_available AS SELECT warehouse_id, goods_id, color_id, qty AS available_qty FROM stock_balances");
+        jdbc.execute("CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, order_id uuid, status text, is_deleted boolean NOT NULL DEFAULT false)");
+        jdbc.execute("CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, goods_id uuid, color_id uuid, flow_mode text, planned_qty numeric, prepared_qty numeric, issued_qty numeric DEFAULT 0, is_deleted boolean NOT NULL DEFAULT false)");
+        jdbc.execute("""
+                CREATE FUNCTION fn_warehouse_is_operational_leaf(p_warehouse UUID)
+                RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                        SELECT 1 FROM warehouses warehouse
+                        WHERE warehouse.id = p_warehouse AND NOT warehouse.is_deleted
+                          AND NOT EXISTS (
+                              SELECT 1 FROM warehouses child
+                              WHERE child.parent_id = warehouse.id AND NOT child.is_deleted
+                                AND (warehouse.is_line_side OR NOT child.is_line_side)));
+                $$
+                """);
+        jdbc.execute("""
+                CREATE FUNCTION fn_subcontract_sole_component_goods(p_goods_id UUID)
+                RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM goods_bom_items edge
+                        JOIN goods child ON child.id = edge.component_goods_id
+                         AND child.is_deleted = FALSE
+                         AND COALESCE(child.auto_created, FALSE) = FALSE
+                        WHERE edge.goods_id = p_goods_id
+                          AND edge.is_deleted = FALSE
+                          AND edge.consumption_basis = 'PER_UNIT'
+                          AND edge.control_stage IN ('START', 'ASSEMBLY', 'FINISH')
+                          AND edge.qty > 0
+                          AND (SELECT COUNT(*)
+                                 FROM goods_bom_items only_edge
+                                 JOIN goods only_child
+                                   ON only_child.id = only_edge.component_goods_id
+                                  AND only_child.is_deleted = FALSE
+                                  AND COALESCE(only_child.auto_created, FALSE) = FALSE
+                                WHERE only_edge.goods_id = p_goods_id
+                                  AND only_edge.is_deleted = FALSE) = 1
+                          AND NOT EXISTS (
+                                SELECT 1
+                                  FROM goods_bom_items grand
+                                  JOIN goods grand_child
+                                    ON grand_child.id = grand.component_goods_id
+                                   AND grand_child.is_deleted = FALSE
+                                   AND COALESCE(grand_child.auto_created, FALSE) = FALSE
+                                 WHERE grand.goods_id = edge.component_goods_id
+                                   AND grand.is_deleted = FALSE)
+                    );
+                $$
+                """);
         jdbc.execute("CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, status text, maker_id uuid)");
         jdbc.execute("CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY, source_ref text, delivery_date date)");
         jdbc.execute("""
@@ -71,7 +125,7 @@ class SubcontractPreparationPaginationPostgresTest {
         jdbc.execute("CREATE TABLE subcontract_short_delivery_cases(id uuid PRIMARY KEY, order_id uuid, order_item_id uuid, status text, severity text, expected_complete_by date)");
         jdbc.execute("CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, qty numeric, received_qty numeric, returned_qty numeric, is_deleted boolean DEFAULT false)");
         jdbc.execute("CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status smallint, is_deleted boolean DEFAULT false)");
-        jdbc.execute("CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY, issue_id uuid, order_item_id uuid, is_deleted boolean DEFAULT false)");
+        jdbc.execute("CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY, issue_id uuid, order_item_id uuid, plan_item_id uuid, qty numeric, is_deleted boolean DEFAULT false)");
         jdbc.execute("""
                 CREATE TABLE workbench_documents(department text, action_doc_id uuid, plan_no text,
                     warehouse_id uuid, warehouse_name text, goods_id uuid, goods_code text, goods_name text,
@@ -289,6 +343,85 @@ class SubcontractPreparationPaginationPostgresTest {
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         assertThatThrownBy(()->new FulfillmentWorkbenchTableQuery("planNo","asc",Map.of("unknown","x"),null,null,null,null))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
+
+    /**
+     * ADR-103 路线 B: 只有一个子层物料的委外件, 子件仓里一件都没有时申请行锁住 (不能生成委外订货单,
+     * 阶段 WAITING_COMPONENT_STOCK, 进黄段不进红段); 子件在作业叶仓有货 (数量不限) 即解锁
+     * (阶段 COMPONENT_STOCK_READY, 行带子件可动用量); 线边仓的货不算; 普通委外件 (无 BOM) 不受影响.
+     * 红黄徽章、分段计数与列表行数用同一片段 SQL, 这里逐个对账.
+     */
+    @Test void soleComponentApplicationIsLockedUntilTheComponentReachesAnOperationalWarehouse() {
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer",
+                Set.of(), Set.of("subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
+        transactions.executeWithoutResult(tx -> {
+            // 委外件 sole-parent 的活动 BOM 只有一条边 → 叶子子件 sole-child; 申请 APP-1 的明细就是这个委外件.
+            jdbc.update("INSERT INTO goods(id, code, name) VALUES (?,?,?),(?,?,?)",
+                    id("sole-parent"), "SOLE-P", "Sole parent", id("sole-child"), "SOLE-C", "Sole child");
+            jdbc.update("INSERT INTO goods_bom_items(id, goods_id, component_goods_id, color_id, qty) VALUES (?,?,?,NULL,2)",
+                    UUID.randomUUID(), id("sole-parent"), id("sole-child"));
+            jdbc.update("INSERT INTO subcontract_application_items(id, application_id, goods_id, color_id, qty) VALUES (?,?,?,NULL,10),(?,?,?,NULL,10),(?,?,?,NULL,10)",
+                    id("doc-item-1"), id("document-1"), id("sole-parent"),
+                    id("doc-item-2"), id("document-2"), id("goods-1"),
+                    id("doc-item-3"), id("document-3"), id("goods-1"));
+            jdbc.update("INSERT INTO warehouses(id, name, is_line_side) VALUES (?,?,false),(?,?,true)",
+                    id("wh-main"), "Main", id("wh-line-side"), "Line side");
+
+            // 1) 子件一件都没有 → 锁: 不能下单, 阶段 WAITING_COMPONENT_STOCK, 从红段与红徽章里剔除, 进黄段.
+            var locked = applicationRow("APP-1");
+            assertThat(locked.canCreateOrder()).isFalse();
+            assertThat(locked.displayStage()).isEqualTo("WAITING_COMPONENT_STOCK");
+            assertThat(locked.componentAvailableQty()).isNotNull().isEqualByComparingTo("0");
+            var waitingOrder = service.query("SUBCONTRACT", "WAITING_ORDER", "", "", null, null, 1, 100);
+            assertThat(waitingOrder.total()).isEqualTo(127);
+            assertThat(waitingOrder.items()).extracting(FulfillmentTaskRow::actionDocNo).doesNotContain("APP-1");
+            assertThat(waitingOrder.summary().statusCounts())
+                    .containsEntry("WAITING_ORDER", 127L)
+                    .containsEntry("WAITING_COMPONENT_STOCK", 1L)
+                    .containsEntry("IN_PROGRESS", 1L);
+            var waitingComponent = service.query("SUBCONTRACT", "WAITING_COMPONENT_STOCK", "", "", null, null, 1, 100);
+            assertThat(waitingComponent.items()).extracting(FulfillmentTaskRow::actionDocNo).containsExactly("APP-1");
+            assertThat(service.query("SUBCONTRACT", "IN_PROGRESS", "", "", null, null, 1, 100).items())
+                    .extracting(FulfillmentTaskRow::actionDocNo).containsExactly("APP-1");
+            assertThat(service.countPending("SUBCONTRACT")).isEqualTo(127L);
+            assertThat(service.countInProgress("SUBCONTRACT")).isEqualTo(1L);
+
+            // 2) 线边仓里的子件不算「仓里有货」(与出仓草稿选仓同口径), 仍然锁.
+            jdbc.update("INSERT INTO stock_balances(id, warehouse_id, goods_id, color_id, qty) VALUES (?,?,?,NULL,50)",
+                    UUID.randomUUID(), id("wh-line-side"), id("sole-child"));
+            assertThat(applicationRow("APP-1").displayStage()).isEqualTo("WAITING_COMPONENT_STOCK");
+            assertThat(service.countPending("SUBCONTRACT")).isEqualTo(127L);
+
+            // 3) 作业叶仓入库了 (不管多少) → 解锁: 可下单, 阶段 COMPONENT_STOCK_READY, 行带子件可动用量.
+            jdbc.update("INSERT INTO stock_balances(id, warehouse_id, goods_id, color_id, qty) VALUES (?,?,?,NULL,5)",
+                    UUID.randomUUID(), id("wh-main"), id("sole-child"));
+            var ready = applicationRow("APP-1");
+            assertThat(ready.canCreateOrder()).isTrue();
+            assertThat(ready.displayStage()).isEqualTo("COMPONENT_STOCK_READY");
+            assertThat(ready.componentAvailableQty()).isEqualByComparingTo("5");
+            var unlocked = service.query("SUBCONTRACT", "WAITING_ORDER", "", "", null, null, 1, 100);
+            assertThat(unlocked.total()).isEqualTo(128);
+            assertThat(unlocked.summary().statusCounts())
+                    .containsEntry("WAITING_ORDER", 128L)
+                    .containsEntry("WAITING_COMPONENT_STOCK", 0L)
+                    .containsEntry("IN_PROGRESS", 0L);
+            assertThat(service.countPending("SUBCONTRACT")).isEqualTo(128L);
+            assertThat(service.countInProgress("SUBCONTRACT")).isEqualTo(0L);
+
+            // 4) 普通委外件 (无 BOM) 的申请行全程不受影响: 阶段仍是 WAITING_ORDER, 没有子件可动用量.
+            var plain = applicationRow("APP-2");
+            assertThat(plain.canCreateOrder()).isTrue();
+            assertThat(plain.displayStage()).isEqualTo("WAITING_ORDER");
+            assertThat(plain.componentAvailableQty()).isNull();
+            tx.setRollbackOnly();
+        });
+    }
+
+    private FulfillmentTaskRow applicationRow(String docNo) {
+        var page = service.query("SUBCONTRACT", "", "", "", null, null, 1, 10,
+                new FulfillmentWorkbenchTableQuery("docNo", "asc", Map.of("docNo", docNo), null, null, null, null));
+        assertThat(page.items()).hasSize(1);
+        return page.items().getFirst();
     }
 
     private static UUID id(String key) {

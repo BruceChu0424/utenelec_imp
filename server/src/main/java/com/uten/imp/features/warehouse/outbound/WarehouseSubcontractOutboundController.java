@@ -47,10 +47,16 @@ public class WarehouseSubcontractOutboundController {
         return planService.tasks(page, size, keyword, supplierId, status);
     }
 
-    /** 待出仓任务计数（hub 角标）。 */
+    /**
+     * 待出仓任务计数(hub 角标)。{@code count} = 红数(仓里有货或已挂草稿, 轮到仓库动手);
+     * {@code waitingComponent} = 黄数(ADR-103: 计划有待出量但子件一件都没到, 仓库在等采购/生产)。
+     * 两数按同一批计划互斥, 出仓任务中心「委外出库」分段红黄两枚各挂一个。
+     */
     @GetMapping("/tasks/count")
     public Map<String, Long> taskCount() {
-        return Map.of("count", planService.countTasks());
+        return Map.of(
+                "count", planService.countTasks(),
+                "waitingComponent", planService.countWaitingComponentTasks());
     }
 
     /** 计划详情：计划行（计划/已出仓/草稿占用/剩余 + 库位）+ 关联出仓单历史。 */

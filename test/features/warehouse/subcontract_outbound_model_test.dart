@@ -228,4 +228,85 @@ void main() {
     expect(line.readyOutboundQty, 0);
     expect(line.maxEditableQty, 0);
   });
+
+  group('OutboundTask 列表行阶段 (ADR-103 §2.4)', () {
+    Map<String, dynamic> task({
+      String? draftId,
+      double? issuableTotal,
+      int waitingComponentLineCount = 0,
+      double readyOutboundQty = 0,
+      int readyLineCount = 0,
+    }) => {
+      'planId': 'plan-1',
+      'orderId': 'order-1',
+      'orderBillNo': 'WW-1',
+      'supplierName': '委外商',
+      'deliverDate': '2026-09-30',
+      'lineCount': 1,
+      'plannedQty': 5000,
+      'issuedQty': 0,
+      'remainingQty': 5000,
+      'draftId': draftId,
+      'draftBillNo': draftId == null ? null : 'EC-1',
+      'readyOutboundQty': readyOutboundQty,
+      'readyLineCount': readyLineCount,
+      'issuableTotal': issuableTotal,
+      'waitingComponentLineCount': waitingComponentLineCount,
+    };
+
+    test('新字段解析: 可发合计与等子件行数', () {
+      final row = OutboundTask.fromJson(
+        task(issuableTotal: 300, waitingComponentLineCount: 2),
+      );
+      expect(row.issuableTotal, 300);
+      expect(row.waitingComponentLineCount, 2);
+    });
+
+    test('有草稿一律是待拣货, 不看可发量', () {
+      final row = OutboundTask.fromJson(
+        task(
+          draftId: 'draft-1',
+          issuableTotal: 0,
+          waitingComponentLineCount: 1,
+        ),
+      );
+      expect(row.stage, OutboundTaskStage.draftPicking);
+      expect(row.selectable, isTrue);
+    });
+
+    test('无草稿且可发 > 0 → 已备齐待出仓, 可勾选', () {
+      final row = OutboundTask.fromJson(
+        task(issuableTotal: 300, readyOutboundQty: 5000),
+      );
+      expect(row.stage, OutboundTaskStage.readyOutbound);
+      expect(row.selectable, isTrue);
+    });
+
+    test('无草稿、可发 0 且有行在等子件 → 等子件到货, 不可勾选', () {
+      // 此前这一行显示「目标件已备齐，待出仓」(readyOutboundQty=计划余量 5000 > 0)，
+      // 勾进批量页只会撞 409。
+      final row = OutboundTask.fromJson(
+        task(
+          issuableTotal: 0,
+          waitingComponentLineCount: 1,
+          readyOutboundQty: 5000,
+        ),
+      );
+      expect(row.stage, OutboundTaskStage.waitingComponent);
+      expect(row.selectable, isFalse);
+    });
+
+    test('老服务端没下发 issuableTotal 时回落纯计划口径', () {
+      final legacy = OutboundTask.fromJson(
+        task(readyOutboundQty: 5000, readyLineCount: 1),
+      );
+      expect(legacy.issuableTotal, isNull);
+      expect(legacy.stage, OutboundTaskStage.readyOutbound);
+      expect(legacy.selectable, isTrue);
+
+      final nothing = OutboundTask.fromJson(task());
+      expect(nothing.stage, OutboundTaskStage.pendingDraft);
+      expect(nothing.selectable, isFalse);
+    });
+  });
 }

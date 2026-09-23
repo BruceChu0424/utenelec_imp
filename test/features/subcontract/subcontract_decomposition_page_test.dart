@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../support/filter_segment_tap.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -350,6 +353,229 @@ void main() {
     },
   );
 
+  testWidgets(
+    'ADR-103 route B: locked row is yellow, unselectable, explained; ready row shows available qty',
+    (tester) async {
+      // 路线 B(单一子件直发)申请行：子件没货 = WAITING_COMPONENT_STOCK(黄底、不可勾选、
+      // 状态列「等子件到货」带悬浮说明、弹窗顶部横幅)；子件到货 = COMPONENT_STOCK_READY
+      // (状态列带仓内可动用量、可勾选)；「待处理」段红黄两枚徽章。
+      final gateway = _Gateway(
+        _data(capability: true, includeComponentRoute: true),
+      );
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.subcontractApplicationView,
+              Perm.subcontractOrderView,
+              Perm.subcontractOrderCreate,
+              Perm.subcontractOrderDecompose,
+            }),
+            apiClientProvider.overrideWithValue(_api()),
+          ],
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(repository: gateway),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 「待处理」段同构挂两枚：红 = WAITING_ORDER(3)、黄 = WAITING_COMPONENT_STOCK(1)。
+      final stages = find.byKey(const Key('subcontract-decomposition-stages'));
+      expect(
+        find.descendant(of: stages, matching: find.byType(UtenInProgressBadge)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: stages,
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: stages, matching: find.text('3')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: stages, matching: find.text('1')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+
+      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+        find.byKey(const Key('subcontract-decomposition-table')),
+      );
+      final locked = table.items.firstWhere(
+        (task) => task.taskId == 'task-locked',
+      );
+      final ready = table.items.firstWhere(
+        (task) => task.taskId == 'task-ready',
+      );
+      final plain = table.items.firstWhere((task) => task.taskId == 'task-1');
+      // 锁行黄底(与路线 A 红底区分)、不可勾选；解锁行正常、可勾选。
+      expect(
+        table.rowColor!(locked),
+        UtenColors.warning.withValues(alpha: 0.16),
+      );
+      expect(table.idOf!(locked), isNull);
+      expect(table.rowColor!(ready), isNull);
+      expect(table.idOf!(ready), 'task-ready');
+      expect(table.rowColor!(plain), isNull);
+      // 老服务端(canCreateOrder 为空)回落本地规则时，锁态一样不放行。
+      final legacyLocked = _task(
+        'legacy-locked',
+        'application-legacy',
+        'item-legacy',
+        canCreateOrder: null,
+        displayStage: 'WAITING_COMPONENT_STOCK',
+      );
+      expect(table.idOf!(legacyLocked), isNull);
+      expect(
+        table.rowColor!(legacyLocked),
+        UtenColors.warning.withValues(alpha: 0.16),
+      );
+      final legacyReady = _task(
+        'legacy-ready',
+        'application-legacy-ready',
+        'item-legacy-ready',
+        canCreateOrder: null,
+        displayStage: 'COMPONENT_STOCK_READY',
+        componentAvailableQty: 5,
+      );
+      expect(table.idOf!(legacyReady), 'legacy-ready');
+
+      // 状态列文案与悬浮说明；只读申请列对锁行说明解锁条件。
+      expect(find.text('等子件到货(仓内可动用 0)'), findsOneWidget);
+      expect(find.text('子件已到货·可下单(仓内可动用 5 件)'), findsOneWidget);
+      expect(
+        find.byTooltip('子件尚未入库，入库后自动解锁；仓库发出去的是子件，加工完回厂的是委外件'),
+        findsOneWidget,
+      );
+      expect(
+        find.byTooltip('子件已到货，可以生成委外订货单；订货数量可以超过仓内可动用量，仓库会按到货分批发料'),
+        findsOneWidget,
+      );
+      expect(find.text('等子件到货·入库后自动解锁'), findsOneWidget);
+      expect(find.text('EA-application-ready'), findsWidgets);
+
+      // 双击锁行 → 弹窗顶部横幅 + 路线 B 步骤(等子件到货 = 当前, 无「前置生产完成」)。
+      await _doubleTapRow(tester, find.text('FG-task-locked'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('subcontract-order-component-blocked')),
+        findsOneWidget,
+      );
+      expect(find.text('子件尚未入库，暂时不能下委外单；子件入库后任务中心会自动解锁'), findsOneWidget);
+      expect(find.text('等子件到货（当前）'), findsOneWidget);
+      expect(find.text('待生成委外订货单'), findsOneWidget);
+      expect(find.text('前置生产完成'), findsNothing);
+      expect(find.text('子件出仓·委外商加工'), findsOneWidget);
+      expect(find.text('回厂来料质检·入库结案'), findsOneWidget);
+      expect(find.text('子件仓内可动用 0 件'), findsOneWidget);
+      expect(find.textContaining('回厂 IQC'), findsNothing);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+
+      // 双击解锁行 → 无横幅，「等子件到货」已完成、「待生成委外订货单」当前。
+      await _doubleTapRow(tester, find.text('FG-task-ready'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('subcontract-order-component-blocked')),
+        findsNothing,
+      );
+      expect(find.text('等子件到货'), findsOneWidget);
+      expect(find.text('待生成委外订货单（当前）'), findsOneWidget);
+      expect(find.text('前置生产完成'), findsNothing);
+      expect(find.text('子件仓内可动用 5 件'), findsOneWidget);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+
+      // 双击路线 A / 普通申请行 → 步骤不变(前置生产完成在列, 回厂改「来料质检」)。
+      await _doubleTapRow(tester, find.text('FG-task-1'));
+      await tester.pumpAndSettle();
+      expect(find.text('前置生产完成'), findsOneWidget);
+      expect(find.text('待生成委外订货单（当前）'), findsOneWidget);
+      expect(find.text('目标件出仓·加工商加工'), findsOneWidget);
+      expect(find.text('回厂来料质检·入库结案'), findsOneWidget);
+      expect(
+        find.byKey(const Key('subcontract-order-component-blocked')),
+        findsNothing,
+      );
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'ADR-103 route B compact cards: locked card is yellow without checkbox, ready card selectable',
+    (tester) async {
+      final gateway = _Gateway(
+        _data(capability: true, includeComponentRoute: true),
+      );
+      tester.view.physicalSize = const Size(375, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.subcontractApplicationView,
+              Perm.subcontractOrderView,
+              Perm.subcontractOrderCreate,
+              Perm.subcontractOrderDecompose,
+            }),
+            apiClientProvider.overrideWithValue(_api()),
+          ],
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(repository: gateway),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '待处理');
+      await tester.pumpAndSettle();
+      // 两条普通行 + 一条解锁行可勾选；锁行没有勾选框。
+      expect(find.byType(Checkbox), findsNWidgets(3));
+      final lockedCard = find.ancestor(
+        of: find.text('等子件到货(仓内可动用 0)'),
+        matching: find.byType(Card),
+      );
+      expect(lockedCard, findsOneWidget);
+      expect(
+        tester.widget<Card>(lockedCard).color,
+        UtenColors.warning.withValues(alpha: 0.16),
+      );
+      expect(
+        find.descendant(of: lockedCard, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: lockedCard, matching: find.text('等子件到货·入库后自动解锁')),
+        findsOneWidget,
+      );
+      final readyCard = find.ancestor(
+        of: find.text('子件已到货·可下单(仓内可动用 5 件)'),
+        matching: find.byType(Card),
+      );
+      expect(readyCard, findsOneWidget);
+      expect(tester.widget<Card>(readyCard).color, isNull);
+      expect(
+        find.descendant(of: readyCard, matching: find.byType(Checkbox)),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final scenario in const [
     (
       name: 'missing local decompose permission',
@@ -486,6 +712,7 @@ class _Gateway implements OperationsWorkbenchGateway {
 OperationsWorkbenchData _data({
   required bool capability,
   bool includePreparation = false,
+  bool includeComponentRoute = false,
 }) => OperationsWorkbenchData(
   department: OperationsWorkbenchDepartment.subcontract,
   summary: OperationsWorkbenchSummary(
@@ -493,7 +720,15 @@ OperationsWorkbenchData _data({
     overdueTasks: 0,
     openTasks: 2,
     openQty: 12,
-    statusCounts: {'WAITING_ORDER': includePreparation ? 4 : 2},
+    // ADR-103：服务端 WAITING_ORDER 已减去被锁的路线 B 行，锁行单独一键。
+    statusCounts: {
+      'WAITING_ORDER': includePreparation
+          ? 4
+          : includeComponentRoute
+          ? 3
+          : 2,
+      if (includeComponentRoute) 'WAITING_COMPONENT_STOCK': 1,
+    },
   ),
   items: [
     _task('task-1', 'application-1', 'application-item-1'),
@@ -501,6 +736,23 @@ OperationsWorkbenchData _data({
     if (includePreparation) ...[
       _preparationRow('task-a', 'SC-A', '委外件A', 'IN_PRODUCTION'),
       _preparationRow('task-b', 'SC-B', '委外件B', 'NOTIFYING_WORKSHOP'),
+    ],
+    if (includeComponentRoute) ...[
+      _task(
+        'task-locked',
+        'application-locked',
+        'application-item-locked',
+        canCreateOrder: false,
+        displayStage: 'WAITING_COMPONENT_STOCK',
+        componentAvailableQty: 0,
+      ),
+      _task(
+        'task-ready',
+        'application-ready',
+        'application-item-ready',
+        displayStage: 'COMPONENT_STOCK_READY',
+        componentAvailableQty: 5,
+      ),
     ],
   ],
   page: 1,
@@ -525,7 +777,9 @@ OperationsWorkbenchTask _task(
   String taskId,
   String applicationId,
   String applicationItemId, {
-  bool canCreateOrder = true,
+  bool? canCreateOrder = true,
+  String? displayStage,
+  num? componentAvailableQty,
 }) => OperationsWorkbenchTask(
   taskId: taskId,
   packageId: 'package-1',
@@ -550,6 +804,8 @@ OperationsWorkbenchTask _task(
   updatedAt: '2026-08-30T10:00:00Z',
   issuedAt: '2026-09-07T18:30:00Z',
   canCreateOrder: canCreateOrder,
+  displayStage: displayStage,
+  componentAvailableQty: componentAvailableQty,
   actionDocument: OperationsActionDocument(
     id: applicationId,
     docType: 'SUBCONTRACT_APPLICATION',

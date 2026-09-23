@@ -27,7 +27,9 @@ class SubcontractOutboundReadModelContractTest {
                 LocalDate.of(2026, 8, 30), 4,
                 new BigDecimal("40"), new BigDecimal("5"),
                 new BigDecimal("35"), UUID.randomUUID(), "EC-001",
-                new BigDecimal("12"), 2, 1, 1);
+                new BigDecimal("12"), 2, 1, 1,
+                // ADR-103: 等子件到货的行数 + 此刻真能开出去的合计, 服务端算好直接给。
+                1L, new BigDecimal("7"));
 
         JsonNode json = mapper.valueToTree(task);
 
@@ -36,6 +38,8 @@ class SubcontractOutboundReadModelContractTest {
         assertThat(json.get("readyLineCount").intValue()).isEqualTo(2);
         assertThat(json.get("waitingPreparationCount").intValue()).isEqualTo(1);
         assertThat(json.get("blockedLineCount").intValue()).isEqualTo(1);
+        assertThat(json.get("waitingComponentLineCount").longValue()).isEqualTo(1L);
+        assertThat(json.get("issuableTotal").decimalValue()).isEqualByComparingTo("7");
     }
 
     @Test

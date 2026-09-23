@@ -4,6 +4,9 @@
 // 出库单，任务来自财务放行的销售出货）｜委外出库（待出仓任务 + 历史单据）｜
 // 其它出库（新建/历史）｜产成品出库（新建/历史）。徽章口径：只挂真实待办——
 // 销售 = 尚未确认出库的放行单、委外 = 待出仓任务（小类行「待出仓任务」段同数）；
+// 「委外出库」另挂一枚黄(2026-09-22 ADR-103): 等子件到货的任务, 红角标按 ADR-101
+// 不计, 只画黄不画红就会在分段上蒸发; 红黄两枚同出一次请求、互斥、之和 = 列表行数.
+// 黄枚只画在分段上, 不登记黄链(那些委外单已在委外任务中心的 IN_PROGRESS 黄数里).
 // 通用单据分段只有草稿与历史（草稿不计入待办数）不挂。进页面不预选大类
 //（未选时显示引导空态）。角标与 hub「出库任务中心」卡/工作台仓库卡一致
 //（WarehouseOutboundTaskBadge）。
@@ -25,7 +28,9 @@ import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart'
-    show warehouseSubcontractOutboundCountProvider;
+    show
+        warehouseSubcontractOutboundCountProvider,
+        warehouseSubcontractOutboundWaitingComponentCountProvider;
 import '../widgets/warehouse_history_gate.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
 import '../widgets/warehouse_subcontract_outbound_workbench.dart';
@@ -62,6 +67,12 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     final subcontractTaskCount = subcontractCount.isLoading
         ? null
         : subcontractCount.valueOrNull;
+    final subcontractWaiting = ref.watch(
+      warehouseSubcontractOutboundWaitingComponentCountProvider,
+    );
+    final subcontractWaitingCount = subcontractWaiting.isLoading
+        ? null
+        : subcontractWaiting.valueOrNull;
 
     final segments = <WarehouseTaskSegmentSpec>[
       if (canSales)
@@ -75,6 +86,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
           value: 'subcontract',
           label: '委外出库',
           count: subcontractTaskCount,
+          inProgressCount: subcontractWaitingCount,
         ),
       if (canStockDocs)
         const WarehouseTaskSegmentSpec(value: 'otherOut', label: '其它出库'),
@@ -105,6 +117,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
           canTasks: canSubcontract,
           canHistory: canSubcontractHistory,
           taskCount: subcontractTaskCount,
+          waitingComponentCount: subcontractWaitingCount,
           initialTasks:
               initialSection == 'subcontract' && initialView == 'tasks',
         ),
@@ -133,6 +146,7 @@ class _SubcontractOutboundSegment extends StatefulWidget {
     required this.canTasks,
     required this.canHistory,
     this.taskCount,
+    this.waitingComponentCount,
     this.initialTasks = false,
   });
 
@@ -141,8 +155,11 @@ class _SubcontractOutboundSegment extends StatefulWidget {
   final bool canTasks;
   final bool canHistory;
 
-  /// 「待出仓任务」小类段徽章（与父分类徽章同源；null = 加载中不显示）。
+  /// 「待出仓任务」小类段红徽章（与父分类徽章同源；null = 加载中不显示）。
   final int? taskCount;
+
+  /// 「待出仓任务」小类段黄徽章: 等子件到货的任务(与父分类黄枚同源)。
+  final int? waitingComponentCount;
   final bool initialTasks;
 
   @override
@@ -187,13 +204,15 @@ class _SubcontractOutboundSegmentState
           child: UtenFilterToolbar<int>(
             segmentsKey: const Key('subcontract-outbound-mode'),
             segments: [
-              // 待出仓 = 仓库必须清空的队列 → 红徽章；历史单据不传 count。
+              // 待出仓 = 仓库必须清空的队列 → 红徽章; 等子件到货的任务仓库办不了
+              // → 黄徽章(两枚互斥, 之和 = 列表行数); 历史单据不传 count。
               if (widget.canTasks)
                 UtenFilterSegment(
                   value: _tasksMode,
                   label: '待出仓任务',
                   count: widget.taskCount,
                   countForm: UtenSegmentCountForm.actionable,
+                  inProgressCount: widget.waitingComponentCount,
                 ),
               if (widget.canHistory)
                 const UtenFilterSegment(value: _historyMode, label: '历史单据'),

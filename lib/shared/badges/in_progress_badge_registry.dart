@@ -210,4 +210,12 @@ int _async(
 //   没有中间的在办态。仓库侧的「等待检查结果」由
 //   [InProgressEntry.warehouseQualityWaiting] 计一次(那是仓库在等品质部)。
 //
+// · 仓库「出库任务中心 · 委外出库」的 等子件到货 任务(ADR-103, 2026-09-22): 那些
+//   委外订货单财务已批准、子件还没到, 已经全在 [InProgressEntry.subcontractTaskCenter]
+//   的 IN_PROGRESS 里(委外任务中心「待处理」段的 WAITING_COMPONENT_STOCK 锁行也
+//   计进同一枚黄)。仓库这边是同一张单换个部门再看一眼, 与钱流那条同理: 球没离开
+//   委外链, 仓库卡再数一遍就是跨卡双计。所以黄枚只画在出库任务中心的大类行与
+//   「待出仓任务」小类行上(warehouseSubcontractOutboundWaitingComponentCountProvider),
+//   hub「出库任务中心」卡与工作台仓库卡不带这枚黄。
+//
 // · 基础资料 / 报表 / 主档 / 历史只读页一律不挂: 准则 §二 的结论对黄色同样成立。

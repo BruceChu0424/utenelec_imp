@@ -87,7 +87,8 @@ class SubcontractMaterialPlanStateMachineTest {
         service = new SubcontractMaterialPlanService(
                 em, jdbc, numbers, issueRepo, issueItemRepo, currentUser,
                 chainNotice, inventoryLock,
-                mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class));
+                mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class),
+                mock(org.springframework.beans.factory.ObjectProvider.class));
     }
 
     @Test

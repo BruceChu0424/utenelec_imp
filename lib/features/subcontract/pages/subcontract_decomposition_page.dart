@@ -12,6 +12,12 @@
 // 门控）+ 异常小类行（无「全部异常」）——两行默认都不选，内容区显示引导占位
 // 不发请求；分段挂后端全量计数徽章（进页面仅拉一次 size=1 概览；
 // 「待处理」徽章与前置生产行均包含在后端WAITING_ORDER计数和分页中。
+//
+// ADR-103(2026-09-22) 路线 B(单一子件直发)的申请行与路线 A 同位锁定：子件在作业
+// 叶仓一件都没有时 display_stage=WAITING_COMPONENT_STOCK(等子件到货, 黄底, 不可勾选,
+// 计入「待处理」段的黄枚), 到货后 COMPONENT_STOCK_READY(子件已到货·可下单, 红,
+// 文案带仓内可动用量); 财务已通过的订货单在待发料之前多一档 OUTBOUND_WAITING_COMPONENT.
+// 黄底 = 在办等别人到货, 红底 = 路线 A 等自己部门的车间 / 服务端明确不可下单.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,6 +36,7 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -113,12 +120,19 @@ class _SubcontractDecompositionPageState
   static const _inProgressStage = 'IN_PROGRESS';
   static const _financeRejectedStatus = 'FINANCE_REJECTED';
 
+  /// 「待处理」大类与它内部「等子件到货」的那一档(ADR-103): 服务端 statusCounts 的
+  /// WAITING_ORDER 已减去被锁的路线 B 申请行, 锁行单独出 WAITING_COMPONENT_STOCK 键。
+  static const _waitingOrderStage = 'WAITING_ORDER';
+  static const _waitingComponentStatus = 'WAITING_COMPONENT_STOCK';
+
   /// 阶段计数的呈现形态(docs/00-项目准则/14-徽章与计数口径.md)；三形态见 ADR-100。
   ///
   /// 红徽章只给「等委外部门动手」的阶段：待处理（= 委外任务中心角标同源）；
   /// 进行中的单已发料在外加工 / 在等财务 / 在等回厂 —— 还在跑、没完, 但现在不用
   /// 委外动手, 2026-09-21 起由中性括号改成黄色在办徽章; 其中真要动手的两类
   /// (财务已退回、回厂短交待判定)仍走异常小类行的红徽章。
+  /// 两个大类都是红黄两枚: 待处理的黄 = 等子件到货的路线 B 锁行(ADR-103),
+  /// 进行中的红 = 财务已退回单; 两枚的搭配见 build 里的分段注释。
   static UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
     'WAITING_ORDER' => UtenSegmentCountForm.actionable,
     'IN_PROGRESS' => UtenSegmentCountForm.inProgress,
@@ -128,7 +142,11 @@ class _SubcontractDecompositionPageState
   /// 状态列颜色（ADR-098：刻意拉开，不用相近色）：蓝=等财务、红=退回/短交、
   /// 紫=待发料出仓、青=加工中、橙=部分回厂、品红=分批等待、
   /// 绿=已回厂待入库(回厂量到齐只差质检入库, 与历史段的已完成同色但不同段)。
+  /// ADR-103 路线 B: 黄=等子件到货(申请行锁 / 订货单待发料等子件), 绿=子件已到货可下单。
   static UtenStatusBadgeType _progressType(String code) => switch (code) {
+    'WAITING_COMPONENT_STOCK' ||
+    'OUTBOUND_WAITING_COMPONENT' => UtenStatusBadgeType.warning,
+    'COMPONENT_STOCK_READY' => UtenStatusBadgeType.success,
     'ORDER_PENDING_APPROVAL' => UtenStatusBadgeType.info,
     'FINANCE_REJECTED' || 'SHORT_DELIVERY' => UtenStatusBadgeType.danger,
     'AWAITING_OUTBOUND' => UtenStatusBadgeType.violet,
@@ -146,11 +164,34 @@ class _SubcontractDecompositionPageState
       task.progressStatus == 'SHORT_DELIVERY';
 
   /// 状态列文案：委外订货单按展示阶段翻译，未知码回落既有阶段文案。
+  /// ADR-103 路线 B 申请行追加「(仓内可动用 X 单位)」：解锁行给出此刻可发量，
+  /// 锁行固定 0——用户口径「可发数量那里可以提示」。
   String _progressLabelOf(OperationsWorkbenchTask task) {
     final code = task.progressStatus;
     final label = subcontractProgressStatusLabel(code);
-    return label == code ? task.statusLabel : label;
+    if (label == code) return task.statusLabel;
+    if (task.componentStockReady) {
+      final qty = task.componentAvailableQty;
+      final text = qty == null ? '' : '${_number(qty)} ${task.unitName}'.trim();
+      return text.isEmpty ? label : '$label(仓内可动用 $text)';
+    }
+    if (task.waitingComponentStock) return '$label(仓内可动用 0)';
+    return label;
   }
+
+  /// ADR-103：路线 B 申请行状态药丸的悬浮说明 (锁 / 解锁各一句，说清流向)。
+  String? _progressTooltipOf(OperationsWorkbenchTask task) {
+    if (task.waitingComponentStock) {
+      return '子件尚未入库，入库后自动解锁；仓库发出去的是子件，加工完回厂的是委外件';
+    }
+    if (task.componentStockReady) {
+      return '子件已到货，可以生成委外订货单；订货数量可以超过仓内可动用量，仓库会按到货分批发料';
+    }
+    return null;
+  }
+
+  /// ADR-103：锁行的只读申请列 / 卡片脚注统一说明，不再显示申请号。
+  static const _waitingComponentSourceText = '等子件到货·入库后自动解锁';
 
   /// 回厂短交待判定 / 分批等待中的订货单：点状态直达判定页（只看这张单）。
   void _openShortDeliveries(OperationsWorkbenchTask task) {
@@ -308,6 +349,10 @@ class _SubcontractDecompositionPageState
     if (selected.any((task) => task.taskStatus != 'WAITING_ORDER')) {
       return '只能选择「待处理」的任务';
     }
+    // ADR-103：路线 B 锁行本就不可勾选，这里兜底 (键盘 / 旧选中集残留)。
+    if (selected.any((task) => task.waitingComponentStock)) {
+      return '所选委外件的子件尚未到货，子件入库后才能生成订货单';
+    }
     if (selected.any(
       (task) =>
           task.actionDocument!.docType.toUpperCase() !=
@@ -362,16 +407,33 @@ class _SubcontractDecompositionPageState
   bool _isSynthetic(OperationsWorkbenchTask task) =>
       task.preparationTaskId != null;
 
+  /// 服务端 canCreateOrder 优先；老响应回落本地规则。ADR-103：路线 B 锁行
+  /// (display_stage=WAITING_COMPONENT_STOCK)本地也一律判不可下单，不信回落规则放行。
   bool _canOrderTask(OperationsWorkbenchTask task) =>
-      task.canCreateOrder ??
-      (!_isSynthetic(task) &&
-          task.taskStatus == 'WAITING_ORDER' &&
-          task.actionDocument?.isIssuedSubcontractApplication == true &&
-          _applicationItemIdsOf(task).isNotEmpty &&
-          (task.openQty > 0 || task.openLineCount > 0));
+      !task.waitingComponentStock &&
+      (task.canCreateOrder ??
+          (!_isSynthetic(task) &&
+              task.taskStatus == 'WAITING_ORDER' &&
+              task.actionDocument?.isIssuedSubcontractApplication == true &&
+              _applicationItemIdsOf(task).isNotEmpty &&
+              (task.openQty > 0 || task.openLineCount > 0)));
 
   bool _orderBlocked(OperationsWorkbenchTask task) =>
       _seg?.code == 'WAITING_ORDER' && !_canOrderTask(task);
+
+  /// 行 / 卡片底色。ADR-103：路线 B 锁行先判——黄底(在办等别人到货)；其余不可
+  /// 下单行与回厂短交待判定单沿用红底(ADR-098)。
+  Color? _rowColorOf(BuildContext context, OperationsWorkbenchTask task) {
+    if (task.waitingComponentStock) {
+      return UtenColors.warning.withValues(alpha: 0.16);
+    }
+    if (_orderBlocked(task) || _shortDelivery(task)) {
+      return Theme.of(
+        context,
+      ).colorScheme.errorContainer.withValues(alpha: 0.42);
+    }
+    return null;
+  }
 
   Future<void> _openTask(OperationsWorkbenchTask task) async {
     final preparationId = task.preparationTaskId;
@@ -585,15 +647,21 @@ class _SubcontractDecompositionPageState
                     // 双计, 别改成相减 —— 相减会让黄数对不上「进行中」列表行数。
                     // 回厂短交待判定同样是红, 但它是案件数、不是任务行数, 量纲不同,
                     // 留在异常小类行里单独喊, 不并进这一枚。
+                    // 「待处理」同构挂两枚(ADR-103): 红 = 轮到委外下单的行(服务端
+                    // WAITING_ORDER 已减去锁行), 黄 = 等子件到货的路线 B 锁行; 两枚
+                    // 之和 = 待处理列表行数, 不重叠。
                     count: stage.code == _inProgressStage
                         ? statusCounts[_financeRejectedStatus]
                         : statusCounts[stage.code],
                     countForm: stage.code == _inProgressStage
                         ? UtenSegmentCountForm.actionable
                         : _stageCountForm(stage.code),
-                    inProgressCount: stage.code == _inProgressStage
-                        ? statusCounts[_inProgressStage]
-                        : null,
+                    inProgressCount: switch (stage.code) {
+                      _inProgressStage => statusCounts[_inProgressStage],
+                      _waitingOrderStage =>
+                        statusCounts[_waitingComponentStatus],
+                      _ => null,
+                    },
                   ),
                 const UtenFilterSegment(
                   value: _DecompositionSeg.history(),
@@ -701,12 +769,13 @@ class _SubcontractDecompositionPageState
                           ? task.progressStatus
                           : (task.preparationStatus ?? ''),
                     ),
+                    stageTooltip: _progressTooltipOf(task),
                     urgent: _shortDelivery(task),
                     onOpenShortDelivery: _linksToShortDeliveries(task)
                         ? () => _openShortDeliveries(task)
                         : null,
                     synthetic: _isSynthetic(task),
-                    blocked: _orderBlocked(task) || _shortDelivery(task),
+                    cardColor: _rowColorOf(context, task),
                     selected: _selectedIds.contains(task.id),
                     selectable:
                         _canOrderTask(task) &&
@@ -844,6 +913,7 @@ class _SubcontractDecompositionPageState
                   : (t.preparationStatus ?? ''),
             ),
             urgent: _shortDelivery(t),
+            tooltip: _progressTooltipOf(t),
             onTap: _linksToShortDeliveries(t)
                 ? () => _openShortDeliveries(t)
                 : null,
@@ -855,6 +925,8 @@ class _SubcontractDecompositionPageState
           width: 180,
           value: (t) => _isSynthetic(t)
               ? '前置生产中'
+              : t.waitingComponentStock
+              ? _waitingComponentSourceText
               : (t.actionDocumentRestricted
                     ? '无权查看关联申请'
                     : (t.actionDocument?.number.isNotEmpty == true
@@ -888,10 +960,9 @@ class _SubcontractDecompositionPageState
         _load(page: 1);
       },
       onRowTap: _openTask,
-      // 待处理段下不能下单的行、进行中段下回厂短交待判定的订货单：整行标红（ADR-098）。
-      rowColor: (task) => _orderBlocked(task) || _shortDelivery(task)
-          ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.42)
-          : null,
+      // 路线 B 锁行黄底 (ADR-103)；待处理段下其余不能下单的行、进行中段下回厂
+      // 短交待判定的订货单：整行标红 (ADR-098)。
+      rowColor: (task) => _rowColorOf(context, task),
       // 合成行双击=产品进度弹窗（视为可打开）；真实行=关联申请/订货详情。
       canOpenRow: (task) =>
           _isSynthetic(task) || task.actionDocument?.canView == true,
@@ -940,10 +1011,11 @@ class _SubcontractDemandCard extends StatelessWidget {
     required this.task,
     required this.stageLabel,
     required this.stageType,
+    required this.stageTooltip,
     required this.urgent,
     required this.onOpenShortDelivery,
     required this.synthetic,
-    required this.blocked,
+    required this.cardColor,
     required this.selected,
     required this.selectable,
     required this.onSelected,
@@ -954,10 +1026,13 @@ class _SubcontractDemandCard extends StatelessWidget {
   final OperationsWorkbenchTask task;
   final String stageLabel;
   final UtenStatusBadgeType stageType;
+  final String? stageTooltip;
   final bool urgent;
   final VoidCallback? onOpenShortDelivery;
   final bool synthetic;
-  final bool blocked;
+
+  /// 阻断底色 (黄 = 路线 B 等子件到货, 红 = 不可下单 / 短交待判定)；null = 正常。
+  final Color? cardColor;
   final bool selected;
   final bool selectable;
   final VoidCallback onSelected;
@@ -973,11 +1048,8 @@ class _SubcontractDemandCard extends StatelessWidget {
       label: '${task.title}，$stageLabel',
       child: Card(
         margin: EdgeInsets.zero,
-        color: blocked
-            ? theme.colorScheme.errorContainer.withValues(alpha: 0.42)
-            : selected
-            ? theme.colorScheme.primaryContainer
-            : null,
+        color:
+            cardColor ?? (selected ? theme.colorScheme.primaryContainer : null),
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Column(
@@ -1037,6 +1109,7 @@ class _SubcontractDemandCard extends StatelessWidget {
                         ? UtenStatusBadgeType.danger
                         : stageType,
                     urgent: urgent,
+                    tooltip: stageTooltip,
                     onTap: onOpenShortDelivery,
                   ),
                 ],
@@ -1067,6 +1140,9 @@ class _SubcontractDemandCard extends StatelessWidget {
                     child: Text(
                       synthetic
                           ? '前置生产中 · 完成后自动生成委外申请'
+                          : task.waitingComponentStock
+                          ? _SubcontractDecompositionPageState
+                                ._waitingComponentSourceText
                           : task.actionDocumentRestricted
                           ? '关联申请受权限保护'
                           : task.actionDocument?.label ?? '缺少委外申请来源',
@@ -1098,18 +1174,23 @@ class _SubcontractDemandCard extends StatelessWidget {
 }
 
 /// 状态药丸（ADR-098）：颜色按状态拉开；回厂短交待判定加「紧急」标签；
-/// 有判定页可去时整个药丸可点（工具提示「点击去判定」）。
+/// 有判定页可去时整个药丸可点（工具提示「点击去判定」）；不可点的行可带一句
+/// 悬浮说明 (ADR-103 路线 B 锁 / 解锁行)。
 class _ProgressStatusCell extends StatelessWidget {
   const _ProgressStatusCell({
     required this.label,
     required this.type,
     required this.urgent,
+    this.tooltip,
     this.onTap,
   });
 
   final String label;
   final UtenStatusBadgeType type;
   final bool urgent;
+
+  /// 不可点时的悬浮说明；null = 无提示。可点时固定「点击去判定」。
+  final String? tooltip;
   final VoidCallback? onTap;
 
   @override
@@ -1134,7 +1215,12 @@ class _ProgressStatusCell extends StatelessWidget {
       ],
     );
     if (onTap == null) {
-      return Semantics(label: label, child: badge);
+      final hint = tooltip;
+      if (hint == null) return Semantics(label: label, child: badge);
+      return Tooltip(
+        message: hint,
+        child: Semantics(label: '$label，$hint', child: badge),
+      );
     }
     return Tooltip(
       message: '点击去判定',

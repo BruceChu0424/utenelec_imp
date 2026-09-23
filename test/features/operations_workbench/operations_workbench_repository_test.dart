@@ -32,6 +32,9 @@ void main() {
                 'taskStatus': 'WAITING_ORDER',
                 'issuedAt': '2026-09-07T18:30:00Z',
                 'canCreateOrder': true,
+                // ADR-103：路线 B 解锁行带子件仓内可动用量。
+                'displayStage': 'COMPONENT_STOCK_READY',
+                'componentAvailableQty': 5,
                 'needDate': '2026-09-20',
                 'updatedAt': '2026-09-09T00:00:00Z',
                 'actionDocType': 'SUBCONTRACT_APPLICATION',
@@ -50,7 +53,10 @@ void main() {
               'overdueTasks': 0,
               'openTasks': 125,
               'openQty': 1250,
-              'statusCounts': {'WAITING_ORDER': 125},
+              'statusCounts': {
+                'WAITING_ORDER': 125,
+                'WAITING_COMPONENT_STOCK': 2,
+              },
             },
             'capabilities': {'canCreateSubcontractOrder': true},
             'facets': {
@@ -99,6 +105,11 @@ void main() {
       });
       expect(data.items.single.issuedAt, '2026-09-07T18:30:00Z');
       expect(data.items.single.canCreateOrder, isTrue);
+      expect(data.items.single.displayStage, 'COMPONENT_STOCK_READY');
+      expect(data.items.single.componentStockReady, isTrue);
+      expect(data.items.single.waitingComponentStock, isFalse);
+      expect(data.items.single.componentAvailableQty, 5);
+      expect(data.summary.statusCounts['WAITING_COMPONENT_STOCK'], 2);
       expect(data.facets['goods']!.single.value, 'goods-source-uuid');
       expect(data.facets['goods']!.single.count, 125);
       expect(data.nullCounts['issuedAt'], 4);

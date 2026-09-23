@@ -313,6 +313,8 @@ void main() {
           apiClientProvider.overrideWithValue(api),
           masterNameServiceProvider.overrideWithValue(_Names(api)),
           currentPermissionsProvider.overrideWithValue(_permissions),
+          // 首屏骨架 UtenSkeletonList 读性能档位 -> sharedPreferences, 与本文件其它用例同。
+          sharedPreferencesProvider.overrideWithValue(_preferences),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -326,12 +328,10 @@ void main() {
     expect(table.rows.single.draft.qty.text, '10000');
     expect(table.rows.single.warehouse, '轨道车间');
     expect(table.selectable, isFalse);
-    await tester.scrollUntilVisible(
-      find.text('审核出仓'),
-      400,
-      scrollable: find.byType(Scrollable).first,
+    // 动作收进右下悬浮动作组(与销售出库详情同骨架), 按 key 找, 不再滚页面。
+    await tester.tap(
+      find.byKey(const Key('warehouse-subcontract-outbound-action-approve')),
     );
-    await tester.tap(find.text('审核出仓'));
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(

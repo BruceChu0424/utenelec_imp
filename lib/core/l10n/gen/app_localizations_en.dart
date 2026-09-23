@@ -2714,6 +2714,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The production task was cancelled. Subcontract ordering is unavailable.';
 
   @override
+  String get subcontractOrderBlockedComponentStock =>
+      'The component has not been received into stock yet. Subcontract ordering is not available; the task center unlocks automatically once the component is received.';
+
+  @override
   String get subcontractPlanIssuedDate => 'Task issue date';
 
   @override
@@ -3279,6 +3283,106 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundDocumentRemarkHint =>
       'These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.';
+
+  @override
+  String get warehouseSubcontractOutboundStageDraftPicking =>
+      'Outbound draft awaiting picking';
+
+  @override
+  String warehouseSubcontractOutboundStageReady(String qty) {
+    return 'Prepared, awaiting outbound (issuable $qty)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundStageReadyPlain =>
+      'Prepared, awaiting outbound';
+
+  @override
+  String get warehouseSubcontractOutboundWaitingComponent =>
+      'Waiting for component stock';
+
+  @override
+  String get warehouseSubcontractOutboundStageBlockedPreparation =>
+      'Preparation blocked';
+
+  @override
+  String get warehouseSubcontractOutboundStageWaitingPreparation =>
+      'Waiting for preparation';
+
+  @override
+  String get warehouseSubcontractOutboundStagePendingDraft =>
+      'Outbound document pending';
+
+  @override
+  String get warehouseSubcontractOutboundOpenPicking => 'Open picking outbound';
+
+  @override
+  String get warehouseSubcontractOutboundBannerComponent =>
+      'Component-issue subcontract items: an issuable quantity appears only after the component is received into stock. The warehouse issues the component; the subcontractor returns the subcontract item.';
+
+  @override
+  String warehouseSubcontractOutboundWaitingComponentStock(String qty) {
+    return 'Waiting for component stock (available $qty)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundSuggestedWarehouse =>
+      'Suggested issue warehouse';
+
+  @override
+  String get warehouseSubcontractOutboundComponentEffects =>
+      'Approval issues the component from the selected warehouse to the subcontractor. The subcontract item is registered on return and still requires quality inspection before it is received into stock.';
+
+  @override
+  String get warehouseSubcontractOutboundComponentNotArrived =>
+      'The component has not been received yet; there is none in stock. The system adds a draft and notifies the warehouse automatically once the component is received.';
+
+  @override
+  String get warehouseSubcontractOutboundWorkView => 'Warehouse work view';
+
+  @override
+  String get warehouseSubcontractOutboundBannerScope =>
+      'The warehouse work view has no prices or amounts and offers no subcontract business editing.';
+
+  @override
+  String warehouseSubcontractOutboundBannerDraftPending(String billNo) {
+    return 'Draft $billNo awaits picking review';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundBannerWaitingComponent =>
+      'Waiting for component stock: once the component is received, the system adds a draft and notifies you';
+
+  @override
+  String warehouseSubcontractOutboundBannerIssuable(String qty) {
+    return 'Issuable $qty';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundFactDraftNo => 'Outbound draft no.';
+
+  @override
+  String get warehouseSubcontractOutboundFactLatestIssue =>
+      'Latest outbound document';
+
+  @override
+  String warehouseSubcontractOutboundHistoryTitle(int count) {
+    return 'Outbound records ($count)';
+  }
+
+  @override
+  String warehouseSubcontractOutboundLinesTitle(int count) {
+    return 'Outbound lines ($count)';
+  }
+
+  @override
+  String get warehouseSubcontractOutboundSaveDraft => 'Save draft';
+
+  @override
+  String get warehouseSubcontractOutboundApprove => 'Approve outbound';
+
+  @override
+  String get warehouseSubcontractOutboundClosePlan => 'Stop issuing';
 
   @override
   String get productionBatchTitle => 'Batch production and material request';

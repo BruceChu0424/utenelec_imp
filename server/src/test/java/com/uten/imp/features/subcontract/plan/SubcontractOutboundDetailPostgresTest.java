@@ -132,7 +132,8 @@ class SubcontractOutboundDetailPostgresTest {
                 mock(DocNumberService.class), mock(SubcontractMaterialIssueRepository.class),
                 mock(SubcontractMaterialIssueItemRepository.class), currentUser,
                 mock(SubcontractChainNoticePort.class), mock(InventoryMutationLock.class),
-                mock(SubcontractOrderPreparationPort.class));
+                mock(SubcontractOrderPreparationPort.class),
+                mock(org.springframework.beans.factory.ObjectProvider.class));
         jdbc.queries.clear();
     }
 

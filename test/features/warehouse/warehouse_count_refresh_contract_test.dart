@@ -17,7 +17,8 @@ void main() {
     );
     for (final provider in [
       'warehouseSalesOutboundCountsProvider',
-      'warehouseSubcontractOutboundCountProvider',
+      // 委外待出仓的红数与黄数同出一支(2026-09-22 ADR-103), 失效它就等于两枚一起重拉。
+      'warehouseSubcontractOutboundTaskCountsProvider',
       'warehouseInboundExpectationCountProvider',
       'warehouseInboundExpectationTypeCountsProvider',
       'warehouseArrivalExceptionCountProvider',
@@ -42,6 +43,10 @@ void main() {
           'warehouseQualityResultTypeCountsProvider',
       'warehouseQualityResultWaitingCountProvider':
           'warehouseQualityResultTypeCountsProvider',
+      'warehouseSubcontractOutboundCountProvider':
+          'warehouseSubcontractOutboundTaskCountsProvider',
+      'warehouseSubcontractOutboundWaitingComponentCountProvider':
+          'warehouseSubcontractOutboundTaskCountsProvider',
     };
     final libSources = Directory('lib')
         .listSync(recursive: true)

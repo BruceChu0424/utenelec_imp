@@ -227,6 +227,15 @@ class SubcontractToleranceAutoSettleEndToEndTest {
                 SELECT changed_by_employee_id FROM procurement_order_qty_change_logs
                 WHERE order_type='SUBCONTRACT' AND order_item_id=? ORDER BY changed_at DESC LIMIT 1
                 """, UUID.class, itemId), "身份守卫与审计一个不动: 改量记在仓库账号名下");
+        // ADR-103 §2.5 实施记录: 自动结案的受控改量照样开财务复核 case (V503 守卫要求同事务开 PENDING 复核)。
+        assertNotNull(db.queryForObject("""
+                SELECT case_id FROM procurement_order_qty_change_logs
+                WHERE order_type='SUBCONTRACT' AND order_item_id=? ORDER BY changed_at DESC LIMIT 1
+                """, UUID.class, itemId), "自动结案的改量日志必须挂在财务复核 case 上");
+        assertEquals(1, count("""
+                SELECT COUNT(*) FROM procurement_order_approval_cases
+                WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'
+                """, orderId), "自动结案开一条 PENDING 财务复核 (V503 守卫)");
         UUID wasteId = (UUID) settled.get("waste_id");
         assertNotNull(wasteId, "接受损耗结案必须先开一张损耗单核销供应商处剩料");
         assertEquals(1, count("SELECT COUNT(*) FROM subcontract_wastes WHERE id=? AND status=1", wasteId),

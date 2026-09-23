@@ -17,6 +17,10 @@ import '../repositories/warehouse_subcontract_outbound_repository.dart'
     show warehouseSubcontractOutboundCountProvider;
 
 /// 出库任务中心角标 = 销售出库待办 + 委外出仓待办（草稿不计入待办数）。
+///
+/// 委外「等子件到货」的任务(ADR-103 黄枚)只画在出库任务中心的分段上, 不进本卡:
+/// 那些委外单已在委外任务中心的 IN_PROGRESS 黄数里, 仓库卡再数一遍是跨卡双计
+/// (in_progress_badge_registry.dart 末尾「已知重叠」)。
 class WarehouseOutboundTaskBadge extends ConsumerWidget {
   const WarehouseOutboundTaskBadge({super.key, this.showLabel = false});
 

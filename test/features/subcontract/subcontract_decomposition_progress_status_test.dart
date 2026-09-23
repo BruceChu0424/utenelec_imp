@@ -10,6 +10,8 @@ import 'package:uten_imp/features/operations_workbench/models/operations_workben
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/subcontract_short_delivery.dart'
+    show subcontractProgressStatusLabel;
 
 class _Api extends ApiClient {
   _Api() : super(Dio());
@@ -52,6 +54,13 @@ class _Gateway implements OperationsWorkbenchGateway {
               'SHORT_DELIVERY',
             ),
             _order('o-supplier', 'FINANCE_APPROVED', 'AT_SUPPLIER', null),
+            // ADR-103：财务已通过、计划行有余量、子件仓里一件都没有 → 等子件到货·待发料。
+            _order(
+              'o-waiting-component',
+              'FINANCE_APPROVED',
+              'OUTBOUND_WAITING_COMPONENT',
+              null,
+            ),
             _order(
               'o-received',
               'FINANCE_APPROVED',
@@ -171,11 +180,26 @@ void main() {
     expect(find.text('委外加工中'), findsWidgets);
     expect(find.text('已回厂待入库'), findsWidgets);
     expect(find.text('财务已退回'), findsWidgets);
+    expect(find.text('等子件到货·待发料'), findsWidgets);
     // 异常小类行：短交与退回都在（红徽章形态由 UtenFilterSegment 决定）。
     expect(
       find.byKey(const Key('subcontract-decomposition-exceptions')),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  test('ADR-103 路线 B 三个阶段码的状态列文案', () {
+    expect(subcontractProgressStatusLabel('WAITING_COMPONENT_STOCK'), '等子件到货');
+    expect(
+      subcontractProgressStatusLabel('COMPONENT_STOCK_READY'),
+      '子件已到货·可下单',
+    );
+    expect(
+      subcontractProgressStatusLabel('OUTBOUND_WAITING_COMPONENT'),
+      '等子件到货·待发料',
+    );
+    // 待处理段的普通申请行仍不翻译 (沿用「计划申请已下达 / 待分解」)。
+    expect(subcontractProgressStatusLabel('WAITING_ORDER'), 'WAITING_ORDER');
   });
 }

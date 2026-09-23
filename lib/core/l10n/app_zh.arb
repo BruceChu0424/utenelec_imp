@@ -1172,6 +1172,7 @@
   "subcontractOrderBlockedPreparation": "前置生产尚未完成，暂时不能下委外单",
   "subcontractOrderBlockedNotification": "前置生产已完成，请先通知委外后再下单",
   "subcontractOrderBlockedCancelled": "生产任务已取消，暂时不能下委外单",
+  "subcontractOrderBlockedComponentStock": "子件尚未入库，暂时不能下委外单；子件入库后任务中心会自动解锁",
   "subcontractPlanIssuedDate": "计划下达日期",
   "subcontractPlanIssuedDateHint": "计划部门首次下达这项委外任务的日期",
   "subcontractOrderBlockedRefresh": "已通知委外，请刷新任务列表后下单",
@@ -1443,6 +1444,73 @@
   "warehouseSubcontractOutboundLineRemark": "明细备注",
   "warehouseSubcontractOutboundWarehouseSyncHint": "默认带出原出库单的实际仓库。同一出库单的所有明细共用发出仓，修改后同步更新。",
   "warehouseSubcontractOutboundDocumentRemarkHint": "同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。",
+  "warehouseSubcontractOutboundStageDraftPicking": "出仓草稿待拣货",
+  "warehouseSubcontractOutboundStageReady": "已备齐·待出仓 (可发 {qty})",
+  "@warehouseSubcontractOutboundStageReady": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundStageReadyPlain": "已备齐·待出仓",
+  "warehouseSubcontractOutboundWaitingComponent": "等子件到货",
+  "warehouseSubcontractOutboundStageBlockedPreparation": "前置自制受阻",
+  "warehouseSubcontractOutboundStageWaitingPreparation": "等待前置自制",
+  "warehouseSubcontractOutboundStagePendingDraft": "待生成出仓单",
+  "warehouseSubcontractOutboundOpenPicking": "进入拣货出仓",
+  "warehouseSubcontractOutboundBannerComponent": "发子件的委外件: 子件入库后才会出现可发量, 仓库发的是子件, 回厂交回的是委外件。",
+  "warehouseSubcontractOutboundWaitingComponentStock": "等子件到货 (仓内可动用 {qty})",
+  "@warehouseSubcontractOutboundWaitingComponentStock": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundSuggestedWarehouse": "建议发料仓",
+  "warehouseSubcontractOutboundComponentEffects": "审核后，子件从所选仓库实际出库并交委外商加工；加工完回厂登记的是委外件，仍需品质检查，合格后才正式入仓。",
+  "warehouseSubcontractOutboundComponentNotArrived": "子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。",
+  "warehouseSubcontractOutboundWorkView": "仓库作业视图",
+  "warehouseSubcontractOutboundBannerScope": "仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。",
+  "warehouseSubcontractOutboundBannerDraftPending": "草稿 {billNo} 待拣货审核",
+  "@warehouseSubcontractOutboundBannerDraftPending": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundBannerWaitingComponent": "等子件到货: 子件入库后系统会自动补草稿并通知",
+  "warehouseSubcontractOutboundBannerIssuable": "可发 {qty}",
+  "@warehouseSubcontractOutboundBannerIssuable": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundFactDraftNo": "出仓草稿单号",
+  "warehouseSubcontractOutboundFactLatestIssue": "最近出仓单",
+  "warehouseSubcontractOutboundHistoryTitle": "出仓记录 ({count})",
+  "@warehouseSubcontractOutboundHistoryTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundLinesTitle": "出仓明细 ({count})",
+  "@warehouseSubcontractOutboundLinesTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "warehouseSubcontractOutboundSaveDraft": "保存草稿",
+  "warehouseSubcontractOutboundApprove": "审核出仓",
+  "warehouseSubcontractOutboundClosePlan": "不再出仓",
   "productionBatchTitle": "分批生产领料",
   "productionBatchPermission": "当前账号没有安排车间分批领料的权限",
   "productionBatchSelectTask": "请从我的车间任务选择待料工单",

@@ -79,10 +79,8 @@ class _WarehouseSubcontractOutboundWorkbenchState
     ].every(permissions.contains);
   }
 
-  bool _selectable(OutboundTask task) =>
-      task.draftId != null ||
-      task.readyOutboundQty > 0 ||
-      task.readyLineCount > 0;
+  // 无草稿且服务端明说可发 0(等子件到货)的行不给勾: 勾了进批量页也只会撞 409。
+  bool _selectable(OutboundTask task) => task.selectable;
 
   @override
   void initState() {
@@ -138,7 +136,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
             .toSet();
         _selectedIds = _selectedIds.intersection(availableIds);
       });
-      ref.invalidate(warehouseSubcontractOutboundCountProvider);
+      ref.invalidate(warehouseSubcontractOutboundTaskCountsProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -223,7 +221,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
           _buildStandaloneSearch(result),
           const SizedBox(height: UtenSpacing.s8),
         ],
-        if (widget.showHintBanner) const _OutboundHintBanner(),
+        if (widget.showHintBanner) _OutboundHintBanner(l10n: l10n),
         if (!widget.embedded) const SizedBox(height: UtenSpacing.s12),
         if (_error != null && result.items.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s12),
@@ -241,22 +239,28 @@ class _WarehouseSubcontractOutboundWorkbenchState
             key: const Key('subcontract-outbound-task-table'),
             columns: _columns,
             items: result.items,
-            // 表头筛选桶（2026-09-16）：委外商走主档 dict；任务状态为派生两档
-            // （有草稿=待拣货 / 无草稿=已备齐待出仓），与 statusLabel 同口径。
+            // 表头筛选桶（2026-09-16）：委外商走主档 dict；任务状态为派生三档
+            // （有草稿=待拣货 / 无草稿有可发=已备齐待出仓 / 无草稿可发 0=等子件到货），
+            // 与服务端 tasks() 的状态桶及行 stage 同口径(ADR-103 §2.4)。
             facets: {
               'supplierName': masterDictionaryFacets(
                 ref.watch(masterNameServiceProvider).supplierEntries,
               ),
-              'status': const [
+              'status': [
                 MasterFacetBucket(
                   value: 'DRAFT_PICKING',
                   count: 0,
-                  label: '目标件出仓草稿待拣货',
+                  label: l10n.warehouseSubcontractOutboundStageDraftPicking,
                 ),
                 MasterFacetBucket(
                   value: 'READY_OUTBOUND',
                   count: 0,
-                  label: '目标件已备齐，待出仓',
+                  label: l10n.warehouseSubcontractOutboundStageReadyPlain,
+                ),
+                MasterFacetBucket(
+                  value: 'WAITING_COMPONENT',
+                  count: 0,
+                  label: l10n.warehouseSubcontractOutboundWaitingComponent,
                 ),
               ],
             },
@@ -305,7 +309,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
                   ],
             rowMenuBuilder: (item) => [
               UtenMenuItem(
-                label: '进入目标件拣货出仓',
+                label: l10n.warehouseSubcontractOutboundOpenPicking,
                 icon: Icons.outbound_outlined,
                 onTap: () => _openTask(item),
               ),
@@ -364,12 +368,41 @@ class _WarehouseSubcontractOutboundWorkbenchState
     );
   }
 
+  /// 行阶段 → 文案。「已备齐」带可发合计: 单一子件分批到货时仓库一眼看到这次能发多少。
+  String _stageLabel(AppLocalizations l10n, OutboundTask item) =>
+      switch (item.stage) {
+        OutboundTaskStage.draftPicking =>
+          l10n.warehouseSubcontractOutboundStageDraftPicking,
+        OutboundTaskStage.readyOutbound =>
+          item.issuableTotal == null
+              ? l10n.warehouseSubcontractOutboundStageReadyPlain
+              : l10n.warehouseSubcontractOutboundStageReady(
+                  _quantity(item.issuableTotal!),
+                ),
+        OutboundTaskStage.waitingComponent =>
+          l10n.warehouseSubcontractOutboundWaitingComponent,
+        OutboundTaskStage.blockedPreparation =>
+          l10n.warehouseSubcontractOutboundStageBlockedPreparation,
+        OutboundTaskStage.waitingPreparation =>
+          l10n.warehouseSubcontractOutboundStageWaitingPreparation,
+        OutboundTaskStage.pendingDraft =>
+          l10n.warehouseSubcontractOutboundStagePendingDraft,
+      };
+
+  static String _quantity(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toString();
+
   List<MasterColumnDef<OutboundTask>> get _columns => [
     MasterColumnDef(
       key: 'status',
       label: '任务状态',
-      width: 150,
-      value: (item) => item.statusLabel,
+      width: 170,
+      value: (item) => _stageLabel(
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+            AppLocalizationsZh(),
+        item,
+      ),
     ),
     MasterColumnDef(
       key: 'orderBillNo',
@@ -407,7 +440,9 @@ class _WarehouseSubcontractOutboundWorkbenchState
 }
 
 class _OutboundHintBanner extends StatelessWidget {
-  const _OutboundHintBanner();
+  const _OutboundHintBanner({required this.l10n});
+
+  final AppLocalizations l10n;
 
   @override
   Widget build(BuildContext context) {
@@ -425,7 +460,8 @@ class _OutboundHintBanner extends StatelessWidget {
       child: Text(
         '仓库只看到已经备齐并由服务端放行的委外目标件。无子层级时先预留合格库存；'
         '有子层级时必须完成物料分析、领料、自制报工、FQC 和成品入仓后才会出现在这里。'
-        '历史 BOM 子件发料单仍按原单据只读兼容。',
+        '历史 BOM 子件发料单仍按原单据只读兼容。'
+        '${l10n.warehouseSubcontractOutboundBannerComponent}',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),

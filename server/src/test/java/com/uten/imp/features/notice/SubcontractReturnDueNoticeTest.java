@@ -200,7 +200,7 @@ class SubcontractReturnDueNoticeTest {
                     eq(recipient),
                     eq("委外回厂已逾期：WO-DUE"),
                     argThat(content -> content.contains("尚未物理回厂")
-                            && content.contains("不代表已回厂、IQC 已结案或订单完成")
+                            && content.contains("不代表已回厂、来料质检已结案或订单完成")
                             && !content.contains("金额")),
                     eq(ChainNoticeService.TYPE_URGENT),
                     anyString(),

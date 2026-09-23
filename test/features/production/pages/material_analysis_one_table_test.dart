@@ -763,6 +763,43 @@ void main() {
     expect(submits.single.body?['target'], 'BUY');
   });
 
+  testWidgets('顶层追加格填了数：顶层自己和被带出缺口的子件都自动勾上', (tester) async {
+    // 2026-09-22 用户实机：「我填数字的这层(顶层)默认是没有选中的, 子层需要追加的都自动选中」。
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).first as Map;
+        product['issuedPlanQty'] = 2000;
+        product['canSchedule'] = false;
+        product['canIssueSurplus'] = true;
+        product['remainingQty'] = 0;
+        product['latestPlanId'] = 'plan-1';
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-6']),
+    );
+    expect(
+      tester.widget<Checkbox>(_productCheckbox('product-1')).value,
+      isFalse,
+    );
+    await tester.enterText(_appendQty('m-root'), '1000');
+    await tester.pump();
+    await _settleRebuild(tester);
+    expect(
+      tester.widget<Checkbox>(_productCheckbox('product-1')).value,
+      isTrue,
+    );
+    // 自制子件 m-6 的需求被带大(缺口从 400 变大), 也替他勾上。
+    expect(_rowChecked(tester, 'm-6'), isTrue);
+    await _settlePreview(tester);
+    expect(
+      tester.widget<Checkbox>(_productCheckbox('product-1')).value,
+      isTrue,
+    );
+  });
+
   testWidgets('采购行填得比当时需求多：累计已下单 = 归需求份 + 公共备货份', (tester) async {
     await _pump(
       tester,
@@ -1125,15 +1162,20 @@ Future<void> _pump(
               'm-rc' => typed['m-r'],
               // 多下过的委外子件：锚点计划 1400 + 现货 200 盖住 1600。
               'm-vc' => typed['m-v'],
+              // 顶层(已下 2000)追加 → 自制子件按 (2000 + 追加) / 2000 展开, 覆盖 600。
+              'm-6' => typed['m-root'],
               _ => null,
             };
             if (appended == null) continue;
             final covered = switch (line) {
               'm-qc1' => 1000.0,
               'm-rc' => 2600.0,
+              'm-6' => 600.0,
               _ => 1600.0,
             };
-            final required = 1000 + appended;
+            final required = line == 'm-6'
+                ? 1000 * (2000 + appended) / 2000
+                : 1000 + appended;
             final residual = required - covered;
             material['requiredQty'] = required;
             material['additionalSupplyRecommendedQty'] = residual > 0

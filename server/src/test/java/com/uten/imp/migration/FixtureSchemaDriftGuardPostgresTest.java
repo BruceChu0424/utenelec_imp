@@ -111,6 +111,8 @@ class FixtureSchemaDriftGuardPostgresTest {
             "financial_unsupported_fixture",
             // 货品删除守卫的外键引用方桩（迁移目录里没有图片引用表）。
             "goods_image_references",
+            // SchemaIndexHygieneContractTest 在回滚事务里自检索引规则用的样本表(ADR-106)。
+            "index_rule_probe",
             // BusinessIdentifierRegistryMigrationContractTest 里对迁移 SQL 做
             // contains 断言时，字面量拼接出的伪表名（不是真的建表语句）。
             "upper");

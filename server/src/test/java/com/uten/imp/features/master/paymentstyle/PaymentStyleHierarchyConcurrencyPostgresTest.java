@@ -166,6 +166,77 @@ class PaymentStyleHierarchyConcurrencyPostgresTest {
         });
     }
 
+    /**
+     * V650/ADR-106: reference writers take the hierarchy key in shared mode, so two open
+     * transactions referencing the same style never queue on each other, while a hierarchy
+     * change (exclusive) still waits for both and then sees both committed references.
+     */
+    @Test
+    void twoReferenceWritersShareTheLockWhileHierarchyChangeStillWaits() {
+        assertTimeoutPreemptively(Duration.ofSeconds(20), () -> {
+            Seed seed = seedExpenseLeaf("SHARED-READERS");
+            UUID targetParentId = insertStyle("SHARED-TARGET", "共享锁并发目标目录", null);
+            CountDownLatch firstInserted = new CountDownLatch(1);
+            CountDownLatch secondInserted = new CountDownLatch(1);
+            CountDownLatch releaseReferences = new CountDownLatch(1);
+            CountDownLatch hierarchyReachedLock = new CountDownLatch(1);
+            CountDownLatch hierarchyAcquiredLock = new CountDownLatch(1);
+
+            try (ExecutorService executor = Executors.newFixedThreadPool(3)) {
+                Future<ReferenceAttempt> first = executor.submit(() ->
+                        insertExpenseReference(seed, null, firstInserted, releaseReferences));
+                assertTrue(firstInserted.await(5, TimeUnit.SECONDS));
+
+                Future<ReferenceAttempt> second = executor.submit(() ->
+                        insertExpenseReference(seed, null, secondInserted, releaseReferences));
+                assertTrue(secondInserted.await(3, TimeUnit.SECONDS),
+                        "a second reference writer must not wait for the first open reference transaction");
+                assertEquals(0, advisoryWaiters(),
+                        "no session may be waiting on the payment-style advisory lock between two reference writers");
+                assertEquals(2, sharedHierarchyHolders(),
+                        "both open reference transactions hold the hierarchy key in shared mode");
+
+                Future<HierarchyAttempt> hierarchy = executor.submit(() ->
+                        moveStyleIfUnreferenced(seed.styleId(), targetParentId,
+                                hierarchyReachedLock, hierarchyAcquiredLock));
+                assertTrue(hierarchyReachedLock.await(5, TimeUnit.SECONDS));
+                assertFalse(hierarchyAcquiredLock.await(500, TimeUnit.MILLISECONDS),
+                        "the exclusive hierarchy change must still wait for the shared reference holders");
+
+                releaseReferences.countDown();
+                assertTrue(first.get(5, TimeUnit.SECONDS).inserted());
+                assertTrue(second.get(5, TimeUnit.SECONDS).inserted());
+                HierarchyAttempt attempt = hierarchy.get(5, TimeUnit.SECONDS);
+                assertEquals(2, attempt.referenceCount());
+                assertFalse(attempt.moved());
+            } finally {
+                releaseReferences.countDown();
+            }
+            assertEquals(2, expenseReferenceCount(seed.styleId()));
+            assertNull(parentId(seed.styleId()));
+        });
+    }
+
+    private static int advisoryWaiters() throws Exception {
+        try (Connection connection = connection()) {
+            return scalar(connection, """
+                    SELECT COUNT(*) FROM pg_locks
+                    WHERE locktype = 'advisory' AND NOT granted
+                    """);
+        }
+    }
+
+    private static int sharedHierarchyHolders() throws Exception {
+        try (Connection connection = connection()) {
+            return scalar(connection, """
+                    SELECT COUNT(*) FROM pg_locks
+                    WHERE locktype = 'advisory' AND granted AND mode = 'ShareLock'
+                      AND ((classid::bigint << 32) | objid::bigint)
+                          = hashtextextended('PAYMENT_STYLE_HIERARCHY', 0)
+                    """);
+        }
+    }
+
     @Test
     void accountUuidReferenceGuardRejectsMissingOrWrongStyleAndAcceptsActiveAccountLeaf()
             throws Exception {

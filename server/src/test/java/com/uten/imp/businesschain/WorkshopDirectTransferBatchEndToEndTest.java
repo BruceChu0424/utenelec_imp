@@ -68,6 +68,13 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * 确认多出来的语句是新做的事而不是又一遍重复的读。
      */
     private static final int APPROVE_STATEMENTS_BUDGET = 520;
+
+    /**
+     * 一行车间直送审核里触发器函数的调用预算(ADR-106)。统计口径：pg_stat_user_functions 里
+     * 返回 trigger 的函数调用次数之和。2026-09-23 实测：V645 为 600 次(延迟校验 282 次)，
+     * V650-V652 后为 416 次(延迟校验 170 次；总数里 160 次是审计触发器 fn_audit / fn_audit_classify_row)。
+     */
+    private static final long APPROVE_TRIGGER_CALLS_BUDGET = 450;
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -82,6 +89,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
     @Autowired ProductionDailyReportService reports;
     @Autowired com.uten.imp.features.production.execution.ProductionDrawRequestService drawRequests;
     @Autowired StockDocService stock;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     FullChainEndToEndTest fixture;
 
     @BeforeEach
@@ -158,6 +166,240 @@ class WorkshopDirectTransferBatchEndToEndTest {
         // 顺带确认省下来的不是靠少做事：父件照样提升、领料单照样自动出库。
         assertEquals("READY", status(c.segment()));
         assertAutoIssued(drawOf(c.segment()), "100");
+    }
+
+    /**
+     * 直送审核的触发器调用剖面(ADR-106)。
+     *
+     * <p>只在这一笔审核事务里打开 track_functions，统计各触发器函数被调了几次，同时拿
+     * ProductionJdbcMeasurement 的提交耗时。V650 给热表的约束/守卫触发器补了「相关列真变了」
+     * 的 WHEN 条件、删掉了被包含的重复校验，V651 撤掉了 52 张表上的货品单位锁语句级触发器；
+     * 这里把调用总数钉住，谁把无关更新又接回校验上要先在这里红一次。
+     */
+    @Test
+    void oneDirectTransferApproveKeepsTriggerCallsInsideBudget() throws Exception {
+        Case c = create("dt-trigger-budget", false);
+        fixture.loginAs(c.workerUser());
+        confirmRoute(c.plan(), c.segment(), "FULL_KIT");
+
+        var profile = profileTransferApprove(c, "100");
+
+        System.out.println("APPROVE-TRIGGER-PROFILE total=" + profile.triggerCalls()
+                + " deferredChecks=" + profile.deferredCheckCalls()
+                + " commitMillis=" + profile.sample().commitNanos / 1_000_000.0
+                + " jdbcMillis=" + profile.sample().jdbcNanos / 1_000_000.0
+                + " statements=" + profile.sample().logicalStatements
+                + " top=" + profile.top());
+        assertEquals(1, profile.sample().commits, "审核必须是一笔事务，剖面才有意义");
+        assertEquals(0, profile.calls().getOrDefault("fn_lock_goods_quantity_unit_from_references", 0L),
+                "货品单位锁已改为改单位时按需检查，写业务行不再走语句级触发器");
+        assertTrue(profile.triggerCalls() <= APPROVE_TRIGGER_CALLS_BUDGET,
+                "一行直送审核触发器函数被调了 " + profile.triggerCalls() + " 次，超出预算 "
+                        + APPROVE_TRIGGER_CALLS_BUDGET + "；先看剖面是哪条触发器又对无关列更新起跳");
+        assertEquals("none", db.queryForObject("SHOW track_functions", String.class),
+                "track_functions 只在被测事务里打开，不能漏到后面的用例");
+        assertEquals("READY", status(c.segment()));
+        assertAutoIssued(drawOf(c.segment()), "100");
+    }
+
+    /**
+     * V650 收窄的负向回归(ADR-106)：拿一条真实直送链的单据、预留、执行段、计划明细、分析行、估值节点，
+     * 每类收窄各做两件事——改了相关列照样被拒；只改无关列时对应校验函数一次都不被调用。
+     * 每个探针都在自己的事务里做完就回滚，不留任何痕迹。
+     */
+    @Test
+    void narrowedTriggersStillRejectRelevantChangesAndSkipIrrelevantOnes() {
+        Case c = create("dt-trigger-gates", false);
+        fixture.loginAs(c.workerUser());
+        confirmRoute(c.plan(), c.segment(), "FULL_KIT");
+        transfer(c, "100");
+        assertEquals("READY", status(c.segment()));
+
+        UUID draw = db.queryForObject("""
+                SELECT mapping.document_id FROM production_planning_package_documents mapping
+                WHERE mapping.execution_segment_id=? AND mapping.document_type='DRAW'
+                """, UUID.class, c.segment());
+        UUID drawItem = db.queryForObject(
+                "SELECT id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted ORDER BY id LIMIT 1",
+                UUID.class, draw);
+        UUID reservation = db.queryForObject("""
+                SELECT id FROM stock_reservations
+                WHERE demand_id=? AND owner_type='PRODUCTION_MATERIAL_DEMAND' ORDER BY id LIMIT 1
+                """, UUID.class, parentDemand(c));
+        UUID planItem = db.queryForObject(
+                "SELECT id FROM production_plan_items WHERE plan_id=? AND NOT is_deleted", UUID.class, c.plan());
+        UUID analysisItem = db.queryForObject(
+                "SELECT material_analysis_item_id FROM production_plans WHERE id=?", UUID.class, c.plan());
+        UUID rootMaterial = db.queryForObject("""
+                SELECT id FROM production_material_analysis_materials
+                WHERE node_role='ROOT_SUPPLY' AND active ORDER BY (analysis_item_id=?) DESC, created_at DESC LIMIT 1
+                """, UUID.class, analysisItem);
+        UUID exactNode = db.queryForObject("""
+                SELECT id FROM stock_value_nodes WHERE value_model='EXACT_SOURCE_SHARES' AND active
+                  AND bound_scale IS NOT NULL AND bound_scale < 256
+                ORDER BY node_sequence DESC LIMIT 1
+                """, UUID.class);
+
+        // 单号不可变：改单号、改单据类型照样拒；改备注不进任何单号函数。
+        rejected("UPDATE stock_documents SET bill_no=bill_no||'X' WHERE id=?", draw, "is immutable after creation");
+        rejected("UPDATE stock_documents SET doc_type='OTHER_OUT' WHERE id=?", draw,
+                "doc_type is immutable after identifier creation");
+        assertEquals(0, callsDuring("UPDATE stock_documents SET remark='只改备注' WHERE id=?", draw,
+                "fn_reserve_business_document_identifier", "fn_guard_business_document_identifier_immutable",
+                "fn_guard_production_linked_stock_document", "fn_check_make_receipt_source",
+                "fn_check_receipt_draw_provenance", "fn_check_subcontract_receipt_provenance_source",
+                "fn_check_subcontract_preparation_finished_source"));
+
+        // 生产关联领料单：换仓照样拒；明细改数量照样拒；只动时间戳一次都不查。
+        rejected("UPDATE stock_documents SET warehouse_id=? WHERE id=?", new Object[]{c.leaf(), draw},
+                "production-linked stock document identity is immutable");
+        rejected("UPDATE stock_document_items SET qty=qty+1 WHERE id=?", drawItem,
+                "production-linked stock document item is immutable");
+        assertEquals(0, callsDuring("UPDATE stock_document_items SET updated_at=now() WHERE id=?", drawItem,
+                "fn_guard_production_linked_stock_document_item", "fn_check_execution_segment_integrity",
+                "fn_check_make_receipt_source", "fn_check_receipt_draw_provenance",
+                "fn_assert_execution_segment_sales_fact_row", "fn_check_subcontract_preparation_finished_source"));
+
+        // 生产需求预留：只改释放原因，延迟校验一次都不排；改相关列(来回改一次)照样全部排队，且终态合法。
+        assertEquals(0, callsDuring("UPDATE stock_reservations SET release_reason='只改原因' WHERE id=?", reservation,
+                "fn_check_material_consumed_projection", "fn_check_workshop_source_event_balance",
+                "fn_assert_workshop_direct_source_allocation", "fn_check_make_receipt_source",
+                "fn_check_purchase_receipt_conservation", "fn_check_subcontract_receipt_reservation",
+                "fn_check_execution_segment_integrity", "fn_check_workshop_custody_reservation_grant",
+                "fn_check_main_warehouse_public_stock_budget", "fn_validate_preplan_entitlement_conservation",
+                "fn_check_subcontract_outbound_reservation", "fn_check_subcontract_prepared_source_capacity",
+                "fn_check_subcontract_qualified_preparation_reservation", "fn_check_root_sales_reservation_release",
+                "fn_guard_qualified_origin_reservation_identity", "fn_guard_workshop_custody_reservation"));
+        assertTrue(callsDuring(new String[]{
+                        "UPDATE stock_reservations SET source=source+1 WHERE id=?",
+                        "UPDATE stock_reservations SET source=source-1 WHERE id=?"}, reservation,
+                "fn_check_workshop_source_event_balance", "fn_assert_workshop_direct_source_allocation",
+                "fn_check_make_receipt_source", "fn_check_workshop_custody_reservation_grant") >= 8,
+                "相关列真变了，四条延迟校验在两次更新上都要排队");
+        // 已耗用量改动而没有同事务的出库事实：预留量同减 1，已耗用 + 已释放仍等于预留量(过得了生命周期 CHECK)、
+        // 释放量不动(不进直送来源释放守卫)；只把被收窄的耗用投影校验立即执行，拒绝必须来自它的约束名。
+        rejected("UPDATE stock_reservations SET consumed_qty=consumed_qty-1, qty=qty-1 WHERE id=?",
+                new Object[]{reservation}, "trg_check_material_reservation_consumed_projection_upd",
+                "production_material_consumed_projection_guard");
+
+        // 执行段：改计划数、改拆批谱系照样拒；只动时间戳不查完整性(锁版本号每次都会被递增)。
+        rejected("UPDATE production_execution_segments SET planned_qty=planned_qty+1 WHERE id=?", c.segment(),
+                "frozen identity is immutable");
+        rejected("UPDATE production_execution_segments SET split_start_qty=split_start_qty+1 WHERE id=?",
+                c.segment(), "Execution split lineage is immutable");
+        assertEquals(0, callsDuring("UPDATE production_execution_segments SET updated_at=now() WHERE id=?",
+                c.segment(), "fn_check_execution_segment_integrity", "fn_assert_execution_segment_sales_allocation_segment",
+                "fn_check_final_report_target_change", "fn_guard_execution_split_history",
+                "fn_guard_material_snapshot_product_qty", "fn_guard_execution_confirmed_route_start",
+                "fn_guard_execution_segment_requirement_shape", "fn_guard_production_assignment_scope"));
+
+        // 物料分析计划明细：改数量照样拒；只改备注不进身份守卫。
+        rejected("UPDATE production_plan_items SET qty=qty+1 WHERE id=?", planItem,
+                "material-analysis plan item identity and quantity are immutable");
+        assertEquals(0, callsDuring("UPDATE production_plan_items SET remark='只改备注' WHERE id=?", planItem,
+                "fn_guard_material_analysis_plan_item_identity", "fn_check_execution_segment_integrity",
+                "fn_check_make_receipt_source", "fn_check_subcontract_preparation_finished_source",
+                "fn_guard_production_supply_source_item"));
+
+        // 分析来源行：改已完成量照样被拒；改已批准量(来回一次)照样排队产出台账校验；只改交期不进任何校验。
+        // 已完成量加 1、已批准量减 1：三者合计不超过申请量(过得了 CHECK)，只让产出台账校验立即执行。
+        rejected("UPDATE production_material_analysis_items"
+                        + " SET root_fulfilled_qty=root_fulfilled_qty+1, approved_qty=approved_qty-1 WHERE id=?",
+                new Object[]{analysisItem}, "trg_check_root_output_quantity_upd",
+                "root fulfilled quantity must equal output event ledger");
+        assertTrue(callsDuring(new String[]{
+                        "UPDATE production_material_analysis_items SET approved_qty=approved_qty-1 WHERE id=?",
+                        "UPDATE production_material_analysis_items SET approved_qty=approved_qty+1 WHERE id=?"},
+                analysisItem, "fn_check_root_output_quantity") >= 2,
+                "已批准量真变了，产出台账校验在两次更新上都要排队");
+        assertEquals(0, callsDuring(
+                "UPDATE production_material_analysis_items SET delivery_date=delivery_date+1 WHERE id=?",
+                analysisItem, "fn_check_root_output_quantity", "fn_check_root_material_owner",
+                "fn_check_subcontract_preparation_analysis_source", "fn_bind_direct_subcontract_preparation",
+                "fn_guard_preplan_direct_make_source_identity", "fn_guard_subcontract_qualified_source_identity"));
+
+        // 分析物料行：改根供给换算照样拒；只改缺口派生量不进任何守卫。
+        rejected("UPDATE production_material_analysis_materials SET per_product_qty=per_product_qty+1 WHERE id=?",
+                rootMaterial, "root supply dimension and conversion are immutable");
+        assertEquals(0, callsDuring(
+                "UPDATE production_material_analysis_materials SET shortage_qty=shortage_qty+1 WHERE id=?",
+                rootMaterial, "fn_guard_root_material_identity", "fn_validate_pma_material_exact_peg_endpoint",
+                "fn_validate_production_material_analysis_borrow_endpoint", "fn_validate_preplan_material_reallocation_endpoints",
+                "fn_guard_pma_material_exact_peg_identity", "fn_guard_preplan_subcontract_handoff_material_identity",
+                "fn_guard_root_supply_route"));
+
+        // 估值节点：界版本与修订号不一致照样拒；只改显示精度位数不进精度界/生命周期/成本分摊校验。
+        rejected("UPDATE stock_value_nodes SET bound_revision=bound_revision+1 WHERE id=?", exactNode,
+                "金额精度界必须覆盖同版来源表达式");
+        assertEquals(0, callsDuring(
+                "UPDATE stock_value_nodes SET bound_scale=bound_scale+1 WHERE id=?", exactNode,
+                "fn_check_stock_value_exact_bounds", "fn_check_stock_value_node_lifecycle",
+                "fn_check_stock_value_cost_distribution", "fn_check_consumption_return",
+                "fn_check_stock_value_node_revision", "fn_guard_stock_value_exact_identity"));
+    }
+
+    /** 在一笔回滚事务里执行更新并立即跑完全部延迟校验，返回这些函数在本事务里被调用的次数。 */
+    private long callsDuring(String sql, Object argument, String... functions) {
+        return callsDuring(new String[]{sql}, argument, functions);
+    }
+
+    private long callsDuring(String[] statements, Object argument, String... functions) {
+        String names = String.join(",", functions);
+        Long calls = new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                .execute(status -> {
+                    status.setRollbackOnly();
+                    db.execute("SET LOCAL track_functions = 'all'");
+                    // 后端里未冲刷的计数可能带着上一笔事务的调用，取本事务前后差值。
+                    long before = pendingCalls(names);
+                    for (String statement : statements) {
+                        db.update(statement, argument);
+                    }
+                    db.execute("SET CONSTRAINTS ALL IMMEDIATE");
+                    return pendingCalls(names) - before;
+                });
+        return calls == null ? -1 : calls;
+    }
+
+    private long pendingCalls(String names) {
+        Long calls = db.queryForObject("""
+                SELECT COALESCE(SUM(pg_stat_get_xact_function_calls(p.oid)), 0)
+                FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public'
+                WHERE p.proname = ANY (string_to_array(?, ','))
+                """, Long.class, names);
+        return calls == null ? 0 : calls;
+    }
+
+    private void rejected(String sql, Object argument, String expected) {
+        rejected(sql, new Object[]{argument}, expected);
+    }
+
+    /**
+     * 相关列改动必须被拒：立即守卫当场拒，延迟校验在 SET CONSTRAINTS ALL IMMEDIATE 时拒。
+     * expected 是期望的报错原文片段或数据库约束名，二者命中其一——只看 SQLState 不够，普通 CHECK 约束也报 23514，
+     * 证明不了拒绝来自被收窄的那条校验。
+     */
+    private void rejected(String sql, Object[] arguments, String expected) {
+        rejected(sql, arguments, "ALL", expected);
+    }
+
+    /** constraints 为要立即执行的延迟约束(逗号分隔的约束触发器名或 ALL)；点名时其它延迟校验不跑，随回滚丢弃。 */
+    private void rejected(String sql, Object[] arguments, String constraints, String expected) {
+        var failure = assertThrows(org.springframework.dao.DataAccessException.class, () ->
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                        .executeWithoutResult(status -> {
+                            status.setRollbackOnly();
+                            db.update(sql, arguments);
+                            db.execute("SET CONSTRAINTS " + constraints + " IMMEDIATE");
+                        }), sql);
+        Throwable cause = failure;
+        while (cause.getCause() != null) cause = cause.getCause();
+        assertInstanceOf(java.sql.SQLException.class, cause, sql);
+        String state = ((java.sql.SQLException) cause).getSQLState();
+        assertTrue("23514".equals(state) || "55000".equals(state), sql + " -> " + state + " " + cause.getMessage());
+        String constraint = cause instanceof org.postgresql.util.PSQLException server
+                && server.getServerErrorMessage() != null ? server.getServerErrorMessage().getConstraint() : null;
+        assertTrue(expected.equals(constraint) || cause.getMessage().contains(expected),
+                sql + " -> 约束 " + constraint + "：" + cause.getMessage());
     }
 
     @Test
@@ -368,6 +610,81 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
         reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
+    }
+
+    private record TriggerProfile(ProductionJdbcMeasurement.Sample sample, java.util.Map<String, Long> calls,
+                                  long triggerCalls, long deferredCheckCalls, String top) {}
+
+    /** 触发器函数调用次数快照：只取返回 trigger 的函数，按函数名汇总，不含任何参数或业务值。 */
+    private java.util.Map<String, Long> triggerFunctionCalls() {
+        db.execute("SELECT pg_stat_clear_snapshot()");
+        java.util.Map<String, Long> result = new java.util.TreeMap<>();
+        db.query("""
+                SELECT p.proname, SUM(s.calls) AS calls
+                FROM pg_stat_user_functions s JOIN pg_proc p ON p.oid = s.funcid
+                WHERE s.schemaname = 'public' AND p.prorettype = 'trigger'::regtype
+                GROUP BY p.proname
+                """, rs -> { result.put(rs.getString(1), rs.getLong(2)); });
+        return result;
+    }
+
+    /** 同 {@link #measureTransferApprove}，另在同一笔审核事务里打开 track_functions 统计触发器调用。 */
+    private TriggerProfile profileTransferApprove(Case c, String quantity) throws InterruptedException {
+        fixture.loginAs(c.workerUser());
+        var report = new DailyReportSaveRequest();
+        report.setIdempotencyKey("dt-trigger-probe-" + c.segment() + "-" + quantity);
+        report.setBillDate(BusinessTime.today());
+        report.setWarehouseId(c.leaf());
+        report.setDepartmentId(c.workshop());
+        report.setWorkerIds(List.of(c.worker()));
+        var item = new DailyReportItemLine();
+        item.setLineNo(1);
+        item.setExecutionSegmentId(c.childSegment());
+        item.setPlanItemId(db.queryForObject(
+                "SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",
+                UUID.class, c.childSegment()));
+        item.setGoodsId(c.child());
+        item.setUnitId(c.world().unitId());
+        item.setUnitRate(BigDecimal.ONE);
+        item.setQty(new BigDecimal(quantity));
+        item.setIsFinal(false);
+        item.setDestination("WORKSHOP");
+        item.setDirectTransferDemandId(parentDemand(c));
+        report.setItems(List.of(item));
+        UUID reportId = reports.create(report).getId();
+        var before = triggerFunctionCalls();
+        ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
+        try {
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                    .executeWithoutResult(status -> {
+                        // 只对这一笔真实审核事务计数，提交时 SET LOCAL 随事务结束。
+                        db.execute("SET LOCAL track_functions = 'all'");
+                        db.execute("SELECT pg_stat_force_next_flush()");
+                        reports.approve(reportId, DailyReportApproveRequests.freshKey());
+                    });
+        } finally {
+            ProductionJdbcMeasurement.end();
+        }
+        java.util.Map<String, Long> delta = new java.util.TreeMap<>();
+        for (int attempt = 0; attempt < 30 && delta.isEmpty(); attempt++) {
+            Thread.sleep(100);
+            var after = triggerFunctionCalls();
+            after.forEach((name, calls) -> {
+                long diff = calls - before.getOrDefault(name, 0L);
+                if (diff > 0) delta.put(name, diff);
+            });
+        }
+        assertFalse(delta.isEmpty(), "被测事务必须产生真实的 PostgreSQL 函数计数");
+        long total = delta.values().stream().mapToLong(Long::longValue).sum();
+        long deferred = delta.entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("fn_check_") || entry.getKey().startsWith("fn_validate_")
+                        || entry.getKey().startsWith("fn_assert_"))
+                .mapToLong(java.util.Map.Entry::getValue).sum();
+        String top = delta.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining(","));
+        return new TriggerProfile(sample, delta, total, deferred, top);
     }
 
     /** 同 {@link #transfer}，但只对「审核」那一段计量，返回本次审核的 JDBC 剖面。 */

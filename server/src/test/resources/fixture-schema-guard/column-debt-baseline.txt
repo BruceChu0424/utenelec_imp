@@ -448,7 +448,6 @@ com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#g
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.product_graph4
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.product_graph5
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.product_graph6
-com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.rent_e
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.rent_rate
@@ -827,7 +826,6 @@ com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostg
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.product_graph4
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.product_graph5
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.product_graph6
-com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.rent_e
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.rent_rate
@@ -1336,7 +1334,6 @@ com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.product_graph4
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.product_graph5
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.product_graph6
-com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.rent_e
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.rent_rate
@@ -1554,7 +1551,6 @@ com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPost
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.product_graph4
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.product_graph5
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.product_graph6
-com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.rent_e
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.rent_rate
@@ -2102,7 +2098,6 @@ com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPost
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.product_graph4
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.product_graph5
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.product_graph6
-com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.rent_e
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.rent_rate
@@ -2256,7 +2251,6 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.product_graph4
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.product_graph5
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.product_graph6
-com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.rent_e
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.rent_rate
@@ -2673,7 +2667,6 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#goods.product_graph4
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#goods.product_graph5
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#goods.product_graph6
-com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#goods.rent_e
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#goods.rent_rate
@@ -3177,7 +3170,6 @@ com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.prod
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.product_graph4
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.product_graph5
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.product_graph6
-com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.rent_e
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.rent_rate
@@ -3577,7 +3569,6 @@ com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.jav
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.product_graph4
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.product_graph5
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.product_graph6
-com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.rent_e
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.rent_rate
@@ -3899,7 +3890,6 @@ com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionP
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.product_graph4
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.product_graph5
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.product_graph6
-com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.rear_insert_code
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.rent_e
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.rent_rate
@@ -4058,7 +4048,6 @@ com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.product_graph3
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.product_graph4
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.product_graph5
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.product_graph6
-com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.quantity_unit_locked
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.rear_insert_code
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.require_remark
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.secondary_supplier_id

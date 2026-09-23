@@ -7,12 +7,15 @@ import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Fast API guard; V498 independently enforces the same rule under row locking. */
+/** Fast API guard; V651 independently enforces the same rule under row locking. */
 final class GoodsQuantityUnitPolicy {
     private GoodsQuantityUnitPolicy() {}
 
-    static void requireUnchangedIfUsed(Goods goods, GoodsSaveRequest request) {
-        if (!goods.isQuantityUnitLocked() || !request.hasUnitReference()) return;
+    /**
+     * @param quantityUnitInUse 本货品是否已被数量引用({@link GoodsRepository#quantityUnitInUse}现查)
+     */
+    static void requireUnchangedIfUsed(Goods goods, GoodsSaveRequest request, boolean quantityUnitInUse) {
+        if (!quantityUnitInUse || !request.hasUnitReference()) return;
         UUID current = goods.getUnit() == null ? null : goods.getUnit().getId();
         if (Objects.equals(current, request.getUnitId())
                 && (current != null || Objects.equals(goods.getUnitLegacyId(), request.getUnitLegacyId()))) return;

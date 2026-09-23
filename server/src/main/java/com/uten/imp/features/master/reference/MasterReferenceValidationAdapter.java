@@ -35,7 +35,7 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockGoodsQuantityBasis(java.util.Collection<UUID> goodsIds) {
-        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, goodsIds);
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, goodsIds);
     }
 
     @Override

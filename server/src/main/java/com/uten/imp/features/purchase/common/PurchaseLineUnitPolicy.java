@@ -39,7 +39,7 @@ public class PurchaseLineUnitPolicy {
             throw validation(lineNo, "缺少货品");
         }
 
-        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockUnused(em, List.of(goodsId));
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, List.of(goodsId));
 
         List<Object[]> goodsRows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""

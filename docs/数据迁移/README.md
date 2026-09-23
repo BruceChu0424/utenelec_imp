@@ -17,6 +17,9 @@
 
 | 说明 | 迁移 | 本次变化 |
 | --- | --- | --- |
+| [233](233-V652索引卫生冗余删除与热点领头索引.md) | V652 | 索引卫生(ADR-106)：删 96 个被前缀覆盖或与同列唯一约束重复的冗余索引(白名单保留两条并写明原因)，补 43 个估值图/需求/预留/计划明细/总账凭证引用方领头索引与 31 个货品数量来源列完整领头索引；`SchemaIndexHygieneContractTest` 守住三条规则 |
+| [232](232-V651货品单位改为按需检查数量引用.md) | V651 | 货品基本单位「已被数量引用则不能改」改为改单位时按需检查(ADR-106)：删 52 张表上 104 个语句级触发器、`fn_lock_goods_quantity_unit_from_references` 与 `goods.quantity_unit_locked`；新增 `fn_goods_quantity_unit_in_use`(沿用 V498 来源清单)，改单位守卫先 `FOR UPDATE` 等在途引用再判定；引用被硬删除或草稿明细改指别的货品后可改单位(推翻 V498 终身锁定，待业务确认) |
+| [231](231-V650热表触发器按相关列起跳.md) | V650 | 热表约束/守卫触发器只在相关列真变了时起跳(ADR-106)：94 个触发器 UPDATE 路径加 WHEN(INSERT/UPDATE 共用的拆 `_upd`/`_del`)，删 3 条被覆盖校验完全包含的采购溯源触发器；单号取号只挂 INSERT、UPDATE 改列级不可变守卫；收付款类别引用方改共享咨询锁；只去掉无关列变化的排队，逐行逐事件重复校验(按键去重)留给下一波 |
 | [230](230-V645追加自制并入未开工的生产计划.md) | V645 | 追加自制并进还没开工的生产计划(ADR-104)：新增 `fn_material_analysis_plan_growable`、`fn_is_material_analysis_plan_item_growth`、`fn_is_material_analysis_plan_link_growth`、`fn_is_material_analysis_plan_item_supply_growth` 四个判定函数与 `trg_check_material_analysis_plan_item_link_qty` 对账触发器；锚点补丁 `fn_guard_material_analysis_plan_item_identity`、`fn_sync_material_analysis_plan_link_qty`、`fn_guard_production_supply_source_item`，只在计划仍未开工时放开计划明细 qty / 关联行 submitted_qty·public_surplus_qty 只增不减。不加表不加列；追加量在同一个 CONFIRMED 计划包里另起一段，原段一字不动 |
 | [229](229-V642委外回厂守卫计入财务批准的自带料.md) | V642 | 只锚点补丁 `fn_assert_subcontract_target_outbound_receipt`：把「财务已批准的委外商自带料」(`procurement_arrival_exceptions.approved_excess_qty`，`RECEIPT_ADJUSTED` + 批准决定) 从守恒台账里摘出去，回厂超过我方供料能做出来的数量时不再硬拒，改由 ADR-019 落到货异常并通知财务确认价格与归属(货不入库、不立应付)；额度自钳位，没有财务批准时两道守卫一个字节不放松；V638 的 `PREPARED_OUTBOUND` 合计与 V581 激活条件由迁移内断言钉死；不加表、不加列、不动触发器 |
 | [228](228-V644审核生产日报幂等键.md) | V644 | `production_daily_report_commands` 加 `command_kind` 一列(CREATE/APPROVE/REVERSE，存量默认 CREATE)，原 `UNIQUE(report_id)` 换成 `UNIQUE(report_id, command_kind)`。不加表；审核接口自此要求幂等键，同键重发原样回放已审详情而不是撞状态闸门，状态闸门本身不放宽、只把错误码从 400 改成 409。V643 留给并行会话 |

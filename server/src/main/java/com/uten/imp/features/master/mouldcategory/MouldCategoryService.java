@@ -8,6 +8,7 @@ import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.SystemMasterCategoryRegistry;
+import com.uten.imp.features.master.lifecycle.MasterLifecycleService;
 import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.mouldcategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 模具分类树 CRUD。与 {@code MaterialCategoryService} 同构：
@@ -40,6 +42,7 @@ public class MouldCategoryService {
     private final MasterCodeService masterCodeService;
     private final CategoryDrivenCodeService categoryCodes;
     private final SystemMasterCategoryRegistry systemCategories;
+    private final MasterLifecycleService lifecycle;
 
     @Transactional(readOnly = true)
     public List<MouldCategoryNode> tree() {
@@ -193,24 +196,46 @@ public class MouldCategoryService {
     /**
      * 级联软删：该分类及其全部后代分类 + 子树下模具，一并 is_deleted=true。
      * 与 {@code MaterialCategoryService.delete} 同构，不再拦截「有子分类」（问题 #7：
-     * 删父类需一并删光子类，而非报错要求先手动清空）。
+     * 删父类需一并删光子类，而非报错要求先手动清空)。子树下的模具走主档删除命令(ADR-111)：
+     * 还有有效货品用着其中任何一个模具，整个分类一条都不删并列出原因。
      */
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould_category:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        rejectSystemCategoryMutation(requireCategory(id));
-        List<UUID> ids = subtreeIds(id);
+        // 与分类移动串行(同一把层级锁)，再锁住子树分类行：之后读到的子分类与模具就是全部。
+        lockCategoryHierarchy();
+        MouldCategory root = requireCategory(id);
+        rejectSystemCategoryMutation(root);
+        List<MouldCategory> nodes = lockedSubtree(id);
+        List<UUID> ids = nodes.stream().map(MouldCategory::getId).toList();
+        lifecycle.cascadeDeleteMoulds(mouldRepo.findIdsByCategoryIds(ids),
+                "分类「" + root.getName() + "」不能删除");
         OffsetDateTime now = OffsetDateTime.now();
-        List<MouldCategory> nodes = repo.findSubtree(id);
         for (MouldCategory c : nodes) {
             c.setDeleted(true);
             c.setDeletedAt(now);
         }
         repo.saveAll(nodes);
-        if (!ids.isEmpty()) {
-            mouldRepo.softDeleteByCategoryIds(ids, now);
+    }
+
+    /** 锁住子树分类行后再读一遍子树(V662)，口径同 MaterialCategoryService.lockedSubtree。 */
+    private List<MouldCategory> lockedSubtree(UUID rootId) {
+        List<MouldCategory> nodes = repo.findSubtree(rootId);
+        for (int attempt = 0; attempt < 3 && !nodes.isEmpty(); attempt++) {
+            List<UUID> ids = nodes.stream().map(MouldCategory::getId).toList();
+            repo.lockForDelete(ids);
+            List<MouldCategory> again = repo.findSubtree(rootId);
+            if (new HashSet<>(ids).equals(
+                    again.stream().map(MouldCategory::getId).collect(Collectors.toSet()))) {
+                return again;
+            }
+            nodes = again;
         }
+        if (nodes.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "模具分类不存在");
+        }
+        throw new ApiException(ErrorCode.CONFLICT, "分类刚被其他人修改，请刷新后重试");
     }
 
     /** 收集某分类子树（含自身）的全部 id（findSubtree 已含自身、按 path 先序）。 */

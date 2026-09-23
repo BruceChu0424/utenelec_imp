@@ -30,7 +30,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -220,15 +219,6 @@ public class MouldService {
         return toDetail(m);
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        Mould m = requireMould(id);
-        m.setDeleted(true);
-        m.setDeletedAt(OffsetDateTime.now());
-        repo.save(m);
-    }
 
     private static CategoryCodeAllocation currentCodeAllocation(Mould mould) {
         return new CategoryCodeAllocation(

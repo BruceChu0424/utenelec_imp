@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -26,8 +27,11 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/color_node.dart';
+import '../models/master_batch.dart';
 import '../repositories/color_repository.dart';
+import '../repositories/master_batch_repository.dart';
 import '../repositories/master_status_repository.dart';
+import '../widgets/master_batch_feedback.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -375,7 +379,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
         icon: Icons.delete_outline_rounded,
         destructive: true,
         enabled: _canDelete,
-        onTap: () => _withColorDetail(c.id, _delete),
+        onTap: () => _batchDeleteColors({c.id}),
       ),
     ];
   }
@@ -402,86 +406,91 @@ class _ColorPageState extends ConsumerState<ColorPage> {
     ];
   }
 
-  /// 批量启停：逐条回传更新（无专用批量接口）；跳过已是目标状态的行。
+  /// 批量启停(ADR-111)：一次请求、一个事务，服务端逐条回原因(原本就是目标状态的不动)。
   Future<void> _batchSetColorStatus(Set<String> ids, String status) async {
     if (_rowOpBusy || ids.isEmpty) return;
     _rowOpBusy = true;
-    final byId = {
-      for (final c in _page?.items ?? const <ColorListItem>[]) c.id: c,
-    };
-    var okCount = 0;
-    var skipped = 0;
-    for (final id in ids) {
-      final c = byId[id];
-      try {
-        if (c != null && c.status == status) {
-          skipped++;
-          continue;
-        }
-        await ref
-            .read(masterStatusRepositoryProvider)
-            .change(resourcePath: ApiEndpoints.color(id), status: status);
-        okCount++;
-      } catch (_) {
-        skipped++;
-      }
+    MasterBatchResult? result;
+    try {
+      result = await context.guardAction(
+        () => ref
+            .read(masterBatchRepositoryProvider)
+            .changeStatus(
+              entityPath: ApiEndpoints.colors,
+              status: status,
+              items: [for (final id in ids) MasterBatchItem(id)],
+            ),
+        errorFallback: '批量操作失败，请稍后重试', // TODO(l10n): 补 arb
+      );
+    } finally {
+      _rowOpBusy = false;
     }
-    _rowOpBusy = false;
-    if (!mounted) return;
-    setState(() => _selectedColorIds = {});
-    context.appSuccess(
-      status == '禁用'
-          ? '已禁用 $okCount 个颜色${skipped > 0 ? '，$skipped 个跳过' : ''}'
-          : '已启用 $okCount 个颜色${skipped > 0 ? '，$skipped 个跳过' : ''}',
-    );
-    await _loadColors(_pageNum);
+    if (result == null || !mounted) return;
+    await _afterBatch(result, status == '禁用' ? '禁用' : '启用');
   }
 
-  /// 批量删除：确认后逐个删（容忍单条失败，如被货品引用）。
+  /// 批量删除(ADR-111)：一次请求；还被货品、组装清单、单据、库存用着的颜色逐条说明原因并保留。
   Future<void> _batchDeleteColors(Set<String> ids) async {
     if (_rowOpBusy || ids.isEmpty) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('批量删除颜色'), // TODO(l10n): 补 arb
-        content: Text('确定删除选中的 ${ids.length} 个颜色吗？被货品引用的颜色会删除失败。'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'), // TODO(l10n): 补 arb
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'), // TODO(l10n): 补 arb
-          ),
-        ],
+    final ok = await UtenDialog.show(
+      context,
+      title: ids.length == 1 ? '删除颜色' : '批量删除颜色', // TODO(l10n): 补 arb
+      content: Text(
+        ids.length == 1
+            ? '确定删除「${_labelOf(ids.first) ?? '该颜色'}」吗？'
+            : '确定删除选中的 ${ids.length} 个颜色吗？还在被货品或单据使用的会逐条说明原因并保留。', // TODO(l10n): 补 arb
       ),
+      confirmLabel: '删除', // TODO(l10n): 补 arb
+      danger: true,
     );
     if (ok != true || !mounted) return;
     _rowOpBusy = true;
-    final repo = ref.read(colorRepositoryProvider);
-    var okCount = 0;
-    final failed = <String>{};
-    for (final id in ids) {
-      try {
-        await repo.delete(id);
-        okCount++;
-      } on ApiException catch (e) {
-        failed.add(e.message);
-      } catch (_) {
-        failed.add('删除失败');
-      }
+    MasterBatchResult? result;
+    try {
+      result = await context.guardAction(
+        () => ref
+            .read(masterBatchRepositoryProvider)
+            .delete(
+              entityPath: ApiEndpoints.colors,
+              items: [for (final id in ids) MasterBatchItem(id)],
+            ),
+        errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+      );
+    } finally {
+      _rowOpBusy = false;
     }
-    _rowOpBusy = false;
-    if (!mounted) return;
-    setState(() => _selectedColorIds = {});
-    context.appSuccess(
-      '已删除 $okCount 个颜色${failed.isNotEmpty ? '，${ids.length - okCount} 个失败' : ''}',
+    if (result == null || !mounted) return;
+    await _afterBatch(result, '删除');
+  }
+
+  Future<void> _afterBatch(MasterBatchResult result, String action) async {
+    // 成功的从勾选里剪掉，失败的留着方便处理后重试。
+    setState(() {
+      _selectedColorIds = {
+        for (final r in result.results)
+          if (!r.ok && _selectedColorIds.contains(r.id)) r.id,
+      };
+    });
+    await showMasterBatchOutcome(
+      context,
+      result,
+      action: action,
+      noun: '颜色',
+      labelOf: _labelOf,
     );
-    if (failed.isNotEmpty) context.appError(failed.first);
+    if (!mounted) return;
     await _loadColors(_pageNum);
+    // 删空当前页时回退上一页，避免列表空白
+    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
+      await _loadColors(_page!.page - 1);
+    }
+  }
+
+  String? _labelOf(String id) {
+    for (final c in _page?.items ?? const <ColorListItem>[]) {
+      if (c.id == id) return c.name?.isNotEmpty == true ? c.name : c.code;
+    }
+    return null;
   }
 
   // ---- 列定义 -----------------------------------------------------------

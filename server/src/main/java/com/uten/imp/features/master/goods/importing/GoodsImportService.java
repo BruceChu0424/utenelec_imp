@@ -22,6 +22,8 @@ import com.uten.imp.features.master.unit.dto.UnitDetail;
 import com.uten.imp.features.master.unit.dto.UnitSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
+import com.uten.imp.features.master.lifecycle.MasterEntityKind;
+import com.uten.imp.features.master.lifecycle.MasterLifecycleService;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.openxml4j.exceptions.OpenXML4JRuntimeException;
@@ -93,6 +95,7 @@ public class GoodsImportService {
     private final UnitRepository unitRepo;
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
+    private final MasterLifecycleService lifecycle;
 
     /**
      * detect -> commit is deliberately a short-lived, single-node capability.
@@ -444,14 +447,36 @@ public class GoodsImportService {
             String t = (String) r[0];
             byType.computeIfAbsent(t, k -> new ArrayList<>()).add(toUuid(r[1]));
         }
+        // 撤回走主档删除命令(ADR-111)：本批货品若已被批外的 BOM、单据、库存引用，或本批新建的
+        // 分类/颜色/单位后来被别的货品用上，整次撤回拒绝并列出原因，不留半截。
+        List<UUID> goodsIds = byType.get("GOODS");
         int affected = 0;
-        affected += softDelete("goods", byType.get("GOODS"));
+        affected += lifecycle.cascadeDeleteGoods(goodsIds, "撤回导入失败");
+        requireCategoriesOnlyHoldBatchGoods(byType.get("CATEGORY"), goodsIds);
         affected += softDelete("material_categories", byType.get("CATEGORY"));
-        affected += softDelete("colors", byType.get("COLOR"));
-        affected += softDelete("units", byType.get("UNIT"));
+        affected += lifecycle.cascadeDelete(MasterEntityKind.COLOR, byType.get("COLOR"), "撤回导入失败", goodsIds);
+        affected += lifecycle.cascadeDelete(MasterEntityKind.UNIT, byType.get("UNIT"), "撤回导入失败", goodsIds);
         em.createNativeQuery("UPDATE goods_import_batches SET status='UNDONE' WHERE id=:b")
                 .setParameter("b", batchId).executeUpdate();
         return affected;
+    }
+
+    /** 本批新建的分类下若已有批外的有效货品(导入后又有人往里加了货品)，撤回会让它们失去分类，拒绝。 */
+    private void requireCategoriesOnlyHoldBatchGoods(List<UUID> categoryIds, List<UUID> batchGoods) {
+        if (categoryIds == null || categoryIds.isEmpty()) return;
+        Number foreign = (Number) em.createNativeQuery("""
+                        SELECT count(*) FROM goods
+                        WHERE category_id IN (:categories) AND is_deleted = FALSE
+                          AND NOT (id = ANY(CAST(string_to_array(:batch, ',') AS uuid[])))
+                        """)
+                .setParameter("categories", categoryIds)
+                .setParameter("batch", batchGoods == null ? "" : batchGoods.stream()
+                        .map(UUID::toString).collect(java.util.stream.Collectors.joining(",")))
+                .getSingleResult();
+        if (foreign.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "撤回导入失败：本次导入新建的分类下后来又加了 "
+                    + foreign.longValue() + " 个货品，请先把这些货品移到别的分类再撤回");
+        }
     }
 
     private int softDelete(String table, List<UUID> ids) {

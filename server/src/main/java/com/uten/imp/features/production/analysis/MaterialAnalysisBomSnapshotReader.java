@@ -54,16 +54,76 @@ final class MaterialAnalysisBomSnapshotReader {
         return result;
     }
 
+    /**
+     * 同一条查询、同样的判定口径(循环、超过十层、非正用量、组件已删、单位/颜色失效或老库
+     * 颜色未桥接)，但不再只回一个布尔：返回具体违规行(父件 → 组件 + 原因)，按问题去重，
+     * 报错列出前 {@value #SHOWN_FINDINGS} 条并说明怎么修(ADR-111)。
+     */
     private void validate(List<UUID> goodsIds) {
-        Object[] row = NativeQueryResults.objectArrayRows(em.createNativeQuery(VALIDATION_SQL)
+        List<Object[]> findings = NativeQueryResults.objectArrayRows(em.createNativeQuery(VALIDATION_SQL)
                 .setParameter("goodsIds", goodsIds.stream().map(UUID::toString)
-                        .collect(java.util.stream.Collectors.joining(",")))).getFirst();
-        if (Boolean.TRUE.equals(row[0])) throw conflict("BOM 存在循环引用，不能进行物料分析");
-        if (Boolean.TRUE.equals(row[1])) throw conflict("BOM 超过十层，不能静默截断分析");
-        if (Boolean.TRUE.equals(row[2])) {
-            throw conflict("BOM 存在非正用量、失效组件、颜色或基本单位异常");
+                        .collect(java.util.stream.Collectors.joining(","))));
+        if (findings.isEmpty()) return;
+        long total = ((Number) findings.getFirst()[8]).longValue();
+        StringBuilder message = new StringBuilder("物料分析用到的 BOM 有 ").append(total)
+                .append(" 处问题，修好后才能分析：");
+        int index = 1;
+        for (Object[] finding : findings) {
+            message.append('\n').append(index++).append(") ").append(describe(finding));
         }
+        if (total > findings.size()) {
+            message.append("\n……还有 ").append(total - findings.size()).append(" 处未列出，修好上面几处后再试一次会继续提示");
+        }
+        throw conflict(message.toString());
     }
+
+    /** 一条违规：「成品」的 BOM 里「父件」→ 组件「组件」：原因。怎么修。 */
+    private static String describe(Object[] finding) {
+        String root = label(finding[1], finding[2]);
+        String parent = label(finding[3], finding[4]);
+        String component = label(finding[5], finding[6]);
+        int depth = ((Number) finding[7]).intValue();
+        List<String> reasons = new ArrayList<>();
+        java.util.Set<String> fixes = new java.util.LinkedHashSet<>();
+        for (String code : String.valueOf(finding[0]).split(",")) {
+            Problem problem = PROBLEMS.get(code);
+            if (problem == null) continue;
+            reasons.add(problem.reason());
+            fixes.add(problem.fix());
+        }
+        String where = depth == 1 || root.equals(parent)
+                ? "「" + parent + "」的 BOM 里，组件「" + component + "」"
+                : "「" + root + "」往下第 " + depth + " 层，「" + parent + "」→ 组件「" + component + "」";
+        return where + "：" + String.join("、", reasons) + "。" + String.join("；", fixes) + "。";
+    }
+
+    private static String label(Object code, Object name) {
+        String text = (code == null ? "" : code.toString().strip()) + " "
+                + (name == null ? "" : name.toString().strip());
+        return text.isBlank() ? "(未命名货品)" : text.strip();
+    }
+
+    private record Problem(String reason, String fix) { }
+
+    /** SQL 里的原因代号 → 给人看的原因与修法(代号不出现在界面上)。 */
+    private static final Map<String, Problem> PROBLEMS = Map.of(
+            "CYCLE", new Problem("组装关系绕回了上层(循环引用)",
+                    "请检查这几层 BOM，去掉把上层货品加成下层组件的那一行"),
+            "TOO_DEEP", new Problem("组装层级超过十层",
+                    "请检查是否误把上层货品加成了下层组件，或合并中间层"),
+            "QTY", new Problem("用量小于或等于 0", "请在父件的 BOM 里把这一行的用量改成大于 0"),
+            "COMPONENT_DELETED", new Problem("组件货品已被删除", "请在父件的 BOM 里移除或换掉这个组件"),
+            "UNIT_MISSING", new Problem("组件没有设置基本单位", "请到货品资料里给组件设置基本单位"),
+            "UNIT_DELETED", new Problem("组件的基本单位已被删除", "请到货品资料里给组件换一个有效的基本单位"),
+            "ROW_COLOR_DELETED", new Problem("这一行指定的颜色已被删除", "请在父件的 BOM 里给这一行换一个颜色"),
+            "COMPONENT_COLOR_DELETED", new Problem("组件的主颜色已被删除", "请到货品资料里给组件换一个颜色"),
+            "ROW_COLOR_LEGACY", new Problem("这一行的颜色是老系统颜色，还没对应到新颜色",
+                    "请在父件的 BOM 里给这一行重新选择颜色"),
+            "COMPONENT_COLOR_LEGACY", new Problem("组件的主颜色是老系统颜色，还没对应到新颜色",
+                    "请到货品资料里给组件重新选择颜色"));
+
+    /** 报错里最多列出的违规条数。 */
+    private static final int SHOWN_FINDINGS = 5;
 
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT, message); }
 
@@ -153,20 +213,34 @@ final class MaterialAnalysisBomSnapshotReader {
                 ORDER BY source_id, bom_path
                 """;
 
+    /**
+     * 每条边自己的问题代号(逗号分隔，没问题为 NULL)。锚点与递归两段共用同一表达式，
+     * 判定口径与原先的 invalid 布尔完全一致，只是把「哪一条」「为什么」一并带出来。
+     */
+    private static final String EDGE_PROBLEMS = """
+                NULLIF(concat_ws(',',
+                    CASE WHEN b.qty <= 0 THEN 'QTY' END,
+                    CASE WHEN component.is_deleted THEN 'COMPONENT_DELETED' END,
+                    CASE WHEN component.unit_id IS NULL THEN 'UNIT_MISSING'
+                         WHEN component_unit.id IS NULL THEN 'UNIT_DELETED' END,
+                    CASE WHEN COALESCE(b.color_id, component.color_id) IS NOT NULL
+                              AND resolved_color.id IS NULL
+                         THEN CASE WHEN b.color_id IS NOT NULL THEN 'ROW_COLOR_DELETED'
+                                   ELSE 'COMPONENT_COLOR_DELETED' END END,
+                    CASE WHEN b.color_id IS NULL
+                              AND NULLIF(b.color_legacy_id,0) IS NOT NULL THEN 'ROW_COLOR_LEGACY' END,
+                    CASE WHEN component.color_id IS NULL
+                              AND NULLIF(component.color_legacy_id,0) IS NOT NULL THEN 'COMPONENT_COLOR_LEGACY' END
+                ), '')""";
+
     private static final String VALIDATION_SQL = """
                 WITH RECURSIVE roots(goods_id) AS (
                     SELECT DISTINCT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[]))
                 ), walk AS (
-                    SELECT b.id, b.component_goods_id AS goods_id, 1 AS depth,
+                    SELECT b.id, roots.goods_id AS root_goods_id, b.goods_id AS parent_goods_id,
+                           b.component_goods_id AS goods_id, 1 AS depth,
                            ARRAY[b.id]::uuid[] AS path, FALSE AS cycle,
-                            (b.qty <= 0 OR component.is_deleted
-                             OR component.unit_id IS NULL OR component_unit.id IS NULL
-                             OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
-                                 AND resolved_color.id IS NULL)
-                             OR (b.color_id IS NULL
-                                 AND NULLIF(b.color_legacy_id,0) IS NOT NULL)
-                             OR (component.color_id IS NULL
-                                 AND NULLIF(component.color_legacy_id,0) IS NOT NULL)) AS invalid
+                           %1$s AS problems
                     FROM roots
                     JOIN LATERAL (
                         SELECT edge.* FROM goods_bom_items edge
@@ -179,16 +253,9 @@ final class MaterialAnalysisBomSnapshotReader {
                         COALESCE(b.color_id, component.color_id)
                                                     AND resolved_color.is_deleted = FALSE
                     UNION ALL
-                    SELECT b.id, b.component_goods_id, walk.depth + 1,
+                    SELECT b.id, walk.root_goods_id, b.goods_id, b.component_goods_id, walk.depth + 1,
                            walk.path || b.id, b.id = ANY(walk.path),
-                            (walk.invalid OR b.qty <= 0 OR component.is_deleted
-                             OR component.unit_id IS NULL OR component_unit.id IS NULL
-                             OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
-                                 AND resolved_color.id IS NULL)
-                             OR (b.color_id IS NULL
-                                 AND NULLIF(b.color_legacy_id,0) IS NOT NULL)
-                             OR (component.color_id IS NULL
-                                 AND NULLIF(component.color_legacy_id,0) IS NOT NULL))
+                           %1$s
                     FROM walk
                     JOIN LATERAL (
                         SELECT edge.* FROM goods_bom_items edge
@@ -202,10 +269,25 @@ final class MaterialAnalysisBomSnapshotReader {
                         COALESCE(b.color_id, component.color_id)
                                                     AND resolved_color.is_deleted = FALSE
                     WHERE walk.depth <= 10 AND walk.cycle = FALSE
+                ), flagged AS (
+                    SELECT CASE WHEN cycle THEN 'CYCLE' WHEN depth > 10 THEN 'TOO_DEEP' ELSE problems END AS kind,
+                           CASE WHEN cycle THEN 0 WHEN depth > 10 THEN 1 ELSE 2 END AS priority,
+                           root_goods_id, parent_goods_id, goods_id, depth
+                    FROM walk
+                    WHERE cycle OR depth > 10 OR problems IS NOT NULL
+                ), findings AS (
+                    SELECT DISTINCT ON (kind, parent_goods_id, goods_id)
+                           kind, priority, root_goods_id, parent_goods_id, goods_id, depth
+                    FROM flagged
+                    ORDER BY kind, parent_goods_id, goods_id, depth
                 )
-                SELECT COALESCE(bool_or(cycle),FALSE),
-                       COALESCE(bool_or(depth > 10),FALSE),
-                       COALESCE(bool_or(invalid),FALSE)
-                FROM walk
-                """;
+                SELECT f.kind, root.code, root.name, parent.code, parent.name,
+                       component.code, component.name, f.depth, count(*) OVER () AS total
+                FROM findings f
+                JOIN goods root ON root.id = f.root_goods_id
+                JOIN goods parent ON parent.id = f.parent_goods_id
+                JOIN goods component ON component.id = f.goods_id
+                ORDER BY f.priority, f.depth, parent.code, component.code
+                LIMIT %2$d
+                """.formatted(EDGE_PROBLEMS, SHOWN_FINDINGS);
 }

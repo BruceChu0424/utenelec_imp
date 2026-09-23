@@ -46,7 +46,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -935,16 +934,6 @@ public class GoodsService {
         return toDetail(g, colorNameOf(g), unitNameOf(g));
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        Goods g = requireGoods(id);
-        requireWritable(g);
-        g.setDeleted(true);
-        g.setDeletedAt(OffsetDateTime.now());
-        repo.save(g);
-    }
 
     private String colorNameOf(Integer legacyId) {
         if (legacyId == null) return null;
@@ -1303,7 +1292,8 @@ public class GoodsService {
                 owningWarehouseId,
                 owningWarehouseId == null ? null : owningWarehouseNames.get(owningWarehouseId),
                 owningWorkshopId,
-                owningWorkshopId == null ? null : owningWorkshopNames.get(owningWorkshopId));
+                owningWorkshopId == null ? null : owningWorkshopNames.get(owningWorkshopId),
+                g.getVersion());
     }
 
     private MaterialCategory requireCategory(UUID id) {

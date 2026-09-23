@@ -1,6 +1,8 @@
 # UtenClientPicker · 客户选择器
 
-> 源码：[`uten_client_picker.dart`](../../lib/features/basic_data/widgets/uten_client_picker.dart) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-27。
+> 源码：[`uten_client_picker.dart`](../../lib/features/basic_data/widgets/uten_client_picker.dart)(配置) + [`uten_master_picker.dart`](../../lib/features/basic_data/widgets/uten_master_picker.dart)(面板与字段本体) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-09-23。
+>
+> 2026-09-23(ADR-111)：客户与供应商选择器原是两份 84% 相同的面板，现合为泛型 `showUtenMasterPicker<TItem>` / `UtenMasterPickerField<TItem>`；`showUtenClientPicker` 与 `ClientPickerField`(以及 `showUtenSupplierPicker` / `SupplierPickerField`)保留原函数名与构造参数，只提供仓储闭包、文案与供应商的「添加供应商」。下文行为对两者都成立。
 
 ## 一、用途与入口
 

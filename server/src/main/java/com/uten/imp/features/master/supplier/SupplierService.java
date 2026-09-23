@@ -35,7 +35,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -397,15 +396,6 @@ public class SupplierService {
         return toDetail(m);
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('supplier:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        Supplier m = requireSupplier(id);
-        m.setDeleted(true);
-        m.setDeletedAt(OffsetDateTime.now());
-        repo.save(m);
-    }
 
     private void apply(SupplierSaveRequest req, Supplier m) {
         m.setCategory(requireCategory(req.getCategoryId()));
@@ -552,7 +542,7 @@ public class SupplierService {
                 m.getShipVia(), m.getShipAddress(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
-                null);
+                null, m.getVersion(), m.getStatus());
     }
 
     /**

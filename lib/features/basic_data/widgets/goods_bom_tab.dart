@@ -37,10 +37,11 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/goods_bom_item.dart';
@@ -105,6 +106,16 @@ class _BomDeleteTarget {
   /// 组装清单，用到该子件的其它货品都会跟着变)。
   final bool nested;
 }
+
+/// 「添加组件」弹窗里的选货入口(组件范围、多选)。独立成 provider，组件测试可以换成
+/// 固定结果，而不必驱动整套分类树 + 分页选货面板。
+final bomComponentPickerProvider =
+    Provider<
+      Future<List<GoodsListItem>> Function(BuildContext context, WidgetRef ref)
+    >(
+      (ref) =>
+          (context, ref) => showUtenGoodsPickerMulti(context, ref),
+    );
 
 class GoodsBomTab extends ConsumerStatefulWidget {
   const GoodsBomTab({
@@ -553,63 +564,37 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (ok != true) return;
     if (!mounted) return;
 
-    // 勾选可能横跨树的多层，每条关系挂在各自的父货品下；按父货品分组，每组一次
-    // 请求(服务端每个请求只认自己那个父货品下的 id)。
-    final grouped = <String, List<String>>{};
-    for (final t in targets) {
-      grouped.putIfAbsent(t.parentGoodsId, () => <String>[]).add(t.itemId);
+    // 勾选可能横跨树的多层：服务端按本货品的组装树核对每一行(ADR-111)，
+    // 一次请求、一个事务，要么全删要么一条不删——不再按父货品分组逐组提交。
+    if (targets.length > _batchDeleteLimit) {
+      context.appError(
+        '一次最多删除 $_batchDeleteLimit 个组件，请分几次勾选', // TODO(l10n): 补 arb
+      );
+      return;
     }
-    final repo = ref.read(goodsBomRepositoryProvider);
     setState(() => _deleting = true);
-    var deleted = 0;
-    var failed = 0;
-    final errors = <String>{};
+    int? deleted;
     try {
-      for (final group in grouped.entries) {
-        for (final chunk in _chunked(group.value, _batchDeleteLimit)) {
-          try {
-            deleted += await repo.deleteMany(group.key, chunk);
-          } on ApiException catch (e) {
-            failed += chunk.length;
-            errors.add(e.message);
-          } catch (_) {
-            failed += chunk.length;
-            errors.add('删除失败，请稍后重试');
-          }
-        }
-      }
+      deleted = await context.guardAction(
+        () => ref.read(goodsBomRepositoryProvider).deleteMany(widget.goodsId, [
+          for (final t in targets) t.itemId,
+        ]),
+        errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+      );
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
     if (!mounted) return;
-    // 部分成功要如实报数并把服务端的话带出来，不能报一句「已删除」把失败吞掉。
-    // TODO(l10n): 以下结果文案待进 arb。
-    final detail = errors.join('；');
-    if (failed == 0) {
-      context.appSuccess('已删除 $deleted 个组件');
-    } else if (deleted > 0) {
-      context.appError('成功 $deleted 条，失败 $failed 条：$detail');
-    } else {
-      context.appError('删除失败 $failed 条：$detail');
+    if (deleted != null) {
+      context.appSuccess('已删除 $deleted 个组件'); // TODO(l10n): 补 arb
+      widget.onDataChanged?.call();
     }
-    if (deleted > 0) widget.onDataChanged?.call();
     // 失败也重载：树可能已被别人改过，重载顺带把删掉的行从勾选集剪掉。
     await _load();
   }
 
   /// 单次批量删除请求的条数上限(与服务端 itemIds 上限一致)。
-  static const int _batchDeleteLimit = 200;
-
-  /// 超过上限时切段：同一父货品下勾了 200 条以上就分多次提交，
-  /// 免得整批被服务端的条数校验一次性顶回来。
-  static List<List<String>> _chunked(List<String> ids, int size) {
-    final chunks = <List<String>>[];
-    for (var start = 0; start < ids.length; start += size) {
-      final end = start + size;
-      chunks.add(ids.sublist(start, end > ids.length ? ids.length : end));
-    }
-    return chunks;
-  }
+  static const int _batchDeleteLimit = 500;
 
   // ---- 审计标记（V256） ---------------------------------------------------
   //
@@ -999,6 +984,10 @@ class _AddResult {
 
 /// 添加组件对话框（多选批量）：选父级 + 右滑窗勾选多个组件（component scope）+ 每个用量，
 /// 一次添加多个组件到同一层级。组件属性只读、用量可改、单价取自组件。
+///
+/// 保存走服务端「追加组件」原子命令(ADR-111，与粘贴组件同一个接口)：一次请求、一个事务，
+/// 任何一行不合格(重复、成环、组件停用……)一条都不写，逐行原因留在弹窗里给用户改，
+/// 不再逐个新建、失败的只报「N 个跳过」。
 class _BomItemAddDialog extends ConsumerStatefulWidget {
   const _BomItemAddDialog({
     required this.parentCandidates,
@@ -1024,6 +1013,12 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   bool _saving = false;
   String? _error;
 
+  /// 服务端逐行给出的不合格原因(「第几行 哪个组件：为什么」)。
+  List<String> _problems = const [];
+
+  /// 单次追加的组件上限(与服务端粘贴命令的行数上限一致)。
+  static const int _maxLines = 200;
+
   @override
   void initState() {
     super.initState();
@@ -1039,7 +1034,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   }
 
   Future<void> _pickComponents() async {
-    final list = await showUtenGoodsPickerMulti(context, ref);
+    final list = await ref.read(bomComponentPickerProvider)(context, ref);
     if (list.isEmpty) return;
     setState(() {
       for (final g in list) {
@@ -1053,6 +1048,10 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   Future<void> _save() async {
     if (_picked.isEmpty) {
       setState(() => _error = '请先选择组件货品'); // TODO(l10n): 补 arb
+      return;
+    }
+    if (_picked.length > _maxLines) {
+      setState(() => _error = '一次最多添加 $_maxLines 个组件，请分几次添加'); // TODO(l10n)
       return;
     }
     final bodies = <Map<String, dynamic>>[];
@@ -1074,38 +1073,36 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
     setState(() {
       _saving = true;
       _error = null;
+      _problems = const [];
     });
-    final repo = ref.read(goodsBomRepositoryProvider);
-    final errors = <String>{};
-    var ok = 0;
     try {
-      for (final body in bodies) {
-        try {
-          await repo.create(_parentGoodsId, body);
-          ok++;
-        } on ApiException catch (e) {
-          errors.add(e.message); // 组件重复/环路（409）等后端友好报错
-        }
-      }
+      final result = await ref
+          .read(goodsBomRepositoryProvider)
+          .paste(
+            mode: BomPasteMode.append,
+            targets: [BomPasteTarget(_parentGoodsId)],
+            items: bodies,
+          );
       if (!mounted) return;
-      if (ok > 0) {
-        context.appSuccess(
-          '已添加 $ok 个组件${errors.isNotEmpty ? '，${errors.length} 个跳过' : ''}',
-        );
-        Navigator.of(
-          context,
-        ).pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
-      } else {
-        setState(() {
-          _saving = false;
-          _error = errors.isEmpty ? '保存失败' : errors.join('；');
-        });
-      }
+      context.appSuccess('已添加 ${result.added} 个组件'); // TODO(l10n): 补 arb
+      Navigator.of(
+        context,
+      ).pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e.message.isNotEmpty ? e.message : '添加失败'; // TODO(l10n)
+        _problems = [
+          for (final f in e.fieldErrors ?? const <ApiFieldError>[])
+            f.field.isEmpty ? f.message : '${f.field}：${f.message}',
+        ];
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = '保存失败，请稍后重试';
+        _error = '添加失败，请稍后重试'; // TODO(l10n): 补 arb
       });
     }
   }
@@ -1125,7 +1122,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
               if (_saving)
                 const UtenBusyOverlay(
                   title: '正在添加 BOM 组件',
-                  description: '正在逐个写入组件关系，请勿重复提交或关闭弹窗。',
+                  description: '正在一次写入全部组件关系，请勿重复提交或关闭弹窗。',
                 ),
               _dialogHeader(context, theme, '添加组件'),
               const Divider(height: 1),
@@ -1255,10 +1252,21 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                         const SizedBox(height: UtenSpacing.s8),
                         Text(
                           _error!,
+                          key: const Key('goods-bom-add-error'),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.error,
                           ),
                         ),
+                        for (final problem in _problems)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              '· $problem',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ),
                       ],
                     ],
                   ),

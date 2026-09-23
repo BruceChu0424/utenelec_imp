@@ -35,8 +35,10 @@ import java.util.UUID;
  * - POST   /api/master/goods/{id}/bom              → 添加组件（goods:bom:create，同成品下组件 UUID 唯一）
  * - PUT    /api/master/goods/{id}/bom/{itemId}     → 编辑组件行（goods:bom:edit）
  * - DELETE /api/master/goods/{id}/bom/{itemId}     → 删除组件行（goods:bom:delete，软删）
- * - POST   /api/master/goods/{id}/bom/batch-delete → 批量删除勾选的组件行(goods:bom:delete，软删，整批原子)
+ * - POST   /api/master/goods/{id}/bom/batch-delete → 批量删除勾选的组件行(goods:bom:delete，软删，整批原子，
+ *                                                  可横跨本货品组装树的多层)
  * - POST   /api/master/goods/{id}/bom/export       → 产品配件清单加密 Excel（goods:export）
+ * - POST   /api/master/goods/bom/paste             → 粘贴组件信息到 1~50 个货品(见 {@link GoodsBomPasteController})
  *
  * 组装树的子级由前端对组件 id 再调 GET list 懒加载（组件自身也是货品）。
  */

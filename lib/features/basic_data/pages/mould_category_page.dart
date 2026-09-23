@@ -2,7 +2,7 @@
 //
 // 顶层壳层（树加载/统一搜索/分类 CRUD/build 骨架）复用 CategoryPageShell，
 // 本页只声明文案/图标/权限/仓储钩子 + 模具领域差异：
-// - 详情面板调 mouldCategoryRepository.detail + mouldRepository 分类下分页（子树范围）；
+// - 右侧明细区复用 MasterEntityDetailPane(ADR-111)，本页给 mouldRepository 分类下分页闭包；
 // - 删除分类带级联预览（后代分类数/模具数红框确认），覆盖 shellDeleteNode；
 // - 编辑类按钮（新增/编辑/删除）按 mould_category:edit 权限显隐；查看全员可见（路由不设守卫）；
 // - 右侧用通用 MasterDataTableView（Excel 风格：搜索 + 横排 autofilter + 列对齐 + 分页）。
@@ -12,31 +12,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
-import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/network/latest_request_guard.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/models/paged_result.dart';
 import '../models/mould_node.dart';
 import '../models/product_category_node.dart';
 import '../repositories/mould_category_repository.dart';
 import '../repositories/mould_repository.dart';
 import '../repositories/master_status_repository.dart';
-import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
@@ -264,226 +256,70 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   Widget build(BuildContext context) {
     return buildShell(
       context,
-      detailPaneBuilder: (selected) => _DetailPane(
-        key: ValueKey('dp-${selected.id}-$_detailEpoch'),
-        ref: ref,
-        nodeId: selected.id,
-        canEdit: shellCanEdit,
-        canAddCategory: shellCanCreate,
-        canDeleteCategory: shellCanDelete,
-        externalKeyword: shellTreeSearchKeyword,
-        onAddChild: () => shellShowCreateDialog(parent: selected),
-        onEdit: (detail) => shellShowEditDialog(detail),
-        onDelete: () => shellDeleteNode(selected),
-      ),
+      detailPaneBuilder: (selected) =>
+          MasterEntityDetailPane<MouldListItem, MouldDetail>(
+            key: ValueKey('dp-${selected.id}-$_detailEpoch'),
+            config: _paneConfig(),
+            categoryId: selected.id,
+            canEditCategory: shellCanEdit,
+            canAddCategory: shellCanCreate,
+            canDeleteCategory: shellCanDelete,
+            externalKeyword: shellTreeSearchKeyword,
+            onAddChild: () => shellShowCreateDialog(parent: selected),
+            onEditCategory: (detail) => shellShowEditDialog(detail),
+            onDeleteCategory: () => shellDeleteNode(selected),
+          ),
     );
   }
-}
 
-/// 模具分类详情面板：分类信息卡 + 该分类（子树）下的模具 Excel 表格。
-class _DetailPane extends StatefulWidget {
-  const _DetailPane({
-    super.key,
-    required this.ref,
-    required this.nodeId,
-    required this.canEdit,
-    required this.canAddCategory,
-    required this.canDeleteCategory,
-    required this.externalKeyword,
-    required this.onAddChild,
-    required this.onEdit,
-    required this.onDelete,
-  });
+  bool get _canStatusMaster =>
+      ref.read(currentPermissionsProvider).contains(Perm.mouldStatus);
 
-  final WidgetRef ref;
-  final String nodeId;
-  final bool canEdit;
-  final bool canAddCategory;
-  final bool canDeleteCategory;
-
-  /// 顶部树搜索命中模具时传入的过滤词：详情面板把它采纳为本地模具列表的搜索词，
-  /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该分类全部）。
-  final String? externalKeyword;
-  final VoidCallback onAddChild;
-  final void Function(ProductCategoryDetail detail) onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  State<_DetailPane> createState() => _DetailPaneState();
-}
-
-class _DetailPaneState extends State<_DetailPane> {
-  final _detailRequests = LatestRequestGuard();
-  final _listRequests = LatestRequestGuard();
-  ProductCategoryDetail? _detail;
-  bool _loading = true;
-  String? _error;
-
-  // 该分类（子树）下的模具分页；父分类也加载（子树汇总）。
-  PagedResult<MouldListItem>? _mouldPage;
-  int _mouldPageNum = 1;
-  bool _mouldLoading = false;
-  String? _mouldError;
-
-  // 字段筛选 + 搜索 + facet（筛选栏用）。切换分类时重置。
-  Map<String, String?> _filters = {};
-  String _keyword = '';
-  MouldFacets? _facets;
-
-  // 搜索框重建种子：外部关键词（树搜索）变化时自增，驱动 UtenSearchBar 用新 initialValue 重建。
-  int _kwSeed = 0;
-
-  /// 详情弹窗加载中（防并发）。
-  /// 注意：与 [_mouldLoading]（模具分页列表的加载状态）是两回事，不可混用——
-  /// 列表加载完后 [_mouldLoading] 恒为 false，无法防止详情弹窗被并发触发。
-  bool _detailLoading = false;
-
-  /// 多选选中集（业务 id，跨页保留；批量禁用/删除用）。切换分类时清空。
-  Set<String> _selectedMouldIds = {};
-
-  /// 行操作进行中（启停/删除等）防并发。
-  bool _rowOpBusy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void didUpdateWidget(_DetailPane old) {
-    super.didUpdateWidget(old);
-    if (old.nodeId != widget.nodeId) {
-      _load();
-      return;
-    }
-    // 同一分类下外部搜索词变化（树搜索命中/解除）：采纳为本地关键词并重查第 1 页。
-    if (old.externalKeyword != widget.externalKeyword) {
-      setState(() {
-        _kwSeed++;
-        _keyword = widget.externalKeyword ?? '';
-      });
-      _loadMoulds(1);
-    }
-  }
-
-  Future<void> _load() async {
-    final generation = _detailRequests.begin();
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final d = await widget.ref
-          .read(mouldCategoryRepositoryProvider)
-          .detail(widget.nodeId);
-      if (!mounted || !_detailRequests.isCurrent(generation)) return;
-      setState(() {
-        _detail = d;
-        _loading = false;
-        // 切换分类时重置模具分页 + 筛选状态 + facet。
-        _mouldPage = null;
-        _mouldPageNum = 1;
-        _mouldError = null;
-        _filters = {};
-        // 外部搜索词（树搜索命中）随分类切换一并带入：搜索定位时右侧只显示搜索结果。
-        _keyword = widget.externalKeyword ?? '';
-        _kwSeed++;
-        _facets = null;
-        _selectedMouldIds = {}; // 切分类清空多选（选中的是旧分类的行）
-      });
-      // 父分类也加载（后端按子树汇总）；并行拉模具列表与字段 facet。
-      await Future.wait([_loadMoulds(1), _loadFacets()]);
-    } on ApiException catch (e) {
-      if (!mounted || !_detailRequests.isCurrent(generation)) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted || !_detailRequests.isCurrent(generation)) return;
-      setState(() {
-        _error = '加载分类详情失败'; // TODO(l10n): 补 arb
-        _loading = false;
-      });
-    }
-  }
-
-  // ---- 模具分页 ----------------------------------------------------------
-
-  Future<void> _loadMoulds(int page) async {
-    final generation = _listRequests.begin();
-    setState(() {
-      _mouldLoading = true;
-      _mouldError = null;
-      _mouldPageNum = page;
-    });
-    try {
-      final result = await widget.ref
-          .read(mouldRepositoryProvider)
-          .list(
-            widget.nodeId,
-            page: page,
-            keyword: _keyword.trim().isEmpty ? null : _keyword,
-            filters: _filters,
-          );
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
-      setState(() {
-        _mouldPage = result;
-      });
-    } on ApiException catch (e) {
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
-      setState(() {
-        _mouldError = e.message;
-      });
-    } catch (_) {
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
-      setState(() {
-        _mouldError = '加载模具列表失败'; // TODO(l10n): 补 arb
-      });
-    } finally {
-      if (mounted && _listRequests.isCurrent(generation)) {
-        setState(() => _mouldLoading = false);
-      }
-    }
-  }
-
-  /// 拉字段 facet（筛选栏下拉选项）。失败不阻塞列表，静默降级为空下拉。
-  Future<void> _loadFacets() async {
-    try {
-      final f = await widget.ref
-          .read(mouldRepositoryProvider)
-          .facets(widget.nodeId);
-      if (!mounted) return;
-      setState(() => _facets = f);
-    } catch (_) {
-      // Facets are optional; the primary list remains usable.
-    }
-  }
-
-  void _onFilterChanged(String key, String? value) {
-    setState(() {
-      final next = Map<String, String?>.from(_filters);
-      if (value == null) {
-        next.remove(key); // 选"所有"= 不筛
-      } else {
-        next[key] = value; // 具体值 或 kMasterFilterNullValue（空值）
-      }
-      _filters = next;
-    });
-    _loadMoulds(1); // 任一筛选变化回到第 1 页
-  }
-
-  void _onKeywordChanged(String kw) {
-    setState(() => _keyword = kw);
-    _loadMoulds(1);
+  /// 模具明细区配置：列、仓储闭包、权限；新建/编辑带车间树，单击行开详情弹层。
+  MasterEntityPaneConfig<MouldListItem, MouldDetail> _paneConfig() {
+    final perms = ref.read(currentPermissionsProvider);
+    final moulds = ref.read(mouldRepositoryProvider);
+    return MasterEntityPaneConfig<MouldListItem, MouldDetail>(
+      noun: '模具', // TODO(l10n): 补 arb
+      icon: Icons.precision_manufacturing_outlined,
+      defaultCodePrefix: 'MJ',
+      keyPrefix: 'mould',
+      searchHint: '搜索模具(名称/编号/位置/备注)', // TODO(l10n): 补 arb
+      columns: _mouldColumns,
+      idOf: (m) => m.id,
+      statusOf: (m) => m.status,
+      labelOf: (m) => m.name?.isNotEmpty == true ? m.name! : (m.code ?? '该模具'),
+      loadCategory: (id) =>
+          ref.read(mouldCategoryRepositoryProvider).detail(id),
+      loadPage: (q) => moulds.list(
+        q.categoryId,
+        page: q.page,
+        size: q.size ?? 20,
+        keyword: q.keyword,
+        filters: q.filters,
+      ),
+      loadFacets: (id) async {
+        final f = await moulds.facets(id);
+        return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
+      },
+      batchEntityPath: ApiEndpoints.moulds,
+      statusResourceOf: ApiEndpoints.mould,
+      canCreate: perms.contains(Perm.mouldCreate),
+      canEdit: perms.contains(Perm.mouldEdit),
+      canDelete: perms.contains(Perm.mouldDelete),
+      canStatus: perms.contains(Perm.mouldStatus),
+      onCreate: _showMouldCreate,
+      onOpen: (pane, m) => _showMouldDetail(pane, m.id),
+      loadDetail: moulds.detail,
+      onEdit: _showMouldEdit,
+    );
   }
 
   /// 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
   ///
   /// custom 字段（制造年月/车间/保管人）经 [MasterFieldDef.customBuilder] 嵌入
   /// UtenDateField / UtenDepartmentPicker / DepartmentEmployeePickerField（右滑入滑窗）。
-  /// 闭包捕获 [iv]（初值 map）与 [widget.ref]，故为实例方法而非 static const。
+  /// 闭包捕获 [iv](初值 map)与 [ref]，故为实例方法而非 static const。
   ///
   /// [workshop] 由调用方（_showMouldCreate/_showMouldEdit）提前 await 拿到，避免在这里
   /// 用 .read 读到还没 resolve 的 FutureProvider（autoDispose 首次打开必是 loading，
@@ -590,7 +426,7 @@ class _DetailPaneState extends State<_DetailPane> {
             initialId: id,
             initialName: iv['keeperName'],
             initialLoader: (employeeId) async {
-              final employee = await widget.ref
+              final employee = await ref
                   .read(employeeRepositoryProvider)
                   .getById(employeeId);
               return UtenEmployeePickerItem(
@@ -601,11 +437,8 @@ class _DetailPaneState extends State<_DetailPane> {
               );
             },
             onChanged: ctx.onChanged,
-            onPick: () => showUtenDepartmentEmployeePicker(
-              context,
-              widget.ref,
-              title: '选择保管人',
-            ),
+            onPick: () =>
+                showUtenDepartmentEmployeePicker(context, ref, title: '选择保管人'),
           );
         },
       ),
@@ -637,56 +470,39 @@ class _DetailPaneState extends State<_DetailPane> {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
-  bool get _canCreateMaster =>
-      widget.ref.read(currentPermissionsProvider).contains(Perm.mouldCreate);
-  bool get _canEditMaster =>
-      widget.ref.read(currentPermissionsProvider).contains(Perm.mouldEdit);
-  bool get _canDeleteMaster =>
-      widget.ref.read(currentPermissionsProvider).contains(Perm.mouldDelete);
-  bool get _canStatusMaster =>
-      widget.ref.read(currentPermissionsProvider).contains(Perm.mouldStatus);
-
-  // ---- 模具 新建/编辑/删除 ------------------------------------------------
+  // ---- 模具 新建/编辑/详情弹层 ---------------------------------------------
 
   /// 车间树需要先 await（FutureProvider 首次读永远是 loading，同步 .read 会拿到 null，
   /// 见 [_buildMouldFields] 上的注释），失败兜底空树（picker 退回全公司组织树，不阻断填表）。
   Future<MouldWorkshopTree> _loadWorkshopTree() async {
     try {
-      return await widget.ref.read(mouldWorkshopTreeProvider.future);
+      return await ref.read(mouldWorkshopTreeProvider.future);
     } catch (_) {
       return const MouldWorkshopTree(tree: [], prodDeptId: null);
     }
   }
 
-  Future<void> _showMouldCreate() async {
+  Future<void> _showMouldCreate(
+    MasterEntityPaneController<MouldListItem, MouldDetail> pane,
+  ) async {
     final workshop = await _loadWorkshopTree();
     if (!mounted) return;
-    final iv = {'status': '使用', 'categoryName': _detail?.name ?? ''};
+    final iv = {'status': '使用', 'categoryName': pane.category?.name ?? ''};
     showMasterEditDialog(
       context: context,
       title: '新增模具', // TODO(l10n): 补 arb
       fields: _buildMouldFields(iv, workshop),
       initialValues: iv,
-      fixedValues: {'categoryId': widget.nodeId},
+      fixedValues: {'categoryId': pane.categoryId},
       readOnlyKeys: _canStatusMaster ? null : const {'status'},
-      onSubmit: _doCreateMould,
+      onSubmit: (body) => _saveMould(pane, null, body),
     );
   }
 
-  Future<bool> _doCreateMould(Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await widget.ref.read(mouldRepositoryProvider).create(body);
-      },
-      success: '模具已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadMoulds(_mouldPageNum);
-    return true;
-  }
-
-  Future<void> _showMouldEdit(MouldDetail d) async {
+  Future<void> _showMouldEdit(
+    MasterEntityPaneController<MouldListItem, MouldDetail> pane,
+    MouldDetail d,
+  ) async {
     final workshop = await _loadWorkshopTree();
     if (!mounted) return;
     final iv = {
@@ -709,266 +525,41 @@ class _DetailPaneState extends State<_DetailPane> {
       title: '编辑模具', // TODO(l10n): 补 arb
       fields: _buildMouldFields(iv, workshop),
       initialValues: iv,
-      fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
+      fixedValues: {'categoryId': d.categoryId ?? pane.categoryId},
       readOnlyKeys: _canStatusMaster ? null : const {'status'},
-      onSubmit: (body) => _doUpdateMould(d.id, body),
+      onSubmit: (body) => _saveMould(pane, d.id, body),
     );
   }
 
-  Future<bool> _doUpdateMould(String id, Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await widget.ref.read(mouldRepositoryProvider).update(id, body);
-      },
-      success: '模具已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadMoulds(_mouldPageNum);
-    return true;
-  }
-
-  Future<void> _deleteMould(MouldDetail d) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除模具'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该模具')}」吗？', // TODO(l10n): 补 arb
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'), // TODO(l10n): 补 arb
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    if (!mounted) return;
-    final deleted = await context.guardRun(
-      () async {
-        await widget.ref.read(mouldRepositoryProvider).delete(d.id);
-      },
-      success: '模具已删除', // TODO(l10n): 补 arb
-      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!deleted || !mounted) return;
-    await _loadMoulds(_mouldPageNum);
-    // 删空当前页时回退上一页，避免列表显示空白
-    if (mounted &&
-        _mouldPage != null &&
-        _mouldPage!.items.isEmpty &&
-        _mouldPage!.page > 1) {
-      await _loadMoulds(_mouldPage!.page - 1);
-    }
-  }
-
-  // ---- 行菜单（右击/长按）+ 多选批量 --------------------------------------
-
-  /// 启用/禁用模具：拉详情全量回传、仅改状态。
-  Future<void> _toggleMouldStatus(MouldListItem m) async {
-    if (_rowOpBusy) return;
-    _rowOpBusy = true;
-    MouldDetail? d;
-    try {
-      d = await widget.ref.read(mouldRepositoryProvider).detail(m.id);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('加载模具详情失败'); // TODO(l10n): 补 arb
-    }
-    if (d == null || !mounted) {
-      _rowOpBusy = false;
-      return;
-    }
-    final next = d.status == '使用' ? '禁用' : '使用';
-    final ok = await context.guardRun(
-      () => widget.ref
-          .read(masterStatusRepositoryProvider)
-          .change(resourcePath: ApiEndpoints.mould(d!.id), status: next),
-      success: next == '禁用' ? '模具已禁用' : '模具已启用', // TODO(l10n): 补 arb
-    );
-    if (ok && mounted) await _loadMoulds(_mouldPageNum);
-    _rowOpBusy = false;
-  }
-
-  /// 菜单「编辑/删除」：先拉详情再走既有流程（编辑弹窗自带车间树加载）。
-  Future<void> _withMouldDetail(
-    String id,
-    Future<void> Function(MouldDetail d) action,
+  /// 新建([id] 为空)或编辑保存；成功后重拉明细区当前页。
+  Future<bool> _saveMould(
+    MasterEntityPaneController<MouldListItem, MouldDetail> pane,
+    String? id,
+    Map<String, dynamic> body,
   ) async {
-    if (_rowOpBusy) return;
-    _rowOpBusy = true;
-    MouldDetail? d;
-    try {
-      d = await widget.ref.read(mouldRepositoryProvider).detail(id);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('加载模具详情失败'); // TODO(l10n): 补 arb
-    }
-    _rowOpBusy = false;
-    if (d != null && mounted) await action(d);
-  }
-
-  /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
-  List<UtenContextMenuEntry> _mouldMenuItems(MouldListItem m) {
-    final inUse = m.status == '使用';
-    return [
-      UtenMenuItem(
-        label: '查看详情',
-        icon: Icons.open_in_new_rounded,
-        onTap: () => _showMouldDetail(m.id),
-      ),
-      const UtenMenuDivider(),
-      UtenMenuItem(
-        label: inUse ? '禁用模具' : '启用模具',
-        icon: inUse
-            ? Icons.pause_circle_outline_rounded
-            : Icons.play_circle_outline_rounded,
-        enabled: _canStatusMaster,
-        destructive: inUse,
-        onTap: () => _toggleMouldStatus(m),
-      ),
-      UtenMenuItem(
-        label: '编辑模具',
-        icon: Icons.edit_outlined,
-        enabled: _canEditMaster,
-        onTap: () => _withMouldDetail(m.id, _showMouldEdit),
-      ),
-      UtenMenuItem(
-        label: '删除模具',
-        icon: Icons.delete_outline_rounded,
-        destructive: true,
-        enabled: _canDeleteMaster,
-        onTap: () => _withMouldDetail(m.id, _deleteMould),
-      ),
-    ];
-  }
-
-  List<Widget> _mouldBatchActions(BuildContext context, Set<String> ids) {
-    if (!_canStatusMaster && !_canDeleteMaster) return const [];
-    return [
-      if (_canStatusMaster)
-        UtenButton(
-          size: UtenButtonSize.small,
-          type: UtenButtonType.tonal,
-          icon: Icons.pause_circle_outline_rounded,
-          onPressed: _rowOpBusy ? null : () => _batchSetMouldStatus(ids, '禁用'),
-          child: const Text('批量禁用'), // TODO(l10n): 补 arb
-        ),
-      if (_canDeleteMaster)
-        UtenButton(
-          size: UtenButtonSize.small,
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline_rounded,
-          onPressed: _rowOpBusy ? null : () => _batchDeleteMoulds(ids),
-          child: const Text('批量删除'), // TODO(l10n): 补 arb
-        ),
-    ];
-  }
-
-  /// 批量启停：逐条拉详情全量回传、仅改状态（无专用批量接口，复用单条更新）。
-  Future<void> _batchSetMouldStatus(Set<String> ids, String status) async {
-    if (_rowOpBusy || ids.isEmpty) return;
-    _rowOpBusy = true;
-    final repo = widget.ref.read(mouldRepositoryProvider);
-    var okCount = 0;
-    var skipped = 0;
-    for (final id in ids) {
-      try {
-        final d = await repo.detail(id);
-        if (d.status == status) {
-          skipped++;
-          continue;
-        }
-        await widget.ref
-            .read(masterStatusRepositoryProvider)
-            .change(resourcePath: ApiEndpoints.mould(id), status: status);
-        okCount++;
-      } catch (_) {
-        skipped++;
-      }
-    }
-    _rowOpBusy = false;
-    if (!mounted) return;
-    setState(() => _selectedMouldIds = {});
-    context.appSuccess(
-      status == '禁用'
-          ? '已禁用 $okCount 个模具${skipped > 0 ? '，$skipped 个跳过' : ''}'
-          : '已启用 $okCount 个模具${skipped > 0 ? '，$skipped 个跳过' : ''}',
+    final repository = ref.read(mouldRepositoryProvider);
+    final ok = await context.guardRun(
+      () => id == null ? repository.create(body) : repository.update(id, body),
+      success: id == null ? '模具已创建' : '模具已更新', // TODO(l10n): 补 arb
+      errorFallback: id == null
+          ? '创建失败，请稍后重试'
+          : '更新失败，请稍后重试', // TODO(l10n): 补 arb
     );
-    await _loadMoulds(_mouldPageNum);
+    if (ok) await pane.reload();
+    return ok;
   }
 
-  /// 批量删除：确认后逐个删（容忍单条失败，如被生产引用）。
-  Future<void> _batchDeleteMoulds(Set<String> ids) async {
-    if (_rowOpBusy || ids.isEmpty) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('批量删除模具'), // TODO(l10n): 补 arb
-        content: Text('确定删除选中的 ${ids.length} 个模具吗？被生产引用的模具会删除失败。'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'), // TODO(l10n): 补 arb
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    _rowOpBusy = true;
-    final repo = widget.ref.read(mouldRepositoryProvider);
-    var okCount = 0;
-    final failed = <String>{};
-    for (final id in ids) {
-      try {
-        await repo.delete(id);
-        okCount++;
-      } on ApiException catch (e) {
-        failed.add(e.message);
-      } catch (_) {
-        failed.add('删除失败');
-      }
-    }
-    _rowOpBusy = false;
-    if (!mounted) return;
-    setState(() => _selectedMouldIds = {});
-    context.appSuccess(
-      '已删除 $okCount 个模具${failed.isNotEmpty ? '，${ids.length - okCount} 个失败' : ''}',
-    );
-    if (failed.isNotEmpty) context.appError(failed.first);
-    await _loadMoulds(_mouldPageNum);
-  }
+  /// 点模具行：拉详情弹框展示核心字段。独立 [_detailLoading] 防连点(多个对话框路由
+  /// 交错 push/pop 会触发 element 生命周期断言)；loading 用 root navigator 关闭，
+  /// 防 go_router 嵌套 navigator 误把当前页 pop 掉。
+  bool _detailLoading = false;
 
-  /// 点模具行：拉详情弹框展示核心字段。
-  ///
-  /// 用独立的 [_detailLoading] 防并发——不能用 [_mouldLoading]（那是分页列表
-  /// 加载状态，列表加载完即恒为 false，起不到防连点作用）。否则并发触发
-  /// showDialog 会让 Navigator 上多个对话框路由交错 push/pop，触发 element
-  /// 生命周期断言（framework `_activateRecursively`：
-  /// `_lifecycleState == _ElementLifecycle.inactive is not true`）。
-  Future<void> _showMouldDetail(String id) async {
+  Future<void> _showMouldDetail(
+    MasterEntityPaneController<MouldListItem, MouldDetail> pane,
+    String id,
+  ) async {
     if (_detailLoading) return;
     _detailLoading = true;
-    // 预取 root navigator：showDialog 默认 useRootNavigator:true 把对话框 push 到
-    // root navigator，pop 也必须用同一个 root。go_router 用嵌套 navigator 管理页面，
-    // Navigator.of(context)（rootNavigator:false）会拿到 go_router 那层，误把当前页面
-    // 本身 pop 掉（"popped the last page off of the stack" 断言 → 白屏）。
     final nav = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
       context: context,
@@ -977,40 +568,32 @@ class _DetailPaneState extends State<_DetailPane> {
     );
     MouldDetail? d;
     try {
-      d = await widget.ref.read(mouldRepositoryProvider).detail(id);
+      d = await ref.read(mouldRepositoryProvider).detail(id);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
-      if (mounted) {
-        context.appError('加载模具详情失败'); // TODO(l10n): 补 arb
-      }
-    }
-    if (!mounted) {
-      nav.pop(); // 页面已销毁：关闭可能残留的 loading 对话框
-      return;
+      if (mounted) context.appError('加载模具详情失败'); // TODO(l10n): 补 arb
     }
     nav.pop(); // 关 loading
-    if (d == null) {
-      _detailLoading = false; // 失败：loading 已关，复位
+    if (!mounted || d == null) {
+      _detailLoading = false;
       return;
     }
-    // 成功：开详情面板，关闭后再复位 flag（面板期间继续禁止并发）。
-    // 用局部 detail 捕获 non-null：d 是 nullable，跨闭包边界不再提升，
-    // 直接在 onEdit/onDelete 里用 d 会报类型错。
     final detail = d;
+    final perms = ref.read(currentPermissionsProvider);
     await showMasterDetailSheet(
       context: context,
       title: detail.name?.isNotEmpty == true
           ? detail.name!
           : (detail.code ?? '模具详情'),
       rows: _mouldDetailRows(detail),
-      canEdit: _canEditMaster,
-      canDelete: _canDeleteMaster,
+      canEdit: perms.contains(Perm.mouldEdit),
+      canDelete: perms.contains(Perm.mouldDelete),
       onToggleStatus: _canStatusMaster
           ? () async {
               final next = detail.status == '使用' ? '禁用' : '使用';
               final ok = await context.guardRun(
-                () => widget.ref
+                () => ref
                     .read(masterStatusRepositoryProvider)
                     .change(
                       resourcePath: ApiEndpoints.mould(detail.id),
@@ -1018,12 +601,12 @@ class _DetailPaneState extends State<_DetailPane> {
                     ),
                 success: next == '禁用' ? '已停用' : '已启用',
               );
-              if (ok && mounted) await _loadMoulds(_mouldPageNum);
+              if (ok && mounted) await pane.reload();
             }
           : null,
       statusActionLabel: detail.status == '使用' ? '停用' : '启用',
-      onEdit: () => _showMouldEdit(detail),
-      onDelete: () => _deleteMould(detail),
+      onEdit: () => _showMouldEdit(pane, detail),
+      onDelete: () => pane.batchDelete({detail.id}),
     );
     if (mounted) _detailLoading = false;
   }
@@ -1042,166 +625,6 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
     MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return UtenEmpty.error(
-        message: _error,
-        actionLabel: '重试', // TODO(l10n): 补 arb
-        onAction: _load,
-      );
-    }
-    final d = _detail;
-    if (d == null) {
-      return Center(
-        child: Text(
-          '未选择分类', // TODO(l10n): 补 arb
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-    final isSystemRoot = isSystemUncategorizedCategory(
-      systemManaged: d.systemManaged,
-    );
-    final canMutateCategory = canMutateMasterCategory(
-      hasEditPermission: widget.canEdit,
-      systemManaged: d.systemManaged,
-    );
-    // compact：容器 gutter 已提供水平留白；medium+：详情面板需自带水平内边距。
-    final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
-    final total = _mouldPage?.total ?? 0;
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: hPad),
-      child: UtenCollapsingHeaderScrollView(
-        // 滚走区：分类信息卡（含编辑按钮）—— 上滑即收起、腾出表格空间。
-        collapsingHeader: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            0,
-            UtenSpacing.s16,
-            0,
-            UtenSpacing.s12,
-          ),
-          child: MasterDetailCard(
-            title: d.name,
-            icon: Icons.precision_manufacturing_outlined,
-            subtitle:
-                '编号前缀 ${d.effectivePrefix ?? 'MJ'}${d.codePrefix == null ? '(继承)' : ''}'
-                '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
-            // 详情卡精简（与货品/客户/供应商/收付方式分类卡统一）：不再展示统计行
-            // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
-            stats: const [],
-            canEdit: canMutateCategory,
-            canAddChild: widget.canAddCategory,
-            canDelete: widget.canDeleteCategory && !isSystemRoot,
-            onAddChild: widget.onAddChild,
-            onEdit: () {
-              if (_detail != null) widget.onEdit(_detail!);
-            },
-            onDelete: widget.onDelete,
-            deleteLabel: '删除分类', // TODO(l10n): 补 arb
-            extraActions: [
-              if (widget.canAddCategory && isSystemRoot)
-                MasterDetailCardAction(
-                  icon: Icons.add_rounded,
-                  label: '新增子分类', // TODO(l10n): 补 arb
-                  onPressed: widget.onAddChild,
-                ),
-            ],
-            secondaryActions: [
-              if ((widget.canEdit || widget.canDeleteCategory) && isSystemRoot)
-                const SystemMasterCategoryProtectionNotice(),
-            ],
-          ),
-        ),
-        // body：模具标题 + 搜索 + 添加按钮（卡片收起后吸顶）+ 表格（内滚）。
-        body: Column(
-          children: [
-            // 模具标题 + 搜索 + 添加按钮（与原布局一致：添加在搜索右侧）
-            Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.precision_manufacturing_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    '模具 ($total)', // TODO(l10n): 补 arb
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  Expanded(
-                    child: UtenSearchBar(
-                      // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
-                      key: ValueKey('mould-search-${widget.nodeId}-$_kwSeed'),
-                      hint: '搜索模具(名称/编号/位置/备注)', // TODO(l10n): 补 arb
-                      initialValue: _keyword,
-                      onChanged: _onKeywordChanged,
-                    ),
-                  ),
-                  if (_canCreateMaster) ...[
-                    const SizedBox(width: UtenSpacing.s8),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      icon: Icons.add_rounded,
-                      onPressed: _showMouldCreate,
-                      child: const Text('添加模具'), // TODO(l10n): 补 arb
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）。
-            // primary:true → 表体参与「卡片折叠 → 表格内滚」联动（拾取 NestedScrollView inner controller）。
-            Expanded(
-              child: MasterDataTableView<MouldListItem>(
-                primary: true,
-                columns: _mouldColumns,
-                items: _mouldPage?.items ?? const [],
-                // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
-                selectable: true,
-                idOf: (m) => m.id,
-                selectedIds: _selectedMouldIds,
-                onSelectedIdsChanged: (s) =>
-                    setState(() => _selectedMouldIds = s),
-                batchActionsBuilder: _mouldBatchActions,
-                // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
-                rowMenuBuilder: _mouldMenuItems,
-                facets: _facets?.fields ?? const {},
-                nullCounts: _facets?.nullCounts ?? const {},
-                filters: _filters,
-                onFilterChanged: _onFilterChanged,
-                // 行底色按状态：使用=浅蓝、禁用=浅红；单击选中自动加深加亮。
-                rowColor: (m) => switch (m.status) {
-                  '使用' => Colors.lightBlue.withValues(alpha: 0.13),
-                  '禁用' => Colors.red.withValues(alpha: 0.10),
-                  _ => null,
-                },
-                onRowTap: (m) => _showMouldDetail(m.id),
-                isLoading: _mouldLoading && _mouldPage == null,
-                loadingMore: _mouldLoading && _mouldPage != null,
-                error: _mouldError,
-                onRetry: () => _loadMoulds(_mouldPageNum),
-                emptyMessage: '该分类暂无模具', // TODO(l10n): 补 arb
-                currentPage: _mouldPage?.page ?? 1,
-                totalPages: _mouldPage?.totalPages ?? 1,
-                onPageChange: (p) => _loadMoulds(p),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ---- 模具列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
 

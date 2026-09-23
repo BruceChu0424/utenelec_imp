@@ -38,7 +38,6 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -491,16 +490,6 @@ public class ClientService {
         return toDetail(m, scope);
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('client:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        Client m = requireClient(id);
-        requireWritable(m);
-        m.setDeleted(true);
-        m.setDeletedAt(OffsetDateTime.now());
-        repo.save(m);
-    }
 
     private void apply(ClientSaveRequest req, Client m) {
         m.setCategory(requireCategory(req.getCategoryId()));
@@ -597,7 +586,8 @@ public class ClientService {
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
                 m.getDefaultSettlementMethodId(), settlementMethodName,
                 clientAccessPolicy.canWrite(m, scope),
-                clientAccessPolicy.canManageAccess(m, scope));
+                clientAccessPolicy.canManageAccess(m, scope),
+                m.getVersion());
     }
 
     private Map<UUID, String> settlementMethodNames(List<Client> clients) {

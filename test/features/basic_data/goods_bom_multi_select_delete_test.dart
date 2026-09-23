@@ -60,25 +60,25 @@ class _FakeBomRepo implements GoodsBomRepository {
   Future<List<GoodsBomItem>> list(String goodsId) async =>
       List<GoodsBomItem>.of(_tree[goodsId] ?? const <GoodsBomItem>[]);
 
+  /// ADR-111：一次请求可横跨组装树多层，服务端按本货品的树核对，这里按行 id 在整棵树里删。
   @override
   Future<int> deleteMany(String goodsId, List<String> itemIds) async {
     batchCalls.add((goodsId, List<String>.of(itemIds)));
-    final rows = _tree[goodsId];
-    if (rows == null) return 0;
-    final before = rows.length;
-    rows.removeWhere((r) => itemIds.contains(r.id));
-    return before - rows.length;
+    var removed = 0;
+    for (final rows in _tree.values) {
+      final before = rows.length;
+      rows.removeWhere((r) => itemIds.contains(r.id));
+      removed += before - rows.length;
+    }
+    return removed;
   }
 
   @override
-  Future<void> delete(String goodsId, String itemId) async =>
-      throw UnsupportedError('页面的删除已统一走批量端点');
-
-  @override
-  Future<GoodsBomItem> create(
-    String goodsId,
-    Map<String, dynamic> body,
-  ) async => throw UnimplementedError();
+  Future<BomPasteResult> paste({
+    required BomPasteMode mode,
+    required List<BomPasteTarget> targets,
+    required List<Map<String, dynamic>> items,
+  }) async => throw UnimplementedError();
 
   @override
   Future<GoodsBomItem> update(
@@ -257,7 +257,7 @@ void main() {
     expect(_deleteButton(tester).onPressed, isNull);
   });
 
-  testWidgets('跨层级勾选按所属父货品分组提交，删完勾选自动退出', (tester) async {
+  testWidgets('跨层级勾选一次请求提交(服务端按组装树核对)，删完勾选自动退出', (tester) async {
     final repo = _FakeBomRepo();
     await _pumpTab(tester, repo);
     await _expandScrew(tester);
@@ -276,10 +276,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(repo.batchCalls.length, 2, reason: '两个父货品各一次请求');
-    expect(repo.batchCalls.map((c) => c.$1).toSet(), {'goods-a', 'goods-y'});
-    expect(repo.batchCalls.firstWhere((c) => c.$1 == 'goods-a').$2, ['row-a1']);
-    expect(repo.batchCalls.firstWhere((c) => c.$1 == 'goods-y').$2, ['row-y1']);
+    // ADR-111：不再按父货品分组逐组提交(两组两个事务，删一半的可能)，
+    // 一次请求、一个事务，挂在本货品组装树里的行一起删。
+    expect(repo.batchCalls.length, 1, reason: '跨层级也只发一次请求');
+    expect(repo.batchCalls.single.$1, 'goods-a');
+    expect(repo.batchCalls.single.$2, unorderedEquals(['row-a1', 'row-y1']));
     // 删掉的行不在树里了，重载后勾选被剪空，删除按钮回灰。
     expect(find.text('外壳'), findsNothing);
     expect(_deleteButton(tester).onPressed, isNull);

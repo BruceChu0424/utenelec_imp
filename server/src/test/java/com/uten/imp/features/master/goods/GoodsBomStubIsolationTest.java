@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -32,11 +33,15 @@ class GoodsBomStubIsolationTest {
     private final TxSessionVars tx = mock(TxSessionVars.class);
     private final MasterReferenceValidationPort references = mock(MasterReferenceValidationPort.class);
     private final GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
+    /** 看不到的归属人(组件可见性按归属人一次判定，口径同 canViewGoods)。 */
+    private final UUID hiddenOwner = UUID.randomUUID();
+    private final com.uten.imp.features.master.lifecycle.MasterObjectAccess access = accessHiding(hiddenOwner);
     private final GoodsBomService service = new GoodsBomService(
             goodsRepo, bomRepo, colorRepo, unitRepo, tx,
             mock(com.uten.imp.security.SecurityContextCurrentUser.class),
             references, relationships,
-            mock(com.uten.imp.application.port.BusinessEventPublisher.class));
+            mock(com.uten.imp.application.port.BusinessEventPublisher.class),
+            access);
 
     @Test
     void listHidesLegacyStubComponentsEvenBeforeDatabaseCleanup() {
@@ -94,7 +99,7 @@ class GoodsBomStubIsolationTest {
         when(goodsRepo.findById(parent.getId())).thenReturn(Optional.of(parent));
         when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId()))
                 .thenReturn(List.of(row));
-        when(references.canViewGoods(secret.getId())).thenReturn(false);
+        secret.setOwnerEmployeeId(hiddenOwner);
 
         var view = service.list(parent.getId()).getFirst();
 
@@ -176,5 +181,11 @@ class GoodsBomStubIsolationTest {
         goods.setName(autoCreated ? "(migration auto-stub legacy 20344)" : "真实货品");
         goods.setAutoCreated(autoCreated);
         return goods;
+    }
+
+    private static com.uten.imp.features.master.lifecycle.MasterObjectAccess accessHiding(UUID hidden) {
+        com.uten.imp.features.master.lifecycle.MasterObjectAccess access = mock(com.uten.imp.features.master.lifecycle.MasterObjectAccess.class);
+        when(access.visibleGoodsOwner()).thenReturn(owner -> !hidden.equals(owner));
+        return access;
     }
 }

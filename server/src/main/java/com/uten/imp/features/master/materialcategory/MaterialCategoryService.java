@@ -8,6 +8,7 @@ import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.SystemMasterCategoryRegistry;
+import com.uten.imp.features.master.lifecycle.MasterLifecycleService;
 import com.uten.imp.features.master.materialcategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 物料分类树 CRUD。仿 {@link com.uten.imp.features.org.department.DepartmentService}：
@@ -38,6 +40,7 @@ public class MaterialCategoryService {
     private final MasterCodeService masterCodeService;
     private final CategoryDrivenCodeService categoryCodes;
     private final SystemMasterCategoryRegistry systemCategories;
+    private final MasterLifecycleService lifecycle;
 
     @Transactional(readOnly = true)
     public List<MaterialCategoryNode> tree() {
@@ -228,29 +231,50 @@ public class MaterialCategoryService {
     /**
      * 级联软删：该分类及其全部后代分类 + 子树下货品，一并 is_deleted=true。
      *
-     * <p>不再拦截「有子分类」——父分类可直接删，整棵子树随之软删；子树下的货品也一并软删
-     * （单据/报表 JOIN goods 仅按 id 关联、不过滤 is_deleted，故历史单据货品名仍可解析；
-     * 软删只是把它们从货品资料页/选择器隐藏）。
+     * <p>不拦截「有子分类」——父分类可直接删，整棵子树随之软删。子树下的货品走主档删除命令
+     * (ADR-111)：任何一个货品还被有效 BOM、未结案单据、库存、预留或进行中的物料分析引用，
+     * 整个分类一条都不删并列出原因；全部可删时先软删这些货品自己的 BOM 行，再软删货品与分类。
      */
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('material_category:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        requireCategory(id);
+        // 与分类移动串行(同一把层级锁)，再锁住子树分类行：之后读到的子分类与货品就是全部。
+        lockCategoryHierarchy();
+        MaterialCategory root = requireCategory(id);
         requireMutableCategory(id);
-        List<UUID> ids = subtreeIds(id);
+        List<MaterialCategory> nodes = lockedSubtree(id);
+        List<UUID> ids = nodes.stream().map(MaterialCategory::getId).toList();
+        lifecycle.cascadeDeleteGoods(repo.findGoodsIdsByCategoryIds(ids),
+                "分类「" + root.getName() + "」不能删除");
         OffsetDateTime now = OffsetDateTime.now();
-        // 软删整棵子树分类（含自身）。
-        List<MaterialCategory> nodes = repo.findSubtree(id);
         for (MaterialCategory c : nodes) {
             c.setDeleted(true);
             c.setDeletedAt(now);
         }
         repo.saveAll(nodes);
-        // 软删子树下货品（若有）。bulk update 绕过持久上下文，但本事务内无后续读这些 goods，安全。
-        if (!ids.isEmpty()) {
-            repo.softDeleteGoodsByCategoryIds(ids, now);
+    }
+
+    /**
+     * 锁住子树分类行后再读一遍子树(V662)：锁之前刚提交的子分类也要带上，锁之后的新增子分类/
+     * 货品会在触发器里等本事务提交、再看到分类已删而被拒。几轮内仍在变就让用户刷新重试。
+     */
+    private List<MaterialCategory> lockedSubtree(UUID rootId) {
+        List<MaterialCategory> nodes = repo.findSubtree(rootId);
+        for (int attempt = 0; attempt < 3 && !nodes.isEmpty(); attempt++) {
+            List<UUID> ids = nodes.stream().map(MaterialCategory::getId).toList();
+            repo.lockForDelete(ids);
+            List<MaterialCategory> again = repo.findSubtree(rootId);
+            if (new HashSet<>(ids).equals(
+                    again.stream().map(MaterialCategory::getId).collect(Collectors.toSet()))) {
+                return again;
+            }
+            nodes = again;
         }
+        if (nodes.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "物料分类不存在");
+        }
+        throw new ApiException(ErrorCode.CONFLICT, "分类刚被其他人修改，请刷新后重试");
     }
 
     /** 收集某分类子树（含自身）的全部 id（findSubtree 已含自身、按 path 先序）。 */

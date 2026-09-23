@@ -43,7 +43,11 @@ class GoodsListItem {
     this.owningWarehouseName,
     this.owningWorkshopId,
     this.owningWorkshopName,
+    this.version,
   });
+
+  /// 乐观锁版本(ADR-111)：行启停、批量启停/删除直接回传比对，不必先拉详情。
+  final int? version;
 
   final String id;
   final String? code;
@@ -125,6 +129,7 @@ class GoodsListItem {
     owningWarehouseName: json['owningWarehouseName'] as String?,
     owningWorkshopId: json['owningWorkshopId'] as String?,
     owningWorkshopName: json['owningWorkshopName'] as String?,
+    version: (json['version'] as num?)?.toInt(),
   );
 }
 

@@ -36,7 +36,8 @@ class GoodsBomControlFieldsTest {
             mock(com.uten.imp.security.SecurityContextCurrentUser.class),
             mock(MasterReferenceValidationPort.class),
             mock(GoodsMasterRelationshipResolver.class),
-            mock(BusinessEventPublisher.class));
+            mock(BusinessEventPublisher.class),
+            allVisible());
 
     private Goods parent;
     private Goods component;
@@ -184,5 +185,12 @@ class GoodsBomControlFieldsTest {
         goods.setName(name);
         goods.setAutoCreated(false);
         return goods;
+    }
+
+    /** 组件可见性替身(ADR-111：列表按归属人一次判定)：默认全部可见。 */
+    private static com.uten.imp.features.master.lifecycle.MasterObjectAccess allVisible() {
+        com.uten.imp.features.master.lifecycle.MasterObjectAccess access = org.mockito.Mockito.mock(com.uten.imp.features.master.lifecycle.MasterObjectAccess.class);
+        org.mockito.Mockito.when(access.visibleGoodsOwner()).thenReturn(owner -> true);
+        return access;
     }
 }

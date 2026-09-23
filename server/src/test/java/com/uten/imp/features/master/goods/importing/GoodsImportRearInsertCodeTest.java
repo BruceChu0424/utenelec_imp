@@ -107,7 +107,7 @@ class GoodsImportRearInsertCodeTest {
         when(currentUser.requireId()).thenReturn(java.util.UUID.randomUUID());
         return new GoodsImportService(
                 null, goods, null, categories,
-                null, colors, null, units, null, currentUser);
+                null, colors, null, units, null, currentUser, null);
     }
 
     private static byte[] workbook(String rearInsertCode) throws Exception {

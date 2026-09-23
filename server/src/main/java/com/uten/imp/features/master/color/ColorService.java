@@ -26,7 +26,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -193,15 +192,6 @@ public class ColorService {
         return toDetail(c);
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('color:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        Color c = requireColor(id);
-        c.setDeleted(true);
-        c.setDeletedAt(OffsetDateTime.now());
-        repo.save(c);
-    }
 
     private void apply(ColorSaveRequest req, Color c) {
         c.setName(req.getName() == null ? null : req.getName().trim());

@@ -129,9 +129,12 @@ class StockBalanceAdjustmentUuidRelationContractTest {
         // 共享 category_page_shell.dart；契约意图不变（必须用服务端派生 systemManaged）。
         String categoryShell = source(
                 "../lib/features/basic_data/widgets/category_page_shell.dart");
+        // 2026-09-23 ADR-111：右侧明细区合进 MasterEntityDetailPane，货品页的前导分组改由
+        // 共享明细区把分类详情传进来(category.systemManaged)；契约意图不变——只认服务端派生标志。
         assertThat(materialFlutter)
-                .contains("_detail?.systemManaged ?? false")
-                .doesNotContain("_detail?.code == 'LEGACY_ORPHAN'");
+                .contains("category.systemManaged")
+                .doesNotContain("_detail?.code == 'LEGACY_ORPHAN'")
+                .doesNotContain("LEGACY_ORPHAN");
         assertThat(categoryShell)
                 .contains("systemManaged: detail.systemManaged");
     }

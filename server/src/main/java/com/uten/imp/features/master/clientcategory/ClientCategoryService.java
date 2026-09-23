@@ -184,6 +184,9 @@ public class ClientCategoryService {
         tx.bind();
         ClientCategory c = requireCategory(id);
         rejectSystemCategoryMutation(c);
+        // 先锁分类行再查子分类与客户(V662)：与「往分类里加客户/子分类」的 KEY SHARE 互斥，
+        // 查完到提交之间不会有人再挂进来。
+        repo.lockForDelete(List.of(id));
         if (!repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "请先删除该分类的子分类");
         }

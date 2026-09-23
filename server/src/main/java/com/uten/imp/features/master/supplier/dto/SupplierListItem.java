@@ -63,4 +63,13 @@ public class SupplierListItem {
      */
     @lombok.Setter
     private java.math.BigDecimal lossRate;
+
+    /**
+     * 乐观锁版本(ADR-111)：列表行带上它，批量启停/删除与单行启停直接回传比对，
+     * 不必为拿版本先逐条拉详情。
+     */
+    private Long version;
+
+    /** 状态(使用/禁用)：行菜单直接显示「启用」或「禁用」，批量启停跳过已是目标状态的行。 */
+    private String status;
 }

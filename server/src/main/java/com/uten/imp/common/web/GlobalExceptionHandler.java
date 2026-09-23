@@ -172,6 +172,10 @@ public class GlobalExceptionHandler {
             if (detail != null && detail.contains("Original material receipt has later actual stock consumption")) {
                 return "本次收仓之后已有依赖其成本的出库，请先处理对应后续出库，再撤回收仓";
             }
+            // ADR-111 主档完整性兜底(V661/V662)：服务端正常路径会先给出列明细的原因，这里只在
+            // 并发或旁路写入撞上数据库闸时出现，给一句能照着做的话，不回显库内细节。
+            String masterGuard = masterIntegrityMessage(detail);
+            if (masterGuard != null) return masterGuard;
             // V458/V634 委外前置自制谱系守卫(DEFERRED, 在 COMMIT 时抛): 订货行数量超过前置自制
             // 台账 required_qty 或通知批次 notify_qty。2026-09-21 实测这类 409 只显示通用文案,
             // 财务/委外部无法判断该改哪张单。
@@ -196,6 +200,28 @@ public class GlobalExceptionHandler {
                 root == null ? "unknown" : root.getClass().getSimpleName(),
                 firstLine.length() > 300 ? firstLine.substring(0, 300) : firstLine);
         return "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
+    }
+
+    /** V661/V662 主档触发器(23514)的大白话；不是这几条就返回 null 交给通用文案。 */
+    private static String masterIntegrityMessage(String detail) {
+        if (detail == null) return null;
+        if (detail.contains("goods is still a component of an active BOM")) {
+            return "这个货品还是其它货品组装清单(BOM)里的组件，不能删除；请先在用到它的货品的 BOM 里移除它";
+        }
+        if (detail.contains("color is still used by an active goods row")) {
+            return "这个颜色还有货品或组装清单(BOM)在用，不能删除；请先修改这些货品或 BOM";
+        }
+        if (detail.contains("unit is still used by an active goods row")) {
+            return "这个单位还有货品在用，不能删除；请先修改这些货品";
+        }
+        if (detail.contains("goods category has been deleted")
+                || detail.contains("active master requires an active category")) {
+            return "所选分类刚被删除，请刷新后重新选择分类";
+        }
+        if (detail.contains("category parent has been deleted")) {
+            return "上级分类刚被删除，请刷新后重新选择上级分类";
+        }
+        return null;
     }
 
     // 客户端在响应写回前主动断开（前端热重启/刷新/取消请求/关闭页面）：

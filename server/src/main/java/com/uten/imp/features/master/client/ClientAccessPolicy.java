@@ -145,8 +145,12 @@ public class ClientAccessPolicy {
 
     public boolean canWrite(Client client, ClientScope scope) {
         if (client == null) return false;
+        return canWriteOwner(client.getOwnerEmployeeId(), scope);
+    }
+
+    /** 同 {@link #canWrite(Client, ClientScope)}，供批量命令按锁定行的负责人列判定(不加载实体)。 */
+    public boolean canWriteOwner(UUID ownerEmployeeId, ClientScope scope) {
         if (scope.ownerScope().seeAll()) return true;
-        UUID ownerEmployeeId = client.getOwnerEmployeeId();
         return ownerEmployeeId != null
                 && scope.ownerScope().writableOwners().contains(ownerEmployeeId);
     }

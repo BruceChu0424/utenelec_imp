@@ -137,7 +137,7 @@ class GoodsImportPlanSafetyTest {
         when(goodsService.saveImported(any())).thenReturn(UUID.randomUUID());
         GoodsImportService service = new GoodsImportService(
                 goodsService, goods, categoryService, categories,
-                colorService, colors, unitService, units, em, currentUser);
+                colorService, colors, unitService, units, em, currentUser, null);
         byte[] workbook = workbook("", "导入货品", "成品", "红色", "个");
         UUID planId = service.detect(workbook).planId();
 
@@ -180,7 +180,7 @@ class GoodsImportPlanSafetyTest {
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         GoodsImportService service = new GoodsImportService(
                 goodsService, goods, mock(MaterialCategoryService.class), categories,
-                colorService, colors, unitService, units, writeEntityManager(), currentUser);
+                colorService, colors, unitService, units, writeEntityManager(), currentUser, null);
         byte[] workbook = workbookWithDuplicateMasters();
         UUID planId = service.detect(workbook).planId();
 
@@ -215,7 +215,7 @@ class GoodsImportPlanSafetyTest {
 
         GoodsImportService service = new GoodsImportService(
                 null, goods, null, categories,
-                null, colors, null, units, null, currentUser);
+                null, colors, null, units, null, currentUser, null);
         return new Fixtures(service, colors, units, currentUser, unitId);
     }
 

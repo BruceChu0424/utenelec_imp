@@ -26,7 +26,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -334,15 +333,6 @@ public class UnitService {
         return toDetail(u, dimensionByUnitId(List.of(id)).get(id));
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('unit:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        Unit u = requireUnit(id);
-        u.setDeleted(true);
-        u.setDeletedAt(OffsetDateTime.now());
-        repo.save(u);
-    }
 
     private void apply(UnitSaveRequest req, Unit u) {
         u.setName(req.getName() == null ? null : req.getName().trim());

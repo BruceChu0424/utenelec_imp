@@ -47,6 +47,36 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void masterIntegrityGuardsHavePlainLanguageMessagesForBothAdapters() {
+        // ADR-111 V661/V662：旁路写入或并发撞上数据库闸时，不能落成「数据已被其他操作更新」。
+        var handler = new GlobalExceptionHandler();
+        var cases = java.util.Map.of(
+                "ERROR: goods is still a component of an active BOM and cannot be soft-deleted\n  Detail: secret",
+                "这个货品还是其它货品组装清单(BOM)里的组件，不能删除；请先在用到它的货品的 BOM 里移除它",
+                "ERROR: color is still used by an active goods row or active BOM row and cannot be soft-deleted",
+                "这个颜色还有货品或组装清单(BOM)在用，不能删除；请先修改这些货品或 BOM",
+                "ERROR: unit is still used by an active goods row and cannot be soft-deleted",
+                "这个单位还有货品在用，不能删除；请先修改这些货品",
+                "ERROR: goods category has been deleted\n  Detail: goods x category y",
+                "所选分类刚被删除，请刷新后重新选择分类",
+                "ERROR: active master requires an active category",
+                "所选分类刚被删除，请刷新后重新选择分类",
+                "ERROR: category parent has been deleted",
+                "上级分类刚被删除，请刷新后重新选择上级分类");
+        for (var entry : cases.entrySet()) {
+            var sql = new java.sql.SQLException(entry.getKey(), "23514");
+            var jdbc = handler.handleDataIntegrity(new DataIntegrityViolationException("x", sql));
+            var jpa = handler.handleHibernateConstraint(new org.hibernate.exception.ConstraintViolationException(
+                    "x", sql, "master_guard"));
+            for (var response : java.util.List.of(jdbc, jpa)) {
+                assertEquals(409, response.getStatusCode().value());
+                assertEquals(entry.getValue(), response.getBody().getMessage());
+                assertFalse(response.getBody().getMessage().contains("secret"));
+            }
+        }
+    }
+
+    @Test
     void laterActualStockOutHasADependencyMessageButUnrelatedSqlDoesNotBorrowIt() {
         var handler = new GlobalExceptionHandler();
         var expected = handler.handleDataIntegrity(new DataIntegrityViolationException("receipt rejected",

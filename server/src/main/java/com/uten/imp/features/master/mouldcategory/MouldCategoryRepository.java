@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -89,4 +90,15 @@ public interface MouldCategoryRepository extends JpaRepository<MouldCategory, UU
             WHERE c.id = rebuilt.id
             """, nativeQuery = true)
     int rebuildSubtreeHierarchy(@Param("rootId") UUID rootId);
+
+    /**
+     * 删除分类前按 id 顺序锁住这些分类行(ADR-111/V662)：与「往分类里加主档/子分类」触发器里的
+     * FOR KEY SHARE 互斥——锁之前已提交的都能被随后的检查读到，锁之后的新增等本事务提交后被拒。
+     */
+    @Query(value = """
+            SELECT id FROM mould_categories
+            WHERE id IN (:ids) AND is_deleted = false
+            ORDER BY id FOR UPDATE
+            """, nativeQuery = true)
+    List<UUID> lockForDelete(@Param("ids") Collection<UUID> ids);
 }

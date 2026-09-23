@@ -39,7 +39,15 @@ class SupplierListItem {
     this.categoryId,
     this.ownerEmployeeName,
     this.lossRate,
+    this.status,
+    this.version,
   });
+
+  /// 乐观锁版本(ADR-111)：行启停、批量启停/删除直接回传比对，不必先拉详情。
+  final int? version;
+
+  /// 状态(使用/禁用)：行菜单直接显示「启用」或「禁用」，行底色也按它着色。
+  final String? status;
 
   final String id;
   final int? legacyId;
@@ -98,6 +106,8 @@ class SupplierListItem {
         shipAddress: (json['shipAddress'] ?? json['shipaddress']) as String?,
         categoryId: json['categoryId'] as String?,
         ownerEmployeeName: json['ownerEmployeeName'] as String?,
+        status: json['status'] as String?,
+        version: (json['version'] as num?)?.toInt(),
       );
 }
 

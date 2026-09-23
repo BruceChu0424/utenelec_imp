@@ -10,7 +10,6 @@ import com.uten.imp.features.master.mould.dto.MouldSaveRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,7 +32,7 @@ import java.util.UUID;
  * - GET  /api/master/moulds/{id}                                                     → 详情
  * - POST /api/master/moulds                                                          → 新建（mould:edit）
  * - PUT  /api/master/moulds/{id}                                                     → 编辑（mould:edit）
- * - DEL  /api/master/moulds/{id}                                                     → 删除（mould:edit，软删）
+ * - DEL  /api/master/moulds/{id} 与批量启停/删除 → 见 MasterLifecycleController(ADR-111，带引用保护)
  *
  * 权限点 mould:view 由种子化（已授予全部未软删部门）；mould:edit 授生产部（超管恒有）。
  */
@@ -103,9 +102,4 @@ public class MouldController {
         return service.changeStatus(id, req);
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('mould:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
-    }
 }

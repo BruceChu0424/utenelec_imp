@@ -173,34 +173,21 @@ class CategoryHierarchyMoveContractTest {
     }
 
     private static void invokeUpdate(Scenario scenario) throws Exception {
-        Object service;
-        if (scenario.kind.extraRepositoryClass != null) {
-            // 模具分类服务构造函数额外注入 MouldRepository（移分类前校验模具归属）
-            service = scenario.kind.serviceClass
-                    .getConstructor(
-                            scenario.kind.repositoryClass,
-                            scenario.kind.extraRepositoryClass,
-                            EntityManager.class,
-                            TxSessionVars.class,
-                            MasterCodeService.class,
-                            CategoryDrivenCodeService.class,
-                            SystemMasterCategoryRegistry.class)
-                    .newInstance(scenario.repo, mock(scenario.kind.extraRepositoryClass),
-                            scenario.em, scenario.tx, scenario.masterCodeService,
-                            scenario.categoryCodes, scenario.systemCategories);
-        } else {
-            service = scenario.kind.serviceClass
-                    .getConstructor(
-                            scenario.kind.repositoryClass,
-                            EntityManager.class,
-                            TxSessionVars.class,
-                            MasterCodeService.class,
-                            CategoryDrivenCodeService.class,
-                            SystemMasterCategoryRegistry.class)
-                    .newInstance(scenario.repo, scenario.em, scenario.tx,
-                            scenario.masterCodeService, scenario.categoryCodes,
-                            scenario.systemCategories);
-        }
+        // 按唯一公开构造函数的参数类型逐个供给：场景里有的用场景对象，其余(模具分类的
+        // MouldRepository、ADR-111 级联删除用的 MasterLifecycleService 等)给 mock——
+        // 这些依赖只在删除路径上用到，移动分类的契约与它们无关。
+        java.lang.reflect.Constructor<?> constructor = scenario.kind.serviceClass.getConstructors()[0];
+        java.util.Map<Class<?>, Object> provided = new java.util.HashMap<>();
+        provided.put(scenario.kind.repositoryClass, scenario.repo);
+        provided.put(EntityManager.class, scenario.em);
+        provided.put(TxSessionVars.class, scenario.tx);
+        provided.put(MasterCodeService.class, scenario.masterCodeService);
+        provided.put(CategoryDrivenCodeService.class, scenario.categoryCodes);
+        provided.put(SystemMasterCategoryRegistry.class, scenario.systemCategories);
+        Object[] args = java.util.Arrays.stream(constructor.getParameterTypes())
+                .map(type -> provided.containsKey(type) ? provided.get(type) : mock(type))
+                .toArray();
+        Object service = constructor.newInstance(args);
         Object request = scenario.kind.requestClass.getConstructor().newInstance();
         scenario.kind.requestClass.getMethod("setName", String.class)
                 .invoke(request, "修改后名称");

@@ -20,7 +20,8 @@ import java.util.UUID;
  * - GET  /api/master/mould-categories/{id}/delete-preview → 删除预览（子树规模，问题 #7）
  * - POST /api/master/mould-categories                → 新建（mould_category:edit）
  * - PUT  /api/master/mould-categories/{id}           → 改名/移动（mould_category:edit）
- * - DEL  /api/master/mould-categories/{id}           → 级联删除（含子树+子树下模具，mould_category:edit）
+ * - DEL  /api/master/mould-categories/{id}           → 级联删除(含子树+子树下模具，mould_category:edit；
+ *                                                     子树里有模具还被货品用着则整体拒绝，ADR-111)
  *
  * 权限点 mould_category:view/edit 由种子化（view 已授予全部未软删部门，edit 授生产部）。
  */

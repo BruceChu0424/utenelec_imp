@@ -21,7 +21,8 @@ class MaterialAnalysisBomSnapshotReaderTest {
     @Test
     void fiveHundredSourcesUseTwoQueriesAndRetainTheirOwnIdentityAndRate() {
         EntityManager em = mock(EntityManager.class);
-        Query validation = query(Collections.singletonList(new Object[]{false, false, false}));
+        // ADR-111：校验查询只返回违规行，零行即通过。
+        Query validation = query(List.of());
         Query tree = query(List.of());
         when(em.createNativeQuery(anyString())).thenReturn(validation, tree);
         UUID goods = UUID.randomUUID();
@@ -45,15 +46,23 @@ class MaterialAnalysisBomSnapshotReaderTest {
     }
 
     @Test
-    void invalidGraphStopsBeforeAnySnapshotRead() {
-        for (Object[] flags : List.of(new Object[]{true, false, false},
-                new Object[]{false, true, false}, new Object[]{false, false, true})) {
+    void invalidGraphStopsBeforeAnySnapshotReadAndNamesTheOffendingRows() {
+        for (String kind : List.of("CYCLE", "TOO_DEEP", "COMPONENT_DELETED", "QTY,ROW_COLOR_LEGACY")) {
             EntityManager em = mock(EntityManager.class);
-            Query invalid = query(Collections.singletonList(flags));
+            Query invalid = query(Collections.singletonList(new Object[]{
+                    kind, "FG-1", "成品", "SA-1", "半成品", "RM-9", "底衬", 2, 7L}));
             when(em.createNativeQuery(anyString())).thenReturn(invalid);
-            assertThrows(ApiException.class, () -> new MaterialAnalysisBomSnapshotReader(em)
+            ApiException error = assertThrows(ApiException.class, () -> new MaterialAnalysisBomSnapshotReader(em)
                     .read(List.of(source(UUID.randomUUID(), BigDecimal.ONE))));
             verify(em, times(1)).createNativeQuery(anyString());
+            // 报错点名到行：成品、父件、组件编号都在，且给出总处数与「未列出」提示。
+            assertThat(error.getMessage())
+                    .contains("7 处问题")
+                    .contains("FG-1 成品")
+                    .contains("SA-1 半成品")
+                    .contains("RM-9 底衬")
+                    .contains("还有 6 处未列出")
+                    .doesNotContain(kind);
         }
     }
 

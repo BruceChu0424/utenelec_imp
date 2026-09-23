@@ -5,7 +5,6 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -109,12 +108,21 @@ public interface MaterialCategoryRepository extends JpaRepository<MaterialCatego
             """, nativeQuery = true)
     List<Object[]> countGoodsPerCategory();
 
-    /** 批量软删子树下货品：is_deleted=true + deleted_at 戳。单据/报表 JOIN goods 仅按 id 关联、
-     *  不过滤 is_deleted，故历史单据货品名仍可解析；软删只是把它们从货品资料页/选择器隐藏。 */
+    /** 子树(含给定分类及其全部后代)下未软删货品的 id：级联删分类时交给主档删除命令逐个做引用检查(ADR-111)。 */
     @Query(value = """
-            UPDATE goods SET is_deleted = true, deleted_at = :now
+            SELECT id FROM goods
             WHERE is_deleted = false AND category_id IN (:ids)
             """, nativeQuery = true)
-    @Modifying
-    int softDeleteGoodsByCategoryIds(@Param("ids") Collection<UUID> ids, @Param("now") OffsetDateTime now);
+    List<UUID> findGoodsIdsByCategoryIds(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * 删除分类前按 id 顺序锁住这些分类行(ADR-111/V662)：与「往分类里加主档/子分类」触发器里的
+     * FOR KEY SHARE 互斥——锁之前已提交的都能被随后的检查读到，锁之后的新增等本事务提交后被拒。
+     */
+    @Query(value = """
+            SELECT id FROM material_categories
+            WHERE id IN (:ids) AND is_deleted = false
+            ORDER BY id FOR UPDATE
+            """, nativeQuery = true)
+    List<UUID> lockForDelete(@Param("ids") Collection<UUID> ids);
 }

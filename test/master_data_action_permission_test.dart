@@ -53,10 +53,17 @@ void main() {
       'lib/features/department/pages/department_page.dart',
     ).readAsStringSync();
 
+    // ADR-111：货品页的行启停/删除/批量交给共享明细区 MasterEntityDetailPane，
+    // 窄命令(单条 PATCH /status 与服务端批量命令)的调用点随之移到明细区里。
+    final pane = File(
+      'lib/features/basic_data/widgets/master_entity_detail_pane.dart',
+    ).readAsStringSync();
     expect(goods, contains('Perm.goodsCreate'));
     expect(goods, contains('Perm.goodsStatus'));
     expect(goods, contains('Perm.goodsDelete'));
-    expect(goods, contains('masterStatusRepositoryProvider'));
+    expect(goods, contains('pane.toggleStatus('));
+    expect(pane, contains('masterStatusRepositoryProvider'));
+    expect(pane, contains('masterBatchRepositoryProvider'));
     expect(payment, contains('Perm.paymentStyleMove'));
     expect(payment, contains('Perm.paymentStyleReorder'));
     expect(payment, isNot(contains('Perm.paymentStyleDelete')));

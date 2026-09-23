@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GoodsImportFileValidationTest {
 
     private final GoodsImportService service = new GoodsImportService(
-            null, null, null, null, null, null, null, null, null, null);
+            null, null, null, null, null, null, null, null, null, null, null);
 
     @Test
     void detect_rejectsEmptyFileWithRecoveryMessage() {

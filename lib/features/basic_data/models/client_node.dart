@@ -48,7 +48,11 @@ class ClientListItem {
     this.defaultCurrencyName,
     this.writable = false,
     this.accessManageable = false,
+    this.version,
   });
+
+  /// 乐观锁版本(ADR-111)：行启停、批量启停/删除直接回传比对，不必先拉详情。
+  final int? version;
 
   final String id;
   final String? code; // 客户编码（Number）
@@ -125,6 +129,7 @@ class ClientListItem {
     defaultCurrencyName: json['defaultCurrencyName'] as String?,
     writable: json['writable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
+    version: (json['version'] as num?)?.toInt(),
   );
 }
 

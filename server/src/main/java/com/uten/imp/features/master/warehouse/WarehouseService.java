@@ -30,7 +30,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -239,15 +238,6 @@ public class WarehouseService {
         return toDetail(w);
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        Warehouse w = requireWarehouse(id);
-        w.setDeleted(true);
-        w.setDeletedAt(OffsetDateTime.now());
-        repo.save(w);
-    }
 
     private void apply(WarehouseSaveRequest req, Warehouse w) {
         w.setName(req.getName());

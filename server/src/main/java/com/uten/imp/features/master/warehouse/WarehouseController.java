@@ -11,7 +11,6 @@ import com.uten.imp.features.master.warehouse.dto.WarehouseWorkshopOption;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -113,9 +112,4 @@ public class WarehouseController {
         return service.changeStatus(id, req);
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('warehouse:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
-    }
 }

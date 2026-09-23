@@ -10,6 +10,7 @@ import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomItemView;
+import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.AuthUser;
@@ -34,6 +35,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -64,6 +66,7 @@ public class GoodsBomService {
     private final MasterReferenceValidationPort references;
     private final GoodsMasterRelationshipResolver relationships;
     private final BusinessEventPublisher events;
+    private final MasterObjectAccess access;
 
     // ===== 列表（含组件展示信息 + hasChildren） =====
 
@@ -73,19 +76,17 @@ public class GoodsBomService {
         requireGoods(goodsId);
         List<GoodsBomItem> rows = operationalRows(goodsId);
         if (rows.isEmpty()) return List.of();
+        // 组件可见性按归属人一次判定(口径同 canViewGoods)，组件已随行取回，不逐个查库。
+        Predicate<UUID> visible = access.visibleGoodsOwner();
+        Set<UUID> visibleComponentIds = rows.stream()
+                .map(GoodsBomItem::getComponent)
+                .filter(c -> visible.test(c.getOwnerEmployeeId()))
+                .map(Goods::getId)
+                .collect(Collectors.toSet());
         // 组件自身是否有 BOM（展开箭头）：一次批量查。
-        Set<UUID> componentIds = rows.stream()
-                .map(r -> r.getComponent().getId())
-                .collect(Collectors.toSet());
-        Set<UUID> visibleComponentIds = componentIds.stream()
-                .filter(references::canViewGoods)
-                .collect(Collectors.toSet());
-        Set<UUID> withChildren = visibleComponentIds.isEmpty() ? Set.of()
-                : bomRepo.findByGoods_IdInAndDeletedFalse(visibleComponentIds).stream()
-                .filter(this::isOperationalRow)
-                .map(r -> r.getGoods().getId())
-                .collect(Collectors.toSet());
-        // 颜色/供应商/单位均 UUID 优先；legacy 仅在对应 UUID 缺失时兼容旧数据。
+        Set<UUID> withChildren = withOperationalRows(visibleComponentIds);
+        // 颜色/供应商/单位均 UUID 优先；legacy 仅在对应 UUID 缺失时兼容旧数据，按批一次取名。
+        LegacyNames legacy = legacyNames(rows);
         List<BomItemView> views = new ArrayList<>(rows.size());
         for (GoodsBomItem r : rows) {
             Goods c = r.getComponent();
@@ -96,7 +97,7 @@ public class GoodsBomService {
             views.add(new BomItemView(
                     r.getId(), c.getId(), c.getCode(), c.getName(), c.getModel(), c.getSpec(),
                     c.getMaterial(),
-                    unitNameOf(c), bomColorNameOf(r, c),
+                    unitNameOf(c, legacy), bomColorNameOf(r, c, legacy),
                     r.getColor() == null ? null : r.getColor().getId(),
                     r.getColor() == null ? r.getColorLegacyId() : r.getColor().getLegacyId(),
                     r.getDefaultSupplier() == null ? null : r.getDefaultSupplier().getId(),
@@ -120,6 +121,7 @@ public class GoodsBomService {
     @Transactional
     public BomItemView create(UUID goodsId, BomItemSaveRequest req) {
         tx.bind();
+        lockReferencedGoods(goodsId, req.getComponentGoodsId());
         references.lockGoodsQuantityBasis(java.util.Arrays.asList(goodsId, req.getComponentGoodsId()));
         references.requireVisibleActiveGoods(goodsId);
         references.requireVisibleActiveGoods(req.getComponentGoodsId());
@@ -140,6 +142,7 @@ public class GoodsBomService {
     @Transactional
     public BomItemView update(UUID goodsId, UUID itemId, BomItemSaveRequest req) {
         tx.bind();
+        lockReferencedGoods(goodsId, req.getComponentGoodsId());
         references.lockGoodsQuantityBasis(java.util.Arrays.asList(goodsId, req.getComponentGoodsId()));
         references.requireVisibleGoods(goodsId);
         GoodsBomItem r = requireItem(goodsId, itemId);
@@ -196,17 +199,15 @@ public class GoodsBomService {
     }
 
     /**
-     * 批量删除组装行(前端勾选多行后一次删完)。
+     * 批量删除组装行(前端在组装树上勾选多行后一次删完，可以横跨多层)。
      *
-     * <p>要么全删要么一条不删：先把所有 id 解析成行(任意一条不存在/不属于本货品即整批 404)，
-     * 全部通过后才动手软删。先校验后落库不是为了省事务，而是让「删一半」在设计上不可能发生
-     * ——不必依赖事务回滚兜底，单元测试也能验到原子性。
+     * <p>要么全删要么一条不删：一条查询取回全部仍有效的行和各自父件，任意一条不存在/已删除、
+     * 或它的父件不在本货品的组装树里(拿别的货品的行 id 冒充)，整批 404；全部通过后一条 UPDATE
+     * 软删，实际删掉的行数对不上(期间被别人删了)也整批 404 回滚。
      *
-     * <p>归属校验复用 {@link #requireItem}：它同时挡住「拿别的货品的行 id 冒充本货品」，
-     * 是这个批量入口的越权闸，绝不能因为是批量就换成 findAllById 走捷径。
-     *
-     * <p>{@code recalcSourceE} 只在末尾调一次：它会整棵直接组件重算成本并发一次
-     * GOODS_BOM_UPDATED；逐条删是每条一遍，删 20 行就会把研发/计划通知刷 20 次。
+     * <p>树的范围按层批量取(每层一次查询，最多 {@link #MAX_DEPTH} 层)，每个涉及的父件都要
+     * 可见；{@code recalcSourceE} 每个父件只在末尾调一次(它会发 GOODS_BOM_UPDATED 通知)。
+     * 语句数与勾选条数无关(500 条也只有取行、下探、UPDATE 各一条)。
      *
      * @return 实际删除条数(已按 id 去重，重复勾选不重复计数)
      */
@@ -225,25 +226,49 @@ public class GoodsBomService {
         if (distinct.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择要删除的组件行");
         }
-        List<GoodsBomItem> rows = new ArrayList<>(distinct.size());
-        for (UUID itemId : distinct) {
-            rows.add(requireItem(goodsId, itemId));
+        List<Object[]> live = bomRepo.findLiveItemParents(distinct);
+        if (live.size() != distinct.size()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "组装行不存在");
         }
-        OffsetDateTime deletedAt = OffsetDateTime.now();
-        for (GoodsBomItem r : rows) {
-            r.setDeleted(true);
-            r.setDeletedAt(deletedAt);
-            bomRepo.save(r);
+        Set<UUID> parents = new java.util.LinkedHashSet<>();
+        for (Object[] row : live) parents.add((UUID) row[1]);
+        Set<UUID> tree = treeGoodsIds(goodsId, parents);
+        for (UUID parent : parents) {
+            if (!tree.contains(parent)) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "组装行不存在");
+            }
+            if (!parent.equals(goodsId)) references.requireVisibleGoods(parent);
         }
-        // requireItem 已保证每行 goods 都是 goodsId，父件只有一个，取第一行的即可。
-        recalcSourceE(rows.getFirst().getGoods());
-        return rows.size();
+        if (bomRepo.softDeleteLive(distinct) != distinct.size()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "组装行不存在");
+        }
+        goodsRepo.findAllById(parents).forEach(this::recalcSourceE);
+        return distinct.size();
+    }
+
+    /**
+     * 本货品组装树里(含自身)的父件 id：逐层批量下探，找齐 {@code wanted} 或到达层数上限即停。
+     * 历史脏数据成环时靠 visited 截断。
+     */
+    private Set<UUID> treeGoodsIds(UUID rootId, Set<UUID> wanted) {
+        Set<UUID> visited = new java.util.LinkedHashSet<>();
+        visited.add(rootId);
+        Set<UUID> frontier = Set.of(rootId);
+        for (int depth = 0; depth < MAX_DEPTH && !visited.containsAll(wanted) && !frontier.isEmpty(); depth++) {
+            Set<UUID> next = new java.util.LinkedHashSet<>();
+            for (Object[] edge : bomRepo.findOperationalEdges(frontier)) {
+                UUID child = (UUID) edge[2];
+                if (visited.add(child)) next.add(child);
+            }
+            frontier = next;
+        }
+        return visited;
     }
 
     // ===== 配件清单导出（产品配件清单，对照老系统 003.jpg 列） =====
 
     /** 树展开深度上限（防历史脏数据 A→B→A 环路死循环）。 */
-    private static final int MAX_DEPTH = 10;
+    static final int MAX_DEPTH = 10;
 
     /**
      * 整树展开导出：一级组件无标记，子级编号前加 {@code *}、孙级 {@code **}（星号数=深度）；
@@ -296,7 +321,8 @@ public class GoodsBomService {
 
     // ===== 私有 =====
 
-    private void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component) {
+    /** 把请求写到组装行上并校验(用量/阶段/计量方式/硬门槛/颜色/供应商)；粘贴命令逐行复用。 */
+    void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component) {
         r.setComponent(component);
         BigDecimal qty = req.getQty() == null ? BigDecimal.ONE : req.getQty();
         if (qty.signum() <= 0) {
@@ -393,11 +419,12 @@ public class GoodsBomService {
     }
 
     private BomItemView toView(GoodsBomItem r, Goods component) {
-        boolean hasChildren = !operationalRows(component.getId()).isEmpty();
+        boolean hasChildren = !withOperationalRows(Set.of(component.getId())).isEmpty();
+        LegacyNames legacy = legacyNames(List.of(r));
         return new BomItemView(
                 r.getId(), component.getId(), component.getCode(), component.getName(),
                 component.getModel(), component.getSpec(), component.getMaterial(),
-                unitNameOf(component), bomColorNameOf(r, component),
+                unitNameOf(component, legacy), bomColorNameOf(r, component, legacy),
                 r.getColor() == null ? null : r.getColor().getId(),
                 r.getColor() == null ? r.getColorLegacyId() : r.getColor().getLegacyId(),
                 r.getDefaultSupplier() == null ? null : r.getDefaultSupplier().getId(),
@@ -482,16 +509,12 @@ public class GoodsBomService {
      * 其余（采购/委外/未设）取 price×qty。求和（两位小数）。
      * 前端成本 Tab 的 sourceE 只读显示此值；下游成本（成品价/成本价/出厂价）由前端据此级联。
      */
-    private void recalcSourceE(Goods parent) {
+    void recalcSourceE(Goods parent) {
         List<GoodsBomItem> rows = operationalRows(parent.getId());
         Set<UUID> componentIds = rows.stream()
                 .map(r -> r.getComponent().getId())
                 .collect(Collectors.toSet());
-        Set<UUID> withChildren = componentIds.isEmpty() ? Set.of()
-                : bomRepo.findByGoods_IdInAndDeletedFalse(componentIds).stream()
-                        .filter(this::isOperationalRow)
-                        .map(r -> r.getGoods().getId())
-                        .collect(Collectors.toSet());
+        Set<UUID> withChildren = withOperationalRows(componentIds);
         BigDecimal sum = BigDecimal.ZERO;
         for (GoodsBomItem r : rows) {
             Goods c = r.getComponent();
@@ -515,6 +538,14 @@ public class GoodsBomService {
         // 重复通知由 notifyBomUpdated 自身防御（resolveOpenBomTasksForGoods 返回 0 即早退）。
         events.publish(
                 "GOODS_BOM_UPDATED", "GOODS_BOM", parent.getId(), Map.of());
+    }
+
+    /** 父件与组件先加 KEY SHARE 锁再读，与主档删除互斥(见 GoodsRepository.lockForReference)。 */
+    private void lockReferencedGoods(UUID goodsId, UUID componentId) {
+        List<UUID> ids = new ArrayList<>(2);
+        if (goodsId != null) ids.add(goodsId);
+        if (componentId != null) ids.add(componentId);
+        if (!ids.isEmpty()) goodsRepo.lockForReference(ids);
     }
 
     private Goods requireGoods(UUID id) {
@@ -544,14 +575,38 @@ public class GoodsBomService {
      * 当前可运营 BOM 只允许真实货品作为父件和组件。auto_created 货品是老库悬空引用的
      * 历史外键锚，不属于当前主档/BOM/MRP；这里做查询侧兜底，数据库清理。
      */
-    private List<GoodsBomItem> operationalRows(UUID goodsId) {
+    List<GoodsBomItem> operationalRows(UUID goodsId) {
         return bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(goodsId).stream()
                 .filter(this::isOperationalRow)
                 .toList();
     }
 
-    private boolean isOperationalRow(GoodsBomItem row) {
+    boolean isOperationalRow(GoodsBomItem row) {
         return !row.getGoods().isAutoCreated() && !row.getComponent().isAutoCreated();
+    }
+
+    /** 这些货品里哪些自己有可运营组装行：一条查询，不加载实体。 */
+    private Set<UUID> withOperationalRows(Collection<UUID> goodsIds) {
+        if (goodsIds.isEmpty()) return Set.of();
+        return new HashSet<>(bomRepo.findGoodsWithOperationalRows(goodsIds));
+    }
+
+    /** 老数据只有 legacy 颜色/单位号、没有 UUID 的行：本批用到的号一次取名。 */
+    private record LegacyNames(Map<Integer, String> colors, Map<Integer, String> units) {
+    }
+
+    private LegacyNames legacyNames(List<GoodsBomItem> rows) {
+        Set<Integer> colors = new HashSet<>();
+        Set<Integer> units = new HashSet<>();
+        for (GoodsBomItem r : rows) {
+            Goods c = r.getComponent();
+            if (r.getColor() == null) {
+                colors.add(r.getColorLegacyId() != null ? r.getColorLegacyId()
+                        : c.getColor() == null ? c.getColorLegacyId() : null);
+            }
+            if (c.getUnit() == null) units.add(c.getUnitLegacyId());
+        }
+        return new LegacyNames(colorNamesFor(colors), unitNamesFor(units));
     }
 
     private GoodsBomItem requireItem(UUID goodsId, UUID itemId) {
@@ -578,39 +633,23 @@ public class GoodsBomService {
                         u -> u.getName() == null ? "" : u.getName(), (a, b) -> a));
     }
 
-    private String bomColorNameOf(GoodsBomItem row, Goods component) {
+    private static String bomColorNameOf(GoodsBomItem row, Goods component, LegacyNames legacy) {
         if (row.getColor() != null) {
             return row.getColor().isDeleted() ? null : row.getColor().getName();
         }
         if (row.getColorLegacyId() != null) {
-            return colorNameOf(row.getColorLegacyId());
+            return legacy.colors().get(row.getColorLegacyId());
         }
         if (component.getColor() != null) {
             return component.getColor().isDeleted() ? null : component.getColor().getName();
         }
-        return colorNameOf(component.getColorLegacyId());
+        return component.getColorLegacyId() == null ? null : legacy.colors().get(component.getColorLegacyId());
     }
 
-    private String unitNameOf(Goods component) {
+    private static String unitNameOf(Goods component, LegacyNames legacy) {
         if (component.getUnit() != null) {
             return component.getUnit().isDeleted() ? null : component.getUnit().getName();
         }
-        return unitNameOf(component.getUnitLegacyId());
-    }
-
-    private String colorNameOf(Integer legacyId) {
-        if (legacyId == null) return null;
-        return colorRepo.findByLegacyId(legacyId)
-                .filter(c -> !c.isDeleted())
-                .map(Color::getName)
-                .orElse(null);
-    }
-
-    private String unitNameOf(Integer legacyId) {
-        if (legacyId == null) return null;
-        return unitRepo.findByLegacyId(legacyId)
-                .filter(u -> !u.isDeleted())
-                .map(Unit::getName)
-                .orElse(null);
+        return component.getUnitLegacyId() == null ? null : legacy.units().get(component.getUnitLegacyId());
     }
 }

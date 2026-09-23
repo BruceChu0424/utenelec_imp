@@ -359,8 +359,8 @@ class MaterialAnalysisServiceBehaviorTest {
 
         Query sources = query(Collections.singletonList(sourceRow(
                 itemId, productId, productUnitId)));
-        Query graphValidation = query(Collections.singletonList(
-                new Object[]{false, false, false}));
+        // ADR-111：BOM 图校验只返回违规行(父件 → 组件 + 原因)，零行即通过。
+        Query graphValidation = query(Collections.emptyList());
         Query currentBom = query(Collections.singletonList(new Object[]{
                 bomItemId, productId, componentId, null, componentUnitId, 1,
                 bomItemId.toString(), null, BigDecimal.ONE, bd("2"), bd("2"),
@@ -378,7 +378,7 @@ class MaterialAnalysisServiceBehaviorTest {
             if (statement.contains("FROM production_material_analysis_items ai")) {
                 return sources;
             }
-            if (statement.contains("COALESCE(bool_or(cycle),FALSE)")) {
+            if (statement.contains("flagged AS (")) {
                 return graphValidation;
             }
             if (statement.contains("exp AS (")) {

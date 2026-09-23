@@ -23,10 +23,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -65,7 +66,8 @@ class GoodsBomBatchDeleteTest {
             mock(SecurityContextCurrentUser.class),
             references,
             mock(GoodsMasterRelationshipResolver.class),
-            events);
+            events,
+            allVisible());
 
     private final Validator validator =
             Validation.buildDefaultValidatorFactory().getValidator();
@@ -76,9 +78,7 @@ class GoodsBomBatchDeleteTest {
         GoodsBomItem first = bomRow(parent, goods("C-1"));
         GoodsBomItem second = bomRow(parent, goods("C-2"));
         GoodsBomItem keeper = bomRow(parent, goods("C-3"));
-        stubRow(first);
-        stubRow(second);
-        stubRow(keeper);
+        stubRows(first, second, keeper);
         // 删完之后仓库里只剩没勾的那行，recalcSourceE 按这个现状重算。
         when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId()))
                 .thenReturn(List.of(keeper));
@@ -90,10 +90,26 @@ class GoodsBomBatchDeleteTest {
         assertTrue(first.isDeleted());
         assertTrue(second.isDeleted());
         assertFalse(keeper.isDeleted());
-        verify(bomRepo).save(first);
-        verify(bomRepo).save(second);
-        verify(bomRepo, never()).save(keeper);
+        verify(bomRepo, times(1)).softDeleteLive(Set.of(first.getId(), second.getId()));
         verify(references).requireVisibleGoods(parent.getId());
+    }
+
+    /** 语句数与勾选条数无关：一次取行 + 一条 UPDATE，不逐行 findById/save(ADR-111 评审修复)。 */
+    @Test
+    void rowsAreLoadedAndDeletedSetWiseNotOneByOne() {
+        Goods parent = goods("P-1");
+        List<GoodsBomItem> rows = new java.util.ArrayList<>();
+        for (int i = 0; i < 50; i++) rows.add(bomRow(parent, goods("C-" + i)));
+        stubRows(rows.toArray(GoodsBomItem[]::new));
+        when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId())).thenReturn(List.of());
+
+        int deleted = service.deleteAll(parent.getId(), rows.stream().map(GoodsBomItem::getId).toList());
+
+        assertEquals(50, deleted);
+        verify(bomRepo, times(1)).findLiveItemParents(any());
+        verify(bomRepo, times(1)).softDeleteLive(any());
+        verify(bomRepo, never()).findById(any());
+        verify(bomRepo, never()).save(any());
     }
 
     @Test
@@ -101,8 +117,7 @@ class GoodsBomBatchDeleteTest {
         Goods parent = goods("P-1");
         GoodsBomItem first = bomRow(parent, goods("C-1"));
         GoodsBomItem second = bomRow(parent, goods("C-2"));
-        stubRow(first);
-        stubRow(second);
+        stubRows(first, second);
         when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId()))
                 .thenReturn(List.of());
 
@@ -120,8 +135,7 @@ class GoodsBomBatchDeleteTest {
         Goods otherParent = goods("P-2");
         GoodsBomItem mine = bomRow(parent, goods("C-1"));
         GoodsBomItem foreign = bomRow(otherParent, goods("C-9"));
-        stubRow(mine);
-        stubRow(foreign);
+        stubRows(mine, foreign);
 
         // 合法 id 排在前面：若实现边校验边落库，mine 早就被删了，这里就抓不到。
         ApiException error = assertThrows(ApiException.class,
@@ -130,16 +144,42 @@ class GoodsBomBatchDeleteTest {
         assertEquals(ErrorCode.NOT_FOUND, error.getCode());
         assertFalse(mine.isDeleted());
         assertFalse(foreign.isDeleted());
-        verify(bomRepo, never()).save(any());
+        verify(bomRepo, never()).softDeleteLive(any());
         verify(goodsRepo, never()).save(any());
         verifyNoInteractions(events);
+    }
+
+    /**
+     * ADR-111：勾选可以横跨组装树的多层，一次请求、一个事务——嵌套行按它真正的父件软删、
+     * 只重算那个父件，并核对它的可见性；不再由前端按父件分组逐组提交。
+     */
+    @Test
+    void nestedRowInsideTheViewedTreeIsDeletedWithItsOwnParent() {
+        Goods root = goods("P-1");
+        Goods child = goods("C-1");
+        GoodsBomItem nested = bomRow(child, goods("X-1"));
+        stubRows(nested);
+        when(bomRepo.findOperationalEdges(any())).thenReturn(Collections.singletonList(
+                new Object[]{UUID.randomUUID(), root.getId(), child.getId(), 1}));
+        when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(child.getId()))
+                .thenReturn(List.of());
+
+        int deleted = service.deleteAll(root.getId(), List.of(nested.getId()));
+
+        assertEquals(1, deleted);
+        assertTrue(nested.isDeleted());
+        verify(references).requireVisibleGoods(root.getId());
+        verify(references).requireVisibleGoods(child.getId());
+        verify(goodsRepo, times(1)).save(child);
+        verify(goodsRepo, never()).save(root);
+        verify(events, times(1)).publish("GOODS_BOM_UPDATED", "GOODS_BOM", child.getId(), Map.of());
     }
 
     @Test
     void repeatedIdsAreDeletedAndCountedOnce() {
         Goods parent = goods("P-1");
         GoodsBomItem row = bomRow(parent, goods("C-1"));
-        stubRow(row);
+        stubRows(row);
         when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId()))
                 .thenReturn(List.of());
 
@@ -147,7 +187,7 @@ class GoodsBomBatchDeleteTest {
                 parent.getId(), List.of(row.getId(), row.getId(), row.getId()));
 
         assertEquals(1, deleted);
-        verify(bomRepo, times(1)).save(row);
+        verify(bomRepo, times(1)).softDeleteLive(Set.of(row.getId()));
     }
 
     @Test
@@ -155,13 +195,29 @@ class GoodsBomBatchDeleteTest {
         Goods parent = goods("P-1");
         GoodsBomItem gone = bomRow(parent, goods("C-1"));
         gone.setDeleted(true);
-        stubRow(gone);
+        stubRows(gone);
 
         ApiException error = assertThrows(ApiException.class,
                 () -> service.deleteAll(parent.getId(), List.of(gone.getId())));
 
         assertEquals(ErrorCode.NOT_FOUND, error.getCode());
-        verify(bomRepo, never()).save(any());
+        verify(bomRepo, never()).softDeleteLive(any());
+    }
+
+    /** 读完到 UPDATE 之间别人删掉了其中一行：实际删掉的条数对不上，整批 404 回滚。 */
+    @Test
+    void rowDeletedConcurrentlyBetweenReadAndUpdateFailsTheWholeBatch() {
+        Goods parent = goods("P-1");
+        GoodsBomItem first = bomRow(parent, goods("C-1"));
+        GoodsBomItem second = bomRow(parent, goods("C-2"));
+        stubRows(first, second);
+        org.mockito.Mockito.doReturn(1).when(bomRepo).softDeleteLive(any());
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.deleteAll(parent.getId(), List.of(first.getId(), second.getId())));
+
+        assertEquals(ErrorCode.NOT_FOUND, error.getCode());
+        verifyNoInteractions(events);
     }
 
     @Test
@@ -175,7 +231,7 @@ class GoodsBomBatchDeleteTest {
         assertFalse(validator.validate(missing).isEmpty());
 
         BomBatchDeleteRequest oversized = request(
-                Collections.nCopies(201, UUID.randomUUID()));
+                Collections.nCopies(501, UUID.randomUUID()));
         assertTrue(validator.validate(oversized).stream()
                 .anyMatch(v -> v.getPropertyPath().toString().equals("itemIds")
                         && v.getConstraintDescriptor().getAnnotation() instanceof Size));
@@ -225,8 +281,43 @@ class GoodsBomBatchDeleteTest {
                 .andExpect(jsonPath("$.deleted").value(2));
     }
 
-    private void stubRow(GoodsBomItem row) {
-        when(bomRepo.findById(row.getId())).thenReturn(Optional.of(row));
+    /** 仓库替身：按 id 取仍有效的 [行, 父件]、一条 UPDATE 软删并返回实际删掉的条数。 */
+    private void stubRows(GoodsBomItem... rows) {
+        Map<UUID, GoodsBomItem> byId = new java.util.HashMap<>();
+        Map<UUID, Goods> parents = new java.util.HashMap<>();
+        for (GoodsBomItem row : rows) {
+            byId.put(row.getId(), row);
+            parents.put(row.getGoods().getId(), row.getGoods());
+        }
+        when(bomRepo.findLiveItemParents(any())).thenAnswer(call -> {
+            Collection<UUID> ids = call.getArgument(0);
+            List<Object[]> out = new java.util.ArrayList<>();
+            for (UUID id : ids) {
+                GoodsBomItem row = byId.get(id);
+                if (row != null && !row.isDeleted()) out.add(new Object[]{id, row.getGoods().getId()});
+            }
+            return out;
+        });
+        when(bomRepo.softDeleteLive(any())).thenAnswer(call -> {
+            Collection<UUID> ids = call.getArgument(0);
+            int count = 0;
+            for (UUID id : ids) {
+                GoodsBomItem row = byId.get(id);
+                if (row != null && !row.isDeleted()) {
+                    row.setDeleted(true);
+                    count++;
+                }
+            }
+            return count;
+        });
+        when(goodsRepo.findAllById(any())).thenAnswer(call -> {
+            Iterable<UUID> ids = call.getArgument(0);
+            List<Goods> out = new java.util.ArrayList<>();
+            for (UUID id : ids) {
+                if (parents.containsKey(id)) out.add(parents.get(id));
+            }
+            return out;
+        });
     }
 
     private static BomBatchDeleteRequest request(List<UUID> itemIds) {
@@ -249,5 +340,12 @@ class GoodsBomBatchDeleteTest {
         goods.setName("真实货品 " + code);
         goods.setAutoCreated(false);
         return goods;
+    }
+
+    /** 组件可见性替身(ADR-111：列表按归属人一次判定)：默认全部可见。 */
+    private static com.uten.imp.features.master.lifecycle.MasterObjectAccess allVisible() {
+        com.uten.imp.features.master.lifecycle.MasterObjectAccess access = org.mockito.Mockito.mock(com.uten.imp.features.master.lifecycle.MasterObjectAccess.class);
+        org.mockito.Mockito.when(access.visibleGoodsOwner()).thenReturn(owner -> true);
+        return access;
     }
 }

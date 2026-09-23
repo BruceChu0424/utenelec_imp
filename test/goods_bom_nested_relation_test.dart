@@ -36,9 +36,6 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     hardGate: false,
   );
 
-  String? deletedParentId;
-  String? deletedItemId;
-
   /// 批量删除调用记录：(父货品 id, 提交的关系行 id)。
   final batchDeleteCalls = <(String, List<String>)>[];
   String? updatedParentId;
@@ -57,18 +54,6 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
       'goods-b' => [nested],
       _ => const [],
     };
-  }
-
-  @override
-  Future<GoodsBomItem> create(
-    String goodsId,
-    Map<String, dynamic> body,
-  ) async => nested;
-
-  @override
-  Future<void> delete(String goodsId, String itemId) async {
-    deletedParentId = goodsId;
-    deletedItemId = itemId;
   }
 
   @override
@@ -100,6 +85,13 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     auditedValue = audited;
     return nested;
   }
+
+  @override
+  Future<BomPasteResult> paste({
+    required BomPasteMode mode,
+    required List<BomPasteTarget> targets,
+    required List<Map<String, dynamic>> items,
+  }) async => throw UnimplementedError();
 }
 
 Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
@@ -225,7 +217,9 @@ void main() {
     expect(previews, 1);
   });
 
-  testWidgets('nested delete uses the owning parent goods id', (tester) async {
+  testWidgets('nested delete is one request scoped to the viewed goods tree', (
+    tester,
+  ) async {
     final repo = _FakeGoodsBomRepository();
     await _pumpBom(tester, repo);
 
@@ -235,13 +229,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    // 2026-09-21 多选批量删除后，删除只剩批量这一条路径：勾一条也按
-    // (父货品, 关系行 id)分组提交，嵌套行认的仍是它真正挂在的父货品。
+    // ADR-111：删除只剩批量这一条路径，且不再按父货品分组——请求挂在本页货品
+    // (组装树的根)下，服务端核对嵌套行的父件在这棵树里、按它真正的父件软删。
     expect(repo.batchDeleteCalls.length, 1);
-    expect(repo.batchDeleteCalls.first.$1, 'goods-b');
+    expect(repo.batchDeleteCalls.first.$1, 'goods-a');
     expect(repo.batchDeleteCalls.first.$2, ['row-c']);
     // 旧的单条 DELETE 不再被页面调用(接口保留给其它调用方)。
-    expect(repo.deletedItemId, isNull);
     // 「删完按钮回灰」这条断言挪到 goods_bom_multi_select_delete_test.dart：
     // 页面改为按业务键剪裁勾选集(勾选不再被重载无条件清空)，要用一个真会
     // 删掉行的伪仓库才能验证，本文件的伪仓库并不真正移除数据。

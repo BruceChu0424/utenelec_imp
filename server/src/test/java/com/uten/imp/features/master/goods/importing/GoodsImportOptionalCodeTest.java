@@ -56,7 +56,7 @@ class GoodsImportOptionalCodeTest {
         when(currentUser.requireId()).thenReturn(java.util.UUID.randomUUID());
         return new GoodsImportService(
                 null, goods, null, categories,
-                null, colors, null, units, null, currentUser);
+                null, colors, null, units, null, currentUser, null);
     }
 
     private static byte[] workbook(String code, String name, String category) throws Exception {

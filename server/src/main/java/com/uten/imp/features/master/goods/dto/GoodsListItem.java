@@ -62,4 +62,10 @@ public class GoodsListItem {
     public String getCNumber() {
         return cNumber;
     }
+
+    /**
+     * 乐观锁版本(ADR-111)：列表行带上它，批量启停/删除与单行启停直接回传比对，
+     * 不必为拿版本先逐条拉详情。
+     */
+    private Long version;
 }

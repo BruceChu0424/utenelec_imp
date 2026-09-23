@@ -10,7 +10,6 @@ import com.uten.imp.features.master.color.dto.ColorSaveRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,7 +32,7 @@ import java.util.UUID;
  * - GET  /api/master/colors/{id}                                                    → 详情
  * - POST /api/master/colors                                                         → 新建（color:edit）
  * - PUT  /api/master/colors/{id}                                                    → 编辑（color:edit）
- * - DEL  /api/master/colors/{id}                                                    → 删除（color:edit，软删）
+ * - DEL  /api/master/colors/{id} 与批量启停/删除 → 见 MasterLifecycleController(ADR-111，带引用保护)
  *
  * 权限点 color:view 由种子化（已授予全部未软删部门）；color:edit 授 DEPT_PMC + 超管恒有。
  */
@@ -105,9 +104,4 @@ public class ColorController {
         return service.changeStatus(id, req);
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('color:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
-    }
 }

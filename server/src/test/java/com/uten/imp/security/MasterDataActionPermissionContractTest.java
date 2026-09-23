@@ -31,6 +31,14 @@ class MasterDataActionPermissionContractTest {
             category("client_category", "clientcategory.ClientCategory"),
             category("supplier_category", "suppliercategory.SupplierCategory"));
 
+    /**
+     * ADR-111：货品/颜色/单位/仓库/客户/供应商/模具的删除(单条与批量)和批量启停统一走
+     * MasterLifecycleController + MasterLifecycleService 一条写路径(带引用保护)，
+     * 各自的 Controller/Service 不再各有一个 delete。币种与账户的删除仍在各自服务里。
+     */
+    private static final java.util.Set<String> LIFECYCLE_MASTERS = java.util.Set.of(
+            "goods", "mould", "client", "supplier", "color", "unit", "warehouse");
+
     @Test
     void nineMastersUseMatchingControllerAndServiceActionGates() {
         for (MasterSpec spec : MASTERS) {
@@ -39,9 +47,41 @@ class MasterDataActionPermissionContractTest {
                 assertGateContains(layer, "update",
                         spec.prefix() + ":edit", spec.prefix() + ":status");
                 assertGateContains(layer, "changeStatus", spec.prefix() + ":status");
-                assertGateContains(layer, "delete", spec.prefix() + ":delete");
+                if (!LIFECYCLE_MASTERS.contains(spec.prefix())) {
+                    assertGateContains(layer, "delete", spec.prefix() + ":delete");
+                }
             }
         }
+    }
+
+    @Test
+    void lifecycleCommandsKeepTheSameSplitGatesOnBothLayers() throws Exception {
+        Class<?> controller = type("com.uten.imp.features.master.lifecycle.MasterLifecycleController");
+        Class<?> kinds = type("com.uten.imp.features.master.lifecycle.MasterEntityKind");
+        java.util.Map<String, String> entityOfPrefix = java.util.Map.of(
+                "goods", "Goods", "mould", "Mould", "client", "Client", "supplier", "Supplier",
+                "color", "Color", "unit", "Unit", "warehouse", "Warehouse");
+        java.util.Map<String, String> kindOfPrefix = java.util.Map.of(
+                "goods", "GOODS", "mould", "MOULD", "client", "CLIENT", "supplier", "SUPPLIER",
+                "color", "COLOR", "unit", "UNIT", "warehouse", "WAREHOUSE");
+        java.util.Map<String, String> pathOfPrefix = java.util.Map.of(
+                "goods", "goods", "mould", "mould", "client", "client", "supplier", "supplier",
+                "color", "color", "unit", "unit", "warehouse", "warehouse");
+        for (String prefix : LIFECYCLE_MASTERS) {
+            // 控制器层：每个主档一个显式映射，权限点写死在注解上。
+            assertGateContains(controller, "delete" + entityOfPrefix.get(prefix), prefix + ":delete");
+            assertGateContains(controller, pathOfPrefix.get(prefix) + "Status", prefix + ":status");
+            assertGateContains(controller, pathOfPrefix.get(prefix) + "Delete", prefix + ":delete");
+            // 服务层：按主档种类取同一组权限码，编程式二次校验。
+            Object kind = java.util.Arrays.stream(kinds.getEnumConstants())
+                    .filter(k -> ((Enum<?>) k).name().equals(kindOfPrefix.get(prefix)))
+                    .findFirst().orElseThrow();
+            assertThat(kinds.getMethod("deletePermission").invoke(kind)).isEqualTo(prefix + ":delete");
+            assertThat(kinds.getMethod("statusPermission").invoke(kind)).isEqualTo(prefix + ":status");
+        }
+        assertThat(source(type("com.uten.imp.features.master.lifecycle.MasterLifecycleService")))
+                .contains("CurrentAuthorityGuard.requireAll(kind.deletePermission())")
+                .contains("CurrentAuthorityGuard.requireAll(kind.statusPermission())");
     }
 
     @Test

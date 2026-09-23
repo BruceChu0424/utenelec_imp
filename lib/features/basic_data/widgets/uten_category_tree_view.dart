@@ -1,22 +1,21 @@
 // UtenCategoryTreeView - 通用分类树组件（泛型 T extends UtenTreeNode<T>）。
 //
-// 由原货品分类树泛化：任何实现 UtenTreeNode 的节点都可复用，统一树外观
-// （搜索 / 展开折叠 / 搜索命中路径自动展开 / 选中高亮 / code 排序 /
-//   点行展开 / 子节点数徽标 / trailing 插槽）。
+// 任何实现 UtenTreeNode 的节点都可复用，统一树外观(搜索 / 展开折叠 / 搜索命中路径
+// 自动展开 / 选中高亮 / code 排序 / 点行展开 / trailing 插槽)。
 // 现有复用方：货品/模具/客户/供应商（ProductCategoryNode）、收付款类别（PaymentStyleNode）。
 //
-// 拷贝自 UtenDepartmentTreeView，去掉部门特有的 level 徽标逻辑
-// （kSelectableDepartmentLevels / departmentLevelTag / kCompanyDepartmentLevel /
-//   showCompanyRoot 参数及相关分支）。
+// 实现在 shared 的 UtenHierarchyTreeView(与组织架构树共用一份，ADR-111)；本组件只把
+// 分类的口径传进去：行文字「名称(编码)」、同级默认按编码排序、全部节点可点、
+// 「未分类(历史孤儿)」这类大杂烩节点可默认收起。
 import 'package:flutter/material.dart';
 
-import '../../../components/inputs/uten_search_bar.dart';
+import '../../../shared/widgets/uten_hierarchy_tree_view.dart';
 import '../models/uten_tree_node.dart';
 
-/// 树的选择语义。
-enum UtenCategoryTreeMode { none, single, multi }
+/// 树的选择语义(与组织架构树同一枚举)。
+typedef UtenCategoryTreeMode = UtenTreeSelectMode;
 
-class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
+class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
   const UtenCategoryTreeView({
     super.key,
     required this.nodes,
@@ -43,358 +42,63 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
 
   /// 名称包含任一关键词的节点，默认不展开（即使深度在 [initiallyExpandDepth] 内）。
   /// 用于「未分类（历史孤儿）」这类大杂烩节点：默认收起，避免一进来就铺开几百行。
-  /// 用户仍可手动点开；搜索命中路径的自动展开不受此限制。
   final Set<String> initiallyCollapsedNames;
 
-  /// 外部受控可见节点集合（可选）。
-  ///
-  /// 非 null 时仅渲染集合内节点——调用方算好「命中节点 + 其祖先链」传进来，
-  /// 用于货品资料页「搜货品/搜分类定位」：命中节点的祖先链也会自动展开（见 _buildNode）。
-  /// null = 不限（默认），其他复用方零影响。
+  /// 外部受控可见节点集合(可选)：非 null 时仅渲染集合内节点(命中节点 + 祖先链)，
+  /// 用于货品资料页「搜货品/搜分类定位」。null = 不限。
   final Set<String>? visibleFilterIds;
 
-  /// 页面层统一搜索的当前关键词。传入后即使 [showSearch] 为 false，也能让树展示
-  /// 加载/失败/无结果反馈；Repository/API 仍由页面负责，树组件只负责视觉状态。
+  /// 页面层统一搜索的当前关键词：即使 [showSearch] 为 false，也展示加载/失败/无结果反馈。
   final String? externalSearchQuery;
-
-  /// 页面层统一搜索正在异步查主档（货品/客户/员工等）。
   final bool externalSearchLoading;
-
-  /// 页面层统一搜索失败文案；为 null 表示无错误。
   final String? externalSearchError;
 
-  /// 是否在组件内按编码重排同级节点。
-  ///
-  /// 默认保留既有分类页行为；服务端已按业务 sortOrder 返回的页面可设为 false，
-  /// 让树忠实展示调用方顺序。
+  /// 是否在组件内按编码重排同级节点；服务端已按业务 sortOrder 返回的页面设 false。
   final bool sortByCode;
 
-  /// 点击节点文字行时是否同时展开/收起子类（有子节点才生效）。
-  ///
-  /// 查看类页面（货品/模具/客户/供应商/收付款类别资料）设 true：点分类既选中又展开，
-  /// 不必只点 chevron 图标。管理页（分类 CRUD）保持 false，行点击仅选中。
+  /// 点击节点文字行时是否同时展开/收起子类(查看类页面 true，管理页 false)。
   final bool expandOnRowTap;
 
-  /// 树数据（调用方给，组件不自己拉）。
   final List<T> nodes;
-
-  /// 选择语义：none（纯浏览/管理）/ single / multi。
   final UtenCategoryTreeMode mode;
-
-  /// 当前选中节点 id（none=高亮；single=勾选项；multi=勾选集合）。
   final Set<String> selectedIds;
-
-  /// single/multi 模式下可选节点被点击。
   final void Function(T node)? onToggleSelect;
-
-  /// none 模式下的行点击（如管理页选中查看）。
   final void Function(T node)? onNodeTap;
 
   /// 节点是否可点/可选。默认全部可点（分类无骨架层级概念）。
   final bool Function(T node)? nodeEnabledPredicate;
-
-  /// 是否显示顶部搜索框。
   final bool showSearch;
-
-  /// 默认展开深度（depth < 该值的节点展开）。
   final int initiallyExpandDepth;
-
-  /// 节点尾部操作插槽（在内置选择控件之前）。
   final Widget? Function(T node)? trailingBuilder;
-
-  /// 顶部标题区。
   final Widget? header;
-
   final String searchHint;
   final Key? searchFieldKey;
-
-  /// 搜索无命中时的文案。
   final String? emptySearchText;
 
   @override
-  State<UtenCategoryTreeView<T>> createState() =>
-      _UtenCategoryTreeViewState<T>();
-}
-
-class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
-    extends State<UtenCategoryTreeView<T>> {
-  final _searchCtl = TextEditingController();
-  late Set<String> _expanded;
-  String _query = '';
-
-  bool get _searching => _query.trim().isNotEmpty;
-
-  bool _enabled(T node) {
-    final p = widget.nodeEnabledPredicate;
-    return p != null ? p(node) : true;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _expanded = _defaultExpanded();
-    _searchCtl.addListener(() => setState(() => _query = _searchCtl.text));
-  }
-
-  @override
-  void didUpdateWidget(UtenCategoryTreeView<T> oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.nodes != oldWidget.nodes ||
-        widget.initiallyExpandDepth != oldWidget.initiallyExpandDepth) {
-      // 保留已展开节点，补上默认可展开的新节点。
-      _expanded.addAll(_defaultExpanded());
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchCtl.dispose();
-    super.dispose();
-  }
-
-  Set<String> _defaultExpanded() {
-    final out = <String>{};
-    bool collapsed(T n) =>
-        widget.initiallyCollapsedNames.any((k) => n.name.contains(k));
-    void walk(List<T> nodes, int depth) {
-      for (final n in nodes) {
-        if (n.hasChildren &&
-            depth < widget.initiallyExpandDepth &&
-            !collapsed(n)) {
-          out.add(n.id);
-        }
-        walk(n.children, depth + 1);
-      }
-    }
-
-    walk(widget.nodes, 0);
-    return out;
-  }
-
-  /// 搜索时：命中节点 + 其全部祖先（命中路径自动展开）。
-  Set<String> _visibleIds() {
-    final q = _query.trim().toLowerCase();
-    final visible = <String>{};
-    bool walk(List<T> nodes, List<String> ancestors) {
-      var anyHit = false;
-      for (final n in nodes) {
-        final selfHit =
-            n.name.toLowerCase().contains(q) ||
-            n.code.toLowerCase().contains(q);
-        final childHit = walk(n.children, [...ancestors, n.id]);
-        if (selfHit || childHit) {
-          visible.addAll(ancestors);
-          visible.add(n.id);
-          anyHit = true;
-        }
-      }
-      return anyHit;
-    }
-
-    walk(widget.nodes, const []);
-    return visible;
-  }
-
-  /// 按 code 字母序排序子节点（A-Z；空编码排前，中文按 Unicode 序排后）。
-  List<T> _sortedChildren(List<T> ns) {
-    if (!widget.sortByCode) return ns;
-    return [...ns]..sort((a, b) => a.code.compareTo(b.code));
-  }
-
-  void _toggleExpand(T node) {
-    if (_searching) return;
-    setState(() {
-      if (_expanded.contains(node.id)) {
-        _expanded.remove(node.id);
-      } else {
-        _expanded.add(node.id);
-      }
-    });
-  }
-
-  void _onRowTap(T node) {
-    if (_enabled(node)) {
-      // 查看页：点有子节点的行先展开/收起，再走选中/勾选语义。
-      if (widget.expandOnRowTap && node.hasChildren) _toggleExpand(node);
-      switch (widget.mode) {
-        case UtenCategoryTreeMode.none:
-          widget.onNodeTap?.call(node);
-        case UtenCategoryTreeMode.single:
-        case UtenCategoryTreeMode.multi:
-          widget.onToggleSelect?.call(node);
-      }
-    } else if (node.hasChildren) {
-      _toggleExpand(node);
-    }
-  }
-
-  Widget _buildNode(T node, int depth, Set<String>? visibleFilter) {
-    if (visibleFilter != null && !visibleFilter.contains(node.id)) {
-      return const SizedBox.shrink();
-    }
-    final theme = Theme.of(context);
-    final enabled = _enabled(node);
-    // 外部可见集合（搜索定位用）：命中节点的祖先链也展开，否则深层命中不可见。
-    // 用原始 widget.visibleFilterIds 判展开（非 effective 交集），内部搜索不误展开外部节点。
-    final externalFilter = widget.visibleFilterIds;
-    final expanded =
-        _searching ||
-        _expanded.contains(node.id) ||
-        (externalFilter != null && externalFilter.contains(node.id));
-    final isSelected = widget.selectedIds.contains(node.id);
-    final trailing = widget.trailingBuilder?.call(node);
-    final highlight = widget.mode == UtenCategoryTreeMode.none && isSelected;
-
-    final row = Material(
-      color: highlight ? theme.colorScheme.primaryContainer : null,
-      borderRadius: BorderRadius.circular(8),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _onRowTap(node),
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: 8 + depth * 18.0,
-            right: 8,
-            top: 6,
-            bottom: 6,
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 24,
-                child: node.hasChildren
-                    ? GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _toggleExpand(node),
-                        child: Icon(
-                          expanded
-                              ? Icons.expand_more_rounded
-                              : Icons.chevron_right_rounded,
-                          size: 20,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  node.code.isEmpty ? node.name : '${node.name}(${node.code})',
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    color: enabled
-                        ? (isSelected ? theme.colorScheme.primary : null)
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              ?trailing,
-              if (enabled && widget.mode == UtenCategoryTreeMode.multi)
-                Checkbox(
-                  value: isSelected,
-                  onChanged: (_) => widget.onToggleSelect?.call(node),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                )
-              else if (enabled &&
-                  widget.mode == UtenCategoryTreeMode.single &&
-                  isSelected)
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        row,
-        if (node.hasChildren && expanded)
-          for (final c in _sortedChildren(node.children))
-            _buildNode(c, depth + 1, visibleFilter),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final roots = _sortedChildren(widget.nodes);
-    final internal = _searching ? _visibleIds() : null;
-    final external = widget.visibleFilterIds;
-    final externalQuery = widget.externalSearchQuery?.trim() ?? '';
-    final externalSearching = externalQuery.isNotEmpty;
-    // 内部搜索集合与外部集合同时存在时取交集；否则取非空那个；都空则不限（null）。
-    final Set<String>? visibleFilter = internal != null && external != null
-        ? internal.intersection(external)
-        : (internal ?? external);
-    final showExternalEmpty =
-        externalSearching &&
-        !widget.externalSearchLoading &&
-        widget.externalSearchError == null &&
-        (visibleFilter?.isEmpty ?? false);
-    return Column(
-      children: [
-        ?widget.header,
-        if (widget.showSearch)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            // 本地过滤：_searchCtl 的监听器随每次输入（含内置清除按钮）刷新 _query。
-            child: UtenSearchBar(
-              key: widget.searchFieldKey,
-              controller: _searchCtl,
-              hint: widget.searchHint,
-            ),
-          ),
-        if (widget.externalSearchLoading)
-          const LinearProgressIndicator(minHeight: 2),
-        if (widget.externalSearchError != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                widget.externalSearchError!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ),
-          ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.only(bottom: 8),
-            children: [
-              for (final r in roots) _buildNode(r, 0, visibleFilter),
-              if ((_searching && (visibleFilter?.isEmpty ?? false)) ||
-                  showExternalEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Center(
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        widget.emptySearchText ??
-                            '未找到匹配「${externalSearching ? externalQuery : _query}」的分类或内容', // TODO(l10n): 补 arb
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => UtenHierarchyTreeView<T>(
+    nodes: nodes,
+    mode: mode,
+    selectedIds: selectedIds,
+    onToggleSelect: onToggleSelect,
+    onNodeTap: onNodeTap,
+    nodeEnabledPredicate: nodeEnabledPredicate,
+    showSearch: showSearch,
+    initiallyExpandDepth: initiallyExpandDepth,
+    initiallyCollapsedNames: initiallyCollapsedNames,
+    trailingBuilder: trailingBuilder,
+    labelOf: (node) =>
+        node.code.isEmpty ? node.name : '${node.name}(${node.code})',
+    header: header,
+    searchHint: searchHint,
+    searchFieldKey: searchFieldKey,
+    emptySearchText: emptySearchText,
+    emptyNoun: '分类或内容', // TODO(l10n): 补 arb
+    expandOnRowTap: expandOnRowTap,
+    visibleFilterIds: visibleFilterIds,
+    externalSearchQuery: externalSearchQuery,
+    externalSearchLoading: externalSearchLoading,
+    externalSearchError: externalSearchError,
+    sortByCode: sortByCode,
+  );
 }

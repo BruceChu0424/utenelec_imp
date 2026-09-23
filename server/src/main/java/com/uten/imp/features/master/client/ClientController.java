@@ -19,7 +19,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,7 +42,7 @@ import java.util.UUID;
  * - GET  /api/master/clients/{id}                                                     → 详情
  * - POST /api/master/clients                                                          → 新建（client:edit）
  * - PUT  /api/master/clients/{id}                                                     → 编辑（client:edit）
- * - DEL  /api/master/clients/{id}                                                     → 删除（client:edit，软删）
+ * - DEL  /api/master/clients/{id} 与批量启停/删除 → 见 MasterLifecycleController(ADR-111，带引用保护)
  *
  * 权限点 client:view 由种子化（全部部门）；client:edit 授综合营销部（超管恒有）。
  */
@@ -199,9 +198,4 @@ public class ClientController {
         return service.changeStatus(id, req);
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('client:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
-    }
 }

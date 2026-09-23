@@ -44,11 +44,12 @@ MasterDataTableView<_Row> _table(
 Widget _wrap(MasterDataTableView<_Row> table) =>
     MaterialApp(home: Scaffold(body: table));
 
-/// 横向滚动条 = 树序第二个 Scrollbar（外层竖向、内层横向）。
+/// 横向滚动条 = 树里唯一的框架 Scrollbar（2026-09-22 起竖向改自绘
+/// UtenContentScrollbar 覆盖层，不再走框架 Scrollbar）。
 RenderBox _hBarBox(WidgetTester tester) {
   final bars = find.byType(Scrollbar).evaluate().toList();
-  expect(bars.length, 2, reason: '竖向 + 横向两个 Scrollbar');
-  return bars[1].findRenderObject() as RenderBox;
+  expect(bars.length, 1, reason: '仅横向一个框架 Scrollbar（竖向为自绘覆盖层）');
+  return bars[0].findRenderObject() as RenderBox;
 }
 
 /// 最后一行底边：末行末格文本向上找最宽的祖先 DecoratedBox（= 整行，含底边线）。

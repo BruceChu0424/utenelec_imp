@@ -321,6 +321,51 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         assertNull(ordered.growableLineQty());
     }
 
+    /**
+     * 销售订单来源的顶层(自制)按需求排满后再追加一批纯公共备货产出, 带「立即审核」。
+     * 2026-09-22 用户实机: 主表顶层追加 1000 点下单, 审核里的销售分摊看到「归本需求量 0」就抛
+     * 409「计划明细缺少可排产的销售需求量」——公共备货产出本来就不进订单侧, 不该要求分摊。
+     */
+    @Test void fullyPlannedSalesRootCanAppendAPureSurplusBatchWithApproveNow() {
+        var w=fixture.seedWorld("planned-sales-surplus");
+        UUID order=fixture.createApprovedOrder(w,w.goodsA(),"10","100");
+        UUID orderItem=ReflectionTestUtils.invokeMethod(fixture,"orderItemId",order);
+        fixture.loginAs(w.superAdminUserId());
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"planned-sales-preview-"+order,
+                List.of(new PreviewItem("SALES_ORDER_ITEM",orderItem,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal("10")))));
+        UUID rootItem=view.products().getFirst().analysisLineId();
+        ReflectionTestUtils.invokeMethod(fixture,"confirmRootMakeRoute",view.analysisId(),analyses.detail(view.analysisId()));
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","planned-sales-surplus");
+        UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId");
+        UUID worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        AnalysisView confirmed=analyses.detail(view.analysisId());
+        // 先按需求 10 排满(立即审核)。
+        commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(confirmed.version(),confirmed.fingerprint(),
+                "planned-sales-full-"+order,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,rootItem,new BigDecimal("10"),null,null,workshop,null,worker,null,null))));
+        AnalysisView planned=analyses.detail(view.analysisId());
+        assertFalse(product(planned,rootItem).canSchedule());assertTrue(product(planned,rootItem).canIssueSurplus());
+        qty("10",product(planned,rootItem).issuedPlanQty());
+        BigDecimal plannedBefore=db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem);
+        UUID fullPlan=db.queryForObject("SELECT plan_id FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=?",UUID.class,view.analysisId(),rootItem);
+        String approvedStatus=db.queryForObject("SELECT status FROM production_plans WHERE id=?",String.class,fullPlan);
+        // 再追加 4: 纯公共备货 + 立即审核, 必须放行。
+        commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(planned.version(),planned.fingerprint(),
+                "planned-sales-surplus-"+order,w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,rootItem,new BigDecimal("4"),null,null,workshop,null,worker,null,null,Boolean.TRUE))));
+        UUID surplusPlan=db.queryForObject("SELECT plan_id FROM production_material_analysis_plan_links WHERE analysis_id=? AND analysis_item_id=? AND plan_id<>? ORDER BY created_at DESC LIMIT 1",
+                UUID.class,view.analysisId(),rootItem,fullPlan);
+        Object[] link=db.queryForObject("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE plan_id=?",
+                (rs,i)->new Object[]{rs.getBigDecimal(1),rs.getBigDecimal(2)},surplusPlan);
+        qty("0",(BigDecimal)link[0]);qty("4",(BigDecimal)link[1]);
+        // 与第一张一样审核通过; 纯公共备货不进订单侧: 订单行 planned_qty 不动、这张计划没有销售分摊。
+        assertEquals(approvedStatus,db.queryForObject("SELECT status FROM production_plans WHERE id=?",String.class,surplusPlan));
+        qty(plannedBefore.toPlainString(),db.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",BigDecimal.class,orderItem));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM plan_order_item_links link JOIN production_plan_items item ON item.id=link.plan_item_id WHERE item.plan_id=? AND link.is_deleted=FALSE",
+                Integer.class,surplusPlan));
+        qty("14",product(analyses.detail(view.analysisId()),rootItem).issuedPlanQty());
+    }
+
     /** 根(自制) -> S(委外, 有自制子层) -> {C(自制), D(采购)}。 */
     private record SubTree(FullChainEndToEndTest.World world,UUID analysis,UUID subLine) {}
 

@@ -55,14 +55,14 @@ public class SalesShipmentAttachmentAccessPolicy implements AttachmentOwnerAcces
         return document;
     }
     private void readable(SalesShipment document, AuthUser user) {
-        boolean finance = has(user, "finance_shipment_audit") && enteredFinanceFlow(document);
+        boolean finance = has(user, "sales_shipment_finance:view") && enteredFinanceFlow(document);
         if (document.isDeleted() || !(has(user, permission(document, "view")) || finance
-                || has(user, "sales_shipment:warehouse-work"))) throw missing();
+                || has(user, "warehouse_sales_outbound:view"))) throw missing();
         if (finance) {
-            access.requireReadable(document.getOwnerEmployeeId(), "销售出货单不存在", "finance_shipment_audit");
+            access.requireReadable(document.getOwnerEmployeeId(), "销售出货单不存在", "sales_shipment_finance:view");
         } else {
             access.requireReadable(document.getOwnerEmployeeId(), "销售出货单不存在",
-                    "sales_shipment:reject", "sales_shipment:warehouse-work");
+                    "sales_shipment:reject", "warehouse_sales_outbound:view");
         }
         if (!finance && !has(user, SalesPriceMasker.PERM)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "出货原件包含商业金额，需要销售价格查看权限");

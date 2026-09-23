@@ -2,9 +2,10 @@
 //
 // account:support 可执行账号锁定/启停/重置密码。
 // authorization:manage + superAdmin 才显示个人/部门授权与数据范围。
-// 顶部说明条 + 超管可见的分段切换「按员工 | 按部门」。
+// 顶部说明条 + 超管可见的分段切换「按员工 | 按部门 | 全员基础包」。
 // 按员工：主从布局（expanded 左列表右详情；compact 列表 → 详情带返回）。
 // 按部门：单选部门 + 从完整权限目录勾选权限点（见 widgets/admin_department_perm_view.dart）。
+// 全员基础包：每个在职员工默认拥有的码(见 widgets/admin_baseline_perm_view.dart)。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 路由守卫与工作台显隐共用 permission_by_path.dart。
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
+import '../widgets/admin_baseline_perm_view.dart';
 import '../widgets/admin_department_perm_view.dart';
 import '../widgets/admin_user_detail_panel.dart';
 import '../widgets/provision_account_dialog.dart';
@@ -47,7 +49,7 @@ class AdminPermissionsPage extends ConsumerStatefulWidget {
 }
 
 class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
-  /// 0=按员工，1=按部门
+  /// 0=按员工，1=按部门，2=全员基础包
   int _segment = 0;
 
   @override
@@ -111,6 +113,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
               segments: const [
                 UtenSegment(value: 0, label: '按员工'),
                 UtenSegment(value: 1, label: '按部门'),
+                UtenSegment(value: 2, label: '全员基础包'),
               ],
               selected: segment,
               onChanged: (value) => setState(() => _segment = value),
@@ -128,6 +131,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
                 AdminDepartmentPermView(
                   initialDepartmentId: widget.initialDepartmentId,
                 ),
+              if (canManageAuthorization) const AdminBaselinePermView(),
             ],
           ),
         ),

@@ -240,7 +240,6 @@ class _ProfileSessionNotifier extends SessionNotifier {
       id: 'user-1',
       code: 'E001',
       name: 'Test User',
-      roles: [],
       employeeId: 'employee-1',
     ),
   );

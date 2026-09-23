@@ -60,8 +60,7 @@ class GoodsListUuidReferenceTest {
 
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), "tester",
-                Set.of(), Set.of("goods:view"), false, true, false)));
+                UUID.randomUUID(), UUID.randomUUID(), "tester", Set.of("goods:view"), false, true, false)));
 
         GoodsService service = new GoodsService(
                 goodsRepo,

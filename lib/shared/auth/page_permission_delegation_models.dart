@@ -4,6 +4,7 @@
 // `员工数 × 权限数` 的完整矩阵。
 
 import 'permission_action_type.dart';
+import 'permission_grant_policy.dart';
 
 class PageDelegationCapability {
   const PageDelegationCapability({
@@ -150,7 +151,7 @@ class PageStaffPermissionState {
     required this.editable,
     this.actionType = PermissionActionType.other,
     this.description,
-    this.bulkAssignable = true,
+    this.grantPolicy = PermissionGrantPolicy.normalOnly,
     this.sensitivity = 'NORMAL',
     this.reason,
   });
@@ -159,7 +160,9 @@ class PageStaffPermissionState {
   final String name;
   final PermissionActionType actionType;
   final String? description;
-  final bool bulkAssignable;
+
+  /// 授权策略(服务端唯一事实源，ADR-109)，只用于展示说明标签。
+  final PermissionGrantPolicy grantPolicy;
   final String sensitivity;
   final bool baseEffective;
   final bool delegationEnabled;
@@ -176,7 +179,7 @@ class PageStaffPermissionState {
       name: json['name'] as String? ?? json['code'] as String,
       actionType: PermissionActionType.fromJson(json['actionType']),
       description: _optionalText(json['description']),
-      bulkAssignable: json['bulkAssignable'] as bool? ?? true,
+      grantPolicy: PermissionGrantPolicy.fromJson(json['grantPolicy']),
       sensitivity: json['sensitivity'] as String? ?? 'NORMAL',
       baseEffective:
           (json['baseEffective'] ?? json['targetBaseEffective']) as bool? ??

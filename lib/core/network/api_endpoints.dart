@@ -267,7 +267,6 @@ abstract final class ApiEndpoints {
   static const rdTasks = '/rd-tasks';
   static const rdTaskCount = '$rdTasks/count';
   static String rdTaskResolve(String id) => '$rdTasks/$id/resolve';
-  static String rdTaskAssign(String id) => '$rdTasks/$id/assign';
 
   // 货品资料分类（基础资料 / master-data）
   static const materialCategories = '/master/material-categories';
@@ -505,6 +504,13 @@ abstract final class ApiEndpoints {
   static String userPermOverrides(String id) =>
       '/admin/users/$id/permission-overrides';
 
+  /// 个人「全部授权 / 本模块 / 本组」：服务端按授权策略补齐(ADR-109)。
+  static String userPermGrantAll(String id) =>
+      '/admin/users/$id/permission-overrides/grant-all';
+
+  /// 全员基础包(每个在职员工都隐式持有的码)。
+  static const adminPermissionBaseline = '/admin/permission-baseline';
+
   /// 完整权限目录（按 category 分组、已排序）
   static const adminPermissionCatalog = '/admin/permission-catalog';
 
@@ -512,7 +518,11 @@ abstract final class ApiEndpoints {
   static String departmentPermissions(String id) =>
       '/admin/departments/$id/permissions';
 
-  /// 员工有效权限（部门 ∪ 角色 ± 个人覆盖，后端计算）
+  /// 部门「全部授权 / 本模块 / 本组」：服务端按授权策略补齐(ADR-109)。
+  static String departmentPermGrantAll(String id) =>
+      '/admin/departments/$id/permissions/grant-all';
+
+  /// 员工有效权限(全员基础 ∪ 部门 ± 个人覆盖 ∪ 负责人委派，后端计算)
   static String userEffectivePermissions(String id) =>
       '/admin/users/$id/effective-permissions';
 
@@ -559,7 +569,6 @@ abstract final class ApiEndpoints {
 
   /// 冷启动会话校验（访客主体；401 时拦截器自动走刷新流程）。
   static const visitorMe = '/visitor/me';
-  static const visitorDirectoryDepartments = '/visitor/directory/departments';
   static const visitorDirectoryEmployees = '/visitor/directory/employees';
   static const visitorApplicationsMine = '/visitor/applications/mine';
   static const visitorApplications = '/visitor/applications';

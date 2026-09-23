@@ -90,7 +90,7 @@ class _FinanceAuditCenterPageState
     bool can(String code) => superAdmin || permissions.contains(code);
 
     final canSales = can(Perm.salesOrderFinanceView);
-    final canShipment = can(Perm.financeShipmentAudit);
+    final canShipment = can(Perm.salesShipmentFinanceView);
     final canProcurement = can(Perm.financeOrderApprovalView);
     final canIqc = can(Perm.procurementIqcRejectionView);
 

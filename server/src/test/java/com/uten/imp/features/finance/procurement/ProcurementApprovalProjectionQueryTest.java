@@ -281,7 +281,6 @@ class ProcurementApprovalProjectionQueryTest {
                 userId,
                 UUID.randomUUID(),
                 "tester",
-                Set.of(),
                 permissions,
                 false,
                 true,

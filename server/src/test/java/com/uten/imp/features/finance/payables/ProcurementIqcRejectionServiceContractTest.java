@@ -194,7 +194,7 @@ class ProcurementIqcRejectionServiceContractTest {
         UUID globalUserId = UUID.randomUUID();
         EntityManager globalEm = mock(EntityManager.class);
         SecurityContextCurrentUser globalCurrent =
-                currentUser(globalUserId, "procurement_iqc_rejection:view_all");
+                currentUser(globalUserId, "procurement_iqc_rejection:view:all");
         List<NativeCall> globalCalls = new ArrayList<>();
         stubCountsQuery(globalEm, globalCalls);
         ProcurementIqcRejectionService global = service(
@@ -314,7 +314,6 @@ class ProcurementIqcRejectionServiceContractTest {
                 userId,
                 UUID.randomUUID(),
                 "iqc-test",
-                java.util.Set.of(),
                 java.util.Set.of(permissions),
                 false,
                 true,

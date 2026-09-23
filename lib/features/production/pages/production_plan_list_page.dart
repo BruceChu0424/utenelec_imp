@@ -25,6 +25,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -87,17 +88,13 @@ class _ProductionPlanListPageState
   final Set<String> _selectedIds = {};
   bool _batching = false;
 
-  bool get _canBatchApprove {
-    final permissions = ref.read(currentPermissionsProvider);
-    return permissions.contains(Perm.productionPlanBatchApprove) &&
-        permissions.contains(Perm.productionPlanApprove);
-  }
+  // 批量审核 / 删除与单张同一个码(permissions-06：旧的前端专属批量码已删除，
+  // 服务端批量端点只认 approve / delete)。
+  bool get _canBatchApprove =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanApprove);
 
-  bool get _canBatchDelete {
-    final permissions = ref.read(currentPermissionsProvider);
-    return permissions.contains(Perm.productionPlanBatchDelete) &&
-        permissions.contains(Perm.productionPlanDelete);
-  }
+  bool get _canBatchDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanDelete);
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<ProductionPlanListItem>> _fetch() async {
@@ -155,32 +152,39 @@ class _ProductionPlanListPageState
     _reload(1);
   }
 
-  /// 批量审核选中（草稿→已审）：逐条调 approve；非草稿服务端拒绝，计为跳过。
+  /// 批量审核选中(草稿→已审)：一次请求、服务端单事务；非草稿计为跳过。
   Future<void> _batchApprove() => _runBatch(
     verb: '审核',
     danger: false,
     reviewerResponsibility: true,
-    run: (id) async {
-      await ref.read(productionPlanRepositoryProvider).approve(id);
-    },
+    run: (ids) => ref.read(productionPlanRepositoryProvider).batchApprove(ids),
   );
 
-  /// 批量删除选中草稿：逐条调 delete（仅草稿）；非草稿跳过，删除不可撤销。
+  /// 批量删除选中草稿：一次请求、服务端单事务；非草稿计为跳过，删除不可撤销。
   Future<void> _batchDelete() => _runBatch(
     verb: '删除',
     danger: true,
-    run: (id) => ref.read(productionPlanRepositoryProvider).delete(id),
+    run: (ids) => ref.read(productionPlanRepositoryProvider).batchDelete(ids),
   );
 
-  /// 批量执行通用骨架：确认 → 逐条调用（非草稿/失败计跳过）→ 清空选中并刷新 + 结果提示。
+  /// 批量执行通用骨架：确认 → 一次服务端批量请求(单事务，任何一张失败整批回滚)
+  /// → 清空选中并刷新 + 结果提示。
   Future<void> _runBatch({
     required String verb,
     required bool danger,
-    required Future<void> Function(String id) run,
+    required Future<ProductionPlanBatchResult> Function(List<String> ids) run,
     bool reviewerResponsibility = false,
   }) async {
     final ids = _selectedIds.toList();
     if (ids.isEmpty || _batching) return;
+    // 服务端单事务逐张执行，一次太多会超过接收超时；超过上限先请用户分批勾选。
+    if (ids.length > ProductionPlanRepository.batchLimit) {
+      context.appWarning(
+        '一次最多批量$verb ${ProductionPlanRepository.batchLimit} 张，'
+        '当前勾选了 ${ids.length} 张，请减少勾选后分批处理',
+      );
+      return;
+    }
     final message = danger
         ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
         : '将审核选中的 ${ids.length} 个生产计划单(草稿→已审)；非草稿将被跳过。';
@@ -201,15 +205,35 @@ class _ProductionPlanListPageState
           );
     if (confirmed != true) return;
     setState(() => _batching = true);
-    var success = 0;
-    var skipped = 0;
-    for (final id in ids) {
-      try {
-        await run(id);
-        success++;
-      } catch (_) {
-        skipped++;
+    ProductionPlanBatchResult result;
+    try {
+      result = await run(ids);
+    } catch (error) {
+      if (!mounted) return;
+      // 网络中断或超时：服务端可能已经提交，不能说「没有任何计划被处理」。
+      // 先按服务端最新状态刷新列表，再请用户按列表核对，而不是直接重试。
+      final uncertain =
+          error is NetworkException ||
+          error is NetworkTimeoutException ||
+          (error is ApiException && (error.httpStatus ?? 0) >= 500);
+      if (uncertain) {
+        setState(() {
+          _batching = false;
+          _selectedIds.clear();
+        });
+        await _reload();
+        if (mounted) {
+          context.appWarning(
+            '网络中断，没能确认批量$verb是否已完成；列表已按最新状态刷新，'
+            '请核对后再决定是否重新$verb',
+          );
+        }
+        return;
       }
+      setState(() => _batching = false);
+      // 服务端明确拒绝：单事务整批未生效，提示里带上是哪一张、为什么。
+      context.appApiError(error, fallback: '批量$verb未完成，本次没有任何计划被$verb');
+      return;
     }
     if (!mounted) return;
     setState(() {
@@ -218,7 +242,14 @@ class _ProductionPlanListPageState
     });
     await _reload();
     if (mounted) {
-      context.appSuccess('批量$verb完成：成功 $success，跳过 $skipped');
+      final reasons = result.skipped
+          .take(3)
+          .map((row) => '${row.billNo ?? '计划'}：${row.reason}')
+          .join('；');
+      context.appSuccess(
+        '批量$verb完成：成功 ${result.done.length}，跳过 ${result.skipped.length}'
+        '${reasons.isEmpty ? '' : '($reasons)'}',
+      );
     }
   }
 

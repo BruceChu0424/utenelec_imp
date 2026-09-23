@@ -126,7 +126,6 @@ class AuditControllerSecurityTest {
                 ACTOR_ID,
                 EMPLOYEE_ID,
                 "investigator",
-                Set.of(),
                 Set.of(VIEW, EXPORT),
                 false,
                 true,

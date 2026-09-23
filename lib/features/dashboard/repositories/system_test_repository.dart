@@ -187,12 +187,17 @@ class BusinessDataResetPendingException extends ApiException {
 
 abstract interface class SystemTestRepository {
   /// 执行清空业务数据。成功后服务端已让所有人（含当前账号）下线，
-  /// 调用方应立即本地登出并跳登录页。
-  Future<BusinessDataResetResult> resetBusinessData();
+  /// 调用方应立即本地登出并跳登录页。[password] 是操作者本次重新输入的登录密码
+  /// (与改系统设置同一门槛)，只随请求体发送，不落本地。
+  Future<BusinessDataResetResult> resetBusinessData({required String password});
   Future<BusinessAttachmentResetPreview> previewBusinessAttachments();
+
+  /// 提前分批删除测试业务附件。与清空业务数据同一门槛：[password] 是操作者本次重新输入的
+  /// 登录密码，只随请求体发送，不落本地。
   Future<BusinessAttachmentResetPreview> prepareBusinessAttachments(
-    BusinessAttachmentResetPreview preview,
-  );
+    BusinessAttachmentResetPreview preview, {
+    required String password,
+  });
 
   /// 上次清空结果（重登后系统测试区回显；运行开关未开启时后端 403）。
   Future<BusinessDataResetLastResult> lastBusinessDataResetResult();
@@ -263,20 +268,24 @@ class ApiSystemTestRepository implements SystemTestRepository {
 
   @override
   Future<BusinessAttachmentResetPreview> prepareBusinessAttachments(
-    BusinessAttachmentResetPreview preview,
-  ) async => BusinessAttachmentResetPreview.fromJson(
+    BusinessAttachmentResetPreview preview, {
+    required String password,
+  }) async => BusinessAttachmentResetPreview.fromJson(
     await _api.post(
       '/system-test/business-data/attachments/prepare',
       body: {
         'confirm': '清理测试业务附件',
         'database': preview.database,
         'fingerprint': preview.fingerprint,
+        'password': password,
       },
     ),
   );
 
   @override
-  Future<BusinessDataResetResult> resetBusinessData() async {
+  Future<BusinessDataResetResult> resetBusinessData({
+    required String password,
+  }) async {
     if (_inFlight) throw BusinessDataResetPendingException();
     final operator = operatorId;
     if (operator == null || operator.isEmpty) {
@@ -304,7 +313,11 @@ class ApiSystemTestRepository implements SystemTestRepository {
       try {
         final json = await _api.postLongRunning(
           ApiEndpoints.systemTestBusinessDataReset,
-          body: {'confirm': '清空业务数据', 'attemptId': attempt.id},
+          body: {
+            'confirm': '清空业务数据',
+            'password': password,
+            'attemptId': attempt.id,
+          },
           receiveTimeout: businessDataResetReceiveTimeout,
         );
         final result = BusinessDataResetResult.fromJson(json);

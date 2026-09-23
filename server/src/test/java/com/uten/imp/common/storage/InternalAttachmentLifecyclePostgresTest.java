@@ -228,13 +228,20 @@ class InternalAttachmentLifecyclePostgresTest {
         Map<String,Object> approval=new HashMap<>();
         approval.put("confirm","清理测试业务附件");approval.put("database",preview.path("database").asText());
         approval.put("fingerprint",preview.path("fingerprint").asText());
+        // 提前删附件与清空业务数据同一门槛：不带本次密码 422，密码不对 401 且留下核对失败审计。
+        json(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",approval,HttpStatus.UNPROCESSABLE_ENTITY);
+        Map<String,Object> badPassword=new HashMap<>(approval);badPassword.put("password","not-"+password);
+        long failedChecks=jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='verify_password_failed'",Long.class);
+        json(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",badPassword,HttpStatus.UNAUTHORIZED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='verify_password_failed'",Long.class)).isEqualTo(failedChecks+1);
+        approval.put("password",password);
         Map<String,Object> wrong=new HashMap<>(approval);wrong.put("database","wrong-target");
         json(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",wrong,HttpStatus.CONFLICT);
         wrong=new HashMap<>(approval);wrong.put("fingerprint","not-current-preview");
         json(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",wrong,HttpStatus.CONFLICT);
         assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,fileId)).isEqualTo("CLEAN");
         json(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",approval,HttpStatus.OK);
-        json(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据"),HttpStatus.CONFLICT);
+        json(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据","password",password),HttpStatus.CONFLICT);
         for(int i=0;i<20&&outbox.processNext();i++) { /* real deletion processor */ }
         assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,fileId)).isEqualTo("DELETED");
         assertThat(http.exchange("/api/attachments/raw/"+key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -258,7 +265,7 @@ class InternalAttachmentLifecyclePostgresTest {
         long humans=jdbc.queryForObject("SELECT count(*) FROM employees",Long.class);
         String humanDigest=jdbc.queryForObject("SELECT md5(to_jsonb(attachment)::text) FROM attachments attachment WHERE id=?",String.class,UUID.fromString(human.attachment.path("id").asText()));
         Map<String, Integer> expectedPolicyCounts = reviewedResetPolicyCounts();
-        JsonNode result=json(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据"),HttpStatus.OK);
+        JsonNode result=json(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据","password",password),HttpStatus.OK);
         assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class)
                 .getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         // Reset revokes this shared session. Recover it before any further

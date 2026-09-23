@@ -6119,10 +6119,11 @@ public class MaterialAnalysisService {
         return new SharedFutureIndex(Map.copyOf(aggregates));
     }
 
+    /** 与 DocumentAccessPolicy.canRead 同口径：没有负责人的在途单据只对全量范围露出单号。 */
     private static boolean ownerVisible(
             OwnerVisibility.OwnerScope scope, UUID ownerEmployeeId) {
-        return scope.seeAll() || ownerEmployeeId == null
-                || scope.visibleOwners().contains(ownerEmployeeId);
+        return scope.seeAll() || ownerEmployeeId != null
+                && scope.visibleOwners().contains(ownerEmployeeId);
     }
 
     private Map<UUID, ClaimedFutureState> sharedFutureClaimedByMaterial(UUID analysisId) {

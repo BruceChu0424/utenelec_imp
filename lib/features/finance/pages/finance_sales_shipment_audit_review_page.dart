@@ -72,9 +72,12 @@ class _FinanceSalesShipmentAuditReviewPageState
   TaskClaimSession? _claim;
   int _loadGeneration = 0;
 
-  bool get _canDecide =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).contains(Perm.financeShipmentAudit);
+  /// 出货财审按动作分权(permissions-09)，按钮只按服务端下发的 allowedActions 显隐
+  /// (permissions-15)：动作码、对象范围、单据状态都由服务端一次算好，页面不再本地拼权限。
+  bool get _canApprove => _info?.allows('APPROVE') ?? false;
+  bool get _canReject => _info?.allows('REJECT') ?? false;
+  bool get _canReverse => _info?.allows('REVERSE') ?? false;
+  bool get _canDecide => _canApprove || _canReject;
 
   /// 免费发货不立应收，不需要记账汇率。
   bool get _isFreeShipment => _info?.billingMode == 'FREE';
@@ -175,9 +178,10 @@ class _FinanceSalesShipmentAuditReviewPageState
       // 先取详情判断状态，再决定是否认领（已办结单据不占认领）。
       final detail = await repo.detail(widget.id);
       if (!mounted || generation != _loadGeneration) return;
-      final decided =
-          detail.financeAudit == 1 || detail.shipmentWorkflow.financeRejected;
-      if (_canDecide && !decided) {
+      // 核对信息里带着本人此刻能做的动作；只有能放行或退回时才认领(已办结 / 无权的不占认领)。
+      final info = await repo.financeAuditInfo(widget.id);
+      if (!mounted || generation != _loadGeneration) return;
+      if (info.allows('APPROVE') || info.allows('REJECT')) {
         final claim = financeReviewClaim(container)..addListener(_claimChanged);
         _claim = claim;
         await claim.claimAll('SALES_SHIPMENT_FINANCE_AUDIT', [widget.id]);
@@ -186,8 +190,6 @@ class _FinanceSalesShipmentAuditReviewPageState
           return;
         }
       }
-      final info = await repo.financeAuditInfo(widget.id);
-      if (!mounted || generation != _loadGeneration) return;
 
       // 名称字典：客户/仓库/币种 + 明细货品 + 表头人员。
       await ref.read(salesMasterNameServiceProvider).ensureLoaded();
@@ -217,10 +219,6 @@ class _FinanceSalesShipmentAuditReviewPageState
         _rateController.text = info.suggestedExchangeRate ?? '';
         _rateError = null;
       });
-      // 快照不可读时仍允许查看单据，但决策按钮保持不可用并明示原因。
-      if (decided) {
-        await _claim?.releaseAll();
-      }
     } on ApiException catch (e) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -478,13 +476,11 @@ class _FinanceSalesShipmentAuditReviewPageState
     }
   }
 
-  /// 撤回退回可用：被退回 + 未放行 + 仓库未作业（V578）。
+  /// 撤回退回可用：被退回 + 未放行(仓库未作业与反审权限已由服务端 REVERSE 动作判定，V578)。
   bool get _canRejectReverse {
     final d = _detail;
-    if (d == null || !_canDecide || _busy) return false;
-    if (d.financeAudit == 1) return false;
-    if (!d.shipmentWorkflow.financeRejected) return false;
-    return salesShipmentAllowsFinanceAudit(d.warehouseWorkStatus);
+    if (d == null || !_canReverse || _busy) return false;
+    return d.financeAudit != 1 && d.shipmentWorkflow.financeRejected;
   }
 
   /// 撤回退回（V578）：财务收回退回决定，单据恢复待审——退回原因与出货
@@ -716,22 +712,24 @@ class _FinanceSalesShipmentAuditReviewPageState
           onPressed: _leave,
           child: const Text('返回'),
         ),
-        UtenButton(
-          key: const Key('finance-shipment-audit-reject'),
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          icon: Icons.reply_rounded,
-          onPressed: _busy ? null : _reject,
-          child: const Text('退回销售'),
-        ),
-        UtenButton(
-          key: const Key('finance-shipment-audit-approve'),
-          size: UtenButtonSize.large,
-          isLoading: _busy,
-          icon: Icons.fact_check_outlined,
-          onPressed: _busy ? null : _approve,
-          child: const Text('确认放行'),
-        ),
+        if (_canReject)
+          UtenButton(
+            key: const Key('finance-shipment-audit-reject'),
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.reply_rounded,
+            onPressed: _busy ? null : _reject,
+            child: const Text('退回销售'),
+          ),
+        if (_canApprove)
+          UtenButton(
+            key: const Key('finance-shipment-audit-approve'),
+            size: UtenButtonSize.large,
+            isLoading: _busy,
+            icon: Icons.fact_check_outlined,
+            onPressed: _busy ? null : _approve,
+            child: const Text('确认放行'),
+          ),
       ],
     );
   }
@@ -1212,7 +1210,7 @@ class _FinanceSalesShipmentAuditReviewPageState
       canView:
           !d.priceMasked &&
           (permissions.contains(Perm.salesShipmentView) ||
-              (permissions.contains(Perm.financeShipmentAudit) &&
+              (permissions.contains(Perm.salesShipmentFinanceView) &&
                   (salesConfirmed ||
                       d.shipmentWorkflow.financeRejected ||
                       d.financeAudit == 1 ||

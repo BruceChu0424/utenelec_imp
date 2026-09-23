@@ -261,9 +261,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorApplyHost => '담당자';
 
   @override
-  String get visitorApplyDept => '담당 부서';
-
-  @override
   String get visitorApplyVisitTime => '방문 예정 시간';
 
   @override
@@ -3600,13 +3597,16 @@ class AppLocalizationsKo extends AppLocalizations {
       '신청을 제출하는 중입니다. 중복 제출하거나 페이지를 벗어나지 마세요.';
 
   @override
-  String get visitorApplyDeptHint => '담당 부서를 선택해 주세요';
-
-  @override
   String get visitorApplyHostHint => '방문할 담당자를 선택해 주세요';
 
   @override
   String get visitorApplyHostSheetTitle => '방문할 담당자 선택';
+
+  @override
+  String get visitorApplyHostSearchEmpty => '방문할 담당자 이름으로 검색';
+
+  @override
+  String get visitorApplyHostSearchHint => '2자 이상 입력하세요. 최대 5명까지 표시됩니다';
 
   @override
   String visitorSettingsPortalTag(Object app) {

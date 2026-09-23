@@ -179,8 +179,7 @@ class SubcontractPreparationPaginationPostgresTest {
 
     @BeforeEach void setUp() {
         current = mock(SecurityContextCurrentUser.class);
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "reader",
-                Set.of(), Set.of("subcontract_application:view"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "reader", Set.of("subcontract_application:view"), false, true, false)));
         EntityManager recording = mock(EntityManager.class);
         when(recording.createNativeQuery(anyString())).thenAnswer(call -> {
             String sql = call.getArgument(0); executedSql.add(sql); return em.createNativeQuery(sql);
@@ -227,8 +226,7 @@ class SubcontractPreparationPaginationPostgresTest {
         assertThat(task.taskId()).isEqualTo(taskId);
         assertThat(task.goodsCode()).isEqualTo("SKU-125");
         assertThat(task.allowedActions()).isEmpty();
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "planning-reader",
-                Set.of(), Set.of("production_material_analysis:view"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "planning-reader", Set.of("production_material_analysis:view"), false, true, false)));
         assertThatThrownBy(() -> transactions.execute(tx -> tasks.task(taskId)))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class)
                 .extracting(error -> ((com.uten.imp.common.web.ApiException) error).getCode())
@@ -236,8 +234,7 @@ class SubcontractPreparationPaginationPostgresTest {
     }
 
     @Test void orderOnlyPermissionDoesNotExposePreparationRowsOrTheirCount() {
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "order-reader",
-                Set.of(), Set.of("subcontract_order:view"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "order-reader", Set.of("subcontract_order:view"), false, true, false)));
         var response = transactions.execute(tx -> service.query("SUBCONTRACT", "WAITING_ORDER", "", "", null, null, 1, 50));
         assertThat(response.total()).isEqualTo(3);
         long count = transactions.execute(tx -> service.countPending("SUBCONTRACT"));
@@ -262,8 +259,7 @@ class SubcontractPreparationPaginationPostgresTest {
     }
 
     @Test void orderableDocumentsPrecedePreparationAcrossPagesAndColumnFacetsUseAllMatchingRows() {
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer",
-                Set.of(), Set.of("subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer", Set.of("subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
         transactions.executeWithoutResult(tx -> {
             jdbc.update("UPDATE workbench_documents SET need_date=CURRENT_DATE+90");
             var options = new FulfillmentWorkbenchTableQuery("docNo", "desc", Map.of(), null, null, null, null);
@@ -292,8 +288,7 @@ class SubcontractPreparationPaginationPostgresTest {
     }
 
     @Test void issueDateUsesOriginalPlanningActionThroughPreparationAndOrderSourcesAndKeepsUnknownNull() {
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer",
-                Set.of(), Set.of("subcontract_application:view", "subcontract_order:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer", Set.of("subcontract_application:view", "subcontract_order:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
         transactions.executeWithoutResult(tx -> {
             jdbc.update("INSERT INTO preplan_supply_actions VALUES (?,TIMESTAMPTZ '2026-09-01 16:30:00+00','SUBCONTRACT_MAKE_TASK','SUBCONTRACT'),(?,TIMESTAMPTZ '2026-09-06 00:00:00+00','SUBCONTRACT_APPLICATION','SUBCONTRACT'),(?,TIMESTAMPTZ '2026-09-03 08:00:00+00','SUBCONTRACT_APPLICATION','SUBCONTRACT')",
                     id("issue-original"), id("issue-after-production"), id("issue-direct"));
@@ -328,8 +323,7 @@ class SubcontractPreparationPaginationPostgresTest {
     }
 
     @Test void restrictedDocumentNumbersCannotLeakViaNewFacetsOrColumnFiltersAndUnknownKeysFailClosed() {
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "orders-only",
-                Set.of(), Set.of("subcontract_order:view"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "orders-only", Set.of("subcontract_order:view"), false, true, false)));
         transactions.executeWithoutResult(tx -> {
             var result=service.query("SUBCONTRACT","","","",null,null,1,50,
                     new FulfillmentWorkbenchTableQuery("docNo","asc",Map.of(),null,null,null,null));
@@ -352,8 +346,7 @@ class SubcontractPreparationPaginationPostgresTest {
      * 红黄徽章、分段计数与列表行数用同一片段 SQL, 这里逐个对账.
      */
     @Test void soleComponentApplicationIsLockedUntilTheComponentReachesAnOperationalWarehouse() {
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer",
-                Set.of(), Set.of("subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), employeeId, "decomposer", Set.of("subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"), false, true, false)));
         transactions.executeWithoutResult(tx -> {
             // 委外件 sole-parent 的活动 BOM 只有一条边 → 叶子子件 sole-child; 申请 APP-1 的明细就是这个委外件.
             jdbc.update("INSERT INTO goods(id, code, name) VALUES (?,?,?),(?,?,?)",

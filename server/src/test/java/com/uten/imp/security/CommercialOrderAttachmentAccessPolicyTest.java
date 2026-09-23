@@ -52,9 +52,10 @@ class CommercialOrderAttachmentAccessPolicyTest {
         denied(ErrorCode.FORBIDDEN, () -> h.policy.requireCanManage(h.id, h.user()));
         h.scope(Set.of(), Set.of());
         denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanView(h.id, h.user()));
+        // ADR-109 / security-18：没有负责人的订单不再公共可读，附件同样只对全量范围可见。
         h.owner(null);
-        assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
-        denied(ErrorCode.FORBIDDEN, () -> h.policy.requireCanManage(h.id, h.user()));
+        denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanView(h.id, h.user()));
+        denied(ErrorCode.NOT_FOUND, () -> h.policy.requireCanManage(h.id, h.user()));
     }
 
     @ParameterizedTest @EnumSource(Kind.class)
@@ -246,7 +247,7 @@ class CommercialOrderAttachmentAccessPolicyTest {
             assertEquals(kind.name() + "_ORDER", policy.ownerType());
         }
         String permission(String suffix) { return kind.name().toLowerCase(java.util.Locale.ROOT) + "_order:" + suffix; }
-        AuthUser user() { return new AuthUser(owner, owner, "owner", Set.of(), Set.copyOf(permissions), false, true, false); }
+        AuthUser user() { return new AuthUser(owner, owner, "owner", Set.copyOf(permissions), false, true, false); }
         void scope(Set<UUID> readable, Set<UUID> writable) {
             when(ownership.evaluate(anyString(), anyString())).thenReturn(new OwnerVisibility.OwnerScope(false, readable, writable));
         }

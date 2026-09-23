@@ -36,7 +36,7 @@ void main() {
             'items': <Map<String, dynamic>>[],
             ...state,
           },
-          permissions: const {Perm.financeShipmentAudit},
+          permissions: const {Perm.salesShipmentFinanceView},
         );
         final section = tester.widget<BusinessAttachmentSection>(
           find.byType(BusinessAttachmentSection),
@@ -64,7 +64,10 @@ void main() {
         'canManageWarehouseWork': true,
         'items': <Map<String, dynamic>>[],
       },
-      permissions: const {Perm.salesShipmentWarehouseWork},
+      permissions: const {
+        Perm.warehouseSalesOutboundView,
+        Perm.warehouseSalesOutboundExecute,
+      },
     );
 
     // V582：财务放行后仓库只剩「确认出库」一个动作，没有拣货/异常分支。
@@ -92,7 +95,10 @@ void main() {
         'canManageWarehouseWork': true,
         'items': <Map<String, dynamic>>[],
       },
-      permissions: const {Perm.salesShipmentWarehouseWork},
+      permissions: const {
+        Perm.warehouseSalesOutboundView,
+        Perm.warehouseSalesOutboundExecute,
+      },
     );
 
     expect(find.text('确认出库'), findsNothing);
@@ -163,7 +169,7 @@ void main() {
         'handedOverAt': '2026-09-14T10:00:00+08:00',
         'items': <Map<String, dynamic>>[],
       },
-      permissions: const {Perm.financeShipmentAudit},
+      permissions: const {Perm.salesShipmentFinanceView},
     );
 
     expect(find.byKey(const ValueKey('finance-audit')), findsNothing);
@@ -185,7 +191,10 @@ void main() {
         'warehouseWorkStatus': 'PENDING_PICK',
         'items': <Map<String, dynamic>>[],
       },
-      permissions: const {Perm.financeShipmentAudit, Perm.salesShipmentEdit},
+      permissions: const {
+        Perm.salesShipmentFinanceView,
+        Perm.salesShipmentEdit,
+      },
     );
 
     expect(find.byKey(const ValueKey('sales-doc-edit')), findsOneWidget);
@@ -216,7 +225,7 @@ void main() {
           ],
         },
         permissions: const {
-          Perm.financeShipmentAudit,
+          Perm.salesShipmentFinanceView,
           Perm.salesShipmentEdit,
           Perm.salesShipmentDelete,
         },

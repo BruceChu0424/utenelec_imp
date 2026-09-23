@@ -138,6 +138,22 @@ public class ProductionPlanController {
         service.delete(id);
     }
 
+    /** 批量审核：一次请求、一个事务(任何一张失败整批回滚)。 */
+    @PostMapping("/batch-approve")
+    @PreAuthorize("hasAuthority('production_plan:approve')")
+    public com.uten.imp.features.production.plan.dto.PlanBatchResult batchApprove(
+            @Valid @RequestBody com.uten.imp.features.production.plan.dto.PlanBatchRequest req) {
+        return service.batchApprove(req.ids());
+    }
+
+    /** 批量删除草稿：一次请求、一个事务(任何一张失败整批回滚)。 */
+    @PostMapping("/batch-delete")
+    @PreAuthorize("hasAuthority('production_plan:delete')")
+    public com.uten.imp.features.production.plan.dto.PlanBatchResult batchDelete(
+            @Valid @RequestBody com.uten.imp.features.production.plan.dto.PlanBatchRequest req) {
+        return service.batchDelete(req.ids());
+    }
+
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('production_plan:approve')")
     public PlanDetail approve(@PathVariable UUID id) {

@@ -104,7 +104,7 @@ class ProcurementFinanceSubmitterOwnerGuardTest {
                 mock(ProcurementApprovalProjectionQuery.class);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         AuthUser user = new AuthUser(
-                userId, employeeId, "tester", Set.of(), permissions,
+                userId, employeeId, "tester", permissions,
                 false, true, false);
         when(currentUser.get()).thenReturn(Optional.of(user));
         when(currentUser.requireId()).thenReturn(userId);

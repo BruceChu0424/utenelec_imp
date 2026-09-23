@@ -16,7 +16,7 @@ final salesShipmentFinanceCountProvider = FutureProvider<int>((ref) async {
   ref.watch(sessionProvider);
   final permissions = ref.watch(currentPermissionsProvider);
   if (!ref.watch(isSuperAdminProvider) &&
-      !permissions.contains(Perm.financeShipmentAudit)) {
+      !permissions.contains(Perm.salesShipmentFinanceView)) {
     return 0;
   }
   final timer = Timer(const Duration(seconds: 60), ref.invalidateSelf);

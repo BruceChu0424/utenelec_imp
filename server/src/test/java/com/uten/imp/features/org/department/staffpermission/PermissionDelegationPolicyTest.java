@@ -1,6 +1,8 @@
 package com.uten.imp.features.org.department.staffpermission;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.rbac.GrantPolicy;
+import com.uten.imp.features.rbac.PermissionGrantPolicyCatalog;
 import com.uten.imp.security.PermissionDelegationPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,7 +19,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PermissionDelegationPolicyTest {
 
-    private final PermissionDelegationPolicy policy = new PermissionDelegationPolicy();
+    private final PermissionDelegationPolicy policy = new PermissionDelegationPolicy(
+            PermissionGrantPolicyCatalog.fixed(Map.of(
+                    "audit_log:view", Set.of(GrantPolicy.INDIVIDUAL_ONLY),
+                    "authorization:manage", Set.of(GrantPolicy.SUPERADMIN_ONLY),
+                    "account:support", Set.of(GrantPolicy.NON_DELEGABLE, GrantPolicy.BULK_EXCLUDED),
+                    "stock:balance:adjust", Set.of(GrantPolicy.INDIVIDUAL_ONLY),
+                    "finance:view:all", Set.of(GrantPolicy.NON_DELEGABLE, GrantPolicy.BULK_EXCLUDED),
+                    "payroll:export", Set.of(GrantPolicy.NON_DELEGABLE),
+                    "goods:price:view", Set.of(GrantPolicy.BULK_EXCLUDED),
+                    "sales_order:view", Set.of(GrantPolicy.NORMAL))));
     private final PermissionSurfaceRegistry surfaces =
             PermissionSurfaceRegistryTestFixture.registry(Map.ofEntries(
                     Map.entry("sales.order", Set.of("sales_order:view")),
@@ -55,7 +66,7 @@ class PermissionDelegationPolicyTest {
                             Set.of(
                                     "production_plan:view",
                                     "production_plan:edit",
-                                    "production_material_analysis:manage")),
+                                    "production_plan:approve")),
                     Map.entry(
                             "production.plan",
                             Set.of(
@@ -66,62 +77,43 @@ class PermissionDelegationPolicyTest {
                             Set.of("visitor:approve")),
                     Map.entry(
                             "hr.visitor-security",
-                            Set.of("visitor:check-in")),
+                            Set.of("visitor:check_in")),
                     Map.entry("operations.purchase", Set.of())));
 
     @ParameterizedTest
     @ValueSource(strings = {
             "audit_log:view",
-            "audit_log:export",
             "authorization:manage",
-            "user:manage",
             "account:support",
-            "account:balance:adjust",
             "stock:balance:adjust",
-            "finance_asset:approve",
-            "finance_asset:post",
-            "finance_asset:dispose",
-            "finance_asset:export",
-            "finance_asset_period:manage",
-            "production_material_analysis:view",
-            "production_material_analysis:cross_reallocate",
-            "sales_order:priority",
-            "sales_order:reallocate",
-            "supplier_return_task:view",
-            "supplier_return_task:complete",
-            "attachment:reconcile",
-            "goods:view:all",
-            "client:view:all",
-            "sales:view:all",
-            "purchase:view:all",
-            "subcontract:view:all",
-            "production_plan:view:all",
-            "stock_doc:view:all",
             "finance:view:all",
-            "payroll:view:all",
-            "payroll:export",
-            "dashboard:finance-sensitive:view"
+            "payroll:export"
     })
-    void highRiskCodesAreNeverContextuallyDelegable(String code) {
+    void grantPolicyFlagsDecideDelegationWithoutAnyHardCodedList(String code) {
         assertFalse(policy.isDelegable(code));
+        assertTrue(policy.nonDelegableReason(code).contains("不能") || policy.nonDelegableReason(code).contains("只"));
     }
 
     @Test
-    void attachmentReconciliationReasonMatchesHistoricalCentralGovernance() {
-        for (String code : Set.of(
-                "attachment:reconcile",
-                "attachment:reconcile:view",
-                "attachment:reconcile:approve_delete")) {
-            assertEquals(
-                    "仅保留历史点名授权，当前不可新增或由负责人转授", policy.nonDelegableReason(code));
-        }
+    void bulkExcludedOnlyCodeStaysDelegable() {
+        // 不随「全部授权」批量发放 ≠ 负责人不能在页面上逐项转授。
+        assertTrue(policy.isDelegable("goods:price:view"));
     }
 
     @Test
-    void accountBalanceAdjustmentReasonRequiresCentralPersonalGrant() {
-        assertEquals(
-                "账户余额调整属于高风险个人授权",
-                policy.nonDelegableReason("account:balance:adjust"));
+    void unknownCodeFailsClosed() {
+        assertFalse(policy.isDelegable("retired:code"));
+        assertEquals("这项权限已不在权限目录里，不能转授", policy.nonDelegableReason("retired:code"));
+    }
+
+    @Test
+    void reasonsFollowTheStrongestPolicyFlag() {
+        assertEquals("这项权限只随超级管理员身份生效，不能转授",
+                policy.nonDelegableReason("authorization:manage"));
+        assertEquals("这项高风险权限只能由超级管理员在全局权限页逐人授予",
+                policy.nonDelegableReason("stock:balance:adjust"));
+        assertEquals("这项权限不能由负责人转授，请联系超级管理员在全局权限页配置",
+                policy.nonDelegableReason("payroll:export"));
     }
 
     @Test
@@ -156,7 +148,7 @@ class PermissionDelegationPolicyTest {
         assertTrue(surfaces.contains("production.hub", "production_plan:view"));
         assertTrue(surfaces.contains("production.hub", "production_plan:edit"));
         assertTrue(surfaces.contains(
-                "production.hub", "production_material_analysis:manage"));
+                "production.hub", "production_plan:approve"));
         assertFalse(surfaces.contains("production.hub", "production_plan:view:all"));
         assertTrue(surfaces.contains("finance.hub", "finance_receipt:view"));
         assertFalse(surfaces.contains("finance.hub", "finance_receipt:edit"));
@@ -166,8 +158,8 @@ class PermissionDelegationPolicyTest {
         assertTrue(surfaces.knownKeys().contains("hr.visitor-approval"));
         assertTrue(surfaces.knownKeys().contains("hr.visitor-security"));
         assertTrue(surfaces.contains("hr.visitor-approval", "visitor:approve"));
-        assertFalse(surfaces.contains("hr.visitor-approval", "visitor:check-in"));
-        assertTrue(surfaces.contains("hr.visitor-security", "visitor:check-in"));
+        assertFalse(surfaces.contains("hr.visitor-approval", "visitor:check_in"));
+        assertTrue(surfaces.contains("hr.visitor-security", "visitor:check_in"));
         assertFalse(surfaces.contains("hr.visitor-security", "visitor:approve"));
         assertDoesNotThrow(() -> surfaces.requireKnown("operations.purchase"));
         assertThrows(

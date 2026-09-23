@@ -294,7 +294,14 @@ class ShipmentFinanceAuditInfo {
     this.baseCurrency,
     this.shipmentExchangeRate,
     this.suggestedExchangeRate,
+    this.allowedActions = const [],
   });
+
+  /// 当前用户此刻能对这张单做的财务动作(APPROVE / REJECT / REVERSE)：服务端按动作码、
+  /// 对象范围与单据状态一次算好，财审页的按钮只按它显隐(permissions-15)。
+  final List<String> allowedActions;
+
+  bool allows(String action) => allowedActions.contains(action);
 
   /// V631/V632：本单币种的财务汇率状态。[financeRate] 是币种主档参考汇率；主档没维护时
   /// [financeRateReady] 为 false——V632 起不再挡放行，改由财务在放行时填写记账汇率。
@@ -354,6 +361,10 @@ class ShipmentFinanceAuditInfo {
             : null,
         shipmentExchangeRate: _text(json['shipmentExchangeRate']),
         suggestedExchangeRate: _text(json['suggestedExchangeRate']),
+        allowedActions: [
+          for (final action in (json['allowedActions'] as List?) ?? const [])
+            action.toString(),
+        ],
         financeAudit: (json['financeAudit'] as num?)?.toInt(),
         clientName: _text(json['clientName']),
         settlementMethodId: _text(json['settlementMethodId']),

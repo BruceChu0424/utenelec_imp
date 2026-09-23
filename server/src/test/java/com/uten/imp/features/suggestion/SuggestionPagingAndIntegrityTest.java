@@ -54,7 +54,6 @@ class SuggestionPagingAndIntegrityTest {
                 null,
                 "tester",
                 Set.of(),
-                Set.of(),
                 false,
                 true,
                 false);

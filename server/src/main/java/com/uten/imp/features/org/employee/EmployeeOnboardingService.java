@@ -16,13 +16,6 @@ import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
-import com.uten.imp.features.rbac.Role;
-import com.uten.imp.features.rbac.RoleRepository;
-import com.uten.imp.features.rbac.UserRole;
-import com.uten.imp.features.rbac.UserRoleId;
-import com.uten.imp.features.rbac.UserRoleRepository;
-import com.uten.imp.security.AdminGrantGuard;
-import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -34,9 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import static com.uten.imp.common.util.Strings.isBlank;
 
@@ -58,12 +49,9 @@ public class EmployeeOnboardingService {
     private final PositionRepository positionRepo;
     private final EntityManager entityManager;
     private final UserAccountRepository userRepo;
-    private final RoleRepository roleRepo;
-    private final UserRoleRepository userRoleRepo;
     private final PasswordEncoder passwordEncoder;
     private final MasterCodeService masterCodeService;
     private final TxSessionVars tx;
-    private final SecurityContextCurrentUser currentUser;
     private final EmployeeQueryService queryService;
     private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
 
@@ -251,15 +239,14 @@ public class EmployeeOnboardingService {
         if (temporaryPassword.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号不足 6 位，无法生成初始密码");
         }
-        List<String> roleCodes = (req.account() == null || req.account().roles() == null || req.account().roles().isEmpty())
-                ? List.of("employee") : req.account().roles();
-        createAccount(e, loginAccount, temporaryPassword, roleCodes);
+        createAccount(e, loginAccount, temporaryPassword);
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
     // ===== 补开登录账号（批量导入等未自带账号的存量员工） =====
-    // 与入职建账号同口径：账号=手机号、初始密码=证件号后6位、Argon2id 入库、首登强制改、授 employee 角色。
+    // 与入职建账号同口径：账号=手机号、初始密码=证件号后6位、Argon2id 入库、首登强制改；
+    // 权限只来自全员基础包与所在部门配置，入职接口不再接受任何角色/权限参数。
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public EmployeeOnboardingResult provisionAccount(UUID employeeId) {
@@ -291,35 +278,16 @@ public class EmployeeOnboardingService {
             throw new ApiException(ErrorCode.CONFLICT, "该手机号已被用作其他账号的登录名，请先修改员工手机号");
         }
 
-        List<String> roleCodes = List.of("employee");
-        createAccount(e, loginAccount, temporaryPassword, roleCodes);
+        createAccount(e, loginAccount, temporaryPassword);
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
-    /** Creates a login account using the same credential and role rules for onboarding and later provisioning. */
+    /** Creates a login account using the same credential rules for onboarding and later provisioning. */
     private void createAccount(
             Employee employee,
             String loginAccount,
-            String temporaryPassword,
-            List<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()
-                || roleCodes.stream().anyMatch(code -> isBlank(code))) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "账号角色不能为空");
-        }
-        List<String> uniqueRoleCodes = roleCodes.stream().distinct().toList();
-        AdminGrantGuard.checkAdminGrant(currentUser, uniqueRoleCodes);
-        List<Role> roles = roleRepo.findByCodeIn(uniqueRoleCodes);
-        Set<String> resolvedCodes = roles.stream().map(Role::getCode).collect(Collectors.toSet());
-        List<String> missingCodes = uniqueRoleCodes.stream()
-                .filter(code -> !resolvedCodes.contains(code))
-                .toList();
-        if (!missingCodes.isEmpty()) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "账号角色不存在: " + String.join(", ", missingCodes));
-        }
-
+            String temporaryPassword) {
         UserAccount user = new UserAccount();
         user.setEmployeeId(employee.getId());
         user.setLoginAccount(loginAccount);
@@ -328,12 +296,6 @@ public class EmployeeOnboardingService {
         user.setStatus("active");
         user.setFailedAttempts(0);
         userRepo.save(user);
-
-        for (Role role : roles) {
-            UserRole ur = new UserRole();
-            ur.setId(new UserRoleId(user.getId(), role.getId()));
-            userRoleRepo.save(ur);
-        }
     }
 
     static void assertHireDateNotFuture(LocalDate hireDate) {

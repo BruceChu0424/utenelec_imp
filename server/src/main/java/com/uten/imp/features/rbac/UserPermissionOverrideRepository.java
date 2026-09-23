@@ -19,7 +19,6 @@ public interface UserPermissionOverrideRepository extends JpaRepository<UserPerm
             JOIN permissions p ON p.id = o.permission_id
             WHERE o.user_id = :userId
               AND o.active = TRUE
-              AND p.active = TRUE
             """, nativeQuery = true)
     List<Object[]> findCodeAndEffectByUserId(@Param("userId") UUID userId);
 

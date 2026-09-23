@@ -216,7 +216,7 @@ class DocumentDraftCountScopePostgresTest {
                 "sales_shipment:view", "sales_other_shipment:view", "sales_other_shipment:create",
                 "sales_other_shipment:edit", "sales_other_shipment:approve", "sales_other_shipment:delete",
                 "sales_order:price:view", "client:view", "notice:read");
-        UUID finance = fixture.createUserWithPerms(world, "sf-" + tag, "finance_shipment_audit", "notice:read");
+        UUID finance = fixture.createUserWithPerms(world, "sf-" + tag, "sales_shipment_finance:view", "sales_shipment_finance:approve", "sales_shipment_finance:reject", "sales_shipment_finance:reverse", "notice:read");
         db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='DEPT_SALES' AND NOT is_deleted) WHERE id=?",
                 employeeOf(seller));
         db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='DEPT_FIN' AND NOT is_deleted) WHERE id=?",

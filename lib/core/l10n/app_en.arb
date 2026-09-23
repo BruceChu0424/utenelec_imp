@@ -98,7 +98,6 @@
   "visitorApplyPlate": "Plate No.",
   "visitorApplyPlateHint": "Enter plate number",
   "visitorApplyHost": "Host",
-  "visitorApplyDept": "Department",
   "visitorApplyVisitTime": "Planned visit time",
   "visitorApplySubmit": "Submit",
   "visitorApplySubmitting": "Submitting…",
@@ -1514,9 +1513,10 @@
   "visitorColVisitorName": "Visitor Name",
   "visitorColHostDepartment": "Host Department",
   "visitorApplySubmittingOverlay": "Submitting your application. Please do not resubmit or leave this page.",
-  "visitorApplyDeptHint": "Select the host department",
   "visitorApplyHostHint": "Select the person to visit",
   "visitorApplyHostSheetTitle": "Select the person to visit",
+  "visitorApplyHostSearchEmpty": "Search the person to visit by name",
+  "visitorApplyHostSearchHint": "Type at least 2 characters; up to 5 matches are shown",
   "visitorSettingsPortalTag": "{app} · Visitor",
   "@visitorSettingsPortalTag": {
     "placeholders": {

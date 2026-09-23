@@ -1,5 +1,5 @@
-// 权限管理仓库（超级管理员）：账号列表/权限点/个人覆盖/部门权限配置/账号操作。
-// 角色体系已下线（ADR-011/V29），角色相关接口已移除。
+// 权限管理仓库(超级管理员)：账号列表/权限目录/个人覆盖/部门权限配置/
+// 全员基础包/账号操作。角色体系已删除(ADR-109)，授权只剩这几条来源。
 // 模仿 DioEmployeeRepository：注入 ApiClient，DioException 已在 ApiClient 层
 // 统一转为 ApiException。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,12 +25,18 @@ abstract interface class AdminRepository {
   /// 个人权限覆盖（grants=加授，revokes=回收）。
   Future<UserPermOverrides> getUserPermOverrides(String userId);
 
-  /// 保存个人权限覆盖。
-  Future<void> updateUserPermOverrides(
+  /// 保存个人权限覆盖(期望的完整集合，服务端按差量落库并回传真正改动的码)。
+  Future<PermissionChange> updateUserPermOverrides(
     String userId, {
     required List<String> grants,
     required List<String> revokes,
   });
+
+  /// 个人「全部授权 / 本模块 / 本组」：服务端按授权策略补齐，立即生效。
+  Future<PermissionChange> grantAllToUser(
+    String userId,
+    PermissionBulkScope scope,
+  );
 
   /// 部门树（复用 /org/departments/tree）。
   Future<List<DepartmentNode>> departmentTree();
@@ -41,13 +47,25 @@ abstract interface class AdminRepository {
   /// 部门已配置的权限点 code 列表。
   Future<List<String>> departmentPermissions(String departmentId);
 
-  /// 保存部门权限配置（整体替换，未知 code 后端报错）。
-  Future<void> updateDepartmentPermissions(
+  /// 保存部门权限配置(期望的完整集合，服务端按差量落库并回传真正改动的码)。
+  Future<PermissionChange> updateDepartmentPermissions(
     String departmentId,
     List<String> permissionCodes,
   );
 
-  /// 员工有效权限（部门 ∪ 角色 ± 个人覆盖，后端计算）。
+  /// 部门「全部授权 / 本模块 / 本组」：服务端按授权策略补齐，立即生效。
+  Future<PermissionChange> grantAllToDepartment(
+    String departmentId,
+    PermissionBulkScope scope,
+  );
+
+  /// 全员基础包的码。
+  Future<List<String>> permissionBaseline();
+
+  /// 保存全员基础包(期望的完整集合，服务端按差量落库)。
+  Future<PermissionChange> updatePermissionBaseline(List<String> codes);
+
+  /// 员工有效权限(全员基础 ∪ 部门 ± 个人覆盖 ∪ 负责人委派，后端计算)。
   Future<EffectivePermissions> effectivePermissions(String userId);
 
   /// 服务端权威数据范围目录（含启用状态、全量覆盖权限和业务分组）。
@@ -125,14 +143,29 @@ class DioAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<void> updateUserPermOverrides(
+  Future<PermissionChange> updateUserPermOverrides(
     String userId, {
     required List<String> grants,
     required List<String> revokes,
-  }) => api.put(
-    ApiEndpoints.userPermOverrides(userId),
-    body: {'grants': grants, 'revokes': revokes},
-  );
+  }) async {
+    final json = await api.put(
+      ApiEndpoints.userPermOverrides(userId),
+      body: {'grants': grants, 'revokes': revokes},
+    );
+    return _change(json);
+  }
+
+  @override
+  Future<PermissionChange> grantAllToUser(
+    String userId,
+    PermissionBulkScope scope,
+  ) async {
+    final json = await api.put(
+      ApiEndpoints.userPermGrantAll(userId),
+      body: scope.toJson(),
+    );
+    return _change(json);
+  }
 
   @override
   Future<List<DepartmentNode>> departmentTree() async {
@@ -157,13 +190,48 @@ class DioAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<void> updateDepartmentPermissions(
+  Future<PermissionChange> updateDepartmentPermissions(
     String departmentId,
     List<String> permissionCodes,
-  ) => api.put(
-    ApiEndpoints.departmentPermissions(departmentId),
-    body: {'permissions': permissionCodes},
-  );
+  ) async {
+    final json = await api.put(
+      ApiEndpoints.departmentPermissions(departmentId),
+      body: {'permissions': permissionCodes},
+    );
+    return _change(json);
+  }
+
+  @override
+  Future<PermissionChange> grantAllToDepartment(
+    String departmentId,
+    PermissionBulkScope scope,
+  ) async {
+    final json = await api.put(
+      ApiEndpoints.departmentPermGrantAll(departmentId),
+      body: scope.toJson(),
+    );
+    return _change(json);
+  }
+
+  @override
+  Future<List<String>> permissionBaseline() async {
+    final json = await api.get(ApiEndpoints.adminPermissionBaseline);
+    return (json['permissions'] as List<dynamic>? ?? const [])
+        .map((e) => e as String)
+        .toList();
+  }
+
+  @override
+  Future<PermissionChange> updatePermissionBaseline(List<String> codes) async {
+    final json = await api.put(
+      ApiEndpoints.adminPermissionBaseline,
+      body: {'permissions': codes},
+    );
+    return _change(json);
+  }
+
+  static PermissionChange _change(Map<String, dynamic> json) =>
+      PermissionChange.fromJson(json);
 
   @override
   Future<EffectivePermissions> effectivePermissions(String userId) async {

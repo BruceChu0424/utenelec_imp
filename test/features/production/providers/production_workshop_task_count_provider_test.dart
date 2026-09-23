@@ -7,7 +7,6 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/providers/production_workshop_task_count_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/models/role.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
@@ -175,6 +174,5 @@ AppUser _user(String id, {bool allowed = true}) => AppUser(
   id: id,
   code: id,
   name: id,
-  roles: const [Role.employee],
   permissions: [if (allowed) Perm.productionExecutionView],
 );

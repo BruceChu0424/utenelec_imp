@@ -76,7 +76,8 @@ class WarehouseIqcReturnPostgresTest {
                 FROM permissions
                 WHERE code='procurement_iqc_rejection:amount:view'
                   AND sensitivity='SENSITIVE_COMMERCIAL'
-                  AND bulk_assignable=FALSE
-                """, Integer.class));
+                  AND 'BULK_EXCLUDED' = ANY(grant_policy)
+                """, Integer.class),
+                "V655 起「不随全部授权」由 grant_policy 表达(原 bulk_assignable=false 平移)");
     }
 }

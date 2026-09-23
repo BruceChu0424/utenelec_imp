@@ -208,7 +208,7 @@ class TaskClaimMutationConcurrencyPostgresTest {
     }
 
     private <T> T as(String label, UUID employee, Callable<T> action) {
-        AuthUser user = new AuthUser(employee, employee, "test", Set.of(),
+        AuthUser user = new AuthUser(employee, employee, "test",
                 Set.of("expense:approve", "sales_order_finance:view","sales_order_finance:confirm"), false, true, false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
         try { return transactions.execute(status -> {

@@ -97,7 +97,6 @@ class AuditSessionControllerSecurityTest {
                 INVESTIGATOR_ID,
                 UUID.randomUUID(),
                 "investigator",
-                Set.of(),
                 Set.of(VIEW),
                 false,
                 true,

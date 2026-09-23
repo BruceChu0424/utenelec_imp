@@ -13,7 +13,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -390,12 +389,9 @@ class _DepartmentOverviewPaneState
                   onEdit: () => widget.onEdit(info),
                   onDelete: widget.onDelete,
                   extraActions: [
-                    // 架构图查看与员工列表一致；打印花名册属文档下载，
-                    // 按 ADR-021 独立 employee:export 权限点门控（无权限隐藏）
-                    if (widget.canViewEmployees &&
-                        ref
-                            .watch(currentPermissionsProvider)
-                            .contains(Perm.employeeExport))
+                    // 打印花名册就是查看员工名册(permissions-06)：与员工列表同一门槛，
+                    // 旧的「打印导出」码只在前端生效，已随 V655 删除。
+                    if (widget.canViewEmployees)
                       MasterDetailCardAction(
                         icon: Icons.print_outlined,
                         label: '打印花名册',

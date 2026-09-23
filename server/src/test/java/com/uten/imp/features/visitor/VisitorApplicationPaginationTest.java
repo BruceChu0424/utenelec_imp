@@ -58,7 +58,8 @@ class VisitorApplicationPaginationTest {
                 mapper,
                 mock(TxSessionVars.class),
                 mock(HrNoticeService.class),
-                currentUser);
+                currentUser,
+                mock(VisitorHostEligibility.class));
     }
 
     @Test
@@ -173,7 +174,7 @@ class VisitorApplicationPaginationTest {
         AuthUser staff = mock(AuthUser.class);
         when(staff.isVisitor()).thenReturn(false);
         when(staff.getEmployeeId()).thenReturn(employeeId);
-        when(staff.getPermissions()).thenReturn(java.util.Set.of("visitor:host-confirm"));
+        when(staff.getPermissions()).thenReturn(java.util.Set.of("visitor:host_confirm"));
         when(currentUser.get()).thenReturn(Optional.of(staff));
 
         VisitorApplication anotherHostsApplication = new VisitorApplication();

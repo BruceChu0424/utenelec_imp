@@ -131,7 +131,6 @@ class PasswordChangeRequiredFilterTest {
                 USER_ID,
                 EMPLOYEE_ID,
                 "13800000000",
-                Set.of("admin"),
                 Set.of("sales:view", "sales:edit"),
                 mustChangePassword,
                 true,

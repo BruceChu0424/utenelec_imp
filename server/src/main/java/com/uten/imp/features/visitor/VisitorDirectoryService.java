@@ -1,98 +1,69 @@
 package com.uten.imp.features.visitor;
 
-import com.uten.imp.features.org.department.Department;
-import com.uten.imp.features.org.department.DepartmentRepository;
-import com.uten.imp.features.org.employee.Employee;
-import com.uten.imp.features.org.employee.EmployeeRepository;
-import com.uten.imp.features.visitor.dto.VisitorScanDto.DepartmentDirectoryItem;
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.visitor.dto.VisitorScanDto.EmployeeDirectoryItem;
-import jakarta.persistence.criteria.Predicate;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
 /**
- * 被访人目录（访客在申请页选择接待人/部门）。
- * 只返回在职员工（active/probation/onLeave），**排除离职 resigned**；仅 id/姓名/部门，无敏感字段。
+ * 访客搜索接待人(security-08 / permissions-13)：
+ * <ul>
+ *   <li>只按姓名前缀匹配，关键字至少 {@value #MIN_KEYWORD_LENGTH} 个字，最多返回 {@value #MAX_RESULTS} 人；
+ *       不接受部门参数，也不接受工号匹配。</li>
+ *   <li>只返回可对外接待的员工(持接待访客权限，见 {@link VisitorHostEligibility})。</li>
+ *   <li>结果只有 id 和姓名，不带部门——外部账号拼不出组织结构。</li>
+ *   <li>按访客账号和来源地址限流，每次查询(含被限流的)都写一条审计。</li>
+ * </ul>
  */
 @Service
 @RequiredArgsConstructor
 public class VisitorDirectoryService {
 
-    /** 公司根节点的 level：访客选不到公司本身，只能选下属部门。 */
-    private static final String COMPANY_LEVEL = "公司";
+    /** 一次最多返回的接待人候选数。 */
+    static final int MAX_RESULTS = 5;
+    /** 关键字最少字数(按字符计，中文一个字算一个)。 */
+    static final int MIN_KEYWORD_LENGTH = 2;
+    /** 关键字最多字数(姓名不会更长，防超长输入进审计)。 */
+    static final int MAX_KEYWORD_LENGTH = 20;
 
-    private final EmployeeRepository employeeRepo;
-    private final DepartmentRepository departmentRepo;
+    static final String AUDIT_ACTION = "visitor_host_search";
+    static final String AUDIT_ACTION_LIMITED = "visitor_host_search_limited";
+    private static final String AUDIT_TARGET = "visitor_directory";
 
-    // open-in-view=false：映射 DTO 时访问懒加载关联（parent/department），必须包在事务里，
-    // 否则有数据的部门会抛 LazyInitializationException（空结果部门反而"正常"，极具迷惑性）。
-    @Transactional(readOnly = true)
-    public List<DepartmentDirectoryItem> listDepartments() {
-        return departmentRepo.findAll().stream()
-                // 软删部门不泄露给访客（与 DepartmentService.tree 的过滤一致）
-                .filter(d -> !d.isDeleted())
-                // 排除公司根节点：访客接待必须选到下属部门，否则按部门查员工会得到空集。
-                .filter(d -> !COMPANY_LEVEL.equals(d.getLevel()))
-                // 与部门管理页一致：sortOrder 优先（null 兜底排最后），同级按名称。
-                .sorted(Comparator
-                        .comparing(Department::getSortOrder, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(Department::getName))
-                .map(d -> new DepartmentDirectoryItem(
-                        d.getId(),
-                        d.getName(),
-                        d.getLevel(),
-                        d.getParent() == null ? null : d.getParent().getId()))
-                .toList();
-    }
+    private final VisitorHostEligibility hostEligibility;
+    private final VisitorDirectoryRateLimiter rateLimiter;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
 
     @Transactional(readOnly = true)
-    public List<EmployeeDirectoryItem> listEmployees(UUID departmentId, String keyword) {
-        // departmentId 命中时，按"该部门 + 全部子部门"匹配——这样选父部门
-        // （如总经办）也能看到所有下属员工；选叶子就只看叶子。
-        // 选错层级不会让访客卡在"该部门无员工"。
-        final Set<UUID> departmentScope = (departmentId == null)
-                ? null
-                : departmentRepo.findSubtree(departmentId).stream()
-                        .map(Department::getId)
-                        .collect(Collectors.toSet());
-
-        Specification<Employee> spec = (root, query, cb) -> {
-            Predicate p = cb.and(cb.equal(root.get("deleted"), false),
-                    root.get("status").in(EmploymentStatusPolicy.CURRENT_EMPLOYEE_STATUSES));
-            if (departmentScope != null) {
-                p = cb.and(p, root.get("department").get("id").in(departmentScope));
-            }
-            if (keyword != null && !keyword.isBlank()) {
-                String like = "%" + keyword.trim() + "%";
-                p = cb.and(p, cb.or(cb.like(root.get("fullName"), like), cb.like(root.get("code"), like)));
-            }
-            return p;
-        };
-        // Search-picker contract intentionally returns at most 50 candidates. Apply
-        // LIMIT and stable ordering in the database instead of loading every employee
-        // and truncating in memory.
-        var page = employeeRepo.findAll(
-                spec,
-                PageRequest.of(
-                        0,
-                        50,
-                        Sort.by(
-                                Sort.Order.asc("fullName"),
-                                Sort.Order.asc("id"))));
-        return page.getContent().stream()
-                .map(e -> new EmployeeDirectoryItem(e.getId(), e.getFullName(),
-                        e.getDepartment() == null ? null : e.getDepartment().getName()))
+    public List<EmployeeDirectoryItem> searchHosts(String keyword, String clientIp) {
+        AuthUser visitor = currentUser.get()
+                .filter(AuthUser::isVisitor)
+                .orElseThrow(() -> new ApiException(ErrorCode.FORBIDDEN, "仅访客可搜索接待人"));
+        String trimmed = keyword == null ? "" : keyword.trim();
+        int length = trimmed.codePointCount(0, trimmed.length());
+        if (length < MIN_KEYWORD_LENGTH || length > MAX_KEYWORD_LENGTH) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请输入接待人姓名，至少 2 个字");
+        }
+        try {
+            rateLimiter.check(visitor.getId(), clientIp);
+        } catch (ApiException limited) {
+            audit.logExplicit(visitor.getId(), visitor.getVisitorNo(), AUDIT_ACTION_LIMITED,
+                    AUDIT_TARGET, null, "搜索接待人过于频繁，已拦下：关键字「" + trimmed + "」");
+            throw limited;
+        }
+        List<EmployeeDirectoryItem> hosts = hostEligibility.searchByNamePrefix(trimmed, MAX_RESULTS).stream()
+                .map(host -> new EmployeeDirectoryItem(host.employeeId(), host.name()))
                 .toList();
+        audit.logExplicit(visitor.getId(), visitor.getVisitorNo(), AUDIT_ACTION,
+                AUDIT_TARGET, null, "搜索接待人：关键字「" + trimmed + "」，找到 " + hosts.size() + " 人");
+        return hosts;
     }
 }

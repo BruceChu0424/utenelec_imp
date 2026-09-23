@@ -586,12 +586,6 @@ abstract class AppLocalizations {
   /// **'接待人'**
   String get visitorApplyHost;
 
-  /// No description provided for @visitorApplyDept.
-  ///
-  /// In zh, this message translates to:
-  /// **'接待部门'**
-  String get visitorApplyDept;
-
   /// No description provided for @visitorApplyVisitTime.
   ///
   /// In zh, this message translates to:
@@ -6671,12 +6665,6 @@ abstract class AppLocalizations {
   /// **'正在提交访客申请，请勿重复提交或离开本页。'**
   String get visitorApplySubmittingOverlay;
 
-  /// No description provided for @visitorApplyDeptHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'请选择接待部门'**
-  String get visitorApplyDeptHint;
-
   /// No description provided for @visitorApplyHostHint.
   ///
   /// In zh, this message translates to:
@@ -6688,6 +6676,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'选择被访人'**
   String get visitorApplyHostSheetTitle;
+
+  /// No description provided for @visitorApplyHostSearchEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入被访人姓名搜索'**
+  String get visitorApplyHostSearchEmpty;
+
+  /// No description provided for @visitorApplyHostSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'至少输入 2 个字，最多显示 5 位同事'**
+  String get visitorApplyHostSearchHint;
 
   /// No description provided for @visitorSettingsPortalTag.
   ///

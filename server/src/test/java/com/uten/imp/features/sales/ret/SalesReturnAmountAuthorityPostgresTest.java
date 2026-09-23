@@ -230,7 +230,7 @@ class SalesReturnAmountAuthorityPostgresTest {
                 VALUES (?, ?, ?, 'x', FALSE, 'active', 0, TRUE, 0)
                 """, userId, employeeId, "ret-" + suffix);
         var authorization = permissions.authorizationSnapshot(userId, employeeId, true);
-        AuthUser actor = new AuthUser(userId, employeeId, "ret-" + suffix, authorization.roles(),
+        AuthUser actor = new AuthUser(userId, employeeId, "ret-" + suffix,
                 authorization.permissions(), false, true, true);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, actor.getAuthorities()));
         tx.bind();

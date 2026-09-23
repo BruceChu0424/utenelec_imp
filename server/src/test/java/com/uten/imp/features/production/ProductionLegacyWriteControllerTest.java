@@ -40,7 +40,10 @@ class ProductionLegacyWriteControllerTest {
                 .contains("/{id}/mrp/generate-planning-package")
                 .doesNotContain(
                         "/{id}/mrp/generate-subplan",
-                        "/{id}/mrp/generate-subplans");
+                        "/{id}/mrp/generate-subplans",
+                        // V655 / ADR-109：从未开启的 MRP 直接生成与整树确认入口已删除。
+                        "/{id}/mrp/generate",
+                        "/{id}/mrp/generate-planning-package-full-tree");
     }
 
     @Test
@@ -55,22 +58,6 @@ class ProductionLegacyWriteControllerTest {
         assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
         assertThat(error.getCode().getHttpStatus()).isEqualTo(409);
         verifyNoInteractions(service);
-    }
-
-    @Test
-    void bottomUpFullTreeHttpWriteIsPermanentlyRejected() {
-        MrpService mrp = mock(MrpService.class);
-        ProductionPlanningPackageService packages =
-                mock(ProductionPlanningPackageService.class);
-        ProductionPlanningDraftService drafts = mock(ProductionPlanningDraftService.class);
-        MrpController controller = new MrpController(mrp, packages, drafts);
-
-        ApiException error = assertThrows(ApiException.class,
-                () -> controller.generatePlanningPackageFullTree(UUID.randomUUID(), null));
-
-        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(error.getCode().getHttpStatus()).isEqualTo(409);
-        verifyNoInteractions(mrp, packages, drafts);
     }
 
     @Test

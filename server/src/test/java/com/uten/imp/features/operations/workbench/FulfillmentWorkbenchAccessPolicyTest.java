@@ -81,7 +81,6 @@ class FulfillmentWorkbenchAccessPolicyTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "tester",
-                Set.of(),
                 Set.of(permissions),
                 false,
                 true,

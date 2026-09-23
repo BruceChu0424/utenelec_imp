@@ -466,7 +466,6 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('colors', 'PRESERVE'),
 ('currencies', 'PRESERVE'),
 ('department_permissions', 'PRESERVE'),
-('department_roles', 'PRESERVE'),
 ('departments', 'PRESERVE'),
 ('doc_number_sequences', 'PRESERVE'),
 ('emergency_contacts', 'PRESERVE'),
@@ -523,8 +522,6 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('profile_change_requests', 'PRESERVE'),
 ('refresh_tokens', 'PRESERVE'),
 ('report_materialized_view_refresh_state', 'PRESERVE'),
-('role_permissions', 'PRESERVE'),
-('roles', 'PRESERVE'),
 ('settlement_methods', 'PRESERVE'),
 ('supplier_categories', 'PRESERVE'),
 ('suppliers', 'PRESERVE'),
@@ -535,7 +532,6 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('user_data_scopes', 'PRESERVE'),
 ('user_permission_overrides', 'PRESERVE'),
 ('user_preferences', 'PRESERVE'),
-('user_roles', 'PRESERVE'),
 ('users', 'PRESERVE'),
 ('warehouses', 'PRESERVE');
 

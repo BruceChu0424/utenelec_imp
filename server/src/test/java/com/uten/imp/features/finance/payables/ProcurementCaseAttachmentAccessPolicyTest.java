@@ -105,7 +105,7 @@ class ProcurementCaseAttachmentAccessPolicyTest {
         final ProcurementIqcRejectionContracts.CaseItem view=mock(ProcurementIqcRejectionContracts.CaseItem.class);
         final ProcurementIqcRejectionAttachmentAccessPolicy policy=new ProcurementIqcRejectionAttachmentAccessPolicy(service);
         Iqc(){when(service.attachmentOwnerView(id)).thenReturn(view);when(service.lockAttachmentOwner(id)).thenReturn(view);when(view.allowedActions()).thenReturn(List.of("RECORD_RETURN"));}
-        AuthUser user(){return new AuthUser(id,id,"case-owner",Set.of(),Set.copyOf(permissions),false,true,false);}
+        AuthUser user(){return new AuthUser(id,id,"case-owner",Set.copyOf(permissions),false,true,false);}
     }
     private static class Loss {
         final UUID id=UUID.randomUUID();
@@ -114,6 +114,6 @@ class ProcurementCaseAttachmentAccessPolicyTest {
         final SubcontractLossClaimContracts.CaseSummary view=mock(SubcontractLossClaimContracts.CaseSummary.class);
         final SubcontractLossAttachmentAccessPolicy policy=new SubcontractLossAttachmentAccessPolicy(service);
         Loss(){when(service.attachmentOwnerView(id)).thenReturn(view);when(service.lockAttachmentOwner(id)).thenReturn(view);when(view.status()).thenReturn("OPEN");}
-        AuthUser user(){return new AuthUser(id,id,"case-owner",Set.of(),Set.copyOf(permissions),false,true,false);}
+        AuthUser user(){return new AuthUser(id,id,"case-owner",Set.copyOf(permissions),false,true,false);}
     }
 }

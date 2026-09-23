@@ -71,7 +71,9 @@ class ResetBusinessDataScriptContractTest {
         // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送来源/历史隔离，V617 +1 保留设置：V618 +1 收仓确认，V619 +8 保管溯源：395表，CLEAR296/PRESERVE99。
         // V624/V626/V627 retain original import-source evidence across business resets.
         // V636 +2 委外回厂短交案件/事件(ADR-098): 400 表, CLEAR 296→298。
-        assertThat(policy).hasSize(400);
+        // V655(ADR-109) 删除角色体系四张表(均为 PRESERVE)：396 表, CLEAR 298 不变。
+        assertThat(policy).hasSize(396);
+        assertThat(policy).doesNotContainKeys("roles", "user_roles", "role_permissions", "department_roles");
         assertThat(policy).containsEntry("legacy_subcontract_order_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("legacy_finance_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("legacy_procurement_receipt_import_sources", "PRESERVE");
@@ -104,8 +106,9 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("party_contact_methods", "PRESERVE");
         assertThat(policy).containsEntry("party_addresses", "PRESERVE");
         assertThat(policy).containsEntry("party_activity_records", "PRESERVE");
+        // V655(ADR-109)：删除角色体系四张 PRESERVE 表，102→98。
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(102);
+                .isEqualTo(98);
 
         // V463：订货行多来源锚定的两张分配表随业务数据清空。
         assertThat(policy).containsEntry(

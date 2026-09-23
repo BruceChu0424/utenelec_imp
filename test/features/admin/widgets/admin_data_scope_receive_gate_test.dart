@@ -34,7 +34,6 @@ void main() {
                   loginAccount: '13800000000',
                   status: 'locked',
                   mustChangePassword: false,
-                  roles: [],
                   remoteAccess: false,
                   employeeName: '锁定员工',
                 ),

@@ -1,8 +1,11 @@
-// 权限点常量（与后端 permissions 表 code 对齐）+ 当前用户权限/角色 Provider。
-// 文档：docs/05-架构/全局机制.md §1
+// 权限点常量(与后端 permissions 表 code 对齐)+ 当前用户权限 Provider。
+// 文档：docs/05-架构/权限体系总设计.md(ADR-109：权限目录单一事实源)
+//
+// 这里只是「码的名字」：能不能授、怎么授(grant_policy)、谁都有(baseline)都由服务端
+// 目录接口下发；超级管理员的有效权限也只认服务端下发集合，本文件不再维护任何名单。
+// 每个常量都必须是服务端目录里的活码(PermissionCatalogBidirectionalContractTest 锁定)。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/role.dart';
 import '../providers/session_provider.dart';
 
 abstract final class Perm {
@@ -17,7 +20,7 @@ abstract final class Perm {
 
   /// 财务敏感驾驶舱字段查看。
   static const dashboardFinanceSensitiveView =
-      'dashboard:finance-sensitive:view';
+      'dashboard:finance_sensitive:view';
 
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
@@ -44,11 +47,9 @@ abstract final class Perm {
   static const expenseApprove = 'expense:approve';
   static const expensePay = 'expense:pay';
   static const expenseSettings = 'expense:settings';
-  static const visitorView = 'visitor:view';
-  static const visitorApply = 'visitor:apply';
   static const visitorApprove = 'visitor:approve';
-  static const visitorHostConfirm = 'visitor:host-confirm';
-  static const visitorCheckIn = 'visitor:check-in';
+  static const visitorHostConfirm = 'visitor:host_confirm';
+  static const visitorCheckIn = 'visitor:check_in';
   static const visitorBlacklist = 'visitor:blacklist';
 
   // 个人信息自助修改
@@ -61,9 +62,6 @@ abstract final class Perm {
   static const employeePiiEdit = 'employee:pii:edit';
   static const employeeCompensationView = 'employee:compensation:view';
   static const employeeCompensationEdit = 'employee:compensation:edit';
-
-  /// 员工资料打印与导出（花名册/部门架构图等文档下载）—— ADR-021，独立于查看权限。
-  static const employeeExport = 'employee:export';
 
   // ===== 附件（通用附件系统；权限目录归「人事行政/附件」）=====
   /// 查看/下载附件（通用层门槛；员工档案再叠加对象级策略：本人或 employee:view）。
@@ -230,7 +228,7 @@ abstract final class Perm {
   /// 采购/委外 IQC 拒收闭环：查看、跨对象范围和金额字段分别授权。
   static const procurementIqcRejectionView = 'procurement_iqc_rejection:view';
   static const procurementIqcRejectionViewAll =
-      'procurement_iqc_rejection:view_all';
+      'procurement_iqc_rejection:view:all';
   static const procurementIqcRejectionAmountView =
       'procurement_iqc_rejection:amount:view';
   // V455：lab:test:view/upload 已随孤儿码下线（后端无端点、前端无页面）。
@@ -253,7 +251,11 @@ abstract final class Perm {
   static const salesShipmentView = 'sales_shipment:view';
   static const salesShipmentEdit = 'sales_shipment:edit';
   static const salesShipmentReject = 'sales_shipment:reject';
-  static const salesShipmentWarehouseWork = 'sales_shipment:warehouse-work';
+
+  /// 仓库销售出库(permissions-09：查看与执行拆开)。
+  static const warehouseSalesOutboundView = 'warehouse_sales_outbound:view';
+  static const warehouseSalesOutboundExecute =
+      'warehouse_sales_outbound:execute';
   static const salesOtherShipmentView = 'sales_other_shipment:view';
   static const salesOtherShipmentEdit = 'sales_other_shipment:edit';
   static const salesReturnView = 'sales_return:view';
@@ -308,11 +310,7 @@ abstract final class Perm {
   static const productionExecutionView = 'production_execution:view';
   static const productionExecutionOverview = 'production_execution:overview';
   static const productionPlanEdit = 'production_plan:edit';
-  static const productionPlanCostView = 'production_plan_cost:view';
-  static const planningSupplyRequestView = 'planning_supply_request:view';
   static const productionPlanApprove = 'production_plan:approve';
-  static const productionPlanBatchApprove = 'production_plan:batchApprove';
-  static const productionPlanBatchDelete = 'production_plan:batchDelete';
   static const productionMaterialAnalysisView =
       'production_material_analysis:view';
   static const productionMaterialAnalysisRoute =
@@ -364,10 +362,14 @@ abstract final class Perm {
   static const financeAssetApprove = 'finance_asset:approve';
   static const financeAssetPost = 'finance_asset:post';
   static const financeAssetDispose = 'finance_asset:dispose';
-  static const financeAssetExport = 'finance_asset:export';
   static const financeAssetPeriodManage = 'finance_asset_period:manage';
   static const financePostExecute = 'finance_post:execute';
-  static const financeShipmentAudit = 'finance_shipment_audit';
+
+  /// 出货财务审核(permissions-09：查看 / 放行 / 退回 / 反审四个动作码)。
+  static const salesShipmentFinanceView = 'sales_shipment_finance:view';
+  static const salesShipmentFinanceApprove = 'sales_shipment_finance:approve';
+  static const salesShipmentFinanceReject = 'sales_shipment_finance:reject';
+  static const salesShipmentFinanceReverse = 'sales_shipment_finance:reverse';
 
   /// 采购/委外订货单财务审批任务（V328：查看、批准、驳回独立授权）。
   static const financeOrderApprovalView = 'finance_order_approval:view';
@@ -393,7 +395,6 @@ abstract final class Perm {
   static const supplierSettlementConfirm = 'supplier_settlement:confirm';
   static const supplierSettlementDispute = 'supplier_settlement:dispute';
   static const supplierSettlementReverse = 'supplier_settlement:reverse';
-  static const financeReconciliationView = 'finance_reconciliation:view';
 
   /// 公司级财务对象范围；不能由普通页面入口推导或替代。
   static const financeViewAll = 'finance:view:all';
@@ -418,9 +419,6 @@ abstract final class Perm {
   // ===== 工程研发部任务中心 =====
   static const rdTaskView = 'rd_task:view';
   static const rdTaskResolve = 'rd_task:resolve';
-  // V455 对齐：后端 RdTaskController 一直强制这两个码，前端此前缺常量。
-  static const rdTaskCreate = 'rd_task:create';
-  static const rdTaskAssign = 'rd_task:assign';
 
   // ===== V328：按钮级动作权限（与后端迁移 code 一一对应） =====
   static const materialCategoryCreate = 'material_category:create';
@@ -533,24 +531,22 @@ abstract final class Perm {
   static const productionDailyReportCreate = 'production_daily_report:create';
   static const productionDailyReportDelete = 'production_daily_report:delete';
   static const productionDailyReportApprove = 'production_daily_report:approve';
+
+  /// 车间直送审核：带车间直送行的日报审核还要这一码(服务端随日报详情下发
+  /// allowedActions 判定，页面不本地拼)。
+  static const productionDirectTransferApprove =
+      'production_direct_transfer:approve';
   static const productionDailyReportReverse = 'production_daily_report:reverse';
   static const productionPlanDelete = 'production_plan:delete';
   static const productionPlanReverse = 'production_plan:reverse';
   static const productionPlanFlags = 'production_plan:flags';
   static const productionExecutionAssign = 'production_execution:assign';
-  // V455 对齐：执行段取消/红冲端点强制码，前端此前缺常量。
-  static const productionExecutionCancel = 'production_execution:cancel';
-  static const productionExecutionReverse = 'production_execution:reverse';
   static const productionExecutionReleaseDefer =
       'production_execution:release_defer';
   static const productionExecutionDispatch = 'production_execution:dispatch';
   static const productionExecutionStart = 'production_execution:start';
   static const productionPlanningPackageGenerate =
       'production_planning_package:generate';
-  // V455 对齐：MrpController POST /{id}/mrp/generate 强制码（前端暂无调用方，
-  // 供 API 级操作与后续 UI 使用；契约测试兜底防再漂移）。
-  static const productionMrpGeneratePurchase =
-      'production_mrp:generate_purchase';
   static const productionPlanningPackageDraftEdit =
       'production_planning_package:draft_edit';
   static const productionPlanningPackageCancel =
@@ -576,8 +572,6 @@ abstract final class Perm {
   static const subcontractReceiptDelete = 'subcontract_receipt:delete';
   static const subcontractReceiptApprove = 'subcontract_receipt:approve';
   static const subcontractReceiptReverse = 'subcontract_receipt:reverse';
-  static const subcontractMaterialIssueCreate =
-      'subcontract_material_issue:create';
   static const subcontractMaterialIssueDelete =
       'subcontract_material_issue:delete';
   static const subcontractMaterialIssueApprove =
@@ -669,473 +663,17 @@ abstract final class Perm {
   static const subcontractOutboundClose = 'subcontract_outbound:close';
   static const warehouseInboundStockIn = 'warehouse_inbound:stock_in';
 
-  /// 超级管理员在后端目录短暂漏项时的按钮级权限兜底。
-  static const buttonActionCodes = <String>{
-    materialCategoryCreate,
-    materialCategoryDelete,
-    materialCategoryMove,
-    materialCategoryReorder,
-    mouldCategoryCreate,
-    mouldCategoryDelete,
-    mouldCategoryMove,
-    mouldCategoryReorder,
-    clientCategoryCreate,
-    clientCategoryDelete,
-    clientCategoryMove,
-    clientCategoryReorder,
-    supplierCategoryCreate,
-    supplierCategoryDelete,
-    supplierCategoryMove,
-    supplierCategoryReorder,
-    goodsCreate,
-    goodsDelete,
-    goodsStatus,
-    goodsBomCreate,
-    goodsBomEdit,
-    goodsBomDelete,
-    mouldCreate,
-    mouldDelete,
-    mouldStatus,
-    clientCreate,
-    clientDelete,
-    clientStatus,
-    clientAssign,
-    clientAddressCreate,
-    supplierCreate,
-    supplierDelete,
-    supplierStatus,
-    colorCreate,
-    colorDelete,
-    colorStatus,
-    unitCreate,
-    unitDelete,
-    unitStatus,
-    currencyCreate,
-    currencyDelete,
-    currencyStatus,
-    warehouseCreate,
-    warehouseDelete,
-    warehouseStatus,
-    accountCreate,
-    accountDelete,
-    accountStatus,
-    accountBalanceAdjust,
-    accountWarningManage,
-    paymentStyleCreate,
-    paymentStyleStatus,
-    paymentStyleMove,
-    paymentStyleReorder,
-    settlementMethodCreate,
-    settlementMethodEdit,
-    salesQuoteCreate,
-    salesQuoteDelete,
-    salesQuoteApprove,
-    salesQuoteReverse,
-    salesQuoteConvert,
-    salesOrderCreate,
-    salesOrderDelete,
-    salesOrderApprove,
-    salesOrderReverse,
-    salesOrderStop,
-    salesOrderChangeQty,
-    salesOrderCancel,
-    salesShipmentCreate,
-    salesShipmentDelete,
-    salesShipmentApprove,
-    salesShipmentReverse,
-    salesOtherShipmentCreate,
-    salesOtherShipmentDelete,
-    salesOtherShipmentApprove,
-    salesOtherShipmentReverse,
-    salesReturnCreate,
-    salesReturnDelete,
-    salesReturnApprove,
-    salesReturnReverse,
-    purchaseOrderCreate,
-    purchaseOrderDelete,
-    purchaseOrderCancel,
-    purchaseOrderReverse,
-    purchaseOrderDecompose,
-    purchaseOrderChangeQty,
-    purchaseReceiptCreate,
-    purchaseReceiptDelete,
-    purchaseReceiptApprove,
-    purchaseReceiptReverse,
-    purchaseReturnCreate,
-    purchaseReturnDelete,
-    purchaseReturnApprove,
-    purchaseReturnReverse,
-    financeOrderApprovalApprove,
-    financeOrderApprovalReject,
-    stockDocCreate,
-    stockDocDelete,
-    stockDocApprove,
-    stockDocReverse,
-    stockDocIssue,
-    stockDocReverseIssue,
-    productionDailyReportCreate,
-    productionDailyReportDelete,
-    productionDailyReportApprove,
-    productionDailyReportReverse,
-    productionQualityInspectionView,
-    productionQualityInspectionApprove,
-    productionFqcReplenishmentConfirm,
-    productionPlanDelete,
-    productionPlanReverse,
-    productionPlanFlags,
-    productionExecutionAssign,
-    productionExecutionCancel,
-    productionExecutionReverse,
-    productionExecutionReleaseDefer,
-    productionExecutionDispatch,
-    productionExecutionStart,
-    productionPlanningPackageGenerate,
-    productionMrpGeneratePurchase,
-    productionPlanningPackageDraftEdit,
-    productionPlanningPackageCancel,
-    productionPlanningPackageReverse,
-    productionMaterialSettle,
-    productionMaterialReverse,
-    productionMaterialClose,
-    goodsImportUndo,
-    subcontractInquiryCreate,
-    subcontractInquiryDelete,
-    subcontractInquiryApprove,
-    subcontractInquiryReverse,
-    subcontractOrderCreate,
-    subcontractOrderDelete,
-    subcontractOrderReverse,
-    subcontractOrderDecompose,
-    subcontractOrderChangeQty,
-    subcontractReceiptCreate,
-    subcontractReceiptDelete,
-    subcontractReceiptApprove,
-    subcontractReceiptReverse,
-    subcontractMaterialIssueDelete,
-    subcontractMaterialIssueApprove,
-    subcontractMaterialIssueReverse,
-    subcontractReturnCreate,
-    subcontractReturnDelete,
-    subcontractReturnApprove,
-    subcontractReturnReverse,
-    subcontractMaterialReturnCreate,
-    subcontractMaterialReturnDelete,
-    subcontractMaterialReturnApprove,
-    subcontractMaterialReturnReverse,
-    subcontractWasteCreate,
-    subcontractWasteDelete,
-    subcontractWasteApprove,
-    subcontractWasteReverse,
-    customerPrepaymentApply,
-    customerPrepaymentReverse,
-    subcontractLossClaimReview,
-    subcontractLossClaimFulfill,
-    subcontractLossClaimReverse,
-    supplierOpenItemOffsetApply,
-    supplierOpenItemOffsetReverse,
-    supplierSettlementCreate,
-    supplierSettlementConfirm,
-    supplierSettlementDispute,
-    supplierSettlementReverse,
-    financeReceiptCreate,
-    financeReceiptDelete,
-    financeReceiptApprove,
-    financeReceiptReverse,
-    financePaymentCreate,
-    financePaymentDelete,
-    financePaymentApprove,
-    financePaymentReverse,
-    financeExpenseCreate,
-    financeExpenseDelete,
-    financeExpenseApprove,
-    financeExpenseReverse,
-    financeExpenseGlConfirm,
-    financeOtherIncomeCreate,
-    financeOtherIncomeDelete,
-    financeOtherIncomeApprove,
-    financeOtherIncomeReverse,
-    financeBankTransferCreate,
-    financeBankTransferDelete,
-    financeBankTransferApprove,
-    financeBankTransferReverse,
-    departmentCreate,
-    departmentDelete,
-    departmentMove,
-    departmentManagerAssign,
-    positionCreate,
-    positionEdit,
-    positionDelete,
-    employeeTransfer,
-    employeeHandover,
-    employeeOffboard,
-    employeeConfirm,
-    employeeRehire,
-    employeeContractRenew,
-    employeeAvatarEdit,
-    employeeTaskTakeover,
-    attachmentDownload,
-    attachmentUpload,
-    attachmentDelete,
-    attachmentReconcileView,
-    attachmentReconcileApproveDelete,
-    productionMaterialAnalysisCreate,
-    productionMaterialAnalysisRefresh,
-    productionMaterialAnalysisCancel,
-    productionMaterialAnalysisOverSupply,
-    productionMaterialAnalysisClaimSharedFuture,
-    webinquiryClaim,
-    webinquiryClose,
-    webinquiryConvertClient,
-    salesReturnQualityCorrect,
-    salesReturnQualityDispose,
-    supplierReturnTaskView,
-    supplierReturnTaskComplete,
-    procurementIqcRejectionRecordReturn,
-    procurementIqcRejectionConfirmCredit,
-    procurementIqcRejectionCloseNoCredit,
-    procurementIqcRejectionReverse,
-    visitorVerify,
-    visitorCheckIn,
-    subcontractOutboundExecute,
-    subcontractOutboundClose,
-    warehouseInboundStockIn,
-    warehouseIqcStockInConfirm,
-  };
+  /// 清空业务数据(系统测试工具；超管专属码，任何授权入口都授不出去)。
+  static const systemBusinessDataReset = 'system:business_data_reset';
 }
 
 /// 当前用户的功能权限集合。
 ///
-/// 超级管理员（[UserProfile.superAdmin] == true）后端已经把全量 permissions 推过来，
-/// 因此这里的 Set 已包含所有权限点。如果未来后端没推全，前端也会再 union 一个
-/// "所有已知 Perm" 兜底——但主路径以后端为准。
+/// 只认服务端下发的集合(permissions-11)：超级管理员的有效权限在服务端就是全部目录码，
+/// 前端不再并任何手写兜底清单——兜底清单里的码服务端不认，只会让入口点下去报「没有权限」。
 final currentPermissionsProvider = Provider<Set<String>>((ref) {
   final user = ref.watch(sessionProvider).user;
   if (user == null) return const <String>{};
-  if (user.superAdmin) {
-    // 兜底：union 所有已知 Perm 常量。即便后端漏推某个新增权限也能 work。
-    return <String>{
-      Perm.employeeView,
-      Perm.employeeCreate,
-      Perm.employeeEdit,
-      Perm.employeeExport,
-      Perm.departmentView,
-      Perm.departmentEdit,
-      Perm.accountSupport,
-      Perm.dashboardFinanceSensitiveView,
-      Perm.authorizationManage,
-      Perm.serverStatusView,
-      Perm.auditLogView,
-      Perm.auditLogExport,
-      Perm.payrollViewSelf,
-      Perm.payrollViewAll,
-      Perm.payrollGenerate,
-      Perm.payrollReview,
-      Perm.payrollPublish,
-      Perm.payrollExport,
-      Perm.expenseApply,
-      Perm.expenseApprove,
-      Perm.expensePay,
-      Perm.expenseSettings,
-      Perm.visitorView,
-      Perm.visitorApply,
-      Perm.visitorApprove,
-      Perm.visitorHostConfirm,
-      Perm.visitorCheckIn,
-      Perm.visitorBlacklist,
-      Perm.profileEditSelf,
-      Perm.profileReview,
-      Perm.employeePiiView,
-      Perm.employeePiiEdit,
-      Perm.employeeCompensationView,
-      Perm.employeeCompensationEdit,
-      Perm.attachmentView,
-      // 财税部新模块（超管兜底，后端漏推也能 work）
-      // 采购管理细分
-      Perm.purchaseRequestView,
-      Perm.purchaseOrderView,
-      Perm.purchaseOrderEdit,
-      Perm.purchaseOrderPriceView,
-      Perm.purchaseOrderSubmitFinance,
-      Perm.purchaseReceiptView,
-      Perm.purchaseReceiptEdit,
-      Perm.purchaseReceiptPriceView,
-      Perm.purchaseReturnView,
-      Perm.purchaseReturnEdit,
-      Perm.purchaseReturnPriceView,
-      Perm.purchaseReportView,
-      Perm.purchaseReportExport,
-      Perm.purchaseReportPriceView,
-      Perm.purchaseViewAll,
-      Perm.currencyView,
-      Perm.currencyEdit,
-      Perm.currencyExport,
-      Perm.warehouseView,
-      Perm.warehouseEdit,
-      Perm.stockView,
-      Perm.stockBalanceAdjust,
-      Perm.stockDocView,
-      Perm.stockDocEdit,
-      Perm.stockDocViewAll,
-      Perm.stockReportView,
-      Perm.stockReportExport,
-      Perm.warehouseInboundView,
-      Perm.warehousePurchaseReceiptHistoryView,
-      Perm.warehouseSubcontractReceiptHistoryView,
-      Perm.warehouseSubcontractOutboundHistoryView,
-      Perm.warehouseSubcontractFinishedReturnHistoryView,
-      Perm.warehouseSubcontractMaterialReturnHistoryView,
-      Perm.warehouseSubcontractWasteHistoryView,
-      Perm.warehouseIqcReturnView,
-      Perm.warehouseIqcStockInView,
-      Perm.warehouseIqcStockInConfirm,
-      Perm.procurementInspectionView,
-      Perm.procurementInspectionHandle,
-      Perm.procurementIqcRejectionView,
-      Perm.procurementIqcRejectionViewAll,
-      Perm.procurementIqcRejectionAmountView,
-      Perm.procurementIqcRejectionRecordReturn,
-      Perm.procurementIqcRejectionConfirmCredit,
-      Perm.procurementIqcRejectionCloseNoCredit,
-      Perm.procurementIqcRejectionReverse,
-      Perm.supplierReturnTaskView,
-      Perm.supplierReturnTaskComplete,
-      Perm.supplierView,
-      Perm.supplierEdit,
-      Perm.supplierExport,
-      Perm.accountView,
-      Perm.accountEdit,
-      Perm.accountExport,
-      Perm.accountBalanceView,
-      Perm.accountFlowView,
-      Perm.materialCategoryView,
-      Perm.materialCategoryEdit,
-      Perm.goodsView,
-      Perm.goodsEdit,
-      Perm.goodsExport,
-      Perm.goodsImport,
-      Perm.goodsViewAll,
-      Perm.goodsPriceEdit,
-      Perm.goodsCostView,
-      Perm.goodsDiscountView,
-      Perm.goodsBomAudit,
-      Perm.mouldCategoryView,
-      Perm.mouldCategoryEdit,
-      Perm.mouldView,
-      Perm.mouldEdit,
-      Perm.clientCategoryView,
-      Perm.clientCategoryEdit,
-      Perm.clientView,
-      Perm.clientEdit,
-      Perm.clientExport,
-      Perm.clientViewAll,
-      Perm.clientAssign,
-      Perm.clientAddressDelete,
-      Perm.supplierCategoryView,
-      Perm.supplierCategoryEdit,
-      Perm.colorView,
-      Perm.colorEdit,
-      Perm.unitView,
-      Perm.unitEdit,
-      // 销售管理
-      Perm.salesQuoteView, Perm.salesQuoteEdit,
-      Perm.salesOrderView, Perm.salesOrderEdit,
-      Perm.salesOrderPriceView, Perm.salesOrderChangePlanned,
-      Perm.salesOrderConfirmPartialShipment,
-      Perm.salesOrderPriority, Perm.salesOrderReallocate,
-      Perm.salesShipmentView, Perm.salesShipmentEdit,
-      Perm.salesShipmentReject, Perm.salesShipmentWarehouseWork,
-      Perm.salesOtherShipmentView, Perm.salesOtherShipmentEdit,
-      Perm.salesReturnView, Perm.salesReturnEdit,
-      Perm.salesReturnDisposition,
-      Perm.salesReturnQualityView,
-      Perm.salesReportView, Perm.salesReportExport,
-      Perm.salesViewAll,
-      // 委外管理
-      Perm.subcontractInquiryView, Perm.subcontractInquiryEdit,
-      Perm.subcontractInquiryPriceView,
-      Perm.subcontractApplicationView,
-      Perm.subcontractOrderView, Perm.subcontractOrderEdit,
-      Perm.subcontractOrderPriceView,
-      Perm.subcontractOrderSubmitFinance,
-      Perm.subcontractShortDeliveryDecide,
-      Perm.subcontractReceiptView, Perm.subcontractReceiptEdit,
-      Perm.subcontractReceiptPriceView,
-      Perm.subcontractMaterialIssueView, Perm.subcontractMaterialIssueEdit,
-      Perm.subcontractReturnView, Perm.subcontractReturnEdit,
-      Perm.subcontractReturnPriceView,
-      Perm.subcontractMaterialReturnView, Perm.subcontractMaterialReturnEdit,
-      Perm.subcontractWasteView, Perm.subcontractWasteEdit,
-      Perm.subcontractWasteSuggestionView,
-      Perm.subcontractReportView, Perm.subcontractReportExport,
-      Perm.subcontractReportPriceView,
-      Perm.subcontractOutboundView,
-      Perm.subcontractOutboundExecute, Perm.subcontractOutboundClose,
-      Perm.subcontractViewAll,
-      // 生产管理
-      Perm.productionPlanView, Perm.productionPlanEdit,
-      Perm.productionExecutionView,
-      Perm.productionExecutionOverview,
-      Perm.productionPlanCostView,
-      Perm.planningSupplyRequestView,
-      Perm.productionPlanApprove,
-      Perm.productionPlanBatchApprove, Perm.productionPlanBatchDelete,
-      Perm.productionMaterialAnalysisView,
-      Perm.productionMaterialAnalysisRoute,
-      Perm.productionMaterialAnalysisNotify,
-      Perm.productionMaterialAnalysisGenerate,
-      Perm.productionMaterialAnalysisReallocate,
-      Perm.productionMaterialAnalysisCrossReallocate,
-      Perm.productionMaterialAnalysisOverSupply,
-      Perm.productionMaterialAnalysisClaimSharedFuture,
-      Perm.productionDailyReportView, Perm.productionDailyReportEdit,
-      Perm.productionQualityInspectionView,
-      Perm.productionQualityInspectionApprove,
-      Perm.productionFqcReplenishmentView,
-      Perm.productionFqcReplenishmentConfirm,
-      Perm.productionReportView, Perm.productionReportExport,
-      Perm.productionWhereUsedView,
-      Perm.productionPlanViewAll,
-      // 工程研发部任务中心
-      Perm.rdTaskView, Perm.rdTaskResolve,
-      Perm.rdTaskCreate, Perm.rdTaskAssign,
-      // 钱流管理
-      Perm.financeReceiptView, Perm.financeReceiptEdit,
-      Perm.financePaymentView, Perm.financePaymentEdit,
-      Perm.financeExpenseView, Perm.financeExpenseEdit,
-      Perm.financeOtherIncomeView, Perm.financeOtherIncomeEdit,
-      Perm.financeBankTransferView, Perm.financeBankTransferEdit,
-      Perm.financeReportView, Perm.financeReportExport,
-      Perm.financeAssetView,
-      Perm.financeAssetEdit,
-      Perm.financeAssetApprove,
-      Perm.financeAssetPost,
-      Perm.financeAssetDispose,
-      Perm.financeAssetExport,
-      Perm.financeAssetPeriodManage,
-      Perm.financePostExecute,
-      Perm.financeShipmentAudit,
-      Perm.financeOrderApprovalView,
-      Perm.financeOrderApprovalApprove,
-      Perm.financeOrderApprovalReject,
-      Perm.salesOrderFinanceView,
-      Perm.salesOrderFinanceConfirm,
-      Perm.arApLedgerView,
-      Perm.customerPrepaymentView,
-      Perm.financeReconciliationView,
-      Perm.financeViewAll,
-      Perm.paymentStyleView,
-      Perm.settlementMethodView,
-      Perm.noticeRead,
-      Perm.noticePublish,
-      Perm.suggestionSubmit,
-      Perm.suggestionReply,
-      Perm.webinquiryView,
-      // 收付款类别
-      Perm.paymentStyleEdit,
-      ...Perm.buttonActionCodes,
-      ...user.permissions,
-    };
-  }
   return user.permissions.toSet();
 });
 
@@ -1143,11 +681,4 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
 final isSuperAdminProvider = Provider<bool>((ref) {
   final user = ref.watch(sessionProvider).user;
   return user?.superAdmin ?? false;
-});
-
-/// 当前用户的角色名集合（如 {'hr','manager'}）。
-final currentRolesProvider = Provider<Set<String>>((ref) {
-  final user = ref.watch(sessionProvider).user;
-  if (user == null) return const <String>{};
-  return user.roles.map((Role r) => r.name).toSet();
 });

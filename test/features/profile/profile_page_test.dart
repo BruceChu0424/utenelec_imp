@@ -10,7 +10,6 @@ import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/profile/models/profile_change_request.dart';
 import 'package:uten_imp/features/profile/pages/profile_page.dart';
 import 'package:uten_imp/features/profile/providers/profile_change_providers.dart';
-import 'package:uten_imp/shared/models/role.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -206,7 +205,6 @@ class _ProfileSessionNotifier extends SessionNotifier {
       id: 'user-1',
       code: 'SESSION-CODE',
       name: 'Session Name',
-      roles: [Role.admin],
       department: 'Session Department',
       position: 'Session Position',
       employeeId: 'stale-employee-id',

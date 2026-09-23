@@ -1,106 +1,28 @@
 package com.uten.imp.features.subcontract.material_issue;
 
-import com.uten.imp.audit.AuditDetailViewRecorder;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.junit.jupiter.api.Test;
-import org.springframework.aop.support.AopUtils;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.PostMapping;
 
-import java.lang.reflect.Method;
-import java.util.List;
+import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
 
+/**
+ * 旧委外发料手工新建入口：V441 起固定返回 409 的兼容端点，V655 / ADR-109 起连同停用码
+ * subcontract_material_issue:create 一并删除(平台未上线，不再为旧客户端保留路由)。
+ * 委外发料只能由仓库委外出仓按系统任务执行。
+ */
 class SubcontractMaterialIssueManualCreateRetirementTest {
 
     @Test
-    void manualCreateAlwaysConflictsWithoutCallingTheLegacyService() {
-        SubcontractMaterialIssueService service =
-                mock(SubcontractMaterialIssueService.class);
-        SubcontractMaterialIssueController controller =
-                new SubcontractMaterialIssueController(
-                        service, mock(AuditDetailViewRecorder.class));
-
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> controller.create(null));
-
-        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(error.getMessage())
-                .contains("旧委外发料手工新建已关闭")
-                .contains("仓库管理 → 委外出仓");
-        verifyNoInteractions(service);
-    }
-
-    @Test
-    void methodSecurityRejectsOrdinaryUserButStaleAuthorityStillGetsConflict() {
-        try (AnnotationConfigApplicationContext context =
-                     new AnnotationConfigApplicationContext(MethodSecurityConfig.class)) {
-            SubcontractMaterialIssueController controller =
-                    context.getBean(SubcontractMaterialIssueController.class);
-
-            SecurityContextHolder.getContext().setAuthentication(
-                    UsernamePasswordAuthenticationToken.authenticated(
-                            "ordinary-user", "n/a", List.of()));
-            assertThrows(AccessDeniedException.class, () -> controller.create(null));
-
-            SecurityContextHolder.getContext().setAuthentication(
-                    UsernamePasswordAuthenticationToken.authenticated(
-                            "legacy-client",
-                            "n/a",
-                            List.of(new SimpleGrantedAuthority(
-                                    "subcontract_material_issue:create"))));
-            ApiException error = assertThrows(
-                    ApiException.class,
-                    () -> controller.create(null));
-            assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        } finally {
-            SecurityContextHolder.clearContext();
-        }
-    }
-
-    @Test
-    void openApiMarksCompatibilityPostDeprecatedWith403And409Only() throws Exception {
-        Method method = AopUtils.getMostSpecificMethod(
-                SubcontractMaterialIssueController.class.getMethod(
-                        "create",
-                        com.uten.imp.features.subcontract.material_issue.dto
-                                .MaterialIssueSaveRequest.class),
-                SubcontractMaterialIssueController.class);
-        Operation operation = method.getAnnotation(Operation.class);
-        ApiResponses responses = method.getAnnotation(ApiResponses.class);
-
-        assertThat(operation).isNotNull();
-        assertThat(operation.deprecated()).isTrue();
-        assertThat(operation.description()).contains("不再创建单据");
-        assertThat(responses).isNotNull();
-        assertThat(responses.value())
-                .extracting(response -> response.responseCode())
-                .containsExactly("403", "409");
-    }
-
-    @Configuration(proxyBeanMethods = false)
-    @EnableMethodSecurity
-    static class MethodSecurityConfig {
-
-        @Bean
-        SubcontractMaterialIssueController materialIssueController() {
-            return new SubcontractMaterialIssueController(
-                    mock(SubcontractMaterialIssueService.class),
-                    mock(AuditDetailViewRecorder.class));
-        }
+    void manualCreateRouteNoLongerExists() {
+        boolean collectionPost = Arrays.stream(SubcontractMaterialIssueController.class.getDeclaredMethods())
+                .map(method -> method.getAnnotation(PostMapping.class))
+                .filter(mapping -> mapping != null)
+                .anyMatch(mapping -> mapping.value().length == 0 && mapping.path().length == 0);
+        assertThat(collectionPost).isFalse();
+        assertThat(Arrays.stream(SubcontractMaterialIssueService.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName))
+                .doesNotContain("create");
     }
 }

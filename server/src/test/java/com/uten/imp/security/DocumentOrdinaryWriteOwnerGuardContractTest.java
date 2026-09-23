@@ -58,7 +58,7 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
                 " update(", " delete(", " approve(", " reverse(");
 
         assertMethods("features/production/plan/ProductionPlanService.java",
-                " update(", " delete(", " reverse(", " updateFlags(");
+                " update(", " delete(", " approve(", " reverse(", " updateFlags(");
         assertMethods("features/production/dailyreport/ProductionDailyReportService.java",
                 " update(", " delete(");
     }
@@ -94,15 +94,10 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
         assertThat(stock).contains("requireWorkshopDirectTransferDocument(");
         assertThat(method(stock, " reverseInternal(")).contains("requireOperationWritable(");
         assertThat(method(stock, " issue(")).contains("issueAfterPrelock(");
-        // 同 approveDocumentAfterPrelock：V584 也给 issueAfterPrelock 加了一个
-        // 纯转发重载，守卫落在带 workshopDirectTransfer 的那个上。
-        var issueOverloads = methods(stock, " issueAfterPrelock(");
-        assertThat(issueOverloads).as("issueAfterPrelock 重载").isNotEmpty();
-        for (String overload : issueOverloads) {
-            assertThat(overload).satisfiesAnyOf(
-                    body -> assertThat(body).contains("requireOperationWritable("),
-                    body -> assertThat(body).contains("return issueAfterPrelock("));
-        }
+        // 仓库发料入口 issueAfterPrelock 只转发给加锁内核 issueLocked 再回显详情；
+        // 守卫落在 issueLocked 的仓库分支上(车间直送分支不回显详情，ADR-109)。
+        assertThat(method(stock, " issueAfterPrelock(")).contains("issueLocked(");
+        assertThat(method(stock, " issueLocked(")).contains("requireOperationWritable(");
         assertThat(method(stock, " reverseIssue(")).contains("requireOperationWritable(");
         assertThat(method(stock, " requireOperationWritable(")).contains(
                 "access.requireWritable(document.getMakerId(), message)",
@@ -139,6 +134,14 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
                     && relative.equals("features/subcontract/waste/SubcontractWasteService.java")) {
                 assertThat(body).contains("approveInternal(id)");
                 body = method(source, " approveInternal(");
+            }
+            // ADR-109 / permissions-06：生产计划单张审核 / 删除与服务端批量审核 / 删除共用同一个
+            // 加锁内核(approveLocked / deleteLocked)，属主写守卫落在内核里，单张入口只转发。
+            if (relative.equals("features/production/plan/ProductionPlanService.java")
+                    && (" approve(".equals(signature) || " delete(".equals(signature))) {
+                String locked = " approve(".equals(signature) ? "approveLocked" : "deleteLocked";
+                assertThat(body).contains(locked + "(id)");
+                body = method(source, " " + locked + "(");
             }
             assertThat(body)
                     .as("%s in %s", signature.trim(), relative)

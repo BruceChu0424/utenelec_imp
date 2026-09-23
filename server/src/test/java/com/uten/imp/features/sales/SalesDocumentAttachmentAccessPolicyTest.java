@@ -102,7 +102,7 @@ class SalesDocumentAttachmentAccessPolicyTest {
         var h = new Harness(Kind.ORDER_SHIPMENT);
         h.permissions.remove("sales_order:price:view");
         assertThrows(ApiException.class, () -> h.policy.requireCanView(h.id, h.user()));
-        h.permissions.add("finance_shipment_audit");
+        h.permissions.add("sales_shipment_finance:view");
         assertThrows(ApiException.class, () -> h.policy.requireCanView(h.id, h.user()));
         h.shipment.setFinanceRejected(true);
         assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
@@ -166,6 +166,6 @@ class SalesDocumentAttachmentAccessPolicyTest {
             else if (returned != null) returned.setStatus((short) 1);
             else shipment.setStatus((short) 1);
         }
-        AuthUser user() { return new AuthUser(UUID.randomUUID(), owner, "test", Set.of(), Set.copyOf(permissions), false, true, false); }
+        AuthUser user() { return new AuthUser(UUID.randomUUID(), owner, "test", Set.copyOf(permissions), false, true, false); }
     }
 }

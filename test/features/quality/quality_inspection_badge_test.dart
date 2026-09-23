@@ -947,7 +947,6 @@ class _QualityReviewerSessionNotifier extends SessionNotifier {
       id: 'user-qa-1',
       code: 'QA-001',
       name: '品质审核员',
-      roles: [],
       employeeId: 'employee-qa-1',
     ),
   );

@@ -15,7 +15,6 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewRequest;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewItem;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.IssueWorkshopPlansRequest;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
@@ -199,7 +198,7 @@ class WorkshopNoticeDeliveryEndToEndTest {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT fn_execution_start_material_ready(?)", Boolean.class, segment));
     }
     private ChainNoticeService chain(NoticeService notices, UserAccountRepository users, PermissionResolver permissions) {
-        return new ChainNoticeService(notices, users, permissions, mock(UserRoleRepository.class), jdbc,
+        return new ChainNoticeService(notices, users, permissions, jdbc,
                 mock(BusinessEventPublisher.class), mock(RdTaskService.class), mock(FinanceReviewerEligibilityPort.class),
                 mock(SalesOrderFinanceConfirmerEligibility.class));
     }

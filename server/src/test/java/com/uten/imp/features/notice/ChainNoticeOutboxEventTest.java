@@ -6,7 +6,6 @@ import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,7 +47,7 @@ class ChainNoticeOutboxEventTest {
         // 测试会以「zero interactions」的形式红，看起来像发布逻辑没了。
         when(jdbc.queryForList(contains("SELECT bill_no,shipment_kind,owner_employee_id,maker_id,review_revision"),eq(shipment)))
                 .thenReturn(List.of(Map.of("bill_no","XC-REV2","shipment_kind","DIRECT_CUSTOMER","owner_employee_id",UUID.randomUUID(),"maker_id",UUID.randomUUID(),"review_revision",2L)));
-        ChainNoticeService service=service(notice,users,mock(PermissionResolver.class),mock(UserRoleRepository.class),jdbc,outbox);
+        ChainNoticeService service=service(notice,users,mock(PermissionResolver.class),jdbc,outbox);
         service.notifyShipmentFinanceRejected(shipment,"当前退回原因");
         verify(outbox).publishOnce(ChainNoticeService.EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED,"SALES_SHIPMENT",shipment,
                 Map.of("reason","当前退回原因","reviewRevision",2L),ChainNoticeService.EVENT_DIRECT_SHIPMENT_FINANCE_REJECTED+":"+shipment+":2");
@@ -67,7 +66,6 @@ class ChainNoticeOutboxEventTest {
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
-        UserRoleRepository roles = mock(UserRoleRepository.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
         UserAccount roleBuyer = activeUser(roleBuyerId);
         UserAccount departmentBuyer = activeUser(departmentBuyerId);
@@ -82,8 +80,6 @@ class ChainNoticeOutboxEventTest {
                         "external_document_no", "SQ-001",
                         "goods_code", "WL-001",
                         "goods_name", "\u6d4b\u8bd5\u7269\u6599")));
-        when(roles.findUserIdsByRoleCode("buyer"))
-                .thenReturn(List.of(roleBuyerId));
         when(jdbc.queryForList(
                 contains("WITH RECURSIVE subtree"),
                 eq(UUID.class),
@@ -98,7 +94,7 @@ class ChainNoticeOutboxEventTest {
         when(permissions.permsOf(departmentBuyer)).thenReturn(Set.of(
                 "notice:read", "purchase_request:view"));
         ChainNoticeService service = service(
-                notice, users, permissions, roles, jdbc, outbox);
+                notice, users, permissions, jdbc, outbox);
 
         service.notifyPreplanSupplyActionCreated(actionId);
 
@@ -144,7 +140,6 @@ class ChainNoticeOutboxEventTest {
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
-        UserRoleRepository roles = mock(UserRoleRepository.class);
         UserAccount buyer = activeUser(buyerId);
         when(jdbc.queryForList(
                 contains("FROM preplan_supply_actions supply"),
@@ -160,12 +155,10 @@ class ChainNoticeOutboxEventTest {
         when(jdbc.queryForList(
                 contains("FROM preplan_supply_actions supply"),
                 eq(cancelledActionId))).thenReturn(List.of());
-        when(roles.findUserIdsByRoleCode("buyer"))
-                .thenReturn(List.of(buyerId));
         when(jdbc.queryForList(
                 contains("WITH RECURSIVE subtree"),
                 eq(UUID.class),
-                eq("SUB_PURCHASE"))).thenReturn(List.of());
+                eq("SUB_PURCHASE"))).thenReturn(List.of(buyerId));
         when(users.findById(buyerId))
                 .thenReturn(Optional.of(buyer));
         when(permissions.permsOf(buyer)).thenReturn(Set.of(
@@ -174,7 +167,6 @@ class ChainNoticeOutboxEventTest {
                 notice,
                 users,
                 permissions,
-                roles,
                 jdbc,
                 mock(BusinessEventPublisher.class));
 
@@ -214,7 +206,6 @@ class ChainNoticeOutboxEventTest {
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
-        UserRoleRepository roles = mock(UserRoleRepository.class);
         UserAccount noticeOnly = activeUser(noticeOnlyId);
         UserAccount requestOnly = activeUser(requestOnlyId);
 
@@ -229,8 +220,6 @@ class ChainNoticeOutboxEventTest {
                         "external_document_no", "SQ-REVOKE",
                         "goods_code", "WL-003",
                         "goods_name", "权限测试物料")));
-        when(roles.findUserIdsByRoleCode("buyer"))
-                .thenReturn(List.of(noticeOnlyId));
         when(jdbc.queryForList(
                 contains("WITH RECURSIVE subtree"),
                 eq(UUID.class),
@@ -242,7 +231,7 @@ class ChainNoticeOutboxEventTest {
         when(permissions.permsOf(requestOnly))
                 .thenReturn(Set.of("purchase_request:view"));
         ChainNoticeService service = service(
-                notice, users, permissions, roles, jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED,
@@ -330,7 +319,6 @@ class ChainNoticeOutboxEventTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
-        UserRoleRepository roles = mock(UserRoleRepository.class);
         when(jdbc.queryForList(
                 contains("SELECT bill_no, owner_employee_id, seller_id"),
                 eq(orderId))).thenReturn(List.of(Map.of(
@@ -342,10 +330,17 @@ class ChainNoticeOutboxEventTest {
                 .thenReturn(Optional.of(activeUser(ownerUserId)));
         when(users.findById(plannerUserId))
                 .thenReturn(Optional.of(activeUser(plannerUserId)));
-        when(roles.findUserIdsByRoleCode("planner"))
-                .thenReturn(List.of(plannerUserId));
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        UserAccount planner = activeUser(plannerUserId);
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree"),
+                eq(UUID.class),
+                eq("SUB_PLAN"))).thenReturn(List.of(plannerUserId));
+        when(users.findAllById(any())).thenReturn(List.of(planner));
+        when(permissions.permsOf(planner)).thenReturn(Set.of(
+                "notice:read", "production_plan:view", "production_material_analysis:view"));
         ChainNoticeService service = service(
-                notice, users, roles, jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
         Map<String, Object> payload = Map.of("allocations", List.of(Map.of(
                 "orderId", orderId.toString(),
                 "orderBillNo", "SO-SNAPSHOT",
@@ -446,12 +441,11 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(revokedWarehouseUserId))
                 .thenReturn(Optional.of(revokedWarehouseUser));
         when(permissions.permsOf(warehouseUser))
-                .thenReturn(Set.of("notice:read", "sales_shipment:warehouse-work"));
+                .thenReturn(Set.of("notice:read", "warehouse_sales_outbound:execute"));
         when(permissions.permsOf(revokedWarehouseUser))
                 .thenReturn(Set.of("notice:read"));
         ChainNoticeService service = service(
-                notice, users, permissions, mock(UserRoleRepository.class),
-                jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SHIPMENT_PENDING_PICK,
@@ -492,11 +486,10 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(allowed)).thenReturn(Optional.of(allowedUser));
         when(users.findById(revoked)).thenReturn(Optional.of(revokedUser));
         when(permissions.permsOf(allowedUser)).thenReturn(
-                Set.of("notice:read", "sales_shipment:warehouse-work"));
+                Set.of("notice:read", "warehouse_sales_outbound:execute"));
         when(permissions.permsOf(revokedUser)).thenReturn(Set.of("notice:read"));
         ChainNoticeService service = service(
-                notice, users, permissions, mock(UserRoleRepository.class),
-                jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SHIPMENT_FINANCE_REVOKED,
@@ -543,7 +536,6 @@ class ChainNoticeOutboxEventTest {
                 notice,
                 users,
                 permissions,
-                mock(UserRoleRepository.class),
                 jdbc,
                 mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),
@@ -622,8 +614,7 @@ class ChainNoticeOutboxEventTest {
         when(permissions.permsOf(viewOnlyUser))
                 .thenReturn(Set.of("stock_doc:view"));
         ChainNoticeService service = new ChainNoticeService(
-                notice, users, permissions, mock(UserRoleRepository.class),
-                jdbc, mock(BusinessEventPublisher.class),
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),
                 mock(FinanceReviewerEligibilityPort.class),
                 mock(com.uten.imp.features.admin.workflow
@@ -716,7 +707,6 @@ class ChainNoticeOutboxEventTest {
                 notice,
                 users,
                 permissionResolver,
-                mock(UserRoleRepository.class),
                 jdbc,
                 mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),
@@ -758,7 +748,6 @@ class ChainNoticeOutboxEventTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
-        UserRoleRepository roles = mock(UserRoleRepository.class);
         when(jdbc.queryForList(
                 contains("SELECT bill_no, owner_employee_id, seller_id"),
                 eq(orderId))).thenReturn(List.of(Map.of("bill_no", "SO-001")));
@@ -788,7 +777,7 @@ class ChainNoticeOutboxEventTest {
                 .thenReturn(Optional.of(planner));
         when(users.findById(viewerUserId)).thenReturn(Optional.of(viewer));
         ChainNoticeService service = service(
-                notice, users, permissions, roles, jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_ORDER_APPROVED,
@@ -958,8 +947,7 @@ class ChainNoticeOutboxEventTest {
                         "owner_user_id", ownerUserId,
                         "return_qty", new BigDecimal("5"))));
         ChainNoticeService service = service(
-                notice, users, permissions, mock(UserRoleRepository.class),
-                jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_PROCUREMENT_RETURN_REQUIRED,
@@ -1000,8 +988,7 @@ class ChainNoticeOutboxEventTest {
                         "status", "OPEN",
                         "supplier_name", "委外商甲")));
         ChainNoticeService service = service(
-                notice, users, permissions, mock(UserRoleRepository.class),
-                jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SUBCONTRACT_LOSS_OPENED,
@@ -1027,7 +1014,6 @@ class ChainNoticeOutboxEventTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
-        UserRoleRepository roles = mock(UserRoleRepository.class);
         when(jdbc.queryForList(
                 contains("SELECT bill_no, owner_employee_id, seller_id"),
                 eq(orderId))).thenReturn(List.of(Map.of(
@@ -1035,14 +1021,21 @@ class ChainNoticeOutboxEventTest {
                         "owner_employee_id", ownerEmployeeId)));
         when(users.findByEmployeeId(ownerEmployeeId))
                 .thenReturn(Optional.of(activeUser(ownerUserId)));
-        when(roles.findUserIdsByRoleCode("planner"))
-                .thenReturn(List.of(plannerUserId));
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        UserAccount planner = activeUser(plannerUserId);
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree"),
+                eq(UUID.class),
+                eq("SUB_PLAN"))).thenReturn(List.of(plannerUserId));
+        when(users.findAllById(any())).thenReturn(List.of(planner));
+        when(permissions.permsOf(planner)).thenReturn(Set.of(
+                "notice:read", "production_plan:view", "production_material_analysis:view"));
         when(users.findById(ownerUserId))
                 .thenReturn(Optional.of(activeUser(ownerUserId)));
         when(users.findById(plannerUserId))
                 .thenReturn(Optional.of(activeUser(plannerUserId)));
         ChainNoticeService service = service(
-                notice, users, roles, jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_DELIVERY_DUE,
@@ -1121,22 +1114,7 @@ class ChainNoticeOutboxEventTest {
         return service(
                 notice,
                 users,
-                mock(UserRoleRepository.class),
-                jdbc,
-                outbox);
-    }
-
-    private static ChainNoticeService service(
-            NoticeService notice,
-            UserAccountRepository users,
-            UserRoleRepository roles,
-            JdbcTemplate jdbc,
-            BusinessEventPublisher outbox) {
-        return service(
-                notice,
-                users,
                 mock(PermissionResolver.class),
-                roles,
                 jdbc,
                 outbox);
     }
@@ -1145,14 +1123,12 @@ class ChainNoticeOutboxEventTest {
             NoticeService notice,
             UserAccountRepository users,
             PermissionResolver permissions,
-            UserRoleRepository roles,
             JdbcTemplate jdbc,
             BusinessEventPublisher outbox) {
         return new ChainNoticeService(
                 notice,
                 users,
                 permissions,
-                roles,
                 jdbc,
                 outbox,
                 mock(RdTaskService.class),

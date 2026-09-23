@@ -62,7 +62,7 @@ public class VisitorApprovalController {
     }
 
     @GetMapping("/as-host")
-    @PreAuthorize("hasAuthority('visitor:host-confirm')")
+    @PreAuthorize("hasAuthority('visitor:host_confirm')")
     public PageResponse<VisitorListItem> asHost(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
@@ -90,7 +90,7 @@ public class VisitorApprovalController {
      * hrReviewing / awaitingVisit —— 「我的访客」页两个黄色分段各挂一个。
      */
     @GetMapping("/host-pending-count")
-    @PreAuthorize("hasAuthority('visitor:host-confirm')")
+    @PreAuthorize("hasAuthority('visitor:host_confirm')")
     public Map<String, Long> hostPendingCount() {
         VisitorHostQueueCounts counts = hostConfirmService.myAsHostCounts();
         return Map.of(
@@ -102,7 +102,7 @@ public class VisitorApprovalController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('visitor:approve', 'visitor:host-confirm')")
+    @PreAuthorize("hasAnyAuthority('visitor:approve', 'visitor:host_confirm')")
     public VisitorDetail detail(@PathVariable UUID id) {
         VisitorDetail detail = hrApprovalService.getDetailForStaff(id);
         viewAudit.record(
@@ -118,7 +118,7 @@ public class VisitorApprovalController {
     }
 
     @PostMapping("/{id}/host-confirm")
-    @PreAuthorize("hasAuthority('visitor:host-confirm')")
+    @PreAuthorize("hasAuthority('visitor:host_confirm')")
     public VisitorDetail hostConfirm(@PathVariable UUID id, @Valid @RequestBody HostConfirmRequest req) {
         return hostConfirmService.hostConfirm(id, req);
     }

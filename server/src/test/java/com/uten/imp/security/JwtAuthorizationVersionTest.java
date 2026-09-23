@@ -101,7 +101,6 @@ class JwtAuthorizationVersionTest {
         when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 5, 9))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
-                        Set.of("employee"),
                         Set.of("employee:view")));
 
         MockHttpServletRequest request = bearerRequest("current-token");
@@ -173,7 +172,6 @@ class JwtAuthorizationVersionTest {
         when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 6, 9))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
-                        Set.of("employee"),
                         Set.of("employee:view")));
 
         MockHttpServletRequest request = bearerRequest("reset-token");

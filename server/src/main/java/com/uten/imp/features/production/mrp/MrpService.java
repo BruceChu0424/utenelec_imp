@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.mrp;
 
-import com.uten.imp.application.port.OrganizationReferencePort;
 
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
@@ -13,11 +12,6 @@ import com.uten.imp.features.production.plan.ProductionPlanItem;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.features.production.plan.ProductionProductNoAllocator;
-import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
-import com.uten.imp.features.purchase.request.PurchaseRequest;
-import com.uten.imp.features.purchase.request.PurchaseRequestItem;
-import com.uten.imp.features.purchase.request.PurchaseRequestItemRepository;
-import com.uten.imp.features.purchase.request.PurchaseRequestRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -47,9 +41,8 @@ import java.util.UUID;
  *   <li>全部在途与需求日前可到在途分开计算；日期为空的采购行不计入及时在途。
  *       所有库存、预留、在途和 MRP 数量均换算为基本单位。</li>
  *   <li>半成品（本身有 BOM 的组件）标记「自制」，只做预览不进采购申请。</li>
- *   <li>生成：一张采购申请（草稿，单号走 CS 序列），明细挂 production_plan_no 溯源；
- *       mrp_generations 记录联动，防重复生成（未删且未红冲的生成单存在即拒绝，
- *       申请被删/红冲后可再生成，旧联动软删留痕）。</li>
+ *   <li>旧的「按 MRP 直接生成采购申请」入口已删除(V655 / ADR-109：该写路径从未开启，
+ *       缺料采购统一由物料分析与计划包生成)。</li>
  * </ol>
  */
 @Service
@@ -61,7 +54,6 @@ public class MrpService {
      * 保持编译期默认关闭，避免仅靠前端按钮控制数据安全。
      */
     private static final boolean PLANNING_WRITE_READY = true;
-    private static final boolean LEGACY_DERIVED_WRITE_READY = false;
 
     /** Server-authoritative capability used by every caller that would persist MRP-derived state. */
     public boolean isPlanningWriteReady() {
@@ -153,50 +145,6 @@ public class MrpService {
              LEFT JOIN colors resolved_color
                     ON resolved_color.id = COALESCE(b.color_id, component.color_id)
             WHERE i.plan_id = :planId AND i.is_deleted = false
-            """);
-
-    /** D3：销售订单行需求源（已审订单）的同构展开 SQL。 */
-    private static final String MRP_ORDER_SQL = buildMrpSql("""
-            SELECT b.component_goods_id AS goods_id,
-                   resolved_color.id AS color_id,
-                   CASE
-                       WHEN COALESCE(i.unit_rate,1) > 0 AND b.qty > 0 AND COALESCE(i.qty,0) >= 0
-                       THEN (COALESCE(i.qty,0) * COALESCE(i.unit_rate,1) * b.qty)::numeric
-                       ELSE 0::numeric
-                   END AS req_qty,
-                   COALESCE(i.deliver_date, o.deliver_date) AS need_date,
-                   (source.is_deleted OR component.is_deleted
-                    OR COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL
-                    OR b.qty <= 0 OR COALESCE(i.qty,0) < 0
-                     OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
-                         AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
-                     OR (b.color_id IS NULL
-                         AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
-                     OR (component.color_id IS NULL
-                         AND NULLIF(component.color_legacy_id, 0) IS NOT NULL))
-                       AS invalid_requirement,
-                   source.is_deleted AS src_deleted,
-                   component.is_deleted AS comp_deleted,
-                   (COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL) AS plan_unit_bad,
-                   (b.qty <= 0) AS bom_qty_bad,
-                   (COALESCE(i.qty,0) < 0) AS plan_qty_bad,
-                    ((COALESCE(b.color_id, component.color_id) IS NOT NULL
-                      AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
-                     OR (b.color_id IS NULL
-                         AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
-                     OR (component.color_id IS NULL
-                         AND NULLIF(component.color_legacy_id, 0) IS NOT NULL)) AS color_bad,
-                   1 AS lvl,
-                   ARRAY[b.id]::uuid[] AS path
-            FROM sales_order_items i
-            JOIN sales_orders o ON o.id = i.order_id AND o.status = 1 AND o.is_deleted = false
-                AND o.finance_confirmed = true
-            JOIN goods source ON source.id = i.goods_id
-            JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
-            JOIN goods component ON component.id = b.component_goods_id
-             LEFT JOIN colors resolved_color
-                    ON resolved_color.id = COALESCE(b.color_id, component.color_id)
-            WHERE i.order_id = :orderId AND i.is_deleted = false
             """);
 
     private static String buildMrpSql(String seed) {
@@ -375,17 +323,6 @@ public class MrpService {
             WHERE plan_id = :sourceId AND is_deleted = false
             """);
 
-    private static final String ORDER_BOM_VALIDATION_SQL = buildBomValidationSql("""
-            SELECT DISTINCT i.goods_id
-            FROM sales_order_items i
-            JOIN sales_orders o ON o.id = i.order_id
-            WHERE i.order_id = :sourceId
-              AND i.is_deleted = false
-              AND o.is_deleted = false
-              AND o.status = 1
-              AND o.finance_confirmed = true
-            """);
-
     /**
      * BOM 展开虽然有深度/路径护栏，但不能把截断结果当成真实需求。
      * 先验证当前需求根可达图；存在环或超过十层时整次 MRP 失败。
@@ -423,12 +360,9 @@ public class MrpService {
     private final EntityManager em;
     private final ProductionPlanRepository planRepo;
     private final ProductionPlanItemRepository itemRepo;
-    private final PurchaseRequestRepository requestRepo;
-    private final PurchaseRequestItemRepository requestItemRepo;
     private final DocNumberService docNumberService;
     private final ProductionProductNoAllocator productNoAllocator;
     private final SecurityContextCurrentUser currentUser;
-    private final OrganizationReferencePort organizationReferences;
     private final com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService fulfillmentLedger;
     private final TxSessionVars tx;
 
@@ -493,151 +427,6 @@ public class MrpService {
             UUID unitId,
             BigDecimal requiredQty,
             BigDecimal shortageQty) {
-    }
-
-    /** D3 订单物料分析（李主管）：从已审销售订单直接 BOM 展开（不必先建生产计划）。 */
-    @Transactional(readOnly = true)
-    public List<MrpRow> previewOrder(UUID orderId) {
-        Object n = em.createNativeQuery(
-                "SELECT COUNT(*) FROM sales_orders WHERE id=:id AND status=1 AND is_deleted=false"
-                        + " AND finance_confirmed=true")
-                .setParameter("id", orderId).getSingleResult();
-        if (((Number) n).intValue() == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核且已通过财务确认的销售订货单可做物料分析");
-        }
-        return explodeOrder(orderId);
-    }
-
-    /** 生成采购申请：默认净需求（strategy=gross 时按毛需求）。 */
-    @Transactional
-    public MrpGenerateResult generate(UUID planId) {
-        tx.bind();
-        return generateInternal(planId, "net");
-    }
-
-    /** 生成采购申请：净需求>0（strategy=gross 时毛需求>0）的外购物料 → 一张草稿申请；防重复生成。 */
-    @Transactional
-    public MrpGenerateResult generate(UUID planId, String strategy) {
-        tx.bind();
-        return generateInternal(planId, strategy);
-    }
-
-    private MrpGenerateResult generateInternal(UUID planId, String strategy) {
-        ProductionPlan plan = lockPlan(planId);
-        assertLegacyDerivedWriteAllowed(planId, "采购申请");
-        return generatePurchaseLocked(plan, strategy, true);
-    }
-
-    /** 调用方已持有父计划写锁；emptyIsError=false 用于计划包无新购缺口时返回 null。 */
-    private MrpGenerateResult generatePurchaseLocked(
-            ProductionPlan plan, String strategy, boolean emptyIsError) {
-        boolean grossMode = "gross".equalsIgnoreCase(strategy);
-        requireNotTerminal(plan, "采购申请");
-        requirePlanningWriteReady();
-
-        List<MrpRow> rows = explode(plan.getId());
-        List<MrpRow> buy = rows.stream()
-                .filter(r -> !r.selfMade()
-                        && (grossMode ? r.gross() : r.purchaseNetShortage()) != null
-                        && (grossMode ? r.gross() : r.purchaseNetShortage()).signum() > 0)
-                .toList();
-        if (buy.isEmpty()) {
-            if (!emptyIsError) return null;
-            throw new ApiException(ErrorCode.BUSINESS, grossMode
-                    ? "无毛需求外购物料(或全部为自制件)"
-                    : "无新增采购净缺口(当前可用/有效在途已覆盖，晚到在途请走催交或改配)");
-        }
-
-        // 父计划写锁使“查重 + 生成”串行；联动表继续承担业务溯源与历史留痕。
-        var dup = em.createNativeQuery("""
-                SELECT r.bill_no FROM mrp_generations g
-                JOIN purchase_requests r ON r.id = g.request_id
-                WHERE g.plan_id = :planId AND g.is_deleted = false
-                  AND r.is_deleted = false AND r.status <> -1
-                LIMIT 1
-                """).setParameter("planId", plan.getId()).getResultList();
-        if (!dup.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "本计划已生成过采购申请(" + dup.get(0) + ")，如需重生成请先删除或红冲该申请");
-        }
-
-        LocalDate today = BusinessTime.today();
-        LocalDate requestNeedDate = buy.stream()
-                .map(MrpRow::needDate)
-                .filter(java.util.Objects::nonNull)
-                .min(LocalDate::compareTo)
-                .orElse(plan.getDeliveryDate());
-        PurchaseRequest r = new PurchaseRequest();
-        r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
-        r.setBillDate(today);
-        r.setNeedDate(requestNeedDate);
-        UUID applicantEmployeeId = currentUser.requireEmployeeId();
-        r.setApplicantId(applicantEmployeeId);
-        organizationReferences.findActiveEmployee(applicantEmployeeId)
-                .map(OrganizationReferencePort.EmployeeReference::departmentId)
-                .ifPresent(r::setDepartmentId);
-        r.setMakerId(applicantEmployeeId);
-        r.setRemark("生产计划 " + plan.getBillNo() + " 物料需求自动生成");
-        r.setSourceDocNo(plan.getBillNo());
-        r.setStatus((short) 0);
-        requestRepo.save(r);
-
-        Map<UUID, PurchaseGoodsSnapshot> goodsSnapshots =
-                PurchaseGoodsSnapshot.fromMaster(
-                        em,
-                        buy.stream().map(MrpRow::goodsId).toList(),
-                        PurchaseGoodsSnapshot.MASTER_AT_SAVE);
-        int line = 0;
-        for (MrpRow row : buy) {
-            line++;
-            PurchaseRequestItem it = new PurchaseRequestItem();
-            it.setRequestId(r.getId());
-            it.setBillNo(r.getBillNo());
-            it.setBillDate(r.getBillDate());
-            it.setLineNo(line);
-            it.setGoodsId(row.goodsId());
-            PurchaseGoodsSnapshot goodsSnapshot = PurchaseGoodsSnapshot.require(
-                    goodsSnapshots, row.goodsId(), "MRP采购申请明细");
-            it.setGoodsCodeSnapshot(goodsSnapshot.code());
-            it.setGoodsNameSnapshot(goodsSnapshot.name());
-            it.setGoodsSnapshotSource(goodsSnapshot.source());
-            it.setColorId(row.colorId());
-            it.setUnitId(row.unitId());
-            it.setUnitRate(BigDecimal.ONE);
-            it.setQty(grossMode ? row.gross() : row.purchaseNetShortage());
-            it.setPrice(BigDecimal.ZERO);
-            it.setAmountOriginal(BigDecimal.ZERO);
-            it.setAmountLocal(BigDecimal.ZERO);
-            it.setGiftQty(BigDecimal.ZERO);
-            it.setDeliverDate(row.needDate() == null ? requestNeedDate : row.needDate());
-            it.setProductionPlanNo(plan.getBillNo());
-            it.setSourceDocNo(plan.getBillNo());
-            it.setRemark(grossMode
-                    ? "毛需求开单(不扣库存/在途)"
-                    : "毛需求 " + row.gross().stripTrailingZeros().toPlainString()
-                    + " − 当前可用 " + row.availableNow().stripTrailingZeros().toPlainString()
-                    + " − 全部在途 " + row.openPoTotal().stripTrailingZeros().toPlainString()
-                    + "；需求日前缺口 " + row.timelyShortage().stripTrailingZeros().toPlainString());
-            requestItemRepo.save(it);
-        }
-        // 自动生成的草稿采购申请不填单价，金额合计按业务约定保持为 0（采购员定稿后再汇总）。
-        r.setTotalOriginal(BigDecimal.ZERO);
-        r.setTotalLocal(BigDecimal.ZERO);
-        requestRepo.save(r);
-
-        // 联动留痕：旧联动行软删（历史可追溯），插新行
-        em.createNativeQuery("""
-                UPDATE mrp_generations SET is_deleted = true, deleted_at = now()
-                WHERE plan_id = :planId AND is_deleted = false
-                """).setParameter("planId", plan.getId()).executeUpdate();
-        em.createNativeQuery("""
-                INSERT INTO mrp_generations (plan_id, request_id, created_by)
-                VALUES (:planId, :requestId, :by)
-                """).setParameter("planId", plan.getId()).setParameter("requestId", r.getId())
-                .setParameter("by", currentUser.requireId()).executeUpdate();
-
-        return new MrpGenerateResult(r.getId(), r.getBillNo(), line,
-                rows.stream().filter(MrpRow::selfMade).map(MrpRow::goodsId).distinct().toList());
     }
 
     /**
@@ -794,34 +583,6 @@ public class MrpService {
         return plan;
     }
 
-    /**
-     * A plan must never mix the execution-segment ledger with legacy
-     * derived-document endpoints. Both paths lock the parent plan first, so
-     * this check is also safe against a concurrent V1 confirmation.
-     */
-    private void assertLegacyDerivedWriteAllowed(UUID planId, String targetName) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_planning_packages package
-                        WHERE package.plan_id = :planId
-                          AND package.execution_model_version = 1
-                          AND package.is_deleted = FALSE
-                        """)
-                .setParameter("planId", planId)
-                .getSingleResult();
-        requireNoMixedExecutionModel(count.longValue(), targetName);
-    }
-
-    static void requireNoMixedExecutionModel(
-            long executionSegmentPackageCount,
-            String targetName) {
-        if (executionSegmentPackageCount > 0) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "该计划已启用执行子计划，不能再通过旧接口生成" + targetName
-                            + "；请在执行子计划链路内处理，避免重复锁料或重复开单");
-        }
-    }
-
     private static void requireNotTerminal(ProductionPlan plan, String targetName) {
         if ((plan.getStatus() != null && plan.getStatus() == -1)
                 || plan.isCanceled()
@@ -832,24 +593,9 @@ public class MrpService {
         }
     }
 
-    private static void requirePlanningWriteReady() {
-        if (!LEGACY_DERIVED_WRITE_READY) {
-            // 不允许两个计划把同一库存/在途重复当作可用后直接落单。
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "MRP 规划写入尚未启用：需先上线统一原料占用、采购供给分配和目标仓校验");
-        }
-    }
-
     private List<MrpRow> explode(UUID planId) {
         validateBomGraph(PLAN_BOM_VALIDATION_SQL, planId);
         return runExplode(MRP_SQL, "planId", planId);
-    }
-
-    /** D3：销售订单行 BOM 展开（同 MRP_SQL，仅需求源换成已审订单行 qty）。 */
-    private List<MrpRow> explodeOrder(UUID orderId) {
-        validateBomGraph(ORDER_BOM_VALIDATION_SQL, orderId);
-        return runExplode(MRP_ORDER_SQL, "orderId", orderId);
     }
 
     private List<MrpRow> runExplode(String sql, String param, UUID id) {

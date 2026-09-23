@@ -31,8 +31,7 @@ import static com.uten.imp.common.util.Strings.maskPhone;
 @RequiredArgsConstructor
 public class VisitorAuthService {
 
-    private static final Set<String> VISITOR_PERMS =
-            Set.of("visitor:apply", "visitor:view");
+    private static final Set<String> VISITOR_PERMS = VisitorAuthorities.ALL;
 
     private final VisitorAccountRepository accountRepo;
     private final VisitorSmsService smsService;

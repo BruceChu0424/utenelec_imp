@@ -204,14 +204,13 @@ public class ServerStatusAlertScheduler {
                       SELECT 1 FROM user_permission_overrides override
                       JOIN permissions permission ON permission.id = override.permission_id
                       WHERE override.user_id = account.id AND override.active = TRUE
-                        AND override.effect = 'ALLOW' AND permission.code = ?
-                        AND permission.active = TRUE)
+                        AND override.effect = 'grant' AND permission.code = ?)
                    OR EXISTS (
                       SELECT 1 FROM department_permissions allocation
                       JOIN permissions permission ON permission.id = allocation.permission_id
                       JOIN employees staff ON staff.id = account.employee_id
                       WHERE allocation.department_id = staff.department_id
-                        AND permission.code = ? AND permission.active = TRUE))
+                        AND permission.code = ?))
                 """, (rs, row) -> (UUID) rs.getObject(1), RECEIVE_AUTHORITY, RECEIVE_AUTHORITY));
         if (result.isEmpty()) {
             log.debug("没有账号持有 {}，服务器状态告警本轮不发送", RECEIVE_AUTHORITY);

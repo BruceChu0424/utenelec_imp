@@ -88,7 +88,6 @@ public interface ManagerPermissionDelegationRepository extends
             JOIN permissions permission ON permission.id = delegation.permission_id
             WHERE delegation.user_id = :userId
               AND delegation.enabled = TRUE
-              AND permission.active = TRUE
             """, nativeQuery = true)
     List<EnabledDelegationCandidate> findEnabledCandidatesByUserId(
             @Param("userId") UUID userId);

@@ -34,7 +34,6 @@ AppUser _user(String id, {String? employee}) => AppUser(
   id: id,
   code: id,
   name: id,
-  roles: const [],
   employeeId: employee ?? 'employee-$id',
   permissions: const [Perm.stockDocView],
 );

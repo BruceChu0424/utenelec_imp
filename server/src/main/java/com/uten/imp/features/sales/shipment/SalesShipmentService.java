@@ -86,9 +86,16 @@ public class SalesShipmentService {
 
     /** 老库 BStyle=3 销售出货正应收。 */
     private static final short BSTYLE_SALES_SHIPMENT = 3;
-    private static final String FINANCE_AUDIT_AUTHORITY = "finance_shipment_audit";
+    /** 出货财审查看(也是财务读取出货单的范围旁路；动作另有 approve/reject/reverse)。 */
+    private static final String FINANCE_AUDIT_AUTHORITY = "sales_shipment_finance:view";
+    private static final String FINANCE_APPROVE_AUTHORITY = "sales_shipment_finance:approve";
+    private static final String FINANCE_REJECT_AUTHORITY = "sales_shipment_finance:reject";
+    private static final String FINANCE_REVERSE_AUTHORITY = "sales_shipment_finance:reverse";
     private static final String REJECT_AUTHORITY = "sales_shipment:reject";
-    private static final String WAREHOUSE_WORK_AUTHORITY = "sales_shipment:warehouse-work";
+    /** 仓库销售出库查看(仓库读取出货单的范围旁路)。 */
+    private static final String WAREHOUSE_VIEW_AUTHORITY = "warehouse_sales_outbound:view";
+    /** 仓库销售出库执行(推进拣货 / 确认出库)。 */
+    private static final String WAREHOUSE_WORK_AUTHORITY = "warehouse_sales_outbound:execute";
     private static final String SETTLEMENT_ROLE_CASH = "CASH";
     private static final int MONEY_SCALE = 4;
 
@@ -176,10 +183,10 @@ public class SalesShipmentService {
     }
 
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
     public PageResponse<ShipmentListItem> list(ShipmentQueryFilter f, int page, int size, String sort, String order) {
         var readScope = accessPolicy.scope(
-                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_WORK_AUTHORITY);
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         Specification<SalesShipment> spec = (Root<SalesShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -189,7 +196,7 @@ public class SalesShipmentService {
                 customerShipmentPolicy.requireRead(kind);
                 ps.add(cb.equal(root.get("shipmentKind"),kind));
             }
-            if (!customerShipmentPolicy.has(FINANCE_AUDIT_AUTHORITY) && !customerShipmentPolicy.has(WAREHOUSE_WORK_AUTHORITY)) {
+            if (!customerShipmentPolicy.has(FINANCE_AUDIT_AUTHORITY) && !customerShipmentPolicy.has(WAREHOUSE_VIEW_AUTHORITY)) {
                 if (!customerShipmentPolicy.can(CustomerShipmentPolicy.DIRECT,"view")) ps.add(cb.notEqual(root.get("shipmentKind"),CustomerShipmentPolicy.DIRECT));
                 if (!customerShipmentPolicy.can(CustomerShipmentPolicy.ORDER,"view")) ps.add(cb.equal(root.get("shipmentKind"),CustomerShipmentPolicy.DIRECT));
             }
@@ -262,7 +269,7 @@ public class SalesShipmentService {
     }
 
     @Transactional(readOnly=true)
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:view')")
     public long countPendingFinanceAudit() {
         var scope=accessPolicy.scope(FINANCE_AUDIT_AUTHORITY);
         return shipmentRepo.count((root,q,cb)->cb.and(
@@ -287,10 +294,10 @@ public class SalesShipmentService {
      * (等值 PENDING_PICK 蕴含索引谓词的 IN 列表), 60s 轮询的计数查询继续走该索引.</p>
      */
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
     public long countPendingWarehouseWork() {
         var readScope = accessPolicy.scope(
-                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_WORK_AUTHORITY);
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         Specification<SalesShipment> spec = (root, q, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
@@ -313,10 +320,10 @@ public class SalesShipmentService {
      * 一条 SQL 按 warehouse_work_status 分组, 键为状态码, 未出现的状态不给键(调用方补 0).</p>
      */
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
     public Map<String, Long> countWarehouseWorkByStatus() {
         var readScope = accessPolicy.scope(
-                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_WORK_AUTHORITY);
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         CriteriaBuilder cb = em.getCriteriaBuilder();
         jakarta.persistence.criteria.CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
         Root<SalesShipment> root = query.from(SalesShipment.class);
@@ -336,7 +343,7 @@ public class SalesShipmentService {
     }
 
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
     public ShipmentDetail detail(UUID id) {
         SalesShipment s = requireReadableShipment(id);
         List<SalesShipmentItem> entities = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
@@ -703,17 +710,17 @@ public class SalesShipmentService {
 
     /** 财务审核发货：所有客户逐张人工放行；标签不自动决定是否可发货。 */
     @Transactional
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
     public Map<String, Object> financeAudit(UUID id) {
         return financeAudit(id,null);
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
     public Map<String, Object> financeAudit(UUID id,
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
         tx.bind();
-        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_AUDIT_AUTHORITY);
+        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_APPROVE_AUTHORITY);
         requireFinanceAuditEditableState(s);
         requireFinanceDecision(s,request);
         if (s.getFinanceAudit() != null && s.getFinanceAudit() == 1) {
@@ -757,11 +764,11 @@ public class SalesShipmentService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reject')")
     public Map<String,Object> financeAuditReject(UUID id,
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
         tx.bind();
-        SalesShipment s=requireWritableShipmentForUpdate(id,FINANCE_AUDIT_AUTHORITY);
+        SalesShipment s=requireWritableShipmentForUpdate(id,FINANCE_REJECT_AUTHORITY);
         requireFinanceAuditEditableState(s);
         requireFinanceDecision(s,request);
         String reason=request==null?null:trimToNull(request.reason());
@@ -783,7 +790,7 @@ public class SalesShipmentService {
      * [financeAudit] 的全部校验与副作用（事件、通知、认领释放）。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
     public java.util.List<Map<String, Object>> financeAuditBatch(
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
         tx.bind();
@@ -796,7 +803,7 @@ public class SalesShipmentService {
 
     /** 批量退回：整批共用一个原因；任一项失败即整体回滚。 */
     @Transactional
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reject')")
     public java.util.List<Map<String, Object>> financeAuditRejectBatch(
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
         tx.bind();
@@ -817,10 +824,10 @@ public class SalesShipmentService {
      * 仅作用于未放行且仓库未作业的退回单；销售确认事实保留，无需销售重走确认。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reverse')")
     public Map<String, Object> financeRejectReverse(UUID id) {
         tx.bind();
-        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_AUDIT_AUTHORITY);
+        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_REVERSE_AUTHORITY);
         requireFinanceAuditEditableState(s);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         if (!s.isFinanceRejected()) {
@@ -856,10 +863,10 @@ public class SalesShipmentService {
 
     /** 财务反审：仅未审核出货（status=0）的单据可回退财务审核。 */
     @Transactional
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reverse')")
     public Map<String, Object> financeAuditReverse(UUID id) {
         tx.bind();
-        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_AUDIT_AUTHORITY);
+        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_REVERSE_AUTHORITY);
         requireFinanceAuditEditableState(s);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         if (s.getFinanceAudit() == null || s.getFinanceAudit() != 1) {
@@ -885,9 +892,50 @@ public class SalesShipmentService {
     }
 
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    @PreAuthorize("hasAuthority('sales_shipment_finance:view')")
     public Map<String, Object> financeAuditInfo(UUID id) {
-        return financeAuditInfo(requireReadableShipment(id));
+        SalesShipment shipment = requireReadableShipment(id);
+        Map<String, Object> info = new LinkedHashMap<>(financeAuditInfo(shipment));
+        // permissions-15：财审页的放行 / 退回 / 撤回按钮只按这里下发的动作显隐，
+        // 服务端按动作码 + 对象范围 + 单据状态一次算好，页面不再本地拼权限。
+        info.put("allowedActions", financeAllowedActions(shipment));
+        return info;
+    }
+
+    /** 当前用户对这张出货单此刻能做的财务动作(APPROVE / REJECT / REVERSE)，与各写入口的校验同口径。 */
+    private List<String> financeAllowedActions(SalesShipment shipment) {
+        if (!financeAuditEditable(shipment)) {
+            return List.of();
+        }
+        boolean released = shipment.getFinanceAudit() != null && shipment.getFinanceAudit() == 1;
+        boolean rejected = shipment.isFinanceRejected();
+        boolean awaitingDecision = !released && !rejected
+                && (shipment.getFinanceGateVersion() == null || shipment.getFinanceGateVersion() < 2
+                    || CustomerShipmentPolicy.salesConfirmed(shipment));
+        UUID owner = shipment.getOwnerEmployeeId();
+        List<String> actions = new ArrayList<>();
+        if (awaitingDecision && canFinanceAct(owner, FINANCE_APPROVE_AUTHORITY)) {
+            actions.add("APPROVE");
+        }
+        if (awaitingDecision && canFinanceAct(owner, FINANCE_REJECT_AUTHORITY)) {
+            actions.add("REJECT");
+        }
+        if ((released || rejected) && canFinanceAct(owner, FINANCE_REVERSE_AUTHORITY)) {
+            actions.add("REVERSE");
+        }
+        return List.copyOf(actions);
+    }
+
+    private boolean canFinanceAct(UUID owner, String authority) {
+        return accessPolicy.hasAuthority(authority) && accessPolicy.canWrite(owner, authority);
+    }
+
+    /** {@link #requireFinanceAuditEditableState} 的只读判定版本(不抛错)。 */
+    private static boolean financeAuditEditable(SalesShipment shipment) {
+        return !"LEGACY".equals(shipment.getShipmentKind())
+                && shipment.getStatus() != null && shipment.getStatus() == STATUS_DRAFT
+                && !shipment.isRejected()
+                && SalesShipment.WORK_PENDING_PICK.equals(shipment.getWarehouseWorkStatus());
     }
 
     /** 财务审核辅助信息：标签、UUID 结算方式、权威未结应收、铺底和原始差值。 */
@@ -1098,7 +1146,7 @@ public class SalesShipmentService {
      * {@code LEGACY_PENDING} 仍是只读迁移异常，只能人工核对后重建当前两审任务。</p>
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public ShipmentDetail transitionWarehouseWork(
             UUID id,
             com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest req) {
@@ -3284,7 +3332,7 @@ public class SalesShipmentService {
         customerShipmentPolicy.requireRead(shipment.getShipmentKind());
         accessPolicy.requireReadable(shipment.getOwnerEmployeeId(), "销售出货单不存在",
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY,
-                WAREHOUSE_WORK_AUTHORITY);
+                WAREHOUSE_VIEW_AUTHORITY);
         return shipment;
     }
 

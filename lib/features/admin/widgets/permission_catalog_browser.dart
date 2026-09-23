@@ -19,6 +19,9 @@ typedef PermissionItemBuilder =
 /// 段内再按 [PermissionCatalogGroup.category]（子类）折叠。管理员可按名称、子类或模块搜索，
 /// 或按状态筛选；命中的模块与子类自动展开。批量操作分三档（全部 / 本模块 / 本组），
 /// 始终作用于完整集合，不会因当前搜索隐藏了部分权限而产生歧义。
+///
+/// 批量「授权」只把范围交给调用方([onGrantScope])，由服务端按授权策略决定带上哪些码
+/// (ADR-109)；本组件不做任何本地过滤。批量「收回」仍是本地暂存，交给调用方的保存流程。
 class PermissionCatalogBrowser extends StatefulWidget {
   const PermissionCatalogBrowser({
     super.key,
@@ -29,13 +32,12 @@ class PermissionCatalogBrowser extends StatefulWidget {
     this.enabledFilterLabel = '已授权',
     this.disabledFilterLabel = '未授权',
     this.changedFilterLabel,
-    this.onEnableGroup,
+    this.onGrantScope,
     this.onDisableGroup,
     this.enableGroupLabel = '本组全部授权',
     this.disableGroupLabel = '本组全部设为未授权',
     this.enableModuleLabel = '本模块全部授权',
     this.disableModuleLabel = '本模块全部设为未授权',
-    this.onEnableAll,
     this.onDisableAll,
     this.enableAllLabel = '全部授权',
     this.disableAllLabel = '全部收回',
@@ -48,18 +50,19 @@ class PermissionCatalogBrowser extends StatefulWidget {
   final String enabledFilterLabel;
   final String disabledFilterLabel;
   final String? changedFilterLabel;
-  final ValueChanged<List<AdminPermission>>? onEnableGroup;
+
+  /// 「全部授权 / 本模块 / 本组」：只交出范围，由服务端按授权策略补齐。为 null 时不渲染。
+  final ValueChanged<PermissionBulkScope>? onGrantScope;
   final ValueChanged<List<AdminPermission>>? onDisableGroup;
   final String enableGroupLabel;
   final String disableGroupLabel;
 
-  /// 本模块（一级）整段批量授权/收回；作用于该模块全部权限，复用整组回调。
+  /// 本模块(一级)整段批量授权/收回。
   final String enableModuleLabel;
   final String disableModuleLabel;
 
-  /// 跨分组「全部授权/全部收回」回调。批量操作始终作用于完整目录
-  /// （[groups] 的全部 permissions），不受当前搜索/状态筛选影响。为 null 时按钮不渲染。
-  final ValueChanged<List<AdminPermission>>? onEnableAll;
+  /// 跨分组「全部收回」回调：作用于完整目录([groups] 的全部 permissions)，
+  /// 不受当前搜索/状态筛选影响。为 null 时按钮不渲染。
   final ValueChanged<List<AdminPermission>>? onDisableAll;
   final String enableAllLabel;
   final String disableAllLabel;
@@ -325,7 +328,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
         ),
         if (actionTypes.isNotEmpty)
           _actionFilterBar(actionTypes, allPermissions),
-        if ((widget.onEnableAll != null || widget.onDisableAll != null) &&
+        if ((widget.onGrantScope != null || widget.onDisableAll != null) &&
             allPermissions.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s4),
@@ -333,13 +336,11 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s4,
               children: [
-                if (widget.onEnableAll != null)
+                if (widget.onGrantScope != null)
                   FilledButton.tonalIcon(
-                    onPressed: () => widget.onEnableAll!(
-                      allPermissions
-                          .where((permission) => permission.bulkAssignable)
-                          .toList(growable: false),
-                    ),
+                    key: const ValueKey('permission-grant-all'),
+                    onPressed: () =>
+                        widget.onGrantScope!(PermissionBulkScope.everything),
                     icon: const Icon(Icons.done_all_rounded, size: 18),
                     label: Text(widget.enableAllLabel),
                   ),
@@ -441,7 +442,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
         ? '${module.subcats.fold<int>(0, (s, sc) => s + sc.visible.length)} 项匹配'
         : '$moduleEnabled/$moduleTotal';
     final canBatch =
-        widget.onEnableGroup != null || widget.onDisableGroup != null;
+        widget.onGrantScope != null || widget.onDisableGroup != null;
 
     return PermCatalogGroupSection(
       key: ValueKey('permission-module-${module.module}'),
@@ -458,10 +459,8 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               onSelected: (action) {
                 switch (action) {
                   case _PermissionGroupAction.enable:
-                    widget.onEnableGroup?.call(
-                      module.fullPerms
-                          .where((permission) => permission.bulkAssignable)
-                          .toList(growable: false),
+                    widget.onGrantScope?.call(
+                      PermissionBulkScope(module: module.module),
                     );
                     break;
                   case _PermissionGroupAction.disable:
@@ -470,7 +469,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
                 }
               },
               itemBuilder: (context) => [
-                if (widget.onEnableGroup != null)
+                if (widget.onGrantScope != null)
                   PopupMenuItem(
                     value: _PermissionGroupAction.enable,
                     child: Text(widget.enableModuleLabel),
@@ -494,7 +493,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
         ? '${subcat.visible.length} 项匹配'
         : '$enabledCount/${group.permissions.length}';
     final canBatch =
-        widget.onEnableGroup != null || widget.onDisableGroup != null;
+        widget.onGrantScope != null || widget.onDisableGroup != null;
 
     return PermCatalogGroupSection(
       key: ValueKey('permission-category-${group.category}'),
@@ -510,10 +509,11 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               onSelected: (action) {
                 switch (action) {
                   case _PermissionGroupAction.enable:
-                    widget.onEnableGroup?.call(
-                      group.permissions
-                          .where((permission) => permission.bulkAssignable)
-                          .toList(growable: false),
+                    widget.onGrantScope?.call(
+                      PermissionBulkScope(
+                        module: group.module,
+                        category: group.category,
+                      ),
                     );
                     break;
                   case _PermissionGroupAction.disable:
@@ -522,7 +522,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
                 }
               },
               itemBuilder: (context) => [
-                if (widget.onEnableGroup != null)
+                if (widget.onGrantScope != null)
                   PopupMenuItem(
                     value: _PermissionGroupAction.enable,
                     child: Text(widget.enableGroupLabel),

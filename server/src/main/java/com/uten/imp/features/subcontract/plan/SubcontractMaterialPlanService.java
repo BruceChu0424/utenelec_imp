@@ -2930,7 +2930,9 @@ public class SubcontractMaterialPlanService
         draft.setWarehouseId((UUID) remaining.getFirst()[12]);
         draft.setDeliverDate(deliverDate);
         draft.setStatus(ISSUE_DRAFT);
-        draft.setMakerId(null); // 系统生成草稿：无归属人，仓库按权限执行出仓
+        // 系统生成草稿：没有个人归属人，显式归入仓库委外出仓池(V656)，不再靠空归属对全员可见。
+        draft.setMakerId(null);
+        draft.setOwnerPool(SubcontractMaterialIssue.POOL_WAREHOUSE_OUTBOUND);
         draft.setRemark("系统按委外订货单 " + orderBillNo + " 财务批准自动生成");
         draft.setSourceDocNo(orderBillNo);
         issueRepo.save(draft);

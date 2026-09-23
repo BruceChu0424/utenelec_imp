@@ -181,7 +181,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 userId,
                 employeeId,
                 loginAccount,
-                authorities.roles(),
                 authorities.permissions(),
                 user.isMustChangePassword(),
                 true,

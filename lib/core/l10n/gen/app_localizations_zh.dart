@@ -258,9 +258,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApplyHost => '接待人';
 
   @override
-  String get visitorApplyDept => '接待部门';
-
-  @override
   String get visitorApplyVisitTime => '计划到访时间';
 
   @override
@@ -3522,13 +3519,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApplySubmittingOverlay => '正在提交访客申请，请勿重复提交或离开本页。';
 
   @override
-  String get visitorApplyDeptHint => '请选择接待部门';
-
-  @override
   String get visitorApplyHostHint => '请选择被访人';
 
   @override
   String get visitorApplyHostSheetTitle => '选择被访人';
+
+  @override
+  String get visitorApplyHostSearchEmpty => '输入被访人姓名搜索';
+
+  @override
+  String get visitorApplyHostSearchHint => '至少输入 2 个字，最多显示 5 位同事';
 
   @override
   String visitorSettingsPortalTag(Object app) {

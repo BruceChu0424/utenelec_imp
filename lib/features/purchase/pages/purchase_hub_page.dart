@@ -30,7 +30,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
-import '../../../core/router/permission_by_path.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -64,13 +64,9 @@ class PurchaseHubPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
-    bool canOpen(String location) {
-      if (superAdmin) return true;
-      final requiredAny = requiredAnyPermFor(location);
-      final requiredAll = requiredAllPermsFor(location);
-      return (requiredAny == null || requiredAny.any(permissions.contains)) &&
-          requiredAll.every(permissions.contains);
-    }
+    // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /purchase 入口守卫同源，ADR-109)。
+    bool canOpen(String location) =>
+        hubCardAllowed(RouteName.purchase, location, permissions, superAdmin);
 
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) => canOpen(entry.location))
@@ -106,10 +102,10 @@ class PurchaseHubPage extends ConsumerWidget {
       ),
     ]);
     final documentEntries = visible([
-      _Entry.fromCfg(PurchaseDocConfig.request, l10n),
-      _Entry.fromCfg(PurchaseDocConfig.order, l10n),
-      _Entry.fromCfg(PurchaseDocConfig.receipt, l10n),
-      _Entry.fromCfg(PurchaseDocConfig.returnDoc, l10n),
+      _Entry.fromCfg(PurchaseDocConfig.request, l10n, canOpen),
+      _Entry.fromCfg(PurchaseDocConfig.order, l10n, canOpen),
+      _Entry.fromCfg(PurchaseDocConfig.receipt, l10n, canOpen),
+      _Entry.fromCfg(PurchaseDocConfig.returnDoc, l10n, canOpen),
     ]);
     final reportEntries = visible([
       for (final kind in PurchaseReportKind.values)
@@ -242,11 +238,19 @@ class _Entry {
   });
 
   /// 单据卡；有草稿计数口径的类型在右上角挂红色草稿徽章（本人未提交的活）。
-  _Entry.fromCfg(PurchaseDocConfig cfg, AppLocalizations l10n)
-    : icon = cfg.icon,
+  ///
+  /// 「新建页带历史列表」的单据只对能新建的人落到新建页；只能查看的人落到列表页
+  /// (两个落点都登记在 hub_catalog，守卫各自生效)。
+  _Entry.fromCfg(
+    PurchaseDocConfig cfg,
+    AppLocalizations l10n,
+    bool Function(String location) canOpen,
+  ) : icon = cfg.icon,
       label = _purchaseDocTitle(cfg.type, l10n),
       description = _purchaseDocSubtitle(cfg.type, l10n),
-      location = cfg.skipListOnCreate
+      location =
+          cfg.skipListOnCreate &&
+              canOpen(RoutePath.purchaseDocNew(cfg.type.pathSegment))
           ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
           : '/purchase/${cfg.type.pathSegment}',
       // 草稿徽章占 badge（卡右上角浮层）：4 张单据卡都没有别的待办徽章，

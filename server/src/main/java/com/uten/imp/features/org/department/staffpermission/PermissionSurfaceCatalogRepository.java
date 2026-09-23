@@ -38,7 +38,6 @@ public class PermissionSurfaceCatalogRepository {
                   ON link.surface_id = surface.id
                 LEFT JOIN permissions permission
                   ON permission.id = link.permission_id
-                 AND permission.active = TRUE
                 WHERE surface.enabled = TRUE
                 ORDER BY surface.sort_order,
                          surface.surface_key,

@@ -15,9 +15,12 @@ import java.util.UUID;
  * 平台级单据行级访问策略（按归属人 owner 做对象级授权）。
  *
  * <p>把销售归属隔离模型（{@code SalesDocumentAccessPolicy}）泛化到每个业务模块：
- * 单据的归属人（通常是制单人 maker）决定行可见性。归属列为 NULL 的老数据保持
- * 「可读但普通用户不可写」（兼容迁移数据）。超级管理员、本模块的 {@code *:view:all}
+ * 单据的归属人(通常是制单人 maker)决定行可见性。超级管理员、本模块的 {@code *:view:all}
  * 权限点，以及调用方传入的操作级 authority 可旁路归属限制。
+ *
+ * <p>归属为空不再等于「全员可读」(permissions-10 / ADR-109)：没有归属人的单据只对全量范围
+ * 可见；系统生成、需要按岗位办理的单据必须显式声明系统池(如委外发料草稿的 owner_pool)，
+ * 由所属模块按池授权码放行，不能靠空归属绕过对象级隔离。
  *
  * <p>每个模块提供一个薄 {@code @Component} 子类，固定 {@code scope}（与
  * {@code user_data_scopes.scope} 对应）和 {@code viewAllAuthority} 权限码。feature 包
@@ -71,10 +74,9 @@ public abstract class DocumentAccessPolicy {
         if (scope.seeAll()) {
             return cb.conjunction();
         }
-        Predicate legacyPublic = cb.isNull(root.get(ownerAttribute));
         return scope.visibleOwners().isEmpty()
-                ? legacyPublic
-                : cb.or(legacyPublic, root.get(ownerAttribute).in(scope.visibleOwners()));
+                ? cb.disjunction()
+                : root.get(ownerAttribute).in(scope.visibleOwners());
     }
 
     public NativeReadScope nativeReadScope(String ownerColumn, String parameterName,
@@ -88,32 +90,10 @@ public abstract class DocumentAccessPolicy {
             return new NativeReadScope("1=1", null, Set.of());
         }
         if (scope.visibleOwners().isEmpty()) {
-            return new NativeReadScope(ownerColumn + " IS NULL", null, Set.of());
+            return new NativeReadScope("1=0", null, Set.of());
         }
         return new NativeReadScope(
-                "(" + ownerColumn + " IS NULL OR " + ownerColumn + " IN (:" + parameterName + "))",
-                parameterName,
-                scope.visibleOwners());
-    }
-
-    /**
-     * 归属列存储 legacy {@code NULL} 归属为非 NULL 哨兵的聚合（例如唯一键须全非空的
-     * 可刷新物化视图）时的可见范围。
-     */
-    public NativeReadScope nativeReadScopeWithLegacySentinel(
-            String ownerColumn,
-            String parameterName,
-            UUID legacyOwnerSentinel,
-            OwnerVisibility.OwnerScope scope) {
-        if (scope.seeAll()) {
-            return new NativeReadScope("1=1", null, Set.of());
-        }
-        String legacyPublic = ownerColumn + " = '" + legacyOwnerSentinel + "'::uuid";
-        if (scope.visibleOwners().isEmpty()) {
-            return new NativeReadScope(legacyPublic, null, Set.of());
-        }
-        return new NativeReadScope(
-                "(" + legacyPublic + " OR " + ownerColumn + " IN (:" + parameterName + "))",
+                ownerColumn + " IN (:" + parameterName + ")",
                 parameterName,
                 scope.visibleOwners());
     }
@@ -124,8 +104,7 @@ public abstract class DocumentAccessPolicy {
 
     public boolean canRead(UUID ownerEmployeeId, OwnerVisibility.OwnerScope scope) {
         return scope.seeAll()
-                || ownerEmployeeId == null
-                || scope.visibleOwners().contains(ownerEmployeeId);
+                || (ownerEmployeeId != null && scope.visibleOwners().contains(ownerEmployeeId));
     }
 
     public void requireReadable(UUID ownerEmployeeId, String notFoundMessage,
@@ -171,7 +150,7 @@ public abstract class DocumentAccessPolicy {
     }
 
     public boolean canWrite(UUID ownerEmployeeId, OwnerVisibility.OwnerScope scope) {
-        // 迁移来的无归属单据保持可读以兼容；即使全量高权也须先显式补负责人再写。
+        // 无归属单据即使全量高权也须先显式补负责人再写(系统池单据由所属模块按池授权办理)。
         return ownerEmployeeId != null
                 && (scope.seeAll() || scope.writableOwners().contains(ownerEmployeeId));
     }

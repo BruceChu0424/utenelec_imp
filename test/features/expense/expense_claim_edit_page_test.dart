@@ -27,7 +27,6 @@ class _Session extends SessionNotifier {
       code: 'E001',
       name: '张三',
       department: '研发部',
-      roles: [],
       permissions: [Perm.expenseApply],
     ),
   );

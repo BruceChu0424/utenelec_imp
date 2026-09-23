@@ -21,7 +21,7 @@ import java.util.UUID;
 /** Warehouse-only sales outbound task API. */
 @RestController
 @RequestMapping("/api/warehouse/sales-outbound")
-@PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
+@PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
 public class WarehouseSalesOutboundController {
 
     private final WarehouseSalesOutboundProjectionService service;
@@ -71,6 +71,7 @@ public class WarehouseSalesOutboundController {
     }
 
     @PostMapping("/{id}/warehouse-work")
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public WarehouseSalesOutboundDetail warehouseWork(
             @PathVariable UUID id,
             @Valid @RequestBody WarehouseWorkTransitionRequest request) {

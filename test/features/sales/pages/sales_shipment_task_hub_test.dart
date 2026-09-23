@@ -19,7 +19,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _app(const FinanceHubPage(), const {Perm.financeShipmentAudit}),
+      _app(const FinanceHubPage(), const {Perm.salesShipmentFinanceView}),
     );
     await tester.pumpAndSettle();
 
@@ -34,7 +34,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _app(const WarehouseHubPage(), const {Perm.salesShipmentWarehouseWork}),
+      _app(const WarehouseHubPage(), const {Perm.warehouseSalesOutboundView}),
     );
     await tester.pumpAndSettle();
 

@@ -4,8 +4,6 @@ import com.uten.imp.config.props.BootstrapProperties;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
-import com.uten.imp.features.rbac.RoleRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,15 +21,11 @@ class BootstrapRunnerTest {
 
     private final UserAccountRepository userRepository = mock(UserAccountRepository.class);
     private final EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
-    private final RoleRepository roleRepository = mock(RoleRepository.class);
-    private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final BootstrapProperties properties = new BootstrapProperties();
     private final BootstrapRunner runner = new BootstrapRunner(
             userRepository,
             employeeRepository,
-            roleRepository,
-            userRoleRepository,
             passwordEncoder,
             properties);
 
@@ -47,7 +41,7 @@ class BootstrapRunnerTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("BOOTSTRAP_ADMIN_LOGIN");
 
-        verifyNoInteractions(userRepository, employeeRepository, roleRepository, userRoleRepository);
+        verifyNoInteractions(userRepository, employeeRepository);
     }
 
     @Test

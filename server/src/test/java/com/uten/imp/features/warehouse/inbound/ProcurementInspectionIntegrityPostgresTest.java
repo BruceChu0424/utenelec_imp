@@ -1067,8 +1067,7 @@ class ProcurementInspectionIntegrityPostgresTest {
                 VALUES (?,?,?,'x',FALSE,FALSE,'active')
                 """, userId, employeeId, login + '-' + userId);
         return new AuthUser(
-                userId, employeeId, login,
-                Set.of(), Set.of(
+                userId, employeeId, login, Set.of(
                         "procurement_inspection:view",
                         "procurement_inspection:handle",
                         "warehouse_iqc_stock_in:view",

@@ -505,6 +505,87 @@ void main() {
     );
   });
 
+  // permissions-15：按钮只认服务端下发的 allowedActions，本地权限集合不再参与判断。
+  testWidgets('decision buttons follow server allowedActions only', (
+    tester,
+  ) async {
+    const detail = {
+      'id': 'shipment-allowed-actions',
+      'billNo': 'XS-20260923-001',
+      'financeReviewPending': true,
+      'salesConfirmed': true,
+      'status': 0,
+      'financeAudit': 0,
+      'warehouseWorkStatus': 'PENDING_PICK',
+      'items': <Map<String, dynamic>>[
+        {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 10},
+      ],
+    };
+    // 本地只持查看码，但服务端判定可放行(例如经页面委派刚拿到放行权)：按服务端显示。
+    final api = await _pumpReviewPage(
+      tester,
+      detail: detail,
+      claimSucceeds: true,
+      permissions: const {Perm.salesShipmentFinanceView},
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-allowed-actions',
+        'reviewRevision': 1,
+        'contentHash': 'hash-1',
+        'financeAudit': 0,
+        'clientName': '测试客户',
+        'allowedActions': ['APPROVE'],
+      },
+    );
+    expect(
+      find.byKey(const Key('finance-shipment-audit-approve')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('finance-shipment-audit-reject')),
+      findsNothing,
+    );
+    expect(api.postPaths.any((path) => path.endsWith('/claim')), isTrue);
+  });
+
+  testWidgets('no allowed action: no decision buttons and no claim', (
+    tester,
+  ) async {
+    final api = await _pumpReviewPage(
+      tester,
+      detail: const {
+        'id': 'shipment-no-actions',
+        'billNo': 'XS-20260923-002',
+        'financeReviewPending': true,
+        'salesConfirmed': true,
+        'status': 0,
+        'financeAudit': 0,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[
+          {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 10},
+        ],
+      },
+      claimSucceeds: true,
+      financeAuditInfo: const {
+        'shipmentId': 'shipment-no-actions',
+        'reviewRevision': 1,
+        'contentHash': 'hash-1',
+        'financeAudit': 0,
+        'clientName': '测试客户',
+        // 本地码齐全，但服务端判定这张单不归本人办理(对象范围之外)。
+        'allowedActions': <String>[],
+      },
+    );
+    expect(
+      find.byKey(const Key('finance-shipment-audit-approve')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('finance-shipment-audit-reject')),
+      findsNothing,
+    );
+    expect(api.postPaths.any((path) => path.endsWith('/claim')), isFalse);
+  });
+
   // V578：被退回的单据在财务侧有显式出口——「撤回退回」恢复待审，
   // 退回原因与出货内容无关（如客户结账方式待核对）时无需销售改单来回。
   testWidgets('rejected shipment offers reject reversal back to pending', (
@@ -559,7 +640,12 @@ Future<_ReviewApi> _pumpReviewPage(
   required Map<String, dynamic> detail,
   Map<String, dynamic>? financeAuditInfo,
   bool claimSucceeds = false,
-  Set<String> permissions = const {Perm.financeShipmentAudit},
+  Set<String> permissions = const {
+    Perm.salesShipmentFinanceView,
+    Perm.salesShipmentFinanceApprove,
+    Perm.salesShipmentFinanceReject,
+    Perm.salesShipmentFinanceReverse,
+  },
   Size surfaceSize = const Size(1500, 1100),
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
@@ -569,6 +655,7 @@ Future<_ReviewApi> _pumpReviewPage(
     detail,
     financeAuditInfo: financeAuditInfo,
     claimSucceeds: claimSucceeds,
+    grants: permissions,
   );
   final router = GoRouter(
     initialLocation: '/finance/sales-shipment-audits/${detail['id']}',
@@ -603,8 +690,37 @@ Future<_ReviewApi> _pumpReviewPage(
 }
 
 class _ReviewApi extends ApiClient {
-  _ReviewApi(this.detail, {this.financeAuditInfo, this.claimSucceeds = false})
-    : super(Dio());
+  _ReviewApi(
+    this.detail, {
+    this.financeAuditInfo,
+    this.claimSucceeds = false,
+    this.grants = const {},
+  }) : super(Dio());
+
+  /// 本账号持有的码：只用来模拟服务端算 allowedActions，页面自己不再读它决定按钮。
+  final Set<String> grants;
+
+  /// 模拟服务端按动作码 + 单据状态算出的可执行动作
+  /// (真实口径见 SalesShipmentService.financeAllowedActions)。
+  List<String> _serverAllowedActions() {
+    if (detail['status'] != 0 ||
+        detail['warehouseWorkStatus'] != 'PENDING_PICK') {
+      return const [];
+    }
+    final released = detail['financeAudit'] == 1;
+    final rejected = detail['financeRejected'] == true;
+    final awaiting = !released && !rejected;
+    return [
+      if (awaiting && grants.contains(Perm.salesShipmentFinanceApprove))
+        'APPROVE',
+      if (awaiting && grants.contains(Perm.salesShipmentFinanceReject))
+        'REJECT',
+      if ((released || rejected) &&
+          grants.contains(Perm.salesShipmentFinanceReverse))
+        'REVERSE',
+    ];
+  }
+
   bool claimSucceeds;
   bool failHeartbeat = false;
 
@@ -626,6 +742,7 @@ class _ReviewApi extends ApiClient {
           'header': <String, dynamic>{},
           'items': detail['items'] ?? <dynamic>[],
         }),
+        'allowedActions': _serverAllowedActions(),
         ...?financeAuditInfo,
       };
     }

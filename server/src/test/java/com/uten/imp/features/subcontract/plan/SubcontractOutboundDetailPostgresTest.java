@@ -203,8 +203,7 @@ class SubcontractOutboundDetailPostgresTest {
     }
 
     private void authorize(Set<String> permissions) {
-        when(currentUser.get()).thenReturn(Optional.of(new AuthUser(id(500), id(501), "reader",
-                Set.of(), permissions, false, true, false)));
+        when(currentUser.get()).thenReturn(Optional.of(new AuthUser(id(500), id(501), "reader", permissions, false, true, false)));
     }
 
     private static UUID id(int value) {

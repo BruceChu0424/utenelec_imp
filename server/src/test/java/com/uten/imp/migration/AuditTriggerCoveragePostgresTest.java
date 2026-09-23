@@ -70,12 +70,14 @@ class AuditTriggerCoveragePostgresTest {
         assertEquals(oldBusiness,db.queryForObject("SELECT to_jsonb(opening)::text FROM stock_value_openings opening WHERE event_id=?",String.class,oldOpening.eventId()));
         assertEquals(oldAudit,auditSnapshotBeforeUpgrade());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='stock_value_openings' AND target_id=?",Integer.class,oldOpening.eventId().toString()),"no historical audit backfill");
-        // V590 整表废弃 production_goods_workshop_preferences，其 trg_audit_* 随表删除：
-        // 这是唯一被显式豁免的旧触发器（按名字点名，其它丢失仍然算红）。
+        // V590 整表废弃 production_goods_workshop_preferences、V655 删除四张角色表，
+        // 它们的 trg_audit_* 随表删除：按名字点名豁免，其它丢失仍然算红。
         String expectedSurvivingTriggers=db.queryForObject(
                 "SELECT COALESCE(jsonb_agg(value ORDER BY (value->>'oid')::oid),'[]'::jsonb)::text"
                         +" FROM jsonb_array_elements(?::jsonb) e"
-                        +" WHERE value->>'name' <> 'trg_audit_production_goods_workshop_preferences'",
+                        +" WHERE value->>'name' NOT IN ('trg_audit_production_goods_workshop_preferences',"
+                        // V655 / ADR-109 删除角色体系四张表，其审计触发器随表删除。
+                        +"'trg_audit_roles','trg_audit_user_roles','trg_audit_role_permissions','trg_audit_department_roles')",
                 String.class,oldValidTriggers);
         assertEquals(expectedSurvivingTriggers,validOldTriggerSnapshot());
         for(String table:List.of("procurement_order_source_revisions","procurement_order_source_revision_allocations","procurement_order_source_revision_peg_changes",

@@ -1,8 +1,6 @@
 package com.uten.imp.features.rd_task;
 
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.rd_task.RdTaskContracts.AssignRequest;
-import com.uten.imp.features.rd_task.RdTaskContracts.RdTaskInput;
 import com.uten.imp.features.rd_task.RdTaskContracts.RdTaskRow;
 import com.uten.imp.features.rd_task.RdTaskContracts.ResolveRequest;
 import jakarta.validation.Valid;
@@ -61,21 +59,9 @@ public class RdTaskController {
                 "inProgress", counts.inProgress());
     }
 
-    @PostMapping
-    @PreAuthorize("hasAuthority('rd_task:create')")
-    public RdTaskRow create(@RequestBody @Valid RdTaskInput input) {
-        return service.create(input);
-    }
-
     @PostMapping("/{id}/resolve")
     @PreAuthorize("hasAuthority('rd_task:resolve')")
     public RdTaskRow resolve(@PathVariable UUID id, @RequestBody @Valid ResolveRequest req) {
         return service.resolve(id, req.expectedVersion(), req.note());
-    }
-
-    @PostMapping("/{id}/assign")
-    @PreAuthorize("hasAuthority('rd_task:assign')")
-    public RdTaskRow assign(@PathVariable UUID id, @RequestBody AssignRequest req) {
-        return service.assign(id, req.assigneeEmployeeId());
     }
 }

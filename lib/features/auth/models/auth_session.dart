@@ -5,7 +5,6 @@ class UserProfile {
   const UserProfile({
     required this.id,
     required this.loginAccount,
-    required this.roles,
     required this.permissions,
     required this.superAdmin,
     this.mustChangePassword = false,
@@ -25,17 +24,12 @@ class UserProfile {
   final String? code;
   final String? department;
   final String? position;
-  final List<String> roles;
   final List<String> permissions;
   final bool mustChangePassword;
 
   /// 后端 users.is_super_admin 直接透传——拥有该字段后所有权限检查短路放行，
   /// 且 UI 上"岗位/职务"自动隐藏（super admin 不设置具体 position）。
   final bool superAdmin;
-
-  bool get isAdmin => superAdmin || roles.contains('admin');
-  bool get isHr => roles.contains('hr');
-  bool get canManageOrg => isAdmin || isHr;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
     id: json['id'] as String,
@@ -47,9 +41,6 @@ class UserProfile {
     position: json['position'] as String?,
     mustChangePassword: json['mustChangePassword'] as bool? ?? false,
     superAdmin: json['superAdmin'] as bool? ?? false,
-    roles: ((json['roles'] as List<dynamic>?) ?? const [])
-        .map((e) => e as String)
-        .toList(),
     permissions: ((json['permissions'] as List<dynamic>?) ?? const [])
         .map((e) => e as String)
         .toList(),

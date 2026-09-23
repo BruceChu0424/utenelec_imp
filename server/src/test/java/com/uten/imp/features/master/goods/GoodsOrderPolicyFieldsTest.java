@@ -184,8 +184,7 @@ class GoodsOrderPolicyFieldsTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new TestingAuthenticationToken("test", "n/a", permissions.toArray(String[]::new)));
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), "tester",
-                Set.of(), permissions, false, true, false)));
+                UUID.randomUUID(), UUID.randomUUID(), "tester", permissions, false, true, false)));
         CategoryDrivenCodeService categoryCodes = mock(CategoryDrivenCodeService.class);
         when(categoryCodes.allocateForUpdate(any(), any(), any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(4, CategoryCodeAllocation.class));

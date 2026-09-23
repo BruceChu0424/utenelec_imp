@@ -173,9 +173,9 @@ class HrNoticeServiceTest {
     void visitorHostCardGoesOnlyToTheHostAccountAndHasItsOwnAggregate() {
         UUID hostEmployee = UUID.randomUUID();
         UserAccount host = account(hostEmployee, "active", false,
-                "notice:read", "visitor:host-confirm");
+                "notice:read", "visitor:host_confirm");
         UserAccount otherHost = account(UUID.randomUUID(), "active", false,
-                "notice:read", "visitor:host-confirm");
+                "notice:read", "visitor:host_confirm");
         when(users.findAll()).thenReturn(List.of(host, otherHost));
         UUID applicationId = UUID.randomUUID();
 

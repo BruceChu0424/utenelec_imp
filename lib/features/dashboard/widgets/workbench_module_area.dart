@@ -8,11 +8,11 @@
 // - 工程研发部 / 综合营销部 / 新媒体事业部 / 轨道事业部 暂无卡片（空分组）。
 // 组名全部硬编码中文，不引用 l10n。
 //
-// 显隐规则（单一数据源）：
-//   每个模块的可见性 = 用户是否拥有「目标路由所需权限点」，
-//   权限点查 core/router/permission_by_path.dart 的 requiredAnyPermFor() ——
-//   与路由守卫同一份映射；客户资料的数据范围由后端 owner/授权策略裁剪。
-//   映射为 null 的公开入口才按登录可见；其余入口统一由路由权限映射控制。
+// 显隐规则(单一数据源，ADR-109)：
+//   每个模块卡的可见性 = 路由守卫能否放行它的落点(core/router/route_access_policy.dart
+//   的 locationAllowedFor)——与路由守卫同一份判定；落点是模块首页(hub)时，
+//   守卫 = hub_catalog 里子卡守卫的并集(任一子卡可进即可见)，不再手写 any-of 清单。
+//   映射为 null 的公开入口才按登录可见；客户资料的数据范围由后端 owner/授权策略裁剪。
 //   普通用户：整组无可见卡片则整组不渲染；
 //   超级管理员：显示全部分组（含空分组），空分组内显示「功能规划接入中」占位，
 //   方便超管预先排列布局。
@@ -29,7 +29,7 @@ import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_drag_reorder_list.dart';
 import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
-import '../../../core/router/permission_by_path.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -44,19 +44,14 @@ class WorkbenchModuleArea extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 按权限点过滤：requiredAnyPermFor 为 null = 登录即可见；超管全量放行
+    // 与路由守卫同一份判定(含 hub 子卡并集)；超管全量放行。
     final isSuper = ref.watch(isSuperAdminProvider);
     final perms = ref.watch(currentPermissionsProvider);
     final layout = ref.watch(workbenchLayoutProvider);
     final layoutNotifier = ref.read(workbenchLayoutProvider.notifier);
 
-    bool visible(String location) {
-      final required = requiredAnyPermFor(location);
-      final requiredAll = requiredAllPermsFor(location);
-      if (isSuper) return true;
-      if (required != null && !required.any(perms.contains)) return false;
-      return requiredAll.every(perms.contains);
-    }
+    bool visible(String location) =>
+        locationAllowedFor(perms, isSuper, location);
 
     // 每组过滤出可见卡片。comingSoon 占位卡没有路由与守卫（requiredAnyPermFor=null
     // 意味着全员可见），与「无码页面不外露」口径不符——占位仅超管可见，接入真实

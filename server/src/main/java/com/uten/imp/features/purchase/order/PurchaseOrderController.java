@@ -1,8 +1,6 @@
 package com.uten.imp.features.purchase.order;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.RequestUuidSets;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts;
@@ -145,30 +143,5 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('purchase_order:reverse')")
     public OrderDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
-    }
-
-    // 单笔审批入口已停用（批量任务中心是唯一权威通道），但**路由必须留着且继续
-    // 按动作权限把门**：已发版的旧客户端仍会打到这两个路径，去掉路由等于让它们
-    // 落到 404/405 而不是「请到任务中心处理」的明确冲突；权限注解也必须留，
-    // DocumentActionPermissionContractTest#legacySingleRoutesStayActionGated...
-    // 逐条断言它们的 @PreAuthorize 仍是 finance_order_approval 的精确动作权限。
-    @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
-    @Deprecated(since = "2026-08-30", forRemoval = true)
-    public void approve(@PathVariable("id") UUID ignoredId) {
-        throw legacySingleDecisionDisabled();
-    }
-
-    @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority('finance_order_approval:reject')")
-    @Deprecated(since = "2026-08-30", forRemoval = true)
-    public void reject(@PathVariable("id") UUID ignoredId) {
-        throw legacySingleDecisionDisabled();
-    }
-
-    private static ApiException legacySingleDecisionDisabled() {
-        return new ApiException(
-                ErrorCode.CONFLICT,
-                "单笔订货审批入口已停用，请到财务→订货审批任务中心处理");
     }
 }

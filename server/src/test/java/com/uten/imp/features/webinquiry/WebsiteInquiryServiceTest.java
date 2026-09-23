@@ -53,8 +53,7 @@ class WebsiteInquiryServiceTest {
         when(currentUser.requireEmployeeId()).thenReturn(employeeId);
         when(currentUser.employeeId()).thenReturn(Optional.of(employeeId));
         when(currentUser.get()).thenReturn(Optional.of(
-                new AuthUser(userId, employeeId, "sales01",
-                        Set.of(), Set.of(), false, true, false)));
+                new AuthUser(userId, employeeId, "sales01", Set.of(), false, true, false)));
     }
 
     private static IngestRequest ingestRequest(String sourceId) {

@@ -112,6 +112,6 @@ class GoodsAttachmentAccessPolicyTest {
             when(em.createNativeQuery(anyString())).thenReturn(stock);
             assertEquals("GOODS", policy.ownerType());
         }
-        AuthUser user() { return new AuthUser(owner, owner, "owner", Set.of(), Set.copyOf(permissions), false, true, false); }
+        AuthUser user() { return new AuthUser(owner, owner, "owner", Set.copyOf(permissions), false, true, false); }
     }
 }

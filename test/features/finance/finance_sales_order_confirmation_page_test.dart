@@ -111,11 +111,11 @@ class _FakeConfirmationRepository
 
 class _FinanceSessionNotifier extends SessionNotifier {
   void replaceIdentity() => state = const SessionState(
-    user: AppUser(id: 'finance-other', code: 'FIN002', name: '另一财务', roles: []),
+    user: AppUser(id: 'finance-other', code: 'FIN002', name: '另一财务'),
   );
   @override
   SessionState build() => const SessionState(
-    user: AppUser(id: 'finance-user', code: 'FIN001', name: '财务审核员', roles: []),
+    user: AppUser(id: 'finance-user', code: 'FIN001', name: '财务审核员'),
   );
 }
 

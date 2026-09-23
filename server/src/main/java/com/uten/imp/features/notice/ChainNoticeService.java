@@ -9,7 +9,6 @@ import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibilit
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -198,10 +197,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private static final String WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY =
             "warehouse_iqc_stock_in:view";
     private static final String NOTICE_READ_AUTHORITY = "notice:read";
+    /** 计划员部门池通知的打开门槛：能看生产计划(通知路由落在计划页)。 */
+    private static final String PLAN_VIEW_AUTHORITY = "production_plan:view";
+    /** 交货预警给计划员的落点是物料分析工作台。 */
+    private static final String ANALYSIS_VIEW_AUTHORITY = "production_material_analysis:view";
     private static final String IQC_REJECTION_VIEW_AUTHORITY =
             "procurement_iqc_rejection:view";
     private static final String IQC_REJECTION_VIEW_ALL_AUTHORITY =
-            "procurement_iqc_rejection:view_all";
+            "procurement_iqc_rejection:view:all";
     private static final String IQC_REJECTION_CONFIRM_CREDIT_AUTHORITY =
             "procurement_iqc_rejection:confirm_credit";
     private static final String IQC_REJECTION_RECORD_RETURN_AUTHORITY =
@@ -222,7 +225,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private final NoticeService noticeService;
     private final UserAccountRepository userRepo;
     private final PermissionResolver permissionResolver;
-    private final UserRoleRepository userRoleRepo;
     private final JdbcTemplate jdbc;
     private final BusinessEventPublisher outbox;
     private final RdTaskService rdTaskService;
@@ -234,33 +236,31 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
                               PermissionResolver permissionResolver,
-                              UserRoleRepository userRoleRepo,
                               JdbcTemplate jdbc,
                               BusinessEventPublisher outbox,
                               RdTaskService rdTaskService,
                               FinanceReviewerEligibilityPort financeReviewerEligibility,
                               SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers) {
-        this(noticeService, userRepo, permissionResolver, userRoleRepo, jdbc, outbox,
+        this(noticeService, userRepo, permissionResolver, jdbc, outbox,
                 rdTaskService, financeReviewerEligibility, salesOrderFinanceConfirmers, null);
     }
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
                               PermissionResolver permissionResolver,
-                              UserRoleRepository userRoleRepo,
                               JdbcTemplate jdbc,
                               BusinessEventPublisher outbox,
                               RdTaskService rdTaskService,
                               FinanceReviewerEligibilityPort financeReviewerEligibility,
                               SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers,
                               NoticePermissionCandidateQuery permissionCandidates) {
-        this(noticeService,userRepo,permissionResolver,userRoleRepo,jdbc,outbox,rdTaskService,
+        this(noticeService,userRepo,permissionResolver,jdbc,outbox,rdTaskService,
                 financeReviewerEligibility,salesOrderFinanceConfirmers,permissionCandidates,null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public ChainNoticeService(NoticeService noticeService, UserAccountRepository userRepo,
-            PermissionResolver permissionResolver, UserRoleRepository userRoleRepo, JdbcTemplate jdbc,
+            PermissionResolver permissionResolver, JdbcTemplate jdbc,
             BusinessEventPublisher outbox, RdTaskService rdTaskService,
             FinanceReviewerEligibilityPort financeReviewerEligibility,
             SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers,
@@ -269,7 +269,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.permissionResolver = permissionResolver;
-        this.userRoleRepo = userRoleRepo;
         this.jdbc = jdbc;
         this.outbox = outbox;
         this.rdTaskService = rdTaskService;
@@ -517,7 +516,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 }
             }
             if (shortage) {
-                notifyRoles(List.of("buyer", "planner"), TYPE_TASK,
+                notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_TASK,
                         "缺料提醒：" + planNo,
                         "计划单 " + planNo + " 审核后 BOM 净需求不足(订单行状态=待物料)，请采购/调度跟进备料。",
                         "/production/plans/" + planId);
@@ -660,8 +659,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         content,
                         order.route(),
                         EVENT_FINISHED_INBOUND);
-                notifyRoles(
-                        List.of("planner"),
+                notifyDepartmentPool(
+                        PLAN_VIEW_AUTHORITY,
+                        List.of("SUB_PLAN"),
                         TYPE_WORKFLOW,
                         "生产批次已入库：" + orderNo,
                         content,
@@ -1763,7 +1763,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     """, shipmentId);
             if (billNo == null || billNo.isBlank()) return;
             for (UUID userId : departmentUserIdsWithAuthorities(
-                    "DEPT_FIN","finance_shipment_audit", NOTICE_READ_AUTHORITY)) {
+                    "DEPT_FIN","sales_shipment_finance:approve", NOTICE_READ_AUTHORITY)) {
                 sendToUser(
                         userId,
                         TYPE_APPROVAL,
@@ -1871,7 +1871,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     + "请按仓库作业流程核对库存并拣货；通知不代表已占用或已出库。";
             for (UUID warehouseUser : departmentUserIdsWithAuthorities(
                     "SUB_WH", NOTICE_READ_AUTHORITY,
-                    "sales_shipment:warehouse-work")) {
+                    "warehouse_sales_outbound:execute")) {
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
@@ -1906,7 +1906,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             if (billNo == null || billNo.isBlank()) return;
             for (UUID warehouseUser : departmentUserIdsWithAuthorities(
                     "SUB_WH", NOTICE_READ_AUTHORITY,
-                    "sales_shipment:warehouse-work")) {
+                    "warehouse_sales_outbound:execute")) {
                 sendToUser(
                         warehouseUser,
                         TYPE_URGENT,
@@ -3899,10 +3899,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     "订单 " + o.billNo() + " 已整单取消：销售库存预留已释放；"
                             + "系统已确认不存在待清理的排产、领料或完工承诺。",
                     o.route());
-            notifyRoles(List.of("planner"), TYPE_WORKFLOW,
+            notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PLAN"), TYPE_WORKFLOW,
                     "订单取消·无需排产：" + o.billNo(),
                     "订单 " + o.billNo() + " 已取消且没有有效生产承诺，无需后续排产。",
-                    o.route());
+                    "/production/plans");
         });
     }
 
@@ -4060,7 +4060,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         String content = "订单 " + o.billNo() + " " + when + "，尚未结案，请跟进生产/发货进度。";
         Set<UUID> targets = new LinkedHashSet<>();
         if (o.ownerUserId() != null) targets.add(o.ownerUserId());
-        targets.addAll(userRoleRepo.findUserIdsByRoleCode("planner"));
+        targets.addAll(departmentPoolWithPermission(ANALYSIS_VIEW_AUTHORITY, List.of("SUB_PLAN")));
         for (UUID uid : targets) {
             // owner 跳订单详情跟进；planner 先到物料分析工作台查看待料缺口。
             String route = uid.equals(o.ownerUserId())
@@ -4098,7 +4098,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String content = "订单 " + o.billNo() + " " + when + "，尚未结案，请跟进生产/发货进度。";
             Set<UUID> targets = new LinkedHashSet<>();
             if (o.ownerUserId() != null) targets.add(o.ownerUserId());
-            targets.addAll(userRoleRepo.findUserIdsByRoleCode("planner"));
+            targets.addAll(departmentPoolWithPermission(ANALYSIS_VIEW_AUTHORITY, List.of("SUB_PLAN")));
             for (UUID uid : targets) {
                 Boolean sent = jdbc.queryForObject(
                         "SELECT EXISTS(SELECT 1 FROM notices WHERE audience_user_id = ? AND title = ? AND published_at >= ?)",
@@ -4996,37 +4996,54 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         sendToUser(userId, type, title, content, actionRoute, sourceEvent);
     }
 
-    private void notifyRoles(List<String> roleCodes, String type, String title, String content) {
-        notifyRoles(roleCodes, type, title, content, null);
-    }
-
-    private void notifyRoles(
-            List<String> roleCodes, String type, String title, String content, String actionRoute) {
-        Set<UUID> targets = new LinkedHashSet<>();
-        for (String code : roleCodes) {
-            targets.addAll(userRoleRepo.findUserIdsByRoleCode(code));
-            String departmentCode = switch (code) {
-                case "buyer" -> "SUB_PURCHASE";
-                case "planner" -> "SUB_PLAN";
-                case "production" -> "DEPT_PROD";
-                default -> null;
-            };
-            if (departmentCode != null) {
-                targets.addAll(departmentUserIds(departmentCode));
-            }
-        }
-        for (UUID uid : targets) {
-            // 角色/部门池是公共任务广播，即使事件本身重要，也不得阻塞每个成员。
+    /**
+     * 部门池广播(ADR-109 取代按角色群发)：部门子树(含兼职)里当前有效权限同时含
+     * 通知读取与 {@code requiredAuthority} 的在职账号；被收回查看权的人不再收到带单号的通知。
+     */
+    private void notifyDepartmentPool(
+            String requiredAuthority,
+            List<String> departmentCodes,
+            String type,
+            String title,
+            String content,
+            String actionRoute) {
+        for (UUID uid : departmentPoolWithPermission(requiredAuthority, departmentCodes)) {
+            // 部门池是公共任务广播，即使事件本身重要，也不得阻塞每个成员。
             sendToUser(uid, type, title, content, actionRoute, null, "normal");
         }
+    }
+
+    /** 部门子树成员里「能读通知且持有 requiredAuthority」的账号(每人一次权限合成)。 */
+    private Set<UUID> departmentPoolWithPermission(
+            String requiredAuthority, List<String> departmentCodes) {
+        Set<UUID> candidates = new LinkedHashSet<>();
+        for (String departmentCode : departmentCodes) {
+            candidates.addAll(departmentUserIds(departmentCode));
+        }
+        Set<UUID> result = new LinkedHashSet<>();
+        if (candidates.isEmpty()) {
+            return result;
+        }
+        for (UserAccount account : userRepo.findAllById(candidates)) {
+            if (account == null
+                    || account.isDeleted()
+                    || !"active".equals(account.getStatus())) {
+                continue;
+            }
+            Set<String> authorities = permissionResolver.permsOf(account);
+            if (authorities.contains(NOTICE_READ_AUTHORITY)
+                    && authorities.contains(requiredAuthority)) {
+                result.add(account.getId());
+            }
+        }
+        return result;
     }
 
     /**
      * 物料分析生成采购/委外申请后的办理人池。
      *
-     * <p>候选仍沿用迁移期 buyer 角色 + 采购部子树，但最终必须同时拥有通知读取权和
-     * 目标申请查看权。这样个人 revoke 后不会继续收到包含物料、数量和单号的通知，
-     * 角色与部门重复命中仍只生成一条定向通知。
+     * <p>候选是采购部子树，最终必须同时拥有通知读取权和目标申请查看权。这样个人
+     * revoke 后不会继续收到包含物料、数量和单号的通知。
      */
     private void notifyPreplanSupplyRecipients(
             String type,
@@ -5034,9 +5051,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String content,
             String actionRoute,
             String requiredViewAuthority) {
-        Set<UUID> candidates = new LinkedHashSet<>();
-        candidates.addAll(userRoleRepo.findUserIdsByRoleCode("buyer"));
-        candidates.addAll(departmentUserIds("SUB_PURCHASE"));
+        Set<UUID> candidates = new LinkedHashSet<>(departmentUserIds("SUB_PURCHASE"));
         for (UUID userId : candidates) {
             UserAccount account = userRepo.findById(userId).orElse(null);
             if (account == null

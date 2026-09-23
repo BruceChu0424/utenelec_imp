@@ -83,54 +83,65 @@ void main() {
     },
   );
 
-  test('warehouse transition sends target status and audited reason', () async {
-    late RequestOptions captured;
-    final repository = SalesRepository(
-      _api((request) {
-        captured = request;
-        return const {'id': 'shipment-1', 'warehouseWorkStatus': 'SHIPPED'};
-      }),
-      SalesDocType.shipment,
-    );
+  test(
+    'warehouse transition uses the single warehouse write entry, then rereads the shipment',
+    () async {
+      final captured = <RequestOptions>[];
+      final repository = SalesRepository(
+        _api((request) {
+          captured.add(request);
+          return const {'id': 'shipment-1', 'warehouseWorkStatus': 'SHIPPED'};
+        }),
+        SalesDocType.shipment,
+      );
 
-    final detail = await repository.transitionWarehouseWork(
-      'shipment-1',
-      targetStatus: SalesWarehouseWorkStatus.shipped,
-      reason: '  外箱破损待复核  ',
-    );
+      final detail = await repository.transitionWarehouseWork(
+        'shipment-1',
+        targetStatus: SalesWarehouseWorkStatus.shipped,
+        reason: '  外箱破损待复核  ',
+      );
 
-    expect(captured.method, 'POST');
-    expect(captured.path, '/sales/shipments/shipment-1/warehouse-work');
-    expect(captured.data, {
-      'targetStatus': SalesWarehouseWorkStatus.shipped,
-      'reason': '外箱破损待复核',
-    });
-    expect(detail.warehouseWorkStatus, SalesWarehouseWorkStatus.shipped);
-  });
+      expect(captured.first.method, 'POST');
+      expect(
+        captured.first.path,
+        '/warehouse/sales-outbound/shipment-1/warehouse-work',
+      );
+      expect(captured.first.data, {
+        'targetStatus': SalesWarehouseWorkStatus.shipped,
+        'reason': '外箱破损待复核',
+      });
+      expect(captured.last.method, 'GET');
+      expect(captured.last.path, '/sales/shipments/shipment-1');
+      expect(detail.warehouseWorkStatus, SalesWarehouseWorkStatus.shipped);
+    },
+  );
 
-  test('warehouse transition omits an empty optional reason', () async {
-    late RequestOptions captured;
-    final repository = SalesRepository(
-      _api((request) {
-        captured = request;
-        return const {
-          'id': 'shipment-1',
-          'warehouseWorkStatus': 'PENDING_PICK',
-        };
-      }),
-      SalesDocType.shipment,
-    );
+  test(
+    'warehouse transition write body omits an empty optional reason',
+    () async {
+      final bodies = <Object?>[];
+      final repository = SalesRepository(
+        _api((request) {
+          if (request.method == 'POST') bodies.add(request.data);
+          return const {
+            'id': 'shipment-1',
+            'warehouseWorkStatus': 'PENDING_PICK',
+          };
+        }),
+        SalesDocType.shipment,
+      );
 
-    await repository.transitionWarehouseWork(
-      'shipment-1',
-      targetStatus: SalesWarehouseWorkStatus.pendingPick,
-      reason: '   ',
-    );
+      await repository.transitionWarehouseWork(
+        'shipment-1',
+        targetStatus: SalesWarehouseWorkStatus.pendingPick,
+        reason: '   ',
+      );
 
-    expect(captured.data, {
-      'targetStatus': SalesWarehouseWorkStatus.pendingPick,
-    });
-  });
+      expect(bodies.single, {
+        'targetStatus': SalesWarehouseWorkStatus.pendingPick,
+      });
+    },
+  );
 
   test('finance audit preview is GET before the POST command', () async {
     final captured = <RequestOptions>[];

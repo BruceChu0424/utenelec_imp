@@ -46,7 +46,7 @@ public record TaskClaimPolicy(int leaseMinutes, Set<String> claimPermissions, Se
             // V459 审核待办弹卡三线（ADR-063）：认领即「我来审」，弹卡/收件台显示
             // 「XX 正在审核」；与 ReviewNoticeCatalog 的 claimTargetType 一一对应。
             "SALES_ORDER_FINANCE_CONFIRM", new TaskClaimPolicy(30,Set.of("sales_order_finance:confirm"),Set.of("sales_order_finance:confirm"),"sales_order_finance:view"),
-            "SALES_SHIPMENT_FINANCE_AUDIT", new TaskClaimPolicy(30,Set.of("finance_shipment_audit"),Set.of("finance_shipment_audit"),"finance_shipment_audit"),
+            "SALES_SHIPMENT_FINANCE_AUDIT", new TaskClaimPolicy(30,Set.of("sales_shipment_finance:approve","sales_shipment_finance:reject"),Set.of("sales_shipment_finance:approve","sales_shipment_finance:reject"),"sales_shipment_finance:view"),
             "PROCUREMENT_FINANCE_APPROVE", new TaskClaimPolicy(30,FINANCE_REVIEW_ACTIONS,FINANCE_REVIEW_ACTIONS,"finance_order_approval:view"),
             "IQC_INSPECT", new TaskClaimPolicy(30, "procurement_inspection:handle", "procurement_inspection:handle"));
 

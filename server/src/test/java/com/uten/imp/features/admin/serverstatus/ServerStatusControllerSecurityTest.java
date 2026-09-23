@@ -49,7 +49,7 @@ class ServerStatusControllerSecurityTest {
         }
     }
     private static void login(Set<String> permissions) {
-        AuthUser user=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"monitor-test",Set.of(),permissions,false,true,false);
+        AuthUser user=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"monitor-test",permissions,false,true,false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,null,user.getAuthorities()));
     }
 }

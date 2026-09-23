@@ -49,8 +49,9 @@ public class VisitorApplicationService {
     private final TxSessionVars tx;
     private final HrNoticePort hrNotice;
     private final SecurityContextCurrentUser currentUser;
+    private final VisitorHostEligibility hostEligibility;
 
-    /** 访客来访登记：校验必填项与时间合法性，接待人必须在岗状态(active/probation/onLeave)且与接待部门一致；手机号取自短信登录账号、绝不采信请求体（防顶替），18 位身份证 normalize+校验。 */
+    /** 访客来访登记：校验必填项与时间合法性，接待人必须在岗状态(active/probation/onLeave)、在可对外接待白名单里且与接待部门一致；手机号取自短信登录账号、绝不采信请求体（防顶替），18 位身份证 normalize+校验。 */
     @Transactional
     public VisitorDetail submit(VisitorApplyRequest req) {
         UUID visitorId = currentVisitorId();
@@ -88,6 +89,13 @@ public class VisitorApplicationService {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.VALIDATION_FAILED,
                         "接待人不存在或当前不可接待"));
+        // 白名单复核：搜索只列可对外接待的员工，提交时同样按接待权限终判，
+        // 不能拿猜到的员工编号绕过搜索把申请挂到任意员工名下(security-08)。
+        if (!hostEligibility.isEligible(host.getId())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "接待人不存在或当前不可接待");
+        }
         UUID actualDepartmentId = host.getDepartment() == null
                 ? null
                 : host.getDepartment().getId();

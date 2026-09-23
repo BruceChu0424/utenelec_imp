@@ -22,7 +22,7 @@ void main() {
   );
   SessionState session(String id) => SessionState(
     status: AuthStatus.authenticated,
-    user: AppUser(id: id, code: id, name: id, roles: const []),
+    user: AppUser(id: id, code: id, name: id),
   );
 
   Future<ProviderContainer> pumpAvatar(

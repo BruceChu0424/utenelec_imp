@@ -88,7 +88,6 @@
   "visitorApplyPlate": "차량 번호",
   "visitorApplyPlateHint": "차량 번호를 입력해 주세요",
   "visitorApplyHost": "담당자",
-  "visitorApplyDept": "담당 부서",
   "visitorApplyVisitTime": "방문 예정 시간",
   "visitorApplySubmit": "제출",
   "visitorApplySubmitting": "제출 중…",
@@ -1401,9 +1400,10 @@
   "visitorColVisitorName": "방문자 이름",
   "visitorColHostDepartment": "담당자 부서",
   "visitorApplySubmittingOverlay": "신청을 제출하는 중입니다. 중복 제출하거나 페이지를 벗어나지 마세요.",
-  "visitorApplyDeptHint": "담당 부서를 선택해 주세요",
   "visitorApplyHostHint": "방문할 담당자를 선택해 주세요",
   "visitorApplyHostSheetTitle": "방문할 담당자 선택",
+  "visitorApplyHostSearchEmpty": "방문할 담당자 이름으로 검색",
+  "visitorApplyHostSearchHint": "2자 이상 입력하세요. 최대 5명까지 표시됩니다",
   "visitorSettingsPortalTag": "{app} · 방문자",
   "@visitorSettingsPortalTag": {
     "placeholders": {

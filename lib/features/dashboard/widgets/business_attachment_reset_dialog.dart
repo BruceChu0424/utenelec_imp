@@ -18,6 +18,9 @@ class BusinessAttachmentResetDialog extends ConsumerStatefulWidget {
 
 class _State extends ConsumerState<BusinessAttachmentResetDialog> {
   final _confirm = TextEditingController();
+
+  /// 本次操作重新输入的登录密码(与清空业务数据同一门槛，服务端核对)。
+  final _password = TextEditingController();
   BusinessAttachmentResetPreview? _preview;
   bool _busy = false;
 
@@ -33,8 +36,12 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
   @override
   void dispose() {
     _confirm.dispose();
+    _password.dispose();
     super.dispose();
   }
+
+  bool get _ready =>
+      !_busy && _confirm.text == '清理测试业务附件' && _password.text.isNotEmpty;
 
   Future<void> _load() async {
     setState(() {
@@ -62,7 +69,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
 
   Future<void> _prepare() async {
     final preview = _preview;
-    if (preview == null || _busy || _confirm.text != '清理测试业务附件') return;
+    if (preview == null || !_ready) return;
     setState(() {
       _busy = true;
       _applying = true;
@@ -71,11 +78,12 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
     try {
       final next = await ref
           .read(systemTestRepositoryProvider)
-          .prepareBusinessAttachments(preview);
+          .prepareBusinessAttachments(preview, password: _password.text);
       if (mounted) {
         setState(() {
           _preview = next;
           _confirm.clear();
+          _password.clear();
         });
       }
     } on ApiException catch (error) {
@@ -84,6 +92,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
           _error = error.message;
           _preview = null;
           _confirm.clear();
+          _password.clear();
         });
       }
     } catch (_) {
@@ -194,6 +203,20 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
                         info: '只对当前预览中的数据库和文件提交删除任务。可选：提前分批清理；未清理的文件将在清空时自动删除。',
                       ),
                     ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    TextField(
+                      key: const Key('business-attachment-prepare-password'),
+                      controller: _password,
+                      enabled: !_busy,
+                      obscureText: true,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      onChanged: (_) => setState(() {}),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '再输入一次你的登录密码'),
+                        info: '删除的文件不能恢复，需要本次重新确认身份。',
+                      ),
+                    ),
                   ],
                 ],
               ],
@@ -214,7 +237,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
         if (preview != null && preview.blockingCount > 0)
           FilledButton(
             key: const Key('business-attachment-prepare-submit'),
-            onPressed: !_busy && _confirm.text == '清理测试业务附件' ? _prepare : null,
+            onPressed: _ready ? _prepare : null,
             child: const Text('提交删除任务'),
           ),
       ],

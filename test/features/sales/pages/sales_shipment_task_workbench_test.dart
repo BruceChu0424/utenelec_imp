@@ -21,7 +21,7 @@ void main() {
     await _pump(
       tester,
       page: const FinanceSalesShipmentAuditPage(),
-      permission: Perm.financeShipmentAudit,
+      permission: Perm.salesShipmentFinanceView,
       api: api,
       size: const Size(1440, 900),
     );
@@ -85,7 +85,7 @@ void main() {
     await _pump(
       tester,
       page: const FinanceSalesShipmentAuditPage(),
-      permission: Perm.financeShipmentAudit,
+      permission: Perm.salesShipmentFinanceView,
       api: _ShipmentTaskApi(fail: true),
       size: const Size(375, 812),
     );
@@ -116,7 +116,7 @@ void main() {
     await _pump(
       tester,
       page: const FinanceSalesShipmentAuditPage(),
-      permission: Perm.financeShipmentAudit,
+      permission: Perm.salesShipmentFinanceView,
       api: _ShipmentTaskApi(empty: true),
       size: const Size(375, 812),
     );

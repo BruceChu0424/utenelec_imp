@@ -2039,7 +2039,7 @@ public class FinanceReportService {
     /**
      * 五类财务单据报表统一复用对象级读取范围。
      *
-     * <p>普通用户可见 legacy {@code maker_id IS NULL}、本人及已委托归属人的单据；
+     * <p>普通用户只见本人及已委托归属人的单据(没有负责人的单据只对全量范围可见，ADR-109)；
      * 超级管理员或持 {@code finance:view:all} 时策略返回 {@code 1=1}。范围作为
      * {@link WhereBuilder} 的普通参数加入，使 data/count/facet 以及复用这些方法的导出
      * 始终使用同一谓词和绑定，避免只过滤页面数据而泄漏总数或导出内容。

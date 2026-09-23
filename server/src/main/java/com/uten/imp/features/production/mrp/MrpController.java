@@ -16,6 +16,9 @@ import java.util.UUID;
 /**
  * MRP-lite 接口：生产计划物料需求预览、下游草稿生成与计划包生命周期。
  * 每个写动作使用独立权限；production_plan:edit 仅保留给生产计划草稿本身编辑。
+ *
+ * <p>所有方法入口先过 {@link ProductionPlanResourceGuard}：计划子资源与计划详情同一对象范围，
+ * 越权读 404、越权写 403(security-07)。
  */
 @RestController
 @RequestMapping("/api/production/plans")
@@ -25,11 +28,13 @@ public class MrpController {
     private final MrpService mrpService;
     private final ProductionPlanningPackageService planningPackageService;
     private final ProductionPlanningDraftService planningDraftService;
+    private final ProductionPlanResourceGuard planGuard;
 
     /** 物料需求预览（毛需求/库存/在途/净需求，自制件标记）。 */
     @GetMapping("/{id}/mrp")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public List<MrpRow> preview(@PathVariable UUID id) {
+        planGuard.requireReadable(id);
         return mrpService.preview(id);
     }
 
@@ -37,16 +42,8 @@ public class MrpController {
     @GetMapping("/{id}/mrp/subplans")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public List<MrpService.SubplanRef> subplans(@PathVariable UUID id) {
+        planGuard.requireReadable(id);
         return mrpService.subplans(id);
-    }
-
-    /** 按净需求生成采购申请（草稿）；已生成过且单据有效时 409 业务错误。
-     *  D3：strategy=gross 按毛需求开单（不扣库存/在途）。 */
-    @PostMapping("/{id}/mrp/generate")
-    @PreAuthorize("hasAuthority('production_mrp:generate_purchase')")
-    public MrpGenerateResult generate(@PathVariable UUID id,
-                                      @org.springframework.web.bind.annotation.RequestParam(required = false) String strategy) {
-        return mrpService.generate(id, strategy);
     }
 
     /**
@@ -59,23 +56,8 @@ public class MrpController {
             @PathVariable UUID id,
             @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
             GeneratePlanningPackageRequest req) {
+        planGuard.requireWritable(id, "production_planning_package:generate");
         return planningPackageService.confirm(id, req);
-    }
-
-    /**
-     * #13 自底向上整树确认：对顶层成品计划一次确认即递归建出整棵 MAKE 子计划树（A→B→C），
-     * 最深自制叶先就绪，下层完工经既有钩子自动释放上层。复用逐层 confirm，不改其语义。
-     * ADR-029 已用计划前物料分析取代此 HTTP 写入口；服务保留作历史兼容审计。
-     */
-    @PostMapping("/{id}/mrp/generate-planning-package-full-tree")
-    @PreAuthorize("hasAuthority('production_planning_package:generate')")
-    public PlanningPackageResult generatePlanningPackageFullTree(
-            @PathVariable UUID id,
-            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
-            GeneratePlanningPackageRequest req) {
-        throw new com.uten.imp.common.web.ApiException(
-                com.uten.imp.common.web.ErrorCode.CONFLICT,
-                "整树直接确认入口已停用，请先使用生产物料分析并按齐套批次生成计划");
     }
 
     /** 生成领料单请求体。 */
@@ -84,6 +66,7 @@ public class MrpController {
     public PlanningPreviewResult planningPreview(
             @PathVariable UUID id,
             @org.springframework.web.bind.annotation.RequestParam UUID warehouseId) {
+        planGuard.requireReadable(id);
         return planningPackageService.preview(id, warehouseId);
     }
 
@@ -94,6 +77,7 @@ public class MrpController {
             @jakarta.validation.Valid
             @org.springframework.web.bind.annotation.RequestBody
             GeneratePlanningPackageRequest request) {
+        planGuard.requireWritable(id, "production_planning_package:draft_edit");
         return planningDraftService.save(id, request);
     }
 
@@ -101,6 +85,7 @@ public class MrpController {
     @PreAuthorize("hasAuthority('production_plan:view')")
     public ResponseEntity<ProductionPlanningDraftView> currentPlanningDraft(
             @PathVariable UUID id) {
+        planGuard.requireReadable(id);
         return planningDraftService.current(id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
@@ -110,6 +95,7 @@ public class MrpController {
     @PreAuthorize("hasAuthority('production_plan:view')")
     public ResponseEntity<PlanningPackageResult> currentPlanningPackageResult(
             @PathVariable UUID id) {
+        planGuard.requireReadable(id);
         return planningPackageService.currentResult(id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
@@ -123,6 +109,7 @@ public class MrpController {
             @jakarta.validation.Valid
             @org.springframework.web.bind.annotation.RequestBody
             PlanningPackageLifecycleRequest request) {
+        planGuard.requireWritable(id, "production_planning_package:cancel");
         return planningPackageService.cancel(id, packageId, request);
     }
 
@@ -134,6 +121,7 @@ public class MrpController {
             @jakarta.validation.Valid
             @org.springframework.web.bind.annotation.RequestBody
             PlanningPackageLifecycleRequest request) {
+        planGuard.requireWritable(id, "production_planning_package:reverse");
         return planningPackageService.reverse(id, packageId, request);
     }
 }

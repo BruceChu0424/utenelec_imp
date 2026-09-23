@@ -96,12 +96,7 @@ Map<String, dynamic> _draftReceiptDetail() => {
 class _WarehouseReviewerSessionNotifier extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
-    user: AppUser(
-      id: 'warehouse-reviewer',
-      code: 'WH001',
-      name: '仓管王五',
-      roles: [],
-    ),
+    user: AppUser(id: 'warehouse-reviewer', code: 'WH001', name: '仓管王五'),
   );
 }
 

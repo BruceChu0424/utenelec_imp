@@ -41,7 +41,7 @@ public class SecurityVisitorController {
     }
 
     @PostMapping("/check-in/{appId}")
-    @PreAuthorize("hasAuthority('visitor:check-in')")
+    @PreAuthorize("hasAuthority('visitor:check_in')")
     public VisitorVerifyResponse checkIn(@PathVariable UUID appId) {
         return gateService.checkIn(appId);
     }

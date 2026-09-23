@@ -96,7 +96,6 @@ void main() {
     'subcontract->report',
     'subcontract->warehouse',
     'visitor_approval->visitor',
-    'visitor->department',
     'visitor->settings',
     'warehouse->basic_data',
     // 2026-08-19：仓库登记实际到货独立页（/warehouse/inbound/receipts/new）——

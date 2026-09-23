@@ -662,7 +662,6 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         // 全按钮 + GL finance_post:execute。
         AuthUser user = new AuthUser(
                 userId, employeeId, loginAccount,
-                Set.of(),
                 Set.of("finance_post:execute", "finance:view:all",
                         "customer_prepayment:view",
                         "finance_payment:create", "finance_payment:edit",

@@ -131,7 +131,7 @@ public class HrNoticeService implements HrNoticePort {
                                                 UUID hostEmployeeId, String hostName) {
         if (hostEmployeeId == null) return;
         boolean dispatched = false;
-        for (UUID target : userIdsWithNoticeAndAnyPermission("visitor:host-confirm")) {
+        for (UUID target : userIdsWithNoticeAndAnyPermission("visitor:host_confirm")) {
             if (!belongsToEmployee(target, hostEmployeeId)) continue;
             sameTransaction(() -> noticeService.publishForUser(
                     target, "访客待你确认接待",

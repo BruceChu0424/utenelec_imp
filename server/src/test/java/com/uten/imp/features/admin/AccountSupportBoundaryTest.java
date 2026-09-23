@@ -10,7 +10,6 @@ import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.org.employee.EmployeeSensitive;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TemporaryPasswordGenerator;
@@ -55,8 +54,6 @@ class AccountSupportBoundaryTest {
     @Mock
     private RefreshTokenRepository refreshTokens;
     @Mock
-    private UserRoleRepository userRoles;
-    @Mock
     private PasswordEncoder encoder;
     @Mock
     private TemporaryPasswordGenerator passwords;
@@ -81,7 +78,6 @@ class AccountSupportBoundaryTest {
         employee.setFullName("离职员工");
         when(users.findByEmployeeId(employeeId)).thenReturn(Optional.of(account));
         when(employees.findById(employeeId)).thenReturn(Optional.of(employee));
-        when(userRoles.findRoleCodesByUserId(account.getId())).thenReturn(List.of());
 
         UserSummary summary = service(support).getByEmployeeId(employeeId);
 
@@ -348,7 +344,6 @@ class AccountSupportBoundaryTest {
                 UUID.randomUUID(),
                 "super-admin",
                 java.util.Set.of(),
-                java.util.Set.of(),
                 false,
                 true,
                 true);
@@ -440,7 +435,6 @@ class AccountSupportBoundaryTest {
                 UUID.randomUUID(),
                 "hr-support",
                 java.util.Set.of(),
-                java.util.Set.of(),
                 false,
                 false,
                 true);
@@ -452,7 +446,6 @@ class AccountSupportBoundaryTest {
                 employees,
                 sensitive,
                 refreshTokens,
-                userRoles,
                 encoder,
                 passwords,
                 tx,

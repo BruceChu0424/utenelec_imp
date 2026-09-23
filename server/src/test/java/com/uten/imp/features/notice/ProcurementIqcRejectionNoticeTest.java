@@ -7,7 +7,6 @@ import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibilit
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,7 +40,7 @@ class ProcurementIqcRejectionNoticeTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String NOTICE_READ = "notice:read";
     private static final String VIEW = "procurement_iqc_rejection:view";
-    private static final String VIEW_ALL = "procurement_iqc_rejection:view_all";
+    private static final String VIEW_ALL = "procurement_iqc_rejection:view:all";
     private static final String CONFIRM =
             "procurement_iqc_rejection:confirm_credit";
     private static final String RECORD_RETURN =
@@ -123,7 +122,7 @@ class ProcurementIqcRejectionNoticeTest {
         when(permissions.permsOf(eligible)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
         when(permissions.permsOf(revoked)).thenReturn(Set.of(NOTICE_READ, VIEW));
         var service = new ChainNoticeService(mock(NoticeService.class), users, permissions,
-                mock(UserRoleRepository.class), mock(JdbcTemplate.class), mock(BusinessEventPublisher.class),
+                mock(JdbcTemplate.class), mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class), mock(FinanceReviewerEligibilityPort.class),
                 mock(SalesOrderFinanceConfirmerEligibility.class), query);
         Set<UUID> first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
@@ -309,7 +308,6 @@ class ProcurementIqcRejectionNoticeTest {
                 notice,
                 users,
                 permissions,
-                mock(UserRoleRepository.class),
                 jdbc,
                 mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),

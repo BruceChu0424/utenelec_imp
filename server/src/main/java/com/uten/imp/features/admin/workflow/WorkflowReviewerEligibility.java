@@ -118,7 +118,6 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
                             WHERE perm.code IN ('finance_order_approval:approve', 'finance_order_approval:reject')
                               AND po.effect = 'grant'
                               AND po.active = TRUE
-                              AND perm.active = TRUE
                         )
                     )
                   AND u.is_deleted = FALSE

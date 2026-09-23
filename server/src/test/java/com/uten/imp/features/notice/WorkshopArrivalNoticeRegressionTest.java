@@ -7,7 +7,6 @@ import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibilit
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -106,8 +105,7 @@ class WorkshopArrivalNoticeRegressionTest {
             UserAccount account=mock(UserAccount.class);
             when(account.getStatus()).thenReturn("active");
             when(users.findById(user)).thenReturn(Optional.of(account));
-            service=spy(new ChainNoticeService(notices,users,mock(PermissionResolver.class),mock(UserRoleRepository.class),
-                    jdbc,outbox,mock(RdTaskService.class),mock(FinanceReviewerEligibilityPort.class),
+            service=spy(new ChainNoticeService(notices,users,mock(PermissionResolver.class),jdbc,outbox,mock(RdTaskService.class),mock(FinanceReviewerEligibilityPort.class),
                     mock(SalesOrderFinanceConfirmerEligibility.class)));
             doReturn(List.of(user)).when(service).workshopRecipientUserIds(workshop,person);
             when(jdbc.queryForList(contains("FOR UPDATE"),eq(UUID.class),eq(segment))).thenReturn(List.of(segment));

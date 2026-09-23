@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// 前后端权限码对齐契约（权限体系总设计 §七：人工对齐无代码生成，本测试兜底漂移）。
 ///
-/// 后端每个 @PreAuthorize 强制的权限码（含 Java 常量拼接形式），前端 Perm 常量表
-/// 必须有同值常量——否则路由守卫/按钮过滤无法引用，页面会把「有权限却看不到入口」
-/// 当 bug 报。只锁「后端强制 ⊆ 前端常量」方向：前端多余常量（未启用码）由孤儿码
-/// 下线流程治理，不在此断言。历史上存在无冒号（finance_shipment_audit）与驼峰段
-/// （batchApprove）等合法历史码形，故不做形状断言。
+/// 双向锁定(ADR-109 / permissions-06)：
+/// 1. 后端每个 @PreAuthorize 强制的权限码(含 Java 常量拼接形式)，前端 Perm 常量表
+///    必须有同值常量——否则路由守卫/按钮过滤无法引用；
+/// 2. 前端每个 Perm 常量都必须在服务端代码里被引用(服务端契约测试再把服务端引用
+///    与数据库目录做双向相等)，不允许「只有前端认」的码；访客端码不进员工码表。
 void main() {
   test(
     'every backend-enforced permission code has a frontend Perm constant',
@@ -59,7 +59,9 @@ void main() {
           }
           final code = resolveAuthorityExpr(raw);
           // 跳过明显非字面量的动态表达式（如 containsAll/自定义 bean），它们不定义单一码。
-          if (RegExp(r'^[a-z0-9_]+(:[a-zA-Z0-9_.-]+)?$').hasMatch(code)) {
+          // 访客端码只属于访客会话(principal.visitor)，不进员工码表。
+          if (RegExp(r'^[a-z0-9_]+(:[a-zA-Z0-9_.-]+)?$').hasMatch(code) &&
+              !code.startsWith('visitor_portal:')) {
             enforced.add(code);
           }
         }
@@ -76,7 +78,7 @@ void main() {
       ).allMatches(permSource)) {
         declared.add(match.group(1)!);
       }
-      // 无冒号的模块级码（如 finance_shipment_audit）也纳入前端声明集合。
+      // 无冒号的模块级码也纳入前端声明集合(V655 起目录码一律带冒号，这里只是兜底)。
       for (final match in RegExp(
         r"static const \w+\s*=\s*'([a-z0-9_]+)'",
       ).allMatches(permSource)) {
@@ -93,4 +95,49 @@ void main() {
       );
     },
   );
+
+  test('every frontend Perm constant is referenced by server code', () {
+    final serverRoot = Directory('server/src/main/java');
+    expect(serverRoot.existsSync(), isTrue, reason: '需在仓库根目录运行');
+    final serverLiterals = <String>{};
+    final literalPattern = RegExp(r'"([a-z0-9_]+:[a-zA-Z0-9_:.-]+)"');
+    final guardPattern = RegExp(r"'([a-z0-9_]+:[a-zA-Z0-9_:.-]+)'");
+    for (final entity in serverRoot.listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.java')) continue;
+      final source = entity.readAsStringSync();
+      for (final match in literalPattern.allMatches(source)) {
+        serverLiterals.add(match.group(1)!);
+      }
+      for (final match in guardPattern.allMatches(source)) {
+        serverLiterals.add(match.group(1)!);
+      }
+    }
+
+    final permSource = File(
+      'lib/shared/auth/permissions.dart',
+    ).readAsStringSync();
+    final declared = [
+      for (final match in RegExp(
+        r"static const \w+\s*=\s*'([a-z0-9_]+:[a-zA-Z0-9_:.-]+)'",
+      ).allMatches(permSource))
+        match.group(1)!,
+    ];
+    expect(declared, isNotEmpty);
+
+    final frontendOnly =
+        declared.where((code) => !serverLiterals.contains(code)).toList()
+          ..sort();
+    expect(
+      frontendOnly,
+      isEmpty,
+      reason:
+          '以下 Perm 常量在服务端没有任何引用(只在前端生效的码必须删除，'
+          '或在服务端补上强制)：\n${frontendOnly.join('\n')}',
+    );
+    expect(
+      declared.where((code) => code.startsWith('visitor_portal:')),
+      isEmpty,
+      reason: '访客端码只属于访客会话，不能出现在员工权限码表里',
+    );
+  });
 }

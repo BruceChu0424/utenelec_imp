@@ -160,6 +160,60 @@ class WorkshopDirectTransferBatchEndToEndTest {
         assertAutoIssued(drawOf(c.segment()), "100");
     }
 
+    /**
+     * permissions-15：日报的「审核」按钮由服务端随详情下发(allowedActions)。带车间直送行的
+     * 草稿，只持日报审核码、没有车间直送审核权的人，或者两个码都有但不是出料车间成员的人，
+     * 都拿不到 APPROVE——与审核写路径同一口径，不会再出现按钮亮着、点了才报没有权限。
+     */
+    @Test
+    void directTransferDraftOffersApproveOnlyToHoldersOfTheDirectTransferCode() {
+        Case c = create("dt-actions", false);
+        fixture.loginAs(c.workerUser());
+        confirmRoute(c.plan(), c.segment(), "FULL_KIT");
+        var report = new DailyReportSaveRequest();
+        report.setIdempotencyKey("dt-actions-" + c.segment());
+        report.setBillDate(BusinessTime.today());
+        report.setWarehouseId(c.leaf());
+        report.setDepartmentId(c.workshop());
+        report.setWorkerIds(List.of(c.worker()));
+        var item = new DailyReportItemLine();
+        item.setLineNo(1);
+        item.setExecutionSegmentId(c.childSegment());
+        item.setPlanItemId(db.queryForObject(
+                "SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",
+                UUID.class, c.childSegment()));
+        item.setGoodsId(c.child());
+        item.setUnitId(c.world().unitId());
+        item.setUnitRate(BigDecimal.ONE);
+        item.setQty(new BigDecimal("10"));
+        item.setIsFinal(false);
+        item.setDestination("WORKSHOP");
+        item.setDirectTransferDemandId(parentDemand(c));
+        report.setItems(List.of(item));
+        UUID reportId = reports.create(report).getId();
+
+        assertEquals(List.of("APPROVE"), reports.detail(reportId).getAllowedActions(),
+                "持日报审核 + 车间直送审核的人：可审核");
+
+        UUID approverOnly = fixture.createUserWithPerms(c.world(), "dt-approver-only",
+                "production_daily_report:view", "production_daily_report:approve");
+        fixture.loginAs(approverOnly);
+        assertEquals(List.of(), reports.detail(reportId).getAllowedActions(),
+                "只持日报审核码：带直送行的草稿不下发审核动作");
+
+        // 两个码都有，但不是出料工单所属车间的成员：直送写路径会拒绝，按钮同样不下发。
+        UUID outsider = fixture.createUserWithPerms(c.world(), "dt-approver-outsider",
+                "production_daily_report:view", "production_daily_report:approve",
+                "production_direct_transfer:approve");
+        fixture.loginAs(outsider);
+        assertEquals(List.of(), reports.detail(reportId).getAllowedActions(),
+                "不是该车间成员：带直送行的草稿不下发审核动作");
+
+        fixture.loginAs(c.workerUser());
+        reports.approve(reportId, DailyReportApproveRequests.freshKey());
+        assertEquals(List.of(), reports.detail(reportId).getAllowedActions(), "已审核后不再下发审核动作");
+    }
+
     @Test
     void partialDirectTransferSplitsAnAutoIssuedBatchWithoutDrawRequest() {
         Case c = create("dt-partial", false);

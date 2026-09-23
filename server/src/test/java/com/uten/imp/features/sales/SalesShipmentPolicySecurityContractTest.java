@@ -13,6 +13,7 @@ import java.lang.reflect.Method;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SalesShipmentPolicySecurityContractTest {
 
@@ -33,19 +34,18 @@ class SalesShipmentPolicySecurityContractTest {
     }
 
     @Test
-    void warehouseExecutionIsGuardedAtControllerAndService() throws Exception {
-        assertPreAuthorize(
-                SalesShipmentController.class.getMethod(
-                        "transitionWarehouseWork",
-                        UUID.class,
-                        WarehouseWorkTransitionRequest.class),
-                "hasAuthority('sales_shipment:warehouse-work')");
+    void warehouseExecutionHasOneWriteEntryGuardedByViewAndExecute() throws Exception {
+        // permissions-09：销售出货控制器里重复的仓库作业写入口已删除，只剩仓库销售出库一个入口。
+        assertThrows(NoSuchMethodException.class, () -> SalesShipmentController.class.getMethod(
+                "transitionWarehouseWork",
+                UUID.class,
+                WarehouseWorkTransitionRequest.class));
         assertPreAuthorize(
                 SalesShipmentService.class.getMethod(
                         "transitionWarehouseWork",
                         UUID.class,
                         WarehouseWorkTransitionRequest.class),
-                "hasAuthority('sales_shipment:warehouse-work')");
+                "hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')");
     }
 
     private static void assertPreAuthorize(Method method, String expected) {

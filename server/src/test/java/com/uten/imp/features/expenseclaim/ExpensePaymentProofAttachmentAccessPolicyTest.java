@@ -26,5 +26,5 @@ class ExpensePaymentProofAttachmentAccessPolicyTest {
         policy.requireCanView(claim.getId(),payer);verify(read).requireCanView(claim.getId(),payer);
     }
     private ExpenseClaim claim(UUID applicant,UUID reviewer,String status){var claim=new ExpenseClaim();claim.setApplicantId(applicant);claim.setApprovedBy(reviewer);claim.setStatus(status);return claim;}
-    private AuthUser actor(UUID employee){return new AuthUser(UUID.randomUUID(),employee,"payer",Set.of(),Set.of("expense:pay"),false,true,false);}
+    private AuthUser actor(UUID employee){return new AuthUser(UUID.randomUUID(),employee,"payer",Set.of("expense:pay"),false,true,false);}
 }

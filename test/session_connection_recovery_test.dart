@@ -140,7 +140,6 @@ const _restoredProfile = UserProfile(
   id: 'user-1',
   loginAccount: 'admin',
   name: '恢复用户',
-  roles: <String>['admin'],
   permissions: <String>['dashboard:view'],
   superAdmin: true,
 );
@@ -149,7 +148,6 @@ const _loginProfile = UserProfile(
   id: 'user-2',
   loginAccount: 'admin',
   name: '新登录用户',
-  roles: <String>['admin'],
   permissions: <String>['dashboard:view'],
   superAdmin: true,
 );
@@ -158,7 +156,6 @@ const _forcedPasswordProfile = UserProfile(
   id: 'user-3',
   loginAccount: '13800000000',
   name: '待改密用户',
-  roles: <String>['employee'],
   permissions: <String>['CHANGE_PASSWORD'],
   superAdmin: false,
   mustChangePassword: true,

@@ -7,8 +7,17 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-/** 权限点（如 employee:view / payroll:generate）。 */
+import java.util.Set;
+
+/**
+ * 权限点（如 employee:view / payroll:generate）。
+ *
+ * <p>目录里的每一行都是活码：停用即删除(V655 起没有「软停用」)。怎么授只看
+ * {@link #grantPolicy}(ADR-109 授权策略唯一事实源)，谁都有只看 {@link #baseline}。
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,7 +34,7 @@ public class Permission extends BaseEntity {
     /** 二级子类（如「货品资料」「销售订货」）；驱动权限目录二级分组。 */
     private String category;
 
-    /** 一级功能模块（如「基础资料」「销售管理」）；引入，驱动权限目录一级分组。 */
+    /** 一级功能模块(如「基础资料」「销售管理」)；驱动权限目录一级分组。 */
     @Column(name = "module")
     private String module;
 
@@ -36,23 +45,25 @@ public class Permission extends BaseEntity {
     /** 面向管理员的权限范围/业务副作用说明。 */
     private String description;
 
-    /** FALSE 保留历史审计行，但目录和有效权限解析均排除。 */
+    /** 授权策略(text[]，取值见 {@link GrantPolicy}；NORMAL 只能单独出现)。 */
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "grant_policy", nullable = false, columnDefinition = "text[]")
+    private String[] grantPolicy = {GrantPolicy.NORMAL.name()};
+
+    /** 全员基础包：每个在职员工隐式持有(管理页可编辑，个人收回仍优先)。 */
     @Column(nullable = false)
-    private boolean active = true;
+    private boolean baseline;
 
-    /** FALSE 禁止任何管理端写入新的授权配置。 */
-    @Column(nullable = false)
-    private boolean assignable = true;
-
-    /** FALSE 表示必须逐项明确授权，不得被组/模块/全部批量操作顺带选中。 */
-    @Column(name = "bulk_assignable", nullable = false)
-    private boolean bulkAssignable = true;
-
-    /** 管理端风险标签；商业敏感权限用于提示可见字段与二次确认。 */
+    /** 管理端风险标签(仅展示用，不参与授权判定)；商业敏感权限提示可见字段。 */
     @Column(nullable = false)
     private String sensitivity = "NORMAL";
 
-    /** 权限目录组内展示排序（新增列，默认 0）。 */
+    /** 权限目录组内展示排序。 */
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;
+
+    /** 解析后的授权策略集合。 */
+    public Set<GrantPolicy> grantPolicies() {
+        return GrantPolicy.parse(grantPolicy);
+    }
 }

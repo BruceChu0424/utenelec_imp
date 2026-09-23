@@ -31,7 +31,7 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
-import '../../../core/router/permission_by_path.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -48,10 +48,13 @@ class ProductionHubPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
-    final newPlanLocation = RoutePath.productionPlanNew();
-    final canCreatePlan =
-        requiredAnyPermFor(newPlanLocation)!.any(permissions.contains) &&
-        requiredAllPermsFor(newPlanLocation).every(permissions.contains);
+    final superAdmin = ref.watch(isSuperAdminProvider);
+    // 能新建计划的人落到物料分析(计划只能从分析生成)，否则落到计划记录。
+    final canCreatePlan = locationAllowedFor(
+      permissions,
+      superAdmin,
+      RoutePath.productionPlanNew(),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.productionHubTitle,
@@ -89,81 +92,95 @@ class ProductionHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              _section(context, theme, l10n.productionHubTitle, [
-                // 调度+进度已合并为一个三 Tab 页面（待排产/进行中/已完成）
-                _Entry(
-                  icon: Icons.dashboard_customize_outlined,
-                  label: l10n.productionHubSchedule,
-                  description: l10n.productionHubScheduleSub,
-                  location: '/production/schedule',
-                  badge: const ProductionPendingBadge(showLabel: true),
-                  // 黄 = 页内「进行中」段那批在办批次(计划员视角的分析/根计划),
-                  // 与红色的待排产是两队互不重叠的活: 待排产还没排下去, 在办的
-                  // 已经在跑。数字走注册表, 页面里不手写加法。
-                  progressBadge: UtenInProgressBadge(
-                    count: inProgressEntryCount(
-                      InProgressEntry.productionBatches,
-                      ref.watch,
+              _section(
+                context,
+                theme,
+                l10n.productionHubTitle,
+                [
+                  // 调度+进度已合并为一个三 Tab 页面（待排产/进行中/已完成）
+                  _Entry(
+                    icon: Icons.dashboard_customize_outlined,
+                    label: l10n.productionHubSchedule,
+                    description: l10n.productionHubScheduleSub,
+                    location: '/production/schedule',
+                    badge: const ProductionPendingBadge(showLabel: true),
+                    // 黄 = 页内「进行中」段那批在办批次(计划员视角的分析/根计划),
+                    // 与红色的待排产是两队互不重叠的活: 待排产还没排下去, 在办的
+                    // 已经在跑。数字走注册表, 页面里不手写加法。
+                    progressBadge: UtenInProgressBadge(
+                      count: inProgressEntryCount(
+                        InProgressEntry.productionBatches,
+                        ref.watch,
+                      ),
+                      showLabel: true,
                     ),
-                    showLabel: true,
                   ),
-                ),
-                _Entry(
-                  icon: Icons.assignment_outlined,
-                  label: canCreatePlan
-                      ? l10n.productionHubPlan
-                      : l10n.productionHubPlanHistory,
-                  description: canCreatePlan
-                      ? l10n.productionHubPlanSub
-                      : l10n.productionHubPlanHistorySub,
-                  location: canCreatePlan
-                      ? RouteName.productionMaterialAnalysis
-                      : RouteName.productionPlanList,
-                  // 本卡没有别的待办徽章，草稿徽章独占右上角浮层（badge）——
-                  // 这是用户点名要的位置，行内后缀会被标题挤得看不见。
-                  badge: const UtenDraftBadge(
-                    kind: DraftDocKind.productionPlan,
+                  _Entry(
+                    icon: Icons.assignment_outlined,
+                    label: canCreatePlan
+                        ? l10n.productionHubPlan
+                        : l10n.productionHubPlanHistory,
+                    description: canCreatePlan
+                        ? l10n.productionHubPlanSub
+                        : l10n.productionHubPlanHistorySub,
+                    location: canCreatePlan
+                        ? RouteName.productionMaterialAnalysis
+                        : RouteName.productionPlanList,
+                    // 本卡没有别的待办徽章，草稿徽章独占右上角浮层（badge）——
+                    // 这是用户点名要的位置，行内后缀会被标题挤得看不见。
+                    badge: const UtenDraftBadge(
+                      kind: DraftDocKind.productionPlan,
+                    ),
                   ),
-                ),
-                _Entry(
-                  icon: Icons.edit_calendar_outlined,
-                  label: l10n.productionHubDaily,
-                  description: l10n.productionHubDailySub,
-                  location: RouteName.productionDailyReportList,
-                  // 同上：日报卡也只有草稿一种计数，直接占 badge 槽。
-                  badge: const UtenDraftBadge(
-                    kind: DraftDocKind.productionDailyReport,
+                  _Entry(
+                    icon: Icons.edit_calendar_outlined,
+                    label: l10n.productionHubDaily,
+                    description: l10n.productionHubDailySub,
+                    location: RouteName.productionDailyReportList,
+                    // 同上：日报卡也只有草稿一种计数，直接占 badge 槽。
+                    badge: const UtenDraftBadge(
+                      kind: DraftDocKind.productionDailyReport,
+                    ),
                   ),
-                ),
-              ], permissions),
+                ],
+                permissions,
+                superAdmin,
+              ),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, l10n.productionHubSectionReports, [
-                _Entry(
-                  icon: Icons.list_alt_outlined,
-                  label: l10n.productionHubReportPlanDetail,
-                  description: l10n.productionHubReportPlanDetailSub,
-                  location: '/production/reports/plan-detail',
-                ),
-                _Entry(
-                  icon: Icons.bar_chart_outlined,
-                  label: l10n.productionHubReportPlanSummary,
-                  description: l10n.productionHubReportPlanSummarySub,
-                  location: '/production/reports/plan-summary',
-                ),
-                _Entry(
-                  icon: Icons.find_in_page_outlined,
-                  label: l10n.productionHubWhereUsed,
-                  description: l10n.productionHubWhereUsedSub,
-                  location: '/production/where-used',
-                ),
-                // 当前是四类结构化关系的健康初筛，不宣称已覆盖整条供应/执行链。
-                const _Entry(
-                  icon: Icons.fact_check_outlined,
-                  label: '链路健康初筛',
-                  description: '销售缺口→分析→计划→DRAW 关系的只读检查',
-                  location: '/production/chain-health',
-                ),
-              ], permissions),
+              _section(
+                context,
+                theme,
+                l10n.productionHubSectionReports,
+                [
+                  _Entry(
+                    icon: Icons.list_alt_outlined,
+                    label: l10n.productionHubReportPlanDetail,
+                    description: l10n.productionHubReportPlanDetailSub,
+                    location: '/production/reports/plan-detail',
+                  ),
+                  _Entry(
+                    icon: Icons.bar_chart_outlined,
+                    label: l10n.productionHubReportPlanSummary,
+                    description: l10n.productionHubReportPlanSummarySub,
+                    location: '/production/reports/plan-summary',
+                  ),
+                  _Entry(
+                    icon: Icons.find_in_page_outlined,
+                    label: l10n.productionHubWhereUsed,
+                    description: l10n.productionHubWhereUsedSub,
+                    location: '/production/where-used',
+                  ),
+                  // 当前是四类结构化关系的健康初筛，不宣称已覆盖整条供应/执行链。
+                  const _Entry(
+                    icon: Icons.fact_check_outlined,
+                    label: '链路健康初筛',
+                    description: '销售缺口→分析→计划→DRAW 关系的只读检查',
+                    location: '/production/chain-health',
+                  ),
+                ],
+                permissions,
+                superAdmin,
+              ),
             ],
           ),
         ),
@@ -178,15 +195,18 @@ class ProductionHubPage extends ConsumerWidget {
     String title,
     List<_Entry> entries,
     Set<String> permissions,
+    bool superAdmin,
   ) {
+    // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /production 入口守卫同源，ADR-109)。
     final visibleEntries = entries
-        .where((entry) {
-          final requiredAny = requiredAnyPermFor(entry.location);
-          final requiredAll = requiredAllPermsFor(entry.location);
-          return (requiredAny == null ||
-                  requiredAny.any(permissions.contains)) &&
-              requiredAll.every(permissions.contains);
-        })
+        .where(
+          (entry) => hubCardAllowed(
+            RouteName.production,
+            entry.location,
+            permissions,
+            superAdmin,
+          ),
+        )
         .toList(growable: false);
     if (visibleEntries.isEmpty) return const SizedBox.shrink();
 

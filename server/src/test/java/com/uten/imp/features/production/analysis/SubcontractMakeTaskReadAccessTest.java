@@ -50,7 +50,7 @@ class SubcontractMakeTaskReadAccessTest {
 
     private Fixture fixture(Set<String> permissions, boolean writable) {
         var current = mock(SecurityContextCurrentUser.class);
-        var user = new AuthUser(UUID.randomUUID(), reader, "reader", Set.of(), permissions, false, true, false);
+        var user = new AuthUser(UUID.randomUUID(), reader, "reader", permissions, false, true, false);
         when(current.get()).thenReturn(Optional.of(user));
         var visibility = mock(OwnerVisibility.class);
         when(visibility.evaluate(anyString(), anyString())).thenReturn(new OwnerVisibility.OwnerScope(

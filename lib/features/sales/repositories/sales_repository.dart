@@ -354,21 +354,24 @@ class SalesRepository {
   }
 
   /// 推进仓库拣货状态机。新流程的正式出库只能通过 PICKED -> SHIPPED 完成。
+  ///
+  /// 写入口只有仓库销售出库一个(permissions-09 删除了销售出货控制器上的重复入口)，
+  /// 写完按销售出货单口径重读详情，页面拿到的仍是完整的出货单。
   Future<SalesDocDetail> transitionWarehouseWork(
     String id, {
     required String targetStatus,
     String? reason,
   }) async {
     final normalizedReason = reason?.trim();
-    final json = await api.post(
-      '${_doc(id)}/warehouse-work',
+    await api.post(
+      '/warehouse/sales-outbound/$id/warehouse-work',
       body: {
         'targetStatus': targetStatus,
         if (normalizedReason != null && normalizedReason.isNotEmpty)
           'reason': normalizedReason,
       },
     );
-    return SalesDocDetail.fromJson(json);
+    return detail(id);
   }
 
   /// 设置订单行优先级（POST /items/{id}/priority；仅 order 类型可用）。

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
+import 'package:uten_imp/shared/auth/permission_grant_policy.dart';
 import 'package:uten_imp/features/admin/widgets/permission_catalog_browser.dart';
 
 void main() {
@@ -37,7 +38,9 @@ void main() {
           module: '销售管理',
           actionType: PermissionActionType.view,
           description: '查看单价与金额',
-          bulkAssignable: false,
+          grantPolicy: PermissionGrantPolicy({
+            PermissionGrantPolicy.bulkExcluded,
+          }),
           sensitivity: 'SENSITIVE_COMMERCIAL',
         ),
       ],
@@ -59,7 +62,7 @@ void main() {
     ),
   ];
 
-  Widget buildSubject({ValueChanged<List<AdminPermission>>? onEnableGroup}) {
+  Widget buildSubject({ValueChanged<PermissionBulkScope>? onGrantScope}) {
     return MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
@@ -68,7 +71,7 @@ void main() {
             child: PermissionCatalogBrowser(
               groups: groups,
               isEnabled: (permission) => permission.code == 'sales:view',
-              onEnableGroup: onEnableGroup,
+              onGrantScope: onGrantScope,
               onDisableGroup: (_) {},
               itemBuilder: (context, permission) => Text(permission.name),
             ),
@@ -177,12 +180,14 @@ void main() {
     expect(find.text('编辑销售单据'), findsOneWidget);
   });
 
-  testWidgets('module batch action receives all permissions in the module', (
+  // 批量授权只交出范围，由服务端按授权策略决定带上哪些码(ADR-109)：
+  // 组件不再在本地按「能否批量」过滤，也就不存在前后端两份名单。
+  testWidgets('module batch action hands the module scope to the server', (
     tester,
   ) async {
-    List<AdminPermission>? selected;
+    PermissionBulkScope? selected;
     await tester.pumpWidget(
-      buildSubject(onEnableGroup: (permissions) => selected = permissions),
+      buildSubject(onGrantScope: (scope) => selected = scope),
     );
 
     // 模块级批量菜单始终可见（无需展开模块）。
@@ -191,21 +196,14 @@ void main() {
     await tester.tap(find.text('本模块全部授权'));
     await tester.pumpAndSettle();
 
-    expect(selected?.map((permission) => permission.code).toSet(), {
-      'sales:view',
-      'sales:edit',
-    });
-    expect(
-      selected?.map((permission) => permission.code),
-      isNot(contains('sales:price:view')),
-    );
+    expect(selected, const PermissionBulkScope(module: '销售管理'));
   });
 
   testWidgets('subcategory batch action receives the complete subcategory '
       'even while filtered', (tester) async {
-    List<AdminPermission>? selected;
+    PermissionBulkScope? selected;
     await tester.pumpWidget(
-      buildSubject(onEnableGroup: (permissions) => selected = permissions),
+      buildSubject(onGrantScope: (scope) => selected = scope),
     );
 
     // 仅看「已授权」后，子类仍可能被部分隐藏；整组批量必须作用于完整子类。
@@ -225,14 +223,10 @@ void main() {
     await tester.tap(find.text('本组全部授权'));
     await tester.pumpAndSettle();
 
-    // 即便筛选只显示 sales:view，整组批量仍包含 sales:view + sales:edit。
-    expect(selected?.map((permission) => permission.code).toSet(), {
-      'sales:view',
-      'sales:edit',
-    });
+    // 即便筛选只显示 sales:view，交出去的仍是整个子类的范围。
     expect(
-      selected?.map((permission) => permission.code),
-      isNot(contains('sales:price:view')),
+      selected,
+      const PermissionBulkScope(module: '销售管理', category: '销售订货'),
     );
   });
 

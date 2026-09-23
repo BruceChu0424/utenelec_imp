@@ -81,7 +81,10 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, accountLifecycle);
+                        refreshTokenRepo, accountLifecycle,
+                        mock(com.uten.imp.features.auth.PermissionResolver.class),
+                        mock(DepartmentPermissionAdminService.class),
+                        mock(PermissionChangeAudit.class));
 
         service.setPermissionOverrides(
                 userId,
@@ -140,7 +143,10 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, accountLifecycle);
+                        refreshTokenRepo, accountLifecycle,
+                        mock(com.uten.imp.features.auth.PermissionResolver.class),
+                        mock(DepartmentPermissionAdminService.class),
+                        mock(PermissionChangeAudit.class));
 
         service.setPermissionOverrides(userId, List.of(), List.of());
 
@@ -173,7 +179,10 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, accountLifecycle);
+                        refreshTokenRepo, accountLifecycle,
+                        mock(com.uten.imp.features.auth.PermissionResolver.class),
+                        mock(DepartmentPermissionAdminService.class),
+                        mock(PermissionChangeAudit.class));
 
         assertThrows(ApiException.class, () -> service.setPermissionOverrides(
                 userId, List.of(CODE), List.of()));

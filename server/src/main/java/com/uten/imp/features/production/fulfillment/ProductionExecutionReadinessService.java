@@ -2186,7 +2186,8 @@ public class ProductionExecutionReadinessService
                         + segmentId);
         document.setDepartmentId(workshopDepartmentId);
         document.setWorkerId(responsibleEmployeeId);
-        document.setMakerId(actor.employeeId());
+        document.setMakerId(actor.employeeId() != null
+                ? actor.employeeId() : systemDrawOwner(planId, responsibleEmployeeId));
         document.setStatus((short) 0);
         stockDocumentRepo.saveAndFlush(document);
         ledger.recordDocument(
@@ -2206,6 +2207,19 @@ public class ProductionExecutionReadinessService
                 .setParameter("actorId", actor.userId())
                 .executeUpdate();
         return document;
+    }
+
+    /**
+     * 系统自动核对备料没有登录员工：领料单记业务负责人(执行段负责人，其次生产计划负责人)，
+     * 不再留空归属——没有负责人的单据只对全量范围可见(ADR-109)。
+     */
+    private UUID systemDrawOwner(UUID planId, UUID responsibleEmployeeId) {
+        if (responsibleEmployeeId != null) {
+            return responsibleEmployeeId;
+        }
+        return NativeQueryResults.typedRows(em.createNativeQuery(
+                        "SELECT maker_id FROM production_plans WHERE id=:plan", UUID.class)
+                .setParameter("plan", planId), UUID.class).stream().findFirst().orElse(null);
     }
 
     private int nextDrawLine(StockDocument draw, Map<UUID, Integer> lineNumbers) {

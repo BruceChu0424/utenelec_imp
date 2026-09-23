@@ -33,7 +33,6 @@ class ProductionWorkshopMembershipSuperAdminTest {
                 UUID.randomUUID(),
                 "tester",
                 Set.of(),
-                Set.of(),
                 false,
                 true,
                 superAdmin);

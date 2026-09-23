@@ -12,7 +12,6 @@ import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
-import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -310,7 +309,7 @@ class WorkshopNoticeScopePostgresTest {
                 mock(com.uten.imp.application.port.EmployeeNameLookupPort.class),audience);
     }
     private static ChainNoticeService chain(NoticeService notices,UserAccountRepository users,PermissionResolver permissions) {
-        return new ChainNoticeService(notices,users,permissions,mock(UserRoleRepository.class),jdbc,mock(BusinessEventPublisher.class),
+        return new ChainNoticeService(notices,users,permissions,jdbc,mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),mock(FinanceReviewerEligibilityPort.class),mock(SalesOrderFinanceConfirmerEligibility.class));
     }
     private static ProductionExecutionSegment segment(UUID id,UUID workshop,UUID responsible) {
@@ -323,7 +322,7 @@ class WorkshopNoticeScopePostgresTest {
     }
     private record Actor(int number,UUID department,Set<String> permissions) {
         UUID employee(){return id(number);} UUID user(){return id(number+1000);}
-        AuthUser auth(){return new AuthUser(user(),employee(),"actor"+number,Set.of(),permissions,false,true,false);}
+        AuthUser auth(){return new AuthUser(user(),employee(),"actor"+number,permissions,false,true,false);}
     }
     private static UUID id(int number){return new UUID(0,number);}
 }

@@ -12,6 +12,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
+import com.uten.imp.features.production.plan.dto.PlanBatchResult;
 import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemDto;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
@@ -170,6 +171,10 @@ public class ProductionPlanService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
+        deleteLocked(id);
+    }
+
+    private void deleteLocked(UUID id) {
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         rejectDirectLifecycleOfExecutionV1Subplan(id, "删除");
@@ -190,6 +195,11 @@ public class ProductionPlanService {
     @Transactional
     public PlanDetail approve(UUID id) {
         tx.bind();
+        approveLocked(id);
+        return detail(id);
+    }
+
+    private void approveLocked(UUID id) {
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(
                 p.getMakerId(), "无权审核此生产计划", "production_plan:approve");
@@ -209,7 +219,88 @@ public class ProductionPlanService {
         recomputeClosed(id);
         planningDraftService.applyActive(id);
         chainNotice.notifyPlanScheduled(id, shortage); // 未核验不伪装成缺料；真实缺料才通知采购/调度
-        return detail(id);
+    }
+
+    /**
+     * 批量审核(permissions-06)：一次请求、一个事务。提交前就不是草稿 / 已中止或取消的计划
+     * 记入 skipped 不动；其余按 id 排序逐张走与单张审核完全相同的校验与副作用，任何一张失败
+     * 整批回滚并报出是哪一张，不会出现只审了一半。
+     */
+    @Transactional
+    public PlanBatchResult batchApprove(List<UUID> ids) {
+        tx.bind();
+        return runBatch(ids, "审核", head -> {
+            if (head.status() == null || head.status() != STATUS_DRAFT) return "不是草稿";
+            if (head.stopped() || head.canceled()) return "已中止或已取消";
+            return null;
+        }, this::approveLocked);
+    }
+
+    /**
+     * 批量删除草稿(permissions-06)：一次请求、一个事务。非草稿或不是本人负责(且无全量权限)
+     * 的计划记入 skipped 不动；其余逐张走与单张删除完全相同的校验，任何一张失败整批回滚。
+     */
+    @Transactional
+    public PlanBatchResult batchDelete(List<UUID> ids) {
+        tx.bind();
+        var writeScope = access.scope();
+        return runBatch(ids, "删除", head -> {
+            if (head.status() == null || head.status() != STATUS_DRAFT) return "不是草稿";
+            if (!access.canWrite(head.makerId(), writeScope)) return "只能删除本人负责的计划";
+            return null;
+        }, this::deleteLocked);
+    }
+
+    private record PlanHead(UUID id, String billNo, Short status, UUID makerId,
+                            boolean stopped, boolean canceled) {
+    }
+
+    private PlanBatchResult runBatch(
+            List<UUID> ids,
+            String verb,
+            java.util.function.Function<PlanHead, String> skipReason,
+            java.util.function.Consumer<UUID> action) {
+        List<UUID> ordered = ids == null ? List.of()
+                : ids.stream().filter(java.util.Objects::nonNull).distinct().sorted().toList();
+        Map<UUID, PlanHead> heads = new java.util.HashMap<>();
+        if (!ordered.isEmpty()) {
+            for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                    em.createNativeQuery("""
+                            SELECT id, bill_no, status, maker_id, is_stopped, is_canceled
+                            FROM production_plans
+                            WHERE id IN (:ids) AND is_deleted = FALSE
+                            """).setParameter("ids", ordered))) {
+                PlanHead head = new PlanHead(
+                        (UUID) row[0], (String) row[1],
+                        row[2] == null ? null : ((Number) row[2]).shortValue(),
+                        (UUID) row[3], Boolean.TRUE.equals(row[4]), Boolean.TRUE.equals(row[5]));
+                heads.put(head.id(), head);
+            }
+        }
+        var readScope = access.scope("production_plan:approve");
+        List<PlanBatchResult.Done> done = new ArrayList<>();
+        List<PlanBatchResult.Skipped> skipped = new ArrayList<>();
+        for (UUID id : ordered) {
+            PlanHead head = heads.get(id);
+            if (head == null || !access.canRead(head.makerId(), readScope)) {
+                skipped.add(new PlanBatchResult.Skipped(id, null, "计划不存在"));
+                continue;
+            }
+            String reason = skipReason.apply(head);
+            if (reason != null) {
+                skipped.add(new PlanBatchResult.Skipped(id, head.billNo(), reason));
+                continue;
+            }
+            try {
+                action.accept(id);
+            } catch (ApiException failure) {
+                throw new ApiException(failure.getCode(),
+                        "计划 " + head.billNo() + " " + verb + "失败，本次批量" + verb
+                                + "全部未生效：" + failure.getMessage());
+            }
+            done.add(new PlanBatchResult.Done(id, head.billNo()));
+        }
+        return new PlanBatchResult(List.copyOf(done), List.copyOf(skipped));
     }
 
     private boolean isMaterialAnalysisPlan(UUID planId) {

@@ -204,8 +204,7 @@ class AuditServiceTransactionContractTest {
                 org.mockito.Mockito.CALLS_REAL_METHODS);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "audit", audit);
         java.util.UUID actor = java.util.UUID.randomUUID(), attachment = java.util.UUID.randomUUID();
-        var user = new com.uten.imp.security.AuthUser(actor, actor, "reader",
-                java.util.Set.of(), java.util.Set.of("attachment:download"), false, true, false);
+        var user = new com.uten.imp.security.AuthUser(actor, actor, "reader", java.util.Set.of("attachment:download"), false, true, false);
         for (String action : java.util.List.of("attachment_download_raw", "attachment_avatar_download")) {
             org.mockito.Mockito.reset(audit);
             var successStream = org.mockito.Mockito.mock(java.io.InputStream.class);

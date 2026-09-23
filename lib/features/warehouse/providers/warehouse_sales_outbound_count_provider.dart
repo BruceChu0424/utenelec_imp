@@ -41,6 +41,6 @@ final warehouseSalesOutboundPendingCountProvider = FutureProvider<int>((
 bool _hasSalesOutboundWork(Ref ref) {
   return ref
           .watch(currentPermissionsProvider)
-          .contains(Perm.salesShipmentWarehouseWork) ||
+          .contains(Perm.warehouseSalesOutboundView) ||
       ref.watch(isSuperAdminProvider);
 }

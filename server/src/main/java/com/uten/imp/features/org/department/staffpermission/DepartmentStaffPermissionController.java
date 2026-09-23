@@ -1,11 +1,8 @@
 package com.uten.imp.features.org.department.staffpermission;
 
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.department.staffpermission.dto.ManagedDepartmentDto;
 import com.uten.imp.features.org.department.staffpermission.dto.PermissionDelegationCapabilityDto;
 import com.uten.imp.features.org.department.staffpermission.dto.SetStaffDelegationRequest;
-import com.uten.imp.features.org.department.staffpermission.dto.SetStaffOverrideRequest;
 import com.uten.imp.features.org.department.staffpermission.dto.StaffDelegationResultDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +27,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DepartmentStaffPermissionController {
 
-    private final DepartmentStaffPermissionService service;
     private final PagePermissionWorkspaceService workspace;
 
     @GetMapping("/capability")
@@ -59,20 +55,5 @@ public class DepartmentStaffPermissionController {
                 code,
                 request.enabled(),
                 request.expectedVersion());
-    }
-
-    /**
-     * Compatibility route for old clients. It intentionally never mutates
-     * user_permission_overrides; the service returns an explicit 403.
-     */
-    @PutMapping("/employees/{employeeId}/overrides/{code}")
-    public void rejectLegacyOverride(
-            @PathVariable UUID employeeId,
-            @PathVariable String code,
-            @RequestBody(required = false) SetStaffOverrideRequest request) {
-        service.setStaffOverride(
-                employeeId,
-                code,
-                request == null ? null : request.effect());
     }
 }

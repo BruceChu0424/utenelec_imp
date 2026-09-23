@@ -135,7 +135,6 @@ class EmployeeSensitiveWritePolicyTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "test-user",
-                Set.of(),
                 Set.of(permissions),
                 false,
                 true,

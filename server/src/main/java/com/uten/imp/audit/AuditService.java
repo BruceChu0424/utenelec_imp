@@ -55,11 +55,31 @@ public class AuditService {
             String targetId,
             String result,
             UUID sessionId) {
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, sessionId, null);
+    }
+
+    private void persistBusinessEvent(
+            UUID actorId,
+            String actorAccount,
+            String action,
+            String targetType,
+            String targetId,
+            String result,
+            UUID sessionId,
+            Map<String, Object> change) {
         AuditLog a = base(
                 truncate(action, 120),
                 truncate(targetType, 200),
                 truncate(targetId, 1000),
                 truncate(result, 500));
+        if (change != null) {
+            try {
+                a.setAfter(AUDIT_JSON.writeValueAsString(change));
+            } catch (JsonProcessingException exception) {
+                throw new IllegalStateException("Unable to encode business change audit", exception);
+            }
+        }
         a.setActorId(actorId);
         a.setActorAccount(truncate(actorAccount, 200));
         a.setEventSource("business");
@@ -78,6 +98,19 @@ public class AuditService {
                              String targetType, String targetId, String result) {
         persistBusinessEvent(
                 actorId, actorAccount, action, targetType, targetId, result, null);
+    }
+
+    /**
+     * Transaction-bound business event whose complete structured change set
+     * (for example granted/revoked permission codes) is stored in {@code after};
+     * {@code result} stays a short human-readable summary.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void logCommittedChange(UUID actorId, String actorAccount, String action,
+                                   String targetType, String targetId, String result,
+                                   Map<String, Object> change) {
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, null, change);
     }
 
     /** Transaction-bound success evidence with an explicit authentication session. */

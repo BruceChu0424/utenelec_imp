@@ -1134,7 +1134,6 @@ class _TestSessionNotifier extends SessionNotifier {
       id: 'user-me',
       code: 'USR-ME',
       name: '仓管员',
-      roles: [],
       employeeId: 'emp-me',
     ),
   );

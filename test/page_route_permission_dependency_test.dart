@@ -4,7 +4,6 @@ import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/shared/auth/document_permission_set.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/models/role.dart';
 import 'package:uten_imp/shared/models/user.dart';
 
 void main() {
@@ -213,10 +212,10 @@ void main() {
     });
 
     test(
-      'finance and warehouse shipment roles reach task pages and shared read-only detail only',
+      'finance and warehouse shipment viewers reach task pages and shared read-only detail only',
       () {
-        final financeAuditor = _userWith([Perm.financeShipmentAudit]);
-        final warehouseOperator = _userWith([Perm.salesShipmentWarehouseWork]);
+        final financeAuditor = _userWith([Perm.salesShipmentFinanceView]);
+        final warehouseOperator = _userWith([Perm.warehouseSalesOutboundView]);
 
         for (final location in [
           '/sales/shipments',
@@ -224,8 +223,8 @@ void main() {
         ]) {
           expect(requiredAnyPermFor(location), const [
             Perm.salesShipmentView,
-            Perm.financeShipmentAudit,
-            Perm.salesShipmentWarehouseWork,
+            Perm.salesShipmentFinanceView,
+            Perm.warehouseSalesOutboundView,
           ]);
           expect(employeePermissionRedirect(financeAuditor, location), isNull);
           expect(
@@ -235,7 +234,7 @@ void main() {
         }
 
         expect(requiredAnyPermFor(RouteName.financeSalesShipmentAudit), const [
-          Perm.financeShipmentAudit,
+          Perm.salesShipmentFinanceView,
         ]);
         expect(
           employeePermissionRedirect(
@@ -245,7 +244,7 @@ void main() {
           isNull,
         );
         expect(requiredAnyPermFor(RouteName.warehouseSalesOutbound), const [
-          Perm.salesShipmentWarehouseWork,
+          Perm.warehouseSalesOutboundView,
         ]);
         expect(
           employeePermissionRedirect(
@@ -270,7 +269,10 @@ void main() {
         );
         expect(
           requiredAnyPermFor(RouteName.finance),
-          containsAll([Perm.salesOrderFinanceView, Perm.financeShipmentAudit]),
+          containsAll([
+            Perm.salesOrderFinanceView,
+            Perm.salesShipmentFinanceView,
+          ]),
         );
         expect(
           employeePermissionRedirect(financeAuditor, RouteName.finance),
@@ -285,7 +287,7 @@ void main() {
         );
         expect(
           requiredAnyPermFor(RouteName.warehouse),
-          contains(Perm.salesShipmentWarehouseWork),
+          contains(Perm.warehouseSalesOutboundView),
         );
         expect(
           employeePermissionRedirect(warehouseOperator, RouteName.warehouse),
@@ -421,18 +423,13 @@ void main() {
 
     test('subcontract preparation deep link is retired and routed to hub', () {
       // 2026-09-05 委外准备中心退役：旧深链由 GoRouter 重定向到 /subcontract；
-      // 守卫沿用 hub 同款权限（任一委外 view），持权用户落到 hub 而非 404。
+      // 守卫与 hub 同源(ADR-109：hub 守卫 = 子卡守卫并集，不再手写清单)，
+      // 持权用户落到 hub 而非 404。
       const location = '/subcontract/preparations';
-      expect(requiredAnyPermFor(location), const [
-        Perm.subcontractInquiryView,
-        Perm.subcontractApplicationView,
-        Perm.subcontractOrderView,
-        Perm.subcontractReceiptView,
-        Perm.subcontractMaterialIssueView,
-        Perm.subcontractReturnView,
-        Perm.subcontractMaterialReturnView,
-        Perm.subcontractWasteView,
-      ]);
+      expect(
+        requiredAnyPermFor(location)!.toSet(),
+        requiredAnyPermFor(RouteName.subcontract)!.toSet(),
+      );
       expect(
         employeePermissionRedirect(_userWith(const []), location),
         RouteName.accessDenied,
@@ -498,17 +495,12 @@ void main() {
       'historical material issue create path is a view-only guidance page',
       () {
         const location = '/subcontract/material-issues/new';
-        expect(
-          Perm.buttonActionCodes,
-          isNot(contains(Perm.subcontractMaterialIssueCreate)),
-          reason:
-              'retired manual create must not return as a Flutter action candidate',
-        );
+        // 手工新建发料单的码已随 V655 删除(服务端端点一并删除)，这里只留查看引导页。
         expect(requiredAnyPermFor(location), const [
           Perm.subcontractMaterialIssueView,
         ]);
         for (final action in [
-          Perm.subcontractMaterialIssueCreate,
+          'subcontract_material_issue:create',
           Perm.subcontractMaterialIssueEdit,
           Perm.subcontractMaterialIssueApprove,
         ]) {
@@ -561,6 +553,5 @@ AppUser _userWith(Iterable<String> permissions) => AppUser(
   id: 'permission-test-user',
   code: 'P001',
   name: '权限测试用户',
-  roles: const [Role.employee],
   permissions: permissions.toList(growable: false),
 );

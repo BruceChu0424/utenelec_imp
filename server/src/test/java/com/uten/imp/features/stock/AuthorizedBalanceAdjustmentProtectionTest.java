@@ -54,7 +54,6 @@ class AuthorizedBalanceAdjustmentProtectionTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "pmc-user",
-                Set.of(),
                 Set.of("stock_doc:edit"),
                 false,
                 true,

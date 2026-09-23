@@ -29,8 +29,7 @@ class EmployeeAttachmentAccessPolicyTest {
     private final UUID employeeId = UUID.randomUUID();
 
     private AuthUser user(UUID ownEmployeeId, String... permissions) {
-        return new AuthUser(UUID.randomUUID(), ownEmployeeId, "user",
-                Set.of(), Set.of(permissions), false, true, false);
+        return new AuthUser(UUID.randomUUID(), ownEmployeeId, "user", Set.of(permissions), false, true, false);
     }
 
     private void employeeExists() {
@@ -62,8 +61,7 @@ class EmployeeAttachmentAccessPolicyTest {
     @Test
     void superAdminCanViewAnyArchive() {
         employeeExists();
-        AuthUser admin = new AuthUser(UUID.randomUUID(), null, "admin",
-                Set.of(), Set.of(), false, true, true);
+        AuthUser admin = new AuthUser(UUID.randomUUID(), null, "admin", Set.of(), false, true, true);
         assertDoesNotThrow(() -> policy.requireCanView(employeeId, admin));
     }
 

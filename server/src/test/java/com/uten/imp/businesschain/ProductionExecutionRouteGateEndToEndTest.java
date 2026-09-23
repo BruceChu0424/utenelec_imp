@@ -1087,6 +1087,10 @@ class ProductionExecutionRouteGateEndToEndTest {
         var reconciler=beans.getBean(com.uten.imp.features.production.fulfillment.ProductionReadinessReconciler.class);
         for(int attempt=0;attempt<4 && !"READY".equals(status(c.segment()));attempt++)reconciler.runBatch();
         assertEquals("READY",status(c.segment())); qty("0",capacity(c));
+        // 系统补偿建的领料单记业务负责人(执行段负责人，其次计划负责人)，不留空归属(ADR-109)。
+        UUID systemDrawOwner=db.queryForObject("SELECT document.maker_id FROM stock_documents document JOIN production_planning_package_documents mapping ON mapping.document_id=document.id WHERE mapping.execution_segment_id=? AND mapping.document_type='DRAW'",UUID.class,c.segment());
+        assertNotNull(systemDrawOwner);
+        assertEquals(db.queryForObject("SELECT COALESCE(segment.responsible_employee_id,plan.maker_id) FROM production_execution_segments segment JOIN production_plans plan ON plan.id=segment.plan_id WHERE segment.id=?",UUID.class,c.segment()),systemDrawOwner);
         UUID original=db.queryForObject("SELECT item.id FROM stock_document_items item JOIN production_planning_package_documents mapping ON mapping.document_id=item.doc_id WHERE mapping.execution_segment_id=? AND mapping.document_type='DRAW'",UUID.class,c.segment());
         fixture.loginAs(c.workerUser());
         var returns=beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService.class);

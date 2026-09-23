@@ -34,7 +34,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
-import '../../../core/router/permission_by_path.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -65,25 +65,14 @@ class FinanceHubPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
-    final canViewProcurementApprovals =
-        superAdmin || permissions.contains(Perm.financeOrderApprovalView);
-    final canViewSalesConfirmations =
-        superAdmin || permissions.contains(Perm.salesOrderFinanceView);
-    final canAuditSalesShipments =
-        superAdmin || permissions.contains(Perm.financeShipmentAudit);
-    final canViewIqcRejections =
-        superAdmin || permissions.contains(Perm.procurementIqcRejectionView);
-    final canHandleExpense =
-        permissions.contains(Perm.expenseApprove) ||
-        permissions.contains(Perm.expensePay);
+    // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /finance 入口守卫同源，ADR-109)；
+    // 业务审核中心的五类队列在页内按各自查看码分段，入口按它自己的路由守卫。
+    bool canOpen(String location) =>
+        hubCardAllowed(RouteName.finance, location, permissions, superAdmin);
+    final canOpenAuditCenter = canOpen(RouteName.financeAudits);
+    final canHandleExpense = canOpen('/expense/approval');
     List<_Entry> visible(List<_Entry> entries) => entries
-        .where((entry) {
-          final requiredAny = requiredAnyPermFor(entry.location);
-          final requiredAll = requiredAllPermsFor(entry.location);
-          return (requiredAny == null ||
-                  requiredAny.any(permissions.contains)) &&
-              requiredAll.every(permissions.contains);
-        })
+        .where((entry) => canOpen(entry.location))
         .toList(growable: false);
     return Scaffold(
       appBar: UtenAppBar(
@@ -110,20 +99,13 @@ class FinanceHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              if (canViewProcurementApprovals ||
-                  canViewSalesConfirmations ||
-                  canAuditSalesShipments ||
-                  canViewIqcRejections ||
-                  canHandleExpense) ...[
+              if (canOpenAuditCenter || canHandleExpense) ...[
                 _section(context, theme, l10n.hubSectionTaskCenter, [
                   // 2026-09-18 合并：原 6 张审核队列卡（销售订单财务确认/销售订单
                   // 修改/出货财务审核/订货审批/超量到货审批/IQC 不合格退回与贷项）
                   // 并为一张「业务审核中心」卡，队列在页内按权限分段显示；
                   // 角标 = 五类队列待办之和（FinanceAuditCenterBadge 走注册表）。
-                  if (canViewProcurementApprovals ||
-                      canViewSalesConfirmations ||
-                      canAuditSalesShipments ||
-                      canViewIqcRejections)
+                  if (canOpenAuditCenter)
                     const _Entry(
                       icon: Icons.fact_check_outlined,
                       label: '业务审核中心',

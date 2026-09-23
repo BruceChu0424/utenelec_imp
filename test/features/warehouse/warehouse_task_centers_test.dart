@@ -102,14 +102,14 @@ void main() {
   group('route permission contract', () {
     test('task centers accept any of their business view permissions', () {
       expect(requiredAnyPermFor(RouteName.warehouseOutboundTasks), const [
-        Perm.salesShipmentWarehouseWork,
+        Perm.warehouseSalesOutboundView,
         Perm.subcontractOutboundView,
         Perm.stockDocView,
       ]);
       expect(
         requiredAnyPermFor('${RouteName.warehouseOutboundTasks}/x'),
         const [
-          Perm.salesShipmentWarehouseWork,
+          Perm.warehouseSalesOutboundView,
           Perm.subcontractOutboundView,
           Perm.stockDocView,
         ],
@@ -138,7 +138,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       app(const WarehouseOutboundTaskCenterPage(), const {
-        Perm.salesShipmentWarehouseWork,
+        Perm.warehouseSalesOutboundView,
         Perm.stockDocView,
       }),
     );
@@ -176,7 +176,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       app(const WarehouseOutboundTaskCenterPage(), const {
-        Perm.salesShipmentWarehouseWork,
+        Perm.warehouseSalesOutboundView,
       }),
     );
     await tester.pump();

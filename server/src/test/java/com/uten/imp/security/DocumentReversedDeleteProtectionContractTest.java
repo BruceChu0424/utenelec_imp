@@ -18,6 +18,11 @@ class DocumentReversedDeleteProtectionContractTest {
         for (Contract contract : contracts()) {
             String command = method(source(contract.relativePath()),
                     "public void delete(UUID id)");
+            if (command.contains("deleteLocked(id)")) {
+                // ADR-109：生产计划单张删除与批量删除共用同一个加锁内核。
+                command = method(source(contract.relativePath()),
+                        "private void deleteLocked(UUID id)");
+            }
             if (contract.relativePath().contains("sales/other_shipment/")) {
                 // Retired records deny deletion even to their owner; they do not use the draft-delete lane.
                 assertThat(command).contains("throw retiredWrite();")

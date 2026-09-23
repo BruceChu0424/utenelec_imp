@@ -31,7 +31,7 @@ public class CustomerShipmentPolicy {
     }
     public boolean has(String code){return currentUser.get().map(user->user.isSuperAdmin()||user.getPermissions().contains(code)).orElse(false);}
     public boolean can(String kind,String action){return has((DIRECT.equals(kind)?"sales_other_shipment:":"sales_shipment:")+action);}
-    public boolean canRead(String kind){return can(kind,"view")||has("finance_shipment_audit")||has("sales_shipment:warehouse-work");}
+    public boolean canRead(String kind){return can(kind,"view")||has("sales_shipment_finance:view")||has("warehouse_sales_outbound:view");}
     public void require(String kind,String action) {
         if(!can(kind,action))throw new ApiException(ErrorCode.FORBIDDEN,"当前账号无权执行这类发货单的操作");
     }

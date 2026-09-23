@@ -67,9 +67,8 @@ public record OnboardingRequest(
             String degree, String school, String major, LocalDate startDate, LocalDate endDate
     ) {}
 
-    /** roles 默认 [employee]；loginAccount 默认 = 手机号。 */
+    /** loginAccount 默认 = 手机号。账号权限只来自全员基础包与部门配置(ADR-109 无角色)。 */
     public record Account(
-            @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS) List<String> roles,
             String loginAccount
     ) {}
 }

@@ -98,8 +98,8 @@ public class ReviewNoticeAudience {
     static boolean eligible(String event, Set<String> permissions, Set<String> departments) {
         if (!permissions.contains("notice:read")) return false;
         return switch (event) {
-            case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> departments.contains("DEPT_FIN") && permissions.contains("finance_shipment_audit");
-            case "SALES_SHIPMENT_PENDING_PICK" -> departments.contains("SUB_WH") && permissions.contains("sales_shipment:warehouse-work");
+            case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> departments.contains("DEPT_FIN") && permissions.contains("sales_shipment_finance:approve");
+            case "SALES_SHIPMENT_PENDING_PICK" -> departments.contains("SUB_WH") && permissions.contains("warehouse_sales_outbound:execute");
             case "SALES_SHIPMENT_FINANCE_REJECTED" -> any(departments,"DEPT_SALES","DEPT_RAIL") && permissions.containsAll(Set.of("sales_shipment:view","sales_shipment:edit"));
             case "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED" -> any(departments,"DEPT_SALES","DEPT_RAIL") && permissions.containsAll(Set.of("sales_other_shipment:view","sales_other_shipment:edit"));
             case "SALES_ORDER_PENDING_FINANCE_CONFIRM" -> departments.contains("DEPT_FIN")
@@ -133,7 +133,7 @@ public class ReviewNoticeAudience {
             // （ADR-063 2026-09-10 修订明示的例外：HR/财务/回复职能可跨部门）=====
             case "PROFILE_CHANGE_SUBMITTED" -> permissions.contains("profile:review");
             case "VISITOR_APPLY_SUBMITTED" -> permissions.contains("visitor:approve");
-            case "VISITOR_HOST_CONFIRM_REQUIRED" -> permissions.contains("visitor:host-confirm");
+            case "VISITOR_HOST_CONFIRM_REQUIRED" -> permissions.contains("visitor:host_confirm");
             case "EXPENSE_CLAIM_SUBMITTED" -> permissions.contains("expense:approve");
             case "EXPENSE_CLAIM_PENDING_PAYMENT" -> permissions.contains("expense:pay");
             case "EXPENSE_CLAIM_REJECTED" -> permissions.contains("expense:apply");

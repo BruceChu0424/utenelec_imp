@@ -30,7 +30,6 @@ public record TokenResponse(
             String position,
             boolean mustChangePassword,
             boolean superAdmin,
-            List<String> roles,
             List<String> permissions
     ) {}
 }

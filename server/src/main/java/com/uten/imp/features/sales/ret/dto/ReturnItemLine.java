@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,7 +11,7 @@ import java.util.UUID;
 /** 销售退货保存请求中的明细行。 */
 @Getter
 @Setter
-public class ReturnItemLine {
+public class ReturnItemLine implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -31,9 +32,6 @@ public class ReturnItemLine {
     private BigDecimal qty;
 
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
-    private BigDecimal costAmount;
     private BigDecimal weight;
     private String clientNo;
     private String clientModel;

@@ -30,7 +30,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -2758,9 +2757,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     ErrorCode.VALIDATION_FAILED,
                     "自定义批准超量必须大于 0 且小于本次请求超量");
         }
-        BigDecimal normalized = requested.setScale(4, RoundingMode.HALF_UP);
+        BigDecimal normalized = com.uten.imp.common.finance.MoneyPolicy.quantity(requested);
         BigDecimal normalizedLimit =
-                requestedExcess.setScale(4, RoundingMode.HALF_UP);
+                com.uten.imp.common.finance.MoneyPolicy.quantity(requestedExcess);
         if (normalizedLimit.signum() <= 0
                 || normalized.signum() <= 0
                 || normalized.compareTo(normalizedLimit) >= 0) {
@@ -2790,16 +2789,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return normalized;
     }
 
+    /** 超量部分的本币金额: 与出货/退货同一口径的累计份额(ADR-112), 超量等于全部到货量时就是到货金额本身。 */
     private static BigDecimal proportionalAmount(
             BigDecimal amount, BigDecimal qty, BigDecimal declaredQty) {
         if (amount == null
                 || qty == null
                 || declaredQty == null
-                || declaredQty.signum() == 0) {
+                || declaredQty.signum() <= 0) {
             return null;
         }
-        return amount.multiply(qty)
-                .divide(declaredQty, 4, RoundingMode.HALF_UP);
+        return com.uten.imp.common.finance.MoneyPolicy.cumulativeShare(amount, qty, declaredQty);
     }
 
     private static void putIfNotNull(

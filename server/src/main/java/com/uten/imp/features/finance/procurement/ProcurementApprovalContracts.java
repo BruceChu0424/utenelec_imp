@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.procurement;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.uten.imp.common.finance.ExactDecimalText;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import jakarta.validation.Valid;
@@ -120,16 +121,16 @@ public final class ProcurementApprovalContracts {
             String supplierCode,
             String warehouseName,
             String currencyName,
-            BigDecimal exchangeRate,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal exchangeRate,
             String settlementMethodName,
-            BigDecimal taxRate,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal taxRate,
             String purchaserName,
             String makerName,
             LocalDate deliverDate,
             String remark,
-            BigDecimal totalOriginal,
-            BigDecimal totalLocal,
-            BigDecimal supplierApBalance,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalOriginal,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalLocal,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal supplierApBalance,
             int sourceApplicationCount,
             List<QtyChange> qtyChanges,
             List<ReviewLine> items,
@@ -170,11 +171,11 @@ public final class ProcurementApprovalContracts {
             String colorName,
             @JsonSerialize(using = ToStringSerializer.class) UUID unitId,
             String unitName,
-            BigDecimal unitRate,
-            BigDecimal qty,
-            BigDecimal price,
-            BigDecimal amountOriginal,
-            BigDecimal amountLocal,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal unitRate,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal qty,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal price,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal amountOriginal,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal amountLocal,
             LocalDate deliverDate,
             String sourceDocNo) {
     }

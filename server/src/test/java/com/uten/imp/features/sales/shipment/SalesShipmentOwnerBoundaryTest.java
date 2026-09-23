@@ -99,9 +99,11 @@ class SalesShipmentOwnerBoundaryTest {
         Query snapshotQuery = queryReturning(Collections.singletonList(
                 snapshotRow(itemId, "G-FORGED", "Forged snapshot goods")));
         Query eventQuery = commandQuery();
+        // ADR-112: 出货金额按订单行累计分摊, 需先读已出库净量/净额(此处尚无历史出货)。
+        Query netShippedQuery = queryReturning(List.of());
         when(em.createNativeQuery(anyString())).thenReturn(
                 orderQuery, lockedQuery, allocationQuery,
-                sourceQuery, policyQuery, snapshotQuery, eventQuery);
+                sourceQuery, netShippedQuery, policyQuery, snapshotQuery, eventQuery);
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
         when(docNumberService.nextNumber(any())).thenReturn("OUT-FORGED");
         when(accessPolicy.ownerForNewDocument(owner)).thenReturn(owner);
@@ -113,8 +115,6 @@ class SalesShipmentOwnerBoundaryTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(BigDecimal.ONE);
         line.setPrice(new BigDecimal("999"));
-        line.setAmountOriginal(new BigDecimal("999"));
-        line.setAmountLocal(new BigDecimal("888888"));
         ShipmentSaveRequest request = new ShipmentSaveRequest();
         request.setBillDate(LocalDate.now());
         request.setClientId(client);
@@ -184,13 +184,16 @@ class SalesShipmentOwnerBoundaryTest {
                 snapshotRow(itemB, "G-B", "Goods B")));
         Query eventAQuery = commandQuery();
         Query eventBQuery = commandQuery();
+        // ADR-112: 出货金额按订单行累计分摊, 每张先读已出库净量/净额(此处尚无历史出货)。
+        Query netShippedAQuery = queryReturning(List.of());
+        Query netShippedBQuery = queryReturning(List.of());
         when(em.createNativeQuery(anyString()))
                 .thenReturn(
                         batchQuery,
                         orderAQuery, lockedAQuery, allocationAQuery,
-                        sourceAQuery, policyAQuery, snapshotAQuery, eventAQuery,
+                        sourceAQuery, netShippedAQuery, policyAQuery, snapshotAQuery, eventAQuery,
                         orderBQuery, lockedBQuery, allocationBQuery,
-                        sourceBQuery, policyBQuery, snapshotBQuery, eventBQuery);
+                        sourceBQuery, netShippedBQuery, policyBQuery, snapshotBQuery, eventBQuery);
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
         when(docNumberService.nextNumber(any()))
                 .thenReturn("OUT-A", "OUT-B");

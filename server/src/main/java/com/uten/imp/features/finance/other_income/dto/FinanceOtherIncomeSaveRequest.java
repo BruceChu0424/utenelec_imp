@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.other_income.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -16,7 +17,7 @@ import java.util.UUID;
 /** 其它收入单新建/编辑请求（主表字段 + 明细分摊行）。 */
 @Getter
 @Setter
-public class FinanceOtherIncomeSaveRequest {
+public class FinanceOtherIncomeSaveRequest implements ServerDerivedAmounts {
 
     private String billNo;
 
@@ -27,8 +28,6 @@ public class FinanceOtherIncomeSaveRequest {
     private UUID counterpartAccountId;
     private UUID currencyId;
     private BigDecimal exchangeRate;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private UUID receiptMethodId;
     private Integer receiptMethodLegacyId;
     private UUID operatorId;

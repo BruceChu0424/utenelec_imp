@@ -274,7 +274,8 @@ public class SubcontractReportService {
                        g.spec AS "spec", col.name AS "colorName", i.weight AS "weight", i.girth_qty AS "girth",
                        i.qty AS "qty", un.name AS "unitName", NULL AS "step",
                        i.price AS "price", i.amount_local AS "amount",
-                       i.returned_qty AS "returnedQty", i.return_amount AS "returnedAmount",
+                       i.returned_qty AS "returnedQty",
+                       COALESCE(i.return_amount, returned.amount_local) AS "returnedAmount",
                        i.return_no AS "returnNo", i.order_no AS "orderNo",
                        o.id AS "__srcId"
                 """;
@@ -288,6 +289,15 @@ public class SubcontractReportService {
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units un ON un.id = i.unit_id
+                LEFT JOIN LATERAL (
+                    -- 退货金额取已审委外退货单的实际贷项(服务端派生); 老库迁入行保留原「退货金额」。
+                    SELECT SUM(return_item.amount_local) AS amount_local
+                    FROM subcontract_return_items return_item
+                    JOIN subcontract_returns return_doc ON return_doc.id = return_item.return_id
+                    WHERE return_item.receipt_item_id = i.id AND return_doc.status = 1
+                      AND COALESCE(return_item.is_deleted,false)=false
+                      AND COALESCE(return_doc.is_deleted,false)=false
+                ) returned ON TRUE
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");

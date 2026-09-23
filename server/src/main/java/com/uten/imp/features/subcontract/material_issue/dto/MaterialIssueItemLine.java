@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.material_issue.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,7 +13,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-public class MaterialIssueItemLine {
+public class MaterialIssueItemLine implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -28,8 +29,6 @@ public class MaterialIssueItemLine {
 
     /** 无 Price；空。 */
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
 
     /** 关联来源订货明细；不把子件数量回写到成品行累计字段。 */
     private UUID orderItemId;

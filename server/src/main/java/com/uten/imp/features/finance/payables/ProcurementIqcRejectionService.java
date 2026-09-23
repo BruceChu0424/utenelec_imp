@@ -4,6 +4,7 @@ import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -28,7 +29,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
@@ -96,13 +96,12 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 || source.failedBase().signum() <= 0
                 || source.failedBase().compareTo(source.receivedBase()) > 0
                 || source.unitRate().signum() <= 0
-                || money(source.receiptQty().multiply(source.unitRate()))
-                        .compareTo(money(source.receivedBase())) != 0) {
+                || MoneyPolicy.quantity(source.receiptQty().multiply(source.unitRate()))
+                        .compareTo(MoneyPolicy.quantity(source.receivedBase())) != 0) {
             throw conflict("IQC失败数量、收货数量或单位换算不守恒");
         }
-        BigDecimal ratio = source.failedBase().divide(
-                source.receivedBase(), 12, RoundingMode.HALF_UP);
-        BigDecimal failedQty = quantity(source.receiptQty().multiply(ratio));
+        BigDecimal failedQty = MoneyPolicy.quantityShare(
+                source.receiptQty(), source.failedBase(), source.receivedBase());
         FailedAmounts failedAmounts=failedAmounts(
                 inspectionItemId,source.receivedBase(),source.failedBase(),
                 source.receiptOriginal(),source.receiptLocal());
@@ -1251,46 +1250,14 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             BigDecimal receivedOriginal,BigDecimal receivedLocal){
         var frozen=consideration.failedAmounts(inspectionItemId);
         if(frozen!=null)return new FailedAmounts(frozen.original(),frozen.local());
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows=em.createNativeQuery("""
-                SELECT action,base_qty
-                FROM procurement_inspection_events
-                WHERE inspection_item_id=:inspectionItemId
-                  AND action IN('PASS','FAIL')
-                ORDER BY occurred_at,id
-                """).setParameter("inspectionItemId",inspectionItemId).getResultList();
-        if(rows.isEmpty())throw conflict("IQC失败缺少追加式处置事件，禁止猜测金额");
-        BigDecimal resolvedBefore=BigDecimal.ZERO;
-        BigDecimal failedBase=BigDecimal.ZERO;
-        BigDecimal failedOriginal=BigDecimal.ZERO;
-        BigDecimal failedLocal=BigDecimal.ZERO;
-        for(Object[] row:rows){
-            BigDecimal sliceBase=decimal(row[1]);
-            BigDecimal next=resolvedBefore.add(sliceBase);
-            if(next.compareTo(receivedBase)>0){
-                throw conflict("IQC处置事件累计超过冻结收货基本量");
-            }
-            BigDecimal originalSlice=money(
-                    receivedOriginal.multiply(next)
-                            .divide(receivedBase,4,RoundingMode.HALF_UP)
-                    .subtract(receivedOriginal.multiply(resolvedBefore)
-                            .divide(receivedBase,4,RoundingMode.HALF_UP)));
-            BigDecimal localSlice=money(
-                    receivedLocal.multiply(next)
-                            .divide(receivedBase,4,RoundingMode.HALF_UP)
-                    .subtract(receivedLocal.multiply(resolvedBefore)
-                            .divide(receivedBase,4,RoundingMode.HALF_UP)));
-            if("FAIL".equals(text(row[0]))){
-                failedBase=failedBase.add(sliceBase);
-                failedOriginal=failedOriginal.add(originalSlice);
-                failedLocal=failedLocal.add(localSlice);
-            }
-            resolvedBefore=next;
-        }
-        if(failedBase.compareTo(expectedFailedBase)!=0){
-            throw conflict("IQC失败事件累计与权威质检失败量不一致");
-        }
-        return new FailedAmounts(money(failedOriginal),money(failedLocal));
+        // 旧收货没有冻结的品质资金分项: 按处置事件累计切片(与仓库放行、退货可退额度同一口径)。
+        var events=com.uten.imp.common.finance.ProcurementIqcAmountSplit.events(em,inspectionItemId);
+        if(events.isEmpty())throw conflict("IQC失败缺少追加式处置事件，禁止猜测金额");
+        return new FailedAmounts(
+                money(com.uten.imp.common.finance.ProcurementIqcAmountSplit.failedSlices(
+                        receivedOriginal,receivedBase,events,expectedFailedBase)),
+                money(com.uten.imp.common.finance.ProcurementIqcAmountSplit.failedSlices(
+                        receivedLocal,receivedBase,events,expectedFailedBase)));
     }
 
     private boolean alreadyHandled(UUID eventId) {
@@ -1787,10 +1754,6 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
 
     private static BigDecimal money(BigDecimal value) {
         return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value,"IQC金额");
-    }
-
-    private static BigDecimal quantity(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP);
     }
 
     private static ApiException validation(String message) {

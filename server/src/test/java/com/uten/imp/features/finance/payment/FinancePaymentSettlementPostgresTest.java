@@ -578,8 +578,6 @@ class FinancePaymentSettlementPostgresTest {
         line.setAppliedBillNo("CLIENT-CONTROLLED");
         line.setSupplierId(supplierId);
         line.setAmountOriginal(new BigDecimal("30.0000"));
-        line.setAmountLocal(new BigDecimal("9999.0000"));
-        line.setExchangeDiff(new BigDecimal("-8888.0000"));
 
         FinancePaymentSaveRequest request = new FinancePaymentSaveRequest();
         // 红冲守卫要求单据期间与当前会计期间一致，固定历史日期会在跨月后触发
@@ -595,7 +593,6 @@ class FinancePaymentSettlementPostgresTest {
         request.setCurrencyId(currencyId);
         request.setExchangeRate(new BigDecimal("7.200000"));
         request.setAmountOriginal(new BigDecimal("999.0000"));
-        request.setAmountLocal(new BigDecimal("9999.0000"));
         request.setCreateIdempotencyKey(UUID.randomUUID().toString());
         request.setItems(java.util.List.of(line));
         return request;

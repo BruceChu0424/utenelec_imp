@@ -839,7 +839,13 @@ public class AccountService {
 
     private static BigDecimal decimal(Object value) {
         if (value instanceof BigDecimal amount) return amount;
-        if (value instanceof Number number) return BigDecimal.valueOf(number.doubleValue());
+        if (value instanceof Long || value instanceof Integer || value instanceof Short) {
+            return BigDecimal.valueOf(((Number) value).longValue());
+        }
+        if (value instanceof Number number) {
+            // 余额只来自 numeric 列; 浮点说明查询口径错了, 不能经 double 截断金额。
+            throw new IllegalStateException("账户金额列类型不精确: " + number.getClass().getName());
+        }
         return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 

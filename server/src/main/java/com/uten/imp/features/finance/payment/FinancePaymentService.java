@@ -13,6 +13,7 @@ import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.LegacyOpeningReversalFloor;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
+import com.uten.imp.features.finance.accountflow.AccountPosting;
 import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
 import com.uten.imp.features.finance.payables.SupplierPayableHoldGuard;
 import com.uten.imp.features.finance.arap.ArApLedger;
@@ -301,15 +302,13 @@ public class FinancePaymentService {
         }
         Map<UUID, ArApLedger> lockedLedgers = lockAppliedLedgers(lines,true);
         settleAppliedLines(p, lines, lockedLedgers);
-        BigDecimal accountAmount = adjustPaymentAccount(p,1);
-        insertReconciliation(p, accountAmount);
+        postPaymentAccount(p);
     }
 
     private void reverseSettlement(FinancePayment p) {
         List<FinancePaymentLine> lines = lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId());
         if (!lines.isEmpty()) {
             reverseAppliedLines(p, lines, lockAppliedLedgers(lines,false));
-            adjustPaymentAccount(p,-1);
             reverseReconciliation(p.getId(),p.getReversedAt());
             return;
         }
@@ -326,7 +325,6 @@ public class FinancePaymentService {
             ledger.setDeletedAt(reversedAt);
             ledgerRepo.save(ledger);
         }
-        adjustPaymentAccount(p,-1);
         reverseReconciliation(p.getId(),p.getReversedAt());
     }
 
@@ -579,109 +577,33 @@ public class FinancePaymentService {
                 .map(line -> nz(line.getAmountLocal()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal original = lines.stream()
-                .map(line -> line.getAmountOriginal() == null
-                        ? nz(line.getAmountLocal())
-                        : line.getAmountOriginal())
+                .map(line -> nz(line.getAmountOriginal()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         payment.setAmountLocal(money(local));
         payment.setAmountOriginal(money(original));
         paymentRepo.save(payment);
     }
 
-    /** 扣减付款账户，并返回账户流水使用的同币种金额。 */
-    private BigDecimal adjustPaymentAccount(FinancePayment payment,int sign) {
-        boolean actualBank=payment.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION;
-        BigDecimal direction=BigDecimal.valueOf(sign);
-        return adjustAccount(payment.getAccountId(),
-                actualBank?payment.getAccountCurrencyId():payment.getCurrencyId(),
-                nz(actualBank?payment.getAccountAmount():payment.getAmountOriginal()).multiply(direction),
-                nz(actualBank?payment.getAccountAmountLocal():payment.getAmountLocal()).multiply(direction));
-    }
-
-    /** Adjust only the frozen native account amount selected by the authority version. */
-    private BigDecimal adjustAccount(
-            UUID accountId,
-            UUID paymentCurrencyId,
-            BigDecimal originalDelta,
-            BigDecimal localDelta) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        SELECT account.currency_id, currency.code, currency.name,
-                               currency.is_base_currency
-                        FROM accounts account
-                        LEFT JOIN currencies currency
-                          ON currency.id=account.currency_id
-                         AND COALESCE(currency.is_deleted,false)=false
-                         AND currency.status='使用'
-                        WHERE account.id=:id
-                          AND COALESCE(account.is_deleted,false)=false
-                          AND account.status='使用'
-                        FOR UPDATE OF account
-                        """)
-                .setParameter("id", accountId)
-                .getResultList();
-        if (rows.size() != 1) {
-            throw new ApiException(ErrorCode.BUSINESS, "付款账户不存在或已停用：" + accountId);
-        }
-        Object[] row = rows.getFirst();
-        UUID accountCurrencyId = (UUID) row[0];
-        String currencyCode = row[1] == null ? null : row[1].toString();
-        String currencyName = row[2] == null ? null : row[2].toString();
-        boolean baseCurrency = Boolean.TRUE.equals(row[3]);
-        if (accountCurrencyId == null) {
-            throw new ApiException(ErrorCode.BUSINESS, "付款账户未设置币种");
-        }
-        if (currencyCode == null && currencyName == null) {
-            throw new ApiException(ErrorCode.BUSINESS, "付款账户币种不存在或已停用");
-        }
-        BigDecimal accountDelta;
-        if (baseCurrency) {
-            accountDelta = money(localDelta);
-        } else if (Objects.equals(accountCurrencyId, paymentCurrencyId)) {
-            accountDelta = money(originalDelta);
-        } else {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "付款账户必须为人民币本位币账户或与付款原币相同的账户，"
-                            + "不能直接使用第三币种账户：" + accountId);
-        }
-        int updated = em.createNativeQuery("""
-                        UPDATE accounts
-                        SET balance_current=COALESCE(balance_current,0)-:amount,
-                            payments_total=COALESCE(payments_total,0)+:amount,
-                            updated_at=now()
-                        WHERE id=:id
-                        """)
-                .setParameter("amount", accountDelta)
-                .setParameter("id", accountId)
-                .executeUpdate();
-        if (updated != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "付款账户余额更新失败：" + accountId);
-        }
-        return accountDelta;
-    }
-
-    private void insertReconciliation(FinancePayment p, BigDecimal accountAmount) {
+    /**
+     * 付款账户扣减 + 付款流水, 统一经账本过账(ADR-112): 本位币账户记本币, 与付款原币(银行权威版本为
+     * 冻结的真实账户币种)相同的外币账户记原生金额, 第三币种账户拒绝。
+     */
+    private void postPaymentAccount(FinancePayment p) {
+        boolean actualBank = p.getAmountAuthorityVersion() == BANK_AUTHORITY_VERSION;
         String counterpart = p.getSupplierId() == null ? null : lookupSupplierName(p.getSupplierId());
-        em.createNativeQuery("""
-                INSERT INTO finance_reconciliations
-                  (bill_no, source_doc_type, source_doc_id, account_id, check_no, counterpart_name,
-                   in_amount, out_amount, amount_local, bill_date, settled_date, source_remark,
-                   legacy_bstyle, created_at, updated_at, is_deleted)
-                VALUES (:billNo, :src, :sid, :acc, :chk, :cpn, 0, :outAmt, :localAmt,
-                        :bd, :sd, :sr, 21, now(), now(), false)
-                """)
-                .setParameter("billNo", p.getBillNo())
-                .setParameter("src", RECON_SOURCE)
-                .setParameter("sid", p.getId())
-                .setParameter("acc", p.getAccountId())
-                .setParameter("chk", p.getInvoiceNo())
-                .setParameter("cpn", counterpart)
-                .setParameter("outAmt", accountAmount)
-                .setParameter("localAmt", p.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION?p.getAccountAmountLocal():p.getAmountLocal())
-                .setParameter("bd", p.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION?p.getBankBookedAt():p.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime())
-                .setParameter("sd", OffsetDateTime.now())
-                .setParameter("sr", p.getSourceRemark())
-                .executeUpdate();
+        accountFlowLedger.post(AccountPosting.out(RECON_SOURCE, p.getId(), p.getBillNo(), p.getAccountId())
+                .rule(AccountPosting.CurrencyRule.BASE_OR_DOCUMENT_CURRENCY,
+                        actualBank ? p.getAccountCurrencyId() : p.getCurrencyId())
+                .amounts(nz(actualBank ? p.getAccountAmount() : p.getAmountOriginal()),
+                        nz(actualBank ? p.getAccountAmountLocal() : p.getAmountLocal()))
+                .bookedAt(actualBank ? p.getBankBookedAt()
+                        : p.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime())
+                .settledAt(OffsetDateTime.now())
+                .checkNo(p.getInvoiceNo())
+                .counterpart(counterpart)
+                .sourceRemark(p.getSourceRemark())
+                .legacyBstyle(21)
+                .label("付款账户"));
     }
 
     private void reverseReconciliation(UUID paymentId,OffsetDateTime reversedAt) {

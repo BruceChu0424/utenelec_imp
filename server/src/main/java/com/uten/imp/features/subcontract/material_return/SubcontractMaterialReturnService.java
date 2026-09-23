@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.material_return;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -394,8 +395,10 @@ public class SubcontractMaterialReturnService {
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal());
+            // 金额只由服务端派生(ADR-112): 数量 × 单价; 本单据无币种, 按本位币计(汇率 1)。单价空则金额空。
+            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);
+            it.setAmountOriginal(amounts.original());
+            it.setAmountLocal(amounts.local());
             it.setMaterialIssueItemId(l.getMaterialIssueItemId());
             it.setOrderItemId(l.getOrderItemId());
             it.setParentGoodsId(l.getParentGoodsId());

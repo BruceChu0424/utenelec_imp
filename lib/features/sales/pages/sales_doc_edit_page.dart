@@ -19,7 +19,6 @@ import 'package:flutter/material.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
-import '../../../shared/models/decimal_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -74,6 +73,7 @@ import '../../basic_data/models/goods_node.dart' show GoodsListItem;
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../widgets/sales_grid_columns.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 class SalesDocEditPage extends ConsumerStatefulWidget {
   const SalesDocEditPage({
@@ -1093,14 +1093,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           'id': r.documentItemId,
         'goodsId': r.goods!.id,
         'qty': r.qty.text.trim(),
-        if (price != null && !_freeCustomerShipment) ...{
-          // 客户端仅提交即时预览值用于兼容；服务端按货品/来源商业快照重新取得单价，
-          // 再用数量与折扣重算 amountOriginal，绝不信任这里的 price/amount。
+        // 只送单价原文; 金额由服务端按 数量 × 单价 × 折扣 精确派生(ADR-112), 请求不带金额。
+        if (price != null && !_freeCustomerShipment)
           'price': r.price.text.trim(),
-          // Quotes are proposals; financial dispatch/returns use their actual source authority.
-          if (widget.docType == SalesDocType.quote)
-            'amountOriginal': multiplyDecimalTexts([r.qty.text, r.price.text]),
-        },
         if (r.orderItemId != null) 'orderItemId': r.orderItemId,
         if (r.outItemId != null) 'outItemId': r.outItemId,
         if (r.colorId != null) 'colorId': r.colorId,
@@ -2196,57 +2191,56 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     // 金额在同币种单据内汇总，币种取表头。
                                     footer: ValueListenableBuilder<double>(
                                       valueListenable: _totalQtyNotifier,
-                                      builder: (_, _, _) =>
-                                          ValueListenableBuilder<double>(
-                                            valueListenable:
-                                                _grid.totalListenable,
-                                            builder: (_, amount, _) =>
-                                                UtenTotalsSummaryBar(
-                                                  key: const Key(
-                                                    'sales-edit-totals',
-                                                  ),
-                                                  density: true,
-                                                  entries: [
-                                                    utenQuantityTotalEntry(
-                                                      _grid.rows
-                                                          .where(
-                                                            (row) =>
-                                                                row.goods !=
-                                                                null,
-                                                          )
-                                                          .map(
-                                                            (
-                                                              row,
-                                                            ) => MeasuredAmount(
-                                                              value:
-                                                                  double.tryParse(
-                                                                    row.qty.text
-                                                                        .trim(),
-                                                                  ) ??
-                                                                  0,
-                                                              unitId:
-                                                                  row.unitId,
-                                                              unitName:
-                                                                  names
-                                                                      .unitEntries[row
-                                                                      .unitId],
+                                      builder: (_, _, _) => ValueListenableBuilder<double>(
+                                        valueListenable: _grid.totalListenable,
+                                        builder: (_, amount, _) =>
+                                            UtenTotalsSummaryBar(
+                                              key: const Key(
+                                                'sales-edit-totals',
+                                              ),
+                                              density: true,
+                                              entries: [
+                                                utenQuantityTotalEntry(
+                                                  _grid.rows
+                                                      .where(
+                                                        (row) =>
+                                                            row.goods != null,
+                                                      )
+                                                      .map(
+                                                        (row) => MeasuredAmount(
+                                                          value:
+                                                              double.tryParse(
+                                                                row.qty.text
+                                                                    .trim(),
+                                                              ) ??
+                                                              0,
+                                                          unitId: row.unitId,
+                                                          unitName:
+                                                              names
+                                                                  .unitEntries[row
+                                                                  .unitId],
+                                                        ),
+                                                      ),
+                                                  label: '数量',
+                                                ),
+                                                UtenTotalEntry(
+                                                  _totalAmountLabel(names),
+                                                  _freeCustomerShipment
+                                                      ? '不收费（货款 0）'
+                                                      : financeExactMoneyDisplay(
+                                                          exactAmountSumText(
+                                                            _grid.rows.map(
+                                                              (row) => row
+                                                                  .amountExactNotifier
+                                                                  .value,
                                                             ),
                                                           ),
-                                                      label: '数量',
-                                                    ),
-                                                    UtenTotalEntry(
-                                                      _totalAmountLabel(names),
-                                                      _freeCustomerShipment
-                                                          ? '不收费（货款 0）'
-                                                          : amount
-                                                                .toStringAsFixed(
-                                                                  2,
-                                                                ),
-                                                      danger: true,
-                                                    ),
-                                                  ],
+                                                        ),
+                                                  danger: true,
                                                 ),
-                                          ),
+                                              ],
+                                            ),
+                                      ),
                                     ),
                                   );
                                 },

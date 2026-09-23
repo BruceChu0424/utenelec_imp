@@ -75,6 +75,7 @@ import '../repositories/subcontract_repository.dart';
 import '../services/subcontract_save_workflow.dart';
 import '../widgets/subcontract_grid_columns.dart';
 import '../widgets/subcontract_link_picker.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 /// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
 ///
@@ -1002,8 +1003,6 @@ class _SubcontractOrderEditPageState
         'goodsId': r.goods!.id,
         'qty': qty,
         'price': price,
-        'amountOriginal': qty * price,
-        'amountLocal': qty * price * rate,
         if (r.upstreamItemId != null) 'applicationItemId': r.upstreamItemId,
         // V463 同货品合并行：多来源申请明细逐条提交，服务端按剩余量 FIFO 拆分。
         if (r.upstreamItemIds.length > 1)
@@ -1490,8 +1489,15 @@ class _SubcontractOrderEditPageState
                                                     )
                                                   : null,
                                             ),
-                                            _grid.totalListenable.value
-                                                .toStringAsFixed(2),
+                                            financeExactMoneyDisplay(
+                                              exactAmountSumText(
+                                                _grid.rows.map(
+                                                  (r) => r
+                                                      .amountExactNotifier
+                                                      .value,
+                                                ),
+                                              ),
+                                            ),
                                             danger: true,
                                           ),
                                         ];

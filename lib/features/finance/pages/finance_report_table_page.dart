@@ -41,6 +41,7 @@ import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../../report/shared/report_total.dart';
 import '../config/finance_report_config.dart';
+import '../widgets/gl_report_line_bindings_dialog.dart';
 
 class FinanceReportTablePage extends ConsumerStatefulWidget {
   const FinanceReportTablePage({required this.cardId, super.key});
@@ -344,6 +345,16 @@ class _FinanceReportTablePageState
     );
   }
 
+  Future<void> _openLineBindings() async {
+    final changed = await showGlReportLineBindingsDialog(
+      context,
+      canEdit: ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.paymentStyleEdit),
+    );
+    if (changed && mounted) _load();
+  }
+
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
@@ -419,6 +430,18 @@ class _FinanceReportTablePageState
               ],
             ),
             const SizedBox(height: UtenSpacing.s12),
+            if (widget.cardId == 'gl') ...[
+              _filterLabel('报表设置'),
+              // ADR-112: 附表/经营损益表各行取哪些科目或部门的数由这里配置,
+              // 没配置的行在报表上标注「未配置」且不计入合计。
+              TextButton.icon(
+                key: const ValueKey('gl-line-bindings'),
+                onPressed: _openLineBindings,
+                icon: const Icon(Icons.tune_outlined, size: 18),
+                label: const Text('附表取数设置'),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
             if (_isCustomerPrepaymentEvents) ...[
               _filterLabel('客户'),
               ClientPickerField(

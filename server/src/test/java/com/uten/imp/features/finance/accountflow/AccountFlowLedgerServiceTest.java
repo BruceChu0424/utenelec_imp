@@ -46,10 +46,17 @@ class AccountFlowLedgerServiceTest {
                         "0", "100.0000", "POSTING", null)));
         when(insertIncomingReversal.executeUpdate()).thenReturn(1);
         when(insertOutgoingReversal.executeUpdate()).thenReturn(1);
+        List<Query> restores = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String statement = invocation.getArgument(0);
             sql.add(statement);
             if (statement.contains("pg_advisory_xact_lock")) return advisory;
+            if (statement.contains("UPDATE accounts")) {
+                Query restore = query();
+                when(restore.executeUpdate()).thenReturn(1);
+                restores.add(restore);
+                return restore;
+            }
             if (statement.contains("FROM finance_reconciliations")) return locked;
             if (statement.contains("INSERT INTO finance_reconciliations")) {
                 return inserts.getAndIncrement() == 0
@@ -88,6 +95,15 @@ class AccountFlowLedgerServiceTest {
                 "amountLocal", new BigDecimal("100.0000"));
         verify(insertOutgoingReversal).setParameter(
                 "amountLocal", new BigDecimal("100.0000"));
+        // ADR-112: 红冲按原始流水同步恢复两边账户余额与累计列(收入冲回 receipts_total, 支出冲回 payments_total)。
+        assertThat(restores).hasSize(2);
+        assertThat(sql).filteredOn(statement -> statement.contains("UPDATE accounts"))
+                .anySatisfy(statement -> assertThat(statement).contains("receipts_total = COALESCE(receipts_total, 0) - :amount"))
+                .anySatisfy(statement -> assertThat(statement).contains("payments_total = COALESCE(payments_total, 0) - :amount"))
+                .allSatisfy(statement -> assertThat(statement).contains("status = '使用'"));
+        for (Query restore : restores) {
+            verify(restore).setParameter("amount", new BigDecimal("100.0000"));
+        }
     }
 
     @Test

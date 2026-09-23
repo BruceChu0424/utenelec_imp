@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.ret;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -407,8 +408,7 @@ public class PurchaseReturnService {
         int auto = 1;
         for (ReturnItemLine l : lines) {
             NonNegativeCommercialSignGuard.requireRequestLine(
-                    "采购退货", l.getQty(), l.getPrice(),
-                    l.getAmountOriginal(), l.getAmountLocal());
+                    "采购退货", l.getQty(), l.getPrice());
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
@@ -434,8 +434,10 @@ public class PurchaseReturnService {
             it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
+            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, r.getExchangeRate());
+            it.setAmountOriginal(amounts.original());
+            it.setAmountLocal(amounts.local());
             it.setReceiptItemId(l.getReceiptItemId());
             it.setOrderItemId(l.getOrderItemId());
             it.setWeight(l.getWeight());

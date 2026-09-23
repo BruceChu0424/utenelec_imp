@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payment.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -16,7 +17,7 @@ import java.util.UUID;
 /** 采购付款单新建/编辑请求（明细可空 = 直接付款 / 供应商预付）。 */
 @Getter
 @Setter
-public class FinancePaymentSaveRequest {
+public class FinancePaymentSaveRequest implements ServerDerivedAmounts {
 
     private String billNo;
     private Long expectedVersion;
@@ -34,8 +35,6 @@ public class FinancePaymentSaveRequest {
     @NotNull
     private BigDecimal exchangeRate;
     private BigDecimal amountOriginal;
-    /** 服务端按原币金额与付款汇率重算；仅保留用于兼容旧客户端。 */
-    private BigDecimal amountLocal;
     /** Actual bank native debit includes the explicitly recorded bank fee. */
     private UUID accountCurrencyId;
     private BigDecimal accountAmount;

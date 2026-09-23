@@ -522,13 +522,14 @@ public class ProcurementIqcStockInService {
             Allocation eventAllocation = allocation(slice);
             BigDecimal previouslyStocked=slice.stockedForReleaseBaseQty()
                     .add(slice.remainingBaseQty().subtract(item.expectedRemainingBaseQty()));
-            BigDecimal amount = ProcurementInspectionService.proratedIncrement(
+            // 一个合格事件分几批入库: 金额按 MoneyPolicy 累计份额差(末批取余, 与库级守卫 V449 的 ROUND(.., 4) 逐位一致),
+            // 重量按数量口径切片。
+            BigDecimal amount = ProcurementInspectionService.releasedAmountSlice(
                     eventAllocation.amount(), slice.releasedBaseQty(),
                     previouslyStocked, item.baseQty());
-            BigDecimal weight = eventAllocation.weight() == null ? null
-                    : ProcurementInspectionService.proratedIncrement(
-                            eventAllocation.weight(), slice.releasedBaseQty(),
-                            previouslyStocked, item.baseQty());
+            BigDecimal weight = ProcurementInspectionService.releasedWeightSlice(
+                    eventAllocation.weight(), slice.releasedBaseQty(),
+                    previouslyStocked, item.baseQty());
 
             UUID stockInItemId = UUID.randomUUID();
             UUID movementId = UUID.randomUUID();

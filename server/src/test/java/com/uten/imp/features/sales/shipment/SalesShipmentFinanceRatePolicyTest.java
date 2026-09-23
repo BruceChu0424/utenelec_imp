@@ -13,14 +13,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SalesShipmentFinanceRatePolicyTest {
 
     @Test
-    void newDirectShipmentNeverRoundsAwayLocalMoney() {
-        SalesShipment shipment=new SalesShipment();shipment.setShipmentKind("DIRECT_CUSTOMER");
-        var item=item("0.0001");
-        assertThatThrownBy(()->SalesShipmentService.applyPostingRateSnapshot(shipment,List.of(item),new BigDecimal("0.0001")))
-                .isInstanceOf(ApiException.class).hasMessageContaining("未自动四舍五入");
-        assertThat(item.getAmountLocal()).isNull();
-        SalesShipmentService.applyPostingRateSnapshot(shipment,List.of(item),new BigDecimal("7"));
-        assertThat(item.getAmountLocal()).isEqualByComparingTo("0.0007");
+    void directAndOrderShipmentsKeepTheCompleteLocalProductUnderOneRule() {
+        // ADR-112: 直发与订货发货同一规则, 本币 = 原币 × 财务汇率的完整乘积; 旧口径下直发拒绝、订货发货四舍五入。
+        SalesShipment direct=new SalesShipment();direct.setShipmentKind("DIRECT_CUSTOMER");
+        SalesShipment ordered=new SalesShipment();
+        var directItem=item("0.0001");
+        var orderedItem=item("0.0001");
+        SalesShipmentService.applyPostingRateSnapshot(direct,List.of(directItem),new BigDecimal("0.0001"));
+        SalesShipmentService.applyPostingRateSnapshot(ordered,List.of(orderedItem),new BigDecimal("0.0001"));
+        assertThat(directItem.getAmountLocal()).isEqualByComparingTo("0.00000001");
+        assertThat(orderedItem.getAmountLocal()).isEqualByComparingTo(directItem.getAmountLocal());
+        assertThat(direct.getTotalLocal()).isEqualByComparingTo(ordered.getTotalLocal());
     }
 
     @Test
@@ -33,10 +36,11 @@ class SalesShipmentFinanceRatePolicyTest {
         SalesShipmentService.applyPostingRateSnapshot(
                 shipment, List.of(first, second), new BigDecimal("7.123456"));
 
-        assertThat(first.getAmountLocal()).isEqualByComparingTo("8.7939");
-        assertThat(second.getAmountLocal()).isEqualByComparingTo("14.2469");
+        // 完整乘积, 不再按行 4 位四舍五入(旧期望 8.7939 / 14.2469 / 23.0408)。
+        assertThat(first.getAmountLocal()).isEqualByComparingTo("8.793906432");
+        assertThat(second.getAmountLocal()).isEqualByComparingTo("14.246912");
         assertThat(shipment.getTotalOriginal()).isEqualByComparingTo("3.2345");
-        assertThat(shipment.getTotalLocal()).isEqualByComparingTo("23.0408");
+        assertThat(shipment.getTotalLocal()).isEqualByComparingTo("23.040818432");
         assertThat(shipment.getExchangeRate()).isEqualByComparingTo("7.123456");
     }
 

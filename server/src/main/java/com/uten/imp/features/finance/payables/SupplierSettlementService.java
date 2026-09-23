@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -11,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -508,7 +508,7 @@ public class SupplierSettlementService {
     private static void add(StringBuilder w,Map<String,Object>p,String q,String n,Object v){w.append(" AND ").append(q);p.put(n,v);} private static void bind(Query q,Map<String,Object>p){p.forEach(q::setParameter);}
     private static String bounded(String v,int m,String l){if(v==null||v.isBlank())throw validation(l+"不能为空");return optional(v,m);} private static String optional(String v,int m){if(v==null)return null;String t=v.trim();if(t.length()>m)throw validation("文本不能超过 "+m+" 个字符");return t.isEmpty()?null:t;}
     private static UUID uuid(Object v){return v instanceof UUID u?u:v==null?null:UUID.fromString(v.toString());} private static String text(Object v){return v==null?null:v.toString();} private static String date(Object v){return v==null?null:v.toString();}
-    private static BigDecimal decimal(Object v){return v instanceof BigDecimal b?b:new BigDecimal(v.toString());} private static BigDecimal moneyValue(Object v){return (v==null?BigDecimal.ZERO:decimal(v)).setScale(MONEY_SCALE,RoundingMode.HALF_UP);} private static String money(Object v){return v==null?null:moneyValue(v).toPlainString();} private static String rate(Object v){return v==null?null:decimal(v).setScale(6,RoundingMode.HALF_UP).toPlainString();} private static BigDecimal zero(){return BigDecimal.ZERO.setScale(MONEY_SCALE);}
+    private static BigDecimal decimal(Object v){return v instanceof BigDecimal b?b:new BigDecimal(v.toString());} private static BigDecimal moneyValue(Object v){return MoneyPolicy.canonical(v==null?BigDecimal.ZERO:decimal(v));} private static String money(Object v){return v==null?null:moneyValue(v).toPlainString();} private static String rate(Object v){return v==null?null:MoneyPolicy.canonicalRate(decimal(v)).toPlainString();} private static BigDecimal zero(){return BigDecimal.ZERO.setScale(MONEY_SCALE);}
     private static ApiException validation(String m){return new ApiException(ErrorCode.VALIDATION_FAILED,m);} private static ApiException conflict(String m){return new ApiException(ErrorCode.CONFLICT,m);}
 
     private record BatchPeriodIdentity(UUID supplierId,UUID currencyId){}

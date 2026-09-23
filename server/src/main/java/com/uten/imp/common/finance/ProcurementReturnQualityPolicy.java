@@ -5,7 +5,6 @@ import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,7 +45,7 @@ public final class ProcurementReturnQualityPolicy {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT received_base_qty, passed_base_qty, failed_base_qty, status,
-                               warehouse_stocked_base_qty
+                               warehouse_stocked_base_qty, id
                         FROM procurement_inspection_items
                         WHERE receipt_type=:receiptType AND receipt_item_id=:receiptItemId
                         FOR UPDATE
@@ -79,28 +78,36 @@ public final class ProcurementReturnQualityPolicy {
                 || stockedBase == null || stockedBase.signum() < 0
                 || stockedBase.compareTo(passedBase) > 0
                 || passedBase.add(failedBase).compareTo(receivedBase) != 0
-                || money(receiptQty.multiply(unitRate)).compareTo(money(receivedBase)) != 0) {
+                || MoneyPolicy.quantity(receiptQty.multiply(unitRate))
+                        .compareTo(MoneyPolicy.quantity(receivedBase)) != 0) {
             throw conflict("来源收货 IQC 数量、单位换算或结案守恒不一致，禁止退货");
         }
-        BigDecimal ratio = stockedBase.divide(receivedBase, 12, RoundingMode.HALF_UP);
-        BigDecimal returnableQty = quantity(receiptQty.multiply(ratio));
-        BigDecimal returnableOriginal = money(receiptOriginal.multiply(ratio));
-        BigDecimal returnableLocal = money(receiptLocal.multiply(ratio));
+        // 可退额度与不合格金额同一口径(ProcurementIqcAmountSplit): 合格金额 = 收货金额 − 不合格金额,
+        // 可退 = 合格金额中仓库已实收的累计份额, 全部实收时就是合格金额本身。
+        // 不合格贷项 + 合格件全部退货 恰好冲平收货应付, 原币与本币都不留尾差。
+        BigDecimal returnableQty = MoneyPolicy.quantityShare(receiptQty, stockedBase, receivedBase);
+        ProcurementIqcAmountSplit.Amounts failed = ProcurementIqcAmountSplit.failedForReturnLimit(
+                em, (UUID) row[5], receivedBase, failedBase, receiptOriginal, receiptLocal);
         return new ReturnableSource(
-                returnableQty, returnableOriginal, returnableLocal, false);
+                returnableQty,
+                stockedShare(receiptOriginal, failed.original(), stockedBase, passedBase),
+                stockedShare(receiptLocal, failed.local(), stockedBase, passedBase),
+                false);
+    }
+
+    private static BigDecimal stockedShare(
+            BigDecimal receiptAmount, BigDecimal failedAmount, BigDecimal stockedBase, BigDecimal passedBase) {
+        BigDecimal passedAmount = receiptAmount.subtract(failedAmount);
+        if (passedAmount.signum() < 0) {
+            throw conflict("来源收货的不合格金额超过收货金额，禁止退货");
+        }
+        if (passedBase.signum() == 0) return BigDecimal.ZERO;
+        return MoneyPolicy.cumulativeShare(MoneyPolicy.canonical(passedAmount), stockedBase, passedBase);
     }
 
     private static BigDecimal decimal(Object value) {
         return value == null ? null : value instanceof BigDecimal decimal
                 ? decimal : new BigDecimal(value.toString());
-    }
-
-    private static BigDecimal quantity(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP);
-    }
-
-    private static BigDecimal money(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP);
     }
 
     private static ApiException conflict(String message) {

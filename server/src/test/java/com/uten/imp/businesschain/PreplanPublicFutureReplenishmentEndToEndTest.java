@@ -221,7 +221,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
         line.setGoodsId(goods);line.setOrderItemId(orderItem);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("1000"));line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(new BigDecimal("50000"));line.setAmountLocal(new BigDecimal("50000"));request.setItems(List.of(line));
+        request.setItems(List.of(line));
         var service=(com.uten.imp.features.purchase.receipt.PurchaseReceiptService)ReflectionTestUtils.getField(fixture,"purchaseReceiptService");
         service.create(request);
         UUID receipt=db.queryForObject("SELECT receipt.id FROM purchase_receipts receipt JOIN purchase_receipt_items item ON item.receipt_id=receipt.id WHERE item.order_item_id=? AND NOT receipt.is_deleted AND NOT item.is_deleted",UUID.class,orderItem);

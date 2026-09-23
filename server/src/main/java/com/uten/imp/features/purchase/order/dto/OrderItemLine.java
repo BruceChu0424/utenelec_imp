@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.order.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -11,7 +12,7 @@ import java.util.UUID;
 
 @Getter
 @Setter
-public class OrderItemLine {
+public class OrderItemLine implements ServerDerivedAmounts {
     private Integer lineNo;
     @NotNull private UUID goodsId;
     /**
@@ -41,8 +42,6 @@ public class OrderItemLine {
     private BigDecimal unitRate;
     @NotNull private BigDecimal qty;
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private BigDecimal giftQty;
     /** 关联申请明细（单来源行；审核时回写 ordered_qty）。 */
     @NotNull private UUID requestItemId;

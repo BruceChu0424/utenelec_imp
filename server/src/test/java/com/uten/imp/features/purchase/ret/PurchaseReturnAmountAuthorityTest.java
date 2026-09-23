@@ -13,14 +13,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PurchaseReturnAmountAuthorityTest {
 
     @Test
-    void partialReturnUsesSourcePriceAndSourceRateWithMoneyRounding() {
+    void partialReturnUsesSourcePriceAndSourceRateWithoutRounding() {
         var amounts = PurchaseReturnAmountAuthority.sourceAmounts(
                 new BigDecimal("2.5000"), new BigDecimal("4.0000"), new BigDecimal("7.123456"),
-                new BigDecimal("5.0000"), new BigDecimal("20.0000"), new BigDecimal("142.4691"),
+                new BigDecimal("5.0000"), new BigDecimal("20.0000"), new BigDecimal("142.46912"),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
 
         assertThat(amounts.original()).isEqualByComparingTo("10.0000");
-        assertThat(amounts.local()).isEqualByComparingTo("71.2346");
+        // ADR-112: 来源本币是精确乘积, 部分退货取累计份额, 不再四舍五入到 4 位。
+        assertThat(amounts.local()).isEqualByComparingTo("71.23456");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.receipt.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,7 +11,7 @@ import java.util.UUID;
 /** 委外进仓单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class ReceiptItemLine {
+public class ReceiptItemLine implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -28,8 +29,6 @@ public class ReceiptItemLine {
     private String replacementIntent;
 
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private BigDecimal checkQty;
     private BigDecimal orderQty;
     private BigDecimal weight;
@@ -42,7 +41,6 @@ public class ReceiptItemLine {
 
     private BigDecimal girthQty;
     private Integer stepLegacyId;
-    private BigDecimal returnAmount;
     private String returnNo;
     private String orderNo;
 }

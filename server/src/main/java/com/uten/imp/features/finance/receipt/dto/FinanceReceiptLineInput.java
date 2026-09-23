@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.receipt.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -11,7 +12,7 @@ import java.util.UUID;
 /** 销售收款单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class FinanceReceiptLineInput {
+public class FinanceReceiptLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -34,11 +35,6 @@ public class FinanceReceiptLineInput {
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal amountOriginal;
 
-    /** 服务端按 amountOriginal × exchangeRate 权威重算；字段仅为旧客户端兼容，可不传。 */
-    private BigDecimal amountLocal;
-
-    /** 服务端按到账汇率与开账汇率权威重算；客户端值不会入账。 */
-    private BigDecimal exchangeDiff;
 
     @DecimalMin(value = "0")
     private BigDecimal writeOffAmount;

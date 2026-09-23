@@ -42,12 +42,13 @@ class SalesReturnAmountAuthorityTest {
 
     @Test
     void reversalKeepsTheSurvivingRoundingSliceAndOnlyAllowsBoundedRoundingDifferences() {
+        // 除不尽的累计份额取到来源位数(2/3 → 0.6667), 本批 = 0.6667 − 已退 0.3334; 末批收回全部剩余。
         var third = SalesReturnAmountAuthority.amounts(bd("1"), bd("3"), bd("1"), bd("7"),
                 bd("1"), bd("0.3334"), bd("2.3334"), 2, 1);
         assertThat(third.original()).isEqualByComparingTo("0.3333");
         assertThat(third.local()).isEqualByComparingTo("2.3333");
         var finalSlice = SalesReturnAmountAuthority.amounts(bd("1"), bd("3"), bd("1"), bd("7"),
-                bd("2"), bd("0.6667"), bd("4.6667"), 3, 1);
+                bd("2"), bd("0.3334").add(third.original()), bd("2.3334").add(third.local()), 3, 1);
         assertThat(finalSlice.original().add(third.original()).add(bd("0.3334")))
                 .isEqualByComparingTo("1");
         assertThat(finalSlice.local().add(third.local()).add(bd("2.3334")))

@@ -166,7 +166,7 @@ class PurchaseRequestPartialOrderEndToEndTest {
         RequestItemDto item=requests.detail(f.request()).getItems().stream().filter(row->row.getId().equals(source)).findFirst().orElseThrow();
         var line=new OrderItemLine();line.setGoodsId(item.getGoodsId());line.setUnitId(item.getUnitId());line.setUnitRate(item.getUnitRate());
         line.setRequestItemId(source);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());return line;
+        return line;
     }
     private OrderDetail createOrder(Fixture f,List<OrderItemLine> lines) {
         harness.loginAs(f.world().superAdminUserId());

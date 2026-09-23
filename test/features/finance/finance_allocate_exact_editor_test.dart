@@ -90,7 +90,8 @@ void main() {
         expect(api.bodies, hasLength(1));
         final first = (api.bodies.single['items'] as List).single as Map;
         expect(first['amountOriginal'], original);
-        expect(first['amountLocal'], original);
+        // ADR-112: 本币由服务端按表头汇率派生, 请求只带实际金额原文。
+        expect(first.containsKey('amountLocal'), isFalse);
         expect(first['summary'], '原始摘要');
         if (type != FinanceDocType.bankTransfer) {
           expect(first['qty'], '2.0000');
@@ -102,7 +103,7 @@ void main() {
         expect(api.bodies, hasLength(2));
         final second = (api.bodies.last['items'] as List).single as Map;
         expect(second['amountOriginal'], changed);
-        expect(second['amountLocal'], changed);
+        expect(second.containsKey('amountLocal'), isFalse);
         expect(tester.takeException(), isNull);
       },
     );

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.receipt;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
@@ -572,8 +573,7 @@ public class SubcontractReceiptService {
                                     + ")，无法确定回厂消费口径，请人工核销");
                 }
             }
-            BigDecimal required = receivedParentQty.multiply(unitQty)
-                    .setScale(4, java.math.RoundingMode.HALF_UP);
+            BigDecimal required = MoneyPolicy.quantity(receivedParentQty.multiply(unitQty));
             if (required.signum() == 0) continue;
             BigDecimal remaining = required;
             if (sign > 0) {
@@ -989,8 +989,10 @@ public class SubcontractReceiptService {
             it.setQty(l.getQty());
             it.setReplacementIntent(l.getReplacementIntent());
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外收货单价"));
-            it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
+            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, r.getExchangeRate());
+            it.setAmountOriginal(amounts.original());
+            it.setAmountLocal(amounts.local());
             it.setCheckQty(l.getCheckQty());
             it.setOrderQty(l.getOrderQty());
             it.setOrderItemId(l.getOrderItemId());
@@ -999,7 +1001,6 @@ public class SubcontractReceiptService {
             it.setRemark(l.getRemark());
             it.setGirthQty(l.getGirthQty());
             it.setStepLegacyId(l.getStepLegacyId());
-            it.setReturnAmount(l.getReturnAmount());
             it.setReturnNo(l.getReturnNo());
             it.setOrderNo(l.getOrderNo());
             itemRepo.save(it);

@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
@@ -50,7 +51,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayDeque;
@@ -1428,7 +1428,7 @@ public class SalesOrderService {
                         StockReservation.SOURCE_ORDER, "SALES_ORDER", o.getId());
                 pool.put(key, avail.subtract(take));
             }
-            it.setReservedQty(take.divide(rate, 4, RoundingMode.HALF_UP));
+            it.setReservedQty(MoneyPolicy.quantityFromBase(take, rate));
             // V545：上链落点走统一派生（未交付=0→9；预留够→7；否则按剩余未排量落 1/2）。
             it.setChainStatus(SalesChainStatus.deriveOnChain((short) 0,
                     it.getQty(), it.getShippedQty(), it.getReturnedQty(), it.getFlagQty(),
@@ -1527,7 +1527,7 @@ public class SalesOrderService {
                     if (take.signum() > 0) {
                         reservationService.reserve(it.getId(), it.getGoodsId(), it.getColorId(), take,
                                 StockReservation.SOURCE_ORDER, "SALES_ORDER_CHANGE", o.getId());
-                        reserved = reserved.add(take.divide(rate, 4, RoundingMode.HALF_UP));
+                        reserved = reserved.add(MoneyPolicy.quantityFromBase(take, rate));
                     }
                 } else {
                     // 减量：先释放预留，再回退排产分摊（新→旧）
@@ -1975,11 +1975,14 @@ public class SalesOrderService {
         return null;
     }
 
+    /** 数据库数值原样转十进制: 整数精确转换, 不经 double; 意外类型直接报错, 不悄悄变空。 */
     private static BigDecimal toBigDecimal(Object v) {
         if (v == null) return null;
         if (v instanceof BigDecimal bd) return bd;
-        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
-        return null;
+        if (v instanceof Long || v instanceof Integer || v instanceof Short) {
+            return BigDecimal.valueOf(((Number) v).longValue());
+        }
+        throw new IllegalStateException("预留数量的数据库类型不是十进制: " + v.getClass().getName());
     }
 
     private static String strOf(Object v) {
@@ -2540,7 +2543,6 @@ public class SalesOrderService {
                 || line.getUnitRate().signum() <= 0
                 || line.getQty() == null || line.getQty().signum() <= 0
                 || authoritativePrice == null || authoritativePrice.signum() < 0
-                || isNegative(line.getTaxAmount())
                 || isNegative(line.getWeight())
                 || isNegative(line.getMachiningPrice())
                 || isNegative(line.getCircumference())) {
@@ -2569,10 +2571,7 @@ public class SalesOrderService {
                     ErrorCode.VALIDATION_FAILED,
                     "订单数量必须大于 0，价格和折扣不得为负数");
         }
-        BigDecimal multiplier = (discount == null || discount.signum() == 0)
-                ? BigDecimal.ONE : discount;
-        return quantity.multiply(unitPrice).multiply(multiplier)
-                .setScale(4, RoundingMode.HALF_UP);
+        return MoneyPolicy.exactProduct(quantity, unitPrice, discount);
     }
 
     private static void requireSafeStoredCommercialOrder(
@@ -2587,12 +2586,7 @@ public class SalesOrderService {
             BigDecimal expectedOriginal = item.getQty() == null
                     || item.getPrice() == null
                     ? null
-                    : item.getQty().multiply(item.getPrice())
-                            .multiply(item.getDiscount() == null
-                                    || item.getDiscount().signum() == 0
-                                            ? BigDecimal.ONE
-                                            : item.getDiscount())
-                            .setScale(4, RoundingMode.HALF_UP);
+                    : MoneyPolicy.exactProduct(item.getQty(), item.getPrice(), item.getDiscount());
             if (item.getUnitId() == null
                     || item.getUnitRate() == null
                     || item.getUnitRate().signum() <= 0

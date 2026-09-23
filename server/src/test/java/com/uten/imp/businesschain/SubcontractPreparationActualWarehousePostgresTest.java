@@ -175,7 +175,7 @@ class SubcontractPreparationActualWarehousePostgresTest {
         request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);
         var line=new OrderItemLine();line.setGoodsId(goods);line.setApplicationItemId(applicationItem);
         line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ONE);
-        line.setPrice(new BigDecimal("30"));line.setAmountOriginal(new BigDecimal("30"));line.setAmountLocal(new BigDecimal("30"));request.setItems(List.of(line));
+        line.setPrice(new BigDecimal("30"));request.setItems(List.of(line));
         UUID order=orders.create(request).getId();
         UUID reviewer=call(fixture,"createApprover",world);
         Object finance=ReflectionTestUtils.getField(fixture,"financeApproval");assertNotNull(finance);

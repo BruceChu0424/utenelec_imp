@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportFacet;
@@ -10,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,18 +33,17 @@ import java.util.UUID;
  *       占销售比=金额/销售额(031+032 贷净)。</li>
  * </ol>
  *
- * <p>无数据源的项目（直接/间接人工、折旧、社保、招待、维修、交通、装卸、广告等）列占位 NULL，已在各报表注释标明；
- * 附 14 按业务员拆分：费用单据无业务员维度，按费用科目出行（口径注于文档）。</p>
+ * <p>附表行不再按写死的科目名取数(ADR-112)：行目录在 {@link GlReportLine}，行绑定哪些科目/部门存于
+ * {@code finance_report_line_bindings}；人工行取已审核工资单应发、折旧行取固定资产折旧事实；
+ * 没有绑定的行在「取数口径」列标注「未配置科目/未配置部门」，金额留空且不计入合计。
+ * 附 14 按业务员拆分：费用单据无业务员维度，按绑定到「销售费用」的科目出行。</p>
  */
 @Service
 @RequiredArgsConstructor
 public class GlReportService {
 
     private final EntityManager em;
-
-    /** 销售类费用科目（043 一级子）。 */
-    private static final List<String> SALES_FEE_STYLES = List.of(
-            "销售费用", "外贸部费用", "OEM部费用", "运费", "快递费用", "淘宝网费用", "慕朵费用", "证书费用");
+    private final GlReportLineSource lines;
 
     // ======================== ① 科目余额表 ========================
 
@@ -205,16 +204,21 @@ public class GlReportService {
 
     // ======================== ③④ 附 10/11 利润表 ========================
 
-    /** 利润表行集。months=true → 附 10（12 列）；否则本月+本年累计两列。 */
-    private List<Map<String, Object>> profitRows(int year, Integer month) {
-        // 科目组 → 每月净额（收入贷净/费用借净）
-        Map<String, BigDecimal[]> income = monthlyByPaths(year, "INCOME", new String[]{"/031/", "/032/"});
-        Map<String, BigDecimal[]> cost = monthlyByPaths(year, "EXPENSE", new String[]{"/041/", "/042/"});
-        Map<String, BigDecimal[]> tax = monthlyByNames(year, "EXPENSE", List.of("税金"));
-        Map<String, BigDecimal[]> sales = monthlyByNames(year, "EXPENSE", SALES_FEE_STYLES);
-        Map<String, BigDecimal[]> fin = monthlyByNames(year, "EXPENSE", List.of("手续费"));
-        Map<String, BigDecimal[]> nonOp = monthlyByPaths(year, "INCOME", new String[]{"/033/"});
-        Map<String, BigDecimal[]> admin = monthlyAdmin(year);
+    /** 利润表行集(12 个月)。税金/销售费用/财务费用取各自绑定的科目, 管理费用 = 043 其余科目。 */
+    private List<Map<String, Object>> profitRows(int year) {
+        LocalDate from = LocalDate.of(year, 1, 1);
+        LocalDate to = LocalDate.of(year, 12, 31);
+        BigDecimal[] income = monthlyByPaths(year, "INCOME", new String[]{"/031/", "/032/"});
+        BigDecimal[] cost = monthlyByPaths(year, "EXPENSE", new String[]{"/041/", "/042/"});
+        BigDecimal[] nonOp = monthlyByPaths(year, "INCOME", new String[]{"/033/"});
+        List<String> boundKeys = List.of(GlReportLine.PL_TAX.key(), GlReportLine.SALES_FEE.key(),
+                GlReportLine.PL_FINANCE.key());
+        GlReportLineSource.Bindings bindings = lines.bindings(boundKeys);
+        Map<String, BigDecimal[]> bound = lines.styleMonthly(boundKeys, "EXPENSE", from, to);
+        BigDecimal[] tax = bound.get(GlReportLine.PL_TAX.key());
+        BigDecimal[] sales = bound.get(GlReportLine.SALES_FEE.key());
+        BigDecimal[] fin = bound.get(GlReportLine.PL_FINANCE.key());
+        BigDecimal[] admin = lines.adminMonthly(boundKeys, from, to);
 
         String[] labels = {"一、营业收入", "减：营业成本", "营业税金及附加", "销售费用", "管理费用", "财务费用",
                 "二、营业利润", "加：营业外收入", "减：营业外支出", "三、利润总额", "减：所得税费用", "四、净利润"};
@@ -223,23 +227,18 @@ public class GlReportService {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("item", label);
             for (int mi = 1; mi <= 12; mi++) {
-                String key = "m" + mi;
-                BigDecimal inc = income.getOrDefault(key, new BigDecimal[]{BigDecimal.ZERO})[0];
-                BigDecimal cst = cost.getOrDefault(key, new BigDecimal[]{BigDecimal.ZERO})[0];
-                BigDecimal tx = tax.getOrDefault(key, new BigDecimal[]{BigDecimal.ZERO})[0];
-                BigDecimal sl = sales.getOrDefault(key, new BigDecimal[]{BigDecimal.ZERO})[0];
-                BigDecimal ad = admin.getOrDefault(key, new BigDecimal[]{BigDecimal.ZERO})[0];
-                BigDecimal fn = fin.getOrDefault(key, new BigDecimal[]{BigDecimal.ZERO})[0];
-                BigDecimal no = nonOp.getOrDefault(key, new BigDecimal[]{BigDecimal.ZERO})[0];
+                BigDecimal inc = at(income, mi), cst = at(cost, mi), tx = at(tax, mi), sl = at(sales, mi);
+                BigDecimal ad = at(admin, mi), fn = at(fin, mi), no = at(nonOp, mi);
                 BigDecimal opProfit = inc.subtract(cst).subtract(tx).subtract(sl).subtract(ad).subtract(fn);
                 BigDecimal total = opProfit.add(no);
+                // 未配置科目的行显示空(取数口径列标注), 不计入利润; 已配置但当月没有发生额显示 0。
                 BigDecimal v = switch (label) {
                     case "一、营业收入" -> inc;
                     case "减：营业成本" -> cst;
-                    case "营业税金及附加" -> tx;
-                    case "销售费用" -> sl;
+                    case "营业税金及附加" -> bindings.bound(GlReportLine.PL_TAX.key()) ? tx : null;
+                    case "销售费用" -> bindings.bound(GlReportLine.SALES_FEE.key()) ? sl : null;
                     case "管理费用" -> ad;
-                    case "财务费用" -> fn;
+                    case "财务费用" -> bindings.bound(GlReportLine.PL_FINANCE.key()) ? fn : null;
                     case "二、营业利润" -> opProfit;
                     case "加：营业外收入" -> no;
                     case "减：营业外支出" -> null;
@@ -247,8 +246,16 @@ public class GlReportService {
                     case "减：所得税费用" -> null;
                     default -> total; // 四、净利润
                 };
-                row.put(key, v);
+                row.put("m" + mi, v);
             }
+            row.put("basis", switch (label) {
+                case "营业税金及附加" -> basis(GlReportLine.PL_TAX, bindings);
+                case "销售费用" -> basis(GlReportLine.SALES_FEE, bindings);
+                case "财务费用" -> basis(GlReportLine.PL_FINANCE, bindings);
+                case "管理费用" -> "043 费用科目, 扣除已归销售费用/税金/财务费用的科目";
+                case "减：营业外支出", "减：所得税费用" -> "暂无数据来源";
+                default -> "";
+            });
             rows.add(row);
         }
         return rows;
@@ -259,7 +266,8 @@ public class GlReportService {
         List<ReportColumn> cols = new ArrayList<>();
         cols.add(ReportColumn.text("item", "项目", 200));
         for (int mi = 1; mi <= 12; mi++) cols.add(ReportColumn.money("m" + mi, String.format("%02d月", mi)));
-        List<Map<String, Object>> rows = profitRows(year, null);
+        cols.add(ReportColumn.text("basis", "取数口径", 220));
+        List<Map<String, Object>> rows = profitRows(year);
         return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
     }
 
@@ -268,207 +276,234 @@ public class GlReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("item", "项目", 200),
                 ReportColumn.money("monthAmount", "本月金额"),
-                ReportColumn.money("yearAmount", "本年累计金额"));
-        List<Map<String, Object>> annual = profitRows(year, month);
+                ReportColumn.money("yearAmount", "本年累计金额"),
+                ReportColumn.text("basis", "取数口径", 220));
+        List<Map<String, Object>> annual = profitRows(year);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map<String, Object> a : annual) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("item", a.get("item"));
             m.put("monthAmount", a.get("m" + month));
             BigDecimal ytd = null;
-            for (int mi = 1; mi <= 12; mi++) {
+            for (int mi = 1; mi <= month; mi++) {
                 Object v = a.get("m" + mi);
                 if (v instanceof BigDecimal b) ytd = (ytd == null) ? b : ytd.add(b);
             }
             m.put("yearAmount", ytd);
+            m.put("basis", a.get("basis"));
             rows.add(m);
         }
         return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
     }
 
-    /** 管理费用 = 043 一级子中 非销售/税金/财务 的科目月净额。 */
-    private Map<String, BigDecimal[]> monthlyAdmin(int year) {
-        var q = em.createNativeQuery("""
-                SELECT to_char(e.entry_date,'MM') AS mm, SUM(e.direction * e.amount)
-                FROM gl_entries e JOIN payment_styles ps ON ps.id = e.style_id
-                WHERE e.is_deleted = false AND ps.category = 'EXPENSE'
-                  AND ps.path LIKE '/043/%'
-                  AND ps.name NOT IN (""" + inList(adminExcludes()) + """
-                  )
-                  AND EXTRACT(YEAR FROM e.entry_date) = :y
-                GROUP BY 1
-                """);
-        q.setParameter("y", year);
-        return toMonthMap(NativeQueryResults.objectArrayRows(q));
-    }
-
     /** 按根 path（/031/ 等）聚合月净额：INCOME 取贷净（-dir），EXPENSE 取借净（+dir）。 */
-    private Map<String, BigDecimal[]> monthlyByPaths(int year, String category, String[] paths) {
+    private BigDecimal[] monthlyByPaths(int year, String category, String[] paths) {
         var q = em.createNativeQuery("""
-                SELECT to_char(e.entry_date,'MM') AS mm,
+                SELECT EXTRACT(MONTH FROM e.entry_date)::int,
                        SUM(CASE WHEN :cat = 'INCOME' THEN -e.direction * e.amount ELSE e.direction * e.amount END)
                 FROM gl_entries e
                 JOIN payment_styles ps ON ps.id = e.style_id
-                JOIN payment_styles root ON root.level = 0 AND ps.path LIKE root.path || '%'
-                WHERE e.is_deleted = false AND ps.category = :cat AND root.path IN (""" + inList(List.of(paths)) + """
-                )
-                  AND EXTRACT(YEAR FROM e.entry_date) = :y
+                JOIN payment_styles root ON root.level = 0 AND left(ps.path, length(root.path)) = root.path
+                WHERE e.is_deleted = false AND ps.category = :cat AND root.path IN (:paths)
+                  AND e.entry_date BETWEEN :from AND :to
                 GROUP BY 1
                 """);
         q.setParameter("cat", category);
-        q.setParameter("y", year);
-        return toMonthMap(NativeQueryResults.objectArrayRows(q));
-    }
-
-    /** 按科目名（EXPENSE）聚合月借净。 */
-    private Map<String, BigDecimal[]> monthlyByNames(int year, String category, List<String> names) {
-        var q = em.createNativeQuery("""
-                SELECT to_char(e.entry_date,'MM') AS mm, SUM(e.direction * e.amount)
-                FROM gl_entries e JOIN payment_styles ps ON ps.id = e.style_id
-                WHERE e.is_deleted = false AND ps.category = :cat AND ps.name IN (""" + inList(names) + """
-                )
-                  AND EXTRACT(YEAR FROM e.entry_date) = :y
-                GROUP BY 1
-                """);
-        q.setParameter("cat", category);
-        q.setParameter("y", year);
-        return toMonthMap(NativeQueryResults.objectArrayRows(q));
-    }
-
-    /** 常量名集合 → SQL IN 字面量（仅代码内置科目名，无用户输入）。 */
-    private static String inList(List<String> names) {
-        StringBuilder sb = new StringBuilder();
-        for (String n : names) {
-            if (sb.length() > 0) sb.append(',');
-            sb.append('\'').append(n.replace("'", "''")).append('\'');
+        q.setParameter("paths", List.of(paths));
+        q.setParameter("from", LocalDate.of(year, 1, 1));
+        q.setParameter("to", LocalDate.of(year, 12, 31));
+        BigDecimal[] months = new BigDecimal[13];
+        for (Object[] r : NativeQueryResults.objectArrayRows(q)) {
+            months[((Number) r[0]).intValue()] = (BigDecimal) r[1];
         }
-        return sb.toString();
+        return months;
     }
 
-    private static Map<String, BigDecimal[]> toMonthMap(List<Object[]> rs) {
-        Map<String, BigDecimal[]> m = new LinkedHashMap<>();
-        for (Object[] r : rs) m.put("m" + Integer.parseInt(((String) r[0]).trim()), new BigDecimal[]{(BigDecimal) r[1]});
-        return m;
-    }
-
-    private static List<String> adminExcludes() {
-        List<String> all = new ArrayList<>(SALES_FEE_STYLES);
-        all.add("税金");
-        all.add("手续费");
-        return all;
+    private static BigDecimal at(BigDecimal[] months, int month) {
+        return months == null || months[month] == null ? BigDecimal.ZERO : months[month];
     }
 
     // ======================== ⑤⑥⑦ 附 12/13/14 费用明细（行=项目 × 列=月） ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse manufacturingExpense(int year) {
-        // 行：label → 科目名集合（null=业务表取数占位）
-        LinkedHashMap<String, List<String>> defs = new LinkedHashMap<>();
-        defs.put("生产产值", null);            // FINISHED_IN 流水金额（下方单独查）
-        defs.put("直接人工", null);
-        defs.put("间接人工", null);
-        defs.put("资产折旧", null);
-        defs.put("模具维修", List.of("模具费用", "制作模具"));
-        defs.put("物料消耗", List.of("材料费用"));
-        defs.put("其他费用", List.of("其它费用"));
-        defs.put("水电费", List.of("水费", "电费"));
-        defs.put("加工费", null);              // 委外进仓金额（下方单独查）
-        defs.put("品质部", List.of("品质部", "品质部费用"));
-        defs.put("仓储部门", List.of("仓库费用"));
-        defs.put("安装车间", List.of("安装车间费用"));
-        defs.put("注塑车间", List.of("注塑部费用"));
-        defs.put("轨道车间", List.of("轨道车间费用"));
-        defs.put("铜柱车间", List.of("铜粒车间费用"));
-        defs.put("酸洗车间", List.of("酸洗车间"));
-        Map<String, Map<String, BigDecimal[]>> data = new LinkedHashMap<>();
-        for (var e : defs.entrySet()) {
-            if (e.getValue() != null) data.put(e.getKey(), monthlyByNames(year, "EXPENSE", e.getValue()));
-        }
-        data.put("生产产值", finishedInMonthly(year));
-        data.put("加工费", subcontractMonthly(year));
-        return pivotTable("制造费用项目", defs.keySet().stream().toList(), data);
+        Map<String, BigDecimal[]> data = lineMonthly(GlReportLine.MANUFACTURING, year);
+        data.put("MFG_OUTPUT", finishedInMonthly(year));
+        data.put("MFG_SUBCONTRACT", subcontractMonthly(year));
+        return pivotTable("制造费用项目", GlReportLine.MANUFACTURING, data,
+                lines.bindings(keys(GlReportLine.MANUFACTURING)));
     }
 
     @Transactional(readOnly = true)
     public ReportTableResponse adminExpense(int year) {
-        LinkedHashMap<String, List<String>> defs = new LinkedHashMap<>();
-        defs.put("销售额", null);              // 031 贷净
-        defs.put("厂房及成品仓租赁费", List.of("房租"));
-        defs.put("工资", List.of("工资费用"));
-        defs.put("餐费", List.of("餐费", "饭堂费用"));
-        defs.put("福利费", null);
-        defs.put("社保费", null);
-        defs.put("办公费", List.of("办公费用"));
-        defs.put("通迅费", List.of("电话费"));
-        defs.put("交通费", null);
-        defs.put("招待费", null);
-        defs.put("维修费", null);
-        defs.put("汽车费", List.of("汽车费用"));
-        defs.put("证书费", List.of("证书费用"));
-        defs.put("快递费", List.of("快递费用"));
-        defs.put("设计费", List.of("设计费用"));
-        defs.put("劳动用品", List.of("劳动用品"));
-        defs.put("人事费用", List.of("人事部费用"));
-        defs.put("其它费用", List.of("其它费用"));
-        Map<String, Map<String, BigDecimal[]>> data = new LinkedHashMap<>();
-        for (var e : defs.entrySet()) {
-            if (e.getValue() != null) data.put(e.getKey(), monthlyByNames(year, "EXPENSE", e.getValue()));
-        }
-        data.put("销售额", monthlyByPaths(year, "INCOME", new String[]{"/031/"}));
-        return pivotTable("管理费用项目", defs.keySet().stream().toList(), data);
+        Map<String, BigDecimal[]> data = lineMonthly(GlReportLine.ADMIN, year);
+        data.put("ADM_SALES", monthlyByPaths(year, "INCOME", new String[]{"/031/"}));
+        return pivotTable("管理费用项目", GlReportLine.ADMIN, data, lines.bindings(keys(GlReportLine.ADMIN)));
     }
 
+    /**
+     * 附 14 销售费用明细: 一行一个绑定到「销售费用」的科目(费用单据无业务员维度, 按科目出行);
+     * 未绑定任何科目时只出一行并标注未配置科目。
+     */
     @Transactional(readOnly = true)
     public ReportTableResponse salesExpense(int year) {
-        List<String> labels = new ArrayList<>(SALES_FEE_STYLES);
-        Map<String, Map<String, BigDecimal[]>> data = new LinkedHashMap<>();
-        for (String s : labels) data.put(s, monthlyByNames(year, "EXPENSE", List.of(s)));
-        return pivotTable("销售费用项目", labels, data);
-    }
-
-    /** 通用透视表：行=labels，列=item+01..12 月。 */
-    private static ReportTableResponse pivotTable(String itemLabel, List<String> labels,
-                                                  Map<String, Map<String, BigDecimal[]>> data) {
-        List<ReportColumn> cols = new ArrayList<>();
-        cols.add(ReportColumn.text("item", itemLabel, 180));
-        for (int mi = 1; mi <= 12; mi++) cols.add(ReportColumn.money("m" + mi, String.format("%02d月", mi)));
+        List<ReportColumn> cols = pivotColumns("销售费用项目");
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (String label : labels) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("item", label);
-            Map<String, BigDecimal[]> mm = data.get(label);
-            for (int mi = 1; mi <= 12; mi++) {
-                row.put("m" + mi, mm == null ? null : mm.getOrDefault("m" + mi, new BigDecimal[]{null})[0]);
+        // 按科目主键分组: 科目名不唯一(只有编码唯一), 同名科目各出一行、各算各的, 不能互相覆盖。
+        List<Object[]> styleRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT style.id, style.code, style.name,
+                       EXTRACT(MONTH FROM entry.entry_date)::int, SUM(entry.direction * entry.amount)
+                FROM finance_report_line_bindings binding
+                JOIN payment_styles style ON style.id = binding.style_id
+                LEFT JOIN gl_entries entry ON entry.style_id = style.id AND entry.is_deleted = FALSE
+                     AND entry.entry_date BETWEEN :from AND :to
+                WHERE binding.line_key = :line AND binding.binding_kind = 'STYLE'
+                GROUP BY style.id, style.code, style.name, style.path, 4
+                ORDER BY style.path, style.id, 4
+                """).setParameter("line", GlReportLine.SALES_FEE.key())
+                .setParameter("from", LocalDate.of(year, 1, 1)).setParameter("to", LocalDate.of(year, 12, 31)));
+        Map<UUID, BigDecimal[]> byStyle = new LinkedHashMap<>();
+        Map<UUID, String[]> styleNames = new LinkedHashMap<>();
+        Map<String, Integer> nameUses = new java.util.HashMap<>();
+        for (Object[] r : styleRows) {
+            UUID styleId = (UUID) r[0];
+            if (styleNames.putIfAbsent(styleId, new String[]{(String) r[1], (String) r[2]}) == null) {
+                nameUses.merge((String) r[2], 1, Integer::sum);
             }
-            rows.add(row);
+            // 已配置但当月没有发生额记 0(与「未配置」的空区分开)。
+            BigDecimal[] months = byStyle.computeIfAbsent(styleId, ignored -> zeroMonths());
+            if (r[3] != null) {
+                int month = ((Number) r[3]).intValue();
+                months[month] = months[month].add((BigDecimal) r[4]);
+            }
+        }
+        if (byStyle.isEmpty()) {
+            rows.add(pivotRow(GlReportLine.SALES_FEE.label(), null, NOT_CONFIGURED_STYLE));
+        } else {
+            byStyle.forEach((styleId, months) -> {
+                String[] codeAndName = styleNames.get(styleId);
+                // 同名科目在行标题上带编码区分。
+                String label = nameUses.get(codeAndName[1]) > 1
+                        ? codeAndName[1] + " (" + codeAndName[0] + ")" : codeAndName[1];
+                rows.add(pivotRow(label, months, "科目: " + codeAndName[0] + " " + codeAndName[1]));
+            });
         }
         return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
     }
 
+    private static BigDecimal[] zeroMonths() {
+        BigDecimal[] months = new BigDecimal[13];
+        java.util.Arrays.fill(months, 1, 13, BigDecimal.ZERO);
+        return months;
+    }
+
+    /** 一张表里全部可配置行一次取数: 科目行一条语句, 工资行一条, 折旧行一条。 */
+    private Map<String, BigDecimal[]> lineMonthly(List<GlReportLine> sheet, int year) {
+        Map<String, BigDecimal[]> data = new LinkedHashMap<>();
+        data.putAll(lines.styleMonthly(keys(sheet, GlReportLine.Source.STYLES), "EXPENSE",
+                LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31)));
+        data.putAll(lines.payrollMonthly(keys(sheet, GlReportLine.Source.PAYROLL), year, null));
+        data.putAll(lines.depreciationMonthly(keys(sheet, GlReportLine.Source.DEPRECIATION),
+                String.format("%04d-01", year), String.format("%04d-12", year)));
+        return data;
+    }
+
+    private static List<String> keys(List<GlReportLine> sheet) {
+        return sheet.stream().filter(GlReportLine::configurable).map(GlReportLine::key).distinct().toList();
+    }
+
+    private static List<String> keys(java.util.Collection<GlReportLine> sheet, GlReportLine.Source source) {
+        return sheet.stream().filter(line -> line.source() == source).map(GlReportLine::key).distinct().toList();
+    }
+
+    private static List<ReportColumn> pivotColumns(String itemLabel) {
+        List<ReportColumn> cols = new ArrayList<>();
+        cols.add(ReportColumn.text("item", itemLabel, 180));
+        for (int mi = 1; mi <= 12; mi++) cols.add(ReportColumn.money("m" + mi, String.format("%02d月", mi)));
+        cols.add(ReportColumn.text("basis", "取数口径", 220));
+        return cols;
+    }
+
+    /** 通用透视表：行=报表行，列=01..12 月 + 取数口径；未配置的行金额为空并标注。 */
+    private static ReportTableResponse pivotTable(String itemLabel, List<GlReportLine> sheet,
+                                                  Map<String, BigDecimal[]> data,
+                                                  GlReportLineSource.Bindings bindings) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (GlReportLine line : sheet) {
+            boolean unconfigured = line.configurable() && !bindings.bound(line.key());
+            rows.add(pivotRow(line.label(), unconfigured ? null : zeroFilled(data.get(line.key())),
+                    basis(line, bindings)));
+        }
+        return new ReportTableResponse(pivotColumns(itemLabel), rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
+    }
+
+    /** 已配置行(及业务事实行)没有发生额的月份记 0; 只有未配置的行整行留空。 */
+    private static BigDecimal[] zeroFilled(BigDecimal[] months) {
+        BigDecimal[] filled = zeroMonths();
+        if (months != null) {
+            for (int mi = 1; mi <= 12; mi++) if (months[mi] != null) filled[mi] = months[mi];
+        }
+        return filled;
+    }
+
+    private static Map<String, Object> pivotRow(String label, BigDecimal[] months, String basis) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("item", label);
+        for (int mi = 1; mi <= 12; mi++) row.put("m" + mi, months == null ? null : months[mi]);
+        row.put("basis", basis);
+        return row;
+    }
+
+    static final String NOT_CONFIGURED_STYLE = "未配置科目";
+    static final String NOT_CONFIGURED_DEPARTMENT = "未配置部门";
+
+    /** 行的取数口径说明: 已配置写明来源, 未配置明确标注, 不显示空白。 */
+    static String basis(GlReportLine line, GlReportLineSource.Bindings bindings) {
+        return switch (line.source()) {
+            case FINISHED_IN -> "成品入库金额";
+            case SUBCONTRACT -> "委外进仓金额";
+            case SALES_INCOME -> "主营业务收入(031)";
+            case STYLES -> bindings.bound(line.key())
+                    ? "科目: " + String.join("、", bindings.names(line.key())) : NOT_CONFIGURED_STYLE;
+            case DEPRECIATION -> bindings.bound(line.key())
+                    ? "固定资产折旧: " + String.join("、", bindings.names(line.key())) : NOT_CONFIGURED_STYLE;
+            case PAYROLL -> bindings.bound(line.key())
+                    ? "已审核工资单应发: " + String.join("、", bindings.names(line.key())) : NOT_CONFIGURED_DEPARTMENT;
+        };
+    }
+
     /** 生产产值：成品入库流水月金额（movement_type=13, amount_local）。 */
-    private Map<String, BigDecimal[]> finishedInMonthly(int year) {
+    private BigDecimal[] finishedInMonthly(int year) {
         var q = em.createNativeQuery("""
-                SELECT to_char(transaction_date,'MM') AS mm, SUM(amount_local)
+                SELECT EXTRACT(MONTH FROM transaction_date)::int, SUM(amount_local)
                 FROM stock_movements
-                WHERE movement_type = 13 AND EXTRACT(YEAR FROM transaction_date) = :y
+                WHERE movement_type = 13 AND transaction_date >= :from AND transaction_date < :to
                 GROUP BY 1
                 """);
-        q.setParameter("y", year);
-        return toMonthMap(NativeQueryResults.objectArrayRows(q));
+        q.setParameter("from", LocalDate.of(year, 1, 1).atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
+        q.setParameter("to", LocalDate.of(year + 1, 1, 1).atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
+        return monthArray(NativeQueryResults.objectArrayRows(q));
     }
 
     /** 委外加工费：委外进仓行月金额（单头 total_local 老库全 0，取行 amount_local 合计）。 */
-    private Map<String, BigDecimal[]> subcontractMonthly(int year) {
+    private BigDecimal[] subcontractMonthly(int year) {
         var q = em.createNativeQuery("""
-                SELECT to_char(d.bill_date,'MM') AS mm, SUM(i.amount_local)
+                SELECT EXTRACT(MONTH FROM d.bill_date)::int, SUM(i.amount_local)
                 FROM subcontract_receipt_items i
                 JOIN subcontract_receipts d ON d.id = i.receipt_id
                 WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                  AND EXTRACT(YEAR FROM d.bill_date) = :y
+                  AND d.bill_date BETWEEN :from AND :to
                 GROUP BY 1
                 """);
-        q.setParameter("y", year);
-        return toMonthMap(NativeQueryResults.objectArrayRows(q));
+        q.setParameter("from", LocalDate.of(year, 1, 1));
+        q.setParameter("to", LocalDate.of(year, 12, 31));
+        return monthArray(NativeQueryResults.objectArrayRows(q));
+    }
+
+    private static BigDecimal[] monthArray(List<Object[]> rows) {
+        BigDecimal[] months = new BigDecimal[13];
+        for (Object[] r : rows) months[((Number) r[0]).intValue()] = (BigDecimal) r[1];
+        return months;
     }
 
     // ======================== ⑧ 附 16 经营损益表 ========================
@@ -477,11 +512,12 @@ public class GlReportService {
     public ReportTableResponse operatingPl(int year, int month) {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.plusMonths(1).minusDays(1);
+        String period = String.format("%04d-%02d", year, month);
         // 销售额基数 = 031+032 贷净（模板「应收账款」行）
         var baseQ = em.createNativeQuery("""
                 SELECT COALESCE(SUM(-e.direction * e.amount),0)
                 FROM gl_entries e JOIN payment_styles ps ON ps.id = e.style_id
-                JOIN payment_styles root ON root.level = 0 AND ps.path LIKE root.path || '%'
+                JOIN payment_styles root ON root.level = 0 AND left(ps.path, length(root.path)) = root.path
                 WHERE e.is_deleted = false AND ps.category='INCOME' AND root.path IN ('/031/','/032/')
                   AND e.entry_date BETWEEN :from AND :to
                 """);
@@ -494,10 +530,11 @@ public class GlReportService {
                 ReportColumn.text("sub", "分项", 120),
                 ReportColumn.text("item", "具体项目", 170),
                 ReportColumn.money("amount", "金额"),
-                ReportColumn.number("salesRatio", "占销售比%"));
+                ReportColumn.number("salesRatio", "占销售比%"),
+                ReportColumn.text("basis", "取数口径", 220));
 
         List<Map<String, Object>> rows = new ArrayList<>();
-        addOpRow(rows, "应收账款", "", "", base, base);
+        addOpRow(rows, "应收账款", "", "", base, base, "主营与其他业务收入(031+032)");
 
         // 材料费：DRAW 月耗用（qty×c_total）按货品一级类别（material_categories 根的直下）
         var matQ = em.createNativeQuery("""
@@ -518,94 +555,74 @@ public class GlReportService {
         for (Object[] r : mats) {
             BigDecimal amt = (BigDecimal) r[1];
             matTotal = matTotal.add(amt);
-            addOpRow(rows, "材料费", "主材", (String) r[0], amt, base);
+            addOpRow(rows, "材料费", "主材", (String) r[0], amt, base, "领料数量 × 货品成本");
         }
-        addOpRow(rows, "材料费", "材料费合计", "", matTotal, base);
+        addOpRow(rows, "材料费", "材料费合计", "", matTotal, base, "");
 
-        // 工费
-        BigDecimal meal = styleNet("EXPENSE", List.of("餐费", "饭堂费用"), from, to);
+        // 一张表的全部可配置行一次取数(科目/工资/折旧各一条语句)。
+        List<GlReportLine> opLines = new ArrayList<>(List.of(
+                GlReportLine.OP_LABOR_DIRECT, GlReportLine.OP_LABOR_INDIRECT, GlReportLine.OP_MEAL));
+        opLines.addAll(GlReportLine.OPERATING_ADMIN.keySet());
+        GlReportLineSource.Bindings bindings = lines.bindings(keys(opLines));
+        Map<String, BigDecimal[]> data = new LinkedHashMap<>();
+        data.putAll(lines.styleMonthly(keys(opLines, GlReportLine.Source.STYLES), "EXPENSE", from, to));
+        data.putAll(lines.payrollMonthly(keys(opLines, GlReportLine.Source.PAYROLL), year, month));
+        data.putAll(lines.depreciationMonthly(keys(opLines, GlReportLine.Source.DEPRECIATION), period, period));
+
+        // 工费：直接/间接人员工资取已审核工资单, 福利餐费取绑定科目, 委外加工费取进仓事实。
         BigDecimal sub = subcontractMonth(year, month);
-        addOpRow(rows, "工费", "劳务费", "直接人员工资", null, base);
-        addOpRow(rows, "工费", "劳务费", "间接人员工资", null, base);
-        addOpRow(rows, "工费", "劳务费", "人员福利+社保+餐费", meal, base);
-        addOpRow(rows, "工费", "劳务费", "委外加工费", sub, base);
-        addOpRow(rows, "工费", "工费合计", "", nz(meal).add(nz(sub)), base);
-
-        // 一般管理费（模板行序；无数据源 NULL）
-        LinkedHashMap<String, List<String>> adminDefs = new LinkedHashMap<>();
-        adminDefs.put("厂房及成品仓租金", List.of("房租"));
-        adminDefs.put("宿舍租金", null);
-        adminDefs.put("电费", List.of("电费"));
-        adminDefs.put("水费", List.of("水费"));
-        adminDefs.put("设备折旧费", null);
-        adminDefs.put("模具折旧费", null);
-        adminDefs.put("广告费", null);
-        adminDefs.put("物流费", List.of("运费"));
-        adminDefs.put("装卸费", null);
-        adminDefs.put("快递费", List.of("快递费用"));
-        adminDefs.put("物业管理费", null);
-        adminDefs.put("办公费", List.of("办公费用"));
-        adminDefs.put("电话费", List.of("电话费"));
-        adminDefs.put("维修费", null);
-        adminDefs.put("设计费", List.of("设计费用"));
-        adminDefs.put("税收手续费", List.of("税金"));
-        adminDefs.put("账务处理费", null);
-        adminDefs.put("招待费", null);
-        adminDefs.put("交通费", null);
-        adminDefs.put("检测费", null);
-        adminDefs.put("报关费", null);
-        adminDefs.put("财务费用", List.of("手续费"));
-        adminDefs.put("其他费", List.of("其它费用"));
-        String[] subs = {"场地费用分摊", "场地费用分摊", "能耗", "能耗", "设备费用", "设备费用", "品牌支撑分摊",
-                "运输费分摊", "运输费分摊", "运输费分摊", "发展支撑分摊", "发展支撑分摊", "发展支撑分摊",
-                "发展支撑分摊", "发展支撑分摊", "发展支撑分摊", "发展支撑分摊", "发展支撑分摊", "发展支撑分摊",
-                "发展支撑分摊", "发展支撑分摊", "发展支撑分摊", "发展支撑分摊"};
-        int i = 0;
-        BigDecimal adminTotal = BigDecimal.ZERO;
-        for (var e : adminDefs.entrySet()) {
-            BigDecimal amt = e.getValue() == null ? null : styleNet("EXPENSE", e.getValue(), from, to);
-            if (amt != null) adminTotal = adminTotal.add(amt);
-            addOpRow(rows, "一般管理费", subs[i++], e.getKey(), amt, base);
+        BigDecimal laborTotal = nz(sub);
+        for (GlReportLine line : List.of(GlReportLine.OP_LABOR_DIRECT, GlReportLine.OP_LABOR_INDIRECT,
+                GlReportLine.OP_MEAL)) {
+            BigDecimal amount = lineAmount(line, bindings, data, month);
+            laborTotal = laborTotal.add(nz(amount));
+            addOpRow(rows, "工费", "劳务费", line.label(), amount, base, basis(line, bindings));
         }
-        addOpRow(rows, "一般管理费", "管理费合计", "", adminTotal, base);
+        addOpRow(rows, "工费", "劳务费", "委外加工费", sub, base, "委外进仓金额");
+        addOpRow(rows, "工费", "工费合计", "", laborTotal, base, "");
+
+        // 一般管理费(模板行序; 未配置的行明确标注, 不计入合计)
+        BigDecimal adminTotal = BigDecimal.ZERO;
+        for (var e : GlReportLine.OPERATING_ADMIN.entrySet()) {
+            BigDecimal amount = lineAmount(e.getKey(), bindings, data, month);
+            adminTotal = adminTotal.add(nz(amount));
+            addOpRow(rows, "一般管理费", e.getValue(), e.getKey().label(), amount, base, basis(e.getKey(), bindings));
+        }
+        addOpRow(rows, "一般管理费", "管理费合计", "", adminTotal, base, "");
         return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
     }
 
+    /** 已配置行: 本月发生额(没有发生额为 0); 未配置行: 空, 由取数口径列标注。 */
+    private static BigDecimal lineAmount(GlReportLine line, GlReportLineSource.Bindings bindings,
+                                         Map<String, BigDecimal[]> data, int month) {
+        if (!bindings.bound(line.key())) return null;
+        BigDecimal[] months = data.get(line.key());
+        return months == null || months[month] == null ? BigDecimal.ZERO : months[month];
+    }
+
     private BigDecimal subcontractMonth(int year, int month) {
+        LocalDate from = LocalDate.of(year, month, 1);
         var q = em.createNativeQuery("""
                 SELECT COALESCE(SUM(i.amount_local),0) FROM subcontract_receipt_items i
                 JOIN subcontract_receipts d ON d.id = i.receipt_id
                 WHERE d.status=1 AND d.is_deleted=false AND i.is_deleted=false
-                  AND to_char(d.bill_date,'YYYY-MM') = :p
+                  AND d.bill_date BETWEEN :from AND :to
                 """);
-        q.setParameter("p", String.format("%04d-%02d", year, month));
-        return (BigDecimal) q.getSingleResult();
-    }
-
-    /** 指定类别+科目名集合的期间净额（EXPENSE 借净 / INCOME 贷净）。 */
-    private BigDecimal styleNet(String category, List<String> names, LocalDate from, LocalDate to) {
-        var q = em.createNativeQuery("""
-                SELECT COALESCE(SUM(CASE WHEN :cat='INCOME' THEN -e.direction*e.amount ELSE e.direction*e.amount END),0)
-                FROM gl_entries e JOIN payment_styles ps ON ps.id = e.style_id
-                WHERE e.is_deleted = false AND ps.category = :cat AND ps.name IN (""" + inList(names) + """
-                )
-                  AND e.entry_date BETWEEN :from AND :to
-                """);
-        q.setParameter("cat", category);
         q.setParameter("from", from);
-        q.setParameter("to", to);
+        q.setParameter("to", from.plusMonths(1).minusDays(1));
         return (BigDecimal) q.getSingleResult();
     }
 
     private static void addOpRow(List<Map<String, Object>> rows, String cat, String sub, String item,
-                                 BigDecimal amount, BigDecimal base) {
+                                 BigDecimal amount, BigDecimal base, String basis) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("category", cat);
         m.put("sub", sub);
         m.put("item", item);
         m.put("amount", amount);
         m.put("salesRatio", (amount == null || base == null || base.signum() == 0) ? null
-                : amount.multiply(new BigDecimal("100")).divide(base, 2, RoundingMode.HALF_UP));
+                : MoneyPolicy.percentOf(amount, base));
+        m.put("basis", basis);
         rows.add(m);
     }
 

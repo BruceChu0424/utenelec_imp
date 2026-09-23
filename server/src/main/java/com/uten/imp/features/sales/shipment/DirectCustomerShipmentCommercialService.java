@@ -1,8 +1,11 @@
 package com.uten.imp.features.sales.shipment;
 
 import com.uten.imp.application.port.MasterReferenceValidationPort;
+import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.util.FinancialExactAmount;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.sales.shipment.dto.ShipmentItemLine;
 import com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +14,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -51,20 +53,22 @@ public class DirectCustomerShipmentCommercialService {
             if(line.getQty()==null||line.getQty().signum()<=0)throw validation("发货数量必须大于零");
             var unit=references.resolveVisibleActiveGoodsUnit(line.getGoodsId(),line.getUnitId(),line.getUnitRate(),++sequence);
             line.setUnitId(unit.unitId());line.setUnitRate(unit.unitRate());
-            if(line.getQty().multiply(unit.unitRate()).setScale(4,RoundingMode.HALF_UP).signum()<=0)throw validation("换算后的基本单位数量过小");
-            if(free) {line.setPrice(BigDecimal.ZERO);line.setDiscount(BigDecimal.ONE);line.setAmountOriginal(BigDecimal.ZERO);}
+            if(MoneyPolicy.quantity(line.getQty().multiply(unit.unitRate())).signum()<=0)throw validation("换算后的基本单位数量过小");
+            if(free) {line.setPrice(BigDecimal.ZERO);line.setDiscount(BigDecimal.ONE);}
             else {
                 if(line.getPrice()==null||line.getPrice().signum()<=0)throw validation("收费发货请填写实际单价");
                 BigDecimal discount=line.getDiscount()==null?BigDecimal.ONE:line.getDiscount();
                 if(discount.signum()<=0||discount.compareTo(BigDecimal.ONE)>0)throw validation("折扣倍率须大于0且不超过1");
-                // Pending the platform actual-document precision contract, never silently
-                // discard customer money to fit the existing NUMERIC(18,4) storage.
-                line.setPrice(exactStoredMoney(line.getPrice()));line.setDiscount(exactStoredMoney(discount));
-                line.setAmountOriginal(exactStoredMoney(line.getQty().multiply(line.getPrice()).multiply(discount)));
-                if(line.getAmountOriginal().signum()<=0)throw validation("收费金额过小，请核对实际单价或选择不收费");
+                line.setPrice(FinancialExactAmount.unitPrice(line.getPrice(),"实际单价"));
+                line.setDiscount(requireStoredDiscount(discount));
             }
-            line.setAmountLocal(null);line.setCostAmount(null);
         }
+    }
+
+    /** 零星发货行原币金额: 不收费恒为 0; 收费 = 数量 × 单价 × 折扣的精确乘积(ADR-112, 与订货发货同一规则)。 */
+    static BigDecimal lineAmount(SalesShipment shipment,ShipmentItemLine line) {
+        if(CustomerShipmentPolicy.free(shipment))return BigDecimal.ZERO;
+        return MoneyPolicy.exactProduct(line.getQty(),line.getPrice(),line.getDiscount());
     }
 
     public void validateStored(SalesShipment shipment,List<SalesShipmentItem> items) {
@@ -77,13 +81,16 @@ public class DirectCustomerShipmentCommercialService {
             if(item.getPrice()==null||item.getAmountOriginal()==null||(free&&(item.getPrice().signum()!=0||item.getAmountOriginal().signum()!=0)))
                 throw validation("收费选择与发货金额不一致");
             BigDecimal discount=item.getDiscount()==null?BigDecimal.ONE:item.getDiscount();
-            if(item.getQty().multiply(item.getPrice()).multiply(discount).compareTo(item.getAmountOriginal())!=0)
+            if(MoneyPolicy.exactProduct(item.getQty(),item.getPrice(),discount).compareTo(item.getAmountOriginal())!=0)
                 throw validation("发货数量、单价与金额不一致");
         }
     }
-    static BigDecimal exactStoredMoney(BigDecimal amount) {
-        try { return amount.setScale(4,RoundingMode.UNNECESSARY); }
-        catch (ArithmeticException precisionLoss) { throw validation("当前单据金额无法无损保存，请联系财务核对实际单据金额与汇率；系统未自动四舍五入，本次未生效"); }
+
+    /** 折扣列为 NUMERIC(18,4): 超过 4 位的折扣倍率明确拒绝, 不让数据库悄悄四舍五入。 */
+    private static BigDecimal requireStoredDiscount(BigDecimal discount) {
+        BigDecimal exact=discount.stripTrailingZeros();
+        if(exact.scale()>4)throw validation("折扣倍率最多 4 位小数，请核对后重新填写");
+        return exact;
     }
     private static ApiException validation(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
 }

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.order.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,7 +13,7 @@ import java.util.UUID;
 /** 委外订货单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class OrderItemLine {
+public class OrderItemLine implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -50,8 +51,6 @@ public class OrderItemLine {
     private BigDecimal qty;
 
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
 
     /**
      * 申请明细真FK（申请分解行必填；审核订货时回写 ordered_qty）。

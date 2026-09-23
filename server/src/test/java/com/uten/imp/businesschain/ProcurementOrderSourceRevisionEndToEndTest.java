@@ -199,7 +199,7 @@ class ProcurementOrderSourceRevisionEndToEndTest {
         request.setSettlementMethodId(jdbc.queryForObject("SELECT settlement_method_id FROM purchase_orders WHERE id=?",UUID.class,f.orderId()));
         OrderItemLine line=new OrderItemLine();line.setGoodsId(f.raw());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);
         line.setRequestItemId(sourceIds.getFirst());line.setRequestItemIds(sourceIds);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("50"));
-        line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());request.setItems(List.of(line));
+        request.setItems(List.of(line));
         UUID order=orders.create(request).getId();finance.submit("PURCHASE",order);harness.loginAs(f.reviewer());harness.approvePendingFinance("PURCHASE",order);return order;
     }
     private void change(Fixture f,UUID order,String qty){harness.loginAs(f.world().superAdminUserId());orders.changeQty(order,new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(item(order),new BigDecimal(qty)))));}

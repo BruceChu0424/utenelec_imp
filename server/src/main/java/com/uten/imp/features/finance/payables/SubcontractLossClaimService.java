@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.SubcontractLossClaimPort;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.time.BusinessTime;
@@ -7,6 +8,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
+import com.uten.imp.features.finance.accountflow.AccountPosting;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.CommercialPriceVisibility;
@@ -20,7 +22,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -122,7 +123,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
             BigDecimal lossValue=source.excessValueLocal();
             // The unit value is a display projection. Actual loss remains the original value-node interval.
             BigDecimal unitValue=source.normalValueLocal()==null||lossValue==null?null:
-                    source.normalValueLocal().add(lossValue).divide(actual,30,RoundingMode.HALF_UP);
+                    MoneyPolicy.unitValue(source.normalValueLocal().add(lossValue),actual);
             prepared.add(new PreparedLine(input, source.orderItemId(), actual, allowed, excess,
                     unitValue,lossValue,source.state()==com.uten.imp.application.port.InventoryValuationPort.State.FINAL?"VALUED":"MISSING_COST",
                     source.normalValueNodeId(),source.excessValueNodeId()));
@@ -674,13 +675,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         if(reconciliationId==null)throw conflict("现金赔偿原始资金流水缺失，禁止反转");
         glPostingService.lockAutoProjectionPeriod(receiptDate);
         glPostingService.removeSupplierClaimCashReceiptDoc(receiptId,"SPCR-"+resolution.id(),receiptDate);
-        lockActiveBaseCurrencyCashAccount(accountId);
-        int accountUpdated=em.createNativeQuery("""
-                UPDATE accounts SET balance_current=COALESCE(balance_current,0)-:amount,
-                    receipts_total=COALESCE(receipts_total,0)-:amount,updated_at=now()
-                WHERE id=:id
-                """).setParameter("amount",amount).setParameter("id",accountId).executeUpdate();
-        if(accountUpdated!=1)throw conflict("现金赔偿反转账户余额失败");
+        // 账户余额与流水由账本按原始到账流水一并冲回(账户须仍启用)。
         accountFlowLedger.reverse(
                 "SUPPLIER_CLAIM_RECEIPT",receiptId,java.time.OffsetDateTime.now(),reason);
         int receiptUpdated=em.createNativeQuery("""
@@ -850,37 +845,29 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 ||decimal(claim[3]).compareTo(BigDecimal.ONE)!=0){
             throw conflict("现金赔偿索赔应收余额、币种或供应商不一致");
         }
-        AccountCashTarget account=lockActiveBaseCurrencyCashAccount(request.accountId());
+        var account=accountFlowLedger.lockActive(request.accountId(),"赔偿到账账户");
+        if(!account.baseCurrency())throw conflict("赔偿到账账户必须是启用的本位币账户");
         if(!Objects.equals(account.currencyId(),currencyId)){
             throw conflict("赔偿到账账户币种与索赔币种不一致");
         }
         if(account.styleId()==null)throw conflict("赔偿到账账户未绑定可用总账科目");
         glPostingService.lockAutoProjectionPeriod(request.cashReceiptDate());
-        int accountUpdated=em.createNativeQuery("""
-                UPDATE accounts SET balance_current=COALESCE(balance_current,0)+:amount,
-                    receipts_total=COALESCE(receipts_total,0)+:amount,updated_at=now()
-                WHERE id=:id
-                """).setParameter("amount",cashLocal)
-                .setParameter("id",request.accountId()).executeUpdate();
-        if(accountUpdated!=1)throw conflict("赔偿到账账户余额更新失败");
         UUID reconciliationId=UUID.randomUUID();
         UUID cashReceiptId=UUID.randomUUID();
         String billNo="SPCR-"+resolution.id();
         java.time.OffsetDateTime businessDate=request.cashReceiptDate()
                 .atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime();
-        em.createNativeQuery("""
-                INSERT INTO finance_reconciliations(
-                    id,bill_no,source_doc_type,source_doc_id,account_id,counterpart_name,
-                    in_amount,out_amount,amount_local,bill_date,settled_date,source_remark,
-                    created_at,updated_at,is_deleted)
-                VALUES(:id,:billNo,'SUPPLIER_CLAIM_RECEIPT',:sourceId,:accountId,
-                    (SELECT name FROM suppliers WHERE id=:supplierId),
-                    :amount,0,:amount,:billDate,now(),:remark,now(),now(),FALSE)
-                """).setParameter("id",reconciliationId).setParameter("billNo",billNo)
-                .setParameter("sourceId",cashReceiptId).setParameter("accountId",request.accountId())
-                .setParameter("supplierId",supplierId).setParameter("amount",cashLocal)
-                .setParameter("billDate",businessDate)
-                .setParameter("remark","供应商现金赔偿到账").executeUpdate();
+        String supplierName=(String)em.createNativeQuery("SELECT name FROM suppliers WHERE id=:id")
+                .setParameter("id",supplierId).getResultStream().findFirst().orElse(null);
+        accountFlowLedger.post(account,AccountPosting.in("SUPPLIER_CLAIM_RECEIPT",cashReceiptId,billNo,request.accountId())
+                .rule(AccountPosting.CurrencyRule.BASE_ONLY,currencyId)
+                .amounts(cashLocal,cashLocal)
+                .bookedAt(businessDate)
+                .settledAt(java.time.OffsetDateTime.now())
+                .counterpart(supplierName)
+                .sourceRemark("供应商现金赔偿到账")
+                .flowId(reconciliationId)
+                .label("赔偿到账账户"));
         int claimUpdated=em.createNativeQuery("""
                 UPDATE supplier_claim_receivables
                 SET settled_original=amount_original,settled_local=amount_local,
@@ -910,28 +897,6 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 .setParameter("reconciliationId",reconciliationId)
                 .setParameter("actor",currentUser.requireId()).executeUpdate();
     }
-
-    private AccountCashTarget lockActiveBaseCurrencyCashAccount(UUID accountId){
-        @SuppressWarnings("unchecked")
-        List<Object[]> accounts=em.createNativeQuery("""
-                SELECT account.currency_id,account_style_id(account.id)
-                FROM accounts account
-                JOIN currencies currency ON currency.id=account.currency_id
-                WHERE account.id=:id AND account.status='使用'
-                  AND COALESCE(account.is_deleted,FALSE)=FALSE
-                  AND currency.status='使用'
-                  AND COALESCE(currency.is_deleted,FALSE)=FALSE
-                  AND currency.is_base_currency
-                FOR UPDATE OF account,currency
-                """).setParameter("id",accountId).getResultList();
-        if(accounts.size()!=1){
-            throw conflict("赔偿到账账户必须是启用的本位币账户");
-        }
-        return new AccountCashTarget(
-                uuid(accounts.getFirst()[0]),uuid(accounts.getFirst()[1]));
-    }
-
-    private record AccountCashTarget(UUID currencyId,UUID styleId){}
 
     private void recordFulfillmentDocument(CaseRow loss, ResolutionRow resolution,
                                            FulfillmentRequest request) {

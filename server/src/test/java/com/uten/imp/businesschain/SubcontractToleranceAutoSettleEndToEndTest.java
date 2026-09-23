@@ -281,8 +281,6 @@ class SubcontractToleranceAutoSettleEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal(qty));
         line.setPrice(BigDecimal.ONE);
-        line.setAmountOriginal(line.getQty().multiply(line.getPrice()));
-        line.setAmountLocal(line.getAmountOriginal());
         line.setAllowedLossPct(new BigDecimal(allowedLossPct));
         request.setItems(List.of(line));
         return request;

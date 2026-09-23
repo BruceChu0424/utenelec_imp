@@ -123,6 +123,44 @@ class SubcontractLossValueEndToEndTest {
         assertTwoChildren();
     }
 
+    /**
+     * dup-backend-split-04(ADR-112): 委外现金赔偿到账与到账反转都经资金账本, 反转后收款账户余额与累计收入
+     * 回到到账前, 正向与反向流水成对且本币金额相同。
+     */
+    @Test void cashCompensationArrivalAndItsReversalGoThroughTheAccountLedger(){
+        var c=readyInBaseCurrency("loss-cash-ledger","5","5");UUID loss=loss(c,"3","2");drain();
+        UUID caseId=db.queryForObject("select id from subcontract_loss_cases where waste_id=?",UUID.class,loss);
+        fixture.loginAs(c.world().superAdminUserId());fixture.seedChartOfAccounts();
+        var detail=claims.detail(caseId);
+        BigDecimal amount=new BigDecimal("7.0001");
+        claims.decide(caseId,new DecisionRequest(detail.summary().version(),false,"按责任单确认现金赔偿",List.of(
+                new ResolutionInput(detail.lines().getFirst().id(),"CASH_COMPENSATION",BigDecimal.ONE,amount,
+                        BusinessTime.today().plusDays(5),"待供应商打款",List.of()))));
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        UUID accountStyle=UUID.randomUUID(),account=UUID.randomUUID();
+        db.update("INSERT INTO payment_styles(id,code,name,category,level,status) VALUES(?,?,?,'ACCOUNT',0,'使用')",
+                accountStyle,"LC-STYLE-"+suffix,"赔偿到账账户科目");
+        db.update("INSERT INTO accounts(id,code,name,account_type,currency_id,status,style_id,init_balance,balance_current) "
+                +"VALUES(?,?,?,'BANK',?,'使用',?,100,100)",account,"LC-BANK-"+suffix,"赔偿到账账户",c.world().currencyId(),accountStyle);
+        var decided=claims.detail(caseId);UUID resolution=decided.resolutions().getFirst().id();
+        claims.fulfill(caseId,resolution,new FulfillmentRequest(decided.summary().version(),BigDecimal.ONE,amount,
+                "银行回单 LC-"+suffix,null,null,null,null,account,BusinessTime.today(),"赔偿到账"));
+        money(decimal("select balance_current from accounts where id=?",account),"107.0001");
+        money(decimal("select receipts_total from accounts where id=?",account),"7.0001");
+        var fulfilled=claims.detail(caseId);
+        claims.reverseFulfillment(caseId,resolution,new ReverseFulfillmentRequest(fulfilled.summary().version(),"到账登记错账户"));
+        money(decimal("select balance_current from accounts where id=?",account),"100");
+        money(decimal("select receipts_total from accounts where id=?",account),"0");
+        assertEquals(1L,db.queryForObject("""
+                select count(*) from finance_reconciliations reversal
+                join finance_reconciliations posting on posting.id=reversal.reversal_of_id
+                where reversal.account_id=? and reversal.entry_kind='REVERSAL' and posting.entry_kind='POSTING'
+                  and reversal.out_amount=posting.in_amount and reversal.in_amount=posting.out_amount
+                  and reversal.amount_local=posting.amount_local
+                """,Long.class,account),"到账流水与反转流水一一成对");
+        money(decimal("select balance_difference from v_account_balance_integrity where account_id=?",account),"0");
+    }
+
     @Test void missingCostStaysNullAndKnownFreeMaterialIsNotMistakenForMissingCost(){
         var unknown=ready("loss-missing-cost","3",null);UUID pending=loss(unknown,"1","0");
         UUID pendingCase=db.queryForObject("select id from subcontract_loss_cases where waste_id=?",UUID.class,pending);
@@ -189,7 +227,18 @@ class SubcontractLossValueEndToEndTest {
         return ready(tag,quantity,amount,false);
     }
     private CaseFixture ready(String tag,String quantity,String amount,boolean omitOrderWarehouse){
-        var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());opening(w,quantity,amount);
+        return ready(fixture.seedWorld(tag),quantity,amount,omitOrderWarehouse);
+    }
+    /** 同一套数据但委外单据用系统本位币(现金赔偿只收本位币)。 */
+    private CaseFixture readyInBaseCurrency(String tag,String quantity,String amount){
+        var seeded=fixture.seedWorld(tag);
+        UUID base=db.queryForObject("select id from currencies where is_base_currency and status='使用' and not coalesce(is_deleted,false)",UUID.class);
+        return ready(new FullChainEndToEndTest.World(seeded.departmentId(),seeded.employeeId(),seeded.superAdminUserId(),
+                seeded.goodsA(),seeded.goodsB(),seeded.goodsC(),seeded.goodsD(),seeded.goodsE(),seeded.clientId(),seeded.supplierId(),
+                seeded.warehouseId(),seeded.unitId(),base,seeded.colorId(),seeded.unitLegacy()),quantity,amount,false);
+    }
+    private CaseFixture ready(FullChainEndToEndTest.World w,String quantity,String amount,boolean omitOrderWarehouse){
+        fixture.loginAs(w.superAdminUserId());opening(w,quantity,amount);
         var orderWorld=omitOrderWarehouse?new FullChainEndToEndTest.World(w.departmentId(),w.employeeId(),w.superAdminUserId(),
                 w.goodsA(),w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE(),w.clientId(),w.supplierId(),null,
                 w.unitId(),w.currencyId(),w.colorId(),w.unitLegacy()):w;
@@ -233,7 +282,7 @@ class SubcontractLossValueEndToEndTest {
         command.setCurrencyId(c.world().currencyId());command.setExchangeRate(BigDecimal.ONE);command.setTaxRate(BigDecimal.ZERO);
         command.setSettlementMethodId(db.queryForObject("select settlement_method_id from subcontract_orders where id=?",UUID.class,c.submitted().orderId()));
         var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();line.setGoodsId(c.world().goodsE());line.setOrderItemId(c.item());line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);
-        line.setQty(new BigDecimal(quantity));line.setPrice(new BigDecimal("50"));line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());command.setItems(List.of(line));
+        line.setQty(new BigDecimal(quantity));line.setPrice(new BigDecimal("50"));command.setItems(List.of(line));
         UUID receipt=receipts.create(command).getId();receipts.approve(receipt);
         UUID inspection=db.queryForObject("select id from procurement_inspection_items where receipt_type='SUBCONTRACT' and receipt_id=?",UUID.class,receipt);
         inspections.dispose("SUBCONTRACT",receipt,inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest("PASS",null,"确认实际回厂合格量","normal-pass-"+receipt));

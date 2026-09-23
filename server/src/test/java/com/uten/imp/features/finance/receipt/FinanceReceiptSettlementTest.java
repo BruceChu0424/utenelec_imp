@@ -70,6 +70,7 @@ class FinanceReceiptSettlementTest {
     private EntityManager em;
     private Query postingCount;
     private Query accountLock;
+    private AccountFlowLedgerService accountFlowLedger;
     private Query accountUpdate;
     private Query reconciliationInsert;
     private Query hierarchyLock;
@@ -168,9 +169,28 @@ class FinanceReceiptSettlementTest {
         when(clientLookup.getSingleResult()).thenReturn("测试客户");
         when(supplierLookup.getResultList()).thenReturn(List.of("测试外贸公司"));
         when(expenseStyleCount.getSingleResult()).thenReturn(1L);
+        // ADR-112: 账户过账走真实账本; 账本的锁查询按请求的账户主键从同一份账户桩里取行。
+        Query ledgerLock = mock(Query.class);
+        java.util.concurrent.atomic.AtomicReference<java.util.Collection<?>> lockedIds =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of());
+        when(ledgerLock.setParameter(anyString(), any())).thenAnswer(invocation -> {
+            if ("ids".equals(invocation.getArgument(0))) lockedIds.set(invocation.getArgument(1));
+            return ledgerLock;
+        });
+        when(ledgerLock.getResultList()).thenAnswer(ignored -> {
+            List<Object[]> rows = new ArrayList<>();
+            for (Object value : accountLock.getResultList()) {
+                Object[] row = (Object[]) value;
+                if (lockedIds.get().contains(row[0])) rows.add(new Object[] {row[0], row[1], row[2], row[5]});
+            }
+            return rows;
+        });
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             nativeSql.add(sql);
+            if (sql.contains("account_style_id(account.id)")) {
+                return ledgerLock;
+            }
             if (sql.contains("PAYMENT_STYLE_HIERARCHY")) {
                 return hierarchyLock;
             }
@@ -228,11 +248,14 @@ class FinanceReceiptSettlementTest {
             ArApLedger ledger=invocation.getArgument(0);BigDecimal original=invocation.getArgument(1);
             return com.uten.imp.common.finance.FinancialBookAllocation.part(original,ledger.getAmountBalanceOriginal(),ledger.getAmountBalance());
         });
+        accountFlowLedger = org.mockito.Mockito.spy(new AccountFlowLedgerService(em));
+        org.mockito.Mockito.doReturn(1).when(accountFlowLedger).reverse(
+                anyString(), any(UUID.class), any(OffsetDateTime.class), anyString());
         service = new FinanceReceiptService(
                 receiptRepo, lineRepo, ledgerRepo, arApService, tx,
                 currentUser, names, em, numbers, access, glPosting,
                 sourceAllocation,
-                mock(AccountFlowLedgerService.class));
+                accountFlowLedger);
     }
 
     @Test
@@ -299,8 +322,8 @@ class FinanceReceiptSettlementTest {
         assertMoney(ledger.getAmountBalance(),"693000.0000");
         FinanceReceiptLine line=onlyLine(draft.getId());
         assertMoney(line.getExchangeDiff(),"200.0000");
-        verify(accountUpdate).setParameter("amount",new BigDecimal("7128.0000"));
-        verify(reconciliationInsert).setParameter("amount",new BigDecimal("7128.0000"));
+        verify(accountUpdate).setParameter("totalDelta",new BigDecimal("7128.0000"));
+        verify(reconciliationInsert).setParameter("inAmount",new BigDecimal("7128.0000"));
     }
 
     @Test
@@ -370,10 +393,10 @@ class FinanceReceiptSettlementTest {
         postingCounts.addAll(List.of(0L,0L));
         service.approve(draft.getId());
 
-        verify(accountUpdate).setParameter("amount",new BigDecimal("7200.0000"));
-        verify(accountUpdate).setParameter("amount",new BigDecimal("50.0000"));
-        verify(reconciliationInsert).setParameter("amount",new BigDecimal("7200.0000"));
-        verify(reconciliationInsert).setParameter("amount",new BigDecimal("50.0000"));
+        verify(accountUpdate).setParameter("totalDelta",new BigDecimal("7200.0000"));
+        verify(accountUpdate).setParameter("totalDelta",new BigDecimal("50.0000"));
+        verify(reconciliationInsert).setParameter("inAmount",new BigDecimal("7200.0000"));
+        verify(reconciliationInsert).setParameter("outAmount",new BigDecimal("50.0000"));
     }
 
     @Test
@@ -463,7 +486,7 @@ class FinanceReceiptSettlementTest {
 
         InOrder order=inOrder(glPosting,accountLock);
         order.verify(glPosting).lockAutoProjectionPeriod(draft.getBillDate());
-        order.verify(accountLock).getResultList();
+        order.verify(accountLock, org.mockito.Mockito.atLeastOnce()).getResultList();
     }
 
     @Test
@@ -609,17 +632,20 @@ class FinanceReceiptSettlementTest {
                 org.mockito.ArgumentMatchers.eq(LockModeType.PESSIMISTIC_WRITE));
 
         // USD account: balance and account statement both use the original-currency amount.
-        verify(accountUpdate).setParameter("amount", new BigDecimal("28.0000"));
-        verify(accountUpdate).setParameter("amount", new BigDecimal("70.0000"));
-        verify(accountUpdate).setParameter("amount", new BigDecimal("-70.0000"));
-        verify(reconciliationInsert).setParameter("amount", new BigDecimal("28.0000"));
-        verify(reconciliationInsert).setParameter("amount", new BigDecimal("70.0000"));
-        assertThat(nativeSql.stream().filter(sql -> sql.contains("FROM accounts account")
-                        && sql.contains("FOR UPDATE OF account")).findFirst())
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("28.0000"));
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("70.0000"));
+        verify(reconciliationInsert).setParameter("inAmount", new BigDecimal("28.0000"));
+        verify(reconciliationInsert).setParameter("inAmount", new BigDecimal("70.0000"));
+        // 红冲按原始流水由账本冲回余额(不再由收款服务按单据金额反算)。
+        verify(accountFlowLedger).reverse(
+                org.mockito.ArgumentMatchers.eq(FinanceReceiptService.RECON_SOURCE),
+                org.mockito.ArgumentMatchers.eq(second.getId()), any(OffsetDateTime.class),
+                org.mockito.ArgumentMatchers.eq("销售收款红冲"));
+        assertThat(nativeSql.stream().filter(sql -> sql.contains("account_style_id(account.id)")).findFirst())
                 .hasValueSatisfying(sql -> assertThat(sql)
                         .contains("FOR UPDATE OF account")
-                        .contains("COALESCE(account.is_deleted,FALSE)=FALSE")
-                        .contains("currency.status='使用'"));
+                        .contains("COALESCE(account.is_deleted, FALSE) = FALSE")
+                        .contains("currency.status = '使用'"));
     }
 
     @Test
@@ -639,8 +665,8 @@ class FinanceReceiptSettlementTest {
 
         service.approve(draft.getId());
 
-        verify(accountUpdate).setParameter("amount", new BigDecimal("216.0000"));
-        verify(reconciliationInsert).setParameter("amount", new BigDecimal("216.0000"));
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("216.0000"));
+        verify(reconciliationInsert).setParameter("inAmount", new BigDecimal("216.0000"));
     }
 
     @Test
@@ -660,7 +686,7 @@ class FinanceReceiptSettlementTest {
 
         service.approve(draft.getId());
 
-        verify(accountUpdate).setParameter("amount", new BigDecimal("216.0000"));
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("216.0000"));
     }
 
     @Test
@@ -674,7 +700,7 @@ class FinanceReceiptSettlementTest {
 
         service.approve(draft.getId());
 
-        verify(accountUpdate).setParameter("amount", new BigDecimal("30.0000"));
+        verify(accountUpdate).setParameter("totalDelta", new BigDecimal("30.0000"));
     }
 
     @Test
@@ -727,7 +753,6 @@ class FinanceReceiptSettlementTest {
     void directPrepaymentRejectsMissingCurrencyRateOrAmountBeforeDraftPersistence() {
         FinanceReceiptSaveRequest missingOriginal = directRequest(CURRENCY_ID, "7.200000");
         missingOriginal.setAmountOriginal(null);
-        missingOriginal.setAmountLocal(new BigDecimal("9999.0000"));
 
         assertThatThrownBy(() -> service.create(directRequest(null, "1.000000")))
                 .isInstanceOf(ApiException.class)
@@ -752,7 +777,6 @@ class FinanceReceiptSettlementTest {
         FinanceReceiptSaveRequest request = directRequest(CURRENCY_ID, "7.200000");
         request.setAmountOriginal(new BigDecimal("10.0000"));
         request.setAccountAmount(new BigDecimal("10.0000"));
-        request.setAmountLocal(new BigDecimal("9999.0000"));
 
         FinanceReceiptDetail draft = service.create(request);
 
@@ -873,7 +897,7 @@ class FinanceReceiptSettlementTest {
         postingCounts.addAll(List.of(0L,0L));service.approve(draft.getId());
         assertMoney(onlyLine(draft.getId()).getAppliedAmountLocal(),"616.8638");
         assertMoney(onlyLine(draft.getId()).getExchangeDiff(),"10.8795");
-        verify(accountUpdate).setParameter("amount",new BigDecimal("624.7432"));
+        verify(accountUpdate).setParameter("totalDelta",new BigDecimal("624.7432"));
         postingCounts.addAll(List.of(1L,0L));service.reverse(draft.getId());
         assertMoney(ledger.getAmountBalanceOriginal(),"100");assertMoney(ledger.getAmountBalance(),"700");
     }
@@ -941,8 +965,6 @@ class FinanceReceiptSettlementTest {
         line.setCurrencyId(CURRENCY_ID);
         line.setExchangeRate(new BigDecimal(receiptRate));
         line.setAmountOriginal(new BigDecimal(cashOriginal));
-        line.setAmountLocal(new BigDecimal(clientLocal));
-        line.setExchangeDiff(new BigDecimal(clientExchangeDiff));
         line.setWriteOffAmount(BigDecimal.ZERO);
 
         FinanceReceiptSaveRequest request = new FinanceReceiptSaveRequest();
@@ -953,7 +975,6 @@ class FinanceReceiptSettlementTest {
         request.setCurrencyId(CURRENCY_ID);
         request.setExchangeRate(new BigDecimal(receiptRate));
         request.setAmountOriginal(new BigDecimal(cashOriginal));
-        request.setAmountLocal(new BigDecimal(clientLocal));
         BigDecimal feeLocal = new BigDecimal(bankFeeLocal);
         BigDecimal feeAccount = feeLocal.signum() == 0
                 ? BigDecimal.ZERO

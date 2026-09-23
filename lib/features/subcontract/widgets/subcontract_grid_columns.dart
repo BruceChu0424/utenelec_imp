@@ -24,6 +24,7 @@ import '../../../shared/widgets/procurement_supplier_cell.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart' show SubcontractSourceApplicationRef;
 import 'subcontract_link_picker.dart' show LinkedItem;
+import '../../../shared/formatters/exact_decimal.dart';
 
 /// 委外明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier，仅 itemHasPrice 时有意义）。
@@ -127,9 +128,18 @@ class SubcontractGridRow extends EditableGridRow
     return r;
   }
 
-  void _recalc() => recalcAmount(
-    () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+  /// 行金额预览(十进制精确乘积, ADR-112); 数量或单价未填时为空。只用于显示, 保存不上送金额。
+  final ValueNotifier<String?> amountExactNotifier = ValueNotifier<String?>(
+    null,
   );
+
+  void _recalc() {
+    recalcAmount(
+      () =>
+          (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+    );
+    amountExactNotifier.value = exactLineAmountText(qty.text, price.text);
+  }
 
   /// 深拷贝（明细复制/粘贴用）：语义同 PurchaseGridRow.clone——拷用户录入（数量/
   /// 单价/重量/围数/胶箱数/行委外商/行级商业条款/备注/损耗单四列）与主档透传；
@@ -168,6 +178,7 @@ class SubcontractGridRow extends EditableGridRow
   @override
   void dispose() {
     goodsNotifier.dispose();
+    amountExactNotifier.dispose();
     qty.dispose();
     price.dispose();
     weight.dispose();
@@ -406,9 +417,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '金额',
         width: 110,
         numeric: true,
-        cellBuilder: (context, row) => ValueListenableBuilder<double>(
-          valueListenable: row.amountNotifier,
-          builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.amountExactNotifier,
+          builder: (_, v, _) =>
+              Text(v == null ? '—' : '¥${financeExactMoneyDisplay(v)}'),
         ),
       ),
     if (cfg.itemHasGirth)

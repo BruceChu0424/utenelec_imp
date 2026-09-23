@@ -74,6 +74,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
   const SubcontractDocEditPage({super.key, required this.docType, this.id});
@@ -578,8 +579,6 @@ class _SubcontractDocEditPageState
         if (r.unitRate != null) 'unitRate': r.unitRate,
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (_cfg.itemHasPrice && price != null) 'price': price,
-        if (_cfg.itemHasPrice && price != null) 'amountOriginal': qty * price,
-        if (_cfg.itemHasPrice && price != null) 'amountLocal': qty * price,
         if (_cfg.itemHasWeight && w != null) 'weight': w,
         if (_cfg.itemHasGirth) 'girthQty': double.tryParse(r.girth.text),
         if (_cfg.itemHasBoxQty) 'boxQty': double.tryParse(r.boxQty.text),
@@ -840,7 +839,11 @@ class _SubcontractDocEditPageState
                       )
                     : null,
               ),
-              _grid.totalListenable.value.toStringAsFixed(2),
+              financeExactMoneyDisplay(
+                exactAmountSumText(
+                  _grid.rows.map((r) => r.amountExactNotifier.value),
+                ),
+              ),
               danger: true,
             ),
           ];

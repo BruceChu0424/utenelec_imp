@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.inquiry.dto;
 
+import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,7 +11,7 @@ import java.util.UUID;
 /** 委外询价单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class InquiryItemLine {
+public class InquiryItemLine implements ServerDerivedAmounts {
 
     private Integer lineNo;
 
@@ -25,8 +26,6 @@ public class InquiryItemLine {
     private BigDecimal qty;
 
     private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
     private BigDecimal weight;
 
     private String sourceDocNo;

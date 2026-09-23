@@ -13,11 +13,11 @@ class ProcurementInspectionWeightMathTest {
         BigDecimal totalWeight = new BigDecimal("10.0000");
         BigDecimal receivedBase = new BigDecimal("3.0000");
 
-        BigDecimal first = ProcurementInspectionService.proratedIncrementNullable(
+        BigDecimal first = ProcurementInspectionService.releasedWeightSlice(
                 totalWeight, receivedBase, BigDecimal.ZERO, BigDecimal.ONE);
-        BigDecimal second = ProcurementInspectionService.proratedIncrementNullable(
+        BigDecimal second = ProcurementInspectionService.releasedWeightSlice(
                 totalWeight, receivedBase, BigDecimal.ONE, BigDecimal.ONE);
-        BigDecimal last = ProcurementInspectionService.proratedIncrementNullable(
+        BigDecimal last = ProcurementInspectionService.releasedWeightSlice(
                 totalWeight, receivedBase, new BigDecimal("2"), BigDecimal.ONE);
 
         assertThat(first.add(second).add(last))
@@ -27,7 +27,7 @@ class ProcurementInspectionWeightMathTest {
 
     @Test
     void unknownReceivedWeightStaysUnknown() {
-        assertThat(ProcurementInspectionService.proratedIncrementNullable(
+        assertThat(ProcurementInspectionService.releasedWeightSlice(
                 null, BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.ONE))
                 .isNull();
     }
@@ -37,9 +37,10 @@ class ProcurementInspectionWeightMathTest {
         BigDecimal receivedAmount=new BigDecimal("0.0247");
         BigDecimal receivedBase=new BigDecimal("2");
 
-        BigDecimal failedFirst=ProcurementInspectionService.proratedIncrement(
+        // 4 位库存价值列: ROUND(来源 × 累计量 / 来源量, 4) 的差, 与 V446 库级守卫同式, 末片取余。
+        BigDecimal failedFirst=ProcurementInspectionService.releasedAmountSlice(
                 receivedAmount,receivedBase,BigDecimal.ZERO,BigDecimal.ONE);
-        BigDecimal passedLast=ProcurementInspectionService.proratedIncrement(
+        BigDecimal passedLast=ProcurementInspectionService.releasedAmountSlice(
                 receivedAmount,receivedBase,BigDecimal.ONE,BigDecimal.ONE);
 
         assertThat(failedFirst).isEqualByComparingTo("0.0124");

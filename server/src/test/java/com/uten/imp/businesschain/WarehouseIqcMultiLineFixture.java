@@ -103,7 +103,7 @@ final class WarehouseIqcMultiLineFixture {
         order.setCurrencyId(w.currencyId());order.setExchangeRate(BigDecimal.ONE);order.setTaxRate(BigDecimal.ZERO);order.setSettlementMethodId(settlement);
         order.setItems(goods.stream().map(id->{var row=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
             row.setGoodsId(id);row.setUnitId(w.unitId());row.setUnitRate(BigDecimal.ONE);row.setQty(qty);row.setPrice(new BigDecimal("50"));
-            row.setAmountOriginal(qty.multiply(row.getPrice()));row.setAmountLocal(row.getAmountOriginal());return row;}).toList());
+            return row;}).toList());
         UUID orderId=beans.getBean(SubcontractOrderService.class).create(order).getId();
         beans.getBean(ProcurementFinanceApprovalService.class).submit("SUBCONTRACT",orderId);
         masters.loginAs(reviewer);masters.approvePendingFinance("SUBCONTRACT",orderId);masters.loginAs(w.superAdminUserId());
@@ -136,7 +136,7 @@ final class WarehouseIqcMultiLineFixture {
             assertEquals(0,qty.compareTo((BigDecimal)item.get("qty")));
             var row=new com.uten.imp.features.purchase.order.dto.OrderItemLine();row.setRequestItemId((UUID)item.get("id"));row.setGoodsId((UUID)item.get("goods_id"));
             row.setUnitId(w.unitId());row.setUnitRate(BigDecimal.ONE);row.setQty(qty);row.setPrice(new BigDecimal("50"));
-            row.setAmountOriginal(qty.multiply(row.getPrice()));row.setAmountLocal(row.getAmountOriginal());return row;}).toList());
+            return row;}).toList());
         var created=beans.getBean(PurchaseOrderService.class).createBatch(order);
         assertEquals(1,created.size());UUID id=created.getFirst().getId();
         beans.getBean(ProcurementFinanceApprovalService.class).submit("PURCHASE",id);
@@ -149,7 +149,7 @@ final class WarehouseIqcMultiLineFixture {
         request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);request.setSettlementMethodId(settlement);
         request.setItems(goods.stream().map(id->{var row=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
             row.setGoodsId(id);row.setOrderItemId(items.get(id));row.setUnitId(w.unitId());row.setUnitRate(BigDecimal.ONE);row.setQty(RECEIPT_QTY);row.setPrice(new BigDecimal("50"));
-            row.setAmountOriginal(RECEIPT_QTY.multiply(row.getPrice()));row.setAmountLocal(row.getAmountOriginal());return row;}).toList());
+            return row;}).toList());
         var service=beans.getBean(PurchaseReceiptService.class);UUID id=service.create(request).getId();service.approve(id);return id;
     }
     private UUID receiveSubcontract(FullChainEndToEndTest.World w,UUID warehouse,List<UUID> goods,Map<UUID,UUID> items,UUID settlement) {
@@ -158,7 +158,7 @@ final class WarehouseIqcMultiLineFixture {
         request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);request.setSettlementMethodId(settlement);
         request.setItems(goods.stream().map(id->{var row=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
             row.setGoodsId(id);row.setOrderItemId(items.get(id));row.setUnitId(w.unitId());row.setUnitRate(BigDecimal.ONE);row.setQty(RECEIPT_QTY);row.setPrice(new BigDecimal("50"));
-            row.setAmountOriginal(RECEIPT_QTY.multiply(row.getPrice()));row.setAmountLocal(row.getAmountOriginal());return row;}).toList());
+            return row;}).toList());
         var service=beans.getBean(SubcontractReceiptService.class);UUID id=service.create(request).getId();service.approve(id);return id;
     }
     private Map<UUID,UUID> orderItems(String type,UUID supplier) {

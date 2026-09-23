@@ -107,7 +107,7 @@ class GlPostingLegacyCashScopePostgresTest {
         assertThat(jdbc.queryForObject("SELECT reconciliation_state FROM v_receipt_v0_gl_reconciliation WHERE bill_no='XS20250102000001'",String.class))
                 .as("The global historical integrity view remains truthful; generator did not synthesize a missing voucher").isEqualTo("MISSING");
         try(var session=sessions.openSession()) {
-            var report=new GlReportService(session).trialBalance(DATE.withDayOfMonth(1),DATE.withDayOfMonth(31),1,100);
+            var report=new GlReportService(session,new GlReportLineSource(session)).trialBalance(DATE.withDayOfMonth(1),DATE.withDayOfMonth(31),1,100);
             assertThat(report.rows()).anySatisfy(row->{
                 assertThat(row.get("styleCode")).isEqualTo("GL-OLD-COST");
                 assertThat((BigDecimal)row.get("debit")).as("Full ledger still includes legacy4 + unproven historical1 + native7").isEqualByComparingTo("12");

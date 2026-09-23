@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.other_income;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -11,6 +12,7 @@ import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
 import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
+import com.uten.imp.features.finance.accountflow.AccountPosting;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeDetail;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemDto;
@@ -194,9 +196,20 @@ public class FinanceOtherIncomeService {
         if (amountLocal.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "其它收入本位币总额必须大于 0");
         }
-        adjustAccount(
-                o.getAccountId(), o.getCurrencyId(), o.getExchangeRate(), amountLocal, true);
-        insertReconciliation(o, amountLocal);
+        if (o.getCurrencyId() == null || o.getExchangeRate() == null
+                || o.getExchangeRate().compareTo(BigDecimal.ONE) != 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "其它收入仅支持本位币：单头币种必须等于真实收款账户币种，汇率必须为 1");
+        }
+        accountFlowLedger.post(AccountPosting.in(RECON_SOURCE, o.getId(), o.getBillNo(), o.getAccountId())
+                .rule(AccountPosting.CurrencyRule.BASE_ONLY, o.getCurrencyId())
+                .amounts(amountLocal, amountLocal)
+                .bookedAt(o.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime())
+                .settledAt(OffsetDateTime.now())
+                .sourceRemark(o.getRemark())
+                .legacyBstyle(22)
+                .label("其它收入收款账户"));
         o.setStatus(STATUS_APPROVED);
         incomeRepo.save(o);
         return detail(id);
@@ -215,12 +228,7 @@ public class FinanceOtherIncomeService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         glPosting.removeAutoProjection(RECON_SOURCE, o.getId(), o.getBillNo(), o.getBillDate());
-        BigDecimal amountLocal = nz(o.getAmountLocal());
-        if (amountLocal.signum() != 0) {
-            adjustAccount(
-                    o.getAccountId(), o.getCurrencyId(), o.getExchangeRate(),
-                    amountLocal.negate(), false);
-        }
+        // 账户余额与流水由账本按原始流水一并冲回。
         reverseReconciliation(o.getId());
         o.setStatus(STATUS_REVERSED);
         incomeRepo.save(o);
@@ -228,83 +236,6 @@ public class FinanceOtherIncomeService {
     }
 
     // ===================== 账户/流水 =====================
-
-    /** 收款账户累加（money-in）：balance_current += delta, receipts_total += delta（delta 已带符号）。 */
-    private void adjustAccount(
-            UUID accountId,
-            UUID documentCurrencyId,
-            BigDecimal exchangeRate,
-            BigDecimal delta,
-            boolean validateDocumentAuthority) {
-        UUID accountCurrencyId = lockActiveBaseCurrencyAccount(accountId);
-        if (validateDocumentAuthority
-                && (!Objects.equals(documentCurrencyId, accountCurrencyId)
-                || exchangeRate == null
-                || exchangeRate.compareTo(BigDecimal.ONE) != 0)) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "其它收入仅支持本位币：单头币种必须等于真实收款账户币种，汇率必须为 1");
-        }
-        int rows = em.createNativeQuery("""
-                UPDATE accounts
-                SET balance_current = COALESCE(balance_current, 0) + :amt,
-                    receipts_total  = COALESCE(receipts_total, 0) + :amt,
-                    updated_at = now()
-                WHERE id = :id
-                  AND COALESCE(is_deleted, false) = false
-                  AND status = '使用'
-                """)
-                .setParameter("amt", delta)
-                .setParameter("id", accountId)
-                .executeUpdate();
-        if (rows == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "账户不存在或已禁用：" + accountId);
-        }
-    }
-
-    private UUID lockActiveBaseCurrencyAccount(UUID accountId) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> accounts = em.createNativeQuery("""
-                        SELECT account.id, account.currency_id
-                        FROM accounts account
-                        JOIN currencies currency ON currency.id=account.currency_id
-                        WHERE account.id=:id
-                          AND account.status='使用'
-                          AND COALESCE(account.is_deleted,FALSE)=FALSE
-                          AND currency.status='使用'
-                          AND COALESCE(currency.is_deleted,FALSE)=FALSE
-                          AND currency.is_base_currency
-                        FOR UPDATE OF account
-                        """)
-                .setParameter("id", accountId)
-                .getResultList();
-        if (accounts.size() != 1) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    "其它收入账户必须是启用的本位币账户，不能按名称或参考汇率猜测币种");
-        }
-        return (UUID) accounts.getFirst()[1];
-    }
-
-    private void insertReconciliation(FinanceOtherIncome o, BigDecimal amountLocal) {
-        em.createNativeQuery("""
-                INSERT INTO finance_reconciliations
-                  (bill_no, source_doc_type, source_doc_id, account_id, in_amount, out_amount,
-                   amount_local, bill_date, settled_date, source_remark, legacy_bstyle,
-                   created_at, updated_at, is_deleted)
-                VALUES (:billNo, :src, :sid, :acc, :inAmt, 0, :inAmt,
-                        :bd, :sd, :sr, 22, now(), now(), false)
-                """)
-                .setParameter("billNo", o.getBillNo())
-                .setParameter("src", RECON_SOURCE)
-                .setParameter("sid", o.getId())
-                .setParameter("acc", o.getAccountId())
-                .setParameter("inAmt", amountLocal)
-                .setParameter("bd", o.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime())
-                .setParameter("sd", OffsetDateTime.now())
-                .setParameter("sr", o.getRemark())
-                .executeUpdate();
-    }
 
     private void reverseReconciliation(UUID incomeId) {
         accountFlowLedger.reverse(
@@ -323,8 +254,6 @@ public class FinanceOtherIncomeService {
         o.setCounterpartAccountId(req.getCounterpartAccountId());
         o.setCurrencyId(req.getCurrencyId());
         if (req.getExchangeRate() != null) o.setExchangeRate(com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"汇率"));
-        if (req.getAmountOriginal() != null) o.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.require(req.getAmountOriginal(),"实际原币金额"));
-        if (req.getAmountLocal() != null) o.setAmountLocal(com.uten.imp.common.util.FinancialExactAmount.book(req.getAmountLocal(),"本币金额"));
         applyReceiptMethod(req, o);
         applyOperator(req.getOperatorId(), o);
         o.setRemark(req.getRemark());
@@ -380,7 +309,9 @@ public class FinanceOtherIncomeService {
             it.setQty(l.getQty()==null?null:com.uten.imp.common.util.FinancialExactAmount.quantity(l.getQty(),"数量"));
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"单价"));
             it.setAmountOriginal(com.uten.imp.common.util.FinancialExactAmount.optional(l.getAmountOriginal(),"实际原币金额"));
-            it.setAmountLocal(l.getAmountLocal()==null?null:com.uten.imp.common.util.FinancialExactAmount.book(l.getAmountLocal(),"本币金额"));
+            // 本币 = 实际原币 × 表头汇率(ADR-112), 不接受客户端另报本币。
+            it.setAmountLocal(it.getAmountOriginal()==null||o.getExchangeRate()==null?null
+                    :MoneyPolicy.local(it.getAmountOriginal(),o.getExchangeRate()));
             it.setSummary(l.getSummary());
             it.setRemark(l.getRemark());
             itemRepo.save(it);

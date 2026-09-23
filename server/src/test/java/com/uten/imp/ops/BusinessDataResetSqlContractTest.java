@@ -125,7 +125,9 @@ class BusinessDataResetSqlContractTest {
             "expense_claim_settings", 617,
             "party_activity_records", 579,
             "party_addresses", 579,
-            "party_contact_methods", 579);
+            "party_contact_methods", 579,
+            // V665 总账附表行绑定(ADR-112): 报表配置随科目/部门主档保留。
+            "finance_report_line_bindings", 665);
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -248,7 +250,8 @@ class BusinessDataResetSqlContractTest {
                 "V624__legacy_subcontract_settlement_provenance.sql",
                 "V626__legacy_finance_source_provenance.sql",
                 "V627__legacy_receipt_consideration_provenance.sql",
-                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql")) {
+                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql",
+                "V665__finance_report_line_bindings.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }
@@ -460,6 +463,9 @@ class BusinessDataResetSqlContractTest {
         assertThat(extensionSql)
                 .contains("RAISE EXCEPTION 'V579 cannot extend business_data_reset policy safely'")
                 .contains("(''party_contact_methods'', ''PRESERVE'')");
+        assertThat(extensionSql)
+                .contains("RAISE EXCEPTION 'V665 cannot extend business-data reset policy safely'")
+                .contains("(''finance_report_line_bindings'', ''PRESERVE'')");
         // V590：整表废弃走「读已安装定义 + 锚点替换删除」补丁；锚点单行无换行，
         // 不受迁移文件 CRLF/LF 差异影响（V588 教训）。
         assertThat(extensionSql)

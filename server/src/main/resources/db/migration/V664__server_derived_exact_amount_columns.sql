@@ -1,0 +1,55 @@
+-- V664 (ADR-112): 金额只由服务端按 MoneyPolicy 精确派生, 不四舍五入。
+--
+-- 申请/报价/委外申请/询价/发料/退料/废料的金额列与供应商月结明细还停在 NUMERIC(18,4):
+-- 服务端把 数量(4 位) × 单价 × 汇率 的完整乘积写进来时, PostgreSQL 会按列定义悄悄四舍五入,
+-- 草稿金额与审核后的权威值对不上, 月结明细也会把精确余额截成 4 位。
+-- 这里复用 V518 的 fn_migrate_financial_amount_columns: 列改成无精度 NUMERIC 并挂
+-- fn_financial_amount_is_exact(实际金额, 24 位) / fn_financial_book_amount_is_exact(本币账面, 30 位)
+-- 检查; 依赖视图、列触发器、属主与授权原样重建。已有值都是 4 位以内, 不改写任何数据。
+SELECT fn_migrate_financial_amount_columns('[
+  {"table":"purchase_request_items","column":"price"},
+  {"table":"purchase_request_items","column":"amount_original"},
+  {"table":"purchase_request_items","column":"amount_local","kind":"book"},
+  {"table":"purchase_requests","column":"total_original"},
+  {"table":"purchase_requests","column":"total_local","kind":"book"},
+  {"table":"sales_quote_items","column":"price"},
+  {"table":"sales_quote_items","column":"amount_original"},
+  {"table":"sales_quote_items","column":"amount_local","kind":"book"},
+  {"table":"sales_quotes","column":"total_original"},
+  {"table":"sales_quotes","column":"total_local","kind":"book"},
+  {"table":"subcontract_application_items","column":"price"},
+  {"table":"subcontract_application_items","column":"amount_original"},
+  {"table":"subcontract_application_items","column":"amount_local","kind":"book"},
+  {"table":"subcontract_applications","column":"total_original"},
+  {"table":"subcontract_applications","column":"total_local","kind":"book"},
+  {"table":"subcontract_inquiry_items","column":"price"},
+  {"table":"subcontract_inquiry_items","column":"amount_original"},
+  {"table":"subcontract_inquiry_items","column":"amount_local","kind":"book"},
+  {"table":"subcontract_inquiries","column":"total_original"},
+  {"table":"subcontract_inquiries","column":"total_local","kind":"book"},
+  {"table":"subcontract_material_issue_items","column":"price"},
+  {"table":"subcontract_material_issue_items","column":"amount_original"},
+  {"table":"subcontract_material_issue_items","column":"amount_local","kind":"book"},
+  {"table":"subcontract_material_issues","column":"total_original"},
+  {"table":"subcontract_material_issues","column":"total_local","kind":"book"},
+  {"table":"subcontract_material_return_items","column":"price"},
+  {"table":"subcontract_material_return_items","column":"amount_original"},
+  {"table":"subcontract_material_return_items","column":"amount_local","kind":"book"},
+  {"table":"subcontract_material_returns","column":"total_original"},
+  {"table":"subcontract_material_returns","column":"total_local","kind":"book"},
+  {"table":"subcontract_waste_items","column":"price"},
+  {"table":"subcontract_waste_items","column":"amount_original"},
+  {"table":"subcontract_waste_items","column":"amount_local","kind":"book"},
+  {"table":"subcontract_wastes","column":"total_original"},
+  {"table":"subcontract_wastes","column":"total_local","kind":"book"},
+  {"table":"supplier_settlement_batch_lines","column":"opening_balance_original"},
+  {"table":"supplier_settlement_batch_lines","column":"period_posted_original"},
+  {"table":"supplier_settlement_batch_lines","column":"period_paid_original"},
+  {"table":"supplier_settlement_batch_lines","column":"period_offset_original"},
+  {"table":"supplier_settlement_batch_lines","column":"closing_balance_original"},
+  {"table":"supplier_settlement_batch_lines","column":"opening_balance_local","kind":"book"},
+  {"table":"supplier_settlement_batch_lines","column":"period_posted_local","kind":"book"},
+  {"table":"supplier_settlement_batch_lines","column":"period_paid_local","kind":"book"},
+  {"table":"supplier_settlement_batch_lines","column":"period_offset_local","kind":"book"},
+  {"table":"supplier_settlement_batch_lines","column":"closing_balance_local","kind":"book"}
+]'::jsonb);

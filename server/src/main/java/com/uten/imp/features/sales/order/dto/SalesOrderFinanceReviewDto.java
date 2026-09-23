@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.order.dto;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.uten.imp.common.finance.ExactDecimalText;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import java.math.BigDecimal;
@@ -40,14 +41,14 @@ public record SalesOrderFinanceReviewDto(
         String settlementMethodName,
         String contractNo,
         /** Historical commercial snapshot only; finance money facts come from customer-prepayment summary. */
-        BigDecimal legacyDepositSnapshot,
+        @JsonSerialize(using = ExactDecimalText.class) BigDecimal legacyDepositSnapshot,
         String remark,
         long itemCount,
-        BigDecimal totalOriginal,
+        @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalOriginal,
         // ===== 客户财务快照 =====
-        BigDecimal clientOutstanding,
-        BigDecimal clientCredit,
-        BigDecimal clientCreditFloor,
+        @JsonSerialize(using = ExactDecimalText.class) BigDecimal clientOutstanding,
+        @JsonSerialize(using = ExactDecimalText.class) BigDecimal clientCredit,
+        @JsonSerialize(using = ExactDecimalText.class) BigDecimal clientCreditFloor,
         /** 应收余额是否已超信用额度（信用额度为空/≤0 时按未配置处理，恒 false）。 */
         boolean clientOverCredit,
         // ===== 财务确认/驳回事实 =====
@@ -96,11 +97,11 @@ public record SalesOrderFinanceReviewDto(
             @JsonSerialize(using = ToStringSerializer.class) UUID unitId,
             String unitName,
             String clientModel,
-            BigDecimal qty,
-            BigDecimal weight,
-            BigDecimal price,
-            BigDecimal discount,
-            BigDecimal amountOriginal,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal qty,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal weight,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal price,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal discount,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal amountOriginal,
             String remark) {
     }
 }

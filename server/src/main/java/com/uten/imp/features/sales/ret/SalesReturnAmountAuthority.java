@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -9,7 +10,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -191,24 +191,27 @@ public class SalesReturnAmountAuthority {
                 || historicalAllocations < 0 || reversedAllocations < 0 || reversedAllocations > historicalAllocations) {
             throw conflict("退货数量或来源累计无效，不能超过实际发运剩余可退量");
         }
-        // Reversing an earlier slice leaves the later slice's immutable rounding
-        // increment intact. Only actual reversal history enables a bounded rounding
-        // allowance; it never excuses an arbitrary historical credit or over-credit.
-        BigDecimal roundingAllowance = reversedAllocations == 0 ? BigDecimal.ZERO
-                : new BigDecimal("0.0001").multiply(BigDecimal.valueOf(historicalAllocations));
-        if (prorate(sourceOriginal, priorQuantity, sourceQuantity).subtract(priorOriginal).abs()
-                    .compareTo(roundingAllowance) > 0
-                || prorate(sourceLocal, priorQuantity, sourceQuantity).subtract(priorLocal).abs()
-                    .compareTo(roundingAllowance) > 0) {
+        // Reversing an earlier slice leaves the later slice's immutable truncation
+        // increment intact. Only actual reversal history enables a bounded allowance
+        // (one last-digit unit per historical slice); it never excuses an arbitrary
+        // historical credit or over-credit.
+        if (!withinHistoricalShare(sourceOriginal, priorQuantity, sourceQuantity, priorOriginal,
+                historicalAllocations, reversedAllocations)
+                || !withinHistoricalShare(sourceLocal, priorQuantity, sourceQuantity, priorLocal,
+                historicalAllocations, reversedAllocations)) {
             throw conflict("历史退货累计金额与原发运分摊不一致，请财务先核对，不能自动补猜差额");
         }
-        BigDecimal cumulative = priorQuantity.add(quantity);
-        return new Amounts(prorate(sourceOriginal, cumulative, sourceQuantity).subtract(priorOriginal).max(BigDecimal.ZERO),
-                prorate(sourceLocal, cumulative, sourceQuantity).subtract(priorLocal).max(BigDecimal.ZERO));
+        MoneyPolicy.LineAmounts amounts = MoneyPolicy.prorateBatch(quantity, priorQuantity, sourceQuantity,
+                sourceOriginal, sourceLocal, priorOriginal, priorLocal);
+        return new Amounts(amounts.original(), amounts.local());
     }
 
-    private static BigDecimal prorate(BigDecimal amount, BigDecimal quantity, BigDecimal sourceQuantity) {
-        return amount.multiply(quantity).divide(sourceQuantity, 4, RoundingMode.HALF_UP);
+    private static boolean withinHistoricalShare(BigDecimal source, BigDecimal priorQuantity,
+            BigDecimal sourceQuantity, BigDecimal priorAmount, long historicalAllocations, long reversedAllocations) {
+        BigDecimal allowance = reversedAllocations == 0 ? BigDecimal.ZERO
+                : MoneyPolicy.shareGranularity(source).multiply(BigDecimal.valueOf(historicalAllocations));
+        return MoneyPolicy.cumulativeShare(source, priorQuantity, sourceQuantity)
+                .subtract(priorAmount).abs().compareTo(allowance) <= 0;
     }
     private static BigDecimal decimal(Object value) { return value == null ? null : (BigDecimal) value; }
     private static boolean same(BigDecimal left, BigDecimal right) {

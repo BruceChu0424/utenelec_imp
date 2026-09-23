@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Set;
@@ -133,8 +132,8 @@ public class ProcurementIqcReplacementAllocationService {
             BigDecimal caseLocal=share.local();
             BigDecimal takeQty=qtyLeft.min(caseQty);
             boolean finishesShare=takeQty.compareTo(caseQty)==0;
-            BigDecimal takeBase=finishesShare?quantity(caseBase):quantity(caseBase.multiply(takeQty)
-                        .divide(caseQty,12,RoundingMode.HALF_UP));
+            BigDecimal takeBase=finishesShare?MoneyPolicy.quantity(caseBase)
+                    :MoneyPolicy.quantityShare(caseBase,takeQty,caseQty);
             BigDecimal takeOriginal=ProcurementConsiderationBasis.finitePortion(receiptOriginal,takeQty,receiptQty);
             BigDecimal takeLocal=ProcurementConsiderationBasis.finiteBookPortion(receiptLocal,takeQty,receiptQty);
             if(takeBase.signum()<=0||takeBase.compareTo(caseBase)>0){
@@ -266,10 +265,6 @@ public class ProcurementIqcReplacementAllocationService {
 
     private static BigDecimal money(Object value){
         return value==null?null:com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(decimal(value),"补回名义金额");
-    }
-
-    private static BigDecimal quantity(BigDecimal value){
-        return value.setScale(4,RoundingMode.HALF_UP);
     }
 
     private static ApiException conflict(String message){

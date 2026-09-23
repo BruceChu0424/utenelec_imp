@@ -539,6 +539,7 @@ class PaymentStyleServiceTest {
                 .contains("from finance_expense_items")
                 .contains("from finance_other_income_items")
                 .contains("from accounts")
+                .contains("from finance_report_line_bindings")
                 .contains("style_id in (select id from style_subtree)")
                 .doesNotContain("style_legacy_id")
                 .doesNotContain("is_deleted");

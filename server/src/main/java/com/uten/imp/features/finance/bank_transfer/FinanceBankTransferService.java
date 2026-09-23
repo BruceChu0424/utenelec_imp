@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
+import com.uten.imp.features.finance.accountflow.AccountPosting;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferDetail;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineDto;
@@ -183,8 +184,7 @@ public class FinanceBankTransferService {
         List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
         TransferPosting posting = preparePosting(t, lines, true);
         assertNoExistingPosting(t.getId());
-        applyPosting(t, posting, 1);
-        insertReconciliations(t, posting);
+        postTransfer(t, posting);
         t.setApproverId(approver);
         t.setStatus(STATUS_APPROVED);
         transferRepo.save(t);
@@ -207,7 +207,7 @@ public class FinanceBankTransferService {
         List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
         TransferPosting posting = preparePosting(t, lines, false);
         assertCompletePosting(t.getId(), posting.incomingByAccount().size() + 1L);
-        applyPosting(t, posting, -1);
+        // 两侧账户余额与流水由账本按审核时的原始流水一并冲回。
         reverseReconciliations(t.getId());
         t.setStatus(STATUS_REVERSED);
         transferRepo.save(t);
@@ -240,11 +240,10 @@ public class FinanceBankTransferService {
             accountIds.add(line.getInAccountId());
         }
 
-        Map<UUID, AccountSnapshot> accounts = lockAccounts(accountIds, approval);
-        AccountSnapshot out = accounts.get(transfer.getOutAccountId());
-        if (out == null) {
-            throw new ApiException(ErrorCode.BUSINESS, "转出账户不存在或已禁用");
-        }
+        // 审核: 账本按主键顺序锁住转出与全部转入账户(须启用); 红冲: 余额由账本按原始流水冲回, 这里只核对单据。
+        Map<UUID, AccountFlowLedgerService.LockedAccount> accounts = approval
+                ? accountFlowLedger.lockActive(accountIds, "转账账户") : Map.of();
+        AccountFlowLedgerService.LockedAccount out = accounts.get(transfer.getOutAccountId());
         if (approval) {
             requireBaseCurrencyTransferAccounts(accounts.values(), out.currencyId());
             if (transfer.getCurrencyId() == null) {
@@ -273,10 +272,7 @@ public class FinanceBankTransferService {
         // M10：一张单的转入账户必须同币种；否则各 converted 是不同货币却相加成头表 amountOriginal，语义错。
         LinkedHashSet<UUID> distinctInCurrencies = approval ? new LinkedHashSet<>() : null;
         for (FinanceBankTransferLine line : lines) {
-            AccountSnapshot in = accounts.get(line.getInAccountId());
-            if (in == null) {
-                throw new ApiException(ErrorCode.BUSINESS, "转入账户不存在或已禁用");
-            }
+            AccountFlowLedgerService.LockedAccount in = accounts.get(line.getInAccountId());
             BigDecimal sourceAmount = line.getAmountLocal();
             BigDecimal converted;
             if (approval) {
@@ -318,58 +314,15 @@ public class FinanceBankTransferService {
                 || nz(transfer.getAmountOriginal()).compareTo(incomingTotal) != 0) {
             throw new ApiException(ErrorCode.CONFLICT, "银行存取款表头与已审核明细金额不一致");
         }
-        return new TransferPosting(outgoing, incoming);
-    }
-
-    private Map<UUID, AccountSnapshot> lockAccounts(
-            java.util.Collection<UUID> accountIds,
-            boolean requireActive) {
-        String active = requireActive
-                ? " AND COALESCE(a.is_deleted, false) = false AND a.status = '使用'"
-                : "";
-        String currencyJoin = requireActive
-                ? " JOIN currencies c ON c.id = a.currency_id "
-                : " LEFT JOIN currencies c ON c.id = a.currency_id ";
-        // V405 makes the base-currency UUID/role/status immutable. Lock only
-        // account rows so unrelated transfers are not serialized on one shared
-        // currency-master row.
-        String lock = " FOR UPDATE OF a";
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT a.id, a.currency_id, c.is_base_currency, c.status,
-                               COALESCE(c.is_deleted,FALSE)
-                        FROM accounts a
-                        """ + currencyJoin + """
-                        WHERE a.id IN (:ids)
-                        """ + active + " ORDER BY a.id" + lock)
-                .setParameter("ids", accountIds));
-        if (rows.size() != accountIds.size()) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    requireActive ? "转账账户不存在或已禁用" : "转账账户已被物理删除");
-        }
-        Map<UUID, AccountSnapshot> result = new HashMap<>();
-        for (Object[] row : rows) {
-            result.put(
-                    (UUID) row[0],
-                    new AccountSnapshot(
-                            (UUID) row[0],
-                            (UUID) row[1],
-                            Boolean.TRUE.equals(row[2]),
-                            row[3] == null ? null : row[3].toString(),
-                            Boolean.TRUE.equals(row[4])));
-        }
-        return result;
+        return new TransferPosting(outgoing, incoming, accounts);
     }
 
     private static void requireBaseCurrencyTransferAccounts(
-            java.util.Collection<AccountSnapshot> accounts,
+            java.util.Collection<AccountFlowLedgerService.LockedAccount> accounts,
             UUID expectedCurrencyId) {
         boolean invalid = expectedCurrencyId == null || accounts.stream().anyMatch(account ->
-                account.currencyId() == null
-                        || !Objects.equals(account.currencyId(), expectedCurrencyId)
-                        || !account.baseCurrency()
-                        || !"使用".equals(account.currencyStatus())
-                        || account.currencyDeleted());
+                !Objects.equals(account.currencyId(), expectedCurrencyId)
+                        || !account.baseCurrency());
         if (invalid) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -377,90 +330,34 @@ public class FinanceBankTransferService {
         }
     }
 
-    private void applyPosting(
-            FinanceBankTransfer transfer,
-            TransferPosting posting,
-            int sign) {
-        BigDecimal outgoingDelta = posting.outgoing().multiply(BigDecimal.valueOf(sign));
-        int outRows = em.createNativeQuery("""
-                        UPDATE accounts
-                        SET balance_current = COALESCE(balance_current, 0) - :amount,
-                            payments_total = COALESCE(payments_total, 0) + :amount,
-                            updated_at = now()
-                        WHERE id = :id
-                        """)
-                .setParameter("amount", outgoingDelta)
-                .setParameter("id", transfer.getOutAccountId())
-                .executeUpdate();
-        if (outRows != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "转出账户更新失败");
-        }
+    /** 转出账户扣减、逐转入账户入账, 各写一条流水; 全部经账本(ADR-112)。 */
+    private void postTransfer(FinanceBankTransfer transfer, TransferPosting posting) {
+        java.time.OffsetDateTime bookedAt = transfer.getBillDate()
+                .atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime();
+        accountFlowLedger.post(posting.accounts().get(transfer.getOutAccountId()),
+                AccountPosting.out("BANK_TRANSFER", transfer.getId(), transfer.getBillNo(),
+                                transfer.getOutAccountId())
+                        .rule(AccountPosting.CurrencyRule.BASE_ONLY, transfer.getCurrencyId())
+                        .amounts(posting.outgoing(), posting.outgoing())
+                        .bookedAt(bookedAt)
+                        .settledAt(OffsetDateTime.now())
+                        .checkNo(transfer.getInvoiceNo())
+                        .sourceRemark(transfer.getRemark())
+                        .legacyBstyle(27)
+                        .label("转出账户"));
         for (Map.Entry<UUID, BigDecimal> entry : posting.incomingByAccount()
                 .entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
-            BigDecimal incomingDelta = entry.getValue().multiply(BigDecimal.valueOf(sign));
-            int inRows = em.createNativeQuery("""
-                            UPDATE accounts
-                            SET balance_current = COALESCE(balance_current, 0) + :amount,
-                                receipts_total = COALESCE(receipts_total, 0) + :amount,
-                                updated_at = now()
-                            WHERE id = :id
-                            """)
-                    .setParameter("amount", incomingDelta)
-                    .setParameter("id", entry.getKey())
-                    .executeUpdate();
-            if (inRows != 1) {
-                throw new ApiException(ErrorCode.CONFLICT, "转入账户更新失败：" + entry.getKey());
-            }
+            accountFlowLedger.post(posting.accounts().get(entry.getKey()),
+                    AccountPosting.in("BANK_TRANSFER", transfer.getId(), transfer.getBillNo(), entry.getKey())
+                            .rule(AccountPosting.CurrencyRule.BASE_ONLY, transfer.getCurrencyId())
+                            .amounts(entry.getValue(), entry.getValue())
+                            .bookedAt(bookedAt)
+                            .settledAt(OffsetDateTime.now())
+                            .checkNo(transfer.getInvoiceNo())
+                            .sourceRemark("银行存取款转入")
+                            .legacyBstyle(27)
+                            .label("转入账户"));
         }
-    }
-
-    private void insertReconciliations(
-            FinanceBankTransfer transfer,
-            TransferPosting posting) {
-        insertReconciliation(
-                transfer,
-                transfer.getOutAccountId(),
-                BigDecimal.ZERO,
-                posting.outgoing(),
-                transfer.getRemark());
-        for (Map.Entry<UUID, BigDecimal> entry : posting.incomingByAccount()
-                .entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
-            insertReconciliation(
-                    transfer,
-                    entry.getKey(),
-                    entry.getValue(),
-                    BigDecimal.ZERO,
-                    "银行存取款转入");
-        }
-    }
-
-    private void insertReconciliation(
-            FinanceBankTransfer transfer,
-            UUID accountId,
-            BigDecimal inAmount,
-            BigDecimal outAmount,
-            String sourceRemark) {
-        em.createNativeQuery("""
-                        INSERT INTO finance_reconciliations
-                          (bill_no, source_doc_type, source_doc_id, account_id, check_no,
-                           in_amount, out_amount, amount_local, bill_date, settled_date, source_remark,
-                           legacy_bstyle, created_at, updated_at, is_deleted)
-                        VALUES
-                          (:billNo, 'BANK_TRANSFER', :sourceId, :accountId, :checkNo,
-                           :inAmount, :outAmount, :amountLocal, :billDate, :settledDate, :sourceRemark,
-                           27, now(), now(), false)
-                        """)
-                .setParameter("billNo", transfer.getBillNo())
-                .setParameter("sourceId", transfer.getId())
-                .setParameter("accountId", accountId)
-                .setParameter("checkNo", transfer.getInvoiceNo())
-                .setParameter("inAmount", inAmount)
-                .setParameter("outAmount", outAmount)
-                .setParameter("amountLocal", inAmount.signum() > 0 ? inAmount : outAmount)
-                .setParameter("billDate", transfer.getBillDate())
-                .setParameter("settledDate", OffsetDateTime.now())
-                .setParameter("sourceRemark", sourceRemark)
-                .executeUpdate();
     }
 
     private void assertNoExistingPosting(UUID transferId) {
@@ -503,16 +400,10 @@ public class FinanceBankTransferService {
         return value == null ? BigDecimal.ZERO : value;
     }
 
-    private record AccountSnapshot(
-            UUID id,
-            UUID currencyId,
-            boolean baseCurrency,
-            String currencyStatus,
-            boolean currencyDeleted) {}
-
     private record TransferPosting(
             BigDecimal outgoing,
-            Map<UUID, BigDecimal> incomingByAccount) {}
+            Map<UUID, BigDecimal> incomingByAccount,
+            Map<UUID, AccountFlowLedgerService.LockedAccount> accounts) {}
 
     // ===================== CRUD 辅助 =====================
 
@@ -525,8 +416,6 @@ public class FinanceBankTransferService {
         t.setOutAccountId(req.getOutAccountId());
         t.setCurrencyId(req.getCurrencyId());
         if (req.getExchangeRate() != null) t.setExchangeRate(req.getExchangeRate());
-        if (req.getAmountOriginal() != null) t.setAmountOriginal(req.getAmountOriginal());
-        if (req.getAmountLocal() != null) t.setAmountLocal(req.getAmountLocal());
         t.setInvoiceNo(req.getInvoiceNo());
         t.setOperatorId(req.getOperatorId());
         t.setRemark(req.getRemark());
@@ -544,8 +433,11 @@ public class FinanceBankTransferService {
             ln.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             ln.setInAccountId(l.getInAccountId());
             ln.setOccurDate(l.getOccurDate());
-            ln.setAmountOriginal(l.getAmountOriginal());
-            ln.setAmountLocal(l.getAmountLocal());
+            // 实际转账金额只录一次: 仅支持本位币账户间转账(审核时校验), 转出本币额 = 转入原币额。
+            BigDecimal amount = com.uten.imp.common.util.FinancialExactAmount.optional(
+                    l.getAmountOriginal(), "转账金额");
+            ln.setAmountOriginal(amount);
+            ln.setAmountLocal(amount);
             ln.setSummary(l.getSummary());
             lineRepo.save(ln);
             out.add(toLineDto(ln));

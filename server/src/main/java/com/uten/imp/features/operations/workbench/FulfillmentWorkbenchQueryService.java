@@ -751,7 +751,9 @@ public class FulfillmentWorkbenchQueryService {
         // 共用同一列做状态列、表头筛选与排序, 采购不另算一遍。
         // ADR-103: 申请行两档——锁住 WAITING_COMPONENT_STOCK (等子件到货, 黄) / 解锁 COMPONENT_STOCK_READY
         // (子件有货可下委外订货, 红, 行带 component_available_qty); 普通委外件仍是 WAITING_ORDER.
-        // 财务已通过的订货单: 计划行还有余量、没有未审草稿、子件仓里又一件都没有 → OUTBOUND_WAITING_COMPONENT.
+        // 财务已通过的订货单: 计划行还有余量、没有未审草稿、子件仓里又一件都没有 → OUTBOUND_WAITING_COMPONENT,
+        // 排在 AT_SUPPLIER 之前——分批发了一部分、其余还在等子件时, 委外部门要看到的是「还有货发不出去」,
+        // 而不是被「委外加工中」盖住(2026-09-22 8081 冒烟: 发出 6 剩 4994 等料, 原排序显示成 AT_SUPPLIER)。
         String stageExpression = subcontract ? """
                 CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
                      WHEN base.action_doc_type='SUBCONTRACT_APPLICATION' AND base.task_status='WAITING_ORDER'
@@ -764,8 +766,8 @@ public class FulfillmentWorkbenchQueryService {
                                WHEN progress.tolerant_pending THEN 'TOLERANT_SHORT'
                                WHEN progress.any_received AND progress.all_received THEN 'RECEIVED_PENDING_STOCK'
                                WHEN progress.any_received THEN 'PARTIAL_RECEIVED'
-                               WHEN progress.any_issued THEN 'AT_SUPPLIER'
                                WHEN progress.waiting_component THEN 'OUTBOUND_WAITING_COMPONENT'
+                               WHEN progress.any_issued THEN 'AT_SUPPLIER'
                                ELSE 'AWAITING_OUTBOUND' END
                      ELSE base.task_status END""" : """
                 CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status

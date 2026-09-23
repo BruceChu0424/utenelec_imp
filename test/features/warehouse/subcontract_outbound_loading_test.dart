@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
@@ -104,6 +105,7 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(WarehouseTaskCenterScaffold)),
     );
+    // 只进去看了一眼就返回(期间本端没有写、未满 30 秒): 不重拉(ADR-108)。
     container.read(pageResumeProvider.notifier).state = (
       location: '/warehouse/subcontract-outbound/task',
       tick: 2,
@@ -112,6 +114,19 @@ void main() {
     container.read(pageResumeProvider.notifier).state = (
       location: '/warehouse/tasks/outbound',
       tick: 3,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('revision:0'), findsOneWidget);
+    // 在出仓页办了出仓(网络层推进写修订号)后返回: 第一次真正的返回就立即重拉。
+    container.read(pageResumeProvider.notifier).state = (
+      location: '/warehouse/subcontract-outbound/task',
+      tick: 4,
+    );
+    await tester.pump();
+    container.read(dataWriteRevisionProvider.notifier).state++;
+    container.read(pageResumeProvider.notifier).state = (
+      location: '/warehouse/tasks/outbound',
+      tick: 5,
     );
     await tester.pumpAndSettle();
     expect(find.text('revision:1'), findsOneWidget);

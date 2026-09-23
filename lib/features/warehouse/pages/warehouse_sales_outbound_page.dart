@@ -12,8 +12,8 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../widgets/warehouse_sales_outbound_workbench.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// Dedicated warehouse projection for released sales outbound work.
 class WarehouseSalesOutboundPage extends ConsumerStatefulWidget {
@@ -29,10 +29,6 @@ class _WarehouseSalesOutboundPageState
   String? _myLocation;
   int _refreshTick = 0;
 
-  /// onPageResume 首次触发是「进入本页」的导航结算，不是返回——跳过一次，
-  /// 避免进入即重复拉取（首次加载已在视图 initState 完成）。
-  bool _resumeArmed = false;
-
   @override
   Widget build(BuildContext context) {
     // 返回即刷新：从详情页回到本页时重拉列表并同步角标。
@@ -41,12 +37,8 @@ class _WarehouseSalesOutboundPageState
       RouteName.warehouseSalesOutbound,
     );
     ref.onPageResume(_myLocation!, () {
-      if (!_resumeArmed) {
-        _resumeArmed = true;
-        return;
-      }
       setState(() => _refreshTick++);
-      ref.invalidate(warehouseSalesOutboundCountsProvider);
+      refreshBadges(ref);
     });
     return Scaffold(
       appBar: UtenAppBar(

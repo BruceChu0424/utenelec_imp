@@ -12,8 +12,6 @@ abstract interface class FinanceProcurementWorkflowRepository {
     String? keyword,
   });
 
-  Future<int> pendingApprovalCount();
-
   /// 待审任务按订货类型计数（全部/采购/委外筛选卡的全量口径）：{PURCHASE: n, ...}。
   Future<Map<String, int>> approvalTypeCounts();
 
@@ -67,23 +65,6 @@ class DioFinanceProcurementWorkflowRepository
       for (final entry in (json as Map).entries)
         entry.key.toString(): (entry.value as num).toInt(),
     };
-  }
-
-  @override
-  Future<int> pendingApprovalCount() async {
-    final json = await api.get(ApiEndpoints.financeProcurementApprovalCount);
-    final nested = json['data'];
-    final value =
-        json['count'] ??
-        json['pendingCount'] ??
-        json['total'] ??
-        (nested is Map
-            ? nested['count'] ?? nested['pendingCount'] ?? nested['total']
-            : nested);
-    final parsed = value is num
-        ? value.toInt()
-        : int.tryParse(value?.toString() ?? '') ?? 0;
-    return parsed < 0 ? 0 : parsed;
   }
 
   @override

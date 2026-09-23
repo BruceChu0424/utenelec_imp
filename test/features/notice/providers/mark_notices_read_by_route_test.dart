@@ -2,10 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
+import 'package:uten_imp/features/notice/providers/notice_unread_index_provider.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../../helpers/badge_summary_fixture.dart';
 
 /// markNoticesReadByRoute 的 provider 级契约：
-/// - 正常路径调用 read-by-route 并使列表失效、未读数立即刷新；
+/// - 正常路径调用 read-by-route 并使列表失效、徽章汇总(含未读数)立即重拉；
+/// - 本地未读索引里没有指向这些页面的未读时不发请求(ADR-108, 此前每次导航都空写一次)；
 /// - 仓储抛错静默放行（业务保存流不被打断）；
 /// - 空路由直接短路，不触网络。
 class _FakeNoticeRepository implements NoticeRepository {
@@ -14,7 +19,6 @@ class _FakeNoticeRepository implements NoticeRepository {
   final bool failRouteRead;
   final List<List<String>> routeCalls = [];
   int listCalls = 0;
-  int unreadCountCalls = 0;
 
   @override
   Future<int> markReadByRoute(List<String> routes) async {
@@ -30,12 +34,6 @@ class _FakeNoticeRepository implements NoticeRepository {
   }
 
   @override
-  Future<int> unreadCount() async {
-    unreadCountCalls++;
-    return 0;
-  }
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -44,8 +42,12 @@ void main() {
     'marks notices read by route, invalidates list and refreshes badge',
     () async {
       final repo = _FakeNoticeRepository();
+      final badges = FixedBadgeSummaryNotifier(badgeSummaryFixture());
       final container = ProviderContainer(
-        overrides: [noticeRepositoryProvider.overrideWithValue(repo)],
+        overrides: [
+          noticeRepositoryProvider.overrideWithValue(repo),
+          badgeSummaryProvider.overrideWith(() => badges),
+        ],
       );
       addTearDown(container.dispose);
 
@@ -55,8 +57,6 @@ void main() {
       await container.read(noticeListProvider.future); // 等初始异步 build 完成
       final listCallsAfterListen = repo.listCalls;
       expect(listCallsAfterListen, 1);
-      // 未读数 provider 懒初始化：helper 前未被读取，计数为 0。
-      expect(repo.unreadCountCalls, 0);
 
       await markNoticesReadByRoute(container, [
         '/purchase/orders/x',
@@ -67,9 +67,9 @@ void main() {
       expect(repo.routeCalls, [
         ['/purchase/orders/x', '/subcontract/orders/y'],
       ]);
-      // 列表失效重建一次；未读数 provider 首次实例化（启动 _tick + 立即 refresh）。
+      // 列表失效重建一次; 徽章汇总(含未读数)立即重拉一次。
       expect(repo.listCalls, listCallsAfterListen + 1);
-      expect(repo.unreadCountCalls, 2);
+      expect(badges.refreshCalls, 1);
     },
   );
 
@@ -104,4 +104,45 @@ void main() {
     expect(repo.routeCalls, isEmpty);
     expect(repo.listCalls, 0);
   });
+
+  test(
+    'index knows no unread for these pages: 20 navigations, 0 requests',
+    () async {
+      final repo = _FakeNoticeRepository();
+      final container = ProviderContainer(
+        overrides: [
+          noticeRepositoryProvider.overrideWithValue(repo),
+          noticeUnreadIndexProvider.overrideWith(_KnownIndex.new),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      for (var i = 0; i < 20; i++) {
+        await markNoticesReadByRoute(container, ['/some/page/$i']);
+      }
+      expect(repo.routeCalls, isEmpty);
+
+      // 真有指向该页的未读时照常发一次。
+      await markNoticesReadByRoute(container, ['/purchase/orders/x']);
+      expect(repo.routeCalls, [
+        ['/purchase/orders/x'],
+      ]);
+    },
+  );
+}
+
+/// 已拉到的未读索引: 只有一条指向采购订单 x 的未读。
+class _KnownIndex extends NoticeUnreadIndexNotifier {
+  @override
+  NoticeUnreadIndex? build() => NoticeUnreadIndex(
+    unreadCount: 1,
+    digest: 1,
+    items: [
+      NoticeUnreadItem(
+        id: 'n-1',
+        publishedAt: DateTime.utc(2026, 9, 23),
+        actionRoute: '/purchase/orders/x',
+      ),
+    ],
+  );
 }

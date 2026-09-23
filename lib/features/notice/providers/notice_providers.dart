@@ -1,14 +1,13 @@
 // 通知 Provider
 
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/router/route_names.dart';
-import '../../../shared/auth/session_epoch_provider.dart';
 import '../models/notice.dart';
 import '../repositories/notice_repository.dart';
+import 'notice_unread_index_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 final noticeRepositoryProvider = Provider<NoticeRepository>((ref) {
   return DioNoticeRepository(ref.watch(apiClientProvider));
@@ -86,50 +85,6 @@ class CelebrationSettingsNotifier
   }
 }
 
-const Duration _kUnreadPollInterval = Duration(seconds: 60);
-
-/// 通知未读数（Dashboard / 徽章用）：默认 60s 轮询一次；网络/服务异常时保留旧值，
-/// 避免徽章闪烁。范式同 lib/features/visitor_approval/providers/visitor_pending_count_provider.dart。
-/// 通知人人可见（employee 自带 notice:read），故不按权限短路。
-final unreadNoticeCountProvider =
-    StateNotifierProvider<UnreadNoticeCountNotifier, int>((ref) {
-      // 新登录会话从零重建并立即重拉（见 shared/auth/session_epoch_provider.dart）。
-      ref.watch(sessionEpochProvider);
-      final notifier = UnreadNoticeCountNotifier(ref);
-      notifier.start();
-      ref.onDispose(notifier.stop);
-      return notifier;
-    });
-
-class UnreadNoticeCountNotifier extends StateNotifier<int> {
-  UnreadNoticeCountNotifier(this.ref) : super(0);
-
-  final Ref ref;
-  Timer? _timer;
-
-  void start() {
-    _tick();
-    _timer = Timer.periodic(_kUnreadPollInterval, (_) => _tick());
-  }
-
-  void stop() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  Future<void> _tick() async {
-    try {
-      final count = await ref.read(noticeRepositoryProvider).unreadCount();
-      if (mounted) state = count; // 会话重建后旧实例已释放，丢弃迟到结果
-    } catch (_) {
-      // 网络/服务异常时保留旧值，避免徽章闪烁
-    }
-  }
-
-  /// 立即刷新（标记已读 / 删除 / 发布 / 业务桥动作完成后调用）。
-  Future<void> refresh() => _tick();
-}
-
 /// 通知「对应页面」目标路由：[Notice.actionRoute] 附加 `returnTo=/notice`，
 /// 便于目标页返回键回到通知列表。无 actionRoute 时返回 null（回退详情弹层）。
 ///
@@ -147,9 +102,10 @@ String? noticeActionTarget(Notice notice) {
 
 Future<void> markNoticeRead(WidgetRef ref, String id) async {
   await ref.read(noticeRepositoryProvider).markRead(id);
+  ref.read(noticeUnreadIndexProvider.notifier).forget((item) => item.id == id);
   ref.invalidate(noticeDetailProvider(id));
   ref.invalidate(noticeListProvider);
-  ref.read(unreadNoticeCountProvider.notifier).refresh();
+  refreshBadges(ref);
 }
 
 /// 与 [markNoticeRead] 等价，但取 `ProviderContainer` 而非 `WidgetRef`。
@@ -163,35 +119,42 @@ Future<void> markNoticeReadContainer(
   String id,
 ) async {
   await container.read(noticeRepositoryProvider).markRead(id);
+  container
+      .read(noticeUnreadIndexProvider.notifier)
+      .forget((item) => item.id == id);
   container.invalidate(noticeDetailProvider(id));
   container.invalidate(noticeListProvider);
-  container.read(unreadNoticeCountProvider.notifier).refresh();
+  refreshBadgesIn(container);
 }
 
 Future<void> completeNoticeTodo(WidgetRef ref, String id) async {
   await ref.read(noticeRepositoryProvider).completeTodo(id);
   ref.invalidate(noticeDetailProvider(id));
   ref.invalidate(noticeListProvider);
-  ref.read(unreadNoticeCountProvider.notifier).refresh();
+  refreshBadges(ref);
 }
 
 Future<void> markAllNoticeRead(WidgetRef ref) async {
   await ref.read(noticeRepositoryProvider).markAllRead();
+  ref.read(noticeUnreadIndexProvider.notifier).forget((_) => true);
   ref.invalidate(noticeListProvider);
-  ref.read(unreadNoticeCountProvider.notifier).refresh();
+  refreshBadges(ref);
 }
 
 /// 按站内办理路由批量标记已读：用户落定到某页面后，action_route 精确指向该页
 /// 的通知变已读；TODO 通知只置已读，业务完成（task_completed_at）仍是独立事实。
 ///
-/// 取 `ProviderContainer` 而非 `WidgetRef`：路由落点触发时来源页可能已销毁。
-/// 失败静默放行——已读清理是增强行为，不打断导航，角标随后台轮询自然对齐。
-/// 返回实际置读条数；只有真正置读后才刷新列表与未读角标（无效落点零开销）。
+/// **只在本地未读索引里确有指向这些路由的未读通知时才发请求**(ADR-108)：此前每次
+/// 导航都无条件 POST，多数是空写且落在转场帧里。索引还没拉到过时按「未知」照发一次，
+/// 不漏清。取 `ProviderContainer` 而非 `WidgetRef`：路由落点触发时来源页可能已销毁。
+/// 失败静默放行——已读清理是增强行为，不打断导航。返回实际置读条数。
 Future<int> markNoticesReadByRoute(
   ProviderContainer container,
   List<String> routes,
 ) async {
   if (routes.isEmpty) return 0;
+  final index = container.read(noticeUnreadIndexProvider);
+  if (index != null && !routes.any(index.hasRoute)) return 0;
   int read;
   try {
     read = await container
@@ -200,21 +163,27 @@ Future<int> markNoticesReadByRoute(
   } catch (_) {
     return 0;
   }
+  container
+      .read(noticeUnreadIndexProvider.notifier)
+      .forget((item) => routes.contains(item.actionRoute));
   if (read > 0) {
     container.invalidate(noticeListProvider);
-    container.read(unreadNoticeCountProvider.notifier).refresh();
+    refreshBadgesIn(container);
   }
   return read;
 }
 
 /// 按业务事件来源批量标记已读：用户落定到某任务页/工作台（见
 /// notice_page_clear_events.dart 的权威映射）后，该页承载事件类的未读通知
-/// 变已读。语义与 [markNoticesReadByRoute] 一致：只置已读，不代办结。
+/// 变已读。语义与 [markNoticesReadByRoute] 一致：只置已读，不代办结；同样只在
+/// 本地未读索引里确有这类未读时才发请求。
 Future<int> markNoticesReadBySource(
   ProviderContainer container,
   List<String> events,
 ) async {
   if (events.isEmpty) return 0;
+  final index = container.read(noticeUnreadIndexProvider);
+  if (index != null && !index.hasSourceEvent(events)) return 0;
   int read;
   try {
     read = await container
@@ -223,9 +192,12 @@ Future<int> markNoticesReadBySource(
   } catch (_) {
     return 0;
   }
+  container
+      .read(noticeUnreadIndexProvider.notifier)
+      .forget((item) => events.contains(item.sourceEvent));
   if (read > 0) {
     container.invalidate(noticeListProvider);
-    container.read(unreadNoticeCountProvider.notifier).refresh();
+    refreshBadgesIn(container);
   }
   return read;
 }
@@ -234,7 +206,7 @@ Future<int> markNoticesReadBySource(
 Future<int> deleteNotices(WidgetRef ref, List<String> ids) async {
   final deleted = await ref.read(noticeRepositoryProvider).deleteMany(ids);
   ref.invalidate(noticeListProvider);
-  ref.read(unreadNoticeCountProvider.notifier).refresh();
+  refreshBadges(ref);
   return deleted;
 }
 

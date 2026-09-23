@@ -161,9 +161,6 @@ class ProcurementInspectionBatchPassItem {
 abstract interface class ProcurementInspectionRepository {
   Future<List<PendingInspectionReceipt>> pendingReceipts();
 
-  /// 待检处置角标：仍有 PENDING/PARTIAL 明细的收货单张数。
-  Future<int> pendingCount();
-
   Future<List<ProcurementInspectionItem>> items(
     String receiptType,
     String receiptId,
@@ -237,16 +234,6 @@ class DioProcurementInspectionRepository
       ApiEndpoints.procurementInspectionPendingReceipts,
     );
     return rows.map(PendingInspectionReceipt.fromJson).toList();
-  }
-
-  @override
-  Future<int> pendingCount() async {
-    final json = await api.get(ApiEndpoints.procurementInspectionPendingCount);
-    final value = json['count'];
-    final parsed = value is num
-        ? value.toInt()
-        : int.tryParse(value?.toString() ?? '') ?? 0;
-    return parsed < 0 ? 0 : parsed;
   }
 
   @override

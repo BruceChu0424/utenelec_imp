@@ -45,9 +45,6 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
   int _requestVersion = 0;
   String? _myLocation;
 
-  /// onPageResume 首次触发是「进入本页」的导航结算，跳过一次避免进入即重复拉取。
-  bool _resumeArmed = false;
-
   bool get _canAdjust {
     final permissions = ref.read(currentPermissionsProvider);
     return ref.read(isSuperAdminProvider) ||
@@ -153,10 +150,6 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
       RouteName.stockItemDetail(widget.goodsId),
     );
     ref.onPageResume(_myLocation!, () {
-      if (!_resumeArmed) {
-        _resumeArmed = true;
-        return;
-      }
       _loadFirstPage();
     });
     final goods = names.goodsInfo(widget.goodsId);

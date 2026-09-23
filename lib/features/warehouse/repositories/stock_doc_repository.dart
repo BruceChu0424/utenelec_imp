@@ -81,13 +81,6 @@ class StockDocRepository {
     return StockDocDetail.fromJson(json);
   }
 
-  Future<int> pendingProductionReturnCount() async {
-    final json = await api.get(
-      '/stock/production-materials/return-requests/warehouse/count',
-    );
-    return (json['count'] as num?)?.toInt() ?? 0;
-  }
-
   Future<StockDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(ApiEndpoints.stockDocsBase, body: body);
     return StockDocDetail.fromJson(json);

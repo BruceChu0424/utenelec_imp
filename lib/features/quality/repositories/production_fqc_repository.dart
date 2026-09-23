@@ -64,11 +64,6 @@ class ProductionFqcRepository {
     return ProductionFqcInspection.fromJson(json);
   }
 
-  Future<int> pendingCount() async {
-    final json = await api.get(ApiEndpoints.productionQualityInspectionCount);
-    return (json['count'] as num?)?.toInt() ?? 0;
-  }
-
   Future<bool> canDecide() async {
     final json = await api.get(
       ApiEndpoints.productionQualityInspectionCapability,

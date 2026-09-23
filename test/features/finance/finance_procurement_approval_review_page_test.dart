@@ -11,13 +11,15 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_review_page.dart';
-import 'package:uten_imp/features/finance/providers/finance_procurement_approval_count_provider.dart';
 import 'package:uten_imp/features/finance/repositories/finance_procurement_workflow_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/finance_claim_fixture.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   _FakeWorkflowRepo(this.reviewResult);
@@ -42,9 +44,6 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     total: 0,
     totalPages: 1,
   );
-
-  @override
-  Future<int> pendingApprovalCount() async => 1;
 
   @override
   Future<Map<String, int>> approvalTypeCounts() async => {'PURCHASE': 1};
@@ -203,7 +202,9 @@ Future<GoRouter> _pumpReviewPage(
         taskClaimRepositoryProvider.overrideWithValue(
           claims ?? FinanceClaimFixture(),
         ),
-        financeProcurementApprovalCountProvider.overrideWith((ref) async => 1),
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(facts: {BadgeFact.procurementApproval: 1}),
+        ),
         financeProcurementWorkflowRepositoryProvider.overrideWithValue(
           repository,
         ),

@@ -30,6 +30,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../providers/expense_counts_provider.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -40,10 +41,12 @@ class ExpenseListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(expenseListProvider);
-    final counts = ref.watch(expenseCountsProvider).valueOrNull;
+    final counts = ref.watch(expenseCountsProvider);
     // 「处理中」= 本人已交出去、正在审批或等出纳付款的单(球不在我手上但也没完)。
-    // 走注册表同一个入口 provider, 免得这里和工作台各算各的。
-    final processingCount = ref.watch(expenseMineProcessingCountProvider);
+    // 与工作台「我的报销」卡黄数同一个入口(徽章汇总), 免得这里和工作台各算各的。
+    final processingCount = ref.watch(
+      badgeEntryInProgressProvider(BadgeEntry.expenseMine),
+    );
     final canApply = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.expenseApply);
@@ -85,13 +88,13 @@ class ExpenseListPage extends ConsumerWidget {
                   UtenFilterSegment(
                     value: ExpenseFilter.draft,
                     label: '草稿',
-                    count: counts?.draftCount,
+                    count: counts.draftCount,
                     countForm: UtenSegmentCountForm.actionable,
                   ),
                   UtenFilterSegment(
                     value: ExpenseFilter.rejected,
                     label: '待修订',
-                    count: counts?.rejectedCount,
+                    count: counts.rejectedCount,
                     countForm: UtenSegmentCountForm.actionable,
                   ),
                   UtenFilterSegment(

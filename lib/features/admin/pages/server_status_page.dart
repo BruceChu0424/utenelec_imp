@@ -114,7 +114,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     try {
       final next = await ref.read(serverStatusRepositoryProvider).load();
       if (!mounted || generation != _generation || !_hasPermission) return;
-      // 回写共享缓存：下次进页面（以及工作台徽章）直接用，不必再等一趟。
+      // 回写缓存：下次进页面第一帧直接用，不必再等一趟。
       ref.read(serverStatusSnapshotCacheProvider.notifier).state = next;
       setState(() {
         _snapshot = next;

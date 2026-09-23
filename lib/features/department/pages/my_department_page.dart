@@ -29,7 +29,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/widgets/master_detail_card.dart';
-import '../../../shared/auth/page_permission_delegation_repository.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
 import '../models/department_node.dart';
@@ -331,12 +331,12 @@ class _MyDepartmentDetail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final async = ref.watch(myDepartmentRosterProvider(node.id));
-    final delegationCapability = ref.watch(
-      pageDelegationCapabilityProvider('org.employee'),
-    );
-    final isManaged = delegationCapability.maybeWhen(
-      data: (value) => value.canManage,
-      orElse: () => false,
+    // 是否可管本部门员工权限读会话快照(ADR-108), 不再为此单独请求 capability。
+    final isManaged = ref.watch(
+      sessionSnapshotProvider.select(
+        (snapshot) =>
+            snapshot.valueOrNull?.canDelegate('org.employee') ?? false,
+      ),
     );
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     final searching = employeeFilter.trim().isNotEmpty;

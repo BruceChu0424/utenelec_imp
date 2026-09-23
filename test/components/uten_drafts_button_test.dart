@@ -52,7 +52,7 @@ Widget _app({
     overrides: [
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      draftCountsProvider.overrideWith((ref) async => counts),
+      draftCountsProvider.overrideWith((ref) => counts),
     ],
     child: MaterialApp.router(routerConfig: router),
   );

@@ -31,8 +31,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
-import '../providers/sales_completion_count_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 宿主与产品进度面板「去发货」动作的桥（统一悬浮口径，2026-09-12）。
 ///
@@ -266,7 +266,7 @@ class _SalesPlanProgressPanelState
       );
       if (!mounted) return true;
       _refresh();
-      ref.invalidate(salesAttentionCountProvider);
+      refreshBadges(ref);
       await widget.onChanged?.call();
       return true;
     } finally {
@@ -291,7 +291,7 @@ class _SalesPlanProgressPanelState
     if (_navigating) setState(() => _navigating = false);
     await _refresh();
     if (!mounted) return;
-    ref.invalidate(salesAttentionCountProvider);
+    refreshBadges(ref);
     await widget.onChanged?.call();
   }
 

@@ -60,26 +60,23 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     );
     final canStockDocs = can(Perm.stockDocView);
 
-    final salesCount = ref.watch(warehouseSalesOutboundPendingCountProvider);
-    final subcontractCount = ref.watch(
+    // 分段数字随徽章汇总带回(ADR-108); 汇总未到/无权为 null, 分段不渲染数字。
+    final salesCount = ref
+        .watch(warehouseSalesOutboundCountsProvider)
+        ?.pendingPick;
+    final subcontractTaskCount = ref.watch(
       warehouseSubcontractOutboundCountProvider,
     );
-    final subcontractTaskCount = subcontractCount.isLoading
-        ? null
-        : subcontractCount.valueOrNull;
-    final subcontractWaiting = ref.watch(
+    final subcontractWaitingCount = ref.watch(
       warehouseSubcontractOutboundWaitingComponentCountProvider,
     );
-    final subcontractWaitingCount = subcontractWaiting.isLoading
-        ? null
-        : subcontractWaiting.valueOrNull;
 
     final segments = <WarehouseTaskSegmentSpec>[
       if (canSales)
         WarehouseTaskSegmentSpec(
           value: 'sales',
           label: '销售出库',
-          count: salesCount.isLoading ? null : salesCount.valueOrNull,
+          count: salesCount,
         ),
       if (canSubcontract || canSubcontractHistory)
         WarehouseTaskSegmentSpec(

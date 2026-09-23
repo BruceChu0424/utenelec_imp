@@ -1,4 +1,7 @@
-// 鉴权拦截器：注入 Bearer access token；401 时协调刷新并重试；刷新明确失效才结束会话。
+// 鉴权拦截器：注入 Bearer access token；临近过期提前单飞刷新；401 时协调刷新并重试；
+// 刷新明确失效才结束会话。
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 import '../../security/auth_refresh_lock.dart';
@@ -28,6 +31,16 @@ class AuthInterceptor extends Interceptor {
   static const _profileGenerationKey = '_utenAuthTokenGeneration';
   static const _profileIntentKey = '_utenAuthIntentGeneration';
   static const _profileLineageKey = '_utenAuthSessionLineage';
+
+  /// 访问令牌剩余寿命不足这么久时, 发请求前先单飞刷新(ADR-108)。
+  ///
+  /// 此前只在收到 401 后才刷新: 每 15 分钟一轮, 那一刻并发的请求全部先吃一次 401
+  /// 再重放。提前刷新后这一轮 401 基本消失; 仍然 401 的(如服务端吊销)照走下面的兜底。
+  static const refreshAhead = Duration(seconds: 60);
+
+  /// 本端第一次见到某个访问令牌的时刻。剩余寿命按「令牌寿命(exp - iat) - 本端已用时长」
+  /// 算, 不拿本机时钟直接比 exp——办公电脑与服务器时钟不一致时不会每个请求都去刷新。
+  static final Map<String, DateTime> _firstSeen = <String, DateTime>{};
 
   @override
   void onRequest(
@@ -74,7 +87,7 @@ class AuthInterceptor extends Interceptor {
       SessionEventBus.instance.impersonationExpired();
     }
 
-    final current = await storage.getAuthTokenSnapshot();
+    var current = await storage.getAuthTokenSnapshot();
     final alreadyCaptured = options.extra.containsKey(_requestLineageKey);
     if (!alreadyCaptured) {
       // This marker is immutable for the logical request, including safe
@@ -96,11 +109,53 @@ class AuthInterceptor extends Interceptor {
     if (_authorizationHeader(options) == null &&
         requestLineage != null &&
         requestLineage == current.sessionLineage &&
+        current.hasAccessToken &&
+        current.hasRefreshToken &&
+        isNearExpiry(current.accessToken!)) {
+      // 临近过期: 走与 401 同一把刷新锁(跨标签页单飞), 已被兄弟请求刷新过则直接取最新。
+      final result = await _refresh(current, requestLineage);
+      if (result.disposition == TokenRefreshDisposition.refreshed) {
+        current = await storage.getAuthTokenSnapshot();
+      }
+    }
+
+    if (_authorizationHeader(options) == null &&
+        requestLineage != null &&
+        requestLineage == current.sessionLineage &&
         current.hasAccessToken) {
       options.headers['Authorization'] = 'Bearer ${current.accessToken!}';
       options.extra[_autoAuthorizationKey] = true;
     }
     handler.next(options);
+  }
+
+  /// 访问令牌是否已进入「提前刷新」窗口(剩余寿命 ≤ [refreshAhead])。
+  ///
+  /// 解析不了(非 JWT / 缺 exp、iat)按「不临近」处理, 交给 401 兜底。
+  static bool isNearExpiry(String accessToken, {DateTime? now}) {
+    final lifetime = _tokenLifetime(accessToken);
+    if (lifetime == null) return false;
+    final at = now ?? DateTime.now();
+    if (_firstSeen.length > 16) _firstSeen.clear();
+    final seen = _firstSeen.putIfAbsent(accessToken, () => at);
+    return lifetime - at.difference(seen) <= refreshAhead;
+  }
+
+  static Duration? _tokenLifetime(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) return null;
+    try {
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      if (payload is! Map) return null;
+      final exp = payload['exp'];
+      final iat = payload['iat'];
+      if (exp is! num || iat is! num || exp <= iat) return null;
+      return Duration(seconds: (exp - iat).toInt());
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

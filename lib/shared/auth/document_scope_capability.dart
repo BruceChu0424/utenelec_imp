@@ -1,8 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/network/api_client.dart';
-import '../../core/network/api_endpoints.dart';
-import '../providers/session_provider.dart';
+import 'session_snapshot_provider.dart';
 
 /// Server-whitelisted document owner scopes. Keep values aligned with
 /// DocumentScopeCapabilityService; arbitrary caller-provided scopes are not accepted.
@@ -62,43 +60,18 @@ class DocumentScopeCapability {
   }
 }
 
-abstract interface class DocumentScopeCapabilityRepository {
-  Future<DocumentScopeCapability> current(DocumentDataScope scope);
-}
-
-class DioDocumentScopeCapabilityRepository
-    implements DocumentScopeCapabilityRepository {
-  const DioDocumentScopeCapabilityRepository(this._api);
-
-  final ApiClient _api;
-
-  @override
-  Future<DocumentScopeCapability> current(DocumentDataScope scope) async {
-    final json = await _api.get(
-      ApiEndpoints.documentScopeCapability(scope.apiValue),
-    );
-    final capability = DocumentScopeCapability.fromJson(json);
-    if (capability.scope != scope.apiValue) {
-      throw const FormatException('Document scope capability mismatch');
-    }
-    return capability;
-  }
-}
-
-final documentScopeCapabilityRepositoryProvider =
-    Provider<DocumentScopeCapabilityRepository>(
-      (ref) =>
-          DioDocumentScopeCapabilityRepository(ref.watch(apiClientProvider)),
-    );
-
-/// Cached per scope and invalidated whenever the visible login/impersonation
-/// subject changes. Callers must treat loading and error states as read-only.
+/// 当前主体在某单据范围的普通写能力, 取自会话快照(ADR-108): 不再逐页请求
+/// /auth/me/document-scopes/{scope}, 也不在详情页每次加载时作废重拉。
+/// 登录/切身份/授权变化时快照自己重建。调用方必须把加载中与失败当只读处理。
 final documentScopeCapabilityProvider = FutureProvider.autoDispose
-    .family<DocumentScopeCapability, DocumentDataScope>((ref, scope) {
-      ref.watch(sessionProvider.select((state) => state.user));
-      return ref
-          .watch(documentScopeCapabilityRepositoryProvider)
-          .current(scope);
+    .family<DocumentScopeCapability, DocumentDataScope>((ref, scope) async {
+      final snapshot = await ref.watch(sessionSnapshotProvider.future);
+      return snapshot?.documentScopes[scope] ??
+          DocumentScopeCapability(
+            scope: scope.apiValue,
+            writeAll: false,
+            writableOwnerIds: const {},
+          );
     });
 
 bool documentOwnerCanWrite(

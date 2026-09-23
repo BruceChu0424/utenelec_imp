@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -39,12 +40,15 @@ void main() {
             path: '/production/daily-reports/new',
             builder: (_, _) => Scaffold(
               body: Center(
-                child: Builder(
-                  builder: (context) => ElevatedButton(
+                child: Consumer(
+                  builder: (context, ref, _) => ElevatedButton(
                     // 与 production_daily_report_edit_page._save 同款：
-                    // 保存后 replace 成详情页。
-                    onPressed: () =>
-                        context.replace('/production/daily-reports/r1'),
+                    // 保存(真实环境里网络层会推进本端写修订号, ADR-108)后
+                    // replace 成详情页。
+                    onPressed: () {
+                      ref.read(dataWriteRevisionProvider.notifier).state++;
+                      context.replace('/production/daily-reports/r1');
+                    },
                     child: const Text('保存日报'),
                   ),
                 ),

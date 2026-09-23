@@ -35,10 +35,9 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/badges/in_progress_badge_registry.dart';
-import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../widgets/production_pending_badge.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class ProductionHubPage extends ConsumerWidget {
   const ProductionHubPage({super.key});
@@ -59,20 +58,17 @@ class ProductionHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 黄左红右(ADR-100), 与卡片右上角同序。两枚都只汇总本页对应的卡片:
-          // 车间任务有自己的入口页, 不属于本 Hub 的卡片集合, 两条链都不算它 ——
-          // 否则「各卡之和 = 顶栏累计」这条自检就对不上。
+          // 黄左红右(ADR-100), 与卡片右上角同序。两枚都是「生产管理」容器的和
+          // (服务端徽章目录算好, ADR-108): 车间任务单列 workshop 容器, 有自己的
+          // 入口页, 不属于本 Hub 的卡片集合 —— 「各卡之和 = 顶栏累计」由目录保证。
           // AppBar 的 actions 行是 crossAxisAlignment.stretch，故包 Center 才竖直居中。
           UtenModuleProgressChip(
-            count: sumInProgressEntries(const [
-              InProgressEntry.productionBatches,
-            ], ref.watch),
+            count: ref.watch(
+              badgeModuleInProgressProvider(BadgeModule.production),
+            ),
           ),
           UtenModuleTodoChip(
-            count: sumTodoEntries(const [
-              TodoEntry.productionSchedule,
-              TodoEntry.productionDrafts,
-            ], ref.watch),
+            count: ref.watch(badgeModuleTodoProvider(BadgeModule.production)),
           ),
         ],
       ),
@@ -99,11 +95,12 @@ class ProductionHubPage extends ConsumerWidget {
                   badge: const ProductionPendingBadge(showLabel: true),
                   // 黄 = 页内「进行中」段那批在办批次(计划员视角的分析/根计划),
                   // 与红色的待排产是两队互不重叠的活: 待排产还没排下去, 在办的
-                  // 已经在跑。数字走注册表, 页面里不手写加法。
+                  // 已经在跑。数字随徽章汇总带回, 页面里不手写加法。
                   progressBadge: UtenInProgressBadge(
-                    count: inProgressEntryCount(
-                      InProgressEntry.productionBatches,
-                      ref.watch,
+                    count: ref.watch(
+                      badgeEntryInProgressProvider(
+                        BadgeEntry.productionBatches,
+                      ),
                     ),
                     showLabel: true,
                   ),

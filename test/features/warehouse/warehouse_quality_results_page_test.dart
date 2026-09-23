@@ -16,6 +16,9 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_resul
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -592,6 +595,21 @@ Widget _app(
       sharedPreferencesProvider.overrideWithValue(preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
+      // 来源大类两枚计数随徽章汇总带回(ADR-108): 夹具用网关里的同一份数喂汇总事实数。
+      fixedBadgeSummaryOverride(
+        badgeSummaryFixture(
+          facts: gateway is _QualityGateway
+              ? {
+                  for (final type in WarehouseIqcStockInReceiptType.values) ...{
+                    BadgeFact.qualityResultActionable(type.apiValue):
+                        gateway.typeCountsResult.actionable[type] ?? 0,
+                    BadgeFact.qualityResultInProgress(type.apiValue):
+                        gateway.typeCountsResult.inProgress[type] ?? 0,
+                  },
+                }
+              : const {},
+        ),
+      ),
     ],
     child: router != null
         ? MaterialApp.router(routerConfig: router)
@@ -664,9 +682,6 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     statusCountsCalls++;
     return statusCountsResult;
   }
-
-  @override
-  Future<WarehouseQualityTypeCounts> typeCounts() async => typeCountsResult;
 
   @override
   Future<WarehouseQualityResultDetail> detail(

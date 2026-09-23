@@ -41,13 +41,12 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 import '../widgets/production_fqc_dialogs.dart' show fqcStatusLabel;
+import '../../../shared/badges/badge_registry.dart';
 
 /// 数量展示（去尾零，保留实际精度）——与 production_fqc_dialogs.fqcQtyText 同口径。
 String fqty(double value) => value
@@ -353,14 +352,12 @@ class _ProductionFqcSheetHandlingPageState
         if (mounted) setState(() {});
       }
       if (!mounted) return;
-      ref.invalidate(productionFqcPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      refreshBadges(ref);
       context.appSuccess('检验报告已提交：$done 行决定已登记；合格部分已转仓库待最终点收');
       await _load();
     } on ApiException catch (error) {
       if (!mounted) return;
-      ref.invalidate(productionFqcPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      refreshBadges(ref);
       context.appError(
         '已提交 $done 行；「${selected[done].label}」登记被拒：${error.message}。'
         '可直接重试，已成功行不会重复决定',
@@ -984,8 +981,7 @@ class _ProductionFqcInspectionPageState
             reason: command.decision == 'PASS' ? null : reason.trim(),
           );
       if (!mounted) return;
-      ref.invalidate(productionFqcPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      refreshBadges(ref);
       context.appSuccess(
         row.command.decision == 'PASS' ? '质检决定已保存；合格部分已转仓库待最终点收' : '质检决定已保存',
       );

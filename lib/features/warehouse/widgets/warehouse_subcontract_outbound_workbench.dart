@@ -27,6 +27,7 @@ import '../models/subcontract_outbound.dart';
 import '../pages/warehouse_subcontract_outbound_batch_page.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseSubcontractOutboundWorkbench extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundWorkbench({
@@ -136,7 +137,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
             .toSet();
         _selectedIds = _selectedIds.intersection(availableIds);
       });
-      ref.invalidate(warehouseSubcontractOutboundTaskCountsProvider);
+      refreshBadges(ref);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {

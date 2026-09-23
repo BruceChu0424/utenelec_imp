@@ -21,13 +21,12 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/production_fqc_dialogs.dart';
 import 'quality_batch_approval_page.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class ProductionFqcInspectionsPage extends ConsumerStatefulWidget {
   const ProductionFqcInspectionsPage({super.key});
@@ -90,7 +89,6 @@ class _ProductionFqcInspectionsPageState
         final currentIds = result.items.map((item) => item.id).toSet();
         _selectedIds.removeWhere((id) => !currentIds.contains(id));
       });
-      ref.invalidate(productionFqcPendingCountProvider);
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
@@ -140,8 +138,7 @@ class _ProductionFqcInspectionsPageState
     if (decided != null) {
       _applyDecisionResult(decided);
     }
-    ref.invalidate(productionFqcPendingCountProvider);
-    ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+    refreshBadges(ref);
     await _load(page: _result?.page ?? 1);
   }
 
@@ -363,9 +360,9 @@ class _ProductionFqcInspectionsPageState
     PagedResult<ProductionFqcInspection> result, {
     required bool canBatchPass,
   }) {
-    // 「待处理」分段挂红色圆数字徽章（与待检处置合并队列同款）：计数取
-    // pending-count 权威接口；加载中/失败不显示（本页此前无计数，非回归）。
-    final fqcPending = ref.watch(productionFqcPendingCountProvider).valueOrNull;
+    // 「待处理」分段挂红色圆数字徽章(与待检处置合并队列同款)：计数随徽章汇总带回
+    // (原 count 权威接口同一口径，ADR-108)；汇总未到/无权时不显示。
+    final fqcPending = ref.watch(badgeFactOrNullProvider(BadgeFact.fqcPending));
     return Semantics(
       header: true,
       label: '共有 ${result.total} 条生产成品质检任务',

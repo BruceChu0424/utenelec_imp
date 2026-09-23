@@ -66,7 +66,6 @@ import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_shipment_prefill.dart';
 import '../providers/master_name_provider.dart';
-import '../providers/sales_completion_count_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_doc_link_picker.dart';
@@ -1283,7 +1282,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       });
       bumpListRefresh(ref, _cfg.refreshKey);
       bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
-      ref.invalidate(salesAttentionCountProvider);
       await _finishCreatedShipments();
     } on ApiException catch (error) {
       if (!mounted) return;

@@ -39,6 +39,9 @@ final class AuditNoisePolicy {
             "/api/org/departments/tree",
             "/api/org/departments/employee-picker-tree",
             "/api/my-department/tree",
+            // ADR-108: 工作台徽章汇总(替代下面约 40 条计数端点的各自轮询)与未读索引。
+            "/api/workbench/badges",
+            "/api/notices/unread-index",
             "/api/notices/arrivals",
             "/api/notices/unread-count",
             "/api/notices/unread-count-by-source",

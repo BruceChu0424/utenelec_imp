@@ -1305,18 +1305,6 @@ class ProductionPlanRepository {
     return SchedulePendingFacets.fromJson(json);
   }
 
-  /// 待排产计数（生产部工作台徽标）：{'count': n, 'urgent': m, 'overdue': k}。
-  Future<Map<String, int>> schedulePendingCount() async {
-    final json = await api.get(
-      '/production/schedule/pending-count',
-    ); // ENDPOINT
-    return {
-      'count': (json['count'] as num?)?.toInt() ?? 0,
-      'urgent': (json['urgent'] as num?)?.toInt() ?? 0,
-      'overdue': (json['overdue'] as num?)?.toInt() ?? 0,
-    };
-  }
-
   /// 已审订单明细 + 每行货品一层 BOM 零件（新建计划单「从订单带明细」用）。
   Future<List<ScheduleOrderLine>> scheduleOrderLines(String orderId) async {
     final list = await api.getList(

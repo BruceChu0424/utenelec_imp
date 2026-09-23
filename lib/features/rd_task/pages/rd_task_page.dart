@@ -48,6 +48,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/rd_task.dart';
 import '../providers/rd_task_count_provider.dart';
 import '../repositories/rd_task_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 任务中心的三个分段 —— 值同时是列表接口的 `status` 过滤参数。
 ///
@@ -98,8 +99,12 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
     // 相减有两处毛病: 卡面红徽章读的同一个 count 含 inProgress, 等于让黄色那批被红黄
     // 两条链各数一次(ADR-100 禁止的双计); 而且两支 provider 各自 60s 轮询、起拍时刻不同,
     // 一次 OPEN→IN_PROGRESS 跃迁后最长会偏 1 直到下次对齐。
-    final pendingCount = ref.watch(rdTaskCountProvider);
-    final inProgressCount = ref.watch(rdTaskInProgressCountProvider);
+    final pendingCount = ref.watch(
+      badgeEntryTodoProvider(BadgeEntry.rdTaskCenter),
+    );
+    final inProgressCount = ref.watch(
+      badgeEntryInProgressProvider(BadgeEntry.rdTaskCenter),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: '工程研发部 · 任务中心',
@@ -211,11 +216,11 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     // 返回后刷新：BOM 保存触发自动完成经 outbox ~2s，先即时刷一次，再延迟刷一次
     // 让已维护 BOM 的任务自然离开「待完成」（研发不必手动刷新或「标记完成」）。
     if (mounted) {
-      ref.read(rdTaskCountProvider.notifier).refresh();
+      refreshBadges(ref);
       await _load();
       Future.delayed(const Duration(milliseconds: 2500), () {
         if (mounted) {
-          ref.read(rdTaskCountProvider.notifier).refresh();
+          refreshBadges(ref);
           _load();
         }
       });
@@ -333,7 +338,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     setState(() => _resolving = false);
     if (ok == null) return;
     // 任务关闭后徽标计数变化，立即刷新；并重拉本页 + 通知兄弟 Tab（已完成）重拉。
-    ref.read(rdTaskCountProvider.notifier).refresh();
+    refreshBadges(ref);
     ref.read(rdTaskRefreshTickProvider.notifier).state++;
     await _load();
   }

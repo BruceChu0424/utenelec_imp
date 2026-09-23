@@ -104,19 +104,6 @@ void main() {
     });
   });
 
-  test('count accepts nested aliases and clamps negative values', () async {
-    var response = <String, dynamic>{
-      'data': <String, dynamic>{'pendingCount': '7'},
-    };
-    final repository = DioFinanceProcurementWorkflowRepository(
-      _api((_) => response),
-    );
-
-    expect(await repository.pendingApprovalCount(), 7);
-    response = <String, dynamic>{'count': -2};
-    expect(await repository.pendingApprovalCount(), 0);
-  });
-
   test('approval decisions use exact atomic batch case contracts', () async {
     final requests = <RequestOptions>[];
     final repository = DioFinanceProcurementWorkflowRepository(

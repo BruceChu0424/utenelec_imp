@@ -14,6 +14,9 @@ import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../../helpers/badge_summary_fixture.dart';
 
 // 2026-09-05 生产调度与进度简化：
 //  ① 待排产段交货日期范围筛选与「建议联合分析」下线，不发 dateFrom/dateTo；
@@ -96,6 +99,10 @@ void main() {
             Perm.productionPlanView,
           }),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          // 待排产数随徽章汇总带回(ADR-108, 与列表同一 WHERE 的服务端计数)。
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(facts: {BadgeFact.productionScheduleCount: 9}),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -123,13 +130,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('9'), findsOneWidget);
-    // 计数与列表同源：只取 size=1 的分页 total，不带筛选。
-    final countRequest = requests.firstWhere(
-      (request) =>
-          request.path == '/production/schedule/pending' &&
-          request.queryParameters['size'] == 1,
+    // 计数不再单独请求(此前拉一页 size=1 读 total): 大类行数字只来自徽章汇总。
+    expect(
+      requests.where((request) => request.queryParameters['size'] == 1),
+      isEmpty,
     );
-    expect(countRequest.queryParameters.containsKey('status'), isFalse);
 
     // 进入待排产段后，列表加载完成会刷新大类行计数（仍为同源 total）。
     await tester.tap(find.text('待排产'));
@@ -161,6 +166,9 @@ void main() {
             Perm.productionExecutionOverview,
           }),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(facts: {BadgeFact.productionExecution: 7}),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -196,10 +204,10 @@ void main() {
       ),
       findsNothing,
     );
-    // 计数走专用端点, 不再是「拉一页 size=1 读 total」那种凑数法。
+    // 批次数随徽章汇总带回(ADR-108), 不再单独请求 /execution-workbench/count。
     expect(
       requests.map((request) => request.path),
-      contains('/production/execution-workbench/count'),
+      isNot(contains('/production/execution-workbench/count')),
     );
   });
 
@@ -227,6 +235,9 @@ void main() {
             Perm.productionPlanView,
           }),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(facts: {BadgeFact.productionExecution: 7}),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),

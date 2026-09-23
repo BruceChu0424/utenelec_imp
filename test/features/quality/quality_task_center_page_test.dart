@@ -6,9 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/quality/pages/quality_task_center_page.dart';
-import 'package:uten_imp/features/warehouse/providers/procurement_inbound_count_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/providers/production_fqc_pending_count_provider.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   test(
@@ -125,10 +126,15 @@ Future<void> _pumpTaskCenter(
       overrides: [
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
-        procurementInspectionPendingCountProvider.overrideWith(
-          (ref) async => iqcCount,
+        // 合并卡红徽章 = 品质容器数(IQC + FQC 两个入口之和, 服务端算好, ADR-108)。
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            entries: {
+              BadgeEntry.qualityIqcPending: (iqcCount, 0),
+              BadgeEntry.qualityFqcPending: (fqcCount, 0),
+            },
+          ),
         ),
-        productionFqcPendingCountProvider.overrideWith((ref) async => fqcCount),
       ],
       child: const MaterialApp(home: QualityTaskCenterPage()),
     ),

@@ -13,16 +13,17 @@ import 'package:uten_imp/features/finance/models/finance_procurement_workflow.da
 import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_review_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_order_review_page.dart';
-import 'package:uten_imp/features/finance/providers/finance_procurement_approval_count_provider.dart';
-import 'package:uten_imp/features/finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import 'package:uten_imp/features/finance/repositories/finance_procurement_workflow_repository.dart';
 import 'package:uten_imp/features/finance/repositories/sales_order_finance_confirmation_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/finance_claim_fixture.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   testWidgets('订货审批审核详情：合计数量按单位分组，合计金额标红，折合本币可见', (tester) async {
@@ -167,7 +168,9 @@ Future<void> _pumpProcurementReview(
         }),
         sessionProvider.overrideWith(_ReviewerSessionNotifier.new),
         taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
-        financeProcurementApprovalCountProvider.overrideWith((ref) async => 1),
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(facts: {BadgeFact.procurementApproval: 1}),
+        ),
         financeProcurementWorkflowRepositoryProvider.overrideWithValue(
           _FakeWorkflowRepo(review),
         ),
@@ -213,9 +216,6 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     total: 0,
     totalPages: 1,
   );
-
-  @override
-  Future<int> pendingApprovalCount() async => 1;
 
   @override
   Future<Map<String, int>> approvalTypeCounts() async => {'PURCHASE': 1};
@@ -289,8 +289,8 @@ Future<void> _pumpSalesReview(WidgetTester tester) async {
           Perm.salesOrderFinanceView,
         }),
         sessionProvider.overrideWith(_ReviewerSessionNotifier.new),
-        salesOrderFinanceConfirmationCountProvider.overrideWith(
-          (ref) async => 0,
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(facts: {BadgeFact.salesOrderFinance: 0}),
         ),
         salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
           _FakeSalesReviewRepo(review),

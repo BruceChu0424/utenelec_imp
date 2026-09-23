@@ -45,12 +45,6 @@ class _FakeVisitorStaffRepository extends Fake
     if (!confirmed) throw StateError('批量入口只确认，不拒绝');
     this.confirmed.add(id);
   }
-
-  @override
-  Future<int> hostPendingCount() async => 0;
-
-  @override
-  Future<int> pendingCount() async => 0;
 }
 
 VisitorApplication _application(String id, VisitorApplicationStatus status) =>

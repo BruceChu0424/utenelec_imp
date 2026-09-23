@@ -141,17 +141,46 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     long countVisibleUnread(@Param("userId") UUID userId,
             @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope);
 
+    /**
+     * 未读索引(ADR-108): 与 {@link #countVisibleUnread} 同一可见/未读条件, 只取判定用的
+     * 轻量列——前端据此决定「打开页面要不要发自动已读」与「到达横幅有没有漏」,
+     * 不再每分钟从纪元全量拉通知正文。{@code arrivalOpen} 与到达 feed
+     * ({@link #findVisibleArrivalsAfter}) 的 SQL 条件逐条对应(未确认弹窗、未办结、稍后已到期)。
+     */
     @Query("""
-            SELECT COUNT(n)
+            SELECT n.id AS id,
+                   n.publishedAt AS publishedAt,
+                   n.actionRoute AS actionRoute,
+                   n.sourceEvent AS sourceEvent,
+                   (CASE WHEN n.aggregateId IS NOT NULL AND n.aggregateKind IS NOT NULL
+                         THEN true ELSE false END) AS anchored,
+                   (CASE WHEN n.resolvedAt IS NULL
+                          AND (s IS NULL OR (s.popupAcknowledgedAt IS NULL
+                               AND (s.snoozedUntil IS NULL OR s.snoozedUntil <= CURRENT_TIMESTAMP)))
+                         THEN true ELSE false END) AS arrivalOpen
             FROM Notice n
             LEFT JOIN NoticeUserState s
               ON s.id.noticeId = n.id AND s.id.userId = :userId
-            WHERE n.audienceUserId = :userId
-              AND n.sourceEvent IN :events
+            WHERE (
+                    (n.audienceUserId IS NULL AND n.audienceScope = 'all')
+                    OR n.audienceUserId = :userId
+                    OR (n.audienceScope = 'selected' AND s IS NOT NULL)
+                  )
               AND (s IS NULL OR (s.deletedAt IS NULL AND s.readAt IS NULL))
-            """ + WORKSHOP_VISIBILITY)
-    long countUnreadBySourceEvents(@Param("userId") UUID userId, @Param("events") List<String> events,
+            """ + WORKSHOP_VISIBILITY + """
+            ORDER BY n.publishedAt ASC, n.id ASC
+            """)
+    List<UnreadIndexRow> findUnreadIndexRows(@Param("userId") UUID userId,
             @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope);
+
+    interface UnreadIndexRow {
+        UUID getId();
+        Instant getPublishedAt();
+        String getActionRoute();
+        String getSourceEvent();
+        boolean getAnchored();
+        boolean getArrivalOpen();
+    }
 
     /**
      * V459 居中审核弹窗的登录检查：当前用户名下**未办结**的待审通知——

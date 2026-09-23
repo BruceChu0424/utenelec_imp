@@ -3,6 +3,8 @@
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/生产链横幅/表头卡/出库凭证），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -43,11 +45,9 @@ import '../models/stock_doc.dart';
 import '../widgets/production_draw_detail_table.dart';
 import '../widgets/production_material_return_receive_dialog.dart';
 import '../widgets/warehouse_stock_outbound_detail_table.dart';
-import '../providers/production_draw_count_provider.dart';
-import '../providers/production_return_count_provider.dart';
 import '../../production/providers/production_execution_refresh.dart';
-import '../providers/production_finished_inbound_task_count_provider.dart';
 import '../repositories/stock_doc_repository.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 
 class StockDocDetailPage extends ConsumerStatefulWidget {
   const StockDocDetailPage({
@@ -136,25 +136,20 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   );
 
   Future<void> _load() async {
-    ref.invalidate(
-      documentScopeCapabilityProvider(DocumentDataScope.stockDocument),
-    );
     setState(() {
       _loading = true;
       _error = null;
       _outboundReviewToken = null;
     });
+    final names = ref.read(masterNameServiceProvider);
+    // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
+    final dictionaries = names.ensureLoaded();
     try {
-      await ref.read(masterNameServiceProvider).ensureLoaded();
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
       final review = _isOrdinaryOutbound ? await repo.review(widget.id) : null;
       final d = review?.document ?? await repo.detail(widget.id);
-      final goodsIds = d.items
-          .map((e) => e.goodsId)
-          .whereType<String>()
-          .toSet();
-      await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
       if (!mounted) return;
+      unawaited(_resolveDisplayNames(names, d, dictionaries));
       setState(() {
         _d = d;
         _outboundReviewToken = review?.reviewToken;
@@ -172,6 +167,26 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// 首屏之后并行补齐字典与明细货品名/编号/库位号(库存单据明细服务端暂未随单下发货品
+  /// 展示字段，由一次批量货品查询补齐)，完成后重绘一次。
+  Future<void> _resolveDisplayNames(
+    MasterNameService names,
+    StockDocDetail d,
+    Future<void> dictionaries,
+  ) async {
+    try {
+      await Future.wait([
+        dictionaries,
+        names.loadGoodsDetails(
+          d.items.map((e) => e.goodsId).whereType<String>(),
+        ),
+      ]);
+    } catch (_) {
+      // 名称补齐失败只影响占位符，不影响正文。
+    }
+    if (mounted && identical(_d, d)) setState(() {});
   }
 
   Future<void> _confirmOrdinaryOutbound() async {
@@ -264,9 +279,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       });
       context.appSuccess('余料已收进实际仓库，库存与车间台账已更新');
       bumpListRefresh(ref, widget.docType.refreshKey);
-      ref.invalidate(warehouseProductionDrawPendingCountProvider);
-      ref.invalidate(warehouseProductionReturnPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
       refreshAfterProductionPlanGenerated(ref);
       await _load();
     } on ApiException catch (error) {
@@ -341,9 +353,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (!mounted) return;
       context.appSuccess(ok);
       bumpListRefresh(ref, widget.docType.refreshKey);
-      ref.invalidate(warehouseProductionDrawPendingCountProvider);
-      ref.invalidate(warehouseProductionReturnPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
       if (widget.docType == StockDocType.wdraw) {
         refreshAfterProductionPlanGenerated(ref);
       }
@@ -559,8 +568,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (!mounted) return;
       context.appSuccess(reverse ? '已取消出库' : '已出库');
       bumpListRefresh(ref, widget.docType.refreshKey);
-      ref.invalidate(warehouseProductionDrawPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -756,7 +763,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             : '仓库实收已确认，库存与入库累计已按实收量更新',
       );
       bumpListRefresh(ref, widget.docType.refreshKey);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -897,11 +903,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                 DocumentScopeWriteNotice(
                                   capability: scopeCapability,
                                   ownerEmployeeId: _d!.makerId,
-                                  onRetry: () => ref.invalidate(
-                                    documentScopeCapabilityProvider(
-                                      DocumentDataScope.stockDocument,
-                                    ),
-                                  ),
+                                  onRetry: () => ref
+                                      .read(sessionSnapshotProvider.notifier)
+                                      .refresh(),
                                 ),
                                 if (_d!.productionLinked) ...[
                                   Material(

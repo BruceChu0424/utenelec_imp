@@ -14,8 +14,6 @@ abstract interface class ProcurementInboundRepository {
     String? supplierId,
   });
 
-  Future<int> expectationCount();
-
   /// 预计到货按订货类型计数（PURCHASE/SUBCONTRACT → 全量张数；类型筛选卡用）。
   Future<Map<String, int>> expectationTypeCounts();
 
@@ -28,8 +26,6 @@ abstract interface class ProcurementInboundRepository {
     String? warehouseId,
     String? status,
   });
-
-  Future<int> warehouseExceptionCount();
 
   /// 一键入库：财务已定案(RECEIPT_ADJUSTED)的到货异常，按财务接受量入库+立应付。
   Future<ProcurementArrivalException> stockInAccepted(String id);
@@ -69,16 +65,12 @@ abstract interface class ProcurementInboundRepository {
     ProcurementInboundOrderType? orderType,
   });
 
-  Future<int> ownerTaskCount({ProcurementInboundOrderType? orderType});
-
   Future<ProcurementArrivalException> ownerTaskDetail(String id);
 
   Future<PagedResult<ProcurementArrivalException>> financeTasks({
     int page = 1,
     int size = 20,
   });
-
-  Future<int> financeTaskCount();
 
   Future<ProcurementArrivalException> financeTaskDetail(String id);
 
@@ -126,10 +118,6 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   }
 
   @override
-  Future<int> expectationCount() =>
-      _count(ApiEndpoints.warehouseInboundExpectationCount);
-
-  @override
   Future<Map<String, int>> expectationTypeCounts() async {
     final json = await api.get(
       ApiEndpoints.warehouseInboundExpectationTypeCounts,
@@ -167,10 +155,6 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
   }
-
-  @override
-  Future<int> warehouseExceptionCount() =>
-      _count(ApiEndpoints.warehouseArrivalExceptionCount);
 
   @override
   Future<ProcurementArrivalException> stockInAccepted(String id) async {
@@ -286,15 +270,6 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   }
 
   @override
-  Future<int> ownerTaskCount({ProcurementInboundOrderType? orderType}) =>
-      _count(
-        ApiEndpoints.procurementArrivalExceptionTaskCount,
-        query: orderType == null
-            ? null
-            : {'orderType': orderType.name.toUpperCase()},
-      );
-
-  @override
   Future<ProcurementArrivalException> ownerTaskDetail(String id) async {
     final json = await api.get(ApiEndpoints.procurementArrivalException(id));
     return ProcurementArrivalException.fromJson(json);
@@ -311,10 +286,6 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
   }
-
-  @override
-  Future<int> financeTaskCount() =>
-      _count(ApiEndpoints.financeArrivalExceptionCount);
 
   @override
   Future<ProcurementArrivalException> financeTaskDetail(String id) async {
@@ -360,15 +331,6 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
       },
     );
     return ProcurementArrivalException.fromJson(json);
-  }
-
-  Future<int> _count(String path, {Map<String, dynamic>? query}) async {
-    final json = await api.get(path, query: query);
-    final value = json['count'] ?? json['total'] ?? json['pendingCount'];
-    final parsed = value is num
-        ? value.toInt()
-        : int.tryParse(value?.toString() ?? '') ?? 0;
-    return parsed < 0 ? 0 : parsed;
   }
 }
 

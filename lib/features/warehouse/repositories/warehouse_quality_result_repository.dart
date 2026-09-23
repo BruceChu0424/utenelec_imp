@@ -22,10 +22,6 @@ abstract interface class WarehouseQualityResultGateway {
     String? keyword,
   });
 
-  /// 父分类(来源类型)分段计数: 红色「轮到仓库动手」与黄色「等待检查结果」两支。
-  /// 页内大类分段、hub 卡红黄徽章都取这一份, 三个数字不会再各算各的。
-  Future<WarehouseQualityTypeCounts> typeCounts();
-
   Future<WarehouseQualityResultDetail> detail(
     String receiptType,
     String receiptId,
@@ -86,12 +82,6 @@ class WarehouseQualityResultRepository
       for (final status in WarehouseQualityWorkStatus.values)
         status: _countOf(raw, status.apiValue),
     };
-  }
-
-  @override
-  Future<WarehouseQualityTypeCounts> typeCounts() async {
-    final json = await api.get(ApiEndpoints.warehouseQualityResultTypeCounts);
-    return WarehouseQualityTypeCounts.fromJson(json);
   }
 
   @override

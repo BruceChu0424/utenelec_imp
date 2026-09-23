@@ -26,7 +26,6 @@ import '../../../shared/models/procurement_inbound.dart'
 import '../config/warehouse_document_history_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/procurement_inbound_count_providers.dart';
-import '../providers/production_finished_inbound_task_count_provider.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../widgets/production_finished_inbound_tasks_view.dart';
 import '../widgets/warehouse_arrival_exceptions_view.dart';
@@ -35,6 +34,7 @@ import '../widgets/warehouse_history_gate.dart';
 import '../widgets/warehouse_inbound_expectations_view.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
 import '../widgets/warehouse_task_center_scaffold.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseInboundTaskCenterPage extends ConsumerWidget {
   const WarehouseInboundTaskCenterPage({super.key});
@@ -53,9 +53,12 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     final canStockDocs = can(Perm.stockDocView);
 
     final typeCounts = ref.watch(warehouseInboundExpectationTypeCountsProvider);
-    final exceptions = ref.watch(warehouseArrivalExceptionCountProvider);
-    final finished = ref.watch(
-      warehouseProductionFinishedInboundPendingCountProvider,
+    // 到货异常 / 产成品待点收随徽章汇总带回(ADR-108), 汇总未到/无权为 null。
+    final exceptionCount = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.warehouseArrivalException),
+    );
+    final finishedCount = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.finishedInbound),
     );
     int? sum(int? a, int? b) => a == null || b == null ? null : a + b;
     final purchaseExpectation = typeCounts.isLoading || typeCounts.hasError
@@ -64,12 +67,6 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     final subcontractExpectation = typeCounts.isLoading || typeCounts.hasError
         ? null
         : typeCounts.valueOrNull?['SUBCONTRACT'] ?? 0;
-    final exceptionCount = exceptions.isLoading || exceptions.hasError
-        ? null
-        : exceptions.valueOrNull ?? 0;
-    final finishedCount = finished.isLoading || finished.hasError
-        ? null
-        : finished.valueOrNull ?? 0;
 
     final segments = <WarehouseTaskSegmentSpec>[
       if (canInbound || canPurchaseHistory)

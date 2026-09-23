@@ -27,16 +27,15 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../providers/procurement_inbound_count_providers.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
-import '../repositories/procurement_inspection_repository.dart';
 
 class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
   const WarehouseInboundExpectationsView({
@@ -88,7 +87,6 @@ class _WarehouseInboundExpectationsViewState
   String? _supplierIdFilter;
 
   /// 已送检待品质放行的收货单张数（口径提示用；null = 尚未返回或无查看权限）。
-  int? _inspectionPendingCount;
 
   /// 批量送检多选（与到货异常批量入库同款选择指纹幂等键范式）。
   /// 必须是可变 Set：_load 里会对它 removeWhere 清理失效选择，
@@ -97,13 +95,6 @@ class _WarehouseInboundExpectationsViewState
   bool _batchSending = false;
   String? _batchSelectionFingerprint;
   String? _batchIdempotencyKey;
-
-  /// 品质待检计数仅对有查看权限者拉取（服务端接口独立鉴权兜底）。
-  bool get _canViewInspection =>
-      ref.read(isSuperAdminProvider) ||
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.procurementInspectionView);
 
   @override
   void initState() {
@@ -153,7 +144,9 @@ class _WarehouseInboundExpectationsViewState
         '多选「先入库后质检」：登记的同时逐行选库位上架，品质部到库位检验；'
         '进批量登记页后只显示所选这一条路线的提交按钮。';
     if (_orderType != null) return '$base$selection';
-    final pending = _inspectionPendingCount;
+    // 已送检待品质张数随徽章汇总带回(同一计数端点, 服务端按品质查看权限给或不给),
+    // 不再每次列表加载单独请求一次(ADR-108)。
+    final pending = ref.watch(badgeFactOrNullProvider(BadgeFact.iqcPending));
     if (pending == null) {
       return '$base$selection'
           '已送检任务移交品质部；检查进度与结果请在「品质部检查结果」页查看。';
@@ -481,18 +474,6 @@ class _WarehouseInboundExpectationsViewState
             if (current()) setState(() => _typeCounts = counts);
           })
           .catchError((_) {});
-      // 已送检待品质计数同理：失败仅不显示该句提示。
-      if (_canViewInspection) {
-        ref
-            .read(procurementInspectionRepositoryProvider)
-            .pendingCount()
-            .then((count) {
-              if (current() && _canViewInspection) {
-                setState(() => _inspectionPendingCount = count);
-              }
-            })
-            .catchError((_) {});
-      }
       if (!current()) return;
       setState(() {
         _result = result;
@@ -503,7 +484,6 @@ class _WarehouseInboundExpectationsViewState
             .toSet();
         _selectedIds.removeWhere((id) => !currentIds.contains(id));
       });
-      ref.invalidate(warehouseInboundExpectationCountProvider);
     } on ApiException catch (error) {
       if (!current()) return;
       setState(() {

@@ -27,7 +27,6 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
-import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/sales_doc_config.dart';
@@ -35,6 +34,7 @@ import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import 'shipment_finance_change_summary.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 enum SalesShipmentTaskWorkbenchMode { financeAudit, warehouseOutbound }
 
@@ -526,7 +526,7 @@ class _SalesShipmentTaskWorkbenchState
       if (!mounted) return;
       context.appSuccess(okMsg);
       setState(_clearSelection);
-      ref.invalidate(salesShipmentFinanceCountProvider);
+      refreshBadges(ref);
       await _load(1);
     } on ApiException catch (e) {
       if (mounted) context.appError('整批未提交：${e.message}');

@@ -1,6 +1,7 @@
 package com.uten.imp.features.dashboard;
 
-import com.uten.imp.audit.AuditService;
+import com.uten.imp.application.port.SalesDocumentReadScopePort;
+import com.uten.imp.application.port.WorkbenchBadgeReadPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.dashboard.DashboardOverviewDto.MetricCard;
@@ -9,19 +10,10 @@ import com.uten.imp.features.dashboard.DashboardOverviewDto.TodoCard;
 import com.uten.imp.features.dashboard.policy.PolicyAudiences;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.notice.dto.NoticeDto;
-import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPage;
-import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService;
-import com.uten.imp.features.production.schedule.ProductionScheduleService;
-import com.uten.imp.features.profilechange.ProfileChangeReviewService;
-import com.uten.imp.application.port.SalesDocumentReadScopePort;
-import com.uten.imp.features.visitor.VisitorHrApprovalService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 
 import java.sql.Timestamp;
@@ -36,21 +28,23 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 生产看板聚合服务：按权限与部门合并通知/生产/履约/人资/财务/销售指标 + 待办，
- * 叠加官方政策简报（按受众可见性过滤）。
+ * 工作台「今日概览」聚合服务：通知/生产/销售指标 + 本部门待办，叠加官方政策简报
+ * (按受众可见性过滤)。
  *
  * <p><b>范围口径（2026-09-12 统一）</b>：每个分区都是「**权限 ∧ 本部门**」——
  * 权限决定「能不能看这类东西」，部门决定「该不该在你的工作台上出现」。
  * 部门取当前用户主部门、**兼职部门**及各自全部祖先（递归 CTE，见
  * {@link #departmentContext}，与通知侧 ReviewNoticeAudience 的 memberships 同口径），
- * 超管与个人加授均不绕过部门展示条件。任何被授予相应权限码的人
- * 都会看到别部门的待办（用户 2026-09-12 反馈）。通知分区例外：它本来就是
- * 「发给本人的未读」，天然按人收敛，不需要也不应该再按部门筛。
+ * 超管与个人加授均不绕过部门展示条件。通知分区例外：它本来就是「发给本人的未读」，
+ * 天然按人收敛，不需要也不应该再按部门筛。
  *
- * <p>每个分区查询各自持有读事务，单点失败仅降级该分区（{@link #addFulfillmentTodoSafely}），
- * 不污染整体看板。
+ * <p><b>本部门待办只有一套口径(permissions-08, ADR-108)</b>：待办卡片的数字 = 对应入口的
+ * 红徽章数，经 {@link WorkbenchBadgeReadPort} 按当前主体只算本部门要的几个入口——同一张入口
+ * 目录、同一批来源、同一资格判定(各来源原计数端点的 {@code @PreAuthorize})。此前概览按
+ * 「部门 + 权限码」另写一套计数(报销 SQL 与报销模块逐字重复、履约另跑一次分页查询)，
+ * 与红徽章是两套规则、两个数。来源出错由徽章服务按保存点隔离：该入口本次不出卡，其它照常。
+ * 工资批次待复核不再单列计数卡：提交时已给复核人推「待复核」行动通知，在通知待办里出现。
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DashboardOverviewService {
@@ -58,15 +52,44 @@ public class DashboardOverviewService {
     private static final int POLICY_LIMIT = 6;
     private static final int NOTICE_TODO_LIMIT = 8;
 
+    /** 生产调度入口: 既出「待排产产品」指标, 也出待办卡(带逾期细分)。 */
+    private static final String PRODUCTION_SCHEDULE = "productionSchedule";
+
+    /**
+     * 本部门待办卡 ← 徽章入口。{@code countFact} 为空 = 取入口红数; 否则取该事实数
+     * (财务报销入口按「待审批 / 待付款」拆成两张卡, 两张之和即该入口红数)。
+     */
+    private record DepartmentTodo(
+            String scope,
+            String entry,
+            String countFact,
+            String id,
+            String titleSuffix,
+            String route,
+            String sourceType) {
+    }
+
+    private static final List<DepartmentTodo> DEPARTMENT_TODOS = List.of(
+            new DepartmentTodo("WAREHOUSE", "warehouseDrawCenter", null,
+                    "fulfillment-warehouse", "仓库领料与退料任务待处理", "/warehouse/tasks/draw", "FULFILLMENT"),
+            new DepartmentTodo("PURCHASE", "purchaseTaskCenter", null,
+                    "fulfillment-purchase", "采购任务待处理", "/operations/workbench/purchase", "FULFILLMENT"),
+            new DepartmentTodo("SUBCONTRACT", "subcontractTaskCenter", null,
+                    "fulfillment-subcontract", "委外任务待处理", "/operations/workbench/subcontract", "FULFILLMENT"),
+            new DepartmentTodo("HR", "visitorApproval", null,
+                    "visitor-approval", "访客申请待审批", "/visitor-approval", "PEOPLE"),
+            new DepartmentTodo("HR", "hrProfileReview", null,
+                    "profile-review", "员工资料变更待审核", "/hr/profile-changes", "PEOPLE"),
+            new DepartmentTodo("FINANCE", "expenseFinance", "expense.pendingApprovalCount",
+                    "expense-approval", "报销申请待审批", "/expense/approval", "FINANCE"),
+            new DepartmentTodo("FINANCE", "expenseFinance", "expense.pendingPaymentCount",
+                    "expense-payment", "已审批报销待付款", "/expense/approval", "FINANCE"));
+
     private final SecurityContextCurrentUser currentUser;
     private final JdbcTemplate jdbc;
-    private final ProductionScheduleService productionScheduleService;
-    private final FulfillmentWorkbenchQueryService fulfillmentWorkbench;
-    private final VisitorHrApprovalService visitorApprovalService;
-    private final ProfileChangeReviewService profileChangeReviewService;
     private final NoticeService noticeService;
-    private final AuditService auditService;
     private final SalesDocumentReadScopePort salesAccess;
+    private final WorkbenchBadgeReadPort badges;
 
     // Deliberately no encompassing transaction: each workbench query owns its
     // read transaction, so one failed partition cannot poison the aggregate.
@@ -75,14 +98,13 @@ public class DashboardOverviewService {
                 .filter(candidate -> !candidate.isVisitor())
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         DepartmentContext department = departmentContext(user.getEmployeeId());
+        WorkbenchBadgeReadPort.Entries departmentBadges = departmentBadges(department);
         List<MetricCard> metrics = new ArrayList<>();
         List<TodoCard> todos = new ArrayList<>();
 
         addNoticeCards(user, metrics, todos);
-        addProductionCards(user, department, metrics, todos);
-        addFulfillmentCards(user, department, todos);
-        addPeopleCards(user, department, todos);
-        addFinanceTodos(user, department, todos);
+        addProductionCards(departmentBadges, metrics, todos);
+        addDepartmentTodos(departmentBadges, todos);
         addSalesCards(user, department, metrics);
 
         return new DashboardOverviewDto(
@@ -122,17 +144,29 @@ public class DashboardOverviewService {
         }
     }
 
+    /** 本部门要的徽章入口, 一次只读事务算完(无本部门入口时不查)。 */
+    private WorkbenchBadgeReadPort.Entries departmentBadges(DepartmentContext department) {
+        Set<String> entries = new LinkedHashSet<>();
+        if (belongsTo(department, "PRODUCTION")) entries.add(PRODUCTION_SCHEDULE);
+        for (DepartmentTodo todo : DEPARTMENT_TODOS) {
+            if (belongsTo(department, todo.scope())) entries.add(todo.entry());
+        }
+        return entries.isEmpty() ? WorkbenchBadgeReadPort.Entries.NONE : badges.entries(entries);
+    }
+
+    /** 入口对当前主体可见且本次算出来了(没权 / 来源出错都不出卡, 徽章侧保留上一次的数)。 */
+    private static boolean usable(WorkbenchBadgeReadPort.Entries badges, String entry) {
+        return badges.todo().containsKey(entry) && !badges.staleEntries().contains(entry);
+    }
+
     private void addProductionCards(
-            AuthUser user,
-            DepartmentContext department,
+            WorkbenchBadgeReadPort.Entries badges,
             List<MetricCard> metrics,
             List<TodoCard> todos) {
-        if (!can(user, "production_plan:view")
-                || !belongsTo(department, "PRODUCTION")) return;
-        Map<String, Long> counts = productionScheduleService.pendingCount();
-        long count = counts.getOrDefault("count", 0L);
-        long overdue = counts.getOrDefault("overdue", 0L);
-        long urgent = counts.getOrDefault("urgent", 0L);
+        if (!usable(badges, PRODUCTION_SCHEDULE)) return;
+        long count = badges.todo().get(PRODUCTION_SCHEDULE);
+        long overdue = badges.fact("productionSchedule.overdue");
+        long urgent = badges.fact("productionSchedule.urgent");
         metrics.add(new MetricCard(
                 "production-pending",
                 "待排产产品",
@@ -159,184 +193,14 @@ public class DashboardOverviewService {
         }
     }
 
-    private void addFulfillmentCards(
-            AuthUser user, DepartmentContext department, List<TodoCard> todos) {
-        if (can(user, "stock_doc:view")
-                && belongsTo(department, "WAREHOUSE")) {
-            addFulfillmentTodoSafely(user, todos, "WAREHOUSE", "warehouse",
-                    "项仓库备料任务待处理", "/warehouse/tasks/draw");
-        }
-        if (canAny(user, "purchase_request:view", "purchase_order:view")
-                && belongsTo(department, "PURCHASE")) {
-            addFulfillmentTodoSafely(user, todos, "PURCHASE", "purchase",
-                    "项采购任务待处理", "/operations/workbench/purchase");
-        }
-        if (canAny(user, "subcontract_application:view", "subcontract_order:view")
-                && belongsTo(department, "SUBCONTRACT")) {
-            addFulfillmentTodoSafely(user, todos, "SUBCONTRACT", "subcontract",
-                    "项委外任务待处理", "/operations/workbench/subcontract");
-        }
-    }
-
-    private void addFulfillmentTodoSafely(
-            AuthUser user,
-            List<TodoCard> todos,
-            String department,
-            String id,
-            String titleSuffix,
-            String route) {
-        try {
-            addFulfillmentTodo(todos, department, id, titleSuffix, route);
-        } catch (RuntimeException failure) {
-            if (isAuthenticationOrAuthorizationFailure(failure)) {
-                throw failure;
-            }
-            recordFulfillmentPartitionDegradation(user, department, failure);
-            todos.add(unavailableFulfillmentTodo(department, id, route));
-        }
-    }
-
-    private void recordFulfillmentPartitionDegradation(
-            AuthUser user, String department, RuntimeException failure) {
-        String result = failureCode(failure);
-        log.warn(
-                "Dashboard fulfillment partition degraded: department={}, result={}",
-                department,
-                result,
-                failure);
-        try {
-            auditService.logExplicit(
-                    user.getId(),
-                    user.getLoginAccount(),
-                    "dashboard_fulfillment_partition_degraded",
-                    "fulfillment_workbench",
-                    department,
-                    result);
-        } catch (RuntimeException auditFailure) {
-            log.error(
-                    "Dashboard fulfillment degradation audit failed: department={}, result={}",
-                    department,
-                    result,
-                    auditFailure);
-        }
-    }
-
-    private static boolean isAuthenticationOrAuthorizationFailure(
-            RuntimeException failure) {
-        if (failure instanceof AuthenticationException
-                || failure instanceof AccessDeniedException) {
-            return true;
-        }
-        return failure instanceof ApiException apiFailure
-                && (apiFailure.getCode().getHttpStatus() == 401
-                        || apiFailure.getCode().getHttpStatus() == 403);
-    }
-
-    private static String failureCode(RuntimeException failure) {
-        if (failure instanceof ApiException apiFailure) {
-            return apiFailure.getCode().name().toLowerCase(Locale.ROOT);
-        }
-        String simpleName = failure.getClass().getSimpleName();
-        return simpleName.isBlank()
-                ? "runtime_exception"
-                : simpleName.toLowerCase(Locale.ROOT);
-    }
-
-    private static TodoCard unavailableFulfillmentTodo(
-            String department, String id, String route) {
-        String departmentName = switch (department) {
-            case "WAREHOUSE" -> "仓库";
-            case "PURCHASE" -> "采购";
-            case "SUBCONTRACT" -> "委外";
-            default -> "履约";
-        };
-        return new TodoCard(
-                "fulfillment-" + id + "-unavailable",
-                departmentName + "任务正在自动恢复",
-                "其它功能可继续使用，无需退出或反复刷新",
-                0,
-                0,
-                "warning",
-                route,
-                "FULFILLMENT_UNAVAILABLE",
-                null,
-                null,
-                false);
-    }
-
-    private void addFulfillmentTodo(
-            List<TodoCard> todos,
-            String department,
-            String id,
-            String titleSuffix,
-            String route) {
-        FulfillmentWorkbenchPage.Summary summary =
-                fulfillmentWorkbench.query(department, "", "", "", null, null, 1, 1).summary();
-        if (summary.openTasks() == 0) return;
-        todos.add(new TodoCard(
-                "fulfillment-" + id,
-                "你有 " + summary.openTasks() + titleSuffix,
-                summary.overdueTasks() > 0
-                        ? "其中 " + summary.overdueTasks() + " 项已逾期"
-                        : "已按部门合并展示，点击进入统一处理",
-                summary.openTasks(),
-                summary.overdueTasks(),
-                summary.overdueTasks() > 0 ? "danger" : "warning",
-                route,
-                "FULFILLMENT",
-                null,
-                null,
-                false));
-    }
-
-    /** 工作台只展示本人任职部门的待办，跨部门业务授权仍由目标页面控制。 */
-    private void addPeopleCards(
-            AuthUser user, DepartmentContext department, List<TodoCard> todos) {
-        if (can(user, "visitor:approve")
-                && belongsTo(department, "HR")) {
-            long count = visitorApprovalService.pendingCount();
-            addCountTodo(todos, "visitor-approval", count,
-                    "访客申请待审批", "/visitor-approval", "PEOPLE");
-        }
-        if (can(user, "profile:review")
-                && belongsTo(department, "HR")) {
-            long count = profileChangeReviewService.pendingCount();
-            addCountTodo(todos, "profile-review", count,
-                    "员工资料变更待审核", "/hr/profile-changes", "PEOPLE");
-        }
-    }
-
-    /** 部门归属与处理权限必须同时满足。 */
-    private void addFinanceTodos(
-            AuthUser user, DepartmentContext department, List<TodoCard> todos) {
-        if (can(user, "expense:approve")
-                && belongsTo(department, "FINANCE")) {
-            Long scopedCount = jdbc.queryForObject("""
-                    SELECT COUNT(*) FROM expense_claims
-                    WHERE status IN ('SUBMITTED', 'REVIEWING')
-                      AND applicant_id <> ?
-                    """, Long.class, user.getEmployeeId());
-            long count = scopedCount == null ? 0 : scopedCount;
-            addCountTodo(todos, "expense-approval", count,
-                    "报销申请待审批", "/expense/approval", "FINANCE");
-        }
-        if (can(user, "expense:pay")
-                && belongsTo(department, "FINANCE")) {
-            Long scopedCount = jdbc.queryForObject("""
-                    SELECT COUNT(*) FROM expense_claims WHERE status = 'APPROVED'
-                      AND applicant_id <> ? AND (approved_by IS NULL OR approved_by <> ?)
-                    """, Long.class, user.getEmployeeId(), user.getEmployeeId());
-            long count = scopedCount == null ? 0 : scopedCount;
-            addCountTodo(todos, "expense-payment", count,
-                    "已审批报销待付款", "/expense/approval", "FINANCE");
-        }
-        if (can(user, "payroll:review")
-                && belongsTo(department, "FINANCE")) {
-            long count = count("""
-                    SELECT COUNT(*) FROM payroll_batches WHERE status = 'SUBMITTED'
-                    """);
-            addCountTodo(todos, "payroll-review", count,
-                    "工资批次待复核", "/payroll/review", "FINANCE");
+    private void addDepartmentTodos(
+            WorkbenchBadgeReadPort.Entries badges, List<TodoCard> todos) {
+        for (DepartmentTodo todo : DEPARTMENT_TODOS) {
+            if (!usable(badges, todo.entry())) continue;
+            long count = todo.countFact() == null
+                    ? badges.todo().get(todo.entry())
+                    : badges.fact(todo.countFact());
+            addCountTodo(todos, todo.id(), count, todo.titleSuffix(), todo.route(), todo.sourceType());
         }
     }
 
@@ -488,7 +352,7 @@ public class DashboardOverviewService {
         todos.add(new TodoCard(
                 id,
                 "你有 " + count + " 项" + titleSuffix,
-                "已合并展示，点击进入对应页面统一处理",
+                "与模块卡红色角标同一口径，点击进入对应页面统一处理",
                 count,
                 0,
                 "warning",
@@ -497,11 +361,6 @@ public class DashboardOverviewService {
                 null,
                 null,
                 false));
-    }
-
-    private long count(String sql) {
-        Long result = jdbc.queryForObject(sql, Long.class);
-        return result == null ? 0 : result;
     }
 
     private static String compactText(String value, int maxLength) {
@@ -514,14 +373,6 @@ public class DashboardOverviewService {
 
     private static boolean can(AuthUser user, String permission) {
         return user.isSuperAdmin() || user.getPermissions().contains(permission);
-    }
-
-    private static boolean canAny(AuthUser user, String... permissions) {
-        if (user.isSuperAdmin()) return true;
-        for (String permission : permissions) {
-            if (user.getPermissions().contains(permission)) return true;
-        }
-        return false;
     }
 
     private static boolean belongsTo(DepartmentContext department, String audienceTag) {

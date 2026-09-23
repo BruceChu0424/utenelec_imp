@@ -21,6 +21,7 @@ import '../widgets/procurement_iqc_rejection_action_dialog.dart';
 import '../widgets/procurement_iqc_actual_credit_dialog.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class ProcurementIqcRejectionDetailPage extends ConsumerStatefulWidget {
   const ProcurementIqcRejectionDetailPage({
@@ -128,7 +129,7 @@ class _ProcurementIqcRejectionDetailPageState
       _detail = result;
       _error = null;
     });
-    ref.invalidate(procurementIqcRejectionOpenCountProvider);
+    refreshBadges(ref);
     context.appSuccess(_successMessage(kind));
   }
 

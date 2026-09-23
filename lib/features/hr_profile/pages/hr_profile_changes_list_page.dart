@@ -33,12 +33,12 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/auth/pending_review_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../profile/models/profile_change_request.dart';
 import '../../profile/providers/profile_change_providers.dart';
 import '../../profile/repositories/profile_change_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 单次批量上限：逐批循环单审 API，超过则提示分批（无后端批量端点）。
 const int kProfileChangeBatchLimit = 50;
@@ -81,7 +81,6 @@ class _HrProfileChangesListPageState
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(hrProfileChangeQueueProvider);
-      ref.read(pendingReviewCountProvider.notifier).refresh();
     });
   }
 
@@ -213,7 +212,7 @@ class _HrProfileChangesListPageState
     ref.invalidate(hrProfileChangeQueueProvider);
     ref.invalidate(hrProfileChangesProvider);
     ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
-    ref.read(pendingReviewCountProvider.notifier).refresh();
+    refreshBadges(ref);
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
@@ -297,7 +296,7 @@ class _HrProfileChangesListPageState
         onRefresh: () async {
           ref.invalidate(hrProfileChangeQueueProvider);
           ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
-          ref.read(pendingReviewCountProvider.notifier).refresh();
+          refreshBadges(ref);
           await ref.read(hrProfileChangeQueueProvider(_query).future);
         },
         child: MasterDataTableView<HrProfileChangeListItem>(

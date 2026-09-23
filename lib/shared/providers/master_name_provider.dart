@@ -1,15 +1,18 @@
 // 跨业务模块共用的主档名称解析。
 //
-// 单据 DTO 只带 UUID。MasterDictionaryService 统一缓存仓库、币种、颜色、单位和货品；
+// 单据 DTO 只带 UUID。MasterDictionaryService 统一解析仓库、币种、颜色、单位和货品；
 // 各业务服务只补充自己的往来单位（供应商/客户）及领域专属名称，避免复制整套缓存逻辑。
+// 小表字典的原始行来自会话级 [MasterDictionaryRepository](ADR-108)：同一会话里
+// 每份字典只拉一次，本端改了基础资料由网络层按路径作废、已加载的服务自动重取。
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
-import 'session_provider.dart';
+import 'master_dictionary_repository.dart';
 import 'master_lookup_queue.dart';
+import 'session_provider.dart';
 
 /// 货品搜索/选择用的轻量项。
 class GoodsOption {
@@ -94,12 +97,22 @@ class WarehouseDictEntry {
 
 /// 各单据域共用的小主档与货品名称缓存。
 ///
-/// [ensureDictionaryLoaded] 合并同一字典的并发请求，并仅缓存成功结果。
+/// [ensureDictionaryLoaded] 从会话级字典仓库取行(仓库自身单飞、只缓存成功结果)，
+/// 本实例只保存解析好的名称映射。字典被写后失效时自动重取并重新解析。
 /// 加载失败时保留占位符，不阻塞业务列表；显式编辑/保存仍由各 Repository 返回真实错误。
 class MasterDictionaryService {
-  MasterDictionaryService(this.api);
+  /// [dictionaries] 缺省时用一份私有仓库(测试与独立预览); 正式环境由 provider 传入会话级共享仓库。
+  MasterDictionaryService(this.api, [MasterDictionaryRepository? dictionaries])
+    : dictionaries = dictionaries ?? MasterDictionaryRepository(api) {
+    _invalidations = this.dictionaries.invalidations.listen(_onInvalidated);
+  }
 
   final ApiClient api;
+
+  /// 会话级字典仓库(多个名称服务共用一份)。
+  final MasterDictionaryRepository dictionaries;
+  late final StreamSubscription<String> _invalidations;
+  final Map<String, void Function(List<Map<String, dynamic>>)> _appliers = {};
 
   Map<String, String> _warehouses = {};
   List<WarehouseDictEntry> _warehouseList = [];
@@ -138,14 +151,15 @@ class MasterDictionaryService {
     },
   );
 
-  /// Cache successful dictionaries independently and merge concurrent requests.
-  /// Failure remains a display fallback, but the next explicit load can retry it.
-  Future<void> ensureDictionaryLoaded<T>(
+  /// 取字典 [key](端点路径)的行并解析进本实例。多实例共用会话级仓库, 同一份字典
+  /// 只请求一次; 失败保留占位符, 下一次显式加载可重试。[reload] 强制作废后重取。
+  Future<void> ensureDictionaryLoaded(
     String key,
-    Future<T> Function() fetch,
-    void Function(T) apply, {
+    void Function(List<Map<String, dynamic>>) apply, {
     bool reload = false,
   }) {
+    _appliers[key] = apply;
+    if (reload) dictionaries.invalidate(key);
     final existing = _dictionaryLoads[key];
     if (!reload && existing != null) return existing;
     final completion = Completer<void>();
@@ -153,8 +167,8 @@ class MasterDictionaryService {
     _dictionaryLoads[key] = pending;
     unawaited(() async {
       try {
-        final result = await fetch();
-        if (identical(_dictionaryLoads[key], pending)) apply(result);
+        final rows = await dictionaries.load(key);
+        if (identical(_dictionaryLoads[key], pending)) apply(rows);
       } catch (_) {
         if (identical(_dictionaryLoads[key], pending)) {
           _dictionaryLoads.remove(key);
@@ -166,35 +180,40 @@ class MasterDictionaryService {
     return pending;
   }
 
+  /// 字典被写后失效: 本实例加载过它就立即按同一解析函数重取。
+  void _onInvalidated(String key) {
+    final apply = _appliers[key];
+    if (apply == null || !_dictionaryLoads.containsKey(key)) return;
+    _dictionaryLoads.remove(key);
+    unawaited(ensureDictionaryLoaded(key, apply));
+  }
+
+  /// provider 释放时取消对仓库作废通知的订阅。
+  void dispose() => unawaited(_invalidations.cancel());
+
   /// Load just the actual warehouse tree for operations that already have
   /// product and counterparty display snapshots in their task DTO.
-  Future<void> ensureWarehousesLoaded() => ensureDictionaryLoaded(
-    ApiEndpoints.warehousesDict,
-    () => api.getList(ApiEndpoints.warehousesDict),
-    (entries) {
-      final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
-      _warehouses = warehouseDisplayNames(hierarchy);
-      _warehouseList = hierarchy;
-      _warehouseById = {for (final entry in hierarchy) entry.id: entry};
-      _mainWarehouseCache.clear();
-    },
-  );
+  Future<void> ensureWarehousesLoaded() =>
+      ensureDictionaryLoaded(ApiEndpoints.warehousesDict, (entries) {
+        final hierarchy = entries.map(WarehouseDictEntry.fromJson).toList();
+        _warehouses = warehouseDisplayNames(hierarchy);
+        _warehouseList = hierarchy;
+        _warehouseById = {for (final entry in hierarchy) entry.id: entry};
+        _mainWarehouseCache.clear();
+      });
 
   Future<void> ensureCommonLoaded() => Future.wait([
     ensureWarehousesLoaded(),
     ensureDictionaryLoaded(
       ApiEndpoints.currenciesDict,
-      () => api.getList(ApiEndpoints.currenciesDict),
       (entries) => _currencies = _nameMap(entries),
     ),
     ensureDictionaryLoaded(
       ApiEndpoints.colorsDict,
-      () => api.getList(ApiEndpoints.colorsDict),
       (entries) => _colors = _nameMap(entries),
     ),
     ensureDictionaryLoaded(
       ApiEndpoints.unitsDict,
-      () => api.getList(ApiEndpoints.unitsDict),
       (entries) => _units = _nameMap(entries),
     ),
   ]);
@@ -233,7 +252,6 @@ class MasterDictionaryService {
   /// 单独重载币种字典（单据页内联新增币种后调用，让本实例的下拉选项立即含新值）。
   Future<void> reloadCurrencies() => ensureDictionaryLoaded(
     ApiEndpoints.currenciesDict,
-    () => api.getList(ApiEndpoints.currenciesDict),
     (entries) => _currencies = _nameMap(entries),
     reload: true,
   );
@@ -411,7 +429,7 @@ class MasterDictionaryService {
 
 /// 采购、委外、仓库和生产域使用的名称服务。
 class MasterNameService extends MasterDictionaryService {
-  MasterNameService(super.api);
+  MasterNameService(super.api, [super.dictionaries]);
 
   Map<String, String> _suppliers = {};
 
@@ -426,7 +444,6 @@ class MasterNameService extends MasterDictionaryService {
 
   Future<void> _loadSuppliers({bool reload = false}) => ensureDictionaryLoaded(
     ApiEndpoints.suppliersDict,
-    () => api.getList(ApiEndpoints.suppliersDict),
     (entries) {
       _suppliers = {
         for (final entry in entries)
@@ -452,7 +469,6 @@ class MasterNameService extends MasterDictionaryService {
 
   Future<void> _loadDepartments() => ensureDictionaryLoaded(
     ApiEndpoints.departmentsTree,
-    () => api.getList(ApiEndpoints.departmentsTree),
     (entries) => _departments = _flattenDeptTree(entries),
   );
 
@@ -522,5 +538,10 @@ final masterDataSessionKeyProvider = Provider<String>(
 
 final masterNameServiceProvider = Provider<MasterNameService>((ref) {
   ref.watch(masterDataSessionKeyProvider);
-  return MasterNameService(ref.watch(apiClientProvider));
+  final service = MasterNameService(
+    ref.watch(apiClientProvider),
+    ref.watch(masterDictionaryRepositoryProvider),
+  );
+  ref.onDispose(service.dispose);
+  return service;
 });

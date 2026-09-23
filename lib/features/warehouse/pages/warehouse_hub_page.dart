@@ -20,8 +20,8 @@
 //   · 出入库单据区的调拨 / 盘点挂本人草稿红徽章（2026-09-11 口径反转：草稿是
 //     必须由本人处理完的活，改红徽章并逐级累加）；委外成品退货单 / 委外损耗单
 //     是历史只读专页，不挂任何计数。
-//   · 顶栏右上角 = 本模块累计（任务中心 + 仓库草稿），求和在
-//     shared/badges/todo_badge_registry.dart，与工作台「仓库管理」卡同源。
+//   · 顶栏右上角 = 本模块累计(任务中心 + 仓库草稿)，求和在服务端徽章目录
+//     (徽章汇总的 warehouse 容器, ADR-108)，与工作台「仓库管理」卡同源。
 //   · 库存查询与报表区是浏览型入口，不挂任何计数。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,14 +43,13 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/badges/in_progress_badge_registry.dart';
-import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../widgets/warehouse_quality_result_badge.dart';
 import '../widgets/warehouse_task_center_badges.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
@@ -126,9 +125,10 @@ class WarehouseHubPage extends ConsumerWidget {
                   // 等待检查结果: 货已收、结论在品质部手上, 仓库这一档还在跑但
                   // 不用动手(注册表入口 warehouseQualityWaiting, 页内同名分段同数)。
                   progressBadge: UtenInProgressBadge(
-                    count: inProgressEntryCount(
-                      InProgressEntry.warehouseQualityWaiting,
-                      ref.watch,
+                    count: ref.watch(
+                      badgeEntryInProgressProvider(
+                        BadgeEntry.warehouseQualityResult,
+                      ),
                     ),
                     showLabel: true,
                   ),
@@ -175,14 +175,16 @@ class WarehouseHubPage extends ConsumerWidget {
         ),
         actions: [
           // 黄药丸排在红药丸左边(与卡片右上角「黄左红右」同序): 本模块还在跑、
-          // 暂不用仓库动手的合计, 求和同样只在 in_progress_badge_registry 里做一次。
+          // 暂不用仓库动手的合计, 求和同样只在服务端徽章目录里做一次。
           UtenModuleProgressChip(
-            count: inProgressModuleCount(BadgeModule.warehouse, ref.watch),
+            count: ref.watch(
+              badgeModuleInProgressProvider(BadgeModule.warehouse),
+            ),
           ),
           // 本模块累计：数字由注册表对 BadgeModule.warehouse 名下入口求和得出
           //（四张任务中心 + 仓库草稿），页面里不要再手写加法；0 由徽章自己不渲染。
           UtenModuleTodoChip(
-            count: todoModuleCount(BadgeModule.warehouse, ref.watch),
+            count: ref.watch(badgeModuleTodoProvider(BadgeModule.warehouse)),
           ),
         ],
       ),

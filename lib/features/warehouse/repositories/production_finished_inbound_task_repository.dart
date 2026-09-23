@@ -32,11 +32,6 @@ class ProductionFinishedInboundTaskRepository {
     return PagedResult.fromJson(json, ProductionFinishedInboundTask.fromJson);
   }
 
-  Future<int> pendingCount() async {
-    final json = await api.get(ApiEndpoints.productionFinishedInboundTaskCount);
-    return (json['count'] as num?)?.toInt() ?? 0;
-  }
-
   Future<({int confirmedCount, bool replay, Set<String> confirmedDocumentIds})>
   confirmAll({
     required List<String> documentIds,

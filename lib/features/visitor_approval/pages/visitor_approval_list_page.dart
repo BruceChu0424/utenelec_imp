@@ -39,7 +39,7 @@ import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
-import '../providers/visitor_pending_count_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 enum ApprovalTab { pending, approved, rejected }
 
@@ -262,8 +262,7 @@ class _VisitorApprovalListPageState
     // 刷新当前分段队列、筛选桶与徽章计数（forward 会推给接待人，两个徽章都变）。
     ref.invalidate(visitorApprovalListProvider(_query));
     ref.invalidate(visitorApprovalFacetsProvider(_tabStatus));
-    ref.read(visitorPendingCountProvider.notifier).refresh();
-    ref.read(visitorHostPendingCountProvider.notifier).refresh();
+    refreshBadges(ref);
   }
 
   List<Widget> _batchActions(
@@ -362,13 +361,17 @@ class _VisitorApprovalListPageState
               UtenFilterSegment(
                 value: ApprovalTab.pending,
                 label: l10n.visitorApprovalPending,
-                count: ref.watch(visitorPendingCountProvider),
+                count: ref.watch(
+                  badgeEntryTodoProvider(BadgeEntry.visitorApproval),
+                ),
                 countForm: UtenSegmentCountForm.actionable,
               ),
               UtenFilterSegment(
                 value: ApprovalTab.approved,
                 label: l10n.visitorFilterApproved,
-                count: ref.watch(visitorApprovalOngoingCountProvider),
+                count: ref.watch(
+                  badgeEntryInProgressProvider(BadgeEntry.visitorApproval),
+                ),
                 countForm: UtenSegmentCountForm.inProgress,
               ),
               UtenFilterSegment(

@@ -81,7 +81,6 @@ void main() {
       );
 
       await repository.financeTasks(page: 2, size: 5);
-      await repository.financeTaskCount();
       await repository.financeTaskDetail('exception-1');
       await repository.financeDecide(
         id: 'exception-1',
@@ -95,9 +94,6 @@ void main() {
         size: 10,
         orderType: ProcurementInboundOrderType.purchase,
       );
-      await repository.ownerTaskCount(
-        orderType: ProcurementInboundOrderType.subcontract,
-      );
       await repository.ownerTaskDetail('exception-1');
       await repository.completeReturn(
         returnTaskId: 'return-1',
@@ -107,35 +103,32 @@ void main() {
 
       expect(captured[0].path, '/finance/procurement-arrival-exceptions/tasks');
       expect(captured[0].queryParameters, {'page': 2, 'size': 5});
-      expect(captured[1].path, '/finance/procurement-arrival-exceptions/count');
       expect(
-        captured[2].path,
+        captured[1].path,
         '/finance/procurement-arrival-exceptions/exception-1',
       );
       expect(
-        captured[3].path,
+        captured[2].path,
         '/finance/procurement-arrival-exceptions/exception-1/decision',
       );
-      expect(captured[3].data, {
+      expect(captured[2].data, {
         'expectedVersion': 7,
         'decision': 'APPROVE_CUSTOM',
         'customApprovedExcessQty': 5,
         'financeReason': '临时补货已核准',
       });
-      expect(captured[4].path, '/procurement/arrival-exceptions/tasks');
-      expect(captured[4].queryParameters, {
+      expect(captured[3].path, '/procurement/arrival-exceptions/tasks');
+      expect(captured[3].queryParameters, {
         'page': 3,
         'size': 10,
         'orderType': 'PURCHASE',
       });
-      expect(captured[5].path, '/procurement/arrival-exceptions/count');
-      expect(captured[5].queryParameters, {'orderType': 'SUBCONTRACT'});
-      expect(captured[6].path, '/procurement/arrival-exceptions/exception-1');
+      expect(captured[4].path, '/procurement/arrival-exceptions/exception-1');
       expect(
-        captured[7].path,
+        captured[5].path,
         '/procurement/arrival-exceptions/return-tasks/return-1/complete',
       );
-      expect(captured[7].data, {
+      expect(captured[5].data, {
         'expectedVersion': 2,
         'completionNote': '供应商司机已带回',
       });

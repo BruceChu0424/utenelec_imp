@@ -434,9 +434,6 @@ class _Iqc extends Fake implements ProcurementInspectionRepository {
   ) async => load == null ? [_row(receiptId)] : load!(receiptId);
 
   @override
-  Future<int> pendingCount() async => 0;
-
-  @override
   Future<void> decideBatch({
     required String receiptType,
     required String receiptId,

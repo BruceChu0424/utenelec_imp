@@ -1,8 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/draft_counts_provider.dart';
-import 'expense_counts_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -16,6 +14,7 @@ import '../models/expense_invoice.dart';
 import '../models/expense_item.dart';
 import '../models/expense_payment.dart';
 import '../repositories/expense_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 enum ExpenseFilter { all, draft, rejected, processing, finished }
 
@@ -203,8 +202,7 @@ Future<void> deleteExpense(
             expectedVersion ??
             ref.read(expenseDetailProvider(id)).requireValue.version,
       );
-  ref.invalidate(expenseCountsProvider);
-  ref.invalidate(draftCountsProvider);
+  refreshBadges(ref);
   ref.invalidate(expenseListProvider);
   ref.invalidate(expenseApprovalListProvider);
 }
@@ -220,8 +218,7 @@ Future<ExpenseClaim> createExpense(
       .create(
         ExpenseClaimCreateInput(title: title, items: items, remark: remark),
       );
-  ref.invalidate(expenseCountsProvider);
-  ref.invalidate(draftCountsProvider);
+  refreshBadges(ref);
   ref.invalidate(expenseListProvider);
   return claim;
 }
@@ -246,8 +243,7 @@ Future<ExpenseClaim> updateExpense(
           expectedVersion: expectedVersion,
         ),
       );
-  ref.invalidate(expenseCountsProvider);
-  ref.invalidate(draftCountsProvider);
+  refreshBadges(ref);
   ref.invalidate(expenseListProvider);
   ref.invalidate(expenseDetailProvider(id));
   return claim;
@@ -600,8 +596,7 @@ bool _isSelectableMasterStatus(String? status) {
 void _invalidateExpense(WidgetRef ref, String id) {
   ref.invalidate(expenseQueueSummaryProvider);
   ref.invalidate(expenseApprovalFacetsProvider);
-  ref.invalidate(expenseCountsProvider);
-  ref.invalidate(draftCountsProvider);
+  refreshBadges(ref);
   ref.invalidate(expenseListProvider);
   ref.invalidate(expenseApprovalListProvider);
   ref.invalidate(expenseDetailProvider(id));

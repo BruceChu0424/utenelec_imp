@@ -69,7 +69,37 @@ class DioAuthRepository implements AuthRepository {
   @override
   Future<UserProfile> me() async {
     final json = await api.get(ApiEndpoints.authMe);
-    return UserProfile.fromJson(json);
+    final profile = UserProfile.fromJson(json);
+    final session = json['session'];
+    if (session is Map<String, dynamic>) {
+      RecentMeSnapshot.remember(profile.id, session);
+    }
+    return profile;
+  }
+}
+
+/// 最近一次 /auth/me 随资料带回的会话快照原文(ADR-108)。
+///
+/// 会话恢复刚调过 /auth/me, 会话快照 provider 紧接着取用这一份, 不再为快照重复请求;
+/// 只存内存、只认同一用户、10 秒内有效、取用一次即清。
+abstract final class RecentMeSnapshot {
+  static const _ttl = Duration(seconds: 10);
+  static ({String userId, Map<String, dynamic> session, DateTime at})? _last;
+
+  static void remember(String userId, Map<String, dynamic> session) {
+    _last = (userId: userId, session: session, at: DateTime.now());
+  }
+
+  /// 取走 [userId] 的最近快照; 过期、换人或已取过返回 null。
+  static Map<String, dynamic>? take(String userId) {
+    final last = _last;
+    _last = null;
+    if (last == null ||
+        last.userId != userId ||
+        DateTime.now().difference(last.at) > _ttl) {
+      return null;
+    }
+    return last.session;
   }
 }
 

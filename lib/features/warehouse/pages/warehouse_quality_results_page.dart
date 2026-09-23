@@ -224,9 +224,6 @@ class _WarehouseQualityResultsPageState
         _result = result;
         _loading = false;
       });
-      // hub 卡的红数字与黄数字(ADR-100)都从这一支派生, 失效源头一支两枚一起重拉;
-      // 否则办完一单回到仓库 hub 还要等 60s 轮询才看到数字变。
-      ref.invalidate(warehouseQualityResultTypeCountsProvider);
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -481,9 +478,7 @@ class _WarehouseQualityResultsPageState
     // 那几张压在哪个来源下面, 点了没有等待单的来源只看到一张空表。
     // 已知口径边界: 这两枚不随关键词收窄(type-counts 是全量), 下面那行状态计数随
     // 关键词收窄, 所以搜索框一打字「大类 = 各小类之和」就不成立, 别拿两处数字对账。
-    final typeCounts = ref
-        .watch(warehouseQualityResultTypeCountsProvider)
-        .valueOrNull;
+    final typeCounts = ref.watch(warehouseQualityResultTypeCountsProvider);
     final seg = _statusSeg;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -498,9 +493,9 @@ class _WarehouseQualityResultsPageState
               UtenFilterSegment(
                 value: type,
                 label: type.label,
-                count: typeCounts?.actionable[type],
+                count: typeCounts.actionable[type],
                 countForm: UtenSegmentCountForm.actionable,
-                inProgressCount: typeCounts?.inProgress[type],
+                inProgressCount: typeCounts.inProgress[type],
               ),
           ],
           selected: _receiptType == null ? const {} : {_receiptType!},

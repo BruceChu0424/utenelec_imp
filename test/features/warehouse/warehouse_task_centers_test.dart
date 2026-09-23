@@ -10,17 +10,15 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
-import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center_page.dart';
-import 'package:uten_imp/features/warehouse/providers/production_draw_count_provider.dart';
 import 'package:uten_imp/features/warehouse/providers/procurement_inbound_count_providers.dart';
-import 'package:uten_imp/features/warehouse/providers/production_finished_inbound_task_count_provider.dart';
-import 'package:uten_imp/features/warehouse/providers/warehouse_sales_outbound_count_provider.dart';
-import 'package:uten_imp/features/warehouse/repositories/warehouse_subcontract_outbound_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 class _FakeApi extends ApiClient {
   _FakeApi() : super(Dio());
@@ -58,8 +56,10 @@ void main() {
   Widget app(
     Widget page,
     Set<String> permissions, {
-    SubcontractOutboundTaskCounts subcontractCounts =
-        const SubcontractOutboundTaskCounts(count: 2),
+    ({int count, int waitingComponent}) subcontractCounts = (
+      count: 2,
+      waitingComponent: 0,
+    ),
   }) {
     return ProviderScope(
       overrides: [
@@ -67,27 +67,26 @@ void main() {
         sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
-        warehouseSalesOutboundPendingCountProvider.overrideWith(
-          (ref) async => 5,
-        ),
-        // 销售出库小类行计数: 待出库红徽章与父分类同数(5), 已出库中性括号(12).
-        warehouseSalesOutboundCountsProvider.overrideWith(
-          (ref) async =>
-              const WarehouseSalesOutboundCounts(pendingPick: 5, shipped: 12),
-        ),
-        warehouseProductionDrawPendingCountProvider.overrideWith(
-          (ref) async => 3,
-        ),
-        // 委外待出仓红黄两数同出一支(ADR-103): 红 = 可出仓 / 黄 = 等子件到货.
-        warehouseSubcontractOutboundTaskCountsProvider.overrideWith(
-          (ref) async => subcontractCounts,
+        // 分段数字随徽章汇总一次带回(ADR-108):
+        // 销售出库待出库红徽章与父分类同数(5), 已出库中性括号(12);
+        // 委外待出仓红黄两数同出一个来源(ADR-103): 红 = 可出仓 / 黄 = 等子件到货.
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            facts: {
+              BadgeFact.warehouseSalesOutboundPendingPick: 5,
+              BadgeFact.warehouseSalesOutboundShipped: 12,
+              BadgeFact.productionDraw: 3,
+              BadgeFact.productionReturn: 0,
+              BadgeFact.subcontractOutbound: subcontractCounts.count,
+              BadgeFact.subcontractOutboundWaitingComponent:
+                  subcontractCounts.waitingComponent,
+              BadgeFact.warehouseArrivalException: 0,
+              BadgeFact.finishedInbound: 0,
+            },
+          ),
         ),
         warehouseInboundExpectationTypeCountsProvider.overrideWith(
           (ref) async => const {'PURCHASE': 2, 'SUBCONTRACT': 1},
-        ),
-        warehouseArrivalExceptionCountProvider.overrideWith((ref) async => 0),
-        warehouseProductionFinishedInboundPendingCountProvider.overrideWith(
-          (ref) async => 0,
         ),
       ],
       child: MaterialApp(
@@ -209,9 +208,7 @@ void main() {
       app(
         const WarehouseOutboundTaskCenterPage(),
         const {Perm.subcontractOutboundView},
-        subcontractCounts: const SubcontractOutboundTaskCounts(
-          waitingComponent: 1,
-        ),
+        subcontractCounts: (count: 0, waitingComponent: 1),
       ),
     );
     await tester.pump();
@@ -241,10 +238,7 @@ void main() {
       app(
         const WarehouseOutboundTaskCenterPage(),
         const {Perm.subcontractOutboundView},
-        subcontractCounts: const SubcontractOutboundTaskCounts(
-          count: 2,
-          waitingComponent: 3,
-        ),
+        subcontractCounts: (count: 2, waitingComponent: 3),
       ),
     );
     await tester.pump();

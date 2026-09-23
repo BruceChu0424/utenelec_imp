@@ -43,8 +43,7 @@ import java.util.UUID;
  * <pre>
  *   GET  /api/notices?onlyUnread=                            当前用户可见列表
  *   GET  /api/notices/arrivals?limit=                        轻量到达 feed（纯时间倒序）
- *   GET  /api/notices/unread-count                           未读数
- *   GET  /api/notices/unread-count-by-source?events=         按事件来源未读数
+ *   GET  /api/notices/unread-index                           未读索引(判定用轻量列 + 摘要，ADR-108)
  *   GET  /api/notices/todos?limit=                           当前用户待办
  *   GET  /api/notices/pending-reviews                        登录检查：我名下未办结待审（居中弹窗）
  *   GET  /api/notices/pending-popups                         登录检查：人工通知待打卡/未读（居中弹窗）
@@ -102,16 +101,14 @@ public class NoticeController {
         return service.arrivals(afterPublishedAt, afterId, limit);
     }
 
-    @GetMapping("/unread-count")
+    /**
+     * 未读索引(ADR-108)。未读数与摘要随工作台徽章汇总每分钟带回; 前端只在摘要变化时拉本接口,
+     * 用它判断「打开页面要不要发自动已读」与「到达横幅有没有漏」。
+     */
+    @GetMapping("/unread-index")
     @PreAuthorize("hasAuthority('notice:read')")
-    public Map<String, Object> unreadCount() {
-        return Map.of("count", service.unreadCount());
-    }
-
-    @GetMapping("/unread-count-by-source")
-    @PreAuthorize("hasAuthority('notice:read')")
-    public Map<String, Object> unreadCountBySource(@RequestParam List<String> events) {
-        return Map.of("count", service.unreadCountBySourceEvents(events));
+    public NoticeService.UnreadIndex unreadIndex() {
+        return service.unreadIndex();
     }
 
     @GetMapping("/todos")

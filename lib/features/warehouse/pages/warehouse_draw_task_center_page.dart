@@ -11,12 +11,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/stock_doc.dart';
-import '../providers/production_draw_count_provider.dart';
-import '../providers/production_return_count_provider.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../widgets/warehouse_draw_task_segment.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
 import '../widgets/warehouse_task_center_scaffold.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseDrawTaskCenterPage extends ConsumerWidget {
   const WarehouseDrawTaskCenterPage({super.key});
@@ -29,8 +28,13 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
     if (!canStockDocs) {
       return const _NoDrawPermission();
     }
-    final draw = ref.watch(warehouseProductionDrawPendingCountProvider);
-    final returns = ref.watch(warehouseProductionReturnPendingCountProvider);
+    // 待领任务 / 待确认实收的退料随徽章汇总带回(ADR-108), 汇总未到/无权为 null。
+    final drawCount = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.productionDraw),
+    );
+    final returnCount = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.productionReturn),
+    );
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseDrawTasks,
       title: '生产领料任务中心',
@@ -40,13 +44,13 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
         WarehouseTaskSegmentSpec(
           value: 'pending',
           label: '待领任务',
-          count: draw.isLoading ? null : draw.valueOrNull,
+          count: drawCount,
         ),
         const WarehouseTaskSegmentSpec(value: 'draw', label: '领料单'),
         WarehouseTaskSegmentSpec(
           value: 'wdraw',
           label: '生产退料',
-          count: returns.valueOrNull,
+          count: returnCount,
         ),
       ],
       onResume: () => invalidateWarehouseTaskCounts(ref),
@@ -65,7 +69,7 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
         ),
         _ => WarehouseStockDocSegment(
           docType: StockDocType.wdraw,
-          pendingReturnCount: returns.valueOrNull,
+          pendingReturnCount: returnCount,
           productionReturnRequests: true,
           keyword: keyword,
           refreshTick: refreshTick,

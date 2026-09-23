@@ -5,25 +5,6 @@
 
 import 'permission_action_type.dart';
 
-class PageDelegationCapability {
-  const PageDelegationCapability({
-    required this.surfaceKey,
-    required this.superAdmin,
-    required this.canManage,
-  });
-
-  final String surfaceKey;
-  final bool superAdmin;
-  final bool canManage;
-
-  factory PageDelegationCapability.fromJson(Map<String, dynamic> json) =>
-      PageDelegationCapability(
-        surfaceKey: json['surfaceKey'] as String? ?? '',
-        superAdmin: json['superAdmin'] as bool? ?? false,
-        canManage: json['canManage'] as bool? ?? false,
-      );
-}
-
 class ManagedPermissionDepartment {
   const ManagedPermissionDepartment({
     required this.departmentId,

@@ -24,20 +24,57 @@ void main() {
       extra: const {safeRequestRetryDisabledKey: true},
     );
 
+    // ADR-108: 只有连不上(connectionError; 原生端还有 TCP 建连超时)与网关 502/503/504
+    // 算瞬时故障; 收发超时是「慢」不是「断」, 重试只会把慢查询再跑一遍。
+    expect(
+      shouldRetrySafeRequest(
+        DioException(
+          requestOptions: get,
+          type: DioExceptionType.connectionError,
+        ),
+      ),
+      isTrue,
+    );
+    for (final web in [true, false]) {
+      expect(
+        shouldRetrySafeRequest(
+          DioException(
+            requestOptions: get,
+            type: DioExceptionType.receiveTimeout,
+          ),
+          web: web,
+        ),
+        isFalse,
+        reason: 'receiveTimeout 任何平台都不重试',
+      );
+    }
     expect(
       shouldRetrySafeRequest(
         DioException(
           requestOptions: get,
           type: DioExceptionType.connectionTimeout,
         ),
+        web: true,
+      ),
+      isFalse,
+      reason: 'Web 端建连超时只是浏览器计时器, 不重试',
+    );
+    expect(
+      shouldRetrySafeRequest(
+        DioException(
+          requestOptions: get,
+          type: DioExceptionType.connectionTimeout,
+        ),
+        web: false,
       ),
       isTrue,
+      reason: '原生端建连超时 = 主机连不上, 读请求照常重试',
     );
     expect(
       shouldRetrySafeRequest(
         DioException(
           requestOptions: post,
-          type: DioExceptionType.connectionTimeout,
+          type: DioExceptionType.connectionError,
         ),
       ),
       isFalse,

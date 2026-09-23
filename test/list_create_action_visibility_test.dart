@@ -73,7 +73,7 @@ Widget _expenseApp(List<ExpenseClaim> items, {bool canApply = true}) {
       currentPermissionsProvider.overrideWithValue({
         if (canApply) Perm.expenseApply,
       }),
-      expenseCountsProvider.overrideWith((ref) async => const ExpenseCounts()),
+      expenseCountsProvider.overrideWith((ref) => const ExpenseCounts()),
     ],
     child: const MaterialApp(
       locale: Locale('zh'),

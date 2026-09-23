@@ -99,9 +99,6 @@ class _WarehouseStockBatchOutboundPageState
       }
       final names = ref.read(masterNameServiceProvider);
       await names.ensureLoaded();
-      ref.invalidate(
-        documentScopeCapabilityProvider(DocumentDataScope.stockDocument),
-      );
       try {
         await ref.read(
           documentScopeCapabilityProvider(

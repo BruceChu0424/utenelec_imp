@@ -27,7 +27,6 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_draw_task.dart';
-import '../providers/production_draw_count_provider.dart';
 import '../repositories/production_draw_task_repository.dart';
 
 /// 「待完成」分段的后端口径（open_qty > 0），与履约工作台同义。
@@ -114,7 +113,6 @@ class _WarehouseDrawTaskSegmentState
         }
         _pruneSelection(result);
       });
-      ref.invalidate(warehouseProductionDrawPendingCountProvider);
       _loadStatusCounts();
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;

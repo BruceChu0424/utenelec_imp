@@ -165,10 +165,6 @@ void _viewport(WidgetTester tester) {
 
 class _SalesGateway implements WarehouseSalesOutboundGateway {
   @override
-  Future<WarehouseSalesOutboundCounts> counts() async =>
-      const WarehouseSalesOutboundCounts();
-
-  @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
     int page = 1,
     int size = 20,
@@ -209,10 +205,6 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
   }) async => throw StateError('unexpected status counts');
-
-  @override
-  Future<WarehouseQualityTypeCounts> typeCounts() async =>
-      throw StateError('unexpected type counts');
 
   @override
   Future<WarehouseQualityBatchConfirmResult> batchConfirm(

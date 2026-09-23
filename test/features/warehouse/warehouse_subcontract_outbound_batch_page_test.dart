@@ -556,13 +556,6 @@ class _BatchApi extends ApiClient {
       employeeLookups++;
       return employeeResult!;
     }
-    if (path == ApiEndpoints.warehouseSubcontractOutboundTaskCount) {
-      return {
-        'count': documents.values
-            .where((document) => document['status'] == 0)
-            .length,
-      };
-    }
     if (path == ApiEndpoints.warehouseSubcontractOutboundTasks) {
       taskRequests++;
       return {

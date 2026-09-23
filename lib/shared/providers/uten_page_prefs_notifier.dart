@@ -6,10 +6,16 @@
 //
 // 三层策略（与工作台布局同一套，实证可用）：
 // 1. 冷启动先读 shared_preferences 本地缓存 → 页面即时渲染不闪烁；
-// 2. 会话就绪（登录/换号）后拉 GET /user/preferences 的 prefKey 覆盖本地；
-//    服务端没存过该 key → 保留本地缓存/默认值；
+// 2. 会话就绪(登录/换号)后从会话快照(/auth/me 一次带回的偏好整表，ADR-108)取
+//    prefKey 覆盖本地；服务端没存过该 key → 保留本地缓存/默认值。此前 9 个子类各自
+//    GET 一整张 /user/preferences，同一会话 2 秒内重复拉取上百次；
+//    推服务端成功后就地更新快照，不为此重拉。
+//    只认「新加载的快照」(SessionSnapshot.generation 变了)：本端写偏好后就地派生的
+//    快照不回灌——否则 A 键推送成功会把 B 键还没推上去的改动冲回旧值、再把旧值推上去；
+//    同一身份重取快照(授权变化等)时，本地有未确认的改动(防抖中/推送中/推送失败)也不覆盖。
 // 3. 写路径：乐观更新 state + 立即写缓存 + 防抖 800ms PUT /user/preferences/{prefKey}；
-//    离线兜底：PUT 失败静默（本地已生效），下次登录同步自然收敛，不做重试队列。
+//    离线兜底：PUT 失败静默(本地已生效)，下次登录同步自然收敛(新身份/新登录以服务端为准)，
+//    不做重试队列。换身份时上一个身份没推完的改动直接作废，不会推到新身份名下。
 //
 // 用法（最小子类）：
 // ```dart
@@ -38,6 +44,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
+import '../auth/session_snapshot_provider.dart';
+import 'authenticated_scope_provider.dart';
 import 'session_provider.dart';
 import 'shared_providers.dart';
 
@@ -62,20 +70,39 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
 
   Timer? _saveTimer;
 
+  /// 本地改动的修订号(每次 persist 加一)；推送成功时只有修订号没再变才算「已追上服务端」。
+  int _localRevision = 0;
+
+  /// 本地有服务端还没确认的改动(防抖中 / 推送中 / 推送失败)。
+  bool _localAhead = false;
+
+  /// 已采用过的快照加载批次与其所属身份。
+  int? _adoptedGeneration;
+  AuthenticatedScope? _adoptedScope;
+
   @override
   T build() {
     ref.onDispose(() => _saveTimer?.cancel());
 
-    // 会话就绪（登录/换号）后从服务端同步一次
-    ref.listen(sessionProvider, (prev, next) {
-      final user = next.user;
-      if (user != null && prev?.user?.id != user.id) {
-        _syncFromServer();
+    // 会话快照到达(登录/换号/恢复会话)后同步一次；9 个子类共用同一份快照，
+    // 整个会话只有 /auth/me 那一次请求。
+    ref.listen<AsyncValue<SessionSnapshot?>>(sessionSnapshotProvider, (
+      prev,
+      next,
+    ) {
+      final snapshot = next.valueOrNull;
+      if (snapshot != null) {
+        _adoptSnapshot(snapshot);
+      } else if (next is AsyncData) {
+        // 登出：下次登录(哪怕同一账号)视为新身份，以服务端为准。
+        _adoptedScope = null;
+        _adoptedGeneration = null;
       }
     });
-    // 兜住「先登录后建 provider」的顺序
-    if (ref.read(sessionProvider).user != null) {
-      Future.microtask(_syncFromServer);
+    // 兜住「快照先到、provider 后建」的顺序
+    final ready = ref.read(sessionSnapshotProvider).valueOrNull;
+    if (ready != null) {
+      Future.microtask(() => _adoptSnapshot(ready));
     }
 
     // 冷启动：本地缓存优先，避免闪烁；无缓存用默认
@@ -94,26 +121,42 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
     }
   }
 
-  Future<void> _syncFromServer() async {
-    try {
-      final json = await ref
-          .read(apiClientProvider)
-          .get(ApiEndpoints.userPreferences);
-      final prefs = json['preferences'];
-      if (prefs is! Map || !prefs.containsKey(prefKey)) return;
-      final decoded = decode(prefs[prefKey]);
-      if (decoded == null) return; // 服务端没存过/不识别 → 保留本地
-      state = decoded;
-      _writeCache();
-    } catch (_) {
-      // 拉取失败：保留本地缓存/默认值，不打断页面
+  /// 采用一份快照(见文件头第 2 条)：同一批次只采用一次；换身份作废本地未推的改动；
+  /// 同一身份重取时本地领先则不覆盖。
+  void _adoptSnapshot(SessionSnapshot snapshot) {
+    if (snapshot.generation == _adoptedGeneration) return;
+    _adoptedGeneration = snapshot.generation;
+    final scope = ref.read(authenticatedScopeProvider);
+    if (scope != _adoptedScope) {
+      _adoptedScope = scope;
+      _saveTimer?.cancel();
+      _saveTimer = null;
+      _localAhead = false;
+    } else if (_localAhead) {
+      return;
     }
+    _applySnapshot(snapshot);
+  }
+
+  void _applySnapshot(SessionSnapshot snapshot) {
+    if (!snapshot.preferences.containsKey(prefKey)) return;
+    final decoded = decode(snapshot.preferences[prefKey]);
+    if (decoded == null) return; // 服务端没存过/不识别 → 保留本地
+    state = decoded;
+    _writeCache();
   }
 
   /// Explicit page-entry synchronization. Most pages can rely on the automatic
-  /// session listener; pages whose first request depends on a persisted default
+  /// snapshot listener; pages whose first request depends on a persisted default
   /// may await this method before constructing that request.
-  Future<void> syncNow() => _syncFromServer();
+  Future<void> syncNow() async {
+    try {
+      final snapshot = await ref.read(sessionSnapshotProvider.future);
+      if (snapshot != null) _adoptSnapshot(snapshot);
+    } catch (_) {
+      // 快照拉取失败：保留本地缓存/默认值，不打断页面
+    }
+  }
 
   /// 整体替换状态并持久化（简单偏好用这个）。
   void update(T value) {
@@ -123,6 +166,8 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
 
   /// 子类自行变更 state 后调用：立即写缓存 + 防抖推服务端。
   void persist() {
+    _localRevision++;
+    _localAhead = true;
     _writeCache();
     _saveTimer?.cancel();
     _saveTimer = Timer(saveDebounce, _pushToServer);
@@ -148,11 +193,24 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   }
 
   Future<void> _pushToServer() async {
+    _saveTimer = null;
     if (ref.read(sessionProvider).user == null) return; // 未登录不推
+    final revision = _localRevision;
+    final scope = _adoptedScope;
+    final value = encode(state);
     try {
       await ref
           .read(apiClientProvider)
-          .put(ApiEndpoints.userPreference(prefKey), body: encode(state));
+          .put(ApiEndpoints.userPreference(prefKey), body: value);
+      // 推送期间换了身份：这次结果与新身份无关。
+      if (scope != _adoptedScope) return;
+      // 推送期间又改过：仍以本地为准，等下一次推送。
+      if (revision == _localRevision) _localAhead = false;
+      // 就地更新会话快照(同一加载批次)：换页重建的实例读到刚存的值，不必重拉整张表；
+      // 其它偏好 notifier 不会因此回灌。
+      ref
+          .read(sessionSnapshotProvider.notifier)
+          .updatePreference(prefKey, value);
     } catch (_) {
       // 离线兜底：失败静默，本地 state + 缓存已生效（见文件头注释）
     }

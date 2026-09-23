@@ -30,9 +30,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
-import '../providers/expense_counts_provider.dart';
-import '../../../shared/providers/draft_counts_provider.dart';
 import '../repositories/expense_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 单次批量上限（与后端 @Size(max=50) 对齐）。
 const int kExpenseBatchLimit = 50;
@@ -437,8 +436,7 @@ class _ExpenseApprovalListPageState
 
   /// 批量动作后列表、筛选桶与汇总一起刷新（计数随队列变化）。
   void _refreshQueue() {
-    ref.invalidate(expenseCountsProvider);
-    ref.invalidate(draftCountsProvider);
+    refreshBadges(ref);
     ref.invalidate(expenseApprovalListProvider);
     ref.invalidate(
       expenseApprovalFacetsProvider(ref.read(approvalQueueProvider)),

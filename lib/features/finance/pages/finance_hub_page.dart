@@ -5,8 +5,8 @@
 //  ③ 钱流报表：应收应付台账/对账单/流水账 入口
 // 点卡片进对应列表/报表页。卡片统一用 UtenHubCard（图标统一 40×40），
 // 计数口径（准则 14-徽章与计数口径）：
-//   · 「业务审核中心」卡挂右上角红色待办徽章（五类审核队列之和，走
-//     todo_badge_registry 注册表；「订单修改」是「销售订单确认」的队列切片，
+//   · 「业务审核中心」卡挂右上角红色待办徽章(全部审核队列之和，服务端徽章目录
+//     financeAuditCenter 入口算好，ADR-108；「订单修改」是「销售订单确认」的队列切片，
 //     总数只计一次）。原 6 张队列卡的旧路由保留，通知深链仍直达具体队列。
 //   · 钱流单据 5 张卡挂草稿红徽章（2026-09-11 口径反转：草稿是本人必须处理完的活，
 //     改红底白字并逐级累加，不再是中性括号）。
@@ -17,7 +17,7 @@
 //     已经放行 / 已经退回 —— 球落到采购、仓库、销售那几张卡上, 由它们的在办数报出来。
 //     在钱流再数一遍就是跨卡双计。想给这里补黄色之前, 先回答「这批单在别的模块的
 //     黄数里出现过吗」; 答案是会, 所以不补。
-//     页**内**分段是另一回事: 分段计数永不进注册表, 销售订单确认页的「已驳回」段
+//     页**内**分段是另一回事: 分段计数永不进徽章入口, 销售订单确认页的「已驳回」段
 //     就挂黄色, 那是本页自己的进度指示, 不上卷。
 // 支票管理 = 账户 account_type=CHECK/FOREIGN_CHECK 的过滤视图（不单独模块），
 // 入口指向 /finance/checks（由用户在 app_router 接到 AccountPage(initialAccountTypeFilter:'CHECK')）。
@@ -38,29 +38,19 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
-import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
-import '../../procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
-import '../providers/finance_procurement_approval_count_provider.dart';
-import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../widgets/finance_audit_center_badge.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class FinanceHubPage extends ConsumerWidget {
   const FinanceHubPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 返回即刷新：回到本 hub 时重拉「订货审批任务中心」「销售订单财务确认」「超量到货审批」计数。
-    ref.onPageResume(RouteName.finance, () {
-      ref.invalidate(financeProcurementApprovalCountProvider);
-      ref.invalidate(salesOrderFinanceConfirmationCountProvider);
-      ref.invalidate(financeArrivalExceptionCountProvider);
-      ref.invalidate(procurementIqcRejectionOpenCountProvider);
-      invalidateTodoBadgeCaches(ref);
-    });
+    // 返回即刷新：回到本 hub 时按需重拉徽章汇总(本端写过数据或超过 30 秒，ADR-108)。
+    ref.onPageResume(RouteName.finance, () => refreshBadges(ref));
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
@@ -92,11 +82,10 @@ class FinanceHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 本模块累计：数字由 todo_badge_registry 对 BadgeModule.finance 下全部
-          // 登记入口求和得出（含本模块 5 类草稿），页面里不要手写加法——
-          // 新增入口只改注册表，否则外层与内层又会对不上。0 时组件自身不渲染。
+          // 本模块累计：服务端徽章目录对钱流容器全部入口算好的和(含本模块 5 类
+          // 草稿，ADR-108)，页面里不做加法。0 时组件自身不渲染。
           UtenModuleTodoChip(
-            count: todoModuleCount(BadgeModule.finance, ref.watch),
+            count: ref.watch(badgeModuleTodoProvider(BadgeModule.finance)),
           ),
         ],
       ),
@@ -139,9 +128,8 @@ class FinanceHubPage extends ConsumerWidget {
                       description: l10n.expenseFlowApprovalEntryDescription,
                       location: '/expense/approval',
                       badge: UtenNotificationBadge(
-                        count: todoEntryCount(
-                          TodoEntry.expenseFinance,
-                          ref.watch,
+                        count: ref.watch(
+                          badgeEntryTodoProvider(BadgeEntry.expenseFinance),
                         ),
                       ),
                     ),

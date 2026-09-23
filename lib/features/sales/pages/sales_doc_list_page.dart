@@ -212,8 +212,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
 
   /// 「草稿」段计数：走跨模块 drafts/count（与新建页「草稿(N)」按钮、hub 卡徽章同源，
   /// 保证同口径——本人待自审草稿，不含财务驳回单）。stats 无草稿桶，故不从那里取。
-  int? get _draftCount =>
-      ref.watch(draftCountsProvider).valueOrNull?.salesOrder;
+  int? get _draftCount => ref.watch(draftCountsProvider).salesOrder;
 
   /// 分段计数范围(2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数): 出货/客户零星发货
   /// 按六个真实阶段分桶(零星发货只数 DIRECT_CUSTOMER), 报价/退货按状态分桶; 订货单走 stats,
@@ -600,19 +599,14 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
-    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
-    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
-    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
-      _reload();
-      if (_isOrder) _loadStats();
-    });
-    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
-    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
+    // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
+    // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_myLocation!, () {
       _reload(null, true);
       if (_isOrder) _loadStats();
-    });
+    }, refreshKeys: [_cfg.refreshKey]);
     final seg = _statusSeg;
     // 分段计数(出货六阶段 / 报价退货三状态); 加载中或无权限为 null, 不渲染数字。
     final statusScope = _statusScope;

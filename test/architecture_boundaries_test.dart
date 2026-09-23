@@ -19,17 +19,11 @@ void main() {
     'basic_data->department',
     'basic_data->employee',
     'dashboard->admin',
-    'dashboard->hr_task',
     'dashboard->notice',
-    // 2026-09-11：dashboard->finance / dashboard->sales 随徽章累加收敛到
-    // lib/shared/badges/todo_badge_registry.dart 而消失（工作台不再直接 import
-    // 各业务计数 provider）。新增此类依赖前先问：能不能进注册表？
-    'dashboard->production',
-    'dashboard->purchase',
-    'dashboard->rd_task',
-    'dashboard->subcontract',
-    'dashboard->visitor_approval',
-    'dashboard->warehouse',
+    // 2026-09-11：dashboard->finance / dashboard->sales 随徽章累加收敛到注册表而消失;
+    // 2026-09-23(ADR-108) 徽章数字改由服务端汇总一次带回, dashboard->hr_task/production/
+    // purchase/rd_task/subcontract/visitor_approval/warehouse 一并消失(工作台不再 import
+    // 任何业务计数 provider)。新增此类依赖前先问: 能不能进服务端徽章目录?
     'department->basic_data',
     'department->employee',
     'employee->department',
@@ -65,7 +59,6 @@ void main() {
     'purchase->department',
     'purchase->employee',
     'purchase->notice',
-    'purchase->operations_workbench',
     'purchase->report',
     'purchase->warehouse',
     'rd_task->basic_data',
@@ -140,13 +133,10 @@ void main() {
     // 2026-09-01：委外前置准备页（V447）读取生产物料分析模型与仓储——前置准备
     // 本质是生产分析的一个视图，与后端 SubcontractPreparation 依赖同构。
     'subcontract->production',
-    // 2026-09-05：生产计划一键生成后的统一刷新扇出（production_execution_refresh：
-    // 工作台概览/通知未读与列表同批失效），与 dashboard->* 聚合同族；
-    // 仅 ref.invalidate/read 计数 provider，无 UI/业务依赖。
-    'production->dashboard',
-    'production->notice',
+    // 2026-09-05 的 production->dashboard / production->notice(计划生成后的刷新扇出)
+    // 于 2026-09-23 随 ADR-108 消失: 扇出只剩 bumpListRefresh(写修订号 + 徽章汇总)。
     // 2026-09-13：领料/退料出库单详情过账后复用同一扇出失效生产执行列表，
-    // 与上一条同款：仅 ref.invalidate/read 计数 provider，无 UI/业务依赖。
+    // 仅 ref.invalidate/read 计数 provider，无 UI/业务依赖。
     'warehouse->production',
   };
 

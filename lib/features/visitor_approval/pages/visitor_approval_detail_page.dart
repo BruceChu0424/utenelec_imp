@@ -26,7 +26,7 @@ import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
-import '../providers/visitor_pending_count_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class VisitorApprovalDetailPage extends ConsumerWidget {
   const VisitorApprovalDetailPage({super.key, required this.applicationId});
@@ -58,8 +58,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
       // 状态桶计数（facets）随动作变化，一并失效。
       ref.invalidate(visitorApprovalFacetsProvider);
       // 审批动作改变待办数，立即刷新徽章
-      ref.read(visitorPendingCountProvider.notifier).refresh();
-      ref.read(visitorHostPendingCountProvider.notifier).refresh();
+      refreshBadges(ref);
       context.appSuccess(switch (action) {
         'approve' => l10n.visitorApprovalDoneApprove,
         'reject' => l10n.visitorApprovalDoneReject,

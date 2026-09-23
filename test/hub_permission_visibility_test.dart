@@ -5,10 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
-import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
-import 'package:uten_imp/features/warehouse/providers/warehouse_quality_result_count_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+import 'helpers/badge_summary_fixture.dart';
 
 Widget _app(Widget page, Set<String> permissions) {
   return ProviderScope(
@@ -16,10 +16,8 @@ Widget _app(Widget page, Set<String> permissions) {
       sharedPreferencesProvider.overrideWithValue(_preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      // 覆写只能打在源头: 红黄两支计数都是它的派生, 盖派生盖不住底下的真请求。
-      warehouseQualityResultTypeCountsProvider.overrideWith(
-        (ref) async => WarehouseQualityTypeCounts.empty,
-      ),
+      // 徽章数字只有一个源头(汇总), 固定成空汇总即不发任何计数请求。
+      fixedBadgeSummaryOverride(),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,

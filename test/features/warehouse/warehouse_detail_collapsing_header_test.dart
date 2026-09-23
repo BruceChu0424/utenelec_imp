@@ -20,25 +20,13 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_document_hist
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
-import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../support/collapsing_header_harness.dart';
-
-class _AllowAllScope implements DocumentScopeCapabilityRepository {
-  const _AllowAllScope();
-
-  @override
-  Future<DocumentScopeCapability> current(DocumentDataScope scope) async =>
-      DocumentScopeCapability(
-        scope: scope.apiValue,
-        writeAll: true,
-        writableOwnerIds: const <String>{},
-      );
-}
+import '../../helpers/document_scope_fixture.dart';
 
 /// 仓库单据详情用的假后端：明细多行（撑出可内滚的表体）。
 class _StockDocApi extends ApiClient {
@@ -98,9 +86,7 @@ Future<void> _pumpStockDoc(
         stockDocRepositoryProvider(
           StockDocType.otherIn,
         ).overrideWithValue(StockDocRepository(api, StockDocType.otherIn)),
-        documentScopeCapabilityRepositoryProvider.overrideWithValue(
-          const _AllowAllScope(),
-        ),
+        documentScopeOverride(writeAll: true),
         businessAttachmentsProvider.overrideWith(
           (ref, owner) async => const <Attachment>[],
         ),
@@ -238,10 +224,6 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
 
   final WarehouseSalesOutboundSummary summary;
   final WarehouseSalesOutboundDetail value;
-
-  @override
-  Future<WarehouseSalesOutboundCounts> counts() async =>
-      const WarehouseSalesOutboundCounts();
 
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({

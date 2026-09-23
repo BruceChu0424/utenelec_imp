@@ -4,7 +4,7 @@
 // 断点策略：
 //   - compact（<600dp）：底部悬浮胶囊导航，4 项：工作台 / 通知 / 我的 / 设置，
 //     布局与 v3 完全一致（overlay 悬浮、不占布局空间）；工作台挂总待办角标
-//     （= 各模块卡角标之和，workbenchTotalTodoCountProvider）、通知挂未读角标
+//     (= 各模块卡角标之和，服务端徽章汇总算好，badgeTotalTodoProvider)、通知挂未读角标
 //   - medium+（≥600dp）：全高左侧 NavigationRail（surface 底 + 右侧发丝边框），
 //     屏宽 ≥1280dp 时 extended 常驻标签，否则纯图标 + Tooltip；
 //     内容区套 UtenContentContainer（maxWidth 1600 居中），超宽屏不再无限拉宽
@@ -37,9 +37,6 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../dashboard/pages/dashboard_page.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
-import '../../dashboard/providers/workbench_refresh.dart';
-import '../../dashboard/widgets/module_badge_sum.dart'
-    show workbenchTotalTodoCountProvider;
 import '../../notice/pages/notice_list_page.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../profile/pages/profile_page.dart';
@@ -48,6 +45,7 @@ import '../widgets/floating_capsule_nav_bar.dart';
 import '../widgets/idle_timeout_guard.dart';
 import '../widgets/uten_side_nav_rail.dart';
 import '../widgets/uten_sliding_tab_view.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key, required this.child});
@@ -90,12 +88,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     super.dispose();
   }
 
-  /// 切回前台（resumed）时立即刷新通知未读数 + 列表，弥补无推送通道时
-  /// 「后台收到新通知、回到前台看不到、要等下次 60s 轮询」的延迟。
+  /// 切回前台时刷新通知列表(未读数随徽章汇总：它自己在回到前台时立即重拉一次，
+  /// 见 badgeSummaryProvider 的可见性监听)。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      ref.read(unreadNoticeCountProvider.notifier).refresh();
       ref.invalidate(noticeListProvider);
     }
   }
@@ -159,31 +156,21 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     final l10n = AppLocalizations.of(context);
     final location = GoRouterState.of(context).matchedLocation;
 
-    // 「返回即刷新」：任何导航落定（子页面返回 / 切 Tab / 系统返回手势）后，
-    // 立即重拉全部全局角标（生产/采购/研发/访客/HR/通知未读），不等 60s 轮询；
-    // 落点是工作台时再 invalidate 今日概览（重聚合），是通知 Tab 时再刷通知列表。
-    // 于是「审计中心返回工作台」「销售订货单走完流程返回」等场景回到的页面
-    // 立即显示最新待办与角标。
-    ref.listen(pageResumeProvider, (prev, next) {
-      if (prev == null || prev.location.isEmpty) return; // App 启动首次落定
-      if (next.location == prev.location) return; // 原地通知（路径未变）
-      // 全局角标只在落点=工作台时刷新：这些角标仅工作台/导航栏可见，落到 list/detail
-      // 等页面时刷新全是不可见计数，且会抢返回转场帧造成卡顿。各模块 hub 自带
-      // ref.onPageResume 刷各自计数；通知徽标由 60s 轮询/切前台/新通知到达联动保持。
-      if (next.location == RouteName.dashboard) {
-        refreshGlobalBadges(ref);
-        ref.invalidate(dashboardOverviewProvider);
-      } else if (next.location == RouteName.notice) {
-        ref.invalidate(noticeListProvider);
-      }
+    // 「返回即刷新」(ADR-108)：回到工作台时按需重拉——期间本端写过数据或距上次
+    // 超过 30 秒才动，且推迟到转场结束：徽章汇总一次请求 + 今日概览(重聚合)按需一次，
+    // 回一次工作台最多 2 个请求。落到其它页面时这些都不可见，不在这里抢请求。
+    ref.onPageResume(RouteName.dashboard, () {
+      refreshBadges(ref);
+      ref.invalidate(dashboardOverviewProvider);
     });
+    ref.onPageResume(
+      RouteName.notice,
+      () => ref.invalidate(noticeListProvider),
+    );
 
-    // 「通知→角标联动」：未读数上升（有新通知到达，如「采购财务通过」）即刷新全部
-    // 模块角标，用户无需手动刷新整页。prev 守卫避免 App 首次加载误触发。
-    // 联动粒度为「任意新通知→全刷」（成本仅为几次廉价 count 查询，无副作用）。
-    ref.listen(unreadNoticeCountProvider, (prev, next) {
-      if (prev != null && next > prev) refreshGlobalBadges(ref);
-    });
+    // 「通知→角标联动」不在这里做：未读数本身就随徽章汇总带回，汇总显示未读上涨时
+    // 各模块角标已是同一份新数；到达 feed 拉到新通知时由通知到达协调器调一次汇总刷新
+    // (noticeArrivalRefreshProvider)。此前这里再监听未读上涨补拉一次，每条新通知白打一次汇总。
 
     final labels = <String>[
       l10n.navDashboard,
@@ -192,9 +179,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
       l10n.navSettings,
     ];
     final unread = ref.watch(unreadNoticeCountProvider);
-    // 导航「工作台」Tab 角标 = 全部模块卡角标之和（与卡片同源；常驻 watch 使
-    // autoDispose 计数源保持存活，更新时机同 refreshGlobalBadges/60s 轮询）。
-    final workbenchTodos = ref.watch(workbenchTotalTodoCountProvider);
+    // 导航「工作台」Tab 角标 = 全部模块卡角标之和(服务端徽章汇总算好；外壳常驻
+    // watch 让汇总在整个已登录会话里保持轮询，页面隐藏时它自己暂停)。
+    final workbenchTodos = ref.watch(badgeTotalTodoProvider);
 
     final tabIndex = _exactTabIndex(location);
 

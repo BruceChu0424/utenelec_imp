@@ -226,7 +226,7 @@ flowchart TD
     DELIVER --> NEXT[旧通知补位]
 ```
 
-- **接收规则**：`NoticeArrivalListener` 挂在 `MaterialApp.builder` 内的已登录员工根层，并要求当前有效用户拥有 `notice:read`；跳转使用 `appNavigatorKey.currentContext`，所以访问权限拒绝页/404 页时接收器也不会卸载。cursor 与本机 deliveredIds 按账号/模拟身份持久化；首次从纪元分页全部未读且本机未展示的通知。之后每 10s 按 `(publishedAt,id)` 严格高水位升序拉取，每页最多 100 条并循环到 `hasMore=false`；每分钟从纪元全量对账，补回晚提交事件。既有 `popup_acknowledged_at` / popup-ack API 只保留历史兼容，默认 Flutter 到达链不再写入。
+- **接收规则**：`NoticeArrivalListener` 挂在 `MaterialApp.builder` 内的已登录员工根层，并要求当前有效用户拥有 `notice:read`；跳转使用 `appNavigatorKey.currentContext`，所以访问权限拒绝页/404 页时接收器也不会卸载。cursor 与本机 deliveredIds 按账号/模拟身份持久化；首次从纪元分页全部未读且本机未展示的通知。之后每 20s 按 `(publishedAt,id)` 严格高水位升序拉取(页面隐藏暂停)，每页最多 100 条并循环到 `hasMore=false`；徽章汇总带回的最新发布时间超过本地游标时立即拉一次。**2026-09-23 起(ADR-108)不再每分钟从纪元全量对账**，改按通知未读索引(`GET /api/notices/unread-index`, 摘要随徽章汇总带回、对不上才重拉)对账：仍该弹却既没送达也没排队的(游标后方的晚提交)从最早一条之前补拉一次，已读/已确认/已办结的排队项不再弹；游标就绪时若索引已在手即对账一次(重启补弹)。送达前校验暂时失败 2s 后单次重试。既有 `popup_acknowledged_at` / popup-ack API 只保留历史兼容，默认 Flutter 到达链不再写入。
 - **分派规则**：同一轮拉到的 normal / important / urgent 全部交给顶部栈，不等待上一条关闭。低优先级先入栈、important / urgent 后入栈，因此最高优先级位于视觉最上层；级别同时决定 info / warning / error 配色和 4s / 6s / 8s 停留时间。
 - **点击行为**：任意优先级顶部条点击均先标注已读，再跳 `notice.actionRoute`（附 `returnTo=/notice`）；空路由或历史脏路由回退通知详情弹层。顶部关闭只确认本设备已真实展示，不清通知未读，不冒充业务完成。
 - **排队、确认与恢复**：每个 active notice ID 独立持有 `onDismissed`；只有真实关闭才加入 deliveredIds 并持久化，重复回调幂等忽略。超过 3 条只限制同时完整展示，队列不删除；`clear()`、身份切换、宿主销毁或进程中断不会误确认，重启/全量对账只重放未关闭项。

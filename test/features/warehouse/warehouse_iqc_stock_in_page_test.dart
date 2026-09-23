@@ -54,8 +54,10 @@ void main() {
     final moduleBadge = File(
       'lib/features/dashboard/widgets/module_badge_sum.dart',
     ).readAsStringSync();
-    final globalRefresh = File(
-      'lib/shared/badges/todo_badge_registry.dart',
+    // ADR-108: 入口口径登记在服务端徽章目录(前端只剩入口映射)。
+    final catalog = File(
+      'server/src/main/java/com/uten/imp/features/workbench/badge/'
+      'WorkbenchBadgeCatalog.java',
     ).readAsStringSync();
     final router = File('lib/core/router/app_router.dart').readAsStringSync();
 
@@ -63,27 +65,22 @@ void main() {
     // 旧详情页已删除，深链重定向到合并页详情（同参）。
     expect(hub, contains('WarehouseQualityResultBadge'));
     expect(hub, contains('RouteName.warehouseQualityResults'));
-    // hub 的计数失效统一走 invalidateWarehouseTaskCounts(2026-09-01 下午起);
-    // 2026-09-21 起品质结果的红数与黄数都从来源分段计数那一支派生, 失效源头一支
-    // 两枚一起重拉(派生的两支单独失效拿到的仍是上游缓存)。
+    // hub 的计数刷新统一走 invalidateWarehouseTaskCounts(→ 徽章汇总重拉);
+    // 品质结果红黄两数是服务端目录 warehouseQualityResult 入口按全部来源大类求和。
     final countRefresh = File(
       'lib/features/warehouse/providers/warehouse_count_refresh.dart',
     ).readAsStringSync();
     expect(hub, contains('invalidateWarehouseTaskCounts'));
-    expect(countRefresh, contains('warehouseQualityResultTypeCountsProvider'));
-    // 2026-09-11：同上，工作台模块卡按 BadgeModule 委托求和；品质结果计数源
-    // 在注册表里（下一条断言）。
+    expect(countRefresh, contains('refreshBadges(ref)'));
     expect(moduleBadge, contains('BadgeModule.warehouse'));
     expect(
-      globalRefresh,
-      contains('warehouseQualityResultPendingCountProvider'),
+      catalog,
+      contains(
+        'warehouseQualityResult(Module.warehouse, facts("qualityResult.actionable.*")',
+      ),
     );
     expect(
       moduleBadge,
-      isNot(contains('warehouseIqcStockInPendingCountProvider')),
-    );
-    expect(
-      globalRefresh,
       isNot(contains('warehouseIqcStockInPendingCountProvider')),
     );
     expect(router, contains("name: 'warehouse-iqc-stock-ins'"));
@@ -207,18 +204,6 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   // 与本夹具的另外两处保持同一个世界: 唯一那张任务是 WAITING_INSPECTION 的采购单,
   // 所以它只能落在 inProgress.purchase 上, actionable 两支都是 0(等品质部出结论,
   // 仓库这会儿没活)。夹具自相矛盾会把「大类两枚 = 各状态小类之和」那条口径测成假绿。
-  @override
-  Future<WarehouseQualityTypeCounts> typeCounts() async =>
-      const WarehouseQualityTypeCounts(
-        actionable: {
-          WarehouseIqcStockInReceiptType.purchase: 0,
-          WarehouseIqcStockInReceiptType.subcontract: 0,
-        },
-        inProgress: {
-          WarehouseIqcStockInReceiptType.purchase: 1,
-          WarehouseIqcStockInReceiptType.subcontract: 0,
-        },
-      );
 
   @override
   Future<WarehouseQualityResultDetail> detail(

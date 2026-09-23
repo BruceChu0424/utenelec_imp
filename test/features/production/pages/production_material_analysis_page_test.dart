@@ -17,6 +17,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
@@ -1136,6 +1137,9 @@ void main() {
         tick: 1,
       );
       await tester.pump();
+      // 在领料单上办了出库(网络层推进本端写修订号, ADR-108)再返回才重拉;
+      // 纯查看后返回交给页面自己的轮询。
+      container.read(dataWriteRevisionProvider.notifier).state++;
       container.read(pageResumeProvider.notifier).state = (
         location: '/production/material-analysis',
         tick: 2,
@@ -1150,6 +1154,7 @@ void main() {
         tick: 3,
       );
       await tester.pump();
+      container.read(dataWriteRevisionProvider.notifier).state++;
       container.read(pageResumeProvider.notifier).state = (
         location: '/production/material-analysis',
         tick: 4,

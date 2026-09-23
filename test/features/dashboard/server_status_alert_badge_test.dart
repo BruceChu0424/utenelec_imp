@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
-import 'package:uten_imp/features/admin/providers/server_status_alert_count_provider.dart';
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   Future<int> badgeCount(
@@ -22,7 +24,12 @@ void main() {
         overrides: [
           currentPermissionsProvider.overrideWithValue(permissions),
           isSuperAdminProvider.overrideWithValue(false),
-          serverStatusAlertCountProvider.overrideWith((ref) async => alerts),
+          // 告警条数随徽章汇总带回(服务端按查看权给或不给该入口)。
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              entries: {BadgeEntry.serverStatusAlert: (alerts, 0)},
+            ),
+          ),
         ],
         child: const MaterialApp(
           home: Scaffold(

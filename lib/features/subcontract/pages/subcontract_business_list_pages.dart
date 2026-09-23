@@ -40,7 +40,6 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
-import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -456,15 +455,14 @@ class _SubcontractBusinessListPageState
         : ref.watch(documentStatusCountsProvider(statusScope)).valueOrNull;
     // 条件表达式里直接写 `? statusCounts?[key]` 会被 Dart 解析器当成两个 `?`, 走局部函数。
     int? bucket(String key) => statusCounts?[key];
+    // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
+    // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
+    // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _location ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_location!, () {
       _reload(null, true);
       _loadBadge();
-    });
-    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
-      _reload();
-      _loadBadge();
-    });
+    }, refreshKeys: [_cfg.refreshKey]);
     final names = ref.watch(mn.masterNameServiceProvider);
     final seg = _seg;
     // 2026-09-06 页头动作进工具条 trailing：与分类分段/搜索同一行

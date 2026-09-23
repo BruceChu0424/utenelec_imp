@@ -10,9 +10,9 @@
 // 徽章口径（docs/00-项目准则/14-徽章与计数口径.md）：
 //   · 每段红徽章 = 该队列「等我处理」数；「订单修改确认」与「销售订单确认」是
 //     同一批单据的两个队列切片，各显各的队列数，累加进 hub 卡/工作台的只有总数
-//     一次（todo_badge_registry「已知切片」注）。
+//     一次(服务端徽章目录 financeAuditCenter 入口)。
 //   · 刷新按钮/返回本页：递增 refreshTick 传给当前分段（分段页据此重拉列表），
-//     并重拉 5 个计数 provider（分段徽章与上级角标同源）。
+//     并重拉徽章汇总(分段徽章与上级角标同源，ADR-108)。
 //   · 旧队列路由（/finance/sales-order-confirmations 等）全部保留：通知深链与
 //     其它模块入口仍直达具体队列，页面与本页分段共用同一组件（embedded 模式）。
 import 'package:flutter/material.dart';
@@ -29,15 +29,12 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
-import '../../procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
 import '../../sales/widgets/sales_shipment_task_workbench.dart';
 import '../../warehouse/pages/finance_arrival_exception_pages.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
-import '../providers/finance_procurement_approval_count_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
-import '../../../shared/providers/sales_shipment_finance_count_provider.dart';
 import 'finance_procurement_approval_tasks_page.dart';
 import 'finance_sales_order_confirmation_page.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 /// 一个大类分段（value + 标签 + 待办数；null = 加载中不显徽章）。
 class _AuditSegment {
@@ -73,11 +70,8 @@ class _FinanceAuditCenterPageState
 
   void _refresh() {
     setState(() => _refreshTick++);
-    ref.invalidate(salesOrderFinanceConfirmationCountProvider);
-    ref.invalidate(salesShipmentFinanceCountProvider);
-    ref.invalidate(financeProcurementApprovalCountProvider);
-    ref.invalidate(financeArrivalExceptionCountProvider);
-    ref.invalidate(procurementIqcRejectionOpenCountProvider);
+    refreshBadges(ref);
+    ref.invalidate(salesOrderFinanceQueueCountProvider);
   }
 
   @override
@@ -94,23 +88,11 @@ class _FinanceAuditCenterPageState
     final canProcurement = can(Perm.financeOrderApprovalView);
     final canIqc = can(Perm.procurementIqcRejectionView);
 
-    final salesAll = ref.watch(salesOrderFinanceConfirmationCountProvider);
+    // 各队列待办数随工作台徽章汇总带回(ADR-108, 与业务审核中心卡同源); 「订单修改确认」
+    // 是销售订单确认队列的切片, 页内专用计数(不进任何徽章入口)。
+    int? fact(String key) => ref.watch(badgeFactOrNullProvider(key));
     final salesChanges = canSales
-        ? ref.watch(salesOrderFinanceQueueCountProvider(true))
-        : null;
-    final shipment = canShipment
-        ? ref.watch(salesShipmentFinanceCountProvider)
-        : null;
-    final procurement = canProcurement
-        ? ref.watch(financeProcurementApprovalCountProvider)
-        : null;
-    final arrival = canProcurement
-        ? ref.watch(financeArrivalExceptionCountProvider)
-        : null;
-    // IQC 计数 provider 无权限自卫（见 todo_badge_registry 同款注释），
-    // 聚合侧先查权限再决定是否 watch，避免给无权账号发请求。
-    final iqc = canIqc
-        ? ref.watch(procurementIqcRejectionOpenCountProvider)
+        ? ref.watch(salesOrderFinanceQueueCountProvider(true)).valueOrNull
         : null;
 
     final segments = <_AuditSegment>[
@@ -118,34 +100,38 @@ class _FinanceAuditCenterPageState
         _AuditSegment(
           value: 'salesConfirm',
           label: '销售订单确认',
-          count: salesAll.valueOrNull,
+          count: fact(BadgeFact.salesOrderFinance),
         ),
       if (canSales)
         _AuditSegment(
           value: 'salesChanges',
           label: '订单修改确认',
-          count: salesChanges?.valueOrNull,
+          count: salesChanges,
         ),
       if (canShipment)
         _AuditSegment(
           value: 'shipment',
           label: '出货审核',
-          count: shipment?.valueOrNull,
+          count: fact(BadgeFact.shipmentFinance),
         ),
       if (canProcurement)
         _AuditSegment(
           value: 'procurement',
           label: '订货审批',
-          count: procurement?.valueOrNull,
+          count: fact(BadgeFact.procurementApproval),
         ),
       if (canProcurement)
         _AuditSegment(
           value: 'arrival',
           label: '超量到货审批',
-          count: arrival?.valueOrNull,
+          count: fact(BadgeFact.financeArrivalException),
         ),
       if (canIqc)
-        _AuditSegment(value: 'iqc', label: 'IQC 退回贷项', count: iqc?.valueOrNull),
+        _AuditSegment(
+          value: 'iqc',
+          label: 'IQC 退回贷项',
+          count: fact(BadgeFact.iqcRejectionOpen),
+        ),
     ];
 
     return Scaffold(

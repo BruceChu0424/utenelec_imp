@@ -84,9 +84,6 @@ void main() {
 
 class _ShelvedRepository implements ProcurementInspectionRepository {
   @override
-  Future<int> pendingCount() async => 1;
-
-  @override
   Future<List<PendingInspectionReceipt>> pendingReceipts() async => const [];
 
   @override

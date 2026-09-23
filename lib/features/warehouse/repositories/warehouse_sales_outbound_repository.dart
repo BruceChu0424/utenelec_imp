@@ -14,10 +14,6 @@ abstract interface class WarehouseSalesOutboundGateway {
     String? dateTo,
   });
 
-  /// 仓库作业状态分组计数(出库任务中心「销售出库」父分类红徽章 + 小类行:
-  /// 待出库红徽章 / 已出库中性括号数), 与列表同一读范围, 一次请求.
-  Future<WarehouseSalesOutboundCounts> counts();
-
   Future<WarehouseSalesOutboundDetail> detail(String id);
 
   /// 一步确认出库：逐行实际库位 [stockPlaces] 与逐行实际发出仓 [lineWarehouses]
@@ -59,12 +55,6 @@ class WarehouseSalesOutboundRepository
     if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, WarehouseSalesOutboundSummary.fromJson);
-  }
-
-  @override
-  Future<WarehouseSalesOutboundCounts> counts() async {
-    final json = await api.get('$_base/counts');
-    return WarehouseSalesOutboundCounts.fromJson(json);
   }
 
   @override

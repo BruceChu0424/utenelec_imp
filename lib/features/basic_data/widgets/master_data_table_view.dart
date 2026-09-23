@@ -572,8 +572,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 用户已手动拖拽过的列下标：数据刷新时这些列保留用户宽度，其余按新内容重新适配。
   final Set<int> _manualResized = {};
 
-  /// 列宽待重算标记：列集合或数据变化时置 true，[_ensureWidths] 算完清掉。
+  /// 列宽全量重算标记：首帧、列集合或字号档变化时置 true，[_ensureWidths] 算完清掉。
   bool _widthsDirty = true;
+
+  /// 每列已量过的文本宽度(按列 key；单元格值按字符串去重)。列集合或字号档变化时清空。
+  /// 数据刷新(翻页/筛选/静默重拉)只量新出现的值，列宽只增不减(ADR-108)：
+  /// 同一份数据换个 List 实例不再整表重量，静默刷新时列宽也不跳。
+  final Map<String, _ColumnTextMeasure> _textMeasures = {};
+
+  /// 数据变了(列集合不变)：待本帧之后补量新值、需要时加宽。
+  bool _widthGrowthPending = false;
+  bool _widthGrowthScheduled = false;
 
   /// 上次量宽时生效的字号系数（textScaler.scale(1)）。用户在系统设置改字号档后，
   /// 渲染文字按新字号铺，但列宽缓存不会自动失效——[_ensureWidths] 据此比较触发重算，
@@ -691,8 +700,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 列宽自动适配上限：超长文本（如备注）默认按此截断+省略号，用户可再拖宽。
   static const double _maxColWidth = 480;
 
-  /// 自动适配取样行数：量前 N 行最宽值即可（全量量算大表偏重，最宽值通常在前段出现）。
-  static const int _autoFitSampleSize = 100;
+  /// 自动适配取样行数：量前 N 行最宽值即可(全量量算大表偏重，最宽值通常在前段出现；
+  /// 此后每次数据刷新再各取前 N 行里没量过的值补量，列只会加宽)。
+  static const int _autoFitSampleSize = 30;
   static const double _cellPadX = UtenSpacing.s12; // 单元格左右内边距（表头/表体一致）
   static const double _headerIconAllowance = 24; // 表头筛选下拉箭头 + 富余
   static const double _sortIconAllowance = 20; // 可排序列表头排序图标 + 间距
@@ -851,13 +861,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
       _manualResized.clear();
       _widthsDirty = true;
+      _textMeasures.clear(); // 换了一套列：旧列的量宽结果不沿用。
       _hiddenKeys.clear(); // 列显隐选择跟随列集合重置（默认全部显示）。
       _columnOrder = widget.columns.map((c) => c.key).toList(); // 列序同随重置。
       columnHeaderDragReset(); // 拖拽态/跟手浮层可能指向失效下标，重置（FM6）。
       _colLinks.clear(); // 旧下标的 LayerLink 作废，按新列集合下标重建。
-    } else if (oldWidget.items != widget.items) {
-      // 数据变了（翻页/筛选/排序/加载更多）→ 标记重算；已手动调整的列在 _ensureWidths 保留。
-      _widthsDirty = true;
+    } else if (oldWidget.items != widget.items ||
+        oldWidget.leadingGroups != widget.leadingGroups) {
+      // 数据变了(翻页/筛选/排序/加载更多/静默重拉)→ 帧后只补量新出现的值，
+      // 超出当前宽度才加宽；已手动调整的列不动。
+      _widthGrowthPending = true;
     }
     // 吸顶表：数据/列变化改表高 → post-frame 重测锚点；notifier 换实例重绑。
     if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
@@ -964,7 +977,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 按当前列与已加载数据自动测算各列宽度：取表头标签与单元格值的最大文本宽，加内边距/图标富余。
-  /// 用户已手动拖拽的列（[_manualResized]）保留原宽度不重算。仅在 [_widthsDirty] 时执行。
+  /// 用户已手动拖拽的列([_manualResized])保留原宽度不重算。全量只在 [_widthsDirty] 时执行
+  /// (首帧/换列/换字号档)；数据刷新走帧后增量补量([_scheduleWidthGrowth])，不占当前帧。
   void _ensureWidths(BuildContext context) {
     // 字号档（textScaler）变化也要重算：渲染时文字按放大字号铺，但量宽用的 TextPainter
     // 必须显式带上同一 textScaler 才量得准（否则按 1.0 量偏窄，大字号下要拖才显示全）。
@@ -972,59 +986,126 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final scale = textScaler.scale(1);
     if (_lastScale != null && _lastScale != scale) {
       _widthsDirty = true;
+      _textMeasures.clear();
     }
-    if (!_widthsDirty) return;
+    if (!_widthsDirty) {
+      if (_widthGrowthPending) _scheduleWidthGrowth();
+      return;
+    }
     _widthsDirty = false;
+    _widthGrowthPending = false;
     _lastScale = scale;
-    final theme = Theme.of(context);
-    final headerStyle = (theme.textTheme.labelMedium ?? const TextStyle())
-        .copyWith(fontWeight: FontWeight.w700);
-    final bodyStyle = theme.textTheme.bodySmall ?? const TextStyle();
+    final pool = _widthSamplePool();
     final next = List<double>.filled(
       widget.columns.length,
       _minColWidth,
       growable: true,
     );
-    // 取样池：主数据 + 前导分组条目（分组行与主行共用同一套列宽，故一并参与测算，
-    // 保证展开/折叠分组时列宽不跳动；分组条目通常是禁用/不明货品，量小不影响性能）。
-    final pool = <T>[
-      ...widget.items,
-      for (final g in (widget.leadingGroups ?? <MasterDataGroup<T>>[]))
-        ...g.items,
-    ];
-    final sampleCount = pool.length < _autoFitSampleSize
-        ? pool.length
-        : _autoFitSampleSize;
     for (var i = 0; i < widget.columns.length; i++) {
       if (_manualResized.contains(i) && i < _widths.length) {
         next[i] = _widths[i];
         continue;
       }
       final def = widget.columns[i];
-      double w = _measureText(def.label, headerStyle, textScaler);
-      for (var r = 0; r < sampleCount; r++) {
-        final tw = _measureText(
-          def.value(pool[r]) ?? '',
-          bodyStyle,
-          textScaler,
-        );
-        if (tw > w) w = tw;
-      }
-      final measured =
-          (w +
-                  _cellPadX * 2 +
-                  _headerIconAllowance +
-                  (def.sortable ? _sortIconAllowance : 0) +
-                  (def.info != null ? _headerInfoIconAllowance : 0) +
-                  _autoFitBuffer)
-              .clamp(_minColWidth, _maxColWidth);
-      final declared = def.width.clamp(_minColWidth, _maxColWidth);
-      // Rich cells may contain buttons/progress/two-line guidance whose width
-      // cannot be inferred from [value]. Treat the declared width as a minimum;
-      // plain text columns can still auto-grow beyond it.
-      next[i] = measured < declared ? declared : measured;
+      next[i] = _fitColumnWidth(
+        def,
+        _measureColumn(context, def, pool, textScaler),
+      );
     }
     _widths = next;
+  }
+
+  /// 取样池：主数据 + 前导分组条目(分组行与主行共用同一套列宽，故一并参与测算，
+  /// 保证展开/折叠分组时列宽不跳动；分组条目通常是禁用/不明货品，量小不影响性能)。
+  List<T> _widthSamplePool() => <T>[
+    ...widget.items,
+    for (final g in (widget.leadingGroups ?? <MasterDataGroup<T>>[]))
+      ...g.items,
+  ];
+
+  /// 量一列：表头只量一次；取样行里没量过的值才量(按字符串去重)。
+  _ColumnTextMeasure _measureColumn(
+    BuildContext context,
+    MasterColumnDef<T> def,
+    List<T> pool,
+    TextScaler textScaler,
+  ) {
+    final theme = Theme.of(context);
+    final measure = _textMeasures.putIfAbsent(def.key, _ColumnTextMeasure.new);
+    if (!measure.headerMeasured) {
+      measure.header = _measureText(
+        def.label,
+        (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+        textScaler,
+      );
+      measure.headerMeasured = true;
+    }
+    final bodyStyle = theme.textTheme.bodySmall ?? const TextStyle();
+    final sampleCount = pool.length < _autoFitSampleSize
+        ? pool.length
+        : _autoFitSampleSize;
+    // 去重集合只防重复量同一串；过大时清掉(最大宽度已记下，不影响结果)。
+    if (measure.seen.length > 4000) measure.seen.clear();
+    for (var r = 0; r < sampleCount; r++) {
+      final text = def.value(pool[r]) ?? '';
+      if (text.isEmpty || !measure.seen.add(text)) continue;
+      final width = _measureText(text, bodyStyle, textScaler);
+      if (width > measure.body) measure.body = width;
+    }
+    return measure;
+  }
+
+  /// 量宽结果 → 列宽(加内边距/图标富余，夹在上下限之间；声明宽度作下限)。
+  double _fitColumnWidth(MasterColumnDef<T> def, _ColumnTextMeasure measure) {
+    final text = measure.header > measure.body ? measure.header : measure.body;
+    final measured =
+        (text +
+                _cellPadX * 2 +
+                _headerIconAllowance +
+                (def.sortable ? _sortIconAllowance : 0) +
+                (def.info != null ? _headerInfoIconAllowance : 0) +
+                _autoFitBuffer)
+            .clamp(_minColWidth, _maxColWidth);
+    final declared = def.width.clamp(_minColWidth, _maxColWidth);
+    // Rich cells may contain buttons/progress/two-line guidance whose width
+    // cannot be inferred from [value]. Treat the declared width as a minimum;
+    // plain text columns can still auto-grow beyond it.
+    return measured < declared ? declared : measured;
+  }
+
+  /// 数据刷新后的增量量宽：挪到本帧之后执行，只量新出现的值；有列需要加宽才重建一次。
+  void _scheduleWidthGrowth() {
+    if (_widthGrowthScheduled) return;
+    _widthGrowthScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _widthGrowthScheduled = false;
+      if (!mounted || !_widthGrowthPending) return;
+      _widthGrowthPending = false;
+      final textScaler = MediaQuery.textScalerOf(context);
+      if (_lastScale != textScaler.scale(1) ||
+          _widths.length != widget.columns.length) {
+        setState(() => _widthsDirty = true);
+        return;
+      }
+      final pool = _widthSamplePool();
+      var grown = false;
+      final next = List<double>.of(_widths);
+      for (var i = 0; i < widget.columns.length; i++) {
+        if (_manualResized.contains(i)) continue;
+        final def = widget.columns[i];
+        final fitted = _fitColumnWidth(
+          def,
+          _measureColumn(context, def, pool, textScaler),
+        );
+        if (fitted > next[i] + 0.5) {
+          next[i] = fitted;
+          grown = true;
+        }
+      }
+      if (grown) setState(() => _widths = next);
+    });
   }
 
   /// 测量单行文本渲染宽度（TextPainter，maxLines:1）。测完 dispose 防泄漏。
@@ -1033,6 +1114,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 的 Text 在渲染时会自动吃这个缩放，量宽若不带它就会按未放大字号量、列偏窄。
   double _measureText(String text, TextStyle style, TextScaler textScaler) {
     if (text.isEmpty) return 0;
+    debugMasterTableMeasureTextCount++;
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
@@ -3145,4 +3227,16 @@ class _ViewportPinnedRow extends StatelessWidget {
       },
     );
   }
+}
+
+/// 测试用：[MasterDataTableView] 累计文本测量次数(验证数据刷新不再整表重量)。
+@visibleForTesting
+int debugMasterTableMeasureTextCount = 0;
+
+/// 一列的量宽缓存：表头宽、单元格最大宽、已量过的值(按字符串去重)。
+class _ColumnTextMeasure {
+  bool headerMeasured = false;
+  double header = 0;
+  double body = 0;
+  final Set<String> seen = <String>{};
 }

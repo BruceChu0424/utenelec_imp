@@ -4,15 +4,15 @@
 // 点卡片进对应列表/报表页。卡片统一用 UtenHubCard；红色徽章
 //（准则 14-徽章与计数口径）：任务中心 / 待退回供应商 / 订货·收货·退货草稿
 // 都是「必须我处理完的活」，全部登记进本模块累加
-//（见 shared/badges/todo_badge_registry.dart，2026-09-11 起草稿也算待办）；
+//(入口口径在服务端徽章目录 WorkbenchBadgeCatalog, ADR-108；2026-09-11 起草稿也算待办)；
 // 「采购申请」不挂徽章——它的待处理量已由任务中心「待分解」计入，重复挂会双计。
 //
 // ADR-100(2026-09-21): 右上角再并一枚黄色「进行中」徽章(黄左红右), 回答另一个问题
 // 「我手上还有多少在跑」。采购只有「采购任务中心」一张卡登记黄色(= 任务中心
 // 「进行中」段, 等待财务审核 + 财务已通过 + 财务驳回); 订货/收货/退货三张单据卡
 // **刻意不挂黄** —— 那些在途单据已经全在任务中心的 IN_PROGRESS 里, 再按单据数一遍
-// 就是同一条黄链内的双计(见 shared/badges/in_progress_badge_registry.dart 末尾的
-// 「已知重叠」)。「采购申请」与报表区两种颜色都不挂。
+// 就是同一条黄链内的双计(见准则 14-徽章与计数口径「已知重叠」)。
+// 「采购申请」与报表区两种颜色都不挂。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,32 +34,23 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/badges/in_progress_badge_registry.dart';
-import '../../../shared/badges/todo_badge_registry.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/purchase_doc_config.dart';
 import '../config/purchase_report_config.dart';
 import '../models/purchase_doc.dart';
 import '../widgets/purchase_task_badge.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class PurchaseHubPage extends ConsumerWidget {
   const PurchaseHubPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 返回即刷新：回到本 hub 时重拉「待退回供应商」任务数。
-    // 「采购任务中心」角标（PurchaseTaskBadge）是全局轮询 Provider，
-    // 由外壳 MainShellPage 的全局角标刷新覆盖，这里无需重复。
-    ref.onPageResume(RouteName.purchase, () {
-      ref.invalidate(
-        procurementArrivalReturnCountProvider(
-          ProcurementInboundOrderType.purchase,
-        ),
-      );
-    });
+    // 返回即刷新：回到本 hub 时按需重拉徽章汇总(本端写过数据或超过 30 秒，
+    // ADR-108)；本页全部卡片角标都在这一份汇总里。
+    ref.onPageResume(RouteName.purchase, () => refreshBadges(ref));
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
@@ -85,9 +76,8 @@ class PurchaseHubPage extends ConsumerWidget {
         // 黄=任务中心「进行中」段(已下单、球在财务/供应商手上); 红=申请待分解与
         // 财务驳回。同一张被驳回的单两枚都算得上, 那是两条链对两个问题的答案。
         progressBadge: UtenInProgressBadge(
-          count: inProgressEntryCount(
-            InProgressEntry.purchaseTaskCenter,
-            ref.watch,
+          count: ref.watch(
+            badgeEntryInProgressProvider(BadgeEntry.purchaseTaskCenter),
           ),
           showLabel: true,
         ),
@@ -133,10 +123,12 @@ class PurchaseHubPage extends ConsumerWidget {
           // 三张单据草稿)。两个数字都由各自注册表求和得出, 页面里不要手写加法,
           // 否则与工作台「采购管理」卡的口径会各算各的。0 时组件自身不渲染。
           UtenModuleProgressChip(
-            count: inProgressModuleCount(BadgeModule.purchase, ref.watch),
+            count: ref.watch(
+              badgeModuleInProgressProvider(BadgeModule.purchase),
+            ),
           ),
           UtenModuleTodoChip(
-            count: todoModuleCount(BadgeModule.purchase, ref.watch),
+            count: ref.watch(badgeModuleTodoProvider(BadgeModule.purchase)),
           ),
         ],
       ),

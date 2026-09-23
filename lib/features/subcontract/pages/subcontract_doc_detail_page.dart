@@ -9,6 +9,8 @@
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（只读提示/表头卡/横幅/进度/附件），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/historical_receipt_totals.dart';
@@ -50,6 +52,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
+import '../../../shared/auth/session_snapshot_provider.dart';
 
 class SubcontractDocDetailPage extends ConsumerStatefulWidget {
   const SubcontractDocDetailPage({
@@ -148,29 +151,20 @@ class _SubcontractDocDetailPageState
   );
 
   Future<void> _load() async {
-    if (widget.docType != SubcontractDocType.application) {
-      ref.invalidate(
-        documentScopeCapabilityProvider(DocumentDataScope.subcontract),
-      );
-    }
+    if (widget.docType != SubcontractDocType.application) {}
     setState(() {
       _loading = true;
       _error = null;
     });
+    final names = ref.read(mn.masterNameServiceProvider);
+    // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
+    final dictionaries = names.ensureLoaded();
     try {
-      await ref.read(mn.masterNameServiceProvider).ensureLoaded();
       final d = await ref
           .read(subcontractRepositoryProvider(widget.docType))
           .detail(widget.id);
-      final goodsIds = d.items
-          .map((e) => e.goodsId)
-          .whereType<String>()
-          .toSet();
-      await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
-      // 明细身份列要显示货品编号：名称可能来自搜索缓存（只有名称没有编号），
-      // 再补一次详情才拿得到 code/库位号。
-      await ref.read(mn.masterNameServiceProvider).loadGoodsDetails(goodsIds);
       if (!mounted) return;
+      unawaited(_resolveDisplayNames(names, d, dictionaries));
       setState(() {
         _detail = d;
         _loading = false;
@@ -188,6 +182,26 @@ class _SubcontractDocDetailPageState
         _loading = false;
       });
     }
+  }
+
+  /// 首屏之后并行补齐字典与明细货品名/编号/库位号(委外明细服务端暂未随单下发货品
+  /// 展示字段，由一次批量货品查询补齐)，完成后重绘一次。
+  Future<void> _resolveDisplayNames(
+    mn.MasterNameService names,
+    SubcontractDocDetail d,
+    Future<void> dictionaries,
+  ) async {
+    try {
+      await Future.wait([
+        dictionaries,
+        names.loadGoodsDetails(
+          d.items.map((e) => e.goodsId).whereType<String>(),
+        ),
+      ]);
+    } catch (_) {
+      // 名称补齐失败只影响占位符，不影响正文。
+    }
+    if (mounted && identical(_detail, d)) setState(() {});
   }
 
   Future<void> _approve() async {
@@ -543,11 +557,9 @@ class _SubcontractDocDetailPageState
                               DocumentScopeWriteNotice(
                                 capability: scopeCapability,
                                 ownerEmployeeId: _detail!.makerId,
-                                onRetry: () => ref.invalidate(
-                                  documentScopeCapabilityProvider(
-                                    DocumentDataScope.subcontract,
-                                  ),
-                                ),
+                                onRetry: () => ref
+                                    .read(sessionSnapshotProvider.notifier)
+                                    .refresh(),
                               ),
                             // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
                             // SelectionArea（准则 §3.4），无需再单独包。

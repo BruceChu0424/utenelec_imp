@@ -23,7 +23,7 @@ class _Repository implements SalesOrderFinanceConfirmationRepository {
 
 void main() {
   test(
-    'first-review and modification badges partition the total and share refresh',
+    'first-review and modification segments are counted separately and refresh together',
     () async {
       final repository = _Repository();
       final container = ProviderContainer(
@@ -56,19 +56,13 @@ void main() {
         await container.read(salesOrderFinanceQueueCountProvider(true).future),
         3,
       );
-      expect(
-        await container.read(salesOrderFinanceConfirmationCountProvider.future),
-        7,
-      );
-      expect(repository.calls, unorderedEquals([null, false, true]));
-      container.invalidate(salesOrderFinanceConfirmationCountProvider);
-      await container.read(salesOrderFinanceConfirmationCountProvider.future);
+      expect(repository.calls, unorderedEquals([false, true]));
+      // 队列页确认/驳回成功后两个分段一起失效重拉; 卡面总数随徽章汇总走(ADR-108),
+      // 不再有单独的「总数」请求。
+      container.invalidate(salesOrderFinanceQueueCountProvider);
       await container.read(salesOrderFinanceQueueCountProvider(false).future);
       await container.read(salesOrderFinanceQueueCountProvider(true).future);
-      expect(
-        repository.calls,
-        unorderedEquals([null, false, true, null, false, true]),
-      );
+      expect(repository.calls, unorderedEquals([false, true, false, true]));
     },
   );
 

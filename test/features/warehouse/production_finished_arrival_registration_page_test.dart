@@ -15,8 +15,10 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_arrival_registration_page.dart';
-import 'package:uten_imp/features/warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 const _reportId = '20000000-0000-0000-0000-000000000001';
 
@@ -282,6 +284,10 @@ void main() {
     'formal route derives permission and refreshes pending count after save',
     (tester) async {
       final api = _ArrivalRegistrationApi();
+      // 待点收数随徽章汇总带回(ADR-108): 保存成功后汇总重拉一次, 不再单独请求计数端点。
+      final badges = FixedBadgeSummaryNotifier(
+        badgeSummaryFixture(facts: {BadgeFact.finishedInbound: 1}),
+      );
       final router = GoRouter(
         initialLocation: RouteName.warehouseProductionFinishedInboundTasks,
         routes: [
@@ -309,6 +315,7 @@ void main() {
               Perm.stockDocApprove,
             }),
             isSuperAdminProvider.overrideWithValue(false),
+            badgeSummaryProvider.overrideWith(() => badges),
           ],
           child: MaterialApp.router(
             routerConfig: router,
@@ -318,7 +325,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(api.countRequests, 1);
+      expect(badges.refreshCalls, 0);
 
       await tester.tap(find.byKey(const Key('open-formal-arrival-route')));
       await tester.pumpAndSettle();
@@ -347,7 +354,7 @@ void main() {
         find.byKey(const Key('open-formal-arrival-route')),
         findsOneWidget,
       );
-      expect(api.countRequests, 2);
+      expect(badges.refreshCalls, greaterThanOrEqualTo(1));
       expect(api.lastPostBody?['warehouseId'], 'warehouse-1');
     },
   );
@@ -1014,7 +1021,7 @@ class _ArrivalRouteQueue extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(warehouseProductionFinishedInboundPendingCountProvider);
+    ref.watch(badgeFactProvider(BadgeFact.finishedInbound));
     return Scaffold(
       body: Center(
         child: FilledButton(
@@ -1223,7 +1230,6 @@ class _ArrivalRegistrationApi extends ApiClient {
   final Map<String, List<Map<String, dynamic>>> suggestionsByWarehouse;
   String? lastPostPath;
   Map<String, dynamic>? lastPostBody;
-  int countRequests = 0;
   int rememberRequests = 0;
   String? lastRememberRegistrationId;
   final List<String> suggestionWarehouses = [];
@@ -1250,10 +1256,6 @@ class _ArrivalRegistrationApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/tasks/count')) {
-      countRequests++;
-      return const {'count': 1};
-    }
     if (path.endsWith('/place-suggestions')) {
       final selectedWarehouse = query?['warehouseId']?.toString() ?? '';
       suggestionWarehouses.add(selectedWarehouse);

@@ -59,7 +59,7 @@ class UtenDraftsButton extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     // 加载中/失败按 0：按钮照常可点，只是暂不显示计数。
-    final count = ref.watch(draftCountsProvider).valueOrNull?.of(kind) ?? 0;
+    final count = ref.watch(draftCountsProvider).of(kind);
     final note = countScopeNote;
     // 顶栏动作统一形态（深绿实心白字、固定 36 高），与「权限设置」同款；
     // 计数走红色徽章贴在文案右侧（0 不渲染，见 UtenNotificationBadge）。

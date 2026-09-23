@@ -15,11 +15,6 @@ class HrTaskRepository {
     return HrTaskSummary.fromJson(json);
   }
 
-  Future<int> count() async {
-    final json = await _api.get(ApiEndpoints.hrTaskCount);
-    return (json['count'] as num?)?.toInt() ?? 0;
-  }
-
   // ===== 任务软认领（ADR-021） =====
 
   /// 认领（幂等：自己已认领 = 续租；他人在租约内 = 409）。

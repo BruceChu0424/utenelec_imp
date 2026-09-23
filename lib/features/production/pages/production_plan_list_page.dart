@@ -101,7 +101,9 @@ class _ProductionPlanListPageState
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<ProductionPlanListItem>> _fetch() async {
-    await ref.read(masterNameServiceProvider).ensureLoaded();
+    final names = ref.read(masterNameServiceProvider);
+    // 字典与列表并行(ADR-108)，不再先等字典。
+    final dictionaries = names.ensureLoaded();
     final r = await ref
         .read(productionPlanRepositoryProvider)
         .list(
@@ -114,10 +116,14 @@ class _ProductionPlanListPageState
           sort: _list.sortKey,
           order: _list.sortOrder,
         );
-    // 跟单员名按需解析（部门名已在 ensureLoaded 加载）。
-    await ref
-        .read(masterNameServiceProvider)
-        .loadEmployeeNames(r.items.map((e) => e.sellerId).whereType<String>());
+    // 跟单员姓名服务端随行已给；只有缺名的行才按 id 补查(部门名已在 ensureLoaded 加载)。
+    await Future.wait([
+      dictionaries,
+      names.loadEmployeeNames([
+        for (final e in r.items)
+          if ((e.sellerName ?? '').trim().isEmpty) e.sellerId,
+      ]),
+    ]);
     return r;
   }
 
@@ -280,7 +286,7 @@ class _ProductionPlanListPageState
       key: 'seller',
       label: '跟单员',
       width: 140,
-      value: (it) => names.employee(it.sellerId),
+      value: (it) => names.employeeOr(it.sellerName, it.sellerId),
     ),
     MasterColumnDef(
       key: 'status',

@@ -5,16 +5,16 @@
 // 销售管理卡 / 销售报表卡 若整组无可显项则整卡隐藏。
 //
 // 卡片统一用 UtenHubCard，右上角徽章槽恒放红色待办数（准则 14-徽章与计数口径）：
-//   · 任务中心卡：SalesProgressBadge（财务驳回 + 完工提醒，TodoEntry.salesAttention）。
-//   · 报价/订货/出货/退货单据卡：UtenDraftBadge（本人待自审草稿数）——2026-09-11 起
-//     草稿由中性括号改红徽章并逐级累加（TodoEntry.salesDrafts）。
+//   · 任务中心卡：SalesProgressBadge(财务驳回 + 完工提醒，BadgeEntry.salesAttention)。
+//   · 报价/订货/出货/退货单据卡：UtenDraftBadge(本人待自审草稿数)——2026-09-11 起
+//     草稿由中性括号改红徽章并逐级累加(BadgeEntry.salesDrafts)。
 // 2026-09-21(ADR-100) 起右上角还可能有第二枚徽章: 黄色「进行中」数, 排在红徽章左边,
 // 回答「我手上还有多少在跑」(红徽章回答「我还欠多少活」)。销售只有「订单进度查询」
 // 一张卡登记黄数, 四张单据卡刻意不挂, 理由见下方 _Entry.fromCfg 注释。
 // 顶栏右上角另有一枚红徽章 = 本模块累计(全部登记入口之和), 其左边是同口径的黄色
 // 「进行中 N」药丸。
 // 「客户零星发货」故意不显草稿数——与「销售出货」同属 sales_shipments，
-// /sales/shipments 列表本就含这批单，两处各显一次会双计（见 todo_badge_registry 末注）。
+// /sales/shipments 列表本就含这批单，两处各显一次会双计(见准则 14-徽章与计数口径)。
 // 权限来自 currentPermissionsProvider；路由用 SalesRoutePath 字面量。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,11 +34,10 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/badges/in_progress_badge_registry.dart';
-import '../../../shared/badges/todo_badge_registry.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../widgets/sales_progress_badge.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class SalesHubPage extends ConsumerWidget {
   const SalesHubPage({super.key});
@@ -61,9 +60,8 @@ class SalesHubPage extends ConsumerWidget {
         listPerm: Perm.salesOrderView,
         badge: const SalesProgressBadge(),
         progressBadge: UtenInProgressBadge(
-          count: inProgressEntryCount(
-            InProgressEntry.salesOrderInFlight,
-            ref.watch,
+          count: ref.watch(
+            badgeEntryInProgressProvider(BadgeEntry.salesOrderInFlight),
           ),
           showLabel: true,
         ),
@@ -114,15 +112,15 @@ class SalesHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          // 本模块「进行中」累计(黄, 在红药丸左边): 由 in_progress_badge_registry 对
-          // BadgeModule.sales 下登记的在办入口求和, 同样不在页面里手写加法。
+          // 本模块「进行中」累计(黄, 在红药丸左边): 徽章汇总里 sales 容器的黄数
+          // (服务端对本容器在办入口求和, ADR-108), 同样不在页面里手写加法。
           UtenModuleProgressChip(
-            count: inProgressModuleCount(BadgeModule.sales, ref.watch),
+            count: ref.watch(badgeModuleInProgressProvider(BadgeModule.sales)),
           ),
-          // 本模块累计：数字由 todo_badge_registry 对 BadgeModule.sales 下全部登记入口
-          // 求和得出（已含各单据卡草稿），**页面里不要手写加法**——新增入口只改注册表。
+          // 本模块累计：徽章汇总里 sales 容器的红数(服务端对全部入口求和, 已含各单据卡
+          // 草稿)，**页面里不要手写加法**——新增入口只改服务端徽章目录。
           UtenModuleTodoChip(
-            count: todoModuleCount(BadgeModule.sales, ref.watch),
+            count: ref.watch(badgeModuleTodoProvider(BadgeModule.sales)),
           ),
         ],
       ),

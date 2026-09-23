@@ -36,6 +36,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_daily_report.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_status_badge.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 
 class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
   const ProductionDailyReportDetailPage({super.key, required this.id});
@@ -79,9 +80,6 @@ class _ProductionDailyReportDetailPageState
   bool get _canReverse => _allows(DocumentPermissionAction.reverse);
 
   Future<void> _load() async {
-    ref.invalidate(
-      documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
-    );
     setState(() {
       _loading = true;
       _error = null;
@@ -182,11 +180,7 @@ class _ProductionDailyReportDetailPageState
       );
       if (!mounted) return;
       context.appSuccess(ok);
-      // 服务端已返回审核/红冲后的完整详情：直接落页面，省掉一次详情往返；
-      // 对象范围能力照旧失效重算(单据状态变了，编辑/删除按钮要跟着变)。
-      ref.invalidate(
-        documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
-      );
+      // 服务端已返回审核/红冲后的完整详情：直接落页面，省掉一次详情往返。
       _applyDetail(updated);
     } on ApiException catch (e) {
       await _settleFailedAction(e.message, ok);
@@ -223,9 +217,6 @@ class _ProductionDailyReportDetailPageState
     }
     if (!mounted) return;
     if (fresh != null) {
-      ref.invalidate(
-        documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
-      );
       _applyDetail(fresh);
       if (fresh.status != before) {
         context.appSuccess('$successMessage(本次提交服务端已完成，页面已刷新)');
@@ -317,11 +308,9 @@ class _ProductionDailyReportDetailPageState
                             DocumentScopeWriteNotice(
                               capability: scopeCapability,
                               ownerEmployeeId: _detail!.makerId,
-                              onRetry: () => ref.invalidate(
-                                documentScopeCapabilityProvider(
-                                  DocumentDataScope.productionPlan,
-                                ),
-                              ),
+                              onRetry: () => ref
+                                  .read(sessionSnapshotProvider.notifier)
+                                  .refresh(),
                             ),
                             _headerCard(theme),
                             // 日报附件（报工照片/检验记录）：草稿可管理，审核后只读。

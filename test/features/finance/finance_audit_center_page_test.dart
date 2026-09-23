@@ -5,13 +5,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
 import 'package:uten_imp/features/finance/pages/finance_audit_center_page.dart';
-import 'package:uten_imp/features/finance/providers/finance_procurement_approval_count_provider.dart';
 import 'package:uten_imp/features/finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import 'package:uten_imp/features/finance/repositories/sales_order_finance_confirmation_repository.dart';
-import 'package:uten_imp/features/warehouse/providers/procurement_inbound_count_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/providers/sales_shipment_finance_count_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 late SharedPreferences _preferences;
 
@@ -84,12 +84,18 @@ Widget _app(
       sharedPreferencesProvider.overrideWithValue(_preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      salesOrderFinanceConfirmationCountProvider.overrideWith((ref) async => 3),
       salesOrderFinanceQueueCountProvider(false).overrideWith((ref) async => 3),
       salesOrderFinanceQueueCountProvider(true).overrideWith((ref) async => 1),
-      salesShipmentFinanceCountProvider.overrideWith((ref) async => 2),
-      financeProcurementApprovalCountProvider.overrideWith((ref) async => 0),
-      financeArrivalExceptionCountProvider.overrideWith((ref) async => 0),
+      fixedBadgeSummaryOverride(
+        badgeSummaryFixture(
+          facts: {
+            BadgeFact.salesOrderFinance: 3,
+            BadgeFact.shipmentFinance: 2,
+            BadgeFact.procurementApproval: 0,
+            BadgeFact.financeArrivalException: 0,
+          },
+        ),
+      ),
       if (repository != null)
         salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
           repository,

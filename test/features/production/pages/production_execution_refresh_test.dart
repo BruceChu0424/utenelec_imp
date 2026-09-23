@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
@@ -40,6 +41,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.taskLoads, 2);
     expect(find.text('车间任务 2'), findsOneWidget);
+    // ADR-108: 只看了一眼就返回(期间本端没有写、未满 30 秒)不重拉。
     container.read(pageResumeProvider.notifier).state = (
       location: '/other',
       tick: 1,
@@ -47,6 +49,18 @@ void main() {
     container.read(pageResumeProvider.notifier).state = (
       location: RouteName.productionWorkshopTasks,
       tick: 2,
+    );
+    await tester.pumpAndSettle();
+    expect(repository.taskLoads, 2);
+    // 离开期间有过写操作(网络层推进写修订号)再返回: 重拉一次。
+    container.read(pageResumeProvider.notifier).state = (
+      location: '/other',
+      tick: 3,
+    );
+    container.read(dataWriteRevisionProvider.notifier).state++;
+    container.read(pageResumeProvider.notifier).state = (
+      location: RouteName.productionWorkshopTasks,
+      tick: 4,
     );
     await tester.pumpAndSettle();
     expect(repository.taskLoads, 3);
@@ -159,10 +173,6 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
       totalPages: 1,
     );
   }
-
-  @override
-  Future<WorkshopTaskCountBreakdown> workshopTaskCount() async =>
-      const WorkshopTaskCountBreakdown(count: 1);
 
   @override
   Future<PagedResult<ProductionExecutionWorkbenchGroup>> groups({

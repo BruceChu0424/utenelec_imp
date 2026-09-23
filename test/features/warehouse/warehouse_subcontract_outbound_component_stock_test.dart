@@ -458,9 +458,6 @@ class _ComponentApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.warehouseSubcontractOutboundTaskCount) {
-      return const {'count': 0};
-    }
     if (path == ApiEndpoints.warehouseSubcontractOutboundTask('plan-c')) {
       return {
         'planId': 'plan-c',

@@ -383,10 +383,6 @@ const _detailJson = <String, dynamic>{
 };
 
 class _SalesGateway implements WarehouseSalesOutboundGateway {
-  @override
-  Future<WarehouseSalesOutboundCounts> counts() async =>
-      const WarehouseSalesOutboundCounts();
-
   _SalesGateway(this.summary, this.value);
 
   final WarehouseSalesOutboundSummary summary;

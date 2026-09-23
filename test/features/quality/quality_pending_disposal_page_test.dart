@@ -381,9 +381,6 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
   int pendingReceiptsCalls = 0;
 
   @override
-  Future<int> pendingCount() async => receipts.length;
-
-  @override
   Future<List<PendingInspectionReceipt>> pendingReceipts() async {
     pendingReceiptsCalls++;
     return receipts;

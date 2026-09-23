@@ -27,10 +27,9 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/models/subcontract_short_delivery.dart';
-import '../providers/subcontract_short_delivery_count_provider.dart';
-import '../providers/subcontract_task_count_provider.dart';
 import '../repositories/subcontract_short_delivery_repository.dart';
 import '../widgets/subcontract_short_delivery_decision_dialogs.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 enum SubcontractShortDeliverySegment {
   pending('PENDING', '待判定'),
@@ -197,11 +196,9 @@ class _SubcontractShortDeliveryPageState
               '${row.wasteBillNo == null ? '' : '，损耗单 ${row.wasteBillNo} 已登记'}'
         : '案件已更新';
     if (mounted) context.appSuccess(decided);
-    ref.invalidate(subcontractShortDeliveryCountProvider);
-    ref.invalidate(subcontractTaskCountProvider);
-    // 判定会把订货单挪出/挪进任务中心的「进行中」(结案即离场), 黄数字跟着一起重拉,
-    // 否则要等 60s 才跟上红数字(ADR-100)。
-    ref.read(subcontractTaskInProgressCountProvider.notifier).refresh();
+    // 判定会把订货单挪出/挪进任务中心的「进行中」(结案即离场), 红黄两数随徽章汇总
+    // 一次重拉(ADR-108)。
+    refreshBadges(ref);
     await _load();
   }
 

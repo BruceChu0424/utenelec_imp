@@ -11,60 +11,40 @@ void main() {
     int count(String path, String needle) =>
         source(path).split(needle).length - 1;
 
-    // 统一入口必须失效全部计数源（含分来源预计到货与品质结果父分类分段）。
+    // 统一入口(ADR-108): 徽章汇总单飞重拉一次(全部入口与分段细数随之更新),
+    // 外加入库任务中心页内专用的分来源预计到货计数失效。
     final helper = source(
       'lib/features/warehouse/providers/warehouse_count_refresh.dart',
     );
-    for (final provider in [
-      'warehouseSalesOutboundCountsProvider',
-      // 委外待出仓的红数与黄数同出一支(2026-09-22 ADR-103), 失效它就等于两枚一起重拉。
-      'warehouseSubcontractOutboundTaskCountsProvider',
-      'warehouseInboundExpectationCountProvider',
-      'warehouseInboundExpectationTypeCountsProvider',
-      'warehouseArrivalExceptionCountProvider',
-      'warehouseProductionDrawPendingCountProvider',
-      'warehouseProductionFinishedInboundPendingCountProvider',
-      // 品质结果的红数与黄数都从这一支派生(2026-09-21), 失效它就等于两枚一起重拉。
-      'warehouseQualityResultTypeCountsProvider',
-    ]) {
-      expect(
-        helper,
-        contains('ref.invalidate($provider)'),
-        reason: '统一失效入口漏了 $provider',
-      );
-    }
+    expect(helper, contains('refreshBadges(ref)'));
+    expect(
+      helper,
+      contains('ref.invalidate(warehouseInboundExpectationTypeCountsProvider)'),
+    );
 
-    // 2026-09-20 销售待办数、2026-09-21 品质结果的红数与黄数, 都由一次请求的分组
-    // 计数派生, 单独失效派生 provider 拿到的仍是缓存、不会重拉——全库只能失效源头.
-    const derivedSources = {
-      'warehouseSalesOutboundPendingCountProvider':
-          'warehouseSalesOutboundCountsProvider',
-      'warehouseQualityResultPendingCountProvider':
-          'warehouseQualityResultTypeCountsProvider',
-      'warehouseQualityResultWaitingCountProvider':
-          'warehouseQualityResultTypeCountsProvider',
-      'warehouseSubcontractOutboundCountProvider':
-          'warehouseSubcontractOutboundTaskCountsProvider',
-      'warehouseSubcontractOutboundWaitingComponentCountProvider':
-          'warehouseSubcontractOutboundTaskCountsProvider',
-    };
+    // 分段细数 provider 全部从徽章汇总派生: 失效它们拿到的仍是同一份汇总, 不会重拉,
+    // 全库只能走 refreshBadges(或 invalidateWarehouseTaskCounts)。
+    const derived = [
+      'warehouseSalesOutboundCountsProvider',
+      'warehouseQualityResultTypeCountsProvider',
+      'warehouseSubcontractOutboundCountProvider',
+      'warehouseSubcontractOutboundWaitingComponentCountProvider',
+    ];
     final libSources = Directory('lib')
         .listSync(recursive: true)
         .whereType<File>()
         .where((file) => file.path.endsWith('.dart'))
         .map((file) => MapEntry(file.path, file.readAsStringSync()))
         .toList();
-    for (final derived in derivedSources.entries) {
-      final derivedInvalidations = libSources
-          .where(
-            (entry) => entry.value.contains('ref.invalidate(${derived.key})'),
-          )
+    for (final provider in derived) {
+      final invalidations = libSources
+          .where((entry) => entry.value.contains('ref.invalidate($provider)'))
           .map((entry) => entry.key)
           .toList();
       expect(
-        derivedInvalidations,
+        invalidations,
         isEmpty,
-        reason: '派生的 ${derived.key} 不能单独失效, 请改失效 ${derived.value}',
+        reason: '$provider 派生自徽章汇总, 不能单独失效, 请改 refreshBadges',
       );
     }
 
@@ -111,12 +91,10 @@ void main() {
       );
     }
 
-    // 工作台「返回即刷新」也要覆盖分来源预计到货计数。
+    // 工作台「返回即刷新」重拉徽章汇总(仓库各入口随之更新)。
     expect(
-      source('lib/features/dashboard/providers/workbench_refresh.dart'),
-      contains(
-        'ref.invalidate(warehouseInboundExpectationTypeCountsProvider);',
-      ),
+      source('lib/features/shell/pages/main_shell_page.dart'),
+      contains('refreshBadges(ref)'),
     );
   });
 }

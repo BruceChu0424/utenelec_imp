@@ -2293,10 +2293,6 @@ class _DelayedWorkshopRepository
     calls++;
     return calls == 1 ? first.future : second.future;
   }
-
-  @override
-  Future<WorkshopTaskCountBreakdown> workshopTaskCount() async =>
-      const WorkshopTaskCountBreakdown();
 }
 
 /// 记录每次列表请求的分类与时间门控参数；历史段返回一条已取消 + 一条已红冲。
@@ -2342,10 +2338,6 @@ class _RecordingWorkshopRepository
       totalPages: 1,
     );
   }
-
-  @override
-  Future<WorkshopTaskCountBreakdown> workshopTaskCount() async =>
-      const WorkshopTaskCountBreakdown();
 }
 
 /// 行首勾选格 2026-09-11 起被「冻结」成整行 Stack 的 Positioned 兄弟

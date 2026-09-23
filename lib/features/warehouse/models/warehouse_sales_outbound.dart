@@ -65,6 +65,16 @@ class WarehouseSalesOutboundCounts {
   /// 后端固定给五个状态键; 缺键按 0(键集是服务端契约, 不在此猜), 非数字直接抛给 provider 记错.
   static int _count(Map<String, dynamic> json, String key) =>
       (json[key] as num?)?.toInt() ?? 0;
+
+  @override
+  bool operator ==(Object other) =>
+      other is WarehouseSalesOutboundCounts &&
+      other.pendingPick == pendingPick &&
+      other.legacyPending == legacyPending &&
+      other.shipped == shipped;
+
+  @override
+  int get hashCode => Object.hash(pendingPick, legacyPending, shipped);
 }
 
 enum WarehouseSalesOutboundAction {

@@ -58,13 +58,14 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/production_material_analysis.dart';
-import '../providers/production_board_pending_count_provider.dart';
+import '../providers/production_pending_provider.dart';
 import '../providers/production_board_sort_provider.dart';
 import '../providers/production_execution_group_count_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/progress_ring.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
 import '../widgets/production_execution_group_panel.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class ProductionBoardPage extends ConsumerStatefulWidget {
   const ProductionBoardPage({super.key, this.initialTab});
@@ -111,14 +112,11 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
     final segment = _segment;
     final historyReady = _historyTime.range != null || _historyTime.all;
     // 大类行计数: 待排产=红色通知徽章(调度员待办); 进行中=黄色进行中徽章
-    // (在办批次, 不用调度员动手但也没结束)。无权限或请求失败时保持 null,
-    // 两种徽章形态对 null/0 一律不渲染; provider 内部做了权限门控, 未授权不发请求。
-    final pendingCount = ref
-        .watch(productionBoardPendingCountProvider)
-        .valueOrNull;
-    final ongoingCount = ref
-        .watch(productionExecutionGroupCountProvider)
-        .valueOrNull;
+    // (在办批次, 不用调度员动手但也没结束)。两个数都随工作台徽章汇总带回(ADR-108,
+    // 与待排产列表/进行中列表同一 WHERE), 本页不再为它们单独请求; 两种徽章形态对
+    // null/0 一律不渲染。
+    final pendingCount = ref.watch(productionPendingCountProvider).count;
+    final ongoingCount = ref.watch(productionExecutionGroupCountProvider);
     return Scaffold(
       appBar: UtenAppBar(
         title: '生产调度与进度',
@@ -399,8 +397,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       final page = results[0] as PagedResult<SchedulePendingRow>;
       // 服务端已把越界页码回退到最后一页；与本地页码对齐
       if (page.page != _pageNo) _pageNo = page.page;
-      // 大类行「待排产 N」计数与列表同源，列表加载完成后刷新保持新鲜。
-      ref.invalidate(productionBoardPendingCountProvider);
       setState(() {
         _page = page;
         _facets = results[1] as SchedulePendingFacets;
@@ -666,10 +662,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 
   /// 右上角刷新按钮（桌面表格进 toolbarActions，窄屏卡片列表顶部右上角）。
-  /// 整页刷新（2026-09-05 用户口径）：列表回第 1 页 + 页面级「进行中批次」
-  /// 角标一并重拉（autoDispose provider 不随 _load 失效）。
+  /// 整页刷新(2026-09-05 用户口径)：列表回第 1 页 + 大类行计数(徽章汇总)一并重拉。
   void _refreshAll() {
-    ref.invalidate(productionExecutionGroupCountProvider);
+    refreshBadges(ref);
     _reload();
   }
 
@@ -1531,9 +1526,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     );
   }
 
-  /// 整页刷新：列表回第 1 页 + 「进行中批次」角标一并重拉。
+  /// 整页刷新：列表回第 1 页 + 大类行计数(徽章汇总)一并重拉。
   void _refreshAll() {
-    ref.invalidate(productionExecutionGroupCountProvider);
+    refreshBadges(ref);
     _reload();
   }
 

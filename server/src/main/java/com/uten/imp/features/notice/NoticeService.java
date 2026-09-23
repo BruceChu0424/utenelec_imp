@@ -248,11 +248,67 @@ public class NoticeService {
                 items, cursor.getPublishedAt(), cursor.getId(), hasMore);
     }
 
-    /** 未读数（Dashboard 角标）：未读且未删除。 */
+    /** 未读数(Dashboard 概览)：未读且未删除。 */
     @Transactional(readOnly = true)
     public long unreadCount() {
         UUID userId = requireStaffId();
         return noticeRepo.countVisibleUnread(userId, reviewAudience.workshopScope(requireStaff()));
+    }
+
+    /**
+     * 未读索引(ADR-108): 当前用户全部可见未读通知的判定用轻量列 + 摘要。
+     *
+     * <p>{@code digest} 覆盖「哪些通知未读」与「哪些还该弹到达横幅」: 任何一条被读掉、
+     * 新到达、确认弹窗、稍后到期都会让它变化。工作台徽章汇总每分钟带回这份摘要,
+     * 前端只在摘要与手里的索引对不上时才重拉本接口, 替代原来每分钟从纪元分页的全量对账。
+     * 摘要取 SHA-256 前 48 位(Web 端数字精度内), 只做变化检测, 不是安全凭据。
+     */
+    @Transactional(readOnly = true)
+    public UnreadIndex unreadIndex() {
+        AuthUser staff = requireStaff();
+        UUID userId = staff.getId();
+        List<NoticeRepository.UnreadIndexRow> rows =
+                noticeRepo.findUnreadIndexRows(userId, reviewAudience.workshopScope(staff));
+        boolean anyReview = rows.stream().anyMatch(row -> row.getAnchored()
+                && ReviewNoticeCatalog.isReviewEvent(row.getSourceEvent()));
+        Set<String> reviewEvents = anyReview ? reviewAudience.eligibleEvents(staff) : Set.of();
+        List<UnreadIndexItem> items = new ArrayList<>(rows.size());
+        java.security.MessageDigest sha;
+        try {
+            sha = java.security.MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 不可用", ex);
+        }
+        Instant latest = null;
+        for (NoticeRepository.UnreadIndexRow row : rows) {
+            boolean actionableReview = row.getAnchored()
+                    && ReviewNoticeCatalog.isReviewEvent(row.getSourceEvent());
+            // 与 arrivals() 的过滤一致: 失去审核资格的待审通知不再弹。
+            boolean pendingArrival = row.getArrivalOpen()
+                    && (!actionableReview || reviewEvents.contains(row.getSourceEvent()));
+            items.add(new UnreadIndexItem(row.getId(), row.getPublishedAt(),
+                    row.getActionRoute(), row.getSourceEvent(), pendingArrival));
+            sha.update((row.getId() + (pendingArrival ? ":1;" : ":0;"))
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            latest = row.getPublishedAt();
+        }
+        byte[] hash = sha.digest();
+        long digest = 0;
+        for (int i = 0; i < 6; i++) {
+            digest = (digest << 8) | (hash[i] & 0xFFL);
+        }
+        return new UnreadIndex(items.size(), digest, latest, items);
+    }
+
+    /** 未读索引项: 只有判定所需的列, 不含标题正文。 */
+    public record UnreadIndexItem(
+            UUID id, Instant publishedAt, String actionRoute, String sourceEvent,
+            boolean pendingArrival) {
+    }
+
+    /** 未读索引: 数量、摘要、最新发布时间与逐条判定列。 */
+    public record UnreadIndex(
+            long unreadCount, long digest, Instant latestPublishedAt, List<UnreadIndexItem> items) {
     }
 
     /** 当前用户未完成的通知待办；业务批量待办由 Dashboard 聚合服务另行生成。 */
@@ -923,13 +979,6 @@ public class NoticeService {
         if (changed > 0) {
             auditExplicit("notice_read_all", "全部可见通知，共 " + changed + " 条");
         }
-    }
-
-    /** 按业务事件来源统计当前用户未读通知数（如销售订单完工提醒徽章）。 */
-    @Transactional(readOnly = true)
-    public long unreadCountBySourceEvents(List<String> events) {
-        if (events == null || events.isEmpty()) return 0;
-        return noticeRepo.countUnreadBySourceEvents(requireStaffId(), events, reviewAudience.workshopScope(requireStaff()));
     }
 
     /** 按业务事件来源批量标记已读（如打开订单进度页清空完工徽章）。返回实际置读条数。 */

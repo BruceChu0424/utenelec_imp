@@ -30,10 +30,10 @@ import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/warehouse_quality_result.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
-import '../providers/warehouse_quality_result_count_provider.dart';
 import '../widgets/warehouse_quality_merged_table.dart';
 import '../widgets/warehouse_quality_slice_table.dart';
 import '../widgets/warehouse_quality_stock_in_warehouse_picker.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseQualityBatchStockInPage extends ConsumerStatefulWidget {
   const WarehouseQualityBatchStockInPage({super.key, required this.targets});
@@ -246,7 +246,7 @@ class _WarehouseQualityBatchStockInPageState
           .batchConfirm(WarehouseQualityBatchConfirmCommand(batches: entries));
       if (!mounted) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
-      ref.invalidate(warehouseQualityResultTypeCountsProvider);
+      refreshBadges(ref);
       context.appSuccess(
         '已批量入库 ${result.confirmedReceipts} 张收货单 / '
         '${result.confirmedItemCount} 条明细，库存已更新',

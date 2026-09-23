@@ -135,44 +135,6 @@ class VisitorStaffRepository {
     };
   }
 
-  /// HR 访客待办数（工作台/导航徽章）。
-  Future<int> pendingCount() async {
-    final r = await _api.get(ApiEndpoints.visitorApprovalPendingCount);
-    return (r['count'] as num?)?.toInt() ?? 0;
-  }
-
-  /// 我作为接待人的待确认数（工作台/导航徽章）。
-  Future<int> hostPendingCount() async {
-    final r = await _api.get(ApiEndpoints.visitorApprovalHostPendingCount);
-    return (r['count'] as num?)?.toInt() ?? 0;
-  }
-
-  /// HR 访客在办数(已批准、访客还没来核验)——黄色进行中徽章，ADR-100。
-  ///
-  /// 与 [pendingCount] 同一端点：服务端一次就把两档都带回来。红黄两支徽章各自
-  /// 常驻轮询、各读各的字段，没有合成一支——合并要改动红色那条已被会话重建用例
-  /// 钉住的取数路径，收益不抵风险。
-  Future<int> approvalOngoingCount() async {
-    final r = await _api.get(ApiEndpoints.visitorApprovalPendingCount);
-    return (r['ongoing'] as num?)?.toInt() ?? 0;
-  }
-
-  /// 我作为接待人的四档计数(ADR-100): 待我确认(红) + 在办合计(黄, 卡面用) +
-  /// 在办的两半 HR 审批中 / 已通过待来访(黄, 「我的访客」页两个分段各挂一个)。
-  ///
-  /// 恒等式 ongoing = hrReviewing + awaitingVisit 由服务端同一次扫描保证, 不会漂;
-  /// 页面两个黄分段之和因此天然等于卡面那枚黄徽章。
-  Future<VisitorHostCounts> hostCounts() async {
-    final r = await _api.get(ApiEndpoints.visitorApprovalHostPendingCount);
-    int at(String key) => (r[key] as num?)?.toInt() ?? 0;
-    return VisitorHostCounts(
-      pending: at('pending'),
-      ongoing: at('ongoing'),
-      hrReviewing: at('hrReviewing'),
-      awaitingVisit: at('awaitingVisit'),
-    );
-  }
-
   Future<VisitorApplicationDetail> approvalDetail(String id) async {
     final r = await _api.get(ApiEndpoints.visitorApprovalById(id));
     final app = VisitorApplication.fromJson(r);
@@ -277,8 +239,8 @@ final visitorStaffRepositoryProvider = Provider<VisitorStaffRepository>((ref) {
   return VisitorStaffRepository(ref.watch(apiClientProvider));
 });
 
-/// 被访人四档计数快照(ADR-100)。值相等: 60s 轮询每轮都 new 一个快照,
-/// 没有 == 时 StateNotifier 会把整页重建一遍(计数没变也重建)。
+/// 被访人四档计数快照(ADR-100)。值相等: 徽章汇总每分钟换一份新对象,
+/// 计数没变时不让「我的访客」整页重建。
 class VisitorHostCounts {
   const VisitorHostCounts({
     this.pending = 0,

@@ -1,12 +1,12 @@
 // 采购任务中心待办任务数量红色徽章（工作台「采购管理」卡片用）。
-// 数据源 purchaseTaskCountProvider（60s 轮询 /operations/workbench/purchase/count），
-// 口径 = 计划已下达且仍待分解的申请明细；count<=0 时不渲染。
+// 数据源 = 徽章汇总的 purchaseTaskCenter 入口红数(ADR-108，原端点
+// /operations/workbench/purchase/count 同一口径：待分解 + 财务驳回)；count<=0 时不渲染。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_notification_badge.dart';
-import '../providers/purchase_task_count_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class PurchaseTaskBadge extends ConsumerWidget {
   const PurchaseTaskBadge({super.key, this.size = 16, this.showLabel = false});
@@ -16,7 +16,9 @@ class PurchaseTaskBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(purchaseTaskCountProvider);
+    final count = ref.watch(
+      badgeEntryTodoProvider(BadgeEntry.purchaseTaskCenter),
+    );
     return UtenNotificationBadge(
       count: count,
       size: size,

@@ -34,6 +34,7 @@ import '../models/notice.dart';
 import '../models/notice_audience.dart';
 import '../providers/notice_providers.dart';
 import '../widgets/notice_type_picker.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class NoticePublishPage extends ConsumerStatefulWidget {
   const NoticePublishPage({super.key, this.presetType, this.presetSubjectId});
@@ -267,7 +268,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
             blessingTemplates: isCelebration ? _selectedTemplates : const [],
           );
       ref.invalidate(noticeListProvider);
-      ref.read(unreadNoticeCountProvider.notifier).refresh();
+      refreshBadges(ref);
       if (isCelebration) {
         // 祝福类发布后，HR 任务列表（生日/周年）的「已祝福」标记要即时更新——
         // 该页可能还压在栈下保活，不刷会停留在「未祝福」老状态。

@@ -15,6 +15,10 @@ import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/providers/notice_arrival.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
+import 'package:uten_imp/features/notice/providers/notice_unread_index_provider.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../../helpers/badge_summary_fixture.dart';
 
 void main() {
   testWidgets(
@@ -88,9 +92,73 @@ void main() {
     },
   );
 
-  testWidgets('periodic full audit recovers a late commit behind cursor', (
+  testWidgets(
+    'summary latestPublishedAt ahead of the cursor pulls at once; otherwise waits for the 20s tick',
+    (tester) async {
+      // ADR-108: 到达轮询 20 秒一轮; 徽章汇总带回的最新发布时间超过本地游标时立即拉。
+      final current = _notice('current', minute: 2);
+      final fresh = _notice('fresh', minute: 5);
+      final store = _MemoryCursorStore()
+        ..values['buyer'] = _cursorOf(current)
+        ..deliveredValues['buyer'] = <String>{current.id};
+      final feed = <Notice>[current];
+      final arrived = <String>[];
+      var loads = 0;
+      final badges = FixedBadgeSummaryNotifier(badgeSummaryFixture());
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            noticeArrivalLoaderProvider.overrideWithValue((after) async {
+              loads++;
+              return _pageFromFeed(feed, after ?? _epochCursor());
+            }),
+            noticeArrivalCursorStoreProvider.overrideWithValue(store),
+            noticeArrivalRefreshProvider.overrideWithValue(() async {}),
+            badgeSummaryProvider.overrideWith(() => badges),
+          ],
+          child: MaterialApp(
+            home: NoticeArrivalListener(
+              identityKey: 'buyer',
+              onArrival: (_, notice, onDelivered) {
+                arrived.add(notice.id);
+                onDelivered();
+              },
+              child: const Text('员工主壳层'),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(loads, 1);
+
+      // 10 秒内没有提示: 不拉。
+      await tester.pump(const Duration(seconds: 10));
+      expect(loads, 1);
+
+      feed.insert(0, fresh);
+      badges.emit(
+        badgeSummaryFixture(
+          facts: {
+            BadgeFact.noticesLatestPublishedAt:
+                fresh.publishedAt.millisecondsSinceEpoch,
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(loads, 2);
+      expect(arrived, <String>['fresh']);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('unread index reconcile recovers a late commit behind cursor', (
     tester,
   ) async {
+    // ADR-108: 不再每分钟从纪元分页全量对账; 未读索引(摘要变了才重拉)里仍该弹、
+    // 却既没送达也没排队的那条, 从它之前补拉一次。
     final late = _notice('late-behind', minute: 1);
     final current = _notice('current-high-water', minute: 2);
     final store = _MemoryCursorStore()
@@ -98,6 +166,7 @@ void main() {
       ..deliveredValues['buyer'] = <String>{current.id};
     final arrived = <String>[];
     final feed = <Notice>[current];
+    final index = _TestUnreadIndex();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -117,12 +186,12 @@ void main() {
           ),
           noticeArrivalCursorStoreProvider.overrideWithValue(store),
           noticeArrivalRefreshProvider.overrideWithValue(() async {}),
+          noticeUnreadIndexProvider.overrideWith(() => index),
         ],
         child: MaterialApp(
           home: NoticeArrivalListener(
             identityKey: 'buyer',
-            pollInterval: const Duration(milliseconds: 20),
-            fullAuditInterval: const Duration(milliseconds: 40),
+            pollInterval: const Duration(hours: 1),
             onArrival: (_, notice, onDelivered) {
               arrived.add(notice.id);
               onDelivered();
@@ -136,7 +205,25 @@ void main() {
     expect(arrived, isEmpty);
     feed.insert(0, late);
 
-    await tester.pump(const Duration(milliseconds: 65));
+    index.emit(
+      NoticeUnreadIndex(
+        unreadCount: 2,
+        digest: 7,
+        items: [
+          NoticeUnreadItem(
+            id: late.id,
+            publishedAt: late.publishedAt,
+            pendingArrival: true,
+          ),
+          NoticeUnreadItem(
+            id: current.id,
+            publishedAt: current.publishedAt,
+            pendingArrival: true,
+          ),
+        ],
+      ).stampedAt(DateTime.now()),
+    );
+    await tester.pump();
     await tester.pump();
     expect(arrived, <String>['late-behind']);
     expect(store.values['buyer']?.id, current.id);
@@ -390,6 +477,23 @@ void main() {
               ),
               noticeArrivalCursorStoreProvider.overrideWithValue(store),
               noticeArrivalRefreshProvider.overrideWithValue(() async {}),
+              // 三条都仍未读、仍该弹(关横幅不等于已读): 重启后靠未读索引对账补回。
+              noticeUnreadIndexProvider.overrideWith(
+                () => _TestUnreadIndex(
+                  NoticeUnreadIndex(
+                    unreadCount: 3,
+                    digest: 3,
+                    items: [
+                      for (final notice in [first, second, third])
+                        NoticeUnreadItem(
+                          id: notice.id,
+                          publishedAt: notice.publishedAt,
+                          pendingArrival: true,
+                        ),
+                    ],
+                  ).stampedAt(DateTime.now()),
+                ),
+              ),
             ],
             child: MaterialApp.router(
               routerConfig: router,
@@ -1602,4 +1706,16 @@ Notice _notice(
     isRead: false,
     priority: priority,
   );
+}
+
+/// 未读索引测试替身: 不请求, 由测试手动推送一份索引。
+class _TestUnreadIndex extends NoticeUnreadIndexNotifier {
+  _TestUnreadIndex([this._initial]);
+
+  final NoticeUnreadIndex? _initial;
+
+  @override
+  NoticeUnreadIndex? build() => _initial;
+
+  void emit(NoticeUnreadIndex index) => state = index;
 }

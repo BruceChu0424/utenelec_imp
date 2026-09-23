@@ -24,8 +24,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
-import '../providers/procurement_inbound_count_providers.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../../../shared/badges/badge_registry.dart';
 
 class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
   const FinanceArrivalExceptionTasksPage({
@@ -82,7 +82,6 @@ class _FinanceArrivalExceptionTasksPageState
         _result = result;
         _loading = false;
       });
-      ref.invalidate(financeArrivalExceptionCountProvider);
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
@@ -522,9 +521,7 @@ class _FinanceArrivalExceptionDetailPageState
         _customQty.clear();
         _reason.clear();
       });
-      ref.invalidate(financeArrivalExceptionCountProvider);
-      ref.invalidate(warehouseArrivalExceptionCountProvider);
-      ref.invalidate(procurementArrivalReturnCountProvider(updated.orderType));
+      refreshBadges(ref);
       context.appSuccess(
         '财务决定已记录：允许入库 ${procurementQty(updated.acceptedQty)}，待退 ${procurementQty(updated.unacceptedQty)}',
       );

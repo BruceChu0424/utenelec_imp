@@ -22,6 +22,9 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../helpers/badge_summary_fixture.dart';
 
 Future<void> _pumpHub(
   WidgetTester tester,
@@ -41,7 +44,29 @@ Future<void> _pumpHub(
         sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
-        draftCountsProvider.overrideWith((ref) async => counts),
+        draftCountsProvider.overrideWith((ref) => counts),
+        // 顶栏「待办 N」= 服务端算好的容器数(ADR-108); 夹具里只有草稿入口, 按服务端目录
+        // 口径求和(仓库草稿入口只取整表合计, 不加调拨/盘点切片)。
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            entries: {
+              BadgeEntry.purchaseDrafts: (
+                counts.purchaseOrder +
+                    counts.purchaseReceipt +
+                    counts.purchaseReturn,
+                0,
+              ),
+              BadgeEntry.subcontractDrafts: (
+                counts.subcontractOrder +
+                    counts.subcontractReturn +
+                    counts.subcontractMaterialReturn +
+                    counts.subcontractWaste,
+                0,
+              ),
+              BadgeEntry.warehouseDrafts: (counts.stockDocument, 0),
+            },
+          ),
+        ),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,

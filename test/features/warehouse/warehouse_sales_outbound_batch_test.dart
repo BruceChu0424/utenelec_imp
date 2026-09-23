@@ -493,10 +493,6 @@ class _Gateway implements WarehouseSalesOutboundGateway {
   final List<int> listPages = [];
 
   @override
-  Future<WarehouseSalesOutboundCounts> counts() async =>
-      WarehouseSalesOutboundCounts(pendingPick: values.length);
-
-  @override
   Future<WarehouseSalesOutboundDetail> detail(String id) async => values[id]!;
 
   @override

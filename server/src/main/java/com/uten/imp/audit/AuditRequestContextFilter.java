@@ -84,11 +84,10 @@ public class AuditRequestContextFilter extends OncePerRequestFilter {
         if (chainFailed && status < 400) {
             status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         }
+        // 没进到控制器的请求(过滤器层拒绝、找不到处理器): 只补记失败与写请求, 成功读取不记。
         if (!AuditRequestContext.shouldRecordOperation(
-                request, status, chainFailed)) {
-            request.setAttribute(
-                    AuditRequestContext.OPERATION_RECORDED_ATTRIBUTE,
-                    Boolean.TRUE);
+                request, status, chainFailed, false)) {
+            AuditRequestContext.markOperationRecorded(request);
             return;
         }
         String method = request.getMethod().toUpperCase(Locale.ROOT);
@@ -111,9 +110,7 @@ public class AuditRequestContextFilter extends OncePerRequestFilter {
                     AuditRequestContext.routeGroup(path),
                     status,
                     durationMillis);
-            request.setAttribute(
-                    AuditRequestContext.OPERATION_RECORDED_ATTRIBUTE,
-                    Boolean.TRUE);
+            AuditRequestContext.markOperationRecorded(request);
         } catch (RuntimeException auditFailure) {
             log.error("Failed to persist fallback operation audit metadata", auditFailure);
         }

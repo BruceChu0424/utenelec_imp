@@ -51,7 +51,7 @@ class ProcurementQtyChangeMigrationPostgresTest {
     }
 
     @Test
-    void qtyChangeLedgerAndAuditTriggerExist() throws Exception {
+    void qtyChangeLedgerExistsWithoutRowAudit() throws Exception {
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword());
@@ -61,10 +61,11 @@ class ProcurementQtyChangeMigrationPostgresTest {
                     where table_name = 'procurement_order_qty_change_logs'
                       and column_name = 'case_id'
                     """));
-            assertEquals(1, scalar(statement, """
+            // ADR-105: 改量事实账是只追加、带改量人的流水(NONE), 行本身即留痕, 不再挂行审计。
+            assertEquals(0, scalar(statement, """
                     select count(distinct trigger_name) from information_schema.triggers
                     where event_object_table = 'procurement_order_qty_change_logs'
-                      and trigger_name = 'trg_audit_procurement_order_qty_change_logs'
+                      and trigger_name like 'trg_audit%'
                     """));
             // CHECK 约束：order_type 只允许采购/委外。
             assertEquals(1, scalar(statement, """

@@ -1,5 +1,6 @@
 package com.uten.imp.features.profilechange;
 
+import com.uten.imp.audit.AuditedRead;
 import com.uten.imp.features.profilechange.dto.ProfileChangeDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -68,6 +69,7 @@ public class ProfileChangeController {
 
     // ===== HR =====
 
+    @AuditedRead("人事资料变更申请列表含员工个人信息")
     @GetMapping("/api/hr/profile-changes")
     @PreAuthorize("hasAuthority('profile:review')")
     public ProfileChangeDto.Page<ProfileChangeDto.HrListItem> hrList(

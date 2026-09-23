@@ -1152,6 +1152,7 @@ String _sourceLabel(String value) => switch (value) {
   'request' => '请求覆盖记录',
   'database' => '数据库变更快照',
   'security' => '安全层拒绝事件',
+  'system' => '系统任务记录',
   _ => '业务显式事件',
 };
 

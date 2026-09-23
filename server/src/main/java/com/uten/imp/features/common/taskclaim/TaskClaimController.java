@@ -1,5 +1,6 @@
 package com.uten.imp.features.common.taskclaim;
 
+import com.uten.imp.audit.AuditAutomaticWrite;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -71,6 +72,7 @@ public class TaskClaimController {
     }
 
     /** 心跳续租（仅认领人；前端弹窗打开期间定期调用）。 */
+    @AuditAutomaticWrite("续租认领的心跳由页面定时发起, 不是人的操作")
     @PostMapping("/{targetType}/{targetKey}/heartbeat")
     @PreAuthorize("isAuthenticated()")
     public TaskClaimService.TaskClaimView heartbeat(

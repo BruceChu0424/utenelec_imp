@@ -8,430 +8,610 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Static guard for the Flyway audit-trigger contract.
+ * 行级审计三清单契约(ADR-105, V646 起)。
  *
- * <p>V169 is the immutable original full-table sweep, V184 refreshes that
- * contract after later business tables were introduced, V185 hardens
- * soft-delete semantics plus row minimization, V190 covers the V188/V189
- * business tables, V193 covers V191/V192 planning tables, V195 covers the V194
- * MAKE receipt-allocation ledger, V197 covers V196 procurement approval and
- * expected-inbound ledgers, V202 covers V201 arrival-exception ledgers, V225
- * covers the V224 celebration-interaction tables, V237 refreshes coverage
- * after V234 production analysis plus the V236 receivable source-reference ledger,
- * V242 covers the V240 attachment table, V252 covers the V251 goods-import
- * provenance tables, V254 covers the V253 website-inquiry business inbox, and
- * V255 refreshes the sweep after adding the attachment quarantine, deletion
- * outbox and reconciliation ledgers, and V258 refreshes it after adding the
- * category-driven master-code batch and history ledgers. V276 refreshes the
- * full sweep after V273-V276 added settlement authorities, reviewed UUID
- * bridges, source-command ledgers and lifetime master-code reservations. V278
- * refreshes it after adding UUID-authoritative system posting-role mappings,
- * V279 covers the global business identifier registry and conflict evidence,
- * and V285 refreshes the sweep after client-default settlement reconciliation
- * evidence was added. V286 only relaxes two column nullability constraints and
- * V287 only adds and validates row checks on an already-audited table. V288 adds
- * the material-analysis borrow business table, so V289 guards its endpoint and
- * append-preserved lifecycle invariants and immediately refreshes the full audit sweep.
- * V300 adds the client ship-address learning ledger plus sales-order finance-reject
- * fact columns and carries the next full sweep inline (§④). V304 then adds the
- * subcontract material-plan business tables with explicit audit triggers, and
- * V306 refreshes the fail-closed full sweep after those tables. V307 adds the
- * exact-stock peg business ledger, and V308 immediately advances that sweep.
- * V309 then adds the reallocation header and append-only entitlement-event
- * ledgers, V310 attaches explicit audit triggers to those tables, V311-V313 add authority,
- * MAKE provenance and conservation guards, V314 refreshes that set, V316 covers
- * V315 manager delegations, V318 forward-corrects the identifier-safe sweep,
- * V321 repeats it after V319 central-override provenance hardening, and V325
- * covers V322-V324 contextual generations plus explicit leader assignments.
- * V530 preserves the later noise exclusions, repairs only the known V503
- * INSERT-only shape and covers the actual value/source/custody business tables.
- * V572 repeats that fail-closed walk for the V560/V561/V568/V569 return/split/
- * transfer tables that reached the schema without row-level auditing.
- * This test deliberately
- * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
- * part that can be proven without Docker: critical tables existed before the
- * latest trusted sweep, and no later table can silently appear outside either
- * the explicit technical allowlist or the narrow registry of business tables
- * that own a complete audit trigger in their creating migration. Runtime
- * {@code pg_trigger} inspection remains a deployment acceptance check.
+ * <p>每张 public 业务表必须且只能归入一类, 每条带理由:
+ * <ul>
+ *   <li>FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键), 人工维护的主档、权限、单据;</li>
+ *   <li>COLUMN_SCOPED: 只审计人为决定的列, 派生列变化不留行审计;</li>
+ *   <li>NONE: 不挂行级审计(派生投影、队列、编号预留、只追加流水、遗留只读数据、技术表)。</li>
+ * </ul>
+ * 废除 V169 起「除技术白名单外全表必审、审计触发器不许带 WHEN/列清单」的规则。V646 按本清单
+ * 挂/拆触发器; 之后新建的表必须在这里登记, 属于 FULL/COLUMN_SCOPED 的由建表迁移调用
+ * {@code fn_audit_track_table} 挂审计, 不许手写 CREATE TRIGGER trg_audit_*。
+ * 真库上的触发器形态由 {@link AuditTriggerCoveragePostgresTest} 按同一清单核对。
  */
 class AuditTriggerCoverageMigrationContractTest {
 
-    private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 572;
-    private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V572__refresh_audit_trigger_coverage.sql");
-    private static final Path LATEST_AUDIT_HARDENING =
-            MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
-    private static final Pattern MIGRATION_FILE =
-            Pattern.compile("^V(\\d+)__.+\\.sql$");
-    private static final Pattern CREATE_TABLE = Pattern.compile(
-            "(?i)\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?"
-                    + "(?:(?:\\x22)?public(?:\\x22)?\\s*\\.\\s*)?"
-                    + "(?:\\x22)?([a-z_][a-z0-9_]*)(?:\\x22)?");
+    static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
+    static final int POLICY_BASELINE_VERSION = 646;
+    static final Path POLICY_BASELINE =
+            MIGRATION_ROOT.resolve("V646__audit_three_list_policy_change_only_rows.sql");
+    private static final Pattern MIGRATION_FILE = Pattern.compile("^V(\\d+)__.+\\.sql$");
+    private static final String IDENT =
+            "(?:\"?public\"?\\s*\\.\\s*)?\"?([a-z_][a-z0-9_]*)\"?";
+    static final Pattern CREATE_TABLE = Pattern.compile(
+            "(?i)\\bCREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?!IF\\s)" + IDENT
+                    + "(?![A-Za-z0-9_'%|$])(\\s+PARTITION\\s+OF)?");
+    private static final Pattern DROP_TABLE = Pattern.compile(
+            "(?i)\\bDROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?((?:(?:\"?public\"?\\s*\\.\\s*)?\"?[a-z_][a-z0-9_]*\"?"
+                    + "\\s*,\\s*)*(?:\"?public\"?\\s*\\.\\s*)?\"?[a-z_][a-z0-9_]*\"?)");
+    private static final Pattern RENAME_TABLE = Pattern.compile(
+            "(?i)\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?" + IDENT
+                    + "\\s+RENAME\\s+TO\\s+\"?([a-z_][a-z0-9_]*)\"?");
+    private static final Pattern FULL_CALL = Pattern.compile(
+            "(?s)fn_audit_track_table\\(t, 'FULL', '([a-z_]+)', (true|false)\\)\\s+FROM unnest\\(ARRAY\\[(.*?)]\\) AS t;");
+    private static final Pattern SCOPED_CALL = Pattern.compile(
+            "(?s)fn_audit_track_table\\('([a-z_]+)', 'COLUMN_SCOPED', '([a-z_]+)', (true|false),\\s*"
+                    + "ARRAY\\[(.*?)], (true|false)\\);");
+    private static final Pattern REGISTRATION = Pattern.compile(
+            "fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'(FULL|COLUMN_SCOPED|NONE)'");
+    private static final Pattern QUOTED = Pattern.compile("'([a-z_][a-z0-9_]*)'");
+    /** Flyway 自己建的表, 不在迁移脚本里。 */
+    private static final Set<String> CREATED_OUTSIDE_MIGRATIONS = Set.of("flyway_schema_history");
+    private static final Set<String> CATEGORIES = Set.of("data_change", "authorization", "system");
 
-    private static final Set<String> REQUIRED_BUSINESS_TABLES = Set.of(
-            // Core master data and all four category trees.
-            "goods", "material_categories", "mould_categories",
-            "client_categories", "supplier_categories", "clients", "suppliers",
-            // Inventory facts.
-            "stock_balances", "stock_movements", "stock_documents", "stock_document_items",
-            // Purchase and sales order heads/lines.
-            "purchase_orders", "purchase_order_items", "sales_orders", "sales_order_items",
-            // Accounts, authorization, data scopes and organization.
-            "users", "roles", "permissions", "user_roles", "role_permissions",
-            "user_permission_overrides", "manager_permission_delegations",
-            "organization_permission_leader_assignments",
-            "department_permissions", "user_data_scopes",
-            "departments", "positions", "employees",
-            // Professional asset and deferral subledger introduced immediately before V184.
-            "finance_asset_categories", "finance_asset_books",
-            "finance_deferral_schedule_versions", "finance_deferral_schedule_lines",
-            "finance_asset_approval_steps", "finance_asset_events",
-            "finance_asset_accounting_periods", "finance_asset_posting_runs",
-            "finance_asset_posting_lines",
-            // Warehouse shipment and sales-return quality ledgers added before V190.
-            "sales_shipment_warehouse_events", "sales_return_quality_items",
-            "sales_return_quality_events",
-            // Pre-approval planning, workshop defaults and MAKE receipt provenance.
-            // (production_goods_workshop_preferences V590 整表废弃删除，学习语义
-            //  搬进 goods.owning_workshop_department_id/owning_responsible_employee_id，
-            //  goods 本身已在该清单里。)
-            "production_planning_drafts",
-            "production_material_make_receipt_allocations",
-            // Finance-assigned procurement approval and warehouse expectation ledgers.
-            "procurement_order_approval_cases",
-            "procurement_order_approval_events", "inbound_expectations",
-            "inbound_expectation_items",
-            // Finance-controlled over-arrival and exact-owner supplier-return ledgers.
-            "procurement_arrival_exceptions", "supplier_return_tasks",
-            "procurement_arrival_exception_events",
-            // Immutable one-to-many AR/AP business-source snapshots.
-            "ar_ap_source_refs",
-            // Goods import/undo business provenance introduced by V251.
-            "goods_import_batches", "goods_import_creations",
-            // Website inquiry processing and customer-conversion ledger introduced by V253.
-            "website_inquiries",
-            // Attachment authority, quarantine, deletion and orphan-reconciliation ledgers.
-            "attachments", "attachment_upload_sessions", "attachment_object_outbox",
-            "attachment_reconciliation_findings",
-            // Category-driven number-change authority and immutable per-record history.
-            "master_code_change_batches", "master_code_history",
-            // UUID authorities and reviewed bridges introduced in V273/V274.
-            "settlement_methods", "finance_payment_methods",
-            "legacy_warehouse_workshop_links",
-            // UUID command/source authority and system-root registry from V275.
-            "stock_balance_adjustment_requests", "system_master_category_registry",
-            // Lifetime, append-only business-code ownership introduced in V276.
-            "master_code_reservations", "master_code_reservation_members",
-            // Stable system GL posting role to payment-style UUID authority.
-            "system_posting_style_roles",
-            // Global prefix/full-identifier ownership and preserved conflict evidence.
-            "business_identifier_namespaces", "business_prefix_reservations",
-            "business_prefix_reservation_members", "business_identifier_reservations",
-            "business_identifier_reservation_members", "business_identifier_conflicts",
-            // Audited reconciliation evidence introduced with client-default UUID authority.
-            "client_default_settlement_migration_issues",
-            // Business-bearing material-analysis allocation evidence from V288.
-            "production_material_analysis_borrows",
-            // Client ship-address learning ledger created and swept inline by V300 (§④).
-            "client_ship_addresses",
-            // Subcontract material-plan authority introduced by V304 and swept by V306.
-            "subcontract_material_plans", "subcontract_material_plan_items",
-            // Exact IQC PASS-to-analysis-material ownership introduced by V307.
-            "preplan_analysis_stock_exact_pegs",
-            "preplan_material_reallocations",
-            "preplan_stock_entitlement_events",
-            // Actual values, source revisions and custody are business evidence,
-            // including their durable allocation/processing state.
-            "stock_value_pools", "stock_value_events", "stock_value_nodes", "stock_value_edges",
-            "stock_value_jobs", "stock_value_tasks", "stock_value_node_revisions", "stock_value_postings",
-            "procurement_order_source_revisions", "procurement_order_source_revision_allocations",
-            "procurement_order_source_revision_peg_changes", "production_material_movement_links",
-            "stock_value_openings", "stock_value_legacy_balance_cases", "stock_value_legacy_balance_case_events",
-            "stock_value_acquisition_sources", "stock_value_position_transfers",
-            "stock_value_production_cost_objects", "stock_value_production_cost_inputs",
-            "stock_value_production_cost_outputs", "stock_value_production_cost_revisions",
-            "stock_value_production_cost_tasks", "stock_value_production_cost_shares", "stock_value_production_cost_dirty",
-            "procurement_receipt_consideration_parts", "procurement_iqc_quality_consideration_parts",
-            "procurement_iqc_funding_slices", "procurement_iqc_credit_documents", "procurement_iqc_credit_case_allocations",
-            "procurement_iqc_credit_slices", "procurement_iqc_stock_consideration_parts",
-            "procurement_iqc_funding_settlements", "procurement_iqc_consideration_reversals",
-            "procurement_iqc_consideration_review_approvals", "subcontract_receipt_material_consumptions");
+    record FullGroup(String key, String category, boolean redacted, String reason, Set<String> tables) {
+    }
 
-    /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
-    private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(
-            Map.entry("audit_log", "audit sink; auditing itself would recurse"),
-            Map.entry("audit_log_archive", "immutable cold archive of the audit sink"),
-            Map.entry("flyway_schema_history", "Flyway-owned migration metadata"),
-            Map.entry("spatial_ref_sys", "PostGIS extension metadata"),
-            Map.entry("authorization_state", "high-churn authorization epoch"),
-            Map.entry("doc_number_sequences", "atomic document-number counter"),
-            Map.entry("master_code_sequences", "atomic master-code counter"),
-            Map.entry("category_master_code_sequences",
-                    "atomic category-driven master-code counter"),
-            Map.entry("business_document_sequences",
-                    "atomic namespace and Shanghai business-date document counter"),
-            Map.entry("production_product_no_sequences",
-                    "atomic per-plan system product-number suffix counter"),
-            Map.entry("report_materialized_view_refresh_state", "materialized-view refresh metadata"),
-            Map.entry("password_history", "credential-derived security data"),
-            Map.entry("refresh_tokens", "staff credential material"),
-            Map.entry("visitor_refresh_tokens", "visitor credential material"),
-            Map.entry("visitor_sms_codes", "one-time credential material"),
-            Map.entry("legacy_migration_checkpoints", "legacy migration control metadata"),
-            Map.entry("legacy_migration_reconciliation_items", "legacy reconciliation metadata"),
-            Map.entry("legacy_migration_rejects", "legacy migration rejection metadata"),
-            Map.entry("legacy_migration_run_files", "legacy migration file metadata"),
-            Map.entry("legacy_migration_runs", "legacy migration run metadata"));
+    record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
+                       String reason) {
+    }
+
+    record NoneGroup(String key, String reason, Set<String> tables) {
+    }
+
+    /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
+    static final List<FullGroup> FULL = List.of(
+            new FullGroup("authorization", "authorization", false,
+                    "账号、角色、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值",
+                    Set.of(
+                        "client_visibility_grants", "department_permissions", "department_roles",
+                        "manager_permission_delegations",
+                        "organization_permission_leader_assignments",
+                        "permission_surface_permissions", "permission_surfaces", "permissions",
+                        "role_permissions", "roles", "user_data_scopes",
+                        "user_permission_overrides", "user_roles", "users")),
+            new FullGroup("system", "system", false,
+                    "系统设置与全局配置: 改动影响全平台运行口径",
+                    Set.of(
+                        "business_identifier_namespaces", "expense_claim_settings",
+                        "measurement_capture_profiles", "system_master_category_registry",
+                        "system_posting_style_roles", "system_settings",
+                        "unit_measurement_profiles")),
+            new FullGroup("master", "data_change", false,
+                    "基础资料主档: 人工维护, 被所有单据引用",
+                    Set.of(
+                        "accounts", "client_categories", "client_ship_addresses", "clients",
+                        "colors", "currencies", "finance_payment_methods", "goods",
+                        "goods_bom_items", "goods_import_batches", "goods_import_creations",
+                        "master_code_change_batches", "material_categories", "mould_categories",
+                        "moulds", "official_policy_briefs", "party_activity_records",
+                        "party_addresses", "party_contact_methods", "payment_styles",
+                        "settlement_methods", "supplier_categories", "suppliers", "units",
+                        "warehouses")),
+            new FullGroup("org_hr", "data_change", false,
+                    "组织、人事与访客资料: 人工维护的敏感资料, 由脱敏函数去掉证件/联系方式/自由文本后整行审计",
+                    Set.of(
+                        "attachments", "departments", "emergency_contacts",
+                        "employee_compensation", "employee_contracts", "employee_credentials",
+                        "employee_data_handover_scopes", "employee_data_handovers",
+                        "employee_education", "employee_phones", "employee_secondary_departments",
+                        "employee_sensitive", "employee_vehicles", "employees",
+                        "employment_history", "positions", "profile_change_requests",
+                        "rd_task_forwarders", "rd_tasks", "suggestion_replies", "suggestions",
+                        "visitor_accounts", "visitor_applications", "visitor_approval_steps",
+                        "website_inquiries")),
+            new FullGroup("payroll", "data_change", true,
+                    "工资与报销: 额外去掉金额与姓名快照后整行审计",
+                    Set.of(
+                        "expense_claim_items", "expense_claims", "payroll_batches",
+                        "payroll_items", "payroll_slips", "payroll_variable_inputs")),
+            new FullGroup("sales_docs", "data_change", false,
+                    "销售单据头与明细: 人工录入并审核的业务单据",
+                    Set.of(
+                        "sales_order_cost_items", "sales_order_items", "sales_orders",
+                        "sales_other_shipment_items", "sales_other_shipments", "sales_quote_items",
+                        "sales_quotes", "sales_return_items", "sales_return_quality_items",
+                        "sales_returns", "sales_shipment_items", "sales_shipments")),
+            new FullGroup("purchase_docs", "data_change", false,
+                    "采购单据、财务审批案与供应商结算: 人工录入并审核的业务单据",
+                    Set.of(
+                        "procurement_arrival_exceptions", "procurement_iqc_rejection_cases",
+                        "procurement_order_approval_cases", "purchase_order_items",
+                        "purchase_orders", "purchase_receipt_items", "purchase_receipts",
+                        "purchase_request_items", "purchase_requests", "purchase_return_items",
+                        "purchase_returns", "supplier_claim_cash_receipts",
+                        "supplier_claim_receivables", "supplier_open_item_offsets",
+                        "supplier_return_tasks", "supplier_settlement_batch_lines",
+                        "supplier_settlement_batches")),
+            new FullGroup("subcontract_docs", "data_change", false,
+                    "委外单据头与明细: 人工录入并审核的业务单据",
+                    Set.of(
+                        "subcontract_application_items", "subcontract_applications",
+                        "subcontract_inquiries", "subcontract_inquiry_items",
+                        "subcontract_loss_case_lines", "subcontract_loss_cases",
+                        "subcontract_loss_resolutions", "subcontract_material_issue_items",
+                        "subcontract_material_issues", "subcontract_material_plan_items",
+                        "subcontract_material_plans", "subcontract_material_return_items",
+                        "subcontract_material_returns", "subcontract_order_cost_items",
+                        "subcontract_order_items", "subcontract_orders",
+                        "subcontract_receipt_items", "subcontract_receipts",
+                        "subcontract_return_items", "subcontract_returns",
+                        "subcontract_short_delivery_cases", "subcontract_waste_items",
+                        "subcontract_wastes")),
+            new FullGroup("stock_docs", "data_change", false,
+                    "库存单据、预留与调整申请: 人工录入并审核的业务单据",
+                    Set.of(
+                        "stock_balance_adjustment_requests", "stock_document_items",
+                        "stock_documents", "stock_reservations")),
+            new FullGroup("production_docs", "data_change", false,
+                    "生产计划、日报、执行段、退料、点收、质检与直送单据: 人工录入并审核的业务单据",
+                    Set.of(
+                        "production_daily_report_items", "production_daily_report_material_usages",
+                        "production_daily_report_workers", "production_daily_reports",
+                        "production_execution_segments",
+                        "production_finished_arrival_registration_items",
+                        "production_finished_arrival_registrations",
+                        "production_finished_in_confirmation_items",
+                        "production_finished_in_confirmations",
+                        "production_fqc_inspection_sheet_items",
+                        "production_fqc_inspection_sheets", "production_fqc_inspections",
+                        "production_material_analysis_borrows",
+                        "production_material_return_request_items",
+                        "production_material_return_requests", "production_plan_items",
+                        "production_plans", "production_workshop_direct_transfer_items",
+                        "production_workshop_direct_transfers")),
+            new FullGroup("finance_docs", "data_change", false,
+                    "财务单据、凭证、往来台账与资产: 人工录入并审核的财务事实",
+                    Set.of(
+                        "ar_ap_ledger", "customer_open_item_offset_batches",
+                        "customer_open_item_offsets", "deferred_expenses",
+                        "expense_claim_invoices", "finance_asset_accounting_periods",
+                        "finance_asset_books", "finance_asset_categories",
+                        "finance_asset_posting_lines", "finance_asset_posting_runs",
+                        "finance_bank_transfer_lines", "finance_bank_transfers",
+                        "finance_check_register", "finance_deferral_schedule_lines",
+                        "finance_deferral_schedule_versions", "finance_expense_items",
+                        "finance_expenses", "finance_other_income_items", "finance_other_incomes",
+                        "finance_payment_lines", "finance_payments", "finance_receipt_lines",
+                        "finance_receipt_source_allocations", "finance_receipts",
+                        "finance_reconciliations", "fixed_assets", "gl_entries", "gl_vouchers")));
+
+    /** COLUMN_SCOPED: 只审计人为决定的列; 派生列的变化不留行审计。 */
+    static final List<ScopedTable> COLUMN_SCOPED = List.of(
+            new ScopedTable("production_material_analyses", "data_change", true,
+                    List.of("status", "cancelled_by", "cancelled_at", "cancellation_reason", "is_deleted", "deleted_at", "warehouse_id", "participating_warehouse_ids", "maker_id"),
+                    "物料分析表头: 只记新建/删除与状态、取消、仓库、制单人这些人为决定, 版本号和指纹每次刷新都会变, 不记"),
+            new ScopedTable("production_material_analysis_materials", "data_change", false,
+                    List.of("confirmed_route", "route_reason", "route_confirmed_by"),
+                    "物料分析物料行是每次刷新重算的投影: 只记人工确认路线与理由, 需求/可用/缺口等派生数量不记"),
+            new ScopedTable("production_material_analysis_items", "data_change", false,
+                    List.of("requested_qty", "delivery_date", "line_priority", "source_reason", "is_deleted"),
+                    "物料分析来源行: 只记人工改的需求数量、交期、优先级、原因和删除, 就绪量等派生数量不记"),
+            new ScopedTable("preplan_material_reallocations", "data_change", false,
+                    List.of("status", "closed_by", "closed_at", "close_reason"),
+                    "物料改挪记录: 新建时行内已带发起人与原因, 之后会被人工撤回/取消、随优先履约推进状态: "
+                            + "只记状态与关闭人、关闭时间、关闭原因"));
+
+    /** NONE: 不挂行级审计。分组即理由。 */
+    static final List<NoneGroup> NONE = List.of(
+            new NoneGroup("technical",
+                    "技术元数据、计数器、凭证与迁移控制: 不是业务数据, 或含凭证不应被复制",
+                    Set.of(
+                        "audit_log", "audit_log_archive", "authorization_state",
+                        "business_document_sequences", "category_master_code_sequences",
+                        "doc_number_sequences", "flyway_schema_history",
+                        "legacy_migration_checkpoints", "legacy_migration_reconciliation_items",
+                        "legacy_migration_rejects", "legacy_migration_run_files",
+                        "legacy_migration_runs", "master_code_sequences", "password_history",
+                        "production_product_no_sequences", "refresh_tokens",
+                        "report_materialized_view_refresh_state", "visitor_refresh_tokens",
+                        "visitor_sms_codes")),
+            new NoneGroup("notice",
+                    "通知投递与互动机制: 人工发布、确认、祝福已有显式业务事件",
+                    Set.of(
+                        "notice_acknowledgments", "notice_blessings",
+                        "notice_celebration_subjects", "notice_user_states", "notices",
+                        "suggestion_likes")),
+            new NoneGroup("queue",
+                    "队列、任务、认领、幂等命令与系统核对结果: 系统协调状态, 人的操作由请求级语义事件记录",
+                    Set.of(
+                        "attachment_object_outbox", "attachment_reconciliation_findings",
+                        "attachment_upload_sessions", "business_outbox", "hr_task_claims",
+                        "procurement_iqc_rejection_commands", "production_daily_report_commands",
+                        "production_fqc_release_commands", "production_material_analysis_commands",
+                        "production_planning_drafts", "stock_value_jobs",
+                        "stock_value_production_cost_dirty", "stock_value_production_cost_tasks",
+                        "stock_value_tasks", "subcontract_outbound_preparation_commands",
+                        "task_claims", "warehouse_arrival_registration_commands")),
+            new NoneGroup("reservation",
+                    "编号终身预留、冲突证据与改号历史: 只追加, 行本身就是占用/改号记录",
+                    Set.of(
+                        "business_identifier_conflicts", "business_identifier_reservation_members",
+                        "business_identifier_reservations", "business_prefix_reservation_members",
+                        "business_prefix_reservations", "master_code_history",
+                        "master_code_reservation_members", "master_code_reservations")),
+            new NoneGroup("preference",
+                    "使用偏好与自动学习: 系统按使用习惯自动写入, 不是业务决定",
+                    Set.of(
+                        "user_preferences", "warehouse_goods_place_preferences")),
+            new NoneGroup("derived",
+                    "派生投影与计算结果: 可由单据和流水重算, 每次重算整行复制只是噪声",
+                    Set.of(
+                        "account_flow_monthly_summaries", "da_amortization_log",
+                        "execution_segment_sales_allocations", "fa_depreciation_log",
+                        "inbound_expectation_items", "inbound_expectations", "mrp_generations",
+                        "preplan_analysis_stock_exact_pegs", "preplan_future_supply_transfers",
+                        "preplan_make_entitlement_delegations",
+                        "preplan_reallocation_make_supplements",
+                        "preplan_subcontract_make_task_batches", "preplan_subcontract_make_tasks",
+                        "preplan_subcontract_requirement_handoff_items",
+                        "preplan_subcontract_requirement_handoffs",
+                        "preplan_subcontract_requirement_supply_claims",
+                        "preplan_supply_action_allocations", "preplan_supply_actions",
+                        "procurement_inspection_items", "procurement_iqc_replacement_allocations",
+                        "production_fqc_release_allocations",
+                        "production_fqc_replenishment_attempts",
+                        "production_fqc_replenishment_cycles",
+                        "production_fqc_replenishment_supply_gaps",
+                        "production_fqc_replenishment_tasks", "production_material_demands",
+                        "production_material_make_receipt_allocations",
+                        "production_material_peg_transfers",
+                        "production_material_receipt_allocations",
+                        "production_material_subcontract_peg_transfers",
+                        "production_material_subcontract_receipt_allocations",
+                        "production_material_supply_pegs",
+                        "production_workshop_direct_source_allocations", "stock_balances",
+                        "stock_value_edges", "stock_value_node_revisions", "stock_value_nodes",
+                        "stock_value_pools", "stock_value_production_cost_objects",
+                        "stock_value_production_cost_outputs",
+                        "stock_value_production_cost_shares",
+                        "subcontract_loss_fulfillment_allocations",
+                        "subcontract_outbound_issue_reservation_allocations",
+                        "subcontract_receipt_material_consumptions")),
+            new NoneGroup("link",
+                    "单据关联与下达包: 由下单/下达命令生成的链接, 命令本身已有语义事件",
+                    Set.of(
+                        "plan_draw_links", "plan_order_item_links",
+                        "production_fqc_replenishment_analysis_links",
+                        "production_fqc_replenishment_draw_links",
+                        "production_material_analysis_plan_links",
+                        "production_material_movement_links",
+                        "production_planning_package_document_items",
+                        "production_planning_package_documents", "production_planning_packages",
+                        "purchase_order_item_sources", "subcontract_order_item_sources",
+                        "subplan_links")),
+            new NoneGroup("ledger",
+                    "只追加的事件/流水/批次账: 行内带操作人与时间(子行经父行追溯), 行本身就是留痕",
+                    Set.of(
+                        "account_balance_adjustment_batches", "account_balance_adjustment_items",
+                        "ar_ap_source_refs", "client_access_change_events",
+                        "employee_offboarding_events", "expense_claim_events",
+                        "finance_asset_approval_steps", "finance_asset_events",
+                        "measurement_capture_decision_events", "measurement_capture_evidence",
+                        "measurement_capture_line_snapshots",
+                        "preplan_future_supply_transfer_cancellations",
+                        "preplan_public_supply_events",
+                        "preplan_root_output_events", "preplan_stock_entitlement_events",
+                        "preplan_subcontract_entitlement_handoff_slices",
+                        "preplan_subcontract_make_batch_reversals",
+                        "preplan_subcontract_requirement_handoff_events",
+                        "procurement_arrival_exception_events", "procurement_inspection_events",
+                        "procurement_iqc_consideration_reversals",
+                        "procurement_iqc_consideration_review_approvals",
+                        "procurement_iqc_credit_case_allocations",
+                        "procurement_iqc_credit_documents", "procurement_iqc_credit_slices",
+                        "procurement_iqc_funding_settlements", "procurement_iqc_funding_slices",
+                        "procurement_iqc_quality_consideration_parts",
+                        "procurement_iqc_rejection_events",
+                        "procurement_iqc_stock_consideration_parts",
+                        "procurement_iqc_stock_in_batch_items", "procurement_iqc_stock_in_batches",
+                        "procurement_order_approval_events", "procurement_order_qty_change_logs",
+                        "procurement_order_source_revision_allocations",
+                        "procurement_order_source_revision_peg_changes",
+                        "procurement_order_source_revisions",
+                        "procurement_receipt_consideration_parts",
+                        "production_daily_report_material_release_events",
+                        "production_daily_report_target_events",
+                        "production_execution_segment_events",
+                        "production_execution_segment_splits",
+                        "production_finished_arrival_registration_reversals",
+                        "production_finished_in_confirm_batch_items",
+                        "production_finished_in_confirm_batches",
+                        "production_finished_in_confirmation_reversal_items",
+                        "production_finished_in_confirmation_reversals",
+                        "production_fqc_cancellation_events",
+                        "production_fqc_contribution_adjustments",
+                        "production_fqc_decision_events", "production_fqc_pass_all_batch_items",
+                        "production_fqc_pass_all_batches",
+                        "production_fqc_recovery_allocation_events",
+                        "production_fqc_recovery_authorizations",
+                        "production_fqc_recovery_cancellation_events",
+                        "production_fqc_replenishment_cycle_cancellations",
+                        "production_fqc_replenishment_ready_events",
+                        "production_fqc_replenishment_ready_reversals",
+                        "production_material_return_receiving_confirmations",
+                        "production_material_return_request_cancellations",
+                        "production_material_settlement_events",
+                        "production_material_settlement_postings",
+                        "production_material_stock_events", "production_material_stock_postings",
+                        "production_workshop_custody_handoff_reversals",
+                        "production_workshop_custody_reverse_preparations",
+                        "production_workshop_direct_source_events",
+                        "production_workshop_direct_transfer_reversals",
+                        "production_workshop_material_custody_handoffs",
+                        "production_workshop_material_custody_moves",
+                        "production_workshop_material_custody_preparations",
+                        "production_workshop_material_custody_reversals",
+                        "production_workshop_material_return_slices",
+                        "production_workshop_return_preplan_events", "sales_order_qty_change_logs",
+                        "sales_order_revision_logs", "sales_return_disposition_events",
+                        "sales_return_quality_events", "sales_shipment_finance_release_events",
+                        "sales_shipment_submission_events", "sales_shipment_warehouse_events",
+                        "stock_movements", "stock_value_acquisition_sources", "stock_value_events",
+                        "stock_value_legacy_balance_case_events", "stock_value_openings",
+                        "stock_value_position_transfers", "stock_value_postings",
+                        "stock_value_production_cost_inputs",
+                        "stock_value_production_cost_revisions", "subcontract_loss_events",
+                        "subcontract_short_delivery_case_events",
+                        "supplier_settlement_batch_events",
+                        "warehouse_arrival_exception_stock_in_batch_items",
+                        "warehouse_arrival_exception_stock_in_batches")),
+            new NoneGroup("legacy",
+                    "老系统导入的只读数据与迁移核对证据: 由导入对账脚本核对, 不经在线写路径",
+                    Set.of(
+                        "client_default_settlement_migration_issues", "legacy_departments",
+                        "legacy_finance_import_sources", "legacy_measurement_exceptions",
+                        "legacy_measurement_profile_snapshots",
+                        "legacy_measurement_source_registry",
+                        "legacy_procurement_receipt_import_sources",
+                        "legacy_subcontract_order_import_sources",
+                        "legacy_warehouse_workshop_links", "production_fqc_legacy_exemptions",
+                        "production_plan_costs", "production_workshop_direct_legacy_anomalies",
+                        "stock_value_legacy_balance_cases")));
 
     /**
-     * Tables whose audit triggers were deliberately removed by V424 because they
-     * record system-automated behaviour (notice delivery pipeline, outbox queues,
-     * report materializations, idempotency command ledgers) rather than human
-     * operations. Human actions on these flows remain audited through the HTTP
-     * request-coverage rows and the underlying business-table triggers.
+     * 「ledger」组只收只追加的表: 应用代码与 V646 之后的迁移里不许出现对它们的 UPDATE, 下面逐条写明的
+     * 一次性完成回填除外(带状态/空值守卫, 只发生一次, 人的决定在插入行里)。会被人工改状态的表不能放进
+     * ledger, 应归 COLUMN_SCOPED 或 FULL(例如物料改挪记录)。
      */
-    private static final Map<String, String> V424_SYSTEM_NOISE_EXCLUSIONS = Map.ofEntries(
-            Map.entry("notices", "system/manual notice publishing is covered by request rows"),
-            Map.entry("notice_user_states", "per-recipient read state, pure notice mechanics"),
-            Map.entry("notice_acknowledgments", "per-recipient acknowledgement mechanics"),
-            Map.entry("notice_blessings", "celebration reply mechanics"),
-            Map.entry("business_outbox", "system event-delivery queue"),
-            Map.entry("attachment_object_outbox", "system attachment event queue"),
-            Map.entry("account_flow_monthly_summaries", "system-materialized report summary"),
-            Map.entry("production_daily_report_commands", "idempotency command ledger"),
-            Map.entry("production_fqc_release_commands", "idempotency command ledger"),
-            Map.entry("warehouse_arrival_registration_commands", "idempotency command ledger"),
-            Map.entry("production_material_analysis_commands", "idempotency command ledger"));
+    static final Map<String, String> LEDGER_WRITE_ONCE_STAMPS = Map.of(
+            "employee_offboarding_events",
+            "离职交接执行结束时 EXECUTING -> COMPLETED 回填一次结果摘要; 发起交接的人和原因在插入行里",
+            "production_material_settlement_events",
+            "日报审核时回填一次所属日报(仅 daily_report_id 为空时); 结算事件本身不变",
+            "warehouse_arrival_exception_stock_in_batches",
+            "同一条到货异常入库命令内 PENDING -> COMPLETED 回填一次结果; 发起人与请求在插入行里");
+    private static final Pattern UPDATE_TARGET = Pattern.compile(
+            "(?i)\\bUPDATE\\s+(?:ONLY\\s+)?(?:\"?public\"?\\s*\\.\\s*)?\"?([a-z_][a-z0-9_]*)\"?");
 
-    /**
-     * Notice-domain snapshot mechanics table created by V454 (celebration group
-     * cards) after the latest full sweep. Consistent with the V424 noise
-     * exclusion above (notice publishing mechanics; human publish/batch actions
-     * already carry explicit audit events notice_publish /
-     * notice_celebration_batch_publish), it stays outside row-image auditing.
-     * Any future full sweep must keep it excluded.
-     */
-    private static final Map<String, Integer> V454_NOTICE_MECHANICS_EXCLUSIONS =
-            Map.of("notice_celebration_subjects", 454);
+    static Map<String, String> fullTables() {
+        Map<String, String> result = new LinkedHashMap<>();
+        FULL.forEach(group -> group.tables().forEach(table -> result.put(table, group.category())));
+        return result;
+    }
 
-    /**
-     * Business tables created after the latest full sweep that are narrowly
-     * covered by an explicit trigger in their own forward migration.
-     */
-    private static final Map<String, Integer> POST_SWEEP_EXPLICIT_AUDIT_TABLES =
-            Map.ofEntries(
-                    Map.entry("party_contact_methods", 579),
-                    Map.entry("party_addresses", 579),
-                    Map.entry("party_activity_records", 579),
-                    Map.entry("production_daily_report_material_usages", 583),
-                    Map.entry("production_workshop_direct_transfers", 584),
-                    Map.entry("production_workshop_direct_transfer_items", 584),
-                    Map.entry("production_workshop_direct_transfer_reversals", 584),
-                    Map.entry("expense_claim_events", 608),
-                    Map.entry("expense_claim_invoices", 608),
-                    Map.entry("expense_claim_settings", 617),
-                    Map.entry("subcontract_short_delivery_cases", 636),
-                    Map.entry("subcontract_short_delivery_case_events", 636),
-                    Map.entry("legacy_subcontract_order_import_sources", 624),
-                    Map.entry("legacy_finance_import_sources", 626),
-                    Map.entry("legacy_procurement_receipt_import_sources", 627),
-                    Map.entry("production_daily_report_target_events", 614),
-                    Map.entry("production_daily_report_material_release_events", 614),
-                    Map.entry("production_workshop_direct_source_allocations", 615),
-                    Map.entry("production_workshop_direct_source_events", 615),
-                    Map.entry("production_workshop_direct_legacy_anomalies", 615),
-                    Map.entry("production_material_return_receiving_confirmations", 618),
-                    Map.entry("production_workshop_material_return_slices", 619),
-                    Map.entry("production_workshop_material_custody_preparations", 619),
-                    Map.entry("production_workshop_material_custody_moves", 619),
-                    Map.entry("production_workshop_material_custody_reversals", 619),
-                    Map.entry("production_workshop_material_custody_handoffs", 619),
-                    Map.entry("production_workshop_custody_handoff_reversals", 619),
-                    Map.entry("production_workshop_custody_reverse_preparations", 619),
-                    Map.entry("production_workshop_return_preplan_events", 619),
-                    Map.entry("permission_surfaces", 328),
-                    Map.entry("permission_surface_permissions", 328),
-                    Map.entry("employee_offboarding_events", 398),
-                    Map.entry("account_balance_adjustment_batches", 400),
-                    Map.entry("account_balance_adjustment_items", 400),
-                    Map.entry("account_flow_monthly_summaries", 408),
-                    Map.entry("production_daily_report_commands", 409),
-                    Map.entry("production_fqc_inspections", 410),
-                    Map.entry("production_fqc_decision_events", 410),
-                    Map.entry("production_fqc_release_commands", 410),
-                    Map.entry("production_fqc_release_allocations", 410),
-                    Map.entry("production_fqc_cancellation_events", 412),
-                    Map.entry("production_fqc_legacy_exemptions", 414),
-                    Map.entry("production_fqc_recovery_authorizations", 414),
-                    Map.entry("production_fqc_recovery_cancellation_events", 414),
-                    Map.entry("production_fqc_recovery_allocation_events", 414),
-                    Map.entry("production_fqc_contribution_adjustments", 414),
-                    Map.entry("production_fqc_replenishment_tasks", 414),
-                    Map.entry("production_fqc_replenishment_analysis_links", 414),
-                    Map.entry("production_fqc_replenishment_cycles", 415),
-                    Map.entry("production_fqc_replenishment_attempts", 415),
-                    Map.entry("production_fqc_replenishment_supply_gaps", 415),
-                    Map.entry("production_fqc_replenishment_draw_links", 415),
-                    Map.entry("production_fqc_replenishment_ready_events", 415),
-                    Map.entry("production_fqc_replenishment_ready_reversals", 415),
-                    Map.entry("production_fqc_replenishment_cycle_cancellations", 415),
-                    Map.entry("warehouse_arrival_registration_commands", 419),
-                    Map.entry("production_finished_arrival_registrations", 430),
-                    Map.entry("production_finished_arrival_registration_items", 430),
-                    Map.entry("warehouse_goods_place_preferences", 431),
-                    Map.entry("production_fqc_pass_all_batches", 432),
-                    Map.entry("production_fqc_pass_all_batch_items", 432),
-                    Map.entry("warehouse_arrival_exception_stock_in_batches", 433),
-                    Map.entry("warehouse_arrival_exception_stock_in_batch_items", 433),
-                    Map.entry("production_finished_in_confirm_batches", 434),
-                    Map.entry("production_finished_in_confirm_batch_items", 434),
-                    Map.entry("subcontract_outbound_preparation_commands", 436),
-                    Map.entry("subcontract_outbound_issue_reservation_allocations", 436),
-                     Map.entry("procurement_iqc_rejection_cases", 440),
-                     Map.entry("procurement_iqc_rejection_events", 440),
-                     Map.entry("procurement_iqc_rejection_commands", 440),
-                     Map.entry("procurement_iqc_replacement_allocations", 440),
-                     Map.entry("unit_measurement_profiles", 442),
-                     Map.entry("measurement_capture_profiles", 442),
-                     Map.entry("measurement_capture_line_snapshots", 442),
-                     Map.entry("measurement_capture_evidence", 442),
-                     Map.entry("measurement_capture_decision_events", 442),
-                     Map.entry("legacy_measurement_source_registry", 442),
-                     Map.entry("legacy_measurement_profile_snapshots", 442),
-                     Map.entry("legacy_measurement_exceptions", 442),
-                     Map.entry("sales_shipment_finance_release_events", 443),
-                     Map.entry("procurement_iqc_stock_in_batches", 446),
-                     Map.entry("procurement_iqc_stock_in_batch_items", 446),
-                     Map.entry("preplan_subcontract_requirement_handoffs", 447),
-                     Map.entry("preplan_subcontract_requirement_handoff_items", 447),
-                     Map.entry("preplan_subcontract_requirement_supply_claims", 447),
-                     Map.entry("preplan_subcontract_entitlement_handoff_slices", 447),
-                     Map.entry("preplan_subcontract_requirement_handoff_events", 447),
-                     Map.entry("preplan_subcontract_make_tasks", 458),
-                     Map.entry("preplan_subcontract_make_task_batches", 458),
-                     Map.entry("preplan_subcontract_make_batch_reversals", 496),
-                     Map.entry("employee_secondary_departments", 459),
-                     Map.entry("purchase_order_item_sources", 463),
-                     Map.entry("subcontract_order_item_sources", 463),
-                     Map.entry("preplan_public_supply_events", 474),
-                    // V486 采购订货改量事实账（同迁移自带 trg_audit_* 行级触发器）。
-                    Map.entry("procurement_order_qty_change_logs", 486),
-                    Map.entry("sales_order_revision_logs", 492),
-                    Map.entry("sales_shipment_submission_events", 511),
-                    // V547 品质检查单聚合层、V548 送检登记撤回：同迁移自带 trg_audit_*。
-                    Map.entry("production_fqc_inspection_sheets", 547),
-                    Map.entry("production_fqc_inspection_sheet_items", 547),
-                    Map.entry("production_finished_arrival_registration_reversals", 548));
+    static Set<String> redactedFullTables() {
+        return FULL.stream().filter(FullGroup::redacted)
+                .flatMap(group -> group.tables().stream()).collect(Collectors.toSet());
+    }
 
-    /** Business tables repaired by a later narrow forward audit migration. */
-    private static final Map<String, Integer> POST_SWEEP_FORWARD_AUDIT_TABLES =
-            Map.ofEntries(
-                    Map.entry("production_daily_report_workers", 429),
-                    // V483 forward repair: V478 root-supply output ledger and
-                    // V482 sales-order quantity-change facts (creating
-                    // migrations stay immutable).
-                    Map.entry("preplan_root_output_events", 483),
-                    Map.entry("sales_order_qty_change_logs", 483));
+    static Map<String, ScopedTable> scopedTables() {
+        Map<String, ScopedTable> result = new LinkedHashMap<>();
+        COLUMN_SCOPED.forEach(scoped -> result.put(scoped.table(), scoped));
+        return result;
+    }
+
+    static Set<String> noneTables() {
+        return NONE.stream().flatMap(group -> group.tables().stream()).collect(Collectors.toSet());
+    }
 
     @Test
-    void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {
-        assertTrue(Files.isRegularFile(LATEST_FULL_AUDIT_SWEEP),
-                "The declared latest audit sweep migration must exist");
+    void everyListedEntryHasAReasonAndBelongsToExactlyOneList() {
+        Map<String, List<String>> owners = new HashMap<>();
+        FULL.forEach(group -> {
+            assertFalse(group.reason().isBlank(), group.key() + " needs a reviewable reason");
+            assertTrue(CATEGORIES.contains(group.category()), group.key() + " category");
+            group.tables().forEach(table ->
+                    owners.computeIfAbsent(table, ignored -> new ArrayList<>()).add("FULL/" + group.key()));
+        });
+        COLUMN_SCOPED.forEach(scoped -> {
+            assertFalse(scoped.reason().isBlank(), scoped.table() + " needs a reviewable reason");
+            assertFalse(scoped.columns().isEmpty(), scoped.table() + " must name its audited columns");
+            assertTrue(CATEGORIES.contains(scoped.category()), scoped.table() + " category");
+            owners.computeIfAbsent(scoped.table(), ignored -> new ArrayList<>()).add("COLUMN_SCOPED");
+        });
+        NONE.forEach(group -> {
+            assertFalse(group.reason().isBlank(), group.key() + " needs a reviewable reason");
+            group.tables().forEach(table ->
+                    owners.computeIfAbsent(table, ignored -> new ArrayList<>()).add("NONE/" + group.key()));
+        });
+        List<String> duplicated = owners.entrySet().stream()
+                .filter(entry -> entry.getValue().size() > 1)
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .sorted().toList();
+        assertEquals(List.of(), duplicated, "A table belongs to exactly one audit list");
+        assertTrue(noneTables().containsAll(Set.of("audit_log", "audit_log_archive")),
+                "The audit sink never audits itself");
+    }
 
-        String sql = stripSqlComments(Files.readString(
-                LATEST_FULL_AUDIT_SWEEP, StandardCharsets.UTF_8))
-                .replaceAll("\\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
-        assertTrue(sql.contains("tgname like 'trg_audit%'"),
-                "The sweep must identify existing audit triggers by the shared prefix");
-        assertTrue(sql.contains("tgenabled in ('o', 'a')"),
-                "Disabled audit triggers must not satisfy coverage");
-        assertTrue(sql.contains("tgtype::integer & 1")
-                        && sql.contains("tgtype::integer & 2")
-                        && sql.contains("tgtype::integer & 4")
-                        && sql.contains("tgtype::integer & 8")
-                        && sql.contains("tgtype::integer & 16"),
-                "Coverage must require AFTER ROW INSERT/UPDATE/DELETE semantics");
-        assertTrue(sql.contains("join pg_proc")
-                        && sql.contains("fn_audit_redacted"),
-                "Coverage must validate the called redacting audit function");
-        assertTrue(sql.contains("count(*) filter")
-                        && sql.contains("prefixed_trigger_count = 1")
-                        && sql.contains("valid_trigger_count = 1"),
-                "Each business table must have exactly one valid audit trigger");
-        assertTrue(sql.contains("raise exception"),
-                "A malformed prefixed trigger must fail the migration closed");
-        assertTrue(sql.contains("execute function fn_audit()"),
-                "The sweep must attach the shared redacting audit function");
-        assertTrue(sql.contains("'master_code_sequences'"),
-                "High-churn master-code counters must remain explicitly excluded");
-        assertTrue(sql.contains("'category_master_code_sequences'"),
-                "Category-driven suffix counters must remain explicitly excluded");
-        assertTrue(sql.contains("'business_document_sequences'"),
-                "The high-churn namespace/day counter must remain explicitly excluded");
-        assertTrue(sql.contains("'production_product_no_sequences'"),
-                "The high-churn per-plan product-number counter must remain excluded");
-        Map<String, Integer> createdAt = createdTableVersions();
-        for (String businessTable : List.of(
-                "business_identifier_namespaces", "business_prefix_reservations",
-                "business_prefix_reservation_members", "business_identifier_reservations",
-                "business_identifier_reservation_members", "business_identifier_conflicts")) {
-            assertTrue(createdAt.containsKey(businessTable)
-                            && createdAt.get(businessTable) <= LATEST_FULL_AUDIT_SWEEP_VERSION,
-                    () -> businessTable + " must exist before the latest full sweep");
+    @Test
+    void ledgerTablesAreAppendOnlyExceptTheDeclaredWriteOnceStamps() throws IOException {
+        Set<String> ledger = NONE.stream().filter(group -> group.key().equals("ledger"))
+                .findFirst().orElseThrow().tables();
+        assertTrue(ledger.containsAll(LEDGER_WRITE_ONCE_STAMPS.keySet()),
+                "write-once stamps are an exception inside the ledger group only");
+        Map<String, Set<String>> updates = new java.util.TreeMap<>();
+        try (Stream<Path> files = Files.walk(Path.of("src/main/java"))) {
+            for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                Matcher update = UPDATE_TARGET.matcher(Files.readString(file, StandardCharsets.UTF_8));
+                while (update.find()) {
+                    String table = update.group(1).toLowerCase(Locale.ROOT);
+                    if (ledger.contains(table)) {
+                        updates.computeIfAbsent(table, ignored -> new TreeSet<>()).add(file.getFileName().toString());
+                    }
+                }
+            }
+        }
+        for (MigrationSource migration : migrations()) {
+            if (migration.version() <= POLICY_BASELINE_VERSION) {
+                continue;
+            }
+            Matcher update = UPDATE_TARGET.matcher(stripSqlComments(migration.sql()));
+            while (update.find()) {
+                String table = update.group(1).toLowerCase(Locale.ROOT);
+                if (ledger.contains(table)) {
+                    updates.computeIfAbsent(table, ignored -> new TreeSet<>())
+                            .add(migration.path().getFileName().toString());
+                }
+            }
+        }
+        Set<String> staleStamps = new TreeSet<>(LEDGER_WRITE_ONCE_STAMPS.keySet());
+        staleStamps.removeAll(updates.keySet());
+        assertEquals(Set.of(), staleStamps, "a declared write-once stamp that no longer exists must be removed");
+        updates.keySet().removeAll(LEDGER_WRITE_ONCE_STAMPS.keySet());
+        assertEquals(Map.of(), updates,
+                "ledger 组的表被更新了: 改归 COLUMN_SCOPED/FULL, 或确属一次性完成回填时登记理由");
+    }
+
+    @Test
+    void everyTableInTheMigratedSchemaIsClassified() throws IOException {
+        Set<String> live = new TreeSet<>(liveTableVersions().keySet());
+        live.addAll(CREATED_OUTSIDE_MIGRATIONS);
+        Set<String> classified = new TreeSet<>(fullTables().keySet());
+        classified.addAll(scopedTables().keySet());
+        classified.addAll(noneTables());
+
+        Set<String> unclassified = new TreeSet<>(live);
+        unclassified.removeAll(classified);
+        assertEquals(Set.of(), unclassified,
+                "新建表必须归入 FULL / COLUMN_SCOPED / NONE 之一并写明理由"
+                        + "(FULL/COLUMN_SCOPED 还要在建表迁移里调用 fn_audit_track_table)");
+        Set<String> stale = new TreeSet<>(classified);
+        stale.removeAll(live);
+        assertEquals(Set.of(), stale, "Listed tables must exist in the migrated schema");
+    }
+
+    @Test
+    void policyBaselineAppliesExactlyTheDeclaredFullAndScopedLists() throws IOException {
+        String sql = stripSqlComments(Files.readString(POLICY_BASELINE, StandardCharsets.UTF_8));
+        Map<String, String> declaredFull = new LinkedHashMap<>();
+        Set<String> declaredRedacted = new HashSet<>();
+        Matcher full = FULL_CALL.matcher(sql);
+        while (full.find()) {
+            Matcher table = QUOTED.matcher(full.group(3));
+            while (table.find()) {
+                assertEquals(null, declaredFull.put(table.group(1), full.group(1)),
+                        table.group(1) + " is applied twice");
+                if (Boolean.parseBoolean(full.group(2))) {
+                    declaredRedacted.add(table.group(1));
+                }
+            }
+        }
+        assertEquals(fullTables(), declaredFull, "V646 FULL calls must equal the FULL list and categories");
+        assertEquals(redactedFullTables(), declaredRedacted, "Payroll-class redaction flags must match");
+
+        Map<String, ScopedTable> declaredScoped = new LinkedHashMap<>();
+        Matcher scoped = SCOPED_CALL.matcher(sql);
+        while (scoped.find()) {
+            List<String> columns = new ArrayList<>();
+            Matcher column = QUOTED.matcher(scoped.group(4));
+            while (column.find()) {
+                columns.add(column.group(1));
+            }
+            ScopedTable expected = scopedTables().get(scoped.group(1));
+            assertTrue(expected != null, scoped.group(1) + " is scoped in V646 but not listed");
+            declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
+                    Boolean.parseBoolean(scoped.group(5)), columns, expected.reason()));
+        }
+        assertEquals(scopedTables(), declaredScoped, "V646 COLUMN_SCOPED calls must equal the list");
+
+        String normalized = sql.replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        assertTrue(normalized.contains("when (old.* is distinct from new.*)"),
+                "FULL updates must skip no-op rows before calling the audit function");
+        assertTrue(normalized.contains("current_setting('app.legacy_import', true) = 'on'"),
+                "Offline legacy imports bypass row auditing");
+        assertTrue(normalized.contains("drop function public.fn_audit_classify("),
+                "Classification is computed once at write time, not by a database trigger");
+        assertTrue(normalized.contains("'updated_at', 'updated_by', 'version', 'lock_version'")
+                        && normalized.contains("'last_login_at'")
+                        && normalized.contains("'quantity_unit_locked'"),
+                "Volatile columns never produce an update audit row");
+        assertTrue(normalized.contains("v_action := 'delete'"),
+                "Soft deletes keep delete meaning");
+        assertTrue(normalized.contains("app.audit_device_context")
+                        && normalized.contains("device_profile_hash"),
+                "Database audit rows keep the device correlation");
+        assertTrue(normalized.contains("fn_audit_mask_account"),
+                "Stored accounts are masked");
+    }
+
+    @Test
+    void tablesCreatedAfterTheBaselineRegisterTheirPolicyInMigrations() throws IOException {
+        Map<String, Integer> created = liveTableVersions();
+        Map<String, String> registered = new HashMap<>();
+        for (MigrationSource migration : migrations()) {
+            if (migration.version() <= POLICY_BASELINE_VERSION) {
+                continue;
+            }
+            Matcher registration = REGISTRATION.matcher(stripSqlComments(migration.sql()));
+            while (registration.find()) {
+                registered.put(registration.group(1), registration.group(2));
+            }
+        }
+        List<String> missing = new ArrayList<>();
+        created.forEach((table, version) -> {
+            if (version <= POLICY_BASELINE_VERSION) {
+                return;
+            }
+            String expected = fullTables().containsKey(table) ? "FULL"
+                    : scopedTables().containsKey(table) ? "COLUMN_SCOPED" : "NONE";
+            if (!"NONE".equals(expected) && !expected.equals(registered.get(table))) {
+                missing.add(table + "@V" + version + " needs fn_audit_track_table('" + table + "', '"
+                        + expected + "', ...)");
+            }
+        });
+        assertEquals(List.of(), missing);
+    }
+
+    @Test
+    void laterMigrationsNeverHandWriteAuditTriggersOrFullTableSweeps() throws IOException {
+        for (MigrationSource migration : migrations()) {
+            if (migration.version() <= POLICY_BASELINE_VERSION) {
+                continue;
+            }
+            String sql = stripSqlComments(migration.sql()).replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+            assertFalse(sql.contains("create trigger trg_audit_"),
+                    migration.path().getFileName() + " must attach audit triggers through fn_audit_track_table");
+            assertFalse(sql.contains("execute function fn_audit()")
+                            || sql.contains("execute function public.fn_audit()"),
+                    migration.path().getFileName() + " must not bind fn_audit without the three-list policy");
+            assertFalse(migration.path().getFileName().toString().contains("refresh_audit_trigger_coverage"),
+                    "Full-table audit sweeps are retired by ADR-105");
         }
     }
 
     @Test
-    void latestHardeningPreservesSoftDeleteMeaningAndRedaction() throws IOException {
-        assertTrue(Files.isRegularFile(LATEST_AUDIT_HARDENING),
-                "The post-sweep audit hardening migration must exist");
-        String sql = stripSqlComments(Files.readString(
-                LATEST_AUDIT_HARDENING, StandardCharsets.UTF_8))
-                .replaceAll("\\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
-
-        assertTrue(sql.contains("create or replace function fn_audit_redact_row"));
-        assertTrue(sql.contains("create or replace function fn_audit_redacted()"));
-        for (String field : List.of(
-                "preview_token_hash", "last_rejection_reason", "close_reason",
-                "reopen_reason", "reversal_reason", "payload",
-                "exception_snapshot", "calculation_snapshot",
-                "required_document_codes", "required_document_codes_snapshot",
-                "source_ref", "source_line_ref")) {
-            assertTrue(sql.contains("'" + field + "'"),
-                    () -> "Sensitive/free-text field must be redacted: " + field);
-        }
-        assertTrue(sql.contains("v_action := 'delete'"),
-                "Future is_deleted/deleted_at transitions must be stored as delete");
-        assertEquals(2, sql.split("v_action := 'delete'", -1).length - 1,
-                "Both generic and high-sensitivity trigger functions must store soft deletes");
-        assertTrue(sql.contains("v_identity ->> 'period'"),
-                "Accounting-period rows need a stable target id");
-        assertTrue(sql.contains("app.audit_device_context"),
-                "Replacing fn_audit must retain the V172 device context");
-        assertTrue(sql.contains("client_event_id"),
-                "Database audit rows must retain local request correlation");
-        assertTrue(sql.contains("device_profile_hash"),
-                "Database audit rows must retain the redacted device fingerprint");
-    }
-
-    @Test
-    void createTableParserHandlesQuotedAndUnquotedIdentifiers() {
+    void createTableParserHandlesQuotedUnquotedAndDynamicIdentifiers() {
         Matcher plain = CREATE_TABLE.matcher("CREATE TABLE public.goods (id UUID)");
         assertTrue(plain.find());
         assertEquals("goods", plain.group(1));
@@ -442,93 +622,14 @@ class AuditTriggerCoverageMigrationContractTest {
                 + " (id UUID)");
         assertTrue(quoted.find());
         assertEquals("Goods_Audit", quoted.group(1));
-    }
 
-    @Test
-    void criticalBusinessTablesExistBeforeTheTrustedFullAuditSweep() throws IOException {
-        Map<String, Integer> createdAt = createdTableVersions();
+        Matcher partition = CREATE_TABLE.matcher("CREATE TABLE audit_log_p202609 PARTITION OF audit_log");
+        assertTrue(partition.find());
+        assertTrue(partition.group(2) != null, "partitions are not separate policy tables");
 
-        List<String> missing = REQUIRED_BUSINESS_TABLES.stream()
-                .filter(table -> !createdAt.containsKey(table))
-                .sorted()
-                .toList();
-        assertTrue(missing.isEmpty(),
-                () -> "Required audited tables are absent from Flyway DDL: " + missing);
-
-        List<String> tooLate = REQUIRED_BUSINESS_TABLES.stream()
-                .filter(table -> createdAt.get(table) > LATEST_FULL_AUDIT_SWEEP_VERSION)
-                .sorted()
-                .map(table -> table + "@V" + createdAt.get(table))
-                .toList();
-        assertTrue(tooLate.isEmpty(),
-                () -> "Business tables created after V" + LATEST_FULL_AUDIT_SWEEP_VERSION
-                        + " are not covered by its full audit sweep. Add a later sweep and "
-                        + "advance LATEST_FULL_AUDIT_SWEEP_VERSION: " + tooLate);
-    }
-
-    @Test
-    void tablesCreatedAfterTrustedSweepMustBeReviewedOrExplicitlyAudited()
-            throws IOException {
-        Map<String, Integer> createdAt = createdTableVersions();
-        List<String> unreviewed = createdAt.entrySet().stream()
-                .filter(entry -> entry.getValue() > LATEST_FULL_AUDIT_SWEEP_VERSION)
-                .filter(entry -> !TECHNICAL_TABLE_ALLOWLIST.containsKey(entry.getKey()))
-                .filter(entry ->
-                        !POST_SWEEP_EXPLICIT_AUDIT_TABLES.containsKey(entry.getKey()))
-                .filter(entry ->
-                        !POST_SWEEP_FORWARD_AUDIT_TABLES.containsKey(entry.getKey()))
-                .filter(entry ->
-                        !V454_NOTICE_MECHANICS_EXCLUSIONS.containsKey(entry.getKey()))
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> entry.getKey() + "@V" + entry.getValue())
-                .toList();
-
-        assertTrue(unreviewed.isEmpty(),
-                () -> "Tables created after the latest full audit sweep require a later sweep "
-                        + "or an explicit, reviewed same-migration audit trigger. Only genuinely "
-                        + "technical tables may enter TECHNICAL_TABLE_ALLOWLIST: " + unreviewed);
-    }
-
-    @Test
-    void postSweepSurfaceCatalogBusinessTablesOwnExplicitAuditTriggers()
-            throws IOException {
-        Map<String, Integer> createdAt = createdTableVersions();
-        for (Map.Entry<String, Integer> entry :
-                POST_SWEEP_EXPLICIT_AUDIT_TABLES.entrySet()) {
-            String sql = migrationSql(entry.getValue()).replace("public.", "");
-            assertEquals(entry.getValue(), createdAt.get(entry.getKey()),
-                    entry.getKey() + " must remain owned by its reviewed migration");
-            assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(entry.getKey()),
-                    entry.getKey() + " is business data, not technical metadata");
-            assertTrue(sql.contains(
-                            "create trigger trg_audit_" + entry.getKey())
-                            && sql.contains(
-                            "after insert or update or delete on " + entry.getKey())
-                            && sql.contains(
-                            "for each row execute function " +
-                                    (entry.getKey().equals("legacy_finance_import_sources")
-                                            ? "fn_audit_redacted()" : "fn_audit()")),
-                    entry.getKey() + " must own a full row-level audit trigger");
-        }
-    }
-
-    @Test
-    void postSweepForwardAuditRepairsAreNarrowAndLaterThanTableCreation()
-            throws IOException {
-        Map<String, Integer> createdAt = createdTableVersions();
-        for (Map.Entry<String, Integer> entry :
-                POST_SWEEP_FORWARD_AUDIT_TABLES.entrySet()) {
-            String sql = migrationSql(entry.getValue());
-            assertTrue(createdAt.get(entry.getKey()) < entry.getValue(),
-                    entry.getKey() + " forward audit repair must follow table creation");
-            assertTrue(sql.contains(
-                            "create trigger trg_audit_" + entry.getKey())
-                            && sql.contains(
-                            "after insert or update or delete on " + entry.getKey())
-                            && sql.contains(
-                            "for each row execute function fn_audit()"),
-                    entry.getKey() + " must receive one reviewed row-level audit trigger");
-        }
+        assertFalse(CREATE_TABLE.matcher("EXECUTE format('CREATE TABLE IF NOT EXISTS %I', name)").find()
+                        && "if".equalsIgnoreCase(firstCreated("EXECUTE format('CREATE TABLE IF NOT EXISTS %I', name)")),
+                "dynamic names are not tables");
     }
 
     @Test
@@ -540,7 +641,7 @@ class AuditTriggerCoverageMigrationContractTest {
             String sql = stripSqlComments(Files.readString(
                     MIGRATION_ROOT.resolve(filename), StandardCharsets.UTF_8));
             assertFalse(CREATE_TABLE.matcher(sql).find(),
-                    filename + " must stay tableless or be followed by a full audit sweep");
+                    filename + " must stay tableless");
         }
     }
 
@@ -551,7 +652,7 @@ class AuditTriggerCoverageMigrationContractTest {
                 MIGRATION_ROOT.resolve("V425__audit_log_fresh_start.sql"),
                         StandardCharsets.UTF_8))
                 .replaceAll("\\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
+                .toLowerCase(Locale.ROOT);
         assertTrue(sql.contains(
                 "truncate table audit_log, audit_log_archive restart identity"),
                 "Only after the fresh-chain guard allows V425, its frozen bytes must "
@@ -566,76 +667,12 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     @Test
-    void v424DropsOnlyTheDeclaredSystemNoiseTriggers() throws IOException {
-        String sql = stripSqlComments(Files.readString(
-                MIGRATION_ROOT.resolve(
-                        "V424__audit_notice_and_system_noise_exclusion.sql"),
-                        StandardCharsets.UTF_8))
-                .replaceAll("\\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
-        for (Map.Entry<String, String> entry : V424_SYSTEM_NOISE_EXCLUSIONS.entrySet()) {
-            String table = entry.getKey();
-            assertTrue(sql.contains("drop trigger if exists trg_audit_" + table
-                            + " on " + table),
-                    () -> table + " must be dropped from audit coverage: " + entry.getValue());
-        }
-        assertFalse(sql.contains("create trigger"),
-                "V424 is a noise-reduction migration and must not create audit triggers");
-        Set<String> protectedTables = Set.of(
-                "stock_documents", "sales_orders", "users", "employees", "system_settings");
-        for (String table : protectedTables) {
-            assertFalse(sql.contains(" on " + table),
-                    () -> table + " business auditing must never be dropped by V424");
-        }
-    }
-
-    @Test
-    void everyFutureFullSweepMustKeepV424NoiseTablesExcluded() throws IOException {
-        try (var files = Files.list(MIGRATION_ROOT)) {
-            for (Path path : files.filter(Files::isRegularFile).toList()) {
-                Matcher matcher = MIGRATION_FILE.matcher(path.getFileName().toString());
-                if (!matcher.matches()
-                        || Integer.parseInt(matcher.group(1)) <= 424
-                        || !path.getFileName().toString()
-                        .contains("refresh_audit_trigger_coverage")) {
-                    continue;
-                }
-                String sql = stripSqlComments(Files.readString(
-                        path, StandardCharsets.UTF_8))
-                        .replaceAll("\\s+", " ")
-                        .toLowerCase(java.util.Locale.ROOT);
-                for (String table : V424_SYSTEM_NOISE_EXCLUSIONS.keySet()) {
-                    assertTrue(sql.contains("'" + table + "'"),
-                            () -> path.getFileName() + " must keep the approved V424 "
-                                    + "noise exclusion: " + table);
-                }
-                for (String table : V454_NOTICE_MECHANICS_EXCLUSIONS.keySet()) {
-                    assertTrue(sql.contains("'" + table + "'"),
-                            () -> path.getFileName() + " must keep the V454 notice "
-                                    + "mechanics exclusion: " + table);
-                }
-            }
-        }
-    }
-
-    @Test
-    void v288BorrowBusinessTableIsOwnedGuardedAndCoveredByTheImmediateV289Sweep()
-            throws IOException {
-        Map<String, Integer> createdAt = createdTableVersions();
-        assertEquals(Integer.valueOf(288),
-                createdAt.get("production_material_analysis_borrows"),
-                "The borrow business table must remain attributable to immutable V288");
-        assertTrue(LATEST_FULL_AUDIT_SWEEP_VERSION > 288,
-                "A business table introduced by V288 requires an immediate later sweep");
-        assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(
-                        "production_material_analysis_borrows"),
-                "Borrow business data must never be hidden as audit-exempt metadata");
-
+    void v289BorrowGuardsStayAtTheDatabaseBoundary() throws IOException {
         String v288Sql = stripSqlComments(Files.readString(
                 MIGRATION_ROOT.resolve("V288__production_material_analysis_borrows.sql"),
                 StandardCharsets.UTF_8))
                 .replaceAll("\\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
+                .toLowerCase(Locale.ROOT);
         assertTrue(v288Sql.contains(
                         "foreign key (analysis_id, from_material_id) references "
                                 + "production_material_analysis_materials(analysis_id, id)")
@@ -643,139 +680,85 @@ class AuditTriggerCoverageMigrationContractTest {
                         "foreign key (analysis_id, to_material_id) references "
                                 + "production_material_analysis_materials(analysis_id, id)"),
                 "V288 must bind both borrow endpoints to their declared analysis");
-        assertTrue(v288Sql.contains(
-                        "reason = btrim(reason) and length(reason) between 2 and 1000")
-                        && v288Sql.contains(
-                        "idempotency_key = btrim(idempotency_key) and length(idempotency_key) "
-                                + "between 8 and 128"),
-                "V288 must store bounded canonical reasons and idempotency keys");
-
-        // V289 的借用守卫钉在 V289 自身（LATEST_FULL_AUDIT_SWEEP 已由后续全量 sweep 前移至 V325）。
         String sql = stripSqlComments(Files.readString(
                 MIGRATION_ROOT.resolve("V289__refresh_audit_trigger_coverage.sql"),
                 StandardCharsets.UTF_8))
                 .replaceAll("\\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
+                .toLowerCase(Locale.ROOT);
         assertTrue(sql.contains(
-                        "create function fn_guard_production_material_analysis_borrow_mutation"),
-                "V289 must guard the active borrow workflow at the database boundary");
-        assertTrue(sql.contains("if tg_op = 'insert'")
-                        && sql.contains("new.status <> 'active'")
-                        && sql.contains("new.last_effective_qty <> 0")
-                        && sql.contains("before insert or update or delete")
-                        && sql.contains("if tg_op = 'delete'")
-                        && sql.contains("if old.status = 'revoked'")
-                        && sql.contains("new.status not in ('active', 'revoked')"),
-                "The database must require an ACTIVE insert and forbid physical deletion, "
-                        + "post-revoke mutation and invalid states");
-        for (String immutableColumn : List.of(
-                "new.id", "new.analysis_id", "new.from_material_id", "new.to_material_id",
-                "new.goods_id", "new.color_id", "new.unit_id", "new.qty", "new.reason",
-                "new.idempotency_key", "new.created_by", "new.created_at")) {
-            assertTrue(sql.contains(immutableColumn),
-                    () -> "Borrow identity/payload guard is missing: " + immutableColumn);
+                        "create function fn_guard_production_material_analysis_borrow_mutation")
+                        && sql.contains("new.status not in ('active', 'revoked')")
+                        && sql.contains("deferrable initially deferred"),
+                "V289 keeps the borrow lifecycle guards; its audit sweep is superseded by V646");
+        assertTrue(fullTables().containsKey("production_material_analysis_borrows"),
+                "A human borrow decision stays fully audited");
+    }
+
+    private static String firstCreated(String sql) {
+        Matcher matcher = CREATE_TABLE.matcher(sql);
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    /** 迁移链结束时存在的表 -> 首次创建的版本(按建表/删表/改名依次回放)。 */
+    static Map<String, Integer> liveTableVersions() throws IOException {
+        Map<String, Integer> live = new LinkedHashMap<>();
+        for (MigrationSource migration : migrations()) {
+            String sql = stripSqlComments(migration.sql());
+            List<Object[]> events = new ArrayList<>();
+            Matcher create = CREATE_TABLE.matcher(sql);
+            while (create.find()) {
+                if (create.group(2) == null) {
+                    events.add(new Object[]{create.start(), "create", create.group(1).toLowerCase(Locale.ROOT), null});
+                }
+            }
+            Matcher drop = DROP_TABLE.matcher(sql);
+            while (drop.find()) {
+                for (String name : drop.group(1).split(",")) {
+                    String[] parts = name.trim().split("\\.");
+                    String table = parts[parts.length - 1].replace("\"", "").toLowerCase(Locale.ROOT);
+                    events.add(new Object[]{drop.start(), "drop", table, null});
+                }
+            }
+            Matcher rename = RENAME_TABLE.matcher(sql);
+            while (rename.find()) {
+                events.add(new Object[]{rename.start(), "rename",
+                        rename.group(1).toLowerCase(Locale.ROOT), rename.group(2).toLowerCase(Locale.ROOT)});
+            }
+            events.sort(Comparator.comparingInt(event -> (Integer) event[0]));
+            for (Object[] event : events) {
+                String table = (String) event[2];
+                switch ((String) event[1]) {
+                    case "create" -> live.putIfAbsent(table, migration.version());
+                    case "drop" -> live.remove(table);
+                    default -> {
+                        Integer version = live.remove(table);
+                        if (version != null) {
+                            live.put((String) event[3], version);
+                        }
+                    }
+                }
+            }
         }
-        assertTrue(sql.contains("new.status = 'revoked'")
-                        && sql.contains(
-                        "new.last_effective_qty is distinct from old.last_effective_qty"),
-                "Revocation must preserve the last effective quantity as lifecycle evidence");
-        assertTrue(sql.contains(
-                        "create function fn_validate_production_material_analysis_borrow_endpoint")
-                        && sql.contains("from_material.active is distinct from true")
-                        && sql.contains("from_material.analysis_item_id = to_material.analysis_item_id")
-                        && sql.contains(
-                        "from_material.goods_id is distinct from borrow.goods_id")
-                        && sql.contains("deferrable initially deferred")
-                        && sql.contains(
-                        "trg_validate_pma_material_borrow_endpoint"),
-                "V289 must validate final refreshed endpoint state without rejecting "
-                        + "the temporary deactivate/reactivate rewrite");
-        assertTrue(sql.contains(
-                        "create trigger trg_set_updated_at_production_material_analysis_borrows")
-                        && sql.contains("execute function fn_set_updated_at()"),
-                "Allowed borrow updates must maintain updated_at in the database");
+        return live;
     }
 
-    @Test
-    void v307ExactPegBusinessTableIsRequiredAndCoveredByTheImmediateV308Sweep()
-            throws IOException {
-        Map<String, Integer> createdAt = createdTableVersions();
-        assertEquals(Integer.valueOf(307),
-                createdAt.get("preplan_analysis_stock_exact_pegs"),
-                "The exact-stock ownership ledger must remain attributable to V307");
-        assertTrue(LATEST_FULL_AUDIT_SWEEP_VERSION > 307,
-                "A business table introduced by V307 requires an immediate later sweep");
-        assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(
-                        "preplan_analysis_stock_exact_pegs"),
-                "Exact stock ownership is business evidence, never audit-exempt metadata");
-
-        String sql = stripSqlComments(Files.readString(
-                MIGRATION_ROOT.resolve("V307__preplan_analysis_exact_stock_pegs.sql"),
-                StandardCharsets.UTF_8))
-                .replaceAll("\\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
-        assertTrue(sql.contains(
-                        "create trigger trg_audit_preplan_analysis_stock_exact_pegs")
-                        && sql.contains("after insert or update or delete")
-                        && sql.contains("execute function fn_audit()"),
-                "V307 must explicitly audit every exact-ownership mutation before V308 sweeps");
-    }
-
-    @Test
-    void technicalAllowlistCannotHideRequiredBusinessTables() {
-        Set<String> overlap = REQUIRED_BUSINESS_TABLES.stream()
-                .filter(TECHNICAL_TABLE_ALLOWLIST::containsKey)
-                .collect(java.util.stream.Collectors.toSet());
-        assertEquals(Set.of(), overlap,
-                "A required business table must never be hidden by the technical allowlist");
-        assertFalse(TECHNICAL_TABLE_ALLOWLIST.values().stream().anyMatch(String::isBlank),
-                "Every audit exclusion needs a reviewable reason");
-    }
-
-    private String migrationSql(int version) throws IOException {
-        try (var files = Files.list(MIGRATION_ROOT)) {
-            Path migration = files
-                    .filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString()
-                            .startsWith("V" + version + "__"))
-                    .findFirst()
-                    .orElseThrow(() -> new AssertionError(
-                            "Migration V" + version + " is missing"));
-            return stripSqlComments(Files.readString(
-                    migration, StandardCharsets.UTF_8))
-                    .replaceAll("\\s+", " ")
-                    .toLowerCase(java.util.Locale.ROOT);
-        }
-    }
-
-    private Map<String, Integer> createdTableVersions() throws IOException {
-        List<MigrationSource> migrations = new ArrayList<>();
-        try (var files = Files.list(MIGRATION_ROOT)) {
+    static List<MigrationSource> migrations() throws IOException {
+        List<MigrationSource> result = new ArrayList<>();
+        try (Stream<Path> files = Files.list(MIGRATION_ROOT)) {
             for (Path path : files.filter(Files::isRegularFile).toList()) {
                 Matcher matcher = MIGRATION_FILE.matcher(path.getFileName().toString());
-                if (!matcher.matches()) {
-                    continue;
+                if (matcher.matches()) {
+                    result.add(new MigrationSource(Integer.parseInt(matcher.group(1)), path,
+                            Files.readString(path, StandardCharsets.UTF_8)));
                 }
-                migrations.add(new MigrationSource(
-                        Integer.parseInt(matcher.group(1)),
-                        path,
-                        Files.readString(path, StandardCharsets.UTF_8)));
             }
         }
-        migrations.sort(Comparator.comparingInt(MigrationSource::version));
-
-        Map<String, Integer> createdAt = new LinkedHashMap<>();
-        for (MigrationSource migration : migrations) {
-            Matcher table = CREATE_TABLE.matcher(stripSqlComments(migration.sql()));
-            while (table.find()) {
-                createdAt.putIfAbsent(table.group(1).toLowerCase(), migration.version());
-            }
-        }
-        return createdAt;
+        result.sort(Comparator.comparingInt(MigrationSource::version));
+        return result;
     }
 
     /** Removes SQL comments so documentation examples cannot look like DDL. */
-    private String stripSqlComments(String sql) {
+    static String stripSqlComments(String sql) {
         StringBuilder result = new StringBuilder(sql.length());
         boolean lineComment = false;
         boolean blockComment = false;
@@ -820,6 +803,6 @@ class AuditTriggerCoverageMigrationContractTest {
         return result.toString();
     }
 
-    private record MigrationSource(int version, Path path, String sql) {
+    record MigrationSource(int version, Path path, String sql) {
     }
 }

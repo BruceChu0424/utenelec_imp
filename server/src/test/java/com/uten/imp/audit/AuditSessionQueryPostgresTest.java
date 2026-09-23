@@ -221,12 +221,14 @@ class AuditSessionQueryPostgresTest {
             UUID sessionId,
             String action,
             String createdAt) {
+        ensureMonth("audit_log", createdAt);
         jdbc.update("""
                         INSERT INTO audit_log(
                             actor_id, actor_account, action, target_type,
-                            target_id, result, event_source, session_id, created_at)
+                            target_id, result, event_source, session_id, created_at,
+                            risk_level, event_category)
                         VALUES (?, 'audit-session-test', ?, 'audit_session_test',
-                                ?, 'success', 'business', ?, ?::timestamptz)
+                                ?, 'success', 'business', ?, ?::timestamptz, 'low', 'business')
                         """,
                 actorId,
                 action,
@@ -246,12 +248,14 @@ class AuditSessionQueryPostgresTest {
                             COALESCE((SELECT MAX(id) FROM audit_log_archive), 0)) + 1000
                         """,
                 Long.class);
+        ensureMonth("audit_log_archive", createdAt);
         jdbc.update("""
                         INSERT INTO audit_log_archive(
                             id, actor_id, actor_account, action, target_type,
-                            target_id, result, event_source, session_id, created_at)
+                            target_id, result, event_source, session_id, created_at,
+                            risk_level, event_category)
                         VALUES (?, ?, 'audit-session-test', ?, 'audit_session_test',
-                                ?, 'success', 'business', ?, ?::timestamptz)
+                                ?, 'success', 'business', ?, ?::timestamptz, 'low', 'business')
                         """,
                 archiveId,
                 actorId,
@@ -259,5 +263,14 @@ class AuditSessionQueryPostgresTest {
                 UUID.randomUUID().toString(),
                 sessionId,
                 createdAt);
+    }
+
+    /** 审计表按北京时间月分区(ADR-105): 固定历史日期的测试行先确保所在月份的分区存在。 */
+    private void ensureMonth(String parent, String createdAt) {
+        jdbc.queryForObject("""
+                        SELECT fn_audit_ensure_partition(?,
+                            (?::timestamptz AT TIME ZONE 'Asia/Shanghai')::date)
+                        """,
+                String.class, parent, createdAt);
     }
 }

@@ -20,6 +20,13 @@ def shipped_block(marker):
     return match.group()
 
 
+MIGRATION_ROOT = HERE.parent.parent / "server" / "src" / "main" / "resources" / "db" / "migration"
+AUDIT_SEAL_FUNCTION = re.search(
+    r"CREATE FUNCTION public\.fn_audit_seal_privileges\(.*?\n\$\$;",
+    (MIGRATION_ROOT / "V647__audit_log_monthly_partitions_append_only.sql").read_text(encoding="utf-8"),
+    re.S).group()
+
+
 def commissioner_query():
     for statement in ast.parse(COMMISSIONER.read_text(encoding="utf-8")).body:
         if isinstance(statement, ast.Assign) and any(
@@ -222,6 +229,33 @@ SELECT has_table_privilege('uten','public.{table}','SELECT'),
 CREATE TABLE flyway_schema_history(id int);
 """ + "\n".join(runtime_postcondition_queries()))
                 self.assertEqual(result.splitlines(), ["t|f|f|t|t", "0:0:0:0", "0", "1"])
+
+    def test_audit_tables_stay_append_only_after_the_blanket_business_grants(self):
+        # ADR-105: the shipped block reapplies the migration-owned seal after
+        # "GRANT ... ON ALL TABLES", so the runtime login keeps SELECT/INSERT on
+        # the audit parents and loses UPDATE/DELETE/TRUNCATE on parents and months.
+        result = self.sql("""SET ROLE uten_owner;
+CREATE TABLE public.audit_log(id bigint, created_at timestamptz NOT NULL, result text) PARTITION BY RANGE (created_at);
+CREATE TABLE public.audit_log_p202609 PARTITION OF public.audit_log FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+CREATE TABLE public.audit_log_archive(id bigint, created_at timestamptz NOT NULL, result text) PARTITION BY RANGE (created_at);
+CREATE FUNCTION public.fn_audit_retention_run() RETURNS void LANGUAGE sql AS 'SELECT';
+CREATE FUNCTION public.fn_audit_ensure_partition(text, date) RETURNS text LANGUAGE sql AS 'SELECT NULL::text';
+CREATE FUNCTION public.fn_audit_track_table(text,text,text,boolean,text[],boolean) RETURNS void LANGUAGE sql AS 'SELECT';
+""" + AUDIT_SEAL_FUNCTION + """
+RESET ROLE;
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO uten;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO uten;
+""" + shipped_block("restricted_import_acl") + """
+SELECT has_table_privilege('uten','public.audit_log','SELECT,INSERT'),
+       has_table_privilege('uten','public.audit_log','UPDATE'),
+       has_table_privilege('uten','public.audit_log','DELETE'),
+       has_table_privilege('uten','public.audit_log_archive','UPDATE,DELETE,TRUNCATE'),
+       has_table_privilege('uten','public.audit_log_p202609','SELECT,INSERT,UPDATE,DELETE'),
+       has_function_privilege('uten','public.fn_audit_retention_run()','EXECUTE'),
+       has_function_privilege('uten','public.fn_audit_track_table(text,text,text,boolean,text[],boolean)','EXECUTE');
+""")
+        self.assertEqual(result, "t|f|f|f|f|t|f")
 
     def test_private_runtime_maintenance_guard_is_not_exposed_by_blanket_grants(self):
         result = self.sql("""CREATE FUNCTION public.fn_require_runtime_maintenance(boolean) RETURNS void LANGUAGE sql AS 'SELECT';

@@ -305,7 +305,7 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    void deleteAndUpdateFiltersRecognizeHistoricalSoftDeleteSnapshots() {
+    void deleteAndUpdateFiltersNeverParseJsonSnapshots() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
@@ -317,18 +317,9 @@ class AuditQueryServiceTest {
             service.specification(criteriaWith(null, null, operationKind, null))
                     .toPredicate(root, null, criteriaBuilder);
 
-            verify(root, atLeastOnce()).get("before");
-            verify(root, atLeastOnce()).get("after");
-            verify(criteriaBuilder, times(4)).function(
-                    eq("jsonb_extract_path_text"),
-                    eq(String.class),
-                    any(Expression.class),
-                    any(Expression.class));
-            verify(criteriaBuilder, times(2)).function(
-                    eq("jsonb_exists"),
-                    eq(Boolean.class),
-                    any(Expression.class),
-                    any(Expression.class));
+            // ADR-105: 软删除在写入时就记为 delete, 查询不再从 JSON 快照里补认。
+            verify(root, never()).get("before");
+            verify(root, never()).get("after");
         }
     }
 
@@ -391,8 +382,9 @@ class AuditQueryServiceTest {
         log.setHttpPath("/api/payroll/slips/ignored/download");
         log.setStatusCode(200);
         log.setDurationMs(18L);
-        log.setRiskLevel("low");
-        log.setEventCategory("business");
+        // 写入时由 AuditClassifier 一次算定并存储; 导出只读存储列。
+        log.setRiskLevel("medium");
+        log.setEventCategory("export");
         log.setCreatedAt(OffsetDateTime.parse("2026-07-31T06:00:00Z"));
         when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(1L);
         when(repository.findAll(
@@ -508,6 +500,48 @@ class AuditQueryServiceTest {
         assertEquals("未识别访问", payload.rows().getFirst().get("actorType"));
     }
 
+    @Test
+    void listDetailAndExportNeverCarryAFullMobileNumber() {
+        // security-10: 人员档案按 users.login_account(手机号)解析, 展示与导出只能带脱敏账号。
+        UUID actorId = UUID.randomUUID();
+        AuditActorDirectory directory = mock(AuditActorDirectory.class);
+        when(directory.resolve(any(), any())).thenReturn(new AuditActorDirectory.Resolution(
+                java.util.Map.of(actorId, new AuditActorDirectory.ActorProfile(
+                        "13900001111", "张三", "财务部", "会计")),
+                java.util.Map.of()));
+        AuditLogRepository repository = mock(AuditLogRepository.class);
+        AuditQueryService service = new AuditQueryService(repository, new AuditEventInterpreter(), directory);
+        AuditLog log = new AuditLog();
+        log.setId(9L);
+        log.setActorId(actorId);
+        log.setActorAccount("*******1111");
+        log.setAction("sales_order.approve");
+        log.setTargetType("sales_order");
+        log.setTargetId(UUID.randomUUID().toString());
+        log.setResult("success");
+        log.setEventSource("business");
+        log.setRiskLevel("high");
+        log.setEventCategory("business");
+        log.setCreatedAt(OffsetDateTime.parse("2026-08-01T00:00:00Z"));
+        when(repository.findMaxId()).thenReturn(90L);
+        when(repository.findById(9L)).thenReturn(Optional.of(log));
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(1L);
+        when(repository.findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(log)));
+
+        AuditLogRow row = service.query(criteria(null), 1, 20).getItems().getFirst();
+        AuditLogDetail detail = service.detail(9L);
+        ExportPayload payload = service.export(criteria(null), 100);
+
+        assertEquals("张三(*******1111)", row.getActorDisplay());
+        assertEquals("张三(*******1111)", detail.actorDisplay());
+        assertEquals("张三(*******1111)", payload.rows().getFirst().get("actor"));
+        java.util.regex.Pattern mobile = java.util.regex.Pattern.compile("1[3-9]\\d{9}");
+        assertFalse(mobile.matcher(String.valueOf(row.getActorDisplay()) + row.getActorAccount()).find());
+        assertFalse(mobile.matcher(detail.toString()).find(), detail.toString());
+        assertFalse(mobile.matcher(payload.rows().toString()).find(), payload.rows().toString());
+    }
+
     private AuditLog exportRow(String result, int statusCode) {
         AuditLog log = new AuditLog();
         log.setAction("notice_publish");
@@ -537,132 +571,38 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    void riskFiltersPromoteForcedMediumActionsAndRemoveThemFromLowRisk() {
-        AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
-        CriteriaBuilder criteria = mock(
-                CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-        Path<String> storedRisk = mock();
-        Path<String> storedAction = mock();
-        Expression<String> action = mock();
-        Predicate storedLow = mock(Predicate.class);
-        Predicate storedMedium = mock(Predicate.class);
-        Predicate sensitiveAction = mock(Predicate.class);
-        Predicate promoted = mock(Predicate.class);
-        Predicate effectiveMedium = mock(Predicate.class);
-        Predicate notSensitive = mock(Predicate.class);
-
-        when(root.<String>get("riskLevel")).thenReturn(storedRisk);
-        when(root.<String>get("action")).thenReturn(storedAction);
-        when(criteria.lower(storedAction)).thenReturn(action);
-        when(criteria.equal(storedRisk, "low")).thenReturn(storedLow);
-        when(criteria.equal(storedRisk, "medium")).thenReturn(storedMedium);
-        when(action.in(List.of(
-                "view_audit_log_detail",
-                "verify_local_audit_receipt",
-                "download_payroll_slip")))
-                .thenReturn(sensitiveAction);
-        when(criteria.and(storedLow, sensitiveAction)).thenReturn(promoted);
-        when(criteria.or(storedMedium, promoted)).thenReturn(effectiveMedium);
-        when(criteria.not(sensitiveAction)).thenReturn(notSensitive);
-
-        service.riskSpecification("medium").toPredicate(root, null, criteria);
-        verify(criteria).or(storedMedium, promoted);
-        service.riskSpecification("low").toPredicate(root, null, criteria);
-        verify(criteria).not(sensitiveAction);
-        verify(root, atLeastOnce()).get("before");
-        verify(root, atLeastOnce()).get("after");
-    }
-
-    @Test
-    void highAndRiskyFiltersIncludeHistoricalSoftDeletes() {
-        AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-
-        for (String riskLevel : List.of("high", "risky")) {
-            Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
-            CriteriaBuilder criteria = mock(
-                    CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-
-            service.riskSpecification(riskLevel).toPredicate(root, null, criteria);
-
-            verify(root, atLeastOnce()).get("before");
-            verify(root, atLeastOnce()).get("after");
-        }
-    }
-
-    @Test
-    void mediumAndCriticalFiltersExcludeHistoricalSoftDeletes() {
-        AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-
-        for (String riskLevel : List.of("medium", "critical")) {
-            Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
-            CriteriaBuilder criteria = mock(
-                    CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-
-            service.riskSpecification(riskLevel).toPredicate(root, null, criteria);
-
-            verify(criteria, atLeastOnce()).not(any(Predicate.class));
-            verify(root, atLeastOnce()).get("before");
-            verify(root, atLeastOnce()).get("after");
-        }
-    }
-
-    @Test
-    void categoryFiltersApplySecurityAndPayrollExportOverrides() {
+    void riskFiltersReadOnlyTheStoredRiskColumn() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         Root<AuditLog> root = mock();
         CriteriaBuilder criteria = mock(CriteriaBuilder.class);
-        Path<String> storedCategory = mock();
-        Path<String> storedAction = mock();
-        Expression<String> action = mock();
-        Predicate storedSecurity = mock(Predicate.class);
-        Predicate storedExport = mock(Predicate.class);
-        Predicate forcedSecurity = mock(Predicate.class);
-        Predicate forcedExport = mock(Predicate.class);
-        Predicate anyForcedCategory = mock(Predicate.class);
-        Predicate notForcedCategory = mock(Predicate.class);
-        Predicate storedSecurityUnforced = mock(Predicate.class);
-        Predicate storedExportUnforced = mock(Predicate.class);
-        Predicate expectedSecurity = mock(Predicate.class);
-        Predicate expectedExport = mock(Predicate.class);
+        Path<String> storedRisk = mock();
+        Predicate medium = mock(Predicate.class);
+        Predicate risky = mock(Predicate.class);
+        when(root.<String>get("riskLevel")).thenReturn(storedRisk);
+        when(criteria.equal(storedRisk, "medium")).thenReturn(medium);
+        when(storedRisk.in(List.of("critical", "high", "medium"))).thenReturn(risky);
 
-        when(root.<String>get("eventCategory")).thenReturn(storedCategory);
-        when(root.<String>get("action")).thenReturn(storedAction);
-        when(criteria.lower(storedAction)).thenReturn(action);
-        when(criteria.equal(storedCategory, "security")).thenReturn(storedSecurity);
-        when(action.in(List.of(
-                "view_audit_log_list",
-                "view_audit_log_summary",
-                "view_audit_log_detail",
-                "verify_local_audit_receipt")))
-                .thenReturn(forcedSecurity);
-        when(action.in(List.of("download_payroll_slip")))
-                .thenReturn(forcedExport);
-        when(criteria.or(forcedSecurity, forcedExport))
-                .thenReturn(anyForcedCategory);
-        when(criteria.not(anyForcedCategory)).thenReturn(notForcedCategory);
-        when(criteria.and(storedSecurity, notForcedCategory))
-                .thenReturn(storedSecurityUnforced);
-        when(criteria.or(forcedSecurity, storedSecurityUnforced))
-                .thenReturn(expectedSecurity);
+        assertSame(medium, service.riskSpecification("medium").toPredicate(root, null, criteria));
+        assertSame(risky, service.riskSpecification("risky").toPredicate(root, null, criteria));
+        verify(root, never()).get("action");
+        verify(root, never()).get("before");
+        verify(root, never()).get("after");
+    }
 
-        assertSame(
-                expectedSecurity,
-                service.categorySpecification("security").toPredicate(root, null, criteria));
+    @Test
+    void categoryFiltersReadOnlyTheStoredCategoryColumn() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        Root<AuditLog> root = mock();
+        CriteriaBuilder criteria = mock(CriteriaBuilder.class);
+        Path<Object> storedCategory = mock();
+        Predicate security = mock(Predicate.class);
+        when(root.get("eventCategory")).thenReturn(storedCategory);
+        when(criteria.equal(storedCategory, "security")).thenReturn(security);
 
-        when(criteria.equal(storedCategory, "export")).thenReturn(storedExport);
-        when(criteria.and(storedExport, notForcedCategory))
-                .thenReturn(storedExportUnforced);
-        when(criteria.or(forcedExport, storedExportUnforced))
-                .thenReturn(expectedExport);
-
-        assertSame(
-                expectedExport,
-                service.categorySpecification("export").toPredicate(root, null, criteria));
+        assertSame(security, service.categorySpecification("security").toPredicate(root, null, criteria));
+        verify(root, never()).get("action");
     }
 
     @Test
@@ -749,17 +689,8 @@ class AuditQueryServiceTest {
 
         verify(cb).equal(root.get("actorId"), SELECTED_ACTOR);
         verify(cb).notEqual(any(Expression.class), eq("database"));
-        verify(root, atLeastOnce()).get("httpMethod");
-        verify(root, atLeastOnce()).get("httpPath");
-        verify(root, atLeastOnce()).get("statusCode");
-        verify(cb).lessThan(root.get("statusCode"), 400);
-        Expression<String> normalizedRequestPath =
-                cb.lower(root.<String>get("httpPath"));
-        verify(normalizedRequestPath).in(AuditNoisePolicy.automaticReadPaths());
-        AuditNoisePolicy.automaticReadSqlLikePatterns().forEach(pattern ->
-                verify(cb).like(normalizedRequestPath, pattern));
-        AuditNoisePolicy.automaticSessionWriteSqlLikePatterns().forEach(pattern ->
-                verify(cb).like(normalizedRequestPath, pattern));
+        // ADR-105: 自动轮询在写入端就不落库, 查询侧不再按路径清单补过滤。
+        verify(root, never()).get("httpPath");
     }
 
     @Test

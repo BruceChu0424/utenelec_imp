@@ -1,5 +1,6 @@
 package com.uten.imp.features.webinquiry;
 
+import com.uten.imp.audit.AuditedRead;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -62,6 +63,7 @@ public class WebsiteInquiryController {
                 .body(Map.of("created", created));
     }
 
+    @AuditedRead("官网询价列表含外部联系人联系方式")
     @GetMapping
     @PreAuthorize("hasAuthority('webinquiry:view')")
     public PageResponse<WebsiteInquiryListItem> list(

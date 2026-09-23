@@ -105,6 +105,11 @@ class FixtureSchemaDriftGuardPostgresTest {
             "stock_facts",
             // 审计分类迁移测试的材料探针。
             "audit_v556_material_probe",
+            // ADR-105 列级审计登记探针: 只验证「只在登记列变化时写审计」, 不是业务表。
+            "audit_scope_probe",
+            // ADR-105 起迁移目录里已没有分区的清空表; 清库稀疏测试故意建一张三列的按年分区表,
+            // 改名顶替 production_plan_costs, 钉住重置函数处理分区叶子(换文件节点/序列/外键)的合同。
+            "reset_probe_partitioned_costs",
             // 金额精确度迁移助手的三张数字夹具表。
             "financial_exact_fixture",
             "financial_book_fixture",

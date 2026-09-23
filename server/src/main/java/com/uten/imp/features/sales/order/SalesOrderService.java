@@ -1347,6 +1347,7 @@ public class SalesOrderService {
         reserveOnApprove(o, items);
         o.setStatus(STATUS_APPROVED);
         o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        o.setApprovedAt(OffsetDateTime.now());
         if (o.isFinanceRejected()) {
             // 当前驳回已由销售显式修订并重新审核；保留最后一次原因/人员/时间供时间线展示。
             o.setFinanceRejected(false);
@@ -1396,6 +1397,8 @@ public class SalesOrderService {
             itemRepo.save(it);
         }
         o.setStatus(STATUS_REVERSED);
+        o.setReversedAt(OffsetDateTime.now());
+        o.setReversedBy(currentUser.requireEmployeeId());
         clearPartialShipmentConfirmation(o);
         orderRepo.save(o);
         return detail(id);

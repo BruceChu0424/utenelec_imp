@@ -138,6 +138,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     ('请求', 'request'),
     ('业务事件', 'business'),
     ('安全拦截', 'security'),
+    ('系统任务', 'system'),
   ];
 
   static final _requestIdPattern = RegExp(

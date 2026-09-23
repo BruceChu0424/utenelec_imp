@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.audit.AuditedRead;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.application.port.AttachmentAccessPort;
 import com.uten.imp.common.web.PageResponse;
@@ -35,6 +36,7 @@ public class EmployeeController {
     private final AuditDetailViewRecorder viewAudit;
     private final AttachmentAccessPort attachmentAccess;
 
+    @AuditedRead("员工花名册一次返回多人的人事资料")
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
     public PageResponse<EmployeeListItem> list(
@@ -60,6 +62,7 @@ public class EmployeeController {
         return detail;
     }
 
+    @AuditedRead("员工任职履历属于人事资料")
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('employee:view')")
     public List<NestedDtos.EmploymentHistoryDto> history(@PathVariable UUID id) {

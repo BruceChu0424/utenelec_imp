@@ -113,6 +113,24 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "approver_id")
     private UUID approverId;
 
+    /** 仓库确认出库(审核)时间(审核命令写入; 进度时间线读它, 不再反查审计日志)。 */
+    @Column(name = "approved_at")
+    private OffsetDateTime approvedAt;
+
+    /** 仓库驳回时间与驳回人。 */
+    @Column(name = "rejected_at")
+    private OffsetDateTime rejectedAt;
+
+    @Column(name = "rejected_by")
+    private UUID rejectedBy;
+
+    /** 红冲时间与红冲人(红冲命令写入)。 */
+    @Column(name = "reversed_at")
+    private OffsetDateTime reversedAt;
+
+    @Column(name = "reversed_by")
+    private UUID reversedBy;
+
     @Column(name = "ship_addr")
     private String shipAddr;
 

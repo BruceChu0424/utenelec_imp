@@ -1,15 +1,15 @@
 -- =====================================================================
 -- 生产模块迁移：F_Plan / F_PlanItem / F_PlanCostItem / F_DateReport(+Item)
---   -> production_plans / production_plan_items / production_plan_costs (分区)
+--   -> production_plans / production_plan_items / production_plan_costs (普通单表, V649)
 --      / production_daily_reports(+items)
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --production
 -- 前提：V32-V43 主档（goods/colors/units/suppliers/currencies/warehouses）
 --       + V51 sales_order_items + sales_order_cost_items（销售模块必须先迁，跨模块依赖）
---       + V55 生产表已建（含 13 年度分区 + DEFAULT 兜底）。
+--       + V55 生产表已建(production_plan_costs 自 V649 起为普通单表，只允许 app.legacy_import='on' 的导入会话写入)。
 -- 顺序：production_plans -> production_plan_items -> production_plan_costs
 --   （FK 链：costs.bill_item_id 经 plan_items.legacy_id 映射 -> 必须先迁 plan_items）。
--- 重载：按 FK 逆序 DELETE 五张表（分区父表 DELETE 覆盖全部子分区）；
+-- 重载：按 FK 逆序 DELETE 五张表；
 --   任何执行/物料分析/库存证据引用都会在导入前 fail-closed。
 -- 人员字段（maker/approver/worker/seller）：employees 与 B_Worker 未对齐，留 NULL
 --   + *_legacy_id INT 留底（同采购 migrate_purchase.sql 范式）。
@@ -237,7 +237,7 @@ FROM item_stage s JOIN plan_stage p ON p.legacy_id = s.plan_legacy_id;
 -- ⚠ BillID 指向 F_PlanItem.ID（不是 F_Plan.ID！），bill_item_id 经
 --   production_plan_items.legacy_id 子查询映射为新 UUID。
 -- 链断裂行（BillID 在 item_stage 找不到，或 item_stage.plan_legacy_id 在 plan_stage 找不到）：
---   bill_date 用 '1970-01-01' 兜底，落入 DEFAULT 分区，校验段报告此类异常行数。
+--   bill_date 用 '1970-01-01' 兜底，校验段报告此类异常行数。
 --
 -- 分批策略：先一次性物化 cost_prepared TEMP TABLE（含所有 FK UUID 解析 + 兜底 bill_date），
 --   再用 DO 循环 13 个年度（2018-2030）+ 1 个 outlier 批，不提交调用方事务。
@@ -248,7 +248,7 @@ FROM item_stage s JOIN plan_stage p ON p.legacy_id = s.plan_legacy_id;
 --     plan_item（孤儿），bill_item_id 为 NULL，因 V55 NOT NULL 约束无法 INSERT -> 在
 --     5b 的 INSERT 中过滤掉，校验段报告 "orphan BillID dropped" 计数。
 --     p.bill_date / p.bill_no NULL（链断裂在 F_PlanItem -> F_Plan 那段）时，bill_date
---     用 '1970-01-01' 兜底（落入 DEFAULT 分区），bill_no 用 'LEGACY-ORPHAN-COST-<id>'
+--     用 '1970-01-01' 兜底，bill_no 用 'LEGACY-ORPHAN-COST-<id>'
 --     兜底，均不影响 INSERT 成功（bill_item_id 仍非空）。
 CREATE TEMP TABLE cost_prepared AS
 SELECT s.legacy_id,
@@ -292,7 +292,7 @@ DECLARE
     y int;
     n int;
 BEGIN
-    -- 正常年份 2018-2030（覆盖老库历史 + 设计 §5 已建分区）
+    -- 正常年份 2018-2030(按年分批只为限制单条语句的转移表大小，与存储无关)
     FOR y IN 2018..2030 LOOP
         INSERT INTO production_plan_costs (
             legacy_id, bill_item_id, bill_no, bill_date,
@@ -317,7 +317,7 @@ BEGIN
         RAISE NOTICE 'Year %: inserted % rows', y, n;
     END LOOP;
 
-    -- outlier 批：1970 兜底行 + 真实异常日期（<2018 / >2030），全进 DEFAULT 分区
+    -- outlier 批：1970 兜底行 + 真实异常日期(<2018 / >2030)
     INSERT INTO production_plan_costs (
         legacy_id, bill_item_id, bill_no, bill_date,
         parent_legacy_id, level, node_class,
@@ -343,10 +343,10 @@ END $$;
 
 
 -- ======================== 6. parent_id 自引用回填 ========================
--- parent_legacy_id -> 新 UUID（同年同分区；父子 bill_date 必一致，设计不变式）。
+-- parent_legacy_id -> 新 UUID(legacy_id 全表唯一；父子 bill_date 必一致，设计不变式)。
 --   顶层行 parent_legacy_id = 0 不回填（保持 NULL）。
 --   查不到父行（父 legacy 不在结果集）也保持 NULL，校验段报告。
--- 分区表 PK = (id, bill_date)，无法建 FK 自引用，靠此 UPDATE + 索引 + 应用层保证。
+-- V649 起单表 PK = (id)，parent_id 有自引用外键兜底。
 UPDATE production_plan_costs c SET parent_id = p.id
 FROM production_plan_costs p
 WHERE c.parent_legacy_id <> 0
@@ -388,7 +388,7 @@ UNION ALL SELECT '   补录颜色                      ' || (SELECT count(*) FRO
 UNION ALL SELECT '   补录单位                      ' || (SELECT count(*) FROM units  WHERE name = '（迁移自动补录）')
 UNION ALL SELECT '   补录供应商                    ' || (SELECT count(*) FROM suppliers WHERE name = '（迁移自动补录）');
 
--- 分区分布（预期集中在 2022-2026；1970 = 链断裂兜底；其余年份 0）
+-- 年度分布(预期集中在 2022-2026；1970 = 链断裂兜底；其余年份 0)
 SELECT EXTRACT(YEAR FROM bill_date)::int AS yr, count(*) AS cnt
 FROM production_plan_costs
 GROUP BY 1

@@ -49,17 +49,6 @@ import java.util.UUID;
 @RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class AuditQueryService {
 
-    private static final List<String> FORCED_MEDIUM_RISK_ACTIONS = List.of(
-            "view_audit_log_detail",
-            "verify_local_audit_receipt",
-            "download_payroll_slip");
-    private static final List<String> AUDIT_INVESTIGATION_ACTIONS = List.of(
-            "view_audit_log_list",
-            "view_audit_log_summary",
-            "view_audit_log_detail",
-            "verify_local_audit_receipt");
-    private static final List<String> DATA_EXPORT_ACTIONS = List.of(
-            "download_payroll_slip");
     private static final List<String> AUTOMATIC_ACTIVITY_ACTIONS = List.of(
             "refresh_token",
             "visitor_refresh_token");
@@ -73,7 +62,7 @@ public class AuditQueryService {
             "security", "authorization", "authentication", "export",
             "data_change", "system", "business");
     private static final Set<String> ALLOWED_EVENT_SOURCES = Set.of(
-            "request", "database", "business", "security");
+            "request", "database", "business", "security", "system");
     private static final Map<String, List<String>> OPERATION_ACTIONS = Map.of(
             "create", List.of("insert", "http_post"),
             "update", List.of("update", "http_put", "http_patch"),
@@ -350,6 +339,7 @@ public class AuditQueryService {
             case "database" -> "数据库变更";
             case "security" -> "安全拦截";
             case "business" -> "业务事件";
+            case "system" -> "系统任务";
             default -> "未登记记录来源";
         };
     }
@@ -401,38 +391,6 @@ public class AuditQueryService {
                 ps.add(cb.not(cb.and(
                         activityAction.in(AUTOMATIC_ACTIVITY_ACTIONS),
                         cb.equal(activityResult, "success"))));
-                Expression<String> requestMethod = cb.upper(root.get("httpMethod"));
-                Expression<String> requestPath = cb.lower(root.get("httpPath"));
-                List<Predicate> automaticReadRoutes = new ArrayList<>();
-                automaticReadRoutes.add(
-                        requestPath.in(AuditNoisePolicy.automaticReadPaths()));
-                AuditNoisePolicy.automaticReadSqlLikePatterns().forEach(pattern ->
-                        automaticReadRoutes.add(cb.like(requestPath, pattern)));
-                Predicate automaticRead = cb.and(
-                        requestMethod.in(List.of("GET", "HEAD")),
-                        cb.or(automaticReadRoutes.toArray(new Predicate[0])));
-                List<Predicate> automaticSessionRoutes = new ArrayList<>();
-                automaticSessionRoutes.add(
-                        requestPath.in(AuditNoisePolicy.automaticSessionWritePaths()));
-                AuditNoisePolicy.automaticSessionWriteSqlLikePatterns().forEach(pattern ->
-                        automaticSessionRoutes.add(cb.like(requestPath, pattern)));
-                Predicate automaticSessionWrite = cb.and(
-                        cb.equal(requestMethod, "POST"),
-                        cb.or(automaticSessionRoutes.toArray(new Predicate[0])));
-                Predicate automaticHeartbeat = cb.and(
-                        cb.equal(requestMethod, "POST"),
-                        cb.like(requestPath, AuditNoisePolicy.heartbeatSqlLikePattern()));
-                Predicate successfulHttp = cb.or(
-                        cb.isNull(root.get("statusCode")),
-                        cb.lessThan(root.get("statusCode"), 400));
-                Predicate successfulResult = mainResultExpression(root, cb)
-                        .in(SUCCESS_RESULT_CODES);
-                Predicate historicalAutomaticSuccess = cb.and(
-                        cb.equal(cb.lower(root.get("eventSource")), "request"),
-                        cb.or(automaticRead, automaticSessionWrite, automaticHeartbeat),
-                        successfulHttp,
-                        successfulResult);
-                ps.add(cb.not(historicalAutomaticSuccess));
             }
             if (hasText(criteria.targetType())) {
                 String normalizedTarget = criteria.targetType()
@@ -554,7 +512,7 @@ public class AuditQueryService {
                 "事件类型仅支持安全事件、权限变更、登录认证、数据导出、数据变化、系统设置、业务操作");
         validateAllowed(
                 criteria.eventSource(), ALLOWED_EVENT_SOURCES,
-                "记录来源仅支持页面操作、数据变化明细、业务事件、安全拦截");
+                "记录来源仅支持页面操作、数据变化明细、业务事件、安全拦截、系统任务");
     }
 
     private static void validateAllowed(
@@ -571,48 +529,6 @@ public class AuditQueryService {
         return value == null || value.isBlank()
                 ? null
                 : value.trim().toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Historical soft deletes were written by PostgreSQL as UPDATE rows. Keep
-     * them visible under the user-facing delete filter without rewriting the
-     * immutable audit history. Future transitions are stored as delete.
-     */
-    private Predicate softDeletePredicate(
-            Root<AuditLog> root,
-            CriteriaBuilder cb,
-            Expression<String> action) {
-        Expression<String> beforeDeleted = cb.function(
-                "jsonb_extract_path_text", String.class,
-                root.get("before"), cb.literal("is_deleted"));
-        Expression<String> afterDeleted = cb.function(
-                "jsonb_extract_path_text", String.class,
-                root.get("after"), cb.literal("is_deleted"));
-        Expression<String> beforeDeletedAt = cb.function(
-                "jsonb_extract_path_text", String.class,
-                root.get("before"), cb.literal("deleted_at"));
-        Expression<String> afterDeletedAt = cb.function(
-                "jsonb_extract_path_text", String.class,
-                root.get("after"), cb.literal("deleted_at"));
-        Expression<Boolean> beforeHasDeletedAt = cb.function(
-                "jsonb_exists", Boolean.class,
-                root.get("before"), cb.literal("deleted_at"));
-        Expression<Boolean> afterHasDeletedAt = cb.function(
-                "jsonb_exists", Boolean.class,
-                root.get("after"), cb.literal("deleted_at"));
-        Predicate flagTransition = cb.and(
-                cb.isNotNull(beforeDeleted),
-                cb.isNotNull(afterDeleted),
-                cb.equal(beforeDeleted, "false"),
-                cb.equal(afterDeleted, "true"));
-        Predicate timestampTransition = cb.and(
-                cb.isTrue(beforeHasDeletedAt),
-                cb.isTrue(afterHasDeletedAt),
-                cb.isNull(beforeDeletedAt),
-                cb.isNotNull(afterDeletedAt));
-        return cb.and(
-                cb.equal(action, "update"),
-                cb.or(flagTransition, timestampTransition));
     }
 
     private long validateSnapshotId(long snapshotId) {
@@ -780,12 +696,6 @@ public class AuditQueryService {
         if ("read".equals(operationKind)) {
             return cb.or(effective, cb.like(action, "view!_%", '!'));
         }
-        if ("delete".equals(operationKind)) {
-            return cb.or(effective, softDeletePredicate(root, cb, action));
-        }
-        if ("update".equals(operationKind)) {
-            return cb.and(effective, cb.not(softDeletePredicate(root, cb, action)));
-        }
         return effective;
     }
 
@@ -818,66 +728,28 @@ public class AuditQueryService {
                 .replace("_", "!_");
     }
 
+    /**
+     * 风险筛选只读存储列(写入时由 AuditClassifier 一次算定), 「有风险」= 严重/高/中。
+     * 与列表显示的等级逐行一致, 可以走 created_at 范围 + 存储列过滤。
+     */
     Specification<AuditLog> riskSpecification(String riskLevel) {
         return (root, q, cb) -> {
             String normalized = riskLevel.trim().toLowerCase(Locale.ROOT);
             var storedRisk = root.<String>get("riskLevel");
-            var action = cb.lower(root.<String>get("action"));
-            Predicate promotedMediumRisk = cb.and(
-                    cb.equal(storedRisk, "low"),
-                    action.in(FORCED_MEDIUM_RISK_ACTIONS));
             if ("risky".equals(normalized)) {
-                return cb.or(
-                        storedRisk.in(List.of("critical", "high", "medium")),
-                        promotedMediumRisk,
-                        softDeletePredicate(root, cb, action));
+                return storedRisk.in(List.of("critical", "high", "medium"));
             }
             if (!List.of("critical", "high", "medium", "low").contains(normalized)) {
                 return cb.disjunction();
             }
-            if ("medium".equals(normalized)) {
-                return cb.and(
-                        cb.or(
-                                cb.equal(storedRisk, "medium"),
-                                promotedMediumRisk),
-                        cb.not(softDeletePredicate(root, cb, action)));
-            }
-            if ("low".equals(normalized)) {
-                return cb.and(
-                        cb.equal(storedRisk, "low"),
-                        cb.not(action.in(FORCED_MEDIUM_RISK_ACTIONS)),
-                        cb.not(softDeletePredicate(root, cb, action)));
-            }
-            if ("high".equals(normalized)) {
-                return cb.or(
-                        cb.equal(storedRisk, "high"),
-                        softDeletePredicate(root, cb, action));
-            }
-            return cb.and(
-                    cb.equal(storedRisk, normalized),
-                    cb.not(softDeletePredicate(root, cb, action)));
+            return cb.equal(storedRisk, normalized);
         };
     }
 
     Specification<AuditLog> categorySpecification(String eventCategory) {
-        return (root, q, cb) -> {
-            String normalized = eventCategory.trim().toLowerCase(Locale.ROOT);
-            var action = cb.lower(root.<String>get("action"));
-            Predicate forcedSecurity = action.in(AUDIT_INVESTIGATION_ACTIONS);
-            Predicate forcedExport = action.in(DATA_EXPORT_ACTIONS);
-            Predicate anyForcedCategory = cb.or(forcedSecurity, forcedExport);
-            Predicate storedCategory = cb.equal(root.get("eventCategory"), normalized);
-            Predicate storedUnforcedCategory = cb.and(
-                    storedCategory,
-                    cb.not(anyForcedCategory));
-            if ("security".equals(normalized)) {
-                return cb.or(forcedSecurity, storedUnforcedCategory);
-            }
-            if ("export".equals(normalized)) {
-                return cb.or(forcedExport, storedUnforcedCategory);
-            }
-            return storedUnforcedCategory;
-        };
+        return (root, q, cb) -> cb.equal(
+                root.get("eventCategory"),
+                eventCategory.trim().toLowerCase(Locale.ROOT));
     }
 
     Specification<AuditLog> outcomeSpecification(String outcome) {

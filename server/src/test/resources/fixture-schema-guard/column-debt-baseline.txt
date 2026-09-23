@@ -29,6 +29,7 @@ com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#a
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.http_path
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.ip
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.on_behalf_of
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.request_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.result
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#audit_log.risk_level
@@ -92,6 +93,7 @@ com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#s
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_order_items.updated_at
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_order_items.updated_by
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_order_items.weight
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.approved_at
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.approver_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.approver_legacy_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.bill_date
@@ -126,6 +128,8 @@ com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#s
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.partial_shipment_confirmed_by
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.payment_style_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.remark
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.reversed_at
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.reversed_by
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.seller_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.seller_legacy_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_orders.settlement_method_id
@@ -175,6 +179,7 @@ com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#s
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipment_items.updated_by
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipment_items.warehouse_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipment_items.weight
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.approved_at
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.approver_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.approver_legacy_id
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.ar_posted
@@ -218,7 +223,11 @@ com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#s
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.print_count
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.reject_reason
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.rejected
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.rejected_at
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.rejected_by
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.remark
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.reversed_at
+com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.reversed_by
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.review_revision
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.sales_confirmed_at
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#sales_shipments.sales_confirmed_by
@@ -328,6 +337,7 @@ com/uten/imp/features/attachment/BusinessAttachmentResetCompletionPostgresTest.j
 com/uten/imp/features/attachment/BusinessAttachmentResetCompletionPostgresTest.java#attachments.stored_size_bytes
 com/uten/imp/features/attachment/BusinessAttachmentResetCompletionPostgresTest.java#attachments.updated_at
 com/uten/imp/features/attachment/BusinessAttachmentResetCompletionPostgresTest.java#attachments.updated_by
+com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.approved_at
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.approver_id
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.approver_legacy_id
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.bill_date
@@ -357,6 +367,8 @@ com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.partial_shipment_confirmed_by
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.payment_style_id
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.remark
+com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.reversed_at
+com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.reversed_by
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.seller_id
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.seller_legacy_id
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.settlement_method_id
@@ -1012,6 +1024,7 @@ com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostg
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_material_analysis_plan_links.plan_id
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_material_analysis_plan_links.public_surplus_qty
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_material_analysis_plan_links.updated_at
+com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.approved_at
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.approver_id
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.approver_legacy_id
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.approver_name
@@ -1035,6 +1048,8 @@ com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostg
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.maker_name
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.material_analysis_id
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.remark
+com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.reversed_at
+com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.reversed_by
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.seller_id
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.seller_name
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#production_plans.source_daily_report_id
@@ -2375,6 +2390,7 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_planning_packages.updated_at
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_planning_packages.updated_by
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_planning_packages.warehouse_id
+com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.approved_at
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.approver_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.approver_legacy_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.approver_name
@@ -2395,6 +2411,8 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.material_analysis_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.material_analysis_item_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.remark
+com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.reversed_at
+com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.reversed_by
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.seller_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.seller_name
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.source_daily_report_id
@@ -2826,6 +2844,7 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_planning_package_documents.document_no
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_planning_package_documents.id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_planning_package_documents.package_id
+com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.approved_at
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.approver_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.approver_legacy_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.approver_name
@@ -2845,6 +2864,8 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.maker_name
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.material_analysis_item_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.remark
+com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.reversed_at
+com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.reversed_by
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.seller_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.seller_name
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#production_plans.source_daily_report_id
@@ -2895,6 +2916,7 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_order_items.updated_at
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_order_items.updated_by
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_order_items.weight
+com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.approved_at
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.approver_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.approver_legacy_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.bill_date
@@ -2927,6 +2949,8 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.partial_shipment_confirmed_by
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.payment_style_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.remark
+com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.reversed_at
+com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.reversed_by
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.seller_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.seller_legacy_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.settlement_method_id
@@ -3988,6 +4012,7 @@ com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.device_time
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.duration_ms
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.http_method
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.ip
+com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.on_behalf_of
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.request_id
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.session_id
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#audit_log.user_agent
@@ -4123,6 +4148,7 @@ com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.ht
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.http_path
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.id
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.ip
+com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.on_behalf_of
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.request_id
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.result
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.risk_level

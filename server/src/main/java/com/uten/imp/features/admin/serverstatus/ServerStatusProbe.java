@@ -3,10 +3,13 @@ package com.uten.imp.features.admin.serverstatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.management.OperatingSystemMXBean;
+import com.uten.imp.audit.AuditRetentionEvidence;
 import com.uten.imp.config.props.StorageProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
@@ -23,8 +26,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 import static com.uten.imp.features.admin.serverstatus.ServerStatusView.*;
 
@@ -76,6 +81,12 @@ public class ServerStatusProbe {
     private Metric cachedOutbox;
     private Metric cachedAttachments;
     private Instant attachmentsSampledAt;
+    /** 审计留存最近一次成功时间(持久在审计表里, 重启不丢); 无此组件时为空。 */
+    private Supplier<Optional<Instant>> auditRetentionLastSuccess = Optional::empty;
+    /** 本实例负责审计归档(本地主实例; 云端实例不跑归档, 不重复告警)。 */
+    private boolean auditRetentionWatched;
+    private Supplier<Instant> processStartedAt =
+            () -> Instant.ofEpochMilli(ManagementFactory.getRuntimeMXBean().getStartTime());
 
     @Autowired
     public ServerStatusProbe(DataSource dataSource, StorageProperties storage, MeterRegistry meters,
@@ -100,6 +111,18 @@ public class ServerStatusProbe {
         this.dataPath=dataPath; this.backupPath=backupPath; this.backupStatusFile=backupStatusFile;
         this.applicationVersion=applicationVersion;
         this.threadsWarning=threadsWarning; this.threadsCritical=threadsCritical;
+    }
+
+    @Autowired(required = false)
+    void useAuditRetentionEvidence(AuditRetentionEvidence evidence, Environment environment) {
+        watchAuditRetention(evidence::lastCompletedAt, processStartedAt,
+                !environment.acceptsProfiles(Profiles.of("cloud")));
+    }
+
+    void watchAuditRetention(Supplier<Optional<Instant>> lastSuccess, Supplier<Instant> startedAt, boolean watched) {
+        this.auditRetentionLastSuccess = lastSuccess;
+        this.processStartedAt = startedAt;
+        this.auditRetentionWatched = watched;
     }
 
     ServerStatusView sample(Instant now) {
@@ -403,9 +426,70 @@ public class ServerStatusProbe {
         List<ScheduledTaskRunRegistry.Run> runs=taskRuns.snapshot();
         ScheduledTaskRunRegistry.Run occupying=runs.stream().filter(ScheduledTaskRunRegistry.Run::running).findFirst().orElse(null);
         List<JobReport> result=new ArrayList<>();
-        for (var run:runs) result.add(report(run,now,
-                occupying==null||occupying.name().equals(run.name())?null:occupying));
+        boolean retentionScheduled=false;
+        for (var run:runs) {
+            JobReport report=report(run,now,
+                    occupying==null||occupying.name().equals(run.name())?null:occupying);
+            if(AUDIT_RETENTION_JOB.equals(run.name())) {
+                retentionScheduled=true;
+                result.add(withAuditRetentionEvidence(report,now));
+            } else result.add(report);
+        }
+        if(!retentionScheduled&&auditRetentionWatched) unscheduledAuditRetention(now).ifPresent(result::add);
         return List.copyOf(result);
+    }
+
+    static final String AUDIT_RETENTION_JOB="AuditRetentionScheduler.runScheduled";
+    static final long AUDIT_RETENTION_STALE_HOURS=26;
+
+    /**
+     * 审计归档每天跑一次, 成功记录写在审计表里(ADR-105), 告警只看这份持久证据, 不看本次启动后
+     * 内存里有没有跑过: 最近一次成功已超过 26 小时, 或者从没成功过而服务已运行超过 26 小时, 都告警。
+     * 本机没有排上这个任务(被关闭或配置错)时照样按证据告警, 另补一行说明。
+     */
+    JobReport withAuditRetentionEvidence(JobReport report,Instant now) {
+        Optional<Instant> last;
+        try { last=auditRetentionLastSuccess.get(); }
+        catch (RuntimeException unavailable) { return report; }
+        Job job=report.job();
+        String evidence=auditRetentionEvidenceText(last);
+        if(auditRetentionStale(last,now)&&report.headline()==null) {
+            return new JobReport(new Job(job.key(),job.label(),job.lastStartAt(),job.lastEndAt(),job.lastDurationMs(),
+                    job.periodSeconds(),job.lastErrorType(),"WARNING",job.detail()+" "+evidence),
+                    auditRetentionHeadline(job.label()),
+                    "审计日志到期后不会按时归档和清理。请联系维护人员查看服务日志。");
+        }
+        return new JobReport(new Job(job.key(),job.label(),job.lastStartAt(),job.lastEndAt(),job.lastDurationMs(),
+                job.periodSeconds(),job.lastErrorType(),job.status(),job.detail()+" "+evidence),
+                report.headline(),report.advice());
+    }
+
+    Optional<JobReport> unscheduledAuditRetention(Instant now) {
+        Optional<Instant> last;
+        try { last=auditRetentionLastSuccess.get(); }
+        catch (RuntimeException unavailable) { return Optional.empty(); }
+        if(!auditRetentionStale(last,now)) return Optional.empty();
+        String label=ScheduledTaskCatalog.labelOf(AUDIT_RETENTION_JOB);
+        return Optional.of(new JobReport(new Job(AUDIT_RETENTION_JOB,label,null,null,null,Duration.ofDays(1).getSeconds(),
+                null,"WARNING","本机没有排上这个任务(可能被关闭或配置有误)。 "+auditRetentionEvidenceText(last)),
+                auditRetentionHeadline(label),
+                "审计日志到期后不会按时归档和清理。请联系维护人员确认该任务已开启, 并查看服务日志。"));
+    }
+
+    private boolean auditRetentionStale(Optional<Instant> last,Instant now) {
+        Instant since=last.orElseGet(processStartedAt);
+        return since!=null&&Duration.between(since,now).toHours()>=AUDIT_RETENTION_STALE_HOURS;
+    }
+
+    private static String auditRetentionEvidenceText(Optional<Instant> last) {
+        return last.map(at->"最近一次成功归档: "
+                        +OffsetDateTime.ofInstant(at,java.time.ZoneId.of("Asia/Shanghai"))
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))+"(北京时间)。")
+                .orElse("还没有成功归档的记录。");
+    }
+
+    private static String auditRetentionHeadline(String label) {
+        return JOB_PREFIX+"「"+label+"」已超过 "+AUDIT_RETENTION_STALE_HOURS+" 小时没有成功";
     }
 
     List<Job> jobs(Instant now) {

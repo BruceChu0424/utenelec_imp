@@ -400,9 +400,15 @@ class BusinessDataResetServicePostgresTest {
         assertThat(completed.attemptFailed()).isFalse();
 
         // 受理它的进程已经不在(模拟重启后另一实例)：仍有受理回执，但不属于当前进程。
+        // 审计表只追加(ADR-105), 用另一实例写入的更晚一条受理回执模拟, 不改写原记录。
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE audit_log SET result = 'received,server=' || gen_random_uuid()::text WHERE action = 'business_data_reset_received' AND target_id = ?")) {
+                     "INSERT INTO audit_log(actor_id, actor_account, action, target_type, target_id, result,"
+                             + " event_source, risk_level, event_category, session_id, created_at)"
+                             + " SELECT actor_id, actor_account, action, target_type, target_id,"
+                             + " 'received,server=' || gen_random_uuid()::text, event_source, risk_level,"
+                             + " event_category, session_id, created_at + interval '1 millisecond'"
+                             + " FROM audit_log WHERE action = 'business_data_reset_received' AND target_id = ?")) {
             statement.setString(1, refusedAttempt.toString());
             assertThat(statement.executeUpdate()).isEqualTo(1);
         }

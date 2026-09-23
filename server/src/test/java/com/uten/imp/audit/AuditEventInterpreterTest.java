@@ -12,27 +12,97 @@ class AuditEventInterpreterTest {
 
     private final AuditEventInterpreter interpreter = new AuditEventInterpreter();
 
+    /** 与写入时一致: 风险等级与事件类型由 AuditClassifier 算好存进行里, 解释器只读存储列。 */
+    private AuditEventInterpreter.InterpretedEvent interpretStored(AuditLog log) {
+        AuditClassifier.Classification classification = AuditClassifier.classify(
+                log.getEventSource(), log.getAction(), log.getTargetType(), log.getHttpPath(),
+                log.getResult(), log.getStatusCode());
+        log.setRiskLevel(classification.riskLevel());
+        log.setEventCategory(classification.eventCategory());
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+        assertEquals(log.getRiskLevel(), event.riskLevel(), "display never re-grades stored risk");
+        assertEquals(log.getEventCategory(), event.category(), "display never re-classifies");
+        return event;
+    }
+
     @Test
     void keepsPermissionReadLowRiskAndLabelsItAsAView() {
         AuditLog log = request("http_get", "/api/admin/permissions");
+        log.setEventSource("request");
 
-        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+        AuditEventInterpreter.InterpretedEvent event = interpretStored(log);
 
         assertEquals("查看", event.actionLabel());
         assertEquals("权限配置", event.objectLabel());
         assertEquals("low", event.riskLevel());
-        assertEquals("authorization", event.category());
+        assertEquals("business", event.category(),
+                "reading a permission page is not an authorization change");
     }
 
     @Test
     void classifiesPermissionWriteAsHighRisk() {
-        AuditLog log = request("http_patch", "/api/admin/permissions");
+        AuditLog log = request("admin_permission.set_permissions", "/api/admin/permissions");
+        log.setEventSource("business");
+        log.setHttpMethod("PATCH");
 
-        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+        AuditEventInterpreter.InterpretedEvent event = interpretStored(log);
 
         assertEquals("调整权限", event.actionLabel());
         assertEquals("high", event.riskLevel());
+        assertEquals("authorization", event.category());
         assertEquals("涉及权限或数据可见范围变更", event.riskReason());
+    }
+
+    @Test
+    void semanticWriteEventsUseTheCentralChineseNamesAndGenericFallback() {
+        AuditLog approve = request("sales_order.approve",
+                "/api/sales/orders/3e27d660-5c36-41c8-8ea1-7f777f52a9cc/approve");
+        approve.setEventSource("business");
+        approve.setHttpMethod("POST");
+        AuditEventInterpreter.InterpretedEvent approved = interpretStored(approve);
+        assertEquals("审核通过", approved.actionLabel());
+        assertEquals("low", approved.riskLevel());
+
+        AuditLog reverse = request("stock_doc.reverse",
+                "/api/stock/docs/3e27d660-5c36-41c8-8ea1-7f777f52a9cc/reverse");
+        reverse.setEventSource("business");
+        reverse.setHttpMethod("POST");
+        AuditEventInterpreter.InterpretedEvent reversed = interpretStored(reverse);
+        assertEquals("红冲", reversed.actionLabel());
+        assertEquals("high", reversed.riskLevel());
+
+        AuditLog edit = request("goods.update", "/api/master/goods/3e27d660-5c36-41c8-8ea1-7f777f52a9cc");
+        edit.setEventSource("business");
+        edit.setHttpMethod("PUT");
+        assertEquals("修改", interpretStored(edit).actionLabel());
+
+        AuditLog failed = request("sales_order.approve",
+                "/api/sales/orders/3e27d660-5c36-41c8-8ea1-7f777f52a9cc/approve");
+        failed.setEventSource("business");
+        failed.setHttpMethod("POST");
+        failed.setResult("failure");
+        failed.setStatusCode(409);
+        assertEquals("medium", interpretStored(failed).riskLevel());
+    }
+
+    @Test
+    void changeOnlyUpdatesShowChangedKeysRedactedColumnNamesAndImpersonation() {
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("employees");
+        log.setTargetId(UUID.randomUUID().toString());
+        log.setEventSource("database");
+        log.setResult("success");
+        log.setBefore("{\"code\":\"E-001\",\"status\":\"active\"}");
+        log.setAfter("{\"code\":\"E-001\",\"status\":\"left\",\"_redacted_changes\":[\"phone\"]}");
+        log.setOnBehalfOf(UUID.randomUUID());
+
+        AuditEventInterpreter.InterpretedEvent event = interpretStored(log);
+
+        assertTrue(event.changeSummary().contains("敏感信息已修改(内容不记录)"), event.changeSummary());
+        assertTrue(!event.changeSummary().contains("_redacted_changes"), event.changeSummary());
+        assertTrue(!event.changeSummary().contains("E-001 →"), "locator keys are not changes");
+        assertTrue(event.summary().endsWith("(模拟身份期间操作)"), event.summary());
     }
 
     @Test
@@ -72,11 +142,9 @@ class AuditEventInterpreterTest {
         log.setHttpPath("/api/payroll/slips/ignored/download");
         log.setResult("success");
         log.setStatusCode(200);
-        // Mirrors the database-enforced classification fallback for this explicit action.
-        log.setRiskLevel("low");
-        log.setEventCategory("business");
+        log.setEventSource("business");
 
-        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+        AuditEventInterpreter.InterpretedEvent event = interpretStored(log);
 
         assertEquals("下载工资条 PDF", event.actionLabel());
         assertEquals("工资条", event.objectLabel());
@@ -261,7 +329,7 @@ class AuditEventInterpreterTest {
         employee.setResult("success");
 
         AuditEventInterpreter.InterpretedEvent employeeEvent =
-                interpreter.interpret(employee);
+                interpretStored(employee);
         assertEquals("查看员工档案", employeeEvent.actionLabel());
         assertEquals("员工档案", employeeEvent.objectLabel());
         assertEquals("查看员工档案 E-001", employeeEvent.summary());
@@ -277,7 +345,7 @@ class AuditEventInterpreterTest {
         receiptHistory.setEventSource("business");
         receiptHistory.setResult("success");
         AuditEventInterpreter.InterpretedEvent historyEvent =
-                interpreter.interpret(receiptHistory);
+                interpretStored(receiptHistory);
         assertEquals("查看销售收款单历史单据", historyEvent.actionLabel());
         assertEquals("SK-001(旧系统编号 8)", historyEvent.targetName());
         assertEquals("medium", historyEvent.riskLevel());
@@ -306,7 +374,7 @@ class AuditEventInterpreterTest {
         sessionEvents.setEventSource("business");
         sessionEvents.setResult("success");
         AuditEventInterpreter.InterpretedEvent investigation =
-                interpreter.interpret(sessionEvents);
+                interpretStored(sessionEvents);
         assertEquals("查看登录会话时间线", investigation.actionLabel());
         assertEquals("登录会话审计", investigation.objectLabel());
         assertEquals("security", investigation.category());
@@ -318,7 +386,7 @@ class AuditEventInterpreterTest {
         sessionDetail.setEventSource("business");
         sessionDetail.setResult("success");
         AuditEventInterpreter.InterpretedEvent detail =
-                interpreter.interpret(sessionDetail);
+                interpretStored(sessionDetail);
         assertEquals("查看登录会话概览", detail.actionLabel());
         assertEquals("security", detail.category());
         assertEquals("medium", detail.riskLevel());
@@ -616,30 +684,6 @@ class AuditEventInterpreterTest {
     }
 
     @Test
-    void labelsHistoricalSoftDeleteUpdatesAsDeletes() {
-        AuditLog log = new AuditLog();
-        log.setAction("update");
-        log.setTargetType("goods");
-        log.setTargetId(UUID.randomUUID().toString());
-        log.setBefore("""
-                {"is_deleted":false,"deleted_at":null}
-                """);
-        log.setAfter("""
-                {"is_deleted":true,"deleted_at":"2026-08-01T06:00:00Z"}
-                """);
-        log.setResult("success");
-        // V169 stored historical UPDATE transitions as low risk.
-        log.setRiskLevel("low");
-
-        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
-
-        assertEquals("删除", event.actionLabel());
-        assertEquals("删除货品", event.summary());
-        assertEquals("high", event.riskLevel());
-        assertEquals("data_change", event.category());
-    }
-
-    @Test
     void unknownInternalCodesNeverLeakIntoMainChineseDescriptions() {
         AuditLog log = new AuditLog();
         log.setAction("internal_unmapped_action");
@@ -698,11 +742,9 @@ class AuditEventInterpreterTest {
         log.setHttpPath("/api/admin/audit-logs");
         log.setResult("success");
         log.setStatusCode(200);
-        // Mirrors the current database-enforced classification fallback for newly introduced actions.
-        log.setRiskLevel("low");
-        log.setEventCategory("business");
+        log.setEventSource("business");
 
-        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+        AuditEventInterpreter.InterpretedEvent event = interpretStored(log);
 
         assertEquals(expectedLabel, event.actionLabel());
         assertEquals("审计日志", event.objectLabel());
@@ -723,12 +765,20 @@ class AuditEventInterpreterTest {
                 writeRequest("api/master/goods",
                         "/api/master/goods/" + UUID.randomUUID() + "/bom/batch-delete"));
         assertEquals("批量删除组装明细", bom.actionLabel());
-        // 批量软删走 POST, 接不住 http_delete 那条判定, 得靠路径进高风险。
-        assertEquals("high", bom.riskLevel());
 
         AuditEventInterpreter.InterpretedEvent notice = interpreter.interpret(
                 writeRequest("api/notices", "/api/notices/batch-delete"));
         assertEquals("移除通知", notice.actionLabel());
+
+        // 语义写事件: 批量软删走 POST, 由方法名进高风险, 对象按路径各归各的。
+        AuditLog semanticBom = writeRequest("goods_bom",
+                "/api/master/goods/" + UUID.randomUUID() + "/bom/batch-delete");
+        semanticBom.setAction("goods_bom.batch_delete");
+        semanticBom.setEventSource("business");
+        semanticBom.setHttpMethod("POST");
+        AuditEventInterpreter.InterpretedEvent semantic = interpretStored(semanticBom);
+        assertEquals("批量删除", semantic.actionLabel());
+        assertEquals("high", semantic.riskLevel());
     }
 
     private AuditLog writeRequest(String targetType, String path) {

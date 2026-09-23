@@ -212,6 +212,13 @@ finish_run () {
                         'productionAcceptance', FALSE
                     )
                 WHERE run_id = '$RUN_ID'::uuid AND status = 'RUNNING'" >/dev/null 2>&1
+        # ADR-105: 导入会话不逐行写审计; 运行状态定下来之后补写本次运行唯一的一条汇总事件,
+        # 结果取最终状态(成功/失败都留一条)。全量导入成功时已在导入事务里写过, 这里按运行号跳过。
+        { printf '%s\n' "\\set run_id '$RUN_ID'" 'BEGIN;' 'SET LOCAL standard_conforming_strings=on;'
+          python3 -I "$HERE/compose_bootstrap.py" "$HERE/migrate_audit_summary.sql"
+          printf '%s\n' 'COMMIT;'; } | \
+            "$DOCKER" exec -i -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never \
+                -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 >/dev/null 2>&1
     fi
 
     if [ "$LOCK_OWNED" -eq 1 ]; then
@@ -713,6 +720,7 @@ preflight () {
     record_run_file "$HERE/migrate_bootstrap_target_guard.sql" "migrate_bootstrap_target_guard.sql"
     record_run_file "$HERE/migrate_claim_guard.sql" "migrate_claim_guard.sql"
     record_run_file "$HERE/migrate_execution_guard.sql" "migrate_execution_guard.sql"
+    record_run_file "$HERE/migrate_audit_summary.sql" "migrate_audit_summary.sql"
     record_run_file "$HERE/export_legacy.ps1" "export_legacy.ps1"
     record_run_file "$checksum_manifest" "export_manifest.sha256"
     if [ -s "$export_manifest" ]; then
@@ -727,7 +735,7 @@ run_sql () {  # $1 = sql 文件名（HERE 下）
     if [ "$FULL_BOOTSTRAP" -eq 1 ]; then
         python3 -I "$HERE/compose_bootstrap.py" "$HERE/$1" >> "$BOOTSTRAP_SQL"
     else
-        { printf '%s\n' 'BEGIN;' 'SET LOCAL standard_conforming_strings=on;'; python3 -I "$HERE/compose_bootstrap.py" "$HERE/$1" || exit $?; printf '%s\n' 'COMMIT;'; } | \
+        { printf '%s\n' 'BEGIN;' 'SET LOCAL standard_conforming_strings=on;' "SET LOCAL app.legacy_import = 'on';"; python3 -I "$HERE/compose_bootstrap.py" "$HERE/$1" || exit $?; printf '%s\n' 'COMMIT;'; } | \
             "$DOCKER" exec -i -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
                 -v ON_ERROR_STOP=1 -v "legacy_key_file=$REMOTE_KEY_FILE"
     fi
@@ -811,8 +819,10 @@ UPDATE legacy_migration_runs SET status='SUCCESS', reconciliation_status='PASSED
     'automatedCheckCount',23,'failedAutomatedCheckCount',0,
     'structuralChecksOnly',true,'sourceTargetBusinessReconciliationRequired',true,'productionAcceptance',false)
 WHERE run_id=:'run_id'::uuid;
-COMMIT;
 SQL
+    # ADR-105: 本次运行唯一的审计汇总, 在运行已标成功之后、同一事务里写入, 结果与运行状态一致。
+    python3 -I "$HERE/compose_bootstrap.py" "$HERE/migrate_audit_summary.sql" >> "$BOOTSTRAP_SQL"
+    printf '%s\n' 'COMMIT;' >> "$BOOTSTRAP_SQL"
     if [ "$(sha256sum "$HERE/migrate_reconciliation.sql" | awk '{print tolower($1)}')" != "$verified_sha" ] \
         || [ "$(wc -c < "$HERE/migrate_reconciliation.sql" | tr -d '[:space:]')" != "$verified_bytes" ]; then
         echo "✗ 全量对账 SQL 在装配期间漂移；尚未执行业务事务。" >&2
@@ -1035,7 +1045,7 @@ migrate_subcontract () {
 # 生产模块：F_Plan / F_PlanItem / F_PlanCostItem / F_DateReport / F_DateReportItem。
 # 依赖：主档 + V51 sales_order_items / sales_order_cost_items（销售必须先迁，
 #   跨模块 FK 映射 sales_order_item_id；F_PlanItem.S_OrderID 经 legacy_id 子查询映射）。
-# production_plan_costs 按年度分区（13 个 + DEFAULT 兜底）；受控 DELETE 覆盖父表及其分区。
+# production_plan_costs 为普通单表(V649)；只读遗留快照，只有本导入会话(app.legacy_import='on')能写。
 migrate_production () {
     echo "→ [生产模块] 复制 CSV（5 个）..."
     for f in production_plans production_plan_items production_plan_costs \
@@ -1189,7 +1199,9 @@ preflight
 if [ "$FULL_BOOTSTRAP" -eq 1 ]; then
     BOOTSTRAP_SQL=$(mktemp "$HERE/.uten_bootstrap.XXXXXX.sql")
     chmod 600 "$BOOTSTRAP_SQL"
+    # ADR-105: 导入会话旁路数据库行级审计(约 250 万行历史不逐行复制), 提交前只写一条汇总事件。
     printf '%s\n' 'BEGIN;' 'SET LOCAL standard_conforming_strings=on;' \
+        "SET LOCAL app.legacy_import = 'on';" \
         "SET LOCAL uten.bootstrap_run_id = '$RUN_ID';" \
         "SET LOCAL uten.bootstrap_mapping_version = '$MAPPING_VERSION';" \
         "SET LOCAL uten.bootstrap_repository_commit = '$MIGRATION_REPOSITORY_COMMIT';" \

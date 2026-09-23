@@ -1,5 +1,6 @@
 package com.uten.imp.features.preference;
 
+import com.uten.imp.audit.AuditAutomaticWrite;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +28,7 @@ public class UserPreferenceController {
 
     private final UserPreferenceService service;
 
+    @AuditAutomaticWrite("列宽、筛选等界面偏好由页面自动保存")
     @PutMapping("/{key}")
     public void put(@PathVariable String key, @RequestBody JsonNode value) {
         service.put(key, value);

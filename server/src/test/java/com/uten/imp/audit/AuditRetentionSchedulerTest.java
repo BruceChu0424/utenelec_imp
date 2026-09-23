@@ -3,82 +3,51 @@ package com.uten.imp.audit;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
+import java.sql.SQLException;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
+/**
+ * 调度壳的两条规则(ADR-105); 分区搬迁与完成事件由 AuditRetentionPostgresTest 在真库上证明。
+ */
 class AuditRetentionSchedulerTest {
 
     @Test
-    void monthCutoffsUseShanghaiCalendarSemanticsAtMonthEnd() {
-        Clock clock = Clock.fixed(
-                Instant.parse("2026-03-30T19:17:00Z"),
-                ZoneOffset.UTC);
-
-        AuditRetentionScheduler.Cutoffs cutoffs =
-                AuditRetentionScheduler.cutoffs(clock, 1, 2);
-
-        assertEquals(
-                Instant.parse("2026-02-27T19:17:00Z"),
-                cutoffs.hotCutoff());
-        assertEquals(
-                Instant.parse("2025-12-30T19:17:00Z"),
-                cutoffs.archiveCutoff());
-    }
-
-    @Test
-    void invalidDatabaseSettingFailsClosedBeforeOpeningAConnection()
-            throws Exception {
-        DataSource dataSource = mock(DataSource.class);
-        AuditRuntimeSettings settings = mock(AuditRuntimeSettings.class);
+    void failureIsRecordedIndependentlyAndSurfacedToTheScheduler() {
         AuditService audit = mock(AuditService.class);
-        when(settings.hotRetentionMonths()).thenReturn(0);
-        when(settings.archiveRetentionMonths()).thenReturn(30);
-        AuditRetentionScheduler scheduler = new AuditRetentionScheduler(
-                dataSource,
-                settings,
-                audit,
-                Clock.fixed(
-                        Instant.parse("2026-07-31T00:00:00Z"),
-                        ZoneOffset.UTC));
+        AuditRetentionScheduler scheduler = new AuditRetentionScheduler(mock(DataSource.class), audit) {
+            @Override
+            RetentionResult execute() throws SQLException {
+                throw new SQLException("audit retention months out of range: hot=0, archive=30");
+            }
+        };
 
-        scheduler.runScheduled();
+        assertThrows(IllegalStateException.class, scheduler::runScheduled,
+                "失败必须抛给调度器, 服务器状态页才会显示后台任务失败");
 
-        verify(dataSource, never()).getConnection();
         verify(audit).logExplicit(
                 eq(null),
                 eq("system"),
                 eq("audit_retention_failed"),
                 eq("audit_retention"),
-                contains("hotMonths=0"),
+                contains("hot=0"),
                 eq("failure"));
     }
 
     @Test
-    void successfulAutomaticRetentionDoesNotCreateUserActivityNoise()
-            throws Exception {
-        DataSource dataSource = mock(DataSource.class);
-        AuditRuntimeSettings settings = mock(AuditRuntimeSettings.class);
+    void successEvidenceIsWrittenByTheDatabaseFunctionNotDuplicatedInJava() {
         AuditService audit = mock(AuditService.class);
-        when(settings.hotRetentionMonths()).thenReturn(6);
-        when(settings.archiveRetentionMonths()).thenReturn(30);
-        AuditRetentionScheduler scheduler = new AuditRetentionScheduler(
-                dataSource,
-                settings,
-                audit,
-                Clock.fixed(Instant.parse("2026-07-31T00:00:00Z"), ZoneOffset.UTC)) {
+        AuditRetentionScheduler scheduler = new AuditRetentionScheduler(mock(DataSource.class), audit) {
             @Override
-            RetentionResult execute(Cutoffs cutoffs) {
-                return new RetentionResult(true, 10, 10, 2);
+            RetentionResult execute() {
+                return new RetentionResult(true, 6, 30, List.of("audit_log_archive_p202601"), 10,
+                        List.of(), 0, List.of("audit_log_p202610"), 42L);
             }
         };
 

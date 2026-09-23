@@ -16,8 +16,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * 审计日志。数据变更由 DB 触发器写入；登录/改密等事件由 auth 包各 Service 显式写入。
- * before/after 为 jsonb；数据变更场景由数据库函数先剔除凭证、PII、薪资与自由文本。
+ * 审计日志(按月分区、只追加)。数据变更由 DB 触发器按三清单写入; 登录/改密/业务事件/
+ * 语义写事件由 {@link AuditService} 写入。before/after 为 jsonb: 新增/删除存整行, 修改只存变化键;
+ * 数据变更场景由数据库函数先剔除凭证、PII、薪资与自由文本。
  */
 @Getter
 @Setter
@@ -135,13 +136,16 @@ public class AuditLog {
     @Column(name = "device_profile_hash")
     private String deviceProfileHash;
 
-    /** Database-enforced classification; the API never supplies or updates it. */
-    @Column(name = "risk_level", insertable = false, updatable = false)
+    /** 写入时由 {@link AuditClassifier} 一次算定(数据库行事件由 fn_audit 按清单赋值); 行只追加, 不再改写。 */
+    @Column(name = "risk_level", nullable = false, updatable = false)
     private String riskLevel;
 
-    /** Recomputed together with riskLevel for every database INSERT/UPDATE. */
-    @Column(name = "event_category", insertable = false, updatable = false)
+    @Column(name = "event_category", nullable = false, updatable = false)
     private String eventCategory;
+
+    /** 模拟身份期间被模拟的账号; 操作人 actor_id 始终是真实操作人。 */
+    @Column(name = "on_behalf_of", updatable = false)
+    private UUID onBehalfOf;
 
     @Column(name = "created_at")
     private OffsetDateTime createdAt = OffsetDateTime.now();

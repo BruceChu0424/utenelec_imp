@@ -122,15 +122,6 @@ public class AuditEventInterpreter {
             Map.entry("view_production_fqc_decision_record_detail", "查看FQC检测决定记录"),
             Map.entry("view_production_fqc_inspection_detail", "查看成品检验详情"),
             Map.entry("view_stock_document_detail", "查看库存单据详情"));
-    private static final Set<String> SENSITIVE_DETAIL_TARGETS = Set.of(
-            "employees", "visitor_applications", "website_inquiries",
-            "clients", "suppliers", "accounts", "payroll_slips", "payroll_batches",
-            "finance_receipts", "finance_payments", "finance_expenses",
-            "finance_other_incomes", "finance_bank_transfers", "ar_ap_ledger",
-            "supplier_settlements", "subcontract_loss_claims", "procurement_payables",
-            "procurement_iqc_rejection_cases",
-            "procurement_arrival_exceptions", "expense_claims", "fixed_assets",
-            "deferred_expenses", "finance_asset_posting_runs");
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
             "view_client_detail", "view_supplier_detail", "view_account_detail",
             "view_goods_detail", "view_mould_detail", "view_currency_detail",
@@ -167,34 +158,18 @@ public class AuditEventInterpreter {
     private static final int SUMMARY_MAX_INLINE_CHANGES = 2;
     private static final int DETAIL_MAX_CHANGE_ENTRIES = 6;
     private static final int MAX_VALUE_LENGTH = 30;
+    /** 行审计里敏感列变了只记列名(fn_audit 写入), 内容已脱敏。 */
+    private static final String REDACTED_CHANGES_KEY = "_redacted_changes";
 
     public InterpretedEvent interpret(AuditLog value) {
-        boolean softDelete = isSoftDelete(value);
-        String action = softDelete ? "delete" : normalized(value.getAction());
+        String action = normalized(value.getAction());
         String target = normalized(value.getTargetType());
         String path = normalized(firstNonBlank(value.getHttpPath(), value.getTargetId()));
-        String result = normalized(value.getResult());
-        boolean auditInvestigation = isAuditInvestigation(action);
-        boolean sensitiveAuditEvidenceAccess = isSensitiveAuditEvidenceAccess(action);
-        boolean sensitiveDataExport = isSensitiveDataExport(action);
-        String risk = firstNonBlank(value.getRiskLevel(),
-                classifyRisk(action, target, path, result, value.getStatusCode()));
-        if (softDelete) {
-            risk = "high";
-        }
-        if ((sensitiveAuditEvidenceAccess || sensitiveDataExport)
-                && "low".equals(normalized(risk))) {
-            risk = "medium";
-        }
-        String category = firstNonBlank(value.getEventCategory(),
-                classifyCategory(action, target, path));
-        if (auditInvestigation) {
-            category = "security";
-        } else if (sensitiveDataExport) {
-            category = "export";
-        }
+        // 风险等级与事件类型只读存储列(写入时一次算定, ADR-105), 这里不再补算或抬升。
+        String risk = normalized(value.getRiskLevel());
+        String category = normalized(value.getEventCategory());
         String objectLabel = objectLabel(target, path);
-        String actionLabel = actionLabel(action, path);
+        String actionLabel = actionLabel(action, path, value.getHttpMethod());
         TargetEvidence targetEvidence = targetEvidence(value);
         String targetName = legacyTargetName(value);
         if (targetName.isBlank()) {
@@ -212,12 +187,15 @@ public class AuditEventInterpreter {
         String changeSummary = changeSummary(action, value.getBefore(), value.getAfter(), changes);
         String summary = buildSummary(
                 action, actionLabel, objectLabel, targetName, changes, resultLabel);
+        if (value.getOnBehalfOf() != null) {
+            summary = summary + "(模拟身份期间操作)";
+        }
         return new InterpretedEvent(
                 actionLabel,
                 objectLabel,
                 summary,
                 risk,
-                riskReason(risk, action, target, path, result, value.getStatusCode()),
+                AuditClassifier.reason(value),
                 category,
                 targetEvidence.displayName(),
                 targetEvidence.businessCode(),
@@ -228,78 +206,11 @@ public class AuditEventInterpreter {
                 changeSummary);
     }
 
-    String classifyRisk(String action,
-                        String target,
-                        String path,
-                        String result,
-                        Integer statusCode) {
-        String haystack = action + ' ' + target + ' ' + path + ' ' + result;
-        if (containsAny(haystack, "refresh_reuse", "reuse_detected")) {
-            return "critical";
+    private String actionLabel(String action, String path, String httpMethod) {
+        String semanticVerb = AuditActionNames.verbOf(action);
+        if (semanticVerb != null) {
+            return semanticActionLabel(semanticVerb, path, httpMethod);
         }
-        if (isSensitiveAuditEvidenceAccess(action) || isSensitiveDataExport(action)) {
-            return "medium";
-        }
-        if (isSensitiveBusinessDetail(action, target)) {
-            return "medium";
-        }
-        boolean readOnlyRequest = "http_get".equals(action);
-        if ("delete".equals(action)
-                || "http_delete".equals(action)
-                || !readOnlyRequest && containsAny(haystack,
-                "permission", "authorization", "data-scopes", "data_scopes",
-                "system-setting", "system_setting", "reset-password",
-                "balance-adjust", "blacklist", "/reverse", "/offboard",
-                // 批量软删走 POST 而不是 DELETE(id 清单要放请求体), 所以上面那条
-                // http_delete 判定接不住它。一次最多删 200 行主档组装明细, 破坏性
-                // 不比单条 DELETE 小, 不能因为动词是 POST 就掉到 low 而在高风险
-                // 视图里整条消失。
-                "/bom/batch-delete")) {
-            return "high";
-        }
-        if ((statusCode != null && statusCode >= 400)
-                || containsAny(result,
-                "failure", "failed", "denied", "bad_", "not_found",
-                "locked", "disabled", "rate_limited", "invalid", "expired")
-                || containsAny(action, "login_failed", "change_password", "verify_password")
-                || action.startsWith("export_")
-                || path.contains("/export")) {
-            return "medium";
-        }
-        return "low";
-    }
-
-    String classifyCategory(String action, String target, String path) {
-        String haystack = action + ' ' + target + ' ' + path;
-        if (isAuditInvestigation(action)) {
-            return "security";
-        }
-        if (isSensitiveDataExport(action)) {
-            return "export";
-        }
-        if (containsAny(haystack, "reuse", "access_denied", "blacklist")) {
-            return "security";
-        }
-        if (containsAny(haystack,
-                "permission", "authorization", "role", "data-scope", "data_scope")) {
-            return "authorization";
-        }
-        if (action.startsWith("export_") || path.contains("/export")) {
-            return "export";
-        }
-        if (containsAny(haystack, "login", "logout", "password", "refresh_token", "auth/")) {
-            return "authentication";
-        }
-        if (containsAny(haystack, "system_setting", "system-setting", "user_preferences")) {
-            return "system";
-        }
-        if (containsAny(action, "insert", "update", "delete")) {
-            return "data_change";
-        }
-        return "business";
-    }
-
-    private String actionLabel(String action, String path) {
         if ("verify_local_audit_receipt".equals(action)) return "核查本机操作回执";
         if ("view_audit_log_list".equals(action)) return "查看审计日志列表";
         if ("view_audit_log_summary".equals(action)) return "查看审计统计";
@@ -368,6 +279,38 @@ public class AuditEventInterpreter {
         if ("task_renew".equals(action)) return "续租任务认领(自动协调)";
         if ("task_force_release".equals(action)) return "强制释放任务";
         if ("audit_retention_failed".equals(action)) return "审计留存任务失败";
+        if ("audit_retention_completed".equals(action)) return "审计日志按期归档与清理";
+        if ("legacy_migration_run".equals(action)) return "导入老系统历史数据";
+        String pathLabel = pathActionLabel(action, path);
+        if (pathLabel != null) return pathLabel;
+        return switch (action) {
+            case "http_get" -> "查看";
+            case "insert", "http_post" -> "新增";
+            case "update", "http_put", "http_patch" -> "修改";
+            case "delete", "http_delete" -> "删除";
+            default -> "未登记操作";
+        };
+    }
+
+    /**
+     * 语义写事件「资源.方法」的中文动作: 关键动作用集中登记的名称, 其余先按路径里的动作段,
+     * 再按请求方式给通用名称。
+     */
+    private String semanticActionLabel(String verb, String path, String httpMethod) {
+        String registered = AuditActionNames.verbLabel(verb);
+        if (registered != null) return registered;
+        String method = normalized(httpMethod);
+        String pathLabel = pathActionLabel("http_" + method, path);
+        if (pathLabel != null) return pathLabel;
+        return switch (method) {
+            case "put", "patch" -> "修改";
+            case "delete" -> "删除";
+            default -> "新增";
+        };
+    }
+
+    /** 按路径里的独立动作段识别常见动作; 识别不出返回 null。 */
+    private static String pathActionLabel(String action, String path) {
         if (hasPathSegment(path, "approve")) return "审批通过";
         if (hasPathSegment(path, "reject")) return "驳回";
         if (hasPathSegment(path, "submit")) return "提交";
@@ -403,13 +346,7 @@ public class AuditEventInterpreter {
                 return "移除通知";
             }
         }
-        return switch (action) {
-            case "http_get" -> "查看";
-            case "insert", "http_post" -> "新增";
-            case "update", "http_put", "http_patch" -> "修改";
-            case "delete", "http_delete" -> "删除";
-            default -> "未登记操作";
-        };
+        return null;
     }
 
     private static String detailViewActionLabel(String action) {
@@ -544,7 +481,7 @@ public class AuditEventInterpreter {
         Iterator<String> fields = after.fieldNames();
         while (fields.hasNext()) {
             String field = fields.next();
-            if (META_COLUMNS.contains(field)) {
+            if (META_COLUMNS.contains(field) || REDACTED_CHANGES_KEY.equals(field)) {
                 continue;
             }
             JsonNode oldValue = before.get(field);
@@ -554,6 +491,12 @@ public class AuditEventInterpreter {
             }
             entries.add(fieldLabel(field) + "：" + valueLabel(oldValue)
                     + " → " + valueLabel(newValue));
+        }
+        JsonNode redacted = after.get(REDACTED_CHANGES_KEY);
+        if (redacted != null && redacted.isArray() && !redacted.isEmpty()) {
+            List<String> names = new ArrayList<>();
+            redacted.forEach(node -> names.add(fieldLabel(node.asText())));
+            entries.add("敏感信息已修改(内容不记录)：" + String.join("、", names));
         }
         return entries;
     }
@@ -604,7 +547,8 @@ public class AuditEventInterpreter {
         int count = 0;
         Iterator<String> fields = node.fieldNames();
         while (fields.hasNext()) {
-            if (!META_COLUMNS.contains(fields.next())) {
+            String field = fields.next();
+            if (!META_COLUMNS.contains(field) && !REDACTED_CHANGES_KEY.equals(field)) {
                 count++;
             }
         }
@@ -639,47 +583,6 @@ public class AuditEventInterpreter {
             label = label + "；" + RESULT_LABELS.getOrDefault(extra, "补充信息待核查");
         }
         return label;
-    }
-
-    private String riskReason(String risk,
-                              String action,
-                              String target,
-                              String path,
-                              String result,
-                              Integer statusCode) {
-        String haystack = action + ' ' + target + ' ' + path + ' ' + result;
-        if (isSensitiveAuditEvidenceAccess(action))
-            return "访问敏感审计证据";
-        if (isSensitiveDataExport(action))
-            return "工资条 PDF 被下载到系统外部，需关注使用范围";
-        if (isSensitiveBusinessDetail(action, target))
-            return "查看了包含个人、账户或财务敏感字段的业务详情";
-        if ("view_audit_log_list".equals(action)
-                || "view_audit_log_summary".equals(action))
-            return "授权人员进行常规审计核查";
-        if (containsAny(haystack, "refresh_reuse", "reuse_detected"))
-            return "刷新令牌被重复使用，可能存在会话泄露";
-        if (!"http_get".equals(action)
-                && containsAny(haystack,
-                "permission", "authorization", "data-scope", "data_scope"))
-            return "涉及权限或数据可见范围变更";
-        if (!"http_get".equals(action)
-                && containsAny(haystack, "system-setting", "system_setting"))
-            return "涉及全局安全或运行策略变更";
-        if (containsAny(haystack, "reset-password", "change_password"))
-            return "涉及账号凭证变更";
-        if ("delete".equals(action) || "http_delete".equals(action))
-            return "删除操作可能造成数据不可逆变化";
-        if (containsAny(haystack, "balance-adjust", "/reverse", "/offboard", "blacklist"))
-            return "涉及库存、红冲、离职或限制名单等关键业务动作";
-        if ((statusCode != null && statusCode >= 400)
-                || !"success".equals(result) && containsAny(
-                result, "failure", "failed", "denied", "bad_", "locked",
-                "disabled", "rate_limited", "invalid", "expired"))
-            return "操作失败或被安全策略拒绝，需要结合详情核查";
-        if (action.startsWith("export_") || path.contains("/export"))
-            return "数据被导出到系统外部，需关注使用范围";
-        return "low".equals(risk) ? "未命中当前风险规则" : "命中审计风险规则";
     }
 
     /**
@@ -1622,54 +1525,8 @@ public class AuditEventInterpreter {
         return false;
     }
 
-    private static boolean isAuditInvestigation(String action) {
-        return "view_audit_log_list".equals(action)
-                || "view_audit_log_summary".equals(action)
-                || "view_audit_session_list".equals(action)
-                || "view_audit_session_events".equals(action)
-                || isSensitiveAuditEvidenceAccess(action);
-    }
-
-    private static boolean isSensitiveAuditEvidenceAccess(String action) {
-        return "view_audit_log_detail".equals(action)
-                || "verify_local_audit_receipt".equals(action)
-                || "view_audit_session_list".equals(action)
-                || "view_audit_session_detail".equals(action)
-                || "view_audit_session_events".equals(action);
-    }
-
-    private static boolean isSensitiveBusinessDetail(String action, String target) {
-        return action.startsWith("view_")
-                && (action.endsWith("_detail") || action.endsWith("_detail_history"))
-                && SENSITIVE_DETAIL_TARGETS.contains(target);
-    }
-
     private static boolean isSensitiveDataExport(String action) {
         return "download_payroll_slip".equals(action);
-    }
-
-    private static boolean isSoftDelete(AuditLog value) {
-        if (!"update".equals(normalized(value.getAction()))) {
-            return false;
-        }
-        JsonNode before = parseAuditJson(value.getBefore());
-        JsonNode after = parseAuditJson(value.getAfter());
-        if (before == null || after == null) {
-            return false;
-        }
-        JsonNode beforeDeleted = before.get("is_deleted");
-        JsonNode afterDeleted = after.get("is_deleted");
-        boolean flagTransition = beforeDeleted != null
-                && afterDeleted != null
-                && beforeDeleted.isBoolean()
-                && afterDeleted.isBoolean()
-                && !beforeDeleted.booleanValue()
-                && afterDeleted.booleanValue();
-        boolean timestampTransition = before.has("deleted_at")
-                && before.get("deleted_at").isNull()
-                && after.has("deleted_at")
-                && !after.get("deleted_at").isNull();
-        return flagTransition || timestampTransition;
     }
 
     private static JsonNode parseAuditJson(String value) {

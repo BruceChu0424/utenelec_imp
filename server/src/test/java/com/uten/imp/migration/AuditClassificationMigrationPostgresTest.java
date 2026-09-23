@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import com.uten.imp.audit.AuditRetentionScheduler;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.BeforeAll;
@@ -13,8 +12,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -131,7 +128,7 @@ class AuditClassificationMigrationPostgresTest {
     }
 
     @Test
-    void actualAuditTriggerRedactsAndActualRetentionSqlPreservesTheCompleteSnapshot() throws Exception {
+    void actualAuditTriggerRedactsTheCompleteSnapshot() throws Exception {
         try (Connection c = connection(MIGRATED)) {
             c.setAutoCommit(false);
             execute(c, """
@@ -146,21 +143,6 @@ class AuditClassificationMigrationPostgresTest {
             assertEquals("0", scalar(c, "SELECT count(*)::text FROM audit_log WHERE target_type='audit_v556_material_probe' AND (coalesce(\"before\",'{}') ? 'description' OR coalesce(\"after\",'{}') ? 'description')"));
             assertEquals("high|data_change", scalar(c, "SELECT risk_level||'|'||event_category FROM audit_log WHERE target_type='audit_v556_material_probe' AND action='delete'"));
             assertEquals("1.2345", scalar(c, "SELECT \"after\"->>'quantity' FROM audit_log WHERE target_type='audit_v556_material_probe' AND action='insert'"));
-            execute(c, "INSERT INTO audit_log(id,action,result,target_type,created_at,\"after\") VALUES(2000000020,'exportX','success','archive_probe','1900-01-01','{\"quantity\":12.3456}')");
-            String expected = scalar(c, "SELECT to_jsonb(h)::text FROM audit_log h WHERE id=2000000020");
-            var field = AuditRetentionScheduler.class.getDeclaredField("ARCHIVE_HOT_BATCH_SQL");
-            field.setAccessible(true);
-            try (var archive = c.prepareStatement((String) field.get(null))) {
-                archive.setTimestamp(1, Timestamp.from(Instant.parse("1900-01-02T00:00:00Z")));
-                archive.setInt(2, 5000);
-                try (var rows = archive.executeQuery()) {
-                    assertTrue(rows.next());
-                    assertEquals(1, rows.getInt(1));
-                    assertEquals(1, rows.getInt(2));
-                }
-            }
-            assertEquals(expected, scalar(c, "SELECT to_jsonb(h)::text FROM audit_log_archive h WHERE id=2000000020"));
-            assertEquals("0", scalar(c, "SELECT count(*)::text FROM audit_log WHERE id=2000000020"));
             c.rollback();
         }
     }

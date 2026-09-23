@@ -11,9 +11,6 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -232,23 +229,20 @@ class ManagerPermissionDelegationPostgresTest {
                           scope.permission_delegation_generation
                     """.formatted(targetUserId)));
 
+            // ADR-105: 全表补挂 sweep 已废止; 审计由三清单登记入口挂上, 丢失后用同一入口修复。
             statement.executeUpdate("""
                     drop trigger trg_audit_manager_permission_delegations
                     on manager_permission_delegations
                     """);
-            statement.execute(Files.readString(
-                    Path.of(
-                            "src/main/resources/db/migration",
-                            "V530__refresh_audit_trigger_coverage.sql"),
-                    StandardCharsets.UTF_8));
-            assertEquals(1, scalarLong(statement, """
+            statement.execute("""
+                    select fn_audit_track_table('manager_permission_delegations', 'FULL', 'authorization')
+                    """);
+            assertEquals(2, scalarLong(statement, """
                     select count(*)
                     from pg_trigger trigger
-                    join pg_proc function on function.oid = trigger.tgfoid
                     where trigger.tgrelid = 'manager_permission_delegations'::regclass
-                      and trigger.tgname like 'trg_audit%%'
                       and not trigger.tgisinternal
-                      and function.proname in ('fn_audit', 'fn_audit_redacted')
+                      and trigger.tgfoid = 'public.fn_audit()'::regprocedure
                     """));
         }
     }

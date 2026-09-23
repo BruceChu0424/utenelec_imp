@@ -389,13 +389,12 @@ class DataHandoverPostgresTest {
         assertEquals(null, account.get("temp_password_expires_at"));
         assertEquals(1, count("select count(*) from employee_offboarding_events where request_id=? and status='COMPLETED'",
                 requestId));
-        assertEquals(2, count("""
+        // ADR-105: 离职事件账是只追加、带操作人的事件表(NONE), 行本身即留痕, 不再复制进审计,
+        // 离职原因因此也不会出现在审计里。
+        assertEquals(0, count("""
                 select count(*) from audit_log audit
                 join employee_offboarding_events event on audit.target_id=event.id::text
                 where event.request_id=? and audit.target_type='employee_offboarding_events'
-                  and not jsonb_exists(coalesce(audit.before,'{}'::jsonb),'reason')
-                  and not jsonb_exists(coalesce(audit."after",'{}'::jsonb),'reason')
-                  and not jsonb_exists(coalesce(audit."after",'{}'::jsonb),'handover_reason')
                 """, requestId));
         assertEquals("1", jdbc.queryForObject("""
                 SELECT result_summary->>'access.clientViewerGrants'

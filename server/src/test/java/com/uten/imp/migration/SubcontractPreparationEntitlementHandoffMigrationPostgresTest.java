@@ -89,7 +89,7 @@ class SubcontractPreparationEntitlementHandoffMigrationPostgresTest {
                       AND trigger_function.proname IN (
                           'fn_audit',
                           'fn_guard_preplan_subcontract_handoff_mutation')
-                    """)).isEqualTo(10);
+                    """)).isEqualTo(5); // 5 张只追加守卫; ADR-105 起这 5 张交接账为 NONE, 不再挂行审计
             assertThat(scalar(statement, """
                     SELECT COUNT(*)
                     FROM pg_trigger

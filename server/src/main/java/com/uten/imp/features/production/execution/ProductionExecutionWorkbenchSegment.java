@@ -110,5 +110,22 @@ public record ProductionExecutionWorkbenchSegment(
         UUID pendingOverproductionRateRequestId,
         BigDecimal pendingOverproductionRate,
         boolean overproductionPolicyApplies,
-        UUID actualOutputSupplementRequestId) {
+        UUID actualOutputSupplementRequestId,
+        /**
+         * ADR-117：缺料里「计划还没下单」的种数——物料分析那一行此刻还缺(与主表「还缺数量」
+         * 同一个数)。0 = 缺的料计划都已下过单(在途 / 在产)，只是在等到货。
+         */
+        int materialPlanningGapKindCount,
+        /** 计划还没下单的物料点名(「铜片 800个、弹簧 1000个 等 5 种」)；没有为 null。 */
+        String materialPlanningGapSummary,
+        /** 车间已经催过计划的次数(在催记录)；没催或计划已下够单为 0。 */
+        int planningUrgeCount,
+        /** 最近一次催计划的时间；没在催为 null。 */
+        java.time.OffsetDateTime planningUrgedAt,
+        /** 最近一次是谁催的。 */
+        String planningUrgedByName,
+        /** 最早什么时候可以再催(30 分钟内不重复打扰计划员)；没催过为 null。 */
+        java.time.OffsetDateTime planningNextUrgeAt,
+        /** 当前用户能不能催：有计划还没下单的料，且本人是有效车间人员、有开工 / 领料权限。 */
+        boolean canUrgePlanning) {
 }

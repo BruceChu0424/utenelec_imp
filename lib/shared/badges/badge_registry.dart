@@ -61,6 +61,9 @@ enum BadgeEntry {
   productionRateApprovals(BadgeModule.production),
   productionMaterialIncrementApprovals(BadgeModule.production),
 
+  /// 生产计划(物料分析): 车间在催计划下单子层物料、计划还没下够单的车间任务(ADR-117)。
+  productionPlanningUrges(BadgeModule.production),
+
   /// 生产管理: 进行中的物料分析 / 根计划批次(黄)。
   productionBatches(BadgeModule.production),
 
@@ -167,8 +170,11 @@ abstract final class BadgeFact {
   static const iqcRejectionOpen = 'iqcRejection.open';
 
   static const productionScheduleCount = 'productionSchedule.count';
-  static const productionOverproductionRate = 'productionOverproductionRate.count';
-  static const productionMaterialIncrement = 'productionMaterialIncrement.count';
+  static const productionOverproductionRate =
+      'productionOverproductionRate.count';
+  static const productionMaterialIncrement =
+      'productionMaterialIncrement.count';
+  static const productionPlanningUrge = 'productionPlanningUrge.count';
   static const productionScheduleUrgent = 'productionSchedule.urgent';
   static const productionScheduleOverdue = 'productionSchedule.overdue';
   static const productionExecution = 'productionExecution.count';

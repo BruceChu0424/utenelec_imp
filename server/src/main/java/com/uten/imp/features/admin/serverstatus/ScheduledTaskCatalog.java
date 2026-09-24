@@ -35,6 +35,8 @@ public final class ScheduledTaskCatalog {
                     "把入库、出库引起的库存金额变动排队结算, 库存报表的金额靠它更新。")),
             Map.entry("ProductionReadinessReconciler.reconcile", new Entry("生产齐套补偿",
                     "每分钟补做漏掉的到货齐套推进, 避免物料到了生产任务却没被唤醒。")),
+            Map.entry("ProductionPlanningUrgeReconciler.reconcile", new Entry("车间催计划核对",
+                    "每 5 分钟核对车间催计划的任务: 计划已经下够单或任务已结束的, 办结催办并撤掉计划员的待办卡。")),
             Map.entry("SubcontractPreparationAutoStartReconciler.reconcile", new Entry("委外备料自动启动",
                     "每 10 分钟为还没启动前置分析的委外备料行补启动。")),
             Map.entry("MaterializedViewRefreshScheduler.refreshAll", new Entry("报表数据刷新",

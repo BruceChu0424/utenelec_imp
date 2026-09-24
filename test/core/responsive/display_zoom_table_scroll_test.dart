@@ -374,7 +374,11 @@ void main() {
     expect(inner.pixels, 0);
 
     // 一直滚到页顶：表格送到视口顶，恰好置顶的那格余量丢弃并上门。
-    for (var i = 0; i < 30 && outer.offset < outer.position.maxScrollExtent - 0.5; i++) {
+    for (
+      var i = 0;
+      i < 30 && outer.offset < outer.position.maxScrollExtent - 0.5;
+      i++
+    ) {
       await _wheel(tester, distance: 500);
     }
     expect(outer.offset, closeTo(outer.position.maxScrollExtent, 0.01));

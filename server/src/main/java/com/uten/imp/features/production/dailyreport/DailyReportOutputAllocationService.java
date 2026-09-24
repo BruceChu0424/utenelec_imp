@@ -285,12 +285,12 @@ public class DailyReportOutputAllocationService {
             DailyReportItemLine piece=pieces.get(index);
             cumulativeQty=cumulativeQty.add(piece.getQty());
             BigDecimal boundary=index==pieces.size()-1?input.getWeight():
-                    input.getWeight().multiply(cumulativeQty).divide(input.getQty(),4,RoundingMode.HALF_UP);
+                    com.uten.imp.common.finance.MoneyPolicy.quantitySlice(input.getWeight(),input.getQty(),BigDecimal.ZERO,cumulativeQty);
             piece.setWeight(boundary.subtract(previousBoundary));previousBoundary=boundary;
         }
     }
     static BigDecimal transferBaseQuantity(BigDecimal qty,BigDecimal rate) {
-        return qty.multiply(rate).setScale(4,RoundingMode.HALF_UP);
+        return com.uten.imp.common.finance.MoneyPolicy.quantity(qty.multiply(rate));
     }
     private static BigDecimal number(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static ApiException validation(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}

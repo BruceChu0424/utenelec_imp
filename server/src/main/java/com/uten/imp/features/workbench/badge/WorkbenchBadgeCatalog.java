@@ -58,6 +58,8 @@ enum WorkbenchBadgeCatalog {
     /** Pending workshop tolerance changes, resolved only by planning approval. */
     productionRateApprovals(Module.production, facts("productionOverproductionRate.count"), none()),
     productionMaterialIncrementApprovals(Module.production, facts("productionMaterialIncrement.count"), none()),
+    /** 车间催计划下单子层物料(ADR-117): 计划员可见的物料分析上仍在催的车间任务。挂在「生产计划」卡。 */
+    productionPlanningUrges(Module.production, facts("productionPlanningUrge.count"), none()),
     /** 生产管理: 进行中的物料分析 / 根计划批次(黄)。 */
     productionBatches(Module.production, none(), facts("productionExecution.count")),
     /** 生产草稿: 生产计划 / 生产日报。 */

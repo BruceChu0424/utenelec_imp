@@ -362,8 +362,8 @@ class _UtenCollapsingHeaderScrollViewState
           // 紧凑回退：outer 是普通页面滚动、到顶即钳住；大字号把桌面端也压进
           // 这个分支（2026-09-24 用户口径「字体放大后表格不会滑到顶」），余量
           // 必须显式交给表内，否则滚轮在页到顶后全部变成无效滚动。
-          for (final position in _innerController?.positions ??
-              const <ScrollPosition>[]) {
+          for (final position
+              in _innerController?.positions ?? const <ScrollPosition>[]) {
             if (position.hasPixels && position.hasContentDimensions) {
               position.pointerScroll(rest);
             }
@@ -387,8 +387,8 @@ class _UtenCollapsingHeaderScrollViewState
         // 紧凑回退：先收表内（联动分支里 outer.pointerScroll 的负向余量经协调器
         // 正是先回表内再放头部；紧凑分支的 outer 是普通页面滚动，必须显式先滚
         // 表内，否则头部先回来、表内停在半途）。
-        for (final position in _innerController?.positions ??
-            const <ScrollPosition>[]) {
+        for (final position
+            in _innerController?.positions ?? const <ScrollPosition>[]) {
           if (position.hasPixels && position.hasContentDimensions) {
             position.pointerScroll(delta);
           }
@@ -453,8 +453,8 @@ class _UtenCollapsingHeaderScrollViewState
           // 滚轮交接门两分支都要在（2026-09-24）：紧凑分支此前没有这层 Listener，
           // 滚轮直接被表内 Scrollable 吃掉——先滚表内、头部永不收起，大字号把
           // 桌面端压进紧凑分支后用户口径「表格不会滑到顶」即此。
-          _compactMode = canFallBack &&
-              (smallViewport || _squeezedViewport == viewport);
+          _compactMode =
+              canFallBack && (smallViewport || _squeezedViewport == viewport);
           final Widget content;
           if (_compactMode) {
             content = _CompactPageScroll(
@@ -464,8 +464,7 @@ class _UtenCollapsingHeaderScrollViewState
               pinnedHeaderExtent: widget.pinnedHeaderExtent,
               controller: _outer,
               bodyMinHeight: widget.compactBodyMinHeight,
-              onInnerController: (controller) =>
-                  _innerController = controller,
+              onInnerController: (controller) => _innerController = controller,
               body: widget.body,
             );
           } else {

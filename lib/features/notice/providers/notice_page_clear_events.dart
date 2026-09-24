@@ -79,6 +79,8 @@ const Map<String, List<String>> noticePageClearEvents = {
     'SALES_DELIVERY_DUE',
     'SUBCONTRACT_PREPARATION_REQUIRED',
     'SUBCONTRACT_PREPARE_SHORTAGE',
+    // ADR-117 车间催计划下单(卡片本身在计划下够单后由服务端撤回)。
+    'PRODUCTION_PLANNING_URGED',
   ],
   // 物料分析历史与分析摘要详情（/production/material-analyses/{id}/summary）
   '/production/material-analyses': [

@@ -121,6 +121,9 @@ public class AuditEventInterpreter {
             Map.entry("view_procurement_inspection_record_detail", "查看IQC检测决定记录"),
             Map.entry("view_production_fqc_decision_record_detail", "查看FQC检测决定记录"),
             Map.entry("view_production_fqc_inspection_detail", "查看成品检验详情"),
+            Map.entry("view_production_actual_output_supplement_detail", "查看实际产出追加计划详情"),
+            Map.entry("view_production_material_increment_detail", "查看追加用料申请详情"),
+            Map.entry("view_production_overproduction_rate_detail", "查看超产比例申请详情"),
             Map.entry("view_stock_document_detail", "查看库存单据详情"));
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
             "view_client_detail", "view_supplier_detail", "view_account_detail",
@@ -1084,6 +1087,9 @@ public class AuditEventInterpreter {
         values.put("production_finished_in_confirmation_reversals", "生产完工入库冲销");
         values.put("production_finished_in_confirmation_reversal_items", "生产完工入库冲销明细");
         values.put("production_fqc_inspections", "生产FQC质检");
+        values.put("production_actual_output_supplement_requests", "实际产出追加计划");
+        values.put("production_material_increment_requests", "追加用料申请");
+        values.put("production_overproduction_rate_requests", "超产比例申请");
         values.put("production_fqc_decision_events", "FQC判定事件");
         values.put("production_fqc_cancellation_events", "FQC取消事件");
         values.put("production_fqc_contribution_adjustments", "FQC贡献调整");

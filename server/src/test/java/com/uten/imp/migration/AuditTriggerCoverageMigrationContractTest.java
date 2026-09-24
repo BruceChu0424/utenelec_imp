@@ -243,7 +243,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "attachment_upload_sessions", "business_outbox", "hr_task_claims",
                         "procurement_iqc_rejection_commands", "production_daily_report_commands",
                         "production_fqc_release_commands", "production_material_analysis_commands",
-                        "production_planning_drafts", "stock_value_jobs",
+                        "production_planning_drafts", "production_planning_urges", "stock_value_jobs",
                         "stock_value_production_cost_dirty", "stock_value_production_cost_tasks",
                         "stock_value_tasks", "subcontract_outbound_preparation_commands",
                         "task_claims", "warehouse_arrival_registration_commands")),

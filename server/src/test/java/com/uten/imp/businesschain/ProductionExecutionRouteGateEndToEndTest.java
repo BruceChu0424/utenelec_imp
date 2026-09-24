@@ -73,19 +73,22 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     @Test
-    void newTaskWaitsForRouteEvenWhenMaterialsArrive() {
+    void newTaskDefaultsToContinuousButStillRequiresActualIssueAndExplicitStart() {
         Case c=create("rg-kit",false);
-        assertNull(route(c.segment()));
-        assertFalse(allowsAutoPromote(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertTrue(allowsAutoPromote(c.segment()));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_DEFAULTED' AND created_by IS NULL",Integer.class,c.segment()));
         receive(c,c.material(),c.leaf(),"100");
-        assertEquals("WAITING",status(c.segment()));
-        assertEquals(0,drawCount(c.segment()));
+        assertEquals("READY",status(c.segment()));
+        assertEquals(1,drawCount(c.segment()));
+        qty("0",capacity(c));
         fixture.loginAs(c.workerUser());
-        assertTrue(assertThrows(ApiException.class,()->segments.start(c.plan(),c.segment(),
-                new SegmentTransitionRequest(version(c.segment()),"rg-unconfirmed-start"))).getMessage().contains("确认生产路线"));
-        assertThrows(ApiException.class,()->drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(
-                List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(c.segment(),version(c.segment()))))));
+        assertThrows(ApiException.class,()->segments.start(c.plan(),c.segment(),
+                new SegmentTransitionRequest(version(c.segment()),"rg-unissued-start")));
+        assertFalse(drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(
+                List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(c.segment(),version(c.segment()))))).lines().isEmpty());
         assertThrows(ApiException.class,()->batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),null)));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action IN('START','ROUTE_CONFIRMED')",Integer.class,c.segment()));
         confirm(c,"FULL_KIT");
         assertEquals("READY",status(c.segment()));
         issueDraws(c);
@@ -375,6 +378,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Test
     void backgroundPreparedDirectMaterialKeepsAnExplicitStartEntry() {
         Case c=create("rg-system-direct",true);
+        confirm(c,"BATCH");
         transfer(c,"20");
         assertEquals("WAITING",status(c.segment()));
         // Exact upgrade fixture: V606 saved the old route and V611 activates its supply mode.
@@ -446,9 +450,12 @@ class ProductionExecutionRouteGateEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         UUID outsider=fixture.createUserWithPerms(c.world(),"adv-other-workshop","production_execution:view","production_execution:start");
         fixture.loginAs(outsider);
+        long originalVersion=version(c.segment());
         assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()),"adv-foreign-route","CONTINUOUS")));
-        assertNull(route(c.segment()));
+                new SegmentRouteConfirmRequest(originalVersion,"adv-foreign-route","FULL_KIT")));
+        assertEquals(originalVersion,version(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",Integer.class,c.segment()));
         confirm(c,"CONTINUOUS"); receive(c,c.material(),c.leaf(),"10");
         fixture.loginAs(outsider);
         assertThrows(ApiException.class,()->drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(
@@ -469,9 +476,11 @@ class ProductionExecutionRouteGateEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         segments.assign(c.plan(),c.segment(),new com.uten.imp.features.production.execution.SegmentAssignmentRequest(
                 version(c.segment()),"adv-clear-assignment",null,null,null,null,null));
+        long unassignedVersion=version(c.segment());
         assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
                 new SegmentRouteConfirmRequest(version(c.segment()),"adv-defer-batch","BATCH")));
-        assertNull(route(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertEquals(unassignedVersion,version(c.segment()));
         segments.assign(c.plan(),c.segment(),new com.uten.imp.features.production.execution.SegmentAssignmentRequest(
                 version(c.segment()),"adv-restore-assignment",c.workshop(),null,c.worker(),BusinessTime.today(),BusinessTime.today().plusDays(10)));
         confirm(c,"CONTINUOUS"); receive(c,c.material(),c.leaf(),"10");
@@ -643,13 +652,14 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     @Test
-    void directReceiptBeforeRouteConfirmationAlsoFreezesWorkshopCustody() {
+    void directReceiptOnTheDefaultRouteFreezesWorkshopCustodyBeforeManualRouteChoice() {
         Case c=create("adv-move-direct",true);
         transfer(c,"20");
-        assertNull(route(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",Integer.class,c.segment()));
         var target=otherWorkshopAssignment(c,"adv-move-direct");
         assertThrows(ApiException.class,()->segments.assign(c.plan(),c.segment(),target),
-                "路线确认前已经实际收到的直送料也属于原车间");
+                "默认路线下已经实际收到的直送料属于原车间");
         assertEquals(c.workshop(),db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE id=?",UUID.class,c.segment()));
     }
 
@@ -817,6 +827,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Test
     void explicitSameAssignmentRepairsLegacyUnissuedRecipientAndPreservesActualLeafWarehouse() {
         Case c=create("adv-legacy-unissued",false);
+        confirm(c,"FULL_KIT");
         receive(c,c.material(),c.leaf(),"10");
         var historical=otherWorkshopAssignment(c,"adv-legacy-receiver");
         UUID document=legacyPendingDraw(c,historical,true);
@@ -833,6 +844,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Test
     void historicalWrongWorkshopIssueCannotStartAndIssuedHistoryIsNotRewritten() {
         Case c=create("adv-legacy-start",false);
+        confirm(c,"FULL_KIT");
         receive(c,c.material(),c.leaf(),"10");
         var historical=otherWorkshopAssignment(c,"adv-legacy-physical");
         UUID document=legacyPendingDraw(c,historical,true);
@@ -859,6 +871,7 @@ class ProductionExecutionRouteGateEndToEndTest {
                 .filter(row->row.segmentId().equals(c.segment())).findFirst().orElseThrow();
         assertFalse(task.canReport()); assertTrue(task.blockedReason().contains("车间不一致"));
         var report=adversarialFinalReport(c); report.getItems().getFirst().setIsFinal(false); report.getItems().getFirst().setQty(BigDecimal.ONE);
+        report.getMaterialLines().getFirst().setQtyBase(BigDecimal.ONE);
         assertTrue(assertThrows(ApiException.class,()->reports().create(report)).getMessage().contains("车间"));
         assertTrue(beans.getBean(com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService.class)
                 .list(1,50,null,c.workshop(),List.of(c.segment())).getItems().isEmpty());
@@ -1038,9 +1051,11 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     @Test
-    void unissuedDirectMaterialCanGoToNormalStockBeforeAnyRouteOrIssue() {
-        Case c=create("adv-free-direct-return",true,"10"); transfer(c,"10");
-        assertThrows(ApiException.class,()->confirm(c,"BATCH"),"已有真实直送料不能再进入未使用任务的独立拆批路线");
+    void unissuedDirectMaterialCanGoToNormalStockBeforeIssueOnAnExplicitBatchRoute() {
+        Case c=create("adv-free-direct-return",true,"10"); confirm(c,"BATCH"); transfer(c,"10");
+        assertEquals("BATCH",route(c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_splits WHERE source_segment_id=?",Integer.class,c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='START'",Integer.class,c.segment()));
         fixture.loginAs(c.workerUser());
         var returns=beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService.class);
         var source=returns.sources(c.plan(),c.segment()).stream().filter(row->"DIRECT_LOT".equals(row.sourceType())).findFirst().orElseThrow();
@@ -1049,7 +1064,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         var unissuedTask=beans.getBean(com.uten.imp.features.production.execution.ProductionExecutionWorkbenchService.class)
                 .workshopTasks(1,50,null,null,c.workshop(),null,null).getItems().stream()
                 .filter(task->task.segmentId().equals(c.segment())).findFirst().orElseThrow();
-        assertTrue(unissuedTask.hasMaterialActivity(),"未选路线的已到直送料必须在车间任务显示物料入口");
+        assertTrue(unissuedTask.hasMaterialActivity(),"已到但未投入的直送料必须在车间任务显示物料入口");
         assertFalse(unissuedTask.hasUnregisteredMaterial(),"尚未实际领入的直送料不能虚标待登记实耗");
         var request=returns.submit(c.plan(),new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(
                 c.segment(),"adv-free-direct-to-normal","当前车间收到的三件直送料实际送到正常仓库",
@@ -1064,10 +1079,12 @@ class ProductionExecutionRouteGateEndToEndTest {
                 new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(source.sourceWarehouseId(),"adv-reject-tech-as-receiving")));
         stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-free-direct-received"));
         qty("7",physical(source.sourceWarehouseId(),c.material())); qty("3",physical(c.leaf(),c.material()));
-        assertEquals("WAITING",status(c.segment())); assertNull(route(c.segment()));
+        assertEquals("WAITING",status(c.segment())); assertEquals("BATCH",route(c.segment()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_stock_postings WHERE demand_id=?",Integer.class,parentDemand(c)));
         qty("3",db.queryForObject("SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations WHERE warehouse_id=? AND goods_id=? AND owner_type='WORKSHOP_CUSTODY' AND NOT is_deleted",BigDecimal.class,c.leaf(),c.material()));
-        confirm(c,"FULL_KIT"); issueDraws(c); start(c); qty("10",capacity(c));
+        confirm(c,"FULL_KIT");
+        segments.recheckMaterial(c.plan(),c.segment(),new SegmentTransitionRequest(version(c.segment()),"adv-free-direct-explicit-reclaim"));
+        issueDraws(c); start(c); qty("10",capacity(c));
         fixture.loginAs(c.world().superAdminUserId());
         int originalMovements=db.queryForObject("SELECT COUNT(*) FROM stock_movements WHERE source_doc_id=?",Integer.class,request.documentId());
         assertTrue(assertSqlIntegrity(()->stock.reverse(request.documentId())).contains("already been issued"),
@@ -1079,7 +1096,7 @@ class ProductionExecutionRouteGateEndToEndTest {
 
     @Test
     void unusedPreparedDirectReturnAndReversalAdjustOnlyExactPickingInstructions() {
-        Case c=create("adv-held-direct-return",true,"10"); transfer(c,"10");
+        Case c=create("adv-held-direct-return",true,"10"); confirm(c,"BATCH"); transfer(c,"10");
         // An upgrade-era saved route is reconciled without impersonating staff;
         // every physical direct receipt and formal allocation remains genuine.
         db.update("UPDATE production_execution_segments SET start_route='FULL_KIT',route_confirmed_at=now() WHERE id=?",c.segment());
@@ -1182,7 +1199,7 @@ class ProductionExecutionRouteGateEndToEndTest {
 
     @Test
     void continuousStartUsesOnlyTheUnfrozenDirectQuantityWhileSurplusWaitsForReceipt() {
-        Case c=create("adv-cont-direct-freeze",true,"10"); transfer(c,"10");
+        Case c=create("adv-cont-direct-freeze",true,"10"); confirm(c,"BATCH"); transfer(c,"10");
         db.update("UPDATE production_execution_segments SET start_route='CONTINUOUS',continuous_supply=TRUE,route_confirmed_at=now() WHERE id=?",c.segment());
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
         var reconciler=beans.getBean(com.uten.imp.features.production.fulfillment.ProductionReadinessReconciler.class);
@@ -1298,7 +1315,11 @@ class ProductionExecutionRouteGateEndToEndTest {
         line.setQty(new BigDecimal("4")); line.setIsFinal(true);
         var allocation=db.queryForMap("SELECT id,sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",c.segment());
         line.setExecutionSegmentSalesAllocationId((UUID)allocation.get("id")); line.setSalesOrderItemId((UUID)allocation.get("sales_order_item_id"));
-        request.setItems(List.of(line)); return request;
+        request.setItems(List.of(line));
+        var actualUse=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+        actualUse.setDemandId(parentDemand(c));actualUse.setQtyBase(new BigDecimal("4"));
+        request.setMaterialLines(List.of(actualUse));
+        return request;
     }
 
     private static String assertSqlIntegrity(Runnable attack) {

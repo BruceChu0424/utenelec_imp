@@ -2126,7 +2126,13 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 其余已建自制锚点的行，真实已下达量在锚点产品的计划总量上(含公共备货产出)；
   /// 采购 / 直接外发委外的行在申请明细上 = 归本需求的分摊量 + 同一条行动记的
   /// 公共备货份。一行只可能是其中一种，不会同时成立。
-  double _tableGroupIssuedQty(_MaterialGroup group) {
+  ///
+  /// [authoritative] = 只看权威快照(下单后比对「这次刚下了什么」用，ADR-117)：模拟快照里
+  /// 的锚点计划量已经按「假如下达」放大过，拿它当基线会把没下的量算成已下。
+  double _tableGroupIssuedQty(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
     final route = _draftRoute(group);
     // 走车间通道的行(自制、要先自制目标件的委外)按锚点产品的计划总量：要先自制的委外
     // 建过前置自制任务(SUBCONTRACT_MAKE 锚点)后, 它「已下达」的是那张计划, 不是后面
@@ -2134,7 +2140,7 @@ abstract class _MaterialAnalysisMaterialTableState
     // 父件一追加就把它算成还缺、再送一段 ARRANGE 吃 409(2026-09-22 用户实机
     // 「有些子层级之前一次多下了, 这次就是不需要下」)。没建过锚点的委外照旧按申请明细。
     if (_tableUsesMakeAnchor(group)) {
-      final anchor = _tableMakeAnchorOf(group);
+      final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
       if (anchor != null) {
         return anchor.issuedPlanQty * _tableAnchorUnitRate(group, anchor);
       }
@@ -3778,10 +3784,15 @@ abstract class _MaterialAnalysisMaterialTableState
     return (visible: visible, hidden: hidden);
   }
 
+  /// [fromShortagePage] = 从「补下层物料」页提交(ADR-117)：不再弹下单后的子层检查
+  /// (那一页自己会按新快照列出下一层)，确认框也不提主表里藏起来的勾选行。
   @override
-  Future<void> _submitMaterialTableRows(List<_MaterialGroup> groups) async {
+  Future<bool> _submitMaterialTableRows(
+    List<_MaterialGroup> groups, {
+    bool fromShortagePage = false,
+  }) async {
     final analysis = _analysis;
-    if (analysis == null || _busy || groups.isEmpty) return;
+    if (analysis == null || _busy || groups.isEmpty) return false;
 
     final pending = <_MaterialGroup, double>{};
     final blocked = <String>[];
@@ -3811,18 +3822,26 @@ abstract class _MaterialAnalysisMaterialTableState
         context.appWarning(
           '「${_tableGroupLabel(group)}」允许超产比例无效，请输入非负百分比，最多 4 位小数',
         );
-        return;
+        return false;
       }
       pending[group] = qty;
     }
     if (pending.isEmpty) {
-      if (!mounted) return;
+      if (!mounted) return false;
       context.appInfo(
         blocked.isEmpty ? '所选的行本次都没有要下的数量，请先在「下单数量」或「追加下单」里填数' : blocked.first,
       );
-      return;
+      return false;
     }
-    if (!await _confirmMaterialTableSubmit(pending, blocked)) return;
+    if (!await _confirmMaterialTableSubmit(
+      pending,
+      blocked,
+      hiddenSelected: fromShortagePage ? 0 : _selectedIssuableGroups().hidden,
+    )) {
+      return false;
+    }
+    // ADR-117：下单前记下每件的累计已下单量，下完比一比就知道这次刚下了什么。
+    final issuedBefore = _issuedQtySnapshot();
 
     final steps = <({String label, bool ok, String? note})>[];
     final done = <String>{};
@@ -3941,7 +3960,7 @@ abstract class _MaterialAnalysisMaterialTableState
       _tableSubmitting = false;
     }
 
-    if (!mounted) return;
+    if (!mounted) return false;
     // 成功下达的行：追加格回 0、勾选撤掉；失败的保留，让人原地重试。
     setState(() {
       if (steps.every((step) => step.ok)) {
@@ -3967,6 +3986,18 @@ abstract class _MaterialAnalysisMaterialTableState
       _tableTransferableInScope = null;
     });
     _reportMaterialTableSubmit(steps, blocked);
+    final allOk = steps.isNotEmpty && steps.every((step) => step.ok);
+    // ADR-117：只要有一段下成了，就看刚下单的件下面还缺不缺料——「父件下成、子件那段失败」
+    // 正是要提醒的情形；什么都没下成时前后快照一样，自然不弹。补料页自己会列下一层，不再弹。
+    if (steps.any((step) => step.ok)) {
+      if (fromShortagePage) {
+        // 补料页下成了：马上核对车间催办(补料页被关掉也照样办结撤卡)。
+        unawaited(_reconcileWorkshopUrgesAfterOrder());
+      } else {
+        unawaited(_checkChildShortagesAfterOrder(issuedBefore));
+      }
+    }
+    return allOk;
   }
 
   /// 车间段的一层：顶层自制走 planDrafts、其余候选走 candidateInputs，一次 issue-plans。
@@ -4049,15 +4080,15 @@ abstract class _MaterialAnalysisMaterialTableState
 
   Future<bool> _confirmMaterialTableSubmit(
     Map<_MaterialGroup, double> pending,
-    List<String> blocked,
-  ) async {
+    List<String> blocked, {
+    required int hiddenSelected,
+  }) async {
     final lines = <String>[
       for (final entry in pending.entries)
         '· ${_tableGroupLabel(entry.key)}'
             ' ${_tableIssueTarget(entry.key).label} ${_qty(entry.value)}'
             '${_tableGroupIssued(entry.key) ? "(追加)" : ""}',
     ];
-    final hiddenSelected = _selectedIssuableGroups().hidden;
     final confirmed = await UtenDialog.show(
       context,
       title: '确认下达 ${pending.length} 行？',
@@ -4570,13 +4601,22 @@ abstract class _MaterialAnalysisMaterialTableState
         enabled: !_busy && executable,
         onTap: () async {
           if (!executable) return;
+          final before = _issuedQtySnapshot();
+          var ordered = false;
           switch (route) {
             case MaterialSupplyRoute.buy:
-              await _notifyRoute(route, onlyGroupKeys: {group.key});
+              ordered =
+                  await _notifyRoute(route, onlyGroupKeys: {group.key}) != null;
             case MaterialSupplyRoute.subcontract:
-              await _arrangeSubcontractProduction(onlyGroupKeys: {group.key});
+              ordered = await _arrangeSubcontractProduction(
+                onlyGroupKeys: {group.key},
+              );
             case MaterialSupplyRoute.make:
               break;
+          }
+          // ADR-117：委外件下单后同样查一遍下层(采购件没有下层，查了也是空)。
+          if (ordered && mounted) {
+            unawaited(_checkChildShortagesAfterOrder(before));
           }
         },
       ),

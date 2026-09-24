@@ -327,6 +327,8 @@ class _MaterialAnalysisBucketPageState
     List<_ChildCascadeSeed> seeds,
   ) async {
     if (_running || requests.isEmpty || seeds.isEmpty) return;
+    // ADR-117：下单前记下每件的累计已下单量，下完比一比就知道这次刚下了什么。
+    final issuedBefore = _host._issuedQtySnapshot();
     // ADR-099：下层数字由服务端算——车间通道先请求「下达预览」（服务端真实
     // 跑一遍 issue-plans 再整体回滚），期间挂加载遮罩；预览失败如实报错、
     // 不提交父件。采购件没有下层，不发请求。
@@ -387,6 +389,12 @@ class _MaterialAnalysisBucketPageState
     // 与 [_run] 同一条口径：只有下达车间桶成功才退出分桶页；采购/委外留在
     // 本页供计划员接着办下一批（2026-09-14：原来级联成功一律 pop，把委外桶也关了）。
     _popIfWorkshopIssued(finished);
+    // ADR-117：下完之后看刚下单的件下面还缺不缺料——「父件 + 下层一起下单」页里
+    // 取消勾选的下层、以后才下的更深一层，都在这里补一句提醒。弹窗叠在当前最上层
+    // (车间桶已退回物料分析页，采购 / 委外桶仍在本页)。父件下成、下层那段失败或中途
+    // 退出(finished=false)也要提醒；什么都没下成时前后快照一样，自然不弹。
+    await _host._checkChildShortagesAfterOrder(issuedBefore);
+    if (mounted) setState(() {});
   }
 
   /// 委外桶的一颗种子：通道、上限与驱动量三者必须与**服务端实际会收到的那

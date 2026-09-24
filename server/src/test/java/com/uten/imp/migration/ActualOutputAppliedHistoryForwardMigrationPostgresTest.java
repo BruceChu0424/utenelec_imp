@@ -33,15 +33,23 @@ class ActualOutputAppliedHistoryForwardMigrationPostgresTest {
 
             seedHistory(jdbc);
             Map<String,String> before = snapshot(jdbc);
-            assertThat(migration(database, "705").migrate().migrationsExecuted).isEqualTo(4);
-            migration(database, "705").validate();
+            // Cloud V703 is preserved before the local follow-ups; the plan column
+            // is intentionally introduced only by the unapplied migration renamed V707.
+            assertThat(migration(database, "703").migrate().migrationsExecuted).isEqualTo(2);
+            assertThat(jdbc.queryForObject("SELECT to_regclass('production_planning_urges')::text", String.class))
+                    .isEqualTo("production_planning_urges");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='production_plan_items' AND column_name='allowed_overproduction_rate'", Long.class))
+                    .isZero();
+            assertThat(snapshot(jdbc)).isEqualTo(before);
+            assertThat(migration(database, "707").migrate().migrationsExecuted).isEqualTo(4);
+            migration(database, "707").validate();
             assertThat(snapshot(jdbc)).isEqualTo(before);
             assertThat(jdbc.queryForObject("SELECT allowed_overproduction_rate FROM production_plan_items", java.math.BigDecimal.class))
                     .isEqualByComparingTo("0.10");
             assertThat(jdbc.queryForObject("SELECT material_increment_request_id FROM production_material_demands", UUID.class))
                     .isNull();
             assertForwardGuards(jdbc);
-            assertThat(migration(database, "705").migrate().migrationsExecuted).isZero();
+            assertThat(migration(database, "707").migrate().migrationsExecuted).isZero();
             assertThat(snapshot(jdbc)).isEqualTo(before);
         }
     }
@@ -50,8 +58,8 @@ class ActualOutputAppliedHistoryForwardMigrationPostgresTest {
     void cleanDatabaseAndRepeatedMigrateHaveTheSameForwardGuards() {
         try (var database = new PostgreSQLContainer<>("postgres:16-alpine")) {
             database.start();
-            var migration = migration(database, "705");
-            assertThat(migration.migrate().targetSchemaVersion).isEqualTo("705");
+            var migration = migration(database, "707");
+            assertThat(migration.migrate().targetSchemaVersion).isEqualTo("707");
             migration.validate();
             assertForwardGuards(jdbc(database));
             assertThat(migration.migrate().migrationsExecuted).isZero();
@@ -106,6 +114,16 @@ class ActualOutputAppliedHistoryForwardMigrationPostgresTest {
     }
 
     private static void assertForwardGuards(JdbcTemplate jdbc) {
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL", Long.class))
+                .isEqualTo(636);
+        assertThat(jdbc.queryForObject("SELECT script FROM flyway_schema_history WHERE version='703'", String.class))
+                .isEqualTo("V703__workshop_planning_urges.sql");
+        assertThat(jdbc.queryForObject("SELECT script FROM flyway_schema_history WHERE version='707'", String.class))
+                .isEqualTo("V707__planned_initial_overproduction_allowance.sql");
+        assertThat(jdbc.queryForObject("SELECT pg_get_functiondef('fn_initialize_execution_overproduction_rate()'::regprocedure)", String.class))
+                .contains("production_plan_items", "allowed_overproduction_rate");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='production_daily_report_target_events' AND column_name='overproduction_authorizations'", Long.class))
+                .isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT pg_get_functiondef('fn_actual_supplement_material_ready(uuid)'::regprocedure)",String.class))
                 .contains("LANGUAGE plpgsql", "fn_actual_supplement_increment_identity(target.id)");
         assertThat(jdbc.queryForObject("SELECT pg_get_functiondef('fn_execution_material_output_capacity(uuid,boolean)'::regprocedure)",String.class))

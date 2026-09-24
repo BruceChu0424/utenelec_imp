@@ -27,6 +27,7 @@ class ProductionWorkbenchBadgeSources implements WorkbenchBadgeSources {
     private final ProductionFqcInspectionController fqcInspections;
     private final com.uten.imp.features.production.execution.ProductionOverproductionRateController overproductionRates;
     private final com.uten.imp.features.production.fulfillment.ProductionMaterialIncrementController materialIncrements;
+    private final com.uten.imp.features.production.analysis.MaterialAnalysisWorkshopUrgeController materialAnalysisUrges;
 
     @Override
     public List<Source> sources() {
@@ -36,6 +37,8 @@ class ProductionWorkbenchBadgeSources implements WorkbenchBadgeSources {
                 new Source("productionExecution", () -> WorkbenchBadgeSources.numbers(executionWorkbench.count())),
                 new Source("fqcPending", () -> WorkbenchBadgeSources.numbers(fqcInspections.count())),
                 new Source("productionOverproductionRate", () -> WorkbenchBadgeSources.numbers(overproductionRates.count())),
-                new Source("productionMaterialIncrement", () -> WorkbenchBadgeSources.numbers(materialIncrements.count())));
+                new Source("productionMaterialIncrement", () -> WorkbenchBadgeSources.numbers(materialIncrements.count())),
+                // ADR-117 车间催计划下单子层物料：计划员可见的物料分析上仍在催的车间任务数。
+                new Source("productionPlanningUrge", () -> WorkbenchBadgeSources.numbers(materialAnalysisUrges.workshopUrgeCount())));
     }
 }

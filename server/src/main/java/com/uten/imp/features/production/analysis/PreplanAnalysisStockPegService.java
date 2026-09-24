@@ -204,6 +204,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         // 一对一 exact-peg 子账，避免同分析内相同物料的兄弟产品抢占。
         BigDecimal remaining = stockedBaseQty;
         Map<UUID, BigDecimal> legacyRemainingByAnalysis = new LinkedHashMap<>();
+        List<PreplanStockEntitlementService.OriginAppendResult> origins = new ArrayList<>();
         for (Object[] anchor : anchors) {
             if (remaining.signum() <= 0) {
                 break;
@@ -293,11 +294,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 if (take.signum() <= 0) {
                     continue;
                 }
-                insertExactReservation(
+                origins.add(insertExactReservation(
                         allocationId, analysisId, analysisMaterialId,
                         warehouseId, goodsId, colorId, take,
                         supplyType, externalItemId, receiptType, receiptId,
-                        dispositionEventId, warehouseStockInItemId);
+                        dispositionEventId, warehouseStockInItemId));
                 remaining = remaining.subtract(take);
                 if (sharedClaim) {
                     sharedOrderBudget = sharedOrderBudget.subtract(take);
@@ -306,6 +307,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 }
             }
         }
+        // The whole physical receipt is already in stock. Establish every
+        // beneficiary before readiness can consume its unassigned remainder;
+        // otherwise a continuous task can take a later claimant's slice as public.
+        applyOriginPriority(origins);
         // 超出分析分摊量的部分（含财务特批超收）不绑定，按公共现货处理。
     }
 
@@ -397,6 +402,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
 
         Map<UUID, BigDecimal> formalRemainingByPlanItem = new HashMap<>();
         Map<UUID, BigDecimal> legacyRemainingByAnalysis = new HashMap<>();
+        List<PreplanStockEntitlementService.OriginAppendResult> origins = new ArrayList<>();
         for (FinishedInboundSlice line : lines) {
             if (line.baseQty() == null || line.baseQty().signum() <= 0) continue;
             inventoryLock.lock(new InventoryKey(line.goodsId(), line.colorId()));
@@ -456,11 +462,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 BigDecimal take = capacity.subtract(legacyUse)
                         .max(BigDecimal.ZERO).min(remaining);
                 if (take.signum() <= 0) continue;
-                insertExactMakeReservation(
+                origins.add(insertExactMakeReservation(
                         allocationId, null, analysisId, materialId,
                         warehouseId, line.goodsId(), line.colorId(), take,
                         line.planItemId(), stockDocumentId,
-                        line.stockDocumentItemId());
+                        line.stockDocumentItemId()));
                 remaining = remaining.subtract(take);
             }
             if (remaining.signum() > 0 && parentAnalysisMaterialId != null) {
@@ -470,13 +476,16 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         parentAnalysisMaterialId, stockDocumentId);
                 BigDecimal take = remaining.min(capacity);
                 if (take.signum() > 0) {
-                    insertExactMakeReservation(null, analysisItemId, analysisId,
+                    origins.add(insertExactMakeReservation(null, analysisItemId, analysisId,
                             parentAnalysisMaterialId, warehouseId, line.goodsId(), line.colorId(), take,
-                            line.planItemId(), stockDocumentId, line.stockDocumentItemId());
+                            line.planItemId(), stockDocumentId, line.stockDocumentItemId()));
                 }
             }
             // Output beyond original demand plus recorded reallocation make responsibility remains public.
         }
+        // All FINISHED_IN lines share the same already-booked stock movement batch.
+        // Reserve every source slice before any task may acquire public output.
+        applyOriginPriority(origins);
     }
 
     private BigDecimal directMakeCapacity(UUID analysisId, UUID childId, UUID materialId, UUID currentDocument) {
@@ -879,6 +888,31 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         return List.copyOf(preview);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<PreviewPlanTransfer> previewAnalysisDemandTransfers(UUID analysisId, UUID warehouseId,
+            List<DemandSlice> demands, List<UUID> matchingMaterialIds,
+            List<PreviewPlanTransfer> priorTransfers, List<PreviewPublicReservation> priorPublicReservations) {
+        if (demands.isEmpty()) return List.of();
+        List<UUID> materials = matchingMaterialIds.stream().distinct().toList();
+        if (analysisId == null || !materials.isEmpty() && ((Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM production_material_analysis_materials
+                WHERE analysis_id=:analysis AND id IN (:ids) AND active
+                """).setParameter("analysis", analysisId).setParameter("ids", materials).getSingleResult()).intValue() != materials.size()) {
+            throw new IllegalStateException("Issue preview lacks its original analysis material identities");
+        }
+        if (materials.isEmpty() && ((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM production_material_demands demand JOIN production_plans plan ON plan.id=demand.plan_id
+                WHERE demand.id IN (:ids) AND NOT demand.is_deleted AND plan.material_analysis_id=:analysis
+                """).setParameter("ids",demands.stream().map(DemandSlice::demandId).distinct().toList())
+                .setParameter("analysis",analysisId).getSingleResult()).intValue()!=demands.size())
+            throw new IllegalStateException("Issue preview lacks its original frozen demand identities");
+        List<PreviewPlanTransfer> preview = new ArrayList<>();
+        selectPlanDemandTransfers(analysisId, null, warehouseId, demands, null, false, false, preview, false,
+                materials, priorTransfers, priorPublicReservations);
+        return List.copyOf(preview);
+    }
+
     /**
      * @param leafOnly 只取 {@code warehouseId} 这一个叶仓里的批次(V595 线边仓补投)；false 时按
      *                 「同主仓 + 合格来源跟随实际仓」的下达口径选源。
@@ -886,12 +920,21 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     private List<PreparedPlanTransfer> selectPlanDemandTransfers(UUID analysisId,UUID planId,UUID warehouseId,
             List<DemandSlice> demands,UUID actorId,boolean explicitActor,boolean write,List<PreviewPlanTransfer> preview,
             boolean leafOnly) {
+        return selectPlanDemandTransfers(analysisId, planId, warehouseId, demands, actorId, explicitActor,
+                write, preview, leafOnly, null, List.of(), List.of());
+    }
+
+    private List<PreparedPlanTransfer> selectPlanDemandTransfers(UUID analysisId, UUID planId, UUID warehouseId,
+            List<DemandSlice> demands, UUID actorId, boolean explicitActor, boolean write, List<PreviewPlanTransfer> preview,
+            boolean leafOnly, List<UUID> previewMaterials, List<PreviewPlanTransfer> priorTransfers,
+            List<PreviewPublicReservation> priorPublicReservations) {
         if(write)tx.bind();
-        if (analysisId == null || planId == null || warehouseId == null
+        if (analysisId == null || (planId == null && previewMaterials == null) || warehouseId == null
                 || demands == null || demands.isEmpty()) {
             return List.of();
         }
-        List<UUID> analysisItemIds = NativeQueryResults.typedRows(
+        if (write && previewMaterials != null) throw new IllegalStateException("Memory-only material scope cannot write");
+        List<UUID> analysisItemIds = previewMaterials != null ? List.of() : NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT material_analysis_item_id
                         FROM production_plans
@@ -903,11 +946,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         .setParameter("planId", planId)
                         .setParameter("analysisId", analysisId),
                 UUID.class);
-        if (analysisItemIds.size() != 1) {
+        if (previewMaterials == null && analysisItemIds.size() != 1) {
             throw new IllegalStateException(
                     "Formal plan lacks one material-analysis item identity");
         }
-        UUID analysisItemId = analysisItemIds.getFirst();
+        UUID analysisItemId = analysisItemIds.isEmpty() ? null : analysisItemIds.getFirst();
         List<DemandSlice> orderedDemands = demands.stream()
                 .filter(demand -> demand != null
                         && demand.demandId() != null
@@ -926,29 +969,40 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
 
         List<PreparedPlanTransfer> prepared = new ArrayList<>();
         Map<UUID, BigDecimal> preparedByEntitlementLot = new HashMap<>();
+        Map<UUID, BigDecimal> priorByReservation = new HashMap<>();
+        Map<UUID, BigDecimal> priorLegacy = new HashMap<>();
+        for (PreviewPlanTransfer prior : priorTransfers) {
+            if (prior.sourceEntitlementEventId() != null) preparedByEntitlementLot.merge(
+                    prior.sourceEntitlementEventId(), prior.qty(), BigDecimal::add);
+            else if (prior.sourceReservationId() != null) priorLegacy.merge(prior.sourceReservationId(), prior.qty(), BigDecimal::add);
+            if (prior.sourceReservationId() != null && (prior.beneficiaryMaterialId() == null
+                    || previewMaterials != null && previewMaterials.contains(prior.beneficiaryMaterialId()))) {
+                priorByReservation.merge(prior.sourceReservationId(), prior.qty(), BigDecimal::add);
+            }
+        }
         Map<TransferDimension, BigDecimal> transferableByDimension = new HashMap<>();
         Map<UUID,Boolean> qualifiedByReservation=new HashMap<>();
         for (DemandSlice demand : orderedDemands) {
             if(write)inventoryLock.lock(new InventoryKey(demand.goodsId(), demand.colorId()));
             BigDecimal remaining = demand.requiredQty();
-            List<UUID> materialIds = NativeQueryResults.typedRows(
-                    em.createNativeQuery("""
+            var materialQuery = em.createNativeQuery("""
                             SELECT id
                             FROM production_material_analysis_materials
                             WHERE analysis_id = :analysisId
-                              AND fn_analysis_plan_material_matches(
-                                  :analysisItemId, id)
+                              AND %s
                               AND goods_id = :goodsId
                               AND color_id IS NOT DISTINCT FROM
                                   CAST(:colorId AS uuid)
                               AND active = TRUE
                             ORDER BY path, id
-                            """)
+                            """.formatted(previewMaterials == null
+                                    ? "fn_analysis_plan_material_matches(:analysisItemId, id)" : previewMaterials.isEmpty()?"FALSE":"id IN (:previewMaterials)"))
                             .setParameter("analysisId", analysisId)
-                            .setParameter("analysisItemId", analysisItemId)
                             .setParameter("goodsId", demand.goodsId())
-                            .setParameter("colorId", demand.colorId()),
-                    UUID.class);
+                            .setParameter("colorId", demand.colorId());
+            if (previewMaterials == null) materialQuery.setParameter("analysisItemId", analysisItemId);
+            else if(!previewMaterials.isEmpty()) materialQuery.setParameter("previewMaterials", previewMaterials);
+            List<UUID> materialIds = NativeQueryResults.typedRows(materialQuery, UUID.class);
             for (UUID materialId : materialIds) {
                 if (remaining.signum() <= 0) break;
                 List<PreplanStockEntitlementService.AvailableLot> lots = leafOnly
@@ -977,14 +1031,16 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             lot.warehouseId(), demand.goodsId(), demand.colorId());
                     BigDecimal budget = transferableByDimension.computeIfAbsent(
                             dimension, ignored -> formalTransferBudget(
-                                    analysisId, analysisItemId, warehouseId, dimension));
+                                    analysisId, analysisItemId, warehouseId, dimension, previewMaterials,
+                                    priorByReservation, priorPublicReservations));
                     BigDecimal take = available.min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
                     if(write)consumeForFormalize(lot.stockReservationId(), take, actorId, explicitActor);
                     if(preview!=null)preview.add(new PreviewPlanTransfer(demand.demandId(),lot.warehouseId(),take,
                             qualifiedByReservation.computeIfAbsent(lot.stockReservationId(),reservationId->Boolean.TRUE.equals(
                                     em.createNativeQuery("SELECT fn_preplan_reservation_has_qualified_origin(:id)")
-                                            .setParameter("id",reservationId).getSingleResult())),true));
+                                            .setParameter("id",reservationId).getSingleResult())),true,
+                            lot.stockReservationId(), lot.entitlementEventId(), lot.beneficiaryAnalysisMaterialId()));
                     transferableByDimension.put(dimension, budget.subtract(take));
                     prepared.add(new PreparedPlanTransfer(
                             lot.entitlementEventId(), lot.stockReservationId(),
@@ -1045,12 +1101,15 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             (UUID) row[2], demand.goodsId(), demand.colorId());
                     BigDecimal budget = transferableByDimension.computeIfAbsent(
                             dimension, ignored -> formalTransferBudget(
-                                    analysisId, analysisItemId, warehouseId, dimension));
-                    BigDecimal take = decimal(row[1]).max(BigDecimal.ZERO)
+                                    analysisId, analysisItemId, warehouseId, dimension, previewMaterials,
+                                    priorByReservation, priorPublicReservations));
+                    BigDecimal take = decimal(row[1]).subtract(priorLegacy.getOrDefault((UUID) row[0], BigDecimal.ZERO)).max(BigDecimal.ZERO)
                             .min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
                     if(write)consumeForFormalize((UUID) row[0], take, actorId, explicitActor);
-                    if(preview!=null)preview.add(new PreviewPlanTransfer(demand.demandId(),(UUID)row[2],take,false,false));
+                    if(preview!=null)preview.add(new PreviewPlanTransfer(demand.demandId(),(UUID)row[2],take,false,false,
+                            (UUID) row[0], null, null));
+                    if (!write) priorLegacy.merge((UUID) row[0], take, BigDecimal::add);
                     transferableByDimension.put(dimension, budget.subtract(take));
                     remaining = remaining.subtract(take);
                 }
@@ -1066,8 +1125,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
 
     /** Qualified owned stock follows its actual leaf. Public/legacy stock keeps the normal local safety floor. */
     private BigDecimal formalTransferBudget(
-            UUID analysisId, UUID analysisItemId, UUID plannedWarehouseId, TransferDimension dimension) {
-        List<?> values = em.createNativeQuery("""
+            UUID analysisId, UUID analysisItemId, UUID plannedWarehouseId, TransferDimension dimension,
+            List<UUID> previewMaterials, Map<UUID, BigDecimal> priorByReservation,
+            List<PreviewPublicReservation> priorPublicReservations) {
+        BigDecimal priorPublic = priorPublicReservations.stream().filter(value ->
+                value.warehouseId().equals(dimension.warehouseId()) && value.goodsId().equals(dimension.goodsId())
+                        && Objects.equals(value.colorId(), dimension.colorId()))
+                .map(PreviewPublicReservation::qty).reduce(BigDecimal.ZERO, BigDecimal::add);
+        var query = em.createNativeQuery("""
                 WITH physical AS (
                     SELECT COALESCE(stock.qty,0) AS stock_qty,
                     COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
@@ -1075,7 +1140,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         WHERE r.goods_id = :goodsId
                           AND r.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                           AND (r.warehouse_id IS NULL OR r.warehouse_id = :warehouseId)
-                          AND r.status = 0 AND r.is_deleted = FALSE), 0) AS reserved_qty,
+                          AND r.status = 0 AND r.is_deleted = FALSE), 0) + :previewPublic AS reserved_qty,
                     GREATEST(COALESCE(goods.min_qty,0),0)::numeric AS safety_qty,
                     (NOT warehouse.is_defective AND NOT warehouse.is_line_side
                      AND fn_warehouse_same_main(warehouse.id,:plannedWarehouseId)) AS local_normal
@@ -1087,18 +1152,19 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     WHERE goods.id=:goodsId AND NOT goods.is_deleted
                 ), owned AS (
                     SELECT fn_preplan_reservation_has_qualified_origin(owned.id) AS qualified,
-                        CASE
+                        GREATEST(CASE
                         WHEN EXISTS (SELECT 1 FROM preplan_stock_entitlement_events tracked
                             WHERE tracked.stock_reservation_id = owned.id)
                         THEN COALESCE((SELECT SUM(entitlement.effective_qty)
                             FROM v_preplan_stock_entitlement_beneficiary_balance entitlement
                             WHERE entitlement.stock_reservation_id = owned.id
                               AND entitlement.beneficiary_analysis_id = :analysisId
-                              AND fn_analysis_plan_material_matches(:analysisItemId,
-                                  entitlement.beneficiary_analysis_material_id)), 0)
+                              AND %s), 0)
                         WHEN owned.owner_id = :analysisId
                         THEN owned.qty-owned.consumed_qty-owned.released_qty
-                        ELSE 0 END AS qty
+                        ELSE 0 END - COALESCE((SELECT used.qty
+                            FROM jsonb_to_recordset(CAST(:previewUsed AS jsonb)) used(id uuid, qty numeric)
+                            WHERE used.id=owned.id), 0), 0) AS qty
                         FROM stock_reservations owned
                         WHERE owned.goods_id = :goodsId
                           AND owned.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
@@ -1116,14 +1182,20 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     qualified_qty+CASE WHEN local_normal THEN GREATEST(stock_qty-reserved_qty+legacy_qty-safety_qty,0)
                                        ELSE 0 END),0)
                 FROM amounts
-                """)
+                """.formatted(previewMaterials == null
+                        ? "fn_analysis_plan_material_matches(:analysisItemId, entitlement.beneficiary_analysis_material_id)"
+                        : previewMaterials.isEmpty()?"FALSE":"entitlement.beneficiary_analysis_material_id IN (:previewMaterials)"))
                 .setParameter("analysisId", analysisId)
-                .setParameter("analysisItemId", analysisItemId)
                 .setParameter("plannedWarehouseId", plannedWarehouseId)
                 .setParameter("goodsId", dimension.goodsId())
                 .setParameter("colorId", dimension.colorId())
                 .setParameter("warehouseId", dimension.warehouseId())
-                .getResultList();
+                .setParameter("previewPublic", priorPublic)
+                .setParameter("previewUsed", new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(
+                        priorByReservation.entrySet().stream().map(entry -> Map.of("id", entry.getKey(), "qty", entry.getValue())).toList()).toString());
+        if (previewMaterials == null) query.setParameter("analysisItemId", analysisItemId);
+        else if(!previewMaterials.isEmpty()) query.setParameter("previewMaterials", previewMaterials);
+        List<?> values = query.getResultList();
         return values.isEmpty() ? BigDecimal.ZERO : decimal(values.getFirst());
     }
 
@@ -1344,7 +1416,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .getSingleResult());
     }
 
-    private void insertExactMakeReservation(
+    private PreplanStockEntitlementService.OriginAppendResult insertExactMakeReservation(
             UUID allocationId,
             UUID makeSourceAnalysisItemId,
             UUID analysisId,
@@ -1421,14 +1493,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "MAKE exact peg was not persisted"));
-        PreplanStockEntitlementService.OriginAppendResult origin =
-                entitlement.appendOriginMake(
+        return entitlement.appendOriginMake(
                 stockDocumentItemId, reservationId,
                 analysisId, analysisMaterialId, qtyBase,
                 exactPegId, stockDocumentId, stockDocumentItemId,
                 "PREPLAN-ENTITLEMENT-MAKE:" + stockDocumentItemId
                         + ":" + allocationId);
-        applyOriginPriority(origin);
     }
 
     BigDecimal legacyAttributed(
@@ -1461,7 +1531,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .getSingleResult());
     }
 
-    private void insertExactReservation(
+    private PreplanStockEntitlementService.OriginAppendResult insertExactReservation(
             UUID allocationId,
             UUID analysisId,
             UUID analysisMaterialId,
@@ -1529,14 +1599,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "exact peg was not persisted"));
-        PreplanStockEntitlementService.OriginAppendResult origin =
-                entitlement.appendOriginIqc(
+        return entitlement.appendOriginIqc(
                 warehouseStockInItemId, reservationId,
                 analysisId, analysisMaterialId, qtyBase,
                 exactPegId, receiptType, receiptId, dispositionEventId,
                 "PREPLAN-ENTITLEMENT-IQC:" + warehouseStockInItemId
                         + ":" + allocationId);
-        applyOriginPriority(origin);
     }
 
     private void insertReservation(
@@ -1852,14 +1920,16 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
     void applyOriginPriority(
             PreplanStockEntitlementService.OriginAppendResult origin) {
-        if (origin.inserted()) {
-            applyOriginPriority(origin.eventId());
-        }
+        applyOriginPriority(List.of(origin));
     }
 
-    private void applyOriginPriority(UUID originEventId) {
-        originHooks.orderedStream().forEach(
-                hook -> hook.applyPriorityForOriginEvent(originEventId));
+    void applyOriginPriority(List<PreplanStockEntitlementService.OriginAppendResult> origins) {
+        List<UUID> inserted = origins.stream().filter(PreplanStockEntitlementService.OriginAppendResult::inserted)
+                .map(PreplanStockEntitlementService.OriginAppendResult::eventId).distinct().toList();
+        if (inserted.isEmpty()) return;
+        // A readiness hook may prepare all materials of a task. Finish the
+        // higher-priority ownership hooks for every source before it runs.
+        originHooks.orderedStream().forEach(hook -> inserted.forEach(hook::applyPriorityForOriginEvent));
     }
 
     private static String normalizeReason(String reason, String fallback) {

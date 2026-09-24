@@ -615,7 +615,13 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         qty("1000",(BigDecimal)link[0]);qty("0",(BigDecimal)link[1]);assertEquals("APPROVED",link[2]);
         assertSameTask(planId,originalSegment,originalCode,"1000");
         assertEquals("WAITING",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,originalSegment));
-        assertNull(db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?",String.class,originalSegment),"追加不能替车间确认生产路线");
+        assertEquals("CONTINUOUS",db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?",String.class,originalSegment),
+                "追加保留系统默认持续生产，不需要再要求车间首次确认路线");
+        assertTrue(Boolean.TRUE.equals(db.queryForObject("SELECT route_defaulted_at IS NOT NULL FROM production_execution_segments WHERE id=?",Boolean.class,originalSegment)));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_DEFAULTED' AND created_by IS NULL",Integer.class,originalSegment),
+                "系统默认路线保留独立事实，追加不能伪造或重复人工确认");
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action IN ('ROUTE_CONFIRMED','START')",Integer.class,originalSegment),
+                "默认路线不等于人工确认或实际开工");
         assertEquals(originalDemand,db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,originalSegment));
         qty("1000",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,originalDemand));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_planning_packages WHERE plan_id=? AND status='CONFIRMED' AND is_deleted=FALSE",Integer.class,planId));
@@ -674,7 +680,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         UUID planId=first.plans().getFirst().planId();
         UUID originalSegment=segmentId(planId);
         String originalCode=segmentCode(originalSegment);
-        fixture.confirmAllUnconfirmedFullKitRoutes();
+        fixture.confirmFullKitRoutes(planId);
         List<UUID> draws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);
         assertFalse(draws.isEmpty());
         fixture.requestWorkshopDraws("request-only-"+planId,draws);
@@ -700,7 +706,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         UUID planId=first.plans().getFirst().planId();
         UUID originalSegment=segmentId(planId);
         String originalCode=segmentCode(originalSegment);
-        fixture.confirmAllUnconfirmedFullKitRoutes();
+        fixture.confirmFullKitRoutes(planId);
         UUID demand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,originalSegment);
         List<UUID> draws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);
         assertFalse(draws.isEmpty());
@@ -820,7 +826,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         AnalysisView before=analyses.detail(t.analysis());
         var first=commands.issueWorkshopPlans(t.analysis(),issue(before,t,"first-600",candidate(t.parentLine(),"600")));
         UUID planId=first.plans().getFirst().planId();
-        fixture.confirmAllUnconfirmedFullKitRoutes();
+        fixture.confirmFullKitRoutes(planId);
         assertTrue(db.queryForObject("SELECT bool_and(status='READY') FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",Boolean.class,planId));
         // 车间申请领料、仓库审核发料 = 已经开始执行。
         List<UUID> draws=ReflectionTestUtils.invokeMethod(fixture,"currentPlanDrawIds",planId);

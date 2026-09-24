@@ -148,6 +148,29 @@ class ProductionMainWarehouseAllocationTest {
                 .isEqualByComparingTo("60");
     }
 
+    @Test
+    void extendingAnExistingReservationConsumesTheSamePublicSafetyBudgetAsANewReservation() {
+        UUID first = new UUID(0, 10), second = new UUID(0, 20);
+        UUID priorReservation = UUID.randomUUID(), packageId = UUID.randomUUID(), actor = UUID.randomUUID();
+        stock.put(warehouseA, new BigDecimal("100"));
+        reserved.put(warehouseA, new BigDecimal("20"));
+        safety.put(warehouseA, new BigDecimal("20"));
+        writes.add(new HashMap<>(Map.of("id", priorReservation, "demandId", first,
+                "supplyId", warehouseA, "qty", new BigDecimal("20"), "goodsId", goods,
+                "warehouseId", warehouseA, "key", "previous-increment")));
+        var result = service().allocate(List.of(
+                new ProductionMaterialAllocationFacade.AllocationRequest(packageId, first, goods, null,
+                        warehouseA, new BigDecimal("40"), "next-increment", actor),
+                new ProductionMaterialAllocationFacade.AllocationRequest(packageId, second, goods, null,
+                        warehouseA, new BigDecimal("40"), "other-demand", actor)), true);
+        assertThat(result).extracting(ProductionMaterialAllocationFacade.AllocationResult::allocatedQty)
+                .containsExactly(new BigDecimal("40"), new BigDecimal("20"));
+        assertThat(result.getFirst().allocationId()).isEqualTo(priorReservation);
+        assertThat(reserved.get(warehouseA)).isEqualByComparingTo("80");
+        assertThat(stock.get(warehouseA).subtract(reserved.get(warehouseA))).isEqualByComparingTo("20");
+        assertThat(writes).hasSize(2);
+    }
+
     private ProductionMaterialAllocationFacade.AllocationRequest request(String quantity) {
         return new ProductionMaterialAllocationFacade.AllocationRequest(UUID.randomUUID(), demand,
                 goods, null, warehouseA, new BigDecimal(quantity),
@@ -174,7 +197,8 @@ class ProductionMainWarehouseAllocationTest {
                 if (sql.contains("idempotency_key,requires_qualified_origin")) {
                     return writes.stream().map(write -> new Object[]{write.get("id"), write.get("demandId"),
                             write.get("supplyId"), write.get("qty"), write.get("goodsId"), write.get("colorId"),
-                            write.get("warehouseId"), write.get("key"), false}).toList();
+                            write.get("warehouseId"), write.get("key"), false, (short) 0,
+                            BigDecimal.ZERO, BigDecimal.ZERO}).toList();
                 }
                 if (sql.contains("SELECT balance.id,balance.warehouse_id")) {
                     return List.of(warehouseA, warehouseB).stream().map(warehouse -> new Object[]{warehouse, warehouse,
@@ -186,6 +210,14 @@ class ProductionMainWarehouseAllocationTest {
             when(query.getSingleResult()).thenAnswer(ignored -> reserved.getOrDefault(
                     parameters.get("warehouseId"), BigDecimal.ZERO));
             when(query.executeUpdate()).thenAnswer(ignored -> {
+                if (sql.contains("SET qty = qty + :take")) {
+                    var existing = writes.stream().filter(write -> parameters.get("id").equals(write.get("id")))
+                            .findFirst().orElseThrow();
+                    BigDecimal take = (BigDecimal) parameters.get("take");
+                    existing.put("qty", ((BigDecimal) existing.get("qty")).add(take));
+                    reserved.merge((UUID) existing.get("warehouseId"), take, BigDecimal::add);
+                    return 1;
+                }
                 writes.add(new HashMap<>(parameters));
                 reserved.merge((UUID) parameters.get("warehouseId"),
                         (BigDecimal) parameters.get("qty"), BigDecimal::add);

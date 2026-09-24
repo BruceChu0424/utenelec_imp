@@ -11,6 +11,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/permissions.dart';
@@ -283,10 +284,11 @@ class _RateDetailState
           onPressed: () => popOrBackTo(
             context,
             defaultPath:
-                ref.watch(isSuperAdminProvider) ||
-                    ref
-                        .watch(currentPermissionsProvider)
-                        .contains(Perm.productionPlanApprove)
+                locationAllowedFor(
+                  ref.read(currentPermissionsProvider),
+                  ref.read(isSuperAdminProvider),
+                  RouteName.productionOverproductionRateRequests,
+                )
                 ? RouteName.productionOverproductionRateRequests
                 : RouteName.productionWorkshopTasks,
           ),

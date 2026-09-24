@@ -2380,7 +2380,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 // ADR-099：可认领公共在途、计划产出量
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 // ADR-102：还缺数量(扣掉可认领公共在途后的展示量)
-                BigDecimal.ZERO, bd("100"));
+                BigDecimal.ZERO, bd("100"), BigDecimal.ZERO);
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

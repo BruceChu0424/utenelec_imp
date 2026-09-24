@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.dailyreport;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -12,6 +13,7 @@ import static com.uten.imp.features.production.dailyreport.ActualOutputSupplemen
 @RequiredArgsConstructor
 public class ActualOutputSupplementController {
     private final ActualOutputSupplementService service;
+    private final AuditDetailViewRecorder auditViews;
     @PostMapping("/preview")
     @PreAuthorize("hasAuthority('production_execution:view') and (hasAuthority('production_daily_report:create') or hasAuthority('production_plan:create'))")
     public Preview preview(@Valid @RequestBody PreviewRequest request){return service.preview(request);}
@@ -23,7 +25,17 @@ public class ActualOutputSupplementController {
     public View create(@Valid @RequestBody CreateRequest request){return service.create(request);}
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('production_execution:view') or hasAuthority('production_plan:approve')")
-    public View detail(@PathVariable UUID id){return service.detail(id);}
+    public View detail(@PathVariable UUID id){
+        View result=service.detail(id);
+        auditViews.record(
+                "view_production_actual_output_supplement_detail",
+                "production_actual_output_supplement_requests",
+                id,
+                result.planNo(),
+                null,
+                "实际产出追加计划");
+        return result;
+    }
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('production_plan:approve')")
     public View approve(@PathVariable UUID id,@Valid @RequestBody ApproveRequest request){return service.approve(id,request);}

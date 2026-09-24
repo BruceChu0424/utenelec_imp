@@ -60,6 +60,10 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         }
         db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",world.supplierId(),material);
         AnalysisView a = preview(world,main,product,"A","10");
+        // This journey keeps exact stock available for explicit reallocation.
+        // Choose full-kit before receipts; switching away from continuous after
+        // preparation intentionally preserves its already-reserved material.
+        if (issuedWaiting) a=issueWaiting(a,main,product,"10");
         UUID purchase = purchase(world,a,material);
         receive(world,purchase,material,"6","A-first");
         receive(at(world,second),purchase,material,"4","A-second");
@@ -67,7 +71,7 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         a = analyses.detail(a.analysisId());
         AnalysisView b = preview(world,main,product,"B","14");
         if(issuedWaiting) {
-            a=issueWaiting(a,main,product,"10"); b=issueWaiting(b,main,product,"14");
+            b=issueWaiting(b,main,product,"14");
         }
         MaterialView am = material(a,material), bm = material(b,material);
         var candidates = reallocations.sources(b.analysisId(),bm.materialLineId(),null,1,20);
@@ -194,7 +198,17 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         var result=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),
                 "yield-plan-"+view.analysisId(),warehouse,BusinessTime.today(),null,true,
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(view.products().getFirst().analysisLineId(),new BigDecimal(quantity)))));
-        assertEquals("WAITING",db.queryForObject("SELECT status FROM production_execution_segments WHERE plan_id=?",String.class,result.plans().getFirst().planId()));
+        UUID plan=result.plans().getFirst().planId();
+        UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=?",UUID.class,plan);
+        fixture.confirmFullKitRoute(plan,segment);
+        assertEquals("FULL_KIT",db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?",String.class,segment));
+        assertEquals("WAITING",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,segment));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",Integer.class,plan));
+        qty("0",db.queryForObject("""
+                SELECT COALESCE(SUM(reservation.qty-reservation.released_qty),0)
+                FROM stock_reservations reservation JOIN production_material_demands demand ON demand.id=reservation.demand_id
+                WHERE demand.plan_id=? AND NOT reservation.is_deleted
+                """,BigDecimal.class,plan));
         return analyses.detail(view.analysisId());
     }
     private UUID warehouse(UUID parent) {

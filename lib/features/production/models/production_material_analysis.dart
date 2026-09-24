@@ -1096,6 +1096,7 @@ class ProductionMaterialAnalysisMaterial {
     this.additionalSupplyRecommendedQty = 0,
     this.sharedFutureClaimableQty = 0,
     this.netShortageQty = 0,
+    this.planningUncoveredQty,
     this.plannedOutputQty = 0,
     this.minOrderQty,
     this.orderMultipleQty,
@@ -1250,6 +1251,10 @@ class ProductionMaterialAnalysisMaterial {
   /// 入库齐套的口径，算法不动。自制、需先自制的委外等不会自动认领的行，这里与
   /// [additionalSupplyRecommendedQty] 相等。
   final double netShortageQty;
+
+  /// Still needs planning action, including public future supply awaiting a
+  /// real claim. Null means the server has not supplied this fact.
+  final double? planningUncoveredQty;
 
   /// 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位；已建
   /// 自制 / 前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量。
@@ -1406,6 +1411,7 @@ class ProductionMaterialAnalysisMaterial {
         _double(json['netShortageQty']) ??
         _double(json['additionalSupplyRecommendedQty']) ??
         0,
+    planningUncoveredQty: _double(json['planningUncoveredQty']),
     plannedOutputQty: _double(json['plannedOutputQty']) ?? 0,
     minOrderQty: _double(json['minOrderQty']),
     orderMultipleQty: _double(json['orderMultipleQty']),
@@ -2429,3 +2435,56 @@ List<String> _path(Object? value) {
 List<String> _stringList(Object? value) =>
     (value as List?)?.map((item) => item.toString()).toList(growable: false) ??
     const [];
+
+/// 车间在催的一个任务(ADR-117)：物料分析页顶部「车间在催」提示条与「补下层物料」页用。
+///
+/// [shortMaterialLineIds] 是这个车间任务此刻还缺(缺口桶)的物料在本分析里对应的物料行；
+/// 其中哪些计划还没下够单，由页面拿同一份分析快照的「还缺数量」判断——与主表同一个数。
+class MaterialAnalysisWorkshopUrge {
+  const MaterialAnalysisWorkshopUrge({
+    required this.urgeId,
+    required this.segmentId,
+    this.segmentCode,
+    this.planNo,
+    this.productName,
+    this.productCode,
+    this.workshopName,
+    this.urgeCount = 1,
+    this.lastUrgedByName,
+    this.lastUrgedAt,
+    this.gapKindCount = 0,
+    this.gapSummary,
+    this.shortMaterialLineIds = const [],
+  });
+
+  factory MaterialAnalysisWorkshopUrge.fromJson(Map<String, dynamic> json) =>
+      MaterialAnalysisWorkshopUrge(
+        urgeId: _string(json['urgeId']) ?? '',
+        segmentId: _string(json['segmentId']) ?? '',
+        segmentCode: _string(json['segmentCode']),
+        planNo: _string(json['planNo']),
+        productName: _string(json['productName']),
+        productCode: _string(json['productCode']),
+        workshopName: _string(json['workshopName']),
+        urgeCount: _int(json['urgeCount']) ?? 1,
+        lastUrgedByName: _string(json['lastUrgedByName']),
+        lastUrgedAt: DateTime.tryParse(_string(json['lastUrgedAt']) ?? ''),
+        gapKindCount: _int(json['gapKindCount']) ?? 0,
+        gapSummary: _string(json['gapSummary']),
+        shortMaterialLineIds: _stringList(json['shortMaterialLineIds']),
+      );
+
+  final String urgeId;
+  final String segmentId;
+  final String? segmentCode;
+  final String? planNo;
+  final String? productName;
+  final String? productCode;
+  final String? workshopName;
+  final int urgeCount;
+  final String? lastUrgedByName;
+  final DateTime? lastUrgedAt;
+  final int gapKindCount;
+  final String? gapSummary;
+  final List<String> shortMaterialLineIds;
+}

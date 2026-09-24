@@ -655,7 +655,6 @@ public class SubcontractMakeTaskService {
                   ON task.preparation_item_id = production_plan.material_analysis_item_id
                  AND task.analysis_id = production_plan.material_analysis_id
                 WHERE stock_item.doc_id = :documentId AND task.status = 'ACTIVE'
-                  AND NOT fn_finished_in_is_public_output(stock_item.id)
                 ORDER BY task.analysis_id
                 """).setParameter("documentId", stockDocumentId), UUID.class);
         Map<UUID, UUID> analysisOwners = new java.util.LinkedHashMap<>();
@@ -692,7 +691,6 @@ public class SubcontractMakeTaskService {
                 WHERE stock_item.doc_id = :documentId
                   AND stock_item.bill_type = 'FINISHED_IN'
                   AND stock_item.is_deleted = FALSE
-                  AND NOT fn_finished_in_is_public_output(stock_item.id)
                 ORDER BY task.id, stock_item.id
                 FOR UPDATE OF task
                 """).setParameter("documentId", stockDocumentId).getResultList();

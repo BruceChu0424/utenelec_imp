@@ -220,7 +220,8 @@ class BusinessDataResetServicePostgresTest {
         // V646/V647 +2(委外子件精确库存交接、车间工单原位增长事件, 只追加账本)：298→300。
         // V680 +2(服务端登录会话、再认证失败计数；清库后所有人重新登录)：300→302。
         // V698/V700 add six approval and immutable output-provenance tables.
-        assertThat(result.clearedTableCount()).isEqualTo(311);
+        // V703 +1(车间催计划 production_planning_urges, ADR-117)：311→312。
+        assertThat(result.clearedTableCount()).isEqualTo(312);
         // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
         // V686 保留总账附表行绑定(ADR-112) +1, V677 删除角色体系四张 PRESERVE 表(ADR-109) -4: 102→99。
         // V693 保留仓库负责人(ADR-115) +1: 99→100。

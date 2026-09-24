@@ -9,6 +9,7 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../providers/production_execution_refresh.dart';
@@ -164,14 +165,14 @@ class _SupplementState
     if (widget.returnToReport && context.canPop()) {
       context.pop(_detail);
     } else {
-      final planner =
-          ref.read(isSuperAdminProvider) ||
-          ref
-              .read(currentPermissionsProvider)
-              .contains(Perm.productionPlanApprove);
+      final canViewPlans = locationAllowedFor(
+        ref.read(currentPermissionsProvider),
+        ref.read(isSuperAdminProvider),
+        RouteName.productionPlanList,
+      );
       popOrBackTo(
         context,
-        defaultPath: planner
+        defaultPath: canViewPlans
             ? RouteName.productionPlanList
             : RouteName.productionWorkshopTasks,
       );

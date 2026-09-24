@@ -101,6 +101,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("productionSchedule", "/api/production/schedule/pending-count");
         ORIGINAL_ENDPOINTS.put("productionOverproductionRate", "/api/production/overproduction-rate/count");
         ORIGINAL_ENDPOINTS.put("productionMaterialIncrement", "/api/production/material-increments/count");
+        // ADR-117 车间催计划: 新入口, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
+        ORIGINAL_ENDPOINTS.put("productionPlanningUrge", "/api/production/material-analyses/workshop-urges/count");
         ORIGINAL_ENDPOINTS.put("workshopTask", "/api/production/workshop-tasks/count");
         ORIGINAL_ENDPOINTS.put("productionExecution", "/api/production/execution-workbench/count");
         ORIGINAL_ENDPOINTS.put("fqcPending", "/api/production/quality-inspections/count");
@@ -141,6 +143,7 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("productionSchedule", List.of("productionSchedule.count"), List.of());
         legacy("productionRateApprovals", List.of("productionOverproductionRate.count"), List.of());
         legacy("productionMaterialIncrementApprovals", List.of("productionMaterialIncrement.count"), List.of());
+        legacy("productionPlanningUrges", List.of("productionPlanningUrge.count"), List.of());
         legacy("productionBatches", List.of(), List.of("productionExecution.count"));
         legacy("productionDrafts", List.of("drafts.productionPlan", "drafts.productionDailyReport"), List.of());
         legacy("productionWorkshop", List.of("workshopTask.preparing"), List.of("workshopTask.inProgress"));

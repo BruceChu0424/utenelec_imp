@@ -59,7 +59,7 @@ class _ProductionReviewReasonDialogState
         // maxLength 的 0/N 计数默认占一整行把多行框顶高（全站口径：限制仍
         // 生效、计数不渲染）。
         decoration: const UtenInputDecoration(
-          InputDecoration(labelText: '原因(必填)', counterText: ''),
+          InputDecoration(labelText: '原因（必填）', counterText: ''),
         ),
         validator: (value) =>
             (value?.trim().length ?? 0) < 2 ? '请填写 2 至 500 字的原因' : null,

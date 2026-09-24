@@ -242,14 +242,20 @@ class PreplanReallocationMakeSupplementEndToEndTest {
             var issue=new StockDocIssueBatchRequest();issue.setIdempotencyKey("yield-issue-"+segment);issue.setDocIds(documentIds);stock.issueFullBatch(issue);
         }
         segments.start(plan.planId(),segment,new SegmentTransitionRequest(version(segment),"yield-start-"+segment));
-        var usage=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
-        usage.setExecutionSegmentId(segment);usage.setIdempotencyKey("yield-material-used-"+segment);usage.setReason("本批实际用料全部用于该批合格产出");
-        usage.setLines(db.queryForList("SELECT id,required_qty FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",segment).stream().map(demand->{
-            var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();line.setDemandId((UUID)demand.get("id"));line.setQtyBase((BigDecimal)demand.get("required_qty"));line.setSettlementType("CONSUMED");return line;
-        }).toList());
-        if(!usage.getLines().isEmpty())settlements.post(plan.planId(),usage,c.world().superAdminUserId());
+        // The actual batch is declared on the report. Consuming it independently first
+        // would leave no exact ISSUE capacity for that same report and double-count use.
         UUID planItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,segment);
         UUID report=fixture.reportAndApproveExecutionSegment(c.world(),planItem,null,c.child(),segment,null,quantity,false,"0",null,null);
+        assertEquals(0,db.queryForObject("""
+                SELECT COUNT(*) FROM production_material_demands demand
+                WHERE demand.execution_segment_id=? AND NOT demand.is_deleted
+                  AND demand.required_qty <> COALESCE((
+                    SELECT SUM(posting.qty_base) FROM production_material_settlement_postings posting
+                    JOIN production_material_settlement_events event ON event.id=posting.event_id
+                    WHERE posting.demand_id=demand.id AND event.daily_report_id=?
+                      AND event.event_type='POST' AND posting.settlement_type='CONSUMED'),0)
+                """,Integer.class,segment,report),"this real batch consumes its exact input once on its own approved report");
+        assertTrue(settlements.clearance(plan.planId(),segment).stream().allMatch(row -> row.availableToSettleQty().signum()==0));
         fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
     }
     private void replenishRaw(Scenario c,UUID analysis,UUID nextPlan) {

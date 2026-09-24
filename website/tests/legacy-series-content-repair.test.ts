@@ -144,15 +144,26 @@ test('raw detail breadcrumbs reconstruct all 50 Chinese names without conflicts'
   assert.equal(anomalyCategories.length, 50);
 
   const namesByIdentity = new Map<string, Set<string>>();
-  for (const product of catalog.products) {
-    const html = await readFile(path.join(outputRoot, product.rawHtmlPath), 'utf8');
-    for (const item of htmlBreadcrumb(html, product.sortPath)) {
-      const key = `${product.locale}:${item.sortId}`;
-      const names = namesByIdentity.get(key) ?? new Set<string>();
-      names.add(item.name);
-      namesByIdentity.set(key, names);
+  // The complete local bundle has thousands of separate HTML files. Bound reads rather
+  // than awaiting every disk operation in series or opening the whole bundle at once.
+  // Keep assertions in catalog order, and abort pending reads if the test is cancelled.
+  const evidenceBatchSize = 32;
+  for (let offset = 0; offset < catalog.products.length; offset += evidenceBatchSize) {
+    t.signal.throwIfAborted();
+    const batch = catalog.products.slice(offset, offset + evidenceBatchSize);
+    const documents = await Promise.all(batch.map((product) => readFile(
+      path.join(outputRoot, product.rawHtmlPath), { encoding: 'utf8', signal: t.signal },
+    )));
+    for (const [index, product] of batch.entries()) {
+      for (const item of htmlBreadcrumb(documents[index], product.sortPath)) {
+        const key = `${product.locale}:${item.sortId}`;
+        const names = namesByIdentity.get(key) ?? new Set<string>();
+        names.add(item.name);
+        namesByIdentity.set(key, names);
+      }
     }
   }
+  t.diagnostic(`Checked all ${catalog.products.length} raw product details and ${catalog.categories.length} localized categories`);
   assert.equal(namesByIdentity.size, catalog.categories.length, 'every localized category needs detail evidence');
   for (const category of catalog.categories) {
     const names = namesByIdentity.get(`${category.locale}:${category.sortId}`);

@@ -85,6 +85,10 @@ public class MaterialAnalysisService {
     private MaterialAnalysisRootSupplyService rootSupply;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService> reservationPreviewReadiness;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.PreplanAnalysisPegPort> reservationPreviewSources;
 
     OwnerVisibility.OwnerScope scopeForAnalysis(AnalysisHeader header){
         var normal=access.scope();
@@ -2333,11 +2337,14 @@ public class MaterialAnalysisService {
         // V307 精确到货归属：先在扣除安全库存后的真实可分配池内，为原供应
         // 分摊行锁定 secured coverage；同分析兄弟产品只能看到扣除后的共享池。
         // 没有 exact 子账的历史 V298 预留仍留在共享池，维持兼容语义。
-        List<ExactPegRecord> exactPegs = loadExactPegs(analysisId, warehouseId);
+        List<ExactPegRecord> exactPegs = loadExactPegs(analysisId, warehouseId).stream().map(peg ->
+                new ExactPegRecord(peg.id(),peg.beneficiaryMaterialId(),peg.analysisItemId(),peg.nodeKey(),peg.dimension(),
+                        peg.effectiveQty().subtract(overlay.transferredEntitlement(peg.id())).max(BigDecimal.ZERO),peg.warehouseId()))
+                .filter(peg -> peg.effectiveQty().signum()>0).toList();
         BorrowTuning exactTuning = planExactPegs(exactPegs, nodes, stockAfterSafety,
                 availability.usableByWarehouse())
                 .combinedWith(planFormalCoverage(
-                        formalMaterialCoverage(analysisId, warehouseId), nodes))
+                        previewFormalCoverage(formalMaterialCoverage(analysisId, warehouseId), overlay), nodes))
                 .combinedWith(planFormalCoverage(
                         subcontractComponentDraftCoverage(analysisId), nodes));
         // 现货层借用（调货）：存在 ACTIVE 借用记录时，先按当前库存跑一次
@@ -3077,6 +3084,23 @@ public class MaterialAnalysisService {
                         .add(reservedFutureByNode.getOrDefault(group+"|"+row[1]+"|"+row[2],BigDecimal.ZERO));
             return new FormalMaterialCoverage(uuid(row[0]),uuid(row[1]),string(row[2]),decimal(row[3]),remainingOutput,group);
         }).toList();
+    }
+
+    private static List<FormalMaterialCoverage> previewFormalCoverage(List<FormalMaterialCoverage> existing,
+            MaterialAnalysisIssuePreviewOverlay overlay) {
+        if (!overlay.hasFormalProjection()) return existing;
+        Map<String,FormalMaterialCoverage> combined = new LinkedHashMap<>();
+        for (FormalMaterialCoverage row : existing) {
+            BigDecimal output=overlay.formalParentOutput(row.demandId());
+            combined.put(row.demandId()+"|"+row.analysisItemId()+"|"+row.nodeKey(),output==null?row:
+                    new FormalMaterialCoverage(row.demandId(),row.analysisItemId(),row.nodeKey(),row.coveredQty(),output,row.preparationGroupId()));
+        }
+        for (FormalMaterialCoverage row : overlay.formalCoverage()) combined.merge(
+                row.demandId()+"|"+row.analysisItemId()+"|"+row.nodeKey(),row,(old,added)->new FormalMaterialCoverage(
+                        old.demandId(),old.analysisItemId(),old.nodeKey(),old.coveredQty().add(added.coveredQty()),
+                        added.remainingParentOutputQty()==null?old.remainingParentOutputQty():added.remainingParentOutputQty(),
+                        old.preparationGroupId()));
+        return List.copyOf(combined.values());
     }
 
     /** Draft custody is committed to this exact child, but remains unavailable to other allocations.
@@ -4215,6 +4239,7 @@ public class MaterialAnalysisService {
                 participatingWarehouseIds);
         Map<WarehouseMaterialDimension, BigDecimal> qualifiedOwned = new LinkedHashMap<>(qualifiedOwnedStock(analysisId,
                 materialRows.stream().map(row -> row.analysisItemId()+"|"+row.nodeKey()).collect(Collectors.toSet())));
+        qualifiedOwned.replaceAll((key,qty)->qty.subtract(overlay.qualifiedTransferred(key)).max(BigDecimal.ZERO));
         Map<WarehouseMaterialDimension, BigDecimal> componentDraftOwned = new LinkedHashMap<>();
         for (Object[] row : SubcontractComponentCustodyProjection.held(em, analysisId)) {
             componentDraftOwned.merge(new WarehouseMaterialDimension(uuid(row[7]),
@@ -4230,7 +4255,7 @@ public class MaterialAnalysisService {
         List<WarehouseView> warehouses = warehouses(
                 header.warehouseId(), participatingWarehouseSet);
         Map<MaterialDimension, List<WarehouseBreakdown>> breakdown =
-                warehouseBreakdown(analysisId, materialRows, sharedFuture, qualifiedOwned, componentDraftOwned);
+                warehouseBreakdown(analysisId, materialRows, sharedFuture, qualifiedOwned, componentDraftOwned, overlay);
         Map<StockIdentity, BigDecimal> mainOpenSafety = mainWarehouseOpenSafetySupply(
                 header.warehouseId(), materialRows.stream().map(MaterialRow::goodsId).collect(Collectors.toSet()));
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
@@ -4289,8 +4314,9 @@ public class MaterialAnalysisService {
                                 row.actionGroupKey(),row.confirmedRoute(),List.of(row.id()))).toList());
         Set<UUID> supplementedChildren = !crossProjections.isEmpty()
                 ? makeSupplementReader.supplementedChildren(analysisId) : Set.of();
-        Map<UUID, BigDecimal> exactPegged = exactPeggedByMaterial(
-                analysisId, header.warehouseId());
+        Map<UUID, BigDecimal> exactPegged = new LinkedHashMap<>(exactPeggedByMaterial(
+                analysisId, header.warehouseId()));
+        exactPegged.replaceAll((id,qty)->qty.subtract(overlay.transferredMaterial(id)).max(BigDecimal.ZERO));
         Map<UUID, BigDecimal> subcontractHandoffFuture =
                 subcontractHandoffFutureByMaterial(analysisId);
         Map<UUID, String> sourceLabels = sources.stream().collect(Collectors.toMap(
@@ -5017,6 +5043,21 @@ public class MaterialAnalysisService {
             if (parent != null) overlay.addPlannedOutput(parent[0], seed.qty());
             overlay.addOpenPlanQty(seed.lineId(), baseQty);
         }
+        // No physical balance means no route can create a physical reservation. Keep the
+        // large empty-stock planning case at one indexed existence query, not one lookup per plan.
+        boolean physicalStock = approveNow && Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM stock_balances stock WHERE stock.qty>0 AND (
+                    EXISTS(SELECT 1 FROM production_material_analysis_materials material
+                        WHERE material.analysis_id=:analysis AND material.active AND material.goods_id=stock.goods_id
+                          AND material.color_id IS NOT DISTINCT FROM stock.color_id)
+                    OR EXISTS(SELECT 1 FROM production_plans plan JOIN production_material_demands demand ON demand.plan_id=plan.id
+                        WHERE plan.material_analysis_id=:analysis AND NOT plan.is_deleted AND NOT demand.is_deleted
+                          AND demand.goods_id=stock.goods_id AND demand.color_id IS NOT DISTINCT FROM stock.color_id)))
+                """).setParameter("analysis",analysisId).getSingleResult());
+        if (physicalStock) new MaterialAnalysisReservationPreview(em, reservationPreviewReadiness.getObject(),
+                reservationPreviewSources.getObject()).project(analysisId, readHeader(analysisId).warehouseId(),
+                seeds, sources, refreshTree(analysisId,false,Map.of(),overlay).nodes(),
+                loadMaterialRows(analysisId,overlay),overlay);
     }
 
     /** 下达预览的一轮刷新投影: 与 {@link #refreshLocked} 同一组计算, 结果只进 [overlay]。 */
@@ -5024,7 +5065,7 @@ public class MaterialAnalysisService {
             MaterialAnalysisIssuePreviewOverlay overlay, boolean requireStoredStructure) {
         RefreshTree tree = refreshTree(analysisId, false, typedOutputByMaterialLine, overlay);
         if (requireStoredStructure) requireStoredStructure(analysisId, tree.nodes());
-        AvailabilitySnapshot availability = availability(analysisId, warehouseId, tree.nodes(), tree.sources());
+        AvailabilitySnapshot availability = availability(analysisId, warehouseId, tree.nodes(), tree.sources(), overlay);
         List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
         AllocationSnapshot allocation = computeAllocationSnapshot(analysisId, warehouseId, tree.sources(),
                 tree.nodes(), availability, snapshotRows, typedOutputByMaterialLine, overlay);
@@ -5055,7 +5096,7 @@ public class MaterialAnalysisService {
                 if (id != null) allocatedByMaterial.put(id, node.allocated());
             });
             for (MaterialAnalysisRootSupplyService.RootQuantityRow row : rootSupply.projectRootNodes(analysisId,
-                    activeFutureCoverageByMaterial(analysisId), allocatedByMaterial, overlay.openPlanQtyBySource())) {
+                    activeFutureCoverageByMaterial(analysisId), allocatedByMaterial, overlay.openPlanQtyBySource(), overlay)) {
                 roots.put(row.id(), new MaterialAnalysisIssuePreviewOverlay.RootSnapshot(row.required(), row.stock(),
                         row.reserved(), row.safety(), row.allocated(), row.shortage(), row.inbound()));
             }
@@ -5620,13 +5661,19 @@ public class MaterialAnalysisService {
     private AvailabilitySnapshot availability(
             UUID analysisId, UUID warehouseId,
             List<BomNode> nodes, List<SourceLine> sources) {
+        return availability(analysisId, warehouseId, nodes, sources, MaterialAnalysisIssuePreviewOverlay.NONE);
+    }
+
+    private AvailabilitySnapshot availability(UUID analysisId, UUID warehouseId,
+            List<BomNode> nodes, List<SourceLine> sources, MaterialAnalysisIssuePreviewOverlay overlay) {
         Set<UUID> goodsIds = nodes.stream().map(BomNode::goodsId)
                 .collect(Collectors.toCollection(TreeSet::new));
         if (goodsIds.isEmpty()) return new AvailabilitySnapshot(Map.of(), List.of());
         Set<String> currentNodeKeys = nodes.stream()
                 .map(MaterialAnalysisService::nodeAllocationKey)
                 .collect(Collectors.toSet());
-        Map<WarehouseMaterialDimension, BigDecimal> qualifiedOwn = qualifiedOwnedStock(analysisId, currentNodeKeys);
+        Map<WarehouseMaterialDimension, BigDecimal> qualifiedOwn = new LinkedHashMap<>(qualifiedOwnedStock(analysisId, currentNodeKeys));
+        qualifiedOwn.replaceAll((key,qty)->qty.subtract(overlay.qualifiedTransferred(key)).max(BigDecimal.ZERO));
         String qualifiedWarehouseIds = qualifiedOwn.keySet().stream().map(WarehouseMaterialDimension::warehouseId)
                 .distinct().map(UUID::toString).sorted().collect(Collectors.joining(","));
         List<Object[]> stockRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -5705,10 +5752,10 @@ public class MaterialAnalysisService {
             WarehouseMaterialDimension location = new WarehouseMaterialDimension(uuid(row[0]), dimension);
             BigDecimal qualified = qualifiedOwn.getOrDefault(location, BigDecimal.ZERO);
             boolean publicAllowed = Boolean.TRUE.equals(row[9]);
-            BigDecimal ownReserved = publicAllowed ? decimal(row[8]) : qualified;
-            BigDecimal reserved = decimal(row[6]).subtract(ownReserved).max(BigDecimal.ZERO);
+            BigDecimal ownReserved = publicAllowed ? decimal(row[8]).subtract(overlay.ownedTransferred(location)).max(BigDecimal.ZERO) : qualified;
+            BigDecimal reserved = decimal(row[6]).add(overlay.publicReservationChange(location)).subtract(ownReserved).max(BigDecimal.ZERO);
             ownReserved = ownReserved.min(decimal(row[5]).subtract(reserved).max(BigDecimal.ZERO));
-            BigDecimal publicQty = publicAllowed ? decimal(row[7]).max(BigDecimal.ZERO) : BigDecimal.ZERO;
+            BigDecimal publicQty = publicAllowed ? decimal(row[7]).subtract(overlay.publicReservationChange(location)).max(BigDecimal.ZERO) : BigDecimal.ZERO;
             budgetLeaves.computeIfAbsent(dimension, ignored -> new ArrayList<>()).add(
                     new com.uten.imp.common.inventory.MainWarehouseStockBudget.Leaf<>(
                             location, publicQty, ownReserved, qualified));
@@ -6865,10 +6912,18 @@ public class MaterialAnalysisService {
     }
 
     private Map<MaterialDimension, List<WarehouseBreakdown>> warehouseBreakdown(
+            UUID analysisId, List<MaterialRow> materials, SharedFutureIndex sharedFuture,
+            Map<WarehouseMaterialDimension,BigDecimal> qualifiedOwned,
+            Map<WarehouseMaterialDimension,BigDecimal> componentDraftOwned) {
+        return warehouseBreakdown(analysisId,materials,sharedFuture,qualifiedOwned,componentDraftOwned,MaterialAnalysisIssuePreviewOverlay.NONE);
+    }
+
+    private Map<MaterialDimension, List<WarehouseBreakdown>> warehouseBreakdown(
             UUID analysisId, List<MaterialRow> materials,
             SharedFutureIndex sharedFuture,
             Map<WarehouseMaterialDimension,BigDecimal> qualifiedOwned,
-            Map<WarehouseMaterialDimension,BigDecimal> componentDraftOwned) {
+            Map<WarehouseMaterialDimension,BigDecimal> componentDraftOwned,
+            MaterialAnalysisIssuePreviewOverlay overlay) {
         Set<UUID> goodsIds = materials.stream().map(MaterialRow::goodsId)
                 .collect(Collectors.toSet());
         if (goodsIds.isEmpty()) return Map.of();
@@ -6891,10 +6946,11 @@ public class MaterialAnalysisService {
                     new WarehouseMaterialDimension(uuid(row[3]), matching.dimension()), BigDecimal.ZERO);
             boolean publicAllowed = Boolean.TRUE.equals(row[12]);
             BigDecimal ownPegged = publicAllowed
-                    ? decimal(row[9]).add(componentDraftOwned.getOrDefault(location, BigDecimal.ZERO)) : qualified;
-            BigDecimal reserved = decimal(row[7]).subtract(ownPegged).max(BigDecimal.ZERO);
+                    ? decimal(row[9]).subtract(overlay.ownedTransferred(location)).max(BigDecimal.ZERO)
+                        .add(componentDraftOwned.getOrDefault(location, BigDecimal.ZERO)) : qualified;
+            BigDecimal reserved = decimal(row[7]).add(overlay.publicReservationChange(location)).subtract(ownPegged).max(BigDecimal.ZERO);
             ownPegged = ownPegged.min(decimal(row[6]).subtract(reserved).max(BigDecimal.ZERO));
-            BigDecimal publicAvailable = publicAllowed ? decimal(row[8]).max(BigDecimal.ZERO) : BigDecimal.ZERO;
+            BigDecimal publicAvailable = publicAllowed ? decimal(row[8]).subtract(overlay.publicReservationChange(location)).max(BigDecimal.ZERO) : BigDecimal.ZERO;
             BigDecimal safetyStock = decimal(row[10]).max(BigDecimal.ZERO);
             BigDecimal openSafety = decimal(row[11]).max(BigDecimal.ZERO);
             // Only proven task-owned qualified receipts bypass the public safety threshold.
@@ -8722,10 +8778,6 @@ public class MaterialAnalysisService {
             // 所以这个数**不能拿去预填下单数量**，否则每一行都会少下一个认领量。
             // 物理缺口 shortageQty 的算法不动——它同时是 actionable、让料候选与入库
             // 齐套三处的判据，把公共量算进去会让这些行整行掉出可下达集合。
-            BigDecimal netShortage = sharedFutureDeductible
-                    ? additionalRecommended.subtract(sharedFutureClaimable)
-                            .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING)
-                    : additionalRecommended;
             // 已经排进本节点自制计划、归本需求的那一份(顶层 = 产品行自己的计划, 其余 = 锚点的
             // 计划; 不含公共备货产出——那份不绑任何需求, 锚点余量也不因它归零)对「人还要另外
             // 下多少」来说就不缺了。计划是内部制造承诺, 按契约不算外部成品供给——shortageQty /
@@ -8736,10 +8788,15 @@ public class MaterialAnalysisService {
             // 下了计划的顶层照旧显示「还缺 2000 / 1000」。
             BigDecimal internalCovered = activeFutureCoverageQty.subtract(externalFutureCoverageQty)
                     .max(BigDecimal.ZERO);
-            netShortage = netShortage
+            BigDecimal planningUncovered = additionalRecommended
                     .subtract(committedPlanQty.max(BigDecimal.ZERO).subtract(internalCovered)
                             .max(BigDecimal.ZERO))
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+            // 公共候选尚未被本需求认领，不是已落实的供给。保留未覆盖量供催计划/办结使用，
+            // 只有纯展示的「需另外新下单」才预扣它；两者来自同一处真实覆盖计算。
+            BigDecimal netShortage = sharedFutureDeductible
+                    ? planningUncovered.subtract(sharedFutureClaimable).max(BigDecimal.ZERO)
+                    : planningUncovered;
             return new MaterialView(id, analysisItemId, nodeKey,
                     actionGroupKey(), materialKey(),
                     goodsId, goodsCode, goodsName,
@@ -8787,7 +8844,7 @@ public class MaterialAnalysisService {
                     externalFutureCoverageQty, internalCommittedOutputQty,
                     sharedFutureClaimable,
                     plannedOutputQty == null ? BigDecimal.ZERO : plannedOutputQty,
-                    netShortage, sourceRequiredQty);
+                    netShortage, sourceRequiredQty, planningUncovered);
         }
 
         String actionGroupKey() {

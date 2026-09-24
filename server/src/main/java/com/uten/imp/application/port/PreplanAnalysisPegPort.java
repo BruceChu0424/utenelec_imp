@@ -29,7 +29,21 @@ public interface PreplanAnalysisPegPort {
 
     /** Read-only source selection using the same lot order as formalization. */
     record PreviewPlanTransfer(UUID demandId, UUID warehouseId, BigDecimal qty,
-                               boolean qualified, boolean explicitPreference) {}
+                               boolean qualified, boolean explicitPreference,
+                               UUID sourceReservationId, UUID sourceEntitlementEventId,
+                               UUID beneficiaryMaterialId) {
+        public PreviewPlanTransfer(UUID demandId, UUID warehouseId, BigDecimal qty,
+                boolean qualified, boolean explicitPreference) {
+            this(demandId, warehouseId, qty, qualified, explicitPreference, null, null, null);
+        }
+    }
+
+    /** Public reservations already projected for earlier lines of the same read-only command. */
+    record PreviewPublicReservation(UUID warehouseId, UUID goodsId, UUID colorId, BigDecimal qty) {}
+
+    List<PreviewPlanTransfer> previewAnalysisDemandTransfers(UUID analysisId, UUID warehouseId,
+            List<DemandSlice> demands, List<UUID> matchingMaterialIds,
+            List<PreviewPlanTransfer> priorTransfers, List<PreviewPublicReservation> priorPublicReservations);
 
     /** Does not release/consume stock, reserve inventory or create a document. */
     List<PreviewPlanTransfer> previewPlanDemandTransfers(UUID analysisId, UUID planId,

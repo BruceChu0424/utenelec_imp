@@ -454,6 +454,7 @@ void main() {
         {
           'analysisLineId': 'p1',
           'qty': 10.0,
+          'allowedOverproductionRate': 0.1,
           'departmentId': 'workshop',
           'workshopName': '装配车间',
           'workerId': 'worker',

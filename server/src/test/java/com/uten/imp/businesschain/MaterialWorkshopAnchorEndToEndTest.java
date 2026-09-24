@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -161,7 +162,7 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals(0, count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT'", c.analysis()));
     }
 
-    @Test void genericStockDecreaseMakesTheRootWaitAndReplayDoesNotCreateDraws() {
+    @Test void stockDecreaseBlocksContinuousOutputAndReplayDoesNotDuplicatePreparation() {
         Case c = create("anchor-live-stock-out", false);
         postGenericStock(c, c.world().goodsC(), "10000", "OTHER_IN");
         postGenericStock(c, c.world().goodsD(), "10000", "OTHER_IN");
@@ -173,20 +174,110 @@ class MaterialWorkshopAnchorEndToEndTest {
         qty("10000", ready.products().getFirst().readyFinishQty());
         postGenericStock(c, c.world().goodsD(), "10000", "OTHER_OUT");
         fixture.loginAs(c.planner());
+        Object assignment = ReflectionTestUtils.invokeMethod(fixture, "productionAssignment", "stock-out-" + c.analysis());
+        UUID workshop = ReflectionTestUtils.invokeMethod(assignment, "workshopId");
+        UUID workerUser = fixture.createUserWithPerms(c.world(), "stock-out-worker-" + c.analysis(),
+                "production_execution:view", "production_execution:start");
+        UUID worker = db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, workerUser);
+        db.update("UPDATE employees SET department_id=? WHERE id=?", workshop, worker);
         var request = new IssueWorkshopPlansRequest(ready.version(), ready.fingerprint(), "stock-out-" + c.analysis(),
                 c.world().warehouseId(), BusinessTime.today(), BusinessTime.today().plusDays(10), true,
-                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(ready.products().getFirst().analysisLineId(), new BigDecimal("10000"))));
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null, ready.products().getFirst().analysisLineId(),
+                        new BigDecimal("10000"), null, null, workshop, null, worker, null, null)));
 
         var result = commands.issueWorkshopPlans(c.analysis(), request);
-        var replay = commands.issueWorkshopPlans(c.analysis(), request);
-
         UUID plan = result.plans().getFirst().planId();
+        Map<String, String> firstPreparation = workshopPreparationFacts(c.analysis(), plan);
+        var replay = commands.issueWorkshopPlans(c.analysis(), request);
+        assertTrue(replay.replayed());
         assertEquals(plan, replay.plans().getFirst().planId());
-        assertEquals(1, count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND status='WAITING'", plan));
-        assertEquals(0, count("SELECT count(*) FROM production_planning_package_documents doc "
-                + "JOIN production_planning_packages package ON package.id=doc.package_id "
-                + "JOIN stock_documents stock ON stock.id=doc.document_id "
-                + "WHERE package.plan_id=? AND doc.document_type='DRAW' AND stock.is_deleted=FALSE", plan));
+        assertEquals(firstPreparation, workshopPreparationFacts(c.analysis(), plan),
+                "Idempotent retry must not recreate plans, demands, reservations, supply pegs or DRAW documents");
+        fixture.loginAs(c.world().superAdminUserId());
+        var segment = segments.list(plan).getFirst();
+        assertEquals("CONTINUOUS", segment.startRoute());
+        assertEquals(workshop, segment.workshopDepartmentId());
+        assertEquals(worker, segment.responsibleEmployeeId());
+        // Continuous preparation can reserve the C that really remains. READY
+        // does not assert that all required materials jointly support production.
+        assertEquals("READY", segment.status());
+        assertFalse(segment.materialReady());
+        assertFalse(segment.canStart());
+        assertEquals(1, segment.shortageKindCount());
+        assertEquals(2, segment.materialDemandCount());
+        for (UUID materialId : List.of(c.world().goodsC(), c.world().goodsD())) {
+            qty("10000", db.queryForObject("""
+                    SELECT required_qty FROM production_material_demands
+                    WHERE plan_id=? AND goods_id=? AND NOT is_deleted
+                    """, BigDecimal.class, plan, materialId));
+            qty(materialId.equals(c.world().goodsC()) ? "10000" : "0", db.queryForObject("""
+                    SELECT COALESCE(SUM(r.qty-r.released_qty),0) FROM stock_reservations r
+                    JOIN production_material_demands d ON d.id=r.demand_id
+                    WHERE d.plan_id=? AND d.goods_id=? AND NOT r.is_deleted
+                    """, BigDecimal.class, plan, materialId));
+        }
+        qty("0", db.queryForObject("""
+                SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL
+                """, BigDecimal.class, c.world().warehouseId(), c.world().goodsD()));
+        assertEquals(0, db.queryForObject("""
+                SELECT COUNT(*) FROM production_material_supply_pegs peg
+                JOIN production_material_demands demand ON demand.id=peg.demand_id
+                WHERE demand.plan_id=? AND demand.goods_id=? AND peg.status<>'REVERSED'
+                """, Integer.class, plan, c.world().goodsD()));
+        qty("0", db.queryForObject("SELECT fn_execution_material_output_capacity(?,FALSE)", BigDecimal.class, segment.id()));
+        qty("0", db.queryForObject("SELECT fn_execution_material_output_capacity(?,TRUE)", BigDecimal.class, segment.id()));
+        var drawLines = db.queryForList("""
+                SELECT doc.id,item.goods_id,item.base_qty
+                FROM plan_draw_links link JOIN stock_documents doc ON doc.id=link.draw_id AND NOT doc.is_deleted
+                JOIN stock_document_items item ON item.doc_id=doc.id AND NOT item.is_deleted
+                WHERE link.plan_id=? AND NOT link.is_deleted
+                """, plan);
+        assertEquals(1, drawLines.size());
+        assertEquals(c.world().goodsC(), drawLines.getFirst().get("goods_id"));
+        qty("10000", (BigDecimal) drawLines.getFirst().get("base_qty"));
+
+        // The assigned workshop member really requests C and the warehouse
+        // issues it. Missing D must still block output, independently of actor
+        // assignment and the distinction between a reservation and an issue.
+        fixture.loginAs(workerUser);
+        var drawRequests = beans.getBean(com.uten.imp.features.production.execution.ProductionDrawRequestService.class);
+        var drawItems = List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(segment.id(), segment.lockVersion()));
+        var drawPreview = drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(drawItems));
+        drawRequests.submit(new com.uten.imp.features.production.execution.ProductionDrawRequest.SubmitRequest(
+                drawItems, "stock-out-request-" + plan, drawPreview.fingerprint()));
+        UUID drawId = (UUID) drawLines.getFirst().get("id");
+        fixture.loginAs(c.world().superAdminUserId());
+        com.uten.imp.features.stock.dto.StockDocIssueRequest issueRequest = ReflectionTestUtils.invokeMethod(
+                fixture, "drawIssueRequest", drawId, "stock-out-issue-" + plan, null, BigDecimal.ZERO);
+        stockDocuments.approveAndIssue(drawId, issueRequest);
+        for (UUID materialId : List.of(c.world().goodsC(), c.world().goodsD())) {
+            qty(materialId.equals(c.world().goodsC()) ? "10000" : "0", db.queryForObject("""
+                    SELECT fn_execution_material_net_issued_qty(id) FROM production_material_demands
+                    WHERE plan_id=? AND goods_id=? AND NOT is_deleted
+                    """, BigDecimal.class, plan, materialId));
+        }
+        qty("0", db.queryForObject("SELECT fn_execution_material_output_capacity(?,TRUE)", BigDecimal.class, segment.id()));
+        var afterIssue = segments.list(plan).getFirst();
+        assertFalse(afterIssue.canStart());
+        Map<String, String> issuedFacts = workshopPreparationFacts(c.analysis(), plan);
+        fixture.loginAs(workerUser);
+        ApiException blocked = assertThrows(ApiException.class, () -> segments.start(plan, segment.id(),
+                new com.uten.imp.features.production.execution.SegmentTransitionRequest(afterIssue.lockVersion(), "stock-out-start-" + plan)));
+        assertTrue(blocked.getMessage().contains("全部必需物料须共同支持正产出"), blocked.getMessage());
+        assertEquals(issuedFacts, workshopPreparationFacts(c.analysis(), plan));
+        assertEquals(0, count("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='START'", segment.id()));
+        assertEquals(0, count("SELECT COUNT(*) FROM production_daily_report_items WHERE execution_segment_id=? AND NOT is_deleted", segment.id()));
+    }
+
+    private Map<String, String> workshopPreparationFacts(UUID analysis, UUID plan) {
+        Map<String, String> facts = frozenPlans(analysis);
+        String demands = "demand_id IN (SELECT id FROM production_material_demands WHERE plan_id=?)";
+        facts.put("reservations", rows("stock_reservations", demands, plan));
+        facts.put("supply-pegs", rows("production_material_supply_pegs", demands, plan));
+        facts.put("draw-links", rows("plan_draw_links", "plan_id=?", plan));
+        facts.put("draw-documents", rows("stock_documents", "id IN (SELECT draw_id FROM plan_draw_links WHERE plan_id=?)", plan));
+        facts.put("draw-items", rows("stock_document_items", "doc_id IN (SELECT draw_id FROM plan_draw_links WHERE plan_id=?)", plan));
+        return facts;
     }
 
     @Test void stockCoverageUsesActualSiblingLeafAndExcludesAnotherMainWarehouse() {

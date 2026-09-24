@@ -234,6 +234,10 @@
                     <!-- Mockito inline mocks must be attached explicitly before newer JDKs
                          disable runtime agent loading. Spring Boot manages mockito.version. -->
                     <argLine>-Xshare:off -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
+                    <systemPropertyVariables>
+                        <!-- Isolated builds and test forks must not roll the live dev log. -->
+                        <logging.file.name>${project.build.directory}/logs/surefire-${surefire.forkNumber}.log</logging.file.name>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>
@@ -249,6 +253,7 @@
                 </executions>
                 <configuration>
                     <systemPropertyVariables>
+                        <logging.file.name>${project.build.directory}/logs/failsafe-${surefire.forkNumber}.log</logging.file.name>
                         <uten.packaging.application-jar>${project.build.directory}/${project.build.finalName}.jar</uten.packaging.application-jar>
                         <uten.packaging.migrator-jar>${project.build.directory}/uten-imp-migrator.jar</uten.packaging.migrator-jar>
                         <uten.packaging.migration-source>${project.basedir}/src/main/resources/db/migration</uten.packaging.migration-source>

@@ -51,12 +51,14 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         if (ids.isEmpty()) return result.build();
         var changed = new LinkedHashSet<WarehouseDimension>();
         var planItems = new LinkedHashSet<UUID>();
+        var costSegments = new LinkedHashSet<UUID>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT document.id,document.warehouse_id,document.to_warehouse_id,document.doc_type,
                        item.id,item.goods_id,item.color_id,item.upstream_item_id,
                        document.xmin::text,item.xmin::text,
                        EXISTS(SELECT 1 FROM warehouses line_side
-                              WHERE line_side.id=document.warehouse_id AND line_side.is_line_side)
+                              WHERE line_side.id=document.warehouse_id AND line_side.is_line_side),
+                       item.execution_segment_id
                 FROM stock_documents document LEFT JOIN stock_document_items item
                   ON item.doc_id=document.id AND item.is_deleted=FALSE
                 WHERE document.id IN (:ids) AND document.is_deleted=FALSE
@@ -74,6 +76,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                 changed.add(new WarehouseDimension((UUID) row[1], goods, color));
             }
             if (row[7] != null) planItems.add((UUID) row[7]);
+            if ("FINISHED_IN".equals(row[3]) && row[11] != null) costSegments.add((UUID) row[11]);
         }
         // Own production plan and original stock entitlement analyses may be
         // completed before this command reopens them. Do not scan old completed
@@ -97,25 +100,21 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             result.row("original-entitlement", row); result.analysis((UUID) row[1]);
             result.inventory((UUID) row[2], (UUID) row[3]);
         }
-        // FG withdrawal returns registered cost shares to their actual input
-        // nodes. Historical/manual inputs need not exist in the current BOM.
+        // Preserve historical output scope even when an older stock item lacks
+        // its own segment identity. First receipts have no output row yet.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT input.input_node_id,pool.goods_id,pool.color_id,
-                       fn_warehouse_main_id(pool.warehouse_id),input.xmin::text
+                SELECT DISTINCT output.execution_segment_id,output.source_node_id,output.xmin::text
                 FROM stock_document_items item
                 JOIN stock_movements movement ON movement.source_doc_type='STOCK_DOC'
                   AND movement.source_doc_id=item.doc_id AND movement.source_item_id=item.id AND movement.direction=1
                 JOIN stock_value_production_cost_outputs output ON output.movement_id=movement.id
-                JOIN stock_value_production_cost_inputs input ON input.execution_segment_id=output.execution_segment_id
-                JOIN stock_value_nodes node ON node.id=input.input_node_id
-                JOIN stock_value_pools pool ON pool.id=node.pool_id
                 WHERE item.doc_id IN (:ids) AND item.bill_type='FINISHED_IN'
-                ORDER BY input.input_node_id
+                ORDER BY output.execution_segment_id,output.source_node_id
                 """).setParameter("ids",ids))) {
-            result.row("finished-cost-input",row);
-            result.inventory((UUID)row[1],(UUID)row[2]);
-            if(row[3]!=null)result.warehouses.add((UUID)row[3]);
+            result.row("finished-cost-output",row);
+            costSegments.add((UUID) row[0]);
         }
+        addExecutionCostFootprint(result, costSegments);
         if (!planItems.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
@@ -283,6 +282,11 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         result.parts.add("future-finished-in:" + changed + ":" + items);
         changed.forEach(d -> result.inventory(d.goodsId(), d.colorId()));
         if (!items.isEmpty()) {
+            List<UUID> costSegments = NativeQueryResults.typedRows(em.createNativeQuery("""
+                    SELECT id FROM production_execution_segments
+                    WHERE source_plan_item_id IN (:ids) AND NOT is_deleted ORDER BY id
+                    """).setParameter("ids",items),UUID.class);
+            addExecutionCostFootprint(result, costSegments);
             // 与 forStockDocuments 的 plan-sales 同口径：入库会回写计划进度与销售归属。
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
@@ -319,6 +323,63 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             }
         }
         addWakeupTargets(result, changed); expandAnalyses(result); return result.build();
+    }
+
+    /**
+     * A first receipt registers its cost object only while posting. Discover
+     * consumed positions now, before any goods row is locked, rather than
+     * relying on that not-yet-existing object's registered input list. Cost
+     * family proofs and actual value nodes also cover split/supplement output,
+     * partial receipts and withdrawal without guessing from today's BOM.
+     */
+    private void addExecutionCostFootprint(Footprint result, Collection<UUID> requestedSegments) {
+        List<UUID> segments = ids(requestedSegments);
+        if (segments.isEmpty()) return;
+        var scopes = new LinkedHashSet<UUID>();
+        var members = new LinkedHashSet<UUID>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT source.id,fn_production_execution_cost_scope(source.id),member.id,
+                       source.xmin::text,member.xmin::text
+                FROM production_execution_segments source
+                CROSS JOIN LATERAL fn_production_execution_cost_members(
+                    fn_production_execution_cost_scope(source.id)) family
+                JOIN production_execution_segments member ON member.id=family.segment_id
+                WHERE source.id IN (:ids) ORDER BY source.id,member.id
+                """).setParameter("ids",segments))) {
+            result.row("finished-cost-family",row);
+            if (row[1] != null) scopes.add((UUID)row[1]);
+            members.add((UUID)row[2]);
+        }
+        if (scopes.isEmpty()) return;
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT posting.id,node.id,pool.goods_id,pool.color_id,
+                       fn_warehouse_main_id(pool.warehouse_id),posting.xmin::text,
+                       event.xmin::text,node.xmin::text,pool.id
+                FROM production_material_settlement_postings posting
+                JOIN production_material_demands demand ON demand.id=posting.demand_id
+                JOIN stock_value_events event ON event.source_event_id=posting.id
+                    AND event.source_doc_type='PRODUCTION_CONSUMED_VALUE'
+                JOIN stock_value_nodes node ON node.id=event.result_node_id AND node.active
+                JOIN stock_value_pools pool ON pool.id=node.pool_id
+                WHERE demand.execution_segment_id IN (:ids) ORDER BY posting.id,node.id
+                """).setParameter("ids",members))) {
+            result.row("finished-consumed-cost",row);
+            result.inventory((UUID)row[2],(UUID)row[3]);
+            if (row[4] != null) result.warehouses.add((UUID)row[4]);
+        }
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT input.execution_segment_id,input.input_node_id,pool.goods_id,pool.color_id,
+                       fn_warehouse_main_id(pool.warehouse_id),input.xmin::text,node.xmin::text,pool.id
+                FROM stock_value_production_cost_inputs input
+                JOIN stock_value_nodes node ON node.id=input.input_node_id
+                JOIN stock_value_pools pool ON pool.id=node.pool_id
+                WHERE input.execution_segment_id IN (:ids)
+                ORDER BY input.execution_segment_id,input.input_node_id
+                """).setParameter("ids",scopes))) {
+            result.row("finished-registered-cost",row);
+            result.inventory((UUID)row[2],(UUID)row[3]);
+            if (row[4] != null) result.warehouses.add((UUID)row[4]);
+        }
     }
 
     private void addWakeupTargets(Footprint result, Collection<WarehouseDimension> changed) {
@@ -392,6 +453,50 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
     }
 
     private void expandNow(Footprint result, Set<UUID> analyses) {
+        // An analysis command can grow an existing execution plan. Its historical
+        // supply pegs need the same commercial closure as beginPlan(), even when
+        // the source order was not created by a preplan supply action.
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH RECURSIVE family(id) AS (
+                    SELECT id FROM production_plans WHERE material_analysis_id IN (:ids) AND NOT is_deleted
+                    UNION
+                    SELECT edge.id FROM family parent CROSS JOIN LATERAL (
+                        SELECT link.subplan_id AS id FROM subplan_links link
+                        WHERE link.plan_id=parent.id AND NOT link.is_deleted
+                        UNION
+                        SELECT source.plan_id FROM production_actual_output_supplement_proofs proof
+                        JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
+                        WHERE proof.supplement_plan_id=parent.id
+                        UNION
+                        SELECT proof.supplement_plan_id FROM production_actual_output_supplement_proofs proof
+                        JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
+                        WHERE source.plan_id=parent.id
+                    ) edge
+                )
+                SELECT peg.id,peg.supply_type,
+                       COALESCE(purchase.order_id,subcontract.order_id,request.request_id,application.application_id),
+                       peg.xmin::text,demand.id,demand.xmin::text,plan.id,plan.xmin::text,
+                       demand.goods_id,demand.color_id
+                FROM family JOIN production_plans plan ON plan.id=family.id
+                JOIN production_material_demands demand ON demand.plan_id=plan.id AND NOT demand.is_deleted
+                LEFT JOIN production_material_supply_pegs peg ON peg.demand_id=demand.id AND peg.status NOT IN ('RELEASED','REVERSED')
+                LEFT JOIN purchase_order_items purchase ON purchase.id=peg.supply_item_id AND peg.supply_type='PURCHASE_ORDER_ITEM'
+                LEFT JOIN subcontract_order_items subcontract ON subcontract.id=peg.supply_item_id AND peg.supply_type='SUBCONTRACT_ORDER_ITEM'
+                LEFT JOIN purchase_request_items request ON request.id=peg.supply_item_id AND peg.supply_type='PURCHASE_REQUEST_ITEM'
+                LEFT JOIN subcontract_application_items application ON application.id=peg.supply_item_id AND peg.supply_type='SUBCONTRACT_APPLICATION_ITEM'
+                ORDER BY demand.id,peg.id
+                """).setParameter("ids",analyses))) {
+            result.row("analysis-execution-supply",row);
+            result.inventory((UUID)row[8],(UUID)row[9]);
+            if (row[2] == null) continue;
+            CommercialType type = switch (row[1].toString()) {
+                case "PURCHASE_ORDER_ITEM" -> CommercialType.PURCHASE_ORDER;
+                case "SUBCONTRACT_ORDER_ITEM" -> CommercialType.SUBCONTRACT_ORDER;
+                case "PURCHASE_REQUEST_ITEM" -> CommercialType.PURCHASE_REQUEST;
+                default -> CommercialType.SUBCONTRACT_APPLICATION;
+            };
+            result.sources.add(new CommercialSource(type,(UUID)row[2]));
+        }
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT source.id,item.order_id,item.xmin::text,orders.xmin::text
                 FROM production_material_analysis_items source JOIN subcontract_order_items item ON source.source_ref='SC-ORDER:'||item.id::text

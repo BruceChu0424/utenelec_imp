@@ -34,7 +34,7 @@ void main() {
     expect(find.text('报废补产'), findsOneWidget);
     expect(find.text('待补料/待发料'), findsOneWidget);
 
-    final scrap = find.text('报废补产');
+    final scrap = find.textContaining('SJ-recovery-scrap');
     await tester.ensureVisible(scrap);
     await tester.pumpAndSettle();
     await tester.tap(scrap);
@@ -50,7 +50,7 @@ void main() {
       isNull,
     );
 
-    final rework = find.text('返工再检');
+    final rework = find.textContaining('SJ-recovery-rework');
     await tester.ensureVisible(rework);
     await tester.pumpAndSettle();
     await tester.tap(rework);
@@ -61,10 +61,74 @@ void main() {
     expect(find.text('已选返工再检 · recovery-rework'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('同一计划行的销售分摊和品质恢复授权分别选择，按点选次序返回', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final rows = [
+      for (final id in ['rework-a', 'rework-b'])
+        _recovery(
+          id: id,
+          disposition: 'REWORK',
+          maxReportQty: 2,
+          requiresMaterial: false,
+        ),
+      for (final id in ['sales-a', 'sales-b'])
+        {
+          ..._recovery(
+            id: id,
+            disposition: 'REWORK',
+            maxReportQty: 2,
+            requiresMaterial: false,
+          ),
+          'fqcRecoveryAuthorizationId': null,
+          'fqcRecoveryDispositionCode': null,
+          'orderItemId': 'order-$id',
+          'executionSegmentSalesAllocationId': 'allocation-$id',
+        },
+    ];
+    List<ReportablePlanLine>? selected;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionDailyReportRepositoryProvider.overrideWithValue(
+            ProductionDailyReportRepository(_api(rows: rows)),
+          ),
+        ],
+        child: MaterialApp(
+          home: _PickerHost(onSelected: (value) => selected = value),
+        ),
+      ),
+    );
+    await tester.tap(find.text('选择来源'));
+    await tester.pumpAndSettle();
+    for (final id in ['sales-b', 'rework-a', 'sales-a', 'rework-b']) {
+      final row = find.textContaining('SJ-$id');
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.pumpAndSettle();
+    expect(selected?.map((line) => line.planNo), [
+      'SJ-sales-b',
+      'SJ-rework-a',
+      'SJ-sales-a',
+      'SJ-rework-b',
+    ]);
+    expect(
+      selected?[0].executionSegmentSalesAllocationId,
+      'allocation-sales-b',
+    );
+    expect(selected?[1].fqcRecoveryAuthorizationId, 'rework-a');
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _PickerHost extends ConsumerStatefulWidget {
-  const _PickerHost();
+  const _PickerHost({this.onSelected});
+  final ValueChanged<List<ReportablePlanLine>>? onSelected;
 
   @override
   ConsumerState<_PickerHost> createState() => _PickerHostState();
@@ -87,6 +151,7 @@ class _PickerHostState extends ConsumerState<_PickerHost> {
                   // 2026-09-11 起选择器返回**列表**（支持多选）；
                   // 本用例只点一条，取首条即可。
                   if (mounted && result != null && result.isNotEmpty) {
+                    widget.onSelected?.call(result);
                     setState(() => selected = result.first);
                   }
                 },
@@ -101,7 +166,7 @@ class _PickerHostState extends ConsumerState<_PickerHost> {
   }
 }
 
-ApiClient _api() {
+ApiClient _api({List<Map<String, dynamic>>? rows}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -111,23 +176,25 @@ ApiClient _api() {
             requestOptions: request,
             statusCode: 200,
             data: {
-              'items': [
-                _recovery(
-                  id: 'recovery-rework',
-                  disposition: 'REWORK',
-                  maxReportQty: 2,
-                  requiresMaterial: false,
-                ),
-                _recovery(
-                  id: 'recovery-scrap',
-                  disposition: 'SCRAP',
-                  maxReportQty: 0,
-                  requiresMaterial: true,
-                ),
-              ],
+              'items':
+                  rows ??
+                  [
+                    _recovery(
+                      id: 'recovery-rework',
+                      disposition: 'REWORK',
+                      maxReportQty: 2,
+                      requiresMaterial: false,
+                    ),
+                    _recovery(
+                      id: 'recovery-scrap',
+                      disposition: 'SCRAP',
+                      maxReportQty: 0,
+                      requiresMaterial: true,
+                    ),
+                  ],
               'page': 1,
               'size': 100,
-              'total': 2,
+              'total': rows?.length ?? 2,
               'totalPages': 1,
             },
           ),
@@ -148,7 +215,7 @@ Map<String, dynamic> _recovery({
   'executionSegmentId': 'segment-1',
   'executionSegmentCode': 'SEG-001',
   'executionSegmentStatus': 'IN_PROGRESS',
-  'planNo': 'SJ-001',
+  'planNo': 'SJ-$id',
   'goodsId': 'goods-1',
   'goodsCode': 'V51043',
   'goodsName': '酸洗插套',

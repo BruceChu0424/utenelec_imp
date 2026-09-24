@@ -426,6 +426,13 @@ public class ProductionMaterialAllocationFacade {
                     new GroupKey(mainByWarehouse.get(warehouse), material),
                     own.qty().subtract(own.qualifiedQty()).negate(), BigDecimal::add);
         }
+
+        void consumeBudget(StockPosition position, GroupKey group, BigDecimal take,
+                           BigDecimal qualified, boolean publicWarehouse) {
+            position.free = position.free.subtract(take);
+            if (publicWarehouse) publicRemaining.compute(group, (ignored, budget) ->
+                    (budget == null ? BigDecimal.ZERO : budget).subtract(take.subtract(qualified)));
+        }
     }
 
     /** All reads are batched after the existing material/demand locks; no per-leaf lookup loop. */
@@ -741,7 +748,7 @@ public class ProductionMaterialAllocationFacade {
                 throw new ApiException(ErrorCode.CONFLICT, "物料分配追加写入失败");
             }
             if (lineSide) claimDirectSources((UUID)existing[0],request,receiptItemId,take,sourcePreferences);
-            position.free = position.free.subtract(take);
+            batch.consumeBudget(position, group, take, qualified, !requiresQualifiedOrigin && !lineSide);
             return new AllocationResult(
                     request.demandId(), (UUID) existing[0], supplyId, take, false, request.warehouseId());
         }
@@ -784,10 +791,7 @@ public class ProductionMaterialAllocationFacade {
             throw new ApiException(ErrorCode.CONFLICT, "物料分配写入失败");
         }
         if (lineSide) claimDirectSources(allocationId,request,receiptItemId,take,sourcePreferences);
-        position.free = position.free.subtract(take);
-        BigDecimal publicTake = take.subtract(qualified);
-        if (!requiresQualifiedOrigin && !lineSide) batch.publicRemaining.compute(group, (ignored, budget) ->
-                (budget == null ? BigDecimal.ZERO : budget).subtract(publicTake));
+        batch.consumeBudget(position, group, take, qualified, !requiresQualifiedOrigin && !lineSide);
         return new AllocationResult(
                 request.demandId(), allocationId, supplyId, take, false, request.warehouseId());
     }

@@ -266,6 +266,27 @@ class ProductionPlanRepository {
     };
   }
 
+  /// 本分析上车间在催的任务(ADR-117)。只读；「计划还缺多少」由页面拿同一份
+  /// 分析快照判断，这里只给谁催的、催了几次、那个任务还缺哪几行。
+  Future<List<MaterialAnalysisWorkshopUrge>> materialAnalysisWorkshopUrges(
+    String analysisId,
+  ) async {
+    final rows = await api.getList(
+      '$_materialAnalysesBase/${Uri.encodeComponent(analysisId)}/workshop-urges',
+    ); // ENDPOINT
+    return [for (final row in rows) MaterialAnalysisWorkshopUrge.fromJson(row)];
+  }
+
+  /// 下完单后立即核对本分析上的车间催办(ADR-117)：计划已下够单的办结并撤回计划员的
+  /// 待办卡。只动催办记录与通知，不改任何数量。返回办结条数。
+  Future<int> reconcileMaterialAnalysisWorkshopUrges(String analysisId) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${Uri.encodeComponent(analysisId)}/workshop-urges/reconcile',
+    ); // ENDPOINT
+    final resolved = json['resolved'];
+    return resolved is num ? resolved.toInt() : 0;
+  }
+
   static double? _toDouble(Object? value) => switch (value) {
     num() => value.toDouble(),
     String() => double.tryParse(value),

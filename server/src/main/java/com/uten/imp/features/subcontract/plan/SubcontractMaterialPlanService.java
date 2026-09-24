@@ -1666,7 +1666,6 @@ public class SubcontractMaterialPlanService
                 WHERE stock_item.doc_id = :documentId
                   AND stock_item.bill_type = 'FINISHED_IN'
                   AND stock_item.is_deleted = FALSE
-                  AND NOT fn_finished_in_is_public_output(stock_item.id)
                 ORDER BY plan_item.id, stock_item.id
                 FOR UPDATE OF plan_item
                 """).setParameter("documentId", stockDocumentId).getResultList();
@@ -2186,7 +2185,6 @@ public class SubcontractMaterialPlanService
                   AND child.analysis_id=plan.material_analysis_id
                 WHERE document.id=:document AND document.doc_type='FINISHED_IN' AND document.status=1 AND NOT document.is_deleted
                   AND item.bill_type='FINISHED_IN' AND NOT item.is_deleted AND item.base_qty>0
-                  AND NOT fn_finished_in_is_public_output(item.id)
                   AND child.source_type='SUBCONTRACT_PREPARATION' AND child.subcontract_order_item_id IS NOT NULL
                   AND NOT EXISTS(SELECT 1 FROM subcontract_material_plan_items target
                     WHERE target.preparation_analysis_item_id=child.id AND target.flow_mode='MAKE_THEN_OUTBOUND' AND NOT target.is_deleted)

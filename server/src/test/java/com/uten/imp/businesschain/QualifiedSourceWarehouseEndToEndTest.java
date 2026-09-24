@@ -341,14 +341,14 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID childMaterial=view.flatMaterials().stream().filter(m->m.goodsId().equals(child)).map(MaterialView::materialLineId).findFirst().orElseThrow();
         lines.add(new IssueWorkshopPlansRequest.IssuePlanLine(childMaterial,null,BigDecimal.ONE,null,null,null,null,null,null,null));
         lines.add(new IssueWorkshopPlansRequest.IssuePlanLine(parentAnalysis,BigDecimal.ONE));
-        commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"make-issue-"+parent,
+        var issuedPlans=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"make-issue-"+parent,
                 w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines));
         // 第二颗采购叶子(goodsD)的路由与下达都定型后再补库存：preview 时无货才保持
         // 可行动行，段就绪是实时读库存，晚播不影响（V581 夹具形态见上）。
         call("putDirectTargetStock",w,w.goodsD(),"100");
         // V599：齐套自动提升按路线放行——把本次下达的全部段确认为齐套路线，
         // 后续到货/产出入库的提升与 startedSegmentFor 才走得通(本组测的是资格与提升机械)。
-        fixture.confirmAllUnconfirmedFullKitRoutes();
+        issuedPlans.plans().forEach(plan -> fixture.confirmFullKitRoutes(plan.planId()));
         UUID parentPlan=db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=?",UUID.class,parentAnalysis);
         UUID childAnchor=db.queryForObject("SELECT id FROM production_material_analysis_items WHERE analysis_id=? AND parent_analysis_material_id=? AND NOT is_deleted",UUID.class,view.analysisId(),childMaterial);
         UUID childPlan=db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=?",UUID.class,childAnchor);

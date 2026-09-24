@@ -99,6 +99,44 @@ class ProductionExecutionWorkbenchRepository {
       for (final item in rows) ProductionWorkshopTaskMaterial.fromJson(item),
     ];
   }
+
+  /// 催计划(ADR-117)：本任务缺的料里有计划还没下单的，提醒计划员去下单。
+  /// 30 分钟内再点不再打扰计划员，返回 [WorkshopPlanningUrgeResult.notified] = false。
+  Future<WorkshopPlanningUrgeResult> urgePlanning(String segmentId) async {
+    final json = await _api.post(
+      '/production/workshop-tasks/${Uri.encodeComponent(segmentId)}/planning-urge',
+    );
+    return WorkshopPlanningUrgeResult.fromJson(json);
+  }
+}
+
+/// 一次催计划的结果。
+class WorkshopPlanningUrgeResult {
+  const WorkshopPlanningUrgeResult({
+    required this.notified,
+    this.urgeCount = 0,
+    this.nextUrgeAllowedAt,
+    this.gapKindCount = 0,
+    this.gapSummary,
+  });
+
+  /// false = 30 分钟内刚催过，这次没有再提醒计划员。
+  final bool notified;
+  final int urgeCount;
+  final DateTime? nextUrgeAllowedAt;
+  final int gapKindCount;
+  final String? gapSummary;
+
+  factory WorkshopPlanningUrgeResult.fromJson(Map<String, dynamic> json) =>
+      WorkshopPlanningUrgeResult(
+        notified: json['notified'] == true,
+        urgeCount: (json['urgeCount'] as num?)?.toInt() ?? 0,
+        nextUrgeAllowedAt: DateTime.tryParse(
+          json['nextUrgeAllowedAt'] as String? ?? '',
+        ),
+        gapKindCount: (json['gapKindCount'] as num?)?.toInt() ?? 0,
+        gapSummary: json['gapSummary'] as String?,
+      );
 }
 
 /// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段(等待物料/生产中，相加=总数)。

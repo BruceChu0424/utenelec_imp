@@ -219,6 +219,13 @@ class ProductionExecutionWorkbenchSegment {
     this.materialShortMakeKindCount = 0,
     this.materialSupportedOutputQty = 0,
     this.materialPreparedOutputQty = 0,
+    this.materialPlanningGapKindCount = 0,
+    this.materialPlanningGapSummary,
+    this.planningUrgeCount = 0,
+    this.planningUrgedAt,
+    this.planningUrgedByName,
+    this.planningNextUrgeAt,
+    this.canUrgePlanning = false,
     this.salesOrderNos,
     this.workshopDepartmentId,
     this.workshopName,
@@ -338,6 +345,33 @@ class ProductionExecutionWorkbenchSegment {
   /// 已实领物料共同支持的可产量 / 已预留物料(含未领)共同支持的可产量。
   final double materialSupportedOutputQty;
   final double materialPreparedOutputQty;
+
+  /// ADR-117：缺的料里「计划还没下单」的种数——物料分析那一行此刻还缺(与计划员主表
+  /// 「还缺数量」同一个数)。0 = 缺的料计划都下过单了，只是在等到货 / 等子件做完。
+  final int materialPlanningGapKindCount;
+
+  /// 计划还没下单的料点名(「铜片 800个、弹簧 1000个 等 5 种」)。
+  final String? materialPlanningGapSummary;
+
+  /// 车间已经催过计划几次(在催记录)；没催或计划已下够为 0。
+  final int planningUrgeCount;
+
+  /// 最近一次催计划的时间 / 是谁催的。
+  final DateTime? planningUrgedAt;
+  final String? planningUrgedByName;
+
+  /// 最早什么时候可以再催(30 分钟内不重复打扰计划员)。
+  final DateTime? planningNextUrgeAt;
+
+  /// 当前用户能不能催计划(有计划还没下单的料，且本人有开工 / 领料权限)。
+  final bool canUrgePlanning;
+
+  /// 在等计划下单：还有缺料，而且其中有计划还没下单的。
+  bool get waitingForPlanning => materialPlanningGapKindCount > 0;
+
+  /// 已经催过、而且还在 30 分钟冷却里(按 [now] 判断)。
+  bool urgeCoolingDown(DateTime now) =>
+      planningNextUrgeAt != null && planningNextUrgeAt!.isAfter(now);
 
   /// 已备齐(预留足量或已领)的种数 = 总种数 - 缺料种数。
   int get materialCoveredKindCount =>
@@ -473,6 +507,18 @@ class ProductionExecutionWorkbenchSegment {
         (json['materialSupportedOutputQty'] as num?)?.toDouble() ?? 0,
     materialPreparedOutputQty:
         (json['materialPreparedOutputQty'] as num?)?.toDouble() ?? 0,
+    materialPlanningGapKindCount:
+        (json['materialPlanningGapKindCount'] as num?)?.toInt() ?? 0,
+    materialPlanningGapSummary: json['materialPlanningGapSummary'] as String?,
+    planningUrgeCount: (json['planningUrgeCount'] as num?)?.toInt() ?? 0,
+    planningUrgedAt: DateTime.tryParse(
+      json['planningUrgedAt'] as String? ?? '',
+    ),
+    planningUrgedByName: json['planningUrgedByName'] as String?,
+    planningNextUrgeAt: DateTime.tryParse(
+      json['planningNextUrgeAt'] as String? ?? '',
+    ),
+    canUrgePlanning: json['canUrgePlanning'] == true,
   );
 }
 
@@ -498,6 +544,8 @@ class ProductionWorkshopTaskMaterial {
     this.colorName,
     this.unitName,
     this.producingSegments,
+    this.planningGapQty = 0,
+    this.planningRouteConfirmed = true,
   });
 
   final String demandId;
@@ -530,6 +578,17 @@ class ProductionWorkshopTaskMaterial {
   /// 同车间承担直送责任的子件工单：`编号|状态` 以顿号分隔；非自制为空。
   final String? producingSegments;
 
+  /// ADR-117：这种料计划还差多少没下单(物料分析「还缺数量」，封顶到本任务自己的缺口)。
+  /// 0 = 不缺，或缺的部分计划已经下过单、只是在等到货 / 等子件做完。
+  final double planningGapQty;
+
+  /// 计划有没有定下这种料怎么供(采购 / 委外 / 自制)。
+  final bool planningRouteConfirmed;
+
+  /// 这种料在等计划下单(还缺、而且计划那边还没下够)。
+  bool get waitingForPlanning =>
+      planningGapQty > 0 && (state == 'SHORT' || state == 'SHORT_MAKE');
+
   /// 来源口径：仓库领料(采购/委外/自制入库)还是同车间直送。
   String get sourceLabel => directSupply
       ? '同车间直送'
@@ -540,20 +599,22 @@ class ProductionWorkshopTaskMaterial {
           _ => '仓库领料',
         };
 
-  String get stateLabel => switch (state) {
-    'ISSUED' => '已领到车间',
-    'SHORT_MAKE' => '等自制子件完成',
-    'SHORT' => switch (supplyRoute) {
-      'BUY' => '等采购到货',
-      'SUBCONTRACT' => '等委外回厂',
-      _ => '等待到货',
-    },
-    'DRAWABLE' => '已备好 · 可领料',
-    'AWAITING_WAREHOUSE' => '已申请 · 待仓库发料',
-    'LINE_SIDE_PENDING' => '直送料待开工投入',
-    'PREPARING' => '备料中',
-    _ => state,
-  };
+  String get stateLabel => waitingForPlanning
+      ? (planningRouteConfirmed ? '等计划下单' : '等计划定供应方式')
+      : switch (state) {
+          'ISSUED' => '已领到车间',
+          'SHORT_MAKE' => '等自制子件完成',
+          'SHORT' => switch (supplyRoute) {
+            'BUY' => '等采购到货',
+            'SUBCONTRACT' => '等委外回厂',
+            _ => '等待到货',
+          },
+          'DRAWABLE' => '已备好 · 可领料',
+          'AWAITING_WAREHOUSE' => '已申请 · 待仓库发料',
+          'LINE_SIDE_PENDING' => '直送料待开工投入',
+          'PREPARING' => '备料中',
+          _ => state,
+        };
 
   /// 子件工单的可读摘要：`ZX0001 生产中、ZX0002 已完工`。
   String? get producingSegmentsLabel {
@@ -600,6 +661,8 @@ class ProductionWorkshopTaskMaterial {
         (json['warehouseAvailableQty'] as num?)?.toDouble() ?? 0,
     state: json['state'] as String? ?? '',
     producingSegments: json['producingSegments'] as String?,
+    planningGapQty: (json['planningGapQty'] as num?)?.toDouble() ?? 0,
+    planningRouteConfirmed: json['planningRouteConfirmed'] != false,
   );
 }
 

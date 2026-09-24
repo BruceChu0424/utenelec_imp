@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.execution;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import static com.uten.imp.features.production.execution.ProductionOverproductio
 @RequiredArgsConstructor
 public class ProductionOverproductionRateController {
     private final ProductionOverproductionRateService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping("/segments/{id}")
     @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
@@ -38,7 +40,17 @@ public class ProductionOverproductionRateController {
 
     @GetMapping("/requests/{id}")
     @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
-    public RequestView detail(@PathVariable UUID id) { return service.detail(id); }
+    public RequestView detail(@PathVariable UUID id) {
+        RequestView result = service.detail(id);
+        auditViews.record(
+                "view_production_overproduction_rate_detail",
+                "production_overproduction_rate_requests",
+                id,
+                result.segmentCode(),
+                null,
+                "超产比例申请");
+        return result;
+    }
 
     @PostMapping("/requests/{id}/approve")
     @PreAuthorize("hasAuthority('production_plan:approve')")

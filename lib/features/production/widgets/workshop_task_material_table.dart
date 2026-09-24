@@ -169,10 +169,29 @@ class _WorkshopTaskMaterialTableState
                       ),
                     ),
                     DataCell(
-                      UtenStatusBadge(
-                        label: row.stateLabel,
-                        type: _badgeType(row.state),
-                        size: UtenStatusBadgeSize.small,
+                      // ADR-117：缺料里计划还没下单的，品红「等计划下单」并说清还差多少(与状态列同色)；
+                      // 计划已下过单的照旧琥珀「等采购到货 / 等子件完成」。
+                      Tooltip(
+                        message: row.waitingForPlanning
+                            ? (row.planningRouteConfirmed
+                                  ? '计划还差 ${_qty(row.planningGapQty, row.unitName)} 没下单，'
+                                        '可以在任务详情里点「催计划」提醒计划员'
+                                  : '计划还没定这种料怎么供(采购 / 委外 / 自制)，'
+                                        '还差 ${_qty(row.planningGapQty, row.unitName)}')
+                            : row.stateLabel,
+                        child: UtenStatusBadge(
+                          key: ValueKey(
+                            'workshop-task-material-state-${row.demandId}',
+                          ),
+                          label: row.stateLabel,
+                          type: row.waitingForPlanning
+                              ? UtenStatusBadgeType.fuchsia
+                              : _badgeType(row.state),
+                          icon: row.waitingForPlanning
+                              ? Icons.campaign_rounded
+                              : null,
+                          size: UtenStatusBadgeSize.small,
+                        ),
                       ),
                     ),
                     DataCell(Text(row.producingSegmentsLabel ?? '—')),

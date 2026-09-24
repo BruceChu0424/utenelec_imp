@@ -160,6 +160,7 @@ void main() {
         {
           'analysisLineId': 'existing-child',
           'qty': 2.0,
+          'allowedOverproductionRate': 0.1,
           'departmentId': 'workshop',
           'workshopName': '原车间',
           'workerId': 'worker',

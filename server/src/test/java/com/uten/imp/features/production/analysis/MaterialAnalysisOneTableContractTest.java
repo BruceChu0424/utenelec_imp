@@ -23,11 +23,21 @@ class MaterialAnalysisOneTableContractTest {
     void netShortageOnlySubtractsSharedFutureWhenItIsSafeToDoSo() throws Exception {
         String service = source("features/production/analysis/MaterialAnalysisService.java");
 
+        // 催计划/办结使用尚未落实的供给量；未认领公共候选只能减少另外新下单的展示量。
+        // 先扣真实自制承诺，再在安全的路线/维度上预扣公共候选，不能反推已经截断的 net。
+        assertThat(service).contains("BigDecimal planningUncovered = additionalRecommended");
         assertThat(service).contains("BigDecimal netShortage = sharedFutureDeductible");
-        assertThat(service).contains(": additionalRecommended;");
+        assertThat(service).contains("? planningUncovered.subtract(sharedFutureClaimable).max(BigDecimal.ZERO)");
+        assertThat(service).contains(": planningUncovered;");
+        String planning = service.substring(service.indexOf("BigDecimal planningUncovered ="),
+                service.indexOf("BigDecimal netShortage ="));
+        assertThat(planning).contains(
+                ".subtract(committedPlanQty.max(BigDecimal.ZERO).subtract(internalCovered)");
+        assertThat(planning).doesNotContain("sharedFutureClaimable");
+        assertThat(service).contains("netShortage, sourceRequiredQty, planningUncovered);");
         // 2026-09-23：再扣掉本节点已下达自制计划里归本需求的那一份(不含公共备货产出——
         // 那份不绑需求, 锚点余量也不因它归零), 且不与已作为 INTERNAL 在途扣过的前置自制
-        // 台账 / 自制任务重复; 只动这个纯展示量, additionalRecommended 那一行原样。
+        // 台账 / 自制任务重复; additionalRecommended 那一行原样。
         assertThat(service).contains("BigDecimal committedPlanQty() {");
         assertThat(service).contains(
                 "BigDecimal internalCovered = activeFutureCoverageQty.subtract(externalFutureCoverageQty)");

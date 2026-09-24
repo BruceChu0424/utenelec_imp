@@ -791,7 +791,13 @@ public final class MaterialAnalysisContracts {
              * 原始销售/计划汇总需求按本节点 BOM 规则展开的数量。
              * 不随下单、追加、到货、库存占用或车间执行变化；实际备料仍使用 requiredQty。
              */
-            BigDecimal sourceRequiredQty) {
+            BigDecimal sourceRequiredQty,
+            /**
+             * 尚未落实供给的计划缺口：扣除本需求已有现货、专属在途和已下达自制计划，
+             * 不扣仅可认领但尚未认领的公共在途。催计划、补下层物料和办结催办使用此量；
+             * netShortageQty 仍只表示采用当前公共候选后需要另外新下单的展示量。
+             */
+            BigDecimal planningUncoveredQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

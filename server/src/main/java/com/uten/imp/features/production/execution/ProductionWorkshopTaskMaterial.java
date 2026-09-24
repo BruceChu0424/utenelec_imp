@@ -42,5 +42,12 @@ public record ProductionWorkshopTaskMaterial(
         BigDecimal warehouseAvailableQty,
         String state,
         /** 同车间承担直送责任的子件工单：`编号|状态` 以顿号分隔；非自制需求为空。 */
-        String producingSegments) {
+        String producingSegments,
+        /**
+         * ADR-117：这种料计划还差多少没下单(物料分析那一行的「还缺数量」，封顶到本任务自己的
+         * 缺口)。0 = 不缺，或缺的部分计划已经下过单、只是在等到货 / 等子件做完。
+         */
+        BigDecimal planningGapQty,
+        /** 计划有没有定下这种料怎么供(采购 / 委外 / 自制)；没定时连下单都还谈不上。 */
+        boolean planningRouteConfirmed) {
 }

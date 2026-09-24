@@ -40,11 +40,32 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
 
   _MaterialAnalysisChildShortageState get _host => widget.host;
 
-  List<_ChildShortageRoot> _roots() => _host._childShortageRoots(
-    rootKeys: widget.rootKeys,
-    orderedQty: widget.orderedQty,
-    appendedKeys: widget.appendedKeys,
-  );
+  late final Listenable _hostChanges = Listenable.merge([
+    _host._childShortageRevision,
+    _host.materialDetailRevision,
+    _host._tableEstimateTick,
+  ]);
+
+  /// 缺哪些料只随分析快照与宿主状态(路线草稿等)变；敲数量只刷新格子里的估算，
+  /// 不必每敲一个键把整棵 BOM 重走一遍(大分析上会卡)。
+  ProductionMaterialAnalysisView? _rootsAnalysis;
+  int _rootsRevision = -1;
+  List<_ChildShortageRoot> _rootsCache = const [];
+
+  List<_ChildShortageRoot> _roots() {
+    final analysis = _host._analysis;
+    final revision = _host._childShortageRevision.value;
+    if (!identical(analysis, _rootsAnalysis) || revision != _rootsRevision) {
+      _rootsAnalysis = analysis;
+      _rootsRevision = revision;
+      _rootsCache = _host._childShortageRoots(
+        rootKeys: widget.rootKeys,
+        orderedQty: widget.orderedQty,
+        appendedKeys: widget.appendedKeys,
+      );
+    }
+    return _rootsCache;
+  }
 
   _MaterialTableRow _rowOf(_ChildShortageLine line) => _MaterialTableRow(
     kind: _MaterialTableRowKind.material,
@@ -55,9 +76,14 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
     group: line.group,
   );
 
-  bool _selected(_ChildShortageLine line) =>
+  /// 勾选框的状态：没被撤勾、而且能下单。
+  bool _checked(_ChildShortageLine line) =>
       !_deselected.contains(line.group.key) &&
       _host._tableIssueBlockedReason(line.group) == null;
+
+  /// 算进「一键下单(N)」的行：勾着，而且填的数大于 0(清空的行不下)。
+  bool _selected(_ChildShortageLine line) =>
+      _checked(line) && _host._tableSubmitQtyOf(line.group) > 0.0001;
 
   Future<void> _submit(List<_ChildShortageLine> lines) async {
     if (_submitting || _host._busy) return;
@@ -78,18 +104,13 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
     }
     if (!mounted || !ok) return;
     setState(() => _rounds++);
-    unawaited(_host._reconcileWorkshopUrgesAfterOrder());
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _host._childShortageRevision,
-        _host.materialDetailRevision,
-        _host._tableEstimateTick,
-      ]),
+      animation: _hostChanges,
       builder: (context, _) {
         final analysis = _host._analysis;
         final roots = analysis == null
@@ -101,88 +122,97 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
           for (final line in lines)
             if (_selected(line)) line,
         ];
-        return Scaffold(
-          key: const Key('child-shortage-page'),
-          appBar: UtenAppBar(
-            title: '补下层物料',
-            // 命令式子页面，没有独立路由 scope；权限入口由物料分析页承载。
-            showPagePermissionAction: false,
-            leading: UtenBackButton(
-              onPressed: () => Navigator.of(context).pop(),
+        // 下单跑到一半不许退出(返回键、手势都拦住)：按层级一段段提交，退出了就看不到
+        // 哪一段没下成，也列不出更深一层。
+        return PopScope(
+          canPop: !_submitting,
+          child: Scaffold(
+            key: const Key('child-shortage-page'),
+            appBar: UtenAppBar(
+              title: '补下层物料',
+              // 命令式子页面，没有独立路由 scope；权限入口由物料分析页承载。
+              showPagePermissionAction: false,
+              leading: _submitting
+                  ? const SizedBox(width: 48)
+                  : UtenBackButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
             ),
-          ),
-          body: Stack(
-            children: [
-              lines.isEmpty
-                  ? _doneState(theme)
-                  : ListView(
-                      key: const Key('child-shortage-list'),
-                      padding: const EdgeInsets.fromLTRB(
-                        UtenSpacing.s16,
-                        UtenSpacing.s12,
-                        UtenSpacing.s16,
-                        UtenSpacing.s24,
-                      ),
-                      children: [
-                        _summaryCard(theme, lines, urged),
-                        const SizedBox(height: UtenSpacing.s12),
-                        for (final root in roots) ...[
-                          _rootSection(theme, root, urged),
+            body: Stack(
+              children: [
+                lines.isEmpty
+                    ? _doneState(theme)
+                    : ListView(
+                        key: const Key('child-shortage-list'),
+                        padding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s16,
+                          UtenSpacing.s12,
+                          UtenSpacing.s16,
+                          UtenSpacing.s24,
+                        ),
+                        children: [
+                          _summaryCard(theme, lines, urged),
                           const SizedBox(height: UtenSpacing.s12),
+                          for (final root in roots) ...[
+                            _rootSection(theme, root, urged),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
                         ],
+                      ),
+                // 遮罩只跟宿主的网络段走(与分桶页、级联页同一份)：提交前宿主还会弹确认框，
+                // 那段时间挂遮罩会把确认框盖在转圈背后点不动。
+                AnimatedBuilder(
+                  animation: Listenable.merge([
+                    _host.bucketActionBusyMessage,
+                    _host.planSubmissionProgress,
+                  ]),
+                  builder: (context, _) {
+                    final segment = _host.bucketActionBusyMessage.value;
+                    if (!_submitting ||
+                        (segment == null &&
+                            !_host.planSubmissionProgress.value)) {
+                      return const SizedBox.shrink();
+                    }
+                    return UtenBusyOverlay(
+                      semanticsKey: const Key('child-shortage-busy'),
+                      title: segment ?? '正在下达车间',
+                      description: '按层级先下上层再下下层：任一段失败会停下提示，已成功的不会重复下单。',
+                    );
+                  },
+                ),
+              ],
+            ),
+            bottomNavigationBar: lines.isEmpty
+                ? null
+                : UtenBottomActionBar(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '已选 ${selectable.length} / ${lines.length} 种',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                        ),
+                        UtenButton(
+                          key: const Key('child-shortage-submit'),
+                          size: UtenButtonSize.large,
+                          icon: Icons.shopping_cart_checkout_rounded,
+                          // 不转圈：点下去先弹宿主的确认框，转圈会在确认框背后一直转；
+                          // 真正跑网络段时由上面的遮罩说明在做什么。
+                          onPressed:
+                              selectable.isEmpty || _submitting || _host._busy
+                              ? null
+                              : () => unawaited(_submit(lines)),
+                          child: Text(
+                            _submitting
+                                ? '正在下单…'
+                                : '一键下单(${selectable.length})',
+                          ),
+                        ),
                       ],
                     ),
-              // 遮罩只跟宿主的网络段走(与分桶页、级联页同一份)：提交前宿主还会弹确认框，
-              // 那段时间挂遮罩会把确认框盖在转圈背后点不动。
-              AnimatedBuilder(
-                animation: Listenable.merge([
-                  _host.bucketActionBusyMessage,
-                  _host.planSubmissionProgress,
-                ]),
-                builder: (context, _) {
-                  final segment = _host.bucketActionBusyMessage.value;
-                  if (!_submitting ||
-                      (segment == null &&
-                          !_host.planSubmissionProgress.value)) {
-                    return const SizedBox.shrink();
-                  }
-                  return UtenBusyOverlay(
-                    semanticsKey: const Key('child-shortage-busy'),
-                    title: segment ?? '正在下达车间',
-                    description: '按层级先下上层再下下层：任一段失败会停下提示，已成功的不会重复下单。',
-                  );
-                },
-              ),
-            ],
-          ),
-          bottomNavigationBar: lines.isEmpty
-              ? null
-              : UtenBottomActionBar(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '已选 ${selectable.length} / ${lines.length} 种',
-                          style: theme.textTheme.titleSmall,
-                        ),
-                      ),
-                      UtenButton(
-                        key: const Key('child-shortage-submit'),
-                        size: UtenButtonSize.large,
-                        icon: Icons.shopping_cart_checkout_rounded,
-                        // 不转圈：点下去先弹宿主的确认框，转圈会在确认框背后一直转；
-                        // 真正跑网络段时由上面的遮罩说明在做什么。
-                        onPressed:
-                            selectable.isEmpty || _submitting || _host._busy
-                            ? null
-                            : () => unawaited(_submit(lines)),
-                        child: Text(
-                          _submitting ? '正在下单…' : '一键下单(${selectable.length})',
-                        ),
-                      ),
-                    ],
                   ),
-                ),
+          ),
         );
       },
     );
@@ -409,7 +439,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
     final routeConfirmed = material.confirmedRoute != null;
     final shown = _host._tableShownQty(material);
     final unit = material.unitName ?? '';
-    final checked = _selected(line);
+    final checked = _checked(line);
     final assignable = _host._tableAssignable(group);
     final meta = [
       if (material.goodsCode?.trim().isNotEmpty == true) material.goodsCode!,

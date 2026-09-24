@@ -114,16 +114,15 @@ final List<RouteBase> productionRoutes = [
     name: 'production-material-analysis',
     builder: (_, state) {
       // ADR-117：车间催计划的待办卡直链到某一份分析(?analysisId=)；页面内跳转仍走 extra。
+      // 只认 UUID，别的一律当没带(不拼进接口路径)。不给页面换 key：页面已经开着时
+      // 就地处理(didUpdateWidget)，不丢计划员正在填的数。
       final linkedAnalysisId = state.uri.queryParameters['analysisId']?.trim();
       final seed = state.extra is ProductionMaterialAnalysisSeed
           ? state.extra! as ProductionMaterialAnalysisSeed
-          : linkedAnalysisId != null && linkedAnalysisId.isNotEmpty
+          : linkedAnalysisId != null && _uuidPattern.hasMatch(linkedAnalysisId)
           ? ProductionMaterialAnalysisSeed(analysisId: linkedAnalysisId)
           : const ProductionMaterialAnalysisSeed();
-      return ProductionMaterialAnalysisPage(
-        key: seed.analysisId == null ? null : ValueKey(seed.analysisId),
-        seed: seed,
-      );
+      return ProductionMaterialAnalysisPage(seed: seed);
     },
   ),
   GoRoute(
@@ -266,3 +265,7 @@ final List<RouteBase> productionRoutes = [
     builder: (_, _) => const ProductionChainHealthPage(),
   ),
 ];
+
+final RegExp _uuidPattern = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);

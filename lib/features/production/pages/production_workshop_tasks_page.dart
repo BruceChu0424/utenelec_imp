@@ -1492,6 +1492,59 @@ class _ProductionWorkshopTasksPageState
     final text = dark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsiaText;
     final cooling = task.urgeCoolingDown(DateTime.now());
     final urgedAt = task.planningUrgedAt;
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '还有 ${task.materialPlanningGapKindCount} 种料计划没下单',
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: text,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (task.materialPlanningGapSummary != null)
+          Text(
+            task.materialPlanningGapSummary!,
+            style: theme.textTheme.bodyMedium,
+          ),
+        Text(
+          task.planningUrgeCount > 0 && urgedAt != null
+              ? '已催 ${task.planningUrgeCount} 次 · 最近 ${_clock(urgedAt)}'
+                    '${task.planningUrgedByName == null ? '' : '（${task.planningUrgedByName}）'}'
+              : '料没订就到不了，点按钮提醒计划员去下单',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+    // 浅色：深品红底白字；深色：亮品红底深字——两种主题下按钮字都看得清(对比度 ≥ 4.5)。
+    final Widget action = task.canUrgePlanning
+        ? FilledButton.icon(
+            key: ValueKey('workshop-detail-urge-${task.segmentId}'),
+            style: FilledButton.styleFrom(
+              backgroundColor: dark
+                  ? UtenColors.fuchsiaOnDark
+                  : UtenColors.fuchsiaText,
+              foregroundColor: dark ? const Color(0xFF1F0A24) : Colors.white,
+            ),
+            onPressed: cooling ? null : onUrge,
+            icon: const Icon(Icons.campaign_rounded),
+            label: Text(
+              cooling
+                  ? '${_clock(task.planningNextUrgeAt!)} 后可再催'
+                  : task.planningUrgeCount > 0
+                  ? '再催一次'
+                  : '催计划',
+            ),
+          )
+        : Text(
+            '找车间负责人催',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          );
     return Container(
       key: ValueKey('workshop-planning-gap-${task.segmentId}'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -1500,65 +1553,38 @@ class _ProductionWorkshopTasksPageState
         border: Border.all(color: accent.withValues(alpha: 0.45)),
         borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.campaign_rounded, color: accent, size: 28),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
+      // 窄屏(手机)按钮放到文字下面，不挤成一行溢出。
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final icon = Icon(Icons.campaign_rounded, color: accent, size: 28);
+          if (constraints.maxWidth < 420) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '还有 ${task.materialPlanningGapKindCount} 种料计划没下单',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: text,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    icon,
+                    const SizedBox(width: UtenSpacing.s12),
+                    Expanded(child: info),
+                  ],
                 ),
-                if (task.materialPlanningGapSummary != null)
-                  Text(
-                    task.materialPlanningGapSummary!,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                Text(
-                  task.planningUrgeCount > 0 && urgedAt != null
-                      ? '已催 ${task.planningUrgeCount} 次 · 最近 ${_clock(urgedAt)}'
-                            '${task.planningUrgedByName == null ? '' : '（${task.planningUrgedByName}）'}'
-                      : '料没订就到不了，点右边按钮提醒计划员去下单',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                const SizedBox(height: UtenSpacing.s8),
+                Align(alignment: Alignment.centerRight, child: action),
               ],
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          if (task.canUrgePlanning)
-            FilledButton.icon(
-              key: ValueKey('workshop-detail-urge-${task.segmentId}'),
-              style: FilledButton.styleFrom(
-                backgroundColor: accent,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: cooling ? null : onUrge,
-              icon: const Icon(Icons.campaign_rounded),
-              label: Text(
-                cooling
-                    ? '${_clock(task.planningNextUrgeAt!)} 后可再催'
-                    : task.planningUrgeCount > 0
-                    ? '再催一次'
-                    : '催计划',
-              ),
-            )
-          else
-            Text(
-              '找车间负责人催',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-        ],
+            );
+          }
+          return Row(
+            children: [
+              icon,
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(child: info),
+              const SizedBox(width: UtenSpacing.s12),
+              action,
+            ],
+          );
+        },
       ),
     );
   }

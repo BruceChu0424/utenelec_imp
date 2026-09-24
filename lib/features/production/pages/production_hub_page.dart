@@ -55,6 +55,10 @@ class ProductionHubPage extends ConsumerWidget {
       superAdmin,
       RoutePath.productionPlanNew(),
     );
+    // ADR-117：车间在催计划下单的任务数(只对能下单、能看到那些分析的计划员非零)。
+    final planningUrges = ref.watch(
+      badgeEntryTodoProvider(BadgeEntry.productionPlanningUrges),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.productionHubTitle,
@@ -124,19 +128,19 @@ class ProductionHubPage extends ConsumerWidget {
                     location: canCreatePlan
                         ? RouteName.productionMaterialAnalysis
                         : RouteName.productionPlanList,
-                    // ADR-117：车间在催计划下单的任务数(红，待办)占 badge 槽；
-                    // 本人草稿按 UtenHubCard 口径退到标题右侧行内。没有在催时
-                    // badge 槽为空，草稿照旧在标题旁可见。
-                    badge: UtenNotificationBadge(
-                      count: ref.watch(
-                        badgeEntryTodoProvider(
-                          BadgeEntry.productionPlanningUrges,
-                        ),
-                      ),
-                    ),
-                    labelSuffix: const UtenDraftBadge(
-                      kind: DraftDocKind.productionPlan,
-                    ),
+                    // ADR-117：车间在催计划下单时，在催任务数(红，待办)占 badge 槽，
+                    // 本人草稿按 UtenHubCard 口径退到标题右侧行内；没有在催时草稿
+                    // 徽章照旧独占 badge 槽(用户点名要的位置)。
+                    badge: planningUrges > 0
+                        ? UtenNotificationBadge(count: planningUrges)
+                        : const UtenDraftBadge(
+                            kind: DraftDocKind.productionPlan,
+                          ),
+                    labelSuffix: planningUrges > 0
+                        ? const UtenDraftBadge(
+                            kind: DraftDocKind.productionPlan,
+                          )
+                        : null,
                   ),
                   _Entry(
                     icon: Icons.edit_calendar_outlined,

@@ -3949,9 +3949,15 @@ abstract class _MaterialAnalysisMaterialTableState
     });
     _reportMaterialTableSubmit(steps, blocked);
     final allOk = steps.isNotEmpty && steps.every((step) => step.ok);
-    // ADR-117：全部下成之后看刚下单的件下面还缺不缺料(补料页自己会列下一层，不再弹)。
-    if (allOk && !fromShortagePage) {
-      unawaited(_checkChildShortagesAfterOrder(issuedBefore));
+    // ADR-117：只要有一段下成了，就看刚下单的件下面还缺不缺料——「父件下成、子件那段失败」
+    // 正是要提醒的情形；什么都没下成时前后快照一样，自然不弹。补料页自己会列下一层，不再弹。
+    if (steps.any((step) => step.ok)) {
+      if (fromShortagePage) {
+        // 补料页下成了：马上核对车间催办(补料页被关掉也照样办结撤卡)。
+        unawaited(_reconcileWorkshopUrgesAfterOrder());
+      } else {
+        unawaited(_checkChildShortagesAfterOrder(issuedBefore));
+      }
     }
     return allOk;
   }

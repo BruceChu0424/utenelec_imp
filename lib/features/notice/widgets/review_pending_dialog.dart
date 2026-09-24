@@ -315,7 +315,10 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
       for (final n in _items)
         workbenchRouteFor(n.sourceEvent, actionRoute: n.actionRoute),
     };
-    return routes.length == 1 ? routes.first : RouteName.dashboard;
+    if (routes.length == 1) return routes.first;
+    // 同一个工作台、只是深链参数不同(如几张催计划卡指向不同的物料分析)：落到该工作台本身。
+    final paths = {for (final route in routes) Uri.parse(route).path};
+    return paths.length == 1 ? paths.first : RouteName.dashboard;
   }
 
   /// 去任务工作台（2026-09-03 第四轮：不再直达单据详情）。

@@ -603,6 +603,9 @@ abstract class _MaterialAnalysisPageBase
   /// 下单 / 追加成功后查刚下单的件的下层：还缺料就弹窗问要不要现在补(ADR-117)。
   Future<void> _checkChildShortagesAfterOrder(Map<String, double> before);
 
+  /// 下完单后立即核对本分析上的车间催办(ADR-117)，计划已下够的办结撤卡。
+  Future<void> _reconcileWorkshopUrgesAfterOrder();
+
   /// 释放主表行内「下单数量 / 追加下单」的输入控制器(ADR-102)。
   /// 实现见 material_analysis_material_table.dart。
   void _disposeMaterialTableInputs();

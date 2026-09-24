@@ -387,11 +387,10 @@ class _MaterialAnalysisBucketPageState
     _popIfWorkshopIssued(finished);
     // ADR-117：下完之后看刚下单的件下面还缺不缺料——「父件 + 下层一起下单」页里
     // 取消勾选的下层、以后才下的更深一层，都在这里补一句提醒。弹窗叠在当前最上层
-    // (车间桶已退回物料分析页，采购 / 委外桶仍在本页)。
-    if (finished) {
-      await _host._checkChildShortagesAfterOrder(issuedBefore);
-      if (mounted) setState(() {});
-    }
+    // (车间桶已退回物料分析页，采购 / 委外桶仍在本页)。父件下成、下层那段失败或中途
+    // 退出(finished=false)也要提醒；什么都没下成时前后快照一样，自然不弹。
+    await _host._checkChildShortagesAfterOrder(issuedBefore);
+    if (mounted) setState(() {});
   }
 
   /// 委外桶的一颗种子：通道、上限与驱动量三者必须与**服务端实际会收到的那

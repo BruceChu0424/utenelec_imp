@@ -272,7 +272,7 @@ class ProductionPlanRepository {
     String analysisId,
   ) async {
     final rows = await api.getList(
-      '$_materialAnalysesBase/$analysisId/workshop-urges',
+      '$_materialAnalysesBase/${Uri.encodeComponent(analysisId)}/workshop-urges',
     ); // ENDPOINT
     return [for (final row in rows) MaterialAnalysisWorkshopUrge.fromJson(row)];
   }
@@ -281,7 +281,7 @@ class ProductionPlanRepository {
   /// 待办卡。只动催办记录与通知，不改任何数量。返回办结条数。
   Future<int> reconcileMaterialAnalysisWorkshopUrges(String analysisId) async {
     final json = await api.post(
-      '$_materialAnalysesBase/$analysisId/workshop-urges/reconcile',
+      '$_materialAnalysesBase/${Uri.encodeComponent(analysisId)}/workshop-urges/reconcile',
     ); // ENDPOINT
     final resolved = json['resolved'];
     return resolved is num ? resolved.toInt() : 0;

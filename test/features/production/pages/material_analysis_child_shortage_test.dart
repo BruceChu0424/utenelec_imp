@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
@@ -350,14 +351,116 @@ void main() {
     );
     expect(find.byKey(const Key('child-shortage-done')), findsOneWidget);
   });
+
+  testWidgets('车间在本页打开之后才催：轮询时在催清单自动刷新, 提示条变红', (tester) async {
+    final store = <Map<String, dynamic>>[];
+    await _pump(tester, urgeStore: store);
+    expect(find.byKey(const Key('child-shortage-banner-urgent')), findsNothing);
+    store.add({
+      'urgeId': 'urge-late',
+      'segmentId': 'seg-1',
+      'segmentCode': 'ZX-009',
+      'productName': '委外件',
+      'workshopName': '二车间',
+      'lastUrgedByName': '王五',
+      'lastUrgedAt': DateTime.now().toUtc().toIso8601String(),
+      'urgeCount': 1,
+      'gapKindCount': 1,
+      'gapSummary': '委外件的子料 600个',
+      'shortMaterialLineIds': ['m-pc'],
+    });
+    // 45 秒一轮的静默轮询：分析没变也照样重取在催清单。
+    await tester.pump(const Duration(seconds: 46));
+    await _drain(tester);
+    expect(
+      find.byKey(const Key('child-shortage-banner-urgent')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('通知直链到已打开的本页：同一份只刷新在催, 另一份在有未提交输入时不切换', (tester) async {
+    await _pump(tester);
+    final state = tester.state(find.byType(ProductionMaterialAnalysisPage));
+    // 主表里勾一行 = 有未提交的选择。
+    await _check(tester, _productCheckbox('product-1'));
+    requests.clear();
+    await tester.pumpWidget(_treeFor('analysis-2'));
+    await _drain(tester);
+    expect(
+      tester.state(find.byType(ProductionMaterialAnalysisPage)),
+      same(state),
+      reason: '不重建整页(不丢正在填的数、不把叠在上面的子页挂空)',
+    );
+    expect(
+      requests.where((r) => r.path.endsWith('/analysis-2')),
+      isEmpty,
+      reason: '有未提交输入时不切换分析',
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionMaterialAnalysisPage)),
+    );
+    expect(
+      container.read(appNotificationProvider).last.message,
+      contains('先办完'),
+    );
+  });
+
+  testWidgets('通知直链到另一份分析且本页没有未提交输入：就地切换', (tester) async {
+    await _pump(tester);
+    final state = tester.state(find.byType(ProductionMaterialAnalysisPage));
+    requests.clear();
+    await tester.pumpWidget(_treeFor('analysis-2'));
+    await _drain(tester);
+    expect(
+      tester.state(find.byType(ProductionMaterialAnalysisPage)),
+      same(state),
+    );
+    expect(
+      requests.where(
+        (r) =>
+            r.method == 'GET' &&
+            r.path == '/production/material-analyses/analysis-2',
+      ),
+      isNotEmpty,
+    );
+    expect(
+      requests.where((r) => r.path.endsWith('analysis-2/workshop-urges')),
+      isNotEmpty,
+      reason: '换了分析, 在催清单跟着重取',
+    );
+  });
+
+  testWidgets('父件下成、采购那段失败：照样提醒下层还缺(正是「只下了父件」)', (tester) async {
+    await _pump(tester, failNotify: true);
+    await _check(tester, _productCheckbox('product-1'));
+    await _check(tester, _rowCheckbox('m-c1'));
+    await _submitMainTable(tester);
+    final paths = _writes().map((r) => r.path.split('/').last).toList();
+    expect(paths, contains('issue-plans'));
+    expect(paths, contains('notify'));
+    expect(find.byKey(const Key('child-shortage-dialog')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('child-shortage-dialog')),
+        matching: find.text('铜片'),
+      ),
+      findsOneWidget,
+      reason: '采购那段没下成, 铜片仍缺',
+    );
+  });
 }
 
 // ------------------------------------------------------------------ fixture
+
+/// 重新挂同一棵树、只换 seed 里的分析(模拟通知直链到已打开的本页)。
+late Widget Function(String analysisId) _treeFor;
 
 Future<void> _pump(
   WidgetTester tester, {
   bool issuedRoot = false,
   List<Map<String, dynamic>> urges = const [],
+  List<Map<String, dynamic>>? urgeStore,
+  bool failNotify = false,
   Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
 }) async {
   requests.clear();
@@ -371,7 +474,8 @@ Future<void> _pump(
       jsonDecode(jsonEncode(_analysis(issuedRoot: issuedRoot)))
           as Map<String, dynamic>;
   if (mutate != null) data = mutate(data);
-  var liveUrges = List<Map<String, dynamic>>.of(urges);
+  // 测试可以传一份共享清单进来，中途往里加「车间刚催」。
+  final liveUrges = urgeStore ?? List<Map<String, dynamic>>.of(urges);
 
   Map<String, dynamic> bumped() {
     data = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
@@ -414,15 +518,13 @@ Future<void> _pump(
           result = liveUrges;
         } else if (path.endsWith('/workshop-urges/reconcile')) {
           // 服务端核对：计划已下够的办结。
-          liveUrges = [
-            for (final urge in liveUrges)
-              if ((urge['shortMaterialLineIds'] as List).any(
-                (line) =>
-                    _num(_line(data, line as String)['netShortageQty']) > 0,
-              ))
-                urge,
-          ];
-          result = {'resolved': urges.length - liveUrges.length};
+          final before = liveUrges.length;
+          liveUrges.removeWhere(
+            (urge) => !(urge['shortMaterialLineIds'] as List).any(
+              (line) => _num(_line(data, line as String)['netShortageQty']) > 0,
+            ),
+          );
+          result = {'resolved': before - liveUrges.length};
         } else if (path.endsWith('/issue-plans/preview')) {
           result = data;
         } else if (path.endsWith('/issue-plans')) {
@@ -433,10 +535,26 @@ Future<void> _pump(
             'plans': <Object>[],
           };
         } else if (path.endsWith('/notify')) {
+          if (failNotify) {
+            handler.reject(
+              DioException(
+                requestOptions: request,
+                type: DioExceptionType.badResponse,
+                response: Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 409,
+                  data: {'code': 'CONFLICT', 'message': '采购申请暂时下不了'},
+                ),
+              ),
+            );
+            return;
+          }
           _applyNotify(data, request.data as Map<String, dynamic>);
           result = bumped();
         } else if (path == '/production/material-analyses/analysis-1') {
           result = data;
+        } else if (path == '/production/material-analyses/analysis-2') {
+          result = {...data, 'analysisId': 'analysis-2'};
         } else if (path.endsWith('/transferable-in-summary')) {
           result = {'qtyByMaterialLineId': <String, Object>{}};
         }
@@ -451,32 +569,29 @@ Future<void> _pump(
     ),
   );
   final api = ApiClient(dio);
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        productionPlanRepositoryProvider.overrideWithValue(
-          ProductionPlanRepository(api),
-        ),
-        masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-        materialAnalysisWarehousePrefsProvider.overrideWith(
-          _WarehousePrefs.new,
-        ),
-        currentPermissionsProvider.overrideWithValue(_permissions),
-      ],
-      child: MaterialApp(
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: buildLightTheme(),
-        home: const ProductionMaterialAnalysisPage(
-          seed: ProductionMaterialAnalysisSeed(
-            analysisId: 'analysis-1',
-            warehouseId: 'warehouse-1',
-          ),
+  _treeFor = (analysisId) => ProviderScope(
+    overrides: [
+      productionPlanRepositoryProvider.overrideWithValue(
+        ProductionPlanRepository(api),
+      ),
+      masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+      materialAnalysisWarehousePrefsProvider.overrideWith(_WarehousePrefs.new),
+      currentPermissionsProvider.overrideWithValue(_permissions),
+    ],
+    child: MaterialApp(
+      locale: const Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: buildLightTheme(),
+      home: ProductionMaterialAnalysisPage(
+        seed: ProductionMaterialAnalysisSeed(
+          analysisId: analysisId,
+          warehouseId: 'warehouse-1',
         ),
       ),
     ),
   );
+  await tester.pumpWidget(_treeFor('analysis-1'));
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
 }

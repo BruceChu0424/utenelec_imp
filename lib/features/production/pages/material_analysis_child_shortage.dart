@@ -82,6 +82,66 @@ abstract class _MaterialAnalysisChildShortageState
     super.dispose();
   }
 
+  /// 车间催计划的待办卡直链(`?analysisId=`)到了已经打开的本页(ADR-117)：不重建整页
+  /// (那样会丢掉计划员正在填的数、把叠在上面的补料 / 分桶页挂在一个已销毁的页上)，
+  /// 同一份分析只重取在催清单；另一份分析在没有未提交输入、没有别的页叠在上面时就地切换，
+  /// 否则提示先办完手头的。
+  @override
+  void didUpdateWidget(covariant ProductionMaterialAnalysisPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final linked = widget.seed.analysisId;
+    if (linked == null || linked == oldWidget.seed.analysisId) return;
+    scheduleMicrotask(() => unawaited(_openLinkedAnalysis(linked)));
+  }
+
+  Future<void> _openLinkedAnalysis(String analysisId) async {
+    if (!mounted) return;
+    if (_analysis?.analysisId == analysisId) {
+      await _loadWorkshopUrges();
+      return;
+    }
+    if (_analysis == null && _booting) return;
+    if (_busy ||
+        _booting ||
+        _hasUnsavedAnalysisEditing ||
+        ModalRoute.of(context)?.isCurrent != true) {
+      context.appWarning('车间在催另一份物料分析。你这里还有没办完的，先办完再从通知里打开', force: true);
+      return;
+    }
+    try {
+      final view = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialAnalysisDetail(analysisId);
+      if (!mounted || _busy || _hasUnsavedAnalysisEditing) return;
+      setState(() {
+        _applyAnalysis(view);
+        _sources = _reconstructSourcesFromView(view);
+      });
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+    }
+  }
+
+  /// 45 秒轮询：分析快照有未提交输入时让路，但车间在催的清单是纯读、不碰输入，照常刷新，
+  /// 车间刚催的红色提示条不必等计划员手动刷新。
+  @override
+  Future<void> _pollAnalysisIfIdle() async {
+    await super._pollAnalysisIfIdle();
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    await _loadWorkshopUrges();
+  }
+
+  /// 返回本页(从通知、子页面回来)时连同在催清单一起重取。
+  @override
+  Future<void> _reloadAnalysisSilently({
+    bool protectUnsavedEditing = false,
+  }) async {
+    await super._reloadAnalysisSilently(
+      protectUnsavedEditing: protectUnsavedEditing,
+    );
+    if (mounted) await _loadWorkshopUrges();
+  }
+
   @override
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
     final previousScope = _workshopUrgesScope;
@@ -105,11 +165,19 @@ abstract class _MaterialAnalysisChildShortageState
   Map<String, double> _issuedQtySnapshot() {
     final analysis = _analysis;
     if (analysis == null) return const {};
+    // 键里带上当时的供应方式：累计已下单量按供应方式算，行上还没保存的路线草稿在下单后
+    // 被清掉时，前后两次按不同路线算出的差不能当成「刚下单」。
     return {
       for (final group in _analysisIndexes(analysis).groupsByKey.values)
-        group.key: _tableGroupIssuedQty(group, authoritative: true),
+        _issuedSnapshotKey(group): _tableGroupIssuedQty(
+          group,
+          authoritative: true,
+        ),
     };
   }
+
+  String _issuedSnapshotKey(_MaterialGroup group) =>
+      '${group.key}@${_draftRoute(group).name}';
 
   /// 这一行在权威快照里还缺不缺(主表「还缺数量」那一列 > 0)。SHIP / REFERENCE 阶段的料
   /// 不写正式生产需求(ADR-029 §4.1)，不算「做不够」。
@@ -165,25 +233,32 @@ abstract class _MaterialAnalysisChildShortageState
 
     // 树顶候选：这次刚下单的件 / 页里记着的那几件 / 所有下过单的件。
     final seeds = <String, ({double qty, bool appended})>{};
-    for (final group in indexes.groupsByKey.values) {
-      final issued = _tableGroupIssuedQty(group, authoritative: true);
-      if (before != null) {
-        final delta = issued - (before[group.key] ?? 0);
-        if (delta > 0.0001) {
-          seeds[group.key] = (
-            qty: delta,
-            appended: (before[group.key] ?? 0) > 0.0001,
-          );
+    if (before == null && rootKeys != null) {
+      // 补料页：只算打开时那几件，不必把整张表的累计已下单量都算一遍。
+      for (final key in rootKeys) {
+        final group = indexes.groupsByKey[key];
+        if (group == null) continue;
+        seeds[key] = (
+          qty:
+              orderedQty[key] ??
+              _tableGroupIssuedQty(group, authoritative: true),
+          appended: appendedKeys.contains(key),
+        );
+      }
+    } else {
+      for (final group in indexes.groupsByKey.values) {
+        final issued = _tableGroupIssuedQty(group, authoritative: true);
+        if (before != null) {
+          // 下单前后供应方式不同(未保存的路线草稿被清掉)或下单前还没有这一行：不算刚下单。
+          final previous = before[_issuedSnapshotKey(group)];
+          if (previous == null) continue;
+          final delta = issued - previous;
+          if (delta > 0.0001) {
+            seeds[group.key] = (qty: delta, appended: previous > 0.0001);
+          }
+        } else if (issued > 0.0001) {
+          seeds[group.key] = (qty: issued, appended: false);
         }
-      } else if (rootKeys != null) {
-        if (rootKeys.contains(group.key)) {
-          seeds[group.key] = (
-            qty: orderedQty[group.key] ?? issued,
-            appended: appendedKeys.contains(group.key),
-          );
-        }
-      } else if (issued > 0.0001) {
-        seeds[group.key] = (qty: issued, appended: false);
       }
     }
     if (seeds.isEmpty) return const [];
@@ -328,14 +403,18 @@ abstract class _MaterialAnalysisChildShortageState
 
   /// 下完单后：车间在催的记录里计划已经下够的，马上办结并撤掉计划员的待办卡
   /// (不等后台 5 分钟一轮)，再重取一次在催清单。
+  @override
   Future<void> _reconcileWorkshopUrgesAfterOrder() async {
     final analysis = _analysis;
-    if (analysis == null || _workshopUrges.isEmpty) return;
+    if (analysis == null) return;
+    // 不看本地清单是不是空的：车间可能在计划员打开本页之后才催，本地还没取到。
     if (!_canNotify && !_canGenerate) return;
     try {
-      await ref
+      final resolved = await ref
           .read(productionPlanRepositoryProvider)
           .reconcileMaterialAnalysisWorkshopUrges(analysis.analysisId);
+      // 办结了催办：「生产计划」卡上的红徽章跟着马上少。
+      if (resolved > 0 && mounted) unawaited(refreshBadges(ref));
     } catch (_) {
       // 办结只是撤提醒：失败了由后台核对兜底，不影响已经下好的单。
     }
@@ -357,6 +436,12 @@ abstract class _MaterialAnalysisChildShortageState
     // 刚下单的结果提示先落定一帧，再弹「下层还缺」——两件事一前一后看得清。
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
+    final lines = [for (final root in roots) ...root.lines];
+    if (!lines.any((line) => _tableIssueBlockedReason(line.group) == null)) {
+      // 缺的料这个人一种都下不了(没有对应的下单权限等)：弹窗进去也办不了，只提一句。
+      context.appInfo('刚下单的件下面还缺 ${lines.length} 种料，但你没有下这些单的权限，请找能下单的计划员补上');
+      return;
+    }
     final go = await _showChildShortageDialog(roots);
     if (!mounted || go != true) return;
     await _openChildShortagePage(roots: roots);
@@ -548,9 +633,10 @@ abstract class _MaterialAnalysisChildShortageState
   }
 
   String _urgeTimeText(DateTime at) {
-    final local = at.toLocal();
-    final now = DateTime.now();
-    final minutes = now.difference(local).inMinutes;
+    // 一律按中国时间显示(与车间那边同口径)，不跟设备时区走。
+    final minutes = DateTime.now().difference(at).inMinutes;
+    final local = ChinaDateTime.fromInstant(at);
+    final now = ChinaDateTime.fromInstant(DateTime.now());
     if (minutes < 1) return '刚刚';
     if (minutes < 60) return '$minutes 分钟前';
     String two(int value) => value.toString().padLeft(2, '0');

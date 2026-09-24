@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/production_finished_inbound_task.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class ProductionFinishedInboundTaskRepository {
   const ProductionFinishedInboundTaskRepository(this.api);
@@ -16,6 +17,7 @@ class ProductionFinishedInboundTaskRepository {
     String? keyword,
     String? taskStage,
     String? warehouseId,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     final normalized = keyword?.trim();
     final json = await api.get(
@@ -27,6 +29,7 @@ class ProductionFinishedInboundTaskRepository {
         if (taskStage != null && taskStage.isNotEmpty) 'taskStage': taskStage,
         if (warehouseId != null && warehouseId.isNotEmpty)
           'warehouseId': warehouseId,
+        ...scope.queryParameters,
       },
     );
     return PagedResult.fromJson(json, ProductionFinishedInboundTask.fromJson);

@@ -176,6 +176,17 @@ public class StockDocService {
             }
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.toWarehouseId() != null) ps.add(cb.equal(root.get("toWarehouseId"), f.toWarehouseId()));
+            // 仓库范围(ADR-115)：发出仓或调入仓在范围内；「我的仓库」另含尚未定仓的单据。
+            if (f.warehouseScope().active()) {
+                List<UUID> scopeIds = f.warehouseScope().warehouseIds();
+                List<Predicate> inScope = new ArrayList<>();
+                if (!scopeIds.isEmpty()) {
+                    inScope.add(root.get("warehouseId").in(scopeIds));
+                    inScope.add(root.get("toWarehouseId").in(scopeIds));
+                }
+                if (f.warehouseScope().includeUnassigned()) inScope.add(cb.isNull(root.get("warehouseId")));
+                ps.add(inScope.isEmpty() ? cb.disjunction() : cb.or(inScope.toArray(Predicate[]::new)));
+            }
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));

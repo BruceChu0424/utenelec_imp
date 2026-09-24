@@ -16,6 +16,7 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outboun
 import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_outbound_table_columns.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 late SharedPreferences _preferences;
 
@@ -503,6 +504,7 @@ class _Gateway implements WarehouseSalesOutboundGateway {
     String? warehouseWorkStatus,
     String? dateFrom,
     String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     listReads++;
     workStatuses.add(warehouseWorkStatus);

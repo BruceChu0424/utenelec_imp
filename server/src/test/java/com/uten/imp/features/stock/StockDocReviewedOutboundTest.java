@@ -216,7 +216,7 @@ class StockDocReviewedOutboundTest {
     @Test
     void readPermissionCannotCallReviewedApproveAndApproveCannotRead() {
         StockDocService endpointService = mock(StockDocService.class);
-        StockDocController controller = new StockDocController(endpointService, mock(AuditDetailViewRecorder.class));
+        StockDocController controller = new StockDocController(endpointService, mock(AuditDetailViewRecorder.class), null);
         ProxyFactory factory = new ProxyFactory(controller);
         factory.addAdvisor(AuthorizationManagerBeforeMethodInterceptor.preAuthorize());
         StockDocController secured = (StockDocController) factory.getProxy();

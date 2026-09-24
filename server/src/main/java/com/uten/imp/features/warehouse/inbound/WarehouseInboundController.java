@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
+
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,6 +42,7 @@ public class WarehouseInboundController {
     private final SubcontractReceiptService subcontractReceiptService;
     private final WarehouseArrivalRegistrationService arrivalRegistration;
     private final WarehouseArrivalExceptionStockInBatchService batchStockIn;
+    private final WarehouseTaskScopePort warehouseScopes;
 
     @GetMapping("/expectations")
     public PageResponse<InboundExpectationTask> expectations(
@@ -47,8 +50,12 @@ public class WarehouseInboundController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "") String orderType,
             @RequestParam(defaultValue = "") String keyword,
-            @RequestParam(required = false) UUID supplierId) {
-        return service.expectations(page, size, orderType, keyword, supplierId);
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        return service.expectations(page, size, orderType, keyword, supplierId,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     @GetMapping("/expectations/count")
@@ -58,8 +65,10 @@ public class WarehouseInboundController {
 
     /** 预计到货按订货类型计数（全部/采购/委外筛选卡的全量口径）。 */
     @GetMapping("/expectations/type-counts")
-    public Map<String, Long> expectationTypeCounts() {
-        return service.countExpectationsByType();
+    public Map<String, Long> expectationTypeCounts(
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.countExpectationsByType(warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     @GetMapping("/arrival-exceptions")
@@ -70,9 +79,11 @@ public class WarehouseInboundController {
             @RequestParam(name = "history", defaultValue = "false") boolean includeHistory,
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID warehouseId,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.warehouseExceptions(page, size, keyword, includeHistory,
-                supplierId, warehouseId, status);
+                supplierId, warehouseId, status, warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     @GetMapping("/arrival-exceptions/count")

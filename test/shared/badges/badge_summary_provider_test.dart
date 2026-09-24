@@ -3,7 +3,9 @@
 //   · 页面隐藏时 0 请求, 回到前台立即补一次;
 //   · 登出后定时器停, 10 分钟 0 请求(此前登出后照样按 60s 打出 401);
 //   · 单飞: 同一帧多处 refresh 只发 1 个请求, 在途期间再要只在返回后补 1 次;
-//   · 取数失败 / 服务端标了没算出的入口, 保留上一次的数(徽章不闪 0)。
+//   · 取数失败 / 服务端标了没算出的入口, 保留上一次的数(徽章不闪 0);
+//   · 本端业务写成功后静默 400ms 补拉一次(页面漏调 refresh 的兜底), 连续写合并,
+//     期间有人显式 refresh 就不再补拉。
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -11,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/app_visibility_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -225,6 +228,53 @@ void main() {
     await container.read(badgeSummaryProvider.notifier).refresh();
     expect(api.calls, 2);
     expect(notified, 0);
+    container.dispose();
+  });
+
+  testWidgets('本端业务写成功后静默 400ms 补拉一次; 连续写只补末尾一次', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    expect(api.calls, 1);
+
+    var seq = 0;
+    void write(String path) =>
+        container.read(lastDataWriteProvider.notifier).state = (
+          seq: ++seq,
+          path: path,
+        );
+
+    // 车间任务「批量开工」按计划逐单提交: 三次写间隔 100ms, 合并成末尾一次补拉。
+    write('/production/plans/p1/execution-segments/batch-start');
+    await tester.pump(const Duration(milliseconds: 100));
+    write('/production/plans/p2/execution-segments/batch-start');
+    await tester.pump(const Duration(milliseconds: 100));
+    write('/production/plans/p3/execution-segments/batch-start');
+    await tester.pump(const Duration(milliseconds: 399));
+    expect(api.calls, 1);
+    await tester.pump(const Duration(milliseconds: 1));
+    await _settle(tester);
+    expect(api.calls, 2);
+
+    // 没有新的写就不再补拉(只剩 60s 轮询)。
+    await tester.pump(const Duration(seconds: 5));
+    expect(api.calls, 2);
+    container.dispose();
+  });
+
+  testWidgets('写之后页面已显式 refresh: 不再重复补拉', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    expect(api.calls, 1);
+
+    container.read(lastDataWriteProvider.notifier).state = (
+      seq: 1,
+      path: '/stock/docs/issue-batch',
+    );
+    await container.read(badgeSummaryProvider.notifier).refresh();
+    expect(api.calls, 2);
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(api.calls, 2);
     container.dispose();
   });
 }

@@ -106,7 +106,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "moulds", "official_policy_briefs", "party_activity_records",
                         "party_addresses", "party_contact_methods", "payment_styles",
                         "settlement_methods", "supplier_categories", "suppliers", "units",
-                        "warehouses")),
+                        "warehouse_keepers", "warehouses")),
             new FullGroup("org_hr", "data_change", false,
                     "组织、人事与访客资料: 人工维护的敏感资料, 由脱敏函数去掉证件/联系方式/自由文本后整行审计",
                     Set.of(

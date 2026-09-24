@@ -610,7 +610,7 @@ class _ProductionWorkshopTasksPageState
           _busy = _busyRefreshing(action);
           _navigating = true;
         });
-        await _load();
+        await _reloadAfterChange();
       }
       return result;
     } finally {
@@ -765,6 +765,18 @@ class _ProductionWorkshopTasksPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// 写操作之后(本页提交、子页面办完返回)的整页重拉: 列表与顶部分类徽章一起刷新。
+  ///
+  /// 2026-09-24 用户口径「点批量领料、批量开工，左上角分类应该刷新；现在徽章要手动
+  /// 刷新页面才出来」「批量报工成功回到生产中，分类或者整个页面应该刷新」: 分类徽章
+  /// 随全站徽章汇总带回(ADR-108), 只重拉列表时它要等下一轮 60s 轮询才动。这里显式
+  /// 重拉一次汇总(单飞合并; 网络层写后兜底补拉会被这次取数吸收, 不重复请求)。
+  /// 纯切换分类/翻页/搜索不走这里——数据没变, 不为徽章多打请求。
+  Future<void> _reloadAfterChange() {
+    refreshBadges(ref);
+    return _load();
+  }
+
   Future<void> _load() async {
     final generation = ++_loadGeneration;
     // 分类默认不选（ADR-066 同范式）：未选分类不请求列表、不显示数据，
@@ -916,7 +928,7 @@ class _ProductionWorkshopTasksPageState
           () => _selected.removeAll(tasks.map((task) => task.segmentId)),
         );
       }
-      await _load();
+      await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -943,7 +955,7 @@ class _ProductionWorkshopTasksPageState
       );
       if (!mounted) return;
       if (result == true) setState(() => _selected.remove(task.segmentId));
-      await _load();
+      await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1078,7 +1090,7 @@ class _ProductionWorkshopTasksPageState
         _selected.clear();
         _clearSelectionOnResume = false;
       });
-      await _load();
+      await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1101,7 +1113,7 @@ class _ProductionWorkshopTasksPageState
     setState(() => _navigating = true);
     try {
       await context.push(RoutePath.productionPlanDetail(task.planId));
-      if (mounted) await _load();
+      if (mounted) await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1345,7 +1357,7 @@ class _ProductionWorkshopTasksPageState
         // Closing changes a whole plan; a workshop task only grants its exact material rows.
         canClose: false,
       );
-      if (mounted) await _load();
+      if (mounted) await _reloadAfterChange();
     } catch (error) {
       if (mounted) context.appApiError(error);
     } finally {
@@ -1485,10 +1497,11 @@ class _ProductionWorkshopTasksPageState
     // 2026-09-12 用户口径「从子页面回来整页要自动刷新」：子页面里做过任何写操作
     // (本端写修订号前进)或离开超过 30 秒就重拉(ADR-108; 纯查看后返回不再整页重拉)。
     // 生产执行刷新信号(bumpListRefresh)在本页栈顶时立即重拉, 被盖住时留到返回再拉。
+    // 返回时连同顶部分类徽章一起重拉(报工审核、领料提交等都在子页面里办完)。
     ref.onPageResume(
       RouteName.productionWorkshopTasks,
       () {
-        if (!_navigating && _busy == null) _load();
+        if (!_navigating && _busy == null) _reloadAfterChange();
       },
       refreshKeys: const [productionExecutionRefreshKey],
       // 每次返回都兜底清 _navigating——历史上有流程异常退出没走到 finally 时它会

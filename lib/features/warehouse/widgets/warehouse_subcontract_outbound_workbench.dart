@@ -28,6 +28,7 @@ import '../pages/warehouse_subcontract_outbound_batch_page.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class WarehouseSubcontractOutboundWorkbench extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundWorkbench({
@@ -126,6 +127,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
         keyword: _keyword,
         supplierId: _supplierIdFilter,
         status: _statusFilter,
+        scope: WarehouseListScope.of(context),
       );
       if (!mounted || version != _requestVersion) return;
       setState(() {

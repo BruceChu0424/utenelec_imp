@@ -35,6 +35,7 @@ import java.util.UUID;
 public class WarehouseSubcontractOutboundController {
 
     private final SubcontractMaterialPlanService planService;
+    private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
     /** 待出仓任务分页（订货单号/委外商关键字；supplierId/status 为表头筛选，2026-09-16）。 */
     @GetMapping("/tasks")
@@ -43,8 +44,12 @@ public class WarehouseSubcontractOutboundController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID supplierId,
-            @RequestParam(required = false) String status) {
-        return planService.tasks(page, size, keyword, supplierId, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        return planService.tasks(page, size, keyword, supplierId, status,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     /**

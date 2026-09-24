@@ -12,6 +12,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 import '../../../support/filter_segment_tap.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 void main() {
   testWidgets('finance task page defaults to pending and uses desktop table', (
@@ -163,6 +164,7 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String? warehouseWorkStatus,
     String? dateFrom,
     String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     workStatuses.add(warehouseWorkStatus);
     return PagedResult(

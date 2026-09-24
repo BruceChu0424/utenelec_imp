@@ -1,6 +1,8 @@
 package com.uten.imp.features.operations.workbench;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import java.time.LocalDate;
+import java.util.UUID;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class FulfillmentWorkbenchController {
 
     private final FulfillmentWorkbenchQueryService queryService;
+    private final WarehouseTaskScopePort warehouseScopes;
 
     @GetMapping("/warehouse")
     @PreAuthorize("hasAnyAuthority('stock_doc:view')")
@@ -27,8 +30,17 @@ public class FulfillmentWorkbenchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "") String sort,
+            @RequestParam(defaultValue = "asc") String order,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        // 生产领料任务中心表头排序(2026-09-24): 不传 sort 保持原排序(需求日期), 传了走白名单字段。
+        FulfillmentWorkbenchTableQuery table = sort.isBlank() ? null
+                : new FulfillmentWorkbenchTableQuery(sort, order, Map.of(), null, null, null, null);
+        // 仓库范围(ADR-115): MINE = 我负责的仓库; scopeWarehouseId = 指定仓库(含子仓)。
+        return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size, table,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     @GetMapping("/warehouse/count")
@@ -40,8 +52,10 @@ public class FulfillmentWorkbenchController {
     /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
     @GetMapping("/warehouse/status-breakdown")
     @PreAuthorize("hasAuthority('stock_doc:view')")
-    public Map<String, Long> warehouseStatusBreakdown() {
-        return queryService.warehouseStatusBreakdown();
+    public Map<String, Long> warehouseStatusBreakdown(
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return queryService.warehouseStatusBreakdown(warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     @GetMapping("/purchase")

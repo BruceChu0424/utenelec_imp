@@ -7,6 +7,10 @@
 //   · 登录后立即拉一次, 之后每 60s 一次;
 //   · 页面隐藏/切后台时暂停, 回到前台立即拉一次;
 //   · 写操作成功、返回工作台、新通知到达时调 [BadgeSummaryNotifier.refresh];
+//   · 兜底(2026-09-24 用户反馈「车间任务点批量开工后分类徽章出不来, 得手动刷新」):
+//     网络层每记一次本端业务写([lastDataWriteProvider]), 静默 [writeSettle] 后补拉一次——
+//     页面漏调 refresh 也不会让徽章停在旧数上; 连续写(逐单提交)合并成末尾一次,
+//     期间有人显式 refresh 就取消这次补拉(那次取数已在写之后, 不重复请求);
 //   · 单飞: 同一帧里多处调用合并成一个请求; 请求在途时再调用只在其返回后补一次;
 //   · 登出/换身份: 作用域变化, 整体重建为空, 旧定时器与迟到响应作废。
 // 取数失败保留上一次的数(准则 §四之三, 徽章不闪 0); 服务端标记某些入口本次没算出
@@ -21,6 +25,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/connection_recovery.dart';
+import '../../core/network/data_write_revision.dart';
 import '../providers/app_visibility_provider.dart';
 import '../providers/authenticated_scope_provider.dart';
 import 'badge_module.dart';
@@ -218,7 +223,11 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   /// 轮询周期(可见时)。
   static const pollInterval = Duration(seconds: 60);
 
+  /// 本端业务写之后等这么久没有新的写再补拉(合并逐单提交的一串写)。
+  static const writeSettle = Duration(milliseconds: 400);
+
   Timer? _timer;
+  Timer? _writeTimer;
   Future<void>? _running;
   bool _dirty = false;
   bool _active = false;
@@ -231,6 +240,8 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     final generation = ++_generation;
     _timer?.cancel();
     _timer = null;
+    _writeTimer?.cancel();
+    _writeTimer = null;
     _running = null;
     _dirty = false;
     _active = scope != null;
@@ -240,6 +251,8 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
         _active = false;
         _timer?.cancel();
         _timer = null;
+        _writeTimer?.cancel();
+        _writeTimer = null;
       }
     });
     if (!_active) return BadgeSummary.empty;
@@ -261,6 +274,18 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
         if (next > (previous ?? 0)) unawaited(refresh());
       },
     );
+    // 本端业务写成功后补拉(见文件头「兜底」): 静默 writeSettle 再拉, 连续写只拉末尾一次。
+    ref.listen<({int seq, String path})?>(lastDataWriteProvider, (
+      previous,
+      next,
+    ) {
+      if (next == null || next.seq == previous?.seq) return;
+      _writeTimer?.cancel();
+      _writeTimer = Timer(writeSettle, () {
+        _writeTimer = null;
+        if (_generation == generation) unawaited(refresh());
+      });
+    });
     // 首次拉取放到微任务: build 返回后 state 才可写。
     scheduleMicrotask(() {
       if (_generation == generation) unawaited(refresh());
@@ -271,6 +296,9 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   /// 立即重拉一次(单飞合并)。页面隐藏时只记下「有变化」, 回到前台再拉。
   Future<void> refresh() {
     if (!_active) return Future<void>.value();
+    // 这次取数发生在此前所有写之后, 等写静默的补拉不必再发。
+    _writeTimer?.cancel();
+    _writeTimer = null;
     _dirty = true;
     final running = _running;
     if (running != null) return running;

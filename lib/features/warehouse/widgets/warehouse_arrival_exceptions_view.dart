@@ -28,6 +28,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import 'arrival_qty_revision_table.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
   const WarehouseArrivalExceptionsView({
@@ -326,6 +327,7 @@ class _WarehouseArrivalExceptionsViewState
             supplierId: _supplierIdFilter,
             warehouseId: _warehouseIdFilter,
             status: _statusFilter,
+            scope: WarehouseListScope.of(context),
           );
       if (!mounted || version != _requestVersion) return;
       setState(() {

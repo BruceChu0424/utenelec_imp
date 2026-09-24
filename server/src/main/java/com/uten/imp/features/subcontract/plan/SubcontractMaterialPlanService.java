@@ -2237,6 +2237,38 @@ public class SubcontractMaterialPlanService
     @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public PageResponse<OutboundTaskListItem> tasks(
             int page, int size, String keyword, UUID supplierId, String status) {
+        return tasks(page, size, keyword, supplierId, status,
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /**
+     * 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤: 计划行的备料仓或未审出仓草稿的来源仓
+     * 在范围内即算; 「我的仓库」另含还没有任何备料仓的计划(没定仓的活谁都可能要接)。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_outbound:view')")
+    public PageResponse<OutboundTaskListItem> tasks(
+            int page, int size, String keyword, UUID supplierId, String status,
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        boolean scoped = warehouseScope != null && warehouseScope.active();
+        String inScope = "= ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))";
+        String scopeClause = !scoped ? "" : """
+                AND (EXISTS (SELECT 1 FROM subcontract_material_plan_items scope_item
+                             WHERE scope_item.plan_id = p.id AND scope_item.is_deleted = FALSE
+                               AND scope_item.preparation_warehouse_id %1$s)
+                     OR EXISTS (SELECT 1 FROM subcontract_material_issues scope_issue
+                                JOIN subcontract_material_issue_items scope_issue_item
+                                  ON scope_issue_item.issue_id = scope_issue.id
+                                JOIN subcontract_material_plan_items scope_plan_item
+                                  ON scope_plan_item.id = scope_issue_item.plan_item_id
+                                WHERE scope_plan_item.plan_id = p.id
+                                  AND scope_issue.status = 0 AND scope_issue.is_deleted = FALSE
+                                  AND scope_issue.warehouse_id %1$s)%2$s)
+                """.formatted(inScope, warehouseScope.includeUnassigned() ? """
+
+                     OR NOT EXISTS (SELECT 1 FROM subcontract_material_plan_items unassigned_item
+                                    WHERE unassigned_item.plan_id = p.id AND unassigned_item.is_deleted = FALSE
+                                      AND unassigned_item.preparation_warehouse_id IS NOT NULL)""" : "");
         String kw = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim() + "%";
         String kwClause = kw == null ? "" : """
                 AND (p.order_bill_no ILIKE ? OR s.name ILIKE ?)
@@ -2364,9 +2396,10 @@ public class SubcontractMaterialPlanService
                 WHERE p.is_deleted = FALSE AND p.status = 'OPEN'
                   AND agg.ready_line_count > 0
                   AND (agg.ready_outbound_total > 0 OR draft.issue_id IS NOT NULL)
-                """ + supplierClause + statusClause + kwClause;
+                """ + supplierClause + scopeClause + statusClause + kwClause;
         List<Object> params = new java.util.ArrayList<>();
         if (supplierId != null) params.add(supplierId);
+        if (scoped) params.addAll(java.util.List.of(warehouseScope.idsCsv(), warehouseScope.idsCsv()));
         if (kw != null) params.addAll(java.util.List.of(kw, kw));
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + base, Long.class, params.toArray());
         List<OutboundTaskListItem> content = jdbc.query("""

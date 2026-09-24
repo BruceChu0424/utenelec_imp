@@ -34,6 +34,7 @@ import '../repositories/stock_doc_repository.dart';
 import '../pages/warehouse_stock_batch_outbound_page.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 /// 状态小类分段值：真实单据状态（status 非空）或历史单据哨兵。
 class _StockSegSeg {
@@ -174,6 +175,7 @@ class _WarehouseStockDocSegmentState
                 ? null
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            warehouseScope: WarehouseListScope.of(context),
           ),
           sort: sort,
           order: sort == null ? null : _list.sortOrder,

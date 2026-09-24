@@ -33,6 +33,7 @@ public class ProductionFinishedInboundTaskController {
 
     private final ProductionFinishedInboundTaskService service;
     private final ProductionFinishedArrivalRegistrationService arrivalRegistrations;
+    private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
     @GetMapping("/tasks")
     @PreAuthorize("hasAuthority('stock_doc:view')")
@@ -41,8 +42,12 @@ public class ProductionFinishedInboundTaskController {
             @RequestParam(required = false) String taskStage,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "40") int size) {
-        return service.list(keyword, taskStage, warehouseId, page, size);
+            @RequestParam(defaultValue = "40") int size,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        return service.list(keyword, taskStage, warehouseId, page, size,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     @GetMapping("/tasks/count")

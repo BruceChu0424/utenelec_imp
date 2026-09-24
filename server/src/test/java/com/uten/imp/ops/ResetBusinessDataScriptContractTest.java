@@ -74,8 +74,10 @@ class ResetBusinessDataScriptContractTest {
         // V646/V647 +2 委外子件精确库存交接/车间工单原位增长事件(只追加账本, CLEAR 298→300)。
         // V680 +2 服务端会话/再认证失败计数(ADR-110, 清库后全员重新登录; CLEAR 300→302)。
         // V686 +1 总账附表行绑定(ADR-112, 报表配置随主档保留), V677 -4 角色体系四张表(ADR-109): 401 表, PRESERVE 99。
-        assertThat(policy).hasSize(401);
+        // V693 +1 仓库负责人(ADR-115, 仓库附属设置随主档保留): 402 表, PRESERVE 100。
+        assertThat(policy).hasSize(402);
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
+        assertThat(policy).containsEntry("warehouse_keepers", "PRESERVE");
         assertThat(policy).containsEntry("subcontract_component_stock_handoffs", "CLEAR");
         assertThat(policy).containsEntry("production_execution_segment_growth_events", "CLEAR");
         assertThat(policy).containsEntry("auth_sessions", "CLEAR");
@@ -114,8 +116,9 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("party_addresses", "PRESERVE");
         assertThat(policy).containsEntry("party_activity_records", "PRESERVE");
         // V677(ADR-109)：删除角色体系四张 PRESERVE 表，102→98。
+        // V693 仓库负责人 +1：99→100。
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(99);
+                .isEqualTo(100);
 
         // V463：订货行多来源锚定的两张分配表随业务数据清空。
         assertThat(policy).containsEntry(
@@ -421,8 +424,9 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(690, 619)")
                 .contains("(691, 620)")
                 .contains("(692, 621)")
-                // 迁移头 V692 / 621 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V692完整目录")
+                .contains("(693, 622)")
+                // 迁移头 V693 / 622 张 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V693完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

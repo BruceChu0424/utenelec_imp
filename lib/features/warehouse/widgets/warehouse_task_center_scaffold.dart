@@ -7,6 +7,10 @@
 // 范式）——未选择时内容区显示引导空态；小类行只随选中的大类出现（结构上等价
 // 于「大类未选时小类锁定」）。返回本页时 [onResume] 触发（重拉分段计数
 // provider），刷新按钮通过 refreshTick 传给分段。
+//
+// 仓库范围(ADR-115, 2026-09-24)：顶栏「我的仓库 / 全部仓库 / 某个仓」选择器，范围经
+// [WarehouseListScope] 传给各分段列表；范围一变就推进 refreshTick 并重拉分段计数，
+// 列表与小类计数都按新范围重拉。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,6 +24,8 @@ import '../../../core/router/route_names.dart' show RouteName;
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
+import 'warehouse_scope_selector.dart';
 
 /// 一个任务中心大类分段。
 class WarehouseTaskSegmentSpec {
@@ -123,6 +129,16 @@ class _WarehouseTaskCenterScaffoldState
       setState(() => _refreshTick++);
       widget.onResume?.call();
     });
+    // 仓库范围变了：各分段列表与分段计数按新范围重拉。
+    ref.listen<WarehouseTaskScope>(warehouseTaskScopeProvider, (
+      previous,
+      next,
+    ) {
+      if (previous == null || previous == next) return;
+      setState(() => _refreshTick++);
+      widget.onResume?.call();
+    });
+    final warehouseScope = ref.watch(warehouseTaskScopeProvider);
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.title,
@@ -131,6 +147,7 @@ class _WarehouseTaskCenterScaffoldState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
+          const WarehouseScopeSelector(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
@@ -182,7 +199,14 @@ class _WarehouseTaskCenterScaffoldState
                 Expanded(
                   child: _segment == null
                       ? const _SegmentPlaceholder()
-                      : widget.bodyBuilder(_segment!, _keyword, _refreshTick),
+                      : WarehouseListScope(
+                          scope: warehouseScope,
+                          child: widget.bodyBuilder(
+                            _segment!,
+                            _keyword,
+                            _refreshTick,
+                          ),
+                        ),
                 ),
               ],
             ),

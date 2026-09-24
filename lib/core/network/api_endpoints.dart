@@ -380,6 +380,12 @@ abstract final class ApiEndpoints {
   static const warehousesWorkshops = '$warehouses/workshops';
   static String warehouse(String id) => '/master/warehouses/$id';
 
+  // 仓库负责人(仓管员, ADR-115)：列表列 / 候选员工 / 我的仓库 / 某仓整组替换
+  static const warehouseKeeperAssignments = '$warehouses/keepers';
+  static const warehouseKeeperCandidates = '$warehouses/keeper-candidates';
+  static const myWarehouseScope = '$warehouses/my-scope';
+  static String warehouseKeepers(String id) => '/master/warehouses/$id/keepers';
+
   // 供应商字典（采购单据页按 id 解析供应商名用，全量约 386 条）
   static const suppliersDict = '/master/suppliers/dict';
 

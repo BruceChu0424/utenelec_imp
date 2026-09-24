@@ -85,7 +85,7 @@ class ProcurementArrivalGuardPostgresTest {
         assertTrue(page.getItems().isEmpty());
         assertEquals(0L, page.getTotal());
         assertEquals(0L, assertDoesNotThrow(service::countExpectations));
-        assertTrue(assertDoesNotThrow(service::countExpectationsByType).isEmpty());
+        assertTrue(assertDoesNotThrow(() -> service.countExpectationsByType()).isEmpty());
     }
 
     @Test

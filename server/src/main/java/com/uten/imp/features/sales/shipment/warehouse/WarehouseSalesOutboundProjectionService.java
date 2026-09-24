@@ -53,6 +53,20 @@ public class WarehouseSalesOutboundProjectionService {
             LocalDate dateTo,
             int page,
             int size) {
+        return list(keyword, warehouseWorkStatus, dateFrom, dateTo, page, size,
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤。 */
+    @Transactional(readOnly = true)
+    public PageResponse<WarehouseSalesOutboundListItem> list(
+            String keyword,
+            String warehouseWorkStatus,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            int page,
+            int size,
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
         // 2026-09-20: 单据 status 传 null——一步式确认出库(approveLocked)把 status 翻成 1,
         // 若仍按 status=0 过滤, 「已出库」与「历史单据」段永远列不出已出库单; 仓库投影只认
         // finance_audit=1 + warehouse_work_status 分段(与 countWarehouseWorkByStatus 同谓词).
@@ -64,9 +78,14 @@ public class WarehouseSalesOutboundProjectionService {
                         null,
                         null,
                         (short) 1,
+                        null,
                         normalize(warehouseWorkStatus),
                         dateFrom,
-                        dateTo),
+                        dateTo,
+                        null,
+                        null,
+                        null,
+                        warehouseScope),
                 page,
                 size,
                 null,

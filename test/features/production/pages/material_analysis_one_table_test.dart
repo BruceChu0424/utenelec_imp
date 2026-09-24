@@ -1728,7 +1728,9 @@ Map<String, dynamic> _previewRootOnlySubtree(
     material['requiredQty'] = quantity;
     material['shortageQty'] = quantity;
     material['demandSupplyGapQty'] = quantity;
-    material['additionalSupplyRecommendedQty'] = remaining > 0 ? remaining : 0.0;
+    material['additionalSupplyRecommendedQty'] = remaining > 0
+        ? remaining
+        : 0.0;
     material['netShortageQty'] = remaining > 0 ? remaining : 0.0;
   }
   return data;

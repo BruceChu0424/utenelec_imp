@@ -49,6 +49,7 @@ public class StockDocController {
 
     private final StockDocService service;
     private final AuditDetailViewRecorder auditViews;
+    private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
     @GetMapping
     @PreAuthorize("hasAuthority('stock_doc:view')")
@@ -66,9 +67,14 @@ public class StockDocController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        // 仓库任务中心的「仓库范围」(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        // 与表头的 warehouseId(精确发出仓)是两件事，二者可同时生效。
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
-                departmentId, issueStatus, productionReturnRequests, toWarehouseId), page, size, sort, order);
+                departmentId, issueStatus, productionReturnRequests, toWarehouseId,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId)), page, size, sort, order);
     }
 
     @GetMapping("/{id}")

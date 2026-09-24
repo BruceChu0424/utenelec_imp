@@ -26,6 +26,7 @@ import '../models/production_finished_inbound_task.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class ProductionFinishedInboundTasksView extends ConsumerStatefulWidget {
   const ProductionFinishedInboundTasksView({
@@ -121,6 +122,7 @@ class _ProductionFinishedInboundTasksViewState
             keyword: keyword,
             taskStage: _taskStageFilter,
             warehouseId: _warehouseIdFilter,
+            scope: WarehouseListScope.of(context),
           );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {

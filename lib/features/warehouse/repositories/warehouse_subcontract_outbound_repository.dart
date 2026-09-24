@@ -6,6 +6,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/subcontract_outbound.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class WarehouseSubcontractOutboundRepository {
   const WarehouseSubcontractOutboundRepository(this.api);
@@ -18,6 +19,7 @@ class WarehouseSubcontractOutboundRepository {
     String? keyword,
     String? supplierId,
     String? status,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -29,6 +31,7 @@ class WarehouseSubcontractOutboundRepository {
         if (supplierId != null && supplierId.isNotEmpty)
           'supplierId': supplierId,
         if (status != null && status.isNotEmpty) 'status': status,
+        ...scope.queryParameters,
       },
     );
     return PagedResult.fromJson(json, OutboundTask.fromJson);

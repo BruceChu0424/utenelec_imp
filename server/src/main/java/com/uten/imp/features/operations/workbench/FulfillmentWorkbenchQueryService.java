@@ -3,6 +3,7 @@ package com.uten.imp.features.operations.workbench;
 import com.uten.imp.application.port.SubcontractTaskSource;
 import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -204,6 +205,19 @@ public class FulfillmentWorkbenchQueryService {
             String department, String status, String keyword, String exception,
             LocalDate dateFrom, LocalDate dateTo, int page, int size,
             FulfillmentWorkbenchTableQuery table) {
+        return query(department, status, keyword, exception, dateFrom, dateTo, page, size, table,
+                WarehouseTaskScope.ALL);
+    }
+
+    /**
+     * 同上, 仓库待领任务另按「仓库范围」过滤(ADR-115: 我的仓库 / 指定仓库); 采购/委外忽略范围。
+     * 范围进 {@code filters}, 列表、合计、状态卡与待完成计数同口径。
+     */
+    @Transactional(readOnly = true)
+    public FulfillmentWorkbenchPage query(
+            String department, String status, String keyword, String exception,
+            LocalDate dateFrom, LocalDate dateTo, int page, int size,
+            FulfillmentWorkbenchTableQuery table, WarehouseTaskScope warehouseScope) {
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
         }
@@ -316,6 +330,12 @@ public class FulfillmentWorkbenchQueryService {
                   AND (CAST(:date_to AS date) IS NULL
                        OR updated_at < CAST(:date_to AS date) + INTERVAL '1 day')
                 """.formatted(statusBranches.formatted(IN_PROGRESS_STATUS_SQL));
+        boolean scoped = "WAREHOUSE".equals(department)
+                && warehouseScope != null && warehouseScope.active();
+        if (scoped) filters += " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope");
+        java.util.function.Consumer<Query> bindScope = query -> {
+            if (scoped) query.setParameter("warehouse_scope", warehouseScope.idsCsv());
+        };
         String tableFilters = table == null ? "" : table.rangeSql() + table.filterSql(null);
         String priority = "CASE WHEN can_create_order THEN 0 WHEN open_line_count > 0 THEN 1 ELSE 2 END, ";
         String orderBy = priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql());
@@ -337,6 +357,7 @@ public class FulfillmentWorkbenchQueryService {
                 """.formatted(sourceView, filters + tableFilters, orderBy));
         bind(rowsQuery, department, normalizedStatus, normalizedKeyword,
                 normalizedException, dateFrom, dateTo);
+        bindScope.accept(rowsQuery);
         if (table != null) table.bind(rowsQuery);
         rowsQuery.setParameter("offset", (long) (safePage - 1) * safeSize);
         rowsQuery.setParameter("limit", safeSize);
@@ -357,6 +378,7 @@ public class FulfillmentWorkbenchQueryService {
                 """.formatted(sourceView, filters + tableFilters));
         bind(summaryQuery, department, normalizedStatus, normalizedKeyword,
                 normalizedException, dateFrom, dateTo);
+        bindScope.accept(summaryQuery);
         if (table != null) table.bind(summaryQuery);
         Object[] summary = (Object[]) summaryQuery.getSingleResult();
         long total = ((Number) summary[0]).longValue();
@@ -375,6 +397,7 @@ public class FulfillmentWorkbenchQueryService {
         // Status cards always describe the whole department/keyword result so
         // selecting one card never makes the other card counts disappear.
         bind(statusQuery, department, "", normalizedKeyword, normalizedException, null, null);
+        bindScope.accept(statusQuery);
         Map<String, Long> statusCounts = new LinkedHashMap<>();
         long waitingComponent = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(statusQuery)) {
@@ -405,6 +428,7 @@ public class FulfillmentWorkbenchQueryService {
         // Exception options are server-wide for the active department/status/keyword,
         // never inferred from the current page.
         bind(exceptionQuery, department, normalizedStatus, normalizedKeyword, "", null, null);
+        bindScope.accept(exceptionQuery);
         Map<String, Long> exceptionCounts = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(exceptionQuery)) {
             exceptionCounts.put((String) row[0], ((Number) row[1]).longValue());
@@ -419,10 +443,12 @@ public class FulfillmentWorkbenchQueryService {
                 WHERE %s
                 """.formatted(sourceView, filters));
         bind(pendingQuery, department, "", normalizedKeyword, normalizedException, null, null);
+        bindScope.accept(pendingQuery);
         long pendingTasks = ((Number) pendingQuery.getSingleResult()).longValue();
         Map<String, List<FulfillmentWorkbenchPage.Facet>> facets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
-        if (table != null) {
+        // 仓库待领任务只用表头排序、不做列筛选(前端不渲染分面), 不为它多跑一次分面查询。
+        if (table != null && !"WAREHOUSE".equals(department)) {
             // One materialized candidate set; each column excludes its own filter, while
             // retaining all other columns and the real date/category/keyword predicates.
             String values = FulfillmentWorkbenchTableQuery.FIELDS.entrySet().stream()
@@ -440,6 +466,7 @@ public class FulfillmentWorkbenchQueryService {
                     GROUP BY facet.key,facet.value ORDER BY facet.key,facet.value NULLS LAST
                     """.formatted(sourceView, filters + table.rangeSql(), values));
             bind(facetQuery, department, normalizedStatus, normalizedKeyword, normalizedException, dateFrom, dateTo);
+            bindScope.accept(facetQuery);
             table.bind(facetQuery);
             for (Object[] row : NativeQueryResults.objectArrayRows(facetQuery)) {
                 String key = (String) row[0];
@@ -589,15 +616,24 @@ public class FulfillmentWorkbenchQueryService {
      */
     @Transactional(readOnly = true)
     public Map<String, Long> warehouseStatusBreakdown() {
+        return warehouseStatusBreakdown(WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 按「仓库范围」(ADR-115)计数, 与列表同一范围。 */
+    @Transactional(readOnly = true)
+    public Map<String, Long> warehouseStatusBreakdown(WarehouseTaskScope warehouseScope) {
         if (!accessPolicy.canAccessWarehouseTasks()) {
             return Map.of("READY_TO_PICK", 0L, "PARTIAL", 0L, "OPEN_ANY", 0L);
         }
+        boolean scoped = warehouseScope != null && warehouseScope.active();
         Query query = em.createNativeQuery("""
                 SELECT task_status, COUNT(*)
                 FROM %s document_rows
-                WHERE task_status IN ('READY_TO_PICK', 'PARTIAL')
+                WHERE task_status IN ('READY_TO_PICK', 'PARTIAL')%s
                 GROUP BY task_status
-                """.formatted(WAREHOUSE_DOCUMENT_ROWS));
+                """.formatted(WAREHOUSE_DOCUMENT_ROWS, scoped
+                        ? " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope") : ""));
+        if (scoped) query.setParameter("warehouse_scope", warehouseScope.idsCsv());
         long ready = 0;
         long partial = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {

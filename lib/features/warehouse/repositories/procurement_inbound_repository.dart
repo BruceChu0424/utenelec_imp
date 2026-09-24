@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 abstract interface class ProcurementInboundRepository {
   Future<PagedResult<InboundExpectation>> expectations({
@@ -12,10 +13,13 @@ abstract interface class ProcurementInboundRepository {
     ProcurementInboundOrderType? orderType,
     String? keyword,
     String? supplierId,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   });
 
   /// 预计到货按订货类型计数（PURCHASE/SUBCONTRACT → 全量张数；类型筛选卡用）。
-  Future<Map<String, int>> expectationTypeCounts();
+  Future<Map<String, int>> expectationTypeCounts({
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  });
 
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({
     int page = 1,
@@ -25,6 +29,7 @@ abstract interface class ProcurementInboundRepository {
     String? supplierId,
     String? warehouseId,
     String? status,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   });
 
   /// 一键入库：财务已定案(RECEIPT_ADJUSTED)的到货异常，按财务接受量入库+立应付。
@@ -101,6 +106,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     ProcurementInboundOrderType? orderType,
     String? keyword,
     String? supplierId,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -112,15 +118,19 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
         if (kw != null && kw.isNotEmpty) 'keyword': kw,
         if (supplierId != null && supplierId.isNotEmpty)
           'supplierId': supplierId,
+        ...scope.queryParameters,
       },
     );
     return PagedResult.fromJson(json, InboundExpectation.fromJson);
   }
 
   @override
-  Future<Map<String, int>> expectationTypeCounts() async {
+  Future<Map<String, int>> expectationTypeCounts({
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async {
     final json = await api.get(
       ApiEndpoints.warehouseInboundExpectationTypeCounts,
+      query: scope.queryParameters,
     );
     return {
       for (final entry in (json as Map).entries)
@@ -137,6 +147,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     String? supplierId,
     String? warehouseId,
     String? status,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -151,6 +162,7 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
         if (warehouseId != null && warehouseId.isNotEmpty)
           'warehouseId': warehouseId,
         if (status != null && status.isNotEmpty) 'status': status,
+        ...scope.queryParameters,
       },
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);

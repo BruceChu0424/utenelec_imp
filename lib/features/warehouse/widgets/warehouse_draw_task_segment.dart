@@ -10,6 +10,10 @@
 // 批量出库（2026-09-09；2026-09-10 修订）：勾选跨页保留（集合归本分段，表格从不
 // 自行清空），一次最多 50 张；草稿单在服务端「出库即审核」故需 approve ∩ issue；
 // 任一单失败整批回滚，错误带单号；同批重放时提示「本批此前已完成」。
+//
+// 表头排序（2026-09-24 用户口径「生产计划那里表头加个排序，能够快速排序」）：
+// 生产计划 / 领料单号 / 发料仓 / 待领数量 / 状态 / 需求日期 可点表头排序，
+// 排序在服务端整个结果集上做(分页前)，换排序回第 1 页；切换状态与搜索保留排序。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,9 +32,20 @@ import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_draw_task.dart';
 import '../repositories/production_draw_task_repository.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 /// 「待完成」分段的后端口径（open_qty > 0），与履约工作台同义。
 const _kOpenAnyStatus = 'OPEN_ANY';
+
+/// 可排序列 → 服务端排序字段(FulfillmentWorkbenchTableQuery 白名单)。
+const _kSortFields = <String, String>{
+  'planNo': 'planNo',
+  'drawBillNo': 'docNo',
+  'warehouseName': 'warehouseName',
+  'openQty': 'openQty',
+  'status': 'status',
+  'dueDate': 'needDate',
+};
 
 class WarehouseDrawTaskSegment extends ConsumerStatefulWidget {
   const WarehouseDrawTaskSegment({
@@ -66,6 +81,10 @@ class _WarehouseDrawTaskSegmentState
       <String, WarehouseDrawTask>{};
   Map<String, int> _statusCounts = const {};
   bool _batchIssuing = false;
+
+  /// 表头排序：列 key(见 [_kSortFields])；null = 服务端默认顺序。
+  String? _sortColumn;
+  bool _sortAscending = true;
 
   @override
   void initState() {
@@ -103,6 +122,9 @@ class _WarehouseDrawTaskSegmentState
             page: page,
             keyword: keyword.isEmpty ? null : keyword,
             status: _status,
+            sort: _kSortFields[_sortColumn],
+            ascending: _sortAscending,
+            scope: WarehouseListScope.of(context),
           );
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -129,6 +151,19 @@ class _WarehouseDrawTaskSegmentState
     }
   }
 
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页(勾选跨页保留, 不清)。
+  void _onSortChange(String? column, bool ascending) {
+    final next = _kSortFields.containsKey(column) ? column : null;
+    if (next == _sortColumn && (next == null || ascending == _sortAscending)) {
+      return;
+    }
+    setState(() {
+      _sortColumn = next;
+      _sortAscending = next == null ? true : ascending;
+    });
+    _load(1);
+  }
+
   /// 刷新后修剪勾选：本页已领完/不可出库的单剔除；整个结果只有一页时，
   /// 不在页内的单也剔除（已不是当前分段的待领任务）。多页结果不臆断其它页，
   /// 翻到该页再修剪。
@@ -148,7 +183,7 @@ class _WarehouseDrawTaskSegmentState
     try {
       final counts = await ref
           .read(productionDrawTaskRepositoryProvider)
-          .statusBreakdown();
+          .statusBreakdown(scope: WarehouseListScope.of(context));
       if (!mounted) return;
       setState(() => _statusCounts = counts);
     } catch (error) {
@@ -302,6 +337,9 @@ class _WarehouseDrawTaskSegmentState
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
+            sortColumn: _sortColumn,
+            sortAscending: _sortAscending,
+            onSortChange: _onSortChange,
             // 批量出库：表头复选框多选 + 右下角悬浮批量按钮，
             // 与检验处置/成品入库任务中心同款范式。
             selectable: true,
@@ -349,12 +387,14 @@ class _WarehouseDrawTaskSegmentState
   List<MasterColumnDef<WarehouseDrawTask>> get _columns => [
     MasterColumnDef(
       key: 'planNo',
+      sortable: true,
       label: '生产计划',
       width: 170,
       value: (task) => task.planNo,
     ),
     MasterColumnDef(
       key: 'drawBillNo',
+      sortable: true,
       label: '领料单号',
       width: 150,
       value: (task) => task.drawBillLabel,
@@ -398,12 +438,14 @@ class _WarehouseDrawTaskSegmentState
     ),
     MasterColumnDef(
       key: 'warehouseName',
+      sortable: true,
       label: '发料仓',
       width: 150,
       value: (task) => task.warehouseName.isEmpty ? '—' : task.warehouseName,
     ),
     MasterColumnDef(
       key: 'openQty',
+      sortable: true,
       label: '待领数量',
       width: 130,
       type: 'number',
@@ -411,6 +453,7 @@ class _WarehouseDrawTaskSegmentState
     ),
     MasterColumnDef(
       key: 'status',
+      sortable: true,
       label: '状态',
       width: 150,
       value: (task) => task.statusLabel,
@@ -423,6 +466,7 @@ class _WarehouseDrawTaskSegmentState
     ),
     MasterColumnDef(
       key: 'dueDate',
+      sortable: true,
       label: '需求日期',
       width: 120,
       type: 'date',

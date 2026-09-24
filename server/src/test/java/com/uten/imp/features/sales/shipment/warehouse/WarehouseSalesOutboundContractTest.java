@@ -51,7 +51,8 @@ class WarehouseSalesOutboundContractTest {
                 .isEqualTo("hasAuthority('warehouse_sales_outbound:view')");
 
         Method list = WarehouseSalesOutboundController.class.getDeclaredMethod(
-                "list", String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class);
+                "list", String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class,
+                String.class, UUID.class);
         Method detail = WarehouseSalesOutboundController.class.getDeclaredMethod(
                 "detail", UUID.class);
         Method command = WarehouseSalesOutboundController.class.getDeclaredMethod(

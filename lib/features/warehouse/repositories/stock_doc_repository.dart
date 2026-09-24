@@ -6,6 +6,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/stock_doc.dart';
 import '../models/stock_doc_outbound_review.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 export '../models/stock_doc_outbound_review.dart';
 
@@ -20,6 +21,7 @@ class StockDocFilter {
     this.dateFrom,
     this.dateTo,
     this.productionReturnRequests,
+    this.warehouseScope = const WarehouseTaskScope.all(),
   });
   final String? keyword;
   final String? warehouseId;
@@ -38,6 +40,9 @@ class StockDocFilter {
   final String? dateFrom;
   final String? dateTo;
   final bool? productionReturnRequests;
+
+  /// 仓库任务中心的仓库范围(ADR-115)：发出仓或调入仓在范围内；默认不过滤。
+  final WarehouseTaskScope warehouseScope;
 }
 
 class StockDocRepository {
@@ -71,6 +76,7 @@ class StockDocRepository {
           'productionReturnRequests': filter.productionReturnRequests,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
+        ...filter.warehouseScope.queryParameters,
       },
     );
     return PagedResult.fromJson(json, StockDocListItem.fromJson);

@@ -23,6 +23,7 @@ import 'package:uten_imp/features/warehouse/widgets/warehouse_draw_task_segment.
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 class _FakeRepository extends ProductionDrawTaskRepository {
   _FakeRepository() : super(ApiClient(Dio()));
@@ -37,8 +38,11 @@ class _FakeRepository extends ProductionDrawTaskRepository {
         path: '/',
         builder: (_, _) => Consumer(
           builder: (context, ref, _) => Scaffold(
-            body: WarehouseDrawTaskSegment(
-              refreshTick: ref.watch(_refreshTickProvider),
+            body: WarehouseListScope(
+              scope: ref.watch(_scopeProvider),
+              child: WarehouseDrawTaskSegment(
+                refreshTick: ref.watch(_refreshTickProvider),
+              ),
             ),
           ),
         ),
@@ -60,7 +64,9 @@ class _FakeRepository extends ProductionDrawTaskRepository {
   int get total => pages.values.fold(0, (sum, items) => sum + items.length);
 
   @override
-  Future<Map<String, int>> statusBreakdown() async {
+  Future<Map<String, int>> statusBreakdown({
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async {
     final error = countsError;
     if (error != null) throw error;
     return counts;
@@ -72,7 +78,22 @@ class _FakeRepository extends ProductionDrawTaskRepository {
     int size = 20,
     String? keyword,
     String? status,
-  }) async => PagedResult(
+    String? sort,
+    bool ascending = true,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async {
+    requests.add((page: page, sort: sort, ascending: ascending));
+    scopes.add(scope);
+    return _page(page, size);
+  }
+
+  /// 每次列表请求的页码与排序(表头排序用例断言服务端排序参数)。
+  final requests = <({int page, String? sort, bool ascending})>[];
+
+  /// 每次列表请求带的仓库范围(ADR-115)。
+  final scopes = <WarehouseTaskScope>[];
+
+  PagedResult<WarehouseDrawTask> _page(int page, int size) => PagedResult(
     items: pages[page] ?? const [],
     page: page,
     size: size,
@@ -129,6 +150,11 @@ late SharedPreferences _prefs;
 
 final _refreshTickProvider = Provider<int>((ref) => 0);
 
+/// 任务中心骨架往下传的仓库范围(ADR-115)；默认全部仓库。
+final _scopeProvider = Provider<WarehouseTaskScope>(
+  (ref) => const WarehouseTaskScope.all(),
+);
+
 class _FakeNames extends MasterNameService {
   _FakeNames() : super(ApiClient(Dio()));
   @override
@@ -167,8 +193,10 @@ Widget _app(
   _FakeRepository repo,
   Set<String> permissions, {
   int refreshTick = 0,
+  WarehouseTaskScope scope = const WarehouseTaskScope.all(),
 }) => ProviderScope(
   overrides: [
+    _scopeProvider.overrideWithValue(scope),
     sharedPreferencesProvider.overrideWithValue(_prefs),
     productionDrawTaskRepositoryProvider.overrideWithValue(repo),
     stockDocRepositoryProvider(
@@ -203,6 +231,7 @@ Future<void> _pump(
   _FakeRepository repo,
   Set<String> permissions, {
   int refreshTick = 0,
+  WarehouseTaskScope scope = const WarehouseTaskScope.all(),
 }) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1;
@@ -210,7 +239,9 @@ Future<void> _pump(
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
-  await tester.pumpWidget(_app(repo, permissions, refreshTick: refreshTick));
+  await tester.pumpWidget(
+    _app(repo, permissions, refreshTick: refreshTick, scope: scope),
+  );
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
 }
@@ -232,6 +263,50 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     _prefs = await SharedPreferences.getInstance();
+  });
+
+  // ADR-115：任务中心选「我的仓库」时，待领任务列表按该范围请求；骨架外默认全部仓库。
+  testWidgets('pending tasks are requested within the task-center scope', (
+    tester,
+  ) async {
+    final repo = _FakeRepository()..pages[1] = [_task('d1')];
+    await _pump(tester, repo, _issuer, scope: const WarehouseTaskScope.mine());
+    expect(repo.scopes, isNotEmpty);
+    expect(repo.scopes.last, const WarehouseTaskScope.mine());
+
+    final unscoped = _FakeRepository()..pages[1] = [_task('d2')];
+    await _pump(tester, unscoped, _issuer);
+    expect(unscoped.scopes.last, const WarehouseTaskScope.all());
+  });
+
+  // 2026-09-24 用户口径「生产计划那里表头加个排序，能够快速排序」：表头排序交给服务端
+  // 在整个结果集上排(不是只排当前页)，换排序回第 1 页；取消排序回服务端默认顺序。
+  testWidgets('plan header sorts on the server and resets to page 1', (
+    tester,
+  ) async {
+    final repo = _FakeRepository()
+      ..pages[1] = [_task('d1'), _task('d2')]
+      ..pages[2] = [_task('d3')];
+    await _pump(tester, repo, _issuer);
+    expect(repo.requests.last.sort, isNull);
+
+    await tester.tap(find.text('生产计划'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从大到小'));
+    await tester.pumpAndSettle();
+    expect(repo.requests.last, (page: 1, sort: 'planNo', ascending: false));
+
+    await tester.tap(find.text('领料单号'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从小到大'));
+    await tester.pumpAndSettle();
+    expect(repo.requests.last, (page: 1, sort: 'docNo', ascending: true));
+
+    await tester.tap(find.text('待领数量'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从大到小'));
+    await tester.pumpAndSettle();
+    expect(repo.requests.last, (page: 1, sort: 'openQty', ascending: false));
   });
 
   // 计数形态（docs/00-项目准则/14-徽章与计数口径.md）：「待完成」是这批活的总量段

@@ -132,7 +132,9 @@ class BusinessDataResetSqlContractTest {
             "party_addresses", 579,
             "party_contact_methods", 579,
             // V686 总账附表行绑定(ADR-112): 报表配置随科目/部门主档保留。
-            "finance_report_line_bindings", 686);
+            "finance_report_line_bindings", 686,
+            // V692 仓库负责人(ADR-115): 仓库的附属设置随主档保留。
+            "warehouse_keepers", 692);
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -264,7 +266,8 @@ class BusinessDataResetSqlContractTest {
                 "V646__subcontract_component_exact_stock_handoff.sql",
                 "V647__material_analysis_execution_growth_in_place.sql",
                 "V680__auth_sessions_and_step_up.sql",
-                "V686__finance_report_line_bindings.sql")) {
+                "V686__finance_report_line_bindings.sql",
+                "V692__warehouse_keepers_notice_routing.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }
@@ -479,8 +482,9 @@ class BusinessDataResetSqlContractTest {
                 .contains("(689, 618)")
                 .contains("(690, 619)")
                 .contains("(691, 620)")
-                // 迁移头 V691 / 620 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V691完整目录");
+                .contains("(692, 621)")
+                // 迁移头 V692 / 621 张 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V692完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
@@ -505,6 +509,9 @@ class BusinessDataResetSqlContractTest {
         assertThat(extensionSql)
                 .contains("RAISE EXCEPTION 'V686 cannot extend business-data reset policy safely'")
                 .contains("(''finance_report_line_bindings'', ''PRESERVE'')");
+        assertThat(extensionSql)
+                .contains("RAISE EXCEPTION 'V692 cannot extend business-data reset policy safely'")
+                .contains("(''warehouse_keepers'', ''PRESERVE'')");
         // V590：整表废弃走「读已安装定义 + 锚点替换删除」补丁；锚点单行无换行，
         // 不受迁移文件 CRLF/LF 差异影响（V588 教训）。
         assertThat(extensionSql)

@@ -30,7 +30,8 @@ class WarehouseArrivalExceptionBatchStockInControllerContractTest {
                 mock(PurchaseReceiptService.class),
                 mock(SubcontractReceiptService.class),
                 mock(WarehouseArrivalRegistrationService.class),
-                batch);
+                batch,
+                null);
         WarehouseArrivalExceptionBatchStockInRequest request =
                 new WarehouseArrivalExceptionBatchStockInRequest(
                         "arrival-batch-key-1",

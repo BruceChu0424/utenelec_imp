@@ -8080,7 +8080,9 @@ void _expectBucketCount(WidgetTester tester, String bucket, int count) {
     final found = tester.widgetList(matches).toList();
     if (found.isEmpty) return 0;
     // ignore: avoid_dynamic_calls
-    return found.map((w) => (w as dynamic).count as int).reduce((a, b) => a + b);
+    return found
+        .map((w) => (w as dynamic).count as int)
+        .reduce((a, b) => a + b);
   }
 
   final total =

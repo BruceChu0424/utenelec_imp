@@ -20,6 +20,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -28,6 +29,7 @@ import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../features/basic_data/models/master_facet.dart';
 import '../../../core/network/api_exception.dart';
@@ -86,6 +88,8 @@ part 'material_analysis_candidates.dart';
 part 'material_analysis_cascade_models.dart';
 part 'material_analysis_child_cascade.dart';
 part 'material_analysis_child_cascade_page.dart';
+part 'material_analysis_child_shortage.dart';
+part 'material_analysis_child_shortage_page.dart';
 part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
@@ -589,8 +593,15 @@ abstract class _MaterialAnalysisPageBase
   /// (ADR-102)。实现见 material_analysis_material_table.dart。
   ({List<_MaterialGroup> visible, int hidden}) _selectedIssuableGroups();
 
-  /// 把这些行按「车间逐层 → 采购 → 委外」分段下达(ADR-102)。
-  Future<void> _submitMaterialTableRows(List<_MaterialGroup> groups);
+  /// 把这些行按「车间逐层 → 采购 → 委外」分段下达(ADR-102)。全部段都成功返回 true。
+  Future<bool> _submitMaterialTableRows(List<_MaterialGroup> groups);
+
+  /// 下单前每个提交单元的累计已下单量(ADR-117)，下单后与之比出「这次刚下了什么」。
+  /// 实现见 material_analysis_child_shortage.dart。
+  Map<String, double> _issuedQtySnapshot();
+
+  /// 下单 / 追加成功后查刚下单的件的下层：还缺料就弹窗问要不要现在补(ADR-117)。
+  Future<void> _checkChildShortagesAfterOrder(Map<String, double> before);
 
   /// 释放主表行内「下单数量 / 追加下单」的输入控制器(ADR-102)。
   /// 实现见 material_analysis_material_table.dart。
@@ -1639,7 +1650,7 @@ abstract class _MaterialAnalysisPageBase
 
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
 class _ProductionMaterialAnalysisPageState
-    extends _MaterialAnalysisChildCascadeState {
+    extends _MaterialAnalysisChildShortageState {
   /// 顶部「主仓库」字段实测高度（更新时间事实框与之等高，2026-09-12 用户口径）。
   final GlobalKey _warehouseFieldMeasureKey = GlobalKey();
   double? _factChipHeight;
@@ -1859,6 +1870,12 @@ class _ProductionMaterialAnalysisPageState
         Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           child: _serverRefreshBanner(theme, _serverRefreshNotice!),
+        ),
+      // ADR-117：车间在催 / 已下单的件下面还缺料——常驻提醒，点「去补下单」进补料页。
+      if (_childShortageBanner(theme, analysis) case final banner?)
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          child: banner,
         ),
       Padding(
         padding: const EdgeInsets.only(top: UtenSpacing.s8),

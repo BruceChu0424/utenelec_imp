@@ -43,9 +43,8 @@ final List<RouteBase> productionRoutes = [
   ),
   GoRoute(
     path: '/production/material-increment-requests/:id',
-    builder: (_, state) => ProductionMaterialIncrementDetailPage(
-      id: state.pathParameters['id']!,
-    ),
+    builder: (_, state) =>
+        ProductionMaterialIncrementDetailPage(id: state.pathParameters['id']!),
   ),
   GoRoute(
     path: '/production/actual-output-supplements/:id',
@@ -113,11 +112,19 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: RouteName.productionMaterialAnalysis,
     name: 'production-material-analysis',
-    builder: (_, state) => ProductionMaterialAnalysisPage(
-      seed: state.extra is ProductionMaterialAnalysisSeed
+    builder: (_, state) {
+      // ADR-117：车间催计划的待办卡直链到某一份分析(?analysisId=)；页面内跳转仍走 extra。
+      final linkedAnalysisId = state.uri.queryParameters['analysisId']?.trim();
+      final seed = state.extra is ProductionMaterialAnalysisSeed
           ? state.extra! as ProductionMaterialAnalysisSeed
-          : const ProductionMaterialAnalysisSeed(),
-    ),
+          : linkedAnalysisId != null && linkedAnalysisId.isNotEmpty
+          ? ProductionMaterialAnalysisSeed(analysisId: linkedAnalysisId)
+          : const ProductionMaterialAnalysisSeed();
+      return ProductionMaterialAnalysisPage(
+        key: seed.analysisId == null ? null : ValueKey(seed.analysisId),
+        seed: seed,
+      );
+    },
   ),
   GoRoute(
     path: RouteName.productionMaterialAnalysisHistory,

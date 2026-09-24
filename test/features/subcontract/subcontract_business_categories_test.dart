@@ -81,7 +81,7 @@ void main() {
       await _tap(tester, '已结案');
       expect(api.queries, isEmpty);
       final range = DateTimeRange(
-        start: DateTime.utc(2026, 8, 1),
+        start: DateTime.utc(2026, 8),
         end: DateTime.utc(2026, 8, 31),
       );
       tester
@@ -226,7 +226,7 @@ Future<_RecordingApi> _mount(
 }
 
 Iterable<String> _primaryLabels(WidgetTester tester) => tester
-    .widgetList<UtenFilterToolbar>(
+    .widgetList<UtenFilterToolbar<dynamic>>(
       find.byWidgetPredicate((widget) => widget is UtenFilterToolbar),
     )
     .first

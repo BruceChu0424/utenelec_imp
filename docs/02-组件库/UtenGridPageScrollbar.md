@@ -14,6 +14,8 @@
 `UtenInnerScrollActiveScope` 的门控口径一致（见
 [UtenCollapsingHeaderScrollView.md](UtenCollapsingHeaderScrollView.md) §五）。
 
+共享竖条 `UtenContentScrollbar` 支持按住滑块上下拖动、点击滑块上下的轨道翻页，悬停与拖动时加深提示。命中范围限于右缘活动带，底部悬浮按钮让位区不接管点击；鼠标停在滚动条上仍可使用滚轮。滑块与轨道继续排除底部让位空白。
+
 ## 二、用法
 
 `pinned` 与 `UtenEditableGrid.stickyHeaderPinned` 传同一个 notifier：

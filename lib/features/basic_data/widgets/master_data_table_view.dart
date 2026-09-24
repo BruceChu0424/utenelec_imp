@@ -210,6 +210,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.showColumnChooser = true,
     this.enableTextSelection = true,
     this.rowColor,
+    this.rowForegroundColor,
+    this.rowDecorationBuilder,
     this.leadingGroups,
     this.selectable = false,
     this.idOf,
@@ -415,6 +417,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
   /// 单击选中时组件自动把该色加深加亮（提高不透明度），无底色行维持原 primary 高亮。
   final Color? Function(T item)? rowColor;
+
+  /// Optional semantic foreground and whole-row decoration for read-only diffs.
+  /// The decorator must preserve the supplied row's layout and interactions.
+  final Color? Function(T item)? rowForegroundColor;
+  final Widget Function(BuildContext context, T item, Widget row)?
+  rowDecorationBuilder;
 
   /// 前导可折叠分组（表头下、主数据行上）：禁用货品/不明货品等集合行。
   /// 折叠时是浅色标题行（跨满表宽）；展开后其 items 按主表同款列/列宽/列显隐逐行渲染，
@@ -2339,7 +2347,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ? utenTableSelectedRowColor(theme)
         : (base ?? Colors.transparent);
     final lineColor = theme.colorScheme.outline;
-    final textStyle = theme.textTheme.bodySmall ?? const TextStyle();
+    final textStyle = (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+      color: widget.rowForegroundColor?.call(item),
+    );
     // 多选前导勾选格（合成单元格，不进列宽机制）。
     // **行内这一份不能自带底色**：它要跟整行同底（选中淡绿/行语义色都由外层
     // ColoredBox 统一给），而且 DecoratedBox 的边框画在子节点之前——自带不透明底会把
@@ -2395,7 +2405,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         child: selectionCheckbox,
       ),
     );
-    final row = DecoratedBox(
+    final undecoratedRow = DecoratedBox(
       // 行间横线：逐行分隔；选中行也用常态横线（底色由下面的 ColoredBox 统一给）。
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: lineColor, width: 0.5)),
@@ -2419,6 +2429,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
       ),
     );
+    final row =
+        widget.rowDecorationBuilder?.call(context, item, undecoratedRow) ??
+        undecoratedRow;
     final configuredOnRowTap = widget.onRowTap;
     final rowCanOpen =
         configuredOnRowTap != null && (widget.canOpenRow?.call(item) ?? true);

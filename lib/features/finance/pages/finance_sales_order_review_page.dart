@@ -15,6 +15,8 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/data_display/uten_revision_table.dart';
+import '../widgets/sales_order_revision_table.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -428,7 +430,7 @@ class _FinanceSalesOrderReviewPageState
         permissions.contains(Perm.customerPrepaymentView);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '销售订单财务审核',
+        title: _review?.revisionDiff != null ? '销售订单修改审核' : '销售订单财务审核',
         leading: UtenBackButton(onPressed: _leaveReview),
       ),
       body: SafeArea(
@@ -494,17 +496,38 @@ class _FinanceSalesOrderReviewPageState
                             _orderCard(theme, _review!),
                             if (canViewMoneySummary) ...[
                               const SizedBox(height: UtenSpacing.s12),
-                              SalesOrderMoneySummaryCard(
-                                salesOrderId: widget.id,
+                              ExpansionTile(
+                                title: const Text('资金情况'),
+                                children: [
+                                  SalesOrderMoneySummaryCard(
+                                    salesOrderId: widget.id,
+                                  ),
+                                ],
                               ),
                             ],
                             const SizedBox(height: UtenSpacing.s12),
-                            if (_review!.commercialChanges.isNotEmpty) ...[
-                              _commercialChangesCard(theme, _review!),
-                              const SizedBox(height: UtenSpacing.s16),
-                            ],
-                            if (_review!.qtyChanges.isNotEmpty) ...[
-                              _qtyChangesCard(theme, _review!),
+                            if (_review!
+                                    .revisionDiff
+                                    ?.headerChanges
+                                    .isNotEmpty ==
+                                true) ...[
+                              UtenRevisionFields(
+                                changes: [
+                                  for (final change
+                                      in _review!.revisionDiff!.headerChanges)
+                                    UtenRevisionField(
+                                      label: change.field,
+                                      before: _revisionHeaderValue(
+                                        change.field,
+                                        change.beforeValue,
+                                      ),
+                                      after: _revisionHeaderValue(
+                                        change.field,
+                                        change.afterValue,
+                                      ),
+                                    ),
+                                ],
+                              ),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
                             // 销售在订单上上传的合同/确认件（2026-09-09）：财务确认前
@@ -603,6 +626,7 @@ class _FinanceSalesOrderReviewPageState
 
   /// 顶部状态条：单据号 + 已确认/已驳回/待确认状态。
   Widget _statusStrip(ThemeData theme, SalesOrderFinanceReview r) {
+    final isRevision = r.revisionDiff != null;
     final confirmed = r.financeConfirmed;
     final rejected = r.financeRejected;
     final color = confirmed
@@ -619,8 +643,10 @@ class _FinanceSalesOrderReviewPageState
         ? '已财务确认 · ${r.financeConfirmedByName ?? '当前审核员'}'
               '${r.financeConfirmedAt == null ? '' : ' · ${utenFmtIsoTime(r.financeConfirmedAt)}'}'
         : rejected
-        ? '已被财务驳回，等待销售受控修订并重新审核'
-        : '待财务确认 · 确认后计划部才可见并排产';
+        ? '已驳回 · 待销售修改'
+        : r.revisionDiff != null
+        ? '修改后待复审'
+        : '待财务确认';
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
@@ -637,14 +663,34 @@ class _FinanceSalesOrderReviewPageState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  r.billNo,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  isRevision ? '销售订单修改' : r.billNo,
+                  key: isRevision
+                      ? const Key('sales-order-revision-heading')
+                      : null,
+                  style:
+                      (isRevision
+                              ? theme.textTheme.titleLarge
+                              : theme.textTheme.titleMedium)
+                          ?.copyWith(
+                            fontWeight: isRevision
+                                ? FontWeight.w800
+                                : FontWeight.w700,
+                            color: isRevision
+                                ? theme.colorScheme.primary
+                                : null,
+                          ),
                 ),
-                Text(
-                  statusText,
-                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                Wrap(
+                  spacing: UtenSpacing.s12,
+                  runSpacing: UtenSpacing.s4,
+                  children: [
+                    if (isRevision)
+                      Text(r.billNo, style: theme.textTheme.bodyMedium),
+                    Text(
+                      statusText,
+                      style: theme.textTheme.bodySmall?.copyWith(color: color),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -802,142 +848,33 @@ class _FinanceSalesOrderReviewPageState
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
-          children: [
-            kv('单据日期', r.billDate),
-            kv('业务员', r.sellerName),
-            kv('制单员', r.makerName),
-            kv('制单时间', utenFmtIsoTime(r.createdAt)),
-            kv('交货日', r.deliverDate),
-            kv('币种', _currencyLabel(r), highlight: true),
-            kv('发运策略', r.shipmentPolicyName ?? r.shipmentPolicy),
-            kv('结帐方式', r.settlementMethodName),
-            kv('合同号', r.contractNo),
-            kv('备注', r.remark),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 修改清单（2026-09-05 确认后改量）：每行 以前数量 → 现在数量，
-  /// 财务按此复核后再确认；重新确认后本清单自动归档隐藏。
-  Widget _qtyChangesCard(ThemeData theme, SalesOrderFinanceReview r) {
-    final warning = theme.colorScheme.error;
-    return Container(
-      key: const Key('sales-order-finance-qty-changes'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: warning.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: warning.withValues(alpha: 0.45)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.edit_note_rounded, size: 20, color: warning),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  '修改清单 · 上次财务确认后改量 ${r.qtyChanges.length} 处',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: warning,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '订单在财务确认后修改过数量，已重新进入确认队列；请逐行核对 以前→现在 后再确认。',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          for (final change in r.qtyChanges)
-            Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      [
-                        if (change.goodsName != null) change.goodsName!,
-                        if (change.goodsCode != null) '(${change.goodsCode!})',
-                        if (change.colorName?.isNotEmpty == true)
-                          change.colorName!,
-                      ].join(' '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    '以前 ${change.oldQty ?? '—'}'
-                    '${change.unitName == null ? '' : ' ${change.unitName}'}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      decoration: TextDecoration.lineThrough,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s4),
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: warning),
-                  const SizedBox(width: UtenSpacing.s4),
-                  Text(
-                    '现在 ${change.newQty ?? '—'}'
-                    '${change.unitName == null ? '' : ' ${change.unitName}'}',
-                    key: Key('qty-change-${change.orderItemId}'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: warning,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _commercialChangesCard(
-    ThemeData theme,
-    SalesOrderFinanceReview review,
-  ) {
-    return Card(
-      key: const Key('sales-order-commercial-changes'),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('修改清单 · 商业内容', style: theme.textTheme.titleMedium),
-            const SizedBox(height: UtenSpacing.s8),
-            for (final change in review.commercialChanges)
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            UtenFormGrid(
+              children: [
+                kv('业务员', r.sellerName),
+                kv('交货日', r.deliverDate),
+                kv('币种', _currencyLabel(r), highlight: true),
+                kv('发运策略', r.shipmentPolicyName ?? r.shipmentPolicy),
+                kv('结帐方式', r.settlementMethodName),
+              ],
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('更多订单信息'),
+              children: [
+                UtenFormGrid(
                   children: [
-                    Text(change.field, style: theme.textTheme.titleSmall),
-                    SelectableText('以前：${change.beforeValue}'),
-                    SelectableText(
-                      '修改后：${change.afterValue}',
-                      style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      '${change.changedByName} · ${utenFmtIsoTime(change.changedAt)}',
-                      style: theme.textTheme.bodySmall,
-                    ),
+                    kv('单据日期', r.billDate),
+                    kv('制单员', r.makerName),
+                    kv('制单时间', utenFmtIsoTime(r.createdAt)),
+                    kv('合同号', r.contractNo),
+                    kv('备注', r.remark),
                   ],
                 ),
-              ),
+              ],
+            ),
           ],
         ),
       ),
@@ -949,6 +886,13 @@ class _FinanceSalesOrderReviewPageState
   /// 合计条走 summaryBar 槽位 + summaryBarInline（表内脚注：跟在最后一行数据
   /// 之下随表体滚动，不再钉在表体外的底部）。
   Widget _itemsCard(ThemeData theme, SalesOrderFinanceReview r) {
+    if (r.revisionDiff != null) {
+      return SalesOrderRevisionTable(
+        diff: r.revisionDiff!,
+        currencyLabel: _currencyLabel(r),
+        summaryBar: _itemsSummary(r),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1045,37 +989,38 @@ class _FinanceSalesOrderReviewPageState
             emptyMessage: '(无明细)',
             // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容
             // 末尾（最后一行数据之下），不钉在表体外/按钮上方。
-            summaryBar: r.items.isNotEmpty
-                ? UtenTotalsSummaryBar(
-                    density: true,
-                    entries: [
-                      // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
-                      UtenTotalEntry(
-                        '合计数量',
-                        measurementTotalsText(
-                          r.items.map(
-                            (it) => MeasuredAmount(
-                              value: double.tryParse(it.qty ?? '') ?? 0,
-                              unitId: it.unitId,
-                              unitName: it.unitName,
-                            ),
-                          ),
-                        ),
-                      ),
-                      UtenTotalEntry(
-                        '合计金额(${_currencyLabel(r)})',
-                        _money(r.totalOriginal),
-                        danger: true,
-                      ),
-                    ],
-                  )
-                : null,
+            summaryBar: _itemsSummary(r),
             summaryBarInline: true,
           ),
         ),
       ],
     );
   }
+
+  Widget? _itemsSummary(SalesOrderFinanceReview r) => r.items.isEmpty
+      ? null
+      : UtenTotalsSummaryBar(
+          density: true,
+          entries: [
+            UtenTotalEntry(
+              '合计数量',
+              measurementTotalsText(
+                r.items.map(
+                  (it) => MeasuredAmount(
+                    value: double.tryParse(it.qty ?? '') ?? 0,
+                    unitId: it.unitId,
+                    unitName: it.unitName,
+                  ),
+                ),
+              ),
+            ),
+            UtenTotalEntry(
+              '合计金额(${_currencyLabel(r)})',
+              _money(r.totalOriginal),
+              danger: true,
+            ),
+          ],
+        );
 
   /// 驳回记录卡：原因 + 驳回人 + 时间。
   Widget _rejectRecordCard(ThemeData theme, SalesOrderFinanceReview r) {
@@ -1117,6 +1062,16 @@ class _FinanceSalesOrderReviewPageState
   }
 
   /// 币种展示只使用主档名称或可读标准代码，不暴露旧数字编号。
+  String _revisionHeaderValue(String field, String value) => field == '发运策略'
+      ? switch (value) {
+          'ALLOW_PARTIAL' => '允许分批发货',
+          'REQUIRE_COMPLETE' => '整单齐套后发货',
+          'CUSTOMER_CONFIRM' => '客户确认后分批',
+          'LEGACY_UNSPECIFIED' => '历史订单(未指定)',
+          _ => value,
+        }
+      : value;
+
   String _currencyLabel(SalesOrderFinanceReview r) =>
       financeCurrencyDisplayLabel(name: r.currencyName, code: r.currencyCode) ??
       '订单币种';

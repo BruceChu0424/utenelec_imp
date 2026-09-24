@@ -20,6 +20,18 @@ class FinanceAssetCapabilities {
   final bool canManagePeriod;
 }
 
+/// Matches the source choices in the asset/deferral editor.
+String financeAssetSourceTypeLabel(String? type) =>
+    switch (type?.trim().toUpperCase()) {
+      'PURCHASE' => '采购入账',
+      'AP' => '应付单据',
+      'CONTRACT' => '合同',
+      'MANUAL' => '手工录入',
+      'OTHER' => '其他来源',
+      null || '' => '—',
+      _ => type!,
+    };
+
 String financeAssetStatusLabel(String status) {
   return switch (status.trim().toUpperCase()) {
     'DRAFT' => '草稿',

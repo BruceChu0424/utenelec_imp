@@ -2888,6 +2888,14 @@ public class StockDocService {
                     "成品入库单关联多张生产计划，禁止猜测业务链归属");
         }
         UUID planId = planIds.isEmpty() ? null : planIds.getFirst();
+        // The header stays draft while its lines are applied. Check the whole
+        // same-source batch so sibling lines cannot reuse the same old capacity.
+        Map<UUID, BigDecimal> publicBatchQuantities = new HashMap<>();
+        for (StockDocumentItem item : items) {
+            if (isPublicExecutionSurplus(item) && item.getQty() != null && item.getQty().signum() > 0) {
+                publicBatchQuantities.merge(item.getExecutionSegmentId(), item.getQty(), BigDecimal::add);
+            }
+        }
         if (sign < 0) {
             if (planId != null) {
                 validateExactFinishedInReverseMapping(d, items, planId);
@@ -2903,7 +2911,8 @@ public class StockDocService {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "关联生产计划的成品入库行必须明确指向计划行，禁止生成不可逆的 FIFO 分摊");
             }
-            allocateFinishedIn(d, it, planId, lineQty, sign);
+            allocateFinishedIn(d, it, planId, lineQty, sign,
+                    publicBatchQuantities.getOrDefault(it.getExecutionSegmentId(), lineQty));
         }
     }
 
@@ -2938,7 +2947,10 @@ public class StockDocService {
             if (planRows.size() != 1) {
                 throw new ApiException(ErrorCode.CONFLICT, "成品入库关联的生产计划行不存在或已删除");
             }
-            jakarta.persistence.Query reverseLinkQuery =
+            // An exact segment with no sales allocation is public stock, even
+            // when the same plan item also serves one or more sales orders.
+            boolean publicSurplus = isPublicExecutionSurplus(item);
+            jakarta.persistence.Query reverseLinkQuery = publicSurplus ? null :
                     item.getExecutionSegmentSalesAllocationId() == null
                     ? em.createNativeQuery("""
                     SELECT id, order_item_id
@@ -2961,10 +2973,11 @@ public class StockDocService {
                             "salesAllocationId",
                             item.getExecutionSegmentSalesAllocationId())
                     .setParameter("segmentId", item.getExecutionSegmentId());
-            reverseLinkQuery.setParameter(
-                    "itemId", item.getUpstreamItemId());
+            if (reverseLinkQuery != null) {
+                reverseLinkQuery.setParameter("itemId", item.getUpstreamItemId());
+            }
             List<Object[]> linkRows =
-                    NativeQueryResults.objectArrayRows(reverseLinkQuery);
+                    publicSurplus ? List.of() : NativeQueryResults.objectArrayRows(reverseLinkQuery);
             if (item.getExecutionSegmentSalesAllocationId() == null
                     && linkRows.size() > 1) {
                 throw new ApiException(
@@ -3019,6 +3032,70 @@ public class StockDocService {
                 entry.getValue().compareTo(actual.get(entry.getKey())) == 0);
     }
 
+    private static boolean isPublicExecutionSurplus(StockDocumentItem item) {
+        return item.getExecutionSegmentId() != null
+                && item.getExecutionSegmentSalesAllocationId() == null;
+    }
+
+    /** Public output owns only the unallocated slice; closed sales never release their allocation. */
+    private boolean validatePublicFinishedInCapacity(StockDocumentItem item, BigDecimal qty, int sign) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.planned_qty - COALESCE((
+                           SELECT SUM(allocation.allocated_qty)
+                           FROM execution_segment_sales_allocations allocation
+                           WHERE allocation.execution_segment_id = segment.id), 0),
+                       COALESCE((SELECT SUM(report_item.qty)
+                           FROM production_daily_report_items report_item
+                           JOIN production_daily_reports report ON report.id = report_item.report_id
+                           WHERE report_item.execution_segment_id = segment.id
+                             AND report_item.execution_segment_sales_allocation_id IS NULL
+                             AND report_item.sales_order_item_id IS NULL
+                             AND NOT report_item.is_deleted AND NOT report.is_deleted
+                             AND report.status = 1), 0),
+                       COALESCE((SELECT SUM(stock_item.qty)
+                           FROM stock_document_items stock_item
+                           JOIN stock_documents document ON document.id = stock_item.doc_id
+                           WHERE stock_item.execution_segment_id = segment.id
+                             AND stock_item.execution_segment_sales_allocation_id IS NULL
+                             AND NOT stock_item.is_deleted AND NOT document.is_deleted
+                             AND document.doc_type = 'FINISHED_IN' AND document.status = 1), 0),
+                       segment.planned_qty,
+                       EXISTS (
+                           SELECT 1 FROM production_plans plan
+                           JOIN production_material_analysis_plan_links approved_surplus
+                             ON approved_surplus.plan_id = plan.id
+                            AND approved_surplus.analysis_id = plan.material_analysis_id
+                            AND approved_surplus.analysis_item_id = plan.material_analysis_item_id
+                            AND approved_surplus.allocation_status = 'APPROVED'
+                            AND approved_surplus.public_surplus_qty > 0
+                           WHERE plan.id = segment.plan_id
+                             AND EXISTS (SELECT 1 FROM plan_order_item_links sales_origin
+                                 WHERE sales_origin.plan_item_id = segment.source_plan_item_id
+                                   AND NOT sales_origin.is_deleted)) AS public_sales_surplus
+                FROM production_execution_segments segment
+                WHERE segment.id = :segmentId
+                  AND segment.source_plan_item_id = :planItemId AND NOT segment.is_deleted
+                FOR UPDATE OF segment
+                """)
+                .setParameter("segmentId", item.getExecutionSegmentId())
+                .setParameter("planItemId", item.getUpstreamItemId()));
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "公共备货入库缺少精确执行子计划来源");
+        }
+        Object[] row = rows.getFirst();
+        BigDecimal quota = (BigDecimal) row[0];
+        BigDecimal reported = (BigDecimal) row[1];
+        BigDecimal inbound = (BigDecimal) row[2];
+        BigDecimal remaining = sign > 0 ? quota.min(reported).subtract(inbound) : inbound;
+        if (qty.compareTo(remaining) > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "公共备货入库数量超过本来源可入库量，不能占用销售订单的报工或入库数量");
+        }
+        // A later batch may consist entirely of the already approved public
+        // surplus while sibling batches carry every sales allocation.
+        return quota.compareTo((BigDecimal) row[3]) < 0 || Boolean.TRUE.equals(row[4]);
+    }
+
     /**
      * 成品入库采用两层权威分摊。
      *
@@ -3029,7 +3106,9 @@ public class StockDocService {
      * 之前抛错，让库存、计划、销售和预留在同一事务中全回滚。
      */
     private void allocateFinishedIn(StockDocument d, StockDocumentItem it, UUID planId,
-                                    BigDecimal lineQty, int sign) {
+                                    BigDecimal lineQty, int sign, BigDecimal sourceBatchQty) {
+        boolean publicStockOnly = isPublicExecutionSurplus(it)
+                && validatePublicFinishedInCapacity(it, sourceBatchQty, sign);
         String itemRemainExpr = sign > 0
                 ? "GREATEST(COALESCE(i.fqty,0) - COALESCE(i.iqty,0), 0)"
                 : "GREATEST(COALESCE(i.iqty,0), 0)";
@@ -3094,6 +3173,10 @@ public class StockDocService {
         }
         List<PlannedWrite> writes = new ArrayList<>();
         for (FinishedInboundAllocator.PlanItemAllocation planAllocation : itemPlan.allocations()) {
+            if (isPublicExecutionSurplus(it)) {
+                writes.add(new PlannedWrite(planAllocation, List.of()));
+                continue;
+            }
             boolean exactSalesAllocation =
                     it.getExecutionSegmentSalesAllocationId() != null;
             String exactReported = """
@@ -3342,7 +3425,7 @@ public class StockDocService {
         // 分析备料绑定（V298）：物料分析来源计划的完工入库，未被销售订单链接覆盖的
         // 产出量绑定回来源分析（自制备料回仓）；红冲由 applyFinishedInChain(-1) 的
         // releaseBySourceDoc('PRODUCTION_INBOUND') 对称释放。
-        if (sign > 0) {
+        if (sign > 0 && !publicStockOnly) {
             List<com.uten.imp.application.port.PreplanAnalysisPegPort
                     .FinishedInboundSlice> pegLines = new ArrayList<>();
             for (PlannedWrite write : writes) {

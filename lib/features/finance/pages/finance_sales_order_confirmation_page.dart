@@ -1083,8 +1083,7 @@ class _CompactTaskRow extends StatelessWidget {
                       if (item.changeCount > 0 && !item.financeRejected) ...[
                         const SizedBox(height: UtenSpacing.s4),
                         Text(
-                          '订单修改 ${item.changeCount} 次：请在详情页「修改清单」'
-                          '复核每行 以前→现在 数量',
+                          '修改后待复审 · 查看明细中的红绿对照',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: UtenColors.warningText,
                             fontWeight: FontWeight.w700,

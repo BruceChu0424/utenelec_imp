@@ -578,6 +578,7 @@ class FinanceAssetDetail {
     required this.events,
     required this.voucherNumbers,
     required this.documentReferences,
+    this.reviewRevisions = const [],
   });
 
   final FinanceAssetSummary summary;
@@ -587,6 +588,7 @@ class FinanceAssetDetail {
   final List<FinanceAssetEvent> events;
   final List<String> voucherNumbers;
   final List<String> documentReferences;
+  final List<FinanceAssetReviewRevision> reviewRevisions;
 
   factory FinanceAssetDetail.fromJson(
     Map<String, dynamic> source,
@@ -640,8 +642,35 @@ class FinanceAssetDetail {
           .where((item) => item.isNotEmpty)
           .toSet()
           .toList(growable: false),
+      reviewRevisions: _maps(
+        json['reviewRevisions'],
+      ).map(FinanceAssetReviewRevision.fromJson).toList(growable: false),
     );
   }
+}
+
+/// The most recent two immutable submissions for one approval workflow.
+/// Recognition, disposal and termination must never share a comparison base.
+class FinanceAssetReviewRevision {
+  const FinanceAssetReviewRevision({
+    required this.workflowType,
+    required this.resubmission,
+    this.previousSnapshot,
+    this.submissionSnapshot,
+  });
+
+  final String workflowType;
+  final bool resubmission;
+  final String? previousSnapshot;
+  final String? submissionSnapshot;
+
+  factory FinanceAssetReviewRevision.fromJson(Map<String, dynamic> json) =>
+      FinanceAssetReviewRevision(
+        workflowType: _text(json, const ['workflowType']),
+        resubmission: json['resubmission'] as bool? ?? false,
+        previousSnapshot: json['previousSnapshot'] as String?,
+        submissionSnapshot: json['submissionSnapshot'] as String?,
+      );
 }
 
 class FinanceAssetDraftInput {

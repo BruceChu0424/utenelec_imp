@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart' show utenFmtIsoTime;
 import '../../../components/inputs/uten_field_message.dart';
@@ -28,7 +29,6 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
-import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -43,6 +43,7 @@ import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
+import '../models/finance_procurement_revision.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -486,9 +487,31 @@ class _FinanceProcurementApprovalReviewPageState
                           _supplierFinanceCard(theme, review),
                           const SizedBox(height: UtenSpacing.s12),
                           _orderCard(theme, review),
-                          if (review.qtyChanges.isNotEmpty) ...[
+                          if (procurementHeaderUnknownLabels(
+                            review.previousHeaderSnapshot,
+                            review.headerSnapshot,
+                          ).isNotEmpty)
+                            Text(
+                              '历史未留存${procurementHeaderUnknownLabels(review.previousHeaderSnapshot, review.headerSnapshot).join('、')}，无法确认这些字段是否修改。',
+                            ),
+                          if (procurementHeaderChanges(
+                            review.previousHeaderSnapshot,
+                            review.headerSnapshot,
+                          ).isNotEmpty) ...[
                             const SizedBox(height: UtenSpacing.s12),
-                            _qtyChangesCard(theme, review),
+                            UtenRevisionFields(
+                              changes: [
+                                for (final change in procurementHeaderChanges(
+                                  review.previousHeaderSnapshot,
+                                  review.headerSnapshot,
+                                ))
+                                  UtenRevisionField(
+                                    label: change.label,
+                                    before: change.before,
+                                    after: change.after,
+                                  ),
+                              ],
+                            ),
                           ],
                           const SizedBox(height: UtenSpacing.s12),
                           _itemsSection(theme, review),
@@ -593,10 +616,14 @@ class _FinanceProcurementApprovalReviewPageState
         : rejected
         ? Icons.undo_rounded
         : Icons.verified_rounded;
+    final changed = r.previousItems.isNotEmpty;
+    final revisionTitle = r.orderType == FinanceProcurementOrderType.subcontract
+        ? '委外订单修改'
+        : '采购订单修改';
     final statusText = pending
-        ? '待财务审核 · 通过后订货生效并生成仓库预计到货任务'
+        ? (changed ? '修改后待复核' : '待财务审核')
         : rejected
-        ? '已被财务驳回 · 等待制单人修改后重新提交'
+        ? '已退回 · 待修改重提'
         : approved
         ? '已通过 · 订货已生效'
         : '已撤回';
@@ -615,6 +642,15 @@ class _FinanceProcurementApprovalReviewPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (changed) ...[
+                  Text(
+                    revisionTitle,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                ],
                 Row(
                   children: [
                     Flexible(
@@ -698,13 +734,6 @@ class _FinanceProcurementApprovalReviewPageState
                 _metric(theme, '折合本币', _money(r.totalLocal)),
                 _metric(theme, '税率', _trimNum(r.taxRate) ?? '—'),
               ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              '应付余额 = 该供应商未结应付合计（与应付台账同口径），供放行参考。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
           ],
         ),
@@ -790,118 +819,108 @@ class _FinanceProcurementApprovalReviewPageState
             kv('预计到货日', r.deliverDate),
             kv(
               '来源申请',
-              r.sourceApplicationCount > 0
+              r.items.any((line) => !line.displaySnapshotComplete)
+                  ? '历史未留存'
+                  : r.sourceApplicationCount > 0
                   ? '${r.sourceApplicationCount} 张'
-                  : null,
+                  : '无申请来源',
             ),
-            kv('备注', r.remark),
+            kv(
+              '备注',
+              r.headerSnapshot.containsKey('remark') ? r.remark : '历史未留存',
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// 修改清单（批准后改量，照销售财务审核页同款）：每行 以前数量 → 现在数量
-  /// （旧行删除线、新值加粗），财务按此复核后再通过；复核通过后清单归档隐藏。
-  Widget _qtyChangesCard(ThemeData theme, FinanceProcurementApprovalReview r) {
-    final l10n = AppLocalizations.of(context);
-    final warning = theme.colorScheme.error;
-    return Container(
-      key: const Key('procurement-approval-qty-changes'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: warning.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: warning.withValues(alpha: 0.45)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.edit_note_rounded, size: 20, color: warning),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  l10n.procurementApprovalQtyChangesTitle(r.qtyChanges.length),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: warning,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            l10n.procurementApprovalQtyChangesHint,
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          for (final change in r.qtyChanges)
-            Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      [
-                        if (change.goodsName != null) change.goodsName!,
-                        if (change.goodsCode != null) '(${change.goodsCode!})',
-                        if (change.colorName?.isNotEmpty == true)
-                          change.colorName!,
-                      ].join(' '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    l10n.orderQtyChangeOld(
-                      '${change.oldQty ?? '—'}'
-                      '${change.unitName == null ? '' : ' ${change.unitName}'}',
-                    ),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      decoration: TextDecoration.lineThrough,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s4),
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: warning),
-                  const SizedBox(width: UtenSpacing.s4),
-                  Text(
-                    l10n.orderQtyChangeNew(
-                      '${change.newQty ?? '—'}'
-                      '${change.unitName == null ? '' : ' ${change.unitName}'}',
-                    ),
-                    key: Key('procurement-qty-change-${change.orderItemId}'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: warning,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   /// 订货明细：保持全局统一表格（MasterDataTableView 嵌入模式）。
   Widget _itemsSection(ThemeData theme, FinanceProcurementApprovalReview r) {
+    final revisions = procurementRevisionRows(r.previousItems, r.items);
+    final comparing = r.previousItems.isNotEmpty;
+    final hasUnknown = [
+      ...r.previousItems,
+      ...r.items,
+    ].any((line) => !line.displaySnapshotComplete);
+    String? extra(
+      FinanceProcurementReviewLine line,
+      String? value, {
+      bool numeric = false,
+    }) => !line.displaySnapshotComplete
+        ? '历史未留存'
+        : numeric
+        ? _trimNum(value)
+        : value;
+    final changed = revisions
+        .where((row) => !row.unchanged && !row.needsReview)
+        .toList();
+    final unknownCount = revisions.where((row) => row.needsReview).length;
+    final added = changed.where((row) => row.before == null).length;
+    final removed = changed.where((row) => row.after == null).length;
+    final modified = changed.length - added - removed;
+    final rows = <UtenRevisionRow<FinanceProcurementReviewLine>>[
+      if (!comparing)
+        for (final item in r.items)
+          UtenRevisionRow(value: item, kind: UtenRevisionKind.unchanged)
+      else
+        for (final revision in revisions)
+          if (revision.unchanged)
+            UtenRevisionRow(
+              value: revision.after!,
+              kind: UtenRevisionKind.unchanged,
+              label: revision.after!.displaySnapshotComplete ? null : '已存内容相同',
+            )
+          else ...[
+            if (revision.before != null)
+              UtenRevisionRow(
+                value: revision.before!,
+                kind: UtenRevisionKind.removed,
+                label: revision.after == null
+                    ? '已删除'
+                    : !revision.before!.displaySnapshotComplete
+                    ? '原记录·缺项'
+                    : '原内容',
+              ),
+            if (revision.after != null)
+              UtenRevisionRow(
+                value: revision.after!,
+                kind: UtenRevisionKind.added,
+                label: revision.before == null
+                    ? '新增'
+                    : revision.needsReview
+                    ? '本次·待核对'
+                    : '修改后',
+                changedKeys: revision.before == null
+                    ? const {}
+                    : procurementChangedFields(
+                        revision.before!,
+                        revision.after!,
+                      ),
+              ),
+          ],
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '订货明细(${r.items.length})',
+          comparing
+              ? '明细对比 · 修改 $modified 行 · 删除 $removed 行 · 新增 $added 行${unknownCount > 0 ? ' · 待核对 $unknownCount 行' : ''}'
+              : '订货明细(${r.items.length})',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
           ),
         ),
+        if (comparing && hasUnknown)
+          Text(
+            '历史记录部分字段未留存，未知不代表未修改；历史名称按现有档案显示。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<FinanceProcurementReviewLine>(
+        UtenRevisionTable<FinanceProcurementReviewLine>(
+          key: const Key('procurement-approval-revision-table'),
           embedded: true,
           stickyHeaderPinned: _itemsPinned,
           columns: [
@@ -942,6 +961,13 @@ class _FinanceProcurementApprovalReviewPageState
               cellBuilder: (_, it) => UtenGoodsAttributeCell(it.unitName),
             ),
             MasterColumnDef(
+              key: 'unitRate',
+              label: '换算率',
+              width: 90,
+              type: 'number',
+              value: (it) => _trimNum(it.unitRate),
+            ),
+            MasterColumnDef(
               key: 'qty',
               label: '数量',
               width: 90,
@@ -957,11 +983,18 @@ class _FinanceProcurementApprovalReviewPageState
             ),
             MasterColumnDef(
               key: 'amountOriginal',
-              label: '金额(${_currencyLabel(r)})',
+              label: comparing ? '原币金额' : '金额(${_currencyLabel(r)})',
               width: 120,
               type: 'money',
               value: (it) => _trimNum(it.amountOriginal),
             ),
+            if (comparing)
+              MasterColumnDef(
+                key: 'currencyName',
+                label: '币种',
+                width: 90,
+                value: (it) => it.currencyName ?? '—',
+              ),
             MasterColumnDef(
               key: 'amountLocal',
               label: '金额(本币)',
@@ -978,17 +1011,48 @@ class _FinanceProcurementApprovalReviewPageState
             ),
             MasterColumnDef(
               key: 'sourceDocNo',
-              label: '申请来源',
+              label: '来源单号',
               width: 170,
-              value: (it) => it.sourceDocNo,
+              value: (it) => extra(it, it.sourceDocNo),
+            ),
+            MasterColumnDef(
+              key: 'sourceApplicationNos',
+              label: '申请来源 / 分配数量',
+              width: 280,
+              value: (it) => extra(it, it.sourceApplicationNos),
+            ),
+            MasterColumnDef(
+              key: 'weight',
+              label: '实际重量',
+              width: 110,
+              value: (it) => extra(it, it.weight, numeric: true),
+            ),
+            if (r.orderType == FinanceProcurementOrderType.subcontract)
+              MasterColumnDef(
+                key: 'allowedLossPct',
+                label: '允许损耗(%)',
+                width: 120,
+                value: (it) => extra(it, it.allowedLossPct, numeric: true),
+              ),
+            if (r.orderType == FinanceProcurementOrderType.purchase &&
+                [...r.previousItems, ...r.items].any(
+                  (line) =>
+                      line.giftQty != null && _trimNum(line.giftQty) != '0',
+                ))
+              MasterColumnDef(
+                key: 'giftQty',
+                label: '赠品数量',
+                width: 110,
+                value: (it) => extra(it, it.giftQty, numeric: true),
+              ),
+            MasterColumnDef(
+              key: 'remark',
+              label: '行备注',
+              width: 220,
+              value: (it) => extra(it, it.remark),
             ),
           ],
-          items: r.items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          emptyMessage: '(无明细)',
+          rows: rows,
         ),
         if (r.items.isNotEmpty)
           UtenTotalsSummaryBar(

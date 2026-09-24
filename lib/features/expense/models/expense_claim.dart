@@ -87,11 +87,20 @@ class ExpenseClaim {
     this.events = const [],
     this.version = 0,
     this.approvedBy,
+    this.previousSubmissionSnapshot,
+    this.submissionSnapshot,
+    this.resubmission = false,
   });
 
   final String id;
   final int version;
   final String? approvedBy;
+
+  /// Immutable submitted contents. Draft/rejected edits must keep using live
+  /// data until the next submission freezes a new snapshot.
+  final String? previousSubmissionSnapshot;
+  final String? submissionSnapshot;
+  final bool resubmission;
 
   /// 报销单号（BX + 日期 + 流水；V608 打印与归档编号）
   final String claimNo;
@@ -168,6 +177,9 @@ class ExpenseClaim {
       claimNo: (json['claimNo'] as String?) ?? '',
       version: (json['version'] as num?)?.toInt() ?? 0,
       approvedBy: json['approvedBy'] as String?,
+      previousSubmissionSnapshot: json['previousSubmissionSnapshot'] as String?,
+      submissionSnapshot: json['submissionSnapshot'] as String?,
+      resubmission: json['resubmission'] as bool? ?? false,
       applicantId: json['applicantId'] as String,
       applicantName: json['applicantName'] as String,
       departmentId: json['departmentId'] as String?,
@@ -225,6 +237,9 @@ class ExpenseClaim {
       claimNo: claimNo,
       version: version,
       approvedBy: approvedBy,
+      previousSubmissionSnapshot: previousSubmissionSnapshot,
+      submissionSnapshot: submissionSnapshot,
+      resubmission: resubmission,
       applicantId: applicantId,
       applicantName: applicantName,
       departmentId: departmentId,

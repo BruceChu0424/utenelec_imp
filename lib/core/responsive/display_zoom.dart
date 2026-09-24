@@ -14,6 +14,8 @@
 // 放大到窗口大小；MediaQuery 的 size / padding / viewPadding / viewInsets /
 // devicePixelRatio 同步换算，页面里的断点、对话框尺寸、SafeArea 都按画布尺寸算。
 // zoom == 1 时不套 Transform(手机、≤1920 宽且标准字号：零开销、零行为差异)。
+// 滚轮 scrollDelta 不随 Transform 换算；缩放分支标记命中路径上的倍率，入口的
+// UtenWidgetsFlutterBinding 在事件分发前统一换算，避免大字号让滚动距离一起放大。
 //
 // 坐标空间约定(写浮层/拖拽代码必读)：Transform 之下 RenderBox.localToGlobal(无 ancestor)
 // 与手势事件的 globalPosition 都是**窗口坐标**(已乘 zoom)；Overlay 里 Positioned 的
@@ -29,6 +31,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
+
+import 'display_zoom_pointer_binding.dart';
 
 /// 整体缩放的倍率计算(纯函数，便于单测)。
 abstract final class UtenDisplayZoom {
@@ -159,7 +163,7 @@ class UtenDisplayZoomBox extends StatelessWidget {
             maxWidth: canvas.width,
             minHeight: canvas.height,
             maxHeight: canvas.height,
-            child: content,
+            child: UtenDisplayZoomPointerRegion(zoom: zoom, child: content),
           ),
         );
       },

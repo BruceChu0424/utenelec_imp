@@ -108,9 +108,9 @@ public class DailyReportExecutionSegmentGuard {
                         item.getUnitRate(),
                         item.getQty(),item.isFinal()))
                 .toList();
-        lockAndValidateIdentity(null, lines, true);
+        Map<UUID, SegmentSnapshot> segments = lockAndValidateIdentity(null, lines, true);
         for (ReportLine line : lines) {
-            validateSalesAllocation(line);
+            validateSalesAllocation(line, segments.get(line.executionSegmentId()));
         }
     }
 
@@ -123,6 +123,8 @@ public class DailyReportExecutionSegmentGuard {
         Map<UUID, BigDecimal> requested = new LinkedHashMap<>();
         Map<UUID, BigDecimal> salesRequested = new LinkedHashMap<>();
         Map<UUID, BigDecimal> salesCapacities = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> internalRequested = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> internalCapacities = new LinkedHashMap<>();
         List<ReportLine> recoveryLines = new ArrayList<>();
         for (ReportLine line : lines) {
             requireSegmentWhenNeeded(line);
@@ -152,7 +154,7 @@ public class DailyReportExecutionSegmentGuard {
             validateRecoveryAuthorization(recoveryLine);
         }
         for (ReportLine line : lines) {
-            BigDecimal capacity = validateSalesAllocation(line);
+            BigDecimal capacity = validateSalesAllocation(line, segments.get(line.executionSegmentId()));
             if (line.executionSegmentSalesAllocationId() != null
                     && line.recoveryAuthorizationId() == null) {
                 salesRequested.merge(
@@ -162,6 +164,10 @@ public class DailyReportExecutionSegmentGuard {
                 salesCapacities.put(
                         line.executionSegmentSalesAllocationId(),
                         capacity);
+            } else if (line.executionSegmentId() != null
+                    && line.recoveryAuthorizationId() == null) {
+                internalRequested.merge(line.executionSegmentId(), line.qty(), BigDecimal::add);
+                internalCapacities.put(line.executionSegmentId(), capacity);
             }
         }
         for (Map.Entry<UUID, BigDecimal> entry : requested.entrySet()) {
@@ -199,6 +205,12 @@ public class DailyReportExecutionSegmentGuard {
                         "执行分段报工数量超出所选销售订单分摊");
             }
         }
+        for (Map.Entry<UUID, BigDecimal> entry : internalRequested.entrySet()) {
+            BigDecimal existing = existingInternalQuantity(entry.getKey(), reportId, countedStatus);
+            if (existing.add(entry.getValue()).compareTo(internalCapacities.get(entry.getKey())) > 0) {
+                throw conflict("公共备货累计报工超过工单独立备货数量，不能占用销售订单分摊");
+            }
+        }
         return List.copyOf(new TreeSet<>(requested.keySet()));
     }
 
@@ -230,7 +242,9 @@ public class DailyReportExecutionSegmentGuard {
                                            s.responsible_employee_id,
                                            s.material_requirement_mode,
                                            s.lock_version, s.source_segment_id,
-                                           s.continuous_supply
+                                           s.continuous_supply,
+                                           (plan.status = 1 AND NOT plan.is_stopped
+                                            AND NOT plan.is_canceled AND NOT plan.is_closed) AS plan_open
                                     FROM production_execution_segments s
                                     JOIN production_planning_packages package
                                       ON package.id = s.package_id
@@ -263,13 +277,18 @@ public class DailyReportExecutionSegmentGuard {
                     (UUID) row[12],
                     (String) row[13],
                     ((Number) row[14]).longValue(),(UUID)row[15],
-                    Boolean.TRUE.equals(row[16]));
+                    Boolean.TRUE.equals(row[16]), Boolean.TRUE.equals(row[17]));
             // Exact workshop assignment is the write-side object scope for an
             // execution task. Reusing the plan maker scope here would make a
             // workshop employee see the task but receive 404 when reporting a
             // plan authored by planning staff. Legacy no-segment rows below
             // continue to use the historical plan-owner scope.
             requireWorkshopOperationAccess(snapshot);
+            // Drafts fail early; approval locks and rechecks the plan later in
+            // planItemRow without changing the established segment/plan lock order.
+            if (!allowTerminalPackage && !snapshot.planOpen()) {
+                throw conflict("生产计划当前未生效或已停止、取消、结案，不能继续报工");
+            }
             if (!allowTerminalPackage
                     && !"CONFIRMED".equals(snapshot.packageStatus())) {
                 throw conflict("执行段所属计划包已经终止");
@@ -411,7 +430,7 @@ public class DailyReportExecutionSegmentGuard {
         }
     }
 
-    private BigDecimal validateSalesAllocation(ReportLine line) {
+    private BigDecimal validateSalesAllocation(ReportLine line, SegmentSnapshot segment) {
         if (line.executionSegmentId() == null) {
             if (line.executionSegmentSalesAllocationId() != null) {
                 throw conflict(
@@ -437,10 +456,18 @@ public class DailyReportExecutionSegmentGuard {
                 throw conflict(
                         "内部执行分段不能引用销售订单行");
             }
-            return null;
+            return segment.plannedQty();
         }
-        if (line.executionSegmentSalesAllocationId() == null
-                || line.salesOrderItemId() == null) {
+        if (line.executionSegmentSalesAllocationId() == null && line.salesOrderItemId() == null) {
+            BigDecimal allocated = rows.stream().map(row -> decimal(row[2]))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal internalCapacity = segment.plannedQty().subtract(allocated);
+            if (internalCapacity.signum() <= 0) {
+                throw validation("执行工单没有公共备货数量，必须指定精确的销售分摊");
+            }
+            return internalCapacity;
+        }
+        if (line.executionSegmentSalesAllocationId() == null || line.salesOrderItemId() == null) {
             throw validation(
                     "销售关联的执行分段必须指定其精确的销售分摊");
         }
@@ -570,6 +597,26 @@ public class DailyReportExecutionSegmentGuard {
         return decimal(value);
     }
 
+    private BigDecimal existingInternalQuantity(UUID segmentId, UUID excludedReportId, String countedStatus) {
+        String statuses = "APPROVED".equals(countedStatus)
+                ? "report.status = 1" : "report.status IN (0, 1)";
+        Object value = em.createNativeQuery("""
+                SELECT COALESCE(SUM(item.qty), 0)
+                FROM production_daily_report_items item
+                JOIN production_daily_reports report ON report.id = item.report_id
+                WHERE item.execution_segment_id = :segmentId
+                  AND item.execution_segment_sales_allocation_id IS NULL
+                  AND item.sales_order_item_id IS NULL
+                  AND item.fqc_recovery_authorization_id IS NULL
+                  AND item.report_id <> :reportId
+                  AND item.is_deleted = FALSE AND report.is_deleted = FALSE
+                """ + " AND " + statuses)
+                .setParameter("segmentId", segmentId)
+                .setParameter("reportId", excludedReportId)
+                .getSingleResult();
+        return decimal(value);
+    }
+
     private static BigDecimal decimal(Object value) {
         return value == null
                 ? BigDecimal.ZERO
@@ -616,6 +663,7 @@ public class DailyReportExecutionSegmentGuard {
             String materialRequirementMode,
             long lockVersion,
             UUID sourceSegmentId,
-            boolean continuousSupply) {
+            boolean continuousSupply,
+            boolean planOpen) {
     }
 }

@@ -27,6 +27,7 @@ import '../models/expense_invoice.dart';
 import '../providers/expense_providers.dart';
 import '../providers/expense_settings_provider.dart';
 import '../repositories/expense_repository.dart';
+import 'expense_submission_revision.dart';
 
 class ExpenseInvoiceSection extends ConsumerWidget {
   const ExpenseInvoiceSection({
@@ -51,6 +52,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final invoices = claim.invoices;
+    final revision = ExpenseSubmissionRevision.fromClaim(claim);
     final total = invoices.fold<double>(
       0,
       (sum, invoice) => sum + invoice.totalAmount,
@@ -96,7 +98,14 @@ class ExpenseInvoiceSection extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: UtenSpacing.s8),
-        if (invoices.isEmpty)
+        if (revision != null)
+          ExpenseSubmissionInvoiceTable(
+            key: const Key('expense-invoice-revision-table'),
+            revision: revision,
+            claim: claim,
+            stickyHeaderPinned: stickyHeaderPinned,
+          )
+        else if (invoices.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(
@@ -176,12 +185,28 @@ class ExpenseInvoiceSection extends ConsumerWidget {
                         _InvoiceVerifyDialog(claim: claim, invoice: invoice),
                   ),
                   child: Text(
-                    '${AppLocalizations.of(context).expenseFlowVerify} #${invoice.lineNo}',
+                    '${AppLocalizations.of(context).expenseFlowVerify} #${invoice.lineNo}'
+                    '${revision == null ? '' : ' · ${invoice.checkState.label}'}',
                   ),
                 ),
             ],
           ),
         ],
+        if (revision != null && !canVerify && invoices.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                for (final invoice in invoices)
+                  Text(
+                    '本次 #${invoice.lineNo} · ${invoice.checkState.label}'
+                    '${invoice.verifiedByName == null ? '' : ' · ${invoice.verifiedByName}'}',
+                  ),
+              ],
+            ),
+          ),
       ],
     );
   }

@@ -610,12 +610,18 @@ public class ExpenseClaimService {
             throw stateConflict(claim);
         }
         validateEvidence(claim, false);
+        boolean rejectedResubmit = "REJECTED".equals(claim.getStatus());
+        boolean resubmit = claim.getSubmissionSnapshot() != null || claim.getSubmittedAt() != null
+                || rejectedResubmit
+                || eventRepository.existsByClaimIdAndEventType(id, "SUBMITTED");
+        claim.setPreviousSubmissionSnapshot(claim.getSubmissionSnapshot());
+        claim.setSubmissionSnapshot(submissionSnapshot(claim));
+        claim.setResubmission(resubmit);
         for(var invoice:invoiceRepository.findByClaimIdOrderByLineNoAsc(id)) {
             if("VERIFIED_MANUAL".equals(invoice.getCheckState())) invoice.setCheckState("UNCHECKED");
             invoice.setVerifiedAt(null);invoice.setVerifiedBy(null);invoice.setVerifiedByName(null);invoice.setVerificationRemark(null);
             invoiceRepository.save(invoice);
         }
-        boolean resubmit = "REJECTED".equals(claim.getStatus());
         hrNotice.resolveExpenseClaim(id, "RESUBMITTED");
         Instant now = Instant.now();
         claim.setStatus("SUBMITTED");
@@ -625,7 +631,8 @@ public class ExpenseClaimService {
         claim.setRejectedBy(null);
         claim.setRejectedAt(null);
         claimRepository.save(claim);
-        appendEvent(claim.getId(), "SUBMITTED", user, resubmit ? "驳回后重新提交" : null);
+        appendEvent(claim.getId(), "SUBMITTED", user,
+                rejectedResubmit ? "驳回后重新提交" : resubmit ? "撤回后重新提交" : null);
         // 提交 → 通知审批人（弹卡 + 通知；2026-09-09 人事通知接入）
         hrNotice.notifyExpenseClaimSubmitted(
                 claim.getId(), claim.getApplicantNameSnapshot(),
@@ -644,6 +651,9 @@ public class ExpenseClaimService {
         if (!Set.of("SUBMITTED", "REVIEWING").contains(claim.getStatus())) {
             throw stateConflict(claim);
         }
+        // A submitted document is frozen for applicant edits, so it is safe to
+        // retain a missing legacy snapshot before withdrawal makes it editable.
+        preserveSubmittedSnapshot(claim);
         for(var invoice:invoiceRepository.findByClaimIdOrderByLineNoAsc(id)) {
             if("VERIFIED_MANUAL".equals(invoice.getCheckState())) invoice.setCheckState("UNCHECKED");
             invoice.setVerifiedBy(null);invoice.setVerifiedAt(null);invoice.setVerifiedByName(null);invoice.setVerificationRemark(null);
@@ -725,6 +735,7 @@ public class ExpenseClaimService {
         if (!Set.of("SUBMITTED", "REVIEWING").contains(claim.getStatus())) {
             throw stateConflict(claim);
         }
+        preserveSubmittedSnapshot(claim);
         if (approved) {
             require(user,"attachment:view");
             require(user,"attachment:download");
@@ -1261,7 +1272,18 @@ public class ExpenseClaimService {
                 claim.getFinanceExpenseId(),
                 context.attachments(),
                 invoices,
-                events, claim.getVersion(), claim.getApprovedBy(), context.paymentProofs());
+                events, claim.getVersion(), claim.getApprovedBy(), context.paymentProofs(),
+                claim.getPreviousSubmissionSnapshot(), claim.getSubmissionSnapshot(), claim.isResubmission());
+    }
+
+    private String submissionSnapshot(ExpenseClaim claim) {
+        return ExpenseClaimSubmissionSnapshot.capture(claim,
+                itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(List.of(claim.getId())),
+                invoiceRepository.findByClaimIdOrderByLineNoAsc(claim.getId()));
+    }
+
+    private void preserveSubmittedSnapshot(ExpenseClaim claim) {
+        if (claim.getSubmissionSnapshot() == null) claim.setSubmissionSnapshot(submissionSnapshot(claim));
     }
 
     private static String nameOf(Map<UUID, String> names, UUID id) {

@@ -26,6 +26,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import 'arrival_qty_revision_table.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
@@ -729,17 +730,29 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
             ),
             const SizedBox(width: UtenSpacing.s8),
             Expanded(
-              child: Text(
-                task.receiptBillNo,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (arrivalQtyWasModified(task))
+                    Text(
+                      '收货数量修改',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  Text(
+                    task.receiptBillNo,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
         content: SizedBox(
-          width: 720,
+          width: 920,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -784,27 +797,28 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
                 _DetailLine(label: '订货单', value: task.orderBillNo),
                 _DetailLine(label: '供应商', value: task.supplierName ?? '—'),
                 _DetailLine(label: '仓库', value: task.warehouseName ?? '—'),
-                _DetailLine(label: '货品名称', value: task.goodsName),
-                _DetailLine(label: '编号', value: task.goodsCode),
-                if (task.colorName?.isNotEmpty == true)
-                  _DetailLine(label: '颜色', value: task.colorName!),
                 const Divider(height: UtenSpacing.s24),
-                _DetailLine(
-                  label: '实到数量',
-                  value: procurementQty(task.declaredQty) + unit,
-                ),
-                _DetailLine(
-                  label: '批准剩余',
-                  value: procurementQty(task.approvedRemainingQty) + unit,
-                ),
-                _DetailLine(
-                  label: '超量申请',
-                  value: procurementQty(task.requestedExcessQty) + unit,
-                ),
-                _DetailLine(
-                  label: '财务接收',
-                  value: procurementQty(task.acceptedQty) + unit,
-                ),
+                if (arrivalQtyHasDecision(task))
+                  ArrivalQtyRevisionTable(task: task)
+                else ...[
+                  _DetailLine(label: '货品名称', value: task.goodsName),
+                  _DetailLine(label: '编号', value: task.goodsCode),
+                  if (task.colorName?.isNotEmpty == true)
+                    _DetailLine(label: '颜色', value: task.colorName!),
+                  _DetailLine(
+                    label: '实到数量',
+                    value: procurementQty(task.declaredQty) + unit,
+                  ),
+                  _DetailLine(
+                    label: '批准剩余',
+                    value: procurementQty(task.approvedRemainingQty) + unit,
+                  ),
+                  _DetailLine(
+                    label: '超量申请',
+                    value: procurementQty(task.requestedExcessQty) + unit,
+                  ),
+                ],
+                const SizedBox(height: UtenSpacing.s12),
                 _DetailLine(
                   label: '待退数量',
                   value: procurementQty(task.unacceptedQty) + unit,
@@ -815,9 +829,7 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
                   _DetailLine(label: '财务说明', value: task.financeReason!),
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
-                  task.canStockIn
-                      ? '只会按财务批准量入库并立应付；未批准余量仍需采购退回供应商。'
-                      : '当前仅查看进度；系统不会在审批或退回闭环完成前把异常数量计入库存。',
+                  task.canStockIn ? '按批准量送 IQC 待检；未批准余量退回供应商。' : '当前仅查看处理进度。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

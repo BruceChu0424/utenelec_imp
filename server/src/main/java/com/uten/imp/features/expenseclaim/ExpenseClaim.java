@@ -84,6 +84,18 @@ public class ExpenseClaim extends BaseEntity {
     @Column(name = "finance_expense_id")
     private UUID financeExpenseId;
 
+    /** Last submitted commercial facts; editable draft rows are never the baseline. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "submission_snapshot", columnDefinition = "jsonb")
+    private String submissionSnapshot;
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "previous_submission_snapshot", columnDefinition = "jsonb")
+    private String previousSubmissionSnapshot;
+
+    @Column(name = "resubmission", nullable = false)
+    private boolean resubmission;
+
     @Version
     @Column(nullable = false)
     private long version;

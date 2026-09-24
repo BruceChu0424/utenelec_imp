@@ -37,6 +37,7 @@ import '../providers/expense_providers.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
 import '../widgets/expense_invoice_section.dart';
+import '../widgets/expense_submission_revision.dart';
 
 class ExpenseDetailPage extends ConsumerStatefulWidget {
   const ExpenseDetailPage({super.key, required this.claimId});
@@ -183,6 +184,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
                       const SizedBox(height: UtenSpacing.s16),
                       _infoCard(context, claim),
                       const SizedBox(height: UtenSpacing.s16),
+                      ExpenseSubmissionChangeSummary(claim: claim),
                       _itemsSection(context, claim),
                       const SizedBox(height: UtenSpacing.s16),
                       _section(
@@ -418,28 +420,36 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   }
 
   Widget _itemsSection(BuildContext context, ExpenseClaim claim) {
+    final revision = ExpenseSubmissionRevision.fromClaim(claim);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '报销明细 (${claim.items.length})',
+          revision == null ? '报销明细 (${claim.items.length})' : '报销明细 · 修改对比',
           style: Theme.of(
             context,
           ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<ExpenseItem>(
-          key: const Key('expense-detail-items'),
-          columns: _itemColumns,
-          items: claim.items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          embedded: true,
-          stickyHeaderPinned: _itemsPinned,
-          summaryBar: _itemsSummary(claim),
-        ),
+        if (revision != null)
+          ExpenseSubmissionItemTable(
+            key: const Key('expense-detail-items-revision'),
+            revision: revision,
+            stickyHeaderPinned: _itemsPinned,
+          )
+        else
+          MasterDataTableView<ExpenseItem>(
+            key: const Key('expense-detail-items'),
+            columns: _itemColumns,
+            items: claim.items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            embedded: true,
+            stickyHeaderPinned: _itemsPinned,
+            summaryBar: _itemsSummary(claim),
+          ),
       ],
     );
   }
@@ -527,6 +537,15 @@ class _HeroCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (expenseIsSubmittedModification(claim)) ...[
+              Text(
+                '报销单修改',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
             Row(
               children: [
                 Expanded(

@@ -24,6 +24,7 @@ import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
+import 'finance_asset_revision_section.dart';
 
 const _assetReviewerActions = <String>{
   'APPROVE',
@@ -263,6 +264,7 @@ class _FinanceAssetDetailSurfaceState
 
   Widget _header(ThemeData theme) {
     final summary = _detail?.summary;
+    final revisionTitle = financeAssetRevisionTitle(_detail);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s20,
@@ -291,11 +293,20 @@ class _FinanceAssetDetailSurfaceState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (revisionTitle != null)
+                  Text(
+                    revisionTitle,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 Text(
                   summary?.name ?? '${widget.ledger.label}详情',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style:
+                      (revisionTitle == null
+                              ? theme.textTheme.titleLarge
+                              : theme.textTheme.titleMedium)
+                          ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 if (summary != null)
                   Wrap(
@@ -385,6 +396,7 @@ class _FinanceAssetDetailSurfaceState
           _actionBar(detail),
           if (detail.summary.allowedActions.isNotEmpty)
             const SizedBox(height: UtenSpacing.s20),
+          FinanceAssetRevisionSection(detail: detail),
           _section(
             theme,
             '概要',
@@ -527,16 +539,27 @@ class _FinanceAssetDetailSurfaceState
               : item.benefitStartDate ?? '—',
         ),
         _info('地点', item.location ?? '—'),
-        _info('保管人', item.custodianName ?? item.custodianId ?? '—'),
+        _info(
+          widget.ledger == FinanceAssetLedger.fixedAsset ? '保管人' : '负责人',
+          item.custodianName ?? item.custodianId ?? '—',
+        ),
         _info(
           '来源',
-          [item.sourceType, item.sourceRef]
+          [
+                    if (item.sourceType != null)
+                      financeAssetSourceTypeLabel(item.sourceType),
+                    item.sourceRef,
+                  ]
                   .whereType<String>()
                   .where((value) => value.isNotEmpty)
                   .join(' / ')
                   .isEmpty
               ? '—'
-              : [item.sourceType, item.sourceRef]
+              : [
+                      if (item.sourceType != null)
+                        financeAssetSourceTypeLabel(item.sourceType),
+                      item.sourceRef,
+                    ]
                     .whereType<String>()
                     .where((value) => value.isNotEmpty)
                     .join(' / '),

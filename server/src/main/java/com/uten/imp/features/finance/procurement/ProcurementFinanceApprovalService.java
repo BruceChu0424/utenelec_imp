@@ -504,20 +504,20 @@ public class ProcurementFinanceApprovalService {
                 SELECT c.id, c.order_type, c.order_id, c.bill_no_snapshot,
                        c.status, c.attempt, c.version, c.submitted_at,
                        submitter.full_name AS submitted_by_name,
-                       COALESCE(po.bill_date, so.bill_date) AS bill_date,
-                       COALESCE(po.deliver_date, so.deliver_date) AS deliver_date,
-                       COALESCE(po.remark, so.remark) AS remark,
-                       COALESCE(po.total_original, so.total_original) AS total_original,
-                       COALESCE(po.total_local, so.total_local) AS total_local,
-                       COALESCE(po.exchange_rate, so.exchange_rate) AS exchange_rate,
-                       COALESCE(po.tax_rate, so.tax_rate) AS tax_rate,
-                       supplier.name AS supplier_name,
-                       supplier.code AS supplier_code,
-                       warehouse.name AS warehouse_name,
-                       currency.name AS currency_name,
-                       sm.name AS settlement_method_name,
-                       purchaser.full_name AS purchaser_name,
-                       maker.full_name AS maker_name,
+                       CAST(c.submission_snapshot ->> 'billDate' AS date) AS bill_date,
+                       CAST(c.submission_snapshot ->> 'deliverDate' AS date) AS deliver_date,
+                       c.display_snapshot ->> 'remark' AS remark,
+                       CAST(c.submission_snapshot ->> 'totalOriginal' AS numeric) AS total_original,
+                       CAST(c.submission_snapshot ->> 'totalLocal' AS numeric) AS total_local,
+                       CAST(c.submission_snapshot ->> 'exchangeRate' AS numeric) AS exchange_rate,
+                       CAST(c.submission_snapshot ->> 'taxRate' AS numeric) AS tax_rate,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'supplierName' ELSE supplier.name END AS supplier_name,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'supplierCode' ELSE supplier.code END AS supplier_code,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'warehouseName' ELSE warehouse.name END AS warehouse_name,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'currencyName' ELSE currency.name END AS currency_name,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'settlementMethodName' ELSE sm.name END AS settlement_method_name,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'purchaserName' ELSE purchaser.full_name END AS purchaser_name,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'makerName' ELSE maker.full_name END AS maker_name,
                        COALESCE(ap.bal, 0) AS ap_balance
                 FROM procurement_order_approval_cases c
                 LEFT JOIN purchase_orders po
@@ -525,24 +525,24 @@ public class ProcurementFinanceApprovalService {
                 LEFT JOIN subcontract_orders so
                   ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
                 LEFT JOIN suppliers supplier
-                  ON supplier.id = COALESCE(po.supplier_id, so.supplier_id)
+                  ON supplier.id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                 LEFT JOIN warehouses warehouse
-                  ON warehouse.id = COALESCE(po.warehouse_id, so.warehouse_id)
+                  ON warehouse.id = CAST(c.submission_snapshot ->> 'warehouseId' AS uuid)
                 LEFT JOIN currencies currency
-                  ON currency.id = COALESCE(po.currency_id, so.currency_id)
+                  ON currency.id = CAST(c.submission_snapshot ->> 'currencyId' AS uuid)
                 LEFT JOIN settlement_methods sm
-                  ON sm.id = COALESCE(po.settlement_method_id, so.settlement_method_id)
+                  ON sm.id = CAST(c.submission_snapshot ->> 'settlementMethodId' AS uuid)
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
                 LEFT JOIN employees purchaser
-                  ON purchaser.id = COALESCE(po.purchaser_id, so.purchaser_id)
+                  ON purchaser.id = CAST(c.submission_snapshot ->> 'purchaserEmployeeId' AS uuid)
                 LEFT JOIN employees maker
-                  ON maker.id = COALESCE(po.maker_id, so.maker_id)
+                  ON maker.id = CAST(c.submission_snapshot ->> 'makerEmployeeId' AS uuid)
                 LEFT JOIN (SELECT supplier_id, SUM(amount_balance) AS bal
                            FROM ar_ap_ledger
                            WHERE direction = 'AP' AND is_deleted = FALSE AND status = 1
                            GROUP BY supplier_id) ap
-                  ON ap.supplier_id = COALESCE(po.supplier_id, so.supplier_id)
+                  ON ap.supplier_id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                 WHERE c.id = ?
                 """,
                 (rs, rowNum) -> new Object[]{
@@ -581,17 +581,21 @@ public class ProcurementFinanceApprovalService {
         String status = (String) h[4];
 
         List<ProcurementApprovalContracts.ReviewLine> items = loadReviewLines(
-                orderType, orderId);
+                orderType, caseId, false);
+        List<ProcurementApprovalContracts.ReviewLine> previousItems = loadReviewLines(
+                orderType, caseId, true);
         List<ProcurementApprovalContracts.ReviewHistoryEntry> history =
                 loadReviewHistory(orderType, orderId);
         java.util.Set<String> sourceDocNos = new java.util.HashSet<>();
         for (ProcurementApprovalContracts.ReviewLine line : items) {
-            if (line.sourceDocNo() != null && !line.sourceDocNo().isBlank()) {
-                // V463 合并行来源单号以顿号聚合，计数按单号拆开。
-                for (String docNo : line.sourceDocNo().split("、")) {
-                    if (!docNo.isBlank()) {
-                        sourceDocNos.add(docNo);
+            if (line.sourceAllocations() != null) {
+                try {
+                    for (var source : objectMapper.readTree(line.sourceAllocations())) {
+                        String documentNo = source.path("documentNo").asText("");
+                        if (!documentNo.isBlank()) sourceDocNos.add(documentNo);
                     }
+                } catch (JsonProcessingException error) {
+                    throw new IllegalStateException("采购审批来源快照无效", error);
                 }
             }
         }
@@ -630,6 +634,9 @@ public class ProcurementFinanceApprovalService {
                 sourceDocNos.size(),
                 qtyChanges,
                 items,
+                previousItems,
+                loadReviewHeader(caseId, false),
+                loadReviewHeader(caseId, true),
                 history);
     }
 
@@ -695,54 +702,65 @@ public class ProcurementFinanceApprovalService {
     }
 
     private List<ProcurementApprovalContracts.ReviewLine> loadReviewLines(
-            String orderType, UUID orderId) {
-        boolean purchase = "PURCHASE".equals(orderType);
-        String itemTable = purchase ? "purchase_order_items" : "subcontract_order_items";
-        // V463：订货行多来源锚定——来源申请单号按 sources 逐来源聚合
-        //（同申请去重；合并行显示多张来源单号，顿号分隔）。
-        String sourceJoin = purchase
-                ? """
-                  LEFT JOIN LATERAL (
-                      SELECT string_agg(DISTINCT src_request.bill_no, '、') AS bill_no
-                      FROM purchase_order_item_sources pis
-                      JOIN purchase_request_items pri ON pri.id = pis.request_item_id
-                      LEFT JOIN purchase_requests src_request ON src_request.id = pri.request_id
-                      WHERE pis.order_item_id = i.id
-                  ) src ON TRUE
-                  """
-                : """
-                  LEFT JOIN LATERAL (
-                      SELECT string_agg(DISTINCT src_application.bill_no, '、') AS bill_no
-                      FROM subcontract_order_item_sources sis
-                      JOIN subcontract_application_items sai ON sai.id = sis.application_item_id
-                      LEFT JOIN subcontract_applications src_application
-                        ON src_application.id = sai.application_id
-                      WHERE sis.order_item_id = i.id
-                  ) src ON TRUE
-                  """;
+            String orderType, UUID caseId, boolean previous) {
+        ProcurementApprovalProjectionQuery.requireOrderType(orderType);
         String sql = """
-                SELECT i.line_no,
-                       COALESCE(g.code, '') AS goods_code,
-                       COALESCE(g.name, '') AS goods_name,
-                       COALESCE(col.name, '') AS color_name,
-                       i.unit_id,
-                       COALESCE(u.name, '') AS unit_name,
-                       i.unit_rate, i.qty, i.price,
-                       i.amount_original, i.amount_local, i.deliver_date,
-                       src.bill_no AS source_doc_no
-                FROM %s i
-                LEFT JOIN goods g ON g.id = i.goods_id
-                LEFT JOIN colors col ON col.id = i.color_id
-                LEFT JOIN units u ON u.id = i.unit_id
-                %s
-                WHERE i.order_id = ? AND i.is_deleted = FALSE
-                ORDER BY i.line_no NULLS LAST, i.id
-                """.formatted(itemTable, sourceJoin);
+                WITH reviewed_case AS (
+                    SELECT order_type, order_id, attempt
+                    FROM procurement_order_approval_cases WHERE id = ?
+                ), selected_case AS (
+                    SELECT COALESCE(c.display_snapshot, c.submission_snapshot) AS submission_snapshot,
+                           c.display_snapshot IS NOT NULL AS display_complete
+                    FROM procurement_order_approval_cases c
+                    JOIN reviewed_case r ON r.order_type = c.order_type AND r.order_id = c.order_id
+                    WHERE c.attempt %s r.attempt
+                    ORDER BY c.attempt DESC LIMIT 1
+                )
+                SELECT CAST(item.value ->> 'itemId' AS uuid) AS order_item_id,
+                       CAST(item.value ->> 'lineNo' AS integer) AS line_no,
+                       CAST(item.value ->> 'goodsId' AS uuid) AS goods_id,
+                       CAST(item.value ->> 'colorId' AS uuid) AS color_id,
+                       CAST(item.value ->> 'sourceItemId' AS uuid) AS source_item_id,
+                       CASE WHEN c.display_complete THEN item.value ->> 'goodsCode' ELSE g.code END AS goods_code,
+                       CASE WHEN c.display_complete THEN item.value ->> 'goodsName' ELSE g.name END AS goods_name,
+                       CASE WHEN c.display_complete THEN item.value ->> 'colorName' ELSE col.name END AS color_name,
+                       CAST(item.value ->> 'unitId' AS uuid) AS unit_id,
+                       CASE WHEN c.display_complete THEN item.value ->> 'unitName' ELSE u.name END AS unit_name,
+                       CAST(item.value ->> 'unitRate' AS numeric) AS unit_rate,
+                       CAST(item.value ->> 'qty' AS numeric) AS qty,
+                       CAST(item.value ->> 'price' AS numeric) AS price,
+                       CAST(item.value ->> 'amountOriginal' AS numeric) AS amount_original,
+                       CAST(item.value ->> 'amountLocal' AS numeric) AS amount_local,
+                       CAST(item.value ->> 'deliverDate' AS date) AS deliver_date,
+                       item.value ->> 'sourceDocNo' AS source_doc_no,
+                       CASE WHEN c.display_complete THEN c.submission_snapshot ->> 'currencyName'
+                            ELSE currency.name END AS currency_name,
+                       CAST(item.value ->> 'weight' AS numeric) AS weight,
+                       CAST(item.value ->> 'giftQty' AS numeric) AS gift_qty,
+                       CAST(item.value ->> 'allowedLossPct' AS numeric) AS allowed_loss_pct,
+                       item.value ->> 'remark' AS remark,
+                       CASE WHEN c.display_complete THEN item.value ->> 'sourceApplicationNos'
+                            ELSE NULL END AS source_application_nos,
+                       CAST(item.value -> 'sources' AS text) AS source_allocations,
+                       CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id,
+                       c.display_complete
+                FROM selected_case c
+                CROSS JOIN LATERAL jsonb_array_elements(c.submission_snapshot -> 'items') item
+                LEFT JOIN goods g ON g.id = CAST(item.value ->> 'goodsId' AS uuid)
+                LEFT JOIN colors col ON col.id = CAST(item.value ->> 'colorId' AS uuid)
+                LEFT JOIN units u ON u.id = CAST(item.value ->> 'unitId' AS uuid)
+                LEFT JOIN currencies currency ON currency.id = CAST(c.submission_snapshot ->> 'currencyId' AS uuid)
+                ORDER BY line_no NULLS LAST, order_item_id
+                """.formatted(previous ? "<" : "=");
         return jdbc.query(sql,
                 (rs, rowNum) -> new ProcurementApprovalContracts.ReviewLine(
+                        rs.getObject("order_item_id", UUID.class),
                         rs.getObject("line_no") == null
                                 ? rowNum + 1
                                 : rs.getInt("line_no"),
+                        rs.getObject("goods_id", UUID.class),
+                        rs.getObject("color_id", UUID.class),
+                        rs.getObject("source_item_id", UUID.class),
                         rs.getString("goods_code"),
                         rs.getString("goods_name"),
                         rs.getString("color_name"),
@@ -754,8 +772,36 @@ public class ProcurementFinanceApprovalService {
                         rs.getBigDecimal("amount_original"),
                         rs.getBigDecimal("amount_local"),
                         rs.getObject("deliver_date", LocalDate.class),
-                        rs.getString("source_doc_no")),
-                orderId);
+                        rs.getString("source_doc_no"),
+                        rs.getString("currency_name"),
+                        rs.getBigDecimal("weight"),
+                        rs.getBigDecimal("gift_qty"),
+                        rs.getBigDecimal("allowed_loss_pct"),
+                        rs.getString("remark"),
+                        rs.getString("source_application_nos"),
+                        rs.getString("source_allocations"),
+                        rs.getObject("currency_id", UUID.class),
+                        rs.getBoolean("display_complete")),
+                caseId);
+    }
+
+    /** Missing keys in a legacy snapshot remain unknown, distinct from recorded JSON null. */
+    private Map<String, Object> loadReviewHeader(UUID caseId, boolean previous) {
+        List<String> snapshots = jdbc.query("""
+                SELECT CAST(COALESCE(c.display_snapshot, c.submission_snapshot) - 'items' AS text)
+                FROM procurement_order_approval_cases c
+                JOIN procurement_order_approval_cases reviewed
+                  ON reviewed.order_type = c.order_type AND reviewed.order_id = c.order_id
+                WHERE reviewed.id = ? AND c.attempt %s reviewed.attempt
+                ORDER BY c.attempt DESC LIMIT 1
+                """.formatted(previous ? "<" : "="), (rs, rowNum) -> rs.getString(1), caseId);
+        if (snapshots.isEmpty()) return Map.of();
+        try {
+            return objectMapper.readValue(snapshots.getFirst(),
+                    new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {});
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("采购审批展示快照无效", error);
+        }
     }
 
     private List<ProcurementApprovalContracts.ReviewHistoryEntry> loadReviewHistory(

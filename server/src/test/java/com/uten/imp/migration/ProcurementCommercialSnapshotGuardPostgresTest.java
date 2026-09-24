@@ -1031,7 +1031,7 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                     submission_snapshot,snapshot_hash,submitted_by_user_id,
                     submitted_by_employee_id,status,rejection_reason,
                     decided_by_user_id,decided_by_employee_id,decided_at)
-                VALUES(?,?,?,?,?,?,'{}'::jsonb,'hash',?,?,?,
+                VALUES(?,?,?,?,?,?,CAST(? AS jsonb),'hash',?,?,?,
                     CASE WHEN ?='REJECTED' THEN '历史驳回' ELSE NULL END,
                     CASE WHEN ? IN('APPROVED','REJECTED') THEN ? ELSE NULL END,
                     CASE WHEN ? IN('APPROVED','REJECTED') THEN ? ELSE NULL END,
@@ -1044,6 +1044,7 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
             insert.setInt(index++, attempt);
             insert.setString(index++, "SNAP-" + orderId);
             insert.setBigDecimal(index++, amount);
+            insert.setString(index++, com.uten.imp.support.ProcurementApprovalFixtureSupport.submittedSnapshot(connection, type, orderId));
             insert.setObject(index++, actorUser);
             insert.setObject(index++, actorEmployee);
             insert.setString(index++, status);

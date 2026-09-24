@@ -13,6 +13,7 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
+import com.uten.imp.features.production.plan.PlanOrderItemLink;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.features.production.plan.ProductionProductNoAllocator;
@@ -37,6 +38,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -73,6 +75,29 @@ class ProductionDailyReportCommandTest {
     @Mock private com.uten.imp.features.production.directtransfer.ProductionWorkshopDirectTransferService directTransfer;
     @Mock(answer=org.mockito.Answers.RETURNS_DEEP_STUBS) private com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService mutationFootprint;
     @InjectMocks private ProductionDailyReportService service;
+
+    @Test
+    void completedSiblingOrderDoesNotBlockTheExactOpenSalesSource() {
+        UUID planItem=UUID.randomUUID(), open=UUID.randomUUID(), closed=UUID.randomUUID();
+        PlanOrderItemLink openLink=new PlanOrderItemLink();
+        openLink.setPlanItemId(planItem); openLink.setOrderItemId(open);
+        PlanOrderItemLink closedLink=new PlanOrderItemLink();
+        closedLink.setPlanItemId(planItem); closedLink.setOrderItemId(closed);
+        Query locked=query(false);
+        when(locked.getResultList()).thenReturn(List.of(
+                new Object[]{open,UUID.randomUUID(),(short)1,false,false,false,false,5},
+                new Object[]{closed,UUID.randomUUID(),(short)1,false,true,false,false,9}));
+        when(em.createNativeQuery(anyString())).thenReturn(locked);
+        List<PlanOrderItemLink> links=List.of(openLink,closedLink);
+
+        assertDoesNotThrow(() -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service,"lockSalesTargets",links,true,java.util.Set.of(open),java.util.Set.of()));
+        assertThrows(ApiException.class,() -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service,"lockSalesTargets",links,true,java.util.Set.of(closed),java.util.Set.of()));
+        // Legacy ambiguous sources retain the conservative whole-plan guard.
+        assertThrows(ApiException.class,() -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service,"lockSalesTargets",links,true,java.util.Set.of(),java.util.Set.of(planItem)));
+    }
 
     @Test
     void canonicalHashNormalizesNumbersAndExcludesRetryAndReadableSnapshots() {

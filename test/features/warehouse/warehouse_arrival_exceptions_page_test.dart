@@ -6,6 +6,8 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
+import 'package:uten_imp/components/data_display/uten_revision_table.dart';
+import 'package:uten_imp/features/warehouse/widgets/arrival_qty_revision_table.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
 
@@ -45,6 +47,18 @@ void main() {
 
       final dialog = find.byType(AlertDialog);
       expect(dialog, findsOneWidget);
+      expect(
+        find.descendant(of: dialog, matching: find.text('收货数量修改')),
+        findsWidgets,
+      );
+      final revision = tester.widget<UtenRevisionTable<ArrivalQtyRevisionLine>>(
+        find.byKey(const Key('arrival-qty-revision-table')),
+      );
+      expect(revision.rows.map((row) => row.value.qty), [100, 15]);
+      expect(revision.rows.map((row) => row.kind), [
+        UtenRevisionKind.removed,
+        UtenRevisionKind.added,
+      ]);
       expect(
         find.descendant(of: dialog, matching: find.text('仓库按批准量处理')),
         findsOneWidget,

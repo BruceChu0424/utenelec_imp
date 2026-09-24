@@ -320,7 +320,7 @@ class _ReportablePlanLineSheetState
             label: '销售订单/客户',
             width: 170,
             value: (item) => item.orderNo == null
-                ? '内部计划'
+                ? '内部计划 / 公共备货'
                 : '${item.orderNo}\n${item.clientName ?? '—'}',
           ),
           MasterColumnDef(

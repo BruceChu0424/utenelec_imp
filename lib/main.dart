@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/responsive/display_zoom_pointer_binding.dart';
 import 'shared/providers/shared_providers.dart';
 
 /// 主 UI 字体预热：pubspec 声明的字体默认按需懒加载（尤其 Web，首次用到某字形才拉取），
@@ -24,7 +25,8 @@ void _warmUpPrimaryFont() {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // 在任何插件/默认 binding 初始化之前启用整体缩放的滚轮坐标换算。
+  UtenWidgetsFlutterBinding();
   _warmUpPrimaryFont();
 
   // Web 端屏蔽浏览器自带右键菜单：表格行右击要弹 App 自绘的上下文菜单

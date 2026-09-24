@@ -171,6 +171,7 @@ class SalesOrderFinanceReview {
     this.items = const [],
     this.qtyChanges = const [],
     this.commercialChanges = const [],
+    this.revisionDiff,
     this.financeReviewRevision = 0,
   });
 
@@ -225,6 +226,7 @@ class SalesOrderFinanceReview {
   /// 修改清单（2026-09-05 确认后改量）：上次确认以后每行 以前→现在 数量。
   final List<SalesOrderFinanceQtyChange> qtyChanges;
   final List<SalesOrderCommercialChange> commercialChanges;
+  final SalesOrderRevisionDiff? revisionDiff;
   final int financeReviewRevision;
 
   factory SalesOrderFinanceReview.fromJson(Map<String, dynamic> json) {
@@ -290,8 +292,90 @@ class SalesOrderFinanceReview {
           .map((row) => SalesOrderCommercialChange.fromJson(row))
           .toList(growable: false),
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
+      revisionDiff: json['revisionDiff'] is Map
+          ? SalesOrderRevisionDiff.fromJson(
+              (json['revisionDiff'] as Map).cast<String, dynamic>(),
+            )
+          : null,
     );
   }
+}
+
+/// Immutable first-before / latest-after rows for the pending finance review.
+class SalesOrderRevisionDiff {
+  const SalesOrderRevisionDiff({
+    required this.beforeItems,
+    required this.afterItems,
+    required this.changedItemIds,
+    required this.headerChanges,
+    this.baselineComplete = true,
+  });
+
+  final List<SalesOrderRevisionLine> beforeItems;
+  final List<SalesOrderRevisionLine> afterItems;
+  final Set<String> changedItemIds;
+  final List<SalesOrderCommercialChange> headerChanges;
+
+  /// False only for old quantity ledgers that never retained full before-images.
+  final bool baselineComplete;
+
+  bool get hasChanges => changedItemIds.isNotEmpty || headerChanges.isNotEmpty;
+
+  factory SalesOrderRevisionDiff.fromJson(Map<String, dynamic> json) {
+    List<SalesOrderRevisionLine> lines(Object? value) => value is List
+        ? value
+              .whereType<Map<Object?, Object?>>()
+              .map(
+                (row) => SalesOrderRevisionLine.fromJson(
+                  row.cast<String, dynamic>(),
+                ),
+              )
+              .toList(growable: false)
+        : const [];
+    return SalesOrderRevisionDiff(
+      beforeItems: lines(json['beforeItems']),
+      afterItems: lines(json['afterItems']),
+      changedItemIds: (json['changedItemIds'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toSet(),
+      headerChanges: (json['headerChanges'] as List? ?? const [])
+          .whereType<Map<Object?, Object?>>()
+          .map(SalesOrderCommercialChange.fromJson)
+          .toList(growable: false),
+      baselineComplete: json['baselineComplete'] != false,
+    );
+  }
+}
+
+class SalesOrderRevisionLine {
+  const SalesOrderRevisionLine({
+    required this.itemId,
+    this.lineNo,
+    this.goodsCode,
+    this.goodsName,
+    required this.values,
+  });
+
+  final String itemId;
+  final int? lineNo;
+  final String? goodsCode;
+  final String? goodsName;
+
+  /// Display values come directly from typed immutable snapshots, not diff prose.
+  final Map<String, String?> values;
+
+  factory SalesOrderRevisionLine.fromJson(Map<String, dynamic> json) =>
+      SalesOrderRevisionLine(
+        itemId: _string(json['itemId']) ?? '',
+        lineNo: _int(json['lineNo']),
+        goodsCode: _string(json['goodsCode']),
+        goodsName: _string(json['goodsName']),
+        values: json['values'] is Map
+            ? (json['values'] as Map).map(
+                (key, value) => MapEntry(key.toString(), value?.toString()),
+              )
+            : const {},
+      );
 }
 
 class SalesOrderCommercialChange {

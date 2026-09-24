@@ -126,7 +126,9 @@ class ProcurementFinanceApprovalReviewTest {
         row[21] = "采购员甲";
         row[22] = "制单员乙";
         row[23] = new BigDecimal("12500.50");
-        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))
+        when(jdbc.query(ArgumentMatchers.argThat(
+                        (String sql) -> sql != null && sql.contains("SELECT c.id, c.order_type")),
+                ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))
                 .thenReturn(java.util.Collections.singletonList(row));
         // V486 修改清单查询独立返回空（普通 case 无改量事实账行）。
         when(jdbc.query(

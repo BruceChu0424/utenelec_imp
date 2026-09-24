@@ -19,6 +19,34 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ExpenseClaimFullchainMigrationPostgresTest {
 
     @Test
+    void v689PreservesNonemptyClaimFactsWithoutInventingPreviousSubmissionRows() throws Exception {
+        try (var postgres=database()) {
+            postgres.start();
+            migrate(postgres,"688");
+            UUID applicant=UUID.randomUUID(), first=UUID.randomUUID(), repeated=UUID.randomUUID();
+            try (var connection=connection(postgres)) {
+                employee(connection,applicant);
+                claim(connection,first,applicant,"BX20260923000001","2026-09-23T00:00:00Z");
+                claim(connection,repeated,applicant,"BX20260923000002","2026-09-23T00:00:00Z");
+                for(UUID claimId:java.util.List.of(first,repeated,repeated)) {
+                    execute(connection,"INSERT INTO expense_claim_events(claim_id,event_type,actor_name_snapshot) VALUES(?,'SUBMITTED','迁移申请人')",claimId);
+                }
+            }
+            migrate(postgres,null);
+            try (var connection=connection(postgres)) {
+                assertThat(number(connection,"SELECT count(*) FROM expense_claims WHERE total_amount=100 AND submission_snapshot IS NULL AND previous_submission_snapshot IS NULL")).isEqualTo(2);
+                assertThat(text(connection,"SELECT resubmission::text FROM expense_claims WHERE id=?",first)).isEqualTo("false");
+                assertThat(text(connection,"SELECT resubmission::text FROM expense_claims WHERE id=?",repeated)).isEqualTo("true");
+                assertThat(number(connection,"SELECT count(*) FROM expense_claim_events")).isEqualTo(3);
+                assertThatThrownBy(()->execute(connection,"UPDATE expense_claims SET submission_snapshot='[]'::jsonb WHERE id=?",first))
+                        .isInstanceOf(SQLException.class);
+                assertThat(claimNumber(connection,repeated)).isEqualTo("BX20260923000002");
+            }
+            migrate(postgres,null);
+        }
+    }
+
+    @Test
     void cleanV607MigratesThroughExpenseClaimChangesToCurrentHead() throws Exception {
         try (var postgres = database()) {
             postgres.start();

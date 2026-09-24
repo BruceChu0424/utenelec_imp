@@ -1,8 +1,8 @@
-// 单条 diff 行：字段标签 + Before + After。
-// 私有 widget（在 profile / hr_profile 各被使用 ≥1 次前，不升级到 components/）。
+// 员工自查与 HR 审核共用：旧值整行红色划除，新值在下方绿色展示。
 
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_revision_table.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../models/profile_change_request.dart';
 
@@ -25,37 +25,17 @@ class ProfileChangeDiffRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _labelOf(l10n, item.fieldCode, item.fieldLabel),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (showStatusBadge) _statusBadge(theme, l10n),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _ValueBox(
-                  label: l10n.profileChangeBefore,
-                  value: item.oldValue,
-                  muted: true,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _ValueBox(
-                  label: l10n.profileChangeAfter,
-                  value: item.newValue,
-                  muted: false,
-                ),
+          if (showStatusBadge)
+            Align(
+              alignment: Alignment.centerRight,
+              child: _statusBadge(theme, l10n),
+            ),
+          UtenRevisionFields(
+            changes: [
+              UtenRevisionField(
+                label: _labelOf(l10n, item.fieldCode, item.fieldLabel),
+                before: item.oldValue ?? '',
+                after: item.newValue,
               ),
             ],
           ),
@@ -99,60 +79,6 @@ class ProfileChangeDiffRow extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: color,
         ),
-      ),
-    );
-  }
-}
-
-class _ValueBox extends StatelessWidget {
-  const _ValueBox({
-    required this.label,
-    required this.value,
-    required this.muted,
-  });
-  final String label;
-  final String? value;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: muted
-            ? theme.colorScheme.surfaceContainer
-            : theme.colorScheme.primaryContainer.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: muted
-              ? theme.colorScheme.outlineVariant
-              : theme.colorScheme.primary.withValues(alpha: 0.4),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value?.isNotEmpty == true ? value! : '—',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: muted
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.onSurface,
-              fontWeight: muted ? FontWeight.normal : FontWeight.w600,
-            ),
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
       ),
     );
   }

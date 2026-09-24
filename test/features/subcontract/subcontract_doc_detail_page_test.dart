@@ -196,7 +196,7 @@ void main() {
     expect(find.text('编辑订货单'), findsNothing);
     expect(find.text('提交财务审核'), findsNothing);
     expect(find.text('返回订货单列表'), findsOneWidget);
-    expect(find.textContaining('财务 → 订货审批任务中心'), findsOneWidget);
+    expect(find.text('审核期间仅可查看，财务将在订货审批中处理。'), findsOneWidget);
   });
 
   testWidgets('finance-only 委外核单不显示业务历史并返回财务任务中心', (tester) async {

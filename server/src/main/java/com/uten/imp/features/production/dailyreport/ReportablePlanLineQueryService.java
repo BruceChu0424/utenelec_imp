@@ -32,7 +32,15 @@ public class ReportablePlanLineQueryService {
                        COALESCE(SUM(item.qty) FILTER (
                            WHERE report.status = 1), 0) AS reported_qty,
                        COALESCE(SUM(item.qty) FILTER (
-                           WHERE report.status IN (0, 1)), 0) AS active_qty
+                           WHERE report.status IN (0, 1)), 0) AS active_qty,
+                       COALESCE(SUM(item.qty) FILTER (
+                           WHERE item.execution_segment_sales_allocation_id IS NULL
+                             AND item.sales_order_item_id IS NULL
+                             AND report.status IN (0, 1)), 0) AS internal_active_qty,
+                       COALESCE(SUM(item.qty) FILTER (
+                           WHERE item.execution_segment_sales_allocation_id IS NULL
+                             AND item.sales_order_item_id IS NULL
+                             AND report.status = 1), 0) AS internal_reported_qty
                 FROM production_daily_report_items item
                 JOIN production_daily_reports report
                   ON report.id = item.report_id
@@ -93,6 +101,8 @@ public class ReportablePlanLineQueryService {
                     COALESCE(sales_allocation.allocated_qty, l.allocated_qty) AS allocated_qty,
                     CASE WHEN sales_allocation.id IS NOT NULL
                          THEN COALESCE(allocation_done.reported_qty, 0)
+                         WHEN segment.id IS NOT NULL
+                         THEN COALESCE(segment_done.internal_reported_qty, 0)
                          ELSE COALESCE(l.produced_qty, 0)
                     END AS linked_produced_qty,
                     LEAST(CASE
@@ -104,12 +114,14 @@ public class ReportablePlanLineQueryService {
                                 ELSE 0
                             END
                         WHEN l.id IS NULL
-                            THEN GREATEST(
+                            THEN LEAST(GREATEST(
                                 COALESCE(segment.planned_qty, i.qty, 0)
                                 - CASE WHEN segment.id IS NULL
                                        THEN COALESCE(i.fqty, 0)
                                        ELSE COALESCE(segment_done.active_qty, 0)
-                                  END, 0)
+                                  END, 0),
+                                GREATEST(COALESCE(sales_allocation.allocated_qty, 0)
+                                         - COALESCE(segment_done.internal_active_qty, 0), 0))
                         ELSE LEAST(
                             GREATEST(
                                 COALESCE(segment.planned_qty, i.qty, 0)
@@ -183,8 +195,21 @@ public class ReportablePlanLineQueryService {
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors c ON c.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
-                LEFT JOIN execution_segment_sales_allocations sales_allocation
-                  ON sales_allocation.execution_segment_id = segment.id
+                LEFT JOIN LATERAL (
+                    SELECT allocation.id, allocation.plan_order_item_link_id,
+                           allocation.allocated_qty
+                    FROM execution_segment_sales_allocations allocation
+                    WHERE allocation.execution_segment_id = segment.id
+                    UNION ALL
+                    -- The confirmed production quantity may exceed its sales
+                    -- commitments. That surplus has its own internal quota;
+                    -- completed orders never release their allocated quantity.
+                    SELECT NULL::uuid, NULL::uuid,
+                           segment.planned_qty - COALESCE(SUM(allocation.allocated_qty), 0)
+                    FROM execution_segment_sales_allocations allocation
+                    WHERE allocation.execution_segment_id = segment.id
+                    HAVING segment.planned_qty > COALESCE(SUM(allocation.allocated_qty), 0)
+                ) sales_allocation ON TRUE
                 LEFT JOIN allocation_progress allocation_done
                   ON allocation_done.execution_segment_sales_allocation_id =
                      sales_allocation.id
@@ -246,6 +271,7 @@ public class ReportablePlanLineQueryService {
                   AND COALESCE(p.is_deleted, false) = false
                   AND COALESCE(p.is_stopped, false) = false
                   AND COALESCE(p.is_canceled, false) = false
+                  AND COALESCE(p.is_closed, false) = false
                   AND COALESCE(i.is_deleted, false) = false
                   AND segment.id IS NOT NULL
                   AND (
@@ -269,32 +295,33 @@ public class ReportablePlanLineQueryService {
                   )
                   AND (
                       l.id IS NOT NULL
+                      OR (sales_allocation.id IS NULL
+                          AND sales_allocation.allocated_qty > 0
+                          AND EXISTS (
+                              SELECT 1 FROM production_material_analysis_plan_links approved_surplus
+                              WHERE approved_surplus.plan_id = p.id
+                                AND approved_surplus.analysis_id = p.material_analysis_id
+                                AND approved_surplus.analysis_item_id = p.material_analysis_item_id
+                                AND approved_surplus.allocation_status = 'APPROVED'
+                                AND approved_surplus.public_surplus_qty > 0)
+                          AND EXISTS (
+                              SELECT 1 FROM plan_order_item_links active
+                              WHERE active.plan_item_id = i.id AND NOT active.is_deleted))
                       OR NOT EXISTS (
                           SELECT 1
                           FROM plan_order_item_links historical
                           WHERE historical.plan_item_id = i.id
                       )
                   )
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM plan_order_item_links active_link
-                      LEFT JOIN sales_order_items active_item
-                        ON active_item.id = active_link.order_item_id
-                      LEFT JOIN sales_orders active_order
-                        ON active_order.id = active_item.order_id
-                      WHERE active_link.plan_item_id = i.id
-                        AND COALESCE(active_link.is_deleted, false) = false
-                        AND (
-                            active_item.id IS NULL
-                            OR active_order.id IS NULL
-                            OR COALESCE(active_item.is_deleted, false)
-                            OR COALESCE(active_order.is_deleted, false)
-                            OR active_order.status <> 1
-                            OR COALESCE(active_order.is_stopped, false)
-                            OR COALESCE(active_order.is_closed, false)
-                            OR COALESCE(active_item.chain_status, 0) NOT BETWEEN 1 AND 8
-                        )
-                  )
+                  AND (sales_allocation.id IS NULL OR (
+                      oi.id IS NOT NULL AND so.id IS NOT NULL
+                      AND NOT COALESCE(oi.is_deleted, false)
+                      AND NOT COALESCE(so.is_deleted, false)
+                      AND so.status = 1
+                      AND NOT COALESCE(so.is_stopped, false)
+                      AND NOT COALESCE(so.is_closed, false)
+                      AND COALESCE(oi.chain_status, 0) BETWEEN 1 AND 8
+                  ))
             )
             """;
 

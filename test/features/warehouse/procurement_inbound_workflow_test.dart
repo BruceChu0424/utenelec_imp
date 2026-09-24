@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/warehouse/pages/finance_arrival_exception_pages.dart';
+import 'package:uten_imp/components/data_display/uten_revision_table.dart';
+import 'package:uten_imp/features/warehouse/widgets/arrival_qty_revision_table.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
 
@@ -186,6 +188,7 @@ void main() {
         findsNothing,
       );
       expect(find.text('确认财务决定'), findsOneWidget);
+      expect(find.byKey(const Key('arrival-qty-revision-table')), findsNothing);
 
       await tester.tap(find.text('自定义批准超量'));
       await tester.pump();
@@ -218,9 +221,52 @@ void main() {
         find.byKey(const Key('reviewer-responsibility-notice')),
         findsOneWidget,
       );
-      expect(find.text('预计允许入库：15 吨'), findsOneWidget);
+      final table = tester.widget<UtenRevisionTable<ArrivalQtyRevisionLine>>(
+        find.byKey(const Key('arrival-qty-revision-table')),
+      );
+      expect(table.rows.map((row) => row.value.qty), [100, 15]);
+      expect(table.rows.last.label, '拟接收');
+      expect(find.text('收货数量修改预览'), findsOneWidget);
       expect(find.text('预计退回供应商：85 吨'), findsOneWidget);
-      expect(find.text('检测时超量金额快照：5836665117072163543.97'), findsOneWidget);
+      expect(find.text('预览尚未生效，提交时按最新可接收数量复核。'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'decided finance detail displays original and accepted receipt rows',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            procurementInboundRepositoryProvider.overrideWithValue(
+              _FinanceDetailRepository(
+                ProcurementArrivalException.fromJson({
+                  ..._financeTaskJson(),
+                  'status': 'RECEIPT_ADJUSTED',
+                  'acceptedQty': 15,
+                  'allowedActions': <String>[],
+                }),
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: FinanceArrivalExceptionDetailPage(id: 'exception-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester.widget<UtenRevisionTable<ArrivalQtyRevisionLine>>(
+        find.byKey(const Key('arrival-qty-revision-table')),
+      );
+      expect(table.rows.map((row) => row.value.qty), [100, 15]);
+      expect(table.rows.last.label, '批准接收');
+      expect(find.text('收货数量修改'), findsWidgets);
+      expect(table.rows.last.changedKeys, {'qty'});
+      expect(find.text('原申报原币金额：'), findsOneWidget);
+      expect(find.text('确认财务决定'), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
 

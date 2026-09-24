@@ -241,6 +241,9 @@ class FinanceProcurementApprovalReview {
     this.sourceApplicationCount = 0,
     this.qtyChanges = const <FinanceProcurementQtyChange>[],
     this.items = const <FinanceProcurementReviewLine>[],
+    this.previousItems = const <FinanceProcurementReviewLine>[],
+    this.headerSnapshot = const {},
+    this.previousHeaderSnapshot = const {},
     this.history = const <FinanceProcurementReviewHistoryEntry>[],
   });
 
@@ -274,6 +277,11 @@ class FinanceProcurementApprovalReview {
   /// 批准后改量清单（服务端字段位于 items 之前）：为空表示本单未被改过数量。
   final List<FinanceProcurementQtyChange> qtyChanges;
   final List<FinanceProcurementReviewLine> items;
+
+  /// 上一轮提交的不可变明细快照；删除行仍保留原数量和金额。
+  final List<FinanceProcurementReviewLine> previousItems;
+  final Map<String, dynamic> headerSnapshot;
+  final Map<String, dynamic> previousHeaderSnapshot;
   final List<FinanceProcurementReviewHistoryEntry> history;
 
   bool get isPending => status == null || status == 'PENDING';
@@ -344,6 +352,14 @@ class FinanceProcurementApprovalReview {
           if (item is Map)
             FinanceProcurementReviewLine.fromJson(item.cast<String, dynamic>()),
       ],
+      previousItems: [
+        for (final item
+            in (json['previousItems'] as List? ?? const <dynamic>[]))
+          if (item is Map)
+            FinanceProcurementReviewLine.fromJson(item.cast<String, dynamic>()),
+      ],
+      headerSnapshot: _map(json['headerSnapshot']) ?? const {},
+      previousHeaderSnapshot: _map(json['previousHeaderSnapshot']) ?? const {},
       history: [
         for (final entry in (json['history'] as List? ?? const <dynamic>[]))
           if (entry is Map)
@@ -358,6 +374,10 @@ class FinanceProcurementApprovalReview {
 class FinanceProcurementReviewLine {
   const FinanceProcurementReviewLine({
     required this.lineNo,
+    this.orderItemId,
+    this.goodsId,
+    this.colorId,
+    this.sourceItemId,
     this.goodsCode,
     this.goodsName,
     this.colorName,
@@ -370,9 +390,22 @@ class FinanceProcurementReviewLine {
     this.amountLocal,
     this.deliverDate,
     this.sourceDocNo,
+    this.currencyName,
+    this.weight,
+    this.giftQty,
+    this.allowedLossPct,
+    this.remark,
+    this.sourceApplicationNos,
+    this.sourceAllocations,
+    this.currencyId,
+    this.displaySnapshotComplete = false,
   });
 
   final int lineNo;
+  final String? orderItemId;
+  final String? goodsId;
+  final String? colorId;
+  final String? sourceItemId;
   final String? goodsCode;
   final String? goodsName;
   final String? colorName;
@@ -387,10 +420,23 @@ class FinanceProcurementReviewLine {
   final String? amountLocal;
   final String? deliverDate;
   final String? sourceDocNo;
+  final String? currencyName;
+  final String? weight;
+  final String? giftQty;
+  final String? allowedLossPct;
+  final String? remark;
+  final String? sourceApplicationNos;
+  final String? sourceAllocations;
+  final String? currencyId;
+  final bool displaySnapshotComplete;
 
   factory FinanceProcurementReviewLine.fromJson(Map<String, dynamic> json) {
     return FinanceProcurementReviewLine(
       lineNo: _firstInt([json['lineNo']]) ?? 0,
+      orderItemId: _string(json['orderItemId']),
+      goodsId: _string(json['goodsId']),
+      colorId: _string(json['colorId']),
+      sourceItemId: _string(json['sourceItemId']),
       goodsCode: _string(json['goodsCode']),
       goodsName: _string(json['goodsName']),
       colorName: _string(json['colorName']),
@@ -403,6 +449,15 @@ class FinanceProcurementReviewLine {
       amountLocal: _firstNullableString([json['amountLocal']]),
       deliverDate: _firstNullableString([json['deliverDate']]),
       sourceDocNo: _string(json['sourceDocNo']),
+      currencyName: _string(json['currencyName']),
+      weight: _firstNullableString([json['weight']]),
+      giftQty: _firstNullableString([json['giftQty']]),
+      allowedLossPct: _firstNullableString([json['allowedLossPct']]),
+      remark: _string(json['remark']),
+      sourceApplicationNos: _string(json['sourceApplicationNos']),
+      sourceAllocations: _string(json['sourceAllocations']),
+      currencyId: _string(json['currencyId']),
+      displaySnapshotComplete: json['displaySnapshotComplete'] == true,
     );
   }
 }

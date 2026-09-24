@@ -11,4 +11,6 @@ public interface ExpenseClaimEventRepository
     List<ExpenseClaimEvent> findByClaimIdInOrderByCreatedAtAscIdAsc(List<UUID> claimIds);
 
     List<ExpenseClaimEvent> findByClaimIdOrderByCreatedAtAscIdAsc(UUID claimId);
+
+    boolean existsByClaimIdAndEventType(UUID claimId, String eventType);
 }

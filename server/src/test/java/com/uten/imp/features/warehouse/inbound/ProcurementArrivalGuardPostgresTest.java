@@ -169,9 +169,10 @@ class ProcurementArrivalGuardPostgresTest {
                         assignee_user_id, assignee_employee_id,
                         assignee_name_snapshot, status,
                         decided_by_user_id, decided_by_employee_id, decided_at)
-                    VALUES (?, 'SUBCONTRACT', ?, 1, ?, 0, '{}'::jsonb,
+                    VALUES (?, 'SUBCONTRACT', ?, 1, ?, 0, CAST(? AS jsonb),
                             repeat('a',64), ?, ?, ?, ?, ?, 'APPROVED', ?, ?, now())
                     """, approvalCaseId, orderId, orderNo,
+                    com.uten.imp.support.ProcurementApprovalFixtureSupport.submittedSnapshot(connection, "SUBCONTRACT", orderId),
                     actor.userId(), actor.employeeId(), actor.userId(), actor.employeeId(),
                     actor.name(), actor.userId(), actor.employeeId());
             executeSql(connection, """

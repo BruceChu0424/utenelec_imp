@@ -829,12 +829,11 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  /// 等待物料可勾选可办理领料/开工的行（路线逐行在「下一步」下拉选定）；
-  /// 生产中勾选用于报工。未确认路线的行不可勾选——勾选只服务批量领料/开工，
-  /// 路线未确认的行两个动作都进不去，锁位提示先选路线。
+  /// 等待物料勾选用于设路线、领料或开工；生产中只要求任务可报工。
+  /// 多来源任务仍可单独进入报工页选来源，自动批量资格在提交多选时检查。
   bool _selectableTask(ProductionExecutionWorkbenchSegment task) => _isPreparing
       ? _kitSelectableTask(task) || _routeSettableTask(task)
-      : task.segmentStatus == 'IN_PROGRESS' && task.canBatchReport;
+      : task.segmentStatus == 'IN_PROGRESS' && task.canReport;
 
   /// 勾选框右下角的小锁(2026-09-20 用户口径「最前面可以锁住，物料不齐就是锁住」)：
   /// 行能勾选去批量设路线，但物料不齐/未选路线时不能领料、开工——锁住并说明原因。
@@ -1041,6 +1040,16 @@ class _ProductionWorkshopTasksPageState
   Future<void> _reportSelected() async {
     if (!_canCreateReport || _selected.isEmpty || _navigating) return;
     final requested = _selected.toList(growable: false);
+    if (requested.length > 1 &&
+        _items.any(
+          (task) => requested.contains(task.segmentId) && !task.canBatchReport,
+        )) {
+      context.appWarning(
+        '所选任务含需确认报工来源的工单，请单独勾选该任务，再选择本次对应的订单或公共备货来源',
+        force: true,
+      );
+      return;
+    }
     final workshops = _items
         .where((task) => requested.contains(task.segmentId))
         .map((task) => task.workshopDepartmentId ?? task.workshopName ?? '')

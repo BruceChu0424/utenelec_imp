@@ -40,7 +40,7 @@ class ProductionFqcRecoveryIntegrationContractTest {
                 .contains("sourceGuard.verifyUnchanged()")
                 .contains("allocateApprovedRecoveryReportItem(")
                 .contains("effectiveContribution(")
-                .contains("if (qty.signum() > 0)")
+                .contains("if (qty.signum() > 0 && !isInternalExecutionReport(it))")
                 .contains("fqcRecovery.reverseReportEffects(r.getId())")
                 .contains("fqcRecovery.requireLegacyExemption(legacyItem.getId())");
     }

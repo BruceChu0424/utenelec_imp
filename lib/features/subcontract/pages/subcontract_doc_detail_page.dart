@@ -1247,10 +1247,9 @@ class _SubcontractDocDetailPageState
         : '订货单尚未生效';
     final reason = approval?.rejectionReason?.trim();
     final message = pending
-        ? '本单已提交财务审核组，财务部门持权人员及被点名授权者可在'
-              '「财务 → 订货审批任务中心」审核通过或退回；委外侧仅可查看。'
+        ? '审核期间仅可查看，财务将在订货审批中处理。'
         : rejected
-        ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}。制单人修改后可再次提交。'
+        ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}'
         : approved
         ? '委外订货单已生效。无子层级目标件在合格库存放行后通知仓库出仓；'
               '有子层级目标件先进入计划部前置自制，完成领料、报工、FQC 和成品入仓后'

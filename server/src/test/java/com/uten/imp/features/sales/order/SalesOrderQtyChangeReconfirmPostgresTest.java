@@ -130,6 +130,10 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         assertThat(review.commercialChanges()).anyMatch(change -> change.field().contains("备注")
                 && change.beforeValue().equals("原备注") && change.afterValue().equals("修改后的备注"));
         assertThat(review.commercialChanges()).anyMatch(change -> change.field().endsWith("折扣"));
+        assertThat(review.revisionDiff().baselineComplete()).isTrue();
+        assertThat(review.revisionDiff().changedItemIds()).containsExactly(itemId.toString());
+        assertThat(review.revisionDiff().beforeItems().getFirst().values()).containsEntry("折扣", "1");
+        assertThat(review.revisionDiff().afterItems().getFirst().values()).containsEntry("折扣", "0.9");
         assertThat(financeService.pending(1, 50, false, null, false).getItems())
                 .noneMatch(row -> row.orderId().equals(orderId));
         assertThat(financeService.pending(1, 50, false, null, true).getItems())
@@ -162,6 +166,7 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
                 Map.of(orderId,revisedClaim.claimId(),otherOrderId,otherClaim.claimId())));
         assertThat(batch.newlyConfirmedCount()).isEqualTo(2);
         assertThat(financeService.review(orderId).commercialChanges()).isEmpty();
+        assertThat(financeService.review(orderId).revisionDiff()).isNull();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_order_revision_logs WHERE order_id = ?",
                 Long.class, orderId)).isEqualTo(2);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(
@@ -248,11 +253,26 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         assertThat(review.qtyChanges().get(0).newQty().stripTrailingZeros())
                 .isEqualByComparingTo("6");
 
+        // Quantity-only edits now retain complete immutable rows, including consecutive
+        // edits in one review cycle and an undo back to the confirmed baseline.
+        assertThat(review.revisionDiff().baselineComplete()).isTrue();
+        assertThat(review.revisionDiff().beforeItems().getFirst().values()).containsEntry("数量", "10");
+        assertThat(review.revisionDiff().afterItems().getFirst().values()).containsEntry("数量", "6");
+        line.setNewQty(new BigDecimal("8"));
+        service.changeQty(orderId, request);
+        var secondRevision = financeService.review(orderId).revisionDiff();
+        assertThat(secondRevision.beforeItems().getFirst().values()).containsEntry("数量", "10");
+        assertThat(secondRevision.afterItems().getFirst().values()).containsEntry("数量", "8");
+        line.setNewQty(BigDecimal.TEN);
+        service.changeQty(orderId, request);
+        assertThat(financeService.review(orderId).revisionDiff().changedItemIds()).isEmpty();
+
         // 5) 重新确认后（finance_confirmed_at 前进到改量之后）清单归档隐藏。
         var firstReconfirmationClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,1L,firstReconfirmationClaim.claimId()));
+        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,3L,firstReconfirmationClaim.claimId()));
         var afterReconfirm = financeService.review(orderId);
         assertThat(afterReconfirm.qtyChanges()).isEmpty();
+        assertThat(afterReconfirm.revisionDiff()).isNull();
 
         // Reducing the remaining commitment to the shipped quantity closes the order,
         // but the changed commercial amount still requires finance review.
@@ -264,7 +284,7 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         assertThat(financeService.pending(1, 50, false, null, true).getItems())
                 .anyMatch(itemRow -> itemRow.orderId().equals(orderId));
         var finalClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,2L,finalClaim.claimId()));
+        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,4L,finalClaim.claimId()));
         assertThat(financeService.review(orderId).financeConfirmed()).isTrue();
     }
 

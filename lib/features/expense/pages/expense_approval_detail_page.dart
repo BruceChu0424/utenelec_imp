@@ -44,6 +44,7 @@ import '../providers/expense_providers.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
 import '../widgets/expense_invoice_section.dart';
+import '../widgets/expense_submission_revision.dart';
 
 class ExpenseApprovalDetailPage extends ConsumerStatefulWidget {
   const ExpenseApprovalDetailPage({super.key, required this.claimId});
@@ -298,6 +299,7 @@ class _ExpenseApprovalDetailPageState
                   const SizedBox(height: UtenSpacing.s8),
                   _applicantCard(theme, claim),
                   const SizedBox(height: UtenSpacing.s20),
+                  ExpenseSubmissionChangeSummary(claim: claim),
                   _itemsSection(theme, claim),
                   const SizedBox(height: UtenSpacing.s20),
                   _sectionTitle(theme, '发票登记'),
@@ -459,47 +461,55 @@ class _ExpenseApprovalDetailPageState
   }
 
   Widget _itemsSection(ThemeData theme, ExpenseClaim claim) {
+    final revision = ExpenseSubmissionRevision.fromClaim(claim);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '报销明细 (${claim.items.length})',
+          revision == null ? '报销明细 (${claim.items.length})' : '报销明细 · 修改对比',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<ExpenseItem>(
-          key: const Key('expense-approval-items'),
-          columns: _itemColumns,
-          items: claim.items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          embedded: true,
-          stickyHeaderPinned: _itemsPinned,
-          summaryBar: Wrap(
-            alignment: WrapAlignment.end,
-            spacing: UtenSpacing.s8,
-            children: [
-              Text(
-                '共 ${claim.items.length} 项 · 合计 ',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+        if (revision != null)
+          ExpenseSubmissionItemTable(
+            key: const Key('expense-approval-items-revision'),
+            revision: revision,
+            stickyHeaderPinned: _itemsPinned,
+          )
+        else
+          MasterDataTableView<ExpenseItem>(
+            key: const Key('expense-approval-items'),
+            columns: _itemColumns,
+            items: claim.items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            embedded: true,
+            stickyHeaderPinned: _itemsPinned,
+            summaryBar: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: UtenSpacing.s8,
+              children: [
+                Text(
+                  '共 ${claim.items.length} 项 · 合计 ',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              Text(
-                '¥ ${claim.totalAmount.toStringAsFixed(2)}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+                Text(
+                  '¥ ${claim.totalAmount.toStringAsFixed(2)}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -746,6 +756,16 @@ class _Hero extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (expenseIsSubmittedModification(claim)) ...[
+            Text(
+              '报销单修改',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
           Row(
             children: [
               Expanded(

@@ -1507,6 +1507,9 @@ public class SalesOrderService {
         requireNoFrozenExecutionAllocationDecrease(req, items);
         if (touchesPlanned) requirePlannedChangePermission();
 
+        // Preserve complete immutable before/after rows for the finance diff, including
+        // quantity-only revisions; the quantity ledger alone cannot reconstruct them.
+        String beforeRevision = actualQtyChanged ? revisions.snapshot(id) : null;
         // 第二遍：逐行应用（同时记录改量事实，供财务确认页「修改清单」对照）。
         List<Object[]> qtyChangeFacts = new ArrayList<>();
         for (var l : req.getItems()) {
@@ -1641,6 +1644,7 @@ public class SalesOrderService {
             chainNotice.notifyOrderPendingFinanceConfirmation(id, true);
         }
         recalcTotalsAndClosed(id);
+        if (beforeRevision != null) revisions.record(id, beforeRevision);
         em.flush();
         em.clear();
         return detail(id);

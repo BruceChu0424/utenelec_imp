@@ -1310,9 +1310,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final title = rejected ? '财务已退回，请修改后重新提交' : '等待财务审核组处理';
     final detail = rejected
         ? (approval.rejectionReason ?? '财务未填写退回原因')
-        : '已提交财务审核组，财务部门持权人员及被点名授权者可在'
-              '「财务 → 订货审批任务中心」审核通过或退回；采购侧仅可查看，'
-              '审核期间订货单不能修改或删除。';
+        : '审核期间仅可查看，财务将在订货审批中处理。';
     return Semantics(
       container: true,
       label: '$title。$detail',

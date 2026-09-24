@@ -24,6 +24,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -75,6 +76,8 @@ class ReportablePlanLinePostgresTest {
             UUID.fromString("10000000-0000-0000-0000-000000000021");
     private static final UUID EMPLOYEE_ID =
             UUID.fromString("10000000-0000-0000-0000-000000000022");
+    private static final UUID USER_ID =
+            UUID.fromString("10000000-0000-0000-0000-000000000023");
 
     private static JdbcTemplate jdbc;
     private static TransactionTemplate transaction;
@@ -128,6 +131,10 @@ class ReportablePlanLinePostgresTest {
                           DATE '2026-08-01', 'active', 'regular')
                 """, EMPLOYEE_ID);
         jdbc.update("""
+                INSERT INTO users(id,employee_id,login_account,password_hash,status)
+                VALUES(?,?,'report-source-fixture','not-a-login-hash','disabled')
+                """,USER_ID,EMPLOYEE_ID);
+        jdbc.update("""
                 INSERT INTO production_material_analyses(
                     id, warehouse_id, status, fingerprint,
                     initial_idempotency_key, maker_id,
@@ -153,6 +160,9 @@ class ReportablePlanLinePostgresTest {
 
     @BeforeEach
     void prepareFixture(TestInfo testInfo) {
+        boolean publicSurplus = testInfo.getTestMethod().orElseThrow().getName().startsWith("publicSurplus");
+        boolean publicOnlyBatch = testInfo.getTestMethod().orElseThrow().getName()
+                .equals("publicSurplusOnlyBatchKeepsItsSourceAfterTheSalesBatchCompletes");
         boolean readyFixture=java.util.Set.of(
                 "assignedZeroMaterialReadySegmentIsHiddenUntilExplicitStart",
                 "readyToInProgressRequiresExplicitStartTransactionMarker")
@@ -165,13 +175,16 @@ class ReportablePlanLinePostgresTest {
         jdbc.update("DELETE FROM production_execution_segments");
         jdbc.update("DELETE FROM production_planning_packages");
         jdbc.update("DELETE FROM plan_order_item_links");
+        jdbc.update("DELETE FROM production_material_analysis_plan_links");
         jdbc.update("DELETE FROM production_plan_items");
         jdbc.update("DELETE FROM production_plans");
         jdbc.update("DELETE FROM sales_order_items");
         jdbc.update("DELETE FROM sales_orders");
+        jdbc.update("UPDATE production_material_analysis_items SET requested_qty=?,approved_qty=?,submitted_qty=0 WHERE id=?",
+                publicSurplus?1000:100,publicSurplus?1000:0,ANALYSIS_ITEM_ID);
         jdbc.update("SET LOCAL session_replication_role = origin");
-        insertOrder(ORDER_ONE_ID, ORDER_ITEM_ONE_ID, "XD20260801000001");
-        insertOrder(ORDER_TWO_ID, ORDER_ITEM_TWO_ID, "XD20260801000002");
+        insertOrder(ORDER_ONE_ID, ORDER_ITEM_ONE_ID, "XD20260801000001", publicSurplus?1000:100);
+        insertOrder(ORDER_TWO_ID, ORDER_ITEM_TWO_ID, "XD20260801000002", publicSurplus?1000:100);
         jdbc.update("""
                 INSERT INTO production_plans(
                     id, bill_no, bill_date, delivery_date, status
@@ -183,24 +196,36 @@ class ReportablePlanLinePostgresTest {
                     goods_id, unit_id, unit_rate, qty, fqty
                 ) VALUES (
                     ?, 'SJ20260801000001', DATE '2026-08-01', ?, 'SJ-001-1',
-                    ?, ?, 1, 100, ?
+                    ?, ?, 1, ?, ?
                 )
-                """, PLAN_ITEM_ID, PLAN_ID, GOODS_ID, UNIT_ID,readyFixture?0:40);
+                """, PLAN_ITEM_ID, PLAN_ID, GOODS_ID, UNIT_ID,publicSurplus?2000:100,readyFixture?0:40);
         jdbc.update("""
                 UPDATE production_plans
                 SET material_analysis_id = ?, material_analysis_item_id = ?
                 WHERE id = ?
                 """, ANALYSIS_ID, ANALYSIS_ITEM_ID, PLAN_ID);
+        if (publicSurplus) {
+            // The snapshot must retain the original approval of 1000 demand
+            // plus 1000 public surplus; V588 correctly rejects arbitrary gaps.
+            jdbc.update("SET LOCAL session_replication_role = replica");
+            assertEquals(1,jdbc.update("""
+                    INSERT INTO production_material_analysis_plan_links(
+                        analysis_id,analysis_item_id,plan_id,submitted_qty,public_surplus_qty,
+                        allocation_status,created_by)
+                    VALUES(?,?,?,1000,1000,'APPROVED',?)
+                    """, ANALYSIS_ID,ANALYSIS_ITEM_ID,PLAN_ID,USER_ID));
+            jdbc.update("SET LOCAL session_replication_role = origin");
+        }
         jdbc.update("""
                 INSERT INTO plan_order_item_links(
                     id, plan_item_id, order_item_id, allocated_qty, produced_qty
-                ) VALUES (?, ?, ?, 70, ?)
-                """, LINK_ONE_ID, PLAN_ITEM_ID, ORDER_ITEM_ONE_ID,readyFixture?0:20);
+                ) VALUES (?, ?, ?, ?, ?)
+                """, LINK_ONE_ID, PLAN_ITEM_ID, ORDER_ITEM_ONE_ID,publicSurplus?700:70,readyFixture?0:20);
         jdbc.update("""
                 INSERT INTO plan_order_item_links(
                     id, plan_item_id, order_item_id, allocated_qty, produced_qty
-                ) VALUES (?, ?, ?, 30, ?)
-                """, LINK_TWO_ID, PLAN_ITEM_ID, ORDER_ITEM_TWO_ID,readyFixture?0:20);
+                ) VALUES (?, ?, ?, ?, ?)
+                """, LINK_TWO_ID, PLAN_ITEM_ID, ORDER_ITEM_TWO_ID,publicSurplus?300:30,readyFixture?0:20);
         jdbc.update("""
                 INSERT INTO production_planning_packages(
                     id, plan_id, warehouse_id, idempotency_key,
@@ -220,26 +245,26 @@ class ReportablePlanLinePostgresTest {
                     zero_material_analysis_id, start_route, route_confirmed_at
                 ) VALUES (?, ?, ?, ?, 1, ?,
                           'reportable-plan-line-segment', ?, ?, 1,
-                          100, 'READY', ?,
+                          ?, 'READY', ?,
                           'reportable-plan-line-segment', 'ZERO_MATERIAL',
                           'DIRECT_MAKE', ?, 'FULL_KIT', now())
                 """, SEGMENT_ID, PACKAGE_ID, PLAN_ID, PLAN_ITEM_ID,
                 canonicalSegmentCode(SEGMENT_ID), GOODS_ID, UNIT_ID,
-                "c".repeat(64), ANALYSIS_ID);
+                publicOnlyBatch?1000:publicSurplus?2000:100, "c".repeat(64), ANALYSIS_ID);
         jdbc.update("""
                 INSERT INTO execution_segment_sales_allocations(
                     id, execution_segment_id, plan_order_item_link_id,
                     sales_order_item_id, allocated_qty
-                ) VALUES (?, ?, ?, ?, 70)
+                ) VALUES (?, ?, ?, ?, ?)
                 """, ALLOCATION_ONE_ID, SEGMENT_ID, LINK_ONE_ID,
-                ORDER_ITEM_ONE_ID);
+                ORDER_ITEM_ONE_ID,publicSurplus?700:70);
         jdbc.update("""
                 INSERT INTO execution_segment_sales_allocations(
                     id, execution_segment_id, plan_order_item_link_id,
                     sales_order_item_id, allocated_qty
-                ) VALUES (?, ?, ?, ?, 30)
+                ) VALUES (?, ?, ?, ?, ?)
                 """, ALLOCATION_TWO_ID, SEGMENT_ID, LINK_TWO_ID,
-                ORDER_ITEM_TWO_ID);
+                ORDER_ITEM_TWO_ID,publicSurplus?300:30);
         jdbc.update("""
                 UPDATE production_execution_segments
                 SET workshop_department_id = (
@@ -259,7 +284,8 @@ class ReportablePlanLinePostgresTest {
                 SET status = 'IN_PROGRESS'
                 WHERE id = ?
                 """, SEGMENT_ID);
-        insertDraftProgress();}
+        insertDraftProgress();
+        if(publicOnlyBatch) insertPublicBatch();}
         });
 
         ProductionDocumentAccessPolicy access =
@@ -326,6 +352,108 @@ class ReportablePlanLinePostgresTest {
                 new java.math.BigDecimal("10.0000")));
         assertEquals(List.of("XD20260801000001", "XD20260801000002"),
                 items.stream().map(ReportablePlanLine::orderNo).toList());
+    }
+
+    @Test
+    void publicSurplusRemainsReportableAfterCustomerOrdersAreCompleted() {
+        completeSalesProgress();
+
+        List<ReportablePlanLine> items = service.list(1, 100, null, null, SEGMENT_ID).getItems();
+        assertEquals(1, items.size());
+        ReportablePlanLine source = items.getFirst();
+        assertNull(source.orderItemId());
+        assertNull(source.executionSegmentSalesAllocationId());
+        assertEquals(PLAN_ITEM_ID, source.planItemId());
+        assertEquals(GOODS_ID, source.goodsId());
+        assertEquals("成品灯", source.goodsName());
+        assertEquals(0, source.maxReportQty().compareTo(new java.math.BigDecimal("1000")));
+        assertEquals(0, source.remainingPlanQty().compareTo(new java.math.BigDecimal("1000")));
+    }
+
+    @Test
+    void publicSurplusDraftReservesOnlyItsOwnQuotaAndDeletionRestoresIt() {
+        completeSalesProgress();
+        UUID draft = insertInternalProgress("600", 0);
+        ReportablePlanLine source = service.list(1, 100, null, null, SEGMENT_ID).getItems().getFirst();
+        assertEquals(0, source.maxReportQty().compareTo(new java.math.BigDecimal("400")));
+        assertEquals(0, source.linkedProducedQty().signum());
+        jdbc.update("UPDATE production_daily_reports SET is_deleted=TRUE,deleted_at=now(),row_version=row_version+1 WHERE id=?", draft);
+        assertEquals(0, service.list(1, 100, null, null, SEGMENT_ID).getItems().getFirst()
+                .maxReportQty().compareTo(new java.math.BigDecimal("1000")));
+    }
+
+    @Test
+    void publicSurplusCannotConsumeUnreportedSalesQuantity() {
+        insertInternalProgress("1000", 0);
+        List<ReportablePlanLine> sources = service.list(1, 100, null, null, SEGMENT_ID).getItems();
+        assertEquals(2, sources.size());
+        assertTrue(sources.stream().allMatch(source -> source.executionSegmentSalesAllocationId() != null));
+        assertEquals(0, sources.stream().map(ReportablePlanLine::maxReportQty)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add)
+                .compareTo(new java.math.BigDecimal("960")));
+    }
+
+    @Test
+    void publicSurplusOnlyBatchKeepsItsSourceAfterTheSalesBatchCompletes() {
+        completeSalesProgress();
+        UUID publicSegment = jdbc.queryForObject("SELECT id FROM production_execution_segments WHERE client_segment_key='public-batch'",UUID.class);
+        List<ReportablePlanLine> sources = service.list(1,100,null,null,publicSegment).getItems();
+        assertEquals(1,sources.size());
+        assertEquals(publicSegment,sources.getFirst().executionSegmentId());
+        assertNull(sources.getFirst().executionSegmentSalesAllocationId());
+        assertNull(sources.getFirst().orderItemId());
+        assertEquals(0,sources.getFirst().maxReportQty().compareTo(new java.math.BigDecimal("1000")));
+    }
+
+    private void insertPublicBatch() {
+        UUID publicSegment=UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO production_execution_segments(
+                        id,package_id,plan_id,source_plan_item_id,segment_no,segment_code,client_segment_key,
+                        product_goods_id,product_unit_id,product_unit_rate,planned_qty,status,bom_fingerprint,
+                        idempotency_key,material_requirement_mode,zero_material_reason,zero_material_analysis_id,
+                        start_route,route_confirmed_at,workshop_department_id,responsible_employee_id,
+                        plan_begin_date,plan_end_date)
+                    SELECT ?,package_id,plan_id,source_plan_item_id,2,?,'public-batch',
+                           product_goods_id,product_unit_id,product_unit_rate,1000,'READY',bom_fingerprint,
+                           'public-batch',material_requirement_mode,zero_material_reason,zero_material_analysis_id,
+                           start_route,route_confirmed_at,workshop_department_id,responsible_employee_id,
+                           plan_begin_date,plan_end_date
+                    FROM production_execution_segments WHERE id=?
+                    """, publicSegment,canonicalSegmentCode(publicSegment),SEGMENT_ID);
+            jdbc.update("UPDATE production_execution_segments SET status='DISPATCHED' WHERE id=?",publicSegment);
+            jdbc.update("UPDATE production_execution_segments SET status='IN_PROGRESS' WHERE id=?",publicSegment);
+    }
+
+    private void completeSalesProgress() {
+        writeHistoricalState(() -> {
+            jdbc.update("UPDATE production_daily_report_items SET qty=700 WHERE execution_segment_sales_allocation_id=?", ALLOCATION_ONE_ID);
+            jdbc.update("UPDATE production_daily_report_items SET qty=300 WHERE execution_segment_sales_allocation_id=?", ALLOCATION_TWO_ID);
+            jdbc.update("UPDATE production_daily_reports SET status=1,row_version=row_version+1");
+            jdbc.update("UPDATE production_plan_items SET fqty=1000 WHERE id=?", PLAN_ITEM_ID);
+            jdbc.update("UPDATE plan_order_item_links SET produced_qty=allocated_qty WHERE plan_item_id=?", PLAN_ITEM_ID);
+            jdbc.update("UPDATE sales_orders SET is_closed=TRUE");
+            jdbc.update("UPDATE sales_order_items SET chain_status=9");
+        });
+    }
+
+    private UUID insertInternalProgress(String qty, int status) {
+        // The global business-number registry retains ownership across fixture
+        // resets, so the same displayed number must retain the same UUID too.
+        UUID reportId = UUID.fromString("10000000-0000-0000-0000-000000000024");
+        transaction.executeWithoutResult(ignored -> {
+            jdbc.update("""
+                    INSERT INTO production_daily_reports(id,bill_no,bill_date,status)
+                    VALUES(?,'SR20260801000002',DATE '2026-08-01',?)
+                    """, reportId, status);
+            jdbc.update("""
+                    INSERT INTO production_daily_report_items(
+                        id,bill_no,bill_date,report_id,line_no,goods_id,unit_id,unit_rate,qty,
+                        plan_item_id,execution_segment_id)
+                    VALUES(?,'SR20260801000002',DATE '2026-08-01',?,1,?,?,1,?,?,?)
+                    """, UUID.randomUUID(),reportId,GOODS_ID,UNIT_ID,new java.math.BigDecimal(qty),PLAN_ITEM_ID,SEGMENT_ID);
+        });
+        return reportId;
     }
 
     @Test
@@ -459,12 +587,36 @@ class ReportablePlanLinePostgresTest {
     }
 
     @Test
-    void oneInvalidSalesTargetBlocksTheWholeMergedPlan() {
-        writeHistoricalState(() -> jdbc.update(
-                "UPDATE sales_order_items SET chain_status = 9 WHERE id = ?",
-                ORDER_ITEM_TWO_ID));
+    void oneCompletedOrderDoesNotBlockTheOtherSalesSourceInAMergedPlan() {
+        writeHistoricalState(() -> {
+            jdbc.update("UPDATE sales_order_items SET chain_status=9 WHERE id=?",ORDER_ITEM_TWO_ID);
+            jdbc.update("UPDATE sales_orders SET is_closed=TRUE WHERE id=?",ORDER_TWO_ID);
+        });
+        List<ReportablePlanLine> sources = service.list(1,100,null,null,SEGMENT_ID).getItems();
+        assertEquals(1,sources.size());
+        assertEquals(ALLOCATION_ONE_ID,sources.getFirst().executionSegmentSalesAllocationId());
+        assertEquals(0,sources.getFirst().maxReportQty().compareTo(new java.math.BigDecimal("50")));
+    }
 
-        assertTrue(service.list(1, 100, null, null).getItems().isEmpty());
+    @Test
+    void oneStoppedOrderDoesNotBlockTheOtherSalesSourceInAMergedPlan() {
+        writeHistoricalState(() -> jdbc.update("UPDATE sales_orders SET is_stopped=TRUE WHERE id=?",ORDER_ONE_ID));
+        List<ReportablePlanLine> sources = service.list(1,100,null,null,SEGMENT_ID).getItems();
+        assertEquals(1,sources.size());
+        assertEquals(ALLOCATION_TWO_ID,sources.getFirst().executionSegmentSalesAllocationId());
+        assertEquals(0,sources.getFirst().maxReportQty().compareTo(new java.math.BigDecimal("10")));
+    }
+
+    @Test
+    void aStoppedPlanStillBlocksEverySalesSource() {
+        writeHistoricalState(() -> jdbc.update("UPDATE production_plans SET is_stopped=TRUE WHERE id=?",PLAN_ID));
+        assertTrue(service.list(1,100,null,null,SEGMENT_ID).getItems().isEmpty());
+    }
+
+    @Test
+    void aClosedPlanStillBlocksEverySalesSource() {
+        writeHistoricalState(() -> jdbc.update("UPDATE production_plans SET is_closed=TRUE WHERE id=?",PLAN_ID));
+        assertTrue(service.list(1,100,null,null,SEGMENT_ID).getItems().isEmpty());
     }
 
     private void writeHistoricalState(Runnable mutation) {
@@ -474,7 +626,7 @@ class ReportablePlanLinePostgresTest {
         });
     }
 
-    private void insertOrder(UUID orderId, UUID itemId, String billNo) {
+    private void insertOrder(UUID orderId, UUID itemId, String billNo, int quantity) {
         jdbc.update("""
                 INSERT INTO sales_orders(
                     id, bill_no, bill_date, client_id, deliver_date, status
@@ -488,8 +640,8 @@ class ReportablePlanLinePostgresTest {
                     unit_id, unit_rate, qty, chain_status
                 ) VALUES (?, ?, DATE '2026-08-01', ?, ?,
                           'HP900001', '成品灯', 'MASTER_AT_APPROVAL', now(),
-                          ?, 1, 100, 4)
-                """, itemId, billNo, orderId, GOODS_ID, UNIT_ID);
+                          ?, 1, ?, 4)
+                """, itemId, billNo, orderId, GOODS_ID, UNIT_ID,quantity);
     }
 
     private static String canonicalSegmentCode(UUID segmentId) {

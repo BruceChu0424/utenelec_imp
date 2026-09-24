@@ -458,8 +458,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                   child: Text(
-                    '本订单已经财务确认：修改数量后将自动重新进入「待财务确认」，'
-                    '财务会看到修改清单（以前→现在）并需再次确认后才继续排产。',
+                    '改量后需财务再次确认，修改前后明细会以红绿两行展示。',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: Theme.of(context).colorScheme.error,
                       fontWeight: FontWeight.w700,

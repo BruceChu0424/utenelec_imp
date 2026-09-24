@@ -65,6 +65,74 @@ class DailyReportExecutionSegmentGuardTest {
     }
 
     @Test
+    void publicSurplusCanContinueAfterSalesAllocationIsFullyReported() {
+        Fixture fixture = fixture("IN_PROGRESS", "2000", "1000");
+        fixture.salesAllocation("1000");
+        when(fixture.internalCumulative.getSingleResult()).thenReturn(BigDecimal.ZERO);
+
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
+                List.of(fixture.line("1000"))));
+    }
+
+    @Test
+    void publicReportingCannotUseTheUnreportedSalesQuota() {
+        Fixture fixture = fixture("IN_PROGRESS", "2000", "700");
+        fixture.salesAllocation("1000");
+        when(fixture.internalCumulative.getSingleResult()).thenReturn(new BigDecimal("700"));
+
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
+                List.of(fixture.line("300"))));
+        ApiException error = assertThrows(ApiException.class, () -> fixture.guard.validateDraft(
+                UUID.randomUUID(), fixture.workshopId, List.of(fixture.line("300.0001"))));
+        assertTrue(error.getMessage().contains("公共备货累计报工"));
+    }
+
+    @Test
+    void publicRowsWithinOneDraftShareOneQuota() {
+        Fixture fixture = fixture("IN_PROGRESS", "2000", "0");
+        fixture.salesAllocation("1000");
+        assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(),
+                fixture.workshopId, List.of(fixture.line("600"), fixture.line("401"))));
+    }
+
+    @Test
+    void fullySalesAllocatedTaskCannotDropItsSalesIdentity() {
+        Fixture fixture = fixture("IN_PROGRESS", "1000", "0");
+        fixture.salesAllocation("1000");
+        ApiException error = assertThrows(ApiException.class, () -> fixture.guard.validateDraft(
+                UUID.randomUUID(), fixture.workshopId, List.of(fixture.line("1"))));
+        assertTrue(error.getMessage().contains("没有公共备货数量"));
+    }
+
+    @Test
+    void publicSourceCannotCarryOnlyOneHalfOfTheSalesIdentity() {
+        Fixture fixture = fixture("IN_PROGRESS", "2000", "0");
+        UUID[] sales = fixture.salesAllocation("1000");
+        var missingAllocation = fixture.line("1");
+        missingAllocation.setSalesOrderItemId(sales[1]);
+        var missingOrder = fixture.line("1");
+        missingOrder.setExecutionSegmentSalesAllocationId(sales[0]);
+        for (var line : List.of(missingAllocation, missingOrder)) {
+            assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(),
+                    fixture.workshopId, List.of(line)));
+        }
+    }
+
+    @Test
+    void oneReportCanContainSalesAndPublicRowsWithinTheirIndependentQuotas() {
+        Fixture fixture=fixture("IN_PROGRESS","2000","0");
+        UUID[] source=fixture.salesAllocation("1000");
+        DailyReportItemLine sales=fixture.line("1000");
+        sales.setExecutionSegmentSalesAllocationId(source[0]);
+        sales.setSalesOrderItemId(source[1]);
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(),fixture.workshopId,
+                List.of(sales,fixture.line("600"))));
+        sales.setQty(new BigDecimal("1000.0001"));
+        assertThrows(ApiException.class,() -> fixture.guard.validateDraft(UUID.randomUUID(),fixture.workshopId,
+                List.of(sales,fixture.line("1"))));
+    }
+
+    @Test
     void unstartedSegmentsCannotUseReportingToStartEvenWithNoMaterialRequirement() {
         for (String status : List.of("READY", "DISPATCHED")) {
             Fixture fixture = fixture(status, "10", "0");
@@ -98,6 +166,21 @@ class DailyReportExecutionSegmentGuardTest {
                 UUID.randomUUID(),
                 fixture.workshopId,
                 List.of(fixture.line("2"))));
+    }
+
+    @Test
+    void terminalPlanCannotSaveANewOrdinaryReportButCanReverseItsOriginalReport() {
+        Fixture fixture=fixture("IN_PROGRESS","10","0");
+        Object[] snapshot=(Object[])fixture.lock.getResultList().getFirst();
+        snapshot[17]=false;
+        ApiException error=assertThrows(ApiException.class,() -> fixture.guard.validateDraft(
+                UUID.randomUUID(),fixture.workshopId,List.of(fixture.line("1"))));
+        assertTrue(error.getMessage().contains("生产计划当前未生效"));
+        var item=new ProductionDailyReportItem(); item.setId(UUID.randomUUID());
+        item.setExecutionSegmentId(fixture.segmentId); item.setPlanItemId(fixture.planItemId);
+        item.setGoodsId(fixture.goodsId); item.setUnitId(fixture.unitId); item.setUnitRate(BigDecimal.ONE);
+        item.setQty(BigDecimal.ONE);
+        assertDoesNotThrow(() -> fixture.guard.reverse(List.of(item)));
     }
 
     @Test
@@ -268,12 +351,13 @@ class DailyReportExecutionSegmentGuardTest {
                 materialMode,
                 7L, null,
                 // Route flag is preserved; every started ordinary report uses net material capacity.
-                continuous
+                continuous, true
         }));
         Query allocation = query();
         when(allocation.getResultList()).thenReturn(List.of());
         Query cumulative = query();
         when(cumulative.getSingleResult()).thenReturn(new BigDecimal(existing));
+        Query internalCumulative = scalarQuery(new BigDecimal(existing));
         Query demands=query();
         when(demands.getResultList()).thenReturn(demandStatus==null ? List.of() : Collections.singletonList(
                 new Object[]{UUID.randomUUID(),demandStatus,false}));
@@ -285,6 +369,8 @@ class DailyReportExecutionSegmentGuardTest {
             if(sql.contains("fn_execution_material_output_capacity"))return capacityQuery;
             if(sql.contains("FROM production_material_demands"))return demands;
             if(sql.contains("FROM execution_segment_sales_allocations"))return allocation;
+            if(sql.contains("SUM(item.qty)")
+                    && sql.contains("item.execution_segment_sales_allocation_id IS NULL")) return internalCumulative;
             if(sql.contains("SUM(item.qty)"))return cumulative;
             return lock;
         });
@@ -307,7 +393,7 @@ class DailyReportExecutionSegmentGuardTest {
                 planMakerId,
                 workshopId,
                 access,
-                notices);
+                notices, allocation, internalCumulative, lock);
     }
 
     private static Query query() {
@@ -332,7 +418,17 @@ class DailyReportExecutionSegmentGuardTest {
             UUID planMakerId,
             UUID workshopId,
             ProductionDocumentAccessPolicy access,
-            ChainNoticeService notices) {
+            ChainNoticeService notices,
+            Query allocation,
+            Query internalCumulative,
+            Query lock) {
+        UUID[] salesAllocation(String qty) {
+            UUID allocationId = UUID.randomUUID();
+            UUID orderItemId = UUID.randomUUID();
+            when(allocation.getResultList()).thenReturn(Collections.singletonList(
+                    new Object[]{allocationId, orderItemId, new BigDecimal(qty)}));
+            return new UUID[]{allocationId, orderItemId};
+        }
         DailyReportItemLine line(String qty) {
             DailyReportItemLine line = new DailyReportItemLine();
             line.setExecutionSegmentId(segmentId);

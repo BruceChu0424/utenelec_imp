@@ -30,6 +30,7 @@ void main() {
   materialUsageEntryTests();
   routeConfirmationTests();
   batchBusyOverlayTests();
+  reportSourceSelectionTests();
   testWidgets(
     'shared batch material usage writes the real original issue task',
     (tester) async {
@@ -1833,6 +1834,104 @@ void materialUsageEntryTests() {
   }
 }
 
+void reportSourceSelectionTests() {
+  Future<void> mount(
+    WidgetTester tester, {
+    bool createPermission = true,
+    String? aStatus,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue({
+            Perm.productionExecutionView,
+            Perm.productionDailyReportView,
+            if (createPermission) Perm.productionDailyReportCreate,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _repository(aCanBatchReport: false, aStatus: aStatus),
+          ),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await selectFilterSegment(tester, '生产中');
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'a reportable multi-source task can enter its exact report page',
+    (tester) async {
+      await mount(tester);
+      await _selectRow(tester, '产品 A');
+      await tester.tap(find.text('批量报工(1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('单项来源 segment-a'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'multi-source tasks require individual source selection in a batch',
+    (tester) async {
+      await mount(tester);
+      await _selectRow(tester, '产品 A');
+      await _selectRow(tester, '产品 B');
+      await tester.tap(find.text('批量报工(2)'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('批量来源'), findsNothing);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionWorkshopTasksPage)),
+      );
+      expect(
+        container.read(appNotificationProvider).last.message,
+        contains('请单独勾选该任务，再选择本次对应的订单或公共备货来源'),
+      );
+      await _selectRow(tester, '产品 B');
+      await tester.tap(find.text('批量报工(1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('单项来源 segment-a'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'multi-source reporting still requires report creation permission',
+    (tester) async {
+      await mount(tester, createPermission: false);
+      expect(find.byType(Checkbox), findsNothing);
+      expect(find.textContaining('批量报工'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a task must be started before selecting its report source', (
+    tester,
+  ) async {
+    await mount(tester, aStatus: 'READY');
+    expect(
+      find.descendant(
+        of: _frozenRowOf('产品 A'),
+        matching: find.byType(Checkbox),
+      ),
+      findsNothing,
+    );
+    await _selectRow(tester, '产品 B');
+    expect(find.text('批量报工(1)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+
 GoRouter _router() => GoRouter(
   initialLocation: '/',
   routes: [
@@ -1907,6 +2006,8 @@ ProductionExecutionWorkbenchRepository _repository({
   String? cLegacySuggestedStartRoute,
   String? cSuggestedStartRouteSource,
   bool cCanRecheck = true,
+  bool aCanBatchReport = true,
+  String? aStatus,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
@@ -1937,9 +2038,10 @@ ProductionExecutionWorkbenchRepository _repository({
                 ..._task(
                   'segment-a',
                   '产品 A',
-                  request.queryParameters['status'] == 'IN_PROGRESS'
-                      ? 'IN_PROGRESS'
-                      : 'READY',
+                  aStatus ??
+                      (request.queryParameters['status'] == 'IN_PROGRESS'
+                          ? 'IN_PROGRESS'
+                          : 'READY'),
                   issued: readyIssued,
                   materialActivity: materialActivity,
                   unregisteredMaterial: unregisteredMaterial,
@@ -1948,6 +2050,7 @@ ProductionExecutionWorkbenchRepository _repository({
                   canConfirmRoute: aStartRouteNull,
                   zeroMaterial: aZeroMaterial,
                   routeChangeable: aRouteChangeable,
+                  canBatchReport: aCanBatchReport,
                 ),
                 'drawRequested': drawRequested,
                 'canRequestDraw': !readyIssued && !drawRequested,

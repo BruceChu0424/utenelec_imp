@@ -156,7 +156,15 @@ public class SalesOrderFinanceConfirmService {
                        (SELECT COUNT(*) FROM sales_order_qty_change_logs ch
                          WHERE ch.order_id = o.id
                            AND ch.changed_at > COALESCE(o.finance_confirmed_at,
-                                                       to_timestamp(0)))
+                                                       to_timestamp(0))
+                           AND NOT EXISTS (
+                               SELECT 1 FROM sales_order_revision_logs snapshot
+                               WHERE snapshot.order_id = ch.order_id
+                                 AND snapshot.changed_at >= ch.changed_at
+                                 AND (snapshot.before_snapshot -> '产品明细' -> ch.order_item_id::text
+                                      ->> '数量')::numeric = ch.old_qty
+                                 AND (snapshot.after_snapshot -> '产品明细' -> ch.order_item_id::text
+                                      ->> '数量')::numeric = ch.new_qty))
                        + (SELECT COUNT(*) FROM sales_order_revision_logs revision
                           WHERE revision.order_id = o.id
                             AND revision.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0))),
@@ -379,7 +387,8 @@ public class SalesOrderFinanceConfirmService {
                 lines,
                 qtyChanges,
                 revisions.pendingChanges(orderId),
-                order.getFinanceReviewRevision());
+                order.getFinanceReviewRevision(),
+                revisions.pendingDiff(orderId));
     }
 
     /**

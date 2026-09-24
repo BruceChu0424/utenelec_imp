@@ -358,7 +358,7 @@ class _ProductionDailyReportEditPageState
   }
 
   /// 卡片“分批报工”已给出精确执行子任务。若读侧只有一条可报分摊，直接
-  /// 应用并预填数量；同一执行段包含多条销售分摊时仍让用户确认，避免串单。
+  /// 应用并预填数量；同一执行段有多个订单或备货来源时仍让用户确认，避免串单。
   Future<void> _loadInitialSource(
     DailyGridRow row, {
     required String executionSegmentId,
@@ -385,10 +385,10 @@ class _ProductionDailyReportEditPageState
         return;
       }
       if (page.total == 0 || page.items.isEmpty) {
-        context.appWarning('当前执行子计划没有可报来源，任务状态可能已被其他人更新', force: true);
+        context.appWarning('当前工单暂无可报来源，请核对待审核日报、剩余数量、投料与任务状态', force: true);
         return;
       }
-      context.appWarning('当前执行子计划包含多个销售分摊，请确认本次报工对应的订单来源', force: true);
+      context.appWarning('当前执行子计划有多个报工来源，请选择本次对应的订单或公共备货', force: true);
       await _pickSource(row, executionSegmentId: executionSegmentId);
     } catch (error) {
       if (!mounted) return;
@@ -420,7 +420,7 @@ class _ProductionDailyReportEditPageState
       });
       if (page.total != executionSegmentIds.length || invalid.isNotEmpty) {
         context.appWarning(
-          '部分工单已变化或包含多个销售分摊，未自动生成批量报工；请刷新车间任务后重试',
+          '部分工单已变化或有多个报工来源，未自动生成批量报工；请刷新并选择对应的订单或公共备货',
           force: true,
         );
         return;

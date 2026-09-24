@@ -15,6 +15,41 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets(
+    'a shipment resubmission identifies the modification above its bill number',
+    (tester) async {
+      await _pumpReviewPage(
+        tester,
+        detail: const {
+          'id': 'shipment-revised',
+          'billNo': 'XS-MODIFIED',
+          'status': 0,
+          'financeAudit': 0,
+          'financeReviewPending': true,
+          'salesConfirmed': true,
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': [
+            {'id': 'line', 'qty': 2, 'price': 100},
+          ],
+        },
+        claimSucceeds: true,
+        financeAuditInfo: {
+          'shipmentId': 'shipment-revised',
+          'reviewRevision': 2,
+          'contentHash': 'revised',
+          'previousCommercialSnapshot': jsonEncode({
+            'header': <String, dynamic>{},
+            'items': [
+              {'id': 'line', 'qty': 1, 'price': 100},
+            ],
+          }),
+        },
+      );
+      expect(find.text('出货单修改'), findsOneWidget);
+      expect(find.text('XS-MODIFIED'), findsWidgets);
+    },
+  );
+
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized();
   });

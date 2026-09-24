@@ -54,7 +54,13 @@ class ExpenseClaimChainPostgresTest {
         var invoice=claims.addInvoiceVersioned(claimId,new ExpenseClaimInvoiceInput(
             "DIGITAL",null,"26310000000000123456",BusinessTime.today(),"测试酒店","91310000123456789X","测试公司",
             new BigDecimal("94.34"),new BigDecimal("5.66"),new BigDecimal("100.00"),attachment,null,draft.version(),null));
-        long submittedVersion=claims.submit(claimId,invoice.version()).version();
+        var firstSubmitted=claims.submit(claimId,invoice.version());
+        long submittedVersion=firstSubmitted.version();
+        assertThat(firstSubmitted.resubmission()).isFalse();
+        assertThat(firstSubmitted.previousSubmissionSnapshot()).isNull();
+        var snapshots=new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(snapshots.readTree(firstSubmitted.submissionSnapshot()).path("items").get(0).path("amount").asText())
+            .isEqualTo("100.00");
         login(reviewer,"expense:approve","attachment:view","attachment:download");
         assertThatThrownBy(()->claims.approve(claimId,submittedVersion)).isInstanceOf(ApiException.class)
             .hasMessageContaining("逐张核对");
@@ -62,6 +68,13 @@ class ExpenseClaimChainPostgresTest {
         login(applicant,"expense:apply");
         var edited=claims.editVersioned(claimId,request("出差拜访客户住宿",rejected.version()));
         var submitted=claims.submit(claimId,edited.version());
+        assertThat(submitted.resubmission()).isTrue();
+        assertThat(snapshots.readTree(submitted.previousSubmissionSnapshot()))
+            .isEqualTo(snapshots.readTree(firstSubmitted.submissionSnapshot()));
+        assertThat(snapshots.readTree(submitted.submissionSnapshot()).path("title").asText())
+            .isEqualTo("出差拜访客户住宿");
+        assertThat(snapshots.readTree(submitted.submissionSnapshot()).path("invoices").get(0).has("checkState"))
+            .isFalse();
         login(reviewer,"expense:approve","attachment:view","attachment:download");
         assertThatThrownBy(()->claims.approve(claimId,submittedVersion)).isInstanceOf(ApiException.class)
             .hasMessageContaining("已更新");
@@ -111,6 +124,46 @@ class ExpenseClaimChainPostgresTest {
         login(actor("unrelated-reviewer"),"expense:approve");
         assertThat(claims.listHistory(null,null,null,null,1,20).getItems()).extracting(ExpenseClaimDto::id).doesNotContain(claimId);
         assertThatThrownBy(()->claims.detail(claimId)).isInstanceOf(ApiException.class);
+    }
+
+    @Test void withdrawnEditsCompareTheLastSubmissionAndMissingLegacyBaselinesStayMissing() throws Exception {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        Actor applicant=actor("revisions"),reviewer=actor("revision-reviewer");
+        login(applicant,"expense:apply");
+        var draft=claims.create(request("首次提交",null));
+        attachment(draft.id());
+        var first=claims.submit(draft.id(),draft.version());
+        var withdrawn=claims.withdraw(first.id(),first.version());
+        assertThat(json.readTree(withdrawn.submissionSnapshot())).isEqualTo(json.readTree(first.submissionSnapshot()));
+        var intermediate=claims.editVersioned(first.id(),request("中间修改",withdrawn.version()));
+        var latest=claims.editVersioned(first.id(),new ExpenseClaimCreateRequest("最终修改","费用凭证说明",List.of(
+            new ExpenseClaimItemInput("TRAVEL",new BigDecimal("80.00"),BusinessTime.today(),"住宿费用更正"),
+            new ExpenseClaimItemInput("OFFICE",new BigDecimal("20.00"),BusinessTime.today(),"新增文具")),intermediate.version()));
+        var resubmitted=claims.submit(first.id(),latest.version());
+        assertThat(resubmitted.resubmission()).isTrue();
+        assertThat(json.readTree(resubmitted.previousSubmissionSnapshot())).isEqualTo(json.readTree(first.submissionSnapshot()));
+        assertThat(json.readTree(resubmitted.submissionSnapshot()).path("items")).hasSize(2);
+        assertThat(json.readTree(resubmitted.submissionSnapshot()).path("items").get(0).path("amount").asText()).isEqualTo("80.00");
+
+        // A still-submitted legacy document is frozen: withdrawal may preserve its
+        // authentic current submission before any applicant edits are allowed.
+        jdbc.update("UPDATE expense_claims SET submission_snapshot=NULL, previous_submission_snapshot=NULL WHERE id=?",first.id());
+        var legacyWithdrawn=claims.withdraw(first.id(),resubmitted.version());
+        var legacyEdited=claims.editVersioned(first.id(),request("撤回后的再次修改",legacyWithdrawn.version()));
+        var third=claims.submit(first.id(),legacyEdited.version());
+        assertThat(json.readTree(third.previousSubmissionSnapshot()).path("title").asText()).isEqualTo("最终修改");
+
+        // Already-editable legacy documents may have been changed before rollout;
+        // their unrecorded old rows must never be fabricated from current values.
+        login(reviewer,"expense:approve");
+        var rejected=claims.reject(first.id(),"补充说明",third.version());
+        jdbc.update("UPDATE expense_claims SET submission_snapshot=NULL, previous_submission_snapshot=NULL WHERE id=?",first.id());
+        login(applicant,"expense:apply");
+        var legacyRework=claims.editVersioned(first.id(),request("历史缺少基线",rejected.version()));
+        var legacyResubmission=claims.submit(first.id(),legacyRework.version());
+        assertThat(legacyResubmission.resubmission()).isTrue();
+        assertThat(legacyResubmission.previousSubmissionSnapshot()).isNull();
+        assertThat(json.readTree(legacyResubmission.submissionSnapshot()).path("title").asText()).isEqualTo("历史缺少基线");
     }
 
     @Test void duplicateInvoicePrecheckHandlesNullExclusionAndOtherClaimsAndSettingsAreScoped() {

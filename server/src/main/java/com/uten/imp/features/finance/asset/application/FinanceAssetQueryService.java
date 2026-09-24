@@ -36,6 +36,7 @@ public class FinanceAssetQueryService {
     private final EntityManager em;
     private final FinanceAssetAuthorization authorization;
     private final FinanceAssetFeatureGate featureGate;
+    private final FinanceAssetReviewRevisionService reviewRevisions;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_asset:view')")
@@ -205,7 +206,7 @@ public class FinanceAssetQueryService {
         List<String> documents = summary.sourceRef() == null ? List.of() : List.of(summary.sourceRef());
         return new AssetWorkbenchResponses.Detail(
                 summary, books, books, schedule, approvals, events, vouchers, documents,
-                summary.allowedActions());
+                summary.allowedActions(), reviewRevisions.read(objectType, summary.id()));
     }
 
     private AssetWorkbenchResponses.Summary summaryById(UUID id, boolean deferred) {

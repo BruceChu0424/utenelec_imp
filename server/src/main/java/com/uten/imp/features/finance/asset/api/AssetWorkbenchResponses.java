@@ -116,7 +116,12 @@ public final class AssetWorkbenchResponses {
             List<Event> events,
             List<String> voucherNumbers,
             List<String> documentReferences,
-            Set<String> allowedActions) {}
+            Set<String> allowedActions,
+            List<ReviewRevision> reviewRevisions) {}
+
+    /** Same-workflow submitted facts only; null snapshots are explicitly unavailable history. */
+    public record ReviewRevision(String workflowType, boolean resubmission,
+                                 String previousSnapshot, String submissionSnapshot) {}
 
     public record WorkflowResult(UUID id, String status, String approvalStatus, long version,
                                  Set<String> allowedActions) {}

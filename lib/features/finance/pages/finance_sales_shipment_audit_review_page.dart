@@ -4,7 +4,7 @@
 //  - 状态条：单据号 + 待审核 / 已放行 / 已退回；
 //  - 客户财务快照卡：本单结账方式、正式应收未收、铺底额、超出铺底额（红字）、
 //    可用预收（原币/本币）；V630 起客户不再有货款分类标签，放行不被分类阻断；
-//  - 商业快照变化卡（上次审核 → 本次修改）：ShipmentFinanceChangeSummary；
+//  - 商业快照逐行对比：旧整行红色划除，下一行绿色展示新内容；
 //  - 出货信息卡 + 只读明细（MasterDataTableView 嵌入模式）+ 只读附件；
 //  - 底部右下悬浮双决策：退回销售（必填原因，红）/ 确认放行；认领机制
 //    （SALES_SHIPMENT_FINANCE_AUDIT）贯穿加载与提交，他人认领中禁止决策。
@@ -28,6 +28,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -68,6 +69,7 @@ class _FinanceSalesShipmentAuditReviewPageState
   /// 币种主档参考汇率)，财务可按放行当日汇率修改；放行即冻结到本单，仓库确认出库按它立应收。
   final _rateController = TextEditingController();
   String? _rateError;
+  final Map<String, String> _settlementNames = {};
 
   TaskClaimSession? _claim;
   int _loadGeneration = 0;
@@ -167,6 +169,7 @@ class _FinanceSalesShipmentAuditReviewPageState
       _error = null;
       _detail = null;
       _info = null;
+      _settlementNames.clear();
     });
     try {
       _claim?.removeListener(_claimChanged);
@@ -193,21 +196,52 @@ class _FinanceSalesShipmentAuditReviewPageState
 
       // 名称字典：客户/仓库/币种 + 明细货品 + 表头人员。
       await ref.read(salesMasterNameServiceProvider).ensureLoaded();
+      if (info.previousCommercialSnapshot?.isNotEmpty == true) {
+        try {
+          final methods = await ref
+              .read(salesMasterNameServiceProvider)
+              .dictionaries
+              .load(ApiEndpoints.settlementMethods);
+          if (!mounted || generation != _loadGeneration) return;
+          _settlementNames.addEntries(
+            methods.map(
+              (row) => MapEntry(
+                row['id'].toString(),
+                row['name']?.toString() ?? '—',
+              ),
+            ),
+          );
+        } on Object {
+          // Keep the stored reference visible if a name is unavailable.
+        }
+      }
+      final reviewGoods = {
+        ...detail.items.map((e) => e.goodsId).whereType<String>(),
+        ...shipmentReviewSnapshotIds(
+          info.previousCommercialSnapshot,
+          'goodsId',
+        ),
+        ...shipmentReviewSnapshotIds(info.commercialSnapshot, 'goodsId'),
+      };
       await ref
           .read(salesMasterNameServiceProvider)
-          .loadGoodsNames(
-            detail.items.map((e) => e.goodsId).whereType<String>().toSet(),
-          );
+          .loadGoodsNames(reviewGoods);
       // 2026-09-14：快照上线前的老出货单没有 goodsCodeSnapshot，货品列只剩名称；
       // 同表「库位号」列读的也是这份详情缓存（此前恒显示 —）。补一次货品详情。
       await ref
           .read(salesMasterNameServiceProvider)
-          .loadGoodsDetails(
-            detail.items.map((e) => e.goodsId).whereType<String>().toSet(),
-          );
+          .loadGoodsDetails(reviewGoods);
       await ref.read(salesMasterNameServiceProvider).loadEmployeeNames([
         detail.sellerId,
         detail.senderId,
+        ...shipmentReviewSnapshotIds(
+          info.previousCommercialSnapshot,
+          'sellerId',
+        ),
+        ...shipmentReviewSnapshotIds(
+          info.previousCommercialSnapshot,
+          'senderId',
+        ),
       ]);
       if (!mounted || generation != _loadGeneration) return;
 
@@ -742,10 +776,23 @@ class _FinanceSalesShipmentAuditReviewPageState
       'warehouseId' => names.warehouse(id),
       'currencyId' => names.currency(id),
       'goodsId' => names.goods(id),
+      'goodsCode' => names.goodsInfo(id ?? '')?.code ?? '—',
+      'orderItemId' =>
+        _detail?.items
+                .where((item) => item.orderItemId == id)
+                .map((item) => item.sourceDocNo)
+                .whereType<String>()
+                .firstOrNull ??
+            _detail?.sourceDocNo ??
+            '已关联订单',
       'colorId' => names.color(id),
       'unitId' => names.unit(id),
-      'sellerId' || 'senderId' => '已更换人员（请核对本单人员信息）',
-      'settlementMethodId' => '已更换结账方式（请核对本单条款）',
+      'sellerId' || 'senderId' => names.employee(id),
+      'settlementMethodId' =>
+        _settlementNames[id] ??
+            (id == _detail?.settlementMethodId
+                ? _info?.settlementMethodName ?? '—'
+                : id ?? '—'),
       _ => value?.toString() ?? '未填写',
     };
   }
@@ -757,6 +804,9 @@ class _FinanceSalesShipmentAuditReviewPageState
     ShipmentFinanceAuditInfo info,
   ) {
     final rejected = d.shipmentWorkflow.financeRejected;
+    final revised =
+        readableShipmentReviewSnapshot(info.previousCommercialSnapshot) &&
+        readableShipmentReviewSnapshot(info.commercialSnapshot);
     final audited = d.financeAudit == 1;
     final warehouseStarted = !salesShipmentAllowsFinanceAudit(
       d.warehouseWorkStatus,
@@ -806,6 +856,13 @@ class _FinanceSalesShipmentAuditReviewPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (revised)
+                  Text(
+                    '出货单修改',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 Text(
                   d.billNo ?? '未编号出货',
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -921,7 +978,7 @@ class _FinanceSalesShipmentAuditReviewPageState
             ],
             const SizedBox(height: UtenSpacing.s8),
             Text(
-              '结账方式来自本单（销售订单选定后随出货单头，客户资料只记住最近一次作为下次默认）；可用预收只统计同客户同币种的真实已审核到账，不能自动抵扣其它订单。',
+              '结账方式来自本单；可用预收为同客户同币种的真实已审核到账。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -1048,47 +1105,52 @@ class _FinanceSalesShipmentAuditReviewPageState
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            kv('单据号', d.billNo),
-            kv('出货日期', d.billDate),
-            kv('客户', names.client(d.clientId)),
-            kv('仓库', names.warehouse(d.warehouseId)),
-            kv('币种', names.currency(d.currencyId), highlight: true),
-            if (d.exchangeRate != null) kv('汇率', d.exchangeRate?.toString()),
-            kv('业务员', names.employee(d.sellerId)),
-            kv('发货人', names.employee(d.senderId)),
-            kv('制单员', d.makerName),
-            kv('制单时间', utenFmtIsoTime(d.createdAt)),
-            if (d.shipmentWorkflow.isDirect)
-              kv(
-                '销售确认',
-                d.shipmentWorkflow.salesConfirmed
-                    ? '已确认（修订 ${d.shipmentWorkflow.revision}）'
-                    : '待销售确认',
-              ),
-            if (d.shipmentWorkflow.purpose != null)
-              kv('发货用途', switch (d.shipmentWorkflow.purpose) {
-                'SAMPLE' => '样品',
-                'GIFT' => '赠送',
-                _ => '其它客户发货',
-              }),
-            if (d.shipmentWorkflow.freeReason != null)
-              kv('不收费原因', d.shipmentWorkflow.freeReason),
-            kv(
-              '本次货款',
-              d.shipmentWorkflow.isFree
-                  ? '不收费（货款 0）'
-                  : d.priceMasked
-                  ? '***'
-                  : '${d.exactDecimals['totalOriginal'] ?? d.totalOriginal ?? '—'}（所选币种）',
+            UtenFormGrid(
+              children: [
+                kv('出货日期', d.billDate),
+                kv('客户', names.client(d.clientId)),
+                kv('币种', names.currency(d.currencyId), highlight: true),
+                kv(
+                  '本次货款',
+                  d.shipmentWorkflow.isFree
+                      ? '不收费（货款 0）'
+                      : d.priceMasked
+                      ? '***'
+                      : '${d.exactDecimals['totalOriginal'] ?? d.totalOriginal ?? '—'}（所选币种）',
+                ),
+                if ((d.sourceDocNo?.isNotEmpty ?? false))
+                  kv('来源订单', d.sourceDocNo),
+                if (d.remark?.isNotEmpty == true) kv('备注', d.remark),
+              ],
             ),
-            if ((d.sourceDocNo?.isNotEmpty ?? false)) kv('来源订单', d.sourceDocNo),
-            if ((d.logisticsNo?.isNotEmpty ?? false)) kv('物流单号', d.logisticsNo),
-            if ((d.shipAddr?.isNotEmpty ?? false)) kv('收货地址', d.shipAddr),
-            if (d.parcelCount != null) kv('件数', d.parcelCount?.toString()),
-            kv('仓库作业', salesWarehouseWorkStatusLabel(d.warehouseWorkStatus)),
-            if (d.remark?.isNotEmpty == true) kv('备注', d.remark),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('收货与单据资料'),
+              children: [
+                UtenFormGrid(
+                  children: [
+                    kv('仓库', names.warehouse(d.warehouseId)),
+                    kv('业务员', names.employee(d.sellerId)),
+                    kv('发货人', names.employee(d.senderId)),
+                    kv('制单员', d.makerName),
+                    kv('制单时间', utenFmtIsoTime(d.createdAt)),
+                    if ((d.logisticsNo?.isNotEmpty ?? false))
+                      kv('物流单号', d.logisticsNo),
+                    if ((d.shipAddr?.isNotEmpty ?? false))
+                      kv('收货地址', d.shipAddr),
+                    if (d.parcelCount != null)
+                      kv('件数', d.parcelCount?.toString()),
+                    kv(
+                      '仓库作业',
+                      salesWarehouseWorkStatusLabel(d.warehouseWorkStatus),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -1100,101 +1162,121 @@ class _FinanceSalesShipmentAuditReviewPageState
     final names = ref.watch(salesMasterNameServiceProvider);
     final masked = d.priceMasked;
     final items = d.items;
+    final before = _info?.previousCommercialSnapshot;
+    final after = _info?.commercialSnapshot;
+    final hasComparison =
+        readableShipmentReviewSnapshot(before) &&
+        readableShipmentReviewSnapshot(after);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '出货明细(${items.length})',
+          hasComparison ? '出货明细 · 修改对比' : '出货明细(${items.length})',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
         Expanded(
-          child: MasterDataTableView<SalesDocItem>(
-            primary: true,
-            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-            columns: [
-              MasterColumnDef(
-                key: 'goods',
-                // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-                label: '货品名称',
-                width: 200,
-                value: (it) => salesGoodsNameLabel(it, names.goods(it.goodsId)),
-              ),
-              MasterColumnDef(
-                key: 'goodsCode',
-                label: '编号',
-                width: 130,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  salesGoodsCodeLabel(
-                    it,
-                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
-                  ),
+          child: hasComparison
+              ? ShipmentFinanceChangeTable(
+                  previous: before!,
+                  current: after!,
+                  describe: _describeSnapshotValue,
+                  embedded: false,
+                  primary: true,
+                  priceMasked: masked,
+                  bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+                )
+              : MasterDataTableView<SalesDocItem>(
+                  primary: true,
+                  bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+                  columns: [
+                    MasterColumnDef(
+                      key: 'goods',
+                      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                      label: '货品名称',
+                      width: 200,
+                      value: (it) =>
+                          salesGoodsNameLabel(it, names.goods(it.goodsId)),
+                    ),
+                    MasterColumnDef(
+                      key: 'goodsCode',
+                      label: '编号',
+                      width: 130,
+                      value: (it) => UtenGoodsAttributeCell.text(
+                        salesGoodsCodeLabel(
+                          it,
+                          fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                        ),
+                      ),
+                      cellBuilder: (_, it) => UtenGoodsAttributeCell(
+                        salesGoodsCodeLabel(
+                          it,
+                          fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                        ),
+                      ),
+                    ),
+                    MasterColumnDef(
+                      key: 'colorName',
+                      label: '颜色',
+                      width: 96,
+                      value: (it) => names.color(it.colorId),
+                    ),
+                    MasterColumnDef(
+                      key: 'unitName',
+                      label: '单位',
+                      width: 80,
+                      value: (it) => names.unit(it.unitId),
+                    ),
+                    MasterColumnDef(
+                      key: 'stockPlace',
+                      label: '库位号',
+                      width: 90,
+                      value: (it) =>
+                          names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                    ),
+                    MasterColumnDef(
+                      key: 'qty',
+                      label: '数量',
+                      width: 90,
+                      type: 'number',
+                      value: (it) => it.qty?.toStringAsFixed(2),
+                    ),
+                    MasterColumnDef(
+                      key: 'price',
+                      label: '单价',
+                      width: 120,
+                      type: 'money',
+                      value: (it) =>
+                          masked ? '***' : it.price?.toStringAsFixed(2),
+                    ),
+                    MasterColumnDef(
+                      key: 'amount',
+                      label: '金额',
+                      width: 100,
+                      type: 'money',
+                      value: (it) => masked
+                          ? '***'
+                          : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(
+                              2,
+                            ),
+                    ),
+                    MasterColumnDef(
+                      key: 'remark',
+                      label: '备注',
+                      width: 160,
+                      value: (it) =>
+                          (it.remark?.isNotEmpty ?? false) ? it.remark : null,
+                    ),
+                  ],
+                  items: items,
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  emptyMessage: '(无明细)',
                 ),
-                cellBuilder: (_, it) => UtenGoodsAttributeCell(
-                  salesGoodsCodeLabel(
-                    it,
-                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
-                  ),
-                ),
-              ),
-              MasterColumnDef(
-                key: 'colorName',
-                label: '颜色',
-                width: 96,
-                value: (it) => names.color(it.colorId),
-              ),
-              MasterColumnDef(
-                key: 'unitName',
-                label: '单位',
-                width: 80,
-                value: (it) => names.unit(it.unitId),
-              ),
-              MasterColumnDef(
-                key: 'stockPlace',
-                label: '库位号',
-                width: 90,
-                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
-              ),
-              MasterColumnDef(
-                key: 'qty',
-                label: '数量',
-                width: 90,
-                type: 'number',
-                value: (it) => it.qty?.toStringAsFixed(2),
-              ),
-              MasterColumnDef(
-                key: 'price',
-                label: '单价',
-                width: 120,
-                type: 'money',
-                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
-              ),
-              MasterColumnDef(
-                key: 'amount',
-                label: '金额',
-                width: 100,
-                type: 'money',
-                value: (it) => masked
-                    ? '***'
-                    : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
-              ),
-              MasterColumnDef(
-                key: 'remark',
-                label: '备注',
-                width: 160,
-                value: (it) =>
-                    (it.remark?.isNotEmpty ?? false) ? it.remark : null,
-              ),
-            ],
-            items: items,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            emptyMessage: '(无明细)',
-          ),
         ),
       ],
     );

@@ -374,13 +374,229 @@ void main() {
     expect(find.textContaining('请先勾选要报工的明细行'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'reopening the same task uses each latest partial-report remainder',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final authoritativeSource = <String, dynamic>{
+        'plannedQty': 2000,
+        'executionSegmentSalesAllocationId': 'allocation-1',
+      };
+      final sourceRequests = <RequestOptions>[];
+      final api = _api(
+        sourceOverrides: authoritativeSource,
+        onSourceRequest: sourceRequests.add,
+      );
+      var produced = 0;
+      for (final batchQty in [500, 700, 800]) {
+        final remaining = 2000 - produced;
+        authoritativeSource.addAll({
+          'producedQty': produced,
+          'remainingPlanQty': remaining,
+          'maxReportQty': remaining,
+        });
+        // Each server snapshot represents another visit from the workshop task
+        // after the previous batch was approved; local quantity edits are not
+        // carried into this new report.
+        await tester.pumpWidget(
+          ProviderScope(
+            key: ValueKey(produced),
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              departmentRepositoryProvider.overrideWithValue(
+                _FakeDepartmentRepository(),
+              ),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+              productionDailyReportRepositoryProvider.overrideWithValue(
+                ProductionDailyReportRepository(api),
+              ),
+              employeeRepositoryProvider.overrideWithValue(
+                _FakeEmployeeRepository(),
+              ),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+            ],
+            child: const MaterialApp(
+              home: ProductionDailyReportEditPage(
+                initialExecutionSegmentId: 'segment-1',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
+          find.byType(UtenEditableGrid<DailyGridRow>),
+        );
+        final row = grid.controller.rows.single;
+        expect(row.qty.text, '$remaining');
+        expect(row.maxReportQty, remaining);
+        expect(row.remainingPlanQty, remaining);
+        expect(row.executionSegmentId, 'segment-1');
+        expect(row.executionSegmentSalesAllocationId, 'allocation-1');
+        expect(row.salesOrderItemId, 'order-item-1');
+        expect(row.goods?.id, 'goods-1');
+        expect(find.text('成品灯'), findsOneWidget);
+        expect(find.text('装配第一车间'), findsOneWidget);
+        expect(find.text('选择报工子任务'), findsNothing);
+        row.qty.text = '$batchQty';
+        await tester.pumpAndSettle();
+        expect(
+          row.qty.text,
+          '$batchQty',
+          reason: 'keep the explicit partial quantity',
+        );
+        expect(row.isFinal, isFalse);
+        expect(tester.takeException(), isNull);
+        produced += batchQty;
+      }
+      expect(sourceRequests, hasLength(3));
+      expect(
+        sourceRequests.every(
+          (request) =>
+              request.queryParameters['executionSegmentId'] == 'segment-1',
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  for (final availableQty in [1000, 750]) {
+    testWidgets(
+      'partially reported task prefills unallocated goods and available remainder $availableQty',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final sourceRequests = <RequestOptions>[];
+        Map<String, dynamic>? saved;
+        final api = _api(
+          sourceOverrides: {
+            'plannedQty': 2000,
+            'producedQty': 1000,
+            'remainingPlanQty': availableQty,
+            'maxReportQty': availableQty,
+            'executionSegmentSalesAllocationId': null,
+            'orderItemId': null,
+            'orderNo': null,
+            'orderQty': null,
+            'clientName': null,
+          },
+          onSourceRequest: sourceRequests.add,
+          onCreate: (body) => saved = body,
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              departmentRepositoryProvider.overrideWithValue(
+                _FakeDepartmentRepository(),
+              ),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+              productionDailyReportRepositoryProvider.overrideWithValue(
+                ProductionDailyReportRepository(api),
+              ),
+              employeeRepositoryProvider.overrideWithValue(
+                _FakeEmployeeRepository(),
+              ),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+            ],
+            child: const MaterialApp(
+              home: ProductionDailyReportEditPage(
+                initialExecutionSegmentId: 'segment-1',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(sourceRequests, hasLength(1));
+        expect(sourceRequests.single.queryParameters, {
+          'page': 1,
+          'size': 2,
+          'executionSegmentId': 'segment-1',
+        });
+        final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
+          find.byType(UtenEditableGrid<DailyGridRow>),
+        );
+        final row = grid.controller.rows.single;
+        expect(row.executionSegmentId, 'segment-1');
+        expect(row.executionSegmentSalesAllocationId, isNull);
+        expect(row.salesOrderItemId, isNull);
+        expect(row.salesOrderNo, isNull);
+        expect(row.clientName, isNull);
+        expect(row.goods?.id, 'goods-1');
+        expect(row.goods?.code, 'P-001');
+        expect(row.goods?.name, '成品灯');
+        expect(row.qty.text, '$availableQty');
+        expect(row.maxReportQty, availableQty);
+        // An outstanding draft may reserve 250, but only approved reports
+        // reduce the task's remaining completion quantity.
+        expect(row.remainingPlanQty, 1000);
+        expect(row.isFinal, isFalse);
+        expect(find.text('选择报工子任务'), findsNothing);
+        expect(find.text('成品灯'), findsOneWidget);
+        expect(find.text('装配第一车间'), findsOneWidget);
+        expect(
+          tester
+              .widget<UtenButton>(find.byKey(const ValueKey('uten-edit-save')))
+              .onPressed,
+          isNotNull,
+        );
+        await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+        await tester.pumpAndSettle();
+        expect(saved, isNotNull);
+        expect(saved!['departmentId'], 'workshop');
+        expect(saved!['workshopName'], '装配第一车间');
+        final items = saved!['items'] as List;
+        expect(items, hasLength(1));
+        expect(items.single, {
+          'goodsId': 'goods-1',
+          'qty': availableQty,
+          'unitId': 'unit-1',
+          'unitRate': 1,
+          'planItemId': 'plan-item-1',
+          'executionSegmentId': 'segment-1',
+          'planNo': 'SJ-001',
+        });
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
 
-ApiClient _api() {
+ApiClient _api({
+  Map<String, dynamic> sourceOverrides = const {},
+  void Function(RequestOptions)? onSourceRequest,
+  void Function(Map<String, dynamic>)? onCreate,
+}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) {
+        if (request.path.endsWith('/reportable-plan-lines')) {
+          onSourceRequest?.call(request);
+        }
+        if (request.method == 'POST' &&
+            request.path.endsWith('/daily-reports') &&
+            onCreate != null) {
+          onCreate(Map<String, dynamic>.from(request.data as Map));
+          handler.reject(
+            DioException(
+              requestOptions: request,
+              type: DioExceptionType.connectionError,
+            ),
+          );
+          return;
+        }
         final data =
             request.path.endsWith(
               '/production/daily-reports/reportable-plan-lines',
@@ -404,6 +620,7 @@ ApiClient _api() {
                     'orderNo': 'SO-001',
                     'departmentId': 'workshop',
                     'workshopName': '装配第一车间',
+                    ...sourceOverrides,
                   },
                 ],
                 'page': 1,

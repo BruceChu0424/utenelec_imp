@@ -804,7 +804,7 @@ class _FinanceProcurementApprovalTasksPageState
       value: (task) => task.attempt?.toString() ?? '—',
     ),
     // 批准后改量（2026-09-05）：改过数量的任务显示浅黄底徽标，
-    // 提醒财务在审核详情先看「修改清单」（照销售确认列表样式）。
+    // 改量与退回重提都提示财务查看审核详情中的整行前后对比。
     MasterColumnDef(
       key: 'status',
       label: '状态',
@@ -813,8 +813,11 @@ class _FinanceProcurementApprovalTasksPageState
           ? AppLocalizations.of(
               context,
             ).procurementApprovalStatusChanged(task.changeCount)
+          : (task.attempt ?? 1) > 1
+          ? '重新提交待审核'
           : AppLocalizations.of(context).procurementApprovalStatusPending,
-      cellColor: (context, task) => task.changeCount > 0
+      cellColor: (context, task) =>
+          task.changeCount > 0 || (task.attempt ?? 1) > 1
           ? (Theme.of(context).brightness == Brightness.dark
                 ? UtenColors.warning.withValues(alpha: 0.18)
                 : UtenColors.warningBg)

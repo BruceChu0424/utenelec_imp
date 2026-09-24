@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,49 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  for (final ledger in FinanceAssetLedger.values) {
+    testWidgets(
+      '${ledger.name} resubmission identifies the modification in the page header',
+      (tester) async {
+        final previous = {
+          'schemaVersion': 1,
+          'name': '装配设备',
+          'code': 'ZC-001',
+          'usefulMonths': 12,
+          if (ledger == FinanceAssetLedger.fixedAsset)
+            'originalValue': '100.00'
+          else
+            'totalAmount': '100.00',
+        };
+        await _pump(
+          tester,
+          _AssetFileApi(
+            status: 'PENDING_APPROVAL',
+            editAllowed: false,
+            reviewRevisions: [
+              {
+                'workflowType': 'RECOGNITION',
+                'resubmission': true,
+                'previousSnapshot': jsonEncode(previous),
+                'submissionSnapshot': jsonEncode({
+                  ...previous,
+                  'usefulMonths': 24,
+                }),
+              },
+            ],
+          ),
+          ledger: ledger,
+        );
+        expect(
+          find.text(
+            ledger == FinanceAssetLedger.fixedAsset ? '固定资产修改' : '待摊费用修改',
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final ledger in FinanceAssetLedger.values) {
     testWidgets(
       '${ledger.name} keeps references and binds files to the actual record',
@@ -128,11 +172,15 @@ Future<void> _pump(
 }
 
 class _AssetFileApi extends ApiClient {
-  _AssetFileApi({this.status = 'DRAFT', this.editAllowed = true})
-    : super(Dio());
+  _AssetFileApi({
+    this.status = 'DRAFT',
+    this.editAllowed = true,
+    this.reviewRevisions = const [],
+  }) : super(Dio());
   static const id = 'ff9c8a54-dad9-410b-90ef-55e19f7bb8f1';
   final String status;
   final bool editAllowed;
+  final List<Map<String, dynamic>> reviewRevisions;
   int files = 0;
   @override
   Future<Map<String, dynamic>> get(
@@ -153,6 +201,7 @@ class _AssetFileApi extends ApiClient {
     'schedule': <Object>[],
     'approvalSteps': <Object>[],
     'events': <Object>[],
+    'reviewRevisions': reviewRevisions,
   };
   @override
   Future<List<Map<String, dynamic>>> getList(

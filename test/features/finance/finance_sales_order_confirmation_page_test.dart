@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'dart:async';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
@@ -590,39 +591,61 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('等待销售受控修订并重新审核'), findsOneWidget);
+    expect(find.text('已驳回 · 待销售修改'), findsOneWidget);
     expect(find.byKey(const Key('finance-review-confirm')), findsNothing);
     expect(find.byKey(const Key('finance-review-reject')), findsNothing);
   });
 
-  testWidgets('确认后改量的审核页展示修改清单（以前→现在）', (tester) async {
+  testWidgets('确认后只改数量也显示完整旧行划线和新行，保留审核操作', (tester) async {
     await _pumpReview(
       tester,
       const SalesOrderFinanceReview(
         orderId: 'order-changed',
         billNo: 'XD-CHANGED',
-        qtyChanges: [
-          SalesOrderFinanceQtyChange(
-            orderItemId: 'item-1',
-            goodsCode: 'QTY-RC-001',
-            goodsName: '改量复核测试货品',
-            unitName: '个',
-            oldQty: '10',
-            newQty: '6',
-            changedByName: '销售员',
-          ),
-        ],
+        revisionDiff: SalesOrderRevisionDiff(
+          beforeItems: [
+            SalesOrderRevisionLine(
+              itemId: 'item-1',
+              goodsCode: 'QTY-RC-001',
+              goodsName: '改量复核测试货品',
+              values: {'数量': '10', '单位': '个', '单价': '5', '原币金额': '50'},
+            ),
+          ],
+          afterItems: [
+            SalesOrderRevisionLine(
+              itemId: 'item-1',
+              goodsCode: 'QTY-RC-001',
+              goodsName: '改量复核测试货品',
+              values: {'数量': '6', '单位': '个', '单价': '5', '原币金额': '30'},
+            ),
+          ],
+          changedItemIds: {'item-1'},
+          headerChanges: [],
+        ),
       ),
     );
-
-    expect(find.textContaining('XD-CHANGED'), findsWidgets);
-    expect(
-      find.byKey(const Key('sales-order-finance-qty-changes')),
-      findsOneWidget,
+    expect(find.text('修改后待复审'), findsOneWidget);
+    expect(find.text('销售订单修改审核'), findsOneWidget);
+    final heading = tester.widget<Text>(
+      find.byKey(const Key('sales-order-revision-heading')),
     );
-    expect(find.textContaining('改量 1 处'), findsOneWidget);
-    expect(find.text('以前 10 个'), findsOneWidget);
-    expect(find.text('现在 6 个'), findsOneWidget);
+    expect(heading.data, '销售订单修改');
+    expect(heading.style!.fontWeight, FontWeight.w800);
+    expect(find.byKey(const Key('sales-order-revision-table')), findsOneWidget);
+    final diff = tester.widget<UtenRevisionTable<SalesOrderRevisionLine>>(
+      find.byType(UtenRevisionTable<SalesOrderRevisionLine>),
+    );
+    expect(diff.rows.map((row) => row.kind), [
+      UtenRevisionKind.removed,
+      UtenRevisionKind.added,
+    ]);
+    expect(diff.rows.map((row) => row.value.values['数量']), ['10', '6']);
+    expect(diff.rows.map((row) => row.value.goodsName), [
+      '改量复核测试货品',
+      '改量复核测试货品',
+    ]);
+    expect(find.byType(UtenRevisionStrike), findsOneWidget);
+    expect(find.byKey(const Key('finance-review-confirm')), findsOneWidget);
   });
 
   testWidgets('已确认订单深链显示真实确认状态', (tester) async {

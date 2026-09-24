@@ -369,7 +369,13 @@ public class ProductionDailyReportService {
         }
         lockPlanItems(resolvedPlanItems.values());
         Map<UUID, List<PlanOrderItemLink>> lockedLinks =
-                lockPlanLinkGraph(resolvedPlanItems.values(), true);
+                lockPlanLinkGraph(resolvedPlanItems.values(), true,
+                        items.stream().map(ProductionDailyReportItem::getSalesOrderItemId)
+                                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet()),
+                        items.stream().filter(item -> item.getExecutionSegmentId() == null
+                                        && item.getSalesOrderItemId() == null)
+                                .map(item -> resolvedPlanItems.get(item.getId()))
+                                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
         sourceGuard.verifyUnchanged();
         for (ProductionDailyReportItem it : items) {
             UUID planItemId = resolvedPlanItems.get(it.getId());
@@ -384,11 +390,13 @@ public class ProductionDailyReportService {
             }
             em.createNativeQuery("UPDATE production_plan_items SET fqty = COALESCE(fqty,0) + :q WHERE id = :id")
                     .setParameter("q", qty).setParameter("id", planItemId).executeUpdate();
-            distributeProduced(
-                    planItemId,
-                    it.getExecutionSegmentSalesAllocationId(),
-                    it.getSalesOrderItemId(), qty, +1,
-                    lockedLinks.getOrDefault(planItemId, List.of()));
+            if (!isInternalExecutionReport(it)) {
+                distributeProduced(
+                        planItemId,
+                        it.getExecutionSegmentSalesAllocationId(),
+                        it.getSalesOrderItemId(), qty, +1,
+                        lockedLinks.getOrDefault(planItemId, List.of()));
+            }
             byPlan.computeIfAbsent((UUID) pi[1], k -> new ArrayList<>()).add(it);
             if (Boolean.TRUE.equals(it.isFinal()) && !finalPlanItemIds.contains(planItemId)) {
                 finalPlanItemIds.add(planItemId);
@@ -536,7 +544,7 @@ public class ProductionDailyReportService {
             }
             List<PlanOrderItemLink> planLinks =
                     lockedLinks.getOrDefault(planItemId, List.of());
-            if (qty.signum() > 0) {
+            if (qty.signum() > 0 && !isInternalExecutionReport(it)) {
                 distributeProduced(
                         planItemId,
                         it.getExecutionSegmentSalesAllocationId(),
@@ -626,7 +634,7 @@ public class ProductionDailyReportService {
     /** 计划行快照：正向报工拒绝终态计划；红冲仍允许读取终态并逆向清理。 */
     private Object[] planItemRow(UUID planItemId, boolean positiveWrite) {
         String terminalGate = positiveWrite
-                ? " AND p.status = 1 AND p.is_stopped = false AND p.is_canceled = false"
+                ? " AND p.status = 1 AND p.is_stopped = false AND p.is_canceled = false AND p.is_closed = false"
                 : "";
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT i.id, i.plan_id, i.qty, COALESCE(i.fqty,0), i.goods_id, i.color_id, i.unit_id,
@@ -800,6 +808,13 @@ public class ProductionDailyReportService {
      */
     private Map<UUID, List<PlanOrderItemLink>> lockPlanLinkGraph(
             java.util.Collection<UUID> requestedPlanItemIds, boolean positiveWrite) {
+        return lockPlanLinkGraph(requestedPlanItemIds, positiveWrite, null, null);
+    }
+
+    private Map<UUID, List<PlanOrderItemLink>> lockPlanLinkGraph(
+            java.util.Collection<UUID> requestedPlanItemIds, boolean positiveWrite,
+            java.util.Set<UUID> salesRequiredOrderItemIds,
+            java.util.Set<UUID> legacyRequiredPlanItemIds) {
         // 构造时即滤除 null：TreeSet 基于 TreeMap，其 add/remove null 在 Java 21 必抛 NPE
         // （此前对含 null 的集合 new TreeSet<>() 构造或随后 remove(null) 都会崩 → 任何日报审核都 NPE，全链断）。
         TreeSet<UUID> planItemIds = requestedPlanItemIds == null
@@ -833,7 +848,10 @@ public class ProductionDailyReportService {
         }
         if (snapshots.isEmpty()) return Map.of();
 
-        lockSalesTargets(snapshots, positiveWrite);
+        // Public stock belongs to the execution task, so a completed customer
+        // order must not prevent producing the independently approved surplus.
+        // We still lock and validate the original graph without rewriting it.
+        lockSalesTargets(snapshots, positiveWrite, salesRequiredOrderItemIds, legacyRequiredPlanItemIds);
 
         List<UUID> expectedIds = snapshots.stream()
                 .map(PlanOrderItemLink::getId).toList();
@@ -892,12 +910,21 @@ public class ProductionDailyReportService {
      * 红冲不调用本门槛，终态订单仍可逆向清理。
      */
     private void lockSalesTargets(
-            List<PlanOrderItemLink> targets, boolean positiveWrite) {
+            List<PlanOrderItemLink> targets, boolean positiveWrite,
+            java.util.Set<UUID> salesRequiredOrderItemIds,
+            java.util.Set<UUID> legacyRequiredPlanItemIds) {
         List<UUID> orderItemIds = targets.stream()
                 .map(PlanOrderItemLink::getOrderItemId)
                 .distinct()
                 .sorted()
                 .toList();
+        java.util.Set<UUID> requiredOrderItemIds = targets.stream()
+                .filter(link -> salesRequiredOrderItemIds == null
+                        || salesRequiredOrderItemIds.contains(link.getOrderItemId())
+                        || (legacyRequiredPlanItemIds != null
+                            && legacyRequiredPlanItemIds.contains(link.getPlanItemId())))
+                .map(PlanOrderItemLink::getOrderItemId)
+                .collect(java.util.stream.Collectors.toSet());
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT soi.id, o.id, o.status, o.is_stopped, o.is_closed,
                        o.is_deleted, soi.is_deleted, COALESCE(soi.chain_status,0)
@@ -913,7 +940,8 @@ public class ProductionDailyReportService {
         for (Object[] row : rows) {
             Short status = row[2] == null ? null : ((Number) row[2]).shortValue();
             int chainStatus = ((Number) row[7]).intValue();
-            if (positiveWrite && (status == null || status != STATUS_APPROVED
+            if (positiveWrite && requiredOrderItemIds.contains((UUID) row[0])
+                    && (status == null || status != STATUS_APPROVED
                     || Boolean.TRUE.equals(row[3])
                     || Boolean.TRUE.equals(row[4])
                     || Boolean.TRUE.equals(row[5])
@@ -925,6 +953,13 @@ public class ProductionDailyReportService {
                         "正向报工关联的销售订单须有效，且订单行必须处于未发货的生产阶段");
             }
         }
+    }
+
+    /** The execution guard has proved this line's separate internal quota. */
+    static boolean isInternalExecutionReport(ProductionDailyReportItem item) {
+        return item.getExecutionSegmentId() != null
+                && item.getExecutionSegmentSalesAllocationId() == null
+                && item.getSalesOrderItemId() == null;
     }
 
     /**

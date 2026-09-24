@@ -458,6 +458,94 @@ void main() {
     ]);
   });
 
+  testWidgets('仅顶层下单数从2000改3000：待下层的自制中间件及多层子件自动选中', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: _withConfirmedMakeSubtree,
+      defaultWorkshops: _workshopDefaultsFor(const [
+        'g-m-root',
+        'g-m-hv5g001',
+        'g-m-nested',
+      ]),
+      preview: (data, typed) {
+        final quantity = typed['m-root']!;
+        for (final raw in data['flatMaterials'] as List) {
+          final material = raw as Map<String, dynamic>;
+          if (material['materialLineId'] == 'm-root') continue;
+          for (final field in const [
+            'requiredQty',
+            'shortageQty',
+            'demandSupplyGapQty',
+            'additionalSupplyRecommendedQty',
+            'netShortageQty',
+          ]) {
+            material[field] = quantity;
+          }
+        }
+        return data;
+      },
+    );
+    for (final line in const ['m-hv5g001', 'm-nested', 'm-leaf']) {
+      expect(_qtyText(tester, _orderQty(line)), '2000');
+      expect(_rowChecked(tester, line), isFalse);
+    }
+
+    // 只操作顶层，未触碰中间件数量或任何复选框。
+    await tester.enterText(_orderQty('m-root'), '3000');
+    await tester.pump();
+    await _settleRebuild(tester);
+    expect(
+      tester.widget<Checkbox>(_productCheckbox('product-1')).value,
+      isTrue,
+    );
+    for (final line in const ['m-hv5g001', 'm-nested', 'm-leaf']) {
+      expect(_qtyText(tester, _orderQty(line)), '3000');
+      expect(_rowChecked(tester, line), isTrue, reason: '$line 应随顶层自动勾选');
+    }
+    expect(find.text('下单(4)'), findsOneWidget);
+
+    await _settlePreview(tester);
+    expect(previews.single['typedOutputs'], [
+      {'materialLineId': 'm-root', 'qty': 3000.0},
+    ]);
+    expect(
+      tester.widget<Checkbox>(_productCheckbox('product-1')).value,
+      isTrue,
+    );
+    for (final line in const ['m-hv5g001', 'm-nested', 'm-leaf']) {
+      expect(_qtyText(tester, _orderQty(line)), '3000');
+      expect(_rowChecked(tester, line), isTrue, reason: '$line 预览后应保持勾选');
+    }
+    expect(find.text('下单(4)'), findsOneWidget);
+  });
+
+  testWidgets('仅顶层改数且第一层父节点为空串：自制中间件应自动选中', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        _withConfirmedMakeSubtree(data);
+        _fixtureMaterial(data, 'm-hv5g001')['parentNodeKey'] = '';
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const [
+        'g-m-root',
+        'g-m-hv5g001',
+        'g-m-nested',
+      ]),
+      preview: _previewRootOnlySubtree,
+    );
+    await tester.enterText(_orderQty('m-root'), '3000');
+    await tester.pump();
+    await _settleRebuild(tester);
+    expect(_qtyText(tester, _orderQty('m-hv5g001')), '3000');
+    expect(_rowChecked(tester, 'm-hv5g001'), isTrue);
+    await _settlePreview(tester);
+    expect(previews, hasLength(1));
+    expect(_rowChecked(tester, 'm-hv5g001'), isTrue);
+  });
+
   testWidgets('数量填少了 / 填错了当场冒红，改对了红框就消失；父行改大让子行缺了也冒红', (tester) async {
     await _pump(tester);
     // 自制外壳：还需安排 400，预填 400 → 不红。
@@ -1203,6 +1291,11 @@ Future<void> _pump(
   bool overSupply = false,
   Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
   Map<String, dynamic> Function(Map<String, dynamic> data)? afterWrite,
+  Map<String, dynamic> Function(
+    Map<String, dynamic> data,
+    Map<String, double> typed,
+  )?
+  preview,
   List<Map<String, dynamic>> defaultWorkshops = const [],
   // 真下达 / 通知在服务端要跑几秒; 给假后端一个延迟, 段间的 300ms 去抖才有机会露馅。
   int delayMs = 0,
@@ -1335,7 +1428,7 @@ Future<void> _pump(
               product['canSchedule'] = remaining > 0;
             }
           }
-          result = scaled;
+          result = preview?.call(scaled, typed) ?? scaled;
         } else if (request.path.endsWith('/issue-plans')) {
           if (await _rejectIfConfigured(request, handler, failOn, delayMs)) {
             return;
@@ -1616,6 +1709,84 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
     },
   ],
 };
+
+/// 已确认路线、零库存且完全未下达的四层树，复现仅顶层填数的正常操作。
+Map<String, dynamic> _previewRootOnlySubtree(
+  Map<String, dynamic> data,
+  Map<String, double> typed,
+) {
+  final requested = typed['m-root'] ?? 2000;
+  final quantity = requested > 2000 ? requested : 2000.0;
+  for (final raw in data['flatMaterials'] as List) {
+    final material = raw as Map<String, dynamic>;
+    if (material['materialLineId'] == 'm-root') continue;
+    final issued = (material['downstreamReferences'] as List).fold<double>(
+      0,
+      (sum, raw) => sum + ((raw as Map)['allocatedQty'] as num).toDouble(),
+    );
+    final remaining = quantity - issued;
+    material['requiredQty'] = quantity;
+    material['shortageQty'] = quantity;
+    material['demandSupplyGapQty'] = quantity;
+    material['additionalSupplyRecommendedQty'] = remaining > 0 ? remaining : 0.0;
+    material['netShortageQty'] = remaining > 0 ? remaining : 0.0;
+  }
+  return data;
+}
+
+/// 已确认路线、零库存且完全未下达的四层树，复现仅顶层填数的正常操作。
+Map<String, dynamic> _withConfirmedMakeSubtree(Map<String, dynamic> data) {
+  (data['allowedActions'] as List).add('GENERATE_PLAN');
+  final product = (data['products'] as List).single as Map<String, dynamic>;
+  product['requestedQty'] = 2000;
+  product['remainingQty'] = 2000;
+  product['maxSchedulableQty'] = 2000;
+  final materials = [
+    _material(
+      line: 'm-root',
+      name: '顶层插座',
+      confirmed: 'MAKE',
+      netShortageQty: 2000,
+      nodeRole: 'ROOT_SUPPLY',
+      level: 0,
+      stockQty: 0,
+    ),
+    _material(
+      line: 'm-hv5g001',
+      name: 'HV5G001自制中间件',
+      confirmed: 'MAKE',
+      netShortageQty: 2000,
+      stockQty: 0,
+    )..['lowerLevelPending'] = true,
+    _material(
+      line: 'm-nested',
+      name: '中间件的自制子件',
+      confirmed: 'MAKE',
+      netShortageQty: 2000,
+      parentLine: 'm-hv5g001',
+      level: 2,
+      stockQty: 0,
+    )..['lowerLevelPending'] = true,
+    _material(
+      line: 'm-leaf',
+      name: '最下层采购件',
+      confirmed: 'BUY',
+      netShortageQty: 2000,
+      parentLine: 'm-nested',
+      level: 3,
+      stockQty: 0,
+    ),
+  ];
+  for (final material in materials) {
+    material['sourceRequiredQty'] = 2000;
+    material['requiredQty'] = 2000;
+    material['shortageQty'] = 2000;
+    material['demandSupplyGapQty'] = 2000;
+  }
+  data['flatMaterials'] = materials;
+  data['supplyActions'] = <Object>[];
+  return data;
+}
 
 /// 已排满的自制父件(锚点 1000/1000) → 已建前置自制任务且**多下过**的委外子件(锚点需求 1000、
 /// 计划 1400, 发外申请 1000) → 它的自制子件(没下过)。父件追加时子件按锚点计划 1400 算覆盖。

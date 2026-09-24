@@ -25,6 +25,7 @@ import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../widgets/arrival_qty_revision_table.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
@@ -462,30 +463,35 @@ class _FinanceArrivalExceptionDetailPageState
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('再次确认财务决定'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const UtenReviewerResponsibilityNotice(
-              actionLabel: '超量到货财务审批',
-              description: '确认后，系统将以此登录员工记录本次超量到货财务决定责任。',
+        content: SizedBox(
+          width: 920,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '超量到货财务审批',
+                  description: '本次决定将记录当前审核员。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  decision.label,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                ArrivalQtyRevisionTable(
+                  task: task,
+                  proposedQty: proposedAccepted,
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  '预计退回供应商：${procurementQty(proposedReturn)} ${task.unitName ?? ''}',
+                ),
+                const Text('预览尚未生效，提交时按最新可接收数量复核。'),
+              ],
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            Text(decision.label, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: UtenSpacing.s12),
-            Text(
-              '预计允许入库：${procurementQty(proposedAccepted)} ${task.unitName ?? ''}',
-            ),
-            Text(
-              '预计退回供应商：${procurementQty(proposedReturn)} ${task.unitName ?? ''}',
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            const Text('金额和最终数量由服务端复核并记录；本页不自行计算权威金额。'),
-            if (task.excessAmountLocal?.isNotEmpty == true) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text('检测时超量金额快照：${task.excessAmountLocal}'),
-            ],
-          ],
+          ),
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -541,7 +547,9 @@ class _FinanceArrivalExceptionDetailPageState
     final task = _task;
     return Scaffold(
       appBar: UtenAppBar(
-        title: '超量到货审批详情',
+        title: task != null && arrivalQtyWasModified(task)
+            ? '收货数量修改'
+            : '超量到货审批详情',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(
             context,
@@ -586,6 +594,10 @@ class _FinanceArrivalExceptionDetailPageState
                         _FinanceStatusBanner(task: task),
                         const SizedBox(height: UtenSpacing.s12),
                         _ArrivalFactsCard(task: task),
+                        if (arrivalQtyHasDecision(task)) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          ArrivalQtyRevisionTable(task: task),
+                        ],
                         if (task.canFinanceDecide) ...[
                           const SizedBox(height: UtenSpacing.s12),
                           _FinanceDecisionPanel(
@@ -731,8 +743,8 @@ class _ArrivalFactsCard extends StatelessWidget {
                   '${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
             ),
             _Fact(label: '检测时单价快照', value: task.unitPrice ?? '—'),
-            _Fact(label: '到货原币金额快照', value: task.declaredAmountOriginal ?? '—'),
-            _Fact(label: '到货本币金额快照', value: task.declaredAmountLocal ?? '—'),
+            _Fact(label: '原申报原币金额', value: task.declaredAmountOriginal ?? '—'),
+            _Fact(label: '原申报本币金额', value: task.declaredAmountLocal ?? '—'),
             _Fact(label: '超量本币金额快照', value: task.excessAmountLocal ?? '—'),
             _Fact(label: '财务审核组', value: task.financeAssigneeName ?? '—'),
             _Fact(label: '仓库登记人', value: task.detectedByEmployeeName ?? '—'),

@@ -49,6 +49,7 @@ public class FinanceAssetWorkflowService {
     private final FinanceAssetLedgerPostingService ledger;
     private final FinanceAssetPeriodService periods;
     private final ObjectMapper objectMapper;
+    private final FinanceAssetReviewRevisionService reviewRevisions;
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
@@ -219,7 +220,9 @@ public class FinanceAssetWorkflowService {
         changed(em.createNativeQuery("UPDATE " + table + " SET lifecycle_status='PENDING_APPROVAL', submitted_at=now(), submitted_by=:actor, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='DRAFT' AND row_version=:version AND is_deleted=false")
                 .setParameter("actor", actor).setParameter("id", id).setParameter("version", locked.version()).executeUpdate());
         approval(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "RECOGNITION", "SUBMIT", null, actor);
-        event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "SUBMITTED", "Submitted for accounting approval", null, null, Map.of(), actor);
+        event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "SUBMITTED", "Submitted for accounting approval", null, null,
+                Map.of("workflow", "RECOGNITION", "reviewRevision", locked.version()+1,
+                        "submissionSnapshot", reviewRevisions.capture(id, deferred)), actor);
         return result(table, id, deferred);
     }
 
@@ -261,7 +264,9 @@ public class FinanceAssetWorkflowService {
                 .setParameter("actor", actor).setParameter("reason", reason.trim()).setParameter("id", id)
                 .setParameter("version", locked.version()).executeUpdate());
         approval(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "RECOGNITION", "REJECT", reason, actor);
-        event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "REJECTED", "Accounting approval rejected", null, reason, Map.of(), actor);
+        event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "REJECTED", "Accounting approval rejected", null, reason,
+                Map.of("workflow", "RECOGNITION", "reviewRevision", locked.version()+1,
+                        "submissionSnapshot", reviewRevisions.capture(id, deferred)), actor);
         return result(table, id, deferred);
     }
 
@@ -344,7 +349,8 @@ public class FinanceAssetWorkflowService {
                 .setParameter("actor", actor).setParameter("id", id).setParameter("version", locked.version()).executeUpdate());
         approval("FIXED_ASSET", id, "DISPOSAL", "SUBMIT", command.reason(), actor);
         event("FIXED_ASSET", id, "DISPOSAL_REQUESTED", "Asset disposal requested", command.effectiveDate(), command.reason(),
-                Map.of("proceedsAmount", command.proceedsAmount().toPlainString(), "evidenceReference", nullToEmpty(command.evidenceReference())), actor);
+                Map.of("proceedsAmount", command.proceedsAmount().toPlainString(), "evidenceReference", nullToEmpty(command.evidenceReference()),
+                        "reviewRevision", locked.version()+1), actor);
         return result("fixed_assets", id, false);
     }
 
@@ -360,7 +366,7 @@ public class FinanceAssetWorkflowService {
                 .setParameter("actor", actor).setParameter("id", id).setParameter("version", locked.version()).executeUpdate());
         approval("DEFERRED_EXPENSE", id, "TERMINATION", "SUBMIT", command.reason(), actor);
         event("DEFERRED_EXPENSE", id, "TERMINATION_REQUESTED", "Deferred-expense termination requested", command.effectiveDate(), command.reason(),
-                Map.of("evidenceReference", nullToEmpty(command.evidenceReference())), actor);
+                Map.of("evidenceReference", nullToEmpty(command.evidenceReference()), "reviewRevision", locked.version()+1), actor);
         return result("deferred_expenses", id, true);
     }
 

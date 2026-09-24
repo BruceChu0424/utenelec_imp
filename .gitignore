@@ -141,3 +141,6 @@ server/legacy_migration/users_names.txt
 
 # 本地可复现性备份哈希（未入库，纯本地）
 /.repro_backup_hash.txt
+
+# Codex 等工具在 server/ 下生成的临时编译参数文件
+server/.codex-*

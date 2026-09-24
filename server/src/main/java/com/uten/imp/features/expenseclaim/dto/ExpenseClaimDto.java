@@ -41,5 +41,6 @@ public record ExpenseClaimDto(
         UUID financeExpenseId,
         List<AttachmentDto> attachments,
         List<ExpenseClaimInvoiceDto> invoices,
-        List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs) {
+        List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
+        String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission) {
 }

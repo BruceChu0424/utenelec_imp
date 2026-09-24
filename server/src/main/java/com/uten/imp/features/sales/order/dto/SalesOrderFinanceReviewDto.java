@@ -64,7 +64,8 @@ public record SalesOrderFinanceReviewDto(
         /** 上次财务确认之后的改量清单（以前→现在；空 = 未修改过或清单已随重新确认归档）。 */
         List<QtyChange> qtyChanges,
         List<com.uten.imp.features.sales.order.SalesOrderRevisionService.FieldChange> commercialChanges,
-        long financeReviewRevision) {
+        long financeReviewRevision,
+        com.uten.imp.features.sales.order.SalesOrderRevisionService.RevisionDiff revisionDiff) {
 
     /**
      * 修改清单行（2026-09-05 确认后改量）：一行一次数量修改，

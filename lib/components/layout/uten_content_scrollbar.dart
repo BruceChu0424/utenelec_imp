@@ -9,10 +9,11 @@
 //  - 滚到底时 thumb 下缘正好贴内容底（视口底上方 bottomInset 处）。
 // controller 驱动（不存在无 controller 时横轴通知污染竖向 thumb 的问题）。
 //
-// 条带整体不吃指针（IgnorePointer）：thumb 命中区会把右缘条带下的内容拖拽/
-// 表格 widget 测试的命中链截走（拖点落在 thumb 上时页面滚不动）。滚动交互
-// 由内容拖拽/滚轮原生承担；条带只负责显示。
+// 只有右缘活动带参与手势竞争：thumb 可拖、轨道可点击翻页，底部让位区透传。
+// 活动带采用 translucent 命中，保留底下 Scrollable 的滚轮信号处理；点击和
+// 拖动则由先命中的条带手势消费，不能穿透触发底下的单元格操作。
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 /// 自绘竖向内容滚动条。覆盖在视口右缘（不占布局空间），[controller] 驱动。
@@ -44,57 +45,208 @@ class UtenContentScrollbar extends StatefulWidget {
 class _UtenContentScrollbarState extends State<UtenContentScrollbar> {
   static const double _thumbWidth = 6;
   static const double _thumbGutter = 3;
+  bool _hovered = false;
+  bool _metricsRefreshScheduled = false;
+  double? _thumbGrabFraction;
+  ScrollPosition? _dragPosition;
 
-  ({double len, double top}) _metrics(ScrollPosition pos, double trackHeight) {
-    final inset = widget.bottomInset.clamp(0, trackHeight);
-    final track = trackHeight - inset;
+  ScrollPosition? get _position {
+    if (!widget.visible || widget.controller.positions.length != 1) return null;
+    final pos = widget.controller.position;
+    if (!pos.hasContentDimensions ||
+        !pos.hasViewportDimension ||
+        !pos.hasPixels ||
+        pos.axis != Axis.vertical ||
+        !pos.minScrollExtent.isFinite ||
+        !pos.maxScrollExtent.isFinite ||
+        pos.maxScrollExtent <= pos.minScrollExtent) {
+      return null;
+    }
+    return pos;
+  }
+
+  Object? get _positionSnapshot {
+    final pos = _position;
+    return pos == null
+        ? null
+        : (
+            pos,
+            pos.pixels,
+            pos.minScrollExtent,
+            pos.maxScrollExtent,
+            pos.viewportDimension,
+            pos.axisDirection,
+          );
+  }
+
+  // ScrollController 不会因 attach 或首次布局的尺寸变化通知。绘制后核对一次，
+  // 使首次显示及窗口/内容尺寸变化无需等待用户先滚动；尺寸稳定后不再请求帧。
+  void _refreshMetricsAfterLayout() {
+    if (_metricsRefreshScheduled) return;
+    _metricsRefreshScheduled = true;
+    final snapshot = _positionSnapshot;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _metricsRefreshScheduled = false;
+      if (mounted && snapshot != _positionSnapshot) setState(() {});
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant UtenContentScrollbar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller || !widget.visible) {
+      _dragPosition = null;
+      _thumbGrabFraction = null;
+      _hovered = false;
+    }
+  }
+
+  ({double length, double top}) _metrics(ScrollPosition pos, double track) {
+    final inset = widget.bottomInset.clamp(0, pos.viewportDimension);
     final viewport = pos.viewportDimension;
-    final max = pos.maxScrollExtent;
-    // 真实内容高（剔除让位空白）与内容可见比例。
-    final contentExtent = (max + viewport - inset).clamp(1, double.infinity);
-    final ratio = (viewport / contentExtent).clamp(0.05, 1.0);
-    final len = track * ratio;
-    final top = max <= 0 ? 0.0 : (track - len) * (pos.pixels / max);
-    return (len: len, top: top);
+    final range = pos.maxScrollExtent - pos.minScrollExtent;
+    // 分子、分母都剔除让位空白。只从总内容中扣除 inset 会使内容略短于
+    // viewport 时比例夹到 1：虽仍有 padding 可滚，thumb 却占满轨道而无法拖动。
+    final contentExtent = (range + viewport - inset).clamp(1, double.infinity);
+    final ratio = ((viewport - inset) / contentExtent).clamp(0.05, 1.0);
+    final length = track * ratio;
+    var fraction = ((pos.pixels - pos.minScrollExtent) / range).clamp(0.0, 1.0);
+    if (pos.axisDirection == AxisDirection.up) fraction = 1 - fraction;
+    return (length: length, top: (track - length) * fraction);
+  }
+
+  void _endDrag() {
+    _thumbGrabFraction = null;
+    if (_dragPosition != null) setState(() => _dragPosition = null);
+  }
+
+  void _page(ScrollPosition pos, int screenDirection) {
+    if (!identical(pos, _position)) return;
+    final direction = pos.axisDirection == AxisDirection.up
+        ? -screenDirection
+        : screenDirection;
+    final target = (pos.pixels + direction * pos.viewportDimension * 0.8).clamp(
+      pos.minScrollExtent,
+      pos.maxScrollExtent,
+    );
+    if (MediaQuery.disableAnimationsOf(context)) {
+      pos.jumpTo(target);
+    } else {
+      pos.animateTo(
+        target,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 条带只负责显示（见文件头）；不吃任何指针。
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: widget.controller,
-        builder: (context, _) {
-          if (!widget.visible) return const SizedBox.shrink();
-          final pos = widget.controller.positions.length == 1
-              ? widget.controller.position
-              : null;
-          if (pos == null ||
-              !pos.hasContentDimensions ||
-              !pos.hasViewportDimension ||
-              pos.maxScrollExtent <= 0) {
-            return const SizedBox.shrink();
-          }
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final m = _metrics(pos, constraints.maxHeight);
-              return CustomPaint(
-                painter: _ThumbPainter(
-                  top: m.top,
-                  length: m.len,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.35,
+    // LayoutBuilder 必须覆盖不可滚动分支：缓存 child 只改变外部约束时，
+    // controller 不通知尺寸变化，仍要重新判断原先隐藏的滚动条是否该出现。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _refreshMetricsAfterLayout();
+        return AnimatedBuilder(
+          animation: widget.controller,
+          builder: (context, _) {
+            _refreshMetricsAfterLayout();
+            final pos = _position;
+            if (pos == null) return const SizedBox.shrink();
+            final height = constraints.maxHeight;
+            if (!height.isFinite) return const SizedBox.shrink();
+            final track = height - widget.bottomInset.clamp(0, height);
+            if (track <= 0) return const SizedBox.shrink();
+            final m = _metrics(pos, track);
+            final dragging = identical(_dragPosition, pos);
+            return Align(
+              alignment: Alignment.topRight,
+              child: SizedBox(
+                width: widget.width,
+                height: track,
+                child: Semantics(
+                  onScrollUp: () => _page(pos, -1),
+                  onScrollDown: () => _page(pos, 1),
+                  child: MouseRegion(
+                    opaque: false,
+                    hitTestBehavior: HitTestBehavior.translucent,
+                    cursor: dragging
+                        ? SystemMouseCursors.grabbing
+                        : SystemMouseCursors.grab,
+                    onEnter: (_) => setState(() => _hovered = true),
+                    onExit: (_) => setState(() => _hovered = false),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      dragStartBehavior: DragStartBehavior.down,
+                      onVerticalDragDown: (details) {
+                        final y = details.localPosition.dy;
+                        _thumbGrabFraction = y >= m.top && y <= m.top + m.length
+                            ? (y - m.top) / m.length
+                            : null;
+                      },
+                      onVerticalDragStart: (_) {
+                        if (_thumbGrabFraction == null ||
+                            !identical(pos, _position)) {
+                          return;
+                        }
+                        pos.jumpTo(pos.pixels);
+                        setState(() => _dragPosition = pos);
+                      },
+                      onVerticalDragUpdate: (details) {
+                        final grab = _thumbGrabFraction;
+                        final travel = track - m.length;
+                        if (grab == null ||
+                            !identical(_dragPosition, _position) ||
+                            !identical(_dragPosition, pos) ||
+                            travel <= 0) {
+                          return;
+                        }
+                        var fraction =
+                            ((details.localPosition.dy - grab * m.length) /
+                                    travel)
+                                .clamp(0.0, 1.0);
+                        if (pos.axisDirection == AxisDirection.up) {
+                          fraction = 1 - fraction;
+                        }
+                        pos.jumpTo(
+                          pos.minScrollExtent +
+                              fraction *
+                                  (pos.maxScrollExtent - pos.minScrollExtent),
+                        );
+                      },
+                      onVerticalDragEnd: (_) => _endDrag(),
+                      onVerticalDragCancel: _endDrag,
+                      onTapUp: (details) {
+                        final y = details.localPosition.dy;
+                        if (y < m.top) {
+                          _page(pos, -1);
+                        } else if (y > m.top + m.length) {
+                          _page(pos, 1);
+                        }
+                      },
+                      child: CustomPaint(
+                        // 前景 painter 不自行命中，translucent 才能把底下的
+                        // Scrollable 留在命中链中，滚轮仍由原有滚动链处理。
+                        foregroundPainter: _ThumbPainter(
+                          top: m.top,
+                          length: m.length,
+                          color: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: dragging ? 0.7 : (_hovered ? 0.55 : 0.35),
+                          ),
+                          thumbWidth: _thumbWidth,
+                          gutter: _thumbGutter,
+                        ),
+                        size: Size(widget.width, track),
+                      ),
+                    ),
                   ),
-                  thumbWidth: _thumbWidth,
-                  gutter: _thumbGutter,
                 ),
-                size: Size(widget.width, constraints.maxHeight),
-              );
-            },
-          );
-        },
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -135,5 +287,7 @@ class _ThumbPainter extends CustomPainter {
   bool shouldRepaint(_ThumbPainter oldDelegate) =>
       oldDelegate.top != top ||
       oldDelegate.length != length ||
-      oldDelegate.color != color;
+      oldDelegate.color != color ||
+      oldDelegate.thumbWidth != thumbWidth ||
+      oldDelegate.gutter != gutter;
 }

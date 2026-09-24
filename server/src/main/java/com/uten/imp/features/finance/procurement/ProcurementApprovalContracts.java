@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public final class ProcurementApprovalContracts {
@@ -134,9 +135,13 @@ public final class ProcurementApprovalContracts {
             int sourceApplicationCount,
             List<QtyChange> qtyChanges,
             List<ReviewLine> items,
+            List<ReviewLine> previousItems,
+            Map<String, Object> headerSnapshot,
+            Map<String, Object> previousHeaderSnapshot,
             List<ReviewHistoryEntry> history) {
         public ApprovalReview {
             items = List.copyOf(items);
+            previousItems = List.copyOf(previousItems);
             history = List.copyOf(history);
             allowedActions = List.copyOf(allowedActions);
             qtyChanges = List.copyOf(qtyChanges);
@@ -165,7 +170,11 @@ public final class ProcurementApprovalContracts {
      * 绝不相加），{@code unitName} 只作显示标签。
      */
     public record ReviewLine(
+            UUID orderItemId,
             int lineNo,
+            UUID goodsId,
+            UUID colorId,
+            UUID sourceItemId,
             String goodsCode,
             String goodsName,
             String colorName,
@@ -177,7 +186,16 @@ public final class ProcurementApprovalContracts {
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal amountOriginal,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal amountLocal,
             LocalDate deliverDate,
-            String sourceDocNo) {
+            String sourceDocNo,
+            String currencyName,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal weight,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal giftQty,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal allowedLossPct,
+            String remark,
+            String sourceApplicationNos,
+            String sourceAllocations,
+            UUID currencyId,
+            boolean displaySnapshotComplete) {
     }
 
     /** 审批历史：按提交轮次展示 提交/通过/驳回 事件、操作人与原因。 */

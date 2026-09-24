@@ -51,10 +51,7 @@ class _HrProfileChangeDetailPageState
     final async = ref.watch(hrProfileChangeDetailProvider(widget.batchId));
 
     return Scaffold(
-      appBar: UtenAppBar(
-        title: l10n.profileChangeDiffTitle,
-        showBackButton: true,
-      ),
+      appBar: const UtenAppBar(title: '员工信息修改', showBackButton: true),
       body: async.when(
         data: (batch) => _buildBody(context, l10n, batch),
         loading: () => const Center(child: CircularProgressIndicator()),

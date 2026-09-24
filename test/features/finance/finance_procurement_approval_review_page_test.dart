@@ -5,6 +5,7 @@
 //  - 非 PENDING / 无动作 case 不渲染底栏（服务端 allowedActions 为准）。
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -110,6 +111,8 @@ Map<String, dynamic> _pendingReviewJson({
   'sourceApplicationCount': 2,
   'items': [
     {
+      'orderItemId': 'order-item-1',
+      'displaySnapshotComplete': true,
       'lineNo': 1,
       'goodsCode': 'G001',
       'goodsName': '铜线',
@@ -217,6 +220,82 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  testWidgets('loss allowance only and cleared header remark remain visible', (
+    tester,
+  ) async {
+    final json = _pendingReviewJson();
+    final original = Map<String, dynamic>.from((json['items'] as List).single);
+    final review = FinanceProcurementApprovalReview.fromJson({
+      ...json,
+      'orderType': 'SUBCONTRACT',
+      'remark': null,
+      'previousHeaderSnapshot': {'remark': '原审批备注'},
+      'headerSnapshot': {'remark': null},
+      'previousItems': [
+        {...original, 'allowedLossPct': '2.50'},
+      ],
+      'items': [
+        {...original, 'allowedLossPct': '3.75'},
+      ],
+    });
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(review));
+    final finder = find.byKey(const Key('procurement-approval-revision-table'));
+    await tester.scrollUntilVisible(
+      finder,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final table = tester
+        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(finder);
+    expect(table.rows.last.changedKeys, {'allowedLossPct'});
+    final column = table.columns.singleWhere(
+      (column) => column.key == 'allowedLossPct',
+    );
+    expect(table.rows.map((row) => column.value(row.value)), ['2.5', '3.75']);
+    expect(find.text('明细对比 · 修改 1 行 · 删除 0 行 · 新增 0 行'), findsOneWidget);
+    expect(find.text('原审批备注'), findsOneWidget);
+    expect(find.text('未填写'), findsOneWidget);
+  });
+
+  testWidgets(
+    'unknown old fields are counted for checking rather than claimed edits',
+    (tester) async {
+      final json = _pendingReviewJson();
+      final original = Map<String, dynamic>.from(
+        (json['items'] as List).single,
+      );
+      final review = FinanceProcurementApprovalReview.fromJson({
+        ...json,
+        'previousHeaderSnapshot': {'billDate': '2026-09-23'},
+        'headerSnapshot': {'billDate': '2026-09-23', 'remark': '新记录'},
+        'previousItems': [
+          {...original, 'displaySnapshotComplete': false},
+        ],
+        'items': [
+          {...original, 'remark': '新记录'},
+        ],
+      });
+      await _pumpReviewPage(tester, _FakeWorkflowRepo(review));
+      final finder = find.byKey(
+        const Key('procurement-approval-revision-table'),
+      );
+      await tester.scrollUntilVisible(
+        finder,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final table = tester
+          .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(finder);
+      expect(table.rows.last.changedKeys, isEmpty);
+      expect(table.rows.last.label, '本次·待核对');
+      expect(
+        find.text('明细对比 · 修改 0 行 · 删除 0 行 · 新增 0 行 · 待核对 1 行'),
+        findsOneWidget,
+      );
+      expect(find.byType(UtenRevisionFields), findsNothing);
+    },
+  );
+
   for (final type in ['PURCHASE', 'SUBCONTRACT']) {
     testWidgets('$type认领失败只读，重试后可审核；续期丢失暂停决定', (tester) async {
       final json = _pendingReviewJson()..['orderType'] = type;
@@ -262,7 +341,7 @@ void main() {
     expect(repository.requestedCaseId, 'case-1');
     expect(find.text('PO-2026-001'), findsOneWidget);
     expect(find.text('采购订货 · 第 2 轮'), findsOneWidget);
-    expect(find.text('待财务审核 · 通过后订货生效并生成仓库预计到货任务'), findsOneWidget);
+    expect(find.text('待财务审核'), findsOneWidget);
     expect(find.text('供应商财务快照 · 供应商A(S-001)'), findsOneWidget);
     expect(find.text('12500.50'), findsOneWidget, reason: '应付余额格式化展示');
     expect(find.text('美元'), findsWidgets);
@@ -375,51 +454,65 @@ void main() {
     expect(find.byKey(const Key('finance-order-review-reject')), findsNothing);
   });
 
-  // 批准后改量（2026-09-05）：有修改清单时渲染「修改清单」卡片（旧行删除线
-  /// + 新值加粗），为空时不渲染。
-  testWidgets('qty changes render a review card only when present', (
-    tester,
-  ) async {
-    final plain = _pendingReview();
-    final withChanges = FinanceProcurementApprovalReview.fromJson({
-      ..._pendingReviewJson(),
-      'qtyChanges': [
-        {
-          'orderItemId': 'order-item-1',
-          'lineNo': 1,
-          'goodsCode': 'G001',
-          'goodsName': '铜线',
-          'colorName': '裸色',
-          'unitName': '公斤',
-          'oldQty': '100',
-          'newQty': '120',
-          'changedByName': '采购张三',
-          'changedAt': '2026-09-05T01:00:00+08:00',
-        },
-      ],
+  for (final type in ['PURCHASE', 'SUBCONTRACT']) {
+    testWidgets('$type quantity revision displays complete old and new rows', (
+      tester,
+    ) async {
+      final json = _pendingReviewJson();
+      final original = Map<String, dynamic>.from(
+        (json['items'] as List).single,
+      );
+      final withChanges = FinanceProcurementApprovalReview.fromJson({
+        ...json,
+        'orderType': type,
+        'previousItems': [original],
+        'items': [
+          {
+            ...original,
+            'qty': '120',
+            'amountOriginal': '12000',
+            'amountLocal': '85200',
+          },
+        ],
+      });
+      await _pumpReviewPage(tester, _FakeWorkflowRepo(withChanges));
+      final finder = find.byKey(
+        const Key('procurement-approval-revision-table'),
+      );
+      await tester.scrollUntilVisible(
+        finder,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final table = tester
+          .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(finder);
+      expect(table.rows.map((row) => row.kind), [
+        UtenRevisionKind.removed,
+        UtenRevisionKind.added,
+      ]);
+      expect(table.rows.map((row) => row.value.qty), ['100', '120']);
+      expect(table.rows.first.changedKeys, isEmpty);
+      expect(table.rows.last.changedKeys, {
+        'qty',
+        'amountOriginal',
+        'amountLocal',
+      });
+      expect(table.rows.map((row) => row.value.amountOriginal), [
+        '10000',
+        '12000',
+      ]);
+      expect(table.rows.every((row) => row.value.goodsName == '铜线'), isTrue);
+      expect(table.rows.every((row) => row.value.unitName == '公斤'), isTrue);
+      expect(find.text('修改后待复核'), findsOneWidget);
+      expect(
+        find.text(type == 'PURCHASE' ? '采购订单修改' : '委外订单修改'),
+        findsOneWidget,
+      );
+      expect(find.text('明细对比 · 修改 1 行 · 删除 0 行 · 新增 0 行'), findsOneWidget);
+      expect(
+        find.byKey(const Key('procurement-approval-qty-changes')),
+        findsNothing,
+      );
     });
-
-    final repository = _FakeWorkflowRepo(withChanges);
-    await _pumpReviewPage(tester, repository);
-
-    expect(
-      find.byKey(const Key('procurement-approval-qty-changes')),
-      findsOneWidget,
-    );
-    expect(find.text('修改清单 · 改量 1 处'), findsOneWidget);
-    expect(find.text('以前 100 公斤'), findsOneWidget);
-    expect(find.text('现在 120 公斤'), findsOneWidget);
-    expect(
-      find.byKey(const Key('procurement-qty-change-order-item-1')),
-      findsOneWidget,
-    );
-
-    // 无修改清单：卡片不渲染。
-    final plainRepository = _FakeWorkflowRepo(plain);
-    await _pumpReviewPage(tester, plainRepository);
-    expect(
-      find.byKey(const Key('procurement-approval-qty-changes')),
-      findsNothing,
-    );
-  });
+  }
 }

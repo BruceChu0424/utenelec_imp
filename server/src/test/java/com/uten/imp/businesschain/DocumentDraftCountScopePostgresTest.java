@@ -267,14 +267,18 @@ class DocumentDraftCountScopePostgresTest {
     /** 财务审批 case: REJECTED 必须带原因与决定人/时间(表 CHECK), PENDING 三者皆空. */
     private void insertApprovalCase(UUID orderId, int attempt, String status, UUID userId, UUID employeeId) {
         boolean decided = "REJECTED".equals(status) || "APPROVED".equals(status);
+        // V691 起提交快照必须带明细(与真实提交同构), 用共用夹具按订单当前内容生成。
+        String submission = db.execute((org.springframework.jdbc.core.ConnectionCallback<String>) connection ->
+                com.uten.imp.support.ProcurementApprovalFixtureSupport.submittedSnapshot(
+                        connection, "PURCHASE", orderId));
         db.update("""
                 insert into procurement_order_approval_cases(
                     id, order_type, order_id, attempt, bill_no_snapshot, submission_snapshot, snapshot_hash,
                     submitted_by_user_id, submitted_by_employee_id, status, rejection_reason,
                     decided_at, decided_by_user_id, decided_by_employee_id)
-                values (gen_random_uuid(), 'PURCHASE', ?, ?, 'CD-SNAPSHOT', '{}'::jsonb, 'snapshot-hash',
+                values (gen_random_uuid(), 'PURCHASE', ?, ?, 'CD-SNAPSHOT', CAST(? AS jsonb), 'snapshot-hash',
                         ?, ?, ?, ?, ?, ?, ?)
-                """, orderId, attempt, userId, employeeId, status,
+                """, orderId, attempt, submission, userId, employeeId, status,
                 "REJECTED".equals(status) ? "test rejection" : null,
                 decided ? java.time.OffsetDateTime.now() : null,
                 decided ? userId : null,

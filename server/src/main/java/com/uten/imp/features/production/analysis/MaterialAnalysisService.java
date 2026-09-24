@@ -870,7 +870,12 @@ public class MaterialAnalysisService {
             current.put(uuid(row[0]) + "|" + string(row[1]),
                     new MaterialDimension(uuid(row[2]), uuid(row[3]), uuid(row[4])));
         }
-        requireExactPegRefreshCompatible(loadExactPegs(analysisId, null), current);
+        List<ExactPegRecord> protectedPegs = new ArrayList<>(loadExactPegs(analysisId, null));
+        for (Object[] row : SubcontractComponentCustodyProjection.held(em, analysisId)) {
+            protectedPegs.add(new ExactPegRecord(uuid(row[0]), uuid(row[1]), uuid(row[2]), string(row[3]),
+                    new MaterialDimension(uuid(row[4]), uuid(row[5]), uuid(row[6])), decimal(row[8]), uuid(row[7])));
+        }
+        requireExactPegRefreshCompatible(protectedPegs, current);
     }
 
     static void requireExactPegRefreshCompatible(
@@ -2300,7 +2305,9 @@ public class MaterialAnalysisService {
         BorrowTuning exactTuning = planExactPegs(exactPegs, nodes, stockAfterSafety,
                 availability.usableByWarehouse())
                 .combinedWith(planFormalCoverage(
-                        formalMaterialCoverage(analysisId, warehouseId), nodes));
+                        formalMaterialCoverage(analysisId, warehouseId), nodes))
+                .combinedWith(planFormalCoverage(
+                        subcontractComponentDraftCoverage(analysisId), nodes));
         // 现货层借用（调货）：存在 ACTIVE 借用记录时，先按当前库存跑一次
         // 无借用的基线投影，据此计算每笔的精确生效量 m（min(申请, 借出方
         // 基线分配, 借入方基线缺口)），再用 cap+secured 重跑主投影：
@@ -2697,48 +2704,7 @@ public class MaterialAnalysisService {
     private Map<String, BigDecimal> loadSubcontractComponentIssuedByNode(
             UUID analysisId) {
         Map<String, BigDecimal> result = new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                        SELECT material.analysis_item_id, material.node_key,
-                               SUM(issued.target_base
-                                   * COALESCE(source.alloc_qty, 0)
-                                   / NULLIF(order_item.qty, 0))::numeric
-                        FROM preplan_supply_action_allocations allocation
-                        JOIN preplan_supply_actions action
-                          ON action.id = allocation.action_id
-                         AND action.analysis_id = :analysisId
-                         AND action.route = 'SUBCONTRACT'
-                         AND action.operation_type = 'SUPPLY'
-                         AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
-                         AND action.status <> 'CANCELLED'
-                        JOIN production_material_analysis_materials material
-                          ON material.id = allocation.analysis_material_id
-                         AND material.active = TRUE
-                        JOIN subcontract_order_item_sources source
-                          ON source.application_item_id = allocation.external_item_id
-                        JOIN subcontract_order_items order_item
-                          ON order_item.id = source.order_item_id
-                         AND COALESCE(order_item.is_deleted, FALSE) = FALSE
-                         AND order_item.qty > 0
-                        JOIN LATERAL (
-                            SELECT COALESCE(SUM(
-                                issue_item.qty * COALESCE(issue_item.unit_rate, 1)
-                                / NULLIF(issue_item.frozen_unit_qty, 0)
-                                * COALESCE(order_item.unit_rate, 1)), 0) AS target_base
-                            FROM subcontract_material_plan_items plan_item
-                            JOIN subcontract_material_issue_items issue_item
-                              ON issue_item.plan_item_id = plan_item.id
-                             AND issue_item.is_deleted = FALSE
-                            JOIN subcontract_material_issues issue
-                              ON issue.id = issue_item.issue_id
-                             AND issue.status = 1 AND issue.is_deleted = FALSE
-                            WHERE plan_item.order_item_id = order_item.id
-                              AND plan_item.flow_mode = 'COMPONENT_OUTBOUND'
-                              AND plan_item.is_deleted = FALSE
-                        ) issued ON issued.target_base > 0
-                        GROUP BY material.analysis_item_id, material.node_key
-                        ORDER BY material.analysis_item_id, material.node_key
-                        """).setParameter("analysisId", analysisId))) {
+        for (Object[] row : SubcontractComponentCustodyProjection.issuedByParent(em, analysisId)) {
             String key = uuid(row[0]) + "|" + string(row[1]);
             result.merge(key, decimal(row[2]), BigDecimal::add);
         }
@@ -3076,6 +3042,14 @@ public class MaterialAnalysisService {
                         .add(reservedFutureByNode.getOrDefault(group+"|"+row[1]+"|"+row[2],BigDecimal.ZERO));
             return new FormalMaterialCoverage(uuid(row[0]),uuid(row[1]),string(row[2]),decimal(row[3]),remainingOutput,group);
         }).toList();
+    }
+
+    /** Draft custody is committed to this exact child, but remains unavailable to other allocations.
+     * Approved issues already reduce the parent-driven child requirement in loadSubcontractComponentIssuedByNode. */
+    private List<FormalMaterialCoverage> subcontractComponentDraftCoverage(UUID analysisId) {
+        return SubcontractComponentCustodyProjection.held(em, analysisId).stream()
+                .map(row -> new FormalMaterialCoverage(uuid(row[0]), uuid(row[2]), string(row[3]), decimal(row[8])))
+                .toList();
     }
 
     /** Qualified final subcontract returns retire prior preparation coverage;
@@ -4117,6 +4091,27 @@ public class MaterialAnalysisService {
         access.requireReadable(header.makerId(), "物料分析不存在", scopeForAnalysis(header));
     }
 
+    private static Map<UUID, BigDecimal> sourceRequiredQuantities(
+            List<SourceLine> sources, List<MaterialRow> materials) {
+        try {
+            return MaterialAnalysisSourceRequirementProjection.project(
+                    sources.stream()
+                            .filter(source -> !SOURCE_MAKE_COMPONENT.equals(source.sourceType())
+                                    && !SOURCE_SUBCONTRACT_MAKE.equals(source.sourceType()))
+                            .map(source -> new MaterialAnalysisSourceRequirementProjection.Source(
+                                    source.analysisItemId(), source.requestedQty(), source.unitRate()))
+                            .toList(),
+                    materials.stream()
+                            .map(row -> new MaterialAnalysisSourceRequirementProjection.Node(
+                                    row.id(), row.analysisItemId(), row.nodeKey(), row.parentNodeKey(),
+                                    row.depth(), row.bomQty(), row.consumptionBasis(),
+                                    row.basisOutputQty(), row.allowPartialPackage()))
+                            .toList());
+        } catch (IllegalArgumentException invalidSourceTree) {
+            throw conflict("原始需求或 BOM 路径不完整，请重新分析后再查看");
+        }
+    }
+
     AnalysisView detailInternal(UUID analysisId, boolean enforceAccess) {
         AnalysisHeader header = readHeader(analysisId);
         if (enforceAccess) {
@@ -4133,6 +4128,8 @@ public class MaterialAnalysisService {
         Map<MaterialNodeIdentity, MaterialRow> materialRowsByNode =
                 materialRows.stream().collect(Collectors.toMap(
                         MaterialRow::nodeIdentity, row -> row));
+        Map<UUID, BigDecimal> sourceRequiredByMaterial =
+                sourceRequiredQuantities(sources, materialRows);
         // 2026-09-05 简化：不再投影「需求已转交自制子任务」——子件只做计划
         // 锚点，物料行保持原位（进度由子件行的计划/执行段展示）。
         Map<MaterialNodeIdentity, DelegatedRequirementOwner> delegatedOwners =
@@ -4150,8 +4147,14 @@ public class MaterialAnalysisService {
                 analysisId, header.warehouseId());
         Set<UUID> participatingWarehouseSet = Set.copyOf(
                 participatingWarehouseIds);
-        Map<WarehouseMaterialDimension, BigDecimal> qualifiedOwned = qualifiedOwnedStock(analysisId,
-                materialRows.stream().map(row -> row.analysisItemId()+"|"+row.nodeKey()).collect(Collectors.toSet()));
+        Map<WarehouseMaterialDimension, BigDecimal> qualifiedOwned = new LinkedHashMap<>(qualifiedOwnedStock(analysisId,
+                materialRows.stream().map(row -> row.analysisItemId()+"|"+row.nodeKey()).collect(Collectors.toSet())));
+        Map<WarehouseMaterialDimension, BigDecimal> componentDraftOwned = new LinkedHashMap<>();
+        for (Object[] row : SubcontractComponentCustodyProjection.held(em, analysisId)) {
+            componentDraftOwned.merge(new WarehouseMaterialDimension(uuid(row[7]),
+                    new MaterialDimension(uuid(row[4]), uuid(row[5]), uuid(row[6]))), decimal(row[8]), BigDecimal::add);
+        }
+        componentDraftOwned.forEach((dimension, qty) -> qualifiedOwned.merge(dimension, qty, BigDecimal::add));
         Set<UUID> operationalWarehouseIds = Set.copyOf(NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT warehouse.id FROM warehouses warehouse
@@ -4161,7 +4164,7 @@ public class MaterialAnalysisService {
         List<WarehouseView> warehouses = warehouses(
                 header.warehouseId(), participatingWarehouseSet);
         Map<MaterialDimension, List<WarehouseBreakdown>> breakdown =
-                warehouseBreakdown(analysisId, materialRows, sharedFuture, qualifiedOwned);
+                warehouseBreakdown(analysisId, materialRows, sharedFuture, qualifiedOwned, componentDraftOwned);
         Map<StockIdentity, BigDecimal> mainOpenSafety = mainWarehouseOpenSafetySupply(
                 header.warehouseId(), materialRows.stream().map(MaterialRow::goodsId).collect(Collectors.toSet()));
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
@@ -4320,7 +4323,7 @@ public class MaterialAnalysisService {
                             plannedOutput,
                             sharedFutureDeductible(
                                     row, subcontractBomParentGoods, soleRowDimensions),
-                            committedPlan);
+                            committedPlan, sourceRequiredByMaterial.get(row.id()));
                 })
                 .toList();
         Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
@@ -5403,7 +5406,7 @@ public class MaterialAnalysisService {
                                ), 0) - COALESCE((
                                    SELECT SUM(CASE
                                        WHEN reservation.release_reason =
-                                            'TRANSFERRED_TO_PLAN' THEN exact.qty
+                                            'TRANSFERRED_TO_PLAN' OR %1$s THEN exact.qty
                                        ELSE GREATEST(reservation.qty
                                            - reservation.consumed_qty
                                            - reservation.released_qty, 0)
@@ -5416,7 +5419,7 @@ public class MaterialAnalysisService {
                                          allocation.id
                                      AND (reservation.status = 0 OR
                                           reservation.release_reason =
-                                            'TRANSFERRED_TO_PLAN')
+                                            'TRANSFERRED_TO_PLAN' OR %1$s)
                                ), 0), 0))::numeric AS allocated_qty
                     FROM preplan_supply_actions action
                     JOIN preplan_supply_action_allocations allocation
@@ -5687,7 +5690,7 @@ public class MaterialAnalysisService {
                 WHERE open_qty > 0
                 GROUP BY goods_id, color_id, unit_id, eta
                 ORDER BY goods_id, color_id NULLS FIRST, unit_id, eta
-                """)
+                """.formatted(SubcontractComponentCustodyProjection.TRANSFERRED_EVIDENCE))
                 .setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId));
         List<InboundLot> inbound = new ArrayList<>();
@@ -6490,7 +6493,8 @@ public class MaterialAnalysisService {
     private Map<MaterialDimension, List<WarehouseBreakdown>> warehouseBreakdown(
             UUID analysisId, List<MaterialRow> materials,
             SharedFutureIndex sharedFuture,
-            Map<WarehouseMaterialDimension,BigDecimal> qualifiedOwned) {
+            Map<WarehouseMaterialDimension,BigDecimal> qualifiedOwned,
+            Map<WarehouseMaterialDimension,BigDecimal> componentDraftOwned) {
         Set<UUID> goodsIds = materials.stream().map(MaterialRow::goodsId)
                 .collect(Collectors.toSet());
         if (goodsIds.isEmpty()) return Map.of();
@@ -6508,10 +6512,12 @@ public class MaterialAnalysisService {
                     uuid(row[0]), uuid(row[1]), uuid(row[2]));
             MaterialRow matching = materialsByDimension.get(dimension);
             if (matching == null) continue;
+            WarehouseMaterialDimension location = new WarehouseMaterialDimension(uuid(row[3]), dimension);
             BigDecimal qualified = qualifiedOwned.getOrDefault(
                     new WarehouseMaterialDimension(uuid(row[3]), matching.dimension()), BigDecimal.ZERO);
             boolean publicAllowed = Boolean.TRUE.equals(row[12]);
-            BigDecimal ownPegged = publicAllowed ? decimal(row[9]) : qualified;
+            BigDecimal ownPegged = publicAllowed
+                    ? decimal(row[9]).add(componentDraftOwned.getOrDefault(location, BigDecimal.ZERO)) : qualified;
             BigDecimal reserved = decimal(row[7]).subtract(ownPegged).max(BigDecimal.ZERO);
             ownPegged = ownPegged.min(decimal(row[6]).subtract(reserved).max(BigDecimal.ZERO));
             BigDecimal publicAvailable = publicAllowed ? decimal(row[8]).max(BigDecimal.ZERO) : BigDecimal.ZERO;
@@ -6524,7 +6530,6 @@ public class MaterialAnalysisService {
                     safetyStock, publicAvailable, openSafety);
             SharedFutureAggregate shared = sharedFuture.overview(
                     uuid(row[3]), matching.dimension());
-            WarehouseMaterialDimension location = new WarehouseMaterialDimension(uuid(row[3]), dimension);
             UUID mainWarehouse = uuid(row[13]);
             MainWarehouseMaterialDimension main = new MainWarehouseMaterialDimension(
                     mainWarehouse == null ? location.warehouseId() : mainWarehouse, dimension);
@@ -6612,6 +6617,9 @@ public class MaterialAnalysisService {
                 .setParameter("warehouseId", warehouseId));
         for (Object[] row : rows) {
             result.put(uuid(row[0]), decimal(row[1]));
+        }
+        for (Object[] row : SubcontractComponentCustodyProjection.held(em, analysisId)) {
+            result.merge(uuid(row[1]), decimal(row[8]), BigDecimal::add);
         }
         return Map.copyOf(result);
     }
@@ -8285,7 +8293,8 @@ public class MaterialAnalysisService {
                             String subcontractOutboundForm,
                             BigDecimal plannedOutputQty,
                             boolean sharedFutureDeductible,
-                            BigDecimal committedPlanQty) {
+                            BigDecimal committedPlanQty,
+                            BigDecimal sourceRequiredQty) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             BigDecimal demandGap = unboundDemandSupplyGap(
@@ -8370,7 +8379,7 @@ public class MaterialAnalysisService {
                     externalFutureCoverageQty, internalCommittedOutputQty,
                     sharedFutureClaimable,
                     plannedOutputQty == null ? BigDecimal.ZERO : plannedOutputQty,
-                    netShortage);
+                    netShortage, sourceRequiredQty);
         }
 
         String actionGroupKey() {

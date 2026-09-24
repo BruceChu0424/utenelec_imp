@@ -432,7 +432,7 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertQuotaAndPlans(c,anchor,"15000",1);
         assertEquals(0,new BigDecimal("15000").compareTo(db.queryForObject(
                 "SELECT sum(qty) FROM production_plan_items WHERE plan_id=?",BigDecimal.class,first.plans().getFirst().planId())));
-        assertEquals(2,count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",first.plans().getFirst().planId()));
+        assertEquals(1,count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",first.plans().getFirst().planId()));
         assertThrows(ApiException.class,()->issue(c,material,"1","source-growth-full",true));
     }
 
@@ -474,14 +474,16 @@ class MaterialWorkshopAnchorEndToEndTest {
         qty("8000",product(admitted,anchor).requestedQty());qty("2000",product(admitted,anchor).remainingQty());
         assertEquals(oldPlans,frozenPlans(c.analysis()));assertEquals(before,nonPlanningFacts(c));
 
-        // ADR-104：两张原计划都没开工, 增额各并进原计划(6000→8000)——计划头与计划包不改写、
-        // 原执行段与原物料需求一字不动, 只多一段与它自己的需求; 全分析仍两张计划。
+        // 两张原计划都未执行：计划头及包不变，原工单与需求保留身份并各增长到 8000。
         Map<UUID,String> oldSegments=new LinkedHashMap<>();
         for(UUID segment:db.queryForList("SELECT s.id FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? ORDER BY s.id",UUID.class,c.analysis()))
-            oldSegments.put(segment,rows("production_execution_segments","id=?",segment));
+            oldSegments.put(segment,db.queryForObject("SELECT segment_code FROM production_execution_segments WHERE id=?",String.class,segment));
         Map<UUID,String> oldDemands=new LinkedHashMap<>();
-        for(UUID demand:db.queryForList("SELECT d.id FROM production_material_demands d JOIN production_plans p ON p.id=d.plan_id WHERE p.material_analysis_id=? ORDER BY d.id",UUID.class,c.analysis()))
-            oldDemands.put(demand,rows("production_material_demands","id=?",demand));
+        Map<UUID,BigDecimal> oldDemandQuantities=new LinkedHashMap<>();
+        for(UUID demand:db.queryForList("SELECT d.id FROM production_material_demands d JOIN production_plans p ON p.id=d.plan_id WHERE p.material_analysis_id=? ORDER BY d.id",UUID.class,c.analysis())) {
+            oldDemands.put(demand,db.queryForObject("SELECT jsonb_build_array(execution_segment_id,goods_id,color_id,unit_id)::text FROM production_material_demands WHERE id=?",String.class,demand));
+            oldDemandQuantities.put(demand,db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
+        }
         var childExtra=issue(c,material,"2000","child-extra",true);
         var rootExtra=issueProduct(c,root,"2000","root-extra");
         assertTrue(childExtra.plans().getFirst().mergedIntoExisting());assertTrue(rootExtra.plans().getFirst().mergedIntoExisting());
@@ -495,11 +497,17 @@ class MaterialWorkshopAnchorEndToEndTest {
             if(key.endsWith("/header")||key.endsWith("/production_planning_packages"))
                 assertEquals(value,after.get(key),"原计划头及计划包未改写: "+key);
         });
-        oldSegments.forEach((id,row)->assertEquals(row,rows("production_execution_segments","id=?",id),"原执行段一字不动: "+id));
-        oldDemands.forEach((id,row)->assertEquals(row,rows("production_material_demands","id=?",id),"原物料需求一字不动: "+id));
+        oldSegments.forEach((id,code)->{
+            assertEquals(code,db.queryForObject("SELECT segment_code FROM production_execution_segments WHERE id=? AND NOT is_deleted",String.class,id),"原工单号保留: "+id);
+            qty("8000",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,id));
+        });
+        oldDemands.forEach((id,identity)->{
+            assertEquals(identity,db.queryForObject("SELECT jsonb_build_array(execution_segment_id,goods_id,color_id,unit_id)::text FROM production_material_demands WHERE id=? AND NOT is_deleted",String.class,id),"原需求身份保留: "+id);
+            qty(oldDemandQuantities.get(id).multiply(new BigDecimal("4")).divide(new BigDecimal("3")).toPlainString(),db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,id));
+        });
         for(UUID plan:List.of(childPlan.plans().getFirst().planId(),rootPlan.plans().getFirst().planId())){
             qty("8000",db.queryForObject("SELECT sum(qty) FROM production_plan_items WHERE plan_id=?",BigDecimal.class,plan));
-            assertEquals(2,count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",plan));
+            assertEquals(1,count("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND is_deleted=FALSE",plan));
         }
         assertEquals(before,nonPlanningFacts(c));
     }
@@ -650,11 +658,12 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals(1, count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?", c.analysis()));
     }
 
-    /** 同一批自制候选二次下达：走既有锚点（不新建子件行），只消费剩余配额，计划数累加。 */
+    /** 同一批自制候选二次下达：走既有锚点，各自原工单加量。 */
     @Test void secondIssueOnTheSameCandidatesReusesExistingAnchorsWithoutNewChildRows(){
         MixedCase c=createMixed("anchor-reuse");
         UUID a=c.makeLines().get(0),b=c.makeLines().get(1);
         commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),analyses.detail(c.analysis()),c.world(),"first",line(a,"6000"),line(b,"6000")));
+        List<String> originalTaskIdentities=db.queryForList("SELECT s.id::text||'|'||s.segment_code FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? AND NOT s.is_deleted ORDER BY s.id",String.class,c.analysis());
         AnalysisView first=analyses.detail(c.analysis());
         // Arrays.asList 允许 null 元素：锚点缺失时走断言失败而不是 List.of 的 NPE。
         List<UUID> anchors=java.util.Arrays.asList(material(first,a).planAnchorAnalysisLineId(),material(first,b).planAnchorAnalysisLineId());
@@ -663,9 +672,11 @@ class MaterialWorkshopAnchorEndToEndTest {
         AnalysisView second=analyses.detail(c.analysis());
         assertEquals(anchors,List.of(material(second,a).planAnchorAnalysisLineId(),material(second,b).planAnchorAnalysisLineId()));
         assertEquals(2,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
-        // ADR-104：两个锚点各自的第二批并进各自没开工的第一张——两张计划、各两段。
+        // 两个锚点各自并入原计划与原工单：两张计划、各一段，数量 10000。
         assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
-        assertEquals(4,count("SELECT count(*) FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? AND s.is_deleted=FALSE",c.analysis()));
+        assertEquals(2,count("SELECT count(*) FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? AND s.is_deleted=FALSE",c.analysis()));
+        assertEquals(originalTaskIdentities,db.queryForList("SELECT s.id::text||'|'||s.segment_code FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? AND NOT s.is_deleted ORDER BY s.id",String.class,c.analysis()));
+        assertEquals(2,count("SELECT count(*) FROM production_execution_segments s JOIN production_plans p ON p.id=s.plan_id WHERE p.material_analysis_id=? AND NOT s.is_deleted AND s.planned_qty=10000",c.analysis()));
         for(UUID anchor:anchors){qty("10000",product(second,anchor).requestedQty());qty("0",product(second,anchor).remainingQty());}
         assertThrows(ApiException.class,()->commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),second,c.world(),"third",line(a,"1"))));
         assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));

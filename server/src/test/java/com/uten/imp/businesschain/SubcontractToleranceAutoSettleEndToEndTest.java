@@ -145,7 +145,7 @@ class SubcontractToleranceAutoSettleEndToEndTest {
                 JOIN subcontract_material_plans plan ON plan.id=plan_item.plan_id
                  AND plan.status='OPEN' AND plan.is_deleted=FALSE
                 WHERE plan_item.order_item_id=? AND plan_item.is_deleted=FALSE
-                  AND plan_item.issued_qty < LEAST(plan_item.planned_qty, plan_item.prepared_qty)
+                  AND plan_item.issued_qty < plan_item.planned_qty
                 """, itemId), "料必须真的全部发完 (与服务端 material_fully_issued 同一口径)");
 
         // ④ 回厂 950: 950 >= 下限 900 -> WITHIN_TOLERANCE。中性档既不弹窗也不锁入库。

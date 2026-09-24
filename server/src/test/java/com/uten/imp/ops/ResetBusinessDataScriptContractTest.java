@@ -71,10 +71,13 @@ class ResetBusinessDataScriptContractTest {
         // V608 +2 报销，V614 +2 完结溯源，V615 +3 直送来源/历史隔离，V617 +1 保留设置：V618 +1 收仓确认，V619 +8 保管溯源：395表，CLEAR296/PRESERVE99。
         // V624/V626/V627 retain original import-source evidence across business resets.
         // V636 +2 委外回厂短交案件/事件(ADR-098): 400 表, CLEAR 296→298。
-        // V680 +2 服务端会话/再认证失败计数(ADR-110, 清库后全员重新登录; CLEAR 298→300)。
-        // V686 +1 总账附表行绑定(ADR-112, 报表配置随主档保留), V677 -4 角色体系四张表(ADR-109): 399 表, PRESERVE 99。
-        assertThat(policy).hasSize(399);
+        // V646/V647 +2 委外子件精确库存交接/车间工单原位增长事件(只追加账本, CLEAR 298→300)。
+        // V680 +2 服务端会话/再认证失败计数(ADR-110, 清库后全员重新登录; CLEAR 300→302)。
+        // V686 +1 总账附表行绑定(ADR-112, 报表配置随主档保留), V677 -4 角色体系四张表(ADR-109): 401 表, PRESERVE 99。
+        assertThat(policy).hasSize(401);
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
+        assertThat(policy).containsEntry("subcontract_component_stock_handoffs", "CLEAR");
+        assertThat(policy).containsEntry("production_execution_segment_growth_events", "CLEAR");
         assertThat(policy).containsEntry("auth_sessions", "CLEAR");
         assertThat(policy).containsEntry("auth_step_up_states", "CLEAR");
         assertThat(policy).doesNotContainKeys("roles", "user_roles", "role_permissions", "department_roles");
@@ -83,7 +86,7 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("legacy_procurement_receipt_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("expense_claim_settings", "PRESERVE");
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(300);
+                .isEqualTo(302);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_items", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_cancellations", "CLEAR");
@@ -395,23 +398,25 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(645, 596)")
                 .contains("(646, 597)")
                 .contains("(647, 598)")
-                .contains("(648, 599)")
-                .contains("(649, 600)")
-                .contains("(650, 601)")
-                .contains("(651, 602)")
-                .contains("(652, 603)")
-                .contains("(655, 604)")
-                .contains("(656, 605)")
-                .contains("(657, 606)")
-                .contains("(658, 607)")
-                .contains("(659, 608)")
-                .contains("(660, 609)")
-                .contains("(661, 610)")
-                .contains("(662, 611)")
-                .contains("(664, 612)")
-                .contains("(665, 613)")
-                .contains("(666, 614)")
-                // 迁移头 V687 / 614 张 (V653至V654、V663 跳号)。
+                .contains("(670, 599)")
+                .contains("(671, 600)")
+                .contains("(672, 601)")
+                .contains("(673, 602)")
+                .contains("(674, 603)")
+                .contains("(675, 604)")
+                .contains("(676, 605)")
+                .contains("(677, 606)")
+                .contains("(678, 607)")
+                .contains("(679, 608)")
+                .contains("(680, 609)")
+                .contains("(681, 610)")
+                .contains("(682, 611)")
+                .contains("(683, 612)")
+                .contains("(684, 613)")
+                .contains("(685, 614)")
+                .contains("(686, 615)")
+                .contains("(687, 616)")
+                // 迁移头 V687 / 616 张 (V648至V669 跳号)。
                 .contains("V507/469、V508/470及V511至V687完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")

@@ -9,11 +9,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -319,14 +322,43 @@ public class StockService {
         // 出库/红冲不翻转；值没变不写。见 GoodsOwningWarehouseSyncService。
         if (req.direction() == DIR_IN) {
             owningWarehouseSync.syncOnInbound(req.goodsId(), req.warehouseId());
-            // ADR-103: 任何入库方向的流水(采购/委外回厂/生产完工/盘盈/退货入库, 也包括出库红冲
-            // 把货冲回仓)都算「子件到货」, 在写完余额的同一事务里叫醒等料的委外出仓行——
-            // 不再由各入库单据自己记得去调, 全系统只此一处。fail-closed: 端口抛错整笔入库回滚。
-            subcontractOutboundWake.ifAvailable(port -> port.wakeOutboundAfterStockIn(List.of(
-                    new SubcontractOutboundWakePort.StockedDimension(
-                            req.goodsId(), req.colorId(), req.warehouseId()))));
+            // The source document still has to attribute qualified stock or restore
+            // reversed custody after this movement. Wake before commit, after those
+            // facts exist, so another order cannot reserve the transient public balance.
+            enqueueSubcontractWake(new SubcontractOutboundWakePort.StockedDimension(
+                    req.goodsId(), req.colorId(), req.warehouseId()));
         }
         return m.getId();
     }
 
+    private void enqueueSubcontractWake(SubcontractOutboundWakePort.StockedDimension dimension) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            // Manually constructed unit-test services have no transaction interceptor.
+            deliverSubcontractWake(List.of(dimension));
+            return;
+        }
+        SubcontractStockInWake pending = TransactionSynchronizationManager.getSynchronizations().stream()
+                .filter(SubcontractStockInWake.class::isInstance)
+                .map(SubcontractStockInWake.class::cast).findFirst().orElse(null);
+        if (pending == null) {
+            pending = new SubcontractStockInWake();
+            TransactionSynchronizationManager.registerSynchronization(pending);
+        }
+        pending.dimensions.add(dimension);
+    }
+
+    private void deliverSubcontractWake(List<SubcontractOutboundWakePort.StockedDimension> dimensions) {
+        subcontractOutboundWake.ifAvailable(port -> port.wakeOutboundAfterStockIn(dimensions));
+    }
+
+    private final class SubcontractStockInWake implements TransactionSynchronization {
+        private final LinkedHashSet<SubcontractOutboundWakePort.StockedDimension> dimensions = new LinkedHashSet<>();
+
+        @Override
+        public void beforeCommit(boolean readOnly) {
+            // Still inside the original transaction: failures roll back stock and
+            // provenance together. Rollbacks never run this callback.
+            deliverSubcontractWake(List.copyOf(dimensions));
+        }
+    }
 }

@@ -767,7 +767,12 @@ public final class MaterialAnalysisContracts {
              * <p>务必与 {@link #shortageQty} 区分: shortageQty 是物理缺口, 同时
              * 是 actionable / 让料候选 / 入库齐套三处的判据, 口径不动。
              */
-            BigDecimal netShortageQty) {
+            BigDecimal netShortageQty,
+            /**
+             * 原始销售/计划汇总需求按本节点 BOM 规则展开的数量。
+             * 不随下单、追加、到货、库存占用或车间执行变化；实际备料仍使用 requiredQty。
+             */
+            BigDecimal sourceRequiredQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

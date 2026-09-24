@@ -75,6 +75,8 @@ public class ProductionExecutionPackageCommandService {
     private final com.uten.imp.application.port.PreplanAnalysisPegPort
             preplanAnalysisPeg;
     private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService mutationFootprint;
+    private final org.springframework.beans.factory.ObjectProvider<
+            com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService> readiness;
 
     private void freezeConsumptionRules(List<SegmentDraft> segments,
                                         List<ProductionMaterialDemand> demands) {
@@ -402,16 +404,13 @@ public class ProductionExecutionPackageCommandService {
     }
 
     /**
-     * ADR-104：把追加量并入一张已审核、仍未开工的物料分析计划——在它唯一的 CONFIRMED
-     * 计划包里另起一段(数量 = 本次追加量)，冻结该段自己的物料需求与耗用规则；原执行段、
-     * 原预留、原备料单一字不动(与拆批同形态：追加只落新行)。新段与刚审核的计划同形态：
-     * 有料就 WAITING、等车间确认路线后按齐套提升；无料(DIRECT_MAKE)直接 READY。
-     *
-     * <p>调用方须先把计划明细 qty 与关联行改大(V645 放行)，销售来源的计划还要先把
-     * plan_order_item_links 容量改大；这里只把「归本需求」那一份分摊给新段，不改任何既有行。
+     * Grow the original, untouched workshop task using its frozen consumption rules.
+     * The caller has already increased the plan/link and sales-order allocation capacity.
+     * Existing physical reservations and unrequested draft DRAWs retain their provenance;
+     * readiness allocates only the additional material needed for the new total.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public AppendedSegment appendSegment(UUID planId, AppendSegmentRequest request) {
+    public GrownSegment growSegment(UUID planId, GrowSegmentRequest request) {
         if (request == null || request.planItemId() == null
                 || request.qty() == null || request.qty().signum() <= 0) {
             throw conflict("并入追加的数量必须大于零");
@@ -438,109 +437,45 @@ public class ProductionExecutionPackageCommandService {
             throw conflict("旧模型的计划包不能并入追加");
         }
         sourceGuard.verifyUnchanged();
-        ProductionExecutionPlanningService.Snapshot locked =
-                planning.lockedSnapshot(planId, planningPackage.getWarehouseId(), Map.of());
-        CompleteKitAllocator.ProductLine base = locked.productLines().stream()
-                .filter(line -> request.planItemId().equals(line.sourcePlanItemId()))
-                .findFirst()
-                .orElseThrow(() -> conflict("计划明细的 BOM 快照不可用，不能并入追加"));
-        stockAllocation.lockMaterialDimensions(base.materials().stream()
-                .map(material -> new ProductionPurchaseRequestFacade.MaterialDimension(
-                        material.goodsId(), material.colorId()))
-                .distinct()
-                .sorted()
-                .map(dimension -> new ProductionMaterialAllocationFacade.MaterialDimension(
-                        dimension.goodsId(), dimension.colorId()))
-                .toList());
-        CompleteKitAllocator.ProductLine line = new CompleteKitAllocator.ProductLine(
-                base.sourcePlanItemId(), base.lineNo(), base.productGoodsId(),
-                base.productColorId(), base.productUnitId(), base.productUnitRate(), qty,
-                request.planBeginDate() != null ? request.planBeginDate() : base.planBeginDate(),
-                request.planEndDate() != null ? request.planEndDate() : base.planEndDate(),
-                request.workshopDepartmentId() != null
-                        ? request.workshopDepartmentId() : base.defaultWorkshopDepartmentId(),
-                request.teamDepartmentId() != null
-                        ? request.teamDepartmentId() : base.defaultTeamDepartmentId(),
-                request.responsibleEmployeeId() != null
-                        ? request.responsibleEmployeeId() : base.defaultResponsibleEmployeeId(),
-                base.productCode(), base.productName(), base.priority(), base.materials(),
-                base.bomFingerprint(), base.zeroMaterialReason(), base.zeroMaterialAnalysisId(),
-                base.zeroMaterialExceptionReason(), base.zeroMaterialAuthorizedBy());
-        List<CompleteKitAllocator.MaterialAllocation> materials = line.materials().stream()
-                .map(usage -> {
-                    BigDecimal required = usage.required(qty, line.productUnitRate());
-                    return new CompleteKitAllocator.MaterialAllocation(
-                            usage.goodsId(), usage.colorId(), usage.unitId(),
-                            usage.perProductQty(), required, BigDecimal.ZERO,
-                            BigDecimal.ZERO, required, usage.supplyRoute(),
-                            usage.requiresExactSnapshot()
-                                    ? ProductionMaterialDemand.REQUIREMENT_MODE_EXACT_SNAPSHOT
-                                    : ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR);
-                })
-                .toList();
-        String status = materials.isEmpty()
-                ? ProductionExecutionSegment.STATUS_READY
-                : ProductionExecutionSegment.STATUS_WAITING;
-        CompleteKitAllocator.SegmentAllocation proposal =
-                new CompleteKitAllocator.SegmentAllocation(
-                        "APPEND:" + UUID.randomUUID(), line, status, qty, materials, true);
-        int segmentNo = ((Number) em.createNativeQuery("""
-                        SELECT COALESCE(MAX(segment_no), 0) + 1
-                        FROM production_execution_segments
-                        WHERE package_id = :packageId
-                        """)
+        List<UUID> candidates = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT segment.id
+                FROM production_execution_segments segment
+                WHERE segment.package_id = :packageId
+                  AND segment.source_plan_item_id = :itemId
+                  AND NOT segment.is_deleted
+                  AND fn_material_analysis_execution_segment_growable(segment.id)
+                  AND (CAST(:workshopId AS uuid) IS NULL
+                       OR segment.workshop_department_id = CAST(:workshopId AS uuid))
+                ORDER BY segment.segment_no, segment.id
+                LIMIT 1 FOR UPDATE OF segment
+                """, UUID.class)
                 .setParameter("packageId", planningPackage.getId())
-                .getSingleResult()).intValue();
-        SegmentDraft draft = persistSegment(planningPackage, proposal, segmentNo);
-        segmentRepo.flush();
-        persistAppendedSalesAllocation(draft, request.salesAllocatedQty());
-        List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
-                demandDrafts(List.of(draft));
-        List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
-                ? List.of()
-                : ledger.createDemands(planningPackage, demandDrafts);
-        freezeConsumptionRules(List.of(draft), demands);
-        ledger.refreshDemandStatuses(
-                demands.stream().map(ProductionMaterialDemand::getId).toList());
-        workshopPreferences.learnFromConfirmedSegments(
-                List.of(draft.segment()), currentUser.requireEmployeeId());
-        return new AppendedSegment(
-                planningPackage.getId(), draft.segment().getId(),
-                draft.segment().getSegmentCode(), status);
-    }
-
-    /** 并入追加时新段的销售分摊：归本需求那一份切给新段，容量由调用方先改大。 */
-    private void persistAppendedSalesAllocation(SegmentDraft draft, BigDecimal salesAllocatedQty) {
-        if (salesAllocatedQty == null || salesAllocatedQty.signum() <= 0) {
-            return;
+                .setParameter("itemId", request.planItemId())
+                .setParameter("workshopId", request.workshopDepartmentId()), UUID.class);
+        if (candidates.isEmpty()) {
+            throw conflict("原车间工单已开始领料或执行，请刷新后重新追加");
         }
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT link.id, link.order_item_id
-                                FROM plan_order_item_links link
-                                WHERE link.plan_item_id = :planItemId
-                                  AND link.is_deleted = FALSE
-                                ORDER BY link.id
-                                FOR UPDATE OF link
-                                """)
-                        .setParameter("planItemId", draft.segment().getSourcePlanItemId()));
-        if (rows.size() != 1) {
-            throw conflict("并入追加的销售来源计划必须恰有一条排产关联");
-        }
-        em.createNativeQuery("""
-                        INSERT INTO execution_segment_sales_allocations(
-                            execution_segment_id, plan_order_item_link_id,
-                            sales_order_item_id, allocated_qty, created_by)
-                        VALUES (:segmentId, :linkId, :orderItemId, :quantity, :createdBy)
-                        """)
-                .setParameter("segmentId", draft.segment().getId())
-                .setParameter("linkId", rows.getFirst()[0])
-                .setParameter("orderItemId", rows.getFirst()[1])
-                .setParameter("quantity", salesAllocatedQty)
-                .setParameter("createdBy", currentUser.requireId())
-                .executeUpdate();
+        UUID segmentId = candidates.getFirst();
+        UUID growthEventId = (UUID) em.createNativeQuery("""
+                SELECT fn_grow_material_analysis_execution_segment(
+                    CAST(:segmentId AS uuid), CAST(:qty AS numeric), CAST(:salesQty AS numeric))
+                """)
+                .setParameter("segmentId", segmentId)
+                .setParameter("qty", qty)
+                .setParameter("salesQty", request.salesAllocatedQty() == null
+                        ? BigDecimal.ZERO : request.salesAllocatedQty())
+                .getSingleResult();
+        ledger.refreshDemandStatuses(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM production_material_demands
+                WHERE execution_segment_id=:segmentId AND NOT is_deleted
+                """, UUID.class).setParameter("segmentId", segmentId), UUID.class));
+        readiness.getObject().promoteAfterPlanGrowth(
+                segmentId, planningPackage.getWarehouseId(), growthEventId);
+        ProductionExecutionSegment segment = em.find(ProductionExecutionSegment.class, segmentId);
+        em.refresh(segment);
+        return new GrownSegment(planningPackage.getId(), segmentId,
+                segment.getSegmentCode(), segment.getStatus());
     }
-
     private List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts(
             List<SegmentDraft> segmentDrafts) {
         List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
@@ -589,19 +524,15 @@ public class ProductionExecutionPackageCommandService {
         return demandDrafts;
     }
 
-    /** 并入追加(ADR-104)的输入：目标计划明细 + 追加量 + 归本需求的销售分摊份 + 新段的排产指派。 */
-    public record AppendSegmentRequest(
+    /** 追加保留原工单的路线、指派和日期；换车间须另建计划。 */
+    public record GrowSegmentRequest(
             UUID planItemId,
             BigDecimal qty,
             BigDecimal salesAllocatedQty,
-            LocalDate planBeginDate,
-            LocalDate planEndDate,
-            UUID workshopDepartmentId,
-            UUID teamDepartmentId,
-            UUID responsibleEmployeeId) {
+            UUID workshopDepartmentId) {
     }
 
-    public record AppendedSegment(
+    public record GrownSegment(
             UUID packageId, UUID segmentId, String segmentCode, String status) {
     }
 

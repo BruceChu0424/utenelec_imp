@@ -155,6 +155,8 @@ CREATE INDEX idx_production_fqc_inspections_source_plan_item_id ON production_fq
 CREATE INDEX idx_production_fqc_recovery_authorizations_source_plan_item_id ON production_fqc_recovery_authorizations (source_plan_item_id);
 CREATE INDEX idx_fqc_contribution_adj_source_plan_item ON production_fqc_contribution_adjustments (source_plan_item_id);
 CREATE INDEX idx_production_fqc_replenishment_cycles_source_plan_item_id ON production_fqc_replenishment_cycles (source_plan_item_id);
+-- 并行会话 V647 的车间工单原位增长事件(只追加账本)按计划明细回查, 建表时未带该列领头索引
+CREATE INDEX idx_execution_segment_growth_plan_item ON production_execution_segment_growth_events (plan_item_id);
 CREATE INDEX idx_da_amortization_log_voucher_id ON da_amortization_log (voucher_id);
 CREATE INDEX idx_fa_depreciation_log_voucher_id ON fa_depreciation_log (voucher_id);
 CREATE INDEX idx_finance_asset_posting_lines_voucher_id ON finance_asset_posting_lines (voucher_id);

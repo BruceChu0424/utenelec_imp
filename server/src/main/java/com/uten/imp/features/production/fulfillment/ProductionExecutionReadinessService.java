@@ -850,6 +850,15 @@ public class ProductionExecutionReadinessService
         tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK,null,false,true);
     }
 
+    /** Quantity growth preserves the task's route and never submits or issues a DRAW. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void promoteAfterPlanGrowth(UUID segmentId, UUID warehouseId, UUID growthEventId) {
+        // Each accepted append is a distinct audited intent. Reusing segmentId
+        // would collide with route confirmation and later append notifications.
+        java.util.Objects.requireNonNull(growthEventId, "Growth event identity is required");
+        tryPromote(segmentId, growthEventId, warehouseId, ReceiptKind.PLAN_GROWTH, null, true);
+    }
+
     /** Explicit workshop command: re-request already owned, physically returned material. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void prepareReturnedMaterialDraws(UUID segmentId) {
@@ -1211,8 +1220,19 @@ public class ProductionExecutionReadinessService
         List<DemandRow> demands = continuous
                 ? continuousIncrement(warehouseId, allDemands, analysisId, analysisItemId,
                         triggeringReceiptId, triggeringKind,reclaimReturnedCustody)
-                : allDemands;
+                : unreservedDemand(allDemands);
         if (continuous && demands.isEmpty()) return;
+        if (!continuous && !allDemands.isEmpty() && demands.isEmpty()) {
+            // Fixed-batch growth can require no additional material. Existing physical
+            // reservations and DRAWs still cover the enlarged task; no duplicate issue.
+            em.createNativeQuery("""
+                    UPDATE production_execution_segments
+                    SET status='READY', updated_at=now()
+                    WHERE id=:id AND status='WAITING' AND NOT is_deleted
+                    """).setParameter("id", segmentId).executeUpdate();
+            ledger.refreshDemandStatuses(allDemands.stream().map(DemandRow::id).toList());
+            return;
+        }
         if (demands.isEmpty()) {
             // A continuation with no incremental material still needs the
             // workshop's explicit batch command and prior physical issue proof.
@@ -1228,6 +1248,7 @@ public class ProductionExecutionReadinessService
             throw conflict("执行分段没有物料需求");
         }
 
+        boolean incremental = continuous || !demands.equals(allDemands);
         if (!isFullyAvailable(warehouseId, demands, analysisId, analysisItemId,
                 !continuous && (!tolerateShortage
                         && triggeringKind == ReceiptKind.RECHECK),reclaimReturnedCustody)) {
@@ -1329,8 +1350,8 @@ public class ProductionExecutionReadinessService
         if(!requests.isEmpty())allocated.addAll(analysisId!=null
                 ? stockAllocation.allocateWithQualifiedSources(requests,preparedTransfers.stream().map(value ->
                     new ProductionMaterialAllocationFacade.QualifiedSourcePreference(value.demandId(),value.warehouseId(),
-                        value.qty(),value.sourceEntitlementEventId(),value.sourceStockReservationId())).toList(),continuous)
-                : stockAllocation.allocate(requests,continuous));
+                        value.qty(),value.sourceEntitlementEventId(),value.sourceStockReservationId())).toList(),incremental)
+                : stockAllocation.allocate(requests,incremental));
         Map<UUID, BigDecimal> quantityByDemand = new HashMap<>();
         allocated.forEach(value -> quantityByDemand.merge(
                 value.demandId(), value.allocatedQty(), BigDecimal::add));
@@ -1346,14 +1367,16 @@ public class ProductionExecutionReadinessService
                 allocation.demandId(),allocation.allocationId(),allocation.allocatedQty()),(first,next)->
                     new PreplanAnalysisPegPort.FormalReservationSlice(first.demandId(),first.stockReservationId(),first.qty().add(next.qty()))));
         var formalReservations=List.copyOf(formalByReservation.values());
-        if (systemActor == null && continuous) {
+        String allocationCommand = (continuous ? "CONTINUOUS:" : "GROWTH:")
+                + segmentId + ":V" + segmentRow[9];
+        if (systemActor == null && incremental) {
             preplanAnalysisPeg.formalizePlanDemandTransfersForCommand(packageId, preparedTransfers, formalReservations,
-                    "CONTINUOUS:" + segmentId + ":V" + segmentRow[9]);
+                    allocationCommand);
         } else if (systemActor == null) {
             preplanAnalysisPeg.formalizePlanDemandTransfers(packageId, preparedTransfers, formalReservations);
-        } else if (continuous) {
+        } else if (incremental) {
             preplanAnalysisPeg.formalizePlanDemandTransfersForCommand(packageId, preparedTransfers, formalReservations,
-                    "CONTINUOUS:" + segmentId + ":V" + segmentRow[9], actor.userId());
+                    allocationCommand, actor.userId());
         } else {
             preplanAnalysisPeg.formalizePlanDemandTransfers(packageId, preparedTransfers, formalReservations, actor.userId());
         }
@@ -1440,7 +1463,7 @@ public class ProductionExecutionReadinessService
         // 领料申请等仓库发料，就回到了直送要砍掉的那一步。此前只有 RECHECK 路径出库，
         // 「先直送、后到货」的父件会留下一张要仓库替车间发线边仓料的领料单。
         // 系统对账(无用户身份)不经此分支：开工与领料申请两处会就地补出(V595)。
-        if (systemActor == null) {
+        if (systemActor == null && triggeringKind != ReceiptKind.PLAN_GROWTH) {
             issueLineSideDrawsAfterPromotion(
                     segmentId, workshopDepartmentId, warehouseId);
         }
@@ -1676,6 +1699,25 @@ public class ProductionExecutionReadinessService
                                     BigDecimal qualifiedQty, BigDecimal publicQty,
                                     BigDecimal safetyQty, boolean ownedFirst, BigDecimal ownedQty,
                                     boolean normalWarehouse, boolean lineSide) {}
+
+    /** Full-kit growth keeps existing reservations and prepares only the missing balance. */
+    private List<DemandRow> unreservedDemand(List<DemandRow> demands) {
+        if (demands.isEmpty()) return List.of();
+        Map<UUID, BigDecimal> reserved = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT demand_id, SUM(qty-released_qty)
+                FROM stock_reservations
+                WHERE demand_id IN (:ids) AND NOT is_deleted
+                GROUP BY demand_id
+                """).setParameter("ids", demands.stream().map(DemandRow::id).toList()))) {
+            reserved.put(uuid(row[0]), decimal(row[1]));
+        }
+        return demands.stream().map(demand -> new DemandRow(demand.id(), demand.goodsId(),
+                        demand.colorId(), demand.unitId(), demand.requiredQty()
+                        .subtract(reserved.getOrDefault(demand.id(), BigDecimal.ZERO))
+                        .max(BigDecimal.ZERO), demand.directSupply()))
+                .filter(demand -> demand.requiredQty().signum() > 0).toList();
+    }
 
     /**
      * Only reserves new physical stock, bounded by both frozen demand and outstanding
@@ -2356,7 +2398,7 @@ public class ProductionExecutionReadinessService
                     "production_material_subcontract_receipt_allocations";
             case MAKE ->
                     "production_material_make_receipt_allocations";
-            case PREPLAN, RECHECK, RECONCILE -> throw new IllegalArgumentException(
+            case PREPLAN, RECHECK, PLAN_GROWTH, RECONCILE -> throw new IllegalArgumentException(
                     "PREPLAN entitlement has no receipt-allocation table");
         };
     }
@@ -2372,7 +2414,7 @@ public class ProductionExecutionReadinessService
             case PURCHASE -> "SEG-REKIT:";
             case SUBCONTRACT -> "SEG-SUB-REKIT:";
             case MAKE -> "SEG-MAKE-REKIT:";
-            case PREPLAN, RECHECK, RECONCILE -> throw new IllegalArgumentException(
+            case PREPLAN, RECHECK, PLAN_GROWTH, RECONCILE -> throw new IllegalArgumentException(
                     "PREPLAN entitlement has no receipt-allocation key");
         };
     }
@@ -2439,6 +2481,7 @@ public class ProductionExecutionReadinessService
         MAKE,
         PREPLAN,
         RECHECK,
+        PLAN_GROWTH,
         RECONCILE;
 
         String remainingQuantitySql() {

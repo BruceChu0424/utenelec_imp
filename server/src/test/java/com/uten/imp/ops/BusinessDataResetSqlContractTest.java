@@ -64,6 +64,8 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_material_return_request_cancellations", 560),
             Map.entry("subcontract_short_delivery_cases", 636),
             Map.entry("subcontract_short_delivery_case_events", 636),
+            Map.entry("subcontract_component_stock_handoffs", 646),
+            Map.entry("production_execution_segment_growth_events", 647),
             Map.entry("production_execution_segment_splits", 561),
             Map.entry("preplan_reallocation_make_supplements", 568),
             Map.entry("preplan_future_supply_transfers", 569),
@@ -113,8 +115,8 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_workshop_custody_reverse_preparations", 619),
             Map.entry("production_workshop_return_preplan_events", 619),
             // V680 服务端会话与再认证失败计数 (ADR-110)：清空业务数据本就全员下线, 会话随之清空。
-            Map.entry("auth_sessions", 658),
-            Map.entry("auth_step_up_states", 658));
+            Map.entry("auth_sessions", 680),
+            Map.entry("auth_step_up_states", 680));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -130,7 +132,7 @@ class BusinessDataResetSqlContractTest {
             "party_addresses", 579,
             "party_contact_methods", 579,
             // V686 总账附表行绑定(ADR-112): 报表配置随科目/部门主档保留。
-            "finance_report_line_bindings", 665);
+            "finance_report_line_bindings", 686);
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -139,10 +141,10 @@ class BusinessDataResetSqlContractTest {
     private static final Map<String, Integer> REMOVED_RESET_TABLES = Map.of(
             "production_goods_workshop_preferences", 590,
             // V677 / ADR-109：角色体系删除，四张角色表从清单两侧同时移除。
-            "roles", 655,
-            "user_roles", 655,
-            "role_permissions", 655,
-            "department_roles", 655);
+            "roles", 677,
+            "user_roles", 677,
+            "role_permissions", 677,
+            "department_roles", 677);
 
     private String opsScript;
     private String migrationSql;
@@ -259,6 +261,8 @@ class BusinessDataResetSqlContractTest {
                 "V626__legacy_finance_source_provenance.sql",
                 "V627__legacy_receipt_consideration_provenance.sql",
                 "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql",
+                "V646__subcontract_component_exact_stock_handoff.sql",
+                "V647__material_analysis_execution_growth_in_place.sql",
                 "V680__auth_sessions_and_step_up.sql",
                 "V686__finance_report_line_bindings.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
@@ -453,23 +457,25 @@ class BusinessDataResetSqlContractTest {
                 .contains("(645, 596)")
                 .contains("(646, 597)")
                 .contains("(647, 598)")
-                .contains("(648, 599)")
-                .contains("(649, 600)")
-                .contains("(650, 601)")
-                .contains("(651, 602)")
-                .contains("(652, 603)")
-                .contains("(655, 604)")
-                .contains("(656, 605)")
-                .contains("(657, 606)")
-                .contains("(658, 607)")
-                .contains("(659, 608)")
-                .contains("(660, 609)")
-                .contains("(661, 610)")
-                .contains("(662, 611)")
-                .contains("(664, 612)")
-                .contains("(665, 613)")
-                .contains("(666, 614)")
-                // 迁移头 V687 / 614 张 (V653至V654、V663 跳号)。
+                .contains("(670, 599)")
+                .contains("(671, 600)")
+                .contains("(672, 601)")
+                .contains("(673, 602)")
+                .contains("(674, 603)")
+                .contains("(675, 604)")
+                .contains("(676, 605)")
+                .contains("(677, 606)")
+                .contains("(678, 607)")
+                .contains("(679, 608)")
+                .contains("(680, 609)")
+                .contains("(681, 610)")
+                .contains("(682, 611)")
+                .contains("(683, 612)")
+                .contains("(684, 613)")
+                .contains("(685, 614)")
+                .contains("(686, 615)")
+                .contains("(687, 616)")
+                // 迁移头 V687 / 616 张 (V648至V669 跳号)。
                 .contains("V507/469、V508/470及V511至V687完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)

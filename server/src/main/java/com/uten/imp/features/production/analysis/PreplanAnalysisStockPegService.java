@@ -684,8 +684,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         if (rootSupply != null) rootSupply.reverseReceipt(receiptType, receiptId);
         requireNoTransferredReservation(
                 receiptType + "_RECEIPT", receiptId,
-                "该收货的分析归属库存已转入正式生产需求；当前尚缺少收货到正式需求"
-                        + "的一对一可逆转移链，禁止直接红冲，请提交受控异常处理");
+                "该收货的分析归属库存已转入生产领料或委外发料；请先撤回或红冲对应下游并恢复原归属，"
+                        + "禁止直接红冲。无法恢复一对一可逆转移链时，请提交受控异常处理");
         releaseRows(
                 "r.source_doc_type = :sourceDocType AND r.source_doc_id = :sourceDocId",
                 Map.of(
@@ -700,8 +700,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         tx.bind();
         requireNoTransferredReservation(
                 "PRODUCTION_INBOUND", stockDocumentId,
-                "该成品入库的分析归属库存已转入正式生产需求；当前尚缺少成品入库到正式需求"
-                        + "的一对一可逆转移链，禁止直接红冲，请提交受控异常处理");
+                "该成品入库的分析归属库存已转入生产领料或委外发料；请先撤回或红冲对应下游并恢复原归属，"
+                        + "禁止直接红冲。无法恢复一对一可逆转移链时，请提交受控异常处理");
         prepareEntitlementRelease("PRODUCTION_INBOUND", stockDocumentId);
     }
 
@@ -744,10 +744,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                   AND reservation.owner_type = :ownerType
                   AND reservation.source_doc_type = :sourceDocType
                   AND reservation.source_doc_id = :sourceDocId
-                  AND reservation.release_reason = 'TRANSFERRED_TO_PLAN'
+                  AND (reservation.release_reason = 'TRANSFERRED_TO_PLAN'
+                       OR %s)
                 ORDER BY reservation.id
                 FOR UPDATE
-                """)
+                """.formatted(activeComponentHandoff("reservation.id")))
                 .setParameter("ownerType", OWNER_TYPE)
                 .setParameter("sourceDocType", sourceDocType)
                 .setParameter("sourceDocId", sourceDocId), UUID.class);
@@ -1599,6 +1600,31 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     "该分析仍有未补齐的跨分析让料；请先撤销未使用让料，"
                             + "或等待优先补齐完成后再取消");
         }
+        List<UUID> subcontractCustody = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT handoff.id
+                FROM subcontract_component_stock_handoffs handoff
+                JOIN preplan_stock_entitlement_events source_event
+                  ON source_event.id = handoff.source_entitlement_event_id
+                JOIN stock_reservations target ON target.id = handoff.target_reservation_id
+                WHERE source_event.beneficiary_analysis_id = :analysisId
+                  AND target.qty > target.released_qty
+                ORDER BY handoff.id
+                FOR UPDATE OF target
+                """).setParameter("analysisId", analysisId), UUID.class);
+        if (!subcontractCustody.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该产品的子件已交接委外发料；请先撤回未出仓草稿，已出仓则先完成出仓红冲，恢复原归属后再取消分析");
+        }
+    }
+
+    private static String activeComponentHandoff(String reservationId) {
+        return """
+                EXISTS (SELECT 1 FROM subcontract_component_stock_handoffs component_handoff
+                        JOIN stock_reservations component_target
+                          ON component_target.id = component_handoff.target_reservation_id
+                        WHERE component_handoff.source_reservation_id = %s
+                          AND component_target.qty > component_target.released_qty)
+                """.formatted(reservationId);
     }
 
     private void requireReservationsReallocationSafe(
@@ -1655,16 +1681,18 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             String releaseReason) {
         jakarta.persistence.Query query = em.createNativeQuery("""
                 SELECT r.id, r.qty, r.consumed_qty, r.released_qty,
-                       r.goods_id, r.color_id, r.status, r.release_reason
+                       r.goods_id, r.color_id, r.status,
+                       CASE WHEN %s THEN 'TRANSFERRED_TO_SUBCONTRACT' ELSE r.release_reason END
                 FROM stock_reservations r
                 WHERE r.is_deleted = FALSE
                   AND (r.status = :effective
-                       OR r.release_reason = 'TRANSFERRED_TO_PLAN')
+                       OR r.release_reason = 'TRANSFERRED_TO_PLAN'
+                       OR %s)
                   AND r.owner_type = :ownerType
                   AND %s
                 ORDER BY r.created_at, r.id
                 FOR UPDATE OF r
-                """.formatted(whereClause))
+                """.formatted(activeComponentHandoff("r.id"), activeComponentHandoff("r.id"), whereClause))
                 .setParameter("effective", STATUS_EFFECTIVE)
                 .setParameter("ownerType", OWNER_TYPE);
         params.forEach(query::setParameter);
@@ -1674,10 +1702,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 "库存归属释放");
 
         if (rows.stream().anyMatch(row ->
-                "TRANSFERRED_TO_PLAN".equals(row[7]))) {
+                "TRANSFERRED_TO_PLAN".equals(row[7]) || "TRANSFERRED_TO_SUBCONTRACT".equals(row[7]))) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该分析归属库存仍有未恢复正式转移；请先取消未领料计划完成RESTORE，"
-                            + "已领料则禁止取消或释放归属");
+                    "该分析归属库存仍有未恢复正式转移(生产或委外)；请先撤回未领料计划或未出仓草稿完成RESTORE，"
+                            + "已领料或出仓则禁止取消或释放归属");
         }
         applyRelease(rows, releaseReason);
     }

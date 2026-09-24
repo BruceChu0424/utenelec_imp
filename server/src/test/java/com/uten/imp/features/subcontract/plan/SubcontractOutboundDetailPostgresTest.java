@@ -64,6 +64,14 @@ class SubcontractOutboundDetailPostgresTest {
                 CREATE FUNCTION fn_warehouse_is_operational_leaf(uuid)
                 RETURNS boolean LANGUAGE sql IMMUTABLE AS $$ SELECT true $$
                 """);
+        // This narrow fixture only seeds DIRECT_OUTBOUND. PostgreSQL still resolves
+        // the unselected component UNION branch; its real custody behavior is
+        // covered by SubcontractSoleComponentUnlockEndToEndTest using all migrations.
+        jdbc.execute("""
+                CREATE FUNCTION fn_subcontract_component_available_stock(uuid, uuid)
+                RETURNS TABLE(warehouse_id uuid,goods_id uuid,color_id uuid,available_qty numeric)
+                LANGUAGE sql STABLE AS $$ SELECT NULL::uuid,NULL::uuid,NULL::uuid,0::numeric WHERE FALSE $$
+                """);
         jdbc.execute("CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, deliver_date date, legacy_import_run_id uuid)");
         jdbc.execute("""
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, order_id uuid,

@@ -9,6 +9,8 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.mockito.ArgumentCaptor;
 
@@ -84,8 +86,9 @@ class PreplanAnalysisStockPegServiceTest {
         verify(transferred, never()).executeUpdate();
     }
 
-    @Test
-    void actionCancellationNeverOverwritesAnyTransferredToPlanMarker() {
+    @ParameterizedTest
+    @ValueSource(strings = {"TRANSFERRED_TO_PLAN", "TRANSFERRED_TO_SUBCONTRACT"})
+    void actionCancellationNeverOverwritesAnyTransferredToPlanMarker(String transferReason) {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
         when(rows.setParameter(anyString(), any())).thenReturn(rows);
@@ -96,10 +99,10 @@ class PreplanAnalysisStockPegServiceTest {
                         BigDecimal.ZERO, goodsId, colorId, (short) 0, null},
                 new Object[]{UUID.randomUUID(), BigDecimal.TEN, BigDecimal.ZERO,
                         BigDecimal.ONE, goodsId, colorId, (short) 0,
-                        "TRANSFERRED_TO_PLAN"},
+                        transferReason},
                 new Object[]{UUID.randomUUID(), BigDecimal.TEN, BigDecimal.ZERO,
                         BigDecimal.TEN, goodsId, colorId, (short) 1,
-                        "TRANSFERRED_TO_PLAN"}));
+                        transferReason}));
         Query empty = mock(Query.class);
         when(empty.setParameter(anyString(), any())).thenReturn(empty);
         when(empty.getResultList()).thenReturn(List.of());
@@ -250,6 +253,33 @@ class PreplanAnalysisStockPegServiceTest {
         assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
         assertThat(error.getMessage()).contains("跨分析让料").contains("先撤销");
         verify(relations, never()).executeUpdate();
+    }
+
+    @Test
+    void analysisCancellationCannotReleaseChildAlreadyHandedToSubcontract() {
+        EntityManager em = mock(EntityManager.class);
+        Query empty = mock(Query.class);
+        Query custody = mock(Query.class);
+        for (Query query : List.of(empty, custody)) {
+            when(query.setParameter(anyString(), any())).thenReturn(query);
+        }
+        when(empty.getResultList()).thenReturn(List.of());
+        when(custody.getResultList()).thenReturn(List.of(UUID.randomUUID()));
+        when(em.createNativeQuery(anyString())).thenAnswer(call ->
+                ((String) call.getArgument(0)).contains("FROM subcontract_component_stock_handoffs handoff")
+                        ? custody : empty);
+        PreplanStockEntitlementService entitlement = mock(PreplanStockEntitlementService.class);
+        PreplanAnalysisStockPegService service = new PreplanAnalysisStockPegService(
+                em, mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class),
+                mock(InventoryMutationLock.class), entitlement, mock(OriginHooks.class));
+
+        ApiException error = assertThrows(ApiException.class, () ->
+                service.releaseForAnalysis(UUID.randomUUID(), "取消", "cancel-subcontract-custody"));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(error.getMessage()).contains("子件已交接委外发料");
+        verify(entitlement, never()).appendReleaseForBeneficiaryAnalysis(any(), any(), anyString());
+        verify(custody, never()).executeUpdate();
     }
 
     @Test

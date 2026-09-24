@@ -104,6 +104,7 @@ class MaterialAnalysisResponseProjectionTest {
         unusual.remove("nodeRole");
         unusual.put("spec", "prototype specification");
         unusual.put("requiredQty", new BigDecimal("12345678901234.5678"));
+        unusual.put("sourceRequiredQty", new BigDecimal("1000.0000"));
         unusual.put("routeConfirmed", true);
         unusual.set("notifiedTargets", json.valueToTree(List.of("BUY")));
         MaterialView prototype = json.treeToValue(unusual, MaterialView.class);
@@ -111,6 +112,7 @@ class MaterialAnalysisResponseProjectionTest {
         other.put("materialLineId", UUID.randomUUID().toString());
         other.putNull("spec");
         other.put("requiredQty", new BigDecimal("0.0000"));
+        other.put("sourceRequiredQty", BigDecimal.ZERO);
         other.put("routeConfirmed", false);
         other.set("notifiedTargets", json.createArrayNode());
         AnalysisView view = view(List.of(prototype, json.treeToValue(other, MaterialView.class)));
@@ -206,6 +208,7 @@ class MaterialAnalysisResponseProjectionTest {
         return json.convertValue(Map.of("materialLineId", UUID.nameUUIDFromBytes(suffix.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                 "analysisLineId", analysisId, "nodeKey", "root/" + suffix, "materialKey", materialKey,
                 "requiredQty", new BigDecimal("10.0001"), "shortageQty", new BigDecimal("8.0000"),
+                "sourceRequiredQty", new BigDecimal("5.0000"),
                 "routeConfirmed", false, "warehouseBreakdown", stocks), MaterialView.class);
     }
 

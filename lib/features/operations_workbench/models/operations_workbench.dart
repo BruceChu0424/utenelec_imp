@@ -1,4 +1,5 @@
 import '../../basic_data/models/master_facet.dart';
+import '../../../shared/models/subcontract_task_source.dart';
 
 enum OperationsWorkbenchDepartment {
   warehouse('warehouse', '仓库任务工作台'),
@@ -294,6 +295,7 @@ class OperationsWorkbenchTask {
     this.canCreateOrder,
     this.displayStage,
     this.componentAvailableQty,
+    this.sources = const [],
   });
 
   final String taskId;
@@ -344,6 +346,7 @@ class OperationsWorkbenchTask {
 
   /// ADR-103：路线 B 申请行的子件在作业叶仓的合格可动用量；非路线 B 行为 null。
   final num? componentAvailableQty;
+  final List<SubcontractTaskSource> sources;
 
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
@@ -425,6 +428,7 @@ class OperationsWorkbenchTask {
           : null,
       displayStage: _optionalString(json, 'displayStage'),
       componentAvailableQty: _optionalNumber(json, 'componentAvailableQty'),
+      sources: SubcontractTaskSource.listFromJson(json['sources']),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,

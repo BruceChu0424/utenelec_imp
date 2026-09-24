@@ -13,6 +13,10 @@ import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
 import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
 import com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService;
 import com.uten.imp.features.subcontract.plan.dto.OutboundContracts.OutboundPlanLine;
+import com.uten.imp.features.production.analysis.MaterialAnalysisService;
+import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
+import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
+import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,6 +74,14 @@ class SubcontractSoleComponentUnlockEndToEndTest {
     @Autowired SubcontractMaterialIssueService materialIssues;
     @Autowired SubcontractMaterialPlanService materialPlans;
     @Autowired StockDocService stockDocs;
+    @Autowired MaterialAnalysisService analyses;
+    @Autowired MaterialAnalysisCommandService analysisCommands;
+    @Autowired FulfillmentWorkbenchQueryService workbench;
+    @Autowired com.uten.imp.features.production.analysis.PreplanAnalysisStockPegService stockPegs;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired com.uten.imp.features.production.execution.ProductionDrawRequestService productionDraws;
+    @Autowired com.uten.imp.features.production.execution.ProductionExecutionSegmentService productionSegments;
+    @Autowired com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService materialSettlements;
 
     FullChainEndToEndTest fixture;
 
@@ -182,6 +194,333 @@ class SubcontractSoleComponentUnlockEndToEndTest {
     }
 
     // ===================== 夹具 =====================
+
+    @Test
+    void purchaseOwnedByExactChildUnlocksItsParentAndTransfersCustodyWithoutMakingStockPublic() {
+        verifyExactChildCustody(false,false,BigDecimal.ONE);
+    }
+
+    @Test
+    void laterPurchaseBatchKeepsExactOwnershipBeforeAutomaticallyWakingTheWaitingSubcontract() {
+        verifyExactChildCustody(true,false,BigDecimal.ONE);
+    }
+
+    @Test
+    void parentPublicSurplusRetainsItsExactChildResponsibilityBeyondTheSalesBoundAllocation() {
+        verifyExactChildCustody(false,true,BigDecimal.ONE);
+    }
+
+    @Test
+    void exactHandoffUsesFrozenComponentUnitsWhenTheBomConsumesTwoPerTarget() {
+        verifyExactChildCustody(false,false,new BigDecimal("2"));
+    }
+
+    @Test
+    void soleManufacturedChildWithItsOwnBomUnlocksAfterQualifiedFinishedInbound() {
+        var w=fixture.seedWorld("sc-manufactured-direct-child");
+        fixture.loginAs(w.superAdminUserId());
+        UUID raw=UUID.randomUUID(),workshop=UUID.randomUUID(),worker=UUID.randomUUID();
+        fixture.insertGoods(raw,"SC-RAW-"+raw,"自制子件原材料","采购",w.unitId(),w.unitLegacy());
+        fixture.insertBom(w.goodsE(),w.goodsD(),"1");
+        fixture.insertBom(w.goodsD(),raw,"1");
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?,?)",w.supplierId(),w.goodsE(),w.goodsD(),raw);
+        assertTrue(Boolean.TRUE.equals(db.queryForObject("SELECT fn_subcontract_sole_component_goods(?)",Boolean.class,w.goodsE())),
+                "唯一直属子件即使自身有BOM仍应直接发子件；不要求先做出委外父件");
+        var original=componentAnalysis(w,"manufactured");
+        UUID applicationItem=notifyComponent(w,original);
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM preplan_subcontract_make_tasks WHERE analysis_id=?",Integer.class,original.analysisId()));
+        var request=orderRequest(w,"10");request.getItems().getFirst().setApplicationItemId(applicationItem);
+        assertThrows(ApiException.class,()->orders.create(request),"子件的原材料不等于已完工子件");
+        var view=analyses.detail(original.analysisId());
+        var child=view.flatMaterials().stream().filter(row->row.goodsId().equals(w.goodsD())).findFirst().orElseThrow();
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"sc-make-routes-"+view.analysisId(),
+                List.of(new RouteDecision(child.materialLineId(),child.actionGroupKey(),"MAKE",null))));
+        var rawMaterial=view.flatMaterials().stream().filter(row->row.goodsId().equals(raw)&&row.actionable()).findFirst().orElseThrow();
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"sc-raw-route-"+view.analysisId(),
+                List.of(new RouteDecision(rawMaterial.materialLineId(),rawMaterial.actionGroupKey(),"BUY",null))));
+        ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",w,raw,"10");
+        UUID production=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD'",UUID.class);
+        db.update("INSERT INTO departments(id,code,name,parent_id,level) VALUES(?,?,?,?,'二级班组')",workshop,"SC-WORK-"+workshop,"委外子件车间",production);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",worker,"SC-EMP-"+worker,"自制子件负责人",workshop);
+        view=analyses.detail(view.analysisId());
+        var plan=analysisCommands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),
+                "sc-make-child-"+view.analysisId(),w.warehouseId(),BusinessTime.today(),null,true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(child.materialLineId(),null,new BigDecimal("10"),
+                        BusinessTime.today(),null,workshop,null,worker,null,null)))).plans().getFirst();
+        assertEquals(0,componentAvailable(applicationItem).signum(),"已排产但未实收入库仍不能发出子件");
+        finishMadeComponent(w,plan);
+        assertEquals(0,new BigDecimal("10").compareTo(componentAvailable(applicationItem)));
+        assertEquals(0,onHand(w.goodsE(),w.warehouseId()).signum());
+        UUID order=orders.create(request).getId();
+        financeApproval.submit("SUBCONTRACT",order);
+        fixture.loginAs(ReflectionTestUtils.invokeMethod(fixture,"createApprover",w));
+        fixture.approvePendingFinance("SUBCONTRACT",order);
+        fixture.loginAs(w.superAdminUserId());
+        UUID planItem=db.queryForObject("SELECT pi.id FROM subcontract_material_plan_items pi JOIN subcontract_material_plans p ON p.id=pi.plan_id WHERE p.order_id=?",UUID.class,order);
+        materialIssues.approve(draftId(planItem));
+        assertEquals(0,onHand(w.goodsD(),w.warehouseId()).signum());
+        assertEquals(0,onHand(w.goodsE(),w.warehouseId()).signum());
+        assertTrue(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM subcontract_component_stock_handoffs handoff
+                JOIN preplan_stock_entitlement_events origin ON origin.id=handoff.source_entitlement_event_id
+                WHERE handoff.plan_item_id=? AND origin.event_type='ORIGIN_MAKE')
+                """,Boolean.class,planItem));
+    }
+
+    private void finishMadeComponent(FullChainEndToEndTest.World w,GeneratedPlan plan) {
+        UUID segment=plan.segmentIds().getFirst();
+        productionSegments.confirmRoute(plan.planId(),segment,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(
+                segmentVersion(segment),"sc-child-route-"+segment,"FULL_KIT"));
+        var documents=db.queryForList("SELECT document_id FROM production_planning_package_documents WHERE execution_segment_id=? AND document_type='DRAW'",UUID.class,segment);
+        if(!documents.isEmpty()) {
+            var items=List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(segment,segmentVersion(segment)));
+            var preview=productionDraws.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(items));
+            productionDraws.submit(new com.uten.imp.features.production.execution.ProductionDrawRequest.SubmitRequest(items,"sc-child-draw-"+segment,preview.fingerprint()));
+            var issue=new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest();
+            issue.setIdempotencyKey("sc-child-issue-"+segment);issue.setDocIds(documents);stockDocs.issueFullBatch(issue);
+        }
+        productionSegments.start(plan.planId(),segment,new com.uten.imp.features.production.execution.SegmentTransitionRequest(segmentVersion(segment),"sc-child-start-"+segment));
+        var usage=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
+        usage.setExecutionSegmentId(segment);usage.setIdempotencyKey("sc-child-consumed-"+segment);usage.setReason("子件原料全部用于本批合格产出");
+        usage.setLines(db.queryForList("SELECT id,required_qty FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",segment).stream().map(demand->{
+            var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();
+            line.setDemandId((UUID)demand.get("id"));line.setQtyBase((BigDecimal)demand.get("required_qty"));line.setSettlementType("CONSUMED");return line;
+        }).toList());
+        if(!usage.getLines().isEmpty())materialSettlements.post(plan.planId(),usage,w.superAdminUserId());
+        UUID planItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,segment);
+        UUID report=fixture.reportAndApproveExecutionSegment(w,planItem,null,w.goodsD(),segment,null,"10",false,"0",null,null);
+        fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
+        fixture.loginAs(w.superAdminUserId());
+    }
+
+    private long segmentVersion(UUID id) {
+        return db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,id);
+    }
+
+    @Test
+    void mergedApplicationPartialOrderKeepsEachProductsOwnChildShare() {
+        var w=fixture.seedWorld("sc-merged-products-owned");
+        fixture.loginAs(w.superAdminUserId());
+        fixture.insertBom(w.goodsE(),w.goodsD(),"1");
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),w.goodsD(),w.goodsE());
+        var sources=new java.util.ArrayList<PreviewItem>();
+        for(int index=0;index<2;index++) {
+            UUID product=UUID.randomUUID();
+            fixture.insertGoods(product,"SC-MERGED-"+product,"共用委外件产品"+index,"自制",w.unitId(),w.unitLegacy());
+            fixture.insertBom(product,w.goodsE(),"1");
+            UUID sales=ReflectionTestUtils.invokeMethod(fixture,"createApprovedOrder",w,product,"10","100");
+            UUID salesItem=ReflectionTestUtils.invokeMethod(fixture,"orderItemId",sales);
+            sources.add(new PreviewItem("SALES_ORDER_ITEM",salesItem,null,null,null,null,null,BusinessTime.today(),new BigDecimal("10")));
+        }
+        fixture.loginAs(w.superAdminUserId());
+        var analysis=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"sc-merged-"+w.goodsE(),sources));
+        var parents=analysis.flatMaterials().stream().filter(row->row.goodsId().equals(w.goodsE())).toList();
+        var routed=analyses.saveRoutes(analysis.analysisId(),new RouteRequest(analysis.version(),analysis.fingerprint(),"sc-merged-routes-"+analysis.analysisId(),
+                parents.stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),"SUBCONTRACT",null)).toList()));
+        analysisCommands.notifySupply(analysis.analysisId(),new NotifyRequest(routed.version(),routed.fingerprint(),"sc-merged-notify-"+analysis.analysisId(),
+                "SUBCONTRACT",parents.stream().map(MaterialView::materialLineId).toList(),List.of(),null));
+        var applicationItems=db.queryForList("""
+                SELECT DISTINCT allocation.external_item_id FROM preplan_supply_action_allocations allocation
+                JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                WHERE action.analysis_id=? AND action.route='SUBCONTRACT' AND action.status<>'CANCELLED'
+                """,UUID.class,analysis.analysisId());
+        assertEquals(2,applicationItems.size());
+        for(int index=0;index<2;index++) {
+            var buyView=analyses.detail(analysis.analysisId());
+            var buy=buyView.flatMaterials().stream().filter(row->row.goodsId().equals(w.goodsD())&&row.actionable()).findFirst().orElseThrow();
+            buyView=analyses.saveRoutes(buyView.analysisId(),new RouteRequest(buyView.version(),buyView.fingerprint(),
+                    "sc-merged-buy-route-"+analysis.analysisId()+"-"+index,List.of(new RouteDecision(buy.materialLineId(),buy.actionGroupKey(),"BUY",null))));
+            analysisCommands.notifySupply(buyView.analysisId(),new NotifyRequest(buyView.version(),buyView.fingerprint(),
+                    "sc-merged-buy-"+analysis.analysisId()+"-"+index,"BUY",List.of(buy.materialLineId()),List.of(),null));
+            UUID purchase=ReflectionTestUtils.invokeMethod(fixture,"approveExistingAnalysisPurchase",w,analysis.analysisId(),w.goodsD());
+            ReflectionTestUtils.invokeMethod(fixture,"receiveAndPassPurchase",w,purchase,w.goodsD(),new BigDecimal("10"),"root-sc-merged-owned-"+index);
+            fixture.loginAs(w.superAdminUserId());
+        }
+        fixture.loginAs(w.superAdminUserId());
+        var request=orderRequest(w,"15");request.getItems().getFirst().setApplicationItemIds(applicationItems);
+        UUID order=orders.create(request).getId();
+        financeApproval.submit("SUBCONTRACT",order);
+        fixture.loginAs(ReflectionTestUtils.invokeMethod(fixture,"createApprover",w));
+        fixture.approvePendingFinance("SUBCONTRACT",order);
+        fixture.loginAs(w.superAdminUserId());
+        var portions=db.queryForList("""
+                SELECT handoff.parent_material_id,handoff.child_material_id,SUM(handoff.qty) AS qty
+                FROM subcontract_component_stock_handoffs handoff
+                JOIN subcontract_material_plan_items plan_item ON plan_item.id=handoff.plan_item_id
+                JOIN subcontract_order_items item ON item.id=plan_item.order_item_id
+                WHERE item.order_id=? GROUP BY handoff.parent_material_id,handoff.child_material_id
+                """,order);
+        assertEquals(2,portions.size(),"合并后的15件委外必须保留真实来源FIFO的10+5子件归属");
+        assertEquals(List.of(new BigDecimal("5.0000"),new BigDecimal("10.0000")),
+                portions.stream().map(portion->((BigDecimal)portion.get("qty")).setScale(4)).sorted().toList());
+        assertEquals(0,new BigDecimal("5").compareTo(applicationItems.stream().map(this::componentAvailable).reduce(BigDecimal.ZERO,BigDecimal::add)),"另5件仍留在其产品原权益中");
+        UUID mergedPlanItem=db.queryForObject("SELECT plan_item.id FROM subcontract_material_plan_items plan_item JOIN subcontract_order_items item ON item.id=plan_item.order_item_id WHERE item.order_id=?",
+                UUID.class,order);
+        materialIssues.approve(draftId(mergedPlanItem));
+        var afterIssue=refreshComponentAnalysis(w,analysis.analysisId());
+        var children=afterIssue.flatMaterials().stream().filter(row->row.goodsId().equals(w.goodsD())).toList();
+        assertEquals(2,children.size());
+        assertEquals(List.of(BigDecimal.ZERO.setScale(4),new BigDecimal("5.0000")),
+                children.stream().map(child->child.requiredQty().setScale(4)).sorted().toList(),
+                "15件按实际来源抵扣10+5，不能把整笔15件重复扣给每个产品");
+    }
+
+    private void verifyExactChildCustody(boolean batched,boolean surplus,BigDecimal bomQty) {
+        String totalQty=surplus ? "12" : "10";
+        String componentQty=new BigDecimal(totalQty).multiply(bomQty).toPlainString();
+        String firstQty=batched ? "6" : componentQty;
+        var w = fixture.seedWorld("sc-exact-owned-child-"+batched+"-"+surplus+"-"+bomQty);
+        fixture.loginAs(w.superAdminUserId());
+        fixture.insertBom(w.goodsE(), w.goodsD(), bomQty.toPlainString());
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),w.goodsD(),w.goodsE());
+        var original = componentAnalysis(w,"original");
+        UUID applicationItem = notifyComponent(w,original,surplus ? new BigDecimal(totalQty) : null);
+        UUID application = db.queryForObject("SELECT application_id FROM subcontract_application_items WHERE id=?",UUID.class,applicationItem);
+        UUID purchase = ReflectionTestUtils.invokeMethod(fixture,"approvePurchaseForAnalysis",w,
+                analyses.detail(original.analysisId()),w.goodsD());
+        UUID receipt = ReflectionTestUtils.invokeMethod(fixture,"receiveAndPassPurchase",w,purchase,w.goodsD(),
+                new BigDecimal(firstQty),"root-sc-exact-owned-"+batched+"-"+surplus+"-"+bomQty);
+        fixture.loginAs(w.superAdminUserId());
+        assertNotNull(receipt);
+        assertEquals(0,db.queryForObject("SELECT available_qty FROM v_stock_available WHERE goods_id=? AND warehouse_id=?",
+                BigDecimal.class,w.goodsD(),w.warehouseId()).signum(),"计划专属料必须仍然被锁住");
+        assertEquals(0,new BigDecimal(firstQty).compareTo(componentAvailable(applicationItem)));
+        var task=workbench.query("SUBCONTRACT","WAITING_ORDER",null,null,null,null,1,100)
+                .items().stream().filter(row->application.equals(row.actionDocId())).findFirst().orElseThrow();
+        assertTrue(task.canCreateOrder(),"本单子件已采购质检入库，任务中心必须解锁");
+        assertEquals(0,new BigDecimal(firstQty).compareTo(task.componentAvailableQty()));
+
+        var other=componentAnalysis(w,"other");
+        UUID otherApplicationItem=notifyComponent(w,other);
+        assertEquals(0,componentAvailable(otherApplicationItem).signum(),"同货号其它产品需求不能抢本单专属到货");
+        var request=orderRequest(w,totalQty);
+        request.getItems().getFirst().setApplicationItemId(applicationItem);
+        UUID order=orders.create(request).getId();
+        financeApproval.submit("SUBCONTRACT",order);
+        fixture.loginAs(ReflectionTestUtils.invokeMethod(fixture,"createApprover",w));
+        fixture.approvePendingFinance("SUBCONTRACT",order);
+        fixture.loginAs(w.superAdminUserId());
+        UUID planItem=db.queryForObject("SELECT pi.id FROM subcontract_material_plan_items pi JOIN subcontract_material_plans p ON p.id=pi.plan_id WHERE p.order_id=?",UUID.class,order);
+        UUID draft=draftId(planItem);
+        assertNotNull(draft);
+        assertEquals(0,new BigDecimal(firstQty).compareTo(draftQty(draft)));
+        assertEquals(0,new BigDecimal(firstQty).compareTo(db.queryForObject(
+                "SELECT SUM(qty) FROM subcontract_component_stock_handoffs WHERE plan_item_id=?",BigDecimal.class,planItem)));
+        SubcontractComponentHandoffGuardAssertions.verify(db, db.queryForObject(
+                "SELECT id FROM subcontract_component_stock_handoffs WHERE plan_item_id=? ORDER BY created_at,id LIMIT 1",
+                UUID.class, planItem));
+        if (!surplus && bomQty.compareTo(BigDecimal.ONE)==0) {
+            assertComponentProjection(w,original.analysisId(),"10",firstQty,firstQty,"draft");
+            var otherChild=refreshComponentAnalysis(w,other.analysisId()).flatMaterials().stream()
+                    .filter(row->row.goodsId().equals(w.goodsD())).findFirst().orElseThrow();
+            assertEquals(0,otherChild.exactPeggedQty().signum(),"另一产品的同货号子件不能继承本单草稿权益");
+            assertEquals(0,otherChild.allocatedAvailableQty().signum(),"委外草稿权益不能进入其它用途的通用库存池");
+        }
+        assertOriginalReceiptCannotBeReversed(receipt,w.goodsD(),w.warehouseId(),planItem);
+        assertEquals(0,componentAvailable(otherApplicationItem).signum());
+        materialIssues.approve(draft);
+        assertOriginalReceiptCannotBeReversed(receipt,w.goodsD(),w.warehouseId(),planItem);
+        assertEquals(0,onHand(w.goodsD(),w.warehouseId()).signum());
+        assertEquals(0,onHand(w.goodsE(),w.warehouseId()).signum());
+        if(batched) {
+            ReflectionTestUtils.invokeMethod(fixture,"receiveAndPassPurchase",w,purchase,w.goodsD(),
+                    new BigDecimal("4"),"root-sc-exact-owned-second");
+            fixture.loginAs(w.superAdminUserId());
+            draft=draftId(planItem);
+            assertNotNull(draft,"后续采购入库应在归属权益登记后自动补出仓草稿");
+            assertEquals(0,new BigDecimal("4").compareTo(draftQty(draft)));
+            assertEquals(0,componentAvailable(otherApplicationItem).signum());
+            materialIssues.approve(draft);
+        }
+        assertEquals(0,new BigDecimal(componentQty).compareTo(db.queryForObject("""
+                SELECT SUM(reservation.consumed_qty) FROM subcontract_component_stock_handoffs handoff
+                JOIN stock_reservations reservation ON reservation.id=handoff.target_reservation_id
+                WHERE handoff.plan_item_id=?
+                """,BigDecimal.class,planItem)));
+        if (!surplus && bomQty.compareTo(BigDecimal.ONE)==0)
+            assertComponentProjection(w,original.analysisId(),"0","0","0","issued");
+        materialIssues.reverse(draft);
+        BigDecimal restoredQty=new BigDecimal(batched ? "4" : componentQty);
+        assertEquals(0,restoredQty.compareTo(onHand(w.goodsD(),w.warehouseId())));
+        assertEquals(0,restoredQty.compareTo(componentAvailable(applicationItem)),
+                "红冲实物出仓后恢复同一产品下原子件权益");
+        if (!surplus && bomQty.compareTo(BigDecimal.ONE)==0)
+            assertComponentProjection(w,original.analysisId(),restoredQty.toPlainString(),restoredQty.toPlainString(),
+                    restoredQty.toPlainString(),"reversed");
+        assertEquals(0,componentAvailable(otherApplicationItem).signum());
+        UUID plan=db.queryForObject("SELECT plan_id FROM subcontract_material_plan_items WHERE id=?",UUID.class,planItem);
+        UUID replacement=materialPlans.regenerateDraft(plan);
+        assertNotNull(replacement);
+        materialIssues.delete(replacement);
+        assertEquals(0,restoredQty.compareTo(componentAvailable(applicationItem)),
+                "删除未审草稿仍恢复原权益，不能放进公共库存");
+        if (!surplus && bomQty.compareTo(BigDecimal.ONE)==0)
+            assertComponentProjection(w,original.analysisId(),restoredQty.toPlainString(),restoredQty.toPlainString(),
+                    restoredQty.toPlainString(),"draft-deleted");
+        assertEquals(0,componentAvailable(otherApplicationItem).signum());
+    }
+
+    private AnalysisView refreshComponentAnalysis(FullChainEndToEndTest.World w,UUID analysisId) {
+        var current=analyses.detail(analysisId);
+        var parent=current.flatMaterials().stream().filter(row->row.goodsId().equals(w.goodsE())).findFirst().orElseThrow();
+        return analyses.saveRoutes(analysisId,new RouteRequest(current.version(),current.fingerprint(),
+                "sc-custody-projection-"+UUID.randomUUID(),
+                List.of(new RouteDecision(parent.materialLineId(),parent.actionGroupKey(),"SUBCONTRACT",null))));
+    }
+
+    private void assertComponentProjection(FullChainEndToEndTest.World w,UUID analysisId,
+                                          String required,String owned,String allocated,String stage) {
+        var child=refreshComponentAnalysis(w,analysisId).flatMaterials().stream()
+                .filter(row->row.goodsId().equals(w.goodsD())).findFirst().orElseThrow();
+        assertEquals(0,new BigDecimal(required).compareTo(child.requiredQty()),stage+": 实际出仓后扣除子层需求, 红冲后恢复");
+        assertEquals(0,new BigDecimal(owned).compareTo(child.exactPeggedQty()),stage+": 草稿交接仍显示本节点专属库存");
+        assertEquals(0,new BigDecimal(allocated).compareTo(child.allocatedAvailableQty()),stage+": 专属子件覆盖不丢失");
+        assertEquals(0,child.netShortageQty().signum(),stage+": 已采购入库/已给委外的子件不能重新建议采购");
+    }
+
+    private AnalysisView componentAnalysis(FullChainEndToEndTest.World w,String key) {
+        UUID product=UUID.randomUUID();
+        fixture.insertGoods(product,"SC-OWN-"+product,"委外归属产品"+key,"自制",w.unitId(),w.unitLegacy());
+        fixture.insertBom(product,w.goodsE(),"1");
+        UUID sales=ReflectionTestUtils.invokeMethod(fixture,"createApprovedOrder",w,product,"10","100");
+        fixture.loginAs(w.superAdminUserId());
+        UUID salesItem=ReflectionTestUtils.invokeMethod(fixture,"orderItemId",sales);
+        return analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"sc-owned-preview-"+sales,
+                List.of(new PreviewItem("SALES_ORDER_ITEM",salesItem,null,null,null,null,null,
+                        BusinessTime.today(),new BigDecimal("10")))));
+    }
+
+    private UUID notifyComponent(FullChainEndToEndTest.World w,AnalysisView view) {
+        return notifyComponent(w,view,null);
+    }
+
+    private UUID notifyComponent(FullChainEndToEndTest.World w,AnalysisView view,BigDecimal outputQty) {
+        var parent=view.flatMaterials().stream().filter(row->row.goodsId().equals(w.goodsE())).findFirst().orElseThrow();
+        var routed=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),
+                "sc-owned-route-"+view.analysisId(),List.of(new RouteDecision(parent.materialLineId(),parent.actionGroupKey(),"SUBCONTRACT",null))));
+        analysisCommands.notifySupply(view.analysisId(),new NotifyRequest(routed.version(),routed.fingerprint(),
+                "sc-owned-notify-"+view.analysisId(),"SUBCONTRACT",List.of(parent.materialLineId()),List.of(),
+                outputQty==null ? null : List.of(new SupplyQuantityInput(null,parent.materialLineId(),outputQty,BigDecimal.ZERO))));
+        return db.queryForObject("""
+                SELECT DISTINCT allocation.external_item_id FROM preplan_supply_action_allocations allocation
+                JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                WHERE action.analysis_id=? AND action.route='SUBCONTRACT' AND action.status<>'CANCELLED'
+                """,UUID.class,view.analysisId());
+    }
+
+    private BigDecimal componentAvailable(UUID applicationItem) {
+        return db.queryForObject("SELECT COALESCE(SUM(available_qty),0) FROM fn_subcontract_component_available_stock(?,NULL::uuid)",BigDecimal.class,applicationItem);
+    }
+
+    private void assertOriginalReceiptCannotBeReversed(UUID receipt,UUID goods,UUID warehouse,UUID planItem) {
+        BigDecimal before=onHand(goods,warehouse);
+        int bridges=db.queryForObject("SELECT COUNT(*) FROM subcontract_component_stock_handoffs WHERE plan_item_id=?",Integer.class,planItem);
+        ApiException failure=assertThrows(ApiException.class,()->new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                .executeWithoutResult(status->stockPegs.releaseForReceipt("PURCHASE",receipt)));
+        assertEquals(ErrorCode.CONFLICT,failure.getCode());
+        assertEquals(0,before.compareTo(onHand(goods,warehouse)));
+        assertEquals(bridges,db.queryForObject("SELECT COUNT(*) FROM subcontract_component_stock_handoffs WHERE plan_item_id=?",Integer.class,planItem));
+    }
 
     private OrderSaveRequest orderRequest(FullChainEndToEndTest.World w, String qty) {
         var request = new OrderSaveRequest();

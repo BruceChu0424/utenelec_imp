@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -377,6 +378,49 @@ class StockServiceTest {
         // ADR-103: 库存内核每笔入库叫醒一次, 维度就是这笔入库的货品/颜色/实收仓。
         verify(port, org.mockito.Mockito.times(1)).wakeOutboundAfterStockIn(java.util.List.of(
                 new SubcontractOutboundWakePort.StockedDimension(goodsId, colorId, warehouseId)));
+    }
+
+    @Test
+    void inboundWaitsForSourceAttributionAndDeduplicatesBeforeCommit() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        SubcontractOutboundWakePort port = org.mockito.Mockito.mock(SubcontractOutboundWakePort.class);
+        StockService service = new StockService(movementRepo, balanceRepo, tx, inventoryLock,
+                quantityTestValuation(), org.mockito.Mockito.mock(GoodsOwningWarehouseSyncService.class), wake(port));
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.recordMovement(request(warehouseId, goodsId, StockService.DIR_IN, "5"));
+            service.recordMovement(request(warehouseId, goodsId, StockService.DIR_IN, "3"));
+            org.mockito.Mockito.verifyNoInteractions(port);
+            var synchronizations = org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations();
+            org.junit.jupiter.api.Assertions.assertEquals(1, synchronizations.size());
+            synchronizations.forEach(sync -> sync.beforeCommit(false));
+            verify(port).wakeOutboundAfterStockIn(List.of(
+                    new SubcontractOutboundWakePort.StockedDimension(goodsId, null, warehouseId)));
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void rollbackNeverWakesAndBeforeCommitFailurePropagates() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        SubcontractOutboundWakePort port = org.mockito.Mockito.mock(SubcontractOutboundWakePort.class);
+        StockService service = new StockService(movementRepo, balanceRepo, tx, inventoryLock,
+                quantityTestValuation(), org.mockito.Mockito.mock(GoodsOwningWarehouseSyncService.class), wake(port));
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.recordMovement(request(warehouseId, goodsId, StockService.DIR_IN, "5"));
+            var synchronization = org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations().getFirst();
+            synchronization.afterCompletion(org.springframework.transaction.support.TransactionSynchronization.STATUS_ROLLED_BACK);
+            org.mockito.Mockito.verifyNoInteractions(port);
+            org.mockito.Mockito.doThrow(new IllegalStateException("wake failed"))
+                    .when(port).wakeOutboundAfterStockIn(org.mockito.ArgumentMatchers.any());
+            assertThrows(IllegalStateException.class, () -> synchronization.beforeCommit(false));
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

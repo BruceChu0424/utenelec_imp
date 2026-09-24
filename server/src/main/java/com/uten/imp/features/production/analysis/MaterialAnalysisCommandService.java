@@ -156,7 +156,7 @@ public class MaterialAnalysisCommandService {
                 .filter(group -> "SUBCONTRACT".equals(group.route()))
                 .map(group -> group.dimension().goodsId()).toList();
         Set<UUID> subcontractBomParents = activeBomParentIds(subcontractGoodsIds);
-        // V581：有子层里再分一刀——「只有一个叶子子件」的委外件直接发那个子件出去，
+        // V581：有子层里再分一刀——「只有一个直属子件」的委外件直接发那个子件出去，
         // 不建前置自制任务，因此它和无子层叶子走同一条「出委外申请」通道。
         Set<UUID> subcontractSoleComponents =
                 soleComponentSubcontractGoodsIds(subcontractGoodsIds);
@@ -957,7 +957,7 @@ public class MaterialAnalysisCommandService {
                 .distinct().toList();
         java.util.Set<UUID> goodsWithMakeChildren = new java.util.HashSet<>(
                 activeBomParentIds(subcontractCandidateGoods));
-        // V581：只有一个叶子子件的委外件不进车间——它直接发子件给委外商。
+        // V581：只有一个直属子件的委外件不进车间——它直接发子件给委外商。
         goodsWithMakeChildren.removeAll(
                 soleComponentSubcontractGoodsIds(subcontractCandidateGoods));
         for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
@@ -979,7 +979,7 @@ public class MaterialAnalysisCommandService {
             }
             UUID goodsId = goodsByMaterialLine.get(line.materialLineId());
             if (goodsId == null || !goodsWithMakeChildren.contains(goodsId)) {
-                throw validation("无自制子层、或只有一个叶子子件（直接发子件给委外商）的委外件"
+                throw validation("无自制子层、或只有一个直属子件（直接发子件给委外商）的委外件"
                         + "请走委外下达，不能直接建生产计划");
             }
             subcontractLines.add(line.materialLineId());
@@ -1091,7 +1091,7 @@ public class MaterialAnalysisCommandService {
                 validatePlanSchedule(quantity, defaults);
                 // ADR-104：同一分析行已有一张还没开工的计划(草稿, 或已审核但车间没领料没开工)
                 // 时, 追加量并进那张计划——同一单号、明细加量、关联行加量, 已审核的在同一个
-                // 计划包里另起一段。开工了的计划照旧另立新单(用户口径 2026-09-22)。
+                // 原工单同步加量。已提交领料或执行的计划照旧另立新单。
                 GrowablePlan growable = growablePlanFor(
                         analysisId, lineId, quantity.departmentId(), request.approveNow());
                 if (growable != null) {
@@ -1162,7 +1162,14 @@ public class MaterialAnalysisCommandService {
                   AND fn_material_analysis_plan_growable(plan.id)
                 """
                 + (approveNow ? "" : "  AND plan.status = 0\n")
-                + (departmentId == null ? "" : "  AND plan.department_id = :departmentId\n")
+                + (departmentId == null ? "" : """
+                  AND plan.department_id = :departmentId
+                  AND NOT EXISTS (
+                      SELECT 1 FROM production_execution_segments segment
+                      WHERE segment.plan_id = plan.id AND NOT segment.is_deleted
+                        AND segment.status NOT IN ('CANCELLED', 'REVERSED')
+                        AND segment.workshop_department_id IS DISTINCT FROM CAST(:departmentId AS uuid))
+                  """)
                 + """
                 ORDER BY link.created_at DESC, plan.id DESC
                 LIMIT 1
@@ -1175,6 +1182,12 @@ public class MaterialAnalysisCommandService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
         if (rows.isEmpty()) return null;
         Object[] row = rows.getFirst();
+        // A concurrent DRAW_REQUEST only changes the task, not the plan header.
+        // After waiting for the plan lock, take a fresh READ COMMITTED snapshot
+        // before changing any quantity; a newly executing plan must get a new order.
+        if (!Boolean.TRUE.equals(em.createNativeQuery(
+                        "SELECT fn_material_analysis_plan_growable(CAST(:planId AS uuid))")
+                .setParameter("planId", row[0]).getSingleResult())) return null;
         return new GrowablePlan((UUID) row[0], Objects.toString(row[1], null),
                 ((Number) row[2]).shortValue(), (UUID) row[3], (UUID) row[4],
                 decimalOf(row[5]), decimalOf(row[6]), decimalOf(row[7]), (UUID) row[8]);
@@ -1187,7 +1200,7 @@ public class MaterialAnalysisCommandService {
     /**
      * ADR-104 并入追加：计划明细与关联行只增不减地改大(V645 放行；关联行触发器顺手把分析行的
      * submitted/approved 与版本推进)；草稿计划重排预排草案(立即审核时整张审核)，已审核计划先把
-     * 销售分摊容量扩大，再在同一个计划包里另起一段。
+     * 销售分摊容量扩大，再同步增加原车间工单及其冻结物料需求。
      */
     private GeneratedPlan growPlan(
             UUID analysisId, ProductView product, GrowablePlan target, PlanQuantity quantity,
@@ -1249,13 +1262,12 @@ public class MaterialAnalysisCommandService {
             planService.growAnalysisPlanSalesAllocation(
                     target.planId(), target.planItemId(), demandQty);
         }
-        executionPackages.appendSegment(target.planId(),
+        executionPackages.growSegment(target.planId(),
                 new com.uten.imp.features.production.mrp.ProductionExecutionPackageCommandService
-                        .AppendSegmentRequest(
+                        .GrowSegmentRequest(
                         target.planItemId(), added,
                         target.salesOrderItemId() != null ? demandQty : BigDecimal.ZERO,
-                        itemBillDate(quantity, defaults), itemDeliveryDate(quantity, defaults),
-                        quantity.departmentId(), quantity.teamDepartmentId(), quantity.workerId()));
+                        quantity.departmentId()));
         return generatedPlan(target.planId()).merged(added);
     }
 
@@ -2287,13 +2299,13 @@ public class MaterialAnalysisCommandService {
     }
 
     /**
-     * V581：「只有一个叶子子件」的委外货品——这类件不先自制，直接把那个子件
+     * V581：「只有一个直属子件」的委外货品——这类件不先自制，直接把那个子件
      * 发给委外商，委外商加工后交回目标件。
      *
      * <p>判据与 {@code SubcontractMaterialPlanService.soleOutboundComponent} 及
      * 迁移 V581 的 {@code fn_guard_subcontract_target_quantity_basis_insert}
-     * 逐字同口径：活动边恰好 1 条、该边 PER_UNIT 且是真实投入阶段、子件自身
-     * 没有活动边。任一条不满足就不在本集合里，按既有「先自制再发外」处理。
+     * 逐字同口径：活动直属边恰好 1 条、该边 PER_UNIT 且是真实投入阶段；
+     * V646 起子件可有自己的制造 BOM。其余形态按既有「先自制再发外」处理。
      *
      * <p>与 {@link #activeBomParentIds} 一样，同批只发一次查询。
      */

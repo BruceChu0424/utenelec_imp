@@ -558,7 +558,7 @@ public class PreplanInboundAllocationProjectionService
                 ) work ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT SUM(CASE
-                        WHEN reservation.release_reason='TRANSFERRED_TO_PLAN'
+                        WHEN reservation.release_reason='TRANSFERRED_TO_PLAN' OR %1$s
                         THEN exact_peg.qty
                         ELSE GREATEST(reservation.qty-reservation.consumed_qty
                             -reservation.released_qty,0) END) AS qty
@@ -568,7 +568,7 @@ public class PreplanInboundAllocationProjectionService
                      AND reservation.is_deleted=FALSE
                     WHERE exact_peg.supply_action_allocation_id=allocation.id
                       AND (reservation.status=0
-                           OR reservation.release_reason='TRANSFERRED_TO_PLAN')
+                           OR reservation.release_reason='TRANSFERRED_TO_PLAN' OR %1$s)
                 ) exact ON TRUE
                 WHERE allocation.external_item_id IN (:externalItemIds)
                 ORDER BY allocation.external_item_id,
@@ -577,7 +577,7 @@ public class PreplanInboundAllocationProjectionService
                            WHEN 'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
                          action.created_at,action.id,
                          allocation.created_at,allocation.id
-                """).setParameter("externalItemIds", externalItemIds)
+                """.formatted(SubcontractComponentCustodyProjection.TRANSFERRED_EVIDENCE)).setParameter("externalItemIds", externalItemIds)
                 .setParameter("includeIqcContinuations", includeIqcContinuations))) {
             PreplanCandidate value = PreplanCandidate.from(row);
             result.computeIfAbsent(value.externalItemId(), ignored -> new ArrayList<>())

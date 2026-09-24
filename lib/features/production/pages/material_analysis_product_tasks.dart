@@ -995,7 +995,7 @@ abstract class _MaterialAnalysisProductTasksState
       final allMerged = plans.isNotEmpty && mergedCount == plans.length;
       context.appSuccess(
         allMerged
-            ? (approved ? '追加数量已并入原生产计划单，车间按同一张计划继续' : '追加数量已并入原生产计划草稿，待审核')
+            ? (approved ? '追加数量已加到原生产计划和车间工单' : '追加数量已并入原生产计划草稿，待审核')
             : approved
             ? plans.any((plan) => plan.drawDocuments.isNotEmpty)
                   ? '生产计划已审核下达，物料提货单已生成'

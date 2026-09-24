@@ -15,6 +15,7 @@ void main() {
         ...base,
         'materialLineId': 'node-2',
         'requiredQty': 0,
+        'sourceRequiredQty': 0,
         'availableQty': 0,
         'routeConfirmed': false,
         'sourceConfirmed': null,
@@ -34,10 +35,36 @@ void main() {
       expect(merged.containsKey('sourceConfirmed'), isTrue);
       expect(merged['sourceConfirmed'], isNull);
       expect(merged['requiredQty'], 0);
+      expect(merged['sourceRequiredQty'], 0);
       expect(merged['routeConfirmed'], isFalse);
       expect(merged['path'], isEmpty);
       expect(base['sourceConfirmed'], 'MAKE');
       expect(() => merged['requiredQty'] = 2, throwsUnsupportedError);
+    },
+  );
+
+  test(
+    'sparse source demand preserves explicit zero and missing legacy facts',
+    () {
+      final base = {..._prototype(), 'sourceRequiredQty': 1000};
+      final view = ProductionMaterialAnalysisView.fromJson(
+        _response(base, [
+          {'materialLineId': 'source-inherited', 'requiredQty': 2500},
+          {'materialLineId': 'source-zero', 'sourceRequiredQty': 0},
+          {'materialLineId': 'source-null', 'sourceRequiredQty': null},
+        ]),
+      );
+      expect(view.materials[0].sourceRequiredQty, 1000);
+      expect(view.materials[0].requiredQty, 2500);
+      expect(view.materials[1].sourceRequiredQty, 0);
+      expect(view.materials[2].sourceRequiredQty, isNull);
+      final legacy = _prototype()..remove('sourceRequiredQty');
+      expect(
+        ProductionMaterialAnalysisView.fromJson(
+          _response(legacy, [{}]),
+        ).materials.single.sourceRequiredQty,
+        isNull,
+      );
     },
   );
 
@@ -273,6 +300,7 @@ List<Object?> _facts(ProductionMaterialAnalysisMaterial row) => [
   row.unitId,
   row.path,
   row.requiredQty,
+  row.sourceRequiredQty,
   row.perProductQty,
   row.bomQty,
   row.parentPerProductQty,
@@ -310,6 +338,7 @@ List<Object?> _facts(ProductionMaterialAnalysisMaterial row) => [
 ];
 
 Map<String, dynamic> _prototype() => {
+  'sourceRequiredQty': 1000,
   'materialLineId': 'node-1',
   'analysisLineId': 'source-1',
   'nodeKey': 'root/1',

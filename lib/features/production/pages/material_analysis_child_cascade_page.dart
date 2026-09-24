@@ -1959,10 +1959,10 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         ),
       EditableGridColumn<_ChildCascadeRow>(
         key: 'snapshotNeed',
-        label: '需求数量',
+        label: '本批备料需求',
         width: 110,
         numeric: true,
-        headerInfo: '服务端按本批数量算出的这行本批需求（父件超量下达时已按计划产出量放大）。树顶显示本次可下达上限。',
+        headerInfo: '按本批产量计算的实际备料需求，包含追加和超量产出所需物料；不同于主表固定的原始需要数量。树顶显示本次可下达上限。',
         cellBuilder: (context, row) => Align(
           alignment: Alignment.centerRight,
           child: Text(

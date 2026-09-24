@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,12 +14,163 @@ import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/subcontract_task_source.dart';
 
 void main() {
+  testWidgets(
+    'return from stock-in refreshes component lock without double initial load',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final gateway = _Gateway(
+        _data(capability: true, includeComponentRoute: true),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.subcontractApplicationView,
+              Perm.subcontractOrderView,
+              Perm.subcontractOrderCreate,
+              Perm.subcontractOrderDecompose,
+            }),
+            apiClientProvider.overrideWithValue(_api()),
+          ],
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(repository: gateway),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SubcontractDecompositionPage)),
+      );
+      final resume = container.read(pageResumeProvider.notifier);
+      bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
+      await tester.pumpAndSettle();
+      expect(gateway.queries, hasLength(1));
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+      expect(find.text('等子件到货(仓内可动用 0)'), findsOneWidget);
+      expect(gateway.queries, hasLength(2));
+
+      // One older refresh remains in flight while stock-in finishes elsewhere.
+      final stale = Completer<OperationsWorkbenchData>();
+      gateway.response = () => stale.future;
+      await tester.tap(find.byTooltip('刷新委外任务'));
+      await tester.pump();
+      bumpPageResumeState(resume, '/warehouse/stock-in');
+      // 入库是本端写操作(网络层推进写修订号, ADR-108), 返回任务中心时才按需重拉。
+      container.read(dataWriteRevisionProvider.notifier).state++;
+      gateway.response = null;
+      gateway.data = _data(
+        capability: true,
+        includeComponentRoute: true,
+        componentUnlocked: true,
+      );
+      bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
+      await tester.pumpAndSettle();
+      expect(gateway.queries, hasLength(4));
+      expect(gateway.queries.last['status'], 'WAITING_ORDER');
+      expect(find.text('等子件到货(仓内可动用 0)'), findsNothing);
+      expect(find.text('子件已到货·可下单(仓内可动用 1000 件)'), findsOneWidget);
+      stale.complete(_data(capability: true, includeComponentRoute: true));
+      await tester.pumpAndSettle();
+      expect(find.text('等子件到货(仓内可动用 0)'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'preparation progress opens immediately, retries and ignores late completion after close',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _DeferredPreparationApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.subcontractApplicationView,
+              Perm.productionMaterialAnalysisView,
+              Perm.productionMaterialAnalysisNotify,
+            }),
+            apiClientProvider.overrideWithValue(api),
+          ],
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                _data(capability: true, includePreparation: true),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+      await _doubleTapRow(tester, find.text('SC-A'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('产品进度 · 委外件A'), findsOneWidget);
+      expect(find.text('正在读取生产进度…'), findsOneWidget);
+      expect(find.textContaining('需求量 10'), findsOneWidget);
+      expect(api.paths, [
+        '/production/material-analyses/subcontract-make-tasks/task-a',
+      ]);
+      expect(
+        find.byKey(const Key('subcontract-make-notify-action')),
+        findsNothing,
+      );
+
+      api.requests.single.completeError(StateError('failed'));
+      await tester.pumpAndSettle();
+      expect(find.text('前置生产任务加载失败，请稍后重试'), findsOneWidget);
+      await tester.tap(find.text('重试'));
+      await tester.pump();
+      expect(api.requests, hasLength(2));
+      expect(find.text('正在读取生产进度…'), findsOneWidget);
+      expect(
+        find.byKey(const Key('subcontract-make-notify-action')),
+        findsNothing,
+      );
+      api.requests.last.complete(_preparationDetail());
+      await tester.pumpAndSettle();
+      expect(find.text('正在读取生产进度…'), findsNothing);
+      expect(find.textContaining('已完工入库', findRichText: true), findsWidgets);
+      expect(find.text('ROOT-1 原产品一'), findsOneWidget);
+      expect(find.text('销售订单 SO-1 · 第2行'), findsOneWidget);
+      expect(find.text('公共备货'), findsOneWidget);
+      // A positive availableQty without server allowedActions must stay read-only.
+      expect(
+        find.byKey(const Key('subcontract-make-notify-action')),
+        findsNothing,
+      );
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+
+      await _doubleTapRow(tester, find.text('SC-A'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(api.requests, hasLength(3));
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      api.requests.last.complete(_preparationDetail());
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'shared headers send server sort and full-scope facet filters with true planning issue date',
     (tester) async {
@@ -623,6 +776,50 @@ void main() {
       }
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'application progress keeps each product attribution and public quantity visible',
+      (tester) async {
+        tester.view.physicalSize = const Size(1600, 1200);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final api = _DeferredPreparationApi();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              currentPermissionsProvider.overrideWithValue(const {
+                Perm.subcontractApplicationView,
+              }),
+              apiClientProvider.overrideWithValue(api),
+            ],
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(
+                  _data(capability: true, withSources: true),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('待处理'));
+        await tester.pumpAndSettle();
+        await _doubleTapRow(tester, find.text('FG-task-1'));
+        await tester.pumpAndSettle();
+        expect(find.text('数量归属'), findsOneWidget);
+        expect(find.text('ROOT-1 原产品一'), findsOneWidget);
+        expect(find.text('ROOT-2 原产品二'), findsOneWidget);
+        expect(find.text('销售订单 SO-1 · 第2行'), findsOneWidget);
+        expect(find.text('销售订单 SO-2 · 第3行'), findsOneWidget);
+        expect(find.text('SC-A 委外件A：3 件'), findsOneWidget);
+        expect(find.text('SC-A 委外件A：5 件'), findsOneWidget);
+        expect(find.text('SC-A 委外件A：2 件'), findsOneWidget);
+        expect(find.text('公共备货'), findsOneWidget);
+        expect(api.paths, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 }
 
@@ -671,7 +868,8 @@ ApiClient _api() {
 
 class _Gateway implements OperationsWorkbenchGateway {
   _Gateway(this.data);
-  final OperationsWorkbenchData data;
+  OperationsWorkbenchData data;
+  Future<OperationsWorkbenchData> Function()? response;
   final List<String?> statuses = <String?>[];
   final List<Map<String, Object?>> queries = [];
 
@@ -701,14 +899,59 @@ class _Gateway implements OperationsWorkbenchGateway {
       'status': status,
       'filters': Map<String, String?>.from(columnFilters),
     });
-    return data;
+    return response == null ? data : await response!();
   }
 }
+
+class _DeferredPreparationApi extends ApiClient {
+  _DeferredPreparationApi() : super(Dio());
+
+  final paths = <String>[];
+  final requests = <Completer<Map<String, dynamic>>>[];
+
+  @override
+  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) {
+    if (!path.contains('/subcontract-make-tasks/')) return Future.value({});
+    paths.add(path);
+    final request = Completer<Map<String, dynamic>>();
+    requests.add(request);
+    return request.future;
+  }
+}
+
+Map<String, dynamic> _preparationDetail() => {
+  'taskId': 'task-a',
+  'analysisId': 'analysis-1',
+  'status': 'ACTIVE',
+  'goodsCode': 'SC-A',
+  'goodsName': '委外件A',
+  'workshopStatus': 'PRODUCED',
+  'requiredQty': 10,
+  'producedQty': 10,
+  'availableQty': 10,
+  'allowedActions': <String>[],
+  'sources': [_sourceJson(1, 8), _sourceJson(null, 2)],
+};
+
+Map<String, dynamic> _sourceJson(int? product, num qty) => {
+  'analysisItemId': product == null ? null : 'origin-$product',
+  'sourceType': product == null ? 'PUBLIC_STOCK' : 'SALES_ORDER_ITEM',
+  'sourceNo': product == null ? '' : 'SO-$product',
+  'sourceLineNo': product == null ? null : product + 1,
+  'productCode': product == null ? '' : 'ROOT-$product',
+  'productName': product == null ? '' : '原产品${product == 1 ? '一' : '二'}',
+  'materialCode': 'SC-A',
+  'materialName': '委外件A',
+  'quantity': qty,
+  'unitName': '件',
+};
 
 OperationsWorkbenchData _data({
   required bool capability,
   bool includePreparation = false,
   bool includeComponentRoute = false,
+  bool componentUnlocked = false,
+  bool withSources = false,
 }) => OperationsWorkbenchData(
   department: OperationsWorkbenchDepartment.subcontract,
   summary: OperationsWorkbenchSummary(
@@ -728,7 +971,18 @@ OperationsWorkbenchData _data({
     },
   ),
   items: [
-    _task('task-1', 'application-1', 'application-item-1'),
+    _task(
+      'task-1',
+      'application-1',
+      'application-item-1',
+      sources: withSources
+          ? SubcontractTaskSource.listFromJson([
+              _sourceJson(1, 3),
+              _sourceJson(2, 5),
+              _sourceJson(null, 2),
+            ])
+          : const [],
+    ),
     _task('task-2', 'application-2', 'application-item-2'),
     if (includePreparation) ...[
       _preparationRow('task-a', 'SC-A', '委外件A', 'IN_PRODUCTION'),
@@ -739,9 +993,11 @@ OperationsWorkbenchData _data({
         'task-locked',
         'application-locked',
         'application-item-locked',
-        canCreateOrder: false,
-        displayStage: 'WAITING_COMPONENT_STOCK',
-        componentAvailableQty: 0,
+        canCreateOrder: componentUnlocked,
+        displayStage: componentUnlocked
+            ? 'COMPONENT_STOCK_READY'
+            : 'WAITING_COMPONENT_STOCK',
+        componentAvailableQty: componentUnlocked ? 1000 : 0,
       ),
       _task(
         'task-ready',
@@ -777,6 +1033,7 @@ OperationsWorkbenchTask _task(
   bool? canCreateOrder = true,
   String? displayStage,
   num? componentAvailableQty,
+  List<SubcontractTaskSource> sources = const [],
 }) => OperationsWorkbenchTask(
   taskId: taskId,
   packageId: 'package-1',
@@ -803,6 +1060,7 @@ OperationsWorkbenchTask _task(
   canCreateOrder: canCreateOrder,
   displayStage: displayStage,
   componentAvailableQty: componentAvailableQty,
+  sources: sources,
   actionDocument: OperationsActionDocument(
     id: applicationId,
     docType: 'SUBCONTRACT_APPLICATION',

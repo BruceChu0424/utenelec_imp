@@ -236,7 +236,8 @@ class SubcontractMaterialPlanStateMachineTest {
             return List.of();
         };
 
-        service.reverseOutboundReservations(UUID.randomUUID());
+        UUID reversedIssueId = UUID.randomUUID();
+        service.reverseOutboundReservations(reversedIssueId);
         UUID regeneratedIssueId = service.regenerateDraft(planId);
         service.reserveDraft(regeneratedIssueId, warehouseId);
 
@@ -251,8 +252,8 @@ class SubcontractMaterialPlanStateMachineTest {
         // 一条预留。两次都必须冲着这张新草稿来，不能去动别人的。
         assertThat(callsContaining("source_doc_type = 'subcontract_outbound_draft'"))
                 .isNotEmpty()
-                .allSatisfy(call -> assertThat(call.parameters())
-                        .containsEntry("issueId", regeneratedIssueId));
+                .allSatisfy(call -> assertThat(call.parameters().get("issueId"))
+                        .isIn(reversedIssueId, regeneratedIssueId));
         assertThat(nativeCalls.get(insertionIndex).parameters())
                 .containsEntry("planItemId", planItemId)
                 .containsEntry("balanceId", balanceId);

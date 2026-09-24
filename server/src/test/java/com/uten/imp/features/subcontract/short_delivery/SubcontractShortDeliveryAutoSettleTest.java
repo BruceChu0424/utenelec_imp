@@ -47,7 +47,7 @@ import static org.mockito.Mockito.when;
  *   <li>累计仍低于下限的 WAITING_MORE 案件不动;</li>
  *   <li>仓库「不再出仓」关计划(没有本次到货)：一件都没回厂的行不开案件, 已回厂进容差的行
  *       补开案件(receipt_id 记空)并结案;</li>
- *   <li>自动结案走 changeQtyForShortDeliveryBySystem(不过属主守卫、不开财务复核)。</li>
+ *   <li>自动结案走 changeQtyForShortDeliveryBySystem(不过属主守卫、仍开财务复核)。</li>
  * </ul>
  * 真库全链见 SubcontractToleranceAutoSettleEndToEndTest / SubcontractSoleComponentUnlockEndToEndTest。
  */

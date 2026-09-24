@@ -122,6 +122,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             "persistable_probe",
             // SchemaIndexHygieneContractTest 在回滚事务里自检索引规则用的样本表(ADR-106)。
             "index_rule_probe",
+            // ADR-113(V646) 子件精确权益批次测试: 权益批次余额视图 v_preplan_stock_entitlement_lot_balance
+            // 的底表桩(SubcontractComponentEntitledLotsPostgresTest), 不是业务表。
+            "fixture_entitlement_lots",
             // BusinessIdentifierRegistryMigrationContractTest 里对迁移 SQL 做
             // contains 断言时，字面量拼接出的伪表名（不是真的建表语句）。
             "upper");

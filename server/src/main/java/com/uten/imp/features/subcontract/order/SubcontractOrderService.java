@@ -842,6 +842,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                   AND ((c.status = 'PENDING_OWNER'
                         AND c.severity IN ('SEVERE', 'BELOW_FLOOR'))
                        OR (c.status = 'WAITING_MORE'
+                           AND c.severity <> 'WITHIN_TOLERANCE'
                            AND c.expected_complete_by < CURRENT_DATE))
                 ORDER BY c.detected_at
                 """);
@@ -881,6 +882,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                       AND ((c.status = 'PENDING_OWNER'
                             AND c.severity IN ('SEVERE', 'BELOW_FLOOR'))
                            OR (c.status = 'WAITING_MORE'
+                               AND c.severity <> 'WITHIN_TOLERANCE'
                                AND c.expected_complete_by < CURRENT_DATE)))
                 """).setParameter("id", id).getSingleResult();
         if (Boolean.TRUE.equals(pending)) {

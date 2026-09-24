@@ -31,6 +31,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -207,9 +209,10 @@ class SubcontractComponentReturnLegEndToEndTest {
 
     // ===================== T2 =====================
 
-    @Test
-    void severeShortReturnOf800ThenWaitMoreThenFinal150AccumulatesIntoToleranceAndAutoSettlesTheWaitingCase() {
-        var w = fixture.seedWorld("sc-comp-return-split");
+    @ParameterizedTest(name = "分批回厂自动结案, 已逾期={0}")
+    @ValueSource(booleans = {true, false})
+    void severeShortReturnOf800ThenWaitMoreThenFinal150AccumulatesIntoToleranceAndAutoSettlesTheWaitingCase(boolean overdue) {
+        var w = fixture.seedWorld("sc-comp-return-split-" + overdue);
         fixture.loginAs(w.superAdminUserId());
         bindSoleComponentBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
@@ -241,7 +244,7 @@ class SubcontractComponentReturnLegEndToEndTest {
         PassSlice firstPass = passIqc(first.receiptId(), "sc-comp-t2-pass-1");
         qty("800", firstPass.qty(), "第一批放行切片量");
         assertNotNull(shortDeliveries.stockInHoldReason(first.receiptId()), "待判定期间入库闸必须拦住, 现状为空");
-        UUID keeper = ReflectionTestUtils.invokeMethod(fixture, "createIqcWarehouseConfirmer", w, "sc-comp-t2-keeper");
+        UUID keeper = ReflectionTestUtils.invokeMethod(fixture, "createIqcWarehouseConfirmer", w, "sc-comp-t2-keeper-" + overdue);
         fixture.loginAs(keeper);
         ApiException held = assertThrows(ApiException.class,
                 () -> stockIn(keeper, first.receiptId(), firstPass, "sc-comp-t2-stock-in-1", w),
@@ -270,6 +273,12 @@ class SubcontractComponentReturnLegEndToEndTest {
         qty("1000", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, ordered.itemId()),
                 "分批等待期间订货量不动");
 
+        if (overdue) {
+            db.update("UPDATE subcontract_short_delivery_cases SET expected_complete_by=CURRENT_DATE-1 WHERE id=?", caseId);
+            assertNotNull(shortDeliveries.stockInHoldReason(first.receiptId()), "尚未补到容差下限时逾期仍须重新判定");
+            assertEquals(1, shortDeliveries.publishOverdueWaiting(BusinessTime.today()), "低于下限的逾期案件仍须催货");
+        }
+
         // ④ 最后一批 150: 累计 950 >= 900 进入容差 → 登记不弹窗; 案件仍是 WAITING_MORE 但程度刷新为容差内。
         WarehouseArrivalRegisterResult second = registerReturn(w, ordered.itemId(), "150", "t2-150", false);
         assertEquals("SUBMITTED_FOR_INSPECTION", second.outcome(),
@@ -279,11 +288,32 @@ class SubcontractComponentReturnLegEndToEndTest {
         assertEquals("WAITING_MORE", refreshed.get("status"), "登记不结案, 案件现状 " + refreshed.get("status") + " 期望 WAITING_MORE");
         assertEquals("WITHIN_TOLERANCE", refreshed.get("severity"), "程度现状 " + refreshed.get("severity") + " 期望 WITHIN_TOLERANCE");
         qty("950", (BigDecimal) refreshed.get("delivered_qty"), "累计回厂");
-        assertNull(shortDeliveries.stockInHoldReason(second.receiptId()), "容差内批次不挂入库闸");
+        assertNull(shortDeliveries.stockInHoldReason(second.receiptId()), "累计进入容差后, 原分批预计日是否逾期都不应再锁入库");
+        assertNull(orders.detail(ordered.orderId()).getShortDeliveryHold(), "订货详情应同步解除短交锁定提示");
+        assertEquals(0, shortDeliveries.list("PENDING", null, null, ordered.orderId(), null, null, 1, 20).getTotal());
+        assertEquals(1, shortDeliveries.list("TOLERANT", null, null, ordered.orderId(), null, null, 1, 20).getTotal(),
+                "已进容差的分批案件转为中性待入库, 原始分批判定审计仍然保留");
+        assertFalse(shortDeliveries.detail(caseId).row().overdue(), "已达到约定下限, 不再显示需要重新判定的逾期标识");
+        assertEquals(0, shortDeliveries.publishOverdueWaiting(BusinessTime.today()), "进入容差后停止发布逾期催货事件");
+        drainOutbox("SUBCONTRACT_SHORT_DELIVERY_%");
+        assertEquals(0, count("SELECT COUNT(*) FROM notices WHERE aggregate_id=? AND resolved_at IS NULL", caseId),
+                "此前已排队的逾期提醒也不得在补足后重新生成行动卡");
 
         // ⑤ 质检合格 → 仓库确认入库 150 → ADR-103 §2.5: 对 WAITING_MORE 案件同样自动结案, 损耗 50, 关单。
         PassSlice secondPass = passIqc(second.receiptId(), "sc-comp-t2-pass-2");
         qty("150", secondPass.qty(), "第二批放行切片量");
+        if (overdue) {
+            // 补足批次在入库前被撤销时，案件仍保留上次登记的 WITHIN_TOLERANCE 审计快照。
+            // 入库闸必须重读真实累计回厂，不能沿这个旧程度把重新低于下限的逾期案件放行。
+            subcontractReceipts.reverse(second.receiptId());
+            assertEquals("WITHIN_TOLERANCE",caseRow(ordered.itemId()).get("severity"));
+            String holdAfterReverse=shortDeliveries.stockInHoldReason(first.receiptId());
+            assertNotNull(holdAfterReverse,"补足批次撤回后累计回到800, 旧容差快照不能继续放行");
+            assertTrue(holdAfterReverse.contains("累计到 800")&&holdAfterReverse.contains("少 200"),holdAfterReverse);
+            second=registerReturn(w,ordered.itemId(),"150","t2-150-replacement",false);
+            secondPass=passIqc(second.receiptId(),"sc-comp-t2-pass-replacement");
+            assertNull(shortDeliveries.stockInHoldReason(second.receiptId()),"真实再次补足后解锁");
+        }
         stockIn(keeper, second.receiptId(), secondPass, "sc-comp-t2-stock-in-2", w);
         fixture.loginAs(w.superAdminUserId());
         qty("950", onHand(w.goodsE(), w.warehouseId()), "两批入库后委外件库存现状 " + onHand(w.goodsE(), w.warehouseId()) + " 期望 950");
@@ -318,6 +348,59 @@ class SubcontractComponentReturnLegEndToEndTest {
     }
 
     // ===================== T3 =====================
+
+    @Test
+    void productionFactsDoNotMistakeThePreparedBatchForTheWholeMaterialCommitment() {
+        var w = fixture.seedWorld("sc-partial-preparation");
+        fixture.loginAs(w.superAdminUserId());
+        bindSoleComponentBom(w);
+        receiveChildStock(w, "1000", w.warehouseId());
+        UUID orderId = orders.create(orderRequest(w, "1000")).getId();
+        UUID orderItemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
+
+        // 执行生产代码的真实 PostgreSQL facts 查询。CTE 仅提供不同备齐/发出阶段的计划行，
+        // 避免把一条合法 COMPONENT_OUTBOUND 明细强改成不合法的前置生产历史链来搭夹具。
+        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "800", "800", "OPEN"),
+                "首批 800 已备齐且全发, 但总计划仍有 200 未备齐未发, 不能判短交或提前接受损耗");
+        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "0", "0", "OPEN"),
+                "尚未备齐任何材料也不能算全部发完");
+        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "1000", "800", "OPEN"));
+        assertTrue(materialFullyIssuedInFacts(orderItemId, "1000", "1000", "1000", "OPEN"));
+        assertTrue(materialFullyIssuedInFacts(orderItemId, "1000", "800", "800", "CLOSED"),
+                "明确不再出仓关闭计划后仍允许按最终回厂量判定损耗");
+    }
+
+    @Test
+    void oneHundredIssuedAndExactlyNinetyFiveReturnedAtFivePercentClosesOnceWithoutConsumingTheRemainingChildStock() {
+        var w = fixture.seedWorld("sc-comp-exact-floor");
+        fixture.loginAs(w.superAdminUserId());
+        bindSoleComponentBom(w);
+        receiveChildStock(w, "1000", w.warehouseId());
+        Ordered ordered = orderApproveAndIssueAll(w, "100", "5");
+        qty("900", onHand(w.goodsD(), w.warehouseId()), "只发 100 个子件, 其余 900 个仍在公司仓");
+        qty("0", onHand(w.goodsE(), w.warehouseId()), "外发前不用持有加工后的委外件");
+
+        var receipt = registerReturn(w, ordered.itemId(), "95", "exact-floor", false);
+        PassSlice pass = passIqc(receipt.receiptId(), "sc-exact-floor-pass");
+        UUID keeper = ReflectionTestUtils.invokeMethod(fixture, "createIqcWarehouseConfirmer", w, "sc-exact-floor-keeper");
+        stockIn(keeper, receipt.receiptId(), pass, "sc-exact-floor-stock", w);
+        var replay = iqcStockIn.confirm("SUBCONTRACT", receipt.receiptId(), new ConfirmRequest("sc-exact-floor-stock",
+                List.of(new ConfirmItem(pass.passEventId(), pass.qty(), pass.qty(), "SC-COMP-01", w.warehouseId()))));
+        assertTrue(replay.replayed(), "相同入库命令重放不得重复库存、损耗或改量");
+
+        fixture.loginAs(w.superAdminUserId());
+        qty("95", onHand(w.goodsE(), w.warehouseId()), "合格入库的是加工后的委外件");
+        qty("900", onHand(w.goodsD(), w.warehouseId()), "损耗只核销供应商处材料, 不再扣公司子件库存");
+        Map<String, Object> settled = caseRow(ordered.itemId());
+        assertEquals("ACCEPTED_LOSS", settled.get("status"));
+        qty("5", (BigDecimal) settled.get("loss_qty"), "等于允许下限也自动按损耗结案");
+        qty("5", (BigDecimal) settled.get("loss_pct"), "损耗率");
+        qty("5", db.queryForObject("SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?",
+                BigDecimal.class, settled.get("waste_id")), "供应商处子件核销 5");
+        assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, ordered.orderId()));
+        assertEquals(1, count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_item_id=?", ordered.itemId()));
+        assertEquals(1, count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", receipt.receiptId()));
+    }
 
     @Test
     void overReturnOf1050AgainstIssued1000GoesToFinanceAsSupplierOwnMaterialAndStocksInAfterApproval() {
@@ -440,6 +523,26 @@ class SubcontractComponentReturnLegEndToEndTest {
 
     // ===================== 夹具 =====================
 
+    private boolean materialFullyIssuedInFacts(UUID orderItemId, String planned, String prepared,
+                                                String issued, String status) {
+        String facts = (String) ReflectionTestUtils.getField(SubcontractShortDeliveryService.class, "FACT_SQL");
+        assertNotNull(facts);
+        String stages = """
+                WITH subcontract_material_plan_items AS (
+                    SELECT ?::uuid AS order_item_id,
+                           '00000000-0000-0000-0000-000000000001'::uuid AS plan_id,
+                           FALSE AS is_deleted, ?::numeric AS planned_qty,
+                           ?::numeric AS prepared_qty, ?::numeric AS issued_qty
+                ), subcontract_material_plans AS (
+                    SELECT '00000000-0000-0000-0000-000000000001'::uuid AS id,
+                           ?::text AS status, FALSE AS is_deleted
+                )
+                """;
+        return db.queryForObject(stages + facts.formatted("95::numeric", "?"),
+                (rs, row) -> rs.getBoolean("material_fully_issued"),
+                orderItemId, new BigDecimal(planned), new BigDecimal(prepared), new BigDecimal(issued), status, orderItemId);
+    }
+
     private record Ordered(UUID orderId, UUID itemId, UUID planItemId) {}
 
     private record PassSlice(UUID passEventId, BigDecimal qty) {}
@@ -458,9 +561,15 @@ class SubcontractComponentReturnLegEndToEndTest {
 
     /** 建单 (允许损耗 10%) → 送审 → 财务批准 → 批准即按现货开的草稿全部审核发出。 */
     private Ordered orderApproveAndIssueAll(FullChainEndToEndTest.World w, String qty) {
-        UUID orderId = orders.create(orderRequest(w, qty)).getId();
+        return orderApproveAndIssueAll(w, qty, "10");
+    }
+
+    private Ordered orderApproveAndIssueAll(FullChainEndToEndTest.World w, String qty, String allowedLossPct) {
+        var request = orderRequest(w, qty);
+        request.getItems().getFirst().setAllowedLossPct(new BigDecimal(allowedLossPct));
+        UUID orderId = orders.create(request).getId();
         UUID itemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
-        qty("10", db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId),
+        qty(allowedLossPct, db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId),
                 "允许损耗必须冻结在订货行");
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         financeApproval.submit("SUBCONTRACT", orderId);

@@ -9607,6 +9607,7 @@ Map<String, dynamic> _sameGoodsMakePathAnalysisJson() {
 /// 路线的独立件，用于验证按物料汇总视图的跨产品聚合、pegging 明细展开和
 /// 逐路径勾选下达。
 Map<String, dynamic> _aggregateAnalysisJson() {
+  // 「需要数量」列读服务端原始来源基线 sourceRequiredQty(ADR-104 追加备料另算), 夹具与现行服务端同形。
   final json = _analysisJson(const ['NOTIFY_SUPPLY', 'REALLOCATE']);
   json['flatMaterials'] = [
     {
@@ -9622,6 +9623,7 @@ Map<String, dynamic> _aggregateAnalysisJson() {
       'level': 1,
       'path': ['测试产品', '共享电机'],
       'requiredQty': 10,
+      'sourceRequiredQty': 10,
       'allocatedAvailableQty': 4,
       'availableQty': 4,
       'shortageQty': 6,
@@ -9646,6 +9648,7 @@ Map<String, dynamic> _aggregateAnalysisJson() {
       'level': 1,
       'path': ['第二测试产品', '共享电机'],
       'requiredQty': 5,
+      'sourceRequiredQty': 5,
       'allocatedAvailableQty': 0,
       'availableQty': 4,
       'shortageQty': 5,
@@ -9671,6 +9674,7 @@ Map<String, dynamic> _aggregateAnalysisJson() {
       'path': ['测试产品', '独立件'],
 
       'requiredQty': 8,
+      'sourceRequiredQty': 8,
       'allocatedAvailableQty': 5,
       'availableQty': 5,
       'shortageQty': 3,

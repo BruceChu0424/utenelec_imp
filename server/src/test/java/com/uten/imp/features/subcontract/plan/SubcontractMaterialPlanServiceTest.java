@@ -132,6 +132,18 @@ class SubcontractMaterialPlanServiceTest {
                         && !sql.contains("JOIN warehouses w")),
                 ArgumentMatchers.<RowMapper<BigDecimal>>any(), any(), any(), any()))
                 .thenAnswer(invocation -> List.of(onHandForOutbound));
+        when(jdbc.query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("fn_subcontract_component_available_stock")),
+                ArgumentMatchers.<RowMapper<Object[]>>any(), any(Object.class)))
+                .thenAnswer(invocation -> onHandForOutbound.signum() <= 0 ? List.<Object[]>of()
+                        : List.<Object[]>of(new Object[]{OUTBOUND_WAREHOUSE_ID,onHandForOutbound}));
+        when(jdbc.query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("fn_subcontract_component_available_stock")),
+                ArgumentMatchers.<RowMapper<Object[]>>any(), any(), any(), any()))
+                .thenAnswer(invocation -> onHandForOutbound.signum() <= 0 ? List.<Object[]>of()
+                        : List.<Object[]>of(new Object[]{OUTBOUND_WAREHOUSE_ID,onHandForOutbound}));
 
         DocNumberService docNumber = mock(DocNumberService.class);
         when(docNumber.nextNumber(eq(DocNumberPrefix.SUB_MATERIAL_ISSUE)))
@@ -600,14 +612,12 @@ class SubcontractMaterialPlanServiceTest {
                 () -> service.requireSoleComponentStockAvailable(ORDER_ID));
         assertEquals(ErrorCode.CONFLICT, draft.getCode());
         assertTrue(draft.getMessage().contains("仓里还一件都没有"), draft.getMessage());
-        // 判据查的是子件 (goods_id=BOM 边 component_goods_id, color_id=边的颜色), 不是目标件。
+        // Exact order provenance controls the component quantity; SKU-only stock cannot unlock it.
         verify(jdbc, org.mockito.Mockito.atLeastOnce()).query(
                 ArgumentMatchers.<String>argThat(sql -> sql != null
-                        && sql.contains("FROM v_stock_available sa")
-                        && sql.contains("JOIN warehouses w")
-                        && sql.contains("fn_warehouse_is_operational_leaf(w.id)")),
+                        && sql.contains("fn_subcontract_component_available_stock")),
                 ArgumentMatchers.<RowMapper<Object[]>>any(),
-                eq(COMPONENT_GOODS_ID), ArgumentMatchers.<UUID>isNull());
+                eq(SOLE_ITEM_ID));
     }
 
     /** ADR-103：子件入库了 (不管多少) 就解锁——同一夹具给一点现货, 送审与建单都放行。 */
@@ -621,10 +631,9 @@ class SubcontractMaterialPlanServiceTest {
 
         verify(jdbc, org.mockito.Mockito.atLeastOnce()).query(
                 ArgumentMatchers.<String>argThat(sql -> sql != null
-                        && sql.contains("FROM v_stock_available sa")
-                        && sql.contains("JOIN warehouses w")),
+                        && sql.contains("fn_subcontract_component_available_stock")),
                 ArgumentMatchers.<RowMapper<Object[]>>any(),
-                eq(COMPONENT_GOODS_ID), ArgumentMatchers.<UUID>isNull());
+                eq(SOLE_ITEM_ID));
     }
 
     /** 单一子件委外件夹具：订货 10 x 换算率 2, BOM 单耗 3, 主档含父件与子件 (文案要用名称/编码)。 */

@@ -4368,12 +4368,20 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     LEFT JOIN units unit ON unit.id = c.unit_id
                     LEFT JOIN suppliers supplier ON supplier.id = c.supplier_id
                     WHERE c.id = ?
+                    FOR UPDATE OF c
                     """, caseId);
+            // 锁住案件行再判程度: 补货登记改程度与本次投递串行。否则投递读到旧程度、慢慢发卡期间
+            // 登记已进容差且「撤卡」已先跑完, 这批催货卡就留成没人撤的待办。
             if (shortCase == null) return;
             String status = str(shortCase.get("status"));
             boolean overdueEvent = EVENT_SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE.equals(eventType);
             if (overdueEvent ? !"WAITING_MORE".equals(status)
                     : !"PENDING_OWNER".equals(status) && !"WAITING_MORE".equals(status)) {
+                return;
+            }
+            // Outbox 可能在补货登记之后才投递；已达到约定下限就不再重建旧催货行动卡。
+            if ("WITHIN_TOLERANCE".equals(str(shortCase.get("severity")))) {
+                resolveReviewNotices(SUBCONTRACT_SHORT_DELIVERY_AGGREGATE, caseId, "WITHIN_TOLERANCE");
                 return;
             }
             String orderNo = str(shortCase.get("order_bill_no_snapshot"));

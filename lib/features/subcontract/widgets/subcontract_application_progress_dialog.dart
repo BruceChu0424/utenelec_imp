@@ -17,10 +17,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/click_guard.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/subcontract_task_source.dart';
 import '../../operations_workbench/models/operations_workbench.dart';
 import '../../production/models/production_material_analysis.dart';
 import '../../production/widgets/subcontract_make_task_tile.dart';
@@ -57,6 +60,149 @@ Future<void> showSubcontractApplicationProgressDialog(
   );
 }
 
+/// 前置生产详情也先打开进度窗，再在窗内加载。详情权限和可通知量仍以响应为准。
+Future<void> showSubcontractPreparationProgressDialog(
+  BuildContext context, {
+  required OperationsWorkbenchTask task,
+  required Future<SubcontractMakeTask> Function() loadTask,
+  Future<void> Function()? onNotified,
+}) => showDialog<void>(
+  context: context,
+  builder: (_) => Dialog(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 560),
+      child: SingleChildScrollView(
+        child: _PreparationProgressLoader(
+          task: task,
+          loadTask: loadTask,
+          onNotified: onNotified,
+        ),
+      ),
+    ),
+  ),
+);
+
+class _PreparationProgressLoader extends StatefulWidget {
+  const _PreparationProgressLoader({
+    required this.task,
+    required this.loadTask,
+    this.onNotified,
+  });
+
+  final OperationsWorkbenchTask task;
+  final Future<SubcontractMakeTask> Function() loadTask;
+  final Future<void> Function()? onNotified;
+
+  @override
+  State<_PreparationProgressLoader> createState() =>
+      _PreparationProgressLoaderState();
+}
+
+class _PreparationProgressLoaderState
+    extends State<_PreparationProgressLoader> {
+  late Future<SubcontractMakeTask> _task;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.loadTask();
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<SubcontractMakeTask>(
+    future: _task,
+    builder: (context, snapshot) {
+      if (snapshot.hasData) {
+        return _ProgressDialogBody(
+          makeTask: snapshot.requireData,
+          onNotified: widget.onNotified,
+        );
+      }
+      final error = snapshot.connectionState == ConnectionState.done
+          ? snapshot.error
+          : null;
+      return Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ProgressHeader(title: widget.task.goodsName),
+            const SizedBox(height: UtenSpacing.s4),
+            Text('需求量 ${widget.task.requiredQty} ${widget.task.unitName}'),
+            Text(
+              SubcontractMakeTask.workshopStatusLabelFor(
+                widget.task.preparationStatus,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s24),
+            if (error == null) ...[
+              const Center(child: CircularProgressIndicator()),
+              const SizedBox(height: UtenSpacing.s12),
+              const Text('正在读取生产进度…', textAlign: TextAlign.center),
+            ] else ...[
+              Text(
+                error is ApiException ? error.message : '前置生产任务加载失败，请稍后重试',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              Center(
+                child: UtenButton(
+                  icon: Icons.refresh_rounded,
+                  onPressed: () {
+                    setState(() {
+                      _task = widget.loadTask();
+                    });
+                  },
+                  child: const Text('重试'),
+                ),
+              ),
+            ],
+            const SizedBox(height: UtenSpacing.s16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('关闭'),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _ProgressHeader extends StatelessWidget {
+  const _ProgressHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(Icons.timeline_rounded, color: theme.colorScheme.primary),
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(
+          child: Text(
+            '产品进度 · $title',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: '关闭',
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+    );
+  }
+}
+
 class _ProgressDialogBody extends ConsumerWidget {
   const _ProgressDialogBody({this.makeTask, this.task, this.onNotified});
 
@@ -89,25 +235,7 @@ class _ProgressDialogBody extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(Icons.timeline_rounded, color: theme.colorScheme.primary),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  '产品进度 · $title',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: '关闭',
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
+          _ProgressHeader(title: title),
           const SizedBox(height: UtenSpacing.s4),
           if (mt != null) ...[
             Semantics(
@@ -230,6 +358,10 @@ class _ProgressDialogBody extends ConsumerWidget {
               if ((appTask.needDate ?? '').isNotEmpty)
                 ('需求日期', appTask.needDate!),
             ]),
+          ],
+          if ((mt?.sources ?? appTask?.sources ?? const []).isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _SourceOwnership(sources: mt?.sources ?? appTask!.sources),
           ],
           const SizedBox(height: UtenSpacing.s12),
           // 快递式追踪（与 MaterialSupplyProgressDialog 同口径）：最新进展在最
@@ -471,4 +603,48 @@ class _ProgressDialogBody extends ConsumerWidget {
       child: Text(text, style: theme.textTheme.bodySmall),
     );
   }
+}
+
+class _SourceOwnership extends StatelessWidget {
+  const _SourceOwnership({required this.sources});
+
+  final List<SubcontractTaskSource> sources;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('数量归属', style: theme.textTheme.titleSmall),
+        for (final source in sources)
+          Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  source.isPublicStock ? '公共备货' : source.productLabel,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (source.sourceNo.isNotEmpty)
+                  Text(
+                    '${source.sourceType == 'SALES_ORDER_ITEM' ? '销售订单' : '来源'} ${source.sourceNo}'
+                    '${source.sourceLineNo == null ? '' : ' · 第${source.sourceLineNo}行'}',
+                  ),
+                Text(
+                  '${source.materialLabel}：${_quantity(source.quantity)} ${source.unitName}',
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  static String _quantity(num value) => value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toString();
 }

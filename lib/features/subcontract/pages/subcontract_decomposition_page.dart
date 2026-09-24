@@ -35,6 +35,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -431,23 +432,14 @@ class _SubcontractDecompositionPageState
     if (preparationId != null) {
       if (_openingPreparationTask != null) return;
       _openingPreparationTask = preparationId;
-      final requestId = _requestId;
       try {
-        final makeTask = await ref
-            .read(productionPlanRepositoryProvider)
-            .subcontractMakeTask(preparationId);
-        if (!mounted || requestId != _requestId) return;
-        await showSubcontractApplicationProgressDialog(
+        final repository = ref.read(productionPlanRepositoryProvider);
+        await showSubcontractPreparationProgressDialog(
           context,
-          makeTask: makeTask,
+          task: task,
+          loadTask: () => repository.subcontractMakeTask(preparationId),
           onNotified: () => _load(page: 1),
         );
-      } catch (error) {
-        if (mounted && requestId == _requestId) {
-          context.appError(
-            error is ApiException ? error.message : '前置生产任务加载失败，请稍后重试',
-          );
-        }
       } finally {
         if (_openingPreparationTask == preparationId) {
           _openingPreparationTask = null;
@@ -528,6 +520,8 @@ class _SubcontractDecompositionPageState
 
   @override
   Widget build(BuildContext context) {
+    // 入库或下单后返回时，重新读取权威库存闸与已下单量；首次进入仍只加载一次。
+    ref.onPageResume(RouteName.operationsSubcontractWorkbench, () => _load());
     return Scaffold(
       appBar: UtenAppBar(
         title: '委外任务中心',

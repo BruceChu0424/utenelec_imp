@@ -224,7 +224,9 @@ void main() {
     tester,
   ) async {
     final json = _pendingReviewJson();
-    final original = Map<String, dynamic>.from((json['items'] as List).single);
+    final original = Map<String, dynamic>.from(
+      (json['items'] as List).single as Map,
+    );
     final review = FinanceProcurementApprovalReview.fromJson({
       ...json,
       'orderType': 'SUBCONTRACT',
@@ -262,7 +264,7 @@ void main() {
     (tester) async {
       final json = _pendingReviewJson();
       final original = Map<String, dynamic>.from(
-        (json['items'] as List).single,
+        (json['items'] as List).single as Map,
       );
       final review = FinanceProcurementApprovalReview.fromJson({
         ...json,
@@ -460,7 +462,7 @@ void main() {
     ) async {
       final json = _pendingReviewJson();
       final original = Map<String, dynamic>.from(
-        (json['items'] as List).single,
+        (json['items'] as List).single as Map,
       );
       final withChanges = FinanceProcurementApprovalReview.fromJson({
         ...json,

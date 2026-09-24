@@ -93,6 +93,9 @@ public class ProductionPlanItem extends BaseEntity {
     private BigDecimal oqty = BigDecimal.ZERO;
     @Column(name = "qty", precision = 18, scale = 4)
     private BigDecimal qty = BigDecimal.ZERO;
+    /** Initial plan allowance; later workshop approvals belong to the execution segment. */
+    @Column(name = "allowed_overproduction_rate", precision = 9, scale = 6, nullable = false)
+    private BigDecimal allowedOverproductionRate = new BigDecimal("0.10");
     @Column(name = "lqty", precision = 18, scale = 4)
     private BigDecimal lqty = BigDecimal.ZERO;
     @Column(name = "iqty", precision = 18, scale = 4)

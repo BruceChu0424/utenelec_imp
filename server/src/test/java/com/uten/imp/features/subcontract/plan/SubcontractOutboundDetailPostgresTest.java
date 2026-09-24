@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.SubcontractChainNoticePort;
 import com.uten.imp.application.port.SubcontractOrderPreparationPort;
+import com.uten.imp.application.port.SubcontractShortDeliveryPort;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueItemRepository;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -141,7 +143,7 @@ class SubcontractOutboundDetailPostgresTest {
                 mock(SubcontractMaterialIssueItemRepository.class), currentUser,
                 mock(SubcontractChainNoticePort.class), mock(InventoryMutationLock.class),
                 mock(SubcontractOrderPreparationPort.class),
-                mock(org.springframework.beans.factory.ObjectProvider.class));
+                new StaticListableBeanFactory().getBeanProvider(SubcontractShortDeliveryPort.class));
         jdbc.queries.clear();
     }
 

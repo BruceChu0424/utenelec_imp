@@ -13,6 +13,13 @@ abstract class _MaterialAnalysisChildCascadeState
   bool _cascadeRowLimitHit = false;
   bool _cascadeDepthLimitHit = false;
 
+  TextEditingController _cascadeRateController(_ChildCascadeRow row) =>
+      _overproductionPercentController(
+        analysisLineId: row.seed?.analysisLineId ?? row.product?.analysisLineId,
+        materialLineId:
+            row.seed?.materialLineId ?? row.material?.materialLineId,
+      );
+
   // ===== 一、向服务端要「下达之后」的快照（ADR-099） =====
 
   /// 车间通道种子对应的 issue-plans 行（预览与真实下达同一份输入）。
@@ -22,13 +29,24 @@ abstract class _MaterialAnalysisChildCascadeState
     for (final seed in seeds)
       if (seed.channel == _CascadeParentChannel.workshop &&
           seed.batchQty > 0 &&
-          seed.batchQty.isFinite)
+          seed.batchQty.isFinite &&
+          parseProductionOverproductionPercent(
+                _overproductionPercentController(
+                  analysisLineId: seed.analysisLineId,
+                  materialLineId: seed.materialLineId,
+                ).text,
+              ) !=
+              null)
         MaterialAnalysisIssueLine(
           materialLineId: seed.materialLineId,
           analysisLineId: seed.materialLineId == null
               ? seed.analysisLineId
               : null,
           qty: seed.batchQty,
+          allowedOverproductionRate: _overproductionRate(
+            analysisLineId: seed.analysisLineId,
+            materialLineId: seed.materialLineId,
+          ),
           departmentId: seed.departmentId,
           workshopName: seed.departmentName,
           workerId: seed.workerId,
@@ -1112,6 +1130,9 @@ abstract class _MaterialAnalysisChildCascadeState
               _BucketCandidatePlanInput(
                 materialLineId: row.id,
                 qty: row.enteredQty,
+                allowedOverproductionRate: parseProductionOverproductionPercent(
+                  _cascadeRateController(row).text,
+                )!,
                 departmentId: row.departmentId.value,
                 workshopName: row.departmentName,
                 workerId: row.workerId.value,
@@ -1131,6 +1152,9 @@ abstract class _MaterialAnalysisChildCascadeState
               _BucketPlanDraft(
                 analysisLineId: row.anchorAnalysisLineId!,
                 qty: row.enteredQty,
+                allowedOverproductionRate: parseProductionOverproductionPercent(
+                  _cascadeRateController(row).text,
+                )!,
                 departmentId: row.departmentId.value,
                 workshopName: row.departmentName,
                 workerId: row.workerId.value,

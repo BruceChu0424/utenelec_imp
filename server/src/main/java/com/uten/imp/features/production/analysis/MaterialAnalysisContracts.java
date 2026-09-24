@@ -204,7 +204,17 @@ public final class MaterialAnalysisContracts {
                  * 产出」。不声明时需求已全部转入计划的行照旧 409——重复点击、过期候选
                  * 不能悄悄多建一张计划。
                  */
-                Boolean publicSurplusOnly) {
+                Boolean publicSurplusOnly,
+                @DecimalMin("0") @Digits(integer = 3, fraction = 6)
+                BigDecimal allowedOverproductionRate) {
+
+            public IssuePlanLine(UUID materialLineId, UUID analysisLineId, BigDecimal qty,
+                    LocalDate billDate, LocalDate deliveryDate, UUID departmentId,
+                    String workshopName, UUID workerId, UUID teamDepartmentId, String productNo,
+                    Boolean publicSurplusOnly) {
+                this(materialLineId, analysisLineId, qty, billDate, deliveryDate, departmentId,
+                        workshopName, workerId, teamDepartmentId, productNo, publicSurplusOnly, null);
+            }
 
             public IssuePlanLine(UUID materialLineId, UUID analysisLineId, BigDecimal qty,
                     LocalDate billDate, LocalDate deliveryDate, UUID departmentId,
@@ -269,7 +279,16 @@ public final class MaterialAnalysisContracts {
             @Size(max = 250) String workshopName,
             UUID workerId,
             UUID teamDepartmentId,
-            @Size(max = 200) String productNo) {
+            @Size(max = 200) String productNo,
+            @DecimalMin("0") @Digits(integer = 3, fraction = 6)
+            BigDecimal allowedOverproductionRate) {
+
+        public PlanQuantity(UUID analysisLineId, BigDecimal qty, LocalDate billDate,
+                LocalDate deliveryDate, UUID departmentId, String workshopName, UUID workerId,
+                UUID teamDepartmentId, String productNo) {
+            this(analysisLineId, qty, billDate, deliveryDate, departmentId, workshopName,
+                    workerId, teamDepartmentId, productNo, null);
+        }
 
         /** Backwards-compatible constructor for callers without per-sheet scheduling. */
         public PlanQuantity(UUID analysisLineId, BigDecimal qty) {

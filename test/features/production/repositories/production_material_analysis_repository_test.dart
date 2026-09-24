@@ -449,6 +449,7 @@ void main() {
           MaterialAnalysisIssueLine(
             analysisLineId: 'product-line-1',
             qty: 5,
+            allowedOverproductionRate: 0.25,
             departmentId: 'workshop-1',
             workshopName: '装配一车间',
             workerId: 'worker-1',
@@ -529,6 +530,7 @@ void main() {
           {
             'analysisLineId': 'product-line-1',
             'qty': 5.0,
+            'allowedOverproductionRate': 0.25,
             'departmentId': 'workshop-1',
             'workshopName': '装配一车间',
             'workerId': 'worker-1',
@@ -536,6 +538,7 @@ void main() {
           {
             'materialLineId': 'material-line-1',
             'qty': 8.0,
+            'allowedOverproductionRate': 0.1,
             'departmentId': 'workshop-2',
             'workshopName': '装配二车间',
             'workerId': 'worker-2',

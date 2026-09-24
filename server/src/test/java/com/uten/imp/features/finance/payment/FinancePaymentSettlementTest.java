@@ -144,9 +144,13 @@ class FinancePaymentSettlementTest {
         when(createReplay.getResultList()).thenReturn(List.of());
         when(supplierLookup.getSingleResult()).thenReturn("测试供应商");
         Query ledgerLock = query();
-        when(ledgerLock.getResultList()).thenAnswer(ignored -> accountLock.getResultList().stream()
-                .map(row -> new Object[] {ACCOUNT_ID, ((Object[]) row)[0], ((Object[]) row)[3], ((Object[]) row)[4]})
-                .toList());
+        when(ledgerLock.getResultList()).thenAnswer(ignored -> {
+            List<?> accounts = accountLock.getResultList();
+            return accounts.stream()
+                    .map(Object[].class::cast)
+                    .map(row -> new Object[] {ACCOUNT_ID, row[0], row[3], row[4]})
+                    .toList();
+        });
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("account_style_id(account.id)")) return ledgerLock;

@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.outbound;
 
+import com.uten.imp.application.port.SubcontractShortDeliveryPort;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService;
@@ -8,6 +9,7 @@ import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -89,6 +91,6 @@ class WarehouseSubcontractOutboundColumnFilterTest {
                 mock(com.uten.imp.application.port.SubcontractChainNoticePort.class),
                 mock(com.uten.imp.features.stock.InventoryMutationLock.class),
                 mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class),
-                mock(org.springframework.beans.factory.ObjectProvider.class));
+                new StaticListableBeanFactory().getBeanProvider(SubcontractShortDeliveryPort.class));
     }
 }

@@ -23,6 +23,7 @@ import com.uten.imp.features.production.mrp.ProductionPlanningPackageService;
 import com.uten.imp.features.production.plan.ProductionPlan;
 import com.uten.imp.features.production.plan.ProductionPlanService;
 import com.uten.imp.features.production.plan.ProductionPlanItem;
+import com.uten.imp.features.production.plan.ProductionOverproductionAllowance;
 import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
@@ -1087,13 +1088,14 @@ public class MaterialAnalysisCommandService {
                 PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
                         line.billDate(), line.deliveryDate(), line.departmentId(),
                         line.workshopName(), line.workerId(), line.teamDepartmentId(),
-                        line.productNo());
+                        line.productNo(), line.allowedOverproductionRate());
                 validatePlanSchedule(quantity, defaults);
                 // ADR-104：同一分析行已有一张还没开工的计划(草稿, 或已审核但车间没领料没开工)
                 // 时, 追加量并进那张计划——同一单号、明细加量、关联行加量, 已审核的在同一个
                 // 原工单同步加量。已提交领料或执行的计划照旧另立新单。
                 GrowablePlan growable = growablePlanFor(
-                        analysisId, lineId, quantity.departmentId(), request.approveNow());
+                        analysisId, lineId, quantity.departmentId(), request.approveNow(),
+                        quantity.allowedOverproductionRate());
                 if (growable != null) {
                     generated.add(growPlan(analysisId, product, growable, quantity, defaults,
                             demandQty, surplusQty, request));
@@ -1145,13 +1147,16 @@ public class MaterialAnalysisCommandService {
      * 计划绕过审核。找不到返回 null，由调用方照旧新建。
      */
     private GrowablePlan growablePlanFor(
-            UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow) {
-        return growablePlanFor(analysisId, analysisLineId, departmentId, approveNow, true);
+            UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow,
+            BigDecimal allowedOverproductionRate) {
+        return growablePlanFor(analysisId, analysisLineId, departmentId, approveNow,
+                allowedOverproductionRate, true);
     }
 
     /** [lock] = false 供下达预览(ADR-116): 同一谓词只读判定, 不锁计划行。 */
     private GrowablePlan growablePlanFor(
-            UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow, boolean lock) {
+            UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow,
+            BigDecimal allowedOverproductionRate, boolean lock) {
         String sql = """
                 SELECT plan.id, plan.bill_no, plan.status, link.id, item.id, item.qty,
                        link.submitted_qty, COALESCE(link.public_surplus_qty, 0), item.sales_order_item_id
@@ -1166,6 +1171,7 @@ public class MaterialAnalysisCommandService {
                 WHERE plan.material_analysis_id = :analysisId
                   AND plan.material_analysis_item_id = :analysisLineId
                   AND fn_material_analysis_plan_growable(plan.id)
+                  AND fn_plan_accepts_overproduction_allowance(plan.id, :allowedRate)
                 """
                 + (approveNow ? "" : "  AND plan.status = 0\n")
                 + (departmentId == null ? "" : """
@@ -1182,7 +1188,8 @@ public class MaterialAnalysisCommandService {
                 """ + (lock ? "FOR UPDATE OF plan, link, item\n" : "");
         var query = em.createNativeQuery(sql)
                 .setParameter("analysisId", analysisId)
-                .setParameter("analysisLineId", analysisLineId);
+                .setParameter("analysisLineId", analysisLineId)
+                .setParameter("allowedRate", ProductionOverproductionAllowance.normalize(allowedOverproductionRate));
         if (departmentId != null) query.setParameter("departmentId", departmentId);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
         if (rows.isEmpty()) return null;
@@ -1191,8 +1198,11 @@ public class MaterialAnalysisCommandService {
         // After waiting for the plan lock, take a fresh READ COMMITTED snapshot
         // before changing any quantity; a newly executing plan must get a new order.
         if (lock && !Boolean.TRUE.equals(em.createNativeQuery(
-                        "SELECT fn_material_analysis_plan_growable(CAST(:planId AS uuid))")
-                .setParameter("planId", row[0]).getSingleResult())) return null;
+                        "SELECT fn_material_analysis_plan_growable(CAST(:planId AS uuid)) "
+                                + "AND fn_plan_accepts_overproduction_allowance(CAST(:planId AS uuid), CAST(:allowedRate AS numeric))")
+                .setParameter("planId", row[0])
+                .setParameter("allowedRate", ProductionOverproductionAllowance.normalize(allowedOverproductionRate))
+                .getSingleResult())) return null;
         return new GrowablePlan((UUID) row[0], Objects.toString(row[1], null),
                 ((Number) row[2]).shortValue(), (UUID) row[3], (UUID) row[4],
                 decimalOf(row[5]), decimalOf(row[6]), decimalOf(row[7]), (UUID) row[8]);
@@ -1401,7 +1411,7 @@ public class MaterialAnalysisCommandService {
                     ? line.analysisLineId() : childLineByMaterialLine.get(line.materialLineId());
             validatePlanSchedule(new PlanQuantity(lineId, line.qty(), line.billDate(), line.deliveryDate(),
                     line.departmentId(), line.workshopName(), line.workerId(), line.teamDepartmentId(),
-                    line.productNo()), defaults);
+                    line.productNo(), line.allowedOverproductionRate()), defaults);
             if (lineId == null) {
                 UUID material = line.materialLineId();
                 boolean newAnchor = newAnchorQuota.containsKey(material)
@@ -1428,7 +1438,8 @@ public class MaterialAnalysisCommandService {
             }
             BigDecimal demandQty = line.qty().min(product.remainingQty());
             GrowablePlan growable = growablePlanFor(
-                    analysisId, lineId, line.departmentId(), request.approveNow(), false);
+                    analysisId, lineId, line.departmentId(), request.approveNow(),
+                    line.allowedOverproductionRate(), false);
             // ADR-104 并入一张草稿计划并立即审核: 审核把整条关联行(原已提交 + 本次)转成已审核。
             BigDecimal draftSubmitted = growable != null && growable.status() == 0
                     ? growable.submittedQty() : BigDecimal.ZERO;
@@ -1591,6 +1602,15 @@ public class MaterialAnalysisCommandService {
             String productNo = MaterialAnalysisService.blankToNull(line.productNo());
             if (productNo != null) {
                 itemHash += "|PRODUCT_NO|" + productNo.length() + ":" + productNo;
+            }
+            // Public-only issuance is an explicit new-production intention, not an interchangeable retry.
+            if (Boolean.TRUE.equals(line.publicSurplusOnly())) {
+                itemHash += "|PUBLIC_SURPLUS_ONLY|true";
+            }
+            BigDecimal allowedRate = ProductionOverproductionAllowance.normalize(line.allowedOverproductionRate());
+            // Omitted/default rates retain the historical command hash for safe retries across upgrades.
+            if (allowedRate.compareTo(ProductionOverproductionAllowance.DEFAULT_RATE) != 0) {
+                itemHash += "|ALLOWED_OVERPRODUCTION_RATE|" + MaterialAnalysisService.decimalText(allowedRate);
             }
             parts.add(itemHash);
         });
@@ -2573,6 +2593,7 @@ public class MaterialAnalysisCommandService {
             throw validation("生产计划数量最多保留四位小数");
         }
         line.setQty(normalizedQty);
+        line.setAllowedOverproductionRate(ProductionOverproductionAllowance.normalize(quantity.allowedOverproductionRate()));
         line.setOrderDate(product.orderDate());
         line.setOutboundDate(product.deliveryDate());
         line.setPlanBeginDate(billDate);
@@ -2698,6 +2719,7 @@ public class MaterialAnalysisCommandService {
 
     private static void validatePlanSchedule(
             PlanQuantity quantity, PlanScheduleDefaults defaults) {
+        ProductionOverproductionAllowance.normalize(quantity.allowedOverproductionRate());
         LocalDate billDate = itemBillDate(quantity, defaults);
         LocalDate deliveryDate = itemDeliveryDate(quantity, defaults);
         if (deliveryDate != null && deliveryDate.isBefore(billDate)) {

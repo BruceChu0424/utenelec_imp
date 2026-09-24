@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.application.port.SubcontractOutboundWakePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.JpaTransactionManager;
@@ -280,7 +282,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                             UUID.randomUUID(),invocation.getArgument(0),UUID.randomUUID(),UUID.randomUUID(),
                             request.qty().multiply(FIXTURE_UNIT_BOOK_COST),com.uten.imp.application.port.InventoryValuationPort.State.PENDING,false);
                 }), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class),
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                new StaticListableBeanFactory().getBeanProvider(SubcontractOutboundWakePort.class));
         stockService = spy(realStockService);
         doAnswer(invocation -> {
             StockService.MovementRequest request =

@@ -162,6 +162,7 @@ class ProductionPlanItem {
     this.clientNo,
     this.oqty,
     this.qty,
+    this.allowedOverproductionRate = 0.1,
     this.lqty,
     this.iqty,
     this.fqty,
@@ -210,6 +211,7 @@ class ProductionPlanItem {
   /// 数量族（12 个，NUMERIC(18,4)；触发器游标回写累计量，本期不重算）。
   final double? oqty; // 销售订货量
   final double? qty; // 本单排产数量
+  final double allowedOverproductionRate; // 计划初始比例；执行段审批另存生效比例
   final double? lqty; // BOM 展开锁定用量
   final double? iqty; // 仓库审核成品入库累计
   final double? fqty; // 主管审核生产报工累计
@@ -258,6 +260,8 @@ class ProductionPlanItem {
         clientNo: json['clientNo'] as String?,
         oqty: _asDouble(json['oqty']),
         qty: _asDouble(json['qty']),
+        allowedOverproductionRate:
+            _asDouble(json['allowedOverproductionRate']) ?? 0.1,
         lqty: _asDouble(json['lqty']),
         iqty: _asDouble(json['iqty']),
         fqty: _asDouble(json['fqty']),

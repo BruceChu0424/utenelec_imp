@@ -11,6 +11,29 @@ import 'package:uten_imp/features/production/widgets/production_execution_segmen
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  for (final fixed in [false, true]) {
+    testWidgets(
+      'plan detail displays ${fixed ? "fixed supplementary output" : "current approved tolerance"}',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          _app(
+            repository: _repository(
+              status: 'READY',
+              allowedOverproductionRate: 0.25,
+              overproductionPolicyApplies: !fixed,
+            ),
+            permissions: const {},
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(fixed ? '固定追加量' : '25%'), findsWidgets);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('public receipts do not mark original plan as fully received', (
     tester,
   ) async {
@@ -836,6 +859,8 @@ ProductionPlanRepository _repository({
   double inboundQty = 0,
   double? plannedInboundQty,
   double actualSurplusInboundQty = 0,
+  double? allowedOverproductionRate,
+  bool overproductionPolicyApplies = true,
   double finishedInboundRejectedQty = 0,
   double fqcRecoveryAvailableQty = 0,
   double fqcReworkAvailableQty = 0,
@@ -862,6 +887,10 @@ ProductionPlanRepository _repository({
                       : [
                           _segmentJson(
                             status: status,
+                            allowedOverproductionRate:
+                                allowedOverproductionRate,
+                            overproductionPolicyApplies:
+                                overproductionPolicyApplies,
                             autoPromoteWhenReady: autoPromoteWhenReady,
                             materialDemandCount: materialDemandCount,
                             fullyIssuedDemandCount: fullyIssuedDemandCount,
@@ -949,6 +978,8 @@ Map<String, dynamic> _segmentJson({
   double inboundQty = 0,
   double? plannedInboundQty,
   double actualSurplusInboundQty = 0,
+  double? allowedOverproductionRate,
+  bool overproductionPolicyApplies = true,
   double finishedInboundRejectedQty = 0,
   double fqcRecoveryAvailableQty = 0,
   double fqcReworkAvailableQty = 0,
@@ -967,6 +998,8 @@ Map<String, dynamic> _segmentJson({
   'productColorId': null,
   'productUnitId': 'unit-1',
   'plannedQty': 10,
+  'allowedOverproductionRate': allowedOverproductionRate,
+  'overproductionPolicyApplies': overproductionPolicyApplies,
   'reportedQty': reportedQty,
   'remainingQty': remainingQty,
   'ordinaryRemainingQty': ordinaryRemainingQty,

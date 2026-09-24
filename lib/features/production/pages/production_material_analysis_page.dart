@@ -78,6 +78,7 @@ import '../widgets/material_required_reason_dialog.dart';
 import '../widgets/material_supply_progress_dialog.dart';
 import '../widgets/material_supply_submit_confirm.dart';
 import '../widgets/material_preparation_route_card.dart';
+import '../widgets/production_overproduction_rate_field.dart';
 
 part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
@@ -306,6 +307,60 @@ abstract class _MaterialAnalysisPageBase
     }
     _systemSeededBatchQtyTexts[id] = text;
   }
+
+  // Shared by preparation and bucket detail. Recalculation only changes quantities,
+  // never a planner's per-line tolerance. These are next-issue inputs, not edits of
+  // any previously approved execution segment.
+  final Map<String, TextEditingController> _overproductionPercentInputs = {};
+
+  TextEditingController _overproductionPercentController({
+    String? analysisLineId,
+    String? materialLineId,
+  }) {
+    final analysis = _analysis;
+    final indexes = analysis == null ? null : _analysisIndexes(analysis);
+    final product = indexes?.productsById[analysisLineId];
+    final material = indexes?.groupsByLine[materialLineId]?.representative;
+    final sourceProduct =
+        product ??
+        (material?.isRootSupply == true
+            ? indexes?.productsById[material?.analysisLineId]
+            : null);
+    final exactMaterialId =
+        product?.rootMaterialLineId ??
+        materialLineId ??
+        indexes?.materialsByProduct[analysisLineId]
+            ?.where((m) => m.isRootSupply)
+            .firstOrNull
+            ?.materialLineId;
+    final identity = exactMaterialId != null
+        ? 'M:$exactMaterialId'
+        : 'P:$analysisLineId';
+    final key = '${_sessionScopeKey()}|${analysis?.analysisId}|$identity';
+    return _overproductionPercentInputs.putIfAbsent(
+      key,
+      () => TextEditingController(
+        text: productionOverproductionPercentText(
+          sourceProduct == null
+              ? 0.1
+              : widget.seed.initialAllowedOverproductionRateFor(
+                      sourceProduct,
+                    ) ??
+                    0.1,
+        ),
+      ),
+    );
+  }
+
+  double _overproductionRate({
+    String? analysisLineId,
+    String? materialLineId,
+  }) => parseProductionOverproductionPercent(
+    _overproductionPercentController(
+      analysisLineId: analysisLineId,
+      materialLineId: materialLineId,
+    ).text,
+  )!;
 
   final Set<String> _selectedPlanLineIds = {};
   final Map<String, MaterialSupplyRoute> _routeDraft = {};
@@ -766,6 +821,9 @@ abstract class _MaterialAnalysisPageBase
 
   @override
   void dispose() {
+    for (final controller in _overproductionPercentInputs.values) {
+      controller.dispose();
+    }
     materialDetailRevision.dispose();
     bucketActionBusyMessage.dispose();
     _analysisPollTimer?.cancel();

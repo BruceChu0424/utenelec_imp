@@ -964,7 +964,9 @@ public class ProductionExecutionSegmentService {
                                  AND fn_execution_start_material_ready(base.id)),
                                fn_production_actual_output_reportable(base.id),
                                COALESCE(finished.inbound_qty, 0) - COALESCE(finished.actual_surplus_inbound_qty, 0),
-                               COALESCE(finished.actual_surplus_inbound_qty, 0)
+                               COALESCE(finished.actual_surplus_inbound_qty, 0),
+                               base.allowed_overproduction_rate,
+                               fn_execution_overproduction_policy_applies(base.id)
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
                           ON base.id = s.id
@@ -1339,7 +1341,7 @@ public class ProductionExecutionSegmentService {
                 (String) row[50],
                 canOperateDraw && Boolean.TRUE.equals(row[51]),
                 Boolean.TRUE.equals(row[52]),
-                decimal(row[53]), decimal(row[54]));
+                decimal(row[53]), decimal(row[54]), decimal(row[55]), Boolean.TRUE.equals(row[56]));
     }
 
     private static BigDecimal decimal(Object value) {

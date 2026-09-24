@@ -242,9 +242,9 @@ void main() {
     expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000');
   });
 
-  testWidgets('列定稿为 15 列，四列新增列都在表头里', (tester) async {
+  testWidgets('列定稿为 16 列，四列新增列都在表头里', (tester) async {
     await _pump(tester);
-    expect(find.text('表头设置 15/15'), findsOneWidget);
+    expect(find.text('表头设置 16/16'), findsOneWidget);
     for (final label in const [
       '物料办理',
       '物料名称',
@@ -255,6 +255,7 @@ void main() {
       '需要数量',
       '还缺数量',
       '下单数量',
+      '允许超产比例',
       '追加下单',
       '所属仓库',
       '归属车间',
@@ -1133,6 +1134,16 @@ void main() {
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
       delayMs: 350,
     );
+    Finder rate(String line) => find.descendant(
+      of: find.byKey(
+        ValueKey('material-analysis-overproduction-rate-${_groupKey(line)}'),
+      ),
+      matching: find.byType(TextField),
+    );
+    expect(tester.widget<TextField>(rate('m-6')).controller!.text, '10');
+    expect(rate('m-s'), findsNothing);
+    expect(rate('m-sc'), findsNothing);
+    await tester.enterText(rate('m-6'), '12.3456');
     for (final line in const ['m-6', 'm-s', 'm-sc']) {
       await _check(tester, _rowCheckbox(line));
     }
@@ -1147,10 +1158,42 @@ void main() {
     final planLines = submits.first.body?['lines'] as List;
     expect((planLines.single as Map)['materialLineId'], 'm-6');
     expect((planLines.single as Map)['qty'], 400);
+    expect((planLines.single as Map)['allowedOverproductionRate'], 0.123456);
     expect(submits[1].body?['target'], 'SUBCONTRACT');
     expect(submits[2].body?['target'], 'BUY');
     expect(previews, isEmpty);
     expect(find.text('下单(0)'), findsOneWidget);
+  });
+
+  testWidgets('准备页无效比例阻止写入，修正为零后按零提交', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+    );
+    final rate = find.descendant(
+      of: find.byKey(
+        ValueKey('material-analysis-overproduction-rate-${_groupKey("m-6")}'),
+      ),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(rate, '10.12345');
+    await _check(tester, _rowCheckbox('m-6'));
+    requests.clear();
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    expect(_submits(), isEmpty);
+    expect(tester.widget<TextField>(rate).controller!.text, '10.12345');
+    await tester.enterText(rate, '0');
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    expect(_submits(), hasLength(1));
+    final line = (_submits().single.body!['lines'] as List).single as Map;
+    expect(line['allowedOverproductionRate'], 0);
   });
 
   testWidgets('顶层已下达后追加：走产品行 planDrafts 且声明纯公共备货', (tester) async {

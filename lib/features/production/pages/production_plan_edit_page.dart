@@ -58,6 +58,7 @@ import '../widgets/plan_order_import_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../widgets/production_grid_columns.dart';
+import '../widgets/production_overproduction_rate_field.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
@@ -214,6 +215,9 @@ class _ProductionPlanEditPageState
                     name: ref.read(masterNameServiceProvider).goods(it.goodsId),
                   );
           row.qty.text = it.qty?.toString() ?? '';
+          row.overproductionPercent.text = productionOverproductionPercentText(
+            it.allowedOverproductionRate,
+          );
           row.oqty.text = it.oqty?.toString() ?? '';
           rows.add(row);
         }
@@ -440,6 +444,11 @@ class _ProductionPlanEditPageState
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       if (r.goods == null) continue;
+      if (parseProductionOverproductionPercent(r.overproductionPercent.text) ==
+          null) {
+        context.appError('第 ${i + 1} 行允许超产比例无效，请输入非负百分比，最多 4 位小数');
+        return;
+      }
       final qty = double.tryParse(r.qty.text);
       if (qty == null || !qty.isFinite || qty <= 0) {
         context.appError('第 ${i + 1} 行排产量无效');
@@ -480,6 +489,9 @@ class _ProductionPlanEditPageState
           'productNo': r.productNo.text.trim(),
         'goodsId': r.goods!.id,
         'qty': double.tryParse(r.qty.text) ?? 0,
+        'allowedOverproductionRate': parseProductionOverproductionPercent(
+          r.overproductionPercent.text,
+        )!,
         if (double.tryParse(r.oqty.text) != null)
           'oqty': double.tryParse(r.oqty.text),
         if (r.colorId != null) 'colorId': r.colorId,
@@ -521,6 +533,10 @@ class _ProductionPlanEditPageState
             colorId: row.salesOrderItemId == null ? row.colorId : null,
             unitId: row.salesOrderItemId == null ? row.unitId : null,
             requestedQty: double.parse(row.qty.text),
+            initialAllowedOverproductionRate:
+                parseProductionOverproductionPercent(
+                  row.overproductionPercent.text,
+                ),
             sourceReason: row.salesOrderItemId == null
                 ? _manualSourceReason.text.trim()
                 : null,

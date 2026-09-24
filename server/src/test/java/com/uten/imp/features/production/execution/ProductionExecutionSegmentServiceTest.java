@@ -383,7 +383,8 @@ class ProductionExecutionSegmentServiceTest {
                 new Object[]{UUID.randomUUID(), "ALLOCATED"},
                 new Object[]{UUID.randomUUID(), "ALLOCATED"}));
         Query before = assignedView(3L);
-        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, before, demands);
+        Query proof = noSupplementProof();
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, before, proof, demands);
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -407,7 +408,8 @@ class ProductionExecutionSegmentServiceTest {
                 new Object[]{UUID.randomUUID(), "FULFILLED"},
                 new Object[]{UUID.randomUUID(), "ALLOCATED"}));
         Query before = assignedView(4L);
-        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, before, demands);
+        Query proof = noSupplementProof();
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, before, proof, demands);
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -439,8 +441,9 @@ class ProductionExecutionSegmentServiceTest {
         when(view.getResultList()).thenReturn(Collections.singletonList(
                 viewRow("IN_PROGRESS", null, 6L, 2, 2, true)));
         Query before = assignedView(5L);
+        Query proof = noSupplementProof();
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, before, demands, update, event, view);
+                lock, replay, before, proof, demands, update, event, view);
 
         assertDoesNotThrow(() -> service.start(
                 planId,
@@ -493,8 +496,9 @@ class ProductionExecutionSegmentServiceTest {
         when(after.getResultList()).thenReturn(Collections.singletonList(
                 viewRow("IN_PROGRESS", workshop, 3L, 2, 2, true)));
         Query manualStart = query(), cleanup = query();
+        Query proof = noSupplementProof();
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, before, demands, manualStart, update, event, after, cleanup);
+                lock, replay, before, proof, demands, manualStart, update, event, after, cleanup);
         var result = service.start(planId, segmentId,
                 new SegmentTransitionRequest(2L, "start-planned-assignment"));
         assertThat(result.status()).isEqualTo("IN_PROGRESS");
@@ -592,10 +596,11 @@ class ProductionExecutionSegmentServiceTest {
         when(secondView.getResultList()).thenReturn(Collections.singletonList(
                 viewRow(secondId, "IN_PROGRESS", null, 8L, 1, 1, true)));
         Query firstBefore = assignedView(3L), secondBefore = assignedView(7L);
+        Query firstProof = noSupplementProof(), secondProof = noSupplementProof();
         when(em.createNativeQuery(anyString())).thenReturn(
                 firstLock, secondLock,
-                firstReplay, firstBefore, firstDemands,
-                secondReplay, secondBefore, secondDemands,
+                firstReplay, firstBefore, firstProof, firstDemands,
+                secondReplay, secondBefore, secondProof, secondDemands,
                 firstUpdate, firstEvent, firstView,
                 secondUpdate, secondEvent, secondView);
 
@@ -613,7 +618,7 @@ class ProductionExecutionSegmentServiceTest {
         lockOrder.verify(firstLock).setParameter("segmentId", firstId);
         lockOrder.verify(secondLock).setParameter("segmentId", secondId);
         lockOrder.verify(firstUpdate).executeUpdate();
-        verify(em, times(14)).createNativeQuery(anyString());
+        verify(em, times(16)).createNativeQuery(anyString());
         verify(chainNotice).notifyExecutionSegmentTransition(firstId, true);
         verify(chainNotice).notifyExecutionSegmentTransition(secondId, true);
         verify(chainNotice).resolveProductionWorkshopTasks(
@@ -644,10 +649,11 @@ class ProductionExecutionSegmentServiceTest {
         when(secondDemands.getResultList()).thenReturn(Collections.singletonList(
                 new Object[]{UUID.randomUUID(), "ALLOCATED"}));
         Query firstBefore = assignedView(2L), secondBefore = assignedView(4L);
+        Query firstProof = noSupplementProof(), secondProof = noSupplementProof();
         when(em.createNativeQuery(anyString())).thenReturn(
                 firstLock, secondLock,
-                firstReplay, firstBefore, firstDemands,
-                secondReplay, secondBefore, secondDemands);
+                firstReplay, firstBefore, firstProof, firstDemands,
+                secondReplay, secondBefore, secondProof, secondDemands);
 
         ApiException error = assertThrows(ApiException.class, () ->
                 service.batchStart(planId, new BatchStartRequest(List.of(
@@ -657,7 +663,7 @@ class ProductionExecutionSegmentServiceTest {
                                 firstId, 2L, "batch-preflight-first")))));
 
         assertTrue(error.getMessage().contains("待发料 1 项"));
-        verify(em, times(8)).createNativeQuery(anyString());
+        verify(em, times(10)).createNativeQuery(anyString());
         verifyNoInteractions(chainNotice);
 
         Method method = ProductionExecutionSegmentService.class
@@ -878,7 +884,7 @@ class ProductionExecutionSegmentServiceTest {
                 // Continuous route state; START has one canonical capability.
                 false,
                 // V599 route plus V611 explicit-start capability.
-                null, false, false, BigDecimal.ZERO, BigDecimal.ZERO
+                null, false, false, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal(".10"), true
         };
     }
     private void stubLockAndReplay(
@@ -929,6 +935,12 @@ class ProductionExecutionSegmentServiceTest {
         Query query = mock(Query.class);
         when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(query);
+        return query;
+    }
+
+    private static Query noSupplementProof() {
+        Query query = query();
+        when(query.getSingleResult()).thenReturn(false);
         return query;
     }
 }

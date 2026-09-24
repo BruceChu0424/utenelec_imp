@@ -81,10 +81,12 @@ class _BucketCandidatePlanInput {
     required this.workshopName,
     required this.workerId,
     this.publicSurplusOnly = false,
+    this.allowedOverproductionRate = 0.1,
   });
 
   final String materialLineId;
   final double qty;
+  final double allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -102,10 +104,12 @@ class _BucketPlanDraft {
     required this.workshopName,
     required this.workerId,
     this.publicSurplusOnly = false,
+    this.allowedOverproductionRate = 0.1,
   });
 
   final String analysisLineId;
   final double qty;
+  final double allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -487,6 +491,12 @@ class _MaterialAnalysisBucketPageState
           return _BucketCandidatePlanInput(
             materialLineId: input.materialLineId,
             qty: seed?.batchQty ?? input.qty,
+            allowedOverproductionRate: seed == null
+                ? input.allowedOverproductionRate
+                : _host._overproductionRate(
+                    analysisLineId: seed.analysisLineId,
+                    materialLineId: seed.materialLineId,
+                  ),
             departmentId: seed?.departmentId ?? input.departmentId,
             workshopName: seed?.departmentName ?? input.workshopName,
             workerId: seed?.workerId ?? input.workerId,
@@ -502,6 +512,12 @@ class _MaterialAnalysisBucketPageState
           return _BucketPlanDraft(
             analysisLineId: draft.analysisLineId,
             qty: seed?.batchQty ?? draft.qty,
+            allowedOverproductionRate: seed == null
+                ? draft.allowedOverproductionRate
+                : _host._overproductionRate(
+                    analysisLineId: seed.analysisLineId,
+                    materialLineId: seed.materialLineId,
+                  ),
             departmentId: seed?.departmentId ?? draft.departmentId,
             workshopName: seed?.departmentName ?? draft.workshopName,
             workerId: seed?.workerId ?? draft.workerId,

@@ -21,6 +21,14 @@ import '../models/production_flow_stage.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 import 'production_flow_stage_cell.dart';
+import 'production_overproduction_rate_field.dart';
+
+String _segmentRateText(ProductionExecutionSegmentView segment) =>
+    !segment.overproductionPolicyApplies
+    ? '固定追加量'
+    : segment.allowedOverproductionRate == null
+    ? '—'
+    : '${productionOverproductionPercentText(segment.allowedOverproductionRate!)}%';
 
 /// Confirmed execution segments and their operational state.
 ///
@@ -1100,6 +1108,12 @@ class _ProductionExecutionSegmentsCardState
             _metricTile(
               theme,
               width: width,
+              label: '允许超产比例',
+              value: _segmentRateText(segment),
+            ),
+            _metricTile(
+              theme,
+              width: width,
               label: '有效报工',
               value: _number(segment.reportedQty),
               valueColor: segment.reportedQty > 0
@@ -1426,6 +1440,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                       product.isEmpty ? '未命名产品' : product,
                     ),
                     _detailRow(theme, '计划数量', _number(segment.plannedQty)),
+                    _detailRow(theme, '当前允许超产比例', _segmentRateText(segment)),
                     _detailRow(theme, '有效报工', _number(segment.reportedQty)),
                     _detailRow(
                       theme,

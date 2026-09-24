@@ -1310,6 +1310,32 @@ abstract class _MaterialAnalysisMaterialTableState
       cellBuilder: (_, row) => _materialTableOrderQtyCell(theme, row),
     ),
     MasterColumnDef(
+      key: 'allowedOverproductionRate',
+      label: '允许超产比例',
+      width: 152,
+      info: '本次下达计划允许的超产比例，默认 10%。不增加计划数量或自动多领料。已下达工单的比例修改仍须计划部审批。',
+      value: (row) {
+        final group = _tableEditableGroup(row);
+        return group == null || !_tableIssueTarget(group).viaWorkshop
+            ? '—'
+            : '${_overproductionPercentController(materialLineId: group.representative.materialLineId).text}%';
+      },
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) {
+        final group = _tableEditableGroup(row);
+        if (group == null || !_tableIssueTarget(group).viaWorkshop) {
+          return const Text('—');
+        }
+        return ProductionOverproductionRateField(
+          key: ValueKey('material-analysis-overproduction-rate-${group.key}'),
+          controller: _overproductionPercentController(
+            materialLineId: group.representative.materialLineId,
+          ),
+          enabled: _canGenerate && !_busy && !_tableSubmitting,
+        );
+      },
+    ),
+    MasterColumnDef(
       key: 'appendQty',
       label: _l10n.materialAdditionalOrder,
       width: 124,
@@ -3775,6 +3801,18 @@ abstract class _MaterialAnalysisMaterialTableState
         skipped.add(group.key);
         continue;
       }
+      if (_tableIssueTarget(group).viaWorkshop &&
+          parseProductionOverproductionPercent(
+                _overproductionPercentController(
+                  materialLineId: group.representative.materialLineId,
+                ).text,
+              ) ==
+              null) {
+        context.appWarning(
+          '「${_tableGroupLabel(group)}」允许超产比例无效，请输入非负百分比，最多 4 位小数',
+        );
+        return;
+      }
       pending[group] = qty;
     }
     if (pending.isEmpty) {
@@ -3957,6 +3995,9 @@ abstract class _MaterialAnalysisMaterialTableState
           _BucketPlanDraft(
             analysisLineId: rootMakeLineId,
             qty: pending[group]!,
+            allowedOverproductionRate: _overproductionRate(
+              materialLineId: group.representative.materialLineId,
+            ),
             departmentId: _tableWorkshopFor(group).id,
             workshopName: _tableWorkshopFor(group).name,
             workerId: _tableWorkerFor(group).id,
@@ -3969,6 +4010,9 @@ abstract class _MaterialAnalysisMaterialTableState
         _BucketCandidatePlanInput(
           materialLineId: group.representative.materialLineId,
           qty: pending[group]!,
+          allowedOverproductionRate: _overproductionRate(
+            materialLineId: group.representative.materialLineId,
+          ),
           departmentId: _tableWorkshopFor(group).id,
           workshopName: _tableWorkshopFor(group).name,
           workerId: _tableWorkerFor(group).id,

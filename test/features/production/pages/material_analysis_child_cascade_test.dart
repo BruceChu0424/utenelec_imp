@@ -64,6 +64,30 @@ void main() {
       isEmpty,
     );
 
+    Finder rate(String id) => find.descendant(
+      of: find.byKey(ValueKey('material-analysis-child-cascade-rate-$id')),
+      matching: find.byType(TextField),
+    );
+    expect(tester.widget<TextField>(rate('root-1')).controller!.text, '10');
+    expect(tester.widget<TextField>(rate('m-c')).controller!.text, '10');
+    expect(rate('m-b'), findsNothing);
+    expect(rate('m-d'), findsNothing);
+    await tester.enterText(rate('root-1'), '15');
+    await tester.enterText(rate('m-c'), '25');
+    await _setSeedQty(tester, '30');
+    await _setSeedQty(tester, '20');
+    // The latest async preview must preserve independent root/child inputs.
+    expect(tester.widget<TextField>(rate('root-1')).controller!.text, '15');
+    expect(tester.widget<TextField>(rate('m-c')).controller!.text, '25');
+    final ratePreview = harness.writes.lastWhere(
+      (r) => r.path.endsWith('/issue-plans/preview'),
+    );
+    expect(
+      (((ratePreview.data as Map)['lines'] as List).single
+          as Map)['allowedOverproductionRate'],
+      0.15,
+    );
+
     // 树顶是本次要下达的件本身，下面才是子层 / 孙层。
     expect(find.textContaining('本次将下达 20'), findsOneWidget);
     expect(_inDialog('成品A'), findsOneWidget);
@@ -71,6 +95,19 @@ void main() {
     expect(_inDialog('半成品C'), findsOneWidget);
     expect(_inDialog('外购件D'), findsOneWidget);
     // 折叠「半成品C」分支：孙层外购件D 隐藏、勾选随之撤掉；再展开原样恢复。
+    // Return the horizontally scrolled tree column beyond the frozen checkbox.
+    for (final scrollable in tester.stateList<ScrollableState>(
+      find.ancestor(
+        of: find.byKey(const Key('cascade-toggle-m-c')),
+        matching: find.byType(Scrollable),
+      ),
+    )) {
+      if (axisDirectionToAxis(scrollable.position.axisDirection) ==
+          Axis.horizontal) {
+        scrollable.position.jumpTo(0);
+      }
+    }
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('cascade-toggle-m-c')));
     await tester.pumpAndSettle();
     expect(_inDialog('外购件D'), findsNothing);
@@ -100,6 +137,10 @@ void main() {
       'p1',
     );
     expect((parentLines.single as Map<String, dynamic>)['qty'], 20.0);
+    expect(
+      (parentLines.single as Map<String, dynamic>)['allowedOverproductionRate'],
+      0.15,
+    );
     final cascadeLines =
         (issue.last.data as Map<String, dynamic>)['lines'] as List;
     expect(cascadeLines, hasLength(1));
@@ -107,6 +148,7 @@ void main() {
     expect(line['materialLineId'], 'm-c');
     expect(line['qty'], 20.0);
     expect(line['departmentId'], 'dept-1');
+    expect(line['allowedOverproductionRate'], 0.25);
 
     // 采购两行合并成一次 notify；数量是总量口径（服务端自己分账）。
     final notify = harness.writes
@@ -122,6 +164,26 @@ void main() {
       {'ag-b=40.0', 'ag-d=60.0'},
     );
     expect(quantities.any((row) => row.containsKey('publicExtraQty')), isFalse);
+  });
+
+  testWidgets('非法子件比例挡住整批下达，不先写入父件也不清空输入', (tester) async {
+    final harness = await _pump(tester);
+    await _enterCascadeFromWorkshopBucket(tester, '10');
+    final field = find.descendant(
+      of: find.byKey(
+        const ValueKey('material-analysis-child-cascade-rate-m-c'),
+      ),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(field, '-2');
+    await tester.pumpAndSettle();
+    await _tapSubmitThroughOverQty(tester);
+    expect(
+      harness.writes.where((r) => !r.path.endsWith('/issue-plans/preview')),
+      isEmpty,
+    );
+    expect(tester.widget<TextField>(field).controller!.text, '-2');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('树顶父件行没有多选框，改它的数量会再要一份预览、下层跟着变', (tester) async {
@@ -470,6 +532,7 @@ void main() {
       '仓库余量',
       '缺口',
       '下单数量',
+      '允许超产比例',
       '生产车间',
       '负责人',
       '状态',

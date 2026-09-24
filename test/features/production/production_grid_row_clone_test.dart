@@ -14,6 +14,7 @@ void main() {
       ..unitId = 'u1';
     src.productNo.text = 'P01';
     src.qty.text = '120';
+    src.overproductionPercent.text = '25';
     src.remark.text = '备注';
 
     final c = src.clone();
@@ -22,6 +23,9 @@ void main() {
     expect(c.unitId, 'u1');
     expect(c.productNo.text, 'P01');
     expect(c.qty.text, '120');
+    expect(c.overproductionPercent.text, '25');
+    c.overproductionPercent.text = '0';
+    expect(src.overproductionPercent.text, '25');
     expect(c.remark.text, '备注');
     expect(c.amountValue, 120); // qtyNotifier 随 qty 回填同步
   });

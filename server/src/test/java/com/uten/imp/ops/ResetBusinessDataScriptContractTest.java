@@ -425,9 +425,9 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(690, 619)")
                 .contains("(691, 620)")
                 .contains("(692, 621)")
-                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631)")
-                // 迁移头 V702 / 631 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V702完整目录")
+                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631), (703, 632), (704, 633), (705, 634), (706, 635)")
+                // 迁移头 V706 / 635 张 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V706完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

@@ -936,6 +936,7 @@ abstract class _MaterialAnalysisProductTasksState
         MaterialAnalysisIssueLine(
           materialLineId: input.materialLineId,
           qty: input.qty,
+          allowedOverproductionRate: input.allowedOverproductionRate,
           departmentId: input.departmentId,
           workshopName: input.workshopName,
           workerId: input.workerId,
@@ -945,6 +946,7 @@ abstract class _MaterialAnalysisProductTasksState
         MaterialAnalysisIssueLine(
           analysisLineId: draft.analysisLineId,
           qty: draft.qty,
+          allowedOverproductionRate: draft.allowedOverproductionRate,
           departmentId: draft.departmentId,
           workshopName: draft.workshopName,
           workerId: draft.workerId,

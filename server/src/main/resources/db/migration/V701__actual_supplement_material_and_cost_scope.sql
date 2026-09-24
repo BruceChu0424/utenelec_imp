@@ -89,17 +89,8 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 CREATE FUNCTION fn_actual_supplement_material_ready(p_segment UUID) RETURNS BOOLEAN
-LANGUAGE plpgsql STABLE AS $$
-DECLARE proven_source UUID; source_mode TEXT;
-BEGIN
-    SELECT proof.source_execution_segment_id,source.material_requirement_mode INTO proven_source,source_mode
-    FROM production_actual_output_supplement_proofs proof
-    JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
-    WHERE proof.supplement_execution_segment_id=p_segment
-      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id);
-    IF NOT FOUND OR fn_production_execution_cost_scope(p_segment) IS NULL THEN RETURN FALSE; END IF;
-    IF source_mode<>'ZERO_MATERIAL' AND COALESCE(fn_execution_material_output_capacity(proven_source,TRUE),0)<=0 THEN RETURN FALSE; END IF;
-    RETURN EXISTS(
+LANGUAGE sql STABLE AS $$
+    SELECT EXISTS(
         SELECT 1 FROM production_actual_output_supplement_proofs proof
         JOIN production_execution_segments target ON target.id=proof.supplement_execution_segment_id
         JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
@@ -123,7 +114,7 @@ BEGIN
                target.bom_fingerprint,target.workshop_department_id)
           AND fn_execution_material_custody_valid(target.id)
           AND (source.material_requirement_mode='ZERO_MATERIAL'
-               OR (
+               OR (fn_execution_material_output_capacity(source.id,TRUE)>0 AND (
                    EXISTS(SELECT 1 FROM fn_production_material_usage_source_segments(target.id) material_source
                        JOIN production_material_demands demand ON demand.execution_segment_id=material_source.segment_id
                        JOIN production_material_stock_postings issue ON issue.demand_id=demand.id AND issue.posting_type='ISSUE'
@@ -137,13 +128,12 @@ BEGIN
                          AND posting.qty_base>COALESCE((SELECT SUM(reversed.qty_base) FROM production_material_settlement_postings reversed
                                                        WHERE reversed.source_posting_id=posting.id),0)
                          AND demand.execution_segment_id IN(SELECT segment_id FROM fn_production_material_usage_source_segments(target.id)))
-               ))
+               )))
           AND NOT EXISTS(SELECT 1 FROM production_material_demands own
                          WHERE own.execution_segment_id=target.id AND NOT own.is_deleted)
           AND NOT EXISTS(SELECT 1 FROM production_planning_package_documents own
                          WHERE own.execution_segment_id=target.id AND own.document_type='DRAW')
-    );
-END;
+    )
 $$;
 
 CREATE FUNCTION fn_assert_actual_supplement_segment_integrity(p_segment UUID) RETURNS VOID
@@ -342,29 +332,3 @@ CREATE TRIGGER trg_actual_supplement_cost_target AFTER INSERT ON production_actu
     FOR EACH ROW EXECUTE FUNCTION fn_queue_actual_supplement_cost_target();
 CREATE TRIGGER trg_actual_supplement_reversed_cost_target AFTER INSERT ON production_actual_output_supplement_reversals
     FOR EACH ROW EXECUTE FUNCTION fn_queue_actual_supplement_cost_target();
-
--- Resolve one task before invoking another task's capacity. SQL WHERE/AND
--- evaluation order is not an execution barrier: an inlined CASE over the whole
--- segment relation could evaluate a sibling supplement before filtering its id.
-CREATE OR REPLACE FUNCTION fn_execution_material_output_capacity(p_segment UUID,p_issued_only BOOLEAN DEFAULT TRUE)
-RETURNS NUMERIC LANGUAGE plpgsql STABLE AS $$
-DECLARE segment production_execution_segments%ROWTYPE; result NUMERIC;
-BEGIN
-    SELECT * INTO segment FROM production_execution_segments WHERE id=p_segment AND NOT is_deleted;
-    IF NOT FOUND THEN RETURN 0; END IF;
-    IF NOT fn_execution_material_custody_valid(segment.id) THEN RETURN 0; END IF;
-    IF EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof WHERE proof.supplement_execution_segment_id=segment.id) THEN
-        IF fn_actual_supplement_material_ready(segment.id) THEN RETURN segment.planned_qty; END IF;
-        RETURN 0;
-    END IF;
-    IF segment.material_requirement_mode='ZERO_MATERIAL' OR fn_split_batch_empty_issued(segment.id) THEN RETURN segment.planned_qty; END IF;
-    SELECT MIN(fn_demand_material_output_capacity(demand.id,
-        CASE WHEN p_issued_only THEN fn_execution_material_net_issued_qty(demand.id)
-             ELSE COALESCE((SELECT SUM(reservation.qty-reservation.released_qty) FROM stock_reservations reservation
-                 WHERE reservation.demand_id=demand.id AND NOT reservation.is_deleted),0) END)) INTO result
-    FROM production_material_demands demand
-    WHERE demand.execution_segment_id=segment.id AND NOT demand.is_deleted
-      AND demand.status NOT IN('RELEASED','REVERSED');
-    RETURN COALESCE(result,0);
-END;
-$$;

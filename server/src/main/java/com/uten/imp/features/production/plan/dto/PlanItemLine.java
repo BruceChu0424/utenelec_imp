@@ -43,6 +43,10 @@ public class PlanItemLine {
     private BigDecimal oqty;
     @NotNull
     private BigDecimal qty;
+    /** Initial allowance approved together with this plan; null keeps old clients at 10%. */
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer = 3, fraction = 6)
+    private BigDecimal allowedOverproductionRate;
     private BigDecimal lqty;
     private BigDecimal iqty;
     private BigDecimal fqty;

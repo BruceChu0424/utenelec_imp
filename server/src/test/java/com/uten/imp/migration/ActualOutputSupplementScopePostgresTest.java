@@ -15,7 +15,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real V700 -> V701 upgrade and isolated provenance/cost-family oracles. */
+/** Applied V700 -> V705 upgrade and isolated provenance/cost-family oracles. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class ActualOutputSupplementScopePostgresTest {
     static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine");
@@ -24,7 +24,8 @@ class ActualOutputSupplementScopePostgresTest {
     @BeforeAll static void migrate() {
         POSTGRES.start();migration("700").migrate();
         assertEquals(1,migration("701").migrate().migrationsExecuted);
-        assertEquals(0,migration("701").migrate().migrationsExecuted);
+        assertEquals(4,migration("705").migrate().migrationsExecuted);
+        assertEquals(0,migration("705").migrate().migrationsExecuted);
     }
     static Flyway migration(String version) {
         return Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
@@ -43,7 +44,8 @@ class ActualOutputSupplementScopePostgresTest {
                 "production_material_demands","production_material_stock_postings","production_material_stock_events",
                 "production_material_settlement_postings","production_material_settlement_events",
                 "production_material_return_request_items","production_material_return_requests","production_material_return_request_cancellations",
-                "production_planning_package_documents","stock_documents","stock_document_items","stock_reservations")) {
+                "production_planning_package_documents","production_planning_package_document_items",
+                "stock_documents","stock_document_items","stock_reservations")) {
             sql("CREATE TABLE "+schema+"."+table+" AS SELECT * FROM public."+table+" WITH NO DATA");
         }
         for(String function:List.of("fn_production_material_usage_source_segments(uuid)",
@@ -51,6 +53,7 @@ class ActualOutputSupplementScopePostgresTest {
                 "fn_production_execution_cost_target(uuid)","fn_execution_actual_surplus_qty(uuid,boolean)",
                 "fn_material_issue_unsettled(uuid)","fn_material_issue_pending_return(uuid,uuid)",
                 "fn_material_issue_available(uuid,uuid)","fn_execution_material_custody_valid(uuid)",
+                "fn_actual_supplement_increment_identity(uuid)","fn_actual_supplement_material_prepared(uuid)",
                 "fn_actual_supplement_material_ready(uuid)","fn_actual_supplement_material_cleared(uuid)",
                 "fn_assert_actual_supplement_segment_integrity(uuid)","fn_guard_execution_segment_requirement_shape()")){
             String definition=value("SELECT pg_get_functiondef(CAST(? AS regprocedure))","public."+function).toString();

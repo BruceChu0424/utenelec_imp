@@ -67,6 +67,7 @@ class MaterialAnalysisSourceInput {
     this.sourceReason,
     this.deliveryDate,
     this.initialProductNo,
+    this.initialAllowedOverproductionRate,
   });
 
   final String? salesOrderItemId;
@@ -83,6 +84,9 @@ class MaterialAnalysisSourceInput {
   /// material-analysis source field and therefore is intentionally omitted
   /// from [toJson].
   final String? initialProductNo;
+
+  /// Route-local input for the next plan, never an authorization of existing tasks.
+  final double? initialAllowedOverproductionRate;
 
   bool get isSalesSource => salesOrderItemId?.isNotEmpty == true;
   String get canonicalKey =>
@@ -133,11 +137,17 @@ class ProductionMaterialAnalysisSeed {
   /// Resolves the route-local product number seed back to the analysis product
   /// created from the same source. Sales lines use their immutable item UUID;
   /// manual demand uses the same composite source identity as the backend.
-  String? initialProductNoFor(ProductionMaterialAnalysisProduct product) {
-    for (final source in sources) {
-      final productNo = _trimmedOrNull(source.initialProductNo);
-      if (productNo == null) continue;
+  String? initialProductNoFor(ProductionMaterialAnalysisProduct product) =>
+      _trimmedOrNull(_sourceFor(product)?.initialProductNo);
 
+  double? initialAllowedOverproductionRateFor(
+    ProductionMaterialAnalysisProduct product,
+  ) => _sourceFor(product)?.initialAllowedOverproductionRate;
+
+  MaterialAnalysisSourceInput? _sourceFor(
+    ProductionMaterialAnalysisProduct product,
+  ) {
+    for (final source in sources) {
       final productSalesItemId = _trimmedOrNull(product.salesOrderItemId);
       final sourceSalesItemId = _trimmedOrNull(source.salesOrderItemId);
       if (productSalesItemId != null) {
@@ -146,7 +156,7 @@ class ProductionMaterialAnalysisSeed {
           productSalesItemId,
           foldCase: true,
         )) {
-          return productNo;
+          return source;
         }
         continue;
       }
@@ -165,7 +175,7 @@ class ProductionMaterialAnalysisSeed {
           _sameSourcePart(source.goodsId, product.goodsId, foldCase: true) &&
           _sameSourcePart(source.colorId, product.colorId, foldCase: true) &&
           _sameSourcePart(source.unitId, product.unitId, foldCase: true)) {
-        return productNo;
+        return source;
       }
     }
     return null;
@@ -2207,11 +2217,13 @@ class MaterialAnalysisIssueLine {
     this.workshopName,
     this.workerId,
     this.publicSurplusOnly = false,
+    this.allowedOverproductionRate = 0.1,
   });
 
   final String? materialLineId;
   final String? analysisLineId;
   final double qty;
+  final double allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -2224,6 +2236,7 @@ class MaterialAnalysisIssueLine {
     if (materialLineId != null) 'materialLineId': materialLineId,
     if (analysisLineId != null) 'analysisLineId': analysisLineId,
     'qty': qty,
+    'allowedOverproductionRate': allowedOverproductionRate,
     if (departmentId != null) 'departmentId': departmentId,
     if (workshopName?.trim().isNotEmpty == true)
       'workshopName': workshopName!.trim(),

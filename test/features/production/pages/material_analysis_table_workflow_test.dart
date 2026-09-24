@@ -43,7 +43,7 @@ void main() {
       //   的悬浮说明)；「在途调拨」条件列退役并入「物料办理」(本视口本就不算)。
       //   且不再有条件列——15 列恒定出现，列集合不会因为某行数据归零就翻转，
       //   用户拖好的列宽列序也就不会被清空。
-      expect(find.text('表头设置 15/15'), findsOneWidget);
+      expect(find.text('表头设置 16/16'), findsOneWidget);
       expect(find.text('处理'), findsNothing);
       expect(find.text('确认路线(0)'), findsOneWidget);
       expect(

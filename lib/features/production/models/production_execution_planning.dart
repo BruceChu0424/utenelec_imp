@@ -902,6 +902,8 @@ class ProductionExecutionSegmentView {
     this.fqcReplacementAvailableQty = 0,
     this.fqcReplacementReadyQty = 0,
     this.allowActualOverproduction = false,
+    this.allowedOverproductionRate,
+    this.overproductionPolicyApplies = true,
     double? plannedInboundQty,
     this.actualSurplusInboundQty = 0,
     this.zeroMaterial = false,
@@ -976,6 +978,8 @@ class ProductionExecutionSegmentView {
   final double fqcReplacementAvailableQty;
   final double fqcReplacementReadyQty;
   final bool allowActualOverproduction;
+  final double? allowedOverproductionRate;
+  final bool overproductionPolicyApplies;
   final double plannedInboundQty;
   final double actualSurplusInboundQty;
   final int lockVersion;
@@ -1022,6 +1026,10 @@ class ProductionExecutionSegmentView {
       canStart: json['canStart'] == true,
       sourceSegmentId: json['sourceSegmentId'] as String?,
       allowActualOverproduction: json['allowActualOverproduction'] == true,
+      allowedOverproductionRate: _optionalDouble(
+        json['allowedOverproductionRate'],
+      ),
+      overproductionPolicyApplies: json['overproductionPolicyApplies'] != false,
       plannedInboundQty: _optionalDouble(json['plannedInboundQty']),
       actualSurplusInboundQty:
           _optionalDouble(json['actualSurplusInboundQty']) ?? 0,

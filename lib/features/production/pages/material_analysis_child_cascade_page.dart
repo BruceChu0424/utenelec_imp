@@ -438,7 +438,16 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       (seed) =>
           seed.batchQty > 0 &&
           seed.batchQty.isFinite &&
-          seed.departmentId?.isNotEmpty == true,
+          seed.departmentId?.isNotEmpty == true &&
+          parseProductionOverproductionPercent(
+                _host
+                    ._overproductionPercentController(
+                      analysisLineId: seed.analysisLineId,
+                      materialLineId: seed.materialLineId,
+                    )
+                    .text,
+              ) !=
+              null,
     );
   }
 
@@ -1069,6 +1078,12 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         continue;
       }
       if (!row.needsWorkshop) continue;
+      if (parseProductionOverproductionPercent(
+            _host._cascadeRateController(row).text,
+          ) ==
+          null) {
+        return '「$name」允许超产比例无效，请输入非负百分比，最多 4 位小数';
+      }
       if (row.departmentId.value?.isNotEmpty != true) {
         noWorkshop.add('「$name」');
         continue;
@@ -1131,6 +1146,18 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         );
       }
       if (!seed.needsWorkshop) continue;
+      if (parseProductionOverproductionPercent(
+            _host
+                ._overproductionPercentController(
+                  analysisLineId: seed.analysisLineId,
+                  materialLineId: seed.materialLineId,
+                )
+                .text,
+          ) ==
+          null) {
+        context.appWarning('「${seed.label}」允许超产比例无效，请输入非负百分比，最多 4 位小数');
+        return false;
+      }
       if (seed.departmentId?.isNotEmpty != true) {
         noWorkshop.add('「${seed.label}」');
         continue;
@@ -2193,6 +2220,25 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
             ),
           );
         },
+      ),
+      EditableGridColumn<_ChildCascadeRow>(
+        key: 'allowedOverproductionRate',
+        label: '允许超产比例',
+        width: 152,
+        textOf: (row) => row.needsWorkshop && (row.isSeed || row.ownsInput)
+            ? '${_host._cascadeRateController(row).text}%'
+            : '—',
+        cellBuilder: (context, row) =>
+            !row.needsWorkshop || (!row.isSeed && !row.ownsInput)
+            ? const Text('—')
+            : ProductionOverproductionRateField(
+                key: ValueKey('material-analysis-child-cascade-rate-${row.id}'),
+                controller: _host._cascadeRateController(row),
+                enabled: !_running && !(row.isSeed && _parentSubmitted),
+                onChanged: (_) {
+                  if (row.isSeed) _schedulePreviewRefresh();
+                },
+              ),
       ),
       EditableGridColumn<_ChildCascadeRow>(
         key: 'workshop',

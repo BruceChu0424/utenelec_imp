@@ -26,7 +26,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 仓库负责人(仓管员)与「我的仓库」(ADR-115 / V692)。
+ * 仓库负责人(仓管员)与「我的仓库」(ADR-115 / V693)。
  *
  * <p>负责关系存 {@code warehouse_keepers}(仓库 × 员工), 登记在主仓上即负责其全部子仓。
  * 「谁是某仓的有效负责人」「某账号负责哪些仓」只由数据库函数

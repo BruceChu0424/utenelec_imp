@@ -605,7 +605,7 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.OWN_CONFIG, "客户可见人授权", "client_visibility_grants", "client_id");
         exempt(out, ExemptReason.OWN_CONFIG, "货品在仓库里的默认存放位置", "warehouse_goods_place_preferences",
                 "goods_id", "color_id", "warehouse_id");
-        // V692(ADR-115): 负责关系是仓库自己的附属设置, 删仓库后负责人自然失效, 不算「还在用」。
+        // V693(ADR-115): 负责关系是仓库自己的附属设置, 删仓库后负责人自然失效, 不算「还在用」。
         exempt(out, ExemptReason.OWN_CONFIG, "仓库负责人(仓管员)", "warehouse_keepers", "warehouse_id");
         exempt(out, ExemptReason.OWN_CONFIG, "单位自己的换算设置", "unit_measurement_profiles", "unit_id");
         exempt(out, ExemptReason.OWN_CONFIG, "货品自己的计量采集设置", "measurement_capture_profiles", "goods_id");

@@ -6,7 +6,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 仓库负责人与「我的仓库」范围端口(ADR-115 / V692)。
+ * 仓库负责人与「我的仓库」范围端口(ADR-115 / V693)。
  *
  * <p>仓库主档(master)拥有负责关系 {@code warehouse_keepers}; 仓库任务中心各列表
  * (领料/销售出库/委外出仓/预计到货/到货异常/产成品点收/库存单据)与仓库类通知只需要两件事:

@@ -1,5 +1,5 @@
 -- =====================================================================
--- V692 (ADR-115) 仓库负责人(仓管员) + 仓库类通知按仓分发 + 「我的仓库」范围
+-- V693 (ADR-115) 仓库负责人(仓管员) + 仓库类通知按仓分发 + 「我的仓库」范围
 -- =====================================================================
 -- 背景(2026-09-24 用户原话): 「多个仓库由多个人员负责, 但仓库的通知是统一全部收到的;
 --   成品仓库只要注意产成品出入库, 其他仓库领料、委外、采购、产成品的出入库都有涉及,
@@ -151,7 +151,7 @@ DECLARE definition TEXT; anchor TEXT := '(''stock_movements'', ''CLEAR'')';
 BEGIN
     SELECT pg_get_functiondef('business_data_reset()'::regprocedure) INTO definition;
     IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
-        RAISE EXCEPTION 'V692 cannot extend business-data reset policy safely';
+        RAISE EXCEPTION 'V693 cannot extend business-data reset policy safely';
     END IF;
     EXECUTE replace(definition,anchor,anchor || E',\n            (''warehouse_keepers'', ''PRESERVE'')');
 END;

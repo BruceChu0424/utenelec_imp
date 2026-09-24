@@ -9115,11 +9115,16 @@ class FullChainEndToEndTest {
         assertEquals(0, arVoucherBalance.compareTo(BigDecimal.ZERO),
                 "AR 凭证借贷必平 Σ(direction×amount) = 0");
         // global invariant: no unbalanced voucher exists after generation
-        assertEquals(0, intFor(
-                "select count(*) from ("
-                        + "  select gv.id from gl_vouchers gv join gl_entries ge on ge.voucher_id = gv.id "
-                        + "  group by gv.id having sum(ge.direction * ge.amount) <> 0) unbalanced"),
-                "全局：所有凭证借贷必平(无不平衡凭证)");
+        java.util.List<String> unbalanced = jdbc.queryForList(
+                "select gv.source_type || ' ' || coalesce(gv.voucher_no, '?') || ' period=' || coalesce(gv.period, '?')"
+                        + " || ' diff=' || sum(ge.direction * ge.amount)::text"
+                        + " || ' lines=' || string_agg(ge.direction::text || '*' || ge.amount::text, ',' order by ge.id)"
+                        + " from gl_vouchers gv join gl_entries ge on ge.voucher_id = gv.id"
+                        + " group by gv.id, gv.source_type, gv.voucher_no, gv.period"
+                        + " having sum(ge.direction * ge.amount) <> 0 order by 1 limit 10",
+                String.class);
+        assertTrue(unbalanced.isEmpty(),
+                "全局：所有凭证借贷必平(无不平衡凭证): " + unbalanced);
     }
 
     // ---------------------------------------------------------------------------------------------

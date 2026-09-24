@@ -252,6 +252,12 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                   id,voucher_id,line_no,style_id,direction,amount,entry_date,period,summary)
                 VALUES (?,?,1,?,1,1,?,?,'普通分录')
                 """,ordinaryEntry,ordinaryVoucher,styleId,BusinessTime.today(),period);
+        // 对方分录让这张手工凭证借贷平衡: CI 全量共用一个库, 单边凭证会让全局"凭证借贷必平"不变量失败。
+        jdbc.update("""
+                INSERT INTO gl_entries(
+                  id,voucher_id,line_no,style_id,direction,amount,entry_date,period,summary)
+                VALUES (?,?,2,?,-1,1,?,?,'普通分录对方')
+                """,UUID.randomUUID(),ordinaryVoucher,styleId,BusinessTime.today(),period);
         assertThatThrownBy(()->jdbc.update("""
                 UPDATE gl_vouchers
                 SET source='AUTO',source_type='RECEIPT',source_doc_id=? WHERE id=?

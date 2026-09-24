@@ -113,9 +113,36 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
     /** Runs after the ordinary BOM allocation: already protected component stock is not spent twice. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void refreshRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage) {
+        updateRootQuantities(projectRootNodes(analysisId, futureCoverage, Map.of(), Map.of()));
+        em.createNativeQuery("""
+                UPDATE production_material_analysis_items item
+                SET ready_now_qty=0,ready_by_date_qty=0,ready_start_qty=0,ready_finish_qty=0,ready_ship_qty=0
+                FROM production_material_analysis_materials root
+                WHERE item.analysis_id=:id AND root.id=item.root_material_id
+                  AND COALESCE(root.confirmed_route,'MAKE')<>'MAKE'
+                """).setParameter("id",analysisId).executeUpdate();
+        em.createNativeQuery("""
+                UPDATE production_material_analyses analysis
+                SET status=fn_material_analysis_fulfillment_status(analysis.id)
+                WHERE analysis.id=:analysisId AND analysis.status<>'CANCELLED'
+                """).setParameter("analysisId", analysisId).executeUpdate();
+    }
+
+    /**
+     * 顶层供给行数量的纯计算(不写库)。真实刷新传空覆盖值后写回; 下达预览(ADR-116)传入
+     * [allocatedByMaterial](BOM 物料行 id → 内存重算的已分配量, 替代库内旧值)与
+     * [openPlanBySource](来源行 id → 本批计划新增的未完工量, 基本单位), 只叠进视图。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<RootQuantityRow> projectRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage,
+            Map<UUID,BigDecimal> allocatedByMaterial, Map<UUID,BigDecimal> openPlanBySource) {
         Map<InventoryKey, BigDecimal> publicPools = new HashMap<>();
         List<RootQuantityRow> quantities = new ArrayList<>();
-        for (Object[] row : rows("""
+        StringBuilder overrides = new StringBuilder("[");
+        allocatedByMaterial.forEach((id, qty) -> overrides.append(overrides.length() > 1 ? "," : "")
+                .append("{\"id\":\"").append(id).append("\",\"qty\":").append(qty.toPlainString()).append('}'));
+        overrides.append(']');
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,item.root_material_id,item.goods_id,item.color_id,
                   root.per_product_qty,COALESCE(root.confirmed_route,'MAKE'),
                   GREATEST(item.requested_qty,0),
@@ -126,12 +153,14 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     AND r.color_id IS NOT DISTINCT FROM item.color_id
                     AND (r.warehouse_id=analysis.warehouse_id OR r.warehouse_id IS NULL)
                     AND r.status=0 AND r.is_deleted=FALSE),0),
-                  GREATEST(COALESCE((SELECT SUM(GREATEST(m.allocated_available_qty-COALESCE((
+                  GREATEST(COALESCE((SELECT SUM(GREATEST(COALESCE(override.qty,m.allocated_available_qty)-COALESCE((
                       SELECT SUM(ent.effective_qty)
                       FROM v_preplan_stock_entitlement_beneficiary_balance ent
                       WHERE ent.beneficiary_analysis_id=item.analysis_id
                         AND ent.beneficiary_analysis_material_id=m.id),0),0))
                     FROM production_material_analysis_materials m
+                    LEFT JOIN jsonb_to_recordset(CAST(:overrides AS jsonb)) AS override(id uuid, qty numeric)
+                      ON override.id=m.id
                     WHERE m.analysis_id=item.analysis_id AND m.active=TRUE
                       AND m.node_role='BOM_COMPONENT' AND m.goods_id=item.goods_id
                       AND m.color_id IS NOT DISTINCT FROM item.color_id),0)
@@ -174,7 +203,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   AND balance.goods_id=item.goods_id AND balance.color_id IS NOT DISTINCT FROM item.color_id
                 WHERE item.analysis_id=:analysisId AND item.is_deleted=FALSE
                 ORDER BY item.line_priority,item.id
-                """, "analysisId", analysisId)) {
+                """).setParameter("analysisId", analysisId).setParameter("overrides", overrides.toString()))) {
             UUID materialId = (UUID) row[1];
             InventoryKey dimension = new InventoryKey((UUID) row[2], (UUID) row[3]);
             BigDecimal required = decimal(row[6]).multiply(decimal(row[4]))
@@ -195,22 +224,11 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     ? fulfilled.add(ownQualified).add(publicAllocated)
                     : decimal(row[14]).min(required);
             if (external) publicPools.put(dimension, publicAvailable.subtract(publicAllocated));
+            BigDecimal openPlan = decimal(row[15]).add(openPlanBySource.getOrDefault((UUID) row[0], BigDecimal.ZERO));
             quantities.add(new RootQuantityRow(materialId,required,stock,decimal(row[10]),decimal(row[8]),allocated,
-                    required.subtract(allocated),external?futureCoverage.getOrDefault(materialId,BigDecimal.ZERO):decimal(row[15])));
+                    required.subtract(allocated),external?futureCoverage.getOrDefault(materialId,BigDecimal.ZERO):openPlan));
         }
-        updateRootQuantities(quantities);
-        em.createNativeQuery("""
-                UPDATE production_material_analysis_items item
-                SET ready_now_qty=0,ready_by_date_qty=0,ready_start_qty=0,ready_finish_qty=0,ready_ship_qty=0
-                FROM production_material_analysis_materials root
-                WHERE item.analysis_id=:id AND root.id=item.root_material_id
-                  AND COALESCE(root.confirmed_route,'MAKE')<>'MAKE'
-                """).setParameter("id",analysisId).executeUpdate();
-        em.createNativeQuery("""
-                UPDATE production_material_analyses analysis
-                SET status=fn_material_analysis_fulfillment_status(analysis.id)
-                WHERE analysis.id=:analysisId AND analysis.status<>'CANCELLED'
-                """).setParameter("analysisId", analysisId).executeUpdate();
+        return quantities;
     }
 
     /** Explicit notify may allocate existing stock before creating only the external shortage. */
@@ -280,7 +298,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         return true;
     }
 
-    private record RootQuantityRow(UUID id,BigDecimal required,BigDecimal stock,BigDecimal reserved,BigDecimal safety,
+    /** 顶层供给行刷新写回的数量列(id = 物料行 id)。 */
+    public record RootQuantityRow(UUID id,BigDecimal required,BigDecimal stock,BigDecimal reserved,BigDecimal safety,
             BigDecimal allocated,BigDecimal shortage,BigDecimal inbound) {}
 
     /** Preserve the ordered public-pool calculation and every row's original UPDATE guards. */

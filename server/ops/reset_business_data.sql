@@ -1423,7 +1423,9 @@ BEGIN
        OR (applied_max_version BETWEEN 627 AND 676 AND preserve_count <> 102)
        -- V677 删角色体系四张 PRESERVE 表(102→98, ADR-109)；V686 新增总账附表行绑定(98→99, ADR-112)。
        OR (applied_max_version BETWEEN 677 AND 685 AND preserve_count <> 98)
-       OR (applied_max_version >= 686 AND preserve_count <> 99)
+       OR (applied_max_version BETWEEN 686 AND 692 AND preserve_count <> 99)
+       -- V693 仓库负责人 warehouse_keepers 为 PRESERVE(ADR-115): 99→100。
+       OR (applied_max_version >= 693 AND preserve_count <> 100)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

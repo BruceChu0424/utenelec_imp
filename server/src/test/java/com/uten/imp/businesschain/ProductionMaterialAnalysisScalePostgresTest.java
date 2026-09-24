@@ -177,6 +177,40 @@ class ProductionMaterialAnalysisScalePostgresTest {
         assertInitialDemand(other, analysis.detail(second.analysisId()));
     }
 
+    /**
+     * ADR-116 验收: 30 个来源一次下达车间的预览(约 2900 物料行)是只读投影——零写语句、
+     * 不回滚、2 秒内返回; 随后真实下达, 其详情与预览逐字段相等。
+     */
+    @Test
+    void thirtyPlanIssuePreviewIsReadOnlyFastAndEqualsTheRealIssue() throws Exception {
+        var scenario = factory.sharedTree("preview-30-" + suffix(), 30);
+        factory.login(scenario);
+        AnalysisView view = confirmAllRoutes(analysis.preview(request(scenario, null, "preview-30-" + suffix())), false);
+        IssueWorkshopPlansRequest issue = issueRequest(scenario, view, 30, "preview-30-issue-" + suffix());
+        assertEquals(30, issue.lines().size());
+        var previewRequest = new PreviewIssuePlansRequest(issue.version(), issue.fingerprint(), issue.idempotencyKey(),
+                issue.warehouseId(), issue.billDate(), issue.deliveryDate(), issue.approveNow(), issue.lines(), List.of());
+        commands.previewIssuePlans(view.analysisId(), previewRequest); // 预热 JIT 与语句计划, 不计时
+        ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
+        long started = System.nanoTime();
+        AnalysisView preview;
+        try { preview = commands.previewIssuePlans(view.analysisId(), previewRequest); }
+        finally { ProductionJdbcMeasurement.end(); }
+        double previewMillis = (System.nanoTime() - started) / 1_000_000.0;
+        long issueStarted = System.nanoTime();
+        commands.issueWorkshopPlans(view.analysisId(), issue);
+        double issueMillis = (System.nanoTime() - issueStarted) / 1_000_000.0;
+        emit(Map.of("event", "issue-preview", "plans", 30, "materialRows", preview.flatMaterials().size(),
+                "previewMillis", previewMillis, "previewStatements", sample.logicalStatements,
+                "realIssueMillis", issueMillis));
+        assertTrue(sample.affectedRowsByFingerprint.isEmpty(), "预览不得执行任何 INSERT/UPDATE/DELETE");
+        assertEquals(0, sample.rollbacks, "预览不回滚");
+        assertTrue(previewMillis < 2_000, "30 计划预览应 <2s, 实际 " + previewMillis + "ms");
+        var mismatches = MaterialAnalysisPreviewParity.mismatches(
+                preview, analysis.detail(view.analysisId()), java.util.Set.of());
+        assertTrue(mismatches.isEmpty(), "预览与真实下达后详情不一致:\n" + String.join("\n", mismatches));
+    }
+
     @Test
     @EnabledIfEnvironmentVariable(named = "UTEN_RUN_PRODUCTION_STRESS", matches = "(?i)true")
     void profileWorkshopIssueDeferredFunctionsInAnIsolatedTransaction() throws Exception {

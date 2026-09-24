@@ -339,6 +339,31 @@ void main() {
     expect(_qtyText(tester, _orderQty('m-pc')), '1500');
   });
 
+  testWidgets('层级预览单飞 + 尾随：在途期间连改 5 次，只按最后一次补发一份(ADR-116)', (tester) async {
+    await _pump(tester, previewDelayMs: 3000);
+    await tester.enterText(_appendQty('m-p'), '1100');
+    // 去抖到点，第一份预览发出并一直在途。
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(previews, hasLength(1));
+    for (final qty in ['1200', '1300', '1400', '1500', '1600']) {
+      await tester.enterText(_appendQty('m-p'), qty);
+      // 每次去抖都到点，但上一份还在路上：一份也不多发。
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    expect(previews, hasLength(1));
+    // 第一份回来 → 立刻按此刻的填数(1600)补发一份；再等它回来。
+    await tester.pump(const Duration(milliseconds: 1100));
+    expect(previews, hasLength(2));
+    await tester.pump(const Duration(milliseconds: 3100));
+    await tester.pumpAndSettle();
+    expect(previews, hasLength(2));
+    expect(maxPreviewsInFlight, 1);
+    expect(previews.last['typedOutputs'], [
+      {'materialLineId': 'm-p', 'qty': 1600.0},
+    ]);
+    expect(_qtyText(tester, _orderQty('m-pc')), '1600');
+  });
+
   testWidgets('父行改量后子件的还缺数量与下单预填都跟着重算后的快照走', (tester) async {
     await _pump(tester);
     final shortage = find.byKey(
@@ -1276,6 +1301,10 @@ void main() {
 /// 本次 pump 期间发出的每一份「下达预览」请求体，供断言 typedOutputs。
 final List<Map<String, dynamic>> previews = [];
 
+/// 假后端上同时在途的预览数与本次 pump 期间的最大值(ADR-116 单飞)。
+int previewsInFlight = 0;
+int maxPreviewsInFlight = 0;
+
 /// 本次 pump 期间发出的每一个请求(方法 / 路径 / 请求体)，供断言提交顺序。
 final List<({String method, String path, Map<String, dynamic>? body})>
 requests = [];
@@ -1301,9 +1330,13 @@ Future<void> _pump(
   int delayMs = 0,
   // 路径后缀 → 状态码: 命中的请求直接拒绝, 用来验分段编排「失败即停」。
   Map<String, int> failOn = const {},
+  // 只延迟「下达预览」应答: 验单飞 + 尾随时让第一份一直在途。
+  int previewDelayMs = 0,
 }) async {
   previews.clear();
   requests.clear();
+  previewsInFlight = 0;
+  maxPreviewsInFlight = 0;
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
   tester.view.physicalSize = size;
@@ -1360,6 +1393,14 @@ Future<void> _pump(
           // 父件计划产出量展开」同一口径)，并记下这次送了什么供断言。
           final body = request.data as Map<String, dynamic>;
           previews.add(body);
+          previewsInFlight++;
+          if (previewsInFlight > maxPreviewsInFlight) {
+            maxPreviewsInFlight = previewsInFlight;
+          }
+          if (previewDelayMs > 0) {
+            await Future<void>.delayed(Duration(milliseconds: previewDelayMs));
+          }
+          previewsInFlight--;
           final typed = {
             for (final raw in (body['typedOutputs'] as List? ?? const []))
               (raw as Map)['materialLineId'] as String: (raw['qty'] as num)

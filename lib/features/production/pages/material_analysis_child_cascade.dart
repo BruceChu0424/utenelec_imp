@@ -131,6 +131,7 @@ abstract class _MaterialAnalysisChildCascadeState
     bool includeSeedIssue = true,
     bool seedPending = true,
     bool Function(_ChildCascadeRow row)? willIssue,
+    CancelToken? cancelToken,
   }) async {
     final analysis = _analysis;
     final warehouseId = _warehouseId;
@@ -146,7 +147,7 @@ abstract class _MaterialAnalysisChildCascadeState
       willIssue: willIssue,
     );
     if (lines.isEmpty && typedOutputs.isEmpty) return analysis;
-    // 预览专用的新键：它在服务端随事务一起回滚，不能与真实下达撞键。
+    // 服务端只读预览已不用幂等键(ADR-116)，字段仍按契约带上一个新键。
     final key = businessIdempotencyKey(
       'material-analysis-issue-preview',
       [
@@ -168,6 +169,7 @@ abstract class _MaterialAnalysisChildCascadeState
           approveNow: _permissions.contains(Perm.productionPlanApprove),
           lines: lines,
           typedOutputs: typedOutputs,
+          cancelToken: cancelToken,
         );
   }
 

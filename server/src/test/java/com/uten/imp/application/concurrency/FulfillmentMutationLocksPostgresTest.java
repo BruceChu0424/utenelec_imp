@@ -350,9 +350,10 @@ class FulfillmentMutationLocksPostgresTest {
 
     /**
      * ADR-107 + 评审: 主仓协调锁仍在数据库锁管理器里排队(不再轮询), 等待上限就是连接上的 lock_timeout;
-     * 到点拿不到回可重跑冲突和大白话提示。只读预览取共享锁, 预览之间互不排队, 与写命令互斥。
+     * 到点拿不到回可重跑冲突和大白话提示。(ADR-116: 物料分析下达预览改为只读投影后不再取这把锁,
+     * 原「预览取共享锁」模式随之删除。)
      */
-    @Test void mainWarehouseLockQueuesUpToLockTimeoutAndReadOnlyPreviewsShareIt() throws Exception {
+    @Test void mainWarehouseLockQueuesUpToLockTimeout() throws Exception {
         UUID warehouse=UUID.randomUUID();
         var planned=new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(warehouse),Set.of(),"warehouse-only");
         String key="MATERIAL-ANALYSIS-WAREHOUSE:"+warehouse;
@@ -360,11 +361,6 @@ class FulfillmentMutationLocksPostgresTest {
             try (var lock=holder.prepareStatement("SELECT pg_advisory_lock_shared(hashtextextended(?,0))")) {
                 lock.setString(1,key); lock.executeQuery().close();
             }
-            transactions.executeWithoutResult(tx -> {
-                lockTimeout("300ms");
-                locks.useSharedWarehouseLocksForReadOnlyPreview();
-                locks.acquire(()->planned).verifyUnchanged();
-            });
             long started=System.nanoTime();
             var busy=assertThrows(FulfillmentSourceConflictException.class,
                     ()->transactions.executeWithoutResult(tx -> { lockTimeout("300ms"); locks.acquire(()->planned); }));

@@ -97,19 +97,17 @@ public final class FulfillmentLockState {
         boolean prefixVerified;
         /** 锁后复核或嵌套入口的锁后覆盖复核已做过其一。 */
         boolean prefixRechecked;
-        /** 只读可用量的预览事务(整笔回滚): 主仓协调锁取共享模式, 预览之间互不排队。 */
-        boolean sharedWarehouseLocks;
         private record Snapshot(Set<CommercialSource> sources, Set<InventoryDimension> inventory,
                 Set<UUID> warehouses, Set<UUID> analyses, Set<CommercialSource> expectedNewSources,
                 Set<UUID> expectedNewAnalyses, boolean prepared, boolean inventoryEntered,
                 FulfillmentMutationLockPlan prefixPlan, Supplier<FulfillmentMutationLockPlan> prefixDiscovery,
-                boolean prefixVerified, boolean prefixRechecked, boolean sharedWarehouseLocks) {}
+                boolean prefixVerified, boolean prefixRechecked) {}
         @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
         @Override public void savepoint(Object savepoint) {
             savepoints.record(savepoint, new Snapshot(Set.copyOf(sources), Set.copyOf(inventory),
                     Set.copyOf(warehouses), Set.copyOf(analyses), Set.copyOf(expectedNewSources),
                     Set.copyOf(expectedNewAnalyses), prepared, inventoryEntered,
-                    prefixPlan, prefixDiscovery, prefixVerified, prefixRechecked, sharedWarehouseLocks));
+                    prefixPlan, prefixDiscovery, prefixVerified, prefixRechecked));
         }
         @Override public void savepointRollback(Object savepoint) {
             Snapshot retained = savepoints.rollback(savepoint);
@@ -121,7 +119,6 @@ public final class FulfillmentLockState {
             prefixDiscovery = retained == null ? null : retained.prefixDiscovery();
             prefixVerified = retained != null && retained.prefixVerified();
             prefixRechecked = retained != null && retained.prefixRechecked();
-            sharedWarehouseLocks = retained != null ? retained.sharedWarehouseLocks() : sharedWarehouseLocks;
             if (retained != null) {
                 sources.addAll(retained.sources()); inventory.addAll(retained.inventory());
                 warehouses.addAll(retained.warehouses()); analyses.addAll(retained.analyses());

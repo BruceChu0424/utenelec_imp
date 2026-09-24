@@ -1951,15 +1951,20 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 清空输入框 = 从这里移除 = 把这一行交还给系统算。
   final Map<String, double> _tableUserTypedQty = {};
 
-  /// 父行改量之后，服务端算出的「下达之后」快照(ADR-099 回滚式预览)。
+  /// 父行改量之后，服务端算出的「下达之后」快照(ADR-099；ADR-116 起为只读投影)。
   ///
-  /// **只用于展示子层数量，绝不替换权威快照 [_analysis]**：它是服务端真跑一遍
-  /// 下达再整体回滚的模拟结果，版本与指纹都是模拟态。提交一律按 [_analysis] 走，
-  /// 否则就是拿模拟结果当依据下单。
+  /// **只用于展示子层数量，绝不替换权威快照 [_analysis]**：它是「假如按这些数下达」
+  /// 的投影，库里并没有这些计划。提交一律按 [_analysis] 走，否则就是拿假设当依据下单。
   ProductionMaterialAnalysisView? _tableCascadePreview;
   int _tableCascadeGeneration = 0;
   Timer? _tableCascadeDebounce;
   bool _tableCascadePreviewing = false;
+
+  /// 预览单飞 + 尾随(ADR-116)：同一时刻最多 1 个预览在途；在途期间又改了数只记
+  /// [_tableCascadeTrailing]，这一趟回来后按**最新**填数补发一次(中间那些填数不发)。
+  bool _tableCascadeInFlight = false;
+  bool _tableCascadeTrailing = false;
+  CancelToken? _tableCascadeCancelToken;
 
   /// [_tableCascadePreview] 是按哪一份「用户亲手填的数」算出来的(键 = materialLineId)；
   /// 权威快照对应空表。当场换算下层的**分母**必须按它算：那份快照里子层的数字是
@@ -2004,6 +2009,10 @@ abstract class _MaterialAnalysisMaterialTableState
   void _disposeMaterialTableInputs() {
     _tableCascadeDebounce?.cancel();
     _tableCascadeDebounce = null;
+    // 离开页面 / 换分析：在途的那份预览直接丢掉，也不再补发。
+    _tableCascadeTrailing = false;
+    _tableCascadeCancelToken?.cancel('material table preview disposed');
+    _tableCascadeCancelToken = null;
     _tableEstimateRebuild?.cancel();
     _tableEstimateRebuild = null;
     for (final controller in _tableOrderQtyControllers.values) {
@@ -2027,6 +2036,8 @@ abstract class _MaterialAnalysisMaterialTableState
     _tableCascadePreviewTyped = const {};
     _tableEstimatedQty.clear();
     _tableCascadeGeneration++;
+    // 在途那份已被取消且代际作废，不会再走到复位预览态的 finally。
+    _tableCascadePreviewing = false;
     _tableWorkshopDraft.clear();
     _tableWorkerDraft.clear();
     _tableTransferableIn = const {};
@@ -2597,11 +2608,18 @@ abstract class _MaterialAnalysisMaterialTableState
     final analysis = _analysis;
     final warehouseId = _warehouseId;
     if (analysis == null || warehouseId == null || !mounted) return;
+    if (_tableUserTypedQty.isNotEmpty && _tableCascadeInFlight) {
+      // 单飞：上一份还在路上，只记「回来后按最新填数再要一次」。在途那份照常装上
+      // (它的分母是请求时的填数，回来后按此刻的数就地补算)，不作废。
+      _tableCascadeTrailing = true;
+      return;
+    }
     // 代际先推：用户把输入清空时也要占一个代际，否则上一次在途的预览回来时
     // `generation != _tableCascadeGeneration` 判定为假，那份**已被撤销的输入**
     // 派生出来的模拟快照会照样装上去，之后全表的数字与预填都来自它。
     final generation = ++_tableCascadeGeneration;
     if (_tableUserTypedQty.isEmpty) {
+      _tableCascadeTrailing = false;
       if (_tableCascadePreview == null && _tableEstimatedQty.isEmpty) return;
       setState(() {
         _tableCascadePreview = null;
@@ -2614,13 +2632,17 @@ abstract class _MaterialAnalysisMaterialTableState
     // 记下这一趟是按哪份填数要的：回来时它就是新的换算分母。
     final typedSent = Map<String, double>.unmodifiable(_tableUserTypedQty);
     setState(() => _tableCascadePreviewing = true);
+    _tableCascadeInFlight = true;
+    final cancelToken = CancelToken();
+    _tableCascadeCancelToken = cancelToken;
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
           .previewIssuePlans(
             analysis: analysis,
             warehouseId: warehouseId,
-            // 幂等键必须每次都新：这是一次纯重算，不是要复用上一次的结果。
+            cancelToken: cancelToken,
+            // 服务端只读预览已不用幂等键(ADR-116)，字段仍按契约带上。
             idempotencyKey: businessIdempotencyKey(
               'material-analysis-table-cascade-preview',
               [
@@ -2662,8 +2684,18 @@ abstract class _MaterialAnalysisMaterialTableState
       });
       _reseedTableQtyInputs(autoSelect: true);
     } finally {
+      _tableCascadeInFlight = false;
+      if (identical(_tableCascadeCancelToken, cancelToken)) {
+        _tableCascadeCancelToken = null;
+      }
       if (mounted && generation == _tableCascadeGeneration) {
         setState(() => _tableCascadePreviewing = false);
+      }
+      // 尾随：在途期间用户又改过数，按此刻的填数补发一次(提交进行中不发，
+      // 批完由 _submitMaterialTableRows 统一决定)。
+      if (_tableCascadeTrailing && mounted && !_tableSubmitting) {
+        _tableCascadeTrailing = false;
+        unawaited(_refreshTableCascadePreview());
       }
     }
   }
@@ -3772,6 +3804,7 @@ abstract class _MaterialAnalysisMaterialTableState
     // 正在路上的那一份也作废——它带的填数马上就有一部分落库了。
     _tableSubmitting = true;
     _tableCascadeDebounce?.cancel();
+    _tableCascadeTrailing = false;
     _tableCascadeGeneration++;
     // 在路上的那份预览被代际作废后不会再走到它的 finally，预览态要在这里复位，
     // 否则「还缺数量」悬浮一直挂着「正在重算」。

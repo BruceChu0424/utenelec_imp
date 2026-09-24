@@ -1240,15 +1240,16 @@ class ProductionPlanRepository {
     return ProductionMaterialGenerateResult.fromJson(json);
   }
 
-  /// 下达预览(ADR-099)：服务端按同一套代码真实跑一遍 issue-plans 拿到
-  /// 「下达之后」的分析快照（下层需求 / 还需安排 / 锚点剩余按计划产出量重算），
-  /// 然后整体回滚，库里不留痕迹。「父件 + 下层一起下单」页面用它展示服务端算好
-  /// 的下层数量。幂等键必须是预览专用的新键。
+  /// 下达预览(ADR-099；ADR-116 起只读)：服务端给出「按这批数量真实下达之后」的
+  /// 分析快照（下层需求 / 还需安排 / 锚点剩余按计划产出量重算）。服务端是只读投影：
+  /// 不取锁、不建计划、不回滚，结果与真实下达后的详情逐字段相等，版本与指纹就是
+  /// 当前那一对。「父件 + 下层一起下单」页面与物料分析主表用它展示下层数量。
   ///
   /// [typedOutputs](2026-09-21)是层级表上**每一行**输入框里的数量
   /// (键 = 物料行 id)：服务端按它补齐各自节点的计划产出量，于是任意一层改量都
   /// 能把它的子层、孙层一路带大。[lines] 为空 = 本次只重算、不模拟任何真实下达
-  /// (只改中间层，或父件已提交过的重试)。
+  /// (只改中间层，或父件已提交过的重试)。[idempotencyKey] 服务端不再使用，
+  /// 只为请求契约保留。[cancelToken] 让页面离开时丢掉在途的那一份。
   Future<ProductionMaterialAnalysisView> previewIssuePlans({
     required ProductionMaterialAnalysisView analysis,
     required String warehouseId,
@@ -1258,10 +1259,12 @@ class ProductionPlanRepository {
     Map<String, double> typedOutputs = const {},
     String? deliveryDate,
     bool approveNow = false,
+    CancelToken? cancelToken,
   }) async {
-    final json = await api.post(
+    final json = await api.postCancellable(
       '$_materialAnalysesBase/${analysis.analysisId}/issue-plans/preview',
       query: _materialAnalysisProjection,
+      cancelToken: cancelToken,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,

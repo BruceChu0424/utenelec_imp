@@ -142,6 +142,17 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
                 String locked = " approve(".equals(signature) ? "approveLocked" : "deleteLocked";
                 assertThat(body).contains(locked + "(id)");
                 body = method(source, " " + locked + "(");
+                // V700：实际产出追加计划的审核转给追加计划服务(守卫按追加计划的计划负责人落在
+                // 那边)，普通计划走 approveOrdinaryLocked。两条分支都必须有属主写守卫。
+                if ("approveLocked".equals(locked) && body.contains("approveOrdinaryLocked(id)")) {
+                    assertThat(body).contains("actualOutputSupplements.getObject().approve(");
+                    assertThat(method(source(
+                            "features/production/dailyreport/ActualOutputSupplementService.java"),
+                            " approve("))
+                            .as("actual output supplement approve owner guard")
+                            .contains("access.requireWritable(uuid(r,\"plan_maker_id\")");
+                    body = method(source, " approveOrdinaryLocked(");
+                }
             }
             assertThat(body)
                     .as("%s in %s", signature.trim(), relative)

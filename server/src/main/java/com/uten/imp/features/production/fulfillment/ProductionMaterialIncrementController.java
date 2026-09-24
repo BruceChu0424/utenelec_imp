@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import static com.uten.imp.features.production.fulfillment.ProductionMaterialInc
 @RequiredArgsConstructor
 public class ProductionMaterialIncrementController {
     private final ProductionMaterialIncrementService service;
+    private final AuditDetailViewRecorder auditViews;
     @GetMapping("/segments/{id}/context")
     @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
     public Context context(@PathVariable UUID id){return service.context(id);}
@@ -26,7 +28,17 @@ public class ProductionMaterialIncrementController {
     @GetMapping("/count") @PreAuthorize("hasAuthority('production_plan:approve')")
     public Map<String,Long> count(){return Map.of("count",service.count());}
     @GetMapping("/requests/{id}") @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
-    public RequestView detail(@PathVariable UUID id){return service.detail(id);}
+    public RequestView detail(@PathVariable UUID id){
+        RequestView result=service.detail(id);
+        auditViews.record(
+                "view_production_material_increment_detail",
+                "production_material_increment_requests",
+                id,
+                result.segmentCode(),
+                null,
+                "追加用料申请");
+        return result;
+    }
     @PostMapping("/requests/{id}/approve") @PreAuthorize("hasAuthority('production_plan:approve')")
     public RequestView approve(@PathVariable UUID id,@Valid @RequestBody DecisionRequest request){return service.decide(id,request,true);}
     @PostMapping("/requests/{id}/return") @PreAuthorize("hasAuthority('production_plan:approve')")

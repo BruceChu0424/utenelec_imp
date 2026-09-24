@@ -59,7 +59,8 @@ class ProductionFqcRecoveryIntegrationContractTest {
                 .contains("OR recovery.authorization_id IS NOT NULL")
                 .contains("COALESCE(segment_done.active_qty, 0)")
                 .contains(">= COALESCE(segment.planned_qty, 0)")
-                .contains("WHERE (max_report_qty > 0 OR fqc_recovery_requires_material)");
+                // V694-V702：实际产出来源(actual_source)的行即使计划余量为 0 也要列出。
+                .contains("WHERE (max_report_qty > 0 OR fqc_recovery_requires_material OR actual_source)");
     }
 
     @Test

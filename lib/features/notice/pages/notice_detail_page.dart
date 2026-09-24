@@ -373,9 +373,7 @@ class _Content extends ConsumerWidget {
       }
       final params = Map<String, String>.from(uri.queryParameters)
         ..['returnTo'] = '/notice';
-      GoRouter.of(
-        context,
-      ).go(uri.replace(queryParameters: params).toString());
+      GoRouter.of(context).go(uri.replace(queryParameters: params).toString());
     }
   }
 

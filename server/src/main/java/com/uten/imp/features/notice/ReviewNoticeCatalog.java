@@ -22,6 +22,9 @@ public final class ReviewNoticeCatalog {
                     new Entry("PRODUCTION_OVERPRODUCTION_RATE_REQUEST",null)),
             Map.entry("PRODUCTION_MATERIAL_INCREMENT_SUBMITTED",
                     new Entry("PRODUCTION_MATERIAL_INCREMENT_REQUEST",null)),
+            // ADR-117 车间催计划下单子层物料：计划下够单(缺口归零)或任务结束时按催办记录撤卡。
+            Map.entry("PRODUCTION_PLANNING_URGED",
+                    new Entry("PRODUCTION_PLANNING_URGE", null)),
             // ADR-098 委外回厂短交：案件级弹卡(判定/自然到齐/作废时撤卡; 逾期提醒同聚合)
             Map.entry("SUBCONTRACT_SHORT_DELIVERY_DETECTED",
                     new Entry("SUBCONTRACT_SHORT_DELIVERY_CASE", null)),

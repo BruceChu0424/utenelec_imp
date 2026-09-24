@@ -42,6 +42,12 @@ public class ProductionExecutionWorkbenchService {
     /** 详情里「仓库已到多少」与齐套提升同口径(ADR-095)；只读端口，单任务粒度调用。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort materialAvailability;
+    /**
+     * 「计划还没下单」的缺料(ADR-117)：与物料分析主表「还缺数量」同一口径，只在「我的车间任务」
+     * 列表与任务详情里算(执行工作台的工单列表不算，省一次完整分析视图)。
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.WorkshopPlanningGapReadPort planningGaps;
 
     private String rootVisibility(String normal){
         return draftPreparationAccess.inPlanningPool()?"("+normal+" OR (root.root_type='ANALYSIS' AND "+draftPreparationAccess.sourcePredicate("root.root_id")+"))":normal;
@@ -277,7 +283,8 @@ public class ProductionExecutionWorkbenchService {
                 requestedPage,
                 requestedSize,
                 orderBy,
-                operatorRouteMemory);
+                operatorRouteMemory,
+                !history);
     }
 
     /**
@@ -307,18 +314,7 @@ public class ProductionExecutionWorkbenchService {
      */
     @Transactional(readOnly = true)
     public List<ProductionWorkshopTaskMaterial> workshopTaskMaterials(UUID segmentId) {
-        UUID employeeId = currentUser.employeeId().orElse(null);
-        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
-        if (segmentId == null || (employeeId == null && !seeAll)) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
-        }
-        Query visible = em.createNativeQuery("SELECT COUNT(*) FROM v_production_execution_workbench_segments task"
-                + " WHERE task.segment_id = :segmentId AND (" + (seeAll ? "TRUE" : assignmentPredicate("task")) + ")");
-        visible.setParameter("segmentId", segmentId);
-        if (!seeAll) visible.setParameter("employeeId", employeeId);
-        if (((Number) visible.getSingleResult()).longValue() == 0) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
-        }
+        requireVisibleWorkshopTask(segmentId);
         Query query = em.createNativeQuery("""
                 SELECT facts.demand_id, goods.code, goods.name, color.name, unit.name,
                        facts.supply_route, facts.direct_supply, facts.required_qty, facts.reserved_qty,
@@ -350,15 +346,51 @@ public class ProductionExecutionWorkbenchService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
         java.util.Map<UUID, BigDecimal> warehouseAvailable = warehouseAvailableByDemand(segmentId,
                 rows.stream().map(row -> uuid(row[0])).toList());
+        java.util.Map<UUID, com.uten.imp.application.port.WorkshopPlanningGapReadPort.Gap> gapByDemand =
+                new java.util.HashMap<>();
+        if (planningGaps != null && rows.stream().anyMatch(row -> isShortState(text(row[16])))) {
+            for (var gap : planningGaps.planningGaps(List.of(segmentId)).getOrDefault(segmentId, List.of())) {
+                gapByDemand.put(gap.demandId(), gap);
+            }
+        }
         return rows.stream()
-                .map(row -> new ProductionWorkshopTaskMaterial(
+                .map(row -> {
+                    var gap = gapByDemand.get(uuid(row[0]));
+                    return new ProductionWorkshopTaskMaterial(
                         uuid(row[0]), text(row[1]), text(row[2]), text(row[3]), text(row[4]),
                         text(row[5]), bool(row[6]), decimal(row[7]), decimal(row[8]), decimal(row[9]),
                         decimal(row[10]), decimal(row[11]), decimal(row[12]), decimal(row[13]),
                         decimal(row[14]), decimal(row[15]),
                         warehouseAvailable.getOrDefault(uuid(row[0]), BigDecimal.ZERO),
-                        text(row[16]), text(row[17])))
+                        text(row[16]), text(row[17]),
+                        gap == null ? BigDecimal.ZERO : gap.gapQty(),
+                        gap == null || gap.routeConfirmed());
+                })
                 .toList();
+    }
+
+    private static boolean isShortState(String state) {
+        return "SHORT".equals(state) || "SHORT_MAKE".equals(state);
+    }
+
+    /**
+     * 车间任务的可见范围(与「我的车间任务」列表同源：本人车间归属或超管)。看不到的按不存在
+     * 处理，不泄露任务是否存在。催计划等本页的写动作也先过这一道。
+     */
+    @Transactional(readOnly = true)
+    public void requireVisibleWorkshopTask(UUID segmentId) {
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        if (segmentId == null || (employeeId == null && !seeAll)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
+        }
+        Query visible = em.createNativeQuery("SELECT COUNT(*) FROM v_production_execution_workbench_segments task"
+                + " WHERE task.segment_id = :segmentId AND (" + (seeAll ? "TRUE" : assignmentPredicate("task")) + ")");
+        visible.setParameter("segmentId", segmentId);
+        if (!seeAll) visible.setParameter("employeeId", employeeId);
+        if (((Number) visible.getSingleResult()).longValue() == 0) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
+        }
     }
 
     /**
@@ -492,16 +524,21 @@ public class ProductionExecutionWorkbenchService {
             int requestedPage,
             int requestedSize,
             String orderBy) {
-        return segmentPage(predicate, binder, requestedPage, requestedSize, orderBy, null);
+        return segmentPage(predicate, binder, requestedPage, requestedSize, orderBy, null, false);
     }
 
+    /**
+     * @param planningFacts 顺带给出「计划还没下单」的缺料与在催状态(ADR-117)：只有「我的车间任务」
+     *                      的活动分类要，历史任务与执行工作台的工单列表不算
+     */
     private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
             String predicate,
             java.util.function.Consumer<Query> binder,
             int requestedPage,
             int requestedSize,
             String orderBy,
-            String operatorRouteMemory) {
+            String operatorRouteMemory,
+            boolean planningFacts) {
         int size = boundedSize(requestedSize);
         int page = Math.max(requestedPage, 1);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
@@ -537,11 +574,61 @@ public class ProductionExecutionWorkbenchService {
         data.setParameter("offset", (long) (page - 1) * size);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
         var usage = materialUsage.forVisibleSegments(rows.stream().map(row -> uuid(row[0])).toList());
+        java.util.Map<UUID, PlanningFacts> planning = planningFacts
+                ? planningFacts(rows, activeOperator && productionAccess.hasAuthority("production_execution:start")
+                        && productionAccess.hasAuthority("production_execution:view"))
+                : java.util.Map.of();
         List<ProductionExecutionWorkbenchSegment> items = rows.stream()
                         .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE),
-                                operatorRouteMemory))
+                                operatorRouteMemory, planning.getOrDefault(uuid(row[0]), PlanningFacts.NONE)))
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
+    }
+
+    /**
+     * 本页车间任务的「计划还没下单」缺料与在催状态(ADR-117)。只看还在进行、且列表已算出缺料的
+     * 任务；计划已经下够单的任务即使还有在催记录也不显示「已催」(核对任务稍后办结它)。
+     */
+    private java.util.Map<UUID, PlanningFacts> planningFacts(List<Object[]> rows, boolean canUrge) {
+        if (planningGaps == null) return java.util.Map.of();
+        // 只有「还缺料」的任务才可能在等计划：先按列表已算好的缺口种数过滤，省下完整分析视图。
+        List<UUID> shortTasks = rows.stream()
+                .filter(row -> ProductionPlanningUrgeService.ACTIVE_SEGMENT_STATUSES.contains(text(row[20]))
+                        && integer(row[56]) > 0)
+                .map(row -> uuid(row[0])).toList();
+        if (shortTasks.isEmpty()) return java.util.Map.of();
+        var gaps = planningGaps.planningGaps(shortTasks);
+        if (gaps.isEmpty()) return java.util.Map.of();
+        java.util.Map<UUID, Object[]> urges = new java.util.HashMap<>();
+        for (Object[] urge : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT execution_segment_id, urge_count, last_urged_at, last_urged_by_name
+                FROM production_planning_urges
+                WHERE execution_segment_id IN (:ids) AND status = 'OPEN'
+                """).setParameter("ids", List.copyOf(gaps.keySet())))) {
+            urges.put(uuid(urge[0]), urge);
+        }
+        java.util.Map<UUID, PlanningFacts> result = new java.util.HashMap<>();
+        gaps.forEach((segmentId, segmentGaps) -> {
+            Object[] urge = urges.get(segmentId);
+            java.time.OffsetDateTime urgedAt = urge == null ? null
+                    : com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(urge[2]);
+            result.put(segmentId, new PlanningFacts(
+                    segmentGaps.size(),
+                    ProductionPlanningUrgeService.summary(segmentGaps),
+                    urge == null ? 0 : ((Number) urge[1]).intValue(),
+                    urgedAt,
+                    urge == null ? null : text(urge[3]),
+                    urgedAt == null ? null : urgedAt.plus(ProductionPlanningUrgeService.COOLDOWN),
+                    canUrge));
+        });
+        return result;
+    }
+
+    /** 列表每行附带的「计划还没下单」事实(ADR-117)；没有缺口也没在催的任务用 {@link #NONE}。 */
+    private record PlanningFacts(int gapKindCount, String gapSummary, int urgeCount,
+                                 java.time.OffsetDateTime urgedAt, String urgedByName,
+                                 java.time.OffsetDateTime nextUrgeAt, boolean canUrge) {
+        static final PlanningFacts NONE = new PlanningFacts(0, null, 0, null, null, null, false);
     }
 
     @Transactional(readOnly = true)
@@ -1037,7 +1124,7 @@ public class ProductionExecutionWorkbenchService {
     }
 
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage,
-                                                                  String operatorRouteMemory) {
+                                                                  String operatorRouteMemory, PlanningFacts planning) {
         // The same current plan/package facts gate every command capability. Compute once
         // per projected task, so historical or paused rows do not advertise rejected actions.
         boolean executable = bool(row[46]);
@@ -1067,7 +1154,9 @@ public class ProductionExecutionWorkbenchService {
                 integer(row[54]), integer(row[55]), integer(row[56]), integer(row[57]),
                 decimal(row[58]), decimal(row[59]),
                 decimal(row[60]), decimal(row[61]), decimal(row[62]),decimal(row[63]),
-                ((Number)row[64]).longValue(),uuid(row[65]),row[66]==null?null:decimal(row[66]),bool(row[67]),uuid(row[68]));
+                ((Number)row[64]).longValue(),uuid(row[65]),row[66]==null?null:decimal(row[66]),bool(row[67]),uuid(row[68]),
+                planning.gapKindCount(), planning.gapSummary(), planning.urgeCount(), planning.urgedAt(),
+                planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge());
     }
 
     private static int boundedSize(int requested) {

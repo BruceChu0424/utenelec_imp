@@ -125,7 +125,9 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_actual_output_supplement_claims", 700),
             Map.entry("production_material_increment_requests", 702),
             Map.entry("production_material_increment_decisions", 702),
-            Map.entry("production_material_increment_reversals", 702));
+            Map.entry("production_material_increment_reversals", 702),
+            // V703 车间催计划下单子层物料 (ADR-117)：催办提醒随业务流程数据清空。
+            Map.entry("production_planning_urges", 703));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -279,7 +281,8 @@ class BusinessDataResetSqlContractTest {
                 "V693__warehouse_keepers_notice_routing.sql",
                 "V698__production_overproduction_rate_review.sql",
                 "V700__actual_output_supplement_plans.sql",
-                "V702__production_material_increment_authorizations.sql")) {
+                "V702__production_material_increment_authorizations.sql",
+                "V703__workshop_planning_urges.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }
@@ -495,9 +498,9 @@ class BusinessDataResetSqlContractTest {
                 .contains("(690, 619)")
                 .contains("(691, 620)")
                 .contains("(692, 621)")
-                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631)")
+                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631)").contains("(703, 632)")
                 // 迁移头 V702 / 631 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V702完整目录");
+                .contains("V507/469、V508/470及V511至V703完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

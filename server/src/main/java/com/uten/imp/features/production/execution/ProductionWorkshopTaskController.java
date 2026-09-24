@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProductionWorkshopTaskController {
 
     private final ProductionExecutionWorkbenchService service;
+    private final ProductionPlanningUrgeService planningUrges;
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_execution:view')")
@@ -44,6 +45,17 @@ public class ProductionWorkshopTaskController {
     public java.util.List<ProductionWorkshopTaskMaterial> materials(
             @org.springframework.web.bind.annotation.PathVariable UUID segmentId) {
         return service.workshopTaskMaterials(segmentId);
+    }
+
+    /**
+     * 催计划下单子层物料(ADR-117)：本任务缺的料里有计划还没下单的，给计划员发一张待办卡。
+     * 30 分钟内再点只回报「刚催过」，不重复打扰。与开工 / 领料同一把动作权限。
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/{segmentId}/planning-urge")
+    @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:start')")
+    public ProductionPlanningUrgeService.UrgeResult urgePlanning(
+            @org.springframework.web.bind.annotation.PathVariable UUID segmentId) {
+        return planningUrges.urge(segmentId);
     }
 
     @GetMapping("/count")

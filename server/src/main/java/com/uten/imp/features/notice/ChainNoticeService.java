@@ -198,6 +198,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private static final String WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY =
             "warehouse_iqc_stock_in:view";
     private static final String NOTICE_READ_AUTHORITY = "notice:read";
+    /** ADR-117 车间催计划下单子层物料(与 ProductionPlanningUrgeService 同名)。 */
+    static final String EVENT_PRODUCTION_PLANNING_URGED = "PRODUCTION_PLANNING_URGED";
+    static final String AGGREGATE_PRODUCTION_PLANNING_URGE = "PRODUCTION_PLANNING_URGE";
     /** 计划员部门池通知的打开门槛：能看生产计划(通知路由落在计划页)。 */
     private static final String PLAN_VIEW_AUTHORITY = "production_plan:view";
     /** 交货预警给计划员的落点是物料分析工作台。 */
@@ -511,6 +514,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     // FINANCE_EXCEPTION) afterwards; it must not notify twice.
                 }
                 case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
+                case EVENT_PRODUCTION_PLANNING_URGED -> deliverProductionPlanningUrged(aggregateId);
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
             }
@@ -555,6 +559,68 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         route,event,"normal",requestId);
             }
         });
+    }
+
+    /**
+     * ADR-117 车间催计划：给计划员发一张居中待办卡(卡上点名缺哪几种、是第几次催)。
+     *
+     * <p>接收人 = 这张物料分析的制单计划员 + 计划 / 生产部门里能在物料分析页下单的人
+     * (下达采购委外或下达车间，二者有其一)。同一条催办再催时先撤掉上一轮的卡片再发新的，
+     * 计划员桌面上一个车间任务只留一张最新的。计划下够单或任务结束后由核对任务按聚合撤回。
+     */
+    private void deliverProductionPlanningUrged(UUID urgeId) {
+        deliverAtomically(() -> {
+            Map<String, Object> urge = one("""
+                    SELECT urge.status, urge.urge_count, urge.gap_kind_count, urge.gap_summary,
+                           urge.last_urged_by_name, urge.material_analysis_id, analysis.maker_id,
+                           segment.segment_code, goods.name AS product_name, department.name AS workshop_name
+                    FROM production_planning_urges urge
+                    JOIN production_material_analyses analysis ON analysis.id = urge.material_analysis_id
+                    JOIN production_execution_segments segment ON segment.id = urge.execution_segment_id
+                    LEFT JOIN goods ON goods.id = segment.product_goods_id
+                    LEFT JOIN departments department ON department.id = segment.workshop_department_id
+                    WHERE urge.id = ?
+                    """, urgeId);
+            if (urge == null || !"OPEN".equals(urge.get("status"))) return;
+            noticeService.resolveReviewNotices(AGGREGATE_PRODUCTION_PLANNING_URGE, urgeId, "RE_URGED");
+            Set<UUID> recipients = new LinkedHashSet<>();
+            for (String action : List.of("production_material_analysis:notify", "production_material_analysis:generate")) {
+                for (String department : List.of("SUB_PLAN", "DEPT_PROD")) {
+                    recipients.addAll(departmentUserIdsWithSecondaryAuthorities(department,
+                            NOTICE_READ_AUTHORITY, "production_material_analysis:view", action));
+                }
+            }
+            UUID maker = userIdOfEmployee((UUID) urge.get("maker_id"));
+            if (maker != null && userHasAllAuthorities(maker, NOTICE_READ_AUTHORITY, "production_material_analysis:view")) {
+                recipients.add(maker);
+            }
+            int times = ((Number) urge.get("urge_count")).intValue();
+            String workshop = blankTo(str(urge.get("workshop_name")), "车间");
+            String product = blankTo(str(urge.get("product_name")), "产品");
+            String title = "车间催你下单：" + workshop + (times > 1 ? "(第 " + times + " 次)" : "");
+            String content = workshop + " " + str(urge.get("last_urged_by_name")) + " 在等料开工："
+                    + str(urge.get("segment_code")) + " " + product + " 还缺 "
+                    + str(urge.get("gap_summary")) + "，计划还没下单。"
+                    + "请到物料分析补下单，下够后这张卡会自动消失。";
+            String route = "/production/material-analysis?analysisId=" + urge.get("material_analysis_id");
+            for (UUID recipient : recipients) {
+                sendToUser(recipient, TYPE_TASK, title, content, route,
+                        EVENT_PRODUCTION_PLANNING_URGED, "important", urgeId);
+            }
+        });
+    }
+
+    private boolean userHasAllAuthorities(UUID userId, String... authorities) {
+        Set<String> required = Set.of(authorities);
+        return userRepo.findById(userId)
+                .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
+                .map(permissionResolver::permsOf)
+                .map(permissions -> permissions.containsAll(required))
+                .orElse(false);
+    }
+
+    private static String blankTo(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.strip();
     }
 
     private void deliverProductionMaterialIncrementReview(String event, UUID requestId) {

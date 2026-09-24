@@ -2,7 +2,7 @@
 
 [准则索引与开发清单](00-项目准则/00-准则索引与开发清单.md)是开发起点。本页帮助从业务规则找到页面、服务、迁移和测试，不另维护当前版本或通过数量。
 
-当前候选、性能、安全与发布证据见[当前版本验证与交付](99-项目治理/当前版本验证.md)。接手业务改动先读[续作指引](07-业务链路/03-续作指引.md)，再按下表定位规则、实现和测试。历史审计报告保留原候选与时间，不作为当前通过结论。
+**当前状态(v2.0.1, 迁移头 V688)与后续工作**见[全平台整改交接总览](99-项目治理/全平台整改交接/01-交接总览.md)(含 239 条审计发现、后续工作流任务书、编排与验收方法、重构后验证清单)。历史候选与发布证据见[当前版本验证与交付](99-项目治理/当前版本验证.md)。接手业务改动先读[续作指引](07-业务链路/03-续作指引.md)，再按下表定位规则、实现和测试。历史审计报告保留原候选与时间，不作为当前通过结论。
 
 ## 业务到实现
 
@@ -10,6 +10,8 @@
 
 | 业务规则 | 页面 | 服务函数 | 迁移与测试 |
 |---|---|---|---|
+| [全平台机制(第一阶段整改)](99-项目治理/全平台整改交接/01-交接总览.md): [审计三清单](99-决策记录-ADR/ADR-105-审计白名单行级审计与分区留存.md)、[触发器与索引](99-决策记录-ADR/ADR-106-热表触发器按相关列起跳与索引卫生.md)、[预锁与截止时间](99-决策记录-ADR/ADR-107-履约预锁一轮发现与服务端截止时间.md)、[徽章汇总](99-决策记录-ADR/ADR-108-前端性能徽章汇总会话快照与刷新时机.md)、[权限目录](99-决策记录-ADR/ADR-109-权限目录单一事实源与授权策略.md)、[会话与再认证](99-决策记录-ADR/ADR-110-服务端会话与敏感操作再认证.md)、[主档引用保护](99-决策记录-ADR/ADR-111-主档删除引用保护与批量原子命令.md)、[金额口径](99-决策记录-ADR/ADR-112-金额口径统一与资金过账单一入口.md) | 工作台与各 hub、权限管理、系统设置、审计查询 | FulfillmentMutationLocks、AuditService、PermissionGrantPolicyCatalog、AuthSessionService、MasterReferenceCatalog、MoneyPolicy、WorkbenchBadgeService | V670–V687；FullChain 160 场景、AuditTriggerCoverage*、MasterReferenceCatalogCoverageTest、WorkbenchBadgeSummaryPostgresTest |
+| [委外损耗独立结清, 不改订货量](99-决策记录-ADR/ADR-114-委外损耗独立结清不改订货量.md)、[委外子件精确库存交接](99-决策记录-ADR/ADR-113-委外子件精确库存归属交接.md) | [委外回厂短交判定](03-页面/委外回厂短交判定页.md)、委外 hub 与订货单 | SubcontractOrderService、SubcontractLossSettlementSql、ProcurementArrivalControlService、StockService | [V688](数据迁移/234-V688委外损耗独立履约结清.md)、[V646](数据迁移/231-V646委外子件精确库存交接.md)；SubcontractShortDelivery/ToleranceAutoSettle/ComponentReturnLeg 等 E2E |
 | [未领料自制追加到原工单](99-决策记录-ADR/ADR-104-追加自制并入未开工的生产计划.md) | [物料分析](03-页面/生产物料分析页.md)、[我的车间任务](03-页面/我的车间任务页.md) | MaterialAnalysisCommandService.growPlan、ProductionExecutionPackageCommandService.growSegment、ProductionExecutionReadinessService | [V647](数据迁移/232-V647未领料车间工单原位追加.md)；[本轮专项验收](99-项目治理/2026-09-23-自制追加原车间工单验收.md) |
 | [车间路线与供料场景](07-业务链路/车间任务路线与供料场景矩阵.md)、[计量与来源守恒](07-业务链路/生产计量与来源守恒.md) | [我的车间任务](03-页面/我的车间任务页.md) | ProductionExecutionSegmentService、ProductionExecutionReadinessService、ProductionDailyReportService、ProductionWorkshopDirectTransferService | V609–V616；[并行对抗验证](99-项目治理/2026-09-19-车间全链路并行对抗验证.md) |
 | [销售订货到发货SOP](07-业务链路/01-销售订货到发货全链路-SOP.md)；[财审租约](99-项目治理/2026-09-07-财务审核租约与订单互斥.md) | [销售订单财务审核](03-页面/销售订单财务审核页.md)、[客户零星发货](03-页面/客户零星发货与出货财务审核.md)、[仓库发货](03-页面/销售出货仓库作业页.md) | SalesOrderService 的审核/改量、SalesOrderFinanceConfirmService 的认领/决策、SalesShipmentService 的财审/仓库动作 | [V492修改复核](数据迁移/108-V492销售订单完整修改与财务版本复核.md)、[V511统一发货](数据迁移/125-V511客户零星发货统一流程.md)；[场景矩阵](07-业务链路/2026-09-07-销售资金库存场景矩阵与压力验收.md) |
@@ -32,6 +34,6 @@
 | 数据模型、架构和决策 | [04-数据模型](04-数据模型)、[05-架构](05-架构)、[ADR索引](99-决策记录-ADR/README.md)。正式ADR保留决策背景，前向变更不能靠改旧决策原文伪造历史。 |
 | 迁移和历史兼容 | [数据迁移索引](数据迁移/README.md)、[正式SQL](../server/src/main/resources/db/migration)。旧阶段版本号不能用于猜当前目标库版本，已应用SQL不改字节。 |
 | 本轮专项证据 | [性能与稳定性统一验收](99-项目治理/2026-09-12-全站性能与稳定性验收.md)及其物料、仓库、设置专题。测试日志按原目录、候选、时间及限制解释。 |
-| 发布和运维 | [部署运行手册](../deploy/simple/RUNBOOK.zh-CN.md)、[版本号规则（语义化，2026-09-18 起）](../README.md#版本号规则)、[多端签名](99-项目治理/多端发布与签名.md)、[首装指引](99-项目治理/2026-09-01-新库上线与首装操作指引.md)。 |
+| 发布和运维 | [部署运行手册](../deploy/simple/RUNBOOK.zh-CN.md)(服务器上只用更新器迁移, 演练在开发机库副本上做)、[版本号规则（语义化，2026-09-18 起）](../README.md#版本号规则)、[多端签名](99-项目治理/多端发布与签名.md)、[首装指引](99-项目治理/2026-09-01-新库上线与首装操作指引.md)。 |
 
 更新时直接修改所属规则或专题，删除被完整替代的续作段并更新引用。历史报告只解释对应版本；不要在多份文档顶部重复叠加“最高优先”“当前全绿”或服务器状态。

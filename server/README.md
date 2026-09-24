@@ -142,12 +142,12 @@ com.uten.imp
    ├─ auth/                   员工认证：AuthController · LoginService · PasswordService ·
    │  │                        TokenIssuer · PermissionResolver（全员基础 ∪ 部门配置含上级 ± 个人覆盖）· RefreshTokenService
    │  └─ model/                 UserAccount · RefreshToken · PasswordHistory（实体+仓库）
-   ├─ rbac/                   纯 RBAC 模型：Role · Permission · UserRole · RolePermission ·
-   │                             DepartmentRole · DepartmentPermission · UserPermissionOverride
-   │                             （实体+仓库，无 API；角色相关表自 V29 起仅作兼容保留）
+   ├─ rbac/                   权限模型：Permission(含 grant_policy 授权策略) · DepartmentPermission ·
+   │                             UserPermissionOverride · ManagerPermissionDelegation · PermissionGrantPolicyCatalog
+   │                             （实体+仓库，无 API；角色体系四张表已随 V677 删除，见 ADR-109）
    ├─ admin/                  后台管理 API（/api/admin）：AdminUserController ·
    │  │                        UserAccountAdminService（账号状态/重置密码）·
-   │  │                        RoleAdminService（权限点查询）· PermissionOverrideAdminService（个人覆盖）·
+   │  │                        AdminPermissionController（权限目录/基础包）· PermissionOverrideAdminService（个人覆盖）·
    │  │                        DepartmentPermissionAdminService（权限目录/部门配置/有效权限分解；V135
    │  │                        递增用户 auth_version 或全局 epoch，旧 access token 下一请求即失效）
    │  └─ dto/                  UserSummary · PermissionDto · 权限目录/部门配置/有效权限 各 DTO
@@ -213,13 +213,17 @@ com.uten.imp
 - 开户成功响应中的初始凭据只展示一次；前端确认保存并关闭凭据弹窗后才刷新账号状态和加载权限。
 
 ## 安全要点
-Argon2id 密码 · access JWT（源码默认 15 分钟，运行值可由系统设置覆盖；V133 只把未改过的旧默认 480 收敛到 15）+ 不透明轮换 refresh(7d, 哈希入库, 重用检测) · JWT 签发和解析都绑定非空 issuer（生产必须显式 `UTEN_JWT_ISSUER`，即使误用同一密钥也拒绝跨环境 token）· 登录采用账号/规范手机号低阈值 + IP 高阈值双桶并按员工/访客用途隔离 · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按权限点脱敏（`employee:pii:view` / `employee:compensation:view`，V30 起不再按角色） · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露 · **每请求一次账号/授权版本投影复查**（锁定、停用或 V135 `auth_version`/授权 `epoch` 不匹配立即 401；拒绝响应序列化失败也不得继续过滤链）· **base/prod 关闭 swagger，dev 显式开放**（prod 为 404 + 白名单回落认证，ADR-009 §3）。未设置 `UTEN_PROFILE` 时按 prod fail-closed；默认配置不处理 `Forwarded/X-Forwarded-*`，prod 才使用 `native`，Tomcat 只信任 `UTEN_TRUSTED_PROXY_REGEX`，且部署必须保证后端 8080 仅受信反向代理可达。鉴权/导出桶仍是单实例内存态，多实例部署需改共享状态或由网关兜底；导出另有进程内全局并发闸门（源码默认 2）。开发库已应用 V135；仍须完成个人、角色、部门树、共享权限和超管变化的真实 HTTP 负向矩阵与性能测试，才能认定权限回收即时失效。
+Argon2id 密码 · access JWT（源码默认 15 分钟，运行值可由系统设置覆盖；V133 只把未改过的旧默认 480 收敛到 15）+ 不透明轮换 refresh(7d, 哈希入库, 重用检测) · JWT 签发和解析都绑定非空 issuer（生产必须显式 `UTEN_JWT_ISSUER`，即使误用同一密钥也拒绝跨环境 token）· 登录采用账号/规范手机号低阈值 + IP 高阈值双桶并按员工/访客用途隔离 · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按权限点脱敏（`employee:pii:view` / `employee:compensation:view`，V30 起不再按角色） · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露 · **每请求一次账号/授权版本投影复查**（锁定、停用或 V135 `auth_version`/授权 `epoch` 不匹配立即 401；拒绝响应序列化失败也不得继续过滤链）· **base/prod 关闭 swagger，dev 显式开放**（prod 为 404 + 白名单回落认证，ADR-009 §3）。未设置 `UTEN_PROFILE` 时按 prod fail-closed；默认配置不处理 `Forwarded/X-Forwarded-*`，prod 才使用 `native`，Tomcat 只信任 `UTEN_TRUSTED_PROXY_REGEX`，且部署必须保证后端 8080 仅受信反向代理可达。鉴权/导出桶仍是单实例内存态，多实例部署需改共享状态或由网关兜底；导出另有进程内全局并发闸门（源码默认 2）。权限回收的即时失效由每请求版本复查 + 服务端会话共同保证(`FullChainEndToEndTest` 的切换账号场景与权限契约测试覆盖)。
 
-staff access JWT 当前只含 `sub/typ/av/ae` 与标准时效/签发字段；账号、员工、角色、权限和
-`mustChangePassword` 均由服务端在版本校验后解析。登录/刷新响应仍返回完整
-`user.roles/user.permissions` 供客户端兼容。权限快照缓存固定为 30 秒、最多 2048 项且以
-user/employee/superAdmin/authVersion/epoch 为键；账号状态和版本不缓存。主动改密与管理员重置密码
-都会递增 `auth_version`，让此前 access 立即失效。
+**服务端会话(ADR-110, V680)**: staff access JWT 只含 `sub/typ/av/ae/sid` 与标准时效/签发字段; `sid` 指向
+`auth_sessions` 一行, 与账号状态在同一条 SQL 里判定——吊销、空闲超时、绝对期限一律 401。登出、改密、
+管理员重置、锁定、停用、离职、改登录手机号都会吊销会话; 带 `X-Uten-Automatic` 的自动轮询不续期空闲计时。
+账号、员工、权限和 `mustChangePassword` 均由服务端在版本校验后解析(角色体系已删除)。权限快照缓存固定为
+30 秒、最多 2048 项且以 user/employee/superAdmin/authVersion/epoch 为键; 账号状态和版本不缓存。
+
+**敏感操作再认证**: `POST /api/auth/step-up` 用本人密码换取 5 分钟内一次性凭证, 挂在 `@RequiresStepUp`
+的端点上(设/撤超管、授权与数据范围、重置密码、模拟身份、系统设置写、清空业务数据、改手机号姓名、补开账号等)。
+临时密码由系统生成 20 位随机且限时; 带高危权限(`permissions.high_risk`)的账号只能由超管重置。
 
 服务端权限解析发生数据库/缓存依赖故障时，`JwtAuthFilter` 返回结构化 `503 SERVICE_UNAVAILABLE`，
 不得伪装为 401/403；客户端必须保留当前会话。login/refresh/logout 是公开鉴权交换，残留 Bearer 不参与这些请求。
@@ -232,9 +236,12 @@ Tomcat 回归，再按目标代理链测量调整。
 审计证据采用独立权限：超级管理员因固有全权限可查；普通用户、访客和未被点名授权的管理员均不可查。
 非超管只能由超级管理员以个人覆盖授予 `audit_log:view`，导出还须个人 `audit_log:export`；部门权限
 服务和 V173 数据库触发器都禁止这两个权限进入部门配置或随部门树继承。
-新增 Flyway 表必须通过 `AuditTriggerCoverageMigrationContractTest`：最新 audit sweep 之后的表只能是有
-书面理由的技术白名单项，否则必须新增后续 sweep。该静态护栏不执行 PostgreSQL DDL，发布仍须查询
-`pg_trigger` 验证所有非白名单公开业务表；详见 V218 迁移文件头与 git 历史归档报告。
+**行级审计三清单(ADR-105, V670-V673)**: 每张公开表必须明确归入 FULL(整行)、COLUMN_SCOPED(限定列)或
+NONE(不审计, 须写理由, 如派生/计算表、流水台账), 由 `fn_audit_track_table` 挂触发器, 只记变化键、值没变不写。
+新增 Flyway 表不登记即被 `AuditTriggerCoverageMigrationContractTest` 拒绝, `AuditTriggerCoveragePostgresTest`
+在真库上核对触发器。`audit_log` 按月分区、只追加(运行账号无改删权限, 行级守卫兜底); 留存任务按月整批
+DETACH/归档/DROP, 有 6 个月法定下限, 每次运行写完成事件, 服务器状态页 26 小时无成功即告警。业务代码不读审计表
+(审核/驳回/红冲时间落在单据自己的列上)。
 
 JSON Controller 请求体由 `JsonRequestBodyLimitAdvice` 统一限制，默认
 `UTEN_MAX_JSON_BODY_BYTES=1048576`（1 MiB），同时覆盖无 `Content-Length` 的 chunked 请求；
@@ -298,10 +305,16 @@ access 立即服务端失效；access 最多存活到短 TTL，紧急全局清�
 响应页码、每页数量和总页数来自实际查询，不能再次使用未经归一的请求 `page/size`。
 这样请求超过每页上限或页码小于 1 时，前后端仍以同一个实际分页口径工作。
 ```bash
-mvn test
+mvn verify                              # 快道: 单元 + 架构 + 契约, 真库用例按设计跳过(= CI backend-fast)
+UTEN_RUN_DB_TESTS=true mvn verify       # 全量: 含 Testcontainers 真库与 FullChainEndToEndTest(= CI backend-db)
+UTEN_RUN_DB_TESTS=true mvn test -Dtest=FullChainEndToEndTest   # 只跑全链路
 ```
 
-CI 的后端门禁使用 `UTEN_RUN_DB_TESTS=true mvn verify`，并与 Flutter 格式/analyze/test/Web 构建、
+**与 CI 同口径**: CI 上没有 `.env`, 未设 `UTEN_PROFILE` 时按 `prod` 启动(fail-closed, 例如要求显式内网网段)。
+本机跑门禁前先把 `server/.env` 挪开或在不拷 `.env` 的隔离 worktree 里跑, 否则 `dev` profile 会掩盖问题。
+与正在运行的 `spring-boot:run` 并行测试时用独立输出目录(见上文「本地启动与并行测试的编译目录」)。
+
+CI 的后端门禁分快道与全量两级，并与 Flutter 格式/analyze/test/Web 构建、
 Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地测试通过都不能替代远端 CI、
 完整权限矩阵、关键业务 E2E 与生产同构迁移演练。发布门禁见 [ADR-060](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 与
 [新库上线与首装操作指引](../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。
